@@ -14,7 +14,6 @@ const LIMIT_LABELS: Record<string, string> = {
   max_active_workflows_per_client: 'fluxos ativos por cliente',
   max_custom_properties_per_template: 'propriedades personalizadas',
   max_posts_per_workflow: 'posts por fluxo',
-  rate_ai_images_per_month: 'imagens de IA por mês',
 };
 
 const FEATURE_LABELS: Record<string, string> = {
@@ -32,8 +31,6 @@ const FEATURE_LABELS: Record<string, string> = {
   feature_brand_customization: 'Personalização de Marca',
   feature_custom_properties: 'Propriedades Personalizadas',
   feature_csv_import: 'Importação CSV',
-  feature_estudio: 'Estúdio',
-  feature_ai_images: 'Geração de imagens com IA',
   feature_tiktok: 'TikTok',
 };
 

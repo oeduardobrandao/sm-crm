@@ -1,0 +1,10 @@
+{
+  "colorPicker": {
+    "open": "Pick color",
+    "native": "Color selector",
+    "hex": "Hex color",
+    "brand": "Brand",
+    "recents": "Recent",
+    "empty": "No color"
+  }
+}

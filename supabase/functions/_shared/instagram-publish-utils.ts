@@ -140,45 +140,6 @@ export interface ScheduleValidationResult {
   errors: string[];
   media?: MediaFile[];
   account?: { encrypted_access_token: string; instagram_user_id: string };
-  /** Set when validation blocked on the Estúdio design (T4.1) — carries what a caller needs
-   * to fire the render re-trigger (design-render wants design_id + rev). */
-  designBlocked?: DesignSummary;
-}
-
-export interface DesignSummary {
-  id: number;
-  rev: number;
-  render_status: string;
-  is_stale: boolean;
-}
-
-export interface DesignReadiness {
-  ready: boolean;
-  /** null = the post has no design at all (an ordinary post — always ready). */
-  design: DesignSummary | null;
-}
-
-/** Publish-safety invariant (design §5.3): a post with an ATTACHED design may only enter
- * the publish pipeline once its flattened JPEGs are current — `render_status='rendered' AND
- * is_stale=false`. No attached design → ordinary manual-media post → always ready.
- * A HELD design (media_apply_held, slice C) does not own the post's media yet — the post
- * still ships its original media — so it is ready regardless of render_status/is_stale;
- * freshness only starts to matter once the user's first save clears the hold. */
-export async function checkDesignReadiness(db: DbClient, postId: number): Promise<DesignReadiness> {
-  const { data } = await db
-    .from("designs")
-    .select("id, rev, render_status, is_stale, media_apply_held")
-    .eq("post_id", postId)
-    .maybeSingle();
-  if (!data) return { ready: true, design: null };
-  if (data.media_apply_held) return { ready: true, design: null };
-  const design: DesignSummary = {
-    id: data.id,
-    rev: data.rev,
-    render_status: data.render_status,
-    is_stale: data.is_stale,
-  };
-  return { ready: design.render_status === "rendered" && !design.is_stale, design };
 }
 
 export async function validateForScheduling(
@@ -230,21 +191,6 @@ export async function validateForScheduling(
     for (const e of mediaErrors) errors.push(e.message);
   }
 
-  // Estúdio gate (T4.1, design §5.3): a post WITH a design must be flattened (rendered, not
-  // stale) before scheduling — otherwise the pipeline would publish yesterday's JPEGs while the
-  // editor shows today's doc. Distinct messages: "failed" is actionable (reopen + save),
-  // pending/rendering/stale resolves by itself (renders auto-trigger on save/open).
-  let designBlocked: DesignSummary | undefined;
-  const readiness = await checkDesignReadiness(db, postId);
-  if (!readiness.ready && readiness.design) {
-    designBlocked = readiness.design;
-    errors.push(
-      readiness.design.render_status === "failed"
-        ? "A arte do Estúdio falhou ao renderizar. Abra o post no Estúdio e salve novamente para tentar outra vez."
-        : "A arte do Estúdio ainda está sendo gerada. Aguarde alguns instantes e tente novamente.",
-    );
-  }
-
   const { data: workflow } = await db
     .from("workflows")
     .select("cliente_id")
@@ -285,7 +231,6 @@ export async function validateForScheduling(
       encrypted_access_token: account.encrypted_access_token,
       instagram_user_id: account.instagram_user_id,
     } : undefined,
-    designBlocked,
   };
 }
 

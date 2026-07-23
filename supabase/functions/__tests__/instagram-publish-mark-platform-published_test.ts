@@ -127,7 +127,6 @@ Deno.test("instagram-publish publish-now (feed): success calls mark_platform_pub
     },
   }];
   db.queue("post_file_links", "select", { data: links, error: null }); // validateForScheduling
-  db.queue("designs", "select", { data: null, error: null });
   db.queue("workflows", "select", { data: { cliente_id: 5 }, error: null });
   db.queue("instagram_accounts", "select", {
     data: {
@@ -210,7 +209,6 @@ Deno.test("instagram-publish publish-now (stories): allDone calls mark_platform_
     },
   }];
   db.queue("post_file_links", "select", { data: storyLinks, error: null }); // validateForScheduling
-  db.queue("designs", "select", { data: null, error: null });
   db.queue("workflows", "select", { data: { cliente_id: 5 }, error: null });
   db.queue("instagram_accounts", "select", {
     data: {

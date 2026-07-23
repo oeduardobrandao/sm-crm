@@ -38,7 +38,9 @@ function mapSetMediaError(message: string): McpInputError {
     return new McpInputError(`Posts do tipo '${message.slice("tipo_not_image:".length)}' não recebem imagens (suportados: feed, carrossel).`);
   }
   if (message === "design_attached") {
-    return new McpInputError("A mídia deste post é gerida por um design — edite o design com update_design.");
+    // The Estúdio tools were retired from the connector, so there is no agent-side way to edit
+    // the design — point the user at the app instead of a tool that no longer exists.
+    return new McpInputError("A mídia deste post é gerida por um design — edite-o no Mesaas.");
   }
   if (message === "quota_exceeded") return new McpInputError("Cota de armazenamento excedida.");
   return new McpInputError("Não foi possível definir a mídia do post.");

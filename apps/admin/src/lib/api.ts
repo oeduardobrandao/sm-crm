@@ -91,14 +91,11 @@ export interface Plan {
   feature_post_tagging: boolean;
   feature_brand_customization: boolean;
   feature_mcp: boolean;
-  feature_estudio: boolean;
-  feature_ai_images: boolean;
   feature_tiktok: boolean;
   feature_mensagens: boolean;
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
   rate_report_generations_per_month: number | null;
-  rate_ai_images_per_month: number | null;
   sort_order: number;
   is_active: boolean;
   is_default: boolean;
@@ -187,8 +184,6 @@ export const FEATURE_FLAG_KEYS = [
   'feature_post_tagging',
   'feature_brand_customization',
   'feature_mcp',
-  'feature_estudio',
-  'feature_ai_images',
   'feature_tiktok',
   'feature_mensagens',
 ] as const;
@@ -213,8 +208,6 @@ export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_post_tagging: 'Post Tagging',
   feature_brand_customization: 'Brand Customization',
   feature_mcp: 'MCP (Claude)',
-  feature_estudio: 'Estúdio (Editor)',
-  feature_ai_images: 'AI Image Generation',
   feature_tiktok: 'TikTok',
   feature_mensagens: 'Mensagens',
 };
@@ -223,14 +216,12 @@ export const RATE_LIMIT_KEYS = [
   'rate_instagram_syncs_per_day',
   'rate_ai_analyses_per_month',
   'rate_report_generations_per_month',
-  'rate_ai_images_per_month',
 ] as const;
 
 export const RATE_LIMIT_LABELS: Record<string, string> = {
   rate_instagram_syncs_per_day: 'Instagram Syncs/Day',
   rate_ai_analyses_per_month: 'AI Analyses/Month',
   rate_report_generations_per_month: 'Report Generations/Month',
-  rate_ai_images_per_month: 'AI Images/Month',
 };
 
 // ─── API Call ─────────────────────────────────────────────────

@@ -15,8 +15,15 @@ Deno.test("buildCorsHeaders echoes allowlisted origins and falls back for non-br
   assertEquals(allowed["Access-Control-Allow-Origin"], "https://hub.mesaas.com");
   assertEquals(fallback["Access-Control-Allow-Origin"], "https://app.mesaas.com");
   assert(allowed["Access-Control-Allow-Methods"].includes("OPTIONS"));
-  // PUT must stay allowlisted: design-manage's browser-issued PUT (Estúdio autosave)
-  // fails CORS preflight without it.
+  // PUT is kept allowlisted DEFENSIVELY, not because a caller is known to need it here.
+  // The original justification (design-manage's browser-issued PUT for Estúdio autosave) died
+  // with the Estúdio retirement, and no surviving edge function handles PUT. The browser PUTs
+  // that do exist go straight to R2 presigned URLs on *.r2.cloudflarestorage.com
+  // (apps/crm/src/services/{inlineImage,fileService,postMedia,ideiaMedia}.ts,
+  // apps/hub/src/services/ideiaMedia.ts) — those preflights are governed by R2's own bucket
+  // CORS config, which buildCorsHeaders does not affect. Removing PUT here is therefore
+  // probably safe but unverified, and a wrong call breaks uploads at runtime with no test
+  // to catch it — so it stays until someone confirms against the live bucket config.
   assert(allowed["Access-Control-Allow-Methods"].includes("PUT"));
 });
 

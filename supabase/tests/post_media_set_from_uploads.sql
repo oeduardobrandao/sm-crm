@@ -63,15 +63,6 @@ begin
       jsonb_build_object('r2_key','contas/'||v_ws||'/files/q.jpg','size_bytes',10,'mime_type','image/jpeg')));
     exception when sqlstate 'P0001' then assert sqlerrm like 'post_not_editable:%'; v_threw:=true; end;
     assert v_threw, 'not-editable rejected';
-    -- design attached
-    update workflow_posts set status='rascunho' where id=v_post;
-    insert into designs (conta_id, post_id, format, doc_r2_key, doc_hash, doc_bytes)
-      values (v_ws, v_post, 'feed', 'dk','dh',10);
-    v_threw := false;
-    begin perform post_media_set_from_uploads(v_ws, v_post, v_u, jsonb_build_array(
-      jsonb_build_object('r2_key','contas/'||v_ws||'/files/w.jpg','size_bytes',10,'mime_type','image/jpeg')));
-    exception when sqlstate 'P0001' then assert sqlerrm like 'design_attached%'; v_threw:=true; end;
-    assert v_threw, 'design_attached rejected';
   end;
 
   -- (8) post_not_found: bogus post id never reaches any other gate
@@ -94,11 +85,10 @@ begin
     assert v_threw, 'tipo_not_image rejected';
   end;
 
-  -- (10) quota_exceeded: reset v_post to editable/no-design, then push a single item whose
+  -- (10) quota_exceeded: reset v_post to editable, then push a single item whose
   -- size_bytes alone busts the free-plan 100MB (104857600) quota; fresh r2_key so it takes the
   -- file_insert_with_quota path (not idempotent reuse).
   declare v_threw boolean; begin
-    delete from designs where post_id = v_post;
     update workflow_posts set status='rascunho' where id=v_post;
     v_threw := false;
     begin perform post_media_set_from_uploads(v_ws, v_post, v_u, jsonb_build_array(

@@ -264,6 +264,18 @@ describe('supabase helpers', () => {
     });
     expect(auth.signOut).toHaveBeenCalled();
   });
+
+  // Regression: signOut() with supabase-js's DEFAULT global scope terminates every session for
+  // the user — including the OAuth session backing the Claude/MCP connector, which then reports
+  // "Authentication required" until the user reconnects. Logging out of this browser must not
+  // revoke the workspace's connectors, so the scope is pinned to 'local'.
+  it('signs out only the local session so OAuth/MCP connectors survive', async () => {
+    const { module, auth } = await loadSupabaseModule({ id: 'user-1' });
+
+    await module.signOut();
+
+    expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
 });
 
 describe('healPendingInvite', () => {

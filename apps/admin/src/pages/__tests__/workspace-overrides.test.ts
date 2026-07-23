@@ -42,12 +42,9 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
     feature_post_tagging: true,
     feature_brand_customization: true,
     feature_mcp: false,
-    feature_estudio: false,
-    feature_ai_images: false,
     rate_instagram_syncs_per_day: 15,
     rate_ai_analyses_per_month: 15,
     rate_report_generations_per_month: 15,
-    rate_ai_images_per_month: 15,
     sort_order: 2,
     is_active: true,
     is_default: false,
@@ -60,10 +57,10 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
 
 describe('computeOverridesPayload', () => {
   it('regression: turning an override back OFF to match the plan default yields an explicit empty object, not a dropped key', () => {
-    // Estúdio is dark on every plan; this workspace has it force-enabled via a
+    // feature_mcp is dark on this plan; this workspace has it force-enabled via a
     // prior override. Admin flips the toggle back to OFF (= the plan default).
-    const plan = makePlan({ feature_estudio: false });
-    const featureEdits = { feature_estudio: false }; // toggled off in the UI
+    const plan = makePlan({ feature_mcp: false });
+    const featureEdits = { feature_mcp: false }; // toggled off in the UI
 
     const { feature_overrides } = computeOverridesPayload(plan, {}, featureEdits);
 
@@ -74,12 +71,12 @@ describe('computeOverridesPayload', () => {
   });
 
   it('includes a feature key when the edit still differs from the plan default', () => {
-    const plan = makePlan({ feature_estudio: false });
-    const featureEdits = { feature_estudio: true };
+    const plan = makePlan({ feature_mcp: false });
+    const featureEdits = { feature_mcp: true };
 
     const { feature_overrides } = computeOverridesPayload(plan, {}, featureEdits);
 
-    expect(feature_overrides).toEqual({ feature_estudio: true });
+    expect(feature_overrides).toEqual({ feature_mcp: true });
   });
 
   it('resource_overrides: matches plan default -> empty object (clears stale override, not omitted)', () => {

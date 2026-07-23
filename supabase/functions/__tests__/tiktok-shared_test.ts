@@ -1,6 +1,6 @@
 // Shared TikTok wire constants, token crypto (AES-256-GCM via HKDF from TOKEN_ENCRYPTION_KEY),
 // and the authenticated API fetch wrapper. Mirrors the stubbed-fetch pattern used by
-// image-gen-openrouter_test.ts / instagram-publish-cover_test.ts.
+// instagram-publish-cover_test.ts.
 import { assert, assertEquals } from "./assert.ts";
 import {
   encryptTikTokToken,

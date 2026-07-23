@@ -13,7 +13,6 @@ import {
   createMissingStorySegmentContainers,
   publishReadyStorySegments,
   selectStoryMediaId,
-  type ScheduleValidationResult,
 } from "../_shared/instagram-publish-utils.ts";
 
 type DbClient = {
@@ -26,27 +25,9 @@ interface PublishHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: (token: string) => DbClient;
   createServiceDb: () => DbClient;
-  /** Fire-and-forget design-render kick (T4.1) — optional so tests and any caller without
-   * CRON_SECRET wiring degrade to "blocked but not re-triggered". */
-  triggerDesignRender?: (designId: number, rev: number) => Promise<void>;
-  waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 export function createPublishHandler(deps: PublishHandlerDeps) {
-  // Validation blocked on a stale/failed design → kick a re-render in the background so the
-  // user's retry (or the client's next approval) finds it rendered. 'rendering' rows are
-  // already in flight — the trigger's claim would 409 (treated as OK) anyway, so the simple
-  // stale/failed condition from the plan is used as-is.
-  const maybeRetriggerDesign = (validation: ScheduleValidationResult) => {
-    const design = validation.designBlocked;
-    if (!design || !deps.triggerDesignRender) return;
-    if (design.render_status !== "failed" && !design.is_stale) return;
-    const kick = deps.triggerDesignRender(design.id, design.rev).catch((e) =>
-      console.error("[IG-PUBLISH] design re-trigger failed:", (e as Error)?.message)
-    );
-    if (deps.waitUntil) deps.waitUntil(kick);
-  };
-
   return async (req: Request): Promise<Response> => {
     const cors = deps.buildCorsHeaders(req);
     const json = createJsonResponder(cors);
@@ -101,7 +82,6 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
       try {
         validation = await validateForScheduling(svcDb, postId);
         if (!validation.ok) {
-          maybeRetriggerDesign(validation);
           return json({ error: "Validação falhou", details: validation.errors }, 422);
         }
       } catch (e) {
@@ -195,7 +175,6 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
       try {
         validation = await validateForScheduling(svcDb, postId, { skipDateCheck: true });
         if (!validation.ok) {
-          maybeRetriggerDesign(validation);
           return json({ error: "Validação falhou", details: validation.errors }, 422);
         }
       } catch (e) {

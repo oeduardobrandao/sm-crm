@@ -336,181 +336,20 @@ describe('media request mode', () => {
 });
 
 // ============================================================
-// T4.5 — Estúdio design-ownership mode (design §6.7)
-// ============================================================
 
-import { toast } from 'sonner';
-
-const DESIGN = { id: 7, rev: 3, render_status: 'rendered' as const, is_stale: false };
-
-function makeOwnedMedia(overrides: Partial<PostMedia> = {}): PostMedia {
-  return {
-    id: 1,
-    post_id: 42,
-    conta_id: 'c1',
-    r2_key: 'k',
-    thumbnail_r2_key: null,
-    kind: 'image',
-    mime_type: 'image/jpeg',
-    size_bytes: 100,
-    original_filename: 'a.jpg',
-    width: 1080,
-    height: 1350,
-    duration_seconds: null,
-    is_cover: false,
-    sort_order: 0,
-    uploaded_by: null,
-    created_at: '2026-07-01T00:00:00Z',
-    url: 'https://x/a.jpg',
-    ...overrides,
-  };
-}
-
-function renderOwned(props: { design?: typeof DESIGN | null; postTipo?: string }) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
-    <QueryClientProvider client={qc}>
-      <PostMediaGallery postId={42} {...props} />
-    </QueryClientProvider>,
-  );
-}
-
-describe('PostMediaGallery design ownership (T4.5)', () => {
-  it('feed post with a design: banner shown, ALL upload/pick affordances gone', async () => {
-    vi.mocked(listPostMedia).mockResolvedValue([
-      makeOwnedMedia({ id: 1, origin: 'design' }),
-      makeOwnedMedia({ id: 2, origin: 'design', sort_order: 1 }),
+// Regression guard: Estúdio was retired, so the gallery can never be design-locked again.
+describe('PostMediaGallery design decoupling regression guard', () => {
+  it('never renders a design-ownership banner', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce([
+      { id: 10, kind: 'image', origin: 'manual', url: 'https://x/y.jpg' } as never,
     ]);
-    renderOwned({ design: DESIGN, postTipo: 'feed' });
-    expect(await screen.findByTestId('design-ownership-banner')).toHaveTextContent(
-      /gerenciadas pelo Estúdio/i,
-    );
-    expect(screen.queryByText('Adicionar')).not.toBeInTheDocument();
-    expect(screen.queryByText('Escolher dos Arquivos')).not.toBeInTheDocument();
-    // Tile hover controls (set cover / delete) are fully suppressed.
-    expect(screen.queryByTitle('Definir como capa')).not.toBeInTheDocument();
-    expect(screen.queryByTitle('Remover')).not.toBeInTheDocument();
-  });
-
-  it('reel with a design: cover-only ownership — video upload stays, cover/thumbnail controls hide', async () => {
-    vi.mocked(listPostMedia).mockResolvedValue([
-      makeOwnedMedia({
-        id: 3,
-        kind: 'video',
-        mime_type: 'video/mp4',
-        original_filename: 'v.mp4',
-        origin: 'manual',
-        is_cover: false,
-      }),
-    ]);
-    renderOwned({ design: DESIGN, postTipo: 'reels' });
-    expect(await screen.findByTestId('design-ownership-banner')).toHaveTextContent(
-      /Capa gerenciada pelo Estúdio/i,
-    );
-    // Upload affordance REMAINS (the reel video is manual)...
-    expect(await screen.findByText('Adicionar')).toBeInTheDocument();
-    // ...but the cover choice and the video-thumbnail editor belong to the Estúdio now.
-    expect(screen.queryByTitle('Definir como capa')).not.toBeInTheDocument();
-    expect(screen.queryByTitle('Miniatura do vídeo')).not.toBeInTheDocument();
-  });
-
-  it('reel with a design: image files are REJECTED, videos in the same selection still upload', async () => {
-    vi.mocked(listPostMedia).mockResolvedValue([]);
-    renderOwned({ design: DESIGN, postTipo: 'reels' });
-    await pickFiles([createFile('cover.jpg', 'image/jpeg'), createFile('reel.mp4', 'video/mp4')]);
-    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
-    expect(uploadPostMediaMock.mock.calls[0][0].file.name).toBe('reel.mp4');
-    expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/apenas o vídeo/i));
-  });
-
-  it('reel with a design: an image-only selection uploads nothing', async () => {
-    vi.mocked(listPostMedia).mockResolvedValue([]);
-    renderOwned({ design: DESIGN, postTipo: 'reels' });
-    await pickFiles([createFile('cover.jpg', 'image/jpeg')]);
-    await waitFor(() => expect(toast.error).toHaveBeenCalled());
-    expect(uploadPostMediaMock).not.toHaveBeenCalled();
-  });
-
-  it('no design: props absent keeps the pre-Estúdio behavior (no banner, uploads enabled)', async () => {
-    vi.mocked(listPostMedia).mockResolvedValue([makeOwnedMedia()]);
-    renderOwned({ design: null, postTipo: 'feed' });
-    expect(await screen.findByText('Adicionar')).toBeInTheDocument();
-    expect(screen.queryByTestId('design-ownership-banner')).not.toBeInTheDocument();
-  });
-});
-
-// ============================================================
-// Task 6 — onMakeEditable entry point ("Tornar editável no Estúdio")
-// ============================================================
-
-describe('PostMediaGallery onMakeEditable entry point', () => {
-  function renderWithMakeEditable(props: {
-    design?: typeof DESIGN | null;
-    postTipo?: string;
-    onMakeEditable?: (m: PostMedia) => void;
-  }) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
-        <PostMediaGallery postId={42} {...props} />
+        <PostMediaGallery postId={1} onChange={vi.fn()} />
       </QueryClientProvider>,
     );
-  }
-
-  it('shows the "make editable" hover action on eligible image tiles when the prop is provided', async () => {
-    vi.mocked(listPostMedia).mockResolvedValue([makeOwnedMedia({ id: 1, kind: 'image' })]);
-    const onMakeEditable = vi.fn();
-    renderWithMakeEditable({ postTipo: 'feed', onMakeEditable });
-
-    const button = await screen.findByTitle('Tornar editável no Estúdio');
-    expect(button).toBeInTheDocument();
-    fireEvent.click(button);
-    expect(onMakeEditable).toHaveBeenCalledWith(expect.objectContaining({ id: 1, kind: 'image' }));
-  });
-
-  it('hides the action entirely when ANY media item is a video (mirrors post_has_video)', async () => {
-    vi.mocked(listPostMedia).mockResolvedValue([
-      makeOwnedMedia({ id: 1, kind: 'image' }),
-      makeOwnedMedia({
-        id: 2,
-        kind: 'video',
-        mime_type: 'video/mp4',
-        original_filename: 'v.mp4',
-      }),
-    ]);
-    renderWithMakeEditable({ postTipo: 'carrossel', onMakeEditable: vi.fn() });
-
-    await screen.findByText('Adicionar');
-    expect(screen.queryByTitle('Tornar editável no Estúdio')).not.toBeInTheDocument();
-  });
-
-  it('does not show the action on a design-owned tile (origin=design)', async () => {
-    vi.mocked(listPostMedia).mockResolvedValue([
-      makeOwnedMedia({ id: 1, kind: 'image', origin: 'design' }),
-    ]);
-    renderWithMakeEditable({ postTipo: 'feed', onMakeEditable: vi.fn() });
-
-    await screen.findByText('Adicionar');
-    expect(screen.queryByTitle('Tornar editável no Estúdio')).not.toBeInTheDocument();
-  });
-
-  it('is absent entirely when the prop is omitted (existing callers unaffected)', async () => {
-    vi.mocked(listPostMedia).mockResolvedValue([makeOwnedMedia({ id: 1, kind: 'image' })]);
-    renderWithMakeEditable({ postTipo: 'feed' });
-
-    await screen.findByText('Adicionar');
-    expect(screen.queryByTitle('Tornar editável no Estúdio')).not.toBeInTheDocument();
-  });
-
-  it('gallery stays UNLOCKED when design is held (caller passes design=null while held)', async () => {
-    // Domain rule: while media_apply_held, the caller (WorkflowDrawer) must NOT pass the
-    // design prop, so the gallery never locks even though a design row exists server-side.
-    vi.mocked(listPostMedia).mockResolvedValue([makeOwnedMedia({ id: 1, kind: 'image' })]);
-    renderWithMakeEditable({ design: null, postTipo: 'feed', onMakeEditable: vi.fn() });
-
-    expect(await screen.findByText('Adicionar')).toBeInTheDocument();
-    expect(screen.queryByTestId('design-ownership-banner')).not.toBeInTheDocument();
-    // Upload/tile controls remain enabled — no lock.
-    expect(await screen.findByTitle('Tornar editável no Estúdio')).toBeInTheDocument();
+    await screen.findByText('Adicionar'); // wait for the query to resolve
+    expect(screen.queryByTestId('design-ownership-banner')).toBeNull();
   });
 });

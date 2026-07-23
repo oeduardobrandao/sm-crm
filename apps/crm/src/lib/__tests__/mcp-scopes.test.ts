@@ -11,14 +11,13 @@ describe('mcp-scopes', () => {
   });
 });
 
-describe('estudio scopes (design §9)', () => {
-  it('offers designs:write and images:generate as selectable scopes', () => {
-    expect(SCOPE_OPTIONS.some((s) => s.value === 'designs:write')).toBe(true);
-    expect(SCOPE_OPTIONS.some((s) => s.value === 'images:generate')).toBe(true);
-  });
-  it('flags the spend scope in its label and keeps both out of the AGENT_PRESET', () => {
-    const spend = SCOPE_OPTIONS.find((s) => s.value === 'images:generate');
-    expect(spend?.label).toMatch(/custo/i);
+describe('retired Estúdio scopes', () => {
+  // Estúdio was retired from the MCP connector: its tools are gone, so offering the scopes
+  // would let a user grant a permission that maps to nothing — exactly the confusion the
+  // removal set out to fix. Mirrors MCP_ALLOWED_SCOPES in _shared/mcp-token.ts.
+  it('no longer offers designs:write or images:generate', () => {
+    expect(SCOPE_OPTIONS.some((s) => s.value === 'designs:write')).toBe(false);
+    expect(SCOPE_OPTIONS.some((s) => s.value === 'images:generate')).toBe(false);
     expect(AGENT_PRESET).not.toContain('designs:write');
     expect(AGENT_PRESET).not.toContain('images:generate');
   });

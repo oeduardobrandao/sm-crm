@@ -76,13 +76,12 @@ interface SeedOpts {
   links?: unknown[];
   scheduled_at?: string | null;
   account?: Record<string, unknown> | null;
-  design?: Record<string, unknown> | null;
   workflow?: Record<string, unknown> | null;
 }
 
 // Queues every select validateForTikTokScheduling issues, in call order, for the
-// non-early-return (non-stories) path: workflow_posts -> post_file_links -> designs
-// -> workflows -> tiktok_accounts.
+// non-early-return (non-stories) path: workflow_posts -> post_file_links -> workflows
+// -> tiktok_accounts.
 function seed(db: ReturnType<typeof createSupabaseQueryMock>, opts: SeedOpts = {}) {
   const {
     tipo = "carrossel",
@@ -100,7 +99,6 @@ function seed(db: ReturnType<typeof createSupabaseQueryMock>, opts: SeedOpts = {
       tiktok_open_id: "open-1",
       authorization_status: "active",
     },
-    design = null,
     workflow = { cliente_id: 5 },
   } = opts;
 
@@ -119,7 +117,6 @@ function seed(db: ReturnType<typeof createSupabaseQueryMock>, opts: SeedOpts = {
     error: null,
   });
   db.queue("post_file_links", "select", { data: links, error: null });
-  db.queue("designs", "select", { data: design, error: null });
   db.queue("workflows", "select", { data: workflow, error: null });
   db.queue("tiktok_accounts", "select", { data: account, error: null });
 }
@@ -208,7 +205,6 @@ Deno.test("validateForTikTokScheduling: workflows read data:null with NO error y
     error: null,
   });
   db.queue("post_file_links", "select", { data: [imageLink(0)], error: null });
-  db.queue("designs", "select", { data: null, error: null });
   db.queue("workflows", "select", { data: null, error: null });
   const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
   assert(res !== undefined, "must resolve, not throw, when workflow read simply finds no match");
@@ -570,40 +566,6 @@ Deno.test("validateForTikTokScheduling: active account with decryptable tokens p
     assert(res.ok, `expected ok, got errors: ${JSON.stringify(res.errors)}`);
     assertEquals(res.account?.id, "acct-1");
     assertEquals(res.account?.tiktok_open_id, "open-1");
-  } finally {
-    Deno.env.delete("TIKTOK_APP_AUDITED");
-  }
-});
-
-// ============================================================
-// Rule 7: Estúdio design gate delegation
-// ============================================================
-
-Deno.test("validateForTikTokScheduling: FAILED design blocks scheduling with the shared checkDesignReadiness message", async () => {
-  const db = createSupabaseQueryMock();
-  const account = await accountWithRealTokens();
-  seed(db, {
-    account,
-    design: { id: 77, rev: 6, render_status: "failed", is_stale: true },
-  });
-  const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
-  assert(!res.ok);
-  assert(res.errors.some((e) => e.includes("falhou ao renderizar")));
-  assertEquals(res.designBlocked, { id: 77, rev: 6, render_status: "failed", is_stale: true });
-});
-
-Deno.test("validateForTikTokScheduling: no design attached (null) does not block scheduling", async () => {
-  const db = createSupabaseQueryMock();
-  const account = await accountWithRealTokens();
-  Deno.env.set("TIKTOK_APP_AUDITED", "true");
-  try {
-    seed(db, {
-      account,
-      design: null,
-      tiktok_settings: { ...VALID_SETTINGS, privacy_level: "SELF_ONLY" },
-    });
-    const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
-    assert(res.ok, `expected ok, got: ${JSON.stringify(res.errors)}`);
   } finally {
     Deno.env.delete("TIKTOK_APP_AUDITED");
   }

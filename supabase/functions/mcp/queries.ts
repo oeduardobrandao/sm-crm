@@ -52,32 +52,7 @@ export interface Deps {
   signUrl?: (key: string) => Promise<string>;
   now?: () => string;
   genId?: () => string;
-  // Estúdio design tools (design-first model) — wired in index.ts, injectable in tests:
-  /** Plan feature gate (resolves against the key's workspace). */
-  isFeatureEnabled?: (feature: string) => Promise<boolean>;
-  /** Fire-and-forget design-render kick (x-cron-secret internal call). */
-  triggerRender?: (designId: number, rev: number) => Promise<void>;
-  /** R2 design blob IO. */
-  fetchBlob?: (r2Key: string) => Promise<Uint8Array | null>;
-  putBlob?: (r2Key: string, bytes: Uint8Array) => Promise<void>;
-  deleteBlob?: (r2Key: string) => Promise<void>;
-  /** Doc service (estudio-render Vercel) — scene projection + op-based mutation. */
-  docDescribe?: (bytes: Uint8Array) => Promise<Record<string, unknown>>;
-  docMutate?: (
-    bytes: Uint8Array,
-    ops: unknown[],
-  ) => Promise<{ bytes: Uint8Array; projection: Record<string, unknown>; applied: number }>;
-  /** Full-frame render for preview_design (same contract design-render uses). */
-  callRenderService?: (
-    bytes: Uint8Array,
-    tipo: string,
-  ) => Promise<{ pages: Array<{ frame_id: string; width: number; height: number; jpeg_b64: string }> }>;
-  /** Pregenerated starter .fig for a design format. */
-  starterTemplate?: (format: string) => Uint8Array;
   randomUUID?: () => string;
-  /** Image-generation core deps (§8) — wired in index.ts; absent = tool unconfigured. */
-  // deno-lint-ignore no-explicit-any
-  imageGen?: any;
   /** Presigned R2 PUT URL for direct client upload (create_media_upload). */
   signPutUrl?: (key: string, mimeType: string) => Promise<string>;
   /** R2 object HEAD for finalize integrity check (set_post_media). */
@@ -903,15 +878,8 @@ export async function createPost(
 }
 
 // Text/caption edits by agents stay off client-facing posts (enviado_cliente is live in
-// the portal). Estúdio design eligibility is WIDER — see DESIGN_ELIGIBLE_STATUSES.
+// the portal).
 export const EDITABLE_STATUSES: string[] = ["rascunho", "revisao_interna", "correcao_cliente"];
-// Exported for the Estúdio design tools (design.ts) — mirrors the SQL editable set in
-// create_design / save_design_blob / attach_design (20260706000001): design work may
-// continue while the post sits in the client's approval queue.
-export const DESIGN_ELIGIBLE_STATUSES: string[] = [
-  ...EDITABLE_STATUSES,
-  "enviado_cliente",
-];
 const AGENT_SETTABLE_STATUSES: string[] = ["rascunho", "revisao_interna"];
 
 export async function updatePost(

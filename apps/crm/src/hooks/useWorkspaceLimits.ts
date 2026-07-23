@@ -19,7 +19,6 @@ export interface ResourceLimits {
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
   rate_report_generations_per_month: number | null;
-  rate_ai_images_per_month: number | null;
 }
 
 export interface FeatureFlags {
@@ -42,8 +41,6 @@ export interface FeatureFlags {
   feature_post_tagging: boolean;
   feature_brand_customization: boolean;
   feature_mcp: boolean;
-  feature_estudio: boolean;
-  feature_ai_images: boolean;
   feature_tiktok: boolean;
 }
 

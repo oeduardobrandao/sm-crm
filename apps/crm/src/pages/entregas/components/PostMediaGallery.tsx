@@ -10,7 +10,6 @@ import {
   Download,
   FolderOpen,
   Image as ImageIcon,
-  Wand2,
 } from 'lucide-react';
 import { fetchWithRetry } from '@/utils/fetchWithRetry';
 import { downloadMedia } from '@/utils/downloadMedia';
@@ -38,7 +37,7 @@ import { extractVideoFrame } from '../../../utils/videoFrame';
 import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
 import { ThumbnailPickerDialog } from './ThumbnailPickerDialog';
 import { useTranslation } from 'react-i18next';
-import type { PostMedia, DesignSummary } from '../../../store';
+import type { PostMedia } from '../../../store';
 import { OptimizedImage } from '../../../components/OptimizedImage';
 import { PostMediaLightbox } from './PostMediaLightbox';
 import { FilePickerModal } from '../../arquivos/components/FilePickerModal';
@@ -49,20 +48,6 @@ interface PostMediaGalleryProps {
   disabled?: boolean;
   maxFiles?: number;
   onChange?: (media: PostMedia[]) => void;
-  /** Estúdio ownership (T4.5, design §6.7): when the post has a design, the design OWNS the
-   * post's image media. feed/carrossel → the whole gallery locks (banner + no uploads/edits);
-   * reels → cover-only ownership: the video tile's thumbnail IS the rendered cover (no design
-   * tile exists), so set-cover/edit-thumbnail hide and image uploads are rejected while video
-   * upload stays manual. Omit both props for the pre-Estúdio behavior (existing callers). */
-  design?: DesignSummary | null;
-  postTipo?: string;
-  /** Slice C (image → editable design import): when present, eligible image tiles get a
-   * hover "Tornar editável no Estúdio" action. Hidden entirely if ANY media item is a video
-   * — mirrors the server's post_has_video check, which the caller cannot see (it only knows
-   * the post's tipo, not what's actually uploaded). All OTHER eligibility (feature flags,
-   * design-already-exists, post status/tipo) lives in the caller; the gallery only owns the
-   * media-shape check. */
-  onMakeEditable?: (media: PostMedia) => void;
 }
 
 // Mirror of CAROUSEL_MAX_ITEMS in
@@ -70,27 +55,12 @@ interface PostMediaGalleryProps {
 // Instagram's Content Publishing API caps carousels at 10 (the native app allows 20).
 const CAROUSEL_MAX_ITEMS = 10;
 
-export function PostMediaGallery({
-  postId,
-  disabled,
-  maxFiles,
-  onChange,
-  design,
-  postTipo,
-  onMakeEditable,
-}: PostMediaGalleryProps) {
+export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostMediaGalleryProps) {
   const { t } = useTranslation('posts');
   const { t: tc } = useTranslation();
   const qc = useQueryClient();
 
-  // Estúdio ownership mode — see the props doc. `effectiveDisabled` funnels the feed/carrossel
-  // lockdown through the SAME paths the existing `disabled` prop uses, so every affordance
-  // (drop, inputs, tile controls, reorder) obeys it without per-site checks.
-  const isReel = postTipo === 'reels';
-  const designOwned = !!design;
-  const fullyOwned = designOwned && !isReel;
-  const coverOwned = designOwned && isReel;
-  const effectiveDisabled = disabled || fullyOwned;
+  const effectiveDisabled = disabled;
   const { data: serverMedia, isLoading: mediaLoading } = useQuery({
     queryKey: ['post-media', postId],
     queryFn: () => listPostMedia(postId),
@@ -166,24 +136,10 @@ export function PostMediaGallery({
     qc.invalidateQueries({ queryKey: ['workflow-covers'] });
   };
   const atLimit = maxFiles != null && media.length >= maxFiles;
-  // "Tornar editável" is offered only for pure-image posts — mirrors the server's
-  // post_has_video check (design-import), which the caller (WorkflowDrawer) cannot see.
-  const hasVideoMedia = media.some((m) => m.kind === 'video');
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
-    let fileArr = Array.from(files);
-
-    // Reel with a design: the cover is Estúdio's — only the manual VIDEO may be uploaded.
-    // Filter (not abort) so a mixed selection still uploads its videos.
-    if (coverOwned) {
-      const rejected = fileArr.filter((f) => detectKind(f) !== 'video');
-      if (rejected.length > 0) {
-        toast.error(t('mediaGallery.designOwnsImages'));
-        fileArr = fileArr.filter((f) => detectKind(f) === 'video');
-      }
-      if (fileArr.length === 0) return;
-    }
+    const fileArr = Array.from(files);
 
     setUploading(true);
     const stamp = Date.now();
@@ -465,17 +421,6 @@ export function PostMediaGallery({
 
   return (
     <div className="space-y-3">
-      {designOwned && (
-        <div
-          data-testid="design-ownership-banner"
-          className="flex items-start gap-2 rounded-xl bg-[#eab308]/10 ring-1 ring-[#eab308]/40 px-3 py-2.5 text-stone-800 dark:text-stone-200"
-        >
-          <ImageIcon className="h-4 w-4 shrink-0 text-[#ca8a04] mt-0.5" />
-          <span className="text-[12px]">
-            {fullyOwned ? t('mediaGallery.designOwned') : t('mediaGallery.designOwnedReel')}
-          </span>
-        </div>
-      )}
       {media.length > CAROUSEL_MAX_ITEMS && (
         <div className="flex items-start gap-2 rounded-xl bg-amber-50 ring-1 ring-amber-200/60 px-3 py-2.5 text-amber-900">
           <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
@@ -497,23 +442,11 @@ export function PostMediaGallery({
               <SortableMediaTile
                 key={m.id}
                 media={m}
-                // A design-rendered link is uncontrollable even in cover-only mode (defensive —
-                // reel covers normally have no design links at all, design §5.2).
-                disabled={effectiveDisabled || (designOwned && m.origin === 'design')}
-                // Cover-only ownership: the rendered cover IS the video thumbnail, so both the
-                // cover choice and the thumbnail edit belong to the Estúdio, not this gallery.
-                hideSetCover={coverOwned}
+                disabled={effectiveDisabled}
                 onOpen={() => setLightboxIndex(i)}
                 onSetCover={() => handleSetCover(m.id)}
                 onDelete={() => handleDelete(m.id)}
-                onEditThumbnail={
-                  m.kind === 'video' && !coverOwned ? () => setEditingMedia(m) : undefined
-                }
-                onMakeEditable={
-                  onMakeEditable && !hasVideoMedia && m.kind === 'image' && m.origin !== 'design'
-                    ? () => onMakeEditable(m)
-                    : undefined
-                }
+                onEditThumbnail={m.kind === 'video' ? () => setEditingMedia(m) : undefined}
               />
             ))}
             {!effectiveDisabled && !atLimit && (
@@ -571,7 +504,7 @@ export function PostMediaGallery({
         </button>
       )}
 
-      {!effectiveDisabled && !atLimit && !coverOwned && (
+      {!effectiveDisabled && !atLimit && (
         <UploadHint icon="🎬" text={t('mediaGallery.thumbnailHint')} />
       )}
 
@@ -658,7 +591,7 @@ export function PostMediaGallery({
         open={showFilePicker}
         onClose={() => setShowFilePicker(false)}
         onSelect={handlePickFiles}
-        filterKind={coverOwned ? ['video'] : ['image', 'video']}
+        filterKind={['image', 'video']}
       />
     </div>
   );
@@ -667,27 +600,20 @@ export function PostMediaGallery({
 interface SortableMediaTileProps {
   media: PostMedia;
   disabled?: boolean;
-  /** T4.5 cover-only ownership: the cover choice belongs to the Estúdio, not this tile. */
-  hideSetCover?: boolean;
   onOpen: () => void;
   onSetCover: () => void;
   onDelete: () => void;
   onEditThumbnail?: () => void;
-  /** Slice C: present only for eligible tiles (image, not design-owned, no video sibling). */
-  onMakeEditable?: () => void;
 }
 
 function SortableMediaTile({
   media: m,
   disabled,
-  hideSetCover,
   onOpen,
   onSetCover,
   onDelete,
   onEditThumbnail,
-  onMakeEditable,
 }: SortableMediaTileProps) {
-  const { t } = useTranslation('posts');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: m.id,
     disabled,
@@ -739,7 +665,7 @@ function SortableMediaTile({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          {!m.is_cover && !hideSetCover && (
+          {!m.is_cover && (
             <button
               type="button"
               onClick={onSetCover}
@@ -757,16 +683,6 @@ function SortableMediaTile({
               className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
             >
               <ImageIcon className="h-3 w-3" />
-            </button>
-          )}
-          {onMakeEditable && (
-            <button
-              type="button"
-              onClick={onMakeEditable}
-              title={t('mediaGallery.makeEditable')}
-              className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
-            >
-              <Wand2 className="h-3 w-3" />
             </button>
           )}
           <button
