@@ -2,7 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { revertPlanTarget } from "./revert-target.ts";
 import { handleCreatePlan, handleUpdatePlan } from "./plan-mutations.ts";
-import { handleGetWorkspaceInvites } from "./invite-handlers.ts";
+import { handleGetWorkspaceInvites, handleAdminCancelInvite, handleAdminResendInvite } from "./invite-handlers.ts";
 // Single source of truth for plan columns (includes max_mcp_keys / feature_mcp).
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
 
@@ -74,6 +74,10 @@ Deno.serve(async (req: Request) => {
         return await handleGetWorkspace(svc, body, headers);
       case "get-workspace-invites":
         return await handleGetWorkspaceInvites(svc, body, headers);
+      case "admin-cancel-invite":
+        return await handleAdminCancelInvite(svc, body, user.id, headers);
+      case "admin-resend-invite":
+        return await handleAdminResendInvite(svc, body, user.id, headers);
       case "list-plans":
         return await handleListPlans(svc, headers);
       case "create-plan":
