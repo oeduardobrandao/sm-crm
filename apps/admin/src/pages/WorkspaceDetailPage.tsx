@@ -33,6 +33,7 @@ import {
 } from '../lib/api';
 import { sanitizeExternalUrl } from '../lib/security';
 import { computeOverridesPayload } from './workspace-overrides';
+import WorkspaceInvitesCard from './WorkspaceInvitesCard';
 
 export default function WorkspaceDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -575,6 +576,8 @@ export default function WorkspaceDetailPage() {
           </div>
         ))}
       </div>
+
+      <WorkspaceInvitesCard workspaceId={id!} />
     </div>
   );
 }
