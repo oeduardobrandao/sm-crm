@@ -60,27 +60,41 @@ all exist.
   target user's full `workspace_members` set for cross-workspace auditing (see finding 5 below);
   deletes the invite row; then runs the existing unconfirmed-user cleanup (classification-guarded:
   never deletes an onboarded user or the anomalous confirmed-no-profile state).
-- `inviteOrResend(svc, {contaId, email, role, invitedBy, redirectBase})`: **mirrors `invite-user`'s
-  full classification outcomes** so the two paths can never diverge. Order: (1) run the seat
-  pre-check (same `effectivePlanLimit` + members/pending count as `invite-user`; return
-  `plan_limit_exceeded` if a would-be-new pending row exceeds `max_team_members`); (2) resolve the
-  auth state / classification; (3) route:
-  - `add-direct` → **add the member + write the `accepted` invite** exactly as `invite-user` does
-    (if already a member, no-op and return `already-member`). This is the finding-2 fix: never
-    delete the invite and grant nothing.
-  - `resend-link` → delete prior `pending`/`expired` rows, `generateLink({type:'recovery'})` +
-    `sendInviteEmail` (Resend), insert a fresh `pending` row.
-  - `reinvite` → delete prior rows + delete the never-confirmed auth user, fall through to
-    new-user.
-  - new-user → `sendPendingWorkspaceInvite` (insert-first, rollback-on-send-failure preserved).
+- `inviteOrResend(svc, {contaId, email, role, invitedBy, redirectBase}, opts)` where
+  `opts = { addOnboarded: boolean }`. **Classify FIRST, mutate only inside the chosen route** —
+  no destructive step (row delete, user delete) runs before we know the route, so a
+  `blocked-anomalous` outcome or an early failure never destroys the invite (plan-review finding
+  4). Order:
+  1. **Seat pre-check** — `effectivePlanLimit` + counts, but the pending count **excludes any
+     existing pending row for this same email** (that row is being replaced, not added, so it
+     consumes zero new seats). A brand-new or `expired → pending` transition still requires
+     capacity (plan-review finding 3). Return `plan-limit-exceeded` when full.
+  2. **Classify** the existing auth user (find + `classifyExistingUser`), before any mutation.
+  3. **Route** (each route checks the `{ error }` on every Supabase mutation and throws on
+     failure — never reports success after a failed insert/delete/deleteUser, plan-review
+     finding 2):
+     - `add-direct`, already a member → `already-member` (no mutation).
+     - `add-direct`, **not** a member → depends on `opts.addOnboarded`:
+       `true` (CRM/`invite-user`) adds the member + writes the `accepted` invite (existing CRM
+       behavior — the finding-2 fix for the CRM path); `false` (admin resend) does **nothing**
+       and returns `already-onboarded`, leaving the pending invite intact. Adding a member from a
+       "Resend" click is membership management, which the portal excludes by scope
+       (plan-review finding 1).
+     - `resend-link` → delete prior `pending`/`expired` rows, `generateLink({type:'recovery'})` +
+       `sendInviteEmail` (Resend), insert a fresh `pending` row.
+     - `reinvite` → capture the never-confirmed user's `workspace_members` set first, delete
+       prior rows + profiles/members + the auth user, then new-user. Returns those
+       `affectedWorkspaceIds` so the admin caller can audit every workspace the user was removed
+       from (plan-review finding 5 — symmetry with `cancelInvite`).
+     - new-user → `sendPendingWorkspaceInvite` (insert-first, rollback-on-send-failure preserved).
 
-  Returns which route ran (`added` | `already-member` | `resent-link` | `reinvited` | `invited`)
-  and, on the seat-check failure, `plan_limit_exceeded`, so callers can phrase the outcome.
-  Preserves the **original** `invited_by`. **`inviteOrResend` is THE invite-or-resend primitive:
-  `invite-user`'s POST handler is refactored to delegate to it** (mapping the returned route to
-  its existing pt-BR success/`plan_limit_exceeded` responses) so the CRM and admin paths are
-  literally the same code and cannot diverge — that unification is the point of the extraction,
-  not a parallel reimplementation.
+  Returns `{ route, affectedWorkspaceIds? }` where `route ∈ added | already-member |
+  already-onboarded | resent-link | reinvited | invited | plan-limit-exceeded | blocked-anomalous`.
+  Preserves the **original** `invited_by`. **`inviteOrResend` is THE invite-or-resend primitive:**
+  `invite-user`'s POST delegates to it with `addOnboarded: true` (mapping routes to its existing
+  pt-BR responses); `admin-resend-invite` calls it with `addOnboarded: false`. The invite LOGIC is
+  one code path; the single behavioral difference (whether a "Resend"/"Invite" click may add an
+  onboarded person) is an explicit, tested flag, not a fork.
 - `getAuthStatesByEmails(svc, emails[])`: resolves N emails in **one** paged
   `auth.admin.listUsers` scan (today's `findAuthUserByEmail` re-pages per email); per email
   returns `{ user_id, email_confirmed, confirmation_sent_at, invited_at, last_sign_in_at,
@@ -104,7 +118,13 @@ to the client, details only to `console.error`). Responses never include generat
    created_at, accepted_at, expires_at, invited_by, silent_add, link_expired, auth_state }` where
    - `silent_add` = `status === 'accepted' && |accepted_at − created_at| < 2s` (the
      add-direct/no-email signature);
-   - `link_expired` = `status === 'pending' && confirmation_sent_at` older than 24h;
+   - `link_expired` = `status === 'pending' && (now − invite.created_at) > 24h`. Uses the
+     invite's **own** `created_at`, NOT the auth user's `confirmation_sent_at`: that timestamp is
+     user-global and a later invite from another workspace would refresh it, making an older
+     invite look freshly sent (plan-review finding 6). An invite's link is minted when its row is
+     created (both new-user and resend-link insert a row at send time), so `created_at` is the
+     correct per-invite basis. `confirmation_sent_at` stays in `auth_state` as an account-level
+     signal only.
    - `auth_state` = `{ user_exists, email_confirmed, has_password, onboarding_complete,
      confirmation_sent_at, last_sign_in_at, is_member }` (`is_member` = `workspace_members` row
      exists for this workspace), resolved via one `getAuthStatesByEmails` batch for all listed
@@ -118,13 +138,16 @@ to the client, details only to `console.error`). Responses never include generat
    workspace B has a local trail. Metadata: `{ email, operation_id, deleted_user: bool }`. When no
    global delete occurs, a single audit row under `workspace_id`.
 3. **`admin-resend-invite`** `{workspace_id, invite_id}` → allowed only for `pending`/`expired`
-   rows (400 on `accepted`; 404 for not-found/wrong-workspace). Runs the seat pre-check inside
-   `inviteOrResend` (**finding 3: enforce `max_team_members`** — returns `plan_limit_exceeded`
-   rather than sending an invite that can't become a membership). Preserves the **original**
-   `invited_by` (the workspace owner remains the inviter of record). Audit action
-   `admin-resend-invite` with `metadata: { email, route }` (route ∈ added | already-member |
-   resent-link | reinvited | invited). The `added` / `already-member` routes return 200 with the
-   route flag so the UI can phrase the outcome (not an error).
+   rows (400 on `accepted`; 404 for not-found/wrong-workspace). Calls `inviteOrResend` with
+   `addOnboarded: false` (so an onboarded non-member is **reported, not added** — plan-review
+   finding 1), preserving the **original** `invited_by`. The seat pre-check runs inside
+   `inviteOrResend` (finding 3). Audit action `admin-resend-invite`, `metadata: { email, route }`
+   (route ∈ already-onboarded | already-member | resent-link | reinvited | invited). The
+   `reinvited` route may have deleted a never-confirmed user from other workspaces, so when
+   `inviteOrResend` returns `affectedWorkspaceIds`, the action fans out an `admin-resend-invite`
+   audit row to **each**, sharing one `operation_id` (finding 5 — symmetry with cancel). The
+   `already-onboarded` / `already-member` routes return 200 with the route flag so the UI phrases
+   the outcome (not an error).
 
 Audit writes are best-effort after the action succeeds (matching `insertAuditLog`'s existing
 fire-and-forget usage): an audit failure must not roll back a completed cancel/resend.
@@ -149,13 +172,14 @@ fire-and-forget usage): an audit failure must not roll back a completed cancel/r
     `user_exists && confirmation_sent_at` → "email sent, never opened";
     `user_exists` (no send recorded) → "account exists (no send recorded)";
     else → "no account".
+  - **Sent**: the invite's `created_at`, formatted — the diagnostic timeline for "when did we
+    send this". Both a desktop header row and this column are present (plan-review finding 8).
   - **Actions**: Resend + Cancel, rendered only on `pending`/`expired` rows. Cancel opens a
     confirm dialog: *"This deletes the invite and, if the person never finished onboarding,
     deletes their account — removing them from ALL workspaces."* Resend has no confirm.
-- Feedback via the page's existing toast/error pattern. The `added` / `already-member` resend
-  routes render as an info toast ("this person already has an account — added to the workspace" /
-  "already a member"), not an
-  error.
+- Feedback via the page's existing toast/error pattern. The `already-onboarded` / `already-member`
+  resend routes render as an info toast ("this person already has an account — not added to the
+  workspace" / "already a member"), not an error.
 
 ## Error handling
 
@@ -166,25 +190,40 @@ fire-and-forget usage): an audit failure must not roll back a completed cancel/r
 - Client: card-level error state with retry on fetch failure; action buttons disabled while an
   action is in flight.
 
+> Note: bare "finding N" below refers to the **spec review** (round 1); the **plan review**
+> (round 2) items are labelled "plan-review finding N".
+
 ## Testing
 
 - **Deno**: moved-module tests keep passing with updated paths; new tests for
-  `_shared/invite-actions.ts` (resend routing per classification — incl. `add-direct` → adds
-  member rather than destroying the invite (finding 2), and the seat pre-check rejecting an
-  over-limit resend (finding 3); `cancelInvite`'s refuse-`accepted` guard (finding 1) and
-  refuse-to-delete-onboarded guard; the affected-workspace_ids capture for cross-workspace audit
-  (finding 5); `getAuthStatesByEmails` single-scan batching) and for the three `platform-admin`
-  actions (admin gate, wrong-workspace rejection, status-based action rules, `accepted` → 400),
-  following the `plan-mutations` DI test pattern.
+  `_shared/invite-actions.ts`:
+  - `inviteOrResend` routing per classification, in **both** modes —
+    `addOnboarded: true` adds an onboarded non-member (CRM), `addOnboarded: false` returns
+    `already-onboarded` without mutating (admin, plan-review finding 1);
+  - the seat pre-check **excluding a matching pending row** so a resend of an at-limit pending
+    invite succeeds, while `expired → pending` at the limit is rejected (plan-review finding 3);
+  - **classify-before-mutate**: a `blocked-anomalous` outcome leaves the invite row intact
+    (plan-review finding 4);
+  - **injected mutation errors**: a Supabase `{ error }` on a member/invite/deleteUser call makes
+    `inviteOrResend`/`cancelInvite` throw rather than report success (plan-review finding 2);
+  - `cancelInvite`'s refuse-`accepted` guard and refuse-to-delete-onboarded guard; affected-
+    workspace_ids capture for both cancel and the `reinvite` route (findings 5 + plan-review 5);
+  - `getAuthStatesByEmails` single-scan batching.
+- **Deno (handlers)**: DI tests for the three `platform-admin` actions using a fake service
+  client that records `audit_log` inserts (plan-review finding 7): admin gate, wrong-workspace →
+  404, `accepted` → 400, and the **audit fan-out** — cancel/reinvite writes one row per affected
+  workspace sharing an `operation_id`. Follows the `plan-mutations` DI pattern.
 - **Frontend (RTL)**: `WorkspaceInvitesCard` — chip derivation across all six auth states (incl.
   the finding-4 "account exists (no send recorded)" vs "email sent, never opened" split), action
-  visibility per status, confirm-dialog copy, truncation notice when `total > 50`, refetch after
-  action.
+  visibility per status, the desktop header + Sent column, confirm-dialog copy, an actual
+  cancel/resend mutation with refetch/invalidation, retry on fetch error, and buttons disabled
+  while an action is in flight (plan-review finding 8).
 - **Gates before pushing**: `npm run test`, `npm run build:admin` (finding 7 — the admin app is
-  modified, so typecheck it), `deno test supabase/functions/`, `npm run lint`,
-  `npm run format:check`. After the deno run, restore `deno.lock` **only if the run dirtied that
-  file alone** (`git checkout -- deno.lock`) — `test:functions` always touches it; never blanket-
-  discard other changes.
+  modified, so typecheck it), `npm run test:functions` (its `--allow-env/--allow-net/--allow-sys`
+  flags are required by the env/fetch-stub tests — bare `deno test` fails on permissions,
+  plan-review finding 10), `npm run lint`, `npm run format:check`. `test:functions` dirties the
+  **root** `deno.lock`; restore it with `git checkout -- deno.lock` (the root file, not
+  `supabase/functions/deno.lock`), and only that file — no task here changes a Deno dependency.
 - **Live verification**: on prod, open Araripe MKT's workspace detail — the panel must show the
   historical `silent_add` rows and the typo invite (`iara41ia@gmail.com`, unconfirmed user with a
   recorded send) as "email sent, never opened".
@@ -193,7 +232,8 @@ fire-and-forget usage): an audit failure must not roll back a completed cancel/r
 
 - No migrations.
 - `invite-user` and `platform-admin` MUST deploy **together** (shared-module extraction), each
-  with `--use-api` (local Docker bundler is broken for this dep tree) and the correct
-  `--project-ref`. Staleness check after deploy: `functions list` version vs `entrypoint_path`
-  suffix.
+  with **`--no-verify-jwt`** (both have `verify_jwt = false` in `config.toml` — they authenticate
+  their own callers, so the platform JWT gate must stay off, plan-review finding 9) and `--use-api`
+  (local Docker bundler is broken for this dep tree), plus the correct `--project-ref`. Staleness
+  check after deploy: `functions list` version vs `entrypoint_path` suffix.
 - Frontend ships via the normal Vercel build (admin app).
