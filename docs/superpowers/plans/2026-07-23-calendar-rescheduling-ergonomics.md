@@ -744,7 +744,7 @@ it('reschedules the currently selected post, not the first one selected', async 
 
   // Reschedule from the detail panel via the date picker.
   fireEvent.click(await screen.findByRole('button', { name: /selecionar data e hora|jul/i }));
-  fireEvent.click(await screen.findByRole('button', { name: '28' }));
+  fireEvent.click(await screen.findByRole('button', { name: /28 de julho/i }));
 
   await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
   expect(mockUpdate.mock.calls[0][0]).toBe(2);
@@ -1433,7 +1433,9 @@ describe('DateTimePicker day markers', () => {
     render(<DateTimePicker value={new Date(2026, 6, 20, 10, 0)} dayMarkers={markers} />);
     fireEvent.click(screen.getByRole('button', { name: /20 jul 2026/i }));
 
-    const day24 = screen.getByRole('button', { name: '24' });
+    // react-day-picker v9 labels day buttons with the full spoken date
+    // ("sexta-feira, 24 de julho de 2026"), never the bare number.
+    const day24 = screen.getByRole('button', { name: /24 de julho/i });
     expect(day24).toHaveAttribute('title', '2 Feed · 1 Reels');
     expect(day24.querySelectorAll('[data-testid="day-dot"]').length).toBe(2);
   });
@@ -1454,7 +1456,7 @@ describe('DateTimePicker day markers', () => {
     const markers = new Map([['2026-07-24', { colors: ['#eab308'], label: '1 Feed' }]]);
     render(<DateTimePicker value={new Date(2026, 6, 20, 10, 0)} dayMarkers={markers} onChange={onChange} />);
     fireEvent.click(screen.getByRole('button', { name: /20 jul 2026/i }));
-    fireEvent.click(screen.getByRole('button', { name: '24' }));
+    fireEvent.click(screen.getByRole('button', { name: /24 de julho/i }));
     expect(onChange).toHaveBeenCalled();
   });
 });
