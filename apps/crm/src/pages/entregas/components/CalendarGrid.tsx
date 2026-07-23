@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { parseISO, format, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { GripVertical, Lock } from 'lucide-react';
+import { GripVertical, Lock, Folder } from 'lucide-react';
 import { MonthGrid } from '@/components/ui/month-grid';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import type { ClientePost } from '@/store/posts';
@@ -120,7 +120,12 @@ function PostPill({
         )}
       </div>
       <div className="post-card-title">{titulo}</div>
-      {!isCurrentWorkflow && <div className="post-card-workflow">{post.workflow_titulo}</div>}
+      {!isCurrentWorkflow && (
+        <div className="post-card-workflow">
+          <Folder className="h-2.5 w-2.5" aria-hidden="true" />
+          <span className="post-card-workflow-name">{post.workflow_titulo}</span>
+        </div>
+      )}
     </div>
   );
 }

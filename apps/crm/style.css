@@ -7994,8 +7994,8 @@ body.role-agent input[name='valor_total'] {
   height: 10px;
   border-radius: 3px;
   flex-shrink: 0;
-  border: 1px solid var(--border-color);
-  background: color-mix(in srgb, var(--surface-main), var(--surface-darker) 70%);
+  border: 1px dashed color-mix(in srgb, var(--text-muted), transparent 60%);
+  background: var(--surface-darker);
 }
 
 .sidebar-legend-item--ownership {
@@ -8108,8 +8108,23 @@ body.role-agent input[name='valor_total'] {
   border-color: color-mix(in srgb, var(--primary-color), transparent 50%);
 }
 
+/* Another workflow's post. Three reinforcing channels, because a surface tint alone was
+   a ~2% delta in light mode and effectively invisible: a clearly recessed surface, a
+   de-emphasised title, and the workflow attribution rendered as a chip with a folder icon.
+   The chip is the loud signal; the surface is the quiet reinforcement. */
 .calendar-post-card.foreign {
-  background: color-mix(in srgb, var(--surface-main), var(--surface-darker) 70%);
+  background: var(--surface-darker);
+  border-color: color-mix(in srgb, var(--text-muted), transparent 72%);
+  border-style: dashed;
+}
+
+.calendar-post-card.foreign .post-card-title {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.calendar-post-card.foreign .post-card-tipo {
+  color: var(--text-light);
 }
 
 .calendar-post-card.locked {
@@ -8164,9 +8179,27 @@ body.role-agent input[name='valor_total'] {
 }
 
 .post-card-workflow {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  align-self: flex-start;
+  max-width: 100%;
+  margin-top: 1px;
+  padding: 1px 5px 1px 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted), transparent 88%);
   font-size: 0.5625rem;
-  line-height: 1.3;
-  color: var(--text-light);
+  line-height: 1.35;
+  color: var(--text-muted);
+  overflow: hidden;
+}
+
+.post-card-workflow svg {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.post-card-workflow-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -8470,7 +8503,7 @@ body.role-agent input[name='valor_total'] {
   background: var(--surface-hover);
 }
 .calendar-day-popover-row.foreign {
-  background: color-mix(in srgb, var(--surface-main), var(--surface-darker) 70%);
+  background: var(--surface-darker);
 }
 
 .calendar-day-popover-dot {
