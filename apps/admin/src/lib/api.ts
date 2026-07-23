@@ -354,6 +354,43 @@ export function revokeAllOAuthGrants(workspace_id: string) {
   return adminApi<{ message: string; count: number }>('revoke-all-oauth-grants', { workspace_id });
 }
 
+export interface InviteAuthState {
+  user_id: string;
+  email_confirmed: boolean;
+  confirmation_sent_at: string | null;
+  invited_at: string | null;
+  last_sign_in_at: string | null;
+  has_password: boolean | null;
+  onboarding_complete: boolean;
+  is_member: boolean;
+}
+
+export interface InviteInfo {
+  id: string;
+  email: string;
+  role: string;
+  status: 'pending' | 'accepted' | 'expired';
+  created_at: string;
+  accepted_at: string | null;
+  expires_at: string | null;
+  invited_by: string;
+  silent_add: boolean;
+  link_expired: boolean;
+  auth_state: InviteAuthState | null;
+}
+
+export function getWorkspaceInvites(workspace_id: string) {
+  return adminApi<{ invites: InviteInfo[]; total: number }>('get-workspace-invites', { workspace_id });
+}
+
+export function adminCancelInvite(workspace_id: string, invite_id: string) {
+  return adminApi<{ success: boolean; deleted_user: boolean }>('admin-cancel-invite', { workspace_id, invite_id });
+}
+
+export function adminResendInvite(workspace_id: string, invite_id: string) {
+  return adminApi<{ success?: boolean; route?: string; message?: string }>('admin-resend-invite', { workspace_id, invite_id });
+}
+
 export function listAdmins() {
   return adminApi<{ admins: PlatformAdmin[] }>('list-admins');
 }
