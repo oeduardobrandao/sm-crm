@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -62,6 +62,7 @@ import {
   getPostEditSuggestions,
   acceptEditSuggestion,
   rejectEditSuggestion,
+  getClientePosts,
   type WorkflowPost,
   type PostApproval,
   type PostStatusEvent,
@@ -69,6 +70,7 @@ import {
   type PostPropertyValue,
   type CommentThreadWithComments,
   type PostEditSuggestion,
+  type ClientePost,
 } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { shouldAutoCompleteApproval } from './autoComplete';
@@ -105,6 +107,7 @@ import {
   getPostPublishState,
   PUBLISH_STATE_LABELS,
   PUBLISH_STATE_CLASS,
+  buildTipoDayMarkers,
 } from '../postLabels';
 import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 
@@ -238,6 +241,16 @@ export function WorkflowDrawer({
   });
 
   const clienteId = card.workflow.cliente_id;
+
+  // Reuses the same ['clientePosts', clienteId] key as WorkflowCalendarView, so opening the
+  // calendar first turns this into a cache hit instead of a new round trip. Feeds the
+  // per-row scheduled-day markers in the date pickers below (see SortablePostItem).
+  const { data: clientePosts = [] } = useQuery({
+    queryKey: ['clientePosts', clienteId],
+    queryFn: () => getClientePosts(clienteId),
+    enabled: !!clienteId,
+  });
+
   const { data: igAccount } = useQuery({
     queryKey: ['igAccountForWorkflow', clienteId],
     queryFn: async () => {
@@ -716,6 +729,7 @@ export function WorkflowDrawer({
                           templateId={card.workflow.template_id}
                           workflowId={workflowId}
                           clienteId={clienteId}
+                          clientePosts={clientePosts}
                           isExpanded={expandedId === post.id}
                           isSaving={savingIds.has(post.id!)}
                           approvals={approvals.filter((a) => a.post_id === post.id)}
@@ -866,6 +880,7 @@ interface SortablePostItemProps {
   templateId: number | null | undefined;
   workflowId: number;
   clienteId: number;
+  clientePosts: ClientePost[];
   isExpanded: boolean;
   isSaving: boolean;
   approvals: PostApproval[];
@@ -907,6 +922,7 @@ function SortablePostItem({
   templateId,
   workflowId,
   clienteId,
+  clientePosts,
   isExpanded,
   isSaving,
   approvals,
@@ -944,6 +960,14 @@ function SortablePostItem({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: post.id!,
   });
+  // Per-row scheduled-day dots for this post's date picker: same client-wide post list for
+  // every row (stable identity from the TanStack cache), each row excludes only its own post
+  // so it never warns about itself.
+  const dayMarkers = useMemo(
+    () => buildTipoDayMarkers(clientePosts, { excludePostId: post.id ?? undefined }),
+    [clientePosts, post.id],
+  );
+
   const { features } = useWorkspaceLimits();
 
   // TikTok settings completeness/test-mode-banner seam (Task C3), held here rather than
@@ -1217,6 +1241,7 @@ function SortablePostItem({
                 disabled={isScheduleLocked}
                 futureOnly
                 className="w-full"
+                dayMarkers={dayMarkers}
               />
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach, beforeAll } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CalendarPostDetailPanel } from '../CalendarPostDetailPanel';
@@ -116,5 +116,12 @@ describe('CalendarPostDetailPanel', () => {
       expect(screen.getByRole('button', { name: /Remover data/ })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Abrir post completo/ })).toBeInTheDocument();
     });
+  });
+
+  it('forwards day markers to the reschedule picker', async () => {
+    const markers = new Map([['2026-07-24', { colors: ['#eab308'], label: '1 Feed' }]]);
+    renderPanel({ isCurrentWorkflow: true, isLocked: false, dayMarkers: markers });
+    fireEvent.click(screen.getByRole('button', { name: /jul 2026|Selecionar data e hora/i }));
+    expect(await screen.findByTitle('1 Feed')).toBeInTheDocument();
   });
 });

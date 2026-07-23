@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -18,7 +18,7 @@ import { CalendarGrid, LOCKED_STATUSES, LOCKED_TOOLTIPS } from './CalendarGrid';
 import { CalendarPostDetailPanel } from './CalendarPostDetailPanel';
 import { UnscheduledPostsSidebar } from './UnscheduledPostsSidebar';
 import { TimePickerPopover } from './TimePickerPopover';
-import { TIPO_LABELS } from '../postLabels';
+import { TIPO_LABELS, buildTipoDayMarkers } from '../postLabels';
 import { resolveCalendarDrop, formatRescheduleToast } from '../calendarDrop';
 
 interface WorkflowCalendarViewProps {
@@ -75,6 +75,11 @@ export function WorkflowCalendarView({
   const selectedPost = scheduledPosts.find((p) => p.id === selectedPostId) ?? null;
   const selectedIsCurrentWorkflow = selectedPost?.workflow_id === currentWorkflowId;
   const selectedIsLocked = selectedPost ? LOCKED_STATUSES.has(selectedPost.status) : false;
+
+  const detailDayMarkers = useMemo(
+    () => buildTipoDayMarkers(allPosts, { excludePostId: selectedPostId ?? undefined }),
+    [allPosts, selectedPostId],
+  );
 
   const invalidateQueries = useCallback(
     (workflowId?: number) => {
@@ -248,6 +253,7 @@ export function WorkflowCalendarView({
               isCurrentWorkflow={selectedIsCurrentWorkflow}
               isLocked={selectedIsLocked}
               lockReason={selectedIsLocked ? LOCKED_TOOLTIPS[selectedPost.status] : undefined}
+              dayMarkers={detailDayMarkers}
               onClose={() => setSelectedPostId(null)}
               onReschedule={handlePanelReschedule}
               onRemoveDate={handlePanelRemoveDate}

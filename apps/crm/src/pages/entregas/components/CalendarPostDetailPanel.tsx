@@ -23,6 +23,7 @@ import {
   getPostPublishState,
   PUBLISH_STATE_LABELS,
   PUBLISH_STATE_CLASS,
+  type DayMarker,
 } from '../postLabels';
 
 export interface CalendarPostDetailPanelProps {
@@ -32,6 +33,7 @@ export interface CalendarPostDetailPanelProps {
   isCurrentWorkflow: boolean;
   isLocked: boolean;
   lockReason?: string;
+  dayMarkers?: Map<string, DayMarker>;
   onClose: () => void;
   onReschedule: (date: Date) => void;
   onRemoveDate: () => void;
@@ -45,6 +47,7 @@ export function CalendarPostDetailPanel({
   isCurrentWorkflow,
   isLocked,
   lockReason,
+  dayMarkers,
   onClose,
   onReschedule,
   onRemoveDate,
@@ -161,6 +164,7 @@ export function CalendarPostDetailPanel({
               onChange={(date) => date && onReschedule(date)}
               futureOnly
               className="w-full"
+              dayMarkers={dayMarkers}
             />
           </div>
         )}
