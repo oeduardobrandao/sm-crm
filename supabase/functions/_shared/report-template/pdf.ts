@@ -6,13 +6,16 @@ export function buildGotenbergRequest(
   const formData = new FormData();
   const htmlBlob = new Blob([html], { type: "text/html" });
   formData.append("files", htmlBlob, "index.html");
-  // A4 in inches, to enough precision to match the template's 210mm x 297mm
-  // `.page` box. The rounded 8.27 x 11.69 is 210.058 x 296.926mm — a sheet
-  // WIDER and SHORTER than the page, so the body colour showed as a seam down
-  // the side and a 3.5px band along the bottom of the full-bleed dark cover.
-  // These values are a hair larger than the page box in both axes, so the page
-  // never overflows onto a blank sheet either.
-  formData.append("paperWidth", "8.268"); // 210.007mm
+  // A4 in inches, sized against the template's 210mm x 297mm `.page` box. The
+  // rounded 8.27 x 11.69 is 296.926mm tall — SHORTER than the page — which left
+  // a 3.5px band of body colour along the bottom of the full-bleed dark cover.
+  //
+  // paperHeight is honoured almost exactly (asked 841.896pt, got 841.920).
+  // paperWidth is NOT: Chromium snaps it, and a real PDF measured 595.920pt
+  // (210.2273mm) against the 595.296pt requested here. Retuning this number does
+  // not close the resulting right-edge seam — the template's `.cover` widens
+  // past the sheet instead. See the bleed note in template-string.ts.
+  formData.append("paperWidth", "8.268"); // 210.007mm requested; Chromium emits ~210.23mm
   formData.append("paperHeight", "11.693"); // 297.002mm
   formData.append("marginTop", "0");
   formData.append("marginBottom", "0");

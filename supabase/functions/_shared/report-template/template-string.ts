@@ -132,16 +132,31 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     color: #FAFAF7;
     justify-content: space-between;
   }
-  /* Edge bleed for the full-bleed cover: paint ink past the page box and let the
-     sheet clip it, so no rounding seam at the margin can show the body colour.
-     It MUST be a box-shadow. An absolutely-positioned bleed (::before with a
-     negative inset) does the same job visually but adds its overhang to the
-     document's scrollable width — measured 779px -> 809px at sheet width. A
-     document wider than the sheet makes Chromium shrink-to-fit, which pulls the
-     page off BOTH the right and bottom edges and reopens the very gap this is
-     meant to close. A spread shadow adds no scrollable overflow (779 -> 779). */
+  /* Right-edge bleed for the full-bleed cover.
+
+     Measured off a real Gotenberg PDF (2026-07): Chromium ignores the requested
+     paperWidth and emits a 595.92pt = 210.2273mm sheet, while the page box
+     paints exactly 210mm. That leaves a 0.227mm strip of body colour down the
+     right edge — invisible between two light surfaces, glaring beside the ink
+     cover. The bottom is already flush (0.012mm).
+
+     Two mechanisms were tried and do NOT work, so don't reach for them again:
+       - box-shadow / outline: paged media clips at the page box. The PDF's ink
+         rect ends at 595.277pt, i.e. the spread never reached the sheet edge.
+       - an absolutely-positioned bleed (::before, negative inset): it paints,
+         but adds its overhang to the document's scrollable width (measured
+         779px -> 809px at sheet width), and a document wider than the sheet
+         makes Chromium shrink-to-fit, opening a gap on every edge instead.
+
+     What is left is to make the box itself span the sheet and let the sheet crop
+     the remainder. 210.3mm clears the measured sheet by 0.073mm (0.2pt) — enough
+     to absorb Chromium snapping differently, small enough that the overflow
+     cannot trigger shrink-to-fit. The cover's 18mm padding means only the ink
+     background is cropped, never content. Scoped to the cover: on the light
+     pages a 0.227mm paper-on-grey seam is not visible, and leaving them at a
+     clean 210mm keeps the overflow off every other page. */
   @media print {
-    .cover { box-shadow: 0 0 0 8mm var(--ink); }
+    .cover { width: 210.3mm; }
   }
   .cover-top { padding: 20mm 18mm 0; display: flex; justify-content: space-between; align-items: flex-start; }
   /* logo do workspace (branding.logo_base64) sobre placa clara — funciona com logo de qualquer cor */
