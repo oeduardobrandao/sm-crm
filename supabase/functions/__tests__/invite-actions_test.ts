@@ -71,6 +71,7 @@ function makeCancelAdmin(opts: {
   onboarding?: boolean;
   hasPassword?: boolean | null;
   memberships?: string[]; // workspace_ids the user belongs to
+  invitesDeleteError?: boolean; // inject an error on the final `invites` delete
 }) {
   const deletes: string[] = [];
   const ops: string[] = [];
@@ -120,6 +121,9 @@ function makeCancelAdmin(opts: {
           if (table === "workspace_members") {
             return Promise.resolve(r({ data: (opts.memberships ?? []).map((w) => ({ workspace_id: w })), error: null }));
           }
+          if (table === "invites" && opts.invitesDeleteError) {
+            return Promise.resolve(r({ data: null, error: { message: "boom" } }));
+          }
           return Promise.resolve(r({ data: null, error: null }));
         },
       };
@@ -165,6 +169,15 @@ Deno.test("cancelInvite deletes a never-onboarded user and reports affected work
     "deleteUser",
     "delete:invites",
   ]);
+});
+
+Deno.test("cancelInvite throws when the final invites delete errors", async () => {
+  const admin = makeCancelAdmin({
+    invite: { id: "i1", conta_id: "c1", email: "a@x.com", status: "pending" },
+    invitesDeleteError: true,
+  });
+  // deno-lint-ignore no-explicit-any
+  await assertThrowsAsyncMessage(() => cancelInvite(admin as any, { inviteId: "i1", contaId: "c1" }), "cancel_invite_final_delete_failed");
 });
 
 Deno.test("cancelInvite keeps an onboarded user (no global delete)", async () => {

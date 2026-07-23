@@ -142,7 +142,9 @@ export async function cancelInvite(
     }
   }
 
-  await adminClient.from("invites").delete().eq("id", args.inviteId);
+  const { error: finalDeleteErr } = await adminClient
+    .from("invites").delete().eq("id", args.inviteId);
+  if (finalDeleteErr) throw new Error("cancel_invite_final_delete_failed");
 
   // Always include the target workspace even when no global delete happened.
   if (!affectedWorkspaceIds.includes(args.contaId)) affectedWorkspaceIds.push(args.contaId);
