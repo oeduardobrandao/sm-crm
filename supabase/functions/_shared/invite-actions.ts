@@ -122,12 +122,22 @@ export async function cancelInvite(
       hasPassword: coerceHasPassword(pw, pwErr),
     });
     if (action === "reinvite" || action === "resend-link") {
-      const { data: memberships } = await adminClient
+      const { data: memberships, error: membershipsErr } = await adminClient
         .from("workspace_members").select("workspace_id").eq("user_id", authUser.id);
+      if (membershipsErr) throw new Error("cancel_invite_capture_failed");
       affectedWorkspaceIds = [...new Set((memberships ?? []).map((m: any) => m.workspace_id))] as string[];
-      await adminClient.from("profiles").delete().eq("id", authUser.id);
-      await adminClient.from("workspace_members").delete().eq("user_id", authUser.id);
-      await adminClient.auth.admin.deleteUser(authUser.id);
+
+      const { error: profilesDeleteErr } = await adminClient
+        .from("profiles").delete().eq("id", authUser.id);
+      if (profilesDeleteErr) throw new Error("cancel_invite_delete_failed");
+
+      const { error: membersDeleteErr } = await adminClient
+        .from("workspace_members").delete().eq("user_id", authUser.id);
+      if (membersDeleteErr) throw new Error("cancel_invite_delete_failed");
+
+      const { error: deleteUserErr } = await adminClient.auth.admin.deleteUser(authUser.id);
+      if (deleteUserErr) throw new Error("cancel_invite_delete_failed");
+
       deletedUser = true;
     }
   }

@@ -62,6 +62,9 @@ Deno.test("getAuthStatesByEmails resolves everything in a single listUsers scan"
 });
 
 // Recording fake for cancelInvite: invites lookup + delete, profiles/members/auth deletes.
+// Also records an ORDERED operation log (`_ops()`) covering the capture SELECT on
+// workspace_members and the three delete calls, so tests can assert real ordering
+// (not just final values) and prove no side effects occurred before an early throw.
 function makeCancelAdmin(opts: {
   invite: { id: string; conta_id: string; email: string; status: string } | null;
   authUser?: { id: string; email_confirmed_at: string | null } | null;
@@ -70,9 +73,11 @@ function makeCancelAdmin(opts: {
   memberships?: string[]; // workspace_ids the user belongs to
 }) {
   const deletes: string[] = [];
+  const ops: string[] = [];
   const inviteRow = opts.invite;
   return {
     _deletes: () => deletes,
+    _ops: () => ops,
     auth: {
       admin: {
         // deno-lint-ignore no-explicit-any
@@ -80,14 +85,25 @@ function makeCancelAdmin(opts: {
           data: { users: opts.authUser ? [{ ...opts.authUser, email: inviteRow?.email }] : [] },
           error: null,
         }),
-        deleteUser: (id: string) => { deletes.push("auth:" + id); return Promise.resolve({ error: null }); },
+        deleteUser: (id: string) => {
+          ops.push("deleteUser");
+          deletes.push("auth:" + id);
+          return Promise.resolve({ error: null });
+        },
       },
     },
     // deno-lint-ignore no-explicit-any
     rpc: (_fn: string, _p: any) => Promise.resolve({ data: opts.hasPassword ?? null, error: null }),
     from: (table: string) => {
       const api: any = {
-        select: () => api,
+        select: () => {
+          // Only the workspace_members capture-before-delete SELECT is logged here —
+          // it's the one ordering guarantee this task is responsible for. The
+          // profiles/invites lookups use maybeSingle() as their terminal call and
+          // aren't part of the capture-before-delete story.
+          if (table === "workspace_members") ops.push("select:workspace_members");
+          return api;
+        },
         eq: () => api,
         in: () => api,
         maybeSingle: () => {
@@ -95,7 +111,11 @@ function makeCancelAdmin(opts: {
           if (table === "invites") return Promise.resolve({ data: inviteRow, error: null });
           return Promise.resolve({ data: null, error: null });
         },
-        delete: () => { deletes.push("del:" + table); return api; },
+        delete: () => {
+          ops.push("delete:" + table);
+          deletes.push("del:" + table);
+          return api;
+        },
         then: (r: (x: any) => unknown) => {
           if (table === "workspace_members") {
             return Promise.resolve(r({ data: (opts.memberships ?? []).map((w) => ({ workspace_id: w })), error: null }));
@@ -112,6 +132,8 @@ Deno.test("cancelInvite refuses an accepted invite", async () => {
   const admin = makeCancelAdmin({ invite: { id: "i1", conta_id: "c1", email: "a@x.com", status: "accepted" } });
   // deno-lint-ignore no-explicit-any
   await assertThrowsAsyncMessage(() => cancelInvite(admin as any, { inviteId: "i1", contaId: "c1" }), "invite_not_cancellable");
+  assertEquals(admin._deletes(), []);
+  assertEquals(admin._ops(), [], "accepted-guard must fire before any capture/delete side effect");
 });
 
 Deno.test("cancelInvite rejects a wrong-workspace invite", async () => {
@@ -133,6 +155,16 @@ Deno.test("cancelInvite deletes a never-onboarded user and reports affected work
   assertEquals(res.deletedUser, true);
   assertEquals(res.affectedWorkspaceIds.sort(), ["c1", "c2"]);
   assert(admin._deletes().includes("auth:u1"), "expected the auth user to be deleted");
+  // Prove capture-before-delete ordering, not just the final affectedWorkspaceIds
+  // value: a regression that moved the capture SELECT to run AFTER the deletes
+  // would still produce the same affectedWorkspaceIds above but would fail this.
+  assertEquals(admin._ops(), [
+    "select:workspace_members",
+    "delete:profiles",
+    "delete:workspace_members",
+    "deleteUser",
+    "delete:invites",
+  ]);
 });
 
 Deno.test("cancelInvite keeps an onboarded user (no global delete)", async () => {
