@@ -98,7 +98,11 @@ export function DateTimePicker({
       const key = `${day.date.getFullYear()}-${String(day.date.getMonth() + 1).padStart(2, '0')}-${String(day.date.getDate()).padStart(2, '0')}`;
       const marker = dayMarkers.get(key);
       return (
-        <button {...buttonProps} title={marker?.label}>
+        <button
+          {...buttonProps}
+          title={marker?.label}
+          className={cn(buttonProps.className, 'relative')}
+        >
           {day.date.getDate()}
           {marker && (
             <span className="dtp-day-dots">
