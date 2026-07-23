@@ -21,3 +21,8 @@ Deno.test("returns empty string for null/undefined", () => {
 Deno.test("does not double-escape already-escaped entities", () => {
   assertEquals(escapeHtml("&amp;"), "&amp;amp;");
 });
+
+Deno.test("neutralises template-token syntax", () => {
+  assertEquals(escapeHtml("{{PAGE_NO}}"), "&#123;&#123;PAGE_NO}}");
+  assertEquals(escapeHtml("função { x }"), "função &#123; x }");
+});

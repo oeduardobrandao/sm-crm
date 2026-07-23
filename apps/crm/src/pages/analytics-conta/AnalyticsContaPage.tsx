@@ -1001,6 +1001,9 @@ function AnalyticsContent({
   const [emailReportTarget, setEmailReportTarget] = useState<AnalyticsReport | null>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [generateIncludeAI, setGenerateIncludeAI] = useState(true);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  // Which report row is currently being downloaded, so only that row spins.
+  const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
 
   const dateRange = periodStart && periodEnd ? { start: periodStart, end: periodEnd } : undefined;
 
@@ -1382,14 +1385,38 @@ function AnalyticsContent({
     }
   };
 
+  const handleDownloadReport = async (reportId: number) => {
+    // Signing the URL takes a moment; without feedback the row looks inert and
+    // gets clicked again. Every download button locks so the spinner on the
+    // active row is the only thing that looks clickable.
+    if (downloadingReportId !== null) return;
+    setDownloadingReportId(reportId);
+    try {
+      const url = await getReportDownloadUrl(reportId);
+      openExternalUrl(url);
+    } catch {
+      toast.error('Erro ao baixar relatório');
+    } finally {
+      setDownloadingReportId(null);
+    }
+  };
+
   const handleGenerateScheduledReport = async (month?: string) => {
+    // Both "Gerar" buttons share this handler; the guard makes a double-click
+    // (or one click on each) a no-op rather than a second queued report.
+    if (generatingReport) return;
+    setGeneratingReport(true);
     try {
       await generateReport(clientId, month, generateIncludeAI);
       toast.success('Geração de relatório iniciada!');
       captureEvent('report_generated');
-      qc.invalidateQueries({ queryKey: ['analytics-reports', clientId] });
+      // Awaited so the button stays busy until the new row is actually on
+      // screen — the request resolving is not what the user is waiting for.
+      await qc.invalidateQueries({ queryKey: ['analytics-reports', clientId] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao gerar relatório');
+    } finally {
+      setGeneratingReport(false);
     }
   };
 
@@ -1447,8 +1474,9 @@ function AnalyticsContent({
           >
             {syncing ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}
           </Button>
-          <Button onClick={() => handleGenerateScheduledReport()}>
-            <FileText className="h-4 w-4" /> Gerar Relatório
+          <Button disabled={generatingReport} onClick={() => handleGenerateScheduledReport()}>
+            {generatingReport ? <Spinner size="sm" /> : <FileText className="h-4 w-4" />}{' '}
+            {generatingReport ? 'Gerando…' : 'Gerar Relatório'}
           </Button>
         </div>
       </header>
@@ -2158,8 +2186,14 @@ function AnalyticsContent({
               />
               Incluir IA
             </label>
-            <Button variant="outline" size="sm" onClick={() => handleGenerateScheduledReport()}>
-              <Plus className="h-3.5 w-3.5" /> Gerar
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={generatingReport}
+              onClick={() => handleGenerateScheduledReport()}
+            >
+              {generatingReport ? <Spinner size="sm" /> : <Plus className="h-3.5 w-3.5" />}{' '}
+              {generatingReport ? 'Gerando…' : 'Gerar'}
             </Button>
           </div>
         </div>
@@ -2222,16 +2256,16 @@ function AnalyticsContent({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={async () => {
-                          try {
-                            const url = await getReportDownloadUrl(r.id);
-                            openExternalUrl(url);
-                          } catch {
-                            toast.error('Erro ao baixar relatório');
-                          }
-                        }}
+                        disabled={downloadingReportId !== null}
+                        onClick={() => handleDownloadReport(r.id)}
                       >
-                        ↓ Baixar PDF
+                        {downloadingReportId === r.id ? (
+                          <>
+                            <Spinner size="sm" /> Baixando…
+                          </>
+                        ) : (
+                          '↓ Baixar PDF'
+                        )}
                       </Button>
                     )}
                     <Button variant="outline" size="sm" onClick={() => setEmailReportTarget(r)}>

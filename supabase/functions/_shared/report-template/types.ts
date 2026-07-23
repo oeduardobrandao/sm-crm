@@ -2,6 +2,7 @@ export interface KpiValue {
   id: string;
   value: number;
   unit: "count" | "pct";
+  prev?: number | null; // previous month's raw value, same unit
 }
 
 export interface KpiDeltas {
@@ -61,6 +62,7 @@ export interface ReportData {
   handle: string;
   specialty: string;
   period: string;
+  report_month: string; // "YYYY-MM" — drives previous-month labels
   kpis: Record<string, KpiValue>;
   kpi_deltas: KpiDeltas;
   top_posts: TopPost[];
@@ -93,10 +95,7 @@ export interface AIOutput {
 
 export interface WorkspaceBranding {
   logo_base64: string | null;
+  splash_base64: string | null;
   workspace_name: string;
-  primary_color: string;
-  secondary_color: string;
   accent_color: string;
-  font_family: string;
-  theme: "dark" | "light";
 }

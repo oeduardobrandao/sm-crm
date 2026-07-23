@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -6,55 +6,38 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Spinner } from '@/components/ui/spinner';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useAuth } from '../../../context/AuthContext';
-import { getWorkspaceBranding, updateWorkspaceBranding } from '../../../store';
+import { supabase } from '../../../lib/supabase';
+import {
+  getCurrentWorkspace,
+  getWorkspaceBranding,
+  updateWorkspace,
+  updateWorkspaceBranding,
+} from '../../../store';
 import { ReportPreview } from '../ReportPreview';
+import { downscaleImage } from '../reportSplash';
 
-const COLOR_SWATCH: CSSProperties = {
-  width: 48,
-  height: 36,
-  padding: 2,
-  borderRadius: 6,
-  border: '1px solid var(--border-color)',
-  cursor: 'pointer',
-  background: 'none',
-};
+const MAX_SPLASH_BYTES = 4 * 1024 * 1024;
+const SPLASH_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-const COLOR_VALUE: CSSProperties = {
-  fontSize: '0.75rem',
+const FIELD: CSSProperties = { marginBottom: '1.5rem' };
+const FIELD_LABEL: CSSProperties = { display: 'block', marginBottom: '0.5rem' };
+const HINT: CSSProperties = {
+  fontSize: '0.8rem',
+  lineHeight: 1.5,
   color: 'var(--text-muted)',
-  marginTop: 4,
-  fontFamily: 'var(--font-mono)',
+  marginTop: '0.5rem',
+  maxWidth: '52ch',
 };
-
-function ColorField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div>
-      <Label style={{ display: 'block', marginBottom: 6 }}>{label}</Label>
-      <input
-        type="color"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={COLOR_SWATCH}
-      />
-      <div style={COLOR_VALUE}>{value}</div>
-    </div>
-  );
-}
 
 /** Branding for the monthly client report, with a live preview. */
 export default function RelatoriosTab() {
@@ -62,38 +45,109 @@ export default function RelatoriosTab() {
   const queryClient = useQueryClient();
   const isOwnerOrAdmin = role === 'owner' || role === 'admin';
 
-  const { data: branding } = useQuery({
+  // The workspace supplies the logo and name shown in the live preview, plus
+  // the id used to persist the cover art. Name/logo are edited on the Workspace
+  // tab; here they are read-only. Shared query key with WorkspaceTab.
+  const { data: workspace } = useQuery({
+    queryKey: ['currentWorkspace'],
+    queryFn: getCurrentWorkspace,
+    enabled: isOwnerOrAdmin,
+  });
+
+  type WorkspaceBranding = Awaited<ReturnType<typeof getWorkspaceBranding>>;
+  const {
+    data: branding,
+    isPending: brandingPending,
+    isError: brandingFailed,
+  } = useQuery({
     queryKey: ['workspace-branding'],
     queryFn: getWorkspaceBranding,
     enabled: isOwnerOrAdmin,
   });
 
   const [brandColor, setBrandColor] = useState('#eab308');
-  const [secondaryColor, setSecondaryColor] = useState('#3ecf8e');
-  const [accentColor, setAccentColor] = useState('#42c8f5');
-  const [reportFont, setReportFont] = useState('DM Sans');
-  const [reportTheme, setReportTheme] = useState<'dark' | 'light'>('dark');
   const [sendReportEmail, setSendReportEmail] = useState(false);
+  const [splashUrl, setSplashUrl] = useState<string | null>(null);
+  const [splashUploading, setSplashUploading] = useState(false);
+  const [splashRemoveOpen, setSplashRemoveOpen] = useState(false);
+  const splashInputRef = useRef<HTMLInputElement>(null);
+  const brandingInitializedRef = useRef(false);
 
   useEffect(() => {
     if (branding) {
-      setBrandColor(branding.brand_color ?? '#eab308');
-      setSecondaryColor(branding.report_secondary_color ?? '#3ecf8e');
-      setAccentColor(branding.report_accent_color ?? '#42c8f5');
-      setReportFont(branding.report_font_family ?? 'DM Sans');
-      setReportTheme((branding.report_theme as 'dark' | 'light') ?? 'dark');
-      setSendReportEmail(branding.send_report_email ?? false);
+      // Seed brandColor/sendReportEmail only once: a refetch triggered by the
+      // splash handlers (e.g. after upload) must not clobber an in-flight,
+      // unsaved edit to these fields. splashUrl has no "Salvar" step of its
+      // own, so it always tracks the server value.
+      if (!brandingInitializedRef.current) {
+        setBrandColor(branding.brand_color ?? '#eab308');
+        setSendReportEmail(branding.send_report_email ?? false);
+        brandingInitializedRef.current = true;
+      }
+      setSplashUrl(branding.report_splash_url ?? null);
     }
   }, [branding]);
+
+  // The splash art is persisted by its own upload/remove handlers (mirroring the
+  // workspace logo), not by this card's "Salvar" button.
+  const handleSplashUpload = async (file: File) => {
+    if (!workspace) return;
+    if (!SPLASH_TYPES.includes(file.type)) {
+      toast.error('Formato não aceito. Envie um JPEG, PNG ou WebP.');
+      return;
+    }
+    if (file.size > MAX_SPLASH_BYTES) {
+      toast.error('Imagem muito grande. O limite é 4MB.');
+      return;
+    }
+    setSplashUploading(true);
+    try {
+      const blob = await downscaleImage(file);
+      const path = `workspaces/${workspace.id}/report-splash.jpg`;
+      const { error: upErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
+      if (upErr) throw upErr;
+
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+      const publicUrl = urlData.publicUrl + '?t=' + Date.now();
+      await updateWorkspace(workspace.id, { report_splash_url: publicUrl });
+      setSplashUrl(publicUrl);
+      queryClient.setQueryData(['workspace-branding'], (old: WorkspaceBranding | undefined) =>
+        old ? { ...old, report_splash_url: publicUrl } : old,
+      );
+      toast.success('Arte da capa atualizada.');
+    } catch (err: unknown) {
+      console.error('report splash upload failed', err);
+      toast.error('Não foi possível enviar a arte. Tente novamente.');
+    } finally {
+      setSplashUploading(false);
+    }
+  };
+
+  const handleRemoveSplash = async () => {
+    if (!workspace) return;
+    setSplashUploading(true);
+    try {
+      await updateWorkspace(workspace.id, { report_splash_url: null });
+      setSplashUrl(null);
+      queryClient.setQueryData(['workspace-branding'], (old: WorkspaceBranding | undefined) =>
+        old ? { ...old, report_splash_url: null } : old,
+      );
+      toast.success('Arte da capa removida.');
+    } catch (err: unknown) {
+      console.error('report splash removal failed', err);
+      toast.error('Não foi possível remover a arte. Tente novamente.');
+    } finally {
+      setSplashUploading(false);
+      setSplashRemoveOpen(false);
+    }
+  };
 
   const brandingMutation = useMutation({
     mutationFn: () =>
       updateWorkspaceBranding({
         brand_color: brandColor,
-        report_secondary_color: secondaryColor,
-        report_accent_color: accentColor,
-        report_font_family: reportFont,
-        report_theme: reportTheme,
         send_report_email: sendReportEmail,
       }),
     onSuccess: () => {
@@ -101,107 +155,194 @@ export default function RelatoriosTab() {
       toast.success('Configurações de relatório salvas!');
     },
     onError: (err: unknown) => {
-      toast.error('Erro ao salvar: ' + (err as Error).message);
+      console.error('report branding save failed', err);
+      toast.error('Não foi possível salvar. Tente novamente.');
     },
   });
 
   return (
     <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
       <h3 className="config-title">Relatório Mensal</h3>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
-        Personalize as cores, fonte e tema dos relatórios mensais enviados para seus clientes.
+      <p style={{ ...HINT, marginTop: 0, marginBottom: '1.5rem' }}>
+        A marca que seus clientes veem no relatório mensal do Instagram.
       </p>
 
       <div className="config-report-grid">
         <div>
-          <div
-            style={{
-              display: 'flex',
-              gap: '1.5rem',
-              flexWrap: 'wrap',
-              marginBottom: '1.25rem',
-            }}
-          >
-            <ColorField label="Cor primária" value={brandColor} onChange={setBrandColor} />
-            <ColorField
-              label="Cor secundária"
-              value={secondaryColor}
-              onChange={setSecondaryColor}
-            />
-            <ColorField label="Cor de destaque" value={accentColor} onChange={setAccentColor} />
-          </div>
-
-          {/* Font selector */}
-          <div style={{ marginBottom: '1.25rem' }}>
-            <Label style={{ display: 'block', marginBottom: 6 }}>Fonte do relatório</Label>
-            <Select value={reportFont} onValueChange={setReportFont}>
-              <SelectTrigger style={{ maxWidth: 260 }}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="DM Sans">DM Sans</SelectItem>
-                <SelectItem value="Inter">Inter</SelectItem>
-                <SelectItem value="Poppins">Poppins</SelectItem>
-                <SelectItem value="Montserrat">Montserrat</SelectItem>
-                <SelectItem value="Plus Jakarta Sans">Plus Jakarta Sans</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Theme toggle */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '1rem',
-              marginBottom: '1.25rem',
-            }}
-          >
-            <Switch
-              checked={reportTheme === 'dark'}
-              onCheckedChange={(checked) => setReportTheme(checked ? 'dark' : 'light')}
-            />
-            <div>
-              <div style={{ fontWeight: 500 }}>Tema do relatório</div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                {reportTheme === 'dark' ? 'Escuro' : 'Claro'}
-              </div>
+          {/* Accent colour */}
+          <div style={FIELD}>
+            <Label htmlFor="report-accent" style={FIELD_LABEL}>
+              Cor de destaque
+            </Label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <input
+                id="report-accent"
+                className="report-color-swatch"
+                type="color"
+                value={brandColor}
+                disabled={brandingPending || brandingFailed}
+                onChange={(e) => setBrandColor(e.target.value)}
+              />
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.8rem',
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {brandColor}
+              </span>
             </div>
+            <p style={HINT}>
+              A mesma cor do Hub do Cliente. Marca títulos e destaques; os gráficos mantêm as cores
+              próprias, para os dados seguirem legíveis.
+            </p>
+          </div>
+
+          {/* Cover splash art */}
+          <div style={FIELD}>
+            <Label htmlFor="report-splash-trigger" style={FIELD_LABEL}>
+              Arte da capa
+            </Label>
+            {/* Wraps so the destructive action stays reachable on narrow screens,
+                where thumbnail + both buttons overflow a single row. */}
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.75rem',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
+              {splashUrl && (
+                <img
+                  src={splashUrl}
+                  alt="Arte da capa"
+                  style={{
+                    width: 168,
+                    maxWidth: '100%',
+                    height: 72,
+                    objectFit: 'cover',
+                    borderRadius: 8,
+                    border: '1px solid var(--border-color)',
+                    opacity: splashUploading ? 0.5 : 1,
+                    transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                  }}
+                />
+              )}
+              <Button
+                id="report-splash-trigger"
+                variant="outline"
+                onClick={() => splashInputRef.current?.click()}
+                disabled={splashUploading}
+              >
+                {splashUploading && <Spinner size="sm" />}
+                {splashUploading ? 'Enviando…' : splashUrl ? 'Substituir arte' : 'Enviar arte'}
+              </Button>
+              {splashUrl && (
+                <Button
+                  variant="ghost"
+                  className="text-destructive"
+                  onClick={() => setSplashRemoveOpen(true)}
+                  disabled={splashUploading}
+                >
+                  Remover arte
+                </Button>
+              )}
+            </div>
+            <p style={HINT}>
+              Formato paisagem (cerca de 21:9), JPEG, PNG ou WebP, até 4MB. Salva assim que você
+              envia. Sem arte, a capa fica apenas tipográfica.
+            </p>
+            <input
+              ref={splashInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) handleSplashUpload(file);
+              }}
+            />
           </div>
 
           {/* Email delivery toggle */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '1rem',
-              marginBottom: '1.5rem',
-            }}
-          >
-            <Switch checked={sendReportEmail} onCheckedChange={setSendReportEmail} />
+          <div style={{ ...FIELD, display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+            <Switch
+              id="report-email"
+              checked={sendReportEmail}
+              disabled={brandingPending || brandingFailed}
+              onCheckedChange={setSendReportEmail}
+              style={{ marginTop: 2, flexShrink: 0 }}
+            />
             <div>
-              <div style={{ fontWeight: 500 }}>Enviar relatórios por e-mail</div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                Quando ativado, relatórios mensais serão enviados automaticamente para clientes
-                habilitados.
-              </div>
+              <Label htmlFor="report-email" style={{ fontWeight: 500, cursor: 'pointer' }}>
+                Enviar relatórios por e-mail
+              </Label>
+              <p style={{ ...HINT, marginTop: '0.25rem' }}>
+                Envia o relatório automaticamente, todo mês, para os clientes com envio habilitado.
+              </p>
             </div>
           </div>
 
-          <Button onClick={() => brandingMutation.mutate()} disabled={brandingMutation.isPending}>
+          {brandingFailed && (
+            <p
+              role="alert"
+              style={{
+                ...HINT,
+                color: 'var(--danger-text)',
+                marginTop: 0,
+                marginBottom: '0.75rem',
+              }}
+            >
+              Não foi possível carregar as configurações de relatório. Recarregue a página. Salvar
+              agora sobrescreveria a sua marca com os valores padrão.
+            </p>
+          )}
+
+          {/* Saving before the branding query resolves would persist this form's
+              placeholder values over the workspace's real branding. */}
+          <Button
+            onClick={() => brandingMutation.mutate()}
+            disabled={brandingMutation.isPending || brandingPending || brandingFailed}
+          >
             {brandingMutation.isPending && <Spinner size="sm" />} Salvar
           </Button>
         </div>
 
         {/* Live preview */}
-        <ReportPreview
-          primaryColor={brandColor}
-          secondaryColor={secondaryColor}
-          accentColor={accentColor}
-          fontFamily={reportFont}
-          theme={reportTheme}
-        />
+        <div>
+          <Label style={FIELD_LABEL}>Prévia</Label>
+          <ReportPreview
+            accentColor={brandColor}
+            splashUrl={splashUrl}
+            logoUrl={workspace?.logo_url ?? null}
+            workspaceName={workspace?.name ?? ''}
+          />
+          <p style={{ ...HINT, maxWidth: 240 }}>O logo e o nome vêm da aba Workspace.</p>
+        </div>
       </div>
+
+      {/* Remove Report Splash Confirm */}
+      <AlertDialog open={splashRemoveOpen} onOpenChange={setSplashRemoveOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover a arte da capa?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A capa dos próximos relatórios volta a ser apenas tipográfica. Você pode enviar outra
+              arte quando quiser.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemoveSplash} disabled={splashUploading}>
+              Remover arte
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

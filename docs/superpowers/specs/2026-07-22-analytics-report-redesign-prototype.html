@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatório — @dra.marinaarrais — Junho 2026 (protótipo)</title>
+<!-- PROTÓTIPO: fonts via Google Fonts (mesmas do Client Hub). Em produção, subsets WOFF2 em base64 @font-face. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 0; }
+
+  :root {
+    /* tokens — espelham o resolvedor de tema do Hub (theme.ts) */
+    --acc: #171717;               /* accent neutro padrão do Hub; recebe brand_color quando definido */
+    --acc-fg: #ffffff;            /* texto sobre o accent, escolhido por luminância */
+    --font-display: 'Fraunces', ui-serif, Georgia, serif;
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+    --paper: #FAFAF7;
+    --card: #ffffff;
+    --ink: #1C1917;
+    --tx2: #525252;
+    --tx3: #8A8A8A;
+    --bd: rgba(231, 229, 228, 0.9);
+    --hairline: rgba(28, 25, 23, 0.08);
+    --soft: #F4F4F4;
+    --card-shadow: 0 1px 0 rgba(0,0,0,0.02), 0 1px 2px rgba(28, 25, 23, 0.04);
+    --up: #1a7f4b;
+    --down: #b3423a;
+    --up-bg: rgba(26, 127, 75, 0.08);
+    --down-bg: rgba(179, 66, 58, 0.08);
+    /* paleta de dados (fixa, validada p/ daltonismo) — nunca recebe a cor da marca */
+    --fmt-reel: #D97706;
+    --fmt-car: #0D9488;
+    --fmt-img: #A21CAF;
+    --heat-200: #F5DCAE;
+    --heat-250: #F0CF93;
+    --heat-300: #ECC178;
+    --heat-400: #E0A344;
+    --heat-500: #CE8418;
+    --heat-600: #B26A08;
+    --heat-700: #8F5306;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    font-family: var(--font-sans);
+    font-feature-settings: 'ss01', 'cv11';
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--ink);
+    background: #ECEBE7;
+    -webkit-font-smoothing: antialiased;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .display { font-family: var(--font-display); font-optical-sizing: auto; letter-spacing: -0.01em; }
+  .num { font-variant-numeric: tabular-nums; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 6px; vertical-align: 0; }
+  .dot.reel { background: var(--fmt-reel); }
+  .dot.car { background: var(--fmt-car); }
+  .dot.img { background: var(--fmt-img); }
+
+  /* ── páginas ── */
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    padding: 16mm 16mm 22mm;
+    page-break-after: always;
+    position: relative;
+    background: var(--paper);
+    display: flex;
+    flex-direction: column;
+  }
+  .page:last-child { page-break-after: auto; }
+  @media screen { .page { margin-bottom: 12px; box-shadow: 0 2px 18px rgba(0,0,0,0.08); } }
+
+  /* ── rodapé ── */
+  .page-footer {
+    position: absolute;
+    bottom: 9mm; left: 16mm; right: 16mm;
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 9px;
+    color: var(--tx3);
+    border-top: 1px solid var(--hairline);
+    padding-top: 9px;
+  }
+  .page-footer b { color: var(--ink); font-weight: 600; }
+
+  /* ── leitura do mês (assinatura) ── */
+  .takeaway { margin-bottom: 24px; max-width: 152mm; }
+  .takeaway .lbl {
+    font-size: 10px; font-weight: 600; color: var(--tx3); margin-bottom: 4px;
+  }
+  .takeaway .lbl::before {
+    content: ''; display: inline-block; width: 18px; height: 2px;
+    background: var(--acc);
+    margin-right: 10px; vertical-align: 3px;
+  }
+  .takeaway .txt {
+    font-family: var(--font-display); font-size: 15.5px; font-weight: 500;
+    letter-spacing: -0.01em; line-height: 1.5; color: var(--ink);
+  }
+  .takeaway .hit { font-weight: 700; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; text-decoration-color: rgba(28,25,23,0.35); }
+
+  /* ── títulos ── */
+  .sec { display: flex; align-items: baseline; gap: 12px; margin: 28px 0 14px; }
+  .sec:first-of-type { margin-top: 0; }
+  .sec h2 { font-family: var(--font-display); font-size: 21px; font-weight: 600; letter-spacing: -0.01em; }
+  .sec .idx { font-size: 10px; font-weight: 500; color: var(--tx3); }
+  .sec .rule { flex: 1; border-top: 1px solid var(--hairline); transform: translateY(-5px); }
+
+  /* ═══ CAPA ═══ */
+  .cover {
+    padding: 0;
+    background: var(--ink);
+    color: #FAFAF7;
+    justify-content: space-between;
+  }
+  .cover-top { padding: 20mm 18mm 0; display: flex; justify-content: space-between; align-items: flex-start; }
+  /* logo do workspace (branding.logo_base64) sobre placa clara — funciona com logo de qualquer cor */
+  .cover-logo-plate {
+    display: inline-flex; align-items: center;
+    background: #FAFAF7; border-radius: 10px; padding: 9px 14px;
+    margin-bottom: 12px;
+  }
+  .cover-logo-plate img { display: block; height: 26px; max-width: 150px; object-fit: contain; }
+  .cover-brand { font-size: 13px; font-weight: 700; letter-spacing: 0.01em; }
+  .cover-doc { font-size: 10px; font-weight: 500; color: rgba(250,250,247,0.6); text-align: right; line-height: 1.7; }
+  .cover-mid { padding: 0 18mm; }
+  .cover-month { font-size: 13px; font-weight: 500; color: rgba(250,250,247,0.65); margin-bottom: 16px; }
+  .cover-month::before {
+    content: ''; display: inline-block; width: 18px; height: 2px;
+    background: rgba(250,250,247,0.9);
+    margin-right: 10px; vertical-align: 4px;
+  }
+  .cover-handle {
+    font-family: var(--font-display); font-size: 54px; font-weight: 600;
+    letter-spacing: -0.02em; line-height: 1.04;
+  }
+  .cover-spec { font-size: 15px; font-weight: 400; color: rgba(250,250,247,0.7); margin-top: 12px; }
+  /* splash art do workspace (upload próprio; workspaces.report_splash) — preenche o vão entre título e números */
+  .cover-art {
+    flex: 1; min-height: 0;
+    margin: 12mm 18mm 10mm;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #26221F;
+  }
+  .cover-art img, .cover-art svg { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cover-bottom { padding: 0 18mm 18mm; }
+  .cover-teaser {
+    border-top: 1px solid rgba(250,250,247,0.18);
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    padding-top: 18px; gap: 18px;
+  }
+  .cover-teaser .t-label { font-size: 10px; font-weight: 500; color: rgba(250,250,247,0.6); }
+  .cover-teaser .t-value { font-family: var(--font-display); font-size: 32px; font-weight: 500; letter-spacing: -0.02em; margin-top: 4px; }
+  .cover-teaser .t-delta { font-size: 10px; font-weight: 600; margin-top: 3px; color: rgba(250,250,247,0.75); }
+
+  /* ═══ KPI cards ═══ */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .kpi {
+    background: var(--card);
+    border: 1px solid var(--bd);
+    border-radius: 12px;
+    box-shadow: var(--card-shadow);
+    padding: 17px 17px 15px;
+  }
+  .kpi .k-label { font-size: 10px; font-weight: 500; color: var(--tx2); }
+  .kpi .k-value { font-family: var(--font-display); font-size: 29px; font-weight: 500; letter-spacing: -0.02em; margin-top: 7px; line-height: 1; }
+  .kpi .k-value small { font-size: 16px; color: var(--tx2); }
+  .delta {
+    display: inline-block; font-size: 9.5px; font-weight: 600;
+    margin-top: 9px; padding: 2.5px 9px; border-radius: 9999px;
+  }
+  .delta.up { color: var(--up); background: var(--up-bg); }
+  .delta.down { color: var(--down); background: var(--down-bg); }
+  .delta.flat { color: var(--tx2); background: var(--soft); }
+  .delta-note { display: block; font-size: 8.5px; color: var(--tx3); margin-top: 5px; }
+
+  /* resumo */
+  .summary {
+    background: var(--card);
+    border: 1px solid var(--bd);
+    border-radius: 12px;
+    box-shadow: var(--card-shadow);
+    padding: 24px 26px;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  .summary strong { font-weight: 700; }
+
+  /* índice */
+  .toc { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .toc-item {
+    border: 1px solid var(--bd); border-radius: 12px; padding: 13px 15px;
+    background: var(--card); box-shadow: var(--card-shadow);
+  }
+  .toc-item .tc-n { font-size: 10px; font-weight: 600; color: var(--tx3); }
+  .toc-item .tc-t { font-size: 11.5px; font-weight: 600; margin-top: 3px; }
+
+  /* destaques */
+  .hl-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 10px; }
+  .hl {
+    background: var(--card); border: 1px solid var(--bd); border-radius: 12px;
+    box-shadow: var(--card-shadow); padding: 20px 22px;
+  }
+  .hl .h-label { font-size: 10px; font-weight: 500; color: var(--tx2); margin-bottom: 9px; }
+  .hl .h-big { font-family: var(--font-display); font-size: 26px; font-weight: 500; letter-spacing: -0.02em; }
+  .hl .h-big .unit { font-family: var(--font-sans); font-size: 12px; color: var(--tx2); font-weight: 500; }
+  .hl .h-desc { font-size: 10.5px; color: var(--tx2); margin-top: 4px; }
+  .hl .h-caption { font-size: 11.5px; font-weight: 600; margin-top: 9px; line-height: 1.45; }
+  .mix { display: flex; gap: 6px; margin-top: 12px; }
+  .mix .m-chip { flex: 1; text-align: center; border: 1px solid var(--bd); border-radius: 10px; padding: 8px 4px; }
+  .mix .m-n { font-family: var(--font-display); font-size: 16px; font-weight: 500; }
+  .mix .m-t { font-size: 8.5px; font-weight: 500; color: var(--tx2); margin-top: 1px; }
+
+  /* ═══ gráficos ═══ */
+  .chart-card {
+    background: var(--card); border: 1px solid var(--bd); border-radius: 12px;
+    box-shadow: var(--card-shadow); padding: 18px 18px 10px;
+  }
+  .chart-card svg { width: 100%; height: auto; display: block; }
+  .axis { font-family: 'Instrument Sans', sans-serif; font-size: 9.5px; fill: var(--tx3); }
+
+  /* formatos */
+  .fmt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .fmt {
+    background: var(--card); border: 1px solid var(--bd); border-radius: 12px;
+    box-shadow: var(--card-shadow); padding: 16px 17px;
+  }
+  .fmt .f-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .fmt .f-name { font-size: 13px; font-weight: 700; }
+  .fmt .f-count { font-size: 9.5px; color: var(--tx3); }
+  .fmt .f-reach { font-family: var(--font-display); font-size: 24px; font-weight: 500; letter-spacing: -0.02em; margin-top: 10px; }
+  .fmt .f-reach-l { font-size: 9px; color: var(--tx3); margin-top: 1px; }
+  .fmt .f-bar { height: 6px; border-radius: 4px; background: var(--soft); margin-top: 11px; overflow: hidden; }
+  .fmt .f-bar i { display: block; height: 100%; border-radius: 4px; background: var(--ink); }
+  .fmt .f-eng { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--hairline); }
+  .fmt .f-eng-l { font-size: 9.5px; color: var(--tx2); }
+  .fmt .f-eng-v { font-size: 13.5px; font-weight: 700; }
+  .fmt--reel .f-bar i { background: var(--fmt-reel); }
+  .fmt--car .f-bar i { background: var(--fmt-car); }
+  .fmt--img .f-bar i { background: var(--fmt-img); }
+  .fmt.lead { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink), var(--card-shadow); }
+  .lead-chip {
+    display: inline-block; font-size: 8px; font-weight: 600;
+    color: var(--acc-fg); background: var(--acc);
+    border-radius: 9999px; padding: 2.5px 8px; margin-left: 7px; vertical-align: 2px;
+  }
+
+  .aux-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+
+  /* ═══ publicações ═══ */
+  .post-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .post {
+    background: var(--card); border: 1px solid var(--bd); border-radius: 12px;
+    box-shadow: var(--card-shadow); overflow: hidden;
+  }
+  .post .p-thumb { position: relative; aspect-ratio: 4/3.4; background: linear-gradient(150deg, #EDECEA, #DEDDD9); display: flex; align-items: center; justify-content: center; color: var(--tx3); }
+  .post .p-rank {
+    position: absolute; top: 8px; left: 8px; min-width: 22px; height: 22px; padding: 0 5px;
+    border-radius: 9999px; background: var(--acc); color: var(--acc-fg);
+    font-size: 10.5px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .post .p-type {
+    position: absolute; top: 8px; right: 8px; font-size: 8.5px; font-weight: 600;
+    padding: 2.5px 8px; border-radius: 9999px;
+    background: rgba(250, 250, 247, 0.92); color: var(--ink); border: 1px solid var(--bd);
+  }
+  .post .p-body { padding: 10px 12px 12px; }
+  .post .p-caption {
+    font-size: 10.5px; font-weight: 600; line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    min-height: 29px;
+  }
+  .post .p-stats { display: flex; justify-content: space-between; margin-top: 8px; font-size: 9px; color: var(--tx3); }
+  .post .p-stats b { color: var(--ink); font-weight: 600; }
+
+  .post-rest {
+    margin-top: 12px; background: var(--card); border: 1px solid var(--bd);
+    border-radius: 12px; box-shadow: var(--card-shadow);
+  }
+  .post-rest .r-row {
+    display: grid; grid-template-columns: 30px 1fr 64px 58px 52px; gap: 10px; align-items: center;
+    padding: 8.5px 15px; border-top: 1px solid var(--hairline); font-size: 10.5px;
+  }
+  .post-rest .r-row:first-child { border-top: none; }
+  .post-rest .r-rank { font-size: 10px; font-weight: 500; color: var(--tx3); }
+  .post-rest .r-cap { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .post-rest .r-m { font-size: 9.5px; color: var(--tx3); text-align: right; }
+  .post-rest .r-m b { color: var(--ink); font-weight: 600; }
+
+  /* tópicos */
+  .topics {
+    background: var(--card); border: 1px solid var(--bd); border-radius: 12px;
+    box-shadow: var(--card-shadow); padding: 6px 0;
+  }
+  .topics table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .topics th {
+    font-size: 9.5px; font-weight: 600; color: var(--tx3); text-align: left;
+    padding: 10px 18px 8px; border-bottom: 1px solid var(--hairline);
+  }
+  .topics th.r, .topics td.r { text-align: right; }
+  .topics td { padding: 10px 18px; border-bottom: 1px solid var(--hairline); }
+  .topics tr:last-child td { border-bottom: none; }
+  .topics .t-name { font-weight: 700; }
+  .topics .t-bar { display: inline-block; vertical-align: middle; height: 6px; border-radius: 3px; background: var(--ink); margin-right: 9px; }
+
+  /* ═══ audiência ═══ */
+  .aud-grid { display: grid; grid-template-columns: 195px 1fr; gap: 12px; }
+  .panel {
+    background: var(--card); border: 1px solid var(--bd); border-radius: 12px;
+    box-shadow: var(--card-shadow); padding: 17px 19px;
+  }
+  .panel .pn-label { font-size: 10px; font-weight: 500; color: var(--tx2); margin-bottom: 13px; }
+  .donut-wrap { display: flex; align-items: center; gap: 4px; flex-direction: column; }
+  .legend { display: flex; gap: 14px; margin-top: 10px; font-size: 9.5px; color: var(--tx2); }
+  .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .bars { display: flex; flex-direction: column; gap: 9px; }
+  .bar-row { display: grid; grid-template-columns: 78px 1fr 46px; align-items: center; gap: 10px; }
+  .bar-row .b-l { font-size: 10px; color: var(--tx2); text-align: right; }
+  .bar-row .b-track { height: 8px; border-radius: 5px; background: var(--soft); overflow: hidden; }
+  .bar-row .b-fill { height: 100%; border-radius: 5px; background: var(--heat-400); }
+  .bar-row .b-fill.alt { background: var(--heat-400); }
+  .bar-row .b-v { font-size: 10px; font-weight: 600; }
+  .loc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  /* heatmap */
+  .heat-table { width: 100%; border-collapse: separate; border-spacing: 3px; }
+  .heat-table td { height: 20px; border-radius: 5px; background: var(--soft); }
+  .heat-table .hd { font-size: 8.5px; color: var(--tx3); background: none; text-align: center; height: auto; }
+  .heat-table .day { font-size: 9.5px; color: var(--tx2); background: none; text-align: right; padding-right: 8px; width: 36px; }
+  .heat-top { display: flex; gap: 8px; margin-top: 13px; }
+  .heat-chip {
+    font-size: 10px; font-weight: 500; padding: 5px 12px; border-radius: 9999px;
+    border: 1px solid var(--bd); color: var(--ink); background: var(--card);
+  }
+  .heat-chip.first { background: var(--heat-700); border-color: var(--heat-700); color: #ffffff; font-weight: 600; }
+  .heat-chip .rampdot { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 6px; }
+  .heat-chip small { color: inherit; opacity: 0.6; margin-right: 5px; font-size: 9px; }
+
+  /* ═══ próximos passos ═══ */
+  .reco { display: flex; flex-direction: column; gap: 10px; }
+  .reco-card {
+    display: grid; grid-template-columns: 46px 1fr auto; gap: 14px; align-items: start;
+    background: var(--card); border: 1px solid var(--bd); border-radius: 12px;
+    box-shadow: var(--card-shadow); padding: 17px 19px;
+  }
+  .reco-card .rc-n {
+    font-family: var(--font-display); font-size: 21px; font-weight: 500; color: var(--tx3);
+    border-right: 1px solid var(--hairline); padding-right: 10px; line-height: 1.2;
+  }
+  .reco-card .rc-t { font-size: 13.5px; font-weight: 700; margin-bottom: 4px; }
+  .reco-card .rc-d { font-size: 11px; color: var(--tx2); line-height: 1.6; max-width: 122mm; }
+  .prio { font-size: 9px; font-weight: 600; padding: 3.5px 10px; border-radius: 9999px; white-space: nowrap; }
+  .prio.alta { background: #F7E8CE; color: #8F5306; }
+  .prio.media { background: var(--soft); color: var(--tx2); }
+
+  .goal-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .goal { background: var(--card); border: 1px dashed rgba(28,25,23,0.18); border-radius: 12px; padding: 16px 17px; }
+  .goal .g-metric { font-size: 10px; font-weight: 500; color: var(--tx2); }
+  .goal .g-target { font-family: var(--font-display); font-size: 25px; font-weight: 500; letter-spacing: -0.02em; margin: 7px 0 5px; }
+  .goal .g-why { font-size: 10px; color: var(--tx2); line-height: 1.5; }
+
+  .closing {
+    margin-top: auto;
+    border-radius: 12px;
+    background: var(--ink);
+    color: #FAFAF7;
+    padding: 22px 26px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .closing .c-t { font-family: var(--font-display); font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .closing .c-d { font-size: 10.5px; color: rgba(250,250,247,0.7); margin-top: 4px; }
+  .closing .c-b { font-size: 10.5px; font-weight: 500; text-align: right; line-height: 1.9; color: rgba(250,250,247,0.9); }
+
+  .spacer { flex: 1; }
+
+  /* ═══ camada mobile (Hub em iframe) ═══ */
+  @media screen and (max-width: 860px) {
+    .page { width: 100%; min-height: 0; padding: 26px 18px 30px; margin-bottom: 8px; }
+    .page-footer { display: none; }
+    .cover { padding: 0; min-height: 78vh; }
+    .cover-top { padding: 26px 20px 0; }
+    .cover-mid { padding: 0 20px; }
+    .cover-bottom { padding: 0 20px 24px; }
+    .cover-handle { font-size: 36px; }
+    .cover-teaser { grid-template-columns: 1fr; gap: 12px; }
+    .cover-art { margin: 20px 20px 16px; min-height: 140px; }
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+    .hl-grid, .fmt-grid, .aux-grid, .goal-grid { grid-template-columns: 1fr; }
+    .toc { grid-template-columns: 1fr 1fr; }
+    .post-grid { grid-template-columns: 1fr 1fr; }
+    .aud-grid, .loc-grid { grid-template-columns: 1fr; }
+    .post-rest .r-row { grid-template-columns: 26px 1fr 62px; }
+    .post-rest .r-m.hide-m { display: none; }
+    .reco-card { grid-template-columns: 36px 1fr; }
+    .reco-card .prio { grid-column: 2; justify-self: start; }
+    .closing { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .closing .c-b { text-align: left; }
+    .heat-scroll { overflow-x: auto; }
+    .heat-table { min-width: 520px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ PÁGINA 1 · CAPA ═══════════ -->
+<div class="page cover">
+  <div class="cover-top">
+    <div>
+      <!-- em produção: src = branding.logo_base64; sem logo, a placa some e fica só o nome -->
+      <div class="cover-logo-plate">
+        <img alt="DK Marketing Médico" src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22150%22%20height%3D%2236%22%20viewBox%3D%220%200%20150%2036%22%3E%3Crect%20x%3D%220%22%20y%3D%220%22%20width%3D%2236%22%20height%3D%2236%22%20rx%3D%228%22%20fill%3D%22%231C1917%22%2F%3E%3Ctext%20x%3D%2218%22%20y%3D%2225%22%20text-anchor%3D%22middle%22%20font-family%3D%22Georgia%2C%20serif%22%20font-size%3D%2217%22%20font-weight%3D%22700%22%20fill%3D%22%23FAFAF7%22%3EDK%3C%2Ftext%3E%3Ctext%20x%3D%2244%22%20y%3D%2217%22%20font-family%3D%22Georgia%2C%20serif%22%20font-size%3D%2213%22%20font-weight%3D%22700%22%20fill%3D%22%231C1917%22%3EMarketing%3C%2Ftext%3E%3Ctext%20x%3D%2244%22%20y%3D%2231%22%20font-family%3D%22Georgia%2C%20serif%22%20font-size%3D%2213%22%20font-weight%3D%22700%22%20fill%3D%22%231C1917%22%3EM%C3%A9dico%3C%2Ftext%3E%3C%2Fsvg%3E">
+      </div>
+      <div class="cover-brand">DK Marketing Médico</div>
+    </div>
+    <div class="cover-doc">Relatório mensal<br>Instagram</div>
+  </div>
+  <div class="cover-mid">
+    <div class="cover-month">Junho de 2026</div>
+    <div class="cover-handle">@dra.marina<br>arrais</div>
+    <div class="cover-spec">Dermatologia · Fortaleza</div>
+  </div>
+  <!-- em produção: <img src="{{SPLASH_BASE64}}"> enviado pela agência em Configurações → Relatórios;
+       sem upload, o bloco não é renderizado e a capa volta a ser tipográfica -->
+  <div class="cover-art">
+    <svg viewBox="0 0 600 260" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <rect width="600" height="260" fill="#26221F"/>
+      <g fill="none" stroke="#FAFAF7" stroke-width="1.2">
+        <path d="M-20,215 C120,160 200,235 320,190 S520,135 620,170" opacity="0.28"/>
+        <path d="M-20,183 C120,128 210,203 330,158 S530,103 620,138" opacity="0.22"/>
+        <path d="M-20,151 C120,96 220,171 340,126 S540,71 620,106" opacity="0.16"/>
+        <path d="M-20,119 C120,64 230,139 350,94 S550,39 620,74" opacity="0.11"/>
+        <path d="M-20,87 C120,32 240,107 360,62 S560,7 620,42" opacity="0.07"/>
+      </g>
+      <circle cx="468" cy="74" r="24" fill="#FAFAF7" opacity="0.92"/>
+    </svg>
+  </div>
+  <div class="cover-bottom">
+    <div class="cover-teaser">
+      <div>
+        <div class="t-label">Alcance</div>
+        <div class="t-value num">183,4 mil</div>
+        <div class="t-delta">▲ +28,9% · maio: 142,3 mil</div>
+      </div>
+      <div>
+        <div class="t-label">Novos seguidores</div>
+        <div class="t-value num">+482</div>
+        <div class="t-delta">▲ +12,4% · maio: +429</div>
+      </div>
+      <div>
+        <div class="t-label">Salvamentos</div>
+        <div class="t-value num">1.294</div>
+        <div class="t-delta">▲ +41,2% · maio: 916</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ PÁGINA 2 · RESUMO ═══════════ -->
+<div class="page">
+  <div class="sec"><h2>Resumo do mês</h2><span class="rule"></span><span class="idx">01 / 05</span></div>
+
+  <div class="takeaway">
+    <div class="lbl">Leitura do mês</div>
+    <div class="txt">O conteúdo sobre melasma fez o alcance crescer <span class="hit">28,9%</span> — o melhor mês do semestre.</div>
+  </div>
+
+  <div class="summary">
+    Junho foi um mês de crescimento expressivo para o perfil: o alcance subiu <strong>28,9%</strong>,
+    impulsionado pelos Reels educativos, e os salvamentos cresceram <strong>41,2%</strong> — sinal claro
+    de que o conteúdo sobre melasma está gerando valor duradouro para a audiência. O engajamento teve
+    leve queda de 3,1%, concentrada nas publicações de imagem única, formato que segue com o menor
+    desempenho do perfil.
+  </div>
+
+  <div class="sec"><h2>Métricas principais</h2><span class="rule"></span></div>
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="k-label">Novos seguidores</div>
+      <div class="k-value num">+482</div>
+      <span class="delta up">▲ +12,4%</span>
+      <span class="delta-note">maio: +429</span>
+    </div>
+    <div class="kpi">
+      <div class="k-label">Engajamento</div>
+      <div class="k-value num">4,7<small>%</small></div>
+      <span class="delta down">▼ −3,1%</span>
+      <span class="delta-note">maio: 4,8%</span>
+    </div>
+    <div class="kpi">
+      <div class="k-label">Alcance</div>
+      <div class="k-value num">183,4<small>mil</small></div>
+      <span class="delta up">▲ +28,9%</span>
+      <span class="delta-note">maio: 142,3 mil</span>
+    </div>
+    <div class="kpi">
+      <div class="k-label">Salvamentos</div>
+      <div class="k-value num">1.294</div>
+      <span class="delta up">▲ +41,2%</span>
+      <span class="delta-note">maio: 916</span>
+    </div>
+  </div>
+
+  <div class="sec"><h2>Destaques</h2><span class="rule"></span></div>
+  <div class="hl-grid">
+    <div class="hl">
+      <div class="h-label">Melhor publicação</div>
+      <div class="h-big num">42,0 mil <span class="unit">de alcance</span></div>
+      <div class="h-caption">"3 sinais de que sua pele precisa de ácido hialurônico agora"</div>
+      <div class="h-desc"><i class="dot reel"></i>Reel · 6,8% de engajamento · 320 salvamentos</div>
+    </div>
+    <div class="hl">
+      <div class="h-label">Conteúdo publicado</div>
+      <div class="h-big num">14 <span class="unit">posts</span></div>
+      <div class="mix">
+        <div class="m-chip"><div class="m-n num">6</div><div class="m-t"><i class="dot reel"></i>Reels</div></div>
+        <div class="m-chip"><div class="m-n num">5</div><div class="m-t"><i class="dot car"></i>Carrosséis</div></div>
+        <div class="m-chip"><div class="m-n num">3</div><div class="m-t"><i class="dot img"></i>Imagens</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec"><h2>Neste relatório</h2><span class="rule"></span></div>
+  <div class="toc">
+    <div class="toc-item"><div class="tc-n">02</div><div class="tc-t">Crescimento e formatos</div></div>
+    <div class="toc-item"><div class="tc-n">03</div><div class="tc-t">Publicações do mês</div></div>
+    <div class="toc-item"><div class="tc-n">04</div><div class="tc-t">Quem é a sua audiência</div></div>
+    <div class="toc-item"><div class="tc-n">05</div><div class="tc-t">Plano para julho</div></div>
+  </div>
+
+  <div class="page-footer">
+    <b>DK Marketing Médico</b>
+    <span>@dra.marinaarrais · junho 2026</span>
+    <span class="num">2 / 6</span>
+  </div>
+</div>
+
+<!-- ═══════════ PÁGINA 3 · CRESCIMENTO E FORMATOS ═══════════ -->
+<div class="page">
+  <div class="sec"><h2>Evolução de seguidores</h2><span class="rule"></span><span class="idx">02 / 05</span></div>
+
+  <div class="takeaway">
+    <div class="lbl">Leitura do mês</div>
+    <div class="txt">Crescimento constante: <span class="hit">+482 seguidores</span>, com aceleração após o Reel de ácido hialurônico.</div>
+  </div>
+
+  <div class="chart-card">
+    <svg viewBox="0 0 680 232" xmlns="http://www.w3.org/2000/svg">
+      <line x1="58" y1="166" x2="648" y2="166" stroke="rgba(28,25,23,0.06)"/>
+      <line x1="58" y1="112" x2="648" y2="112" stroke="rgba(28,25,23,0.06)"/>
+      <line x1="58" y1="57"  x2="648" y2="57"  stroke="rgba(28,25,23,0.06)"/>
+      <text class="axis" x="50" y="169" text-anchor="end">24,2k</text>
+      <text class="axis" x="50" y="115" text-anchor="end">24,4k</text>
+      <text class="axis" x="50" y="60"  text-anchor="end">24,6k</text>
+      <path d="M60,172 L120,150 L180,136 L240,131 L300,128 L360,117 L420,96 L480,73 L540,56 L600,50 L640,40 L640,190 L60,190 Z"
+            fill="rgba(28,25,23,0.05)"/>
+      <path d="M60,172 L120,150 L180,136 L240,131 L300,128 L360,117 L420,96 L480,73 L540,56 L600,50 L640,40"
+            fill="none" stroke="#1C1917" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="360" cy="117" r="3.5" fill="#FAFAF7" stroke="#1C1917" stroke-width="2"/>
+      <text class="axis" x="360" y="104" text-anchor="middle">Reel · dia 16</text>
+      <circle cx="640" cy="40" r="4" fill="#1C1917"/>
+      <rect x="530" y="18" rx="10" width="92" height="21" fill="#1C1917"/>
+      <text x="576" y="32" text-anchor="middle" style="font-family:'Instrument Sans',sans-serif;font-size:10px;font-weight:600;fill:#FAFAF7">+482 no mês</text>
+      <text class="axis" x="60"  y="188" text-anchor="start">1 jun</text>
+      <text class="axis" x="253" y="188" text-anchor="middle">10 jun</text>
+      <text class="axis" x="453" y="188" text-anchor="middle">20 jun</text>
+      <text class="axis" x="640" y="188" text-anchor="end">30 jun</text>
+    </svg>
+  </div>
+
+  <div class="sec"><h2>Desempenho por formato</h2><span class="rule"></span></div>
+
+  <div class="takeaway">
+    <div class="lbl">Leitura do mês</div>
+    <div class="txt">Reels alcançam <span class="hit">5× mais</span> que imagens únicas — o formato merece prioridade em julho.</div>
+  </div>
+
+  <div class="fmt-grid">
+    <div class="fmt lead fmt--reel">
+      <div class="f-head"><span class="f-name">Reels<span class="lead-chip">Formato líder</span></span><span class="f-count num">6 posts</span></div>
+      <div class="f-reach num">21,4 mil</div>
+      <div class="f-reach-l">alcance médio</div>
+      <div class="f-bar"><i style="width:100%"></i></div>
+      <div class="f-eng"><span class="f-eng-l">Engajamento médio</span><span class="f-eng-v num">5,8%</span></div>
+    </div>
+    <div class="fmt fmt--car">
+      <div class="f-head"><span class="f-name">Carrosséis</span><span class="f-count num">5 posts</span></div>
+      <div class="f-reach num">9,9 mil</div>
+      <div class="f-reach-l">alcance médio</div>
+      <div class="f-bar"><i style="width:46%"></i></div>
+      <div class="f-eng"><span class="f-eng-l">Engajamento médio</span><span class="f-eng-v num">4,9%</span></div>
+    </div>
+    <div class="fmt fmt--img">
+      <div class="f-head"><span class="f-name">Imagens</span><span class="f-count num">3 posts</span></div>
+      <div class="f-reach num">4,2 mil</div>
+      <div class="f-reach-l">alcance médio</div>
+      <div class="f-bar"><i style="width:20%"></i></div>
+      <div class="f-eng"><span class="f-eng-l">Engajamento médio</span><span class="f-eng-v num">3,1%</span></div>
+    </div>
+  </div>
+
+  <div class="sec"><h2>Métricas complementares</h2><span class="rule"></span></div>
+  <div class="aux-grid">
+    <div class="kpi">
+      <div class="k-label">Publicações</div>
+      <div class="k-value num">14</div>
+      <span class="delta flat">= igual a maio</span>
+      <span class="delta-note">maio: 14</span>
+    </div>
+    <div class="kpi">
+      <div class="k-label">Visitas ao perfil</div>
+      <div class="k-value num">8,9<small>mil</small></div>
+      <span class="delta up">▲ +7,5%</span>
+      <span class="delta-note">maio: 8,3 mil</span>
+    </div>
+    <div class="kpi">
+      <div class="k-label">Cliques no link</div>
+      <div class="k-value num">512</div>
+      <span class="delta down">▼ −1,8%</span>
+      <span class="delta-note">maio: 521</span>
+    </div>
+  </div>
+
+  <div class="page-footer">
+    <b>DK Marketing Médico</b>
+    <span>@dra.marinaarrais · junho 2026</span>
+    <span class="num">3 / 6</span>
+  </div>
+</div>
+
+<!-- ═══════════ PÁGINA 4 · PUBLICAÇÕES ═══════════ -->
+<div class="page">
+  <div class="sec"><h2>Publicações do mês</h2><span class="rule"></span><span class="idx">03 / 05</span></div>
+
+  <div class="takeaway">
+    <div class="lbl">Leitura do mês</div>
+    <div class="txt">As 3 melhores publicações são Reels educativos — juntas, somam <span class="hit">105,5 mil de alcance</span>.</div>
+  </div>
+
+  <div class="post-grid">
+    <div class="post">
+      <div class="p-thumb"><div class="p-rank num">1</div><div class="p-type"><i class="dot reel"></i>Reel</div>▨</div>
+      <div class="p-body">
+        <div class="p-caption">3 sinais de que sua pele precisa de ácido hialurônico agora</div>
+        <div class="p-stats num"><span><b>42,0k</b> alc.</span><span><b>2,4k</b> ♥</span><span><b>89</b> com.</span><span><b>320</b> salv.</span></div>
+      </div>
+    </div>
+    <div class="post">
+      <div class="p-thumb"><div class="p-rank num">2</div><div class="p-type"><i class="dot car"></i>Carrossel</div>▨</div>
+      <div class="p-body">
+        <div class="p-caption">Mitos e verdades sobre protetor solar que você precisa saber</div>
+        <div class="p-stats num"><span><b>38,9k</b> alc.</span><span><b>2,2k</b> ♥</span><span><b>83</b> com.</span><span><b>299</b> salv.</span></div>
+      </div>
+    </div>
+    <div class="post">
+      <div class="p-thumb"><div class="p-rank num">3</div><div class="p-type"><i class="dot img"></i>Imagem</div>▨</div>
+      <div class="p-body">
+        <div class="p-caption">Antes e depois: tratamento de melasma em 8 semanas</div>
+        <div class="p-stats num"><span><b>35,8k</b> alc.</span><span><b>2,1k</b> ♥</span><span><b>77</b> com.</span><span><b>278</b> salv.</span></div>
+      </div>
+    </div>
+    <div class="post">
+      <div class="p-thumb"><div class="p-rank num">4</div><div class="p-type"><i class="dot reel"></i>Reel</div>▨</div>
+      <div class="p-body">
+        <div class="p-caption">3 sinais de que sua pele precisa de ácido hialurônico agora</div>
+        <div class="p-stats num"><span><b>32,7k</b> alc.</span><span><b>1,9k</b> ♥</span><span><b>71</b> com.</span><span><b>257</b> salv.</span></div>
+      </div>
+    </div>
+    <div class="post">
+      <div class="p-thumb"><div class="p-rank num">5</div><div class="p-type"><i class="dot car"></i>Carrossel</div>▨</div>
+      <div class="p-body">
+        <div class="p-caption">Mitos e verdades sobre protetor solar que você precisa saber</div>
+        <div class="p-stats num"><span><b>29,6k</b> alc.</span><span><b>1,8k</b> ♥</span><span><b>65</b> com.</span><span><b>236</b> salv.</span></div>
+      </div>
+    </div>
+    <div class="post">
+      <div class="p-thumb"><div class="p-rank num">6</div><div class="p-type"><i class="dot img"></i>Imagem</div>▨</div>
+      <div class="p-body">
+        <div class="p-caption">Antes e depois: tratamento de melasma em 8 semanas</div>
+        <div class="p-stats num"><span><b>26,5k</b> alc.</span><span><b>1,6k</b> ♥</span><span><b>59</b> com.</span><span><b>215</b> salv.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="post-rest">
+    <div class="r-row">
+      <span class="r-rank num">7</span>
+      <span class="r-cap"><i class="dot reel"></i>3 sinais de que sua pele precisa de ácido hialurônico agora</span>
+      <span class="r-m num"><b>23,4k</b> alc.</span>
+      <span class="r-m num hide-m"><b>1,4k</b> ♥</span>
+      <span class="r-m num hide-m"><b>194</b> salv.</span>
+    </div>
+    <div class="r-row">
+      <span class="r-rank num">8</span>
+      <span class="r-cap"><i class="dot car"></i>Mitos e verdades sobre protetor solar que você precisa saber</span>
+      <span class="r-m num"><b>20,3k</b> alc.</span>
+      <span class="r-m num hide-m"><b>1,3k</b> ♥</span>
+      <span class="r-m num hide-m"><b>173</b> salv.</span>
+    </div>
+    <div class="r-row">
+      <span class="r-rank num">9</span>
+      <span class="r-cap"><i class="dot img"></i>Antes e depois: tratamento de melasma em 8 semanas</span>
+      <span class="r-m num"><b>17,2k</b> alc.</span>
+      <span class="r-m num hide-m"><b>1,1k</b> ♥</span>
+      <span class="r-m num hide-m"><b>152</b> salv.</span>
+    </div>
+    <div class="r-row">
+      <span class="r-rank num">10</span>
+      <span class="r-cap"><i class="dot reel"></i>3 sinais de que sua pele precisa de ácido hialurônico agora</span>
+      <span class="r-m num"><b>14,1k</b> alc.</span>
+      <span class="r-m num hide-m"><b>950</b> ♥</span>
+      <span class="r-m num hide-m"><b>131</b> salv.</span>
+    </div>
+    <div class="r-row">
+      <span class="r-rank num">11</span>
+      <span class="r-cap"><i class="dot car"></i>Mitos e verdades sobre protetor solar que você precisa saber</span>
+      <span class="r-m num"><b>11,0k</b> alc.</span>
+      <span class="r-m num hide-m"><b>800</b> ♥</span>
+      <span class="r-m num hide-m"><b>110</b> salv.</span>
+    </div>
+    <div class="r-row">
+      <span class="r-rank num">12</span>
+      <span class="r-cap"><i class="dot img"></i>Antes e depois: tratamento de melasma em 8 semanas</span>
+      <span class="r-m num"><b>7,9k</b> alc.</span>
+      <span class="r-m num hide-m"><b>640</b> ♥</span>
+      <span class="r-m num hide-m"><b>89</b> salv.</span>
+    </div>
+  </div>
+
+  <div class="sec"><h2>Performance por tópico</h2><span class="rule"></span></div>
+  <div class="topics">
+    <table>
+      <thead>
+        <tr><th>Tópico</th><th>Posts</th><th>Alcance médio</th><th class="r">Engajamento médio</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="t-name">Melasma</td><td class="num">4</td>
+          <td><span class="t-bar" style="width:110px"></span><span class="num">18,3 mil</span></td>
+          <td class="r num">6,1%</td>
+        </tr>
+        <tr>
+          <td class="t-name">Skincare</td><td class="num">5</td>
+          <td><span class="t-bar" style="width:73px"></span><span class="num">12,1 mil</span></td>
+          <td class="r num">4,8%</td>
+        </tr>
+        <tr>
+          <td class="t-name">Procedimentos</td><td class="num">3</td>
+          <td><span class="t-bar" style="width:51px"></span><span class="num">8,4 mil</span></td>
+          <td class="r num">3,9%</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="page-footer">
+    <b>DK Marketing Médico</b>
+    <span>@dra.marinaarrais · junho 2026</span>
+    <span class="num">4 / 6</span>
+  </div>
+</div>
+
+<!-- ═══════════ PÁGINA 5 · AUDIÊNCIA ═══════════ -->
+<div class="page">
+  <div class="sec"><h2>Quem é a sua audiência</h2><span class="rule"></span><span class="idx">04 / 05</span></div>
+
+  <div class="takeaway">
+    <div class="lbl">Leitura do mês</div>
+    <div class="txt">Mulheres de 25 a 44 anos em Fortaleza são <span class="hit">o núcleo da audiência</span> — o mesmo perfil do consultório.</div>
+  </div>
+
+  <div class="aud-grid">
+    <div class="panel">
+      <div class="pn-label">Gênero</div>
+      <div class="donut-wrap">
+        <svg width="132" height="132" viewBox="0 0 132 132">
+          <circle cx="66" cy="66" r="45" fill="none" stroke="#EDECEA" stroke-width="17"/>
+          <circle cx="66" cy="66" r="45" fill="none" stroke="#1C1917" stroke-width="17"
+                  stroke-dasharray="221.1 282.7" stroke-linecap="butt" transform="rotate(-90 66 66)"/>
+          <text x="66" y="63" text-anchor="middle" style="font-family:'Fraunces',serif;font-size:20px;font-weight:600;fill:#1C1917">78%</text>
+          <text x="66" y="79" text-anchor="middle" style="font-family:'Instrument Sans',sans-serif;font-size:9px;fill:#8A8A8A">feminino</text>
+        </svg>
+        <div class="legend">
+          <span><i style="background:var(--heat-700)"></i>Feminino 78%</span>
+          <span><i style="background:#D6D3D1"></i>Masculino 22%</span>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="pn-label">Faixa etária</div>
+      <div class="bars">
+        <div class="bar-row"><span class="b-l num">25–34</span><div class="b-track"><div class="b-fill" style="width:100%"></div></div><span class="b-v num">38,4%</span></div>
+        <div class="bar-row"><span class="b-l num">35–44</span><div class="b-track"><div class="b-fill" style="width:76%"></div></div><span class="b-v num">29,1%</span></div>
+        <div class="bar-row"><span class="b-l num">18–24</span><div class="b-track"><div class="b-fill" style="width:37%"></div></div><span class="b-v num">14,2%</span></div>
+        <div class="bar-row"><span class="b-l num">45–54</span><div class="b-track"><div class="b-fill" style="width:33%"></div></div><span class="b-v num">12,8%</span></div>
+        <div class="bar-row"><span class="b-l num">55+</span><div class="b-track"><div class="b-fill" style="width:14%"></div></div><span class="b-v num">5,5%</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec"><h2>Localização</h2><span class="rule"></span></div>
+  <div class="loc-grid">
+    <div class="panel">
+      <div class="pn-label">Cidades</div>
+      <div class="bars">
+        <div class="bar-row"><span class="b-l">Fortaleza</span><div class="b-track"><div class="b-fill" style="width:100%"></div></div><span class="b-v num">42,1%</span></div>
+        <div class="bar-row"><span class="b-l">São Paulo</span><div class="b-track"><div class="b-fill" style="width:27%"></div></div><span class="b-v num">11,3%</span></div>
+        <div class="bar-row"><span class="b-l">Caucaia</span><div class="b-track"><div class="b-fill" style="width:16%"></div></div><span class="b-v num">6,8%</span></div>
+        <div class="bar-row"><span class="b-l">Maracanaú</span><div class="b-track"><div class="b-fill" style="width:10%"></div></div><span class="b-v num">4,2%</span></div>
+        <div class="bar-row"><span class="b-l">Rio de Janeiro</span><div class="b-track"><div class="b-fill" style="width:9%"></div></div><span class="b-v num">3,9%</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="pn-label">Países</div>
+      <div class="bars">
+        <div class="bar-row"><span class="b-l">Brasil</span><div class="b-track"><div class="b-fill alt" style="width:100%"></div></div><span class="b-v num">94,6%</span></div>
+        <div class="bar-row"><span class="b-l">Portugal</span><div class="b-track"><div class="b-fill alt" style="width:2.2%"></div></div><span class="b-v num">2,1%</span></div>
+        <div class="bar-row"><span class="b-l">EUA</span><div class="b-track"><div class="b-fill alt" style="width:1.5%"></div></div><span class="b-v num">1,4%</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec"><h2>Melhores horários para publicar</h2><span class="rule"></span></div>
+  <div class="panel">
+    <div class="heat-scroll">
+    <table class="heat-table">
+      <tr>
+        <td class="day"></td>
+        <td class="hd">8h</td><td class="hd">9h</td><td class="hd">10h</td><td class="hd">11h</td><td class="hd">12h</td><td class="hd">13h</td>
+        <td class="hd">14h</td><td class="hd">15h</td><td class="hd">16h</td><td class="hd">17h</td><td class="hd">18h</td><td class="hd">19h</td>
+        <td class="hd">20h</td><td class="hd">21h</td>
+      </tr>
+      <tr><td class="day">Seg</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td style="background:var(--heat-500)"></td><td></td><td></td></tr>
+      <tr><td class="day">Ter</td><td></td><td></td><td></td><td></td><td style="background:var(--heat-300)"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td class="day">Qua</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td style="background:var(--heat-700)"></td><td></td><td></td></tr>
+      <tr><td class="day">Qui</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td style="background:var(--heat-600)"></td><td></td></tr>
+      <tr><td class="day">Sex</td><td></td><td></td><td></td><td style="background:var(--heat-250)"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td class="day">Sáb</td><td></td><td></td><td style="background:var(--heat-200)"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td class="day">Dom</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td style="background:var(--heat-400)"></td><td></td></tr>
+    </table>
+    </div>
+    <div class="heat-top">
+      <span class="heat-chip first"><small>1º</small>Quarta · 19h</span>
+      <span class="heat-chip"><i class="rampdot" style="background:var(--heat-600)"></i><small>2º</small>Quinta · 20h</span>
+      <span class="heat-chip"><i class="rampdot" style="background:var(--heat-500)"></i><small>3º</small>Segunda · 19h</span>
+    </div>
+  </div>
+
+  <div class="page-footer">
+    <b>DK Marketing Médico</b>
+    <span>@dra.marinaarrais · junho 2026</span>
+    <span class="num">5 / 6</span>
+  </div>
+</div>
+
+<!-- ═══════════ PÁGINA 6 · PRÓXIMOS PASSOS ═══════════ -->
+<div class="page">
+  <div class="sec"><h2>Recomendações para julho</h2><span class="rule"></span><span class="idx">05 / 05</span></div>
+
+  <div class="takeaway">
+    <div class="lbl">Plano de ação</div>
+    <div class="txt">Três movimentos para transformar o crescimento de junho em <span class="hit">tendência sustentada</span>.</div>
+  </div>
+
+  <div class="reco">
+    <div class="reco-card">
+      <div class="rc-n num">1</div>
+      <div>
+        <div class="rc-t">Dobrar a aposta em Reels educativos</div>
+        <div class="rc-d">Reels alcançaram em média 5× mais que imagens únicas em junho. Aumentar de 6 para 8–9
+        Reels por mês, mantendo o formato "sinais/mitos" que gerou os três melhores desempenhos.</div>
+      </div>
+      <span class="prio alta">Prioridade alta</span>
+    </div>
+    <div class="reco-card">
+      <div class="rc-n num">2</div>
+      <div>
+        <div class="rc-t">Transformar o conteúdo mais salvo em série</div>
+        <div class="rc-d">Salvamentos cresceram 41% — o público está guardando conteúdo sobre melasma para consultar depois.
+        Uma série quinzenal ("Diário do melasma") converte esse interesse em retorno recorrente ao perfil.</div>
+      </div>
+      <span class="prio alta">Prioridade alta</span>
+    </div>
+    <div class="reco-card">
+      <div class="rc-n num">3</div>
+      <div>
+        <div class="rc-t">Repensar as publicações de imagem única</div>
+        <div class="rc-d">Com 4,2 mil de alcance médio e engajamento de 3,1%, o formato rende pouco. Convertê-las em
+        carrosséis de 3–4 lâminas ou usá-las apenas para avisos do consultório.</div>
+      </div>
+      <span class="prio media">Prioridade média</span>
+    </div>
+  </div>
+
+  <div class="sec"><h2>Metas para julho</h2><span class="rule"></span></div>
+  <div class="goal-grid">
+    <div class="goal">
+      <div class="g-metric">Alcance</div>
+      <div class="g-target num">200 mil</div>
+      <div class="g-why">Crescimento de +9% sobre junho, sustentado pelo aumento de Reels.</div>
+    </div>
+    <div class="goal">
+      <div class="g-metric">Engajamento</div>
+      <div class="g-target num">5,0%</div>
+      <div class="g-why">Recuperar a queda de junho reduzindo posts de imagem única.</div>
+    </div>
+    <div class="goal">
+      <div class="g-metric">Novos seguidores</div>
+      <div class="g-target num">+550</div>
+      <div class="g-why">Ritmo atual + série de melasma convertendo alcance em seguidores.</div>
+    </div>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="closing">
+    <div>
+      <div class="c-t">Vamos conversar sobre esse plano?</div>
+      <div class="c-d">Sua equipe DK Marketing Médico prepara este relatório todo mês.</div>
+    </div>
+    <div class="c-b">contato@dkmarketing.med.br<br>@dkmarketingmedico</div>
+  </div>
+
+  <div class="page-footer">
+    <b>DK Marketing Médico</b>
+    <span>@dra.marinaarrais · junho 2026</span>
+    <span class="num">6 / 6</span>
+  </div>
+</div>
+
+</body>
+</html>

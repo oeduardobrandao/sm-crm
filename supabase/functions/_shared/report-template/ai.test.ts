@@ -6,6 +6,7 @@ const fixture: ReportData = {
   handle: "@drajuliana",
   specialty: "Dermatologia",
   period: "Maio 2026",
+  report_month: "2026-05",
   kpis: {
     followers_gained: { id: "followers_gained", value: 347, unit: "count" },
     engagement_rate: { id: "engagement_rate", value: 4.2, unit: "pct" },
@@ -16,7 +17,7 @@ const fixture: ReportData = {
     posts_count: { id: "posts_count", value: 18, unit: "count" },
   },
   kpi_deltas: { followers_pct_change: 12.4, engagement_pct_change: -0.3, reach_pct_change: 8.1 },
-  top_posts: [{ type: "reel", reach: 12400, engagement: 6.8, saves: 340, caption_preview: "5 dicas para..." }],
+  top_posts: [{ type: "reel", reach: 12400, engagement: 6.8, saves: 340, likes: 890, comments: 45, caption_preview: "5 dicas para..." }],
   content_breakdown: {
     reels: { count: 6, avg_reach: 8200, avg_engagement: 5.1 },
     carousels: { count: 8, avg_reach: 4100, avg_engagement: 3.8 },
@@ -35,6 +36,27 @@ Deno.test("buildAIPrompt includes system role and data payload", () => {
   assertEquals(systemPrompt.includes("ONLY use numbers from the provided data"), true);
   assertEquals(userPrompt.includes("@drajuliana"), true);
   assertEquals(userPrompt.includes("Maio 2026"), true);
+});
+
+Deno.test("buildAIPrompt strips base64 thumbnails from the data payload", () => {
+  // Seen in prod: a media-heavy month put megabytes of base64 JPEG into the
+  // prompt and Gemini rejected it with 400 INVALID_ARGUMENT (input token
+  // count over the limit) — so the report silently shipped without AI.
+  const withThumbs: ReportData = {
+    ...fixture,
+    top_posts: [
+      {
+        ...fixture.top_posts[0],
+        thumbnail_base64: "data:image/jpeg;base64," + "A".repeat(4096),
+      },
+    ],
+  };
+  const { userPrompt } = buildAIPrompt(withThumbs);
+  assertEquals(userPrompt.includes("thumbnail_base64"), false);
+  assertEquals(userPrompt.includes("AAAA"), false);
+  // The analytical fields still go through untouched.
+  assertEquals(userPrompt.includes('"caption_preview": "5 dicas para..."'), true);
+  assertEquals(userPrompt.includes('"reach": 12400'), true);
 });
 
 Deno.test("validateAIOutput accepts valid output", () => {

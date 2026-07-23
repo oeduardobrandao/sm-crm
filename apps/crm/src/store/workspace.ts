@@ -54,38 +54,35 @@ export async function getCurrentWorkspace(): Promise<{
 
 export async function updateWorkspace(
   workspaceId: string,
-  updates: { name?: string; logo_url?: string | null },
+  updates: { name?: string; logo_url?: string | null; report_splash_url?: string | null },
 ): Promise<void> {
   const { error } = await supabase.from('workspaces').update(updates).eq('id', workspaceId);
   if (error) throw error;
 }
 
+// Report v2 whitelabel surface: a single accent colour (shared with the client
+// Hub) plus an optional cover splash image. Typography/theme are part of the
+// report design now, so the legacy report_* columns are no longer read here.
+// Throws on failure rather than returning null: a swallowed error here left the
+// settings form showing its hardcoded defaults, and "Salvar" then wrote those
+// defaults over the workspace's real branding.
 export async function getWorkspaceBranding(): Promise<{
   brand_color: string;
-  report_secondary_color: string;
-  report_accent_color: string;
-  report_font_family: string;
-  report_theme: string;
+  report_splash_url: string | null;
   send_report_email: boolean;
-} | null> {
+}> {
   const contaId = await getContaId();
   const { data, error } = await supabase
     .from('workspaces')
-    .select(
-      'brand_color, report_secondary_color, report_accent_color, report_font_family, report_theme, send_report_email',
-    )
+    .select('brand_color, report_splash_url, send_report_email')
     .eq('id', contaId)
     .single();
-  if (error) return null;
+  if (error) throw error;
   return data;
 }
 
 export async function updateWorkspaceBranding(fields: {
   brand_color?: string;
-  report_secondary_color?: string;
-  report_accent_color?: string;
-  report_font_family?: string;
-  report_theme?: string;
   send_report_email?: boolean;
 }) {
   const contaId = await getContaId();
