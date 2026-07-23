@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import {
   getPostPublishState,
   TIPO_COLORS,
@@ -189,18 +189,28 @@ describe('buildTipoDayMarkers', () => {
     expect(marker?.label).toBe('1 Feed · 1 Carrossel · 1 Reels · 1 Stories');
   });
 
-  it('groups by local date, not UTC date', () => {
-    // Local 23:00 straddles the UTC-date boundary in any timezone west of UTC (e.g.
-    // America/Sao_Paulo, UTC-3): local 2026-07-24 23:00 is 2026-07-25T02:00:00.000Z. Local
-    // NOON (the `at()` helper above) never crosses that boundary, so a buggy
-    // `toISOString().slice(0, 10)` implementation would key this the same as the correct
-    // local-date grouping either way — it wouldn't be caught. This fixture actually
-    // distinguishes the two: a UTC-based key lands on '2026-07-25', not '2026-07-24'.
-    const posts: P[] = [
-      { id: 1, tipo: 'feed', scheduled_at: new Date(2026, 6, 24, 23, 0, 0).toISOString() },
-    ];
-    const keys = [...buildTipoDayMarkers(posts).keys()];
-    expect(keys).toEqual(['2026-07-24']);
+  describe('local vs UTC day keys', () => {
+    // A local-time key and a `toISOString().slice(0, 10)` key only diverge when the process
+    // offset is non-zero. CI runners default to TZ=UTC, where the two coincide — so without
+    // pinning an offset here this test would be inert in exactly the environment that gates
+    // merges. Pin UTC-3 (no DST year-round) so local 23:00 lands on the NEXT UTC day.
+    const realTZ = process.env.TZ;
+    beforeAll(() => {
+      process.env.TZ = 'America/Sao_Paulo';
+    });
+    afterAll(() => {
+      process.env.TZ = realTZ;
+    });
+
+    it('groups by local date, not UTC date', () => {
+      // Local 2026-07-24 23:00 at UTC-3 is 2026-07-25T02:00:00.000Z. A UTC-based key would
+      // land on '2026-07-25'; the correct local-date grouping keys it '2026-07-24'.
+      const posts: P[] = [
+        { id: 1, tipo: 'feed', scheduled_at: new Date(2026, 6, 24, 23, 0, 0).toISOString() },
+      ];
+      const keys = [...buildTipoDayMarkers(posts).keys()];
+      expect(keys).toEqual(['2026-07-24']);
+    });
   });
 
   it('separates distinct days', () => {
