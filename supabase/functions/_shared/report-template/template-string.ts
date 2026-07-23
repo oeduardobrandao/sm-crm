@@ -75,9 +75,10 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   /* ── páginas ── */
   .page {
     width: 210mm;
-    /* 1mm under the 11.69in paper Gotenberg renders: an exactly-297mm box is a
-       hair TALLER than the sheet, which on its own can emit a trailing blank page. */
-    min-height: 296mm;
+    /* Full A4. pdf.ts sizes the Gotenberg sheet a hair larger than this box, so
+       the page neither overflows onto a blank sheet nor leaves the body colour
+       showing at the edges. Change the two together or not at all. */
+    min-height: 297mm;
     margin: 0 auto;
     padding: 16mm 16mm 22mm;
     page-break-after: always;
@@ -130,6 +131,13 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     background: var(--ink);
     color: #FAFAF7;
     justify-content: space-between;
+  }
+  /* The cover is the only full-bleed page, so it is the only one where a
+     sub-pixel rounding seam at the sheet edge would be visible (light body
+     colour against dark ink). The spread shadow paints ink past the page box
+     and the sheet clips it; it costs no layout. */
+  @media print {
+    .cover { box-shadow: 0 0 0 3mm var(--ink); }
   }
   .cover-top { padding: 20mm 18mm 0; display: flex; justify-content: space-between; align-items: flex-start; }
   /* logo do workspace (branding.logo_base64) sobre placa clara — funciona com logo de qualquer cor */

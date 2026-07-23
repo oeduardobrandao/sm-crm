@@ -6,8 +6,14 @@ export function buildGotenbergRequest(
   const formData = new FormData();
   const htmlBlob = new Blob([html], { type: "text/html" });
   formData.append("files", htmlBlob, "index.html");
-  formData.append("paperWidth", "8.27");
-  formData.append("paperHeight", "11.69");
+  // A4 in inches, to enough precision to match the template's 210mm x 297mm
+  // `.page` box. The rounded 8.27 x 11.69 is 210.058 x 296.926mm — a sheet
+  // WIDER and SHORTER than the page, so the body colour showed as a seam down
+  // the side and a 3.5px band along the bottom of the full-bleed dark cover.
+  // These values are a hair larger than the page box in both axes, so the page
+  // never overflows onto a blank sheet either.
+  formData.append("paperWidth", "8.268"); // 210.007mm
+  formData.append("paperHeight", "11.693"); // 297.002mm
   formData.append("marginTop", "0");
   formData.append("marginBottom", "0");
   formData.append("marginLeft", "0");
