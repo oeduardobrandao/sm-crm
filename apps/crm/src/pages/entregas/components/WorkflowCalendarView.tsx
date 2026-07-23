@@ -56,7 +56,7 @@ export function WorkflowCalendarView({
   const [activePost, setActivePost] = useState<ClientePost | null>(null);
   const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
   const [hintDismissed, setHintDismissed] = useState(
-    () => localStorage.getItem('calendarHintDismissed') === 'true',
+    () => localStorage.getItem('calendarHintDismissed.v2') === 'true',
   );
 
   const sensors = useSensors(
@@ -197,7 +197,7 @@ export function WorkflowCalendarView({
 
   const dismissHint = () => {
     setHintDismissed(true);
-    localStorage.setItem('calendarHintDismissed', 'true');
+    localStorage.setItem('calendarHintDismissed.v2', 'true');
   };
 
   if (isLoading) {
@@ -210,8 +210,9 @@ export function WorkflowCalendarView({
       {!hintDismissed && (
         <div className="calendar-hint-banner">
           <span className="calendar-hint-text">
-            💡 Arraste posts da lista lateral para agendar, ou entre datas para reagendar. Arraste
-            de volta para remover a data.
+            💡 Arraste posts da lista lateral para agendar, ou entre datas para reagendar — inclusive
+            posts de outros workflows. Arraste de volta para remover a data (apenas posts deste
+            workflow).
           </span>
           <button onClick={dismissHint} className="calendar-hint-close" aria-label="Fechar dica">
             <X className="h-3.5 w-3.5" />
