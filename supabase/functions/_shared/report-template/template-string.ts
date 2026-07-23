@@ -75,7 +75,9 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   /* ── páginas ── */
   .page {
     width: 210mm;
-    min-height: 297mm;
+    /* 1mm under the 11.69in paper Gotenberg renders: an exactly-297mm box is a
+       hair TALLER than the sheet, which on its own can emit a trailing blank page. */
+    min-height: 296mm;
     margin: 0 auto;
     padding: 16mm 16mm 22mm;
     page-break-after: always;
@@ -116,7 +118,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   .takeaway .hit { font-weight: 700; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; text-decoration-color: rgba(28,25,23,0.35); }
 
   /* ── títulos ── */
-  .sec { display: flex; align-items: baseline; gap: 12px; margin: 28px 0 14px; }
+  .sec { display: flex; align-items: baseline; gap: 12px; margin: 22px 0 12px; }
   .sec:first-of-type { margin-top: 0; }
   .sec h2 { font-family: var(--font-display); font-size: 21px; font-weight: 600; letter-spacing: -0.01em; }
   .sec .idx { font-size: 10px; font-weight: 500; color: var(--tx3); }
@@ -366,7 +368,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   .aud-grid { display: grid; grid-template-columns: 195px 1fr; gap: 12px; }
   .panel {
     background: var(--card); border: 1px solid var(--bd); border-radius: 12px;
-    box-shadow: var(--card-shadow); padding: 17px 19px;
+    box-shadow: var(--card-shadow); padding: 14px 17px;
   }
   .panel .pn-label { font-size: 10px; font-weight: 500; color: var(--tx2); margin-bottom: 13px; }
   .donut-wrap { display: flex; align-items: center; gap: 4px; flex-direction: column; }
@@ -383,7 +385,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 
   /* heatmap */
   .heat-table { width: 100%; border-collapse: separate; border-spacing: 3px; }
-  .heat-table td { height: 20px; border-radius: 5px; background: var(--soft); }
+  .heat-table td { height: 18px; border-radius: 5px; background: var(--soft); }
   .heat-table .hd { font-size: 8.5px; color: var(--tx3); background: none; text-align: center; height: auto; }
   .heat-table .day { font-size: 9.5px; color: var(--tx2); background: none; text-align: right; padding-right: 8px; width: 36px; }
   .heat-top { display: flex; gap: 8px; margin-top: 13px; }

@@ -74,7 +74,7 @@ describe('downscaleImage', () => {
     expect(canvas.width).toBe(Math.round(1200 * (1080 / 9000)));
   });
 
-  it('fills the canvas white before drawing, to flatten transparency', async () => {
+  it("flattens transparency onto the report cover's backdrop, not white", async () => {
     const ctx = fakeCtx();
     const toBlob = vi.fn((cb: (b: Blob | null) => void) =>
       cb(new Blob(['x'], { type: 'image/jpeg' })),
@@ -91,7 +91,9 @@ describe('downscaleImage', () => {
     } as unknown as HTMLCanvasElement;
     vi.spyOn(document, 'createElement').mockReturnValue(canvas as HTMLElement & HTMLCanvasElement);
     await downscaleImage(new File(['x'], 'a.png', { type: 'image/png' }));
-    expect(ctx.fillStyle).toBe('#ffffff');
+    // Must track `.cover-art`'s background in the report template — a white
+    // fill turned every transparent PNG into a white block on the dark cover.
+    expect(ctx.fillStyle).toBe('#26221F');
     expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 800, 400);
     expect(ctx.fillRect.mock.invocationCallOrder[0]).toBeLessThan(
       ctx.drawImage.mock.invocationCallOrder[0],
