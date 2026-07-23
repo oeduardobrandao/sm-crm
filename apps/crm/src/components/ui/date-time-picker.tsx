@@ -22,6 +22,12 @@ export interface DateTimePickerProps {
    * day's tooltip. Deliberately domain-agnostic: this component knows nothing about posts.
    */
   dayMarkers?: Map<string, { colors: string[]; label: string }>;
+  /**
+   * Optional key for the dot colours, rendered as a compact row under the calendar. Only the
+   * entries whose colour actually appears in `dayMarkers` are shown, so the guide stays small
+   * and never explains a colour the user can't see. Ignored when `dayMarkers` is empty.
+   */
+  dayMarkerLegend?: { color: string; label: string }[];
 }
 
 function roundUpToNext5(date: Date): { h: number; m: number } {
@@ -47,6 +53,7 @@ export function DateTimePicker({
   clearable = true,
   futureOnly = false,
   dayMarkers,
+  dayMarkerLegend,
 }: DateTimePickerProps) {
   const [open, setOpen] = React.useState(false);
 
@@ -84,6 +91,15 @@ export function DateTimePicker({
   const selectedIsToday = value ? isToday(value) : false;
   const earliestTime =
     selectedIsToday && minDateTime ? roundUpToNext5(minDateTime) : { h: 0, m: 0 };
+
+  // Only key the colours actually present in this marker set, so the guide never explains a
+  // tipo the user isn't looking at.
+  const visibleLegend = React.useMemo(() => {
+    if (!dayMarkerLegend?.length || !dayMarkers?.size) return [];
+    const present = new Set<string>();
+    for (const marker of dayMarkers.values()) for (const c of marker.colors) present.add(c);
+    return dayMarkerLegend.filter((entry) => present.has(entry.color));
+  }, [dayMarkerLegend, dayMarkers]);
 
   const dayButton = React.useMemo(() => {
     if (!dayMarkers || dayMarkers.size === 0) return undefined;
@@ -215,6 +231,18 @@ export function DateTimePicker({
             ))}
           </select>
         </div>
+        {visibleLegend.length > 0 && (
+          <div className="border-t px-3 py-1.5">
+            <div className="dtp-legend">
+              {visibleLegend.map((entry) => (
+                <span key={entry.label} className="dtp-legend-item">
+                  <span className="dtp-legend-dash" style={{ background: entry.color }} />
+                  {entry.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         {futureOnly && (
           <div className="border-t px-3 py-1.5">
             <p className="text-[11px] text-muted-foreground">

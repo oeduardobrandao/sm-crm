@@ -113,3 +113,34 @@ describe('DateTimePicker day markers', () => {
     expect(document.activeElement).toBe(day16);
   });
 });
+
+describe('day marker legend', () => {
+  const legend = [
+    { color: '#eab308', label: 'Feed' },
+    { color: '#E1306C', label: 'Reels' },
+  ];
+
+  it('keys only the colours actually present in the markers', () => {
+    const markers = new Map([['2026-07-24', { colors: ['#eab308'], label: '1 Feed' }]]);
+    render(
+      <DateTimePicker
+        value={new Date(2026, 6, 20, 10, 0)}
+        dayMarkers={markers}
+        dayMarkerLegend={legend}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /20 jul 2026/i }));
+    // Feed has a dot this month; Reels does not, so explaining it would be noise.
+    expect(screen.getByText('Feed')).toBeInTheDocument();
+    expect(screen.queryByText('Reels')).not.toBeInTheDocument();
+  });
+
+  it('renders no legend when there are no markers to explain', () => {
+    const { container } = render(
+      <DateTimePicker value={new Date(2026, 6, 20, 10, 0)} dayMarkerLegend={legend} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /20 jul 2026/i }));
+    expect(container.querySelector('.dtp-legend')).not.toBeInTheDocument();
+    expect(document.querySelector('.dtp-legend')).toBeNull();
+  });
+});

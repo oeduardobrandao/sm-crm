@@ -23,6 +23,7 @@ import {
   getPostPublishState,
   PUBLISH_STATE_LABELS,
   PUBLISH_STATE_CLASS,
+  TIPO_LEGEND,
   type DayMarker,
 } from '../postLabels';
 
@@ -165,6 +166,7 @@ export function CalendarPostDetailPanel({
               futureOnly
               className="w-full"
               dayMarkers={dayMarkers}
+              dayMarkerLegend={TIPO_LEGEND}
             />
           </div>
         )}

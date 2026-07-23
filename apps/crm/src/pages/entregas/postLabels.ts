@@ -97,6 +97,12 @@ export const PUBLISH_STATE_CLASS: Record<PostPublishState, string> = {
   publicando: 'post-status--publicando',
 };
 
+/** Key for the tipo dashes/dots, in TIPO_ORDER. Consumed by DateTimePicker's legend. */
+export const TIPO_LEGEND: { color: string; label: string }[] = TIPO_ORDER.map((tipo) => ({
+  color: TIPO_COLORS[tipo],
+  label: TIPO_LABELS[tipo],
+}));
+
 export type DayMarker = { colors: string[]; label: string };
 
 /** Local-time `yyyy-MM-dd`. Must match how CalendarGrid builds its droppable ids — a

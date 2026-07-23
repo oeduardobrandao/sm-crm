@@ -108,6 +108,7 @@ import {
   PUBLISH_STATE_LABELS,
   PUBLISH_STATE_CLASS,
   buildTipoDayMarkers,
+  TIPO_LEGEND,
 } from '../postLabels';
 import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 
@@ -1247,6 +1248,7 @@ function SortablePostItem({
                 futureOnly
                 className="w-full"
                 dayMarkers={dayMarkers}
+                dayMarkerLegend={TIPO_LEGEND}
               />
             </div>
           </div>

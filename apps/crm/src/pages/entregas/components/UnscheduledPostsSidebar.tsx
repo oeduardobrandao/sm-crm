@@ -1,6 +1,6 @@
 import { useDroppable, useDraggable, useDndContext } from '@dnd-kit/core';
 import type { ClientePost } from '@/store/posts';
-import { TIPO_LABELS, TIPO_BADGE_COLORS } from '../postLabels';
+import { TIPO_LABELS, TIPO_BADGE_COLORS, TIPO_COLORS, TIPO_ORDER } from '../postLabels';
 import { LOCKED_STATUSES } from './CalendarGrid';
 
 interface UnscheduledPostsSidebarProps {
@@ -23,7 +23,6 @@ function DraggablePostCard({ post }: { post: ClientePost }) {
       className="sidebar-post-card"
       style={{
         opacity: isDragging ? 0.4 : 1,
-        borderLeftColor: '#eab308',
         cursor: isLocked ? 'not-allowed' : 'grab',
       }}
       {...(isLocked ? {} : { ...attributes, ...listeners })}
@@ -77,13 +76,17 @@ export function UnscheduledPostsSidebar({
 
       <div className="sidebar-legend">
         <div className="sidebar-legend-title">Legenda</div>
-        <div className="sidebar-legend-item">
-          <div className="sidebar-legend-dot" style={{ background: '#eab308' }} />
-          <span>Este workflow</span>
+        <div className="sidebar-legend-tipos">
+          {TIPO_ORDER.map((tipo) => (
+            <span key={tipo} className="sidebar-legend-item">
+              <span className="sidebar-legend-dash" style={{ background: TIPO_COLORS[tipo] }} />
+              {TIPO_LABELS[tipo]}
+            </span>
+          ))}
         </div>
-        <div className="sidebar-legend-item">
-          <div className="sidebar-legend-dot" style={{ background: '#3ecf8e' }} />
-          <span>Outros workflows</span>
+        <div className="sidebar-legend-item sidebar-legend-item--ownership">
+          <span className="sidebar-legend-swatch" />
+          De outro workflow
         </div>
       </div>
     </div>

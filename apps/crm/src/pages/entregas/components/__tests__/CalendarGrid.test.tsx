@@ -178,3 +178,77 @@ describe('whole-pill drag', () => {
     expect(dndKeyDownSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('card design', () => {
+  it('encodes tipo in the dash, not workflow ownership', () => {
+    const { container } = render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[
+          mkPost({ id: 20, titulo: 'Own reels', tipo: 'reels' }),
+          mkPost({ id: 21, titulo: 'Foreign reels', tipo: 'reels', workflow_id: 99 }),
+        ]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    // Same tipo => same dash colour, regardless of which workflow owns the post.
+    const dashes = [...container.querySelectorAll('.post-card-dash')] as HTMLElement[];
+    expect(dashes).toHaveLength(2);
+    expect(dashes[0].style.background).toBe(dashes[1].style.background);
+    expect(dashes[0].style.background).toBe('rgb(225, 48, 108)'); // reels #E1306C
+  });
+
+  it('shows the post title on the card so it is readable without opening it', () => {
+    render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[mkPost({ id: 22, titulo: 'Como dar acesso ao cliente' })]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    expect(screen.getByText('Como dar acesso ao cliente')).toBeInTheDocument();
+  });
+
+  it('marks a foreign post with the recessed surface and names its workflow', () => {
+    const { container } = render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[
+          mkPost({
+            id: 23,
+            titulo: 'Outro fluxo',
+            workflow_id: 99,
+            workflow_titulo: 'POSTS YASMIN',
+          }),
+        ]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    expect(container.querySelector('.calendar-post-card.foreign')).toBeInTheDocument();
+    expect(screen.getByText('POSTS YASMIN')).toBeInTheDocument();
+  });
+
+  it('leaves an own post unmarked and does not name its workflow', () => {
+    const { container } = render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[mkPost({ id: 24, titulo: 'Meu post', workflow_titulo: 'Meu fluxo' })]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    expect(container.querySelector('.calendar-post-card.foreign')).not.toBeInTheDocument();
+    expect(screen.queryByText('Meu fluxo')).not.toBeInTheDocument();
+  });
+});
