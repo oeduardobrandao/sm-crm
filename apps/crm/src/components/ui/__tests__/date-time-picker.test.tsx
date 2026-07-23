@@ -1,5 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, expect, it, beforeAll, vi } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import { describe, expect, it, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { DateTimePicker } from '../date-time-picker';
 
 beforeAll(() => {
@@ -9,6 +9,19 @@ beforeAll(() => {
 });
 
 describe('DateTimePicker day markers', () => {
+  // Pin "today" so the DateTimePicker's Calendar (no month/defaultMonth prop, per
+  // react-day-picker's getInitialMonth it always opens on the real current month) renders
+  // July 2026 regardless of the actual date the suite runs on. Fake only `Date` so
+  // testing-library's real timers (findBy/waitFor polling) keep working.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-07-15T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('renders no dots when dayMarkers is omitted', () => {
     render(<DateTimePicker value={new Date(2026, 6, 24, 10, 0)} />);
     fireEvent.click(screen.getByRole('button', { name: /24 jul 2026/i }));
@@ -67,5 +80,36 @@ describe('DateTimePicker day markers', () => {
     fireEvent.click(screen.getByRole('button', { name: /20 jul 2026/i }));
     fireEvent.click(screen.getByRole('button', { name: /24 de julho/i }));
     expect(onChange).toHaveBeenCalled();
+  });
+
+  // Regression: react-day-picker v9's default DayButton is the ONLY place DOM focus is
+  // moved (a ref + `useEffect(() => { if (modifiers.focused) ref.current?.focus(); })`).
+  // rdp's own arrow-key handler (useFocus.moveFocus) only updates INTERNAL state — it never
+  // touches the DOM. A custom DayButton that drops that ref/effect leaves visible DOM focus
+  // stuck on the originally-focused day while rdp's internal focus (and thus which day Enter
+  // would commit) silently moves on. Verified in
+  // node_modules/react-day-picker/dist/esm/components/DayButton.js.
+  it('moves DOM focus to the next day on ArrowRight when dots are rendered', () => {
+    const markers = new Map([['2026-07-24', { colors: ['#eab308'], label: '1 Feed' }]]);
+    render(<DateTimePicker value={new Date(2026, 6, 15, 10, 0)} dayMarkers={markers} />);
+    fireEvent.click(screen.getByRole('button', { name: /15 jul 2026/i }));
+
+    // Establish a real, independently-verified DOM focus baseline on day 15 (native .focus(),
+    // not fireEvent.focus — jsdom's real focus() also dispatches a genuine (non-simulated)
+    // focus event, which react-day-picker's onFocus handler picks up to record day 15 as its
+    // internally focused day, same as a keyboard user tabbing in would).
+    const day15 = screen.getByRole('button', { name: /15 de julho/i });
+    act(() => {
+      day15.focus();
+    });
+    expect(document.activeElement).toBe(day15);
+
+    // rdp's keydown handler computes "next day" from ITS internal focused day and calls
+    // setFocused — it doesn't care where DOM focus actually is, only which element the
+    // keydown was dispatched on.
+    fireEvent.keyDown(day15, { key: 'ArrowRight' });
+
+    const day16 = screen.getByRole('button', { name: /16 de julho/i });
+    expect(document.activeElement).toBe(day16);
   });
 });

@@ -92,13 +92,22 @@ export function DateTimePicker({
     // Rendering custom markup without forwarding silently loses all of it.
     return function DayButtonWithDots({
       day,
-      modifiers: _modifiers,
+      modifiers,
       ...buttonProps
     }: React.ComponentProps<NonNullable<NonNullable<CalendarProps['components']>['DayButton']>>) {
       const key = `${day.date.getFullYear()}-${String(day.date.getMonth() + 1).padStart(2, '0')}-${String(day.date.getDate()).padStart(2, '0')}`;
       const marker = dayMarkers.get(key);
+      // react-day-picker's own DayButton is the ONLY place that moves DOM focus (it never
+      // touches the DOM itself — useFocus.moveFocus() only updates internal state). Replacing
+      // the button without replicating this ref+effect leaves internal focus and visible DOM
+      // focus out of sync, breaking arrow-key navigation and Enter-to-select.
+      const ref = React.useRef<HTMLButtonElement>(null);
+      React.useEffect(() => {
+        if (modifiers.focused) ref.current?.focus();
+      }, [modifiers.focused]);
       return (
         <button
+          ref={ref}
           {...buttonProps}
           title={marker?.label}
           className={cn(buttonProps.className, 'relative')}

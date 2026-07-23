@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, expect, it, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CalendarPostDetailPanel } from '../CalendarPostDetailPanel';
 import type { ClientePost } from '@/store';
@@ -58,6 +58,12 @@ function renderPanel(
 describe('CalendarPostDetailPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Pin "today" so the reschedule DateTimePicker's Calendar (no month/defaultMonth prop —
+    // it always opens on the real current month) renders July 2026 regardless of the actual
+    // date the suite runs on. Fake only `Date` so testing-library's real timers (findBy/
+    // waitFor polling) keep working.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-07-15T12:00:00.000Z'));
     mockPreview.mockResolvedValue({
       conteudo_plain: 'Olá! Hoje vamos falar sobre a rotina.',
       responsavel_id: 9,
@@ -66,6 +72,10 @@ describe('CalendarPostDetailPanel', () => {
       instagram_permalink: null,
     });
     mockMedia.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders the title and metadata instantly from the post prop', () => {

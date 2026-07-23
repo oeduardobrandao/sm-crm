@@ -190,7 +190,15 @@ describe('buildTipoDayMarkers', () => {
   });
 
   it('groups by local date, not UTC date', () => {
-    const posts: P[] = [{ id: 1, tipo: 'feed', scheduled_at: at(2026, 7, 24) }];
+    // Local 23:00 straddles the UTC-date boundary in any timezone west of UTC (e.g.
+    // America/Sao_Paulo, UTC-3): local 2026-07-24 23:00 is 2026-07-25T02:00:00.000Z. Local
+    // NOON (the `at()` helper above) never crosses that boundary, so a buggy
+    // `toISOString().slice(0, 10)` implementation would key this the same as the correct
+    // local-date grouping either way — it wouldn't be caught. This fixture actually
+    // distinguishes the two: a UTC-based key lands on '2026-07-25', not '2026-07-24'.
+    const posts: P[] = [
+      { id: 1, tipo: 'feed', scheduled_at: new Date(2026, 6, 24, 23, 0, 0).toISOString() },
+    ];
     const keys = [...buildTipoDayMarkers(posts).keys()];
     expect(keys).toEqual(['2026-07-24']);
   });

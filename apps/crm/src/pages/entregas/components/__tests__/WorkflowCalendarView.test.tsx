@@ -205,7 +205,7 @@ describe('WorkflowCalendarView', () => {
     expect(await screen.findByRole('heading', { name: 'Post Agendado B' })).toBeTruthy();
   });
 
-  it('shows a read-only note for other-workflow posts', async () => {
+  it('shows the workflow-attribution note for other-workflow posts', async () => {
     mockGetClientePosts.mockResolvedValue([
       {
         id: 3,
@@ -338,7 +338,13 @@ describe('cross-workflow rescheduling', () => {
   it('names the owning workflow when a foreign post is rescheduled', async () => {
     mockGetClientePosts.mockResolvedValue([foreignPost]);
     mockUpdate.mockResolvedValue({} as never);
-    renderWithQuery(<WorkflowCalendarView {...baseProps} />);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    render(
+      <QueryClientProvider client={qc}>
+        <WorkflowCalendarView {...baseProps} />
+      </QueryClientProvider>,
+    );
     await screen.findByTitle(/Agosto — Carrosséis/);
 
     dndHandlers.onDragEnd?.({
@@ -359,6 +365,12 @@ describe('cross-workflow rescheduling', () => {
       ),
     );
     expect(vi.mocked(toast.success).mock.calls[0][0]).toContain('Agosto — Carrosséis');
+
+    // The headline cache invariant of this branch: rescheduling a foreign post must also
+    // invalidate THAT post's own workflow's board (['workflow-posts-with-props', 99]), not
+    // just the current workflow's — otherwise workflow 99's calendar keeps serving a stale
+    // (pre-move) list of posts after this drag.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-posts-with-props', 99] });
   });
 
   it('reschedules the currently selected post, not the first one selected', async () => {

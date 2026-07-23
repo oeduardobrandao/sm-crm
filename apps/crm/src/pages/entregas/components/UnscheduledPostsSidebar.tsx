@@ -1,8 +1,7 @@
 import { useDroppable, useDraggable, useDndContext } from '@dnd-kit/core';
 import type { ClientePost } from '@/store/posts';
 import { TIPO_LABELS, TIPO_BADGE_COLORS } from '../postLabels';
-
-const LOCKED_STATUSES = new Set(['agendado', 'postado', 'falha_publicacao']);
+import { LOCKED_STATUSES } from './CalendarGrid';
 
 interface UnscheduledPostsSidebarProps {
   posts: ClientePost[];
