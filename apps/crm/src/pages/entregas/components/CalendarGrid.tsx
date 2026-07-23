@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from 'react';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { parseISO, format, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -43,20 +43,29 @@ function PostPill({
   // only, enforced in resolveCalendarDrop.
   const canDrag = !isLocked;
 
-  // We deliberately omit dnd's `attributes` (role/aria/tabIndex): the pill body owns
-  // button semantics; only the handle carries the drag `listeners` (incl. the keyboard
-  // sensor), so keyboard-select (pill) and keyboard-drag (handle) never collide.
+  // The whole pill is the drag surface. We still omit dnd's `attributes` (role/aria/tabIndex)
+  // because the pill owns its own button semantics, and we re-declare `onKeyDown` after the
+  // listener spread so Enter/Space selects instead of starting a keyboard drag. The grip
+  // remains the keyboard-drag activator.
   const { listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
     id: `post-${post.id}`,
     data: { post },
     disabled: !canDrag,
   });
 
-  const time = post.scheduled_at ? format(parseISO(post.scheduled_at), 'HH:mm') : '';
-  const color = isCurrentWorkflow ? '#eab308' : '#3ecf8e';
-  const tooltip = isLocked
-    ? LOCKED_TOOLTIPS[post.status] || ''
-    : `${TIPO_LABELS[post.tipo]} · ${time} · ${post.workflow_titulo}${!isCurrentWorkflow ? ' (outro workflow)' : ''}`;
+  const wasDraggingRef = useRef(false);
+  useEffect(() => {
+    if (isDragging) wasDraggingRef.current = true;
+  }, [isDragging]);
+
+  const handleClick = () => {
+    // A finished drag emits a trailing click on the origin element; ignore exactly one.
+    if (wasDraggingRef.current) {
+      wasDraggingRef.current = false;
+      return;
+    }
+    onSelect(post);
+  };
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -64,6 +73,12 @@ function PostPill({
       onSelect(post);
     }
   };
+
+  const time = post.scheduled_at ? format(parseISO(post.scheduled_at), 'HH:mm') : '';
+  const color = isCurrentWorkflow ? '#eab308' : '#3ecf8e';
+  const tooltip = isLocked
+    ? LOCKED_TOOLTIPS[post.status] || ''
+    : `${TIPO_LABELS[post.tipo]} · ${time} · ${post.workflow_titulo}${!isCurrentWorkflow ? ' (outro workflow)' : ''}`;
 
   return (
     <div
@@ -76,10 +91,11 @@ function PostPill({
       style={{
         background: color,
         opacity: isDragging ? 0.4 : isLocked ? 0.6 : isCurrentWorkflow ? 1 : 0.8,
-        cursor: 'pointer',
+        cursor: canDrag ? 'grab' : 'pointer',
       }}
       title={tooltip}
-      onClick={() => onSelect(post)}
+      {...(canDrag ? listeners : {})}
+      onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
       {isLocked && <Lock className="h-2.5 w-2.5" style={{ flexShrink: 0 }} />}
@@ -90,11 +106,9 @@ function PostPill({
           tabIndex={0}
           aria-label="Mover post (arraste, ou foque e use as setas)"
           style={{ display: 'inline-flex', cursor: 'grab' }}
-          {...listeners}
-          onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
-            // Let dnd-kit's keyboard sensor activate a drag from the handle,
-            // then stop the event so it doesn't bubble to the pill's select handler.
+            // Let dnd-kit's keyboard sensor activate a drag from the handle, then stop the
+            // event so it doesn't bubble to the pill's select handler.
             (listeners as Record<string, ((ev: KeyboardEvent) => void) | undefined>)?.onKeyDown?.(
               e,
             );

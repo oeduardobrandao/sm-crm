@@ -135,3 +135,37 @@ describe('cross-workflow drag gate', () => {
     expect(screen.queryByLabelText(/Mover post/)).not.toBeInTheDocument();
   });
 });
+
+describe('whole-pill drag', () => {
+  it('selects when the grip itself is clicked', () => {
+    const onSelect = vi.fn();
+    render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[mkPost({ id: 8, titulo: 'Grip click' })]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={onSelect}
+        onMonthChange={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText(/Mover post/));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it('selects on Enter rather than starting a keyboard drag', () => {
+    const onSelect = vi.fn();
+    render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[mkPost({ id: 9, titulo: 'Enter select' })]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={onSelect}
+        onMonthChange={() => {}}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole('button', { name: /Enter select/ }), { key: 'Enter' });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+});
