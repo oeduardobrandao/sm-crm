@@ -74,3 +74,68 @@ export async function getAuthStatesByEmails(
   }
   return out;
 }
+
+export interface CancelResult {
+  status: "cancelled";
+  email: string;
+  deletedUser: boolean;
+  affectedWorkspaceIds: string[];
+}
+
+/**
+ * Admin-side invite cancel. Only pending/expired invites may be cancelled
+ * (accepted is live membership + history — refuse). When the invitee never
+ * finished onboarding the orphan auth user is deleted globally; we capture its
+ * full workspace_members set BEFORE the delete so callers can audit every
+ * workspace the user vanished from.
+ */
+export async function cancelInvite(
+  adminClient: any,
+  args: { inviteId: string; contaId: string },
+): Promise<CancelResult> {
+  const { data: invite } = await adminClient
+    .from("invites")
+    .select("id, conta_id, email, status")
+    .eq("id", args.inviteId)
+    .eq("conta_id", args.contaId)
+    .maybeSingle();
+
+  if (!invite) throw new Error("invite_not_found");
+  if (invite.status === "accepted") throw new Error("invite_not_cancellable");
+
+  const email: string = invite.email;
+
+  // Decide whether the orphan auth user should be deleted, and if so capture
+  // its workspace set first.
+  let deletedUser = false;
+  let affectedWorkspaceIds: string[] = [];
+  const authUser = await findAuthUserByEmail(adminClient, email);
+  if (authUser) {
+    const { data: profile } = await adminClient
+      .from("profiles").select("onboarding_complete").eq("id", authUser.id).maybeSingle();
+    const { data: pw, error: pwErr } = await adminClient
+      .rpc("user_has_password", { p_user_id: authUser.id });
+    const action = classifyExistingUser({
+      emailConfirmed: !!authUser.email_confirmed_at,
+      hasProfile: !!profile,
+      onboardingComplete: profile?.onboarding_complete === true,
+      hasPassword: coerceHasPassword(pw, pwErr),
+    });
+    if (action === "reinvite" || action === "resend-link") {
+      const { data: memberships } = await adminClient
+        .from("workspace_members").select("workspace_id").eq("user_id", authUser.id);
+      affectedWorkspaceIds = [...new Set((memberships ?? []).map((m: any) => m.workspace_id))] as string[];
+      await adminClient.from("profiles").delete().eq("id", authUser.id);
+      await adminClient.from("workspace_members").delete().eq("user_id", authUser.id);
+      await adminClient.auth.admin.deleteUser(authUser.id);
+      deletedUser = true;
+    }
+  }
+
+  await adminClient.from("invites").delete().eq("id", args.inviteId);
+
+  // Always include the target workspace even when no global delete happened.
+  if (!affectedWorkspaceIds.includes(args.contaId)) affectedWorkspaceIds.push(args.contaId);
+
+  return { status: "cancelled", email, deletedUser, affectedWorkspaceIds };
+}
