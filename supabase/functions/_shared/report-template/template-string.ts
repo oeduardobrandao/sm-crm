@@ -17,7 +17,13 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 <title>Relatório — {{HANDLE}} — {{PERIOD}}</title>
 <style>{{FONTS_CSS}}</style>
 <style>
-  @page { size: A4; margin: 0; }
+  /* Sized on Chromium's integer CSS-pixel grid, NOT A4. A4 is 794.56px wide;
+     Chromium floors the layout viewport to 794px and the .56px remainder is
+     unpaintable from CSS — it showed as a body-colour seam beside the
+     full-bleed ink cover (full story at the bleed note above .cover-top).
+     794x1123px = 210.06x297.13mm. pdf.ts sends preferCssPageSize so Gotenberg
+     uses this size; keep every page-box dimension on the integer px grid. */
+  @page { size: 794px 1123px; margin: 0; }
 
   :root {
     /* tokens — espelham o resolvedor de tema do Hub (theme.ts) */
@@ -74,11 +80,12 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 
   /* ── páginas ── */
   .page {
-    width: 210mm;
-    /* Full A4. pdf.ts sizes the Gotenberg sheet a hair larger than this box, so
-       the page neither overflows onto a blank sheet nor leaves the body colour
-       showing at the edges. Change the two together or not at all. */
-    min-height: 297mm;
+    width: 794px;
+    /* Full sheet. @page above declares the same 794x1123px, so the page box,
+       the layout grid, and the paper are all one integer-pixel size — nothing
+       overflows onto a blank sheet and no strip of body colour is left at the
+       edges. Change the two together or not at all. */
+    min-height: 1123px;
     margin: 0 auto;
     padding: 16mm 16mm 22mm;
     page-break-after: always;
@@ -132,40 +139,21 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     color: #FAFAF7;
     justify-content: space-between;
   }
-  /* Right-edge bleed for the full-bleed cover.
+  /* Full-bleed cover bleed note — why the page is sized in px, not A4.
 
-     Measured off a real Gotenberg PDF (2026-07): Chromium ignores the requested
-     paperWidth and emits a 595.92pt = 210.2273mm sheet, while the page box
-     paints exactly 210mm. That leaves a 0.227mm strip of body colour down the
-     right edge — invisible between two light surfaces, glaring beside the ink
-     cover. The bottom is already flush (0.012mm).
+     Measured off real Gotenberg PDFs (2026-07): with "size: A4" Chromium emits
+     a 595.92pt sheet = 794.56 CSS px, then floors the layout viewport to 794px.
+     The 0.56px remainder cannot be painted from CSS: box-shadow/outline clip at
+     the page box, a negative-inset ::before widens the document and triggers
+     shrink-to-fit, and widening .cover past the viewport also shrink-to-fits
+     (measured scale 0.99896), clawing back most of what it paints. Net result
+     was a permanent ~0.1mm body-colour seam down the cover's right edge.
 
-     Two mechanisms were tried and do NOT work, so don't reach for them again:
-       - box-shadow / outline: paged media clips at the page box. The PDF's ink
-         rect ends at 595.277pt, i.e. the spread never reached the sheet edge.
-       - an absolutely-positioned bleed (::before, negative inset): it paints,
-         but adds its overhang to the document's scrollable width (measured
-         779px -> 809px at sheet width), and a document wider than the sheet
-         makes Chromium shrink-to-fit, opening a gap on every edge instead.
-
-     ROOT CAUSE, measured across two PDFs: the sheet is 794.56 CSS px wide, but
-     Chromium lays out on a whole-pixel grid and floors that to 794px. The 0.56px
-     remainder is simply not addressable from CSS.
-
-     Widening the cover past the viewport does help, but not the way the earlier
-     note here claimed: it DOES trigger shrink-to-fit (measured scale 0.99896),
-     which claws back most of the gain. Net effect of the 210.3mm below, measured
-     before and after on real output: seam 0.148mm -> 0.103mm, at the cost of the
-     whole document rendering 0.1% smaller. Kept because 0.1% is imperceptible
-     and the seam is what shows, but do not expect widening further to close it —
-     the extra width is absorbed by more shrink, not more coverage.
-
-     The remaining 0.1mm is a renderer artefact, roughly a tenth of a millimetre.
-     The only way to hide it completely is an ink-coloured print canvas, which
-     just moves the hairline onto the five light pages. Deliberately not done. */
-  @media print {
-    .cover { width: 210.3mm; }
-  }
+     Fix: declare @page in integer CSS pixels (794x1123) and send
+     preferCssPageSize from pdf.ts, so the sheet IS the layout grid and there is
+     no sub-pixel remainder to leak. If a seam ever reappears, verify the
+     emitted MediaBox is 595.5x842.25pt before touching this file — anything
+     else means Chromium snapped the paper size again. */
   .cover-top { padding: 20mm 18mm 0; display: flex; justify-content: space-between; align-items: flex-start; }
   /* logo do workspace (branding.logo_base64) sobre placa clara — funciona com logo de qualquer cor */
   .cover-logo-plate {
