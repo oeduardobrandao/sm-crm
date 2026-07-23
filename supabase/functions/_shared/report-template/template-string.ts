@@ -148,13 +148,21 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
          779px -> 809px at sheet width), and a document wider than the sheet
          makes Chromium shrink-to-fit, opening a gap on every edge instead.
 
-     What is left is to make the box itself span the sheet and let the sheet crop
-     the remainder. 210.3mm clears the measured sheet by 0.073mm (0.2pt) — enough
-     to absorb Chromium snapping differently, small enough that the overflow
-     cannot trigger shrink-to-fit. The cover's 18mm padding means only the ink
-     background is cropped, never content. Scoped to the cover: on the light
-     pages a 0.227mm paper-on-grey seam is not visible, and leaving them at a
-     clean 210mm keeps the overflow off every other page. */
+     ROOT CAUSE, measured across two PDFs: the sheet is 794.56 CSS px wide, but
+     Chromium lays out on a whole-pixel grid and floors that to 794px. The 0.56px
+     remainder is simply not addressable from CSS.
+
+     Widening the cover past the viewport does help, but not the way the earlier
+     note here claimed: it DOES trigger shrink-to-fit (measured scale 0.99896),
+     which claws back most of the gain. Net effect of the 210.3mm below, measured
+     before and after on real output: seam 0.148mm -> 0.103mm, at the cost of the
+     whole document rendering 0.1% smaller. Kept because 0.1% is imperceptible
+     and the seam is what shows, but do not expect widening further to close it —
+     the extra width is absorbed by more shrink, not more coverage.
+
+     The remaining 0.1mm is a renderer artefact, roughly a tenth of a millimetre.
+     The only way to hide it completely is an ink-coloured print canvas, which
+     just moves the hairline onto the five light pages. Deliberately not done. */
   @media print {
     .cover { width: 210.3mm; }
   }
