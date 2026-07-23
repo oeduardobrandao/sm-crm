@@ -515,176 +515,164 @@ function FollowerChart({ history, postDates }: { history: any[]; postDates: any[
   );
 }
 
-// ---- Type Chart ----
+// ---- Insight helpers ----
+const formatPct = (v: number) => v.toFixed(1).replace('.', ',');
+
+const DAY_FULL: Record<string, string> = {
+  Seg: 'Segunda',
+  Ter: 'Terça',
+  Qua: 'Quarta',
+  Qui: 'Quinta',
+  Sex: 'Sexta',
+  Sab: 'Sábado',
+  Sáb: 'Sábado',
+  Dom: 'Domingo',
+};
+
+function InsightHeader({ kpi, sub }: { kpi: ReactNode; sub?: ReactNode }) {
+  return (
+    <div className="an-insight">
+      <h3 className="an-insight-kpi">{kpi}</h3>
+      {sub && <div className="an-insight-sub">{sub}</div>}
+    </div>
+  );
+}
+
+// ---- Type performance bars ----
 function TypeChart({
   typeBreakdown,
 }: {
   typeBreakdown: { type: string; count: number; avgEngagement: number }[];
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    if (!canvasRef.current || typeBreakdown.length === 0) return;
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const textColor = isDark ? '#e0e0e0' : '#333';
-    const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-    const colors = ['#eab308', '#42c8f5', '#f5a342', '#f542c8', '#3ecf8e'];
-    const chart = new Chart(canvasRef.current, {
-      type: 'bar',
-      data: {
-        labels: typeBreakdown.map((t) => `${t.type} (${t.count})`),
-        datasets: [
-          {
-            label: 'Engajamento Médio',
-            data: typeBreakdown.map((t) => t.avgEngagement),
-            backgroundColor: typeBreakdown.map((_, i) => colors[i % colors.length] + '99'),
-            borderRadius: 4,
-            barThickness: 28,
-          },
-        ],
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: (ctx: any) => `${ctx.parsed.x.toFixed(2)}%` } },
-        },
-        scales: {
-          x: {
-            grid: { color: gridColor },
-            ticks: { color: textColor, callback: (v: any) => v + '%' },
-          },
-          y: { grid: { display: false }, ticks: { color: textColor } },
-        },
-      },
-    });
-    return () => chart.destroy();
-  }, [typeBreakdown]);
   if (typeBreakdown.length === 0)
     return <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Sem dados.</p>;
+  const max = Math.max(...typeBreakdown.map((t) => t.avgEngagement), 0.1);
   return (
-    <div
-      style={{
-        position: 'relative',
-        height: Math.max(150, typeBreakdown.length * 50),
-        marginTop: '1rem',
-      }}
-    >
-      <canvas ref={canvasRef} />
+    <div style={{ marginTop: '0.5rem' }}>
+      {typeBreakdown.map((t, i) => {
+        const pct = (t.avgEngagement / max) * 80;
+        return (
+          <div key={t.type} className="an-tbar-row">
+            <div className="an-tbar-label">
+              {t.type}
+              <small>
+                {t.count} post{t.count !== 1 ? 's' : ''}
+              </small>
+            </div>
+            <div className="an-tbar-track">
+              <div className={`an-tbar-fill${i > 0 ? ' dim' : ''}`} style={{ width: `${pct}%` }} />
+              <span className="an-tbar-val" style={{ left: `${pct}%` }}>
+                {formatPct(t.avgEngagement)}%
+              </span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 // ---- Age Chart ----
 function AgeChart({ demographics }: { demographics: AudienceDemographics }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    if (!canvasRef.current) return;
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const textColor = isDark ? '#e0e0e0' : '#333';
-    const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-    const chart = new Chart(canvasRef.current, {
-      type: 'bar',
-      data: {
-        labels: demographics.age_gender.map((a) => a.age_range),
-        datasets: [
-          {
-            label: 'Masculino',
-            data: demographics.age_gender.map((a) => a.male),
-            backgroundColor: 'rgba(66,133,244,0.6)',
-            borderRadius: 4,
-          },
-          {
-            label: 'Feminino',
-            data: demographics.age_gender.map((a) => a.female),
-            backgroundColor: 'rgba(234,67,149,0.6)',
-            borderRadius: 4,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { labels: { color: textColor, boxWidth: 12 } } },
-        scales: {
-          x: { grid: { display: false }, ticks: { color: textColor } },
-          y: { grid: { color: gridColor }, ticks: { color: textColor } },
-        },
-      },
-    });
-    return () => chart.destroy();
-  }, [demographics]);
+  const groups = demographics.age_gender;
+  if (groups.length === 0) return null;
+  const maxVal = Math.max(...groups.flatMap((a) => [a.male, a.female]), 1);
+  const total = groups.reduce((s, a) => s + a.male + a.female, 0);
+  const hotIdx = groups.reduce(
+    (best, a, i) => (a.male + a.female > groups[best].male + groups[best].female ? i : best),
+    0,
+  );
+  const hotShare =
+    total > 0 ? Math.round(((groups[hotIdx].male + groups[hotIdx].female) / total) * 100) : 0;
   return (
-    <div style={{ position: 'relative', height: 200, marginBottom: '1rem' }}>
-      <canvas ref={canvasRef} />
+    <div style={{ marginBottom: '1rem' }}>
+      <div className="an-age-chart">
+        {groups.map((a, i) => (
+          <div
+            key={a.age_range}
+            className={`an-age-group${i === hotIdx ? ' hot' : ''}`}
+            title={`${a.age_range}: ${a.male.toLocaleString('pt-BR')} homens · ${a.female.toLocaleString('pt-BR')} mulheres`}
+          >
+            {i === hotIdx && total > 0 && (
+              <span className="an-age-peak">{hotShare}% do público</span>
+            )}
+            <div className="an-age-col m" style={{ height: `${(a.male / maxVal) * 100}%` }} />
+            <div className="an-age-col f" style={{ height: `${(a.female / maxVal) * 100}%` }} />
+          </div>
+        ))}
+      </div>
+      <div className="an-age-axis">
+        {groups.map((a, i) => (
+          <span key={a.age_range} className={i === hotIdx ? 'hot' : ''}>
+            {a.age_range}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
 
 // ---- Best Times Heatmap ----
+// The API returns a 7x24 grid but posts are sparse, so cells are aggregated into
+// 3h buckets (weighted by post count) — otherwise slots at e.g. 1h or 23h would
+// be invisible in a grid that samples only every 3rd hour.
 function BestTimesHeatmap({ data }: { data: BestPostingTimes }) {
-  const hours = [0, 3, 6, 9, 12, 15, 18, 21];
-  const max = Math.max(...data.heatmap.flat(), 0.1);
+  const bucketStarts = [0, 3, 6, 9, 12, 15, 18, 21];
+  const cols = data.heatmap[0]?.length ?? 0;
+  const bucketSize = cols >= 24 ? 3 : 1;
+  const buckets = data.labels_days.map((_, d) =>
+    bucketStarts.map((start, b) => {
+      let eng = 0;
+      let n = 0;
+      for (let i = 0; i < bucketSize; i++) {
+        const h = bucketSize === 3 ? start + i : b;
+        eng += (data.heatmap[d]?.[h] ?? 0) * (data.counts[d]?.[h] ?? 0);
+        n += data.counts[d]?.[h] ?? 0;
+      }
+      return { value: n > 0 ? eng / n : 0, count: n };
+    }),
+  );
+  const max = Math.max(...buckets.flat().map((c) => c.value), 0.1);
+  const topSlot = data.topSlots[0];
+  const topCell = topSlot
+    ? { day: topSlot.day, bucket: bucketSize === 3 ? Math.floor(topSlot.hour / 3) : topSlot.hour }
+    : null;
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 3 }}>
-        <thead>
-          <tr>
-            <th />
-            {hours.map((h) => (
-              <th
-                key={h}
-                style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 400 }}
-              >
-                {h}h
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {data.labels_days.map((day, d) => (
-            <tr key={d}>
-              <td
-                style={{
-                  fontSize: '0.7rem',
-                  color: 'var(--text-muted)',
-                  fontWeight: 500,
-                  textAlign: 'right',
-                  paddingRight: 4,
-                }}
-              >
-                {day}
-              </td>
-              {hours.map((h) => {
-                const val = data.heatmap[d][h];
-                const postCount = data.counts[d][h];
-                const intensity = max > 0 ? val / max : 0;
-                const isTop = data.topSlots.some((s) => s.day === d && s.hour === h);
-                const bg =
-                  intensity > 0 ? `rgba(76,175,80,${0.1 + intensity * 0.8})` : 'rgba(0,0,0,0.02)';
-                return (
-                  <td
-                    key={h}
-                    style={{
-                      background: bg,
-                      ...(isTop
-                        ? { outline: '2px solid var(--primary-color)', outlineOffset: -1 }
-                        : {}),
-                      fontSize: '0.6rem',
-                      textAlign: 'center',
-                      padding: '4px 2px',
-                    }}
-                    title={`${day} ${h}h: ${val.toFixed(1)}% eng. (${postCount} post${postCount !== 1 ? 's' : ''})`}
-                  >
-                    {val > 0 ? val.toFixed(1) + '%' : ''}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div>
+      <div className="an-hm">
+        <span />
+        {bucketStarts.map((h) => (
+          <span key={h} className="an-hm-hlab">
+            {h}h
+          </span>
+        ))}
+        {data.labels_days.map((day, d) => (
+          <Fragment key={day}>
+            <span className="an-hm-dlab">{day}</span>
+            {buckets[d].map((cell, b) => {
+              const step = cell.value > 0 ? 1 + Math.round((cell.value / max) * 7) : 0;
+              const isTop = topCell !== null && topCell.day === d && topCell.bucket === b;
+              return (
+                <span
+                  key={b}
+                  className={`an-hm-cell${isTop ? ' top' : ''}`}
+                  style={{ background: `var(--an-heat-${Math.min(step, 8)})` }}
+                  title={
+                    cell.count > 0
+                      ? `${day} ${bucketStarts[b]}h–${bucketStarts[b] + bucketSize - 1}h: ${formatPct(cell.value)}% eng. (${cell.count} post${cell.count !== 1 ? 's' : ''})`
+                      : `${day} ${bucketStarts[b]}h: sem posts`
+                  }
+                />
+              );
+            })}
+          </Fragment>
+        ))}
+      </div>
+      <div className="an-hm-scale">
+        <span>menos</span>
+        <span className="an-hm-ramp" />
+        <span>mais engajamento</span>
+      </div>
     </div>
   );
 }
@@ -1195,6 +1183,31 @@ function AnalyticsContent({
       count: t.count,
     }))
     .sort((a, b) => b.avgEngagement - a.avgEngagement);
+
+  // Insight headlines (computed client-side from the data above)
+  const typeTop = typeBreakdown[0];
+  const typeSecond = typeBreakdown[1];
+  const typeRatio =
+    typeTop && typeSecond && typeSecond.avgEngagement > 0
+      ? typeTop.avgEngagement / typeSecond.avgEngagement
+      : null;
+
+  const demoAgeGroups = demographicsData?.age_gender ?? [];
+  const demoAgeTotal = demoAgeGroups.reduce((s, a) => s + a.male + a.female, 0);
+  const demoHotAge =
+    demoAgeGroups.length > 0
+      ? demoAgeGroups.reduce((best, a) => (a.male + a.female > best.male + best.female ? a : best))
+      : null;
+  const demoFemaleDominant = demographicsData
+    ? demographicsData.gender_split.female >= demographicsData.gender_split.male
+    : false;
+  const demoCities = demographicsData?.cities ?? [];
+  const demoCityTotal = demoCities.reduce((s, c) => s + c.count, 0);
+  const demoTopCity = demoCities[0] ?? null;
+  const demoTopCityShare =
+    demoTopCity && demoCityTotal > 0 ? Math.round((demoTopCity.count / demoCityTotal) * 100) : 0;
+
+  const bestSlot = bestTimesData?.topSlots[0] ?? null;
 
   const handleSync = async () => {
     setSyncing(true);
@@ -1880,15 +1893,46 @@ function AnalyticsContent({
       {/* Type + Topic */}
       <div className="widgets-grid animate-up">
         <div className="card">
-          <div className="dashboard-hub-card-header">
-            <h3>Desempenho por Tipo</h3>
-          </div>
+          {typeTop && typeSecond && typeRatio !== null && typeRatio >= 1.3 ? (
+            <InsightHeader
+              kpi={
+                <>
+                  {typeTop.type} engaja <em>{formatPct(typeRatio)}×</em> mais que {typeSecond.type}
+                </>
+              }
+              sub={`${formatPct(typeTop.avgEngagement)}% vs ${formatPct(typeSecond.avgEngagement)}% de engajamento médio · últimos ${days} dias`}
+            />
+          ) : typeTop ? (
+            <InsightHeader
+              kpi={
+                <>
+                  <em>{typeTop.type}</em> é o formato que mais engaja
+                </>
+              }
+              sub={`${formatPct(typeTop.avgEngagement)}% de engajamento médio · últimos ${days} dias`}
+            />
+          ) : (
+            <div className="dashboard-hub-card-header">
+              <h3>Desempenho por Tipo</h3>
+            </div>
+          )}
           <TypeChart typeBreakdown={typeBreakdown} />
         </div>
         <div className="card">
-          <div className="dashboard-hub-card-header">
-            <h3>Desempenho por Tópico</h3>
-          </div>
+          {topicStats.length > 0 ? (
+            <InsightHeader
+              kpi={
+                <>
+                  <em>{topicStats[0].tag_name}</em> é o tema que mais engaja
+                </>
+              }
+              sub={`${formatPct(topicStats[0].avgEngagement)}% de engajamento médio em ${topicStats[0].count} post${topicStats[0].count !== 1 ? 's' : ''}`}
+            />
+          ) : (
+            <div className="dashboard-hub-card-header">
+              <h3>Desempenho por Tópico</h3>
+            </div>
+          )}
           <div
             style={{
               marginTop: '0.75rem',
@@ -1911,9 +1955,20 @@ function AnalyticsContent({
             </Button>
           </div>
           {topicStats.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              Atribua tags aos posts para ver o desempenho por tópico.
-            </p>
+            <>
+              {tagsData.length === 0 && (
+                <div className="an-ghost-pills">
+                  <span className="an-ghost-pill">bastidores</span>
+                  <span className="an-ghost-pill">dicas</span>
+                  <span className="an-ghost-pill">promoção</span>
+                </div>
+              )}
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                {tagsData.length === 0
+                  ? 'Crie tags e atribua aos posts para descobrir quais temas engajam mais.'
+                  : 'Atribua tags aos posts para ver o desempenho por tópico.'}
+              </p>
+            </>
           ) : (
             <div style={{ marginTop: '0.5rem' }}>
               {topicStats.map((t, i) => (
@@ -1954,118 +2009,125 @@ function AnalyticsContent({
         style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}
       >
         <div className="card">
-          <div className="dashboard-hub-card-header">
-            <h3>Demografia da Audiência</h3>
-          </div>
+          {demographicsData && demoHotAge && demoAgeTotal > 0 ? (
+            <InsightHeader
+              kpi={
+                <>
+                  {demoFemaleDominant ? 'Mulheres' : 'Homens'} de <em>{demoHotAge.age_range}</em>{' '}
+                  são o núcleo da audiência
+                </>
+              }
+              sub={
+                <>
+                  {demoFemaleDominant
+                    ? `${demographicsData.gender_split.female}% do público é feminino`
+                    : `${demographicsData.gender_split.male}% do público é masculino`}
+                  {demoTopCity && demoTopCityShare > 0 && (
+                    <>
+                      {' '}
+                      · {demoTopCityShare}% está em {demoTopCity.name.split(',')[0]}
+                    </>
+                  )}
+                </>
+              }
+            />
+          ) : (
+            <div className="dashboard-hub-card-header">
+              <h3>Demografia da Audiência</h3>
+            </div>
+          )}
           {!demographicsData ? (
             <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>
               Dados demográficos indisponíveis. A conta pode não ter seguidores suficientes ou a
               permissão instagram_manage_insights pode estar ausente.
             </p>
           ) : (
-            <div style={{ marginTop: '1rem' }}>
-              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Gênero</h4>
-              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+            <div>
+              <div className="an-split">
+                <div className="an-split-m" style={{ flex: demographicsData.gender_split.male }} />
                 <div
-                  style={{
-                    flex: 1,
-                    background: 'rgba(66,133,244,0.1)',
-                    borderRadius: 8,
-                    padding: '0.5rem',
-                    textAlign: 'center',
-                  }}
-                >
-                  <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#4285f4' }}>
-                    {demographicsData.gender_split.male}%
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Masculino</div>
-                </div>
-                <div
-                  style={{
-                    flex: 1,
-                    background: 'rgba(234,67,149,0.1)',
-                    borderRadius: 8,
-                    padding: '0.5rem',
-                    textAlign: 'center',
-                  }}
-                >
-                  <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ea4395' }}>
-                    {demographicsData.gender_split.female}%
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Feminino</div>
-                </div>
+                  className="an-split-f"
+                  style={{ flex: demographicsData.gender_split.female }}
+                />
               </div>
-              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Faixa Etária</h4>
+              <div className="an-split-labels">
+                <span>
+                  <span className="an-dot" style={{ background: 'var(--an-male)' }} />
+                  Masculino <strong>{demographicsData.gender_split.male}%</strong>
+                </span>
+                <span>
+                  <span className="an-dot" style={{ background: 'var(--an-female)' }} />
+                  Feminino <strong>{demographicsData.gender_split.female}%</strong>
+                </span>
+              </div>
+              <h4 className="an-mini-h">Faixa etária</h4>
               <AgeChart demographics={demographicsData} />
-              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Principais Cidades</h4>
-              {demographicsData.cities.slice(0, 5).map((c, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '0.3rem 0',
-                    fontSize: '0.85rem',
-                  }}
-                >
-                  <span>
-                    {i + 1}. {c.name}
-                  </span>
-                  <span style={{ color: 'var(--text-muted)' }}>
-                    {c.count.toLocaleString('pt-BR')}
-                  </span>
-                </div>
-              ))}
+              <h4 className="an-mini-h">Principais cidades</h4>
+              {demographicsData.cities.slice(0, 5).map((c, i) => {
+                const maxCity = demographicsData.cities[0]?.count || 1;
+                const [cityName, cityRegion] = c.name.split(/,\s*/, 2);
+                return (
+                  <div key={i} className="an-city-row">
+                    <span className="an-city-name">
+                      {cityName}{' '}
+                      {cityRegion && (
+                        <small style={{ color: 'var(--text-muted)' }}>{cityRegion}</small>
+                      )}
+                    </span>
+                    <span className="an-city-bar">
+                      <i style={{ width: `${(c.count / maxCity) * 100}%` }} />
+                    </span>
+                    <span className="an-city-val">{c.count.toLocaleString('pt-BR')}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
         <div className="card">
-          <div className="dashboard-hub-card-header">
-            <h3>Melhor Horário para Postar</h3>
-          </div>
+          {bestTimesData && bestTimesData.totalPosts >= 5 && bestSlot ? (
+            <InsightHeader
+              kpi={
+                <>
+                  {DAY_FULL[bestTimesData.labels_days[bestSlot.day]] ??
+                    bestTimesData.labels_days[bestSlot.day]}{' '}
+                  às <em>{bestTimesData.labels_hours[bestSlot.hour]}</em> é o melhor horário
+                </>
+              }
+              sub={`${formatPct(bestSlot.value)}% de engajamento médio · ${bestTimesData.totalPosts} posts nos últimos 90 dias`}
+            />
+          ) : (
+            <div className="dashboard-hub-card-header">
+              <h3>Melhor Horário para Postar</h3>
+            </div>
+          )}
           {!bestTimesData || bestTimesData.totalPosts < 5 ? (
             <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>
               Dados insuficientes. São necessários pelo menos 5 posts nos últimos 90 dias para
               análise.
             </p>
           ) : (
-            <>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
-                Baseado no engajamento de {bestTimesData.totalPosts} posts dos últimos 90 dias
-              </p>
-              <div style={{ marginTop: '0.75rem' }}>
-                <BestTimesHeatmap data={bestTimesData} />
-                {bestTimesData.topSlots.length > 0 && (
-                  <div style={{ marginTop: '1rem' }}>
-                    <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                      Top 3 Horários Recomendados
-                    </h4>
-                    {bestTimesData.topSlots.map((s, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem',
-                          padding: '0.3rem 0',
-                          fontSize: '0.85rem',
-                        }}
-                      >
-                        <span className="badge badge-success">{i + 1}</span>
-                        <span>
-                          {bestTimesData.labels_days[s.day]} às {bestTimesData.labels_hours[s.hour]}
-                        </span>
-                        <span style={{ color: 'var(--text-muted)' }}>
-                          {s.value.toFixed(1)}% eng. ({s.postCount} post{s.postCount > 1 ? 's' : ''}
-                          )
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
+            <div style={{ marginTop: '0.5rem' }}>
+              <BestTimesHeatmap data={bestTimesData} />
+              {bestTimesData.topSlots.length > 0 && (
+                <div style={{ marginTop: '1.2rem' }}>
+                  <h4 className="an-mini-h" style={{ margin: '0 0 0.5rem' }}>
+                    Horários recomendados
+                  </h4>
+                  {bestTimesData.topSlots.map((s, i) => (
+                    <div key={i} className="an-slot-row">
+                      <span className={`an-slot-rank${i === 0 ? ' r1' : ''}`}>{i + 1}</span>
+                      <span className="an-slot-when">
+                        {bestTimesData.labels_days[s.day]} às {bestTimesData.labels_hours[s.hour]}
+                      </span>
+                      <span className="an-slot-meta">
+                        {formatPct(s.value)}% eng. · {s.postCount} post{s.postCount > 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
