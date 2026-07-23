@@ -66,7 +66,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   }, [userId, verifiedIsAdmin]);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    // 'local' — a global sign-out would also kill this user's CRM sessions and any OAuth/MCP
+    // connector they've authorized. See the note in apps/crm/src/lib/supabase.ts.
+    await supabase.auth.signOut({ scope: 'local' });
     setUser(null);
     setAdminCheck(null);
   };

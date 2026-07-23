@@ -19,12 +19,6 @@ verify_jwt = false
 [functions.tiktok-sync-cron]
 verify_jwt = false
 
-[functions.design-render]
-verify_jwt = false
-
-[functions.design-render-sweep-cron]
-verify_jwt = false
-
 [functions.post-media-cleanup-cron]
 verify_jwt = false
 
@@ -62,12 +56,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.post-media-manage]
-verify_jwt = false
-
-[functions.design-manage]
-verify_jwt = false
-
-[functions.design-import]
 verify_jwt = false
 
 [functions.hub-instagram-feed]

@@ -1,10 +1,10 @@
 // tiktok-publish-cron (Task B5) — mirrors tiktok-refresh-cron_test.ts's convention (handler.ts's
 // timingSafeEqual auth gate tested in isolation, core.ts's business logic tested via DI'd
 // getFreshTikTokToken / tiktokFetch / buildTikTokMediaUrl / reportCronFailure against the
-// shared supabaseMock). fetchPostMedia/checkDesignReadiness are left to their REAL
-// implementations (imported by core.ts from _shared/instagram-publish-utils.ts) in most tests —
-// queued via `post_file_links`/`designs` responses on the mock db — except where a test only
-// cares about downstream behavior, where they're overridden directly for brevity.
+// shared supabaseMock). fetchPostMedia is left to its REAL implementation (imported by core.ts
+// from _shared/instagram-publish-utils.ts) in most tests — queued via `post_file_links`
+// responses on the mock db — except where a test only cares about downstream behavior, where
+// it is overridden directly for brevity.
 //
 // buildTikTokMediaUrl replaced a raw R2 signGetUrl call (tiktok-media proxy fast-follow):
 // TikTok's PULL_FROM_URL source needs a TikTok-verifiable URL prefix, which raw
@@ -135,7 +135,6 @@ Deno.test("tiktok-publish-cron init phase: caps at 5 inits per account per run, 
     },
     buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
     fetchPostMedia: async () => [{ id: 1, kind: "image", r2_key: "img/1.jpg", sort_order: 0 }],
-    checkDesignReadiness: async () => ({ ready: true, design: null }),
   }));
 
   assertEquals(response.status, 200);
@@ -191,7 +190,6 @@ Deno.test("tiktok-publish-cron init phase: reels hits video/init with a video pa
           { id: 2, kind: "image", r2_key: "img/1.jpg", sort_order: 0 },
           { id: 3, kind: "image", r2_key: "img/2.jpg", sort_order: 1 },
         ],
-    checkDesignReadiness: async () => ({ ready: true, design: null }),
   }));
 
   assertEquals(response.status, 200);
@@ -231,38 +229,6 @@ Deno.test("tiktok-publish-cron init phase: reels hits video/init with a video pa
     "each proxy token must resolve back to its linked image's r2_key, in order",
   );
   assertEquals(photoBody.post_info.description, "legenda carrossel");
-});
-
-// ── (d) init phase: design-not-ready defers, never calls init ──────────────────
-
-Deno.test("tiktok-publish-cron init phase: design still rendering defers the post (lock released, no init call, not a failure)", async () => {
-  const db = createSupabaseQueryMock();
-  const post = claimedPost({ post_id: 20 });
-  queueClaims(db, [post], [], []);
-
-  let initCalled = false;
-
-  const response = await runTikTokPublishCron(baseDeps(db, {
-    getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
-    tiktokFetch: async () => {
-      initCalled = true;
-      return { publish_id: "pub-1" };
-    },
-    buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
-    checkDesignReadiness: async () => ({
-      ready: false,
-      design: { id: 1, rev: 1, render_status: "rendering", is_stale: false },
-    }),
-  }));
-
-  assertEquals(response.status, 200);
-  assertEquals(initCalled, false, "init must never be called while the design is still rendering");
-
-  const updateCalls = callsFor(db, "workflow_posts", "update");
-  assertEquals(updateCalls.length, 1);
-  assertEquals(updateCalls[0].payload, { tiktok_publish_processing_at: null });
-
-  assertEquals(rpcCalls(db, "record_post_status_change").length, 0, "a deferral is not a failure");
 });
 
 // ── (e) status phase: PUBLISH_COMPLETE ──────────────────────────────────────────

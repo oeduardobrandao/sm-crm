@@ -97,7 +97,7 @@ export interface TikTokWebhookDeps {
   tiktokFetch?: typeof realTiktokFetch;
   confirmAndApplyPublishStatus?: typeof realConfirmAndApplyPublishStatus;
   /** Generates the tiktok_webhook_events row id client-side (same DI pattern as
-   * design-import/design-manage/generate-image's `randomUUID` seam) — avoids an
+   * file-upload-url/post-media-upload-url's `randomUUID` seam) — avoids an
    * insert().select().single() round trip just to learn the id we need for the later
    * processed_at update. */
   randomUUID?: () => string;

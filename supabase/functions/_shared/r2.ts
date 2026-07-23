@@ -97,11 +97,12 @@ export async function getObject(key: string): Promise<ReadableStream<Uint8Array>
 //
 // Both go through presign + plain fetch instead of `getR2().send(...)`: on the Supabase edge
 // runtime the aws-sdk's fetch handler HANGS INDEFINITELY on PutObject (100% reproducible —
-// zero bytes back, worker burns to the wall-clock kill, so callers like design-render die
-// without ever reaching their catch block and leave rows stuck 'rendering') and
-// intermittently on GetObject body streaming. The `requestHandler.requestTimeout` client
-// option demonstrably does not apply there. Presigning is pure local crypto (no network),
-// and a plain fetch with AbortSignal.timeout can always fail fast instead of hanging.
+// zero bytes back, worker burns to the wall-clock kill, so callers doing an R2 write, e.g.
+// brand-logo's upload or tiktok-media's cache-to-R2, die without ever reaching their catch
+// block and leave the caller's state update never applied) and intermittently on GetObject
+// body streaming. The `requestHandler.requestTimeout` client option demonstrably does not
+// apply there. Presigning is pure local crypto (no network), and a plain fetch with
+// AbortSignal.timeout can always fail fast instead of hanging.
 
 const OBJECT_FETCH_TIMEOUT_MS = 30_000;
 

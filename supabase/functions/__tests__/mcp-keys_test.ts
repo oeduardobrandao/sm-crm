@@ -22,9 +22,12 @@ Deno.test("agent preset is read-only and within the allowlist", () => {
   }
 });
 
-Deno.test("estudio scopes (design §9): allowlisted, and NEVER in the read-only agent preset", () => {
+// Estúdio was retired from the MCP connector — a key can no longer be minted with its scopes.
+Deno.test("retired estudio scopes cannot be granted to a new key", () => {
   for (const s of ["designs:write", "images:generate"]) {
-    assert((MCP_ALLOWED_SCOPES as readonly string[]).includes(s), `${s} in allowlist`);
+    assert(!(MCP_ALLOWED_SCOPES as readonly string[]).includes(s), `${s} NOT in allowlist`);
     assert(!(MCP_AGENT_PRESET as readonly string[]).includes(s), `${s} NOT in agent preset`);
+    assertEquals(validateScopes([s]), false);
+    assertEquals(validateScopes(["posts:read", s]), false);
   }
 });
