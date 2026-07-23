@@ -52,7 +52,7 @@ a permission boundary for dates.
 | Drag between date cells | yes | **yes (new)** | no |
 | `Reagendar` picker in detail panel | yes | **yes (new)** | no |
 | Drag to `Sem data` / `Remover data` | yes | no | no |
-| `Abrir post completo` | yes | no | n/a |
+| `Abrir post completo` | yes | no | own only — lock is irrelevant |
 
 `LOCKED_STATUSES` (`agendado`, `postado`, `falha_publicacao`) continue to block all date edits
 regardless of which workflow owns the post. `LOCKED_TOOLTIPS` copy is unchanged.
@@ -106,8 +106,32 @@ const invalidateQueries = useCallback((workflowId?: number) => {
 }, [qc, clienteId, currentWorkflowId]);
 ```
 
-Every call site passes the moved post's `workflow_id`. `pendingDrop` gains a `workflowId` field so
-`handleTimeConfirm` can pass it through; `handlePanelReschedule` reads it from `selectedPost`.
+Every call site passes the moved post's `workflow_id`.
+
+**Resolving the moved post.** Both the invalidation key and the toast copy need the post's workflow
+— id *and* title. `pendingDrop` gains **no** new fields; instead `handleTimeConfirm` looks the post
+up in `allPosts`:
+
+```
+const moved = allPosts.find((p) => p.id === pendingDrop.postId);
+```
+
+which yields `workflow_id` and `workflow_titulo` in one step. Carrying a denormalised
+`workflowTitulo` on `pendingDrop` would be a second copy of data already in the query cache, and it
+would go stale if the post is refetched between drop and confirm.
+
+`handleTimeConfirm`'s dependency array therefore gains `allPosts`. A `null` `moved` (post deleted
+in another tab between drop and confirm) falls back to the current non-workflow-qualified toast
+rather than throwing.
+
+**Stale-closure trap in `handlePanelReschedule`.** Its deps are currently
+`[selectedPostId, invalidateQueries]` ([WorkflowCalendarView.tsx:177](../../../apps/crm/src/pages/entregas/components/WorkflowCalendarView.tsx)).
+Reading `selectedPost` inside it without adding it to the deps captures the first render's value —
+the callback would keep invalidating and naming whichever post was selected when the component
+mounted, silently and without an error. `selectedPost` is derived from `scheduledPosts`, so the
+honest dep set is `[selectedPost, invalidateQueries]` (`selectedPostId` becomes redundant, since
+`selectedPost` already changes with it). This is the same class of bug for both callbacks and is
+the reason `allPosts` is spelled out as a dep above rather than left implicit.
 
 ### Toast copy
 
@@ -127,7 +151,11 @@ single stale boolean per browser and reading it would defeat the point of the bu
 New copy:
 
 > 💡 Arraste posts da lista lateral para agendar, ou entre datas para reagendar — inclusive posts
-> de outros workflows. Arraste de volta para remover a data.
+> de outros workflows. Arraste de volta para remover a data (apenas posts deste workflow).
+
+The trailing parenthetical is load-bearing: without it, "inclusive posts de outros workflows"
+reads as scoping the whole sentence, teaching exactly the one thing slice 1 forbids. The rejection
+toast would then be correcting a claim the banner just made.
 
 ---
 
@@ -138,6 +166,14 @@ New copy:
 `{...listeners}` moves from the grip span to the pill root. The grip keeps `setActivatorNodeRef`
 and its existing forwarding `onKeyDown`, so keyboard drag survives — it stops being the *only* way
 to start one.
+
+**The grip's `onClick={(e) => e.stopPropagation()}` is deleted.** It existed to stop a click on the
+handle from bubbling to the pill's select handler; now that the entire pill is one uniform drag-and
+-select surface, keeping it would leave a small dead zone in the middle of the pill where clicking
+does nothing — precisely the inconsistency this slice exists to remove. Removing it is safe because
+`wasDraggingRef` (below) already suppresses the click that follows a real drag, whether that drag
+started on the grip or anywhere else. After this, the grip's only retained handlers are the
+forwarding `onKeyDown` and `setActivatorNodeRef`.
 
 Ordering matters on the root element: the spread comes first, then `onKeyDown={handleKeyDown}`
 overrides dnd-kit's keyboard listener. Otherwise Enter/Space on the pill would start a keyboard
@@ -208,6 +244,21 @@ dot row (max 4 dots, 4px, 2px gap) below it, and sets a native `title` with the 
 `2 Feed · 1 Reels`. The tooltip carries the counts so the popover needs no legend row; it is
 already tall with the time selects and the `Mínimo 15 min no futuro` note.
 
+**The custom `DayButton` must spread the props react-day-picker hands it** onto the underlying
+`<button>` — `className`, `onClick`, `disabled`, `aria-selected`, and the rest. `Calendar` styles
+days entirely through `classNames.day_button` (`buttonVariants({ variant: 'ghost' })`, `h-9 w-9`),
+so a `DayButton` that renders its own markup without forwarding silently loses day sizing,
+selection highlight, the `futureOnly` disabled state, and click-to-select — with no error. Shape:
+
+```
+DayButton: ({ day, modifiers, ...buttonProps }) => (
+  <button {...buttonProps} title={marker?.label}>
+    {day.date.getDate()}
+    {marker && <span className="dtp-day-dots">…</span>}
+  </button>
+)
+```
+
 ### Marker construction
 
 New shared helper alongside the other post display logic in
@@ -261,9 +312,12 @@ not stop at a workflow boundary.
    with `components` destructured out of the rest-spread. This is a latent bug in a shared
    component that slice 3 would be the first to trigger.
 
-2. **`TIPO_COLORS` is duplicated three ways.** `CalendarGrid` (string values), `UnscheduledPostsSidebar`
-   (`{bg, text}` pairs), and `CalendarPostDetailPanel` (string values) each declare their own. The
-   canonical palette moves to `postLabels.ts` next to the existing `TIPO_LABELS`:
+2. **`TIPO_COLORS` is duplicated three ways — and `TIPO_LABELS` four.** `CalendarGrid` (string
+   values), `UnscheduledPostsSidebar` (`{bg, text}` pairs), and `CalendarPostDetailPanel` (string
+   values) each declare their own colors. Worse, `postLabels.ts` *already exports* `TIPO_LABELS`
+   and four files shadow it with a local copy anyway: `CalendarGrid`, `UnscheduledPostsSidebar`,
+   `WorkflowCalendarView`, and `HistoryDrawer`. Three of those four are files these slices already
+   edit. The canonical palette moves to `postLabels.ts` next to `TIPO_LABELS`:
 
    ```ts
    export const TIPO_COLORS: Record<WorkflowPost['tipo'], string> = {
@@ -272,12 +326,31 @@ not stop at a workflow boundary.
    ```
 
    The sidebar's `{bg, text}` shape is derived from it (`bg` is the same hex with a `25` alpha
-   suffix, which is exactly what it hardcodes today) rather than kept as a second source.
+   suffix, which is exactly what it hardcodes today) rather than kept as a second source. Each of
+   the local `TIPO_LABELS` shadows is deleted in favour of the existing `postLabels.ts` export.
+
+   **`HistoryDrawer` is the one file pulled in purely for this cleanup** — no slice otherwise
+   touches it. Its shadow is already typed `Record<WorkflowPost['tipo'], string>` with identical
+   values, so removing it is a pure import swap with no behavior change. Say so if you'd rather
+   leave it and keep the diff strictly to files the slices already edit; the tradeoff is one
+   surviving shadow that reads like an oversight.
 
    The Hub's `PostCalendar` uses a **different** tipo palette (`feed #3b82f6`, `reels #8b5cf6`,
    `stories #f59e0b`, `carrossel #10b981`). That divergence is left alone — this is a CRM screen
    and must match the CRM calendar it sits in front of. Unifying the two apps' palettes is a
    separate decision.
+
+### Accepted color collision
+
+`carrossel` is `#3ecf8e` — the same green the calendar uses for "belongs to another workflow". With
+slice 3 putting tipo-colored dots on a screen that also shows green foreign pills, one green means
+two different things depending on where it appears.
+
+Accepted rather than fixed. The two never share a surface: pills live in the month grid and carry
+text (`Carrossel · 20:00`), dots live inside the date-picker popover where workflow ownership isn't
+represented at all. Recoloring either would ripple through the legend, the sidebar swatches, and
+the detail panel's thumbnail fallback for a collision that has no rendering context in common.
+Worth revisiting only if ownership ever gets surfaced inside the picker.
 
 ---
 
@@ -294,7 +367,8 @@ imported broadly.
 | `buildTipoDayMarkers` | pure function: null `scheduled_at` skipped, `excludePostId` honoured, one dot per distinct tipo, stable dot order, tooltip text, local-date grouping |
 | `PostPill` | foreign non-locked pill exposes drag affordance; locked pill (either workflow) does not; grip retains `aria-label`; Enter/Space selects rather than starting a drag |
 | `CalendarPostDetailPanel` | foreign post renders `Reagendar` but **not** `Remover data` or `Abrir post completo`; locked post renders neither; own unlocked post renders all three |
-| `WorkflowCalendarView` | foreign post dropped on `unscheduled-zone` calls `toast.info` and does **not** call `updateWorkflowPost`; foreign reschedule invalidates the foreign workflow's key; foreign success toast includes the workflow name |
+| `WorkflowCalendarView` | foreign post dropped on `unscheduled-zone` calls `toast.info` and does **not** call `updateWorkflowPost`; foreign reschedule invalidates the foreign workflow's key; foreign success toast includes the workflow name; toast falls back to the plain copy when the post is missing from `allPosts` |
+| `WorkflowCalendarView` deps | select post A, then select post B, then reschedule from the panel → `updateWorkflowPost` is called with **B**'s id. Fails if `handlePanelReschedule` keeps a stale `selectedPost` closure |
 | `DateTimePicker` | absent `dayMarkers` renders unchanged; present markers render dots and `title`; nav chevrons survive a caller-supplied `components` prop |
 
 Trailing-click suppression is not reliably reproducible in jsdom (dnd-kit's pointer sequence and
