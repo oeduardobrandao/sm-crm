@@ -1,6 +1,6 @@
 import { assertEquals } from "./assert.ts";
 import { assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { sendPendingWorkspaceInvite } from "../invite-user/pending-invite.ts";
+import { sendPendingWorkspaceInvite } from "../_shared/invite-pending.ts";
 
 const input = {
   contaId: "11111111-1111-4111-8111-111111111111",

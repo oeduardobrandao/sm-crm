@@ -4,7 +4,7 @@ import { seatsAvailable } from "./seats.ts";
 import { classifyExistingUser, coerceHasPassword } from "../_shared/invite-classify.ts";
 import { sendInviteEmail } from "../_shared/invite-email.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
-import { sendPendingWorkspaceInvite } from "./pending-invite.ts";
+import { sendPendingWorkspaceInvite } from "../_shared/invite-pending.ts";
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 
 async function findAuthUserByEmail(adminClient: any, email: string) {
