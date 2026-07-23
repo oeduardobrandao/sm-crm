@@ -235,6 +235,43 @@ REVOKE ALL ON FUNCTION admin_workspace_last_activity(uuid[]) FROM authenticated;
 GRANT EXECUTE ON FUNCTION admin_workspace_last_activity(uuid[]) TO service_role;
 
 -- ============================================================
+-- 6b. Drop an ORPHANED RPC that also reads `designs`: attach_image_to_post.
+--
+--     This one is prod-only drift, which is why the first run of this migration aborted at 7c
+--     rather than here: its creating migration (20260707000001) lived on the abandoned
+--     `feat/mcp-attach-image` branch and was applied straight to prod but never merged, so no
+--     file in this repo defines it. It is dead, not merely unused: the MCP tool that called it
+--     was superseded by create_media_upload + set_post_media (PR #195, 20260707000002) and
+--     retired from the server on 2026-07-07; this repo contains zero references to the name.
+--     Dropping it was already an open follow-up from that work.
+--
+--     It is dropped rather than repaired (unlike the two functions in step 6) precisely because
+--     it is superseded — recreating dead code minus a guard would leave a live-looking write
+--     path that nothing calls. Signature is resolved from the catalog so an argument-type
+--     mismatch cannot silently no-op under IF EXISTS, the failure mode this file exists to
+--     avoid; the loop is a no-op on any database that never had the orphan (staging, local).
+--
+--     RESTRICT (the default), NOT CASCADE — deliberately unlike step 3. Step 3 cascades because
+--     those functions are removed together with the tables they serve, so a dependency is
+--     expected. Here the object is prod-only drift that no file in this repo describes: if
+--     something turns out to depend on it, this must abort and surface that, never silently
+--     drop the dependent too.
+-- ============================================================
+DO $$
+DECLARE
+  sigs text[];
+  sig  text;
+BEGIN
+  SELECT coalesce(array_agg(p.oid::regprocedure::text), ARRAY[]::text[]) INTO sigs
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'attach_image_to_post';
+  FOREACH sig IN ARRAY sigs LOOP
+    EXECUTE format('DROP FUNCTION IF EXISTS %s', sig);
+  END LOOP;
+END $$;
+
+-- ============================================================
 -- 7. Fail loudly on an unexpected end state.
 --    Both previous versions of this migration were wrong in the same way: an object name that
 --    silently no-opped under IF EXISTS while the migration reported success. These assertions
