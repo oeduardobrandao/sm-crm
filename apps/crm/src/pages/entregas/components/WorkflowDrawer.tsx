@@ -666,7 +666,7 @@ export function WorkflowDrawer({
               {showCalendar ? 'Posts' : 'Calendário'}
             </button>
             <button
-              className="drawer-close-btn"
+              className="drawer-close-btn drawer-fullscreen-btn"
               onClick={toggleFullscreen}
               title={isFullscreen ? 'Recolher' : 'Expandir'}
             >
@@ -679,7 +679,7 @@ export function WorkflowDrawer({
         </div>
 
         {/* Posts section */}
-        <div className="drawer-body">
+        <div className={`drawer-body${showCalendar ? ' drawer-body--calendar' : ''}`}>
           {showCalendar ? (
             <WorkflowCalendarView
               clienteId={clienteId}
