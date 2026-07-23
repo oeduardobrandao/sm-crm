@@ -4,7 +4,7 @@ import { ptBR } from 'date-fns/locale';
 import { Calendar as CalendarIcon, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
+import { Calendar, type CalendarProps } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 const MIN_SCHEDULE_MINUTES = 15;
@@ -17,6 +17,17 @@ export interface DateTimePickerProps {
   disabled?: boolean;
   clearable?: boolean;
   futureOnly?: boolean;
+  /**
+   * Day key (`yyyy-MM-dd`, local time) → dots to render beneath the day number and that
+   * day's tooltip. Deliberately domain-agnostic: this component knows nothing about posts.
+   */
+  dayMarkers?: Map<string, { colors: string[]; label: string }>;
+  /**
+   * Optional key for the dot colours, rendered as a compact row under the calendar. Only the
+   * entries whose colour actually appears in `dayMarkers` are shown, so the guide stays small
+   * and never explains a colour the user can't see. Ignored when `dayMarkers` is empty.
+   */
+  dayMarkerLegend?: { color: string; label: string }[];
 }
 
 function roundUpToNext5(date: Date): { h: number; m: number } {
@@ -41,6 +52,8 @@ export function DateTimePicker({
   disabled,
   clearable = true,
   futureOnly = false,
+  dayMarkers,
+  dayMarkerLegend,
 }: DateTimePickerProps) {
   const [open, setOpen] = React.useState(false);
 
@@ -78,6 +91,60 @@ export function DateTimePicker({
   const selectedIsToday = value ? isToday(value) : false;
   const earliestTime =
     selectedIsToday && minDateTime ? roundUpToNext5(minDateTime) : { h: 0, m: 0 };
+
+  // Only key the colours actually present in this marker set, so the guide never explains a
+  // tipo the user isn't looking at.
+  const visibleLegend = React.useMemo(() => {
+    if (!dayMarkerLegend?.length || !dayMarkers?.size) return [];
+    const present = new Set<string>();
+    for (const marker of dayMarkers.values()) for (const c of marker.colors) present.add(c);
+    return dayMarkerLegend.filter((entry) => present.has(entry.color));
+  }, [dayMarkerLegend, dayMarkers]);
+
+  const dayButton = React.useMemo(() => {
+    if (!dayMarkers || dayMarkers.size === 0) return undefined;
+    // Spread react-day-picker's own props onto the button: `Calendar` styles days entirely
+    // through classNames.day_button, and selection/disabled state arrives the same way.
+    // Rendering custom markup without forwarding silently loses all of it.
+    return function DayButtonWithDots({
+      day,
+      modifiers,
+      ...buttonProps
+    }: React.ComponentProps<NonNullable<NonNullable<CalendarProps['components']>['DayButton']>>) {
+      const key = `${day.date.getFullYear()}-${String(day.date.getMonth() + 1).padStart(2, '0')}-${String(day.date.getDate()).padStart(2, '0')}`;
+      const marker = dayMarkers.get(key);
+      // react-day-picker's own DayButton is the ONLY place that moves DOM focus (it never
+      // touches the DOM itself — useFocus.moveFocus() only updates internal state). Replacing
+      // the button without replicating this ref+effect leaves internal focus and visible DOM
+      // focus out of sync, breaking arrow-key navigation and Enter-to-select.
+      const ref = React.useRef<HTMLButtonElement>(null);
+      React.useEffect(() => {
+        if (modifiers.focused) ref.current?.focus();
+      }, [modifiers.focused]);
+      return (
+        <button
+          ref={ref}
+          {...buttonProps}
+          title={marker?.label}
+          className={cn(buttonProps.className, 'relative')}
+        >
+          {day.date.getDate()}
+          {marker && (
+            <span className="dtp-day-dots">
+              {marker.colors.map((color, i) => (
+                <span
+                  key={i}
+                  data-testid="day-dot"
+                  className="dtp-day-dot"
+                  style={{ background: color }}
+                />
+              ))}
+            </span>
+          )}
+        </button>
+      );
+    };
+  }, [dayMarkers]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -136,6 +203,7 @@ export function DateTimePicker({
           onSelect={handleDateSelect}
           disabled={calendarDisabled}
           initialFocus
+          components={dayButton ? { DayButton: dayButton } : undefined}
         />
         <div className="border-t px-3 py-2 flex items-center gap-2">
           <span className="text-xs text-muted-foreground font-medium">Horário:</span>
@@ -163,6 +231,18 @@ export function DateTimePicker({
             ))}
           </select>
         </div>
+        {visibleLegend.length > 0 && (
+          <div className="border-t px-3 py-1.5">
+            <div className="dtp-legend">
+              {visibleLegend.map((entry) => (
+                <span key={entry.label} className="dtp-legend-item">
+                  <span className="dtp-legend-dash" style={{ background: entry.color }} />
+                  {entry.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         {futureOnly && (
           <div className="border-t px-3 py-1.5">
             <p className="text-[11px] text-muted-foreground">

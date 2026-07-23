@@ -19,17 +19,13 @@ import { sanitizeUrl } from '@/utils/security';
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import {
   TIPO_LABELS,
+  TIPO_COLORS,
   getPostPublishState,
   PUBLISH_STATE_LABELS,
   PUBLISH_STATE_CLASS,
+  TIPO_LEGEND,
+  type DayMarker,
 } from '../postLabels';
-
-const TIPO_COLORS: Record<ClientePost['tipo'], string> = {
-  feed: '#eab308',
-  reels: '#E1306C',
-  stories: '#42c8f5',
-  carrossel: '#3ecf8e',
-};
 
 export interface CalendarPostDetailPanelProps {
   post: ClientePost;
@@ -38,6 +34,7 @@ export interface CalendarPostDetailPanelProps {
   isCurrentWorkflow: boolean;
   isLocked: boolean;
   lockReason?: string;
+  dayMarkers?: Map<string, DayMarker>;
   onClose: () => void;
   onReschedule: (date: Date) => void;
   onRemoveDate: () => void;
@@ -51,6 +48,7 @@ export function CalendarPostDetailPanel({
   isCurrentWorkflow,
   isLocked,
   lockReason,
+  dayMarkers,
   onClose,
   onReschedule,
   onRemoveDate,
@@ -77,7 +75,10 @@ export function CalendarPostDetailPanel({
   const pubState = getPostPublishState(post);
   const scheduled = post.scheduled_at ? parseISO(post.scheduled_at) : null;
   const excerpt = (preview?.conteudo_plain ?? '').trim();
-  const canEdit = isCurrentWorkflow && !isLocked;
+  // Rescheduling follows lock status only; removing a date stays own-workflow, because the
+  // calendar sidebar only lists this workflow's backlog.
+  const canReschedule = !isLocked;
+  const canRemoveDate = isCurrentWorkflow && !isLocked;
   const permalink =
     post.status === 'postado' && preview?.instagram_permalink
       ? sanitizeUrl(preview.instagram_permalink)
@@ -156,7 +157,7 @@ export function CalendarPostDetailPanel({
           <div className="calendar-detail-note">Pertence ao workflow «{post.workflow_titulo}»</div>
         )}
 
-        {canEdit && (
+        {canReschedule && (
           <div className="calendar-detail-section">
             <div className="calendar-detail-section-label">Reagendar</div>
             <DateTimePicker
@@ -164,6 +165,8 @@ export function CalendarPostDetailPanel({
               onChange={(date) => date && onReschedule(date)}
               futureOnly
               className="w-full"
+              dayMarkers={dayMarkers}
+              dayMarkerLegend={TIPO_LEGEND}
             />
           </div>
         )}
@@ -192,7 +195,7 @@ export function CalendarPostDetailPanel({
           </button>
         )}
         <CopyPostLinkButton hubUrl={hubUrl} postId={post.id} />
-        {canEdit && (
+        {canRemoveDate && (
           <button
             className="calendar-detail-btn calendar-detail-btn--danger"
             onClick={onRemoveDate}

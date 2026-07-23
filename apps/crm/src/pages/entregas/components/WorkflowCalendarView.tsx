@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -12,20 +12,14 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { parseISO } from 'date-fns';
 import { X } from 'lucide-react';
 import { getClientePosts, updateWorkflowPost, type ClientePost, type Membro } from '@/store';
 import { CalendarGrid, LOCKED_STATUSES, LOCKED_TOOLTIPS } from './CalendarGrid';
 import { CalendarPostDetailPanel } from './CalendarPostDetailPanel';
 import { UnscheduledPostsSidebar } from './UnscheduledPostsSidebar';
 import { TimePickerPopover } from './TimePickerPopover';
-
-const TIPO_LABELS: Record<string, string> = {
-  feed: 'Feed',
-  reels: 'Reels',
-  stories: 'Stories',
-  carrossel: 'Carrossel',
-};
+import { TIPO_LABELS, buildTipoDayMarkers } from '../postLabels';
+import { resolveCalendarDrop, formatRescheduleToast } from '../calendarDrop';
 
 interface WorkflowCalendarViewProps {
   clienteId: number;
@@ -62,7 +56,7 @@ export function WorkflowCalendarView({
   const [activePost, setActivePost] = useState<ClientePost | null>(null);
   const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
   const [hintDismissed, setHintDismissed] = useState(
-    () => localStorage.getItem('calendarHintDismissed') === 'true',
+    () => localStorage.getItem('calendarHintDismissed.v2') === 'true',
   );
 
   const sensors = useSensors(
@@ -82,11 +76,22 @@ export function WorkflowCalendarView({
   const selectedIsCurrentWorkflow = selectedPost?.workflow_id === currentWorkflowId;
   const selectedIsLocked = selectedPost ? LOCKED_STATUSES.has(selectedPost.status) : false;
 
-  const invalidateQueries = useCallback(() => {
-    qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
-    qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', currentWorkflowId] });
-    qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
-  }, [qc, clienteId, currentWorkflowId]);
+  const detailDayMarkers = useMemo(
+    () => buildTipoDayMarkers(allPosts, { excludePostId: selectedPostId ?? undefined }),
+    [allPosts, selectedPostId],
+  );
+
+  const invalidateQueries = useCallback(
+    (workflowId?: number) => {
+      qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
+      qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', currentWorkflowId] });
+      if (workflowId != null && workflowId !== currentWorkflowId) {
+        qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
+      }
+      qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
+    },
+    [qc, clienteId, currentWorkflowId],
+  );
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const post = event.active.data.current?.post as ClientePost | undefined;
@@ -96,57 +101,57 @@ export function WorkflowCalendarView({
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       setActivePost(null);
-      const { active, over } = event;
-      if (!over) return;
+      const post = event.active.data.current?.post as ClientePost | undefined;
+      const result = resolveCalendarDrop({
+        post,
+        overId: event.over ? String(event.over.id) : undefined,
+        currentWorkflowId,
+      });
 
-      const post = active.data.current?.post as ClientePost | undefined;
-      if (!post) return;
+      switch (result.kind) {
+        case 'noop':
+          return;
 
-      const overId = String(over.id);
+        case 'reject-foreign-unschedule':
+          toast.info('Só é possível remover a data de posts deste workflow.');
+          return;
 
-      // Dropped on unscheduled zone → unschedule
-      if (overId === 'unscheduled-zone') {
-        if (!post.scheduled_at) return; // already unscheduled
-        try {
-          await updateWorkflowPost(post.id, { scheduled_at: null });
-          invalidateQueries();
-          toast.success('Data removida do post');
-        } catch {
-          toast.error('Erro ao remover data do post');
-        }
-        return;
-      }
+        case 'unschedule':
+          try {
+            await updateWorkflowPost(post!.id, { scheduled_at: null });
+            invalidateQueries(post!.workflow_id);
+            toast.success('Data removida do post');
+          } catch {
+            toast.error('Erro ao remover data do post');
+          }
+          return;
 
-      // Dropped on a date cell
-      if (overId.startsWith('date-')) {
-        const dateStr = overId.replace('date-', '');
-        const [y, m, d] = dateStr.split('-').map(Number);
-        const dropDate = new Date(y, m - 1, d);
-
-        // Get previous time if rescheduling
-        let previousTime: { hour: number; minute: number } | undefined;
-        if (post.scheduled_at) {
-          const prev = parseISO(post.scheduled_at);
-          previousTime = { hour: prev.getHours(), minute: prev.getMinutes() };
-        }
-
-        setPendingDrop({ postId: post.id, date: dropDate, previousTime });
+        case 'schedule':
+          setPendingDrop({
+            postId: post!.id,
+            date: result.date,
+            previousTime: result.previousTime,
+          });
+          return;
       }
     },
-    [invalidateQueries],
+    [invalidateQueries, currentWorkflowId],
   );
 
   const handleTimeConfirm = useCallback(
     async (datetime: Date) => {
       if (!pendingDrop) return;
+      const moved = allPosts.find((p) => p.id === pendingDrop.postId);
       try {
         await updateWorkflowPost(pendingDrop.postId, { scheduled_at: datetime.toISOString() });
-        invalidateQueries();
-        const isReschedule = pendingDrop.previousTime != null;
+        invalidateQueries(moved?.workflow_id);
         toast.success(
-          isReschedule
-            ? `Post reagendado para ${datetime.toLocaleDateString('pt-BR')} às ${String(datetime.getHours()).padStart(2, '0')}:${String(datetime.getMinutes()).padStart(2, '0')}`
-            : `Post agendado para ${datetime.toLocaleDateString('pt-BR')} às ${String(datetime.getHours()).padStart(2, '0')}:${String(datetime.getMinutes()).padStart(2, '0')}`,
+          formatRescheduleToast({
+            post: moved,
+            datetime,
+            verb: pendingDrop.previousTime != null ? 'reagendado' : 'agendado',
+            currentWorkflowId,
+          }),
         );
       } catch {
         toast.error('Erro ao agendar post');
@@ -154,7 +159,7 @@ export function WorkflowCalendarView({
         setPendingDrop(null);
       }
     },
-    [pendingDrop, invalidateQueries],
+    [pendingDrop, invalidateQueries, allPosts, currentWorkflowId],
   );
 
   const handleTimeCancel = useCallback(() => {
@@ -163,36 +168,41 @@ export function WorkflowCalendarView({
 
   const handlePanelReschedule = useCallback(
     async (datetime: Date) => {
-      if (!selectedPostId) return;
+      if (!selectedPost) return;
       try {
-        await updateWorkflowPost(selectedPostId, { scheduled_at: datetime.toISOString() });
-        invalidateQueries();
+        await updateWorkflowPost(selectedPost.id, { scheduled_at: datetime.toISOString() });
+        invalidateQueries(selectedPost.workflow_id);
         toast.success(
-          `Post reagendado para ${datetime.toLocaleDateString('pt-BR')} às ${String(datetime.getHours()).padStart(2, '0')}:${String(datetime.getMinutes()).padStart(2, '0')}`,
+          formatRescheduleToast({
+            post: selectedPost,
+            datetime,
+            verb: 'reagendado',
+            currentWorkflowId,
+          }),
         );
       } catch {
         toast.error('Erro ao reagendar post');
       }
     },
-    [selectedPostId, invalidateQueries],
+    [selectedPost, invalidateQueries, currentWorkflowId],
   );
 
   const handlePanelRemoveDate = useCallback(async () => {
-    if (!selectedPostId) return;
-    const id = selectedPostId;
+    if (!selectedPost) return;
+    const { id, workflow_id } = selectedPost;
     setSelectedPostId(null);
     try {
       await updateWorkflowPost(id, { scheduled_at: null });
-      invalidateQueries();
+      invalidateQueries(workflow_id);
       toast.success('Data removida do post');
     } catch {
       toast.error('Erro ao remover data do post');
     }
-  }, [selectedPostId, invalidateQueries]);
+  }, [selectedPost, invalidateQueries]);
 
   const dismissHint = () => {
     setHintDismissed(true);
-    localStorage.setItem('calendarHintDismissed', 'true');
+    localStorage.setItem('calendarHintDismissed.v2', 'true');
   };
 
   if (isLoading) {
@@ -205,8 +215,9 @@ export function WorkflowCalendarView({
       {!hintDismissed && (
         <div className="calendar-hint-banner">
           <span className="calendar-hint-text">
-            💡 Arraste posts da lista lateral para agendar, ou entre datas para reagendar. Arraste
-            de volta para remover a data.
+            💡 Arraste posts da lista lateral para agendar, ou entre datas para reagendar —
+            inclusive posts de outros workflows. Arraste de volta para remover a data (apenas posts
+            deste workflow).
           </span>
           <button onClick={dismissHint} className="calendar-hint-close" aria-label="Fechar dica">
             <X className="h-3.5 w-3.5" />
@@ -242,6 +253,7 @@ export function WorkflowCalendarView({
               isCurrentWorkflow={selectedIsCurrentWorkflow}
               isLocked={selectedIsLocked}
               lockReason={selectedIsLocked ? LOCKED_TOOLTIPS[selectedPost.status] : undefined}
+              dayMarkers={detailDayMarkers}
               onClose={() => setSelectedPostId(null)}
               onReschedule={handlePanelReschedule}
               onRemoveDate={handlePanelRemoveDate}

@@ -1,18 +1,24 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, expect, it, vi, beforeAll } from 'vitest';
+import { describe, expect, it, vi, beforeAll, beforeEach } from 'vitest';
 import { CalendarGrid } from '../CalendarGrid';
 import type { ClientePost } from '@/store/posts';
+
+const dndKeyDownSpy = vi.fn();
 
 vi.mock('@dnd-kit/core', () => ({
   useDraggable: () => ({
     attributes: {},
-    listeners: {},
+    listeners: { onKeyDown: dndKeyDownSpy },
     setNodeRef: () => {},
     setActivatorNodeRef: () => {},
     isDragging: false,
   }),
   useDroppable: () => ({ setNodeRef: () => {}, isOver: false }),
 }));
+
+beforeEach(() => {
+  dndKeyDownSpy.mockReset();
+});
 
 beforeAll(() => {
   (Element.prototype as unknown as { hasPointerCapture: () => boolean }).hasPointerCapture = () =>
@@ -89,5 +95,160 @@ describe('CalendarGrid pills', () => {
     const row = await screen.findByRole('button', { name: /Hidden Three/ });
     fireEvent.click(row);
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 3 }));
+  });
+});
+
+describe('cross-workflow drag gate', () => {
+  it('exposes the drag handle on an unlocked post from another workflow', () => {
+    render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[mkPost({ id: 5, titulo: 'Foreign', workflow_id: 99 })]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    expect(screen.getByLabelText(/Mover post/)).toBeInTheDocument();
+  });
+
+  it('still hides the drag handle on a locked post from another workflow', () => {
+    render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[mkPost({ id: 6, titulo: 'Locked', workflow_id: 99, status: 'agendado' })]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    expect(screen.queryByLabelText(/Mover post/)).not.toBeInTheDocument();
+  });
+
+  it('still hides the drag handle on a locked post from this workflow', () => {
+    render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[mkPost({ id: 7, titulo: 'Own locked', status: 'postado' })]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    expect(screen.queryByLabelText(/Mover post/)).not.toBeInTheDocument();
+  });
+});
+
+describe('whole-pill drag', () => {
+  it('selects when the grip itself is clicked', () => {
+    const onSelect = vi.fn();
+    render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[mkPost({ id: 8, titulo: 'Grip click' })]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={onSelect}
+        onMonthChange={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText(/Mover post/));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it('selects on Enter rather than starting a keyboard drag', () => {
+    const onSelect = vi.fn();
+    render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[mkPost({ id: 9, titulo: 'Enter select' })]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={onSelect}
+        onMonthChange={() => {}}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole('button', { name: /Enter select/ }), { key: 'Enter' });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    // Guards prop ordering: onKeyDown={handleKeyDown} must come AFTER {...listeners} in the
+    // JSX so it wins (last-prop-wins) and dnd-kit's keyboard-drag handler never fires here.
+    expect(dndKeyDownSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('card design', () => {
+  it('encodes tipo in the dash, not workflow ownership', () => {
+    const { container } = render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[
+          mkPost({ id: 20, titulo: 'Own reels', tipo: 'reels' }),
+          mkPost({ id: 21, titulo: 'Foreign reels', tipo: 'reels', workflow_id: 99 }),
+        ]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    // Same tipo => same dash colour, regardless of which workflow owns the post.
+    const dashes = [...container.querySelectorAll('.post-card-dash')] as HTMLElement[];
+    expect(dashes).toHaveLength(2);
+    expect(dashes[0].style.background).toBe(dashes[1].style.background);
+    expect(dashes[0].style.background).toBe('rgb(225, 48, 108)'); // reels #E1306C
+  });
+
+  it('shows the post title on the card so it is readable without opening it', () => {
+    render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[mkPost({ id: 22, titulo: 'Como dar acesso ao cliente' })]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    expect(screen.getByText('Como dar acesso ao cliente')).toBeInTheDocument();
+  });
+
+  it('marks a foreign post with the recessed surface and names its workflow', () => {
+    const { container } = render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[
+          mkPost({
+            id: 23,
+            titulo: 'Outro fluxo',
+            workflow_id: 99,
+            workflow_titulo: 'POSTS YASMIN',
+          }),
+        ]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    expect(container.querySelector('.calendar-post-card.foreign')).toBeInTheDocument();
+    expect(screen.getByText('POSTS YASMIN')).toBeInTheDocument();
+  });
+
+  it('leaves an own post unmarked and does not name its workflow', () => {
+    const { container } = render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[mkPost({ id: 24, titulo: 'Meu post', workflow_titulo: 'Meu fluxo' })]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    expect(container.querySelector('.calendar-post-card.foreign')).not.toBeInTheDocument();
+    expect(screen.queryByText('Meu fluxo')).not.toBeInTheDocument();
   });
 });

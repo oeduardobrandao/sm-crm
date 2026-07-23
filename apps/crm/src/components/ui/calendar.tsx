@@ -6,24 +6,38 @@ import { buttonVariants } from '@/components/ui/button';
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
-function Calendar({ className, classNames, showOutsideDays = true, ...props }: CalendarProps) {
+function Calendar({
+  className,
+  classNames,
+  showOutsideDays = true,
+  components,
+  ...props
+}: CalendarProps) {
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn('p-3', className)}
       classNames={{
-        months: 'flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0',
+        // react-day-picker v9 renders `nav` as a SIBLING of `month` inside `months` — not
+        // inside `month_caption` the way v8 did. The inherited shadcn/v8 classes positioned
+        // the buttons with `absolute left-1`/`right-1` against a `relative` caption that no
+        // longer contains them, so they resolved against the fixed popover instead and the
+        // hitboxes drifted to the vertical middle of the day grid. `months` now owns the
+        // positioning context and `nav` spans the caption row.
+        months: 'relative flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0',
         month: 'space-y-4',
-        month_caption: 'flex justify-center pt-1 relative items-center',
+        month_caption: 'flex h-7 justify-center pt-1 items-center',
         caption_label: 'text-sm font-medium',
-        nav: 'space-x-1 flex items-center',
+        // pointer-events are re-enabled per button so the full-width bar never swallows
+        // clicks aimed at the caption behind it.
+        nav: 'absolute inset-x-0 top-0 z-10 flex items-center justify-between px-1 pt-1 pointer-events-none',
         button_previous: cn(
           buttonVariants({ variant: 'outline' }),
-          'absolute left-1 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100',
+          'pointer-events-auto mb-0 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100',
         ),
         button_next: cn(
           buttonVariants({ variant: 'outline' }),
-          'absolute right-1 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100',
+          'pointer-events-auto mb-0 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100',
         ),
         month_grid: 'w-full border-collapse space-y-1',
         weekdays: 'flex',
@@ -58,6 +72,7 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: C
           ) : (
             <ChevronRight className="h-4 w-4" {...chevronProps} />
           ),
+        ...components,
       }}
       {...props}
     />

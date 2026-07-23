@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi, beforeEach, beforeAll } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CalendarPostDetailPanel } from '../CalendarPostDetailPanel';
 import type { ClientePost } from '@/store';
@@ -58,6 +58,12 @@ function renderPanel(
 describe('CalendarPostDetailPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Pin "today" so the reschedule DateTimePicker's Calendar (no month/defaultMonth prop —
+    // it always opens on the real current month) renders July 2026 regardless of the actual
+    // date the suite runs on. Fake only `Date` so testing-library's real timers (findBy/
+    // waitFor polling) keep working.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-07-15T12:00:00.000Z'));
     mockPreview.mockResolvedValue({
       conteudo_plain: 'Olá! Hoje vamos falar sobre a rotina.',
       responsavel_id: 9,
@@ -66,6 +72,10 @@ describe('CalendarPostDetailPanel', () => {
       instagram_permalink: null,
     });
     mockMedia.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders the title and metadata instantly from the post prop', () => {
@@ -82,10 +92,9 @@ describe('CalendarPostDetailPanel', () => {
     expect(await screen.findByText('Débora Kristin')).toBeTruthy();
   });
 
-  it('is read-only with a workflow note for other-workflow posts', () => {
+  it('shows a workflow note and hides remove/open for other-workflow posts', () => {
     renderPanel({ isCurrentWorkflow: false });
     expect(screen.getByText(/Pertence ao workflow/)).toBeTruthy();
-    expect(screen.queryByText('Reagendar')).toBeNull();
     expect(screen.queryByRole('button', { name: /Remover data/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Abrir post completo/ })).toBeNull();
   });
@@ -95,5 +104,34 @@ describe('CalendarPostDetailPanel', () => {
     expect(screen.queryByText('Reagendar')).toBeNull();
     expect(screen.queryByRole('button', { name: /Remover data/ })).toBeNull();
     expect(screen.getByText(/Post já agendado no Instagram/)).toBeTruthy();
+  });
+
+  describe('permissions', () => {
+    it('lets a foreign unlocked post be rescheduled but not unscheduled or opened', () => {
+      renderPanel({ isCurrentWorkflow: false, isLocked: false });
+      expect(screen.getByText('Reagendar')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Remover data/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Abrir post completo/ })).not.toBeInTheDocument();
+    });
+
+    it('offers nothing editable on a locked foreign post', () => {
+      renderPanel({ isCurrentWorkflow: false, isLocked: true });
+      expect(screen.queryByText('Reagendar')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Remover data/ })).not.toBeInTheDocument();
+    });
+
+    it('offers everything on an own unlocked post', () => {
+      renderPanel({ isCurrentWorkflow: true, isLocked: false });
+      expect(screen.getByText('Reagendar')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Remover data/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Abrir post completo/ })).toBeInTheDocument();
+    });
+  });
+
+  it('forwards day markers to the reschedule picker', async () => {
+    const markers = new Map([['2026-07-24', { colors: ['#eab308'], label: '1 Feed' }]]);
+    renderPanel({ isCurrentWorkflow: true, isLocked: false, dayMarkers: markers });
+    fireEvent.click(screen.getByRole('button', { name: /jul 2026|Selecionar data e hora/i }));
+    expect(await screen.findByTitle('1 Feed')).toBeInTheDocument();
   });
 });

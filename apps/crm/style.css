@@ -7904,8 +7904,14 @@ body.role-agent input[name='valor_total'] {
   background: var(--surface-main);
   border-radius: 8px;
   padding: 10px;
-  border-left: 3px solid;
-  transition: opacity 0.15s;
+  border: 1px solid var(--border-color);
+  transition:
+    opacity 0.15s,
+    border-color 0.15s;
+}
+
+.sidebar-post-card:hover {
+  border-color: color-mix(in srgb, var(--primary-color), transparent 50%);
 }
 
 .sidebar-post-title {
@@ -7964,15 +7970,58 @@ body.role-agent input[name='valor_total'] {
 .sidebar-legend-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-size: 0.6rem;
   color: var(--text-light);
-  margin-bottom: 4px;
 }
 
-.sidebar-legend-dot {
+.sidebar-legend-tipos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+
+.sidebar-legend-dash {
+  width: 10px;
+  height: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.sidebar-legend-swatch {
   width: 10px;
   height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  border: 1px dashed color-mix(in srgb, var(--text-muted), transparent 60%);
+  background: var(--surface-darker);
+}
+
+.sidebar-legend-item--ownership {
+  padding-top: 6px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* Compact tipo guide inside the DateTimePicker popover footer */
+.dtp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+}
+
+.dtp-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.dtp-legend-dash {
+  width: 9px;
+  height: 3px;
   border-radius: 2px;
   flex-shrink: 0;
 }
@@ -8002,7 +8051,7 @@ body.role-agent input[name='valor_total'] {
 }
 
 .calendar-cell {
-  min-height: 64px;
+  min-height: 116px;
   background: var(--surface-main);
   border-radius: 8px;
   padding: 6px;
@@ -8033,26 +8082,127 @@ body.role-agent input[name='valor_total'] {
 .cell-posts {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   margin-top: 4px;
 }
 
-.calendar-post-pill {
+/* Calendar post card. Neutral surface; the tipo is carried by a short leading dash
+   PLUS its written label, so colour is never the only channel. Ownership is the surface
+   itself: own posts sit on the card bg, other workflows on a recessed tint that also
+   names the workflow underneath. */
+.calendar-post-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.calendar-post-card:hover {
+  border-color: color-mix(in srgb, var(--primary-color), transparent 50%);
+}
+
+/* Another workflow's post. Three reinforcing channels, because a surface tint alone was
+   a ~2% delta in light mode and effectively invisible: a clearly recessed surface, a
+   de-emphasised title, and the workflow attribution rendered as a chip with a folder icon.
+   The chip is the loud signal; the surface is the quiet reinforcement. */
+.calendar-post-card.foreign {
+  background: var(--surface-darker);
+  border-color: color-mix(in srgb, var(--text-muted), transparent 72%);
+  border-style: dashed;
+}
+
+.calendar-post-card.foreign .post-card-title {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.calendar-post-card.foreign .post-card-tipo {
+  color: var(--text-light);
+}
+
+.calendar-post-card.locked {
+  opacity: 0.7;
+}
+
+.post-card-meta {
   display: flex;
   align-items: center;
-  gap: 2px;
-  color: var(--dark);
-  font-size: 0.625rem;
-  font-weight: 600;
-  padding: 2px 5px;
-  border-radius: 3px;
+  gap: 4px;
+  min-width: 0;
+}
+
+.post-card-dash {
+  width: 10px;
+  height: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.post-card-tipo {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
   white-space: nowrap;
+}
+
+.post-card-time {
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  color: var(--text-light);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.post-card-lock,
+.calendar-pill-handle {
+  color: var(--text-light);
+  flex-shrink: 0;
+}
+
+.post-card-title {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.post-card-workflow {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  align-self: flex-start;
+  max-width: 100%;
+  margin-top: 1px;
+  padding: 1px 5px 1px 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted), transparent 88%);
+  font-size: 0.5625rem;
+  line-height: 1.35;
+  color: var(--text-muted);
   overflow: hidden;
 }
 
-.pill-text {
+.post-card-workflow svg {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.post-card-workflow-name {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cell-overflow {
@@ -8270,20 +8420,44 @@ body.role-agent input[name='valor_total'] {
 }
 
 /* Selected pill + keyboard focus ring */
-.calendar-post-pill.selected,
-.calendar-post-pill:focus-visible {
+.calendar-post-card.selected,
+.calendar-post-card:focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 1px;
   box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.18);
 }
 .calendar-pill-handle {
+  display: inline-flex;
   border: none;
   background: transparent;
   padding: 0;
+  cursor: grab;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.calendar-post-card:hover .calendar-pill-handle {
+  opacity: 1;
 }
 .calendar-pill-handle:focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 1px;
+}
+
+/* DateTimePicker day markers (dots under the day numeral) */
+.dtp-day-dots {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.dtp-day-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
 }
 
 /* Overflow "+N mais" day popover */
@@ -8328,6 +8502,10 @@ body.role-agent input[name='valor_total'] {
 .calendar-day-popover-row:hover {
   background: var(--surface-hover);
 }
+.calendar-day-popover-row.foreign {
+  background: var(--surface-darker);
+}
+
 .calendar-day-popover-dot {
   width: 8px;
   height: 8px;

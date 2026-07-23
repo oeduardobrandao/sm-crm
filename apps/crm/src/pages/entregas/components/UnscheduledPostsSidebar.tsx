@@ -1,21 +1,7 @@
-import { useDroppable, useDraggable } from '@dnd-kit/core';
+import { useDroppable, useDraggable, useDndContext } from '@dnd-kit/core';
 import type { ClientePost } from '@/store/posts';
-
-const TIPO_COLORS: Record<string, { bg: string; text: string }> = {
-  feed: { bg: '#eab30825', text: '#eab308' },
-  reels: { bg: '#E1306C25', text: '#E1306C' },
-  stories: { bg: '#42c8f525', text: '#42c8f5' },
-  carrossel: { bg: '#3ecf8e25', text: '#3ecf8e' },
-};
-
-const TIPO_LABELS: Record<string, string> = {
-  feed: 'Feed',
-  reels: 'Reels',
-  stories: 'Stories',
-  carrossel: 'Carrossel',
-};
-
-const LOCKED_STATUSES = new Set(['agendado', 'postado', 'falha_publicacao']);
+import { TIPO_LABELS, TIPO_BADGE_COLORS, TIPO_COLORS, TIPO_ORDER } from '../postLabels';
+import { LOCKED_STATUSES } from './CalendarGrid';
 
 interface UnscheduledPostsSidebarProps {
   posts: ClientePost[];
@@ -29,7 +15,7 @@ function DraggablePostCard({ post }: { post: ClientePost }) {
     data: { post },
     disabled: isLocked,
   });
-  const colors = TIPO_COLORS[post.tipo] || TIPO_COLORS.feed;
+  const colors = TIPO_BADGE_COLORS[post.tipo];
 
   return (
     <div
@@ -37,7 +23,6 @@ function DraggablePostCard({ post }: { post: ClientePost }) {
       className="sidebar-post-card"
       style={{
         opacity: isDragging ? 0.4 : 1,
-        borderLeftColor: '#eab308',
         cursor: isLocked ? 'not-allowed' : 'grab',
       }}
       {...(isLocked ? {} : { ...attributes, ...listeners })}
@@ -46,7 +31,7 @@ function DraggablePostCard({ post }: { post: ClientePost }) {
       <div className="sidebar-post-title">{post.titulo || 'Post sem título'}</div>
       <div className="sidebar-post-meta">
         <span className="sidebar-tipo-badge" style={{ background: colors.bg, color: colors.text }}>
-          {TIPO_LABELS[post.tipo] || post.tipo}
+          {TIPO_LABELS[post.tipo]}
         </span>
         <span className="sidebar-workflow-label">{post.workflow_titulo}</span>
       </div>
@@ -59,6 +44,11 @@ export function UnscheduledPostsSidebar({
   currentWorkflowId,
 }: UnscheduledPostsSidebarProps) {
   const { setNodeRef, isOver } = useDroppable({ id: 'unscheduled-zone' });
+  const { active } = useDndContext();
+  const draggingPost = active?.data.current?.post as ClientePost | undefined;
+  // Don't invite a drop we're going to reject.
+  const willAccept = !draggingPost || draggingPost.workflow_id === currentWorkflowId;
+  const highlight = isOver && willAccept;
 
   const currentWorkflowPosts = posts.filter((p) => p.workflow_id === currentWorkflowId);
 
@@ -67,8 +57,8 @@ export function UnscheduledPostsSidebar({
       ref={setNodeRef}
       className="calendar-sidebar"
       style={{
-        borderColor: isOver ? 'var(--primary-color)' : undefined,
-        boxShadow: isOver ? '0 0 12px rgba(234, 179, 8, 0.2)' : undefined,
+        borderColor: highlight ? 'var(--primary-color)' : undefined,
+        boxShadow: highlight ? '0 0 12px rgba(234, 179, 8, 0.2)' : undefined,
       }}
     >
       <div className="sidebar-header">
@@ -86,13 +76,17 @@ export function UnscheduledPostsSidebar({
 
       <div className="sidebar-legend">
         <div className="sidebar-legend-title">Legenda</div>
-        <div className="sidebar-legend-item">
-          <div className="sidebar-legend-dot" style={{ background: '#eab308' }} />
-          <span>Este workflow</span>
+        <div className="sidebar-legend-tipos">
+          {TIPO_ORDER.map((tipo) => (
+            <span key={tipo} className="sidebar-legend-item">
+              <span className="sidebar-legend-dash" style={{ background: TIPO_COLORS[tipo] }} />
+              {TIPO_LABELS[tipo]}
+            </span>
+          ))}
         </div>
-        <div className="sidebar-legend-item">
-          <div className="sidebar-legend-dot" style={{ background: '#3ecf8e' }} />
-          <span>Outros workflows</span>
+        <div className="sidebar-legend-item sidebar-legend-item--ownership">
+          <span className="sidebar-legend-swatch" />
+          De outro workflow
         </div>
       </div>
     </div>

@@ -3,23 +3,12 @@ import { useState } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { parseISO, format, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { GripVertical, Lock } from 'lucide-react';
+import { GripVertical, Lock, Folder } from 'lucide-react';
 import { MonthGrid } from '@/components/ui/month-grid';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import type { ClientePost } from '@/store/posts';
+import { TIPO_LABELS, TIPO_COLORS } from '../postLabels';
 
-const TIPO_COLORS: Record<string, string> = {
-  feed: '#eab308',
-  reels: '#E1306C',
-  stories: '#42c8f5',
-  carrossel: '#3ecf8e',
-};
-const TIPO_LABELS: Record<string, string> = {
-  feed: 'Feed',
-  reels: 'Reels',
-  stories: 'Stories',
-  carrossel: 'Carrossel',
-};
 export const LOCKED_STATUSES = new Set(['agendado', 'postado', 'falha_publicacao']);
 export const LOCKED_TOOLTIPS: Record<string, string> = {
   agendado: 'Post já agendado no Instagram — cancele o agendamento para mover',
@@ -49,22 +38,24 @@ function PostPill({
 }) {
   const isCurrentWorkflow = post.workflow_id === currentWorkflowId;
   const isLocked = LOCKED_STATUSES.has(post.status);
-  const canDrag = isCurrentWorkflow && !isLocked;
+  // Ownership is shown (green pill + workflow name in the detail panel) but is no longer
+  // a permission boundary for dates — only lock status is. Unscheduling stays own-workflow
+  // only, enforced in resolveCalendarDrop.
+  const canDrag = !isLocked;
 
-  // We deliberately omit dnd's `attributes` (role/aria/tabIndex): the pill body owns
-  // button semantics; only the handle carries the drag `listeners` (incl. the keyboard
-  // sensor), so keyboard-select (pill) and keyboard-drag (handle) never collide.
+  // The whole pill is the drag surface. We still omit dnd's `attributes` (role/aria/tabIndex)
+  // because the pill owns its own button semantics, and we re-declare `onKeyDown` after the
+  // listener spread so Enter/Space selects instead of starting a keyboard drag. The grip
+  // remains the keyboard-drag activator. We don't need to swallow the trailing click a
+  // finished drag emits on the origin element — dnd-kit's own AbstractPointerSensor already
+  // stops it: when the activation constraints are met it registers a `click` listener on
+  // `document` with `{ capture: true }` that calls `stopPropagation`, so the click never
+  // reaches this element's `onClick` at all.
   const { listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
     id: `post-${post.id}`,
     data: { post },
     disabled: !canDrag,
   });
-
-  const time = post.scheduled_at ? format(parseISO(post.scheduled_at), 'HH:mm') : '';
-  const color = isCurrentWorkflow ? '#eab308' : '#3ecf8e';
-  const tooltip = isLocked
-    ? LOCKED_TOOLTIPS[post.status] || ''
-    : `${TIPO_LABELS[post.tipo]} · ${time} · ${post.workflow_titulo}${!isCurrentWorkflow ? ' (outro workflow)' : ''}`;
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -73,48 +64,68 @@ function PostPill({
     }
   };
 
+  const time = post.scheduled_at ? format(parseISO(post.scheduled_at), 'HH:mm') : '';
+  const titulo = post.titulo || 'Post sem título';
+  // The dash carries tipo; the written tipo label sits right beside it, so colour is never
+  // the only channel (feed/carrossel sit on the red/green axis). Ownership moved to the card
+  // surface + the workflow name, which says *whose* it is instead of merely "not yours".
+  const tooltip = isLocked
+    ? LOCKED_TOOLTIPS[post.status] || ''
+    : `${TIPO_LABELS[post.tipo]} · ${time} · ${post.workflow_titulo}${!isCurrentWorkflow ? ' (outro workflow)' : ''}`;
+
   return (
     <div
       ref={setNodeRef}
       role="button"
       tabIndex={0}
       aria-pressed={isSelected}
-      aria-label={`${TIPO_LABELS[post.tipo]} — ${post.titulo || 'Post sem título'}${time ? ` — ${time}` : ''}`}
-      className={`calendar-post-pill${isSelected ? ' selected' : ''}`}
-      style={{
-        background: color,
-        opacity: isDragging ? 0.4 : isLocked ? 0.6 : isCurrentWorkflow ? 1 : 0.8,
-        cursor: 'pointer',
-      }}
+      aria-label={`${TIPO_LABELS[post.tipo]} — ${titulo}${time ? ` — ${time}` : ''}${
+        !isCurrentWorkflow ? ` — workflow ${post.workflow_titulo}` : ''
+      }`}
+      className={`calendar-post-card${isSelected ? ' selected' : ''}${
+        isCurrentWorkflow ? '' : ' foreign'
+      }${isLocked ? ' locked' : ''}`}
+      style={{ opacity: isDragging ? 0.4 : 1, cursor: canDrag ? 'grab' : 'pointer' }}
       title={tooltip}
+      {...(canDrag ? listeners : {})}
       onClick={() => onSelect(post)}
       onKeyDown={handleKeyDown}
     >
-      {isLocked && <Lock className="h-2.5 w-2.5" style={{ flexShrink: 0 }} />}
-      {canDrag && (
+      <div className="post-card-meta">
         <span
-          ref={setActivatorNodeRef}
-          className="calendar-pill-handle"
-          tabIndex={0}
-          aria-label="Mover post (arraste, ou foque e use as setas)"
-          style={{ display: 'inline-flex', cursor: 'grab' }}
-          {...listeners}
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => {
-            // Let dnd-kit's keyboard sensor activate a drag from the handle,
-            // then stop the event so it doesn't bubble to the pill's select handler.
-            (listeners as Record<string, ((ev: KeyboardEvent) => void) | undefined>)?.onKeyDown?.(
-              e,
-            );
-            e.stopPropagation();
-          }}
-        >
-          <GripVertical className="h-2.5 w-2.5" style={{ flexShrink: 0, opacity: 0.7 }} />
-        </span>
+          className="post-card-dash"
+          style={{ background: TIPO_COLORS[post.tipo] }}
+          aria-hidden="true"
+        />
+        <span className="post-card-tipo">{TIPO_LABELS[post.tipo]}</span>
+        {time && <span className="post-card-time">{time}</span>}
+        {isLocked && <Lock className="post-card-lock h-2.5 w-2.5" aria-hidden="true" />}
+        {canDrag && (
+          <span
+            ref={setActivatorNodeRef}
+            className="calendar-pill-handle"
+            tabIndex={0}
+            aria-label="Mover post (arraste, ou foque e use as setas)"
+            onKeyDown={(e) => {
+              // Let dnd-kit's keyboard sensor activate a drag from the handle, then stop the
+              // event so it doesn't bubble to the card's select handler.
+              (listeners as Record<string, ((ev: KeyboardEvent) => void) | undefined>)?.onKeyDown?.(
+                e,
+              );
+              e.stopPropagation();
+            }}
+          >
+            <GripVertical className="h-2.5 w-2.5" />
+          </span>
+        )}
+      </div>
+      <div className="post-card-title">{titulo}</div>
+      {!isCurrentWorkflow && (
+        <div className="post-card-workflow">
+          <Folder className="h-2.5 w-2.5" aria-hidden="true" />
+          <span className="post-card-workflow-name">{post.workflow_titulo}</span>
+        </div>
       )}
-      <span className="pill-text">
-        {TIPO_LABELS[post.tipo]} · {time}
-      </span>
     </div>
   );
 }
@@ -147,18 +158,23 @@ function DayPostsPopover({
         <div className="calendar-day-popover-list">
           {posts.map((post) => {
             const time = post.scheduled_at ? format(parseISO(post.scheduled_at), 'HH:mm') : '';
-            const dot = post.workflow_id === currentWorkflowId ? '#eab308' : '#3ecf8e';
+            const isForeign = post.workflow_id !== currentWorkflowId;
             return (
               <button
                 key={post.id}
                 type="button"
-                className="calendar-day-popover-row"
+                className={`calendar-day-popover-row${isForeign ? ' foreign' : ''}`}
                 onClick={() => {
                   onSelectPost(post);
                   setOpen(false);
                 }}
+                title={isForeign ? `Workflow: ${post.workflow_titulo}` : undefined}
               >
-                <span className="calendar-day-popover-dot" style={{ background: dot }} />
+                <span
+                  className="calendar-day-popover-dot"
+                  style={{ background: TIPO_COLORS[post.tipo] }}
+                  aria-hidden="true"
+                />
                 <span className="calendar-day-popover-tipo">{TIPO_LABELS[post.tipo]}</span>
                 <span className="calendar-day-popover-row-title">
                   {post.titulo || 'Post sem título'}

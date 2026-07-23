@@ -18,15 +18,9 @@ import { computeDeadlineDate } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
 import PostCommentSummary from './PostCommentSummary';
+import { TIPO_LABELS } from '../postLabels';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-const TIPO_LABELS: Record<WorkflowPost['tipo'], string> = {
-  feed: 'Feed',
-  reels: 'Reels',
-  stories: 'Stories',
-  carrossel: 'Carrossel',
-};
 
 const STATUS_LABELS: Record<WorkflowPost['status'], string> = {
   rascunho: 'Rascunho',
