@@ -152,9 +152,15 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     overflow-wrap: anywhere;
   }
   .cover-spec { font-size: 15px; font-weight: 400; color: rgba(250,250,247,0.7); margin-top: 12px; }
-  /* splash art do workspace (upload próprio) — preenche o vão entre título e números */
+  /* splash art do workspace (upload próprio) — faixa 21:9, o mesmo formato que a
+     página de Configurações pede no upload.
+     A proporção fixa também é o que faz o object-fit funcionar: com flex 1 a
+     altura da caixa vinha da distribuição flex, e altura 100% da imagem não
+     resolve contra isso — ela caía na altura natural e sobrava uma faixa escura
+     embaixo. Com aspect-ratio a altura é definida e o recorte volta a valer. */
   .cover-art {
-    flex: 1; min-height: 0;
+    flex: 0 0 auto;
+    aspect-ratio: 21 / 9;
     margin: 12mm 18mm 10mm;
     border-radius: 14px;
     overflow: hidden;
@@ -444,7 +450,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     .cover-bottom { padding: 0 20px 24px; }
     .cover-handle { font-size: 36px; }
     .cover-teaser { grid-template-columns: 1fr; gap: 12px; }
-    .cover-art { margin: 20px 20px 16px; min-height: 140px; }
+    .cover-art { margin: 20px 20px 16px; }
     .kpi-grid { grid-template-columns: 1fr 1fr; }
     .hl-grid, .fmt-grid, .aux-grid, .goal-grid { grid-template-columns: 1fr; }
     .toc { grid-template-columns: 1fr 1fr; }
