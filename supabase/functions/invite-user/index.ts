@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
-import { seatsAvailable } from "./seats.ts";
+import { seatsAvailable } from "../_shared/invite-seats.ts";
 import { classifyExistingUser, coerceHasPassword } from "../_shared/invite-classify.ts";
 import { sendInviteEmail } from "../_shared/invite-email.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";

@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { seatsAvailable } from "../invite-user/seats.ts";
+import { seatsAvailable } from "../_shared/invite-seats.ts";
 
 Deno.test("seatsAvailable: blocks when members+pending >= limit", () => {
   assertEquals(seatsAvailable({ limit: 1, members: 1, pendingInvites: 0 }), false);
