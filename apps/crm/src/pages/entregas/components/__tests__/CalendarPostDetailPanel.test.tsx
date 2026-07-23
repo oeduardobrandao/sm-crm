@@ -82,10 +82,9 @@ describe('CalendarPostDetailPanel', () => {
     expect(await screen.findByText('Débora Kristin')).toBeTruthy();
   });
 
-  it('is read-only with a workflow note for other-workflow posts', () => {
+  it('shows a workflow note and hides remove/open for other-workflow posts', () => {
     renderPanel({ isCurrentWorkflow: false });
     expect(screen.getByText(/Pertence ao workflow/)).toBeTruthy();
-    expect(screen.queryByText('Reagendar')).toBeNull();
     expect(screen.queryByRole('button', { name: /Remover data/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Abrir post completo/ })).toBeNull();
   });
@@ -95,5 +94,27 @@ describe('CalendarPostDetailPanel', () => {
     expect(screen.queryByText('Reagendar')).toBeNull();
     expect(screen.queryByRole('button', { name: /Remover data/ })).toBeNull();
     expect(screen.getByText(/Post já agendado no Instagram/)).toBeTruthy();
+  });
+
+  describe('permissions', () => {
+    it('lets a foreign unlocked post be rescheduled but not unscheduled or opened', () => {
+      renderPanel({ isCurrentWorkflow: false, isLocked: false });
+      expect(screen.getByText('Reagendar')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Remover data/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Abrir post completo/ })).not.toBeInTheDocument();
+    });
+
+    it('offers nothing editable on a locked foreign post', () => {
+      renderPanel({ isCurrentWorkflow: false, isLocked: true });
+      expect(screen.queryByText('Reagendar')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Remover data/ })).not.toBeInTheDocument();
+    });
+
+    it('offers everything on an own unlocked post', () => {
+      renderPanel({ isCurrentWorkflow: true, isLocked: false });
+      expect(screen.getByText('Reagendar')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Remover data/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Abrir post completo/ })).toBeInTheDocument();
+    });
   });
 });
