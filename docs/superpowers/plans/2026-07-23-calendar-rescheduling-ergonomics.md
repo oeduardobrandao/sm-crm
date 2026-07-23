@@ -209,9 +209,18 @@ export function resolveCalendarDrop(args: {
   overId: string | undefined;
   currentWorkflowId: number;
 }): CalendarDropResult;
+
+export function formatRescheduleToast(args: {
+  post: Pick<ClientePost, 'workflow_id' | 'workflow_titulo'> | undefined;
+  datetime: Date;
+  verb: 'agendado' | 'reagendado';
+  currentWorkflowId: number;
+}): string;
 ```
 
-Task 3 consumes this function and maps each `kind` onto a side effect.
+Task 3 consumes both: `resolveCalendarDrop` maps each `kind` onto a side effect, and
+`formatRescheduleToast` builds the success copy for **both** reschedule paths
+(`handleTimeConfirm` and `handlePanelReschedule`) so the wording lives in exactly one place.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -296,7 +305,44 @@ describe('resolveCalendarDrop', () => {
       .toEqual({ kind: 'noop' });
   });
 });
+
+describe('formatRescheduleToast', () => {
+  const datetime = new Date(2026, 6, 24, 20, 0);
+
+  it('does not name the workflow for an own post', () => {
+    expect(formatRescheduleToast({
+      post: mkPost(), datetime, verb: 'reagendado', currentWorkflowId: 10,
+    })).toBe('Post reagendado para 24/07/2026 às 20:00');
+  });
+
+  it('names the owning workflow for a foreign post', () => {
+    expect(formatRescheduleToast({
+      post: mkPost({ workflow_id: 99, workflow_titulo: 'Agosto — Carrosséis' }),
+      datetime, verb: 'reagendado', currentWorkflowId: 10,
+    })).toBe('Post de «Agosto — Carrosséis» reagendado para 24/07/2026 às 20:00');
+  });
+
+  it('uses the agendado verb for a first-time schedule', () => {
+    expect(formatRescheduleToast({
+      post: mkPost(), datetime, verb: 'agendado', currentWorkflowId: 10,
+    })).toBe('Post agendado para 24/07/2026 às 20:00');
+  });
+
+  it('falls back to the plain form when the post is missing', () => {
+    expect(formatRescheduleToast({
+      post: undefined, datetime, verb: 'reagendado', currentWorkflowId: 10,
+    })).toBe('Post reagendado para 24/07/2026 às 20:00');
+  });
+
+  it('zero-pads single-digit times', () => {
+    expect(formatRescheduleToast({
+      post: mkPost(), datetime: new Date(2026, 6, 5, 9, 5), verb: 'agendado', currentWorkflowId: 10,
+    })).toContain('às 09:05');
+  });
+});
 ```
+
+Add `formatRescheduleToast` to the import at the top of the test file.
 
 Note the `previousTime` test derives its expectation from `getHours()`/`getMinutes()` on the parsed date rather than hardcoding `13:45`, so it passes in any machine timezone.
 
@@ -363,6 +409,30 @@ export function resolveCalendarDrop({
 
   return { kind: 'noop' };
 }
+
+/**
+ * Success copy for both reschedule paths (drag-drop confirm and the detail panel picker).
+ * Names the owning workflow when the post isn't ours, so the user knows what they touched.
+ * A missing post (deleted in another tab mid-flow) degrades to the plain form.
+ */
+export function formatRescheduleToast({
+  post,
+  datetime,
+  verb,
+  currentWorkflowId,
+}: {
+  post: Pick<ClientePost, 'workflow_id' | 'workflow_titulo'> | undefined;
+  datetime: Date;
+  verb: 'agendado' | 'reagendado';
+  currentWorkflowId: number;
+}): string {
+  const hh = String(datetime.getHours()).padStart(2, '0');
+  const mm = String(datetime.getMinutes()).padStart(2, '0');
+  const when = `${datetime.toLocaleDateString('pt-BR')} às ${hh}:${mm}`;
+  const owner =
+    post && post.workflow_id !== currentWorkflowId ? `Post de «${post.workflow_titulo}»` : 'Post';
+  return `${owner} ${verb} para ${when}`;
+}
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -371,13 +441,13 @@ export function resolveCalendarDrop({
 npm run test -- calendarDrop
 ```
 
-Expected: PASS, 8 tests.
+Expected: PASS, 13 tests (8 for resolveCalendarDrop, 5 for formatRescheduleToast).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add apps/crm/src/pages/entregas/calendarDrop.ts apps/crm/src/pages/entregas/__tests__/calendarDrop.test.ts
-git commit -m "feat(entregas): add resolveCalendarDrop decision function"
+git commit -m "feat(entregas): add calendar drop resolution and toast formatting"
 ```
 
 ---
@@ -569,7 +639,7 @@ const handleDragEnd = useCallback(
 );
 ```
 
-Add the import: `import { resolveCalendarDrop } from '../calendarDrop';`
+Add the import: `import { resolveCalendarDrop, formatRescheduleToast } from '../calendarDrop';`
 
 - [ ] **Step 6: Resolve the moved post in `handleTimeConfirm`**
 
@@ -580,16 +650,17 @@ const handleTimeConfirm = useCallback(
   async (datetime: Date) => {
     if (!pendingDrop) return;
     const moved = allPosts.find((p) => p.id === pendingDrop.postId);
-    const hhmm = `${String(datetime.getHours()).padStart(2, '0')}:${String(datetime.getMinutes()).padStart(2, '0')}`;
-    const when = `${datetime.toLocaleDateString('pt-BR')} às ${hhmm}`;
-    const verb = pendingDrop.previousTime != null ? 'reagendado' : 'agendado';
-    const owner =
-      moved && moved.workflow_id !== currentWorkflowId ? `Post de «${moved.workflow_titulo}»` : 'Post';
-
     try {
       await updateWorkflowPost(pendingDrop.postId, { scheduled_at: datetime.toISOString() });
       invalidateQueries(moved?.workflow_id);
-      toast.success(`${owner} ${verb} para ${when}`);
+      toast.success(
+        formatRescheduleToast({
+          post: moved,
+          datetime,
+          verb: pendingDrop.previousTime != null ? 'reagendado' : 'agendado',
+          currentWorkflowId,
+        }),
+      );
     } catch {
       toast.error('Erro ao agendar post');
     } finally {
@@ -610,16 +681,17 @@ Replace `WorkflowCalendarView.tsx:164-178`. The current deps are `[selectedPostI
 const handlePanelReschedule = useCallback(
   async (datetime: Date) => {
     if (!selectedPost) return;
-    const hhmm = `${String(datetime.getHours()).padStart(2, '0')}:${String(datetime.getMinutes()).padStart(2, '0')}`;
-    const when = `${datetime.toLocaleDateString('pt-BR')} às ${hhmm}`;
-    const owner =
-      selectedPost.workflow_id !== currentWorkflowId
-        ? `Post de «${selectedPost.workflow_titulo}»`
-        : 'Post';
     try {
       await updateWorkflowPost(selectedPost.id, { scheduled_at: datetime.toISOString() });
       invalidateQueries(selectedPost.workflow_id);
-      toast.success(`${owner} reagendado para ${when}`);
+      toast.success(
+        formatRescheduleToast({
+          post: selectedPost,
+          datetime,
+          verb: 'reagendado',
+          currentWorkflowId,
+        }),
+      );
     } catch {
       toast.error('Erro ao reagendar post');
     }
@@ -1496,7 +1568,7 @@ Import `CalendarProps` alongside `Calendar`: `import { Calendar, type CalendarPr
 
 - [ ] **Step 5: Style the dots**
 
-The day button is `h-9 w-9` with centered content, so the dot row is absolutely positioned to avoid pushing the numeral off-center. Add to the CRM stylesheet next to the other calendar rules:
+The day button is `h-9 w-9` with centered content, so the dot row is absolutely positioned to avoid pushing the numeral off-center. Add to **`apps/crm/style.css`**, next to the existing `.calendar-post-pill` / `.calendar-pill-handle` rules:
 
 ```css
 .dtp-day-dots {
