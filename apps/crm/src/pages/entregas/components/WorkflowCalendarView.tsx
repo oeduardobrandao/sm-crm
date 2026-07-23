@@ -12,7 +12,6 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { parseISO } from 'date-fns';
 import { X } from 'lucide-react';
 import { getClientePosts, updateWorkflowPost, type ClientePost, type Membro } from '@/store';
 import { CalendarGrid, LOCKED_STATUSES, LOCKED_TOOLTIPS } from './CalendarGrid';
@@ -20,6 +19,7 @@ import { CalendarPostDetailPanel } from './CalendarPostDetailPanel';
 import { UnscheduledPostsSidebar } from './UnscheduledPostsSidebar';
 import { TimePickerPopover } from './TimePickerPopover';
 import { TIPO_LABELS } from '../postLabels';
+import { resolveCalendarDrop, formatRescheduleToast } from '../calendarDrop';
 
 interface WorkflowCalendarViewProps {
   clienteId: number;
@@ -76,11 +76,17 @@ export function WorkflowCalendarView({
   const selectedIsCurrentWorkflow = selectedPost?.workflow_id === currentWorkflowId;
   const selectedIsLocked = selectedPost ? LOCKED_STATUSES.has(selectedPost.status) : false;
 
-  const invalidateQueries = useCallback(() => {
-    qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
-    qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', currentWorkflowId] });
-    qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
-  }, [qc, clienteId, currentWorkflowId]);
+  const invalidateQueries = useCallback(
+    (workflowId?: number) => {
+      qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
+      qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', currentWorkflowId] });
+      if (workflowId != null && workflowId !== currentWorkflowId) {
+        qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
+      }
+      qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
+    },
+    [qc, clienteId, currentWorkflowId],
+  );
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const post = event.active.data.current?.post as ClientePost | undefined;
@@ -90,57 +96,57 @@ export function WorkflowCalendarView({
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       setActivePost(null);
-      const { active, over } = event;
-      if (!over) return;
+      const post = event.active.data.current?.post as ClientePost | undefined;
+      const result = resolveCalendarDrop({
+        post,
+        overId: event.over ? String(event.over.id) : undefined,
+        currentWorkflowId,
+      });
 
-      const post = active.data.current?.post as ClientePost | undefined;
-      if (!post) return;
+      switch (result.kind) {
+        case 'noop':
+          return;
 
-      const overId = String(over.id);
+        case 'reject-foreign-unschedule':
+          toast.info('Só é possível remover a data de posts deste workflow.');
+          return;
 
-      // Dropped on unscheduled zone → unschedule
-      if (overId === 'unscheduled-zone') {
-        if (!post.scheduled_at) return; // already unscheduled
-        try {
-          await updateWorkflowPost(post.id, { scheduled_at: null });
-          invalidateQueries();
-          toast.success('Data removida do post');
-        } catch {
-          toast.error('Erro ao remover data do post');
-        }
-        return;
-      }
+        case 'unschedule':
+          try {
+            await updateWorkflowPost(post!.id, { scheduled_at: null });
+            invalidateQueries(post!.workflow_id);
+            toast.success('Data removida do post');
+          } catch {
+            toast.error('Erro ao remover data do post');
+          }
+          return;
 
-      // Dropped on a date cell
-      if (overId.startsWith('date-')) {
-        const dateStr = overId.replace('date-', '');
-        const [y, m, d] = dateStr.split('-').map(Number);
-        const dropDate = new Date(y, m - 1, d);
-
-        // Get previous time if rescheduling
-        let previousTime: { hour: number; minute: number } | undefined;
-        if (post.scheduled_at) {
-          const prev = parseISO(post.scheduled_at);
-          previousTime = { hour: prev.getHours(), minute: prev.getMinutes() };
-        }
-
-        setPendingDrop({ postId: post.id, date: dropDate, previousTime });
+        case 'schedule':
+          setPendingDrop({
+            postId: post!.id,
+            date: result.date,
+            previousTime: result.previousTime,
+          });
+          return;
       }
     },
-    [invalidateQueries],
+    [invalidateQueries, currentWorkflowId],
   );
 
   const handleTimeConfirm = useCallback(
     async (datetime: Date) => {
       if (!pendingDrop) return;
+      const moved = allPosts.find((p) => p.id === pendingDrop.postId);
       try {
         await updateWorkflowPost(pendingDrop.postId, { scheduled_at: datetime.toISOString() });
-        invalidateQueries();
-        const isReschedule = pendingDrop.previousTime != null;
+        invalidateQueries(moved?.workflow_id);
         toast.success(
-          isReschedule
-            ? `Post reagendado para ${datetime.toLocaleDateString('pt-BR')} às ${String(datetime.getHours()).padStart(2, '0')}:${String(datetime.getMinutes()).padStart(2, '0')}`
-            : `Post agendado para ${datetime.toLocaleDateString('pt-BR')} às ${String(datetime.getHours()).padStart(2, '0')}:${String(datetime.getMinutes()).padStart(2, '0')}`,
+          formatRescheduleToast({
+            post: moved,
+            datetime,
+            verb: pendingDrop.previousTime != null ? 'reagendado' : 'agendado',
+            currentWorkflowId,
+          }),
         );
       } catch {
         toast.error('Erro ao agendar post');
@@ -148,7 +154,7 @@ export function WorkflowCalendarView({
         setPendingDrop(null);
       }
     },
-    [pendingDrop, invalidateQueries],
+    [pendingDrop, invalidateQueries, allPosts, currentWorkflowId],
   );
 
   const handleTimeCancel = useCallback(() => {
@@ -157,32 +163,37 @@ export function WorkflowCalendarView({
 
   const handlePanelReschedule = useCallback(
     async (datetime: Date) => {
-      if (!selectedPostId) return;
+      if (!selectedPost) return;
       try {
-        await updateWorkflowPost(selectedPostId, { scheduled_at: datetime.toISOString() });
-        invalidateQueries();
+        await updateWorkflowPost(selectedPost.id, { scheduled_at: datetime.toISOString() });
+        invalidateQueries(selectedPost.workflow_id);
         toast.success(
-          `Post reagendado para ${datetime.toLocaleDateString('pt-BR')} às ${String(datetime.getHours()).padStart(2, '0')}:${String(datetime.getMinutes()).padStart(2, '0')}`,
+          formatRescheduleToast({
+            post: selectedPost,
+            datetime,
+            verb: 'reagendado',
+            currentWorkflowId,
+          }),
         );
       } catch {
         toast.error('Erro ao reagendar post');
       }
     },
-    [selectedPostId, invalidateQueries],
+    [selectedPost, invalidateQueries, currentWorkflowId],
   );
 
   const handlePanelRemoveDate = useCallback(async () => {
-    if (!selectedPostId) return;
-    const id = selectedPostId;
+    if (!selectedPost) return;
+    const { id, workflow_id } = selectedPost;
     setSelectedPostId(null);
     try {
       await updateWorkflowPost(id, { scheduled_at: null });
-      invalidateQueries();
+      invalidateQueries(workflow_id);
       toast.success('Data removida do post');
     } catch {
       toast.error('Erro ao remover data do post');
     }
-  }, [selectedPostId, invalidateQueries]);
+  }, [selectedPost, invalidateQueries]);
 
   const dismissHint = () => {
     setHintDismissed(true);

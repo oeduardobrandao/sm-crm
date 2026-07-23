@@ -1,17 +1,33 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { WorkflowCalendarView } from '../WorkflowCalendarView';
 
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+
 // Mock dnd-kit so it doesn't require pointer/touch events in jsdom
+const dndHandlers = vi.hoisted(() => ({
+  onDragEnd: undefined as ((e: unknown) => void) | undefined,
+}));
 vi.mock('@dnd-kit/core', () => ({
-  DndContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DndContext: ({
+    children,
+    onDragEnd,
+  }: {
+    children: React.ReactNode;
+    onDragEnd?: (e: unknown) => void;
+  }) => {
+    dndHandlers.onDragEnd = onDragEnd;
+    return <>{children}</>;
+  },
   DragOverlay: ({ children }: { children?: React.ReactNode }) => <>{children ?? null}</>,
   PointerSensor: class {},
   KeyboardSensor: class {},
   closestCenter: () => null,
   useSensor: () => ({}),
   useSensors: (...sensors: unknown[]) => sensors,
+  useDndContext: () => ({ active: null }),
   useDraggable: () => ({
     attributes: {},
     listeners: {},
@@ -276,5 +292,100 @@ describe('WorkflowCalendarView', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Post Agendado B/ }));
     fireEvent.click(await screen.findByRole('button', { name: /Abrir post completo/ }));
     expect(onOpenPost).toHaveBeenCalledWith(2);
+  });
+});
+
+const foreignPost = {
+  id: 77,
+  workflow_id: 99,
+  titulo: 'Post de outro fluxo',
+  tipo: 'carrossel' as const,
+  status: 'rascunho' as const,
+  scheduled_at: '2026-07-20T13:00:00.000Z',
+  ordem: 0,
+  workflow_titulo: 'Agosto — Carrosséis',
+};
+
+describe('cross-workflow rescheduling', () => {
+  it('refuses to unschedule a foreign post and explains why', async () => {
+    mockGetClientePosts.mockResolvedValue([foreignPost]);
+    renderWithQuery(<WorkflowCalendarView {...baseProps} />);
+    await screen.findByTitle(/Agosto — Carrosséis/);
+
+    dndHandlers.onDragEnd?.({
+      active: { id: 'post-77', data: { current: { post: foreignPost } } },
+      over: { id: 'unscheduled-zone' },
+    });
+
+    await waitFor(() => expect(toast.info).toHaveBeenCalled());
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('names the owning workflow when a foreign post is rescheduled', async () => {
+    mockGetClientePosts.mockResolvedValue([foreignPost]);
+    mockUpdate.mockResolvedValue({} as never);
+    renderWithQuery(<WorkflowCalendarView {...baseProps} />);
+    await screen.findByTitle(/Agosto — Carrosséis/);
+
+    dndHandlers.onDragEnd?.({
+      active: { id: 'post-77', data: { current: { post: foreignPost } } },
+      over: { id: 'date-2026-07-24' },
+    });
+
+    // Time picker opens; confirm at the carried-over time.
+    // TimePickerPopover.tsx:84 — the button's text is exactly "Confirmar".
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar' }));
+
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(
+        77,
+        expect.objectContaining({
+          scheduled_at: expect.any(String),
+        }),
+      ),
+    );
+    expect(vi.mocked(toast.success).mock.calls[0][0]).toContain('Agosto — Carrosséis');
+  });
+
+  it('reschedules the currently selected post, not the first one selected', async () => {
+    const a = {
+      ...foreignPost,
+      id: 1,
+      workflow_id: 10,
+      titulo: 'Post A',
+      workflow_titulo: 'Campanha Junho',
+    };
+    const b = {
+      ...foreignPost,
+      id: 2,
+      workflow_id: 10,
+      titulo: 'Post B',
+      workflow_titulo: 'Campanha Junho',
+    };
+    mockGetClientePosts.mockResolvedValue([a, b]);
+    mockUpdate.mockResolvedValue({} as never);
+    mockPreview.mockResolvedValue({
+      conteudo_plain: '',
+      responsavel_id: null,
+      ig_caption: null,
+      published_at: null,
+      instagram_permalink: null,
+    });
+    mockMedia.mockResolvedValue([]);
+
+    renderWithQuery(<WorkflowCalendarView {...baseProps} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Post A/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Post B/ }));
+
+    // Reschedule from the detail panel via the date picker. react-day-picker's
+    // day buttons carry the full spoken date as their accessible name (e.g.
+    // "terça-feira, 28 de julho de 2026"), not the bare day number, so match on
+    // the "<day> de julho" fragment rather than an exact "28".
+    fireEvent.click(await screen.findByRole('button', { name: /selecionar data e hora|jul/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /28 de julho/i }));
+
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+    expect(mockUpdate.mock.calls[0][0]).toBe(2);
   });
 });
