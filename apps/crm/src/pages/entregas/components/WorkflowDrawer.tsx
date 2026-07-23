@@ -317,7 +317,12 @@ export function WorkflowDrawer({
     qc.invalidateQueries({ queryKey: ['post-comment-threads'] });
     qc.invalidateQueries({ queryKey: ['post-edit-suggestions'] });
     qc.invalidateQueries({ queryKey: ['post-status-events'] });
-  }, [qc, workflowId]);
+    // Field changes (incl. scheduled_at, tipo) must also refresh the day-dot markers other
+    // rows' date pickers derive from this same client-wide query — see the ['clientePosts',
+    // clienteId] useQuery above. WorkflowCalendarView's own reschedule path already
+    // invalidates this key; this drawer is otherwise the only path that doesn't.
+    qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
+  }, [qc, workflowId, clienteId]);
 
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
