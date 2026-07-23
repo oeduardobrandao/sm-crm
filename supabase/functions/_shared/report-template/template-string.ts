@@ -17,13 +17,17 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 <title>Relatório — {{HANDLE}} — {{PERIOD}}</title>
 <style>{{FONTS_CSS}}</style>
 <style>
-  /* Sized on Chromium's integer CSS-pixel grid, NOT A4. A4 is 794.56px wide;
-     Chromium floors the layout viewport to 794px and the .56px remainder is
-     unpaintable from CSS — it showed as a body-colour seam beside the
-     full-bleed ink cover (full story at the bleed note above .cover-top).
-     794x1123px = 210.06x297.13mm. pdf.ts sends preferCssPageSize so Gotenberg
-     uses this size; keep every page-box dimension on the integer px grid. */
-  @page { size: 794px 1123px; margin: 0; }
+  /* Deliberately 1px LARGER than the sheet Gotenberg emits, in both axes.
+     Measured across three real PDFs: the emitted sheet is pinned at
+     595.92x841.92pt (794.56x1122.56 CSS px) no matter what paper size the
+     request asks for — but preferCssPageSize (sent by pdf.ts) makes this
+     @page size the LAYOUT viewport. Declaring 795x1123 therefore lets every
+     page paint 0.44px PAST the sheet on the right and bottom; the sheet clips
+     the overhang, and no unpaintable strip of PDF-white is left at the edges
+     (full story at the bleed note above .cover-top). Keep this and .page's
+     width/min-height identical, in integer px, and never smaller than
+     794.56x1122.56. */
+  @page { size: 795px 1123px; margin: 0; }
 
   :root {
     /* tokens — espelham o resolvedor de tema do Hub (theme.ts) */
@@ -80,11 +84,11 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 
   /* ── páginas ── */
   .page {
-    width: 794px;
-    /* Full sheet. @page above declares the same 794x1123px, so the page box,
-       the layout grid, and the paper are all one integer-pixel size — nothing
-       overflows onto a blank sheet and no strip of body colour is left at the
-       edges. Change the two together or not at all. */
+    width: 795px;
+    /* Matches @page exactly, so content == viewport and Chromium never
+       shrink-to-fits; both overshoot the real 794.56x1122.56px sheet by
+       0.44px so the sheet clips ink instead of leaving an unpainted strip.
+       Change @page and these two together or not at all. */
     min-height: 1123px;
     margin: 0 auto;
     padding: 16mm 16mm 22mm;
@@ -139,21 +143,28 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     color: #FAFAF7;
     justify-content: space-between;
   }
-  /* Full-bleed cover bleed note — why the page is sized in px, not A4.
+  /* Full-bleed bleed note — why @page overshoots the sheet by 1px.
 
-     Measured off real Gotenberg PDFs (2026-07): with "size: A4" Chromium emits
-     a 595.92pt sheet = 794.56 CSS px, then floors the layout viewport to 794px.
-     The 0.56px remainder cannot be painted from CSS: box-shadow/outline clip at
-     the page box, a negative-inset ::before widens the document and triggers
-     shrink-to-fit, and widening .cover past the viewport also shrink-to-fits
-     (measured scale 0.99896), clawing back most of what it paints. Net result
-     was a permanent ~0.1mm body-colour seam down the cover's right edge.
+     Measured off three real Gotenberg PDFs (2026-07): the emitted sheet is
+     PINNED at 595.92x841.92pt (2483x3508 dots at 300dpi = 794.56x1122.56 CSS
+     px) — requesting 595.296pt, 595.5pt via CSS, or anything else all emit the
+     same MediaBox. Nothing painted from CSS can cross the layout viewport
+     (even the canvas colour stops there — the strip beyond it is raw
+     PDF-white), so whenever the viewport is narrower than the sheet, an
+     unpaintable seam shows on the right of EVERY page — faint beside light
+     paper, glaring beside the ink cover.
 
-     Fix: declare @page in integer CSS pixels (794x1123) and send
-     preferCssPageSize from pdf.ts, so the sheet IS the layout grid and there is
-     no sub-pixel remainder to leak. If a seam ever reappears, verify the
-     emitted MediaBox is 595.5x842.25pt before touching this file — anything
-     else means Chromium snapped the paper size again. */
+     Dead ends, so nobody retries them: box-shadow/outline clip at the page
+     box; a negative-inset ::before and any content wider than the viewport
+     trigger shrink-to-fit (measured scale 0.99896), clawing back what they
+     paint.
+
+     What DOES work: preferCssPageSize makes @page the layout viewport (proven
+     by fragmentation — a 1123px .page on the 1122.56px sheet still yields
+     exactly 6 pages, so layout used 1123, not the floored sheet). Declaring
+     795x1123 puts the viewport just past the sheet on both axes: ink paints
+     to 596.25pt and the pinned 595.92pt sheet clips 0.44px of overhang
+     instead of showing a gap. Content == viewport, so no shrink-to-fit. */
   .cover-top { padding: 20mm 18mm 0; display: flex; justify-content: space-between; align-items: flex-start; }
   /* logo do workspace (branding.logo_base64) sobre placa clara — funciona com logo de qualquer cor */
   .cover-logo-plate {

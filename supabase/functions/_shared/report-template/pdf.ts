@@ -6,19 +6,19 @@ export function buildGotenbergRequest(
   const formData = new FormData();
   const htmlBlob = new Blob([html], { type: "text/html" });
   formData.append("files", htmlBlob, "index.html");
-  // The template's @page declares 794x1123 CSS px (210.06x297.13mm) — sized on
-  // Chromium's integer-pixel layout grid on purpose. preferCssPageSize makes
-  // Chromium use that CSS size, so the sheet and the layout viewport are the
-  // SAME width and the full-bleed cover paints to the very edge. With the
-  // inch-based paper size alone the sheet came out 794.56px (measured
-  // 595.920pt against 595.296pt requested) and the floored-out 0.56px showed
-  // as a body-colour seam down the cover's right edge. Full story in the bleed
-  // note in template-string.ts.
+  // Measured across three real PDFs: this Gotenberg's Chromium emits a
+  // 595.92x841.92pt sheet NO MATTER what paper size is requested (via these
+  // inch fields or via CSS). What preferCssPageSize does control is the
+  // LAYOUT viewport: it becomes the template's @page size. The template
+  // exploits that by declaring 795x1123px — just past the pinned
+  // 794.56x1122.56px sheet — so every page paints edge to edge and the sheet
+  // clips the 0.44px overhang. Full story in the bleed note in
+  // template-string.ts; change the @page size there, not the numbers here.
   formData.append("preferCssPageSize", "true");
-  // Fallback only, in case preferCssPageSize is ever dropped: just OVER the
-  // 794x1123px page box, so the sheet is never smaller than the page (a
+  // Fallback only, in case preferCssPageSize is ever dropped: at least the
+  // 795x1123px page box, so the sheet is never smaller than the page (a
   // shorter sheet left a band of body colour along the cover's bottom edge).
-  formData.append("paperWidth", "8.2709"); // 210.08mm vs the 210.06mm page box
+  formData.append("paperWidth", "8.2813"); // 210.35mm vs the 210.34mm page box
   formData.append("paperHeight", "11.698"); // 297.13mm vs the 297.13mm page box
   formData.append("marginTop", "0");
   formData.append("marginBottom", "0");
