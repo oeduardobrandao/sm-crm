@@ -1,18 +1,24 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, expect, it, vi, beforeAll } from 'vitest';
+import { describe, expect, it, vi, beforeAll, beforeEach } from 'vitest';
 import { CalendarGrid } from '../CalendarGrid';
 import type { ClientePost } from '@/store/posts';
+
+const dndKeyDownSpy = vi.fn();
 
 vi.mock('@dnd-kit/core', () => ({
   useDraggable: () => ({
     attributes: {},
-    listeners: {},
+    listeners: { onKeyDown: dndKeyDownSpy },
     setNodeRef: () => {},
     setActivatorNodeRef: () => {},
     isDragging: false,
   }),
   useDroppable: () => ({ setNodeRef: () => {}, isOver: false }),
 }));
+
+beforeEach(() => {
+  dndKeyDownSpy.mockReset();
+});
 
 beforeAll(() => {
   (Element.prototype as unknown as { hasPointerCapture: () => boolean }).hasPointerCapture = () =>
@@ -167,5 +173,8 @@ describe('whole-pill drag', () => {
     );
     fireEvent.keyDown(screen.getByRole('button', { name: /Enter select/ }), { key: 'Enter' });
     expect(onSelect).toHaveBeenCalledTimes(1);
+    // Guards prop ordering: onKeyDown={handleKeyDown} must come AFTER {...listeners} in the
+    // JSX so it wins (last-prop-wins) and dnd-kit's keyboard-drag handler never fires here.
+    expect(dndKeyDownSpy).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from 'react';
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { parseISO, format, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -46,26 +46,16 @@ function PostPill({
   // The whole pill is the drag surface. We still omit dnd's `attributes` (role/aria/tabIndex)
   // because the pill owns its own button semantics, and we re-declare `onKeyDown` after the
   // listener spread so Enter/Space selects instead of starting a keyboard drag. The grip
-  // remains the keyboard-drag activator.
+  // remains the keyboard-drag activator. We don't need to swallow the trailing click a
+  // finished drag emits on the origin element — dnd-kit's own AbstractPointerSensor already
+  // stops it: when the activation constraints are met it registers a `click` listener on
+  // `document` with `{ capture: true }` that calls `stopPropagation`, so the click never
+  // reaches this element's `onClick` at all.
   const { listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
     id: `post-${post.id}`,
     data: { post },
     disabled: !canDrag,
   });
-
-  const wasDraggingRef = useRef(false);
-  useEffect(() => {
-    if (isDragging) wasDraggingRef.current = true;
-  }, [isDragging]);
-
-  const handleClick = () => {
-    // A finished drag emits a trailing click on the origin element; ignore exactly one.
-    if (wasDraggingRef.current) {
-      wasDraggingRef.current = false;
-      return;
-    }
-    onSelect(post);
-  };
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -95,7 +85,7 @@ function PostPill({
       }}
       title={tooltip}
       {...(canDrag ? listeners : {})}
-      onClick={handleClick}
+      onClick={() => onSelect(post)}
       onKeyDown={handleKeyDown}
     >
       {isLocked && <Lock className="h-2.5 w-2.5" style={{ flexShrink: 0 }} />}
