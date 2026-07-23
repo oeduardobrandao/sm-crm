@@ -380,15 +380,23 @@ export interface InviteInfo {
 }
 
 export function getWorkspaceInvites(workspace_id: string) {
-  return adminApi<{ invites: InviteInfo[]; total: number }>('get-workspace-invites', { workspace_id });
+  return adminApi<{ invites: InviteInfo[]; total: number }>('get-workspace-invites', {
+    workspace_id,
+  });
 }
 
 export function adminCancelInvite(workspace_id: string, invite_id: string) {
-  return adminApi<{ success: boolean; deleted_user: boolean }>('admin-cancel-invite', { workspace_id, invite_id });
+  return adminApi<{ success: boolean; deleted_user: boolean }>('admin-cancel-invite', {
+    workspace_id,
+    invite_id,
+  });
 }
 
 export function adminResendInvite(workspace_id: string, invite_id: string) {
-  return adminApi<{ success?: boolean; route?: string; message?: string }>('admin-resend-invite', { workspace_id, invite_id });
+  return adminApi<{ success?: boolean; route?: string; message?: string }>('admin-resend-invite', {
+    workspace_id,
+    invite_id,
+  });
 }
 
 export function listAdmins() {
