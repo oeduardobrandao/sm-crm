@@ -1,4 +1,4 @@
-import { useDroppable, useDraggable } from '@dnd-kit/core';
+import { useDroppable, useDraggable, useDndContext } from '@dnd-kit/core';
 import type { ClientePost } from '@/store/posts';
 import { TIPO_LABELS, TIPO_BADGE_COLORS } from '../postLabels';
 
@@ -46,6 +46,11 @@ export function UnscheduledPostsSidebar({
   currentWorkflowId,
 }: UnscheduledPostsSidebarProps) {
   const { setNodeRef, isOver } = useDroppable({ id: 'unscheduled-zone' });
+  const { active } = useDndContext();
+  const draggingPost = active?.data.current?.post as ClientePost | undefined;
+  // Don't invite a drop we're going to reject.
+  const willAccept = !draggingPost || draggingPost.workflow_id === currentWorkflowId;
+  const highlight = isOver && willAccept;
 
   const currentWorkflowPosts = posts.filter((p) => p.workflow_id === currentWorkflowId);
 
@@ -54,8 +59,8 @@ export function UnscheduledPostsSidebar({
       ref={setNodeRef}
       className="calendar-sidebar"
       style={{
-        borderColor: isOver ? 'var(--primary-color)' : undefined,
-        boxShadow: isOver ? '0 0 12px rgba(234, 179, 8, 0.2)' : undefined,
+        borderColor: highlight ? 'var(--primary-color)' : undefined,
+        boxShadow: highlight ? '0 0 12px rgba(234, 179, 8, 0.2)' : undefined,
       }}
     >
       <div className="sidebar-header">

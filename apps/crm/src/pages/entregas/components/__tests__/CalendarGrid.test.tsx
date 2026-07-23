@@ -91,3 +91,47 @@ describe('CalendarGrid pills', () => {
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 3 }));
   });
 });
+
+describe('cross-workflow drag gate', () => {
+  it('exposes the drag handle on an unlocked post from another workflow', () => {
+    render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[mkPost({ id: 5, titulo: 'Foreign', workflow_id: 99 })]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    expect(screen.getByLabelText(/Mover post/)).toBeInTheDocument();
+  });
+
+  it('still hides the drag handle on a locked post from another workflow', () => {
+    render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[mkPost({ id: 6, titulo: 'Locked', workflow_id: 99, status: 'agendado' })]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    expect(screen.queryByLabelText(/Mover post/)).not.toBeInTheDocument();
+  });
+
+  it('still hides the drag handle on a locked post from this workflow', () => {
+    render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[mkPost({ id: 7, titulo: 'Own locked', status: 'postado' })]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    expect(screen.queryByLabelText(/Mover post/)).not.toBeInTheDocument();
+  });
+});

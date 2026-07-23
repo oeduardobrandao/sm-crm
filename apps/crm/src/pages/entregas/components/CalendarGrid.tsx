@@ -38,7 +38,10 @@ function PostPill({
 }) {
   const isCurrentWorkflow = post.workflow_id === currentWorkflowId;
   const isLocked = LOCKED_STATUSES.has(post.status);
-  const canDrag = isCurrentWorkflow && !isLocked;
+  // Ownership is shown (green pill + workflow name in the detail panel) but is no longer
+  // a permission boundary for dates — only lock status is. Unscheduling stays own-workflow
+  // only, enforced in resolveCalendarDrop.
+  const canDrag = !isLocked;
 
   // We deliberately omit dnd's `attributes` (role/aria/tabIndex): the pill body owns
   // button semantics; only the handle carries the drag `listeners` (incl. the keyboard
