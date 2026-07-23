@@ -1,4 +1,4 @@
-import type { WorkflowPost } from '../../store';
+import type { ClientePost, WorkflowPost } from '../../store';
 
 export const TIPO_LABELS: Record<WorkflowPost['tipo'], string> = {
   feed: 'Feed',
@@ -96,3 +96,45 @@ export const PUBLISH_STATE_CLASS: Record<PostPublishState, string> = {
   ...STATUS_CLASS,
   publicando: 'post-status--publicando',
 };
+
+export type DayMarker = { colors: string[]; label: string };
+
+/** Local-time `yyyy-MM-dd`. Must match how CalendarGrid builds its droppable ids — a
+ *  UTC-based key shifts posts to the wrong day either side of midnight. */
+function localDayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Groups scheduled posts into per-day dot markers: one dot per distinct tipo present that
+ * day (never one per post), in TIPO_ORDER, plus a pre-formatted tooltip with the counts.
+ */
+export function buildTipoDayMarkers(
+  posts: Pick<ClientePost, 'id' | 'tipo' | 'scheduled_at'>[],
+  opts?: { excludePostId?: number },
+): Map<string, DayMarker> {
+  const counts = new Map<string, Map<WorkflowPost['tipo'], number>>();
+
+  for (const post of posts) {
+    if (!post.scheduled_at) continue;
+    if (opts?.excludePostId != null && post.id === opts.excludePostId) continue;
+
+    const key = localDayKey(new Date(post.scheduled_at));
+    let byTipo = counts.get(key);
+    if (!byTipo) {
+      byTipo = new Map();
+      counts.set(key, byTipo);
+    }
+    byTipo.set(post.tipo, (byTipo.get(post.tipo) ?? 0) + 1);
+  }
+
+  const markers = new Map<string, DayMarker>();
+  for (const [key, byTipo] of counts) {
+    const present = TIPO_ORDER.filter((tipo) => byTipo.has(tipo));
+    markers.set(key, {
+      colors: present.map((tipo) => TIPO_COLORS[tipo]),
+      label: present.map((tipo) => `${byTipo.get(tipo)} ${TIPO_LABELS[tipo]}`).join(' · '),
+    });
+  }
+  return markers;
+}

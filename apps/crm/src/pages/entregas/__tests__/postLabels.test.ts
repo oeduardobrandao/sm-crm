@@ -5,7 +5,9 @@ import {
   TIPO_BADGE_COLORS,
   TIPO_ORDER,
   TIPO_LABELS,
+  buildTipoDayMarkers,
 } from '../postLabels';
+import type { ClientePost } from '@/store/posts';
 
 describe('tipo palette', () => {
   it('uses the CRM palette, not the Hub palette', () => {
@@ -147,5 +149,74 @@ describe('getPostPublishState', () => {
         tiktok_publish_status: 'failed',
       }),
     ).toBe('publicando');
+  });
+});
+
+type P = Pick<ClientePost, 'id' | 'tipo' | 'scheduled_at'>;
+// Local-noon timestamps keep the assertions timezone-independent.
+const at = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12, 0, 0).toISOString();
+
+describe('buildTipoDayMarkers', () => {
+  it('returns an empty map for no posts', () => {
+    expect(buildTipoDayMarkers([]).size).toBe(0);
+  });
+
+  it('skips posts with no scheduled_at', () => {
+    const posts: P[] = [{ id: 1, tipo: 'feed', scheduled_at: null }];
+    expect(buildTipoDayMarkers(posts).size).toBe(0);
+  });
+
+  it('emits one dot per distinct tipo, not per post', () => {
+    const posts: P[] = [
+      { id: 1, tipo: 'feed', scheduled_at: at(2026, 7, 24) },
+      { id: 2, tipo: 'feed', scheduled_at: at(2026, 7, 24) },
+      { id: 3, tipo: 'feed', scheduled_at: at(2026, 7, 24) },
+    ];
+    const marker = buildTipoDayMarkers(posts).get('2026-07-24');
+    expect(marker?.colors).toEqual(['#eab308']);
+    expect(marker?.label).toBe('3 Feed');
+  });
+
+  it('orders dots feed, carrossel, reels, stories regardless of input order', () => {
+    const posts: P[] = [
+      { id: 1, tipo: 'stories', scheduled_at: at(2026, 7, 24) },
+      { id: 2, tipo: 'reels', scheduled_at: at(2026, 7, 24) },
+      { id: 3, tipo: 'feed', scheduled_at: at(2026, 7, 24) },
+      { id: 4, tipo: 'carrossel', scheduled_at: at(2026, 7, 24) },
+    ];
+    const marker = buildTipoDayMarkers(posts).get('2026-07-24');
+    expect(marker?.colors).toEqual(['#eab308', '#3ecf8e', '#E1306C', '#42c8f5']);
+    expect(marker?.label).toBe('1 Feed · 1 Carrossel · 1 Reels · 1 Stories');
+  });
+
+  it('groups by local date, not UTC date', () => {
+    const posts: P[] = [{ id: 1, tipo: 'feed', scheduled_at: at(2026, 7, 24) }];
+    const keys = [...buildTipoDayMarkers(posts).keys()];
+    expect(keys).toEqual(['2026-07-24']);
+  });
+
+  it('separates distinct days', () => {
+    const posts: P[] = [
+      { id: 1, tipo: 'feed', scheduled_at: at(2026, 7, 24) },
+      { id: 2, tipo: 'reels', scheduled_at: at(2026, 7, 25) },
+    ];
+    const map = buildTipoDayMarkers(posts);
+    expect(map.get('2026-07-24')?.colors).toEqual(['#eab308']);
+    expect(map.get('2026-07-25')?.colors).toEqual(['#E1306C']);
+  });
+
+  it('excludes the post being edited so it does not warn about itself', () => {
+    const posts: P[] = [
+      { id: 1, tipo: 'feed', scheduled_at: at(2026, 7, 24) },
+      { id: 2, tipo: 'reels', scheduled_at: at(2026, 7, 24) },
+    ];
+    const marker = buildTipoDayMarkers(posts, { excludePostId: 1 }).get('2026-07-24');
+    expect(marker?.colors).toEqual(['#E1306C']);
+    expect(marker?.label).toBe('1 Reels');
+  });
+
+  it('drops a day entirely when the excluded post was its only one', () => {
+    const posts: P[] = [{ id: 1, tipo: 'feed', scheduled_at: at(2026, 7, 24) }];
+    expect(buildTipoDayMarkers(posts, { excludePostId: 1 }).size).toBe(0);
   });
 });
