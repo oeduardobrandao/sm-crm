@@ -203,15 +203,27 @@ async function assertThrowsAsyncMessage(fn: () => Promise<unknown>, needle: stri
 
 import { inviteOrResend } from "../_shared/invite-actions.ts";
 
-// Fake admin client. `pendingOtherEmails` is the pending count for OTHER emails
-// (the seat check excludes a matching pending row for THIS email — finding 3).
-// `matchingPending` says whether a pending row exists for THIS email.
+// Fake admin client.
+// `pendingInvites` is a fixture of ALL pending invite rows in the workspace
+// (both matching and non-matching the target email). The fake computes the
+// seat check's pending head-count by ACTUALLY filtering this fixture against
+// whatever `.neq("email", ...)` call the source code chained onto the query —
+// it does not just echo back a hardcoded number. This is what makes the
+// seat-exclusion invariant (finding 1) a real assertion: if the source's
+// `.neq("email", email)` call were deleted or inverted, the fake would record
+// no (or the wrong) exclusion and the computed count — and therefore the seat
+// decision — would come out different.
+// `pendingOtherEmails` is a legacy fallback (used by tests that don't care
+// about the exclusion): when `pendingInvites` isn't given, the pending count
+// is just this fixed number, matching the old fake's behavior.
+// `matchingPending` documents whether a pending row exists for THIS email.
 // `failTable` injects a Supabase { error } on the first insert/delete to that
-// table (finding 2). `memberships` is the user's workspace set (finding 5).
+// table (finding 2). `memberships` is the user's workspace set (finding 4/5).
 function makeInviteAdmin(opts: {
   limit: number | null;
   members: number;
   pendingOtherEmails?: number;
+  pendingInvites?: Array<{ email: string }>;
   matchingPending?: boolean;
   authUser?: { id: string; email_confirmed_at: string | null } | null;
   onboarding?: boolean | null;      // profiles.onboarding_complete
@@ -241,11 +253,14 @@ function makeInviteAdmin(opts: {
       return Promise.resolve({ data: null, error: null });
     },
     from: (table: string) => {
+      // Fresh per `.from(table)` call, so filters recorded on one query chain
+      // never leak into another.
+      const neqFilters: Array<{ col: string; val: unknown }> = [];
       const api: any = {
-        // select("*", {head:true}) is the seat count path; .neq(...) marks the members-exclusion.
+        // select("*", {head:true}) is the seat count path; .neq(...) marks the exclusion.
         select: (_c?: string, o?: any) => { if (o?.head) api._head = true; return api; },
         eq: () => api,
-        neq: () => api,
+        neq: (col: string, val: unknown) => { neqFilters.push({ col, val }); return api; },
         in: () => api,
         delete: () => { events.push("del:" + table); return { ...api, _err: opts.failTable === table }; },
         insert: (row: any) => {
@@ -261,7 +276,14 @@ function makeInviteAdmin(opts: {
         },
         then: (r: (x: any) => unknown) => {
           if (api._head && table === "workspace_members") return Promise.resolve(r({ count: opts.members, error: null }));
-          if (api._head && table === "invites") return Promise.resolve(r({ count: opts.pendingOtherEmails ?? 0, error: null }));
+          if (api._head && table === "invites") {
+            const count = opts.pendingInvites
+              ? opts.pendingInvites.filter((inv) =>
+                  !neqFilters.some((f) => f.col === "email" && f.val === inv.email)
+                ).length
+              : (opts.pendingOtherEmails ?? 0);
+            return Promise.resolve(r({ count, error: null }));
+          }
           if (table === "workspace_members") return Promise.resolve(r({ data: (opts.memberships ?? []).map((w) => ({ workspace_id: w })), error: null }));
           return Promise.resolve(r({ data: null, error: (api as any)._err ? failErr : null }));
         },
@@ -284,11 +306,25 @@ Deno.test("inviteOrResend: a brand-new email at the limit is rejected before any
 });
 
 Deno.test("inviteOrResend: resending an existing pending invite at the limit SUCCEEDS (finding 3)", async () => {
-  // Workspace is at capacity via members(2) + THIS email's own pending row = limit(3).
-  // The seat count EXCLUDES this email's pending (pendingOtherEmails: 0), so the code
-  // sees 2 < 3 and proceeds. A naive check that counted this email's pending would see
-  // 3 and wrongly reject — that this test passes proves the exclusion is load-bearing.
-  const admin = makeInviteAdmin({ limit: 3, members: 2, pendingOtherEmails: 0, matchingPending: true, authUser: null });
+  // Fixture: 2 pending rows exist workspace-wide — one is THIS email's own
+  // ("a@x.com", the resend target), one is another invitee's ("b@x.com").
+  // members(1) + ALL pending rows(2) = 3, which is NOT < limit(3) -- a naive
+  // "count every pending row" implementation would reject this as over-limit.
+  // The correct implementation excludes the target's own row via
+  // `.neq("email", email)`, leaving pending=1 (just "b@x.com"), so
+  // members(1)+pending(1)=2 < limit(3) and it proceeds. The fake computes the
+  // count by actually filtering `pendingInvites` against the `.neq(...)` the
+  // source registered (see makeInviteAdmin) rather than returning a hardcoded
+  // number, so if the source's `.neq("email", email)` were removed or
+  // inverted, the fake would report count=2 and this assertion (route
+  // "invited") would fail with "plan-limit-exceeded" instead.
+  const admin = makeInviteAdmin({
+    limit: 3,
+    members: 1,
+    pendingInvites: [{ email: "a@x.com" }, { email: "b@x.com" }],
+    matchingPending: true,
+    authUser: null,
+  });
   // deno-lint-ignore no-explicit-any
   const out = await inviteOrResend(admin as any, baseInput, ADMIN);
   assertEquals(out.route, "invited");
@@ -354,6 +390,19 @@ Deno.test("inviteOrResend: never-confirmed stale user is reinvited and reports a
   assertEquals((out.affectedWorkspaceIds ?? []).sort(), ["c1", "c2"]);
   assert(admin._events().includes("delUser:u1"), "reinvite deletes the stale user");
   assert(admin._events().includes("authInvite"), "then sends a fresh invite");
+});
+
+Deno.test("inviteOrResend: reinvite still reports the current workspace when absent from captured memberships (finding 4)", async () => {
+  // Unlike the test above, the captured memberships set does NOT include the
+  // current workspace ("c1" — baseInput.contaId). Only "c2" is captured, so
+  // the `if (!affectedWorkspaceIds.includes(input.contaId)) push(...)` branch
+  // must fire for "c1" to show up at all. A regression that deleted that line
+  // would leave affectedWorkspaceIds as just ["c2"] and this assertion would fail.
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: null }, hasProfile: true, onboarding: false, hasPassword: false, memberships: ["c2"] });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+  assertEquals(out.route, "reinvited");
+  assertEquals((out.affectedWorkspaceIds ?? []).sort(), ["c1", "c2"]);
 });
 
 Deno.test("inviteOrResend: blocked-anomalous does NOT delete the invite (finding 4)", async () => {

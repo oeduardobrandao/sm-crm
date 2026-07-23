@@ -79,6 +79,36 @@ export async function getAuthStatesByEmails(
   return out;
 }
 
+/** Throw on a Supabase mutation error — never report success after a failed write. */
+function ensureOk(error: unknown, op: string): void {
+  if (error) throw new Error(`invite_mutation_failed:${op}`);
+}
+
+/**
+ * Capture a user's full workspace_members set, THEN delete their profile,
+ * membership rows, and auth record — in that order, with every mutation's
+ * { error } checked. Shared by cancelInvite and inviteOrResend's reinvite
+ * route (findings 2 + 3): the capture-before-delete order is what lets a
+ * caller audit every workspace the user vanished from, and living in one
+ * place means that check can't silently be present in one copy and dropped
+ * in the other.
+ */
+async function deleteOrphanedAuthUser(
+  adminClient: any,
+  userId: string,
+): Promise<{ affectedWorkspaceIds: string[] }> {
+  const { data: memberships, error: membershipsErr } = await adminClient
+    .from("workspace_members").select("workspace_id").eq("user_id", userId);
+  ensureOk(membershipsErr, "capture_memberships");
+  const affectedWorkspaceIds = [...new Set((memberships ?? []).map((m: any) => m.workspace_id))] as string[];
+
+  ensureOk((await adminClient.from("profiles").delete().eq("id", userId)).error, "profile_delete");
+  ensureOk((await adminClient.from("workspace_members").delete().eq("user_id", userId)).error, "member_delete");
+  ensureOk((await adminClient.auth.admin.deleteUser(userId)).error, "auth_user_delete");
+
+  return { affectedWorkspaceIds };
+}
+
 export interface CancelResult {
   status: "cancelled";
   email: string;
@@ -126,22 +156,8 @@ export async function cancelInvite(
       hasPassword: coerceHasPassword(pw, pwErr),
     });
     if (action === "reinvite" || action === "resend-link") {
-      const { data: memberships, error: membershipsErr } = await adminClient
-        .from("workspace_members").select("workspace_id").eq("user_id", authUser.id);
-      if (membershipsErr) throw new Error("cancel_invite_capture_failed");
-      affectedWorkspaceIds = [...new Set((memberships ?? []).map((m: any) => m.workspace_id))] as string[];
-
-      const { error: profilesDeleteErr } = await adminClient
-        .from("profiles").delete().eq("id", authUser.id);
-      if (profilesDeleteErr) throw new Error("cancel_invite_delete_failed");
-
-      const { error: membersDeleteErr } = await adminClient
-        .from("workspace_members").delete().eq("user_id", authUser.id);
-      if (membersDeleteErr) throw new Error("cancel_invite_delete_failed");
-
-      const { error: deleteUserErr } = await adminClient.auth.admin.deleteUser(authUser.id);
-      if (deleteUserErr) throw new Error("cancel_invite_delete_failed");
-
+      const result = await deleteOrphanedAuthUser(adminClient, authUser.id);
+      affectedWorkspaceIds = result.affectedWorkspaceIds;
       deletedUser = true;
     }
   }
@@ -172,11 +188,6 @@ export type InviteRoute =
   | "added" | "already-member" | "already-onboarded" | "resent-link" | "reinvited"
   | "invited" | "plan-limit-exceeded" | "blocked-anomalous";
 export interface InviteOutcome { route: InviteRoute; affectedWorkspaceIds?: string[]; }
-
-/** Throw on a Supabase mutation error — never report success after a failed write. */
-function ensureOk(error: unknown, op: string): void {
-  if (error) throw new Error(`invite_mutation_failed:${op}`);
-}
 
 /**
  * THE invite-or-resend primitive shared by invite-user (CRM, addOnboarded:true)
@@ -270,16 +281,12 @@ export async function inviteOrResend(
       return { route: "resent-link" };
     }
 
-    // reinvite: never-confirmed. Capture the user's workspaces for audit BEFORE
-    // deleting, then delete + fresh invite.
-    const { data: memberships } = await adminClient
-      .from("workspace_members").select("workspace_id").eq("user_id", existingUser.id);
-    const affectedWorkspaceIds = [...new Set((memberships ?? []).map((m: any) => m.workspace_id))] as string[];
-    if (!affectedWorkspaceIds.includes(input.contaId)) affectedWorkspaceIds.push(input.contaId);
+    // reinvite: never-confirmed. Delete stale invites, then capture-and-delete
+    // the orphaned auth user for audit (shared with cancelInvite — findings
+    // 2 + 3), then send a fresh invite.
     await deletePriorInvites(adminClient, email, input.contaId);
-    ensureOk((await adminClient.from("profiles").delete().eq("id", existingUser.id)).error, "profile_delete");
-    ensureOk((await adminClient.from("workspace_members").delete().eq("user_id", existingUser.id)).error, "member_delete");
-    ensureOk((await adminClient.auth.admin.deleteUser(existingUser.id)).error, "user_delete");
+    const { affectedWorkspaceIds } = await deleteOrphanedAuthUser(adminClient, existingUser.id);
+    if (!affectedWorkspaceIds.includes(input.contaId)) affectedWorkspaceIds.push(input.contaId);
     await sendNewUserInvite(adminClient, input, email);
     return { route: "reinvited", affectedWorkspaceIds };
   }
