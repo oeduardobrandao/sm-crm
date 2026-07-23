@@ -52,7 +52,7 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
   const total = data?.total ?? invites.length;
 
   return (
-    <div className="min-w-0 overflow-hidden bg-card border border-border rounded-2xl p-5 mb-6">
+    <div className="min-w-0 overflow-hidden bg-card border border-border rounded-2xl p-5 mt-6 mb-6">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="font-semibold">Invites ({total})</h2>
         {total > invites.length && (
@@ -131,11 +131,16 @@ function InviteRow({
           </span>
         ))}
       </div>
-      <span className="text-xs text-muted-foreground">{invite.role}</span>
-      <span className="text-xs text-muted-foreground">{invite.status}</span>
-      <span className="text-xs text-muted-foreground">{formatSent(invite.created_at)}</span>
-      <span className="text-xs text-muted-foreground">{authStateLabel(invite.auth_state)}</span>
-      <div className="flex shrink-0 gap-3">
+      {/* Mobile: same nodes, laid out as a wrapped meta line instead of a hidden grid column
+          (md:contents lets them fall back into their normal grid cells at md+, so nothing
+          is duplicated and the desktop grid is unaffected). */}
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 md:mt-0 md:contents">
+        <span className="text-xs text-muted-foreground">{invite.role}</span>
+        <span className="text-xs text-muted-foreground">{invite.status}</span>
+        <span className="text-xs text-muted-foreground">{formatSent(invite.created_at)}</span>
+        <span className="text-xs text-muted-foreground">{authStateLabel(invite.auth_state)}</span>
+      </div>
+      <div className="mt-2 flex shrink-0 gap-3 md:mt-0">
         {actable && (
           <>
             <button
