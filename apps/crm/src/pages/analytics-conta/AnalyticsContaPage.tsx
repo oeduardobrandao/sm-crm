@@ -1014,6 +1014,8 @@ function AnalyticsContent({
   const [sendingEmail, setSendingEmail] = useState(false);
   const [generateIncludeAI, setGenerateIncludeAI] = useState(true);
   const [generatingReport, setGeneratingReport] = useState(false);
+  // Which report row is currently being downloaded, so only that row spins.
+  const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
 
   const dateRange = periodStart && periodEnd ? { start: periodStart, end: periodEnd } : undefined;
 
@@ -1367,6 +1369,22 @@ function AnalyticsContent({
     } finally {
       setSendingEmail(false);
       setEmailReportTarget(null);
+    }
+  };
+
+  const handleDownloadReport = async (reportId: number) => {
+    // Signing the URL takes a moment; without feedback the row looks inert and
+    // gets clicked again. Every download button locks so the spinner on the
+    // active row is the only thing that looks clickable.
+    if (downloadingReportId !== null) return;
+    setDownloadingReportId(reportId);
+    try {
+      const url = await getReportDownloadUrl(reportId);
+      openExternalUrl(url);
+    } catch {
+      toast.error('Erro ao baixar relatório');
+    } finally {
+      setDownloadingReportId(null);
     }
   };
 
@@ -2176,16 +2194,16 @@ function AnalyticsContent({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={async () => {
-                          try {
-                            const url = await getReportDownloadUrl(r.id);
-                            openExternalUrl(url);
-                          } catch {
-                            toast.error('Erro ao baixar relatório');
-                          }
-                        }}
+                        disabled={downloadingReportId !== null}
+                        onClick={() => handleDownloadReport(r.id)}
                       >
-                        ↓ Baixar PDF
+                        {downloadingReportId === r.id ? (
+                          <>
+                            <Spinner size="sm" /> Baixando…
+                          </>
+                        ) : (
+                          '↓ Baixar PDF'
+                        )}
                       </Button>
                     )}
                     <Button variant="outline" size="sm" onClick={() => setEmailReportTarget(r)}>

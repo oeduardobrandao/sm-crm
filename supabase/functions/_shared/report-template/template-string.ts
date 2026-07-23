@@ -132,12 +132,25 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     color: #FAFAF7;
     justify-content: space-between;
   }
-  /* The cover is the only full-bleed page, so it is the only one where a
-     sub-pixel rounding seam at the sheet edge would be visible (light body
-     colour against dark ink). The spread shadow paints ink past the page box
-     and the sheet clips it; it costs no layout. */
+  /* Edge bleed. Whatever the sheet does at its margins, something has to be
+     painted there or the body colour shows through — most visibly on the
+     full-bleed dark cover.
+     Two independent mechanisms, because the exact cause of the residual seam
+     could not be reproduced outside a real Gotenberg render:
+       1. the printed body carries the paper colour, so a seam beside a content
+          page is paper-on-paper instead of the grey screen backdrop;
+       2. the cover paints ink well past its own box, which the sheet clips. */
   @media print {
-    .cover { box-shadow: 0 0 0 3mm var(--ink); }
+    html, body { background: var(--paper); }
+    .cover { box-shadow: 0 0 0 8mm var(--ink); }
+    .cover::before {
+      content: '';
+      position: absolute;
+      top: -8mm; right: -8mm; bottom: -8mm; left: -8mm;
+      background: var(--ink);
+      z-index: 0;
+    }
+    .cover > * { position: relative; z-index: 1; }
   }
   .cover-top { padding: 20mm 18mm 0; display: flex; justify-content: space-between; align-items: flex-start; }
   /* logo do workspace (branding.logo_base64) sobre placa clara — funciona com logo de qualquer cor */
