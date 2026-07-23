@@ -1,10 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
-import { seatsAvailable } from "../_shared/invite-seats.ts";
 import { classifyExistingUser, coerceHasPassword } from "../_shared/invite-classify.ts";
-import { sendInviteEmail } from "../_shared/invite-email.ts";
-import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
-import { sendPendingWorkspaceInvite } from "../_shared/invite-pending.ts";
+import { inviteOrResend } from "../_shared/invite-actions.ts";
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 
 async function findAuthUserByEmail(adminClient: any, email: string) {
@@ -141,217 +138,55 @@ Deno.serve(async (req) => {
       throw new Error('Administradores não podem convidar novos donos.');
     }
 
-    // Seat pre-check: count active members + pending invites against plan limit
-    const limit = await effectivePlanLimit(adminClient, profile.conta_id, "max_team_members");
-    const [{ count: members }, { count: pending }] = await Promise.all([
-      adminClient.from("workspace_members").select("*", { count: "exact", head: true })
-        .eq("workspace_id", profile.conta_id),
-      adminClient.from("invites").select("*", { count: "exact", head: true })
-        .eq("conta_id", profile.conta_id).eq("status", "pending"),
-    ]);
-    if (!seatsAvailable({ limit, members: members ?? 0, pendingInvites: pending ?? 0 })) {
-      return new Response(
-        JSON.stringify({ error: "plan_limit_exceeded", resource: "max_team_members" }),
-        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } },
-      );
+    const redirectBase = Deno.env.get('OAUTH_REDIRECT_BASE') || 'http://localhost:5173';
+    let outcome;
+    try {
+      // addOnboarded: true — the CRM "invite" action adds an onboarded person
+      // (existing behavior). The admin resend passes false. 'already-onboarded'
+      // is therefore unreachable here.
+      outcome = await inviteOrResend(adminClient, {
+        contaId: profile.conta_id,
+        email: email.toLowerCase(),
+        role,
+        invitedBy: user.id,
+        redirectBase,
+      }, { addOnboarded: true });
+    } catch (err: any) {
+      if (err?.message === 'generate_link_failed') {
+        throw new Error('Não foi possível gerar o link de acesso.');
+      }
+      throw err;
     }
 
-    // Clean up any existing pending/expired invites for this email + workspace
-    await adminClient.from('invites').delete()
-      .eq('email', email.toLowerCase())
-      .eq('conta_id', profile.conta_id)
-      .in('status', ['pending', 'expired']);
-
-    // Check if user already exists in auth
-    const existingUser = await findAuthUserByEmail(adminClient, email);
-
-    if (existingUser) {
-      // A user who clicked the invite link has their e-mail confirmed but may
-      // never have set a password ("confirmed-with-no-password"). Branch on
-      // whether they actually completed onboarding, not on email_confirmed_at,
-      // so a half-finished invitee is re-invited with a fresh set-password link
-      // instead of being silently marked "accepted" (which left them unable to
-      // log in — the "wrong password" symptom).
-      const { data: existingOnboarding } = await adminClient
-        .from('profiles')
-        .select('onboarding_complete')
-        .eq('id', existingUser.id)
-        .maybeSingle();
-
-      const { data: existingPw, error: existingPwError } = await adminClient
-        .rpc('user_has_password', { p_user_id: existingUser.id });
-
-      const action = classifyExistingUser({
-        emailConfirmed: !!existingUser.email_confirmed_at,
-        hasProfile: !!existingOnboarding,
-        onboardingComplete: existingOnboarding?.onboarding_complete === true,
-        hasPassword: coerceHasPassword(existingPw, existingPwError),
-      });
-
-      if (action === 'blocked-anomalous') {
-        // Confirmed auth user with no profile row — impossible by design.
-        // Refuse to auto-wipe; surface for manual support intervention.
+    switch (outcome.route) {
+      case 'plan-limit-exceeded':
+        return new Response(
+          JSON.stringify({ error: 'plan_limit_exceeded', resource: 'max_team_members' }),
+          { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+        );
+      case 'blocked-anomalous':
         throw new Error(
           'Conta com e-mail confirmado mas sem perfil. Não foi possível reenviar o convite automaticamente — contate o suporte.',
         );
-      }
-
-      if (action === 'resend-link') {
-        // Confirmed-but-passwordless invitee: re-send a fresh set-password link
-        // to the SAME auth user (no delete → the prior link and any in-flight
-        // set-password session are untouched). generateLink does not send mail,
-        // so deliver it via Resend. The user still carries conta_id in their
-        // metadata from the original invite, so the link lands in invite mode.
-        const redirectBase = Deno.env.get('OAUTH_REDIRECT_BASE') || 'http://localhost:5173';
-        const { data: linkData, error: linkErr } = await adminClient.auth.admin.generateLink({
-          type: 'recovery',
-          email: email.toLowerCase(),
-          options: { redirectTo: redirectBase + '/configurar-senha' },
+      case 'already-member':
+        return new Response(JSON.stringify({ error: 'Este usuário já pertence a este workspace.' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
-        if (linkErr || !linkData?.properties?.action_link) {
-          console.error('[invite-user] generateLink error:', linkErr?.message);
-          throw new Error('Não foi possível gerar o link de acesso.');
-        }
-
-        const { data: conta } = await adminClient
-          .from('contas').select('nome').eq('id', profile.conta_id).maybeSingle();
-
-        await sendInviteEmail({
-          to: email.toLowerCase(),
-          actionLink: linkData.properties.action_link,
-          workspaceName: conta?.nome || 'seu workspace',
-        });
-
-        // Refresh the invite record (prior pending/expired rows were deleted
-        // at the top of this handler).
-        await adminClient.from('invites').insert({
-          conta_id: profile.conta_id,
-          email: email.toLowerCase(),
-          role,
-          invited_by: user.id,
-          status: 'pending',
-        });
-
-        return new Response(
-          JSON.stringify({ success: true, message: `Novo link de acesso enviado para ${email}.` }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
-        );
-      }
-
-      if (action === 'reinvite') {
-        // Never-confirmed user — nothing in-flight to destroy, so delete and
-        // re-invite fresh so they receive a working set-password link.
-        await adminClient.from('profiles').delete().eq('id', existingUser.id);
-        await adminClient.from('workspace_members').delete().eq('user_id', existingUser.id);
-        await adminClient.auth.admin.deleteUser(existingUser.id);
-        // Fall through to "new user" path below
-      } else {
-        // --- Fully onboarded user: add to this workspace directly ---
-        const { data: existingMembership } = await adminClient
-          .from('workspace_members')
-          .select('id')
-          .eq('user_id', existingUser.id)
-          .eq('workspace_id', profile.conta_id)
-          .maybeSingle();
-
-        if (existingMembership) {
-          return new Response(JSON.stringify({ error: 'Este usuário já pertence a este workspace.' }), {
-            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
-
-        const { error: memberErr } = await adminClient
-          .from('workspace_members')
-          .insert({
-            user_id: existingUser.id,
-            workspace_id: profile.conta_id,
-            role,
-          });
-        if (memberErr) throw memberErr;
-
-        const { data: existingProfile } = await adminClient
-          .from('profiles')
-          .select('id')
-          .eq('id', existingUser.id)
-          .maybeSingle();
-
-        if (!existingProfile) {
-          const { error: insertErr } = await adminClient
-            .from('profiles')
-            .insert({
-              id: existingUser.id,
-              conta_id: profile.conta_id,
-              role,
-              nome: existingUser.user_metadata?.nome || email.split('@')[0],
-              active_workspace_id: profile.conta_id,
-              onboarding_complete: true,
-            });
-          if (insertErr) throw insertErr;
-        }
-
-        await adminClient.from('invites').insert({
-          conta_id: profile.conta_id,
-          email: email.toLowerCase(),
-          role,
-          invited_by: user.id,
-          status: 'accepted',
-          accepted_at: new Date().toISOString(),
-        });
-
+      case 'added':
         return new Response(JSON.stringify({ success: true, message: `${email} foi adicionado ao workspace como ${role}.` }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200,
         });
-      }
+      case 'resent-link':
+        return new Response(JSON.stringify({ success: true, message: `Novo link de acesso enviado para ${email}.` }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200,
+        });
+      case 'reinvited':
+      case 'invited':
+      default:
+        return new Response(JSON.stringify({ success: true, message: `Convite enviado para ${email} como ${role}.` }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200,
+        });
     }
-
-    // --- New user (or stale user cleaned up above): send invite email ---
-    const redirectBase = Deno.env.get('OAUTH_REDIRECT_BASE') || 'http://localhost:5173';
-    await sendPendingWorkspaceInvite({
-      createPendingInvite: async (pending) => {
-        const { data, error: insertError } = await adminClient.from('invites').insert({
-          conta_id: pending.contaId,
-          email: pending.email,
-          role: pending.role,
-          invited_by: pending.invitedBy,
-          status: 'pending',
-        }).select('id').single();
-        if (insertError || !data) throw insertError ?? new Error('invite_insert_failed');
-        return data;
-      },
-      sendAuthInvite: async (pending) => {
-        const { error: authInviteError } = await adminClient.auth.admin.inviteUserByEmail(
-          pending.email,
-          {
-            data: {
-              conta_id: pending.contaId,
-              role: pending.role,
-              nome: pending.email.split('@')[0],
-            },
-            redirectTo: pending.redirectTo,
-          },
-        );
-        if (authInviteError) throw authInviteError;
-      },
-      deletePendingInvite: async (inviteId) => {
-        const { error: cleanupError } = await adminClient
-          .from('invites')
-          .delete()
-          .eq('id', inviteId);
-        if (cleanupError) throw cleanupError;
-      },
-    }, {
-      contaId: profile.conta_id,
-      email: email.toLowerCase(),
-      role,
-      invitedBy: user.id,
-      redirectTo: redirectBase + '/configurar-senha',
-    });
-
-    return new Response(JSON.stringify({ success: true, message: `Convite enviado para ${email} como ${role}.` }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    });
   } catch (err: any) {
     return internalServerError(json, "invite-user", err);
   }
