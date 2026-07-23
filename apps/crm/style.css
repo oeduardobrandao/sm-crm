@@ -107,6 +107,9 @@ body,
   --success: #3ecf8e;
   --warning: #f5a342;
   --danger: #f55a42;
+  /* --danger as text is only 3.27:1 on a white card, below the 4.5:1 AA floor.
+     Use --danger-text for error copy; --danger stays the fill/border colour. */
+  --danger-text: #b91c1c;
   --teal: #42c8f5;
   --dark: #12151a;
   --pink: #f542c8;
@@ -139,6 +142,10 @@ body,
   --bg-color: #0a0c0f;
   --sidebar-bg: #12151a;
   --card-bg: #12151a;
+
+  /* On the dark card --danger already clears AA (5.60:1), so it doubles as the
+     text colour and error copy keeps the brand red. */
+  --danger-text: #f55a42;
 
   --surface-main: #1a1e26;
   --surface-hover: #1e2430;
@@ -3500,6 +3507,47 @@ select.form-input option {
   .config-report-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* Native colour picker, sized to a 44px touch target and given the same
+   hover/focus affordances as every other control on the page. */
+.report-color-swatch {
+  width: 56px;
+  height: 44px;
+  padding: 3px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+  transition: border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.report-color-swatch:hover:not(:disabled) {
+  border-color: var(--primary-color);
+}
+
+.report-color-swatch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.report-color-swatch:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.report-color-swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.report-color-swatch::-webkit-color-swatch {
+  border: none;
+  border-radius: 5px;
+}
+
+.report-color-swatch::-moz-color-swatch {
+  border: none;
+  border-radius: 5px;
 }
 
 /* ===== Calendar Layout ===== */

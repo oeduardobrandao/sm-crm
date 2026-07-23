@@ -112,6 +112,20 @@ describe('RelatoriosTab — report branding', () => {
     });
   });
 
+  it('refuses to save when the branding query failed, instead of writing defaults', async () => {
+    storeMock.getWorkspaceBranding.mockRejectedValue(new Error('column does not exist'));
+    renderTab();
+
+    const salvar = await screen.findByRole('button', { name: /salvar/i });
+    await waitFor(() => expect(salvar).toBeDisabled());
+
+    // The picker is still showing its placeholder colour, so a save here would
+    // overwrite the workspace's real brand colour.
+    fireEvent.click(salvar);
+    expect(storeMock.updateWorkspaceBranding).not.toHaveBeenCalled();
+    expect(screen.getByText(/não foi possível carregar as configurações/i)).toBeTruthy();
+  });
+
   it('keeps an unsaved accent-colour edit after a splash upload', async () => {
     renderTab();
 
