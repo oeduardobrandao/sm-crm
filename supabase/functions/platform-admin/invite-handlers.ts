@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getAuthStatesByEmails, cancelInvite, inviteOrResend } from "../_shared/invite-actions.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
-import { computeInviteFlags, resendMessage, validateResendTarget } from "./invites-enrich.ts";
+import { computeInviteFlags, createMessage, resendOutcomeMessage, validateCreateInvite, validateResendTarget } from "./invites-enrich.ts";
 
 export async function handleGetWorkspaceInvites(
   svc: ReturnType<typeof createClient>,
@@ -88,7 +88,7 @@ export async function handleAdminCancelInvite(
 
 export async function handleAdminResendInvite(
   svc: ReturnType<typeof createClient>,
-  body: { workspace_id?: string; invite_id?: string },
+  body: { workspace_id?: string; invite_id?: string; confirm_cross_workspace?: unknown },
   adminUserId: string,
   headers: Record<string, string>,
 ) {
@@ -116,9 +116,12 @@ export async function handleAdminResendInvite(
     role: invite.role,
     invitedBy: invite.invited_by, // preserve the ORIGINAL inviter
     redirectBase,
-  }, { addOnboarded: false }); // admin resend never adds a member (finding 1)
+  }, {
+    addOnboarded: false, // admin resend never adds a member (finding 1)
+    confirmCrossWorkspace: body.confirm_cross_workspace === true,
+  });
 
-  const mapped = resendMessage(outcome.route);
+  const mapped = resendOutcomeMessage(outcome);
   if (mapped.status < 300) {
     // The reinvited route may have deleted a never-confirmed user from other
     // workspaces — audit each affected workspace, sharing one operation_id
@@ -133,8 +136,72 @@ export async function handleAdminResendInvite(
         conta_id: wsId,
         actor_user_id: adminUserId,
         resource_type: "invite",
-        resource_id: body.invite_id,
+        // The row body.invite_id pointed at was deleted by deletePriorInvites;
+        // audit the row that actually exists now.
+        resource_id: outcome.inviteId ?? body.invite_id,
         metadata: { email: invite.email, route: outcome.route, operation_id: operationId },
+      });
+    }
+  }
+  return new Response(JSON.stringify(mapped.body), { status: mapped.status, headers });
+}
+
+export async function handleAdminCreateInvite(
+  svc: ReturnType<typeof createClient>,
+  body: { workspace_id?: unknown; email?: unknown; role?: unknown; confirm_cross_workspace?: unknown },
+  adminUserId: string,
+  headers: Record<string, string>,
+) {
+  const input = validateCreateInvite(body);
+  if (!input.ok) {
+    return new Response(JSON.stringify({ error: input.error }), { status: input.status, headers });
+  }
+
+  // Confirm the workspace exists BEFORE inviteOrResend: effective_plan_limit
+  // returns 0 for an unknown workspace, which would surface as a misleading
+  // "out of seats" 403 for a workspace that does not exist at all.
+  //
+  // Rethrow on error rather than falling through: a PostgREST/network failure
+  // also yields no row, and reporting that as a confident "Workspace not found"
+  // would send an admin chasing the wrong problem. Throwing lands on the
+  // dispatcher's generic 500.
+  const { data: workspace, error: workspaceError } = await svc.from("workspaces")
+    .select("id").eq("id", input.workspaceId).maybeSingle();
+  if (workspaceError) throw workspaceError;
+  if (!workspace) {
+    return new Response(JSON.stringify({ error: "Workspace not found" }), { status: 404, headers });
+  }
+
+  const redirectBase = Deno.env.get("OAUTH_REDIRECT_BASE") || "http://localhost:5173";
+  const outcome = await inviteOrResend(svc, {
+    contaId: input.workspaceId,
+    email: input.email,
+    role: input.role,
+    invitedBy: adminUserId, // honest attribution: the admin who actually sent it
+    redirectBase,
+  }, {
+    addOnboarded: false, // a support tool never silently grants membership
+    // Only an explicit `true` counts — a missing or truthy-but-not-true value
+    // must not be read as consent to delete another workspace's data.
+    confirmCrossWorkspace: body.confirm_cross_workspace === true,
+  });
+
+  const mapped = createMessage(outcome);
+  if (mapped.status < 300) {
+    // reinvite may have deleted a never-confirmed user out of other workspaces —
+    // audit each one, sharing a single operation_id (symmetric with cancel/resend).
+    const operationId = crypto.randomUUID();
+    const workspaces = outcome.affectedWorkspaceIds?.length
+      ? outcome.affectedWorkspaceIds
+      : [input.workspaceId];
+    for (const wsId of workspaces) {
+      await insertAuditLog(svc, {
+        action: "admin-create-invite",
+        conta_id: wsId,
+        actor_user_id: adminUserId,
+        resource_type: "invite",
+        ...(outcome.inviteId ? { resource_id: outcome.inviteId } : {}),
+        metadata: { email: input.email, role: input.role, route: outcome.route, operation_id: operationId },
       });
     }
   }

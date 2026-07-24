@@ -243,3 +243,208 @@ Deno.test("createMessage: delegates every other route to resendMessage", () => {
   assertEquals(createMessage({ route: "invited", inviteId: "i1" }).body, resendMessage("invited").body);
   assertEquals(createMessage({ route: "already-member" }).body, resendMessage("already-member").body);
 });
+
+import { handleAdminCreateInvite } from "../platform-admin/invite-handlers.ts";
+
+/**
+ * Fake svc covering the whole create path: the workspaces existence check, the
+ * seat RPC, the auth scan inside inviteOrResend, and the invites/audit_log
+ * writes. `_audits()` and `_inserts()` expose what was written.
+ */
+function makeCreateSvc(opts: {
+  workspaceExists?: boolean;
+  workspaceLookupFails?: boolean;
+  limit?: number | null;
+  members?: number;
+  authUser?: { id: string; email_confirmed_at: string | null } | null;
+  onboarding?: boolean;
+  hasPassword?: boolean | null;
+  memberships?: string[];
+  otherPendingWorkspaceIds?: string[];
+  invite?: { id: string; conta_id: string; email: string; role: string; status: string; invited_by: string } | null;
+} = {}) {
+  const audits: any[] = [];
+  const inserts: Array<{ table: string; row: any }> = [];
+  return {
+    _audits: () => audits,
+    _inserts: () => inserts,
+    auth: { admin: {
+      listUsers: (_a: any) => Promise.resolve({ data: { users: opts.authUser ? [{ ...opts.authUser, email: "new@x.com" }] : [] }, error: null }),
+      deleteUser: (_id: string) => Promise.resolve({ error: null }),
+      inviteUserByEmail: (_e: string, _o: any) => Promise.resolve({ error: null }),
+      generateLink: (_a: any) => Promise.resolve({ data: { properties: { action_link: "https://link" } }, error: null }),
+    } },
+    rpc: (fn: string, _p: any) => {
+      if (fn === "effective_plan_limit") return Promise.resolve({ data: opts.limit ?? null, error: null });
+      if (fn === "user_has_password") return Promise.resolve({ data: opts.hasPassword ?? null, error: null });
+      return Promise.resolve({ data: null, error: null });
+    },
+    from: (table: string) => {
+      const api: any = {
+        _head: false,
+        select: (_c?: string, o?: any) => { if (o?.head) api._head = true; return api; },
+        _isDelete: false,
+        eq: () => api, neq: () => api, in: () => api,
+        delete: () => { api._isDelete = true; return api; },
+        insert: (row: any) => {
+          if (table === "audit_log") { audits.push(row); return Promise.resolve({ error: null }); }
+          inserts.push({ table, row });
+          return {
+            select: () => ({ single: () => Promise.resolve({ data: { id: "created-invite" }, error: null }) }),
+            then: (r: (x: any) => unknown) => Promise.resolve(r({ data: null, error: null })),
+          };
+        },
+        maybeSingle: () => {
+          if (table === "workspaces") {
+            if (opts.workspaceLookupFails) return Promise.resolve({ data: null, error: { message: "PostgREST down" } });
+            return Promise.resolve({ data: opts.workspaceExists === false ? null : { id: "ws" }, error: null });
+          }
+          if (table === "invites") return Promise.resolve({ data: opts.invite ?? null, error: null });
+          if (table === "profiles") return Promise.resolve({ data: opts.onboarding === undefined ? null : { onboarding_complete: opts.onboarding, id: "u1" }, error: null });
+          if (table === "contas") return Promise.resolve({ data: { nome: "WS" }, error: null });
+          return Promise.resolve({ data: null, error: null }); // workspace_members: not a member
+        },
+        then: (r: (x: any) => unknown) => {
+          if (api._head && table === "workspace_members") return Promise.resolve(r({ count: opts.members ?? 0, error: null }));
+          if (api._head && table === "invites") return Promise.resolve(r({ count: 0, error: null }));
+          if (table === "workspace_members") return Promise.resolve(r({ data: (opts.memberships ?? []).map((w) => ({ workspace_id: w })), error: null }));
+          // captureOrphanImpact's pending-invite read (a non-head, non-delete select)
+          if (table === "invites" && !api._isDelete) {
+            return Promise.resolve(r({ data: (opts.otherPendingWorkspaceIds ?? []).map((w) => ({ conta_id: w })), error: null }));
+          }
+          return Promise.resolve(r({ data: null, error: null }));
+        },
+      };
+      return api;
+    },
+  };
+}
+
+const OK_BODY = { workspace_id: WS, email: "new@x.com", role: "agent" };
+
+Deno.test("handleAdminCreateInvite: role owner is rejected 400 before any work", async () => {
+  const svc = makeCreateSvc();
+  const res = await handleAdminCreateInvite(svc as any, { ...OK_BODY, role: "owner" }, "admin1", H);
+  assertEquals(res.status, 400);
+  assertEquals(svc._inserts().length, 0);
+});
+
+Deno.test("handleAdminCreateInvite: a non-string email is a 400, never a 500", async () => {
+  const svc = makeCreateSvc();
+  const res = await handleAdminCreateInvite(svc as any, { ...OK_BODY, email: 123 }, "admin1", H);
+  assertEquals(res.status, 400);
+});
+
+Deno.test("handleAdminCreateInvite: a malformed workspace_id is a 400", async () => {
+  const svc = makeCreateSvc();
+  const res = await handleAdminCreateInvite(svc as any, { ...OK_BODY, workspace_id: "nope" }, "admin1", H);
+  assertEquals(res.status, 400);
+});
+
+Deno.test("handleAdminCreateInvite: an unknown workspace is a 404, NOT a misleading 403", async () => {
+  // effective_plan_limit returns 0 for an unknown workspace, so without this
+  // check seatsAvailable computes 0+0 < 0 -> false -> plan-limit-exceeded (403).
+  const svc = makeCreateSvc({ workspaceExists: false });
+  const res = await handleAdminCreateInvite(svc as any, OK_BODY, "admin1", H);
+  assertEquals(res.status, 404);
+  assertEquals((await res.json()).error, "Workspace not found");
+});
+
+Deno.test("handleAdminCreateInvite: a FAILED workspace lookup throws (generic 500), never a confident 404", async () => {
+  // No row is returned either way — only { error } distinguishes "does not
+  // exist" from "the query blew up". Throwing lands on the dispatcher's 500.
+  const svc = makeCreateSvc({ workspaceLookupFails: true });
+  let threw = false;
+  try {
+    await handleAdminCreateInvite(svc as any, OK_BODY, "admin1", H);
+  } catch {
+    threw = true;
+  }
+  assert(threw, "a lookup failure must propagate, not be reported as Workspace not found");
+});
+
+Deno.test("handleAdminCreateInvite: happy path invites, attributes to the ADMIN, and audits the real invite id", async () => {
+  const svc = makeCreateSvc({ authUser: null, members: 1 });
+  const res = await handleAdminCreateInvite(svc as any, OK_BODY, "admin1", H);
+  assertEquals(res.status, 200);
+
+  const inviteRow = svc._inserts().find((i) => i.table === "invites")?.row;
+  assertEquals(inviteRow.invited_by, "admin1"); // the platform admin, not the owner
+  assertEquals(inviteRow.role, "agent");
+  assertEquals(inviteRow.email, "new@x.com");
+
+  const audits = svc._audits();
+  assertEquals(audits.length, 1);
+  assertEquals(audits[0].action, "admin-create-invite");
+  assertEquals(audits[0].resource_id, "created-invite");
+  assertEquals(audits[0].actor_user_id, "admin1");
+  assertEquals(audits[0].metadata.route, "invited");
+  assertEquals(audits[0].metadata.email, "new@x.com");
+  assertEquals(audits[0].metadata.role, "agent");
+});
+
+Deno.test("handleAdminCreateInvite: an already-onboarded target is REPORTED, never added", async () => {
+  const svc = makeCreateSvc({
+    authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+    onboarding: true, hasPassword: true, members: 1,
+  });
+  const res = await handleAdminCreateInvite(svc as any, OK_BODY, "admin1", H);
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.route, "already-onboarded");
+  assert(String(body.message).includes("No invite was created."));
+  assert(!svc._inserts().some((i) => i.table === "workspace_members"), "must NOT add a member");
+});
+
+Deno.test("handleAdminCreateInvite: an unconfirmed reinvite reaching another workspace is REFUSED with 409", async () => {
+  const svc = makeCreateSvc({
+    authUser: { id: "u1", email_confirmed_at: null }, // never confirmed -> reinvite
+    onboarding: false, hasPassword: false, memberships: [WS, "c2"], members: 1,
+  });
+  const res = await handleAdminCreateInvite(svc as any, OK_BODY, "admin1", H);
+  assertEquals(res.status, 409);
+  const body = await res.json();
+  assertEquals(body.error, "cross_workspace_confirmation_required");
+  assertEquals(body.other_workspace_count, 1);
+  assertEquals(svc._audits().length, 0); // nothing happened, nothing to audit
+  assert(!svc._inserts().some((i) => i.table === "invites"), "must not create an invite");
+});
+
+Deno.test("handleAdminCreateInvite: a truthy-but-not-true confirm flag does NOT count as consent", async () => {
+  const svc = makeCreateSvc({
+    authUser: { id: "u1", email_confirmed_at: null },
+    onboarding: false, hasPassword: false, memberships: [WS, "c2"], members: 1,
+  });
+  const res = await handleAdminCreateInvite(
+    svc as any, { ...OK_BODY, confirm_cross_workspace: "yes" }, "admin1", H,
+  );
+  assertEquals(res.status, 409);
+});
+
+Deno.test("handleAdminCreateInvite: with confirmation it proceeds and audits EACH affected workspace", async () => {
+  const svc = makeCreateSvc({
+    authUser: { id: "u1", email_confirmed_at: null },
+    onboarding: false, hasPassword: false, memberships: [WS, "c2"], members: 1,
+  });
+  const res = await handleAdminCreateInvite(
+    svc as any, { ...OK_BODY, confirm_cross_workspace: true }, "admin1", H,
+  );
+  assertEquals(res.status, 200);
+
+  const audits = svc._audits();
+  assertEquals(audits.length, 2); // WS and c2
+  assertEquals(new Set(audits.map((a: any) => a.conta_id)), new Set([WS, "c2"]));
+  assertEquals(new Set(audits.map((a: any) => a.metadata.operation_id)).size, 1);
+});
+
+Deno.test("handleAdminResendInvite: audits the NEW invite id, not the one deletePriorInvites removed", async () => {
+  const svc = makeCreateSvc({
+    invite: { id: "old-invite", conta_id: "ws", email: "new@x.com", role: "agent", status: "pending", invited_by: "owner1" },
+    authUser: null, members: 1,
+  });
+  const res = await handleAdminResendInvite(svc as any, { workspace_id: "ws", invite_id: "old-invite" }, "admin1", H);
+  assertEquals(res.status, 200);
+  const audits = svc._audits();
+  assertEquals(audits.length, 1);
+  assertEquals(audits[0].resource_id, "created-invite"); // NOT "old-invite" — that row is gone
+});
