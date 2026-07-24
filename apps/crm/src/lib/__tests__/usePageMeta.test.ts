@@ -35,4 +35,16 @@ describe('usePageMeta', () => {
     renderHook(() => usePageMeta('/dashboard'));
     expect(document.title).toBe('unchanged');
   });
+
+  test('swaps JSON-LD blocks on navigation', () => {
+    const { rerender } = renderHook(({ p }: { p: string }) => usePageMeta(p), {
+      initialProps: { p: '/aprovacao-de-post' },
+    });
+    const before = document.head.querySelectorAll('script[data-seo="jsonld"]').length;
+    expect(before).toBeGreaterThan(0);
+    rerender({ p: '/politica-de-privacidade' });
+    const scripts = [...document.head.querySelectorAll('script[data-seo="jsonld"]')];
+    expect(scripts).toHaveLength(2); // Organization + WebSite only
+    expect(scripts.map((s) => s.textContent).join('')).not.toContain('FAQPage');
+  });
 });

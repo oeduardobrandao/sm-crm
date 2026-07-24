@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 // graph (legal pages), which cannot resolve the @/ alias.
 import { DEFAULT_OG_IMAGE, routeMetaFor } from '../content/site-meta';
 import { canonicalUrl } from '../content/seo-head';
+import { jsonLdForPath } from '../content/route-jsonld';
 
 function upsertMeta(attr: 'name' | 'property', key: string, content: string): void {
   let el = document.head.querySelector<HTMLMetaElement>(`meta[${attr}="${key}"]`);
@@ -40,5 +41,13 @@ export function usePageMeta(path: string): void {
       document.head.appendChild(link);
     }
     link.href = url;
+    document.head.querySelectorAll('script[data-seo="jsonld"]').forEach((el) => el.remove());
+    for (const block of jsonLdForPath(path)) {
+      const s = document.createElement('script');
+      s.type = 'application/ld+json';
+      s.dataset.seo = 'jsonld';
+      s.textContent = JSON.stringify(block);
+      document.head.appendChild(s);
+    }
   }, [path]);
 }
