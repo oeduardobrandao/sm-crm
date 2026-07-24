@@ -11,7 +11,11 @@ export async function insertAuditLog(
   }
 ): Promise<void> {
   try {
-    await svc.from('audit_log').insert(entry);
+    const { error } = await svc.from('audit_log').insert(entry);
+    // supabase-js RESOLVES with { error } rather than throwing, so the catch
+    // below never sees a rejected insert — this check is what makes an audit
+    // write failure visible at all.
+    if (error) console.error('[audit] Failed to write audit log:', error);
   } catch (e) {
     // Audit log failure must never break the primary operation
     console.error('[audit] Failed to write audit log:', e);
