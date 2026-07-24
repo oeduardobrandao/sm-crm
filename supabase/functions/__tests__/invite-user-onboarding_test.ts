@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { classifyExistingUser, coerceHasPassword } from "../invite-user/onboarding.ts";
+import { classifyExistingUser, coerceHasPassword } from "../_shared/invite-classify.ts";
 
 Deno.test("classifyExistingUser: fully onboarded user is added to the workspace directly", () => {
   assertEquals(

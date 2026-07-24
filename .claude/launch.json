@@ -27,6 +27,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:admin"],
       "port": 5177
+    },
+    {
+      "name": "admin-staging",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:admin:staging"],
+      "port": 5178,
+      "autoPort": true
     }
   ]
 }
