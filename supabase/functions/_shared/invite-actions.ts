@@ -162,8 +162,9 @@ export interface CancelResult {
  * Admin-side invite cancel. Only pending/expired invites may be cancelled
  * (accepted is live membership + history — refuse). When the invitee never
  * finished onboarding the orphan auth user is deleted globally; we capture its
- * full workspace_members set BEFORE the delete so callers can audit every
- * workspace the user vanished from.
+ * impact via captureOrphanImpact BEFORE the delete — the union of its
+ * workspace_members set AND any other workspaces holding a pending invite for
+ * that email — so callers can audit every workspace the user vanished from.
  */
 export async function cancelInvite(
   adminClient: any,

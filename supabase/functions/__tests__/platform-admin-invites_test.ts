@@ -152,7 +152,7 @@ Deno.test("handleAdminResendInvite: missing invite → 404", async () => {
 
 import { validateCreateInvite, createMessage, resendOutcomeMessage } from "../platform-admin/invites-enrich.ts";
 
-const WS = "11111111-2222-3333-4444-555555555555";
+const WS = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
 
 Deno.test("validateCreateInvite: rejects owner with the exact 400 message", () => {
   const r = validateCreateInvite({ workspace_id: WS, email: "a@x.com", role: "owner" });
@@ -195,13 +195,13 @@ Deno.test("validateCreateInvite: rejects a missing or malformed workspace_id", (
   }
 });
 
-Deno.test("validateCreateInvite: accepts admin/agent and normalises the email", () => {
+Deno.test("validateCreateInvite: accepts admin/agent and normalises the email and workspace_id case", () => {
   const r = validateCreateInvite({ workspace_id: WS.toUpperCase(), email: "  Iara41.AI@Gmail.com ", role: "admin" });
   assertEquals(r.ok, true);
   if (r.ok) {
     assertEquals(r.email, "iara41.ai@gmail.com");
     assertEquals(r.role, "admin");
-    assertEquals(r.workspaceId, WS.toUpperCase());
+    assertEquals(r.workspaceId, WS); // lower-cased, matching Postgres's canonical form
   }
   assertEquals(validateCreateInvite({ workspace_id: WS, email: "a@x.com", role: "agent" }).ok, true);
 });
@@ -254,6 +254,7 @@ import { handleAdminCreateInvite } from "../platform-admin/invite-handlers.ts";
 function makeCreateSvc(opts: {
   workspaceExists?: boolean;
   workspaceLookupFails?: boolean;
+  inviteLookupFails?: boolean;
   limit?: number | null;
   members?: number;
   authUser?: { id: string; email_confirmed_at: string | null } | null;
@@ -299,7 +300,10 @@ function makeCreateSvc(opts: {
             if (opts.workspaceLookupFails) return Promise.resolve({ data: null, error: { message: "PostgREST down" } });
             return Promise.resolve({ data: opts.workspaceExists === false ? null : { id: "ws" }, error: null });
           }
-          if (table === "invites") return Promise.resolve({ data: opts.invite ?? null, error: null });
+          if (table === "invites") {
+            if (opts.inviteLookupFails) return Promise.resolve({ data: null, error: { message: "PostgREST down" } });
+            return Promise.resolve({ data: opts.invite ?? null, error: null });
+          }
           if (table === "profiles") return Promise.resolve({ data: opts.onboarding === undefined ? null : { onboarding_complete: opts.onboarding, id: "u1" }, error: null });
           if (table === "contas") return Promise.resolve({ data: { nome: "WS" }, error: null });
           return Promise.resolve({ data: null, error: null }); // workspace_members: not a member
@@ -435,6 +439,19 @@ Deno.test("handleAdminCreateInvite: with confirmation it proceeds and audits EAC
   assertEquals(audits.length, 2); // WS and c2
   assertEquals(new Set(audits.map((a: any) => a.conta_id)), new Set([WS, "c2"]));
   assertEquals(new Set(audits.map((a: any) => a.metadata.operation_id)).size, 1);
+});
+
+Deno.test("handleAdminResendInvite: a FAILED invite lookup throws (generic 500), never a confident 404", async () => {
+  // No row is returned either way — only { error } distinguishes "does not
+  // exist" from "the query blew up". Throwing lands on the dispatcher's 500.
+  const svc = makeCreateSvc({ inviteLookupFails: true });
+  let threw = false;
+  try {
+    await handleAdminResendInvite(svc as any, { workspace_id: "c1", invite_id: "i1" }, "admin1", H);
+  } catch {
+    threw = true;
+  }
+  assert(threw, "a lookup failure must propagate, not be reported as Invite not found");
 });
 
 Deno.test("handleAdminResendInvite: audits the NEW invite id, not the one deletePriorInvites removed", async () => {

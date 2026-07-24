@@ -81,16 +81,24 @@ export type CreateInviteValidation =
  * before concluding "not found", so junk input buys a full scan. It
  * deliberately does not try to catch typos — `iara41.ia@` and `iara41.ai@` are
  * both valid addresses, which is the whole reason this panel exists.
+ *
+ * workspaceId is lower-cased on the success path, same as email: UUID_RE's
+ * `/i` flag accepts an uppercase uuid, but Postgres returns canonical
+ * lowercase for workspace_members.workspace_id and captureOrphanImpact
+ * filters "other" workspaces with a JS string `!==` against contaId — an
+ * un-normalised uppercase id would make the target workspace itself fail
+ * that filter and count as other.
  */
 export function validateCreateInvite(body: {
   workspace_id?: unknown;
   email?: unknown;
   role?: unknown;
 }): CreateInviteValidation {
-  const workspaceId = body.workspace_id;
-  if (typeof workspaceId !== "string" || !UUID_RE.test(workspaceId)) {
+  const rawWorkspaceId = body.workspace_id;
+  if (typeof rawWorkspaceId !== "string" || !UUID_RE.test(rawWorkspaceId)) {
     return { ok: false, status: 400, error: "workspace_id must be a valid uuid" };
   }
+  const workspaceId = rawWorkspaceId.toLowerCase();
   const rawEmail = body.email;
   if (typeof rawEmail !== "string") {
     return { ok: false, status: 400, error: "A valid email is required" };

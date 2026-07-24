@@ -96,9 +96,14 @@ export async function handleAdminResendInvite(
     return new Response(JSON.stringify({ error: "workspace_id and invite_id are required" }), { status: 400, headers });
   }
 
-  const { data: invite } = await svc.from("invites")
+  // Rethrow on error rather than falling through: a PostgREST/network failure
+  // also yields no row, and reporting that as a confident "Invite not found"
+  // would send an admin chasing the wrong problem. Throwing lands on the
+  // dispatcher's generic 500.
+  const { data: invite, error: inviteError } = await svc.from("invites")
     .select("id, conta_id, email, role, status, invited_by")
     .eq("id", body.invite_id).eq("conta_id", body.workspace_id).maybeSingle();
+  if (inviteError) throw inviteError;
   const invalid = validateResendTarget(invite);
   if (invalid) {
     return new Response(JSON.stringify({ error: invalid.error }), { status: invalid.status, headers });
