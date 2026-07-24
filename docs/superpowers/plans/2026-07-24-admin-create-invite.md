@@ -21,7 +21,9 @@ Every task's requirements implicitly include this section. Exact values, copied 
 - **Email pattern (exact):** `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`
 - **Exact error strings:** `workspace_id must be a valid uuid` (400), `Workspace not found` (404), `A valid email is required` (400), `role must be admin or agent` (400).
 - **Exact copy — already-onboarded on create:** `This person already has an account and was NOT added to the workspace. No invite was created.`
-- **Exact copy — cross-workspace disclosure (appended to the reinvited message, space-separated):** `Note: this email had an unconfirmed account that was also pending in N other workspace(s); that account was replaced.` where `N` = `affectedWorkspaceIds.length - 1`. Appended only when `affectedWorkspaceIds.length > 1`.
+- **Exact copy — cross-workspace disclosure (appended to the reinvited message, space-separated):** `Note: this email had an unconfirmed account with membership records in N other workspace(s); that account and those records were removed.` where `N` = `affectedWorkspaceIds.length - 1`. Appended only when `affectedWorkspaceIds.length > 1`. It says *membership records* because `affectedWorkspaceIds` is captured from `workspace_members` — not from pending `invites`.
+- **Every Supabase read used to make a decision must inspect `{ error }`**, not just `data`. A failed query returning no rows must not be reported as "not found".
+- **Pre-existing dirty files:** this worktree already has an unrelated modified `.superpowers/sdd/task-2-report.md` (git-ignored SDD scratch). "Clean tree" checks below are scoped to `supabase/ apps/ docs/` so that file never masks — or is mistaken for — a real change.
 - **Audit action name:** `admin-create-invite`. One row per entry in `outcome.affectedWorkspaceIds` (falling back to `[workspaceId]`), all sharing one `operation_id`.
 - **No new migrations.** Reuses the existing `invites` and `audit_log` tables.
 - **Never** use wildcard `*` for CORS; never return raw error details to clients (project security rules — the handlers here return only fixed strings).
@@ -140,12 +142,12 @@ Expected: PASS — the existing cancel fake's `insert` returns `Promise.resolve(
 - [ ] **Step 6: Commit**
 
 ```bash
-git checkout -- deno.lock
+git diff --quiet -- deno.lock || git checkout -- deno.lock
 git add supabase/functions/_shared/audit.ts supabase/functions/__tests__/audit_test.ts
 git commit -m "fix(audit): surface audit-log write failures instead of swallowing them"
 ```
 
-> `npm run test:functions` always dirties the root `deno.lock`; `git checkout -- deno.lock` before every commit in this plan.
+> `npm run test:functions` always dirties the root `deno.lock`, and that churn must never be committed. **Before starting Task 1, confirm the baseline:** run `git diff --quiet -- deno.lock; echo $?` — it must print `0`. If it prints `1`, `deno.lock` was already modified for some unrelated reason; stop and resolve that first, because the discard step below would destroy it. Every commit in this plan is preceded by that same guarded discard.
 
 ---
 
@@ -171,6 +173,18 @@ In `supabase/functions/__tests__/invite-actions_test.ts`, inside `makeInviteAdmi
   failTable?: string;               // e.g. "workspace_members" -> insert/delete returns { error }
   failAuthInvite?: boolean;         // inviteUserByEmail returns { error } -> send throws
   failInviteDeleteById?: boolean;   // ONLY the rollback delete (.eq("id", ...)) returns { error }
+  insertReturnsNoId?: boolean;      // insert resolves with NO error and NO row
+```
+
+Honor the third knob in `insert`'s `.select().single()` branch:
+
+```ts
+        insert: (row: any) => {
+          events.push("ins:" + table + ":" + (row.status ?? ""));
+          const err = opts.failTable === table ? failErr : null;
+          const inserted = err || opts.insertReturnsNoId ? null : { id: "new-invite" };
+          return { select: () => ({ single: () => Promise.resolve({ data: inserted, error: err }) }), then: (r: (x: any) => unknown) => Promise.resolve(r({ data: null, error: err })) };
+        },
 ```
 
 Then make three additive edits inside `makeInviteAdmin`. Existing tests set neither new knob, so their behavior is unchanged.
@@ -271,6 +285,21 @@ Deno.test("inviteOrResend: no-op routes carry NO inviteId", async () => {
   assertEquals((await inviteOrResend(anomalous as any, baseInput, ADMIN)).inviteId, undefined);
 });
 
+Deno.test("inviteOrResend: an insert that returns no error AND no row throws, never a silent undefined id", async () => {
+  // The contract is that inviteId is ALWAYS present on a creating route.
+  // Checking only `error` would return inviteId: undefined here and silently
+  // drop the audit resource_id.
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" }, hasProfile: true, onboarding: true, hasPassword: true, isMember: false, insertReturnsNoId: true });
+  let message = "";
+  try {
+    // deno-lint-ignore no-explicit-any
+    await inviteOrResend(admin as any, baseInput, CRM);
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  assertEquals(message, "invite_mutation_failed:invite_insert_accepted");
+});
+
 Deno.test("inviteOrResend: a failed rollback delete is logged, and the original send error still propagates", async () => {
   // inviteUserByEmail fails AFTER the pending row was inserted, so the rollback
   // runs; the rollback's own delete also fails. Before the fix that delete's
@@ -299,7 +328,7 @@ Deno.test("inviteOrResend: a failed rollback delete is logged, and the original 
 - [ ] **Step 3: Run the tests to verify they fail**
 
 Run: `npm run test:functions -- --filter "inviteOrResend"`
-Expected: FAIL — the four new tests fail (`inviteId` is `undefined` on every route; the rollback test finds no `cleanup failed` log). All pre-existing `inviteOrResend` tests still PASS.
+Expected: FAIL — the five new tests fail (`inviteId` is `undefined` on every route; the no-id test gets no throw; the rollback test finds no `cleanup failed` log). All pre-existing `inviteOrResend` tests still PASS.
 
 - [ ] **Step 4: Add `inviteId` to the outcome type**
 
@@ -318,35 +347,47 @@ export interface InviteOutcome {
 
 - [ ] **Step 5: Capture the id at all four creation sites**
 
-(a) `added` route — replace the `iIns` block (currently lines 266-271):
+(a) Add a helper immediately below `ensureOk` (after line 91). Checking `error` alone is not enough: an insert that resolves with no error *and* no row would silently drop the id and quietly break the contract that `inviteId` is always present on a creating route.
+
+```ts
+/** An insert's new row id, failing loudly rather than silently returning undefined. */
+function insertedId(res: { data?: { id?: string } | null; error: unknown }, op: string): string {
+  ensureOk(res.error, op);
+  if (!res.data?.id) {
+    console.error(`[invite-actions:${op}] insert reported no error but returned no id`);
+    throw new Error(`invite_mutation_failed:${op}`);
+  }
+  return res.data.id;
+}
+```
+
+(b) `added` route — replace the `iIns` block (currently lines 266-271):
 
 ```ts
       const iIns = await adminClient.from("invites").insert({
         conta_id: input.contaId, email, role: input.role, invited_by: input.invitedBy,
         status: "accepted", accepted_at: new Date().toISOString(),
       }).select("id").single();
-      ensureOk(iIns.error, "invite_insert_accepted");
-      return { route: "added", inviteId: iIns.data?.id };
+      return { route: "added", inviteId: insertedId(iIns, "invite_insert_accepted") };
 ```
 
-(b) `resent-link` route — replace the `ins` block (currently lines 286-290):
+(c) `resent-link` route — replace the `ins` block (currently lines 286-290):
 
 ```ts
       const ins = await adminClient.from("invites").insert({
         conta_id: input.contaId, email, role: input.role, invited_by: input.invitedBy, status: "pending",
       }).select("id").single();
-      ensureOk(ins.error, "invite_insert_pending");
-      return { route: "resent-link", inviteId: ins.data?.id };
+      return { route: "resent-link", inviteId: insertedId(ins, "invite_insert_pending") };
 ```
 
-(c) `reinvited` route — replace the two lines that send and return (currently 299-300):
+(d) `reinvited` route — replace the two lines that send and return (currently 299-300):
 
 ```ts
     const inviteId = await sendNewUserInvite(adminClient, input, email);
     return { route: "reinvited", affectedWorkspaceIds, inviteId };
 ```
 
-(d) new-user route — replace lines 304-306:
+(e) new-user route — replace lines 304-306:
 
 ```ts
   // (3) New user.
@@ -404,7 +445,7 @@ Expected: PASS — `invite-actions_test.ts`, `invite-user-onboarding_test.ts`, `
 - [ ] **Step 9: Commit**
 
 ```bash
-git checkout -- deno.lock
+git diff --quiet -- deno.lock || git checkout -- deno.lock
 git add supabase/functions/_shared/invite-actions.ts supabase/functions/__tests__/invite-actions_test.ts
 git commit -m "feat(invites): return the created invite id from inviteOrResend
 
@@ -508,7 +549,7 @@ Deno.test("createMessage: reinvited discloses cross-workspace impact only when t
   const multi = createMessage({ route: "reinvited", affectedWorkspaceIds: ["c1", "c2", "c3"], inviteId: "i9" });
   assertEquals(
     multi.body.message,
-    "Invitation email sent. Note: this email had an unconfirmed account that was also pending in 2 other workspace(s); that account was replaced.",
+    "Invitation email sent. Note: this email had an unconfirmed account with membership records in 2 other workspace(s); that account and those records were removed.",
   );
 });
 
@@ -607,6 +648,9 @@ export function createMessage(outcome: InviteOutcome): { status: number; body: R
   // remove them from other workspaces. Disclose the blast radius rather than
   // leaving it silent (a preflight confirm would cost a second full listUsers
   // scan and still fire before the route is known).
+  //
+  // "membership records", not "pending invites": affectedWorkspaceIds is
+  // captured from workspace_members inside deleteOrphanedAuthUser.
   const affected = outcome.affectedWorkspaceIds?.length ?? 0;
   if (outcome.route === "reinvited" && affected > 1) {
     return {
@@ -614,7 +658,7 @@ export function createMessage(outcome: InviteOutcome): { status: number; body: R
       body: {
         ...mapped.body,
         message:
-          `${mapped.body.message} Note: this email had an unconfirmed account that was also pending in ${affected - 1} other workspace(s); that account was replaced.`,
+          `${mapped.body.message} Note: this email had an unconfirmed account with membership records in ${affected - 1} other workspace(s); that account and those records were removed.`,
       },
     };
   }
@@ -631,7 +675,7 @@ Expected: PASS (6 validation tests, 3 createMessage tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git checkout -- deno.lock
+git diff --quiet -- deno.lock || git checkout -- deno.lock
 git add supabase/functions/platform-admin/invites-enrich.ts supabase/functions/__tests__/platform-admin-invites_test.ts
 git commit -m "feat(admin-invites): pure validation + create-specific response mapping"
 ```
@@ -663,6 +707,7 @@ import { handleAdminCreateInvite } from "../platform-admin/invite-handlers.ts";
  */
 function makeCreateSvc(opts: {
   workspaceExists?: boolean;
+  workspaceLookupFails?: boolean;
   limit?: number | null;
   members?: number;
   authUser?: { id: string; email_confirmed_at: string | null } | null;
@@ -701,7 +746,10 @@ function makeCreateSvc(opts: {
           };
         },
         maybeSingle: () => {
-          if (table === "workspaces") return Promise.resolve({ data: opts.workspaceExists === false ? null : { id: "ws" }, error: null });
+          if (table === "workspaces") {
+            if (opts.workspaceLookupFails) return Promise.resolve({ data: null, error: { message: "PostgREST down" } });
+            return Promise.resolve({ data: opts.workspaceExists === false ? null : { id: "ws" }, error: null });
+          }
           if (table === "invites") return Promise.resolve({ data: opts.invite ?? null, error: null });
           if (table === "profiles") return Promise.resolve({ data: opts.onboarding === undefined ? null : { onboarding_complete: opts.onboarding, id: "u1" }, error: null });
           if (table === "contas") return Promise.resolve({ data: { nome: "WS" }, error: null });
@@ -749,6 +797,19 @@ Deno.test("handleAdminCreateInvite: an unknown workspace is a 404, NOT a mislead
   assertEquals((await res.json()).error, "Workspace not found");
 });
 
+Deno.test("handleAdminCreateInvite: a FAILED workspace lookup throws (generic 500), never a confident 404", async () => {
+  // No row is returned either way — only { error } distinguishes "does not
+  // exist" from "the query blew up". Throwing lands on the dispatcher's 500.
+  const svc = makeCreateSvc({ workspaceLookupFails: true });
+  let threw = false;
+  try {
+    await handleAdminCreateInvite(svc as any, OK_BODY, "admin1", H);
+  } catch {
+    threw = true;
+  }
+  assert(threw, "a lookup failure must propagate, not be reported as Workspace not found");
+});
+
 Deno.test("handleAdminCreateInvite: happy path invites, attributes to the ADMIN, and audits the real invite id", async () => {
   const svc = makeCreateSvc({ authUser: null, members: 1 });
   const res = await handleAdminCreateInvite(svc as any, OK_BODY, "admin1", H);
@@ -791,7 +852,9 @@ Deno.test("handleAdminCreateInvite: reinvite discloses cross-workspace impact an
   });
   const res = await handleAdminCreateInvite(svc as any, OK_BODY, "admin1", H);
   assertEquals(res.status, 200);
-  assert(String((await res.json()).message).includes("1 other workspace(s)"));
+  assert(
+    String((await res.json()).message).includes("membership records in 1 other workspace(s)"),
+  );
 
   const audits = svc._audits();
   assertEquals(audits.length, 2);
@@ -841,8 +904,14 @@ export async function handleAdminCreateInvite(
   // Confirm the workspace exists BEFORE inviteOrResend: effective_plan_limit
   // returns 0 for an unknown workspace, which would surface as a misleading
   // "out of seats" 403 for a workspace that does not exist at all.
-  const { data: workspace } = await svc.from("workspaces")
+  //
+  // Rethrow on error rather than falling through: a PostgREST/network failure
+  // also yields no row, and reporting that as a confident "Workspace not found"
+  // would send an admin chasing the wrong problem. Throwing lands on the
+  // dispatcher's generic 500.
+  const { data: workspace, error: workspaceError } = await svc.from("workspaces")
     .select("id").eq("id", input.workspaceId).maybeSingle();
+  if (workspaceError) throw workspaceError;
   if (!workspace) {
     return new Response(JSON.stringify({ error: "Workspace not found" }), { status: 404, headers });
   }
@@ -917,7 +986,7 @@ Expected: PASS (~780 tests, 0 failures)
 - [ ] **Step 8: Commit**
 
 ```bash
-git checkout -- deno.lock
+git diff --quiet -- deno.lock || git checkout -- deno.lock
 git add supabase/functions/platform-admin/invite-handlers.ts supabase/functions/platform-admin/index.ts supabase/functions/__tests__/platform-admin-invites_test.ts
 git commit -m "feat(admin-invites): add the admin-create-invite action
 
@@ -1071,6 +1140,20 @@ Then append these tests inside the existing `describe('WorkspaceInvitesCard', ..
     expect(screen.queryByLabelText(/email/i)).toBeNull();
     expect(adminCreateInvite).not.toHaveBeenCalled();
   });
+
+  it('Dismiss resets the role back to the lower-privilege default', async () => {
+    // Picking Admin, dismissing, then reopening must NOT leave the form primed
+    // to invite the next person as an admin.
+    (getWorkspaceInvites as any).mockResolvedValue({ invites: [], total: 0 });
+    renderCard();
+    fireEvent.click(await screen.findByRole('button', { name: /\+ invite/i }));
+    fireEvent.change(screen.getByLabelText(/role/i), { target: { value: 'admin' } });
+    expect((screen.getByLabelText(/role/i) as HTMLSelectElement).value).toBe('admin');
+
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+    fireEvent.click(screen.getByRole('button', { name: /\+ invite/i }));
+    expect((screen.getByLabelText(/role/i) as HTMLSelectElement).value).toBe('agent');
+  });
 ```
 
 The `toast` assertions need the mocked module in scope — add this import beside the others at the top of the file:
@@ -1108,6 +1191,17 @@ import {
   const [role, setRole] = useState<'admin' | 'agent'>('agent');
 ```
 
+and, immediately after them, one close routine used by EVERY close path so the
+form can never reopen pre-set to the higher-privilege role:
+
+```tsx
+  const closeForm = () => {
+    setFormOpen(false);
+    setEmail('');
+    setRole('agent');
+  };
+```
+
 (c) add the mutation after `cancelMutation` (after line 55):
 
 ```tsx
@@ -1115,9 +1209,7 @@ import {
     mutationFn: () => adminCreateInvite(workspaceId, email.trim(), role),
     onSuccess: (res) => {
       toast.success(res.message ?? 'Invitation sent.');
-      setFormOpen(false);
-      setEmail('');
-      setRole('agent');
+      closeForm();
       invalidate();
     },
     onError: (e: unknown) => {
@@ -1182,10 +1274,7 @@ import {
           </button>
           <button
             type="button"
-            onClick={() => {
-              setFormOpen(false);
-              setEmail('');
-            }}
+            onClick={closeForm}
             className="text-xs font-medium text-muted-foreground hover:underline"
           >
             Dismiss
@@ -1199,14 +1288,16 @@ import {
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npm run test -- WorkspaceInvitesCard`
-Expected: PASS (15 passed — 8 pre-existing + 7 new)
+Expected: PASS (16 passed — 8 pre-existing + 8 new)
 
 - [ ] **Step 6: Typecheck, lint and format**
 
 ```bash
-npm run build && npm run lint && npm run format:check
+npm run build:admin && npm run lint && npm run format:check
 ```
 Expected: all three exit 0. If `format:check` fails, run `npm run format` and re-run it.
+
+> `npm run build` typechecks **CRM only** (`tsc -p apps/crm/tsconfig.json`). Every change in this task is in `apps/admin`, which that command never reads — `build:admin` is the one that would actually catch a type error here. CI typechecks all three apps separately.
 
 - [ ] **Step 7: Commit**
 
@@ -1223,17 +1314,24 @@ git commit -m "feat(admin-invites): send a new invite from the workspace invites
 
 - [ ] **Step 1: Run every CI gate**
 
-```bash
-npm run lint && npm run format:check && npm run test && npm run build && npm run test:functions
-```
-Expected: all five exit 0. CI enforces `lint`, `format:check`, the Vitest suite with a coverage ratchet, and the Deno edge suite — a failure here fails the build.
-
-- [ ] **Step 2: Restore deno.lock**
+These mirror `.github/workflows/ci.yml` exactly — the typecheck job runs `tsc` for CRM, Hub, Admin **and** scripts separately, so `npm run build` alone (CRM only) would let an Admin type error reach CI:
 
 ```bash
-git checkout -- deno.lock && git status --short
+npm run lint && npx tsc -p apps/crm/tsconfig.json --noEmit && npx tsc -p apps/hub/tsconfig.json --noEmit && npx tsc -p apps/admin/tsconfig.json --noEmit && npx tsc -p tsconfig.scripts.json
 ```
-Expected: clean tree. `test:functions` always dirties the root `deno.lock`; that change must never be committed.
+
+```bash
+npm run format:check && npm run test:coverage && npm run coverage:check && npm run test:functions
+```
+Expected: every command exits 0. `coverage:check` enforces a coverage floor — new untested branches fail it.
+
+- [ ] **Step 2: Restore deno.lock and confirm a clean tree**
+
+```bash
+git diff --quiet -- deno.lock || git checkout -- deno.lock
+git status --short -- supabase apps docs
+```
+Expected: **no output.** `test:functions` always dirties the root `deno.lock`; that churn must never be committed. The status check is scoped to `supabase apps docs` because this worktree carries an unrelated modified `.superpowers/sdd/task-2-report.md` that would otherwise make a genuinely clean tree look dirty.
 
 - [ ] **Step 3: Verify in the browser**
 
@@ -1266,21 +1364,29 @@ cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-s
 
 - [ ] **Step 6: Verify the deploy by CONTENT, not metadata**
 
-```bash
-cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-sending-ec79cb && npx supabase functions download platform-admin --project-ref wlyzhyfondykzpsiqsce && grep -c "admin-create-invite" supabase/functions/platform-admin/index.ts supabase/functions/platform-admin/invite-handlers.ts
-```
-Expected: non-zero counts for both files. Version numbers and entrypoint suffixes are **not** content-aware and pass even on a wrong-source-tree deploy.
+`functions download` **overwrites** the local files at that path with whatever the server is actually serving. That is what makes it a real check — but only if there is nothing uncommitted to lose first. Confirm that, then download:
 
 ```bash
-git status --short
+cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-sending-ec79cb && git status --short -- supabase && npx supabase functions download platform-admin --project-ref wlyzhyfondykzpsiqsce
 ```
-Expected: clean. `functions download` overwrites local files at that path with the live server content — if anything shows as modified, the downloaded copy differs from the branch and the deploy did not ship this code.
+The `git status` must print nothing before the download runs. If it prints anything, stop and commit or stash it — the download would destroy it.
+
+```bash
+cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-sending-ec79cb && grep -c "admin-create-invite" supabase/functions/platform-admin/index.ts supabase/functions/platform-admin/invite-handlers.ts && git diff --stat -- supabase/functions/platform-admin
+```
+Expected: non-zero counts for both files, and an **empty** `git diff --stat` — the served bundle is byte-identical to this branch. A non-empty diff means the live code differs from what you committed: read the diff before concluding anything, since it distinguishes a wrong-source-tree deploy from a harmless CLI formatting difference.
+
+Version numbers and entrypoint suffixes are **not** content-aware and pass even on a wrong-source-tree deploy — that is exactly how the previous branch shipped stale code to prod twice while every check reported green.
 
 - [ ] **Step 7: Live-test on staging**
 
 Reload the admin app (still on `npm run dev:admin:staging`), open a workspace, click **+ Invite**, send to an address you control, and confirm: the toast shows the returned message, the new row appears in the list after the refetch, and the email arrives. Then re-submit the same address to confirm the upsert path replaces the pending row rather than erroring.
 
-- [ ] **Step 8: Deploy to prod**
+- [ ] **Step 8: Get explicit approval before touching prod**
+
+Stop and ask. Prod deploys are outward-facing and this one runs from an unmerged branch — do not proceed on the strength of the plan alone. Report: staging is verified, what the two functions change, and that the backend must land **before** the merge (below) rather than after.
+
+- [ ] **Step 9: Deploy to prod, backend FIRST**
 
 ```bash
 cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-sending-ec79cb && npx supabase functions deploy platform-admin --no-verify-jwt --use-api --project-ref skjzpekeqefvlojenfsw
@@ -1290,17 +1396,30 @@ cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-s
 cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-sending-ec79cb && npx supabase functions deploy invite-user --no-verify-jwt --use-api --project-ref skjzpekeqefvlojenfsw
 ```
 
-- [ ] **Step 9: Verify prod by content**
+> **Order matters.** Merging first would let Vercel ship the "+ Invite" button to prod while `admin-create-invite` does not yet exist there — every click would 400 with `Unknown action`. Deploying the backend first is inert: the new action exists but nothing calls it until the UI lands.
+
+- [ ] **Step 10: Verify prod by content**
 
 ```bash
-cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-sending-ec79cb && npx supabase functions download platform-admin --project-ref skjzpekeqefvlojenfsw && grep -c "admin-create-invite" supabase/functions/platform-admin/invite-handlers.ts && git status --short
+cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-sending-ec79cb && git status --short -- supabase && npx supabase functions download platform-admin --project-ref skjzpekeqefvlojenfsw
 ```
-Expected: non-zero count, clean tree.
-
-- [ ] **Step 10: Commit any gate fixes**
+`git status` must print nothing before the download runs.
 
 ```bash
-git checkout -- deno.lock
-git status --short
+cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-sending-ec79cb && grep -c "admin-create-invite" supabase/functions/platform-admin/invite-handlers.ts && git diff --stat -- supabase/functions/platform-admin
 ```
-If the gates required changes, commit them; otherwise there is nothing to commit and the branch is ready for `superpowers:finishing-a-development-branch`.
+Expected: non-zero count, empty diff.
+
+- [ ] **Step 11: Ship the frontend — finish and merge the branch**
+
+The Admin UI reaches prod only via Vercel, which builds from `main`. Until this merges, prod has the backend action and no way to call it.
+
+```bash
+git diff --quiet -- deno.lock || git checkout -- deno.lock
+git status --short -- supabase apps docs
+```
+Expected: no output. Then use `superpowers:finishing-a-development-branch` to push the branch, open the PR, get CI green, and merge.
+
+- [ ] **Step 12: Verify the prod Admin build**
+
+After the merge, confirm the Vercel deployment for `main` succeeded and that the built Admin bundle includes the new control: open the prod admin portal, load a workspace, and check that **+ Invite** renders. Then send one real invite end-to-end to an address you control and confirm the email arrives — this is the first time the full prod path (prod UI → prod function) has ever run.

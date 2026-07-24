@@ -56,7 +56,9 @@ not blocking this spec.
   value, populated on every route that creates an `invites` row (`invited`, `reinvited`,
   `resent-link`, `added`). Cost is small — `sendPendingWorkspaceInvite` *already* returns the new id
   and `sendNewUserInvite` merely discards it; the other three sites need `.select("id").single()`
-  appended to an existing insert, a chain the test fakes already support. This is worth doing rather
+  appended to an existing insert, a chain the test fakes already support. Those sites must require
+  the id, not merely check `error` — an insert that resolves with no error and no row would
+  otherwise silently drop the `resource_id` and quietly violate this contract. This is worth doing rather
   than falling back on `conta_id` + `email`, which is not unique across history or concurrent
   attempts. It also repairs an existing defect in `handleAdminResendInvite`: it audits
   `resource_id: body.invite_id`, but the resend path's `deletePriorInvites` has *deleted* that row by
@@ -79,9 +81,11 @@ for.
 Decision: allow it, and make it visible rather than silent.
 
 - **Disclosed after the fact.** When `outcome.route === 'reinvited'` and `affectedWorkspaceIds.length
-  > 1`, the success message appends: `Note: this email had an unconfirmed account that was also
-  pending in N other workspace(s); that account was replaced.` The admin sees the blast radius
-  immediately instead of discovering it later.
+  > 1`, the success message appends: `Note: this email had an unconfirmed account with membership
+  records in N other workspace(s); that account and those records were removed.` The admin sees the
+  blast radius immediately instead of discovering it later. The wording says *membership records*
+  because `affectedWorkspaceIds` is captured from `workspace_members`, not from pending `invites` —
+  describing them as "pending invites" would name data the value never came from.
 - **Audited across every workspace touched**, via the existing `affectedWorkspaceIds` fan-out with a
   shared `operation_id` (below).
 
@@ -103,7 +107,10 @@ primitive.
      `"workspace_id must be a valid uuid"`. A malformed value currently reaches the
      `effective_plan_limit` RPC and dies as a Postgres uuid cast error → opaque 500.
    - Then confirm the workspace **exists**: `svc.from("workspaces").select("id").eq("id",
-     workspace_id).maybeSingle()` → 404 `"Workspace not found"` when absent. Without this, an unknown
+     workspace_id).maybeSingle()`, **inspecting `{ data, error }` and rethrowing on `error`** so a
+     PostgREST/network failure becomes the generic 500 rather than a confident "Workspace not
+     found" → 404 `"Workspace not found"` only when the query succeeded and returned no row. Without
+     the existence check itself, an unknown
      UUID returns a *misleading* 403: `effective_plan_limit` is written to `return 0` for an unknown
      workspace (`20260611130001_effective_plan_limit.sql`), and `seatsAvailable` then computes
      `0 + 0 < 0` → false → `plan-limit-exceeded`. Telling an admin "this workspace is out of seats"
