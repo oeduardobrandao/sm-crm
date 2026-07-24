@@ -15,7 +15,12 @@ export interface MarketingPageContent {
 
 /** Populated by the per-page content modules. Tasks 10–13 each create a file
  * under content/paginas/ exporting its const and add it to this array. */
-export const MARKETING_PAGES: MarketingPageContent[] = [SOBRE, APROVACAO_DE_POST, PORTAL_DO_CLIENTE, AGENTE_DE_CONTEUDO_IA];
+export const MARKETING_PAGES: MarketingPageContent[] = [
+  SOBRE,
+  APROVACAO_DE_POST,
+  PORTAL_DO_CLIENTE,
+  AGENTE_DE_CONTEUDO_IA,
+];
 
 export function marketingPageBySlug(slug: string): MarketingPageContent | undefined {
   return MARKETING_PAGES.find((p) => p.slug === slug);

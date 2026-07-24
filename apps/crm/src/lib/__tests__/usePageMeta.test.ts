@@ -12,9 +12,9 @@ describe('usePageMeta', () => {
     expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(
       'https://www.mesaas.com.br/precos',
     );
-    expect(
-      document.head.querySelector('meta[name="twitter:image"]')?.getAttribute('content'),
-    ).toBe('https://www.mesaas.com.br/og-image.png');
+    expect(document.head.querySelector('meta[name="twitter:image"]')?.getAttribute('content')).toBe(
+      'https://www.mesaas.com.br/og-image.png',
+    );
   });
 
   test('navigating to another route leaves no stale tags', () => {
@@ -23,9 +23,9 @@ describe('usePageMeta', () => {
     });
     rerender({ p: '/sobre' });
     expect(document.title).toBe('Sobre o Mesaas — quem constrói o CRM para social media');
-    expect(
-      document.head.querySelector('meta[name="twitter:title"]')?.getAttribute('content'),
-    ).toBe('Sobre o Mesaas — quem constrói o CRM para social media');
+    expect(document.head.querySelector('meta[name="twitter:title"]')?.getAttribute('content')).toBe(
+      'Sobre o Mesaas — quem constrói o CRM para social media',
+    );
     expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1);
     expect(document.head.querySelectorAll('link[rel="canonical"]')).toHaveLength(1);
   });
