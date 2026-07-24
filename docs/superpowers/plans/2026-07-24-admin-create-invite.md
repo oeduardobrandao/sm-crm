@@ -542,6 +542,17 @@ Deno.test("inviteOrResend: an ALREADY-ONBOARDED user is never gated — nothing 
 });
 ```
 
+`cancelInvite` calls `captureOrphanImpact` too, and its query chain now includes `.neq(...)` — which
+`makeCancelSvc` does not implement, so **the existing cancel tests would crash with a TypeError**
+before they ever assert anything. Add it to that fake's `api` object beside the other filters:
+
+```ts
+        select: () => api, eq: () => api, neq: () => api, in: () => api, delete: () => api,
+```
+
+Its `then` already returns `{ data: null }` for `invites`, which `captureOrphanImpact` reads as "no
+pending invites elsewhere" — so the existing cancel assertions keep their current expected values.
+
 Add the new fake knob to `makeInviteAdmin`'s options type:
 
 ```ts
