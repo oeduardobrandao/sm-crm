@@ -103,7 +103,7 @@ function makeCancelSvc(opts: {
     rpc: (_fn: string, _p: any) => Promise.resolve({ data: opts.hasPassword ?? null, error: null }),
     from: (table: string) => {
       const api: any = {
-        select: () => api, eq: () => api, in: () => api, delete: () => api,
+        select: () => api, eq: () => api, neq: () => api, in: () => api, delete: () => api,
         insert: (row: any) => { if (table === "audit_log") audits.push(row); return Promise.resolve({ error: null }); },
         maybeSingle: () => {
           if (table === "invites") return Promise.resolve({ data: opts.invite, error: null });

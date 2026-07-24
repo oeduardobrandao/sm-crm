@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
         role,
         invitedBy: user.id,
         redirectBase,
-      }, { addOnboarded: true });
+      }, { addOnboarded: true, confirmCrossWorkspace: true });
     } catch (err: any) {
       if (err?.message === 'generate_link_failed') {
         throw new Error('Não foi possível gerar o link de acesso.');

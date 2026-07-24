@@ -100,29 +100,55 @@ function insertedId(res: { data?: { id?: string } | null; error: unknown }, op: 
   return res.data.id;
 }
 
+export interface OrphanImpact {
+  /** Workspaces where this user holds a membership row — deleted with the user. */
+  memberWorkspaceIds: string[];
+  /** OTHER workspaces holding a pending invite for this email. The rows survive
+   * (no FK on the email) but their links die with the auth user, leaving an
+   * invite that looks pending and can never be redeemed. */
+  pendingWorkspaceIds: string[];
+  /** De-duplicated union, minus the workspace being acted on. */
+  otherWorkspaceIds: string[];
+}
+
 /**
- * Capture a user's full workspace_members set, THEN delete their profile,
- * membership rows, and auth record — in that order, with every mutation's
- * { error } checked. Shared by cancelInvite and inviteOrResend's reinvite
- * route (findings 2 + 3): the capture-before-delete order is what lets a
- * caller audit every workspace the user vanished from, and living in one
- * place means that check can't silently be present in one copy and dropped
- * in the other.
+ * Everything deleting this orphan auth user would destroy or invalidate.
+ * Measured BEFORE any mutation so a caller can refuse; measuring only
+ * workspace_members would miss the dead-link half entirely, which is the more
+ * common of the two (the invited-user trigger creates no membership row).
  */
-async function deleteOrphanedAuthUser(
+async function captureOrphanImpact(
   adminClient: any,
   userId: string,
-): Promise<{ affectedWorkspaceIds: string[] }> {
+  email: string,
+  contaId: string,
+): Promise<OrphanImpact> {
   const { data: memberships, error: membershipsErr } = await adminClient
     .from("workspace_members").select("workspace_id").eq("user_id", userId);
   ensureOk(membershipsErr, "capture_memberships");
-  const affectedWorkspaceIds = [...new Set((memberships ?? []).map((m: any) => m.workspace_id))] as string[];
+  const memberWorkspaceIds = [...new Set((memberships ?? []).map((m: any) => m.workspace_id))] as string[];
 
+  const { data: pending, error: pendingErr } = await adminClient
+    .from("invites").select("conta_id")
+    .eq("email", email).eq("status", "pending").neq("conta_id", contaId);
+  ensureOk(pendingErr, "capture_pending_invites");
+  const pendingWorkspaceIds = [...new Set((pending ?? []).map((i: any) => i.conta_id))] as string[];
+
+  const otherWorkspaceIds = [...new Set([...memberWorkspaceIds, ...pendingWorkspaceIds])]
+    .filter((id) => id !== contaId);
+
+  return { memberWorkspaceIds, pendingWorkspaceIds, otherWorkspaceIds };
+}
+
+/**
+ * Delete the orphan's profile, ALL of their membership rows, and the auth
+ * record — every mutation's { error } checked. Capture the impact FIRST via
+ * captureOrphanImpact: once this runs there is nothing left to measure.
+ */
+async function deleteOrphanedAuthUser(adminClient: any, userId: string): Promise<void> {
   ensureOk((await adminClient.from("profiles").delete().eq("id", userId)).error, "profile_delete");
   ensureOk((await adminClient.from("workspace_members").delete().eq("user_id", userId)).error, "member_delete");
   ensureOk((await adminClient.auth.admin.deleteUser(userId)).error, "auth_user_delete");
-
-  return { affectedWorkspaceIds };
 }
 
 export interface CancelResult {
@@ -172,8 +198,9 @@ export async function cancelInvite(
       hasPassword: coerceHasPassword(pw, pwErr),
     });
     if (action === "reinvite" || action === "resend-link") {
-      const result = await deleteOrphanedAuthUser(adminClient, authUser.id);
-      affectedWorkspaceIds = result.affectedWorkspaceIds;
+      const impact = await captureOrphanImpact(adminClient, authUser.id, email, args.contaId);
+      await deleteOrphanedAuthUser(adminClient, authUser.id);
+      affectedWorkspaceIds = [...new Set([...impact.memberWorkspaceIds, ...impact.pendingWorkspaceIds])];
       deletedUser = true;
     }
   }
@@ -199,10 +226,15 @@ export interface InviteOrResendOpts {
   /** true (CRM/invite-user): add-direct adds an onboarded non-member. false
    * (admin resend): report instead of adding — membership mgmt is out of scope. */
   addOnboarded: boolean;
+  /** true = the caller holds an explicit human confirmation for a reinvite whose
+   * blast radius reaches other workspaces. Omitted/false = refuse with
+   * "needs-confirmation" before mutating anything. invite-user passes true so
+   * the CRM's own invite button behaves exactly as it does today. */
+  confirmCrossWorkspace?: boolean;
 }
 export type InviteRoute =
   | "added" | "already-member" | "already-onboarded" | "resent-link" | "reinvited"
-  | "invited" | "plan-limit-exceeded" | "blocked-anomalous";
+  | "invited" | "plan-limit-exceeded" | "blocked-anomalous" | "needs-confirmation";
 export interface InviteOutcome {
   route: InviteRoute;
   affectedWorkspaceIds?: string[];
@@ -305,12 +337,19 @@ export async function inviteOrResend(
       return { route: "resent-link", inviteId: insertedId(ins, "invite_insert_pending") };
     }
 
-    // reinvite: never-confirmed. Delete stale invites, then capture-and-delete
-    // the orphaned auth user for audit (shared with cancelInvite — findings
-    // 2 + 3), then send a fresh invite.
+    // reinvite: never-confirmed. Measure the blast radius BEFORE touching
+    // anything — this route deletes the auth user globally, which drops every
+    // membership they hold and kills the invite links of pending invites for
+    // this email in other workspaces.
+    const impact = await captureOrphanImpact(adminClient, existingUser.id, email, input.contaId);
+    if (impact.otherWorkspaceIds.length > 0 && !opts.confirmCrossWorkspace) {
+      return { route: "needs-confirmation", affectedWorkspaceIds: impact.otherWorkspaceIds };
+    }
     await deletePriorInvites(adminClient, email, input.contaId);
-    const { affectedWorkspaceIds } = await deleteOrphanedAuthUser(adminClient, existingUser.id);
-    if (!affectedWorkspaceIds.includes(input.contaId)) affectedWorkspaceIds.push(input.contaId);
+    await deleteOrphanedAuthUser(adminClient, existingUser.id);
+    const affectedWorkspaceIds = [...new Set([
+      ...impact.memberWorkspaceIds, ...impact.pendingWorkspaceIds, input.contaId,
+    ])];
     const inviteId = await sendNewUserInvite(adminClient, input, email);
     return { route: "reinvited", affectedWorkspaceIds, inviteId };
   }

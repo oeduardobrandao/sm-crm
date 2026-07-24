@@ -106,6 +106,7 @@ function makeCancelAdmin(opts: {
           return api;
         },
         eq: () => api,
+        neq: () => api,
         in: () => api,
         maybeSingle: () => {
           if (table === "profiles") return Promise.resolve({ data: opts.onboarding !== undefined ? { onboarding_complete: opts.onboarding } : null, error: null });
@@ -231,6 +232,7 @@ function makeInviteAdmin(opts: {
   hasPassword?: boolean | null;
   isMember?: boolean;
   memberships?: string[];
+  otherPendingWorkspaceIds?: string[];  // pending invites for this email in OTHER workspaces
   failTable?: string;               // e.g. "workspace_members" -> insert/delete returns { error }
   failAuthInvite?: boolean;         // inviteUserByEmail returns { error } -> send throws
   failInviteDeleteById?: boolean;   // ONLY the rollback delete (.eq("id", ...)) returns { error }
@@ -292,6 +294,9 @@ function makeInviteAdmin(opts: {
                 ).length
               : (opts.pendingOtherEmails ?? 0);
             return Promise.resolve(r({ count, error: null }));
+          }
+          if (table === "invites" && !isDelete) {
+            return Promise.resolve(r({ data: (opts.otherPendingWorkspaceIds ?? []).map((w) => ({ conta_id: w })), error: null }));
           }
           if (table === "workspace_members") return Promise.resolve(r({ data: (opts.memberships ?? []).map((w) => ({ workspace_id: w })), error: null }));
           return Promise.resolve(r({ data: null, error: (api as any)._err ? failErr : null }));
@@ -392,9 +397,12 @@ Deno.test("inviteOrResend: onboarded existing member is a no-op already-member",
 });
 
 Deno.test("inviteOrResend: never-confirmed stale user is reinvited and reports affected workspaces (finding 5)", async () => {
+  // "c2" is a workspace OTHER than the target, so this reinvite is gated —
+  // confirmCrossWorkspace: true is what an admin who confirmed would send, and
+  // is what keeps this test about the audit fan-out rather than the gate.
   const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: null }, hasProfile: true, onboarding: false, hasPassword: false, memberships: ["c1", "c2"] });
   // deno-lint-ignore no-explicit-any
-  const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+  const out = await inviteOrResend(admin as any, baseInput, { addOnboarded: false, confirmCrossWorkspace: true });
   assertEquals(out.route, "reinvited");
   assertEquals((out.affectedWorkspaceIds ?? []).sort(), ["c1", "c2"]);
   assert(admin._events().includes("delUser:u1"), "reinvite deletes the stale user");
@@ -404,12 +412,14 @@ Deno.test("inviteOrResend: never-confirmed stale user is reinvited and reports a
 Deno.test("inviteOrResend: reinvite still reports the current workspace when absent from captured memberships (finding 4)", async () => {
   // Unlike the test above, the captured memberships set does NOT include the
   // current workspace ("c1" — baseInput.contaId). Only "c2" is captured, so
-  // the `if (!affectedWorkspaceIds.includes(input.contaId)) push(...)` branch
-  // must fire for "c1" to show up at all. A regression that deleted that line
-  // would leave affectedWorkspaceIds as just ["c2"] and this assertion would fail.
+  // input.contaId must be unioned in explicitly for "c1" to show up at all. A
+  // regression that dropped it from the union would leave affectedWorkspaceIds
+  // as just ["c2"] and this assertion would fail.
+  // "c2" is another workspace, so this reinvite is gated too — confirm it, for
+  // the same reason as the test above.
   const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: null }, hasProfile: true, onboarding: false, hasPassword: false, memberships: ["c2"] });
   // deno-lint-ignore no-explicit-any
-  const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+  const out = await inviteOrResend(admin as any, baseInput, { addOnboarded: false, confirmCrossWorkspace: true });
   assertEquals(out.route, "reinvited");
   assertEquals((out.affectedWorkspaceIds ?? []).sort(), ["c1", "c2"]);
 });
@@ -527,4 +537,57 @@ Deno.test("inviteOrResend: a failed rollback delete is logged, and the original 
     logged.some((l) => String(l[0]).includes("pending invite cleanup failed")),
     "the failed rollback must be logged",
   );
+});
+
+Deno.test("inviteOrResend: reinvite touching ONLY the target workspace proceeds without asking", async () => {
+  // The motivating typo case: an orphan account that exists solely because of
+  // the mistyped address. Nothing else is affected, so no prompt.
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: null }, hasProfile: true, onboarding: false, hasPassword: false, memberships: ["c1"] });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+  assertEquals(out.route, "reinvited");
+  assert(admin._events().includes("delUser:u1"));
+});
+
+Deno.test("inviteOrResend: reinvite reaching another workspace's MEMBERSHIP stops before mutating", async () => {
+  // The self-signup-who-never-confirmed case: they own workspace "c2".
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: null }, hasProfile: true, onboarding: false, hasPassword: false, memberships: ["c1", "c2"] });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+  assertEquals(out.route, "needs-confirmation");
+  assertEquals(out.affectedWorkspaceIds, ["c2"]); // only the OTHER workspaces
+  assert(!admin._events().includes("delUser:u1"), "must not delete the user");
+  assert(!admin._events().some((e) => e.startsWith("del:invites")), "must not clear the target's pending invite either");
+  assert(!admin._events().includes("authInvite"), "must not send anything");
+});
+
+Deno.test("inviteOrResend: reinvite reaching another workspace's PENDING INVITE also stops", async () => {
+  // No membership anywhere — the ordinary-invitee shape. The damage here is the
+  // dead link left behind in workspace "c3", which workspace_members cannot see.
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: null }, hasProfile: true, onboarding: false, hasPassword: false, memberships: [], otherPendingWorkspaceIds: ["c3"] });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+  assertEquals(out.route, "needs-confirmation");
+  assertEquals(out.affectedWorkspaceIds, ["c3"]);
+  assert(!admin._events().includes("delUser:u1"));
+});
+
+Deno.test("inviteOrResend: confirmCrossWorkspace proceeds and audits the UNION of both impacts", async () => {
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: null }, hasProfile: true, onboarding: false, hasPassword: false, memberships: ["c1", "c2"], otherPendingWorkspaceIds: ["c3"] });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, { addOnboarded: false, confirmCrossWorkspace: true });
+  assertEquals(out.route, "reinvited");
+  assertEquals((out.affectedWorkspaceIds ?? []).sort(), ["c1", "c2", "c3"]);
+  assert(admin._events().includes("delUser:u1"));
+  assert(admin._events().includes("authInvite"));
+});
+
+Deno.test("inviteOrResend: an ALREADY-ONBOARDED user is never gated — nothing to confirm", async () => {
+  // Confirms the reassurance in the spec: someone who accepted elsewhere takes
+  // add-direct, so the destructive route is unreachable for them.
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" }, hasProfile: true, onboarding: true, hasPassword: true, isMember: false, memberships: ["c1", "c2"] });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+  assertEquals(out.route, "already-onboarded");
+  assert(!admin._events().includes("delUser:u1"));
 });
