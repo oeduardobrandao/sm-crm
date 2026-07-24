@@ -99,6 +99,7 @@ export default function App() {
               <Route path="/precos" element={<PrecosPage />} />
               <Route path="/sobre" element={<MarketingRoute slug="sobre" />} />
               <Route path="/aprovacao-de-post" element={<MarketingRoute slug="aprovacao-de-post" />} />
+              <Route path="/portal-do-cliente" element={<MarketingRoute slug="portal-do-cliente" />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/configurar-senha" element={<ConfigurarSenhaPage />} />
               <Route path="/politica-de-privacidade" element={<PoliticaPage />} />
