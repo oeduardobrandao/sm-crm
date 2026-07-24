@@ -34,9 +34,17 @@ describe('vercel.json routing contract', () => {
     const noindexSources = headers
       .filter((h) => h.headers.some((x) => x.key === 'X-Robots-Tag' && /noindex/.test(x.value)))
       .map((h) => h.source);
+    const appShell = rewrites.find((r) => r.destination === '/app.html');
+    expect(appShell).toBeDefined();
+
     expect(noindexSources).toContain('/app.html');
-    expect(noindexSources.some((s) => s.includes('dashboard'))).toBe(true);
-    expect(noindexSources.some((s) => s.includes('/admin'))).toBe(true);
-    expect(noindexSources.some((s) => s.includes('hub'))).toBe(true);
+    expect(noindexSources).toContain(appShell!.source);
+    expect(noindexSources).toContain('/admin(/.*)?');
+    // Hub URLs need TWO exact header entries — a single `:token(/.*)?` source
+    // does not match real hub URLs under Vercel's path-to-regexp routing, so
+    // both the bare and nested-path shapes (mirroring the hub rewrites) must
+    // be present.
+    expect(noindexSources).toContain('/:workspace/hub/:token');
+    expect(noindexSources).toContain('/:workspace/hub/:token/(.*)');
   });
 });

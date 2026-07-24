@@ -15,6 +15,8 @@ Itens que o código não resolve sozinho. Marcar conforme concluído.
 - [ ] **E-mails de contato**: confirmar que `contato@mesaas.com.br` e `privacidade@mesaas.com.br`
       (usados em /sobre, Termos e LGPD) existem e são monitorados.
 - [ ] Após o deploy, pedir indexação das 10 URLs principais no Search Console.
+- [ ] **Headers noindex em produção**: `curl -sI https://www.mesaas.com.br/dashboard | grep -i x-robots-tag`
+      e o mesmo para uma URL real de hub (`/<workspace>/hub/<token>`) devem retornar `noindex, nofollow`.
 
 ## Próximas 2–4 semanas
 - [ ] Cruzar impressões do Search Console com o mapa de keywords (análise de 24/07/2026)
