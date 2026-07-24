@@ -1837,7 +1837,16 @@ git commit -m "feat(admin-invites): send a new invite from the workspace invites
 
 **Files:** none modified (verification only, plus any fixes the gates surface).
 
-- [ ] **Step 1: Run every CI gate**
+- [ ] **Step 1: Restore a clean dependency tree FIRST**
+
+```bash
+git diff --quiet -- deno.lock || git checkout -- deno.lock
+npm ci
+```
+
+**Do not skip this and do not reorder what follows.** Every `deno`-touching command in this repo — `npm run test:functions`, `supabase functions deploy` — re-resolves npm deps into `node_modules/.deno` and leaves a second `@tiptap/core` behind. A polluted tree makes `tsc` and `prettier --check` report **wrong results in both directions**: during Task 6 it flagged three CRM files that were byte-identical to `main` while *hiding* a genuinely unformatted file the task had just written, and invented a TipTap error in `apps/admin`. A gate result from a polluted tree is worthless whether it passes or fails. Earlier tasks in this plan ran `test:functions` many times, so the tree is polluted right now.
+
+- [ ] **Step 2: Run the npm-side CI gates, before anything touches Deno**
 
 These mirror `.github/workflows/ci.yml` exactly — the typecheck job runs `tsc` for CRM, Hub, Admin **and** scripts separately, so `npm run build` alone (CRM only) would let an Admin type error reach CI:
 
@@ -1846,11 +1855,18 @@ npm run lint && npx tsc -p apps/crm/tsconfig.json --noEmit && npx tsc -p apps/hu
 ```
 
 ```bash
-npm run format:check && npm run test:coverage && npm run coverage:check && npm run test:functions
+npm run format:check && npm run test:coverage && npm run coverage:check
 ```
-Expected: every command exits 0. `coverage:check` enforces a coverage floor — new untested branches fail it.
+Expected: every command exits 0. `coverage:check` enforces a coverage floor — new untested branches fail it. If `format:check` fails, run `npm run format` and re-run it.
 
-- [ ] **Step 2: Restore deno.lock and confirm a clean tree**
+- [ ] **Step 3: Run the Deno suite LAST**
+
+```bash
+npm run test:functions
+```
+Expected: exit 0. This repollutes `node_modules`, which is why it runs after every npm-side gate. If you need to re-run a `tsc` or `prettier` check after this point, `npm ci` again first — "I ran npm ci earlier" is not good enough.
+
+- [ ] **Step 4: Restore deno.lock and confirm a clean tree**
 
 ```bash
 git diff --quiet -- deno.lock || git checkout -- deno.lock
@@ -1858,7 +1874,7 @@ git status --short -- supabase apps docs
 ```
 Expected: **no output.** `test:functions` always dirties the root `deno.lock`; that churn must never be committed. The status check is scoped to `supabase apps docs` because this worktree carries an unrelated modified `.superpowers/sdd/task-2-report.md` that would otherwise make a genuinely clean tree look dirty.
 
-- [ ] **Step 3: Verify in the browser**
+- [ ] **Step 5: Verify in the browser**
 
 Start the admin dev server against staging and open a workspace detail page:
 
@@ -1868,14 +1884,14 @@ npm run dev:admin:staging
 
 Then, in the Browser pane: navigate to the admin app, sign in, open any workspace, scroll to the Invites card, click **+ Invite**, and confirm the form renders with an email field, a role select showing only Agent/Admin, Send and Dismiss. Check `read_console_messages` for errors. Do **not** submit against staging until Step 5 has deployed the backend there — the action does not exist yet and would 400 with `Unknown action`.
 
-- [ ] **Step 4: Confirm the CLI is pointed at the right project**
+- [ ] **Step 6: Confirm the CLI is pointed at the right project**
 
 ```bash
 cat supabase/.temp/project-ref
 ```
 Translate the ref before acting: PROD = `skjzpekeqefvlojenfsw`, STAGING = `wlyzhyfondykzpsiqsce`. Never assume the link state — pass `--project-ref` explicitly on every command below.
 
-- [ ] **Step 5: Deploy to staging, from THIS worktree**
+- [ ] **Step 7: Deploy to staging, from THIS worktree**
 
 ```bash
 cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-sending-ec79cb && npx supabase functions deploy platform-admin --no-verify-jwt --use-api --project-ref wlyzhyfondykzpsiqsce
@@ -1887,7 +1903,7 @@ cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-s
 
 > `--use-api` bundles from the **shell's current working directory**, not from any git-branch-aware location. Deploying from the main checkout silently ships that tree's code while still reporting success and incrementing the version. Both functions must go out together: `invite-user` also imports the changed `_shared/invite-actions.ts`.
 
-- [ ] **Step 6: Verify the deploy by CONTENT, not metadata**
+- [ ] **Step 8: Verify the deploy by CONTENT, not metadata**
 
 `functions download` **overwrites** the local files at that path with whatever the server is actually serving. That is what makes it a real check — but only if there is nothing uncommitted to lose first. Confirm that, then download:
 
@@ -1903,15 +1919,15 @@ Expected: non-zero counts for both files, and an **empty** `git diff --stat` —
 
 Version numbers and entrypoint suffixes are **not** content-aware and pass even on a wrong-source-tree deploy — that is exactly how the previous branch shipped stale code to prod twice while every check reported green.
 
-- [ ] **Step 7: Live-test on staging**
+- [ ] **Step 9: Live-test on staging**
 
 Reload the admin app (still on `npm run dev:admin:staging`), open a workspace, click **+ Invite**, send to an address you control, and confirm: the toast shows the returned message, the new row appears in the list after the refetch, and the email arrives. Then re-submit the same address to confirm the upsert path replaces the pending row rather than erroring.
 
-- [ ] **Step 8: Get explicit approval before touching prod**
+- [ ] **Step 10: Get explicit approval before touching prod**
 
 Stop and ask. Prod deploys are outward-facing and this one runs from an unmerged branch — do not proceed on the strength of the plan alone. Report: staging is verified, what the two functions change, and that the backend must land **before** the merge (below) rather than after.
 
-- [ ] **Step 9: Deploy to prod, backend FIRST**
+- [ ] **Step 11: Deploy to prod, backend FIRST**
 
 ```bash
 cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-sending-ec79cb && npx supabase functions deploy platform-admin --no-verify-jwt --use-api --project-ref skjzpekeqefvlojenfsw
@@ -1923,7 +1939,7 @@ cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-s
 
 > **Order matters.** Merging first would let Vercel ship the "+ Invite" button to prod while `admin-create-invite` does not yet exist there — every click would 400 with `Unknown action`. Deploying the backend first is inert: the new action exists but nothing calls it until the UI lands.
 
-- [ ] **Step 10: Verify prod by content**
+- [ ] **Step 12: Verify prod by content**
 
 ```bash
 cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-sending-ec79cb && git status --short -- supabase && npx supabase functions download platform-admin --project-ref skjzpekeqefvlojenfsw
@@ -1935,7 +1951,7 @@ cd /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/invitation-emails-not-s
 ```
 Expected: non-zero count, empty diff.
 
-- [ ] **Step 11: Ship the frontend — finish and merge the branch**
+- [ ] **Step 13: Ship the frontend — finish and merge the branch**
 
 The Admin UI reaches prod only via Vercel, which builds from `main`. Until this merges, prod has the backend action and no way to call it.
 
@@ -1945,6 +1961,6 @@ git status --short -- supabase apps docs
 ```
 Expected: no output. Then use `superpowers:finishing-a-development-branch` to push the branch, open the PR, get CI green, and merge.
 
-- [ ] **Step 12: Verify the prod Admin build**
+- [ ] **Step 14: Verify the prod Admin build**
 
 After the merge, confirm the Vercel deployment for `main` succeeded and that the built Admin bundle includes the new control: open the prod admin portal, load a workspace, and check that **+ Invite** renders. Then send one real invite end-to-end to an address you control and confirm the email arrives — this is the first time the full prod path (prod UI → prod function) has ever run.
