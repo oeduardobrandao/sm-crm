@@ -40,27 +40,52 @@ function bodyFor(path: string): string | undefined {
 
 const shell = readFileSync('dist/index.html', 'utf8');
 
+/** All prerender injections use String.replace against markers in the built
+ * shell (title/description regexes, `</head>`, `<div id="root"></div>`). If
+ * the shell's markup ever drifts, a plain `.replace()` silently no-ops and
+ * ships a broken page while the build stays green. This wrapper makes that
+ * failure loud: it throws unless the replacement actually changed the html. */
+function mustReplace(
+  html: string,
+  pattern: string | RegExp,
+  replacement: string,
+  label: string,
+): string {
+  const out = html.replace(pattern, replacement);
+  if (out === html) throw new Error(`prerender: marker not found: ${label}`);
+  return out;
+}
+
 function stripBaseMeta(html: string): string {
-  return html
-    .replace(/<title>[\s\S]*?<\/title>\n?/, '')
-    .replace(/<meta name="description"[^>]*\/>\n?/, '');
+  let out = mustReplace(html, /<title>[\s\S]*?<\/title>\n?/, '', 'stripBaseMeta:title');
+  out = mustReplace(out, /<meta name="description"[^>]*\/>\n?/, '', 'stripBaseMeta:description');
+  return out;
 }
 
 // App shell: pristine assets, but never indexable.
 writeFileSync(
   'dist/app.html',
-  shell.replace('</head>', '    <meta name="robots" content="noindex, nofollow" />\n  </head>'),
+  mustReplace(
+    shell,
+    '</head>',
+    '    <meta name="robots" content="noindex, nofollow" />\n  </head>',
+    'app.html:head',
+  ),
 );
 
 // Real 404 (Vercel serves dist/404.html with status 404 for unmatched paths).
 let notFound = stripBaseMeta(shell);
-notFound = notFound.replace(
+notFound = mustReplace(
+  notFound,
   '</head>',
   '    <title>Página não encontrada — Mesaas</title>\n    <meta name="robots" content="noindex" />\n  </head>',
+  '404.html:head',
 );
-notFound = notFound.replace(
+notFound = mustReplace(
+  notFound,
   '<div id="root"></div>',
   '<div id="root"><h1>Página não encontrada</h1><p>O endereço que você acessou não existe ou mudou de lugar.</p><p><a href="/">Ir para a página inicial</a> · <a href="/login">Entrar no Mesaas</a></p></div>',
+  '404.html:body',
 );
 writeFileSync('dist/404.html', notFound);
 
@@ -72,11 +97,18 @@ for (const route of PUBLIC_ROUTES) {
     throw new Error(`No body renderer registered for prerendered route ${route.path}`);
   }
   let html = stripBaseMeta(shell);
-  html = html.replace(
+  html = mustReplace(
+    html,
     '</head>',
     `    ${buildHeadTags(route, jsonLdForPath(route.path))}\n  </head>`,
+    `${route.path}:head`,
   );
-  html = html.replace('<div id="root"></div>', `<div id="root">${body}</div>`);
+  html = mustReplace(
+    html,
+    '<div id="root"></div>',
+    `<div id="root">${body}</div>`,
+    `${route.path}:body`,
+  );
   writeFileSync(`dist/${route.file}`, html);
   written++;
 }
