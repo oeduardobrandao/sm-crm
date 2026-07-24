@@ -1,4 +1,7 @@
+import { usePageMeta } from '../../lib/usePageMeta';
+
 export default function PoliticaPage() {
+  usePageMeta('/politica-privacidade');
   return (
     <div style={{ maxWidth: 800, margin: '0 auto', padding: '2rem 1rem' }} className="animate-up">
       <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
