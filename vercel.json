@@ -2,27 +2,19 @@
   "headers": [
     {
       "source": "/assets/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
     },
     {
       "source": "/hub/assets/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
     },
     {
       "source": "/admin/assets/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
     },
     {
       "source": "/(.*).html",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
-      ]
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
     },
     {
       "source": "/(.*)",
@@ -31,31 +23,46 @@
         { "key": "X-Frame-Options", "value": "DENY" },
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
         { "key": "X-XSS-Protection", "value": "0" },
-        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains; preload"
+        },
         { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
       ]
+    },
+    {
+      "source": "/app.html",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
+    },
+    {
+      "source": "/(login|configurar-senha|workspace-setup|oauth|dashboard|clientes|financeiro|contratos|leads|equipe|configuracao|calendario|entregas|post-express|arquivos|analytics-fluxos|analytics|ideias|ajuda)(/.*)?",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
+    },
+    {
+      "source": "/admin(/.*)?",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
+    },
+    {
+      "source": "/:workspace/hub/:token(/.*)?",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
     }
   ],
   "rewrites": [
+    { "source": "/:workspace/hub/:token/(.*)", "destination": "/hub/index.html" },
+    { "source": "/:workspace/hub/:token", "destination": "/hub/index.html" },
+    { "source": "/admin/(.*)", "destination": "/admin/index.html" },
+    { "source": "/precos", "destination": "/precos.html" },
+    { "source": "/sobre", "destination": "/sobre.html" },
+    { "source": "/aprovacao-de-post", "destination": "/aprovacao-de-post.html" },
+    { "source": "/portal-do-cliente", "destination": "/portal-do-cliente.html" },
+    { "source": "/agente-de-conteudo-ia", "destination": "/agente-de-conteudo-ia.html" },
+    { "source": "/novidades", "destination": "/novidades.html" },
+    { "source": "/politica-de-privacidade", "destination": "/politica-de-privacidade.html" },
+    { "source": "/termos-de-uso", "destination": "/termos-de-uso.html" },
+    { "source": "/lgpd", "destination": "/lgpd.html" },
     {
-      "source": "/:workspace/hub/:token/(.*)",
-      "destination": "/hub/index.html"
-    },
-    {
-      "source": "/:workspace/hub/:token",
-      "destination": "/hub/index.html"
-    },
-    {
-      "source": "/admin/(.*)",
-      "destination": "/admin/index.html"
-    },
-    {
-      "source": "/novidades",
-      "destination": "/novidades.html"
-    },
-    {
-      "source": "/((?!hub/|crm/|assets/)(?!.*\\.[a-zA-Z0-9]+$).*)",
-      "destination": "/index.html"
+      "source": "/(login|configurar-senha|workspace-setup|oauth|dashboard|clientes|financeiro|contratos|leads|equipe|configuracao|calendario|entregas|post-express|arquivos|analytics-fluxos|analytics|ideias|ajuda)(/.*)?",
+      "destination": "/app.html"
     }
   ],
   "buildCommand": "npm run build && npm run prerender:novidades && npm run build:hub && npm run build:admin",

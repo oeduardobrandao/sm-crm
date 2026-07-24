@@ -51,6 +51,7 @@ const ArquivosPage = lazy(() => import('./pages/arquivos/ArquivosPage'));
 const AjudaPage = lazy(() => import('./pages/ajuda/AjudaPage'));
 const SecaoPage = lazy(() => import('./pages/ajuda/SecaoPage'));
 const ArtigoPage = lazy(() => import('./pages/ajuda/ArtigoPage'));
+const NotFoundPage = lazy(() => import('./pages/not-found/NotFoundPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -175,7 +176,7 @@ export default function App() {
                 <Route path="/ajuda/:slug" element={<ArtigoPage />} />
               </Route>
 
-              <Route path="*" element={<Navigate to="/login" replace />} />
+              <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </Suspense>
           <Analytics />
