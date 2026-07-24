@@ -4,15 +4,17 @@ import { Link } from 'react-router-dom';
 export default function NotFoundPage() {
   useEffect(() => {
     document.title = 'Página não encontrada — Mesaas';
-    let el = document.head.querySelector<HTMLMetaElement>('meta[name="robots"]');
-    if (!el) {
-      el = document.createElement('meta');
+    const existing = document.head.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    const prev = existing?.getAttribute('content') ?? null;
+    const el = existing ?? document.createElement('meta');
+    if (!existing) {
       el.setAttribute('name', 'robots');
       document.head.appendChild(el);
     }
     el.setAttribute('content', 'noindex');
     return () => {
-      el?.remove();
+      if (prev === null) el.remove();
+      else el.setAttribute('content', prev);
     };
   }, []);
 
