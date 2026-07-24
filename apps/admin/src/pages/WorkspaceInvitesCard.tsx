@@ -24,7 +24,8 @@ const SEAT_LIMIT_MESSAGE =
  */
 function confirmedCrossWorkspace(e: unknown, retry: () => void): boolean {
   const body = (e as AdminApiError).body as
-    { error?: string; other_workspace_count?: number; message?: string } | undefined;
+    | { error?: string; other_workspace_count?: number; message?: string }
+    | undefined;
   if (body?.error !== 'cross_workspace_confirmation_required') return false;
   const count = body.other_workspace_count ?? 0;
   const warning =
