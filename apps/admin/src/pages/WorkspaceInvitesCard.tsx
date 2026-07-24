@@ -118,7 +118,7 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
             </span>
           )}
           <button
-            onClick={() => setFormOpen((open) => !open)}
+            onClick={() => (formOpen ? closeForm() : setFormOpen(true))}
             className="text-xs font-medium text-primary hover:underline"
           >
             + Invite

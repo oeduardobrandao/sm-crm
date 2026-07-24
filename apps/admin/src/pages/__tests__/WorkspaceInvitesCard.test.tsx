@@ -349,4 +349,18 @@ describe('WorkspaceInvitesCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /\+ invite/i }));
     expect((screen.getByLabelText(/role/i) as HTMLSelectElement).value).toBe('agent');
   });
+
+  it('collapsing via the header + Invite toggle resets the role back to the lower-privilege default', async () => {
+    // Picking Admin, then collapsing the form via the header toggle (not Dismiss),
+    // then reopening must NOT leave the form primed to invite the next person as an admin.
+    (getWorkspaceInvites as any).mockResolvedValue({ invites: [], total: 0 });
+    renderCard();
+    fireEvent.click(await screen.findByRole('button', { name: /\+ invite/i }));
+    fireEvent.change(screen.getByLabelText(/role/i), { target: { value: 'admin' } });
+    expect((screen.getByLabelText(/role/i) as HTMLSelectElement).value).toBe('admin');
+
+    fireEvent.click(screen.getByRole('button', { name: /\+ invite/i })); // collapse
+    fireEvent.click(screen.getByRole('button', { name: /\+ invite/i })); // reopen
+    expect((screen.getByLabelText(/role/i) as HTMLSelectElement).value).toBe('agent');
+  });
 });
