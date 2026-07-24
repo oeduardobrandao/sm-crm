@@ -38,6 +38,7 @@
     "build:admin": "tsc -p apps/admin/tsconfig.json && vite build --config apps/admin/vite.config.ts",
     "build:admin:staging": "tsc -p apps/admin/tsconfig.json && vite build --config apps/admin/vite.config.ts --mode staging",
     "prerender": "tsx --tsconfig tsconfig.scripts.json scripts/seo/prerender.tsx",
+    "og:image": "node scripts/seo/generate-og-image.mjs",
     "db:link:staging": "npx supabase link --project-ref wlyzhyfondykzpsiqsce",
     "db:link:prod": "npx supabase link --project-ref skjzpekeqefvlojenfsw",
     "db:push": "npx supabase db push --linked",
