@@ -1,4 +1,5 @@
 import { SOBRE } from './paginas/sobre';
+import { APROVACAO_DE_POST } from './paginas/aprovacao-de-post';
 
 export interface MarketingPageContent {
   slug: string;
@@ -12,7 +13,7 @@ export interface MarketingPageContent {
 
 /** Populated by the per-page content modules. Tasks 10–13 each create a file
  * under content/paginas/ exporting its const and add it to this array. */
-export const MARKETING_PAGES: MarketingPageContent[] = [SOBRE];
+export const MARKETING_PAGES: MarketingPageContent[] = [SOBRE, APROVACAO_DE_POST];
 
 export function marketingPageBySlug(slug: string): MarketingPageContent | undefined {
   return MARKETING_PAGES.find((p) => p.slug === slug);
