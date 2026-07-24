@@ -1,4 +1,4 @@
-import type { InviteRoute } from "../_shared/invite-actions.ts";
+import type { InviteOutcome, InviteRoute } from "../_shared/invite-actions.ts";
 
 export interface InviteFlagInput {
   status: string;
@@ -62,4 +62,104 @@ export function resendMessage(route: InviteRoute): { status: number; body: Recor
     default:
       return { status: 200, body: { success: true, route, message: "Invitation email sent." } };
   }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export type CreateInviteValidation =
+  | { ok: false; status: number; error: string }
+  | { ok: true; workspaceId: string; email: string; role: "admin" | "agent" };
+
+/**
+ * Validate + normalise an admin-create-invite body BEFORE any DB or auth work.
+ * Pure, so every branch is unit-tested without a live DB.
+ *
+ * The email type check is load-bearing: a truthy non-string reached
+ * `email.toLowerCase()` and threw a TypeError -> opaque 500. The shape check
+ * earns its keep because findAuthUserByEmail pages through EVERY auth user
+ * before concluding "not found", so junk input buys a full scan. It
+ * deliberately does not try to catch typos — `iara41.ia@` and `iara41.ai@` are
+ * both valid addresses, which is the whole reason this panel exists.
+ */
+export function validateCreateInvite(body: {
+  workspace_id?: unknown;
+  email?: unknown;
+  role?: unknown;
+}): CreateInviteValidation {
+  const workspaceId = body.workspace_id;
+  if (typeof workspaceId !== "string" || !UUID_RE.test(workspaceId)) {
+    return { ok: false, status: 400, error: "workspace_id must be a valid uuid" };
+  }
+  const rawEmail = body.email;
+  if (typeof rawEmail !== "string") {
+    return { ok: false, status: 400, error: "A valid email is required" };
+  }
+  const email = rawEmail.trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) {
+    return { ok: false, status: 400, error: "A valid email is required" };
+  }
+  const role = body.role;
+  // 'owner' is rejected explicitly, not merely absent from the allow-list:
+  // granting ownership of a customer's workspace is billing-adjacent and does
+  // not belong in a support tool.
+  if (role !== "admin" && role !== "agent") {
+    return { ok: false, status: 400, error: "role must be admin or agent" };
+  }
+  return { ok: true, workspaceId, email, role };
+}
+
+/**
+ * 409 payload when a reinvite would reach other workspaces and the caller has
+ * not confirmed. Null for every other route. Shared by both admin actions —
+ * create and resend hit the same destructive path through the same primitive.
+ * `other_workspace_count` is machine-readable on purpose: the UI names it in
+ * its confirmation prompt.
+ */
+function confirmationRequired(
+  outcome: InviteOutcome,
+): { status: number; body: Record<string, unknown> } | null {
+  if (outcome.route !== "needs-confirmation") return null;
+  const count = outcome.affectedWorkspaceIds?.length ?? 0;
+  return {
+    status: 409,
+    body: {
+      error: "cross_workspace_confirmation_required",
+      route: outcome.route,
+      other_workspace_count: count,
+      message:
+        `This email has an unconfirmed account tied to ${count} other workspace(s). Sending will delete that account — removing its memberships and killing its pending invite links there. Nothing has been changed yet.`,
+    },
+  };
+}
+
+/** Map an admin-RESEND outcome, gating first. */
+export function resendOutcomeMessage(outcome: InviteOutcome): { status: number; body: Record<string, unknown> } {
+  return confirmationRequired(outcome) ?? resendMessage(outcome.route);
+}
+
+/**
+ * Map an admin-CREATE outcome to an HTTP status + body. Delegates to
+ * resendMessage for every route whose copy is already route-accurate; overrides
+ * only the gate and the one line that reads wrong for a create.
+ */
+export function createMessage(outcome: InviteOutcome): { status: number; body: Record<string, unknown> } {
+  const gate = confirmationRequired(outcome);
+  if (gate) return gate;
+
+  if (outcome.route === "already-onboarded") {
+    // resendMessage says "The pending invite was left in place" — for a create
+    // there was no pending invite to leave.
+    return {
+      status: 200,
+      body: {
+        success: true,
+        route: outcome.route,
+        message:
+          "This person already has an account and was NOT added to the workspace. No invite was created.",
+      },
+    };
+  }
+
+  return resendMessage(outcome.route);
 }

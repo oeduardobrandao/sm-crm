@@ -149,3 +149,97 @@ Deno.test("handleAdminResendInvite: missing invite → 404", async () => {
   const res = await handleAdminResendInvite(svc, { workspace_id: "c1", invite_id: "i1" }, "admin1", H);
   assertEquals(res.status, 404);
 });
+
+import { validateCreateInvite, createMessage, resendOutcomeMessage } from "../platform-admin/invites-enrich.ts";
+
+const WS = "11111111-2222-3333-4444-555555555555";
+
+Deno.test("validateCreateInvite: rejects owner with the exact 400 message", () => {
+  const r = validateCreateInvite({ workspace_id: WS, email: "a@x.com", role: "owner" });
+  assertEquals(r.ok, false);
+  if (!r.ok) {
+    assertEquals(r.status, 400);
+    assertEquals(r.error, "role must be admin or agent");
+  }
+});
+
+Deno.test("validateCreateInvite: rejects a missing or unknown role", () => {
+  for (const role of [undefined, "", "OWNER", "superadmin", 7]) {
+    const r = validateCreateInvite({ workspace_id: WS, email: "a@x.com", role });
+    assertEquals(r.ok, false, `role ${JSON.stringify(role)} must be rejected`);
+  }
+});
+
+Deno.test("validateCreateInvite: a truthy NON-STRING email is a 400, not a crash", () => {
+  // Before this guard, email.toLowerCase() threw a TypeError -> opaque 500.
+  const r = validateCreateInvite({ workspace_id: WS, email: 123, role: "agent" });
+  assertEquals(r.ok, false);
+  if (!r.ok) {
+    assertEquals(r.status, 400);
+    assertEquals(r.error, "A valid email is required");
+  }
+});
+
+Deno.test("validateCreateInvite: rejects missing, blank and malformed emails", () => {
+  for (const email of [undefined, "", "   ", "nope", "no@dot", "a b@x.com", "@x.com"]) {
+    const r = validateCreateInvite({ workspace_id: WS, email, role: "agent" });
+    assertEquals(r.ok, false, `email ${JSON.stringify(email)} must be rejected`);
+  }
+});
+
+Deno.test("validateCreateInvite: rejects a missing or malformed workspace_id", () => {
+  for (const ws of [undefined, "", "not-a-uuid", 42, "11111111-2222-3333-4444-5555555555"]) {
+    const r = validateCreateInvite({ workspace_id: ws, email: "a@x.com", role: "agent" });
+    assertEquals(r.ok, false, `workspace_id ${JSON.stringify(ws)} must be rejected`);
+    if (!r.ok) assertEquals(r.error, "workspace_id must be a valid uuid");
+  }
+});
+
+Deno.test("validateCreateInvite: accepts admin/agent and normalises the email", () => {
+  const r = validateCreateInvite({ workspace_id: WS.toUpperCase(), email: "  Iara41.AI@Gmail.com ", role: "admin" });
+  assertEquals(r.ok, true);
+  if (r.ok) {
+    assertEquals(r.email, "iara41.ai@gmail.com");
+    assertEquals(r.role, "admin");
+    assertEquals(r.workspaceId, WS.toUpperCase());
+  }
+  assertEquals(validateCreateInvite({ workspace_id: WS, email: "a@x.com", role: "agent" }).ok, true);
+});
+
+Deno.test("createMessage: already-onboarded copy is create-specific, not the resend wording", () => {
+  const m = createMessage({ route: "already-onboarded" });
+  assertEquals(m.status, 200);
+  assertEquals(
+    m.body.message,
+    "This person already has an account and was NOT added to the workspace. No invite was created.",
+  );
+  // The resend wording claims a pending invite was left in place — false here.
+  assert(!String(m.body.message).includes("left in place"));
+});
+
+Deno.test("createMessage: needs-confirmation is a 409 carrying the machine-readable count", () => {
+  const m = createMessage({ route: "needs-confirmation", affectedWorkspaceIds: ["c2", "c3"] });
+  assertEquals(m.status, 409);
+  assertEquals(m.body.error, "cross_workspace_confirmation_required");
+  assertEquals(m.body.other_workspace_count, 2); // the UI names this in its prompt
+  assert(String(m.body.message).length > 0);
+});
+
+Deno.test("resendOutcomeMessage: gates identically, delegates everything else to resendMessage", () => {
+  // Resend reaches the same destructive route through the same primitive, so it
+  // must gate the same way — but keep its own already-onboarded wording.
+  const gated = resendOutcomeMessage({ route: "needs-confirmation", affectedWorkspaceIds: ["c2"] });
+  assertEquals(gated.status, 409);
+  assertEquals(gated.body.other_workspace_count, 1);
+
+  assertEquals(resendOutcomeMessage({ route: "invited", inviteId: "i1" }).body, resendMessage("invited").body);
+  assertEquals(resendOutcomeMessage({ route: "already-onboarded" }).body, resendMessage("already-onboarded").body);
+});
+
+Deno.test("createMessage: delegates every other route to resendMessage", () => {
+  assertEquals(createMessage({ route: "plan-limit-exceeded" }).status, 403);
+  assertEquals(createMessage({ route: "blocked-anomalous" }).status, 409);
+  assertEquals(createMessage({ route: "reinvited", inviteId: "i9" }).body, resendMessage("reinvited").body);
+  assertEquals(createMessage({ route: "invited", inviteId: "i1" }).body, resendMessage("invited").body);
+  assertEquals(createMessage({ route: "already-member" }).body, resendMessage("already-member").body);
+});
