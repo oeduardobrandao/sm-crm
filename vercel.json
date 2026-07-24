@@ -65,6 +65,6 @@
       "destination": "/app.html"
     }
   ],
-  "buildCommand": "npm run build && npm run prerender:novidades && npm run build:hub && npm run build:admin",
+  "buildCommand": "npm run build && npm run prerender && npm run build:hub && npm run build:admin",
   "outputDirectory": "dist"
 }
