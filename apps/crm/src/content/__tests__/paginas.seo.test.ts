@@ -31,4 +31,9 @@ describe('MARKETING_PAGES registry', () => {
       expect(PUBLIC_ROUTES.some((r) => r.path === `/${p.slug}`)).toBe(true);
     }
   });
+  test('sobre page renders with organization copy', () => {
+    const sobre = MARKETING_PAGES.find((p) => p.slug === 'sobre');
+    expect(sobre).toBeDefined();
+    expect(renderMarketingPageHtml(sobre!)).toContain('contato@mesaas.com.br');
+  });
 });

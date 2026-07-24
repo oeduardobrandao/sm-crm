@@ -9,6 +9,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { Spinner } from '@/components/ui/spinner';
 import AppLayout from './components/layout/AppLayout';
 import ProtectedRoute from './components/layout/ProtectedRoute';
+import { marketingPageBySlug } from '@/content/paginas';
 
 // Public pages
 const LoginPage = lazy(() => import('./pages/login/LoginPage'));
@@ -21,6 +22,7 @@ const LgpdPage = lazy(() => import('./pages/lgpd/LgpdPage'));
 const LandingPage = lazy(() => import('./pages/landing/LandingPage'));
 const NovidadesPage = lazy(() => import('./pages/novidades/NovidadesPage'));
 const PrecosPage = lazy(() => import('./pages/precos/PrecosPage'));
+const MarketingPage = lazy(() => import('./pages/marketing/MarketingPage'));
 
 // Protected pages
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
@@ -69,6 +71,12 @@ const PageFallback = (
   </div>
 );
 
+function MarketingRoute({ slug }: { slug: string }) {
+  const page = marketingPageBySlug(slug);
+  if (!page) return <Navigate to="/" replace />;
+  return <MarketingPage page={page} />;
+}
+
 export default function App() {
   return (
     <Sentry.ErrorBoundary
@@ -89,6 +97,7 @@ export default function App() {
               {/* Public routes */}
               <Route path="/" element={<LandingPage />} />
               <Route path="/precos" element={<PrecosPage />} />
+              <Route path="/sobre" element={<MarketingRoute slug="sobre" />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/configurar-senha" element={<ConfigurarSenhaPage />} />
               <Route path="/politica-de-privacidade" element={<PoliticaPage />} />
