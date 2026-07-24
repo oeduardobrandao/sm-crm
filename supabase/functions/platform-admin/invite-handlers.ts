@@ -11,8 +11,9 @@ export async function handleGetWorkspaceInvites(
   if (!body.workspace_id) {
     return new Response(JSON.stringify({ error: "workspace_id is required" }), { status: 400, headers });
   }
-  const { count } = await svc.from("invites")
+  const { count, error: countError } = await svc.from("invites")
     .select("*", { count: "exact", head: true }).eq("conta_id", body.workspace_id);
+  if (countError) throw countError;
   const { data: rows, error } = await svc.from("invites")
     .select("id, email, role, status, created_at, accepted_at, expires_at, invited_by")
     .eq("conta_id", body.workspace_id)
@@ -27,8 +28,9 @@ export async function handleGetWorkspaceInvites(
   const userIds = [...states.values()].map((s) => s.user_id);
   const memberIds = new Set<string>();
   if (userIds.length) {
-    const { data: members } = await svc.from("workspace_members")
+    const { data: members, error: membersError } = await svc.from("workspace_members")
       .select("user_id").eq("workspace_id", body.workspace_id).in("user_id", userIds);
+    if (membersError) throw membersError;
     for (const m of members ?? []) memberIds.add(m.user_id);
   }
 

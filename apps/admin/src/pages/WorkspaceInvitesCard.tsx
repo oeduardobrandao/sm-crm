@@ -12,6 +12,9 @@ import { authStateLabel, statusTags, canActOnInvite } from './workspace-invites'
 const CANCEL_WARNING =
   'This deletes the invite and, if the person never finished onboarding, deletes their account — removing them from ALL workspaces. Continue?';
 
+const SEAT_LIMIT_MESSAGE =
+  "This workspace is at its team-member limit — resending would exceed the plan's seat count.";
+
 export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: string }) {
   const queryClient = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -32,7 +35,10 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
       toast.success(res.message ?? 'Invitation sent.');
       invalidate();
     },
-    onError: (e: unknown) => toast.error((e as Error).message),
+    onError: (e: unknown) => {
+      const message = (e as Error).message;
+      toast.error(message === 'plan_limit_exceeded' ? SEAT_LIMIT_MESSAGE : message);
+    },
   });
 
   const cancelMutation = useMutation({

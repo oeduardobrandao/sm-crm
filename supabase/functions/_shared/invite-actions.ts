@@ -63,9 +63,12 @@ export async function getAuthStatesByEmails(
   }
 
   const out = new Map<string, AuthState>();
-  for (const [key, u] of byEmail) {
-    const { data: pw, error: pwErr } = await adminClient
-      .rpc("user_has_password", { p_user_id: u.id });
+  const entries = [...byEmail.entries()];
+  const passwordResults = await Promise.all(
+    entries.map(([, u]) => adminClient.rpc("user_has_password", { p_user_id: u.id })),
+  );
+  entries.forEach(([key, u], i) => {
+    const { data: pw, error: pwErr } = passwordResults[i];
     out.set(key, {
       user_id: u.id,
       email_confirmed: !!u.email_confirmed_at,
@@ -75,13 +78,16 @@ export async function getAuthStatesByEmails(
       has_password: coerceHasPassword(pw, pwErr),
       onboarding_complete: onboardedById.get(u.id) ?? false,
     });
-  }
+  });
   return out;
 }
 
 /** Throw on a Supabase mutation error — never report success after a failed write. */
 function ensureOk(error: unknown, op: string): void {
-  if (error) throw new Error(`invite_mutation_failed:${op}`);
+  if (error) {
+    console.error(`[invite-actions:${op}]`, error);
+    throw new Error(`invite_mutation_failed:${op}`);
+  }
 }
 
 /**
@@ -270,7 +276,10 @@ export async function inviteOrResend(
       const { data: link, error: linkErr } = await adminClient.auth.admin.generateLink({
         type: "recovery", email, options: { redirectTo: input.redirectBase + "/configurar-senha" },
       });
-      if (linkErr || !link?.properties?.action_link) throw new Error("generate_link_failed");
+      if (linkErr || !link?.properties?.action_link) {
+        console.error("[invite-actions:resend-link] generateLink failed", linkErr);
+        throw new Error("generate_link_failed");
+      }
       const { data: conta } = await adminClient
         .from("contas").select("nome").eq("id", input.contaId).maybeSingle();
       await sendInviteEmail({ to: email, actionLink: link.properties.action_link, workspaceName: conta?.nome || "seu workspace" });

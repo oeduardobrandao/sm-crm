@@ -128,4 +128,29 @@ describe('WorkspaceInvitesCard', () => {
     renderCard();
     expect(await screen.findByText(/failed to load invites/i)).toBeTruthy();
   });
+
+  it('disables Resend and Cancel while a resend is in flight', async () => {
+    (getWorkspaceInvites as any).mockResolvedValue({
+      invites: [inv({ status: 'pending' })],
+      total: 1,
+    });
+    let resolveResend: (v: { success: boolean; route: string; message: string }) => void;
+    (adminResendInvite as any).mockReturnValue(
+      new Promise((resolve) => {
+        resolveResend = resolve;
+      }),
+    );
+    renderCard();
+    const resendButton = await screen.findByRole('button', { name: /resend/i });
+    const cancelButton = screen.getByRole('button', { name: /cancel/i });
+    expect(resendButton).not.toBeDisabled();
+    expect(cancelButton).not.toBeDisabled();
+
+    fireEvent.click(resendButton);
+    await waitFor(() => expect(resendButton).toBeDisabled());
+    expect(cancelButton).toBeDisabled();
+
+    resolveResend!({ success: true, route: 'invited', message: 'Invitation email sent.' });
+    await waitFor(() => expect(resendButton).not.toBeDisabled());
+  });
 });
