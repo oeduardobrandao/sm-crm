@@ -65,34 +65,61 @@ not blocking this spec.
   then, so today's resend audit rows point at an id that no longer exists. Both handlers switch to
   the id returned by the outcome, falling back to the request's id when a route created no row.
 
-### The `reinvited` route deletes globally — accepted, disclosed, not blocked
+### The `reinvited` route deletes globally — gated behind an explicit confirmation
 
 `inviteOrResend`'s `reinvite` route (target email has a **never-confirmed** auth user) calls
 `deleteOrphanedAuthUser`, which deletes the user's `profiles` row, **all** of their
 `workspace_members` rows (filtered by `user_id` only, no workspace filter), and the auth user itself.
-So an admin-created invite can remove a pending invitee from *other* workspaces.
+Deleting the auth user additionally kills the invite links of any pending `invites` rows for that
+email in other workspaces — those rows survive (there is no FK on the email, and `deletePriorInvites`
+only clears the target workspace's), so the other workspace is left showing a `pending` invite whose
+link can never be redeemed.
 
-This is not new — the CRM's own invite button and `admin-resend-invite` both reach the identical code
-path today. More importantly, **blocking it would break the case this feature exists for**: the
-motivating support case was a typo'd address that had produced exactly such a never-confirmed auth
-user. A 409 on `reinvite` would leave the admin unable to fix the very problem they opened the panel
-for.
+**Who is actually at risk** — verified against `classifyExistingUser` and the `handle_new_user`
+trigger (`20260713000001`):
 
-Decision: allow it, and make it visible rather than silent.
+- **Someone who already accepted an invite elsewhere: never.** They are confirmed, have a password
+  and `onboarding_complete = true` → route `add-direct` → with `addOnboarded: false` the admin path
+  returns `already-onboarded` and mutates nothing at all.
+- **An ordinary pending invitee: essentially never.** The trigger's invited-user branch creates only
+  a `profiles` row — **no** `workspace_members`. Membership appears in `accept_workspace_invite`,
+  which runs after the link click that confirms the email, at which point the user no longer
+  classifies as `reinvite`. Their exposure is the dead-link case above, not lost membership.
+- **A self-signup who never confirmed: yes, materially.** The trigger's `ELSE` branch creates a
+  workspace *and* an owner `workspace_members` row immediately, before confirmation. Inviting that
+  address into a client workspace deletes their own workspace membership and profile.
 
-- **Disclosed after the fact.** When `outcome.route === 'reinvited'` and `affectedWorkspaceIds.length
-  > 1`, the success message appends: `Note: this email had an unconfirmed account with membership
-  records in N other workspace(s); that account and those records were removed.` The admin sees the
-  blast radius immediately instead of discovering it later. The wording says *membership records*
-  because `affectedWorkspaceIds` is captured from `workspace_members`, not from pending `invites` —
-  describing them as "pending invites" would name data the value never came from.
-- **Audited across every workspace touched**, via the existing `affectedWorkspaceIds` fan-out with a
-  shared `operation_id` (below).
+Blocking `reinvite` outright is still wrong — the motivating support case was a typo'd address that
+had produced exactly such a never-confirmed auth user, and a blanket 409 would leave the admin unable
+to fix the one problem the panel exists for.
 
-A preflight (classify first, then ask the admin to confirm) was considered and rejected: it costs a
-second full paged `listUsers` scan, and a confirm prompt that must be shown *before* the route is
-known would either fire on every create (noise) or duplicate the classification logic outside the
-primitive.
+Decision: **gate precisely, on measured cross-workspace impact.**
+
+`deleteOrphanedAuthUser` already reads the user's memberships *before* deleting them, so the
+information needed to decide is in hand at that exact point for free. Split capture from delete:
+
+- **Capture** both halves of the blast radius — `workspace_members` rows, **and** other workspaces
+  holding a `pending` invite for this email (one extra indexed query,
+  `conta_id <> contaId AND status = 'pending'`). Measuring only memberships would miss the dead-link
+  case, which is the more common of the two.
+- **If the union reaches beyond the target workspace and the caller has not confirmed**, return the
+  new route `needs-confirmation` **before any mutation** — including before `deletePriorInvites`, so
+  a refusal leaves the target workspace's own pending invite intact. The handler answers 409 with
+  `other_workspace_count`; the UI confirms with the admin and re-submits with an explicit flag.
+- **When only the target workspace is involved** — the typo case — nothing is asked and the invite
+  proceeds exactly as before. The prompt is silent where it would be noise.
+- **Audited across every workspace touched**, via the `affectedWorkspaceIds` fan-out (now the union
+  of memberships and pending-invite workspaces) with a shared `operation_id`.
+
+`inviteOrResend` gains `opts.confirmCrossWorkspace?: boolean`. Both admin actions (create **and**
+resend — same primitive, same panel, same hazard) pass the admin's explicit confirmation.
+**`invite-user` passes `true`**, preserving today's CRM behavior byte-for-byte: the CRM's own invite
+button has the same hazard, but adding a confirmation flow to a different app is out of scope here
+and is tracked as a follow-up.
+
+A preflight (classify first, *then* ask) was considered and rejected: it would cost a second full
+paged `listUsers` scan and fire before the route is known. This gate reuses the scan the normal flow
+already performs.
 
 ## Backend
 
@@ -129,12 +156,12 @@ primitive.
    `handleAdminResendInvite` already calls it (`platform-admin/invite-handlers.ts`), reusing
    `Deno.env.get("OAUTH_REDIRECT_BASE")` the same way.
 3. Map the outcome via a new `createMessage(outcome)` in `invites-enrich.ts`, which delegates to the
-   existing `resendMessage` for every route except the two whose copy is resend-specific:
+   existing `resendMessage` for every route except:
+   - `needs-confirmation` — 409 carrying `other_workspace_count`, so the UI can name the blast radius
+     in its confirmation prompt. Shared with the resend action, which needs the identical payload.
    - `already-onboarded` — `resendMessage` says *"The pending invite was left in place."*, which is
      false for a create where no pending invite existed. Create says: `"This person already has an
      account and was NOT added to the workspace. No invite was created."`
-   - `reinvited` — appends the cross-workspace disclosure sentence described above when more than one
-     workspace was affected.
 4. Audit: on success (`mapped.status < 300`), write one `admin-create-invite` row per entry in
    `outcome.affectedWorkspaceIds` (falling back to `[workspace_id]` when absent — the same
    degrade-to-single-row pattern `handleAdminResendInvite` already uses). Metadata:
@@ -173,9 +200,13 @@ bug — treating a `supabase-js` call as if it throws when it actually returns `
   On submit: mutate via `adminCreateInvite`, `onSuccess` → invalidate the invites query (same
   `queryKey` the Cancel/Resend mutations already invalidate) + toast `res.message` + close/reset the
   form; `onError` → toast the error. Send button disabled while the mutation is in flight, matching
-  the existing Resend/Cancel busy-state pattern. No confirm dialog: the one destructive path
-  (`reinvited`) is disclosed in the result message rather than guessed at up front — see the
-  `reinvited` section above for why a preflight confirm was rejected.
+  the existing Resend/Cancel busy-state pattern.
+- **Cross-workspace confirmation.** A 409 `cross_workspace_confirmation_required` is not shown as an
+  error: the UI raises a `window.confirm` naming `other_workspace_count`, and on acceptance
+  re-submits the same request with the confirmation flag. The Resend button gets the identical
+  handling — it reaches the same destructive route through the same primitive. This requires
+  `adminApi` to attach the parsed error body to the thrown `Error` (it currently keeps only
+  `body.error`, discarding the count); an additive change, no existing caller affected.
 
 ## Error handling
 
@@ -186,6 +217,8 @@ bug — treating a `supabase-js` call as if it throws when it actually returns `
   action already produces, so the existing `SEAT_LIMIT_MESSAGE` mapping in `WorkspaceInvitesCard.tsx`
   already covers this without new frontend work.
 - 409 `blocked-anomalous`: inherited, same as resend.
+- 409 `cross_workspace_confirmation_required`: the reinvite would reach other workspaces and no
+  confirmation flag was sent. Nothing has been mutated; re-submitting with the flag proceeds.
 - Generic 500 for anything unexpected, matching every other `platform-admin` handler.
 
 ## Testing

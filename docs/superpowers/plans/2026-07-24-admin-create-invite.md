@@ -21,7 +21,8 @@ Every task's requirements implicitly include this section. Exact values, copied 
 - **Email pattern (exact):** `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`
 - **Exact error strings:** `workspace_id must be a valid uuid` (400), `Workspace not found` (404), `A valid email is required` (400), `role must be admin or agent` (400).
 - **Exact copy — already-onboarded on create:** `This person already has an account and was NOT added to the workspace. No invite was created.`
-- **Exact copy — cross-workspace disclosure (appended to the reinvited message, space-separated):** `Note: this email had an unconfirmed account with membership records in N other workspace(s); that account and those records were removed.` where `N` = `affectedWorkspaceIds.length - 1`. Appended only when `affectedWorkspaceIds.length > 1`. It says *membership records* because `affectedWorkspaceIds` is captured from `workspace_members` — not from pending `invites`.
+- **Cross-workspace confirmation gate:** a `reinvite` whose measured impact reaches beyond the target workspace returns the route `needs-confirmation` **before any mutation** unless `opts.confirmCrossWorkspace === true`. Impact = the union of the user's `workspace_members` workspaces and other workspaces holding a `pending` invite for that email. `invite-user` (CRM) passes `confirmCrossWorkspace: true` so its behavior is unchanged; both admin actions pass the admin's explicit flag.
+- **Exact error token for the gate:** `cross_workspace_confirmation_required`, HTTP 409, body also carrying `other_workspace_count` (a number).
 - **Every Supabase read used to make a decision must inspect `{ error }`**, not just `data`. A failed query returning no rows must not be reported as "not found".
 - **Pre-existing dirty files:** this worktree already has an unrelated modified `.superpowers/sdd/task-2-report.md` (git-ignored SDD scratch). "Clean tree" checks below are scoped to `supabase/ apps/ docs/` so that file never masks — or is mistaken for — a real change.
 - **Audit action name:** `admin-create-invite`. One row per entry in `outcome.affectedWorkspaceIds` (falling back to `[workspaceId]`), all sharing one `operation_id`.
@@ -36,14 +37,16 @@ Every task's requirements implicitly include this section. Exact values, copied 
 | `supabase/functions/_shared/audit.ts` | Modify: inspect the insert's returned `{ error }` | 1 |
 | `supabase/functions/__tests__/audit_test.ts` | Create: audit logging tests | 1 |
 | `supabase/functions/_shared/invite-actions.ts` | Modify: `inviteId` on `InviteOutcome`; rollback error check | 2 |
-| `supabase/functions/__tests__/invite-actions_test.ts` | Modify: `inviteId` + rollback tests, two new fake knobs | 2 |
-| `supabase/functions/platform-admin/invites-enrich.ts` | Modify: add pure `validateCreateInvite` + `createMessage` | 3 |
-| `supabase/functions/__tests__/platform-admin-invites_test.ts` | Modify: pure tests (T3), handler DI tests (T4) | 3, 4 |
-| `supabase/functions/platform-admin/invite-handlers.ts` | Modify: add `handleAdminCreateInvite`; fix resend's `resource_id` | 4 |
-| `supabase/functions/platform-admin/index.ts` | Modify: one import + one `case` | 4 |
-| `apps/admin/src/lib/api.ts` | Modify: add `adminCreateInvite` | 5 |
-| `apps/admin/src/pages/WorkspaceInvitesCard.tsx` | Modify: "+ Invite" control + inline form | 5 |
-| `apps/admin/src/pages/__tests__/WorkspaceInvitesCard.test.tsx` | Modify: form tests | 5 |
+| `supabase/functions/_shared/invite-actions.ts` | Modify: split capture from delete; `needs-confirmation` gate | 3 |
+| `supabase/functions/invite-user/index.ts` | Modify: pass `confirmCrossWorkspace: true` (CRM behavior unchanged) | 3 |
+| `supabase/functions/__tests__/invite-actions_test.ts` | Modify: `inviteId` + rollback tests (T2), gate tests (T3) | 2, 3 |
+| `supabase/functions/platform-admin/invites-enrich.ts` | Modify: `validateCreateInvite`, `createMessage`, `resendOutcomeMessage` | 4 |
+| `supabase/functions/__tests__/platform-admin-invites_test.ts` | Modify: pure tests (T4), handler DI tests (T5) | 4, 5 |
+| `supabase/functions/platform-admin/invite-handlers.ts` | Modify: add `handleAdminCreateInvite`; thread the confirm flag; fix resend's `resource_id` | 5 |
+| `supabase/functions/platform-admin/index.ts` | Modify: one import + one `case` | 5 |
+| `apps/admin/src/lib/api.ts` | Modify: attach the error body to thrown errors; add `adminCreateInvite`; confirm param on resend | 6 |
+| `apps/admin/src/pages/WorkspaceInvitesCard.tsx` | Modify: "+ Invite" form + cross-workspace confirm on create and resend | 6 |
+| `apps/admin/src/pages/__tests__/WorkspaceInvitesCard.test.tsx` | Modify: form + confirmation tests | 6 |
 
 ---
 
@@ -435,7 +438,7 @@ async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, e
 - [ ] **Step 7: Run the tests to verify they pass**
 
 Run: `npm run test:functions -- --filter "inviteOrResend"`
-Expected: PASS — all pre-existing `inviteOrResend` tests plus the four new ones.
+Expected: PASS — all pre-existing `inviteOrResend` tests plus the five new ones.
 
 - [ ] **Step 8: Run the wider invite suites for regressions**
 
@@ -455,7 +458,269 @@ actually logs it."
 
 ---
 
-### Task 3: Pure validation + create-specific response mapping
+### Task 3: Gate the cross-workspace delete behind an explicit confirmation
+
+**Why:** the `reinvite` route deletes a never-confirmed auth user **globally** — every
+`workspace_members` row (`.eq("user_id", …)`, no workspace filter) plus the auth record, which also
+kills the invite links of pending `invites` rows for that email in other workspaces. Verified who is
+actually exposed: an already-accepted user is **never** at risk (route `add-direct` → the admin path
+returns `already-onboarded` and mutates nothing), and an ordinary pending invitee has no
+`workspace_members` row at all (the `handle_new_user` trigger's invited branch creates only a
+`profiles` row). The real victim is a **self-signup who never confirmed** — the trigger's `ELSE`
+branch gives them a workspace and an owner membership immediately — plus any workspace holding a
+pending invite for the same address, whose link dies silently.
+
+**Files:**
+- Modify: `supabase/functions/_shared/invite-actions.ts` — `deleteOrphanedAuthUser` (102-116), `cancelInvite`'s call site (165-167), `InviteOrResendOpts` (188-192), `InviteRoute` (193-195), the reinvite branch (293-300)
+- Modify: `supabase/functions/invite-user/index.ts` — pass `confirmCrossWorkspace: true`
+- Test: `supabase/functions/__tests__/invite-actions_test.ts`
+
+**Interfaces:**
+- Consumes: `InviteOutcome` from Task 2.
+- Produces:
+  - `InviteRoute` gains `"needs-confirmation"`.
+  - `InviteOrResendOpts` gains `confirmCrossWorkspace?: boolean`.
+  - `captureOrphanImpact(adminClient, userId, email, contaId): Promise<{ memberWorkspaceIds: string[]; pendingWorkspaceIds: string[]; otherWorkspaceIds: string[] }>` — module-private. `otherWorkspaceIds` is the de-duplicated union minus `contaId`.
+  - `deleteOrphanedAuthUser(adminClient, userId): Promise<void>` — deletes only; no capture, no return.
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `supabase/functions/__tests__/invite-actions_test.ts`:
+
+```ts
+Deno.test("inviteOrResend: reinvite touching ONLY the target workspace proceeds without asking", async () => {
+  // The motivating typo case: an orphan account that exists solely because of
+  // the mistyped address. Nothing else is affected, so no prompt.
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: null }, hasProfile: true, onboarding: false, hasPassword: false, memberships: ["c1"] });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+  assertEquals(out.route, "reinvited");
+  assert(admin._events().includes("delUser:u1"));
+});
+
+Deno.test("inviteOrResend: reinvite reaching another workspace's MEMBERSHIP stops before mutating", async () => {
+  // The self-signup-who-never-confirmed case: they own workspace "c2".
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: null }, hasProfile: true, onboarding: false, hasPassword: false, memberships: ["c1", "c2"] });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+  assertEquals(out.route, "needs-confirmation");
+  assertEquals(out.affectedWorkspaceIds, ["c2"]); // only the OTHER workspaces
+  assert(!admin._events().includes("delUser:u1"), "must not delete the user");
+  assert(!admin._events().some((e) => e.startsWith("del:invites")), "must not clear the target's pending invite either");
+  assert(!admin._events().includes("authInvite"), "must not send anything");
+});
+
+Deno.test("inviteOrResend: reinvite reaching another workspace's PENDING INVITE also stops", async () => {
+  // No membership anywhere — the ordinary-invitee shape. The damage here is the
+  // dead link left behind in workspace "c3", which workspace_members cannot see.
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: null }, hasProfile: true, onboarding: false, hasPassword: false, memberships: [], otherPendingWorkspaceIds: ["c3"] });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+  assertEquals(out.route, "needs-confirmation");
+  assertEquals(out.affectedWorkspaceIds, ["c3"]);
+  assert(!admin._events().includes("delUser:u1"));
+});
+
+Deno.test("inviteOrResend: confirmCrossWorkspace proceeds and audits the UNION of both impacts", async () => {
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: null }, hasProfile: true, onboarding: false, hasPassword: false, memberships: ["c1", "c2"], otherPendingWorkspaceIds: ["c3"] });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, { addOnboarded: false, confirmCrossWorkspace: true });
+  assertEquals(out.route, "reinvited");
+  assertEquals((out.affectedWorkspaceIds ?? []).sort(), ["c1", "c2", "c3"]);
+  assert(admin._events().includes("delUser:u1"));
+  assert(admin._events().includes("authInvite"));
+});
+
+Deno.test("inviteOrResend: an ALREADY-ONBOARDED user is never gated — nothing to confirm", async () => {
+  // Confirms the reassurance in the spec: someone who accepted elsewhere takes
+  // add-direct, so the destructive route is unreachable for them.
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" }, hasProfile: true, onboarding: true, hasPassword: true, isMember: false, memberships: ["c1", "c2"] });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+  assertEquals(out.route, "already-onboarded");
+  assert(!admin._events().includes("delUser:u1"));
+});
+```
+
+Add the new fake knob to `makeInviteAdmin`'s options type:
+
+```ts
+  otherPendingWorkspaceIds?: string[];  // pending invites for this email in OTHER workspaces
+```
+
+and serve it from the `invites` non-head read. In `then`, immediately after the existing
+`api._head && table === "invites"` branch, add:
+
+```ts
+          if (table === "invites" && !isDelete) {
+            return Promise.resolve(r({ data: (opts.otherPendingWorkspaceIds ?? []).map((w) => ({ conta_id: w })), error: null }));
+          }
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `npm run test:functions -- --filter "inviteOrResend"`
+Expected: FAIL — the three gating tests report `reinvited` instead of `needs-confirmation`; the union test reports `["c1","c2"]` (no `c3`). The other two PASS already (they assert existing behavior, and are here to pin it).
+
+- [ ] **Step 3: Add the route and the opt**
+
+In `supabase/functions/_shared/invite-actions.ts`, extend the union (line 193) and the opts (188-192):
+
+```ts
+export type InviteRoute =
+  | "added" | "already-member" | "already-onboarded" | "resent-link" | "reinvited"
+  | "invited" | "plan-limit-exceeded" | "blocked-anomalous" | "needs-confirmation";
+```
+
+```ts
+export interface InviteOrResendOpts {
+  /** true (CRM/invite-user): add-direct adds an onboarded non-member. false
+   * (admin resend): report instead of adding — membership mgmt is out of scope. */
+  addOnboarded: boolean;
+  /** true = the caller holds an explicit human confirmation for a reinvite whose
+   * blast radius reaches other workspaces. Omitted/false = refuse with
+   * "needs-confirmation" before mutating anything. invite-user passes true so
+   * the CRM's own invite button behaves exactly as it does today. */
+  confirmCrossWorkspace?: boolean;
+}
+```
+
+- [ ] **Step 4: Split capture from delete**
+
+Replace `deleteOrphanedAuthUser` (currently lines 93-116) with a capture function plus a
+delete-only function:
+
+```ts
+export interface OrphanImpact {
+  /** Workspaces where this user holds a membership row — deleted with the user. */
+  memberWorkspaceIds: string[];
+  /** OTHER workspaces holding a pending invite for this email. The rows survive
+   * (no FK on the email) but their links die with the auth user, leaving an
+   * invite that looks pending and can never be redeemed. */
+  pendingWorkspaceIds: string[];
+  /** De-duplicated union, minus the workspace being acted on. */
+  otherWorkspaceIds: string[];
+}
+
+/**
+ * Everything deleting this orphan auth user would destroy or invalidate.
+ * Measured BEFORE any mutation so a caller can refuse; measuring only
+ * workspace_members would miss the dead-link half entirely, which is the more
+ * common of the two (the invited-user trigger creates no membership row).
+ */
+async function captureOrphanImpact(
+  adminClient: any,
+  userId: string,
+  email: string,
+  contaId: string,
+): Promise<OrphanImpact> {
+  const { data: memberships, error: membershipsErr } = await adminClient
+    .from("workspace_members").select("workspace_id").eq("user_id", userId);
+  ensureOk(membershipsErr, "capture_memberships");
+  const memberWorkspaceIds = [...new Set((memberships ?? []).map((m: any) => m.workspace_id))] as string[];
+
+  const { data: pending, error: pendingErr } = await adminClient
+    .from("invites").select("conta_id")
+    .eq("email", email).eq("status", "pending").neq("conta_id", contaId);
+  ensureOk(pendingErr, "capture_pending_invites");
+  const pendingWorkspaceIds = [...new Set((pending ?? []).map((i: any) => i.conta_id))] as string[];
+
+  const otherWorkspaceIds = [...new Set([...memberWorkspaceIds, ...pendingWorkspaceIds])]
+    .filter((id) => id !== contaId);
+
+  return { memberWorkspaceIds, pendingWorkspaceIds, otherWorkspaceIds };
+}
+
+/**
+ * Delete the orphan's profile, ALL of their membership rows, and the auth
+ * record — every mutation's { error } checked. Capture the impact FIRST via
+ * captureOrphanImpact: once this runs there is nothing left to measure.
+ */
+async function deleteOrphanedAuthUser(adminClient: any, userId: string): Promise<void> {
+  ensureOk((await adminClient.from("profiles").delete().eq("id", userId)).error, "profile_delete");
+  ensureOk((await adminClient.from("workspace_members").delete().eq("user_id", userId)).error, "member_delete");
+  ensureOk((await adminClient.auth.admin.deleteUser(userId)).error, "auth_user_delete");
+}
+```
+
+- [ ] **Step 5: Update `cancelInvite`'s call site**
+
+Cancel already carries its own explicit ALL-workspaces confirmation in the UI, so it is never gated —
+it only needs the same two-step call. Replace lines 164-168:
+
+```ts
+    if (action === "reinvite" || action === "resend-link") {
+      const impact = await captureOrphanImpact(adminClient, authUser.id, email, args.contaId);
+      await deleteOrphanedAuthUser(adminClient, authUser.id);
+      affectedWorkspaceIds = [...new Set([...impact.memberWorkspaceIds, ...impact.pendingWorkspaceIds])];
+      deletedUser = true;
+    }
+```
+
+- [ ] **Step 6: Gate the reinvite branch**
+
+Replace the reinvite block (currently lines 293-300). The capture and the refusal both move **above**
+`deletePriorInvites` so a refusal leaves the target workspace's own pending invite untouched:
+
+```ts
+    // reinvite: never-confirmed. Measure the blast radius BEFORE touching
+    // anything — this route deletes the auth user globally, which drops every
+    // membership they hold and kills the invite links of pending invites for
+    // this email in other workspaces.
+    const impact = await captureOrphanImpact(adminClient, existingUser.id, email, input.contaId);
+    if (impact.otherWorkspaceIds.length > 0 && !opts.confirmCrossWorkspace) {
+      return { route: "needs-confirmation", affectedWorkspaceIds: impact.otherWorkspaceIds };
+    }
+    await deletePriorInvites(adminClient, email, input.contaId);
+    await deleteOrphanedAuthUser(adminClient, existingUser.id);
+    const affectedWorkspaceIds = [...new Set([
+      ...impact.memberWorkspaceIds, ...impact.pendingWorkspaceIds, input.contaId,
+    ])];
+    const inviteId = await sendNewUserInvite(adminClient, input, email);
+    return { route: "reinvited", affectedWorkspaceIds, inviteId };
+```
+
+- [ ] **Step 7: Keep the CRM path unchanged**
+
+In `supabase/functions/invite-user/index.ts`, find the POST handler's `inviteOrResend` call and add
+the flag to its opts object:
+
+```ts
+  }, { addOnboarded: true, confirmCrossWorkspace: true });
+```
+
+Without this the CRM's own invite button would start returning `needs-confirmation`, a route its UI
+cannot handle. Adding a confirmation flow to the CRM is a separate piece of work.
+
+- [ ] **Step 8: Run the tests to verify they pass**
+
+Run: `npm run test:functions -- --filter "inviteOrResend"`
+Expected: PASS — the five new tests plus every pre-existing one. Note the pre-existing
+`reports affected workspaces (finding 5)` test uses `memberships: ["c1","c2"]` with `contaId` `"c1"`,
+so it now hits the gate: update that test to pass `{ addOnboarded: false, confirmCrossWorkspace: true }`,
+which is what an admin who confirmed would send.
+
+- [ ] **Step 9: Run the wider invite suites**
+
+Run: `npm run test:functions -- --filter "invite"`
+Expected: PASS, including `invite-user-*` (the CRM path is behaviorally unchanged).
+
+- [ ] **Step 10: Commit**
+
+```bash
+git diff --quiet -- deno.lock || git checkout -- deno.lock
+git add supabase/functions/_shared/invite-actions.ts supabase/functions/invite-user/index.ts supabase/functions/__tests__/invite-actions_test.ts
+git commit -m "feat(invites): require confirmation before a reinvite deletes across workspaces
+
+Measures memberships AND other workspaces' pending invites before any
+mutation; refuses with needs-confirmation unless the caller confirmed.
+invite-user passes confirmCrossWorkspace: true, so CRM behavior is
+unchanged."
+```
+
+---
+
+### Task 4: Pure validation + create-specific response mapping
 
 **Why:** Keep the branchy input checks and the copy decisions in pure functions so they are unit-tested without a live DB, matching how `validateResendTarget` / `resendMessage` already work in this file.
 
@@ -464,18 +729,19 @@ actually logs it."
 - Test: `supabase/functions/__tests__/platform-admin-invites_test.ts` (append)
 
 **Interfaces:**
-- Consumes: `InviteOutcome` from Task 2 (`{ route, affectedWorkspaceIds?, inviteId? }`).
+- Consumes: `InviteOutcome` from Task 2 (`{ route, affectedWorkspaceIds?, inviteId? }`) and the `"needs-confirmation"` route from Task 3.
 - Produces:
   - `type CreateInviteValidation = { ok: false; status: number; error: string } | { ok: true; workspaceId: string; email: string; role: "admin" | "agent" }`
   - `validateCreateInvite(body: { workspace_id?: unknown; email?: unknown; role?: unknown }): CreateInviteValidation` — on `ok: true`, `email` is trimmed and lower-cased.
   - `createMessage(outcome: InviteOutcome): { status: number; body: Record<string, unknown> }`
+  - `resendOutcomeMessage(outcome: InviteOutcome): { status: number; body: Record<string, unknown> }`
 
 - [ ] **Step 1: Write the failing tests**
 
 Append to `supabase/functions/__tests__/platform-admin-invites_test.ts`:
 
 ```ts
-import { validateCreateInvite, createMessage } from "../platform-admin/invites-enrich.ts";
+import { validateCreateInvite, createMessage, resendOutcomeMessage } from "../platform-admin/invites-enrich.ts";
 
 const WS = "11111111-2222-3333-4444-555555555555";
 
@@ -542,20 +808,29 @@ Deno.test("createMessage: already-onboarded copy is create-specific, not the res
   assert(!String(m.body.message).includes("left in place"));
 });
 
-Deno.test("createMessage: reinvited discloses cross-workspace impact only when there IS any", () => {
-  const single = createMessage({ route: "reinvited", affectedWorkspaceIds: ["c1"], inviteId: "i9" });
-  assertEquals(single.body.message, "Invitation email sent.");
+Deno.test("createMessage: needs-confirmation is a 409 carrying the machine-readable count", () => {
+  const m = createMessage({ route: "needs-confirmation", affectedWorkspaceIds: ["c2", "c3"] });
+  assertEquals(m.status, 409);
+  assertEquals(m.body.error, "cross_workspace_confirmation_required");
+  assertEquals(m.body.other_workspace_count, 2); // the UI names this in its prompt
+  assert(String(m.body.message).length > 0);
+});
 
-  const multi = createMessage({ route: "reinvited", affectedWorkspaceIds: ["c1", "c2", "c3"], inviteId: "i9" });
-  assertEquals(
-    multi.body.message,
-    "Invitation email sent. Note: this email had an unconfirmed account with membership records in 2 other workspace(s); that account and those records were removed.",
-  );
+Deno.test("resendOutcomeMessage: gates identically, delegates everything else to resendMessage", () => {
+  // Resend reaches the same destructive route through the same primitive, so it
+  // must gate the same way — but keep its own already-onboarded wording.
+  const gated = resendOutcomeMessage({ route: "needs-confirmation", affectedWorkspaceIds: ["c2"] });
+  assertEquals(gated.status, 409);
+  assertEquals(gated.body.other_workspace_count, 1);
+
+  assertEquals(resendOutcomeMessage({ route: "invited", inviteId: "i1" }).body, resendMessage("invited").body);
+  assertEquals(resendOutcomeMessage({ route: "already-onboarded" }).body, resendMessage("already-onboarded").body);
 });
 
 Deno.test("createMessage: delegates every other route to resendMessage", () => {
   assertEquals(createMessage({ route: "plan-limit-exceeded" }).status, 403);
   assertEquals(createMessage({ route: "blocked-anomalous" }).status, 409);
+  assertEquals(createMessage({ route: "reinvited", inviteId: "i9" }).body, resendMessage("reinvited").body);
   assertEquals(createMessage({ route: "invited", inviteId: "i1" }).body, resendMessage("invited").body);
   assertEquals(createMessage({ route: "already-member" }).body, resendMessage("already-member").body);
 });
@@ -623,11 +898,43 @@ export function validateCreateInvite(body: {
 }
 
 /**
+ * 409 payload when a reinvite would reach other workspaces and the caller has
+ * not confirmed. Null for every other route. Shared by both admin actions —
+ * create and resend hit the same destructive path through the same primitive.
+ * `other_workspace_count` is machine-readable on purpose: the UI names it in
+ * its confirmation prompt.
+ */
+function confirmationRequired(
+  outcome: InviteOutcome,
+): { status: number; body: Record<string, unknown> } | null {
+  if (outcome.route !== "needs-confirmation") return null;
+  const count = outcome.affectedWorkspaceIds?.length ?? 0;
+  return {
+    status: 409,
+    body: {
+      error: "cross_workspace_confirmation_required",
+      route: outcome.route,
+      other_workspace_count: count,
+      message:
+        `This email has an unconfirmed account tied to ${count} other workspace(s). Sending will delete that account — removing its memberships and killing its pending invite links there. Nothing has been changed yet.`,
+    },
+  };
+}
+
+/** Map an admin-RESEND outcome, gating first. */
+export function resendOutcomeMessage(outcome: InviteOutcome): { status: number; body: Record<string, unknown> } {
+  return confirmationRequired(outcome) ?? resendMessage(outcome.route);
+}
+
+/**
  * Map an admin-CREATE outcome to an HTTP status + body. Delegates to
  * resendMessage for every route whose copy is already route-accurate; overrides
- * only the two that read wrong for a create.
+ * only the gate and the one line that reads wrong for a create.
  */
 export function createMessage(outcome: InviteOutcome): { status: number; body: Record<string, unknown> } {
+  const gate = confirmationRequired(outcome);
+  if (gate) return gate;
+
   if (outcome.route === "already-onboarded") {
     // resendMessage says "The pending invite was left in place" — for a create
     // there was no pending invite to leave.
@@ -642,28 +949,7 @@ export function createMessage(outcome: InviteOutcome): { status: number; body: R
     };
   }
 
-  const mapped = resendMessage(outcome.route);
-
-  // The reinvite route deletes a never-confirmed auth user GLOBALLY, which can
-  // remove them from other workspaces. Disclose the blast radius rather than
-  // leaving it silent (a preflight confirm would cost a second full listUsers
-  // scan and still fire before the route is known).
-  //
-  // "membership records", not "pending invites": affectedWorkspaceIds is
-  // captured from workspace_members inside deleteOrphanedAuthUser.
-  const affected = outcome.affectedWorkspaceIds?.length ?? 0;
-  if (outcome.route === "reinvited" && affected > 1) {
-    return {
-      status: mapped.status,
-      body: {
-        ...mapped.body,
-        message:
-          `${mapped.body.message} Note: this email had an unconfirmed account with membership records in ${affected - 1} other workspace(s); that account and those records were removed.`,
-      },
-    };
-  }
-
-  return mapped;
+  return resendMessage(outcome.route);
 }
 ```
 
@@ -682,7 +968,7 @@ git commit -m "feat(admin-invites): pure validation + create-specific response m
 
 ---
 
-### Task 4: The `admin-create-invite` handler and its dispatch
+### Task 5: The `admin-create-invite` handler and its dispatch
 
 **Files:**
 - Modify: `supabase/functions/platform-admin/invite-handlers.ts` — new handler + `resource_id` fix in `handleAdminResendInvite` (line 136)
@@ -690,7 +976,7 @@ git commit -m "feat(admin-invites): pure validation + create-specific response m
 - Test: `supabase/functions/__tests__/platform-admin-invites_test.ts` (append)
 
 **Interfaces:**
-- Consumes: `inviteOrResend` returning `{ route, affectedWorkspaceIds?, inviteId? }` (Task 2); `validateCreateInvite` / `createMessage` (Task 3); `insertAuditLog(svc, entry)` (Task 1).
+- Consumes: `inviteOrResend` returning `{ route, affectedWorkspaceIds?, inviteId? }` (Task 2) with the `confirmCrossWorkspace` opt and `needs-confirmation` route (Task 3); `validateCreateInvite` / `createMessage` / `resendOutcomeMessage` (Task 4); `insertAuditLog(svc, entry)` (Task 1).
 - Produces: `handleAdminCreateInvite(svc, body, adminUserId, headers): Promise<Response>` — same 4-argument shape as `handleAdminCancelInvite` / `handleAdminResendInvite`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -714,6 +1000,7 @@ function makeCreateSvc(opts: {
   onboarding?: boolean;
   hasPassword?: boolean | null;
   memberships?: string[];
+  otherPendingWorkspaceIds?: string[];
   invite?: { id: string; conta_id: string; email: string; role: string; status: string; invited_by: string } | null;
 } = {}) {
   const audits: any[] = [];
@@ -736,7 +1023,9 @@ function makeCreateSvc(opts: {
       const api: any = {
         _head: false,
         select: (_c?: string, o?: any) => { if (o?.head) api._head = true; return api; },
-        eq: () => api, neq: () => api, in: () => api, delete: () => api,
+        _isDelete: false,
+        eq: () => api, neq: () => api, in: () => api,
+        delete: () => { api._isDelete = true; return api; },
         insert: (row: any) => {
           if (table === "audit_log") { audits.push(row); return Promise.resolve({ error: null }); }
           inserts.push({ table, row });
@@ -759,6 +1048,10 @@ function makeCreateSvc(opts: {
           if (api._head && table === "workspace_members") return Promise.resolve(r({ count: opts.members ?? 0, error: null }));
           if (api._head && table === "invites") return Promise.resolve(r({ count: 0, error: null }));
           if (table === "workspace_members") return Promise.resolve(r({ data: (opts.memberships ?? []).map((w) => ({ workspace_id: w })), error: null }));
+          // captureOrphanImpact's pending-invite read (a non-head, non-delete select)
+          if (table === "invites" && !api._isDelete) {
+            return Promise.resolve(r({ data: (opts.otherPendingWorkspaceIds ?? []).map((w) => ({ conta_id: w })), error: null }));
+          }
           return Promise.resolve(r({ data: null, error: null }));
         },
       };
@@ -843,21 +1136,44 @@ Deno.test("handleAdminCreateInvite: an already-onboarded target is REPORTED, nev
   assert(!svc._inserts().some((i) => i.table === "workspace_members"), "must NOT add a member");
 });
 
-Deno.test("handleAdminCreateInvite: reinvite discloses cross-workspace impact and audits each workspace", async () => {
+Deno.test("handleAdminCreateInvite: an unconfirmed reinvite reaching another workspace is REFUSED with 409", async () => {
   const svc = makeCreateSvc({
     authUser: { id: "u1", email_confirmed_at: null }, // never confirmed -> reinvite
-    // WS is the target workspace, so affectedWorkspaceIds is exactly [WS, "c2"]
-    // -> length 2 -> the disclosure reports 1 OTHER workspace.
     onboarding: false, hasPassword: false, memberships: [WS, "c2"], members: 1,
   });
   const res = await handleAdminCreateInvite(svc as any, OK_BODY, "admin1", H);
-  assertEquals(res.status, 200);
-  assert(
-    String((await res.json()).message).includes("membership records in 1 other workspace(s)"),
+  assertEquals(res.status, 409);
+  const body = await res.json();
+  assertEquals(body.error, "cross_workspace_confirmation_required");
+  assertEquals(body.other_workspace_count, 1);
+  assertEquals(svc._audits().length, 0); // nothing happened, nothing to audit
+  assert(!svc._inserts().some((i) => i.table === "invites"), "must not create an invite");
+});
+
+Deno.test("handleAdminCreateInvite: a truthy-but-not-true confirm flag does NOT count as consent", async () => {
+  const svc = makeCreateSvc({
+    authUser: { id: "u1", email_confirmed_at: null },
+    onboarding: false, hasPassword: false, memberships: [WS, "c2"], members: 1,
+  });
+  const res = await handleAdminCreateInvite(
+    svc as any, { ...OK_BODY, confirm_cross_workspace: "yes" }, "admin1", H,
   );
+  assertEquals(res.status, 409);
+});
+
+Deno.test("handleAdminCreateInvite: with confirmation it proceeds and audits EACH affected workspace", async () => {
+  const svc = makeCreateSvc({
+    authUser: { id: "u1", email_confirmed_at: null },
+    onboarding: false, hasPassword: false, memberships: [WS, "c2"], members: 1,
+  });
+  const res = await handleAdminCreateInvite(
+    svc as any, { ...OK_BODY, confirm_cross_workspace: true }, "admin1", H,
+  );
+  assertEquals(res.status, 200);
 
   const audits = svc._audits();
-  assertEquals(audits.length, 2);
+  assertEquals(audits.length, 2); // WS and c2
+  assertEquals(new Set(audits.map((a: any) => a.conta_id)), new Set([WS, "c2"]));
   assertEquals(new Set(audits.map((a: any) => a.metadata.operation_id)).size, 1);
 });
 
@@ -881,10 +1197,11 @@ Expected: FAIL at module load — `does not provide an export named 'handleAdmin
 
 - [ ] **Step 3: Implement the handler**
 
-In `supabase/functions/platform-admin/invite-handlers.ts`, widen the import on line 4:
+In `supabase/functions/platform-admin/invite-handlers.ts`, widen the import on line 4 (`resendMessage`
+is no longer used directly — `resendOutcomeMessage` wraps it):
 
 ```ts
-import { computeInviteFlags, createMessage, resendMessage, validateCreateInvite, validateResendTarget } from "./invites-enrich.ts";
+import { computeInviteFlags, createMessage, resendOutcomeMessage, validateCreateInvite, validateResendTarget } from "./invites-enrich.ts";
 ```
 
 Then append to the end of the file:
@@ -892,7 +1209,7 @@ Then append to the end of the file:
 ```ts
 export async function handleAdminCreateInvite(
   svc: ReturnType<typeof createClient>,
-  body: { workspace_id?: unknown; email?: unknown; role?: unknown },
+  body: { workspace_id?: unknown; email?: unknown; role?: unknown; confirm_cross_workspace?: unknown },
   adminUserId: string,
   headers: Record<string, string>,
 ) {
@@ -923,7 +1240,12 @@ export async function handleAdminCreateInvite(
     role: input.role,
     invitedBy: adminUserId, // honest attribution: the admin who actually sent it
     redirectBase,
-  }, { addOnboarded: false }); // a support tool never silently grants membership
+  }, {
+    addOnboarded: false, // a support tool never silently grants membership
+    // Only an explicit `true` counts — a missing or truthy-but-not-true value
+    // must not be read as consent to delete another workspace's data.
+    confirmCrossWorkspace: body.confirm_cross_workspace === true,
+  });
 
   const mapped = createMessage(outcome);
   if (mapped.status < 300) {
@@ -948,9 +1270,33 @@ export async function handleAdminCreateInvite(
 }
 ```
 
-- [ ] **Step 4: Fix the resend handler's dangling `resource_id`**
+- [ ] **Step 4: Gate the resend handler too, and fix its dangling `resource_id`**
 
-In the same file, in `handleAdminResendInvite`, replace line 136:
+Resend reaches the same destructive `reinvite` route through the same primitive, from the same panel,
+so it takes the identical gate. In `handleAdminResendInvite`:
+
+(a) widen its body type (line 91):
+
+```ts
+  body: { workspace_id?: string; invite_id?: string; confirm_cross_workspace?: unknown },
+```
+
+(b) pass the flag on the `inviteOrResend` call (replace line 119):
+
+```ts
+  }, {
+    addOnboarded: false, // admin resend never adds a member (finding 1)
+    confirmCrossWorkspace: body.confirm_cross_workspace === true,
+  });
+```
+
+(c) map through the gating wrapper (replace line 121):
+
+```ts
+  const mapped = resendOutcomeMessage(outcome);
+```
+
+(d) audit the invite that actually exists (replace line 136):
 
 ```ts
         // The row body.invite_id pointed at was deleted by deletePriorInvites;
@@ -996,7 +1342,7 @@ deletePriorInvites had already deleted."
 
 ---
 
-### Task 5: Admin portal UI — "+ Invite" form
+### Task 6: Admin portal UI — "+ Invite" form
 
 **Files:**
 - Modify: `apps/admin/src/lib/api.ts` (append after `adminResendInvite`, line 400)
@@ -1004,24 +1350,74 @@ deletePriorInvites had already deleted."
 - Test: `apps/admin/src/pages/__tests__/WorkspaceInvitesCard.test.tsx`
 
 **Interfaces:**
-- Consumes: the `admin-create-invite` action from Task 4, returning `{ success?: boolean; route?: string; message?: string }` on 2xx and `{ error: string }` on failure (`adminApi` throws `new Error(body.error)` for any non-2xx).
-- Produces: `adminCreateInvite(workspace_id: string, email: string, role: 'admin' | 'agent')`.
+- Consumes: the `admin-create-invite` action from Task 5, returning `{ success?: boolean; route?: string; message?: string }` on 2xx; on failure `{ error: string }`, and for the gate `{ error: 'cross_workspace_confirmation_required', other_workspace_count: number, message: string }` with HTTP 409.
+- Produces:
+  - `interface AdminApiError extends Error { body?: Record<string, unknown>; status?: number }`
+  - `adminCreateInvite(workspace_id: string, email: string, role: 'admin' | 'agent', confirm_cross_workspace?: boolean)`
+  - `adminResendInvite(workspace_id: string, invite_id: string, confirm_cross_workspace?: boolean)` — third parameter added, defaulted, so no other caller changes.
 
-- [ ] **Step 1: Add the API function**
+- [ ] **Step 1: Let thrown errors carry the response body**
 
-In `apps/admin/src/lib/api.ts`, immediately after `adminResendInvite` (which ends on line 400):
+`adminApi` currently keeps only `body.error` and discards everything else, so the 409's
+`other_workspace_count` never reaches the component. Replace the error branch (lines 244-247):
 
 ```ts
-export function adminCreateInvite(workspace_id: string, email: string, role: 'admin' | 'agent') {
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+    const error = new Error(err.error || `API error: ${res.status}`) as AdminApiError;
+    // Keep the whole payload: structured errors (e.g. the cross-workspace
+    // confirmation gate) carry fields the caller needs, not just a message.
+    error.body = err;
+    error.status = res.status;
+    throw error;
+  }
+```
+
+and declare the type just above `adminApi` (after line 227's section comment):
+
+```ts
+export interface AdminApiError extends Error {
+  body?: Record<string, unknown>;
+  status?: number;
+}
+```
+
+Purely additive — every existing `catch` still reads `.message` exactly as before.
+
+- [ ] **Step 2: Add the API function and the resend confirm param**
+
+In `apps/admin/src/lib/api.ts`, replace `adminResendInvite` (lines 395-400) and append the new
+function:
+
+```ts
+export function adminResendInvite(
+  workspace_id: string,
+  invite_id: string,
+  confirm_cross_workspace = false,
+) {
+  return adminApi<{ success?: boolean; route?: string; message?: string }>('admin-resend-invite', {
+    workspace_id,
+    invite_id,
+    confirm_cross_workspace,
+  });
+}
+
+export function adminCreateInvite(
+  workspace_id: string,
+  email: string,
+  role: 'admin' | 'agent',
+  confirm_cross_workspace = false,
+) {
   return adminApi<{ success?: boolean; route?: string; message?: string }>('admin-create-invite', {
     workspace_id,
     email,
     role,
+    confirm_cross_workspace,
   });
 }
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [ ] **Step 3: Write the failing tests**
 
 In `apps/admin/src/pages/__tests__/WorkspaceInvitesCard.test.tsx`, add `adminCreateInvite` to BOTH the mock factory and the import — the factory replaces the whole module, so a missing key makes the component's import `undefined` at runtime:
 
@@ -1080,7 +1476,7 @@ Then append these tests inside the existing `describe('WorkspaceInvitesCard', ..
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
 
     await waitFor(() =>
-      expect(adminCreateInvite).toHaveBeenCalledWith('c1', 'iara41.ai@gmail.com', 'admin'),
+      expect(adminCreateInvite).toHaveBeenCalledWith('c1', 'iara41.ai@gmail.com', 'admin', false),
     );
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Invitation email sent.'));
     await waitFor(() => expect((getWorkspaceInvites as any).mock.calls.length).toBeGreaterThan(1));
@@ -1141,6 +1537,76 @@ Then append these tests inside the existing `describe('WorkspaceInvitesCard', ..
     expect(adminCreateInvite).not.toHaveBeenCalled();
   });
 
+  it('turns the cross-workspace 409 into a confirmation and retries with consent', async () => {
+    (getWorkspaceInvites as any).mockResolvedValue({ invites: [], total: 0 });
+    const gate = Object.assign(new Error('cross_workspace_confirmation_required'), {
+      body: {
+        error: 'cross_workspace_confirmation_required',
+        other_workspace_count: 2,
+        message: 'This email has an unconfirmed account tied to 2 other workspace(s).',
+      },
+      status: 409,
+    });
+    (adminCreateInvite as any)
+      .mockRejectedValueOnce(gate)
+      .mockResolvedValueOnce({ success: true, message: 'Invitation email sent.' });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderCard();
+    fireEvent.click(await screen.findByRole('button', { name: /\+ invite/i }));
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'a@x.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/2 other workspace/)));
+    // second attempt carries consent
+    await waitFor(() =>
+      expect(adminCreateInvite).toHaveBeenLastCalledWith('c1', 'a@x.com', 'agent', true),
+    );
+    // the gate is a question, not a failure — it must not surface as an error toast
+    expect(toast.error).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('declining the cross-workspace confirmation sends nothing further', async () => {
+    (getWorkspaceInvites as any).mockResolvedValue({ invites: [], total: 0 });
+    (adminCreateInvite as any).mockRejectedValue(
+      Object.assign(new Error('cross_workspace_confirmation_required'), {
+        body: { error: 'cross_workspace_confirmation_required', other_workspace_count: 1 },
+        status: 409,
+      }),
+    );
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    renderCard();
+    fireEvent.click(await screen.findByRole('button', { name: /\+ invite/i }));
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'a@x.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
+    expect((adminCreateInvite as any).mock.calls.length).toBe(1); // no retry
+    expect(toast.error).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('Resend gates on the same 409 and retries with consent', async () => {
+    (getWorkspaceInvites as any).mockResolvedValue({ invites: [inv({ status: 'pending' })], total: 1 });
+    (adminResendInvite as any)
+      .mockRejectedValueOnce(
+        Object.assign(new Error('cross_workspace_confirmation_required'), {
+          body: { error: 'cross_workspace_confirmation_required', other_workspace_count: 3 },
+          status: 409,
+        }),
+      )
+      .mockResolvedValueOnce({ success: true, message: 'Invitation email sent.' });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderCard();
+    fireEvent.click(await screen.findByRole('button', { name: /resend/i }));
+    await waitFor(() => expect(adminResendInvite).toHaveBeenCalledWith('c1', 'i1', false));
+    await waitFor(() => expect(adminResendInvite).toHaveBeenLastCalledWith('c1', 'i1', true));
+    confirmSpy.mockRestore();
+  });
+
   it('Dismiss resets the role back to the lower-privilege default', async () => {
     // Picking Admin, dismissing, then reopening must NOT leave the form primed
     // to invite the next person as an admin.
@@ -1162,12 +1628,17 @@ The `toast` assertions need the mocked module in scope — add this import besid
 import { toast } from 'sonner';
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+Two pre-existing tests now see the extra `adminResendInvite` argument. Update both:
+
+- `resend calls the API and refetches on success` — `toHaveBeenCalledWith('c1', 'i1')` becomes `toHaveBeenCalledWith('c1', 'i1', false)`.
+- `disables Resend and Cancel while a resend is in flight` — unchanged assertions, but its `mockReturnValue` promise is now resolved by a mutation called with an object payload; no edit needed as long as it does not assert on arguments. Verify it still passes rather than assuming.
+
+- [ ] **Step 4: Run the tests to verify they fail**
 
 Run: `npm run test -- WorkspaceInvitesCard`
 Expected: FAIL — `Unable to find an accessible element with the role "button" and name /\+ invite/i` on each new test. The 8 pre-existing tests still PASS.
 
-- [ ] **Step 4: Implement the form**
+- [ ] **Step 5: Implement the form**
 
 In `apps/admin/src/pages/WorkspaceInvitesCard.tsx`:
 
@@ -1179,6 +1650,7 @@ import {
   adminCancelInvite,
   adminResendInvite,
   adminCreateInvite,
+  type AdminApiError,
   type InviteInfo,
 } from '../lib/api';
 ```
@@ -1206,17 +1678,59 @@ form can never reopen pre-set to the higher-privilege role:
 
 ```tsx
   const createMutation = useMutation({
-    mutationFn: () => adminCreateInvite(workspaceId, email.trim(), role),
+    mutationFn: (confirmCrossWorkspace: boolean) =>
+      adminCreateInvite(workspaceId, email.trim(), role, confirmCrossWorkspace),
     onSuccess: (res) => {
       toast.success(res.message ?? 'Invitation sent.');
       closeForm();
       invalidate();
     },
     onError: (e: unknown) => {
+      if (confirmedCrossWorkspace(e, () => createMutation.mutate(true))) return;
       const message = (e as Error).message;
       toast.error(message === 'plan_limit_exceeded' ? SEAT_LIMIT_MESSAGE : message);
     },
   });
+```
+
+and change `resendMutation`'s `mutationFn`/`onError` to take the same two-step path (replace lines
+31 and 38-41):
+
+```tsx
+    mutationFn: ({ inviteId, confirm }: { inviteId: string; confirm: boolean }) =>
+      adminResendInvite(workspaceId, inviteId, confirm),
+    onMutate: ({ inviteId }) => setBusyId(inviteId),
+```
+
+```tsx
+    onError: (e: unknown, vars) => {
+      if (confirmedCrossWorkspace(e, () => resendMutation.mutate({ inviteId: vars.inviteId, confirm: true }))) return;
+      const message = (e as Error).message;
+      toast.error(message === 'plan_limit_exceeded' ? SEAT_LIMIT_MESSAGE : message);
+    },
+```
+
+with its call site updated to `resendMutation.mutate({ inviteId: it.id, confirm: false })`.
+
+(c) add the shared gate handler above the component, beside the other message constants:
+
+```tsx
+/**
+ * A 409 from the cross-workspace gate is a question, not a failure: nothing has
+ * been mutated yet. Ask, and on a yes re-run the same request with consent.
+ * Returns true when it handled the error.
+ */
+function confirmedCrossWorkspace(e: unknown, retry: () => void): boolean {
+  const body = (e as AdminApiError).body as
+    | { error?: string; other_workspace_count?: number; message?: string }
+    | undefined;
+  if (body?.error !== 'cross_workspace_confirmation_required') return false;
+  const count = body.other_workspace_count ?? 0;
+  const warning =
+    `${body.message ?? ''}\n\nThis will remove that account from ${count} other workspace(s) and break their pending invite links. Continue?`.trim();
+  if (window.confirm(warning)) retry();
+  return true;
+}
 ```
 
 (d) add the "+ Invite" control to the header. Replace the header block (lines 62-69):
@@ -1243,7 +1757,7 @@ form can never reopen pre-set to the higher-privilege role:
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            createMutation.mutate();
+            createMutation.mutate(false); // unconfirmed; the gate may ask
           }}
           className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center"
         >
@@ -1285,12 +1799,12 @@ form can never reopen pre-set to the higher-privilege role:
 
 > The form sits **outside** the loading/error/empty conditional below it, so an admin can still send an invite when the list is empty or failed to load. The dismiss control is named **Dismiss**, not Cancel — the invite rows already own that accessible name. The input/select/button classes mirror the existing invite form in `apps/admin/src/pages/AdminsPage.tsx:48-64` so the control looks native to the portal.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `npm run test -- WorkspaceInvitesCard`
-Expected: PASS (16 passed — 8 pre-existing + 8 new)
+Expected: PASS (19 passed — 8 pre-existing + 11 new)
 
-- [ ] **Step 6: Typecheck, lint and format**
+- [ ] **Step 7: Typecheck, lint and format**
 
 ```bash
 npm run build:admin && npm run lint && npm run format:check
@@ -1299,7 +1813,7 @@ Expected: all three exit 0. If `format:check` fails, run `npm run format` and re
 
 > `npm run build` typechecks **CRM only** (`tsc -p apps/crm/tsconfig.json`). Every change in this task is in `apps/admin`, which that command never reads — `build:admin` is the one that would actually catch a type error here. CI typechecks all three apps separately.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add apps/admin/src/lib/api.ts apps/admin/src/pages/WorkspaceInvitesCard.tsx apps/admin/src/pages/__tests__/WorkspaceInvitesCard.test.tsx
@@ -1308,7 +1822,7 @@ git commit -m "feat(admin-invites): send a new invite from the workspace invites
 
 ---
 
-### Task 6: Full gates, browser verification, and deploy
+### Task 7: Full gates, browser verification, and deploy
 
 **Files:** none modified (verification only, plus any fixes the gates surface).
 
