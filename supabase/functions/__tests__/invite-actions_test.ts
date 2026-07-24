@@ -232,6 +232,9 @@ function makeInviteAdmin(opts: {
   isMember?: boolean;
   memberships?: string[];
   failTable?: string;               // e.g. "workspace_members" -> insert/delete returns { error }
+  failAuthInvite?: boolean;         // inviteUserByEmail returns { error } -> send throws
+  failInviteDeleteById?: boolean;   // ONLY the rollback delete (.eq("id", ...)) returns { error }
+  insertReturnsNoId?: boolean;      // insert resolves with NO error and NO row
 }) {
   const events: string[] = [];
   const failErr = { message: "injected failure" };
@@ -243,7 +246,7 @@ function makeInviteAdmin(opts: {
         listUsers: (_a: any) => Promise.resolve({ data: { users: opts.authUser ? [{ ...opts.authUser, email: "a@x.com" }] : [] }, error: null }),
         deleteUser: (id: string) => { events.push("delUser:" + id); return Promise.resolve({ error: opts.failTable === "auth" ? failErr : null }); },
         generateLink: (_a: any) => { events.push("genLink"); return Promise.resolve({ data: { properties: { action_link: "https://link" } }, error: null }); },
-        inviteUserByEmail: (_e: string, _o: any) => { events.push("authInvite"); return Promise.resolve({ error: null }); },
+        inviteUserByEmail: (_e: string, _o: any) => { events.push("authInvite"); return Promise.resolve({ error: opts.failAuthInvite ? failErr : null }); },
       },
     },
     // deno-lint-ignore no-explicit-any
@@ -256,17 +259,20 @@ function makeInviteAdmin(opts: {
       // Fresh per `.from(table)` call, so filters recorded on one query chain
       // never leak into another.
       const neqFilters: Array<{ col: string; val: unknown }> = [];
+      const eqCols: string[] = [];
+      let isDelete = false;
       const api: any = {
         // select("*", {head:true}) is the seat count path; .neq(...) marks the exclusion.
         select: (_c?: string, o?: any) => { if (o?.head) api._head = true; return api; },
-        eq: () => api,
+        eq: (col?: string) => { if (col) eqCols.push(col); return api; },
         neq: (col: string, val: unknown) => { neqFilters.push({ col, val }); return api; },
         in: () => api,
-        delete: () => { events.push("del:" + table); return { ...api, _err: opts.failTable === table }; },
+        delete: () => { events.push("del:" + table); isDelete = true; return { ...api, _err: opts.failTable === table }; },
         insert: (row: any) => {
           events.push("ins:" + table + ":" + (row.status ?? ""));
           const err = opts.failTable === table ? failErr : null;
-          return { select: () => ({ single: () => Promise.resolve({ data: err ? null : { id: "new-invite" }, error: err }) }), then: (r: (x: any) => unknown) => Promise.resolve(r({ data: null, error: err })) };
+          const inserted = err || opts.insertReturnsNoId ? null : { id: "new-invite" };
+          return { select: () => ({ single: () => Promise.resolve({ data: inserted, error: err }) }), then: (r: (x: any) => unknown) => Promise.resolve(r({ data: null, error: err })) };
         },
         maybeSingle: () => {
           if (table === "profiles") return Promise.resolve({ data: opts.hasProfile === false ? null : { onboarding_complete: opts.onboarding ?? false, id: "u1" }, error: null });
@@ -275,6 +281,9 @@ function makeInviteAdmin(opts: {
           return Promise.resolve({ data: null, error: null });
         },
         then: (r: (x: any) => unknown) => {
+          if (isDelete && table === "invites" && eqCols.includes("id") && opts.failInviteDeleteById) {
+            return Promise.resolve(r({ data: null, error: failErr }));
+          }
           if (api._head && table === "workspace_members") return Promise.resolve(r({ count: opts.members, error: null }));
           if (api._head && table === "invites") {
             const count = opts.pendingInvites
@@ -421,4 +430,101 @@ Deno.test("inviteOrResend: a failed membership insert throws, never reports succ
   // deno-lint-ignore no-explicit-any
   try { await inviteOrResend(admin as any, baseInput, CRM); } catch { threw = true; }
   assert(threw, "a Supabase { error } on the member insert must throw");
+});
+
+Deno.test("inviteOrResend: inviteId is returned for every route that creates an invites row", async () => {
+  // invited (brand-new email)
+  const newUser = makeInviteAdmin({ limit: null, members: 1, authUser: null });
+  // deno-lint-ignore no-explicit-any
+  const invited = await inviteOrResend(newUser as any, baseInput, ADMIN);
+  assertEquals(invited.route, "invited");
+  assertEquals(invited.inviteId, "new-invite");
+
+  // reinvited (never-confirmed stale user)
+  const stale = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: null }, hasProfile: true, onboarding: false, hasPassword: false, memberships: ["c1"] });
+  // deno-lint-ignore no-explicit-any
+  const reinvited = await inviteOrResend(stale as any, baseInput, ADMIN);
+  assertEquals(reinvited.route, "reinvited");
+  assertEquals(reinvited.inviteId, "new-invite");
+
+  // added (CRM mode, onboarded non-member)
+  const onboarded = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" }, hasProfile: true, onboarding: true, hasPassword: true, isMember: false });
+  // deno-lint-ignore no-explicit-any
+  const added = await inviteOrResend(onboarded as any, baseInput, CRM);
+  assertEquals(added.route, "added");
+  assertEquals(added.inviteId, "new-invite");
+});
+
+Deno.test("inviteOrResend: resent-link returns the id of the NEW pending row", async () => {
+  const prevKey = Deno.env.get("RESEND_API_KEY");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (() => Promise.resolve(new Response("{}", { status: 200 }))) as typeof fetch;
+  try {
+    const admin = makeInviteAdmin({ limit: null, members: 1, matchingPending: true, authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" }, hasProfile: true, onboarding: false, hasPassword: false });
+    // deno-lint-ignore no-explicit-any
+    const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+    assertEquals(out.route, "resent-link");
+    assertEquals(out.inviteId, "new-invite");
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY"); else Deno.env.set("RESEND_API_KEY", prevKey);
+  }
+});
+
+Deno.test("inviteOrResend: no-op routes carry NO inviteId", async () => {
+  const onboarded = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" }, hasProfile: true, onboarding: true, hasPassword: true, isMember: false });
+  // deno-lint-ignore no-explicit-any
+  assertEquals((await inviteOrResend(onboarded as any, baseInput, ADMIN)).inviteId, undefined);
+
+  const member = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" }, hasProfile: true, onboarding: true, hasPassword: true, isMember: true });
+  // deno-lint-ignore no-explicit-any
+  assertEquals((await inviteOrResend(member as any, baseInput, ADMIN)).inviteId, undefined);
+
+  const full = makeInviteAdmin({ limit: 3, members: 3, pendingOtherEmails: 0 });
+  // deno-lint-ignore no-explicit-any
+  assertEquals((await inviteOrResend(full as any, baseInput, ADMIN)).inviteId, undefined);
+
+  const anomalous = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" }, hasProfile: false, hasPassword: null });
+  // deno-lint-ignore no-explicit-any
+  assertEquals((await inviteOrResend(anomalous as any, baseInput, ADMIN)).inviteId, undefined);
+});
+
+Deno.test("inviteOrResend: an insert that returns no error AND no row throws, never a silent undefined id", async () => {
+  // The contract is that inviteId is ALWAYS present on a creating route.
+  // Checking only `error` would return inviteId: undefined here and silently
+  // drop the audit resource_id.
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" }, hasProfile: true, onboarding: true, hasPassword: true, isMember: false, insertReturnsNoId: true });
+  let message = "";
+  try {
+    // deno-lint-ignore no-explicit-any
+    await inviteOrResend(admin as any, baseInput, CRM);
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  assertEquals(message, "invite_mutation_failed:invite_insert_accepted");
+});
+
+Deno.test("inviteOrResend: a failed rollback delete is logged, and the original send error still propagates", async () => {
+  // inviteUserByEmail fails AFTER the pending row was inserted, so the rollback
+  // runs; the rollback's own delete also fails. Before the fix that delete's
+  // { error } was discarded, so the phantom pending row left NO trace at all.
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: null, failAuthInvite: true, failInviteDeleteById: true });
+  const logged: unknown[][] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => { logged.push(args); };
+  let threw = false;
+  try {
+    // deno-lint-ignore no-explicit-any
+    await inviteOrResend(admin as any, baseInput, ADMIN);
+  } catch {
+    threw = true;
+  } finally {
+    console.error = original;
+  }
+  assert(threw, "the original send failure must still propagate to the caller");
+  assert(
+    logged.some((l) => String(l[0]).includes("pending invite cleanup failed")),
+    "the failed rollback must be logged",
+  );
 });

@@ -90,6 +90,16 @@ function ensureOk(error: unknown, op: string): void {
   }
 }
 
+/** An insert's new row id, failing loudly rather than silently returning undefined. */
+function insertedId(res: { data?: { id?: string } | null; error: unknown }, op: string): string {
+  ensureOk(res.error, op);
+  if (!res.data?.id) {
+    console.error(`[invite-actions:${op}] insert reported no error but returned no id`);
+    throw new Error(`invite_mutation_failed:${op}`);
+  }
+  return res.data.id;
+}
+
 /**
  * Capture a user's full workspace_members set, THEN delete their profile,
  * membership rows, and auth record — in that order, with every mutation's
@@ -193,7 +203,14 @@ export interface InviteOrResendOpts {
 export type InviteRoute =
   | "added" | "already-member" | "already-onboarded" | "resent-link" | "reinvited"
   | "invited" | "plan-limit-exceeded" | "blocked-anomalous";
-export interface InviteOutcome { route: InviteRoute; affectedWorkspaceIds?: string[]; }
+export interface InviteOutcome {
+  route: InviteRoute;
+  affectedWorkspaceIds?: string[];
+  /** Id of the invites row this call created. Present on added / resent-link /
+   * reinvited / invited; absent on the no-op routes. Callers audit it as
+   * resource_id — conta_id + email is not unique across history. */
+  inviteId?: string;
+}
 
 /**
  * THE invite-or-resend primitive shared by invite-user (CRM, addOnboarded:true)
@@ -266,9 +283,8 @@ export async function inviteOrResend(
       const iIns = await adminClient.from("invites").insert({
         conta_id: input.contaId, email, role: input.role, invited_by: input.invitedBy,
         status: "accepted", accepted_at: new Date().toISOString(),
-      });
-      ensureOk(iIns.error, "invite_insert_accepted");
-      return { route: "added" };
+      }).select("id").single();
+      return { route: "added", inviteId: insertedId(iIns, "invite_insert_accepted") };
     }
 
     if (action === "resend-link") {
@@ -285,9 +301,8 @@ export async function inviteOrResend(
       await sendInviteEmail({ to: email, actionLink: link.properties.action_link, workspaceName: conta?.nome || "seu workspace" });
       const ins = await adminClient.from("invites").insert({
         conta_id: input.contaId, email, role: input.role, invited_by: input.invitedBy, status: "pending",
-      });
-      ensureOk(ins.error, "invite_insert_pending");
-      return { route: "resent-link" };
+      }).select("id").single();
+      return { route: "resent-link", inviteId: insertedId(ins, "invite_insert_pending") };
     }
 
     // reinvite: never-confirmed. Delete stale invites, then capture-and-delete
@@ -296,14 +311,14 @@ export async function inviteOrResend(
     await deletePriorInvites(adminClient, email, input.contaId);
     const { affectedWorkspaceIds } = await deleteOrphanedAuthUser(adminClient, existingUser.id);
     if (!affectedWorkspaceIds.includes(input.contaId)) affectedWorkspaceIds.push(input.contaId);
-    await sendNewUserInvite(adminClient, input, email);
-    return { route: "reinvited", affectedWorkspaceIds };
+    const inviteId = await sendNewUserInvite(adminClient, input, email);
+    return { route: "reinvited", affectedWorkspaceIds, inviteId };
   }
 
   // (3) New user.
   await deletePriorInvites(adminClient, email, input.contaId);
-  await sendNewUserInvite(adminClient, input, email);
-  return { route: "invited" };
+  const inviteId = await sendNewUserInvite(adminClient, input, email);
+  return { route: "invited", inviteId };
 }
 
 async function deletePriorInvites(adminClient: any, email: string, contaId: string): Promise<void> {
@@ -312,8 +327,9 @@ async function deletePriorInvites(adminClient: any, email: string, contaId: stri
   ensureOk(error, "prior_invites_delete");
 }
 
-async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, email: string): Promise<void> {
-  await sendPendingWorkspaceInvite({
+/** Returns the id of the pending invites row it created. */
+async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, email: string): Promise<string> {
+  return await sendPendingWorkspaceInvite({
     createPendingInvite: async (p) => {
       const { data, error } = await adminClient.from("invites").insert({
         conta_id: p.contaId, email: p.email, role: p.role, invited_by: p.invitedBy, status: "pending",
@@ -328,7 +344,13 @@ async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, e
       });
       if (error) throw error;
     },
-    deletePendingInvite: async (id) => { await adminClient.from("invites").delete().eq("id", id); },
+    // Throw on a failed rollback so sendPendingWorkspaceInvite's catch actually
+    // logs it — supabase-js RESOLVES with { error }, so ignoring it left a
+    // phantom pending row with no trace anywhere.
+    deletePendingInvite: async (id) => {
+      const { error } = await adminClient.from("invites").delete().eq("id", id);
+      if (error) throw error;
+    },
   }, {
     contaId: input.contaId, email, role: input.role, invitedBy: input.invitedBy,
     redirectTo: input.redirectBase + "/configurar-senha",
