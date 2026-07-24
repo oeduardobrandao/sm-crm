@@ -5,6 +5,8 @@ import {
   getWorkspaceInvites,
   adminCancelInvite,
   adminResendInvite,
+  adminCreateInvite,
+  type AdminApiError,
   type InviteInfo,
 } from '../lib/api';
 import { authStateLabel, statusTags, canActOnInvite } from './workspace-invites';
@@ -15,9 +17,34 @@ const CANCEL_WARNING =
 const SEAT_LIMIT_MESSAGE =
   "This workspace is at its team-member limit — resending would exceed the plan's seat count.";
 
+/**
+ * A 409 from the cross-workspace gate is a question, not a failure: nothing has
+ * been mutated yet. Ask, and on a yes re-run the same request with consent.
+ * Returns true when it handled the error.
+ */
+function confirmedCrossWorkspace(e: unknown, retry: () => void): boolean {
+  const body = (e as AdminApiError).body as
+    { error?: string; other_workspace_count?: number; message?: string } | undefined;
+  if (body?.error !== 'cross_workspace_confirmation_required') return false;
+  const count = body.other_workspace_count ?? 0;
+  const warning =
+    `${body.message ?? ''}\n\nThis will remove that account from ${count} other workspace(s) and break their pending invite links. Continue?`.trim();
+  if (window.confirm(warning)) retry();
+  return true;
+}
+
 export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: string }) {
   const queryClient = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<'admin' | 'agent'>('agent');
+
+  const closeForm = () => {
+    setFormOpen(false);
+    setEmail('');
+    setRole('agent');
+  };
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin', 'workspace', workspaceId, 'invites'],
@@ -28,14 +55,21 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
     queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', workspaceId, 'invites'] });
 
   const resendMutation = useMutation({
-    mutationFn: (inviteId: string) => adminResendInvite(workspaceId, inviteId),
-    onMutate: (id) => setBusyId(id),
+    mutationFn: ({ inviteId, confirm }: { inviteId: string; confirm: boolean }) =>
+      adminResendInvite(workspaceId, inviteId, confirm),
+    onMutate: ({ inviteId }) => setBusyId(inviteId),
     onSettled: () => setBusyId(null),
     onSuccess: (res) => {
       toast.success(res.message ?? 'Invitation sent.');
       invalidate();
     },
-    onError: (e: unknown) => {
+    onError: (e: unknown, vars) => {
+      if (
+        confirmedCrossWorkspace(e, () =>
+          resendMutation.mutate({ inviteId: vars.inviteId, confirm: true }),
+        )
+      )
+        return;
       const message = (e as Error).message;
       toast.error(message === 'plan_limit_exceeded' ? SEAT_LIMIT_MESSAGE : message);
     },
@@ -54,19 +88,85 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
     onError: (e: unknown) => toast.error((e as Error).message),
   });
 
+  const createMutation = useMutation({
+    mutationFn: (confirmCrossWorkspace: boolean) =>
+      adminCreateInvite(workspaceId, email.trim(), role, confirmCrossWorkspace),
+    onSuccess: (res) => {
+      toast.success(res.message ?? 'Invitation sent.');
+      closeForm();
+      invalidate();
+    },
+    onError: (e: unknown) => {
+      if (confirmedCrossWorkspace(e, () => createMutation.mutate(true))) return;
+      const message = (e as Error).message;
+      toast.error(message === 'plan_limit_exceeded' ? SEAT_LIMIT_MESSAGE : message);
+    },
+  });
+
   const invites = data?.invites ?? [];
   const total = data?.total ?? invites.length;
 
   return (
     <div className="min-w-0 overflow-hidden bg-card border border-border rounded-2xl p-5 mt-6 mb-6">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="font-semibold">Invites ({total})</h2>
-        {total > invites.length && (
-          <span className="text-xs text-muted-foreground">
-            showing {invites.length} of {total}
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {total > invites.length && (
+            <span className="text-xs text-muted-foreground">
+              showing {invites.length} of {total}
+            </span>
+          )}
+          <button
+            onClick={() => setFormOpen((open) => !open)}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            + Invite
+          </button>
+        </div>
       </div>
+
+      {formOpen && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            createMutation.mutate(false); // unconfirmed; the gate may ask
+          }}
+          className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center"
+        >
+          <input
+            aria-label="Email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="person@example.com"
+            className="min-w-0 flex-1 px-3 py-2.5 rounded-lg bg-card border border-border text-sm font-sf text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
+          />
+          <select
+            aria-label="Role"
+            value={role}
+            onChange={(e) => setRole(e.target.value as 'admin' | 'agent')}
+            className="px-3 py-2.5 rounded-lg bg-card border border-border text-sm font-sf text-foreground focus:outline-none focus:border-primary transition-colors"
+          >
+            <option value="agent">Agent</option>
+            <option value="admin">Admin</option>
+          </select>
+          <button
+            type="submit"
+            disabled={createMutation.isPending}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+          >
+            Send
+          </button>
+          <button
+            type="button"
+            onClick={closeForm}
+            className="text-xs font-medium text-muted-foreground hover:underline"
+          >
+            Dismiss
+          </button>
+        </form>
+      )}
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
@@ -93,7 +193,7 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
                 key={it.id}
                 invite={it}
                 busy={busyId === it.id}
-                onResend={() => resendMutation.mutate(it.id)}
+                onResend={() => resendMutation.mutate({ inviteId: it.id, confirm: false })}
                 onCancel={() => {
                   if (window.confirm(CANCEL_WARNING)) cancelMutation.mutate(it.id);
                 }}
