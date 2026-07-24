@@ -20,6 +20,7 @@ const TermosPage = lazy(() => import('./pages/termos-de-uso/TermosPage'));
 const LgpdPage = lazy(() => import('./pages/lgpd/LgpdPage'));
 const LandingPage = lazy(() => import('./pages/landing/LandingPage'));
 const NovidadesPage = lazy(() => import('./pages/novidades/NovidadesPage'));
+const PrecosPage = lazy(() => import('./pages/precos/PrecosPage'));
 
 // Protected pages
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
@@ -87,6 +88,7 @@ export default function App() {
             <Routes>
               {/* Public routes */}
               <Route path="/" element={<LandingPage />} />
+              <Route path="/precos" element={<PrecosPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/configurar-senha" element={<ConfigurarSenhaPage />} />
               <Route path="/politica-de-privacidade" element={<PoliticaPage />} />
