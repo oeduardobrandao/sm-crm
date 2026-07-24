@@ -1756,7 +1756,7 @@ function confirmedCrossWorkspace(e: unknown, retry: () => void): boolean {
             </span>
           )}
           <button
-            onClick={() => setFormOpen((open) => !open)}
+            onClick={() => (formOpen ? closeForm() : setFormOpen(true))}
             className="text-xs font-medium text-primary hover:underline"
           >
             + Invite
