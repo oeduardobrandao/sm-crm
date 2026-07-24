@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowRight,
@@ -14,6 +15,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { listPublicPricingPlans, type PublicPricingPlan } from '@/services/billing';
+import { LANDING } from '@/content/landing.content';
+import { usePageMeta } from '@/lib/usePageMeta';
 
 import {
   AgentVisual,
@@ -46,7 +49,20 @@ function formatPrice(centavos: number): string {
   return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+/** Some landing.content.ts strings embed literal `<strong>…</strong>` markup
+ * (kept from the original inline JSX emphasis, e.g. "<strong>5 etapas
+ * padrão</strong> — ideia, ..."). This parses only that one literal tag pair
+ * into a real `<strong>` element — never dangerouslySetInnerHTML — every
+ * other part of the string renders as plain text. */
+function withEmphasis(text: string): ReactNode[] {
+  return text.split(/(<strong>.*?<\/strong>)/g).map((part, i) => {
+    const match = /^<strong>(.*)<\/strong>$/.exec(part);
+    return match ? <strong key={i}>{match[1]}</strong> : part;
+  });
+}
+
 export default function LandingPage() {
+  usePageMeta('/');
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -186,14 +202,13 @@ function Hero() {
       <div className="lp-container">
         <div className="hero-grid">
           <div>
-            <span className="eyebrow-pill">Comece grátis · Sem cartão de crédito</span>
+            <span className="eyebrow-pill">{LANDING.hero.eyebrow}</span>
             <h1 className="hero-title">
-              Sua agência de social media <em>sem caos</em>, sem planilha, sem grupo de WhatsApp.
+              {LANDING.hero.titleBefore}
+              <em>{LANDING.hero.titleEm}</em>
+              {LANDING.hero.titleAfter}
             </h1>
-            <p className="hero-sub">
-              Mesaas é o CRM feito para gestores e agências de social media. Clientes, entregas,
-              aprovações, agendamento automático no Instagram e métricas — em um só lugar.
-            </p>
+            <p className="hero-sub">{LANDING.hero.sub}</p>
             <div className="hero-ctas">
               {!loading &&
                 (user ? (
@@ -220,21 +235,7 @@ function Hero() {
 }
 
 function Ticker() {
-  const items = [
-    'Clientes + contratos',
-    'Kanban de entregas',
-    'Agendamento no Instagram',
-    'Portal do cliente',
-    'Publicação automática',
-    'Calendário editorial',
-    'Métricas reais',
-    'Financeiro',
-    'Equipe + tarefas',
-    'Aprovações por link',
-    'Feed, Reels e Carrossel',
-    'Integração Meta API',
-  ];
-  const doubled = [...items, ...items];
+  const doubled = [...LANDING.ticker, ...LANDING.ticker];
   return (
     <div className="ticker" aria-hidden="true">
       <div className="ticker-track">
@@ -249,239 +250,49 @@ function Ticker() {
   );
 }
 
+const FEATURE_VISUALS: { icon: ReactNode; color: string; visual: ReactNode }[] = [
+  { icon: <LayoutGrid size={22} />, color: '#FFBF30', visual: <KanbanVisual /> },
+  { icon: <Send size={22} />, color: '#3984FF', visual: <SchedulingVisual /> },
+  { icon: <InstagramIcon size={22} />, color: '#f542c8', visual: <InstagramVisual /> },
+  { icon: <Users size={22} />, color: '#42c8f5', visual: <HubVisual /> },
+  { icon: <CalendarIcon size={22} />, color: '#3ecf8e', visual: <CalendarVisual /> },
+  { icon: <CircleDollarSign size={22} />, color: '#6b7280', visual: <FinanceVisual /> },
+];
+
 function Features() {
   return (
     <section className="lp-pad" id="features">
       <div className="lp-container">
         <div className="section-head reveal">
           <span className="eyebrow-pill">Funcionalidades</span>
-          <h2>Tudo que sua agência já faz — só que organizado.</h2>
-          <p>
-            Cada módulo foi desenhado com quem passa o dia gerenciando social media. Menos abas
-            abertas, mais entrega.
-          </p>
+          <h2>{LANDING.featuresTitle}</h2>
+          <p>{LANDING.featuresSub}</p>
         </div>
 
-        <div className="feat-row reveal">
-          <div className="feat-copy">
-            <IconSquare icon={<LayoutGrid size={22} />} color="#FFBF30" />
-            <h3>Kanban de entregas que sua equipe entende no primeiro dia</h3>
-            <p>
-              Arraste cada post pelas etapas — da ideia à publicação. Cada cliente, cada tipo de
-              conteúdo, cada prazo em um só fluxo visual.
-            </p>
-            <ul className="feat-bullets">
-              <li>
-                <span className="check">✓</span>
-                <span>
-                  <strong>5 etapas padrão</strong> — ideia, produção, aprovação, agendado, publicado
-                </span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>
-                  Cards mostram <strong>cliente, tipo, prazo e status</strong> em um olhar
-                </span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>
-                  <strong>Cards atrasados</strong> ficam destacados em vermelho automaticamente
-                </span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>Filtre por cliente ou tipo de conteúdo com um clique</span>
-              </li>
-            </ul>
-          </div>
-          <div className="feat-visual">
-            <KanbanVisual />
-          </div>
-        </div>
-
-        <div className="feat-row reverse reveal">
-          <div className="feat-copy">
-            <IconSquare icon={<Send size={22} />} color="#3984FF" />
-            <h3>Agende e publique no Instagram — sem sair do Mesaas.</h3>
-            <p>
-              Escolha o dia e horário, escreva a legenda e pronto: o Mesaas publica automaticamente
-              no perfil do seu cliente via API oficial do Meta. Feed, Reels e Carrossel — sem
-              aplicativos externos, sem alarmes no celular.
-            </p>
-            <ul className="feat-bullets">
-              <li>
-                <span className="check">✓</span>
-                <span>
-                  <strong>Publicação automática</strong> — o post vai ao ar sozinho no dia e hora
-                  marcados
-                </span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>
-                  Suporta <strong>Feed, Reels e Carrossel</strong> com validação de mídia
-                </span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>
-                  Opção de <strong>publicar agora</strong> para posts urgentes
-                </span>
-              </li>
-            </ul>
-          </div>
-          <div className="feat-visual">
-            <SchedulingVisual />
-          </div>
-        </div>
-
-        <div className="feat-row reveal">
-          <div className="feat-copy">
-            <IconSquare icon={<InstagramIcon size={22} />} color="#f542c8" />
-            <h3>Métricas reais do Instagram — prontas para o relatório.</h3>
-            <p>
-              Seguidores, alcance, engajamento e top posts atualizados todo dia. Conecte a conta via
-              API oficial e tenha dados confiáveis para mostrar o valor do seu trabalho ao cliente.
-            </p>
-            <ul className="feat-bullets">
-              <li>
-                <span className="check">✓</span>
-                <span>
-                  <strong>API oficial do Meta</strong> — dados confiáveis, sem scraping
-                </span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>
-                  Crescimento de seguidores, <strong>alcance e engajamento</strong> por período
-                </span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>Top posts da semana destacados automaticamente</span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>Relatório em PDF para enviar ao cliente em um clique</span>
-              </li>
-            </ul>
-          </div>
-          <div className="feat-visual">
-            <InstagramVisual />
-          </div>
-        </div>
-
-        <div className="feat-row reverse reveal">
-          <div className="feat-copy">
-            <IconSquare icon={<Users size={22} />} color="#42c8f5" />
-            <h3>Portal do cliente que o cliente realmente usa</h3>
-            <p>
-              Seu cliente aprova posts, vê o calendário e conversa com a equipe por um link único —{' '}
-              <strong>sem login, sem app, sem fricção</strong>. Design editorial pensado para a
-              marca dele, não para a sua CRM.
-            </p>
-            <ul className="feat-bullets">
-              <li>
-                <span className="check">✓</span>
-                <span>
-                  Link único <strong>sem necessidade de conta</strong> para o cliente
-                </span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>Aprovar, pedir ajustes ou comentar em cada post</span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>
-                  Calendário editorial e biblioteca de <strong>identidade de marca</strong>
-                </span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>Notificação automática quando algo precisa de decisão</span>
-              </li>
-            </ul>
-          </div>
-          <div className="feat-visual">
-            <HubVisual />
-          </div>
-        </div>
-
-        <div className="feat-row reveal">
-          <div className="feat-copy">
-            <IconSquare icon={<CalendarIcon size={22} />} color="#3ecf8e" />
-            <h3>Calendário editorial por cliente ou unificado</h3>
-            <p>
-              Veja tudo que foi planejado, agendado e publicado em um mês. Troque entre clientes ou
-              visualize toda a operação de uma vez para identificar semanas vazias antes que virem
-              problema.
-            </p>
-            <ul className="feat-bullets">
-              <li>
-                <span className="check">✓</span>
-                <span>
-                  Visão <strong>mensal, semanal e por cliente</strong>
-                </span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>Cores por tipo de conteúdo: Feed, Reels, Story, Carrossel</span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>
-                  Arraste para <strong>reagendar</strong> em segundos
-                </span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>Integração direta com o agendamento automático</span>
-              </li>
-            </ul>
-          </div>
-          <div className="feat-visual">
-            <CalendarVisual />
-          </div>
-        </div>
-
-        <div className="feat-row reverse reveal">
-          <div className="feat-copy">
-            <IconSquare icon={<CircleDollarSign size={22} />} color="#6b7280" />
-            <h3>Financeiro sem planilha paralela</h3>
-            <p>
-              Contratos, mensalidades e despesas da operação em um lugar só. Saiba o MRR da sua
-              agência, quais clientes estão em aberto e quanto sobra no fim do mês — sem abrir o
-              Excel.
-            </p>
-            <ul className="feat-bullets">
-              <li>
-                <span className="check">✓</span>
-                <span>
-                  MRR, <strong>receita prevista e em aberto</strong> em tempo real
-                </span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>Contratos com datas de renovação automáticas</span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>Exportação de CSV para seu contador</span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>
-                  <strong>Despesas da operação</strong> vinculadas ao cliente que geraram
-                </span>
-              </li>
-            </ul>
-          </div>
-          <div className="feat-visual">
-            <FinanceVisual />
-          </div>
-        </div>
+        {LANDING.features.map((feature, i) => {
+          const { icon, color, visual } = FEATURE_VISUALS[i];
+          const reverse = i % 2 === 1;
+          return (
+            <div key={feature.title} className={`feat-row${reverse ? ' reverse' : ''} reveal`}>
+              <div className="feat-copy">
+                <IconSquare icon={icon} color={color} />
+                <h3>{feature.title}</h3>
+                <p>{withEmphasis(feature.description)}</p>
+                {feature.bullets.length > 0 && (
+                  <ul className="feat-bullets">
+                    {feature.bullets.map((bullet, j) => (
+                      <li key={j}>
+                        <span className="check">✓</span>
+                        <span>{withEmphasis(bullet)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="feat-visual">{visual}</div>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -496,25 +307,17 @@ function AgentSection() {
             <span className="agent-eyebrow">
               <Sparkles size={14} /> Novo · Agente de IA
             </span>
-            <h2>Um agente de conteúdo que escreve com a voz de cada cliente.</h2>
-            <p>
-              Conecte seu Mesaas ao Claude e gere carrosséis, roteiros de Reels e legendas sob
-              medida — a partir do briefing, da marca e dos posts que mais performaram. Sem sair do
-              seu fluxo.
-            </p>
+            <h2>{LANDING.agente.title}</h2>
+            {LANDING.agente.paragraphs.map((paragraph, i) => (
+              <p key={i}>{withEmphasis(paragraph)}</p>
+            ))}
             <ul className="agent-bullets">
-              <li>
-                <span className="check">✓</span>
-                <span>Aprende o briefing e a identidade de cada marca</span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>Usa o que já performou como referência</span>
-              </li>
-              <li>
-                <span className="check">✓</span>
-                <span>Conecta com claude.ai, Claude Desktop ou API</span>
-              </li>
+              {LANDING.agente.bullets.map((bullet, i) => (
+                <li key={i}>
+                  <span className="check">✓</span>
+                  <span>{withEmphasis(bullet)}</span>
+                </li>
+              ))}
             </ul>
             <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
               Criar conta grátis <ArrowRight size={16} />
@@ -530,38 +333,20 @@ function AgentSection() {
 }
 
 function HowItWorks() {
-  const steps = [
-    {
-      n: '01',
-      t: 'Cadastre sua agência',
-      d: 'Crie sua conta grátis, importe seus clientes e configure templates de contrato. Simples como digitar um e-mail.',
-    },
-    {
-      n: '02',
-      t: 'Monte o fluxo de entregas',
-      d: 'Arraste os posts pelo kanban. Atribua à equipe, defina prazos, conecte o Instagram de cada cliente.',
-    },
-    {
-      n: '03',
-      t: 'Compartilhe o link do Hub',
-      d: 'Seu cliente aprova posts, acompanha o calendário e vê métricas — tudo por um link único, sem precisar criar conta.',
-    },
-  ];
-
   return (
     <section className="lp-pad lp-pad-alt" id="how">
       <div className="lp-container">
         <div className="section-head reveal">
           <span className="eyebrow-pill">Do zero em 5 minutos</span>
-          <h2>Três passos entre você e uma operação organizada.</h2>
+          <h2>{LANDING.how.title}</h2>
         </div>
         <div className="how-grid">
-          {steps.map((s, i) => (
+          {LANDING.how.steps.map((s, i) => (
             <div key={i} className="how-step reveal">
               <span className="how-num">{s.n}</span>
               <span className="eyebrow-micro">Passo {s.n}</span>
-              <h4>{s.t}</h4>
-              <p>{s.d}</p>
+              <h3>{s.title}</h3>
+              <p>{s.description}</p>
             </div>
           ))}
         </div>
@@ -811,37 +596,6 @@ function Pricing() {
 function Faq() {
   const [open, setOpen] = useState<number | null>(null);
 
-  const items = [
-    {
-      q: 'O Mesaas tem plano gratuito?',
-      a: 'Sim. O plano Free permite começar sem custo. Para ver os limites, recursos e condições atuais de cada opção, compare os planos exibidos acima e escolha o que melhor atende à sua operação.',
-    },
-    {
-      q: 'Preciso instalar alguma coisa?',
-      a: 'Não. O Mesaas é 100% web e funciona em qualquer navegador moderno, no computador ou no celular. Nada para baixar, nada para configurar.',
-    },
-    {
-      q: 'Meu cliente precisa criar uma conta para usar o Hub?',
-      a: 'Não. O portal de aprovação é acessado por um link único que você envia ao cliente. Ele abre, aprova, comenta — sem login, sem senha, sem app.',
-    },
-    {
-      q: 'Como funciona a integração com o Instagram?',
-      a: 'Você conecta a conta do seu cliente via API oficial do Meta. A partir daí, o Mesaas puxa métricas de seguidores, alcance, engajamento e posts automaticamente. Além disso, você pode agendar posts para publicação automática — escolha o dia e horário, e o sistema publica direto no perfil. Suporta Feed, Reels e Carrossel. Nada de scraping — dados e publicações 100% via API oficial.',
-    },
-    {
-      q: 'Consigo importar meus clientes de uma planilha?',
-      a: 'Sim. Você pode cadastrar cliente por cliente em segundos, ou importar via planilha. Em minutos sua base inteira está dentro do sistema.',
-    },
-    {
-      q: 'Funciona para freelancer ou só para agência?',
-      a: 'Para os dois. O plano Start atende freelancers começando, e o Max suporta agências com dezenas de clientes e uma equipe inteira.',
-    },
-    {
-      q: 'Posso cancelar quando quiser?',
-      a: 'Sim, a qualquer momento. Sem multa, sem burocracia. Seus dados continuam exportáveis por mais 30 dias após o cancelamento.',
-    },
-  ];
-
   return (
     <section className="lp-pad lp-pad-alt" id="faq">
       <div className="lp-container">
@@ -850,7 +604,7 @@ function Faq() {
           <h2>Perguntas frequentes</h2>
         </div>
         <div className="faqs">
-          {items.map((item, i) => (
+          {LANDING.faq.map((item, i) => (
             <div key={i} className="faq-item">
               <button
                 onClick={() => setOpen(open === i ? null : i)}
@@ -940,7 +694,7 @@ function Footer() {
             </p>
           </div>
           <div className="footer-col">
-            <h5>Produto</h5>
+            <p className="ft-label">Produto</p>
             <ul>
               <li>
                 <a href="#features">Funcionalidades</a>
@@ -955,14 +709,27 @@ function Footer() {
                 <a href="#faq">FAQ</a>
               </li>
               <li>
-                <a href="/novidades" target="_blank" rel="noopener noreferrer">
-                  Novidades
-                </a>
+                <a href="/aprovacao-de-post">Aprovação de posts</a>
+              </li>
+              <li>
+                <a href="/portal-do-cliente">Portal do cliente</a>
+              </li>
+              <li>
+                <a href="/agente-de-conteudo-ia">Agente de conteúdo IA</a>
+              </li>
+              <li>
+                <a href="/precos">Planos e preços</a>
+              </li>
+              <li>
+                <a href="/sobre">Sobre</a>
+              </li>
+              <li>
+                <a href="/novidades">Novidades</a>
               </li>
             </ul>
           </div>
           <div className="footer-col">
-            <h5>Legal</h5>
+            <p className="ft-label">Legal</p>
             <ul>
               <li>
                 <a href="/politica-de-privacidade">Privacidade</a>
