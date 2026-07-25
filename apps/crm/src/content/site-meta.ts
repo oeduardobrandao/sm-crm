@@ -6,9 +6,9 @@ export const SITE_URL = 'https://www.mesaas.com.br';
 export const SITE_NAME = 'Mesaas';
 export const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.png`;
 
-/** Real brand profiles (Instagram, LinkedIn…). Filled in by the user — see
- * docs/seo-checklist.md. JSON-LD omits sameAs while this is empty. */
-export const SOCIAL_PROFILES: string[] = [];
+/** Real brand profiles for the Organization sameAs. Add new networks here
+ * (LinkedIn etc.) as they are created. */
+export const SOCIAL_PROFILES: string[] = ['https://www.instagram.com/mesaas.com.br/'];
 
 /** Top-level SPA-only route prefixes served by app.html (noindex). Adding a
  * new top-level route in App.tsx? Add its prefix here AND to the app-shell
