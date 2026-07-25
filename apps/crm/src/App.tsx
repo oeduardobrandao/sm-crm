@@ -9,6 +9,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { Spinner } from '@/components/ui/spinner';
 import AppLayout from './components/layout/AppLayout';
 import ProtectedRoute from './components/layout/ProtectedRoute';
+import { marketingPageBySlug } from '@/content/paginas';
 
 // Public pages
 const LoginPage = lazy(() => import('./pages/login/LoginPage'));
@@ -20,6 +21,8 @@ const TermosPage = lazy(() => import('./pages/termos-de-uso/TermosPage'));
 const LgpdPage = lazy(() => import('./pages/lgpd/LgpdPage'));
 const LandingPage = lazy(() => import('./pages/landing/LandingPage'));
 const NovidadesPage = lazy(() => import('./pages/novidades/NovidadesPage'));
+const PrecosPage = lazy(() => import('./pages/precos/PrecosPage'));
+const MarketingPage = lazy(() => import('./pages/marketing/MarketingPage'));
 
 // Protected pages
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
@@ -48,6 +51,7 @@ const ArquivosPage = lazy(() => import('./pages/arquivos/ArquivosPage'));
 const AjudaPage = lazy(() => import('./pages/ajuda/AjudaPage'));
 const SecaoPage = lazy(() => import('./pages/ajuda/SecaoPage'));
 const ArtigoPage = lazy(() => import('./pages/ajuda/ArtigoPage'));
+const NotFoundPage = lazy(() => import('./pages/not-found/NotFoundPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -68,6 +72,12 @@ const PageFallback = (
   </div>
 );
 
+function MarketingRoute({ slug }: { slug: string }) {
+  const page = marketingPageBySlug(slug);
+  if (!page) return <Navigate to="/" replace />;
+  return <MarketingPage page={page} />;
+}
+
 export default function App() {
   return (
     <Sentry.ErrorBoundary
@@ -87,6 +97,20 @@ export default function App() {
             <Routes>
               {/* Public routes */}
               <Route path="/" element={<LandingPage />} />
+              <Route path="/precos" element={<PrecosPage />} />
+              <Route path="/sobre" element={<MarketingRoute slug="sobre" />} />
+              <Route
+                path="/aprovacao-de-post"
+                element={<MarketingRoute slug="aprovacao-de-post" />}
+              />
+              <Route
+                path="/portal-do-cliente"
+                element={<MarketingRoute slug="portal-do-cliente" />}
+              />
+              <Route
+                path="/agente-de-conteudo-ia"
+                element={<MarketingRoute slug="agente-de-conteudo-ia" />}
+              />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/configurar-senha" element={<ConfigurarSenhaPage />} />
               <Route path="/politica-de-privacidade" element={<PoliticaPage />} />
@@ -152,7 +176,7 @@ export default function App() {
                 <Route path="/ajuda/:slug" element={<ArtigoPage />} />
               </Route>
 
-              <Route path="*" element={<Navigate to="/login" replace />} />
+              <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </Suspense>
           <Analytics />

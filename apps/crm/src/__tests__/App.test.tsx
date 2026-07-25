@@ -64,9 +64,11 @@ describe('App', () => {
     expect(await screen.findByText('Dashboard page')).toBeInTheDocument();
   });
 
-  it('redirects unknown routes to the login page', async () => {
+  it('renders the not-found page for unknown routes', async () => {
     renderApp('/rota-inexistente');
 
-    expect(await screen.findByText('Login page')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /Página não encontrada/ }),
+    ).toBeInTheDocument();
   });
 });

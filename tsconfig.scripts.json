@@ -8,7 +8,15 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "jsx": "react-jsx",
     "types": ["node"]
   },
-  "include": ["scripts/changelog/**/*.ts"]
+  "include": [
+    "scripts/changelog/**/*.ts",
+    "scripts/seo/**/*.ts",
+    "scripts/seo/**/*.tsx",
+    "apps/crm/src/pages/politica-privacidade/**/*.tsx",
+    "apps/crm/src/pages/termos-de-uso/**/*.tsx",
+    "apps/crm/src/pages/lgpd/**/*.tsx"
+  ]
 }

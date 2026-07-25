@@ -1,3 +1,4 @@
+import { usePageMeta } from '@/lib/usePageMeta';
 import changelogData from '@/content/changelog.json';
 import { parseReleases, type ChangelogRelease } from '@/content/changelog.schema';
 
@@ -20,6 +21,7 @@ function formatDate(iso: string): string {
 }
 
 export default function NovidadesPage({ releases }: { releases?: ChangelogRelease[] }) {
+  usePageMeta('/novidades');
   const data = releases ?? parseReleases(changelogData);
 
   return (
