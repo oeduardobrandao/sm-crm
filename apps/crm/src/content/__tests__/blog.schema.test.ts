@@ -32,6 +32,25 @@ describe('splitFrontmatter', () => {
   test('throws when the frontmatter block is missing', () => {
     expect(() => splitFrontmatter('# sem frontmatter')).toThrow(/frontmatter/);
   });
+
+  test('tolerates CRLF line endings', () => {
+    const { data, body } = splitFrontmatter(raw().replace(/\n/g, '\r\n'));
+    expect(data.title).toBe(TITLE);
+    expect(data.category).toBe('comparativo');
+    expect(body.startsWith('## Uma seção')).toBe(true);
+  });
+
+  test('skips a blank line inside the frontmatter block', () => {
+    const withBlankLine = `---\ntitle: ${TITLE}\n\nh1: Mesaas ou Aprova Post\ndescription: ${DESC}\ndate: 2026-07-25\ncategory: comparativo\n---\n\n## Uma seção\n\nCorpo do artigo.\n`;
+    const { data } = splitFrontmatter(withBlankLine);
+    expect(data.title).toBe(TITLE);
+    expect(data.category).toBe('comparativo');
+  });
+
+  test('throws on a frontmatter line with no colon', () => {
+    const malformed = '---\nesta linha nao tem separador\n---\n\nCorpo.\n';
+    expect(() => splitFrontmatter(malformed)).toThrow(/malformed frontmatter line/);
+  });
 });
 
 describe('parsePost', () => {
@@ -49,6 +68,10 @@ describe('parsePost', () => {
   test('rejects an unknown category', () => {
     expect(() => parsePost(raw({ category: 'noticia' }), 'x')).toThrow(/x\.md/);
   });
+
+  test('prefixes a missing-frontmatter failure with the file path', () => {
+    expect(() => parsePost('# sem frontmatter', 'no-front')).toThrow(/^blog\/no-front\.md:/);
+  });
 });
 
 describe('readingMinutes', () => {
@@ -61,6 +84,9 @@ describe('blog helpers', () => {
   const a = parsePost(raw({ date: '2026-07-20' }), 'a');
   const b = parsePost(raw({ date: '2026-07-25' }), 'b');
   const c = parsePost(raw({ date: '2026-07-22', category: 'guia' }), 'c');
+  // Same category as `a` but older than everything else, so recency-only
+  // sorting and same-category preference disagree on where it ranks.
+  const d = parsePost(raw({ date: '2026-07-15' }), 'd');
 
   test('sortPosts puts the newest first', () => {
     expect(sortPosts([a, b, c]).map((p) => p.slug)).toEqual(['b', 'c', 'a']);
@@ -75,7 +101,10 @@ describe('blog helpers', () => {
   });
 
   test('relatedPosts excludes the post itself and prefers the same category', () => {
-    const related = relatedPosts(a, [a, b, c], 2);
-    expect(related.map((p) => p.slug)).toEqual(['b', 'c']);
+    // Recency-only order would be [b, c, d] (b newest, then c, then d).
+    // Same-category preference for `a` (comparativo) must instead surface
+    // `d` (comparativo, oldest) ahead of `c` (guia, more recent than `d`).
+    const related = relatedPosts(a, [a, b, c, d], 2);
+    expect(related.map((p) => p.slug)).toEqual(['b', 'd']);
   });
 });
