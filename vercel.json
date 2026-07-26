@@ -61,6 +61,8 @@
     { "source": "/portal-do-cliente", "destination": "/portal-do-cliente.html" },
     { "source": "/agente-de-conteudo-ia", "destination": "/agente-de-conteudo-ia.html" },
     { "source": "/novidades", "destination": "/novidades.html" },
+    { "source": "/blog", "destination": "/blog.html" },
+    { "source": "/blog/:slug", "destination": "/blog/:slug.html" },
     { "source": "/politica-de-privacidade", "destination": "/politica-de-privacidade.html" },
     { "source": "/termos-de-uso", "destination": "/termos-de-uso.html" },
     { "source": "/lgpd", "destination": "/lgpd.html" },
