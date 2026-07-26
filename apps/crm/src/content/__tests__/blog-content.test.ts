@@ -43,6 +43,15 @@ const MESAAS = /mesaas/i;
 const COMPETITOR = /aprova\s*post|mlabs|etus|postgrain|robopost/i;
 
 /**
+ * First-person plural attribution ("publicamos no TikTok", "nosso plano").
+ * These articles write about Mesaas in the first person and address the
+ * reader as "você", so "we" never refers to the reader — it is as much a
+ * claim about Mesaas as saying the name outright.
+ */
+const FIRST_PERSON_MESAAS =
+  /\b(?:publicamos|geramos|entregamos|oferecemos|criamos|fazemos|nosso|nossa|nossos|nossas)\b/i;
+
+/**
  * Money presented as the price of a Mesaas subscription tier — named
  * ("plano Pro"), first-person ("nosso plano de entrada") or superlative
  * ("o plano mais barato"). Prices change and plans are database rows, so the
@@ -79,8 +88,11 @@ const TIKTOK = /tik\s*tok/i;
 // Note the singular: pt-BR is "imagem"/"imagens", so `imagens?` alone silently
 // misses every singular phrasing ("gerar imagem com IA").
 const IMAGE_NOUN = /(?:imagem|imagens|artes?|criativos?)/.source;
+// Includes the first-person-plural conjugations ("geramos", "criamos",
+// "produzimos"): "gera"/"cria" alone do not match inside them because \b
+// does not break between two word characters ("a" and the following "m").
 const MAKE_VERB =
-  /(?:gera|gerar|gerando|gera[çc][ãa]o|cria|criar|criando|cria[çc][ãa]o|produzir|produzindo|produ[çc][ãa]o)/
+  /(?:gera|geramos|gerar|gerando|gera[çc][ãa]o|cria|criamos|criar|criando|cria[çc][ãa]o|produzir|produzimos|produzindo|produ[çc][ãa]o)/
     .source;
 const BY_AI = /(?:com|por|via|usando|atrav[ée]s\s+de)\s+(?:ia|intelig[êe]ncia\s+artificial)/.source;
 
@@ -107,7 +119,7 @@ const AI_IMAGE = [
  */
 function claimIsAboutMesaas(line: string, heading = ''): boolean {
   for (const scope of [line, heading]) {
-    if (MESAAS.test(scope)) return true;
+    if (MESAAS.test(scope) || FIRST_PERSON_MESAAS.test(scope)) return true;
     if (COMPETITOR.test(scope)) return false;
   }
   return true;
@@ -360,6 +372,19 @@ describe('content lint rules', () => {
       expect(unshippedClaims('O Aprova Post aprova os formatos do TikTok e do Instagram.')).toEqual(
         [],
       );
+    });
+
+    test.each([
+      '- Também publicamos no TikTok.',
+      '- Publicamos no TikTok e no Instagram.',
+      'Diferente do Aprova Post, já publicamos no TikTok.',
+      'Ao contrário do Aprova Post, geramos imagens com IA.',
+    ])('rejects the first-person-plural claim %j even without the Mesaas name', (s) => {
+      expect(unshippedClaims(s)).not.toEqual([]);
+    });
+
+    test('still allows a competitor-attributed TikTok mention with no first-person verb', () => {
+      expect(unshippedClaims('Diferente de nós, o Aprova Post já publica no TikTok.')).toEqual([]);
     });
 
     test('allows a TikTok mention inside a competitor section', () => {
