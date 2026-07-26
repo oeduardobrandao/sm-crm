@@ -30,6 +30,24 @@ describe('renderPostBodyHtml', () => {
     expect(html).toContain('href="/precos"');
     expect(html).toContain('<table>');
   });
+
+  // The comparison articles link out to competitors, so an outbound link must
+  // never pass ranking signal. This block is the regression net for
+  // MARKDOWN_COMPONENTS, which Task 6's page renderer shares.
+  test('marks external links nofollow and leaves internal links plain', () => {
+    const html = renderPostBodyHtml(
+      'Veja o [site oficial](https://exemplo.com.br) e os [planos](/precos).',
+    );
+    expect(html).toMatch(/<a href="https:\/\/exemplo\.com\.br"[^>]*rel="nofollow noopener"/);
+    expect(html).toMatch(/<a href="https:\/\/exemplo\.com\.br"[^>]*target="_blank"/);
+    expect(html).toContain('<a href="/precos">');
+  });
+
+  test('never leaks react-markdown internals onto the rendered anchor', () => {
+    const html = renderPostBodyHtml('[interno](/precos) e [externo](https://exemplo.com.br)');
+    expect(html).not.toContain('node=');
+    expect(html).not.toContain('[object Object]');
+  });
 });
 
 describe('renderBlogPostHtml', () => {
