@@ -41,7 +41,7 @@ export function renderBlogPostHtml(post: BlogPost, all: BlogPost[]): string {
     `<p>Por ${esc(BLOG_AUTHOR.name)}, ${esc(BLOG_AUTHOR.role)} · ${esc(formatPostDate(post.date))} · ${post.readingMinutes} min de leitura</p>`,
     renderPostBodyHtml(post.body),
     '</article>',
-    `<section><h2>Sobre o autor</h2><p><strong>${esc(BLOG_AUTHOR.name)}</strong> — ${esc(BLOG_AUTHOR.bio)}</p></section>`,
+    `<section><p><strong>${esc(BLOG_AUTHOR.name)}</strong> — ${esc(BLOG_AUTHOR.bio)}</p></section>`,
     related.length
       ? `<section><h2>Leia também</h2><ul>${related
           .map((r) => `<li><a href="${postPath(r)}">${esc(r.h1)}</a></li>`)

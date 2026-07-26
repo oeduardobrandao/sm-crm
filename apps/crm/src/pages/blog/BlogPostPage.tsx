@@ -55,8 +55,11 @@ function BlogPostView({ post }: { post: BlogPost }) {
               <h1 className="hero-title" style={{ marginTop: 14 }}>
                 {post.h1}
               </h1>
+              <p className="blog-lede">{post.description}</p>
               <div className="blog-meta">
-                <span>Por {BLOG_AUTHOR.name}</span>
+                <span>
+                  Por {BLOG_AUTHOR.name}, {BLOG_AUTHOR.role}
+                </span>
                 <span>·</span>
                 <span>{formatPostDate(post.date)}</span>
                 <span>·</span>
