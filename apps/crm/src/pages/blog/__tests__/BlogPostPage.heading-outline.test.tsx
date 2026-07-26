@@ -8,7 +8,7 @@ vi.mock('@/context/AuthContext', () => ({
 }));
 
 import BlogPostPage from '../BlogPostPage';
-import { BLOG_AUTHOR } from '@/content/blog';
+import { BLOG_AUTHOR, CATEGORY_LABEL } from '@/content/blog';
 import { BLOG_POSTS, postBySlug } from '@/content/blog.client';
 import { renderBlogPostHtml } from '@/content/blog.seo';
 
@@ -55,5 +55,13 @@ describe('BlogPostPage vs renderBlogPostHtml alignment', () => {
     // Item 5: both bylines must credit the author's role, not just the name.
     expect(container.textContent).toContain(BLOG_AUTHOR.role);
     expect(staticDoc.body.textContent).toContain(BLOG_AUTHOR.role);
+
+    // The category pill was React-only until the Task 6 review caught it: a
+    // crawler reading the static snapshot never learned the post's category.
+    // Anchored to the elements on purpose — a textContent match would pass on
+    // the pilot article regardless, since its body has a "Comparativo" heading.
+    const label = CATEGORY_LABEL[post.category];
+    expect(container.querySelector('.blog-cat')?.textContent).toBe(label);
+    expect(staticDoc.querySelector('article > p')?.textContent).toBe(label);
   });
 });

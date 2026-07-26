@@ -3,12 +3,10 @@ import './blog.css';
 import '../landing/landing.css';
 import { LandingFooter, LandingHeader, useLandingChrome } from '../landing/LandingChrome';
 import { BLOG_POSTS } from '@/content/blog.client';
-import { BLOG_INDEX_PATH, formatPostDate, postPath } from '@/content/blog';
+import { BLOG_INDEX_PATH, CATEGORY_LABEL, formatPostDate, postPath } from '@/content/blog';
 import { blogIndexJsonLd } from '@/content/jsonld';
 import { routeMetaFor } from '@/content/site-meta';
 import { usePageMetaFor } from '@/lib/usePageMeta';
-
-const CATEGORY_LABEL = { comparativo: 'Comparativo', guia: 'Guia' } as const;
 
 export default function BlogIndexPage() {
   useLandingChrome();

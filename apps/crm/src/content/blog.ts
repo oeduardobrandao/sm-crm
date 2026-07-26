@@ -5,6 +5,13 @@ import type { BlogPost } from './blog.schema';
 
 export const BLOG_INDEX_PATH = '/blog';
 
+/** Reader-facing name of each category. Lives here because both renderings of
+ * an article — the static mirror and the React page — must show the same one. */
+export const CATEGORY_LABEL: Record<BlogPost['category'], string> = {
+  comparativo: 'Comparativo',
+  guia: 'Guia',
+};
+
 export const BLOG_AUTHOR = {
   name: 'Eduardo Brandão',
   role: 'Fundador do Mesaas',

@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { BlogPost } from './blog.schema';
-import { BLOG_AUTHOR, formatPostDate, postPath, relatedPosts } from './blog';
+import { BLOG_AUTHOR, CATEGORY_LABEL, formatPostDate, postPath, relatedPosts } from './blog';
 import { MARKDOWN_COMPONENTS } from './blog.markdown';
 
 const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
@@ -36,6 +36,7 @@ export function renderBlogPostHtml(post: BlogPost, all: BlogPost[]): string {
   return [
     `<nav><a href="/">Início</a> · <a href="/blog">Blog</a></nav>`,
     '<article>',
+    `<p>${esc(CATEGORY_LABEL[post.category])}</p>`,
     `<h1>${esc(post.h1)}</h1>`,
     `<p>${esc(post.description)}</p>`,
     `<p>Por ${esc(BLOG_AUTHOR.name)}, ${esc(BLOG_AUTHOR.role)} · ${esc(formatPostDate(post.date))} · ${post.readingMinutes} min de leitura</p>`,
@@ -57,7 +58,8 @@ export function renderBlogIndexHtml(posts: BlogPost[]): string {
     ? posts
         .map(
           (p) =>
-            `<article><h2><a href="${postPath(p)}">${esc(p.h1)}</a></h2>` +
+            `<article><p>${esc(CATEGORY_LABEL[p.category])}</p>` +
+            `<h2><a href="${postPath(p)}">${esc(p.h1)}</a></h2>` +
             `<p>${esc(p.description)}</p>` +
             `<p>${esc(formatPostDate(p.date))} · ${p.readingMinutes} min de leitura</p></article>`,
         )

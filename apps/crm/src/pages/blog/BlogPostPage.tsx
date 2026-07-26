@@ -12,6 +12,7 @@ import type { BlogPost } from '@/content/blog.schema';
 import {
   BLOG_AUTHOR,
   blogPostRouteMeta,
+  CATEGORY_LABEL,
   formatPostDate,
   postPath,
   relatedPosts,
@@ -19,8 +20,6 @@ import {
 import { blogPostingJsonLd, breadcrumbJsonLd } from '@/content/jsonld';
 import { usePageMetaFor } from '@/lib/usePageMeta';
 import { ArrowRight } from 'lucide-react';
-
-const CATEGORY_LABEL = { comparativo: 'Comparativo', guia: 'Guia' } as const;
 
 function BlogPostView({ post }: { post: BlogPost }) {
   useLandingChrome();
