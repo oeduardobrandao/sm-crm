@@ -22,6 +22,18 @@ describe('BlogIndexPage', () => {
     expect(links[0]).toHaveAttribute('href', '/blog/mesaas-vs-aprova-post');
   });
 
+  // The post field is literally named `h1`, which makes rendering it as one on
+  // the card an easy mistake — and two h1s on an index page is an SEO defect
+  // no other test here would catch.
+  it('emits exactly one h1, whatever the cards render', () => {
+    render(
+      <MemoryRouter>
+        <BlogIndexPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+  });
+
   it('sets the document title from the manifest', () => {
     render(
       <MemoryRouter>
