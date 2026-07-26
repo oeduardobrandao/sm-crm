@@ -47,9 +47,14 @@ const COMPETITOR = /aprova\s*post|mlabs|etus|postgrain|robopost/i;
  * These articles write about Mesaas in the first person and address the
  * reader as "você", so "we" never refers to the reader — it is as much a
  * claim about Mesaas as saying the name outright.
+ *
+ * Matched morphologically rather than by a verb list: every pt-BR first-person
+ * plural ends in -amos/-emos/-imos, so `suportamos` and `temos` are caught
+ * without anyone having to remember to add them. An enumerated list is always
+ * one verb behind the writer. The lookahead drops the two common nouns that
+ * share the ending ("ramos", "remos") — they are not conjugations.
  */
-const FIRST_PERSON_MESAAS =
-  /\b(?:publicamos|geramos|entregamos|oferecemos|criamos|fazemos|nosso|nossa|nossos|nossas)\b/i;
+const FIRST_PERSON_MESAAS = /\b(?!(?:ramos|remos)\b)(?:\w+[aei]mos|nossos?|nossas?)\b/i;
 
 /**
  * Money presented as the price of a Mesaas subscription tier — named
