@@ -6,7 +6,7 @@
  * Legal pages are rendered from their real React components (pure JSX) via
  * renderToStaticMarkup; the other routes use their .seo.ts mirrors.
  * Run AFTER `vite build` (needs dist/index.html), BEFORE hub/admin builds. */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PUBLIC_ROUTES } from '../../apps/crm/src/content/site-meta';
 import { buildHeadTags } from '../../apps/crm/src/content/seo-head';
@@ -15,10 +15,18 @@ import { buildSitemapXml } from '../../apps/crm/src/content/sitemap';
 import { buildLlmsTxt } from '../../apps/crm/src/content/llms';
 import { renderLandingHtml } from '../../apps/crm/src/content/landing.seo';
 import { renderPrecosHtml } from '../../apps/crm/src/content/precos.seo';
-import { MARKETING_PAGES, marketingPageBySlug } from '../../apps/crm/src/content/paginas';
+import { marketingPageBySlug } from '../../apps/crm/src/content/paginas';
 import { renderMarketingPageHtml } from '../../apps/crm/src/content/paginas.seo';
 import { changelogSchema } from '../../apps/crm/src/content/changelog.schema';
 import { renderChangelogHtml } from '../../apps/crm/src/content/changelog.seo';
+import { loadPostsFromDisk } from './blog-fs';
+import { renderBlogIndexHtml, renderBlogPostHtml } from '../../apps/crm/src/content/blog.seo';
+import { blogPostRouteMeta, postPath } from '../../apps/crm/src/content/blog';
+import {
+  blogIndexJsonLd,
+  blogPostingJsonLd,
+  breadcrumbJsonLd,
+} from '../../apps/crm/src/content/jsonld';
 import PoliticaPage from '../../apps/crm/src/pages/politica-privacidade/PoliticaPage';
 import TermosPage from '../../apps/crm/src/pages/termos-de-uso/TermosPage';
 import LgpdPage from '../../apps/crm/src/pages/lgpd/LgpdPage';
@@ -26,11 +34,13 @@ import LgpdPage from '../../apps/crm/src/pages/lgpd/LgpdPage';
 const rawChangelog = JSON.parse(readFileSync('apps/crm/src/content/changelog.json', 'utf8'));
 const parsed = changelogSchema.safeParse(rawChangelog);
 const releases = parsed.success ? parsed.data.releases : [];
+const posts = loadPostsFromDisk();
 
 function bodyFor(path: string): string | undefined {
   if (path === '/') return renderLandingHtml();
   if (path === '/precos') return renderPrecosHtml();
   if (path === '/novidades') return renderChangelogHtml(releases);
+  if (path === '/blog') return renderBlogIndexHtml(posts);
   if (path === '/politica-de-privacidade') return renderToStaticMarkup(<PoliticaPage />);
   if (path === '/termos-de-uso') return renderToStaticMarkup(<TermosPage />);
   if (path === '/lgpd') return renderToStaticMarkup(<LgpdPage />);
@@ -97,10 +107,11 @@ for (const route of PUBLIC_ROUTES) {
     throw new Error(`No body renderer registered for prerendered route ${route.path}`);
   }
   let html = stripBaseMeta(shell);
+  const jsonLd = route.path === '/blog' ? [blogIndexJsonLd(posts)] : jsonLdForPath(route.path);
   html = mustReplace(
     html,
     '</head>',
-    `    ${buildHeadTags(route, jsonLdForPath(route.path))}\n  </head>`,
+    `    ${buildHeadTags(route, jsonLd)}\n  </head>`,
     `${route.path}:head`,
   );
   html = mustReplace(
@@ -113,8 +124,48 @@ for (const route of PUBLIC_ROUTES) {
   written++;
 }
 
-writeFileSync('dist/sitemap.xml', buildSitemapXml(PUBLIC_ROUTES));
-writeFileSync('dist/llms.txt', buildLlmsTxt(PUBLIC_ROUTES));
+mkdirSync('dist/blog', { recursive: true });
+for (const post of posts) {
+  const meta = blogPostRouteMeta(post);
+  const jsonLd = [
+    blogPostingJsonLd(post),
+    breadcrumbJsonLd([
+      { name: 'Início', path: '/' },
+      { name: 'Blog', path: '/blog' },
+      { name: post.h1, path: postPath(post) },
+    ]),
+  ];
+  let html = stripBaseMeta(shell);
+  html = mustReplace(
+    html,
+    '</head>',
+    `    ${buildHeadTags(meta, jsonLd)}\n  </head>`,
+    `${meta.path}:head`,
+  );
+  html = mustReplace(
+    html,
+    '<div id="root"></div>',
+    `<div id="root">${renderBlogPostHtml(post, posts)}</div>`,
+    `${meta.path}:body`,
+  );
+  writeFileSync(`dist/${meta.file}`, html);
+}
+
+// Two index pages change without anyone editing the manifest, so their real
+// lastmod is derived here: /novidades from the latest release, /blog from the
+// most recently updated post.
+const latestRelease = releases[0]?.date;
+const latestPost = posts
+  .map((p) => p.updated)
+  .sort()
+  .at(-1);
+const routes = PUBLIC_ROUTES.map((r) => {
+  if (r.path === '/novidades' && latestRelease) return { ...r, lastmod: latestRelease };
+  if (r.path === '/blog' && latestPost) return { ...r, lastmod: latestPost };
+  return r;
+});
+writeFileSync('dist/sitemap.xml', buildSitemapXml([...routes, ...posts.map(blogPostRouteMeta)]));
+writeFileSync('dist/llms.txt', buildLlmsTxt(routes, posts));
 console.log(
-  `Prerendered ${written} routes (+app.html, 404.html, sitemap.xml, llms.txt). Marketing pages: ${MARKETING_PAGES.length}.`,
+  `Prerendered ${written} routes + ${posts.length} blog posts (+app.html, 404.html, sitemap.xml, llms.txt).`,
 );

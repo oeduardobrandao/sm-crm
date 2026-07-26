@@ -1,12 +1,22 @@
 import type { RouteMeta } from './site-meta';
+import type { BlogPost } from './blog.schema';
 import { canonicalUrl } from './seo-head';
+import { postPath } from './blog';
 
 /** llms.txt (https://llmstxt.org): tells AI crawlers what Mesaas is and where
  * the substantive pages live. Regenerated on every build from the manifest. */
-export function buildLlmsTxt(routes: RouteMeta[]): string {
+export function buildLlmsTxt(routes: RouteMeta[], posts: BlogPost[] = []): string {
   const pages = routes
     .map((r) => `- [${r.title}](${canonicalUrl(r.path)}): ${r.description}`)
     .join('\n');
+  const blog = posts.length
+    ? [
+        '',
+        '## Blog',
+        '',
+        posts.map((p) => `- [${p.h1}](${canonicalUrl(postPath(p))}): ${p.description}`).join('\n'),
+      ]
+    : [];
   return [
     '# Mesaas',
     '',
@@ -17,6 +27,7 @@ export function buildLlmsTxt(routes: RouteMeta[]): string {
     '## Páginas',
     '',
     pages,
+    ...blog,
     '',
   ].join('\n');
 }
