@@ -10,8 +10,8 @@ Itens que o código não resolve sozinho. Marcar conforme concluído.
       redireciona (308) para `https://www.mesaas.com.br` — o canonical de todo o site aponta para www.
 - [ ] **Confirmar o 404 real em produção**: `curl -sI https://www.mesaas.com.br/url-que-nao-existe`
       deve responder `404` (não `200`).
-- [ ] **Perfis sociais**: preencher `SOCIAL_PROFILES` em `apps/crm/src/content/site-meta.ts`
-      com as URLs reais (Instagram, LinkedIn, …) para o `sameAs` do schema Organization.
+- [x] **Perfis sociais**: `SOCIAL_PROFILES` preenchido com o Instagram
+      (`instagram.com/mesaas.com.br`). Adicionar LinkedIn etc. quando existirem.
 - [ ] **E-mails de contato**: confirmar que `contato@mesaas.com.br` e `privacidade@mesaas.com.br`
       (usados em /sobre, Termos e LGPD) existem e são monitorados.
 - [ ] Após o deploy, pedir indexação das 10 URLs principais no Search Console.

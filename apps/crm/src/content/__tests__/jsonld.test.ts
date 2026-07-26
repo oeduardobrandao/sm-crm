@@ -8,13 +8,13 @@ import {
 } from '../jsonld';
 
 describe('jsonld builders', () => {
-  test('Organization has name, url, logo; omits empty sameAs', () => {
+  test('Organization has name, url, logo and the brand profiles in sameAs', () => {
     const org = organizationJsonLd() as Record<string, unknown>;
     expect(org['@type']).toBe('Organization');
     expect(org.name).toBe('Mesaas');
     expect(org.url).toBe('https://www.mesaas.com.br/');
     expect(org.logo).toContain('https://www.mesaas.com.br/');
-    expect('sameAs' in org).toBe(false);
+    expect(org.sameAs).toEqual(['https://www.instagram.com/mesaas.com.br/']);
   });
 
   test('WebSite is pt-BR', () => {
