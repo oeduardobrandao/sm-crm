@@ -93,6 +93,14 @@ export const PUBLIC_ROUTES: RouteMeta[] = [
     lastmod: '2026-07-24',
   },
   {
+    path: '/blog',
+    file: 'blog.html',
+    title: 'Blog do Mesaas — gestão de social media na prática',
+    description:
+      'Guias práticos para agências e gestores de social media: aprovação de posts, briefing, precificação, relatórios e rotina de entregas.',
+    lastmod: '2026-07-25',
+  },
+  {
     path: '/sobre',
     file: 'sobre.html',
     title: 'Sobre o Mesaas — quem constrói o CRM para social media',
