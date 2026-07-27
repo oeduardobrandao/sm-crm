@@ -40,7 +40,15 @@ const MONEY = /R\$\s*\d|\b\d+(?:[.,]\d+)*\s*reais\b/i;
 const MESAAS = /mesaas/i;
 
 /** Rivals we name and compare against. */
-const COMPETITOR = /aprova\s*post|mlabs|etus|postgrain|robopost/i;
+const COMPETITOR = /aprova\s*post|mlabs|etus|doo\s*studio|postgrain|robopost/i;
+
+/**
+ * A line that *denies* a capability rather than claiming one. Saying "o Mesaas
+ * não gera imagens com IA" is the honest boundary these articles are supposed
+ * to draw — the rule exists to stop us claiming what we do not ship, so it
+ * must not block us from stating plainly that we do not ship it.
+ */
+const DENIAL = /\b(n[ãa]o|nunca|sem)\b/i;
 
 /**
  * First-person plural attribution ("publicamos no TikTok", "nosso plano").
@@ -133,6 +141,7 @@ function claimIsAboutMesaas(line: string, heading = ''): boolean {
 /** Names the rules a line breaks by claiming something this repo does not ship. */
 function unshippedClaims(line: string, heading = ''): string[] {
   if (!claimIsAboutMesaas(line, heading)) return [];
+  if (DENIAL.test(line)) return [];
   const broken: string[] = [];
   if (TIKTOK.test(line)) broken.push('TikTok is not launched');
   if (AI_IMAGE.some((re) => re.test(line))) broken.push('there is no AI image generation');
@@ -377,6 +386,23 @@ describe('content lint rules', () => {
       expect(unshippedClaims('O Aprova Post aprova os formatos do TikTok e do Instagram.')).toEqual(
         [],
       );
+    });
+
+    // The rule exists to stop us claiming what we do not ship. Drawing the
+    // boundary out loud — which is what the "o que o Mesaas não faz" sections
+    // are for — is the honest use of the same words, and must stay writable.
+    test.each([
+      'O Mesaas não gera imagens com IA.',
+      'O Mesaas não publica no TikTok.',
+      'Não geramos imagens com IA: o agente escreve o texto e anexa a sua arte.',
+      'O Mesaas é focado no Instagram, sem publicação no TikTok.',
+      'Nunca publicamos no TikTok em seu nome.',
+    ])('allows the honest denial %j', (s) => {
+      expect(unshippedClaims(s)).toEqual([]);
+    });
+
+    test('treats Doo Studio as a competitor, so its capabilities are attributable', () => {
+      expect(unshippedClaims('O Doo Studio aprova os formatos do TikTok.')).toEqual([]);
     });
 
     test.each([
