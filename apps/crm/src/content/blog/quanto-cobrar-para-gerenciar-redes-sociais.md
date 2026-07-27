@@ -115,8 +115,8 @@ Reajuste combinado na assinatura é cláusula; pedido no meio do caminho é conv
 
 A aritmética não se perde: perde-se o registro que a alimenta. Três coisas precisam ficar em algum lugar consultável: o contrato de cada conta — quanto vale, o que cobre, quando renova e quando reajusta; a receita e a despesa por conta, que revelam qual cliente dá lucro; e as horas, mesmo grosseiras.
 
-Onde isso mora importa menos do que existir: planilha resolve os primeiros clientes e aperta quando os contratos passam do que a memória cobre. Foi esse problema que me levou a construir o Mesaas — contrato, mensalidade, despesa por cliente e receita recorrente no mesmo lugar em que a entrega acontece, e [planos](/precos) mostra o alcance de cada nível.
+Onde isso mora importa menos do que existir: planilha resolve os primeiros clientes e aperta quando os contratos passam do que a memória cobre. Foi esse problema que me levou a construir o Mesaas — contrato, mensalidade, despesa por cliente e receita recorrente no mesmo lugar em que a entrega acontece ([planos](/precos)).
 
-Há um efeito direto no Passo 2: as rodadas encurtam quando o cliente responde no mesmo lugar em que vê o post, com o ajuste preso ao material em vez de espalhado em áudios — é o [portal do cliente](/portal-do-cliente). Quem compara ferramentas tem o recorte em [Mesaas ou Aprova Post](/blog/mesaas-vs-aprova-post).
+Isso toca o Passo 2: quando o cliente responde no mesmo lugar em que vê o post, o ajuste fica preso ao material em vez de espalhado em áudios — é o [portal do cliente](/portal-do-cliente). Quem compara ferramentas tem o recorte em [Mesaas ou Aprova Post](/blog/mesaas-vs-aprova-post).
 
 Se você chegou aqui com um número anotado, o guia funcionou. Ele vai estar errado — todo primeiro preço está. Mas errado e escrito se corrige em três meses com dados na mão; certo e chutado nunca existiu.
