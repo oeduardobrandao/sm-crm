@@ -101,23 +101,30 @@ Properties:
 - No membership returns `NULL`, which fails closed in an RLS `USING` clause.
 - `UNIQUE(user_id, workspace_id)` on `workspace_members` guarantees a scalar.
 
-### Membership helper
+### ~~Membership helper~~ — DO NOT BUILD
+
+An earlier draft defined `public.is_member_of(uuid)` here and used it in the
+views' `WHERE` clauses. **It has been struck from this design.** Its sole
+justification was a belief that `get_my_conta_id()` did not prove membership,
+which is false: `20260713000001_secure_workspace_invites.sql` hardened it to
+require
 
 ```sql
-CREATE OR REPLACE FUNCTION public.is_member_of(p_conta_id uuid)
-RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.workspace_members wm
-    WHERE wm.user_id = auth.uid() AND wm.workspace_id = p_conta_id
-  );
-$$;
-
-REVOKE ALL ON FUNCTION public.is_member_of(uuid) FROM PUBLIC, anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.is_member_of(uuid) TO authenticated;
+AND EXISTS (SELECT 1 FROM workspace_members wm
+            WHERE wm.user_id = auth.uid() AND wm.workspace_id = p.active_workspace_id)
 ```
 
-Extracted so both views share one tested definition instead of duplicating the
-predicate.
+and `20260720000004` re-delivered that body to production. No later migration
+changes it.
+
+`public.get_my_conta_id()` alone is therefore sufficient everywhere this design
+uses it, and already fails closed on a stale or foreign active-workspace
+pointer. Building a second helper would add a SECURITY DEFINER function, its
+ACL, and its test matrix for no gain.
+
+The definition is removed rather than left struck-through because a code block
+in a spec gets copied; a retraction three sections later does not travel with
+it.
 
 ## Enforcement — database
 
@@ -252,8 +259,7 @@ CREATE VIEW public.membros_v WITH (security_barrier = true) AS
          CASE WHEN public.can_see_financials()
               THEN m.custo_mensal ELSE NULL END AS custo_mensal
   FROM public.membros m
-  WHERE m.conta_id = public.get_my_conta_id()
-    AND public.is_member_of(m.conta_id);
+  WHERE m.conta_id = public.get_my_conta_id();
 
 -- PUBLIC alone is NOT sufficient: Supabase's default privileges grant new
 -- objects in `public` directly to anon, authenticated and service_role, and a
@@ -270,16 +276,14 @@ row's `conta_id` into another workspace — writing straight past every policy
 this design relies on. `WITH CHECK OPTION` is added as belt-and-braces, but the
 ACL is the actual control.
 
-The same enumerated revoke applies to `clientes_v` and to both helper functions:
+The same enumerated revoke applies to `clientes_v` and to the helper function:
 
 ```sql
 REVOKE ALL ON FUNCTION public.can_see_financials()  FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION public.is_member_of(uuid)    FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.can_see_financials() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.is_member_of(uuid)   TO authenticated;
 ```
 
-Without this the spec's "anonymous cannot execute the helpers" assertion fails.
+Without this the spec's "anonymous cannot execute the helper" assertion fails.
 
 **Both failure directions are live in this repo, so neither may be assumed.**
 Named roles may hold grants you never intended (this finding), *and* they may
@@ -305,11 +309,12 @@ Design constraints, each load-bearing:
    AND workspace_id = p.active_workspace_id)`, and `20260720000004` re-delivered
   that body to production. No later migration redefines it.
 
-  **Consequence: the `is_member_of()` helper below is redundant and should be
-  dropped from the implementation.** Its entire justification was a gap that
-  does not exist. `WHERE m.conta_id = public.get_my_conta_id()` is sufficient
-  and already fails closed on a stale or foreign active-workspace pointer.
-  Retained in the text only so the reasoning is traceable — do not build it.
+  **Consequence: the `is_member_of()` helper has been struck from this design**
+  — its definition, its use in the views' `WHERE` clauses, its ACL block, its
+  test-matrix entry and its mention in the rollout are all removed. Its entire
+  justification was a gap that does not exist.
+  `WHERE m.conta_id = public.get_my_conta_id()` is sufficient and already fails
+  closed on a stale or foreign active-workspace pointer.
 - **Not granted to `service_role`.** Trusted callers would get masked values and
   zero rows, since they have no `auth.uid()`. Edge functions read base tables
   directly, where their existing grants are untouched — the revoke targets
@@ -578,7 +583,6 @@ Matrix:
 
 - Predicate truth table: owner true regardless of flag; agent false regardless;
   admin follows flag; no membership `NULL`.
-- `is_member_of()`: true, false, no-user, foreign-workspace.
 - View tenant isolation: member of A cannot read B through either view.
 - **Stale pointer:** membership deleted while `active_workspace_id` still points
   at the workspace → zero rows.
@@ -654,8 +658,7 @@ Per repo convention, grep both `apps/**/__tests__` and
 
 Expand/contract, because the revoke is breaking:
 
-1. **Migration A (additive):** column, `can_see_financials()`, `is_member_of()`,
-   both views. No base-table privilege is revoked and no policy changes — the
+1. **Migration A (additive):** column, `can_see_financials()`, both views. No base-table privilege is revoked and no policy changes — the
    only revokes are `FROM PUBLIC` on the newly created views and functions, which
    nothing depends on yet. The deployed client is unaffected.
 2. **Deploy client:** reads via views, payloads shaped, capability plumbed
