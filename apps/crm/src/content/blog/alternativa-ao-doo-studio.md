@@ -65,7 +65,7 @@ Seja qual for a ferramenta, estes sete pontos separam o que muda a rotina do que
 
 **Calendário e quadro de entregas.** O calendário editorial mostra o mês por cliente ou a operação inteira, com arraste para reagendar. O kanban leva o post da ideia à publicação, com responsável e prazo em cada card.
 
-**Contratos e financeiro.** Data de renovação, mensalidades, despesas vinculadas ao cliente que as gerou e MRR em tempo real, com exportação em CSV.
+**Contratos e financeiro.** Data de renovação, mensalidades, despesas vinculadas ao cliente que as gerou e receita mensal recorrente somada sozinha.
 
 ## O que o Mesaas não faz
 
