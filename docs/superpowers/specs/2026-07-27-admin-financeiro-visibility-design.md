@@ -188,7 +188,34 @@ working on write paths.
 
 The same treatment applies to `clientes`, omitting `valor_mensal`.
 
-#### Blocker: the `clientes` allowlist cannot be authored from migrations
+#### Authoritative allowlists — RESOLVED 2026-07-27
+
+The drift blocker below is cleared. `clientes` and `membros` now agree exactly
+between production and staging (20 and 11 columns, zero difference in either
+direction), and staging's shape is produced by the migrations plus
+`20260727000001_reconcile_adopt_client_tables.sql`. See
+[the drift audit](2026-07-27-schema-drift-audit.md).
+
+```sql
+GRANT SELECT (
+  id, user_id, conta_id, nome, sigla, cor, plano, email, telefone, status,
+  created_at, notion_page_url, data_pagamento, especialidade, data_aniversario,
+  dia_entrega, auto_publish_on_approval, send_report_email, include_ai_analysis
+) ON public.clientes TO authenticated;   -- 19 of 20; omits valor_mensal
+
+GRANT SELECT (
+  id, user_id, conta_id, nome, cargo, tipo, avatar_url, data_pagamento,
+  created_at, crm_user_id
+) ON public.membros TO authenticated;     -- 10 of 11; omits custo_mensal
+```
+
+These lists are **generated from the reconciled schema, not hand-typed**, and
+must be regenerated rather than edited if either table changes. The
+implementation plan should regenerate and diff them immediately before writing
+Migration B, since any column added between now and then would otherwise vanish
+from the CRM.
+
+#### Original blocker (retained for context)
 
 The allowlist is an exhaustive enumeration, so an omitted column silently
 disappears from the CRM. `clientes` has drifted from its migration history:
