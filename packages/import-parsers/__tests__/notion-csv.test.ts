@@ -98,4 +98,15 @@ describe('parseNotionExport', () => {
     expect(collections).toHaveLength(0);
     expect(warnings.some((w) => w.includes('grande') && w.includes('Calendário'))).toBe(true);
   });
+
+  test('a single entry whose declared size alone exceeds the cap is rejected before decompression: warning, no collections', () => {
+    const big = 'A,B\n' + '1,2\n'.repeat(400);
+    const zip = makeZip({ 'Export/Grande 0a1b2c3d4e5f60718293a4b5c6d7e8f9.csv': big });
+    // maxBytes far below the declared size of this single entry — the
+    // per-entry guard must reject it on its own, without needing any other
+    // entry to push a running total over the cap.
+    const { collections, warnings } = parseNotionExport('export.zip', zip, /* maxBytes */ 50);
+    expect(collections).toHaveLength(0);
+    expect(warnings.some((w) => w.includes('grande'))).toBe(true);
+  });
 });

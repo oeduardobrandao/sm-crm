@@ -18,6 +18,20 @@
 --         where published_at is not null and status <> 'postado';  -- must be 0
 --   5. Undo lockout: set import_jobs.status='undoing', then call
 --      import_commit_row for that job -- it must raise, not insert.
+--   6. Lock (round 7, 2026-07-27): from two separate sessions, race a commit
+--      and an undo on the SAME job_id. Session A: begin; select import_commit_row(...)
+--      -- do not commit yet. Session B (concurrently): begin;
+--      update import_jobs set status='undoing' where id=<job> -- this must BLOCK
+--      until session A commits or rolls back. Commit session A, then let
+--      session B's update proceed and finish the undo. Assert: the row session
+--      A inserted is gone (undo's delete saw it and removed it), never orphaned
+--      -- i.e. no import_job_items row survives referencing a table row that
+--      import_jobs.status='undone' claims was fully undone.
+--   7. Missing nome (round 7, 2026-07-27): call import_commit_row with
+--      p_kind='cliente' and a payload whose "nome" key is JSON null (and,
+--      separately, a payload where "nome" is entirely absent) -- both must
+--      raise `import row % has no usable nome (cliente name)`, never a bare
+--      `null value in column "nome"` / "sigla" constraint violation.
 
 create table if not exists public.import_jobs (
   id bigint generated always as identity primary key,
@@ -135,17 +149,38 @@ declare
   v_i integer;
   v_user_id uuid;
 begin
-  select * into v_job from public.import_jobs where id = p_job_id and conta_id = p_conta_id;
+  -- `for update`: this row lock is what actually closes the undo/commit race,
+  -- not the status check below on its own (that check only decides what THIS
+  -- call does once it already holds the lock). A concurrent undo's
+  -- `update import_jobs set status = 'undoing' ...` needs the SAME row lock,
+  -- so it blocks until this transaction commits or rolls back:
+  --   * if this call acquires the lock first, it runs its full insert(s) +
+  --     bookkeeping and COMMITS before undo's status flip can proceed -- so by
+  --     the time undo re-reads import_job_items (which it only does after its
+  --     own status update has committed), this call's row already exists and
+  --     is in undo's delete list. No orphan.
+  --   * if undo's status flip acquires the lock first (and commits 'undoing'
+  --     before this call's `for update` returns), this call then reads
+  --     v_job.status = 'undoing' and is refused by the check below -- it
+  --     never inserts anything.
+  -- Either ordering is safe. What the lock rules out is the interleaving this
+  -- function used to allow: this call's status read and its insert straddling
+  -- undo's read of import_job_items, with neither transaction blocking the
+  -- other -- which is exactly how a committed row could end up invisible to
+  -- an undo that had already started (and finished) deleting.
+  --
+  -- Side effect: two commit calls for the SAME job now serialize on this lock
+  -- (the second's `for update` blocks until the first's transaction ends).
+  -- That is acceptable -- the edge function drives batches for one job
+  -- sequentially, never concurrently, so this lock is never on the hot path;
+  -- it only ever matters against a concurrent undo.
+  select * into v_job from public.import_jobs where id = p_job_id and conta_id = p_conta_id
+    for update;
   -- 'completed' stays writable: a retry after a failed FINAL batch re-runs from
   -- batch 0 against a job already marked completed; idempotency makes it a no-op.
   --
-  -- 'undoing' is refused for the same reason as 'undone', and this check is the
-  -- ONLY thing that closes the undo/commit race: the edge function's own guard
-  -- runs once, before its RPC loop, so a commit that started while the job was
-  -- still 'completed' would otherwise keep inserting rows for the whole batch
-  -- while undo is already reading and deleting. Undo flips the job to 'undoing'
-  -- BEFORE it reads import_job_items, so every row of that in-flight batch dies
-  -- here instead of surviving as an orphan the wizard can never clean up.
+  -- 'undoing' is refused for the same reason as 'undone' -- this is what this
+  -- call does with the lock it now holds, per the comment above.
   if not found or v_job.status in ('undoing', 'undone') then
     raise exception 'import job not found or being undone';
   end if;
@@ -211,10 +246,29 @@ begin
                 0, true, p_payload->'provenance');
       return jsonb_build_object('skipped', false, 'table', 'clientes', 'row_id', v_id);
     end if;
+    -- LEGIBLE FAILURE for a missing/blank nome, raised BEFORE the insert below.
+    -- clientes.nome is NOT NULL, so a row with no usable name fails regardless
+    -- of this check -- the point is that it fails with a clear message naming
+    -- the row instead of an opaque `null value in column "nome"` bubbling out
+    -- of the insert (which the edge function's error handling can't safely
+    -- return to the client either, per this repo's rule against leaking raw
+    -- DB error text -- see the created_by guard above for the same pattern).
+    if nullif(trim(coalesce(p_payload->>'nome', '')), '') is null then
+      raise exception 'import row % has no usable nome (cliente name)', p_source_row_key;
+    end if;
     insert into public.clientes (conta_id, user_id, nome, sigla, cor, plano, email, telefone,
                                  status, valor_mensal, especialidade, notion_page_url)
     values (p_conta_id, v_user_id, p_payload->>'nome',
-            upper(left(regexp_replace(p_payload->>'nome', '[^a-zA-Z]', '', 'g') || 'XX', 2)),
+            -- coalesce to '' before regexp_replace: p_payload->>'nome' is SQL NULL
+            -- when the field is JSON null or absent, regexp_replace(NULL, ...) is
+            -- NULL, and NULL || 'XX' is NULL (concatenation propagates NULL rather
+            -- than treating it as empty) -- so an absent nome used to reach the
+            -- insert with sigla = NULL and blow up on clientes' NOT NULL constraint
+            -- on THAT column instead of the guard above. The guard now catches an
+            -- absent/blank nome first, but this stays NULL-safe on its own so a
+            -- nome that is present yet entirely non-alphabetic (e.g. "123") still
+            -- falls back to the same 'XX' every other unusable name already gets.
+            upper(left(regexp_replace(coalesce(p_payload->>'nome', ''), '[^a-zA-Z]', '', 'g') || 'XX', 2)),
             coalesce(p_payload->>'cor', '#eab308'), '',
             coalesce(p_payload->>'email', ''), coalesce(p_payload->>'telefone', ''),
             'ativo', coalesce((p_payload->>'valorMensal')::numeric, 0),

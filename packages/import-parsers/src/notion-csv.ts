@@ -47,30 +47,59 @@ export function parseNotionExport(
   };
 
   if (/\.zip$/i.test(fileName)) {
-    // `total` sums only the *declared* (zip-header) size of entries that will
-    // actually be decompressed (.csv). This is advisory only: it lets us stop
-    // feeding the decompressor once the declared budget is already spent, but
-    // a corrupt or crafted zip can under-report `originalSize`, so this check
-    // alone must never be trusted as the real bound.
+    // HONEST LIMITS OF THIS GUARD — read this before trusting either check below:
+    //
+    // `unzipSync` is SYNCHRONOUS: it fully materializes every entry the
+    // `filter` callback accepts into memory before this function gets to look
+    // at any real, decompressed bytes. Neither check below runs until that
+    // has already happened.
+    //
+    //   - PRE-FILTER (`total`, inside the callback): advisory only. It sums
+    //     the *declared* (zip-header) `originalSize` of accepted .csv entries
+    //     so we can stop accepting further entries once the declared budget
+    //     is spent — but the declared size is a field the archive itself
+    //     controls. A corrupt or crafted zip can under-report it, and a
+    //     legitimate high-ratio DEFLATE stream can honestly declare a small
+    //     number and still inflate to something huge. Either way, this check
+    //     bounds what fflate is TOLD to expect, not what it allocates.
+    //   - PER-ENTRY REJECTION (the `originalSize > maxBytes` check just
+    //     below): a narrow, cheap special case of the above — an entry whose
+    //     OWN declared size already busts the cap, on its own, is skipped
+    //     before fflate spends any work on it. This only catches the obvious
+    //     case (an honest or over-declared size); it does nothing against an
+    //     entry that UNDER-reports its size, which is the actual hole. It
+    //     does not close that hole, only cheaply rejects the obvious case.
+    //   - POST-CHECK (`actualBytes`, after `unzipSync` returns): bounds what
+    //     is RETAINED, not what was allocated. By the time this runs, every
+    //     accepted entry — including one that lied about being small — has
+    //     already been fully inflated into the tab's heap. This only decides
+    //     whether we keep pointing at that memory or drop it and warn.
+    //
+    // A real fix needs a streaming inflate with a hard abort mid-stream (so
+    // decompression itself stops once real output crosses the cap), which is
+    // deliberately out of scope here. Until then, the blast radius is the
+    // importing user's own tab, on a file they chose to open — not a shared
+    // server process or another user's data.
     let total = 0;
     const csvNames: string[] = [];
+    let rejectedOversizedEntry = false;
     try {
       const entries = unzipSync(data, {
         filter: (f) => {
           const isCsv = /\.csv$/i.test(f.name);
           if (!isCsv) return false;
+          if ((f.originalSize ?? 0) > maxBytes) {
+            rejectedOversizedEntry = true;
+            csvNames.push(displayName(f.name));
+            return false;
+          }
           total += f.originalSize ?? 0;
           csvNames.push(displayName(f.name));
           return total <= maxBytes;
         },
       });
-      // Real bound: the actual decompressed byte length of what fflate
-      // produced. Unlike `originalSize`, this figure cannot be spoofed, so
-      // it is what actually decides whether the import is kept. If either
-      // the declared or the real total is over budget, discard everything
-      // pulled from this zip and warn — never a silent partial import.
       const actualBytes = Object.values(entries).reduce((sum, bytes) => sum + bytes.byteLength, 0);
-      if (total > maxBytes || actualBytes > maxBytes) {
+      if (total > maxBytes || actualBytes > maxBytes || rejectedOversizedEntry) {
         warnings.push(
           `Arquivo zip muito grande após descompactação — conteúdo ignorado: ${csvNames.join(', ')}.`,
         );
