@@ -60,8 +60,8 @@ Monorepo with npm workspaces:
 
 ### CRM app structure (`apps/crm/src/`)
 
-- `App.tsx` -- Routes (React Router v7 BrowserRouter, lazy-loaded pages)
-- `main.tsx` -- Bootstrap (BrowserRouter wraps App)
+- `App.tsx` -- Routes (React Router v7, lazy-loaded pages)
+- `main.tsx` -- Bootstrap: `createBrowserRouter` + `RouterProvider` (a data router). Swapping it back to `<BrowserRouter>` is a behaviour change -- data-router APIs like blockers and loaders depend on it
 - `store.ts` -- Data layer: types + Supabase CRUD functions (NOT a state manager)
 - `lib/supabase.ts` -- Supabase client singleton, auth helpers, profile cache
 - `context/AuthContext.tsx` -- Auth provider with roles (owner | admin | agent)

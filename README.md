@@ -85,9 +85,16 @@ O frontend só precisa de duas (prefixo `VITE_`, expostas ao browser):
 | `VITE_SUPABASE_URL` | URL do projeto Supabase |
 | `VITE_SUPABASE_ANON_KEY` | Chave anon/pública |
 
-As edge functions têm as suas próprias (`TOKEN_ENCRYPTION_KEY`, `META_APP_*`, `R2_*`,
-`STRIPE_*`, `CRON_SECRET`, …) — a lista completa está em `.env.example` e em
-[CLAUDE.md](CLAUDE.md).
+As edge functions têm as suas próprias, configuradas em `supabase secrets` e **não** no `.env`
+do frontend: `TOKEN_ENCRYPTION_KEY`, `META_APP_*`, `R2_*`, `STRIPE_*`, `CRON_SECRET`,
+`INTERNAL_FUNCTION_SECRET`, `TIKTOK_*`, `GEMINI_API_KEY`, entre outras.
+
+> ⚠️ Não existe hoje uma lista completa em um só lugar. O `.env.example` cobre apenas as
+> variáveis do frontend mais `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`, e o
+> [CLAUDE.md](CLAUDE.md) documenta a maioria mas não todas — `INTERNAL_FUNCTION_SECRET`, por
+> exemplo, é obrigatória e faz o `report-worker` e os geradores de relatório falharem no
+> boot se faltar. Ao provisionar um ambiente novo, confira também os `Deno.env.get` das
+> functions que for usar.
 
 > ⚠️ Nunca commite `.env`, `.env.local` ou `.env.staging`.
 
@@ -95,8 +102,16 @@ As edge functions têm as suas próprias (`TOKEN_ENCRYPTION_KEY`, `META_APP_*`, 
 
 Tudo abaixo roda no CI e barra o merge:
 
+**`npm run build` só faz o typecheck do CRM.** O CI checa os três apps e os scripts
+separadamente, então uma mudança no Hub ou no Admin pode passar localmente e quebrar o CI.
+Rode os mesmos quatro que o CI roda:
+
 ```bash
-npm run build          # tsc + vite build — este é o typecheck
+npx tsc -p apps/crm/tsconfig.json   --noEmit
+npx tsc -p apps/hub/tsconfig.json   --noEmit
+npx tsc -p apps/admin/tsconfig.json --noEmit
+npx tsc -p tsconfig.scripts.json
+
 npm run test           # Vitest
 npm run test:functions # deno test nas edge functions
 npm run lint           # eslint apps/ packages/
@@ -116,8 +131,18 @@ npm run build:hub      # Hub   -> dist/hub/  (base path /hub/)
 npm run build:admin    # Admin
 ```
 
-- **Hosting:** Vercel. `vercel.json` roda os builds e faz os rewrites — URLs do Hub vão
-  para `/hub/index.html`, o resto para `/index.html`.
+- **Hosting:** Vercel. `vercel.json` roda os builds e faz os rewrites. **Não há catch-all
+  para o CRM** — as rotas são uma lista nomeada:
+
+  | Rota | Destino |
+  |---|---|
+  | `/:workspace/hub/:token…` | `/hub/index.html` |
+  | `/admin/…` | `/admin/index.html` |
+  | `/precos`, `/sobre`, `/novidades`, `/lgpd`, … | HTML próprio, pré-renderado |
+  | `/(login\|dashboard\|clientes\|financeiro\|…)` | `/app.html` |
+
+  > ⚠️ **Ao adicionar uma rota nova no CRM é obrigatório incluí-la nesse padrão nomeado do
+  > `vercel.json`.** Sem isso a rota funciona em dev e dá 404 em produção.
 - **Backend:** Supabase. `npx supabase functions deploy <nome>` (use `--no-verify-jwt` em
   functions que tratam a própria auth: callbacks OAuth, crons, hub) e
   `npx supabase db push --linked` para migrations.

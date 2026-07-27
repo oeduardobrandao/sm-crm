@@ -26,8 +26,14 @@ three apps plus `packages/`. There is no per-app config.
 - **Radius:** `rounded-lg/md/sm` derive from `--radius`.
 
 shadcn is configured by [`components.json`](components.json) at the root — style `default`,
-base colour `neutral`, CSS variables on, `lucide` icons. Add components with
-`npx shadcn@latest add <name>`; they land in `apps/crm/src/components/ui/`.
+base colour `neutral`, CSS variables on, `lucide` icons.
+
+**That config predates the monorepo and its paths no longer resolve.** It points `tailwind.css`
+at `style.css` and aliases `@/components` to `@/components`, which from the repo root means
+`src/components` — and there is no `src/` or `style.css` at the root any more. So
+`npx shadcn@latest add <name>` run from the root does *not* land in
+`apps/crm/src/components/ui/`. Either fix the paths first, or copy the generated component
+into `apps/crm/src/components/ui/` by hand and correct its imports.
 
 ## CRM (`apps/crm`)
 
@@ -109,15 +115,24 @@ Everything else — sidebar, KPI cards, kanban board, avatars — is hand-writte
 
 ## Hub (`apps/hub`)
 
-The client portal has **no `.css` files at all**. Its styles are an inline `<style>` block in
-`apps/hub/index.html` (36 distinct `.hub-*` selectors) plus Tailwind utilities.
+The client portal ships no `.css` file of its own. Its styles are an inline `<style>` block in
+`apps/hub/index.html` (36 distinct `.hub-*` selectors) plus Tailwind utilities — **and the
+entire CRM stylesheet**, which `apps/hub/src/main.tsx` imports directly:
+
+```ts
+import '../../crm/style.css';
+```
+
+So the Hub inherits every CRM global: the `body` and `#root` rules, the `overflow-x: hidden`
+pin, both token systems, and the reset. A change to CRM globals changes the Hub too, and the
+Hub is the app least likely to be re-checked after a CRM styling change.
 
 - **Fonts:** `--hub-font-display` = Fraunces (serif, optical sizing), `--hub-font-sans` =
   Instrument Sans, with `font-feature-settings: 'ss01','cv11'`. `.font-display` opts into the
   serif.
 - **Whitelabel:** every `--hub-*` value in `index.html` is a *fallback only*.
-  [`HubShell`](apps/hub/src/shell/HubShell.tsx:66) calls `resolveHubTheme(brand_color, isDark)`
-  from [`theme.ts`](apps/hub/src/theme.ts:41) and writes the resolved variables inline before
+  [`HubShell`](apps/hub/src/shell/HubShell.tsx#L66) calls `resolveHubTheme(brand_color, isDark)`
+  from [`theme.ts`](apps/hub/src/theme.ts#L41) and writes the resolved variables inline before
   paint. The client's `brand_color` drives `--hub-acc`, and `--hub-acc-fg` is derived for
   contrast (a light accent flips the foreground to `#171717`).
 - Surfaces: `--hub-bg --hub-card --hub-soft`; text ramp `--hub-txt --hub-tx2 --hub-tx3`;

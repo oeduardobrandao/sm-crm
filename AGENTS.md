@@ -12,7 +12,7 @@ npm workspaces (`apps/*`, `packages/*`):
 
 | Path | What it is |
 |---|---|
-| `apps/crm/` | Internal dashboard. React 19, React Router v7 (BrowserRouter), TanStack Query. Port 5173 |
+| `apps/crm/` | Internal dashboard. React 19, React Router v7 `createBrowserRouter` + `RouterProvider`, TanStack Query. Port 5173 |
 | `apps/hub/` | Client-facing portal. `createBrowserRouter`. Token auth, no login. Port 5175 |
 | `apps/admin/` | Platform admin. Port 5177 |
 | `packages/ui/`, `packages/i18n/` | Shared primitives and translations |
@@ -25,15 +25,23 @@ npm workspaces (`apps/*`, `packages/*`):
 
 ## Verifying a change
 
+**`npm run build` only typechecks the CRM.** CI typechecks all three apps plus the scripts
+project separately, so a Hub or Admin change verified with `npm run build` alone can look
+green locally and still fail CI. Run the same four the CI runs:
+
 ```bash
-npm run build          # tsc + vite build (CRM) — this is the typecheck
+npx tsc -p apps/crm/tsconfig.json   --noEmit
+npx tsc -p apps/hub/tsconfig.json   --noEmit
+npx tsc -p apps/admin/tsconfig.json --noEmit
+npx tsc -p tsconfig.scripts.json
+
 npm run test           # vitest
 npm run test:functions # deno test for edge functions
 npm run lint           # eslint apps/ packages/
-npm run format:check   # prettier
+npm run format:check   # prettier — apps/**/*.{ts,tsx} and packages/**/*.{ts,tsx} only
 ```
 
-CI enforces all of these as separate jobs — `typecheck-and-test`, `edge-function-tests`,
+CI enforces these as separate jobs — `typecheck-and-test`, `edge-function-tests`,
 `coverage-threshold`, `format-check`, `migration-version-guard`. A change that skips
 `format:check` or `lint` fails CI even when it is otherwise correct.
 
@@ -53,12 +61,29 @@ CI enforces all of these as separate jobs — `typecheck-and-test`, `edge-functi
 ## Hard rules — treat a violation as a blocking finding
 
 - **CORS**: never `*`. Use `buildCorsHeaders(req)` from `supabase/functions/_shared/cors.ts`.
-- **Workspace isolation**: every edge function must verify `conta_id` ownership before returning
-  or mutating data. A missing `conta_id` check is a cross-tenant data leak.
-- **Cron auth**: cron functions authenticate with the `x-cron-secret` header, verified *before*
-  any work. Everything else verifies a JWT via `Authorization: Bearer`.
+- **Workspace isolation**: any *user-scoped* edge function must verify `conta_id` ownership
+  before returning or mutating data. A missing `conta_id` check there is a cross-tenant leak.
+  System handlers are the exception and must not be flagged for it: `platform-admin`
+  authorizes against the `platform_admins` table and then deliberately operates on the
+  `workspace_id` in the request body, and crons and signed webhooks have no calling member at
+  all. For those, check that the trusted identity is established first and that every query is
+  still scoped to one derived workspace.
+- **Auth**: every function authenticates *something* before doing work, but the mechanism
+  depends on the caller. Check which class a function belongs to before calling its auth wrong:
+
+  | Class | Mechanism |
+  |---|---|
+  | Cron (`*-cron`) | `x-cron-secret` header, verified before any work |
+  | Provider webhooks | `stripe-webhook` verifies the `stripe-signature`; `tiktok-webhook` is deliberately public (`verify_jwt = false`) and authenticates on `client_key` + known `user_openid` |
+  | Hub (`hub-*`) | Hub token from the URL — the client portal has no Supabase auth |
+  | OAuth callbacks | Signed `state` parameter (e.g. `instagram-integration`) |
+  | Internal fan-out (report generators, `report-worker`) | `X-Internal-Token` matched against `INTERNAL_FUNCTION_SECRET` |
+  | Everything else | JWT via `Authorization: Bearer` |
+
 - **Secrets**: `TOKEN_ENCRYPTION_KEY` is required with no fallback — throw if missing. Never
-  commit `.env*`.
+  commit a real `.env`, `.env.local` or `.env.staging`. The `*.example` templates
+  (`.env.example`, `.env.e2e.local.example`) *are* tracked and should be updated when a new
+  variable is introduced.
 - **Error handling**: never return or log raw error details to clients from an edge function.
   Generic message out, details to the internal log.
 - **HTML/URLs**: `escapeHTML()` for user data interpolated into raw HTML; `sanitizeUrl()` for any
