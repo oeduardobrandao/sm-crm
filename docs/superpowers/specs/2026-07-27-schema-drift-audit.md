@@ -156,9 +156,24 @@ Verified after the fact by re-dumping staging: `cliente_datas` (6 cols) and
 longer broken there.
 
 **The drop migration was a complete no-op on staging** — every one of its
-targets was already absent. Staging therefore validates the adopt path only and
-gives **no** evidence about the destructive path. That still needs proving
-before production.
+targets was already absent, so staging validates the adopt path only.
+
+Evidence for the destructive path, stated precisely so the production decision
+rests on the right facts:
+
+- **Proven:** the mechanics. Against a throwaway Postgres 17 with fixtures
+  carrying `subscription_events` rows and all seven target columns, the drops
+  executed, the NOTICE counts reported correctly, and the post-condition
+  assertion confirmed removal. Re-running was a clean no-op.
+- **Not proven:** behaviour against production's actual data and dependency
+  graph. The fixture was synthetic and minimal — it did not reproduce
+  production's row volumes, foreign keys into these objects from tables the
+  fixture omitted, or anything reading them outside the schema dump.
+
+Production is therefore the first environment where this migration removes real
+data. The dependency checks behind it were thorough (no referencing code, and no
+dependent function, view, trigger or policy in the production schema dump), but
+they are static analysis, not a live rehearsal.
 
 Remaining staging↔production differences, all accounted for:
 
