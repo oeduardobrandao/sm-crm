@@ -1,6 +1,6 @@
 # Mesaas CRM
 
-Social media agency CRM (React + Supabase). Two apps: **CRM** (internal dashboard) and **Hub** (client-facing portal). Portuguese-language UI.
+Social media agency CRM (React + Supabase). Three apps: **CRM** (internal dashboard), **Hub** (client-facing portal), and **Admin** (platform admin). Portuguese-language UI.
 
 ## Workflow skills (superpowers)
 
@@ -98,7 +98,7 @@ Monorepo with npm workspaces:
 - Rich text: TipTap editor
 - Toasts: `sonner` via `toast()` from `sonner` (NOT the legacy `showToast()` from router.ts for new code)
 - Tailwind theme uses CSS variables (`hsl(var(--primary))` etc.) with dark mode via `[data-theme='dark']` class
-- Fonts: DM Sans (body), Playfair Display (headings), DM Mono (inputs/data)
+- Fonts: SF Pro Text (body/mono) and SF Pro Display (headings) in CRM and Admin; Fraunces + Instrument Sans in Hub. DM Sans/Playfair references left in a few files are dead fallbacks
 
 ## Security rules -- NEVER violate these
 
