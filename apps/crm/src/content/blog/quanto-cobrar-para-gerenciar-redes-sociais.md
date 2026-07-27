@@ -81,11 +81,11 @@ O último item é o mais importante e não serve para dizer não: serve para diz
 
 ## Passo 4: monte pacotes, não orçamentos avulsos
 
-Orçar do zero a cada conversa queima horas não faturáveis e produz preços incoerentes. Três pacotes resolvem: você apresenta, o cliente escolhe, e a negociação vira escopo, não desconto.
+Orçar do zero a cada conversa queima horas e produz preços incoerentes. Três pacotes resolvem: você apresenta, o cliente escolhe, e a negociação vira escopo, não desconto.
 
-- **Presença.** Volume menor, uma rodada de revisão por post, relatório trimestral, sem reunião fixa.
+- **Presença.** Volume menor, uma rodada de revisão por post, relatório trimestral, sem reunião fixa. Para quem só precisa existir com consistência.
 - **Crescimento.** Volume maior, mix de formatos, duas rodadas, relatório mensal com leitura dos números, uma reunião. É o degrau que você quer que seja o padrão.
-- **Operação.** Volume alto, peso em vídeo, planejamento de campanha, prazo de resposta curto, acompanhamento quinzenal.
+- **Operação.** Volume alto, peso em vídeo, planejamento de campanha, prazo de resposta curto, acompanhamento quinzenal. Para quem trata a rede como canal de venda.
 
 **Cada degrau muda mais de uma coisa**: se muda só a quantidade de posts, você publicou uma tabela por unidade. E **cada pacote passa pelo Passo 2** — pacote que ninguém somou em horas é chute com nome bonito.
 
