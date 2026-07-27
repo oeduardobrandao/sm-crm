@@ -24,24 +24,32 @@
 -- -------------------------------------------------------------
 DO $$
 DECLARE
-  n bigint;
+  n   bigint;
+  col text;
 BEGIN
   IF to_regclass('public.subscription_events') IS NOT NULL THEN
     EXECUTE 'SELECT count(*) FROM public.subscription_events' INTO n;
     RAISE NOTICE 'dropping subscription_events — % row(s) destroyed', n;
   END IF;
 
-  IF EXISTS (SELECT 1 FROM information_schema.columns
-             WHERE table_schema='public' AND table_name='workspaces'
-               AND column_name='subscription_status') THEN
-    EXECUTE $q$SELECT count(*) FROM public.workspaces
-               WHERE stripe_customer_id IS NOT NULL
-                  OR stripe_subscription_id IS NOT NULL
-                  OR subscription_status IS NOT NULL
-                  OR subscription_current_period_end IS NOT NULL
-                  OR trial_ends_at IS NOT NULL$q$ INTO n;
-    RAISE NOTICE 'dropping 6 workspaces billing columns — % row(s) held non-null data', n;
-  END IF;
+  -- Per-column counts, not a single OR'd row count. An OR across all six is
+  -- both incomplete (an earlier draft omitted subscription_cancel_at_period_end)
+  -- and misleading: that column is `boolean DEFAULT false`, so nearly every row
+  -- holds a non-null `false` and would be counted as "held data" when nothing
+  -- meaningful is lost. Per-column is what the header actually promises.
+  FOR col IN SELECT unnest(ARRAY[
+      'stripe_customer_id', 'stripe_subscription_id', 'subscription_status',
+      'subscription_cancel_at_period_end', 'subscription_current_period_end',
+      'trial_ends_at'])
+  LOOP
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema='public' AND table_name='workspaces'
+                 AND column_name=col) THEN
+      EXECUTE format('SELECT count(*) FROM public.workspaces WHERE %I IS NOT NULL', col)
+        INTO n;
+      RAISE NOTICE 'dropping workspaces.% — % row(s) held non-null data', col, n;
+    END IF;
+  END LOOP;
 
   IF EXISTS (SELECT 1 FROM information_schema.columns
              WHERE table_schema='public' AND table_name='instagram_accounts'
