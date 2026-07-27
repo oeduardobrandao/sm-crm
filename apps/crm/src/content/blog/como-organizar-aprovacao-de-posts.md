@@ -98,7 +98,7 @@ Sete passos, do calendário à publicação. Troque os prazos pelos seus, escolh
 3. **Envio em lote, num endereço só.** Os posts [da quinzena] chegam juntos, por [um link / um documento compartilhado]. A conversa recebe só o aviso de que o lote está lá.
 4. **Prazo de [48 horas úteis]**, contadas do envio, com um lembrete faltando [24 horas]. Vencido o prazo sem resposta: [aprovação tácita e publicação na data / o post escorrega para a próxima data livre].
 5. **Resposta consolidada, por uma pessoa.** [Nome] responde post a post — aprova, ou escreve o ajuste no próprio material. Divergência interna é resolvida antes de chegar à agência.
-6. **Duas rodadas por post.** Esta é a segunda: a versão ajustada volta em [24 horas úteis]. Se uma terceira rodada for necessária, a agência avisa antes que é extra e aguarda a sua confirmação.
+6. **Duas rodadas por post.** Esta é a segunda rodada: a versão ajustada volta em [24 horas úteis]. Se uma terceira rodada for necessária, a agência avisa antes que é extra e aguarda a sua confirmação.
 7. **Aprovação registrada e agendamento.** Cada sim volta neste e-mail, com data, autor e versão, e o post entra no calendário. Alteração depois do sim gera versão nova e registro novo.
 
 ## Como fazer isso no Mesaas
