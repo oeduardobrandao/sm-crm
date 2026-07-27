@@ -103,6 +103,10 @@ ALTER TABLE public.files
   DROP COLUMN IF EXISTS google_drive_thumbnail_url,
   DROP COLUMN IF EXISTS google_drive_view_url;
 
+-- Lock cost: adding a CHECK requires a full scan under ACCESS EXCLUSIVE. On
+-- production `files` is ~3.6k rows / 4.2 MB, so that is milliseconds and does
+-- not warrant the NOT VALID + VALIDATE CONSTRAINT split. Revisit if the table
+-- grows by orders of magnitude.
 ALTER TABLE public.files
   ADD CONSTRAINT files_has_source CHECK (r2_key IS NOT NULL);
 
