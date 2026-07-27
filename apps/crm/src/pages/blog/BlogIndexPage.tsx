@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { ArrowRight } from 'lucide-react';
 import './blog.css';
 import '../landing/landing.css';
 import { LandingFooter, LandingHeader, useLandingChrome } from '../landing/LandingChrome';
@@ -41,6 +42,17 @@ export default function BlogIndexPage() {
                   </div>
                 </a>
               ))}
+            </div>
+          </div>
+        </section>
+        <section className="cta-final-wrap">
+          <div className="lp-container">
+            <div className="cta-final-card">
+              <h2>Organize a operação da sua agência</h2>
+              <p>Clientes, aprovações, agendamento no Instagram e financeiro em um só lugar.</p>
+              <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
+                Criar conta grátis <ArrowRight size={16} />
+              </a>
             </div>
           </div>
         </section>

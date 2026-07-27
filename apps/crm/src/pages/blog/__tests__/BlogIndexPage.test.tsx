@@ -9,6 +9,7 @@ vi.mock('@/context/AuthContext', () => ({
 
 import BlogIndexPage from '../BlogIndexPage';
 import { BLOG_POSTS } from '@/content/blog.client';
+import { renderBlogIndexHtml } from '@/content/blog.seo';
 
 describe('BlogIndexPage', () => {
   it('renders the heading and one linked card per post', () => {
@@ -79,5 +80,37 @@ describe('BlogIndexPage', () => {
       </MemoryRouter>,
     );
     expect(document.title).toContain('Blog do Mesaas');
+  });
+});
+
+// The article page had this invariant pinned from the start; the index did
+// not, and an external review found the static mirror shipping a CTA the
+// React page dropped the moment it mounted. Crawlers and readers must get the
+// same document for the same URL.
+describe('BlogIndexPage vs renderBlogIndexHtml alignment', () => {
+  it('renders the same call to action the static mirror emits', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <BlogIndexPage />
+      </MemoryRouter>,
+    );
+    const staticDoc = new DOMParser().parseFromString(renderBlogIndexHtml(BLOG_POSTS), 'text/html');
+
+    const staticCta = staticDoc.querySelector('section:last-of-type h2')?.textContent?.trim();
+    expect(staticCta).toBeTruthy();
+    expect(container.querySelector('.cta-final-card h2')?.textContent?.trim()).toBe(staticCta);
+
+    const signupHref = '/login?tab=register';
+    expect(staticDoc.querySelector(`a[href="${signupHref}"]`)).not.toBeNull();
+    expect(container.querySelector(`a[href="${signupHref}"]`)).not.toBeNull();
+  });
+
+  it('still emits exactly one h1 with the CTA present', () => {
+    render(
+      <MemoryRouter>
+        <BlogIndexPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
 });
