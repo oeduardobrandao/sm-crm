@@ -20,6 +20,15 @@ interface Deps {
   geminiKey: string | null;
 }
 
+/** Everything an action handler needs from the authenticated request. */
+interface ActionCtx {
+  db: DbClient;
+  conta_id: string;
+  userId: string;
+  body: any;
+  json: ReturnType<typeof createJsonResponder>;
+}
+
 // workflow_etapas is deliberately ABSENT: it has no conta_id column (it is
 // tenant-scoped transitively through workflow_id), so a .eq("conta_id", ...)
 // delete against it raises `column "conta_id" does not exist` and aborts the
@@ -42,6 +51,140 @@ function chunked<T>(items: T[], size = IN_CHUNK): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
+}
+
+/**
+ * Audit writes for commit/undo happen AFTER the rows have already landed, and
+ * they run inside the action's outer try — so a rejection there would report
+ * `Internal error` (500) for work that actually succeeded, and the client would
+ * retry a batch that is already committed. insertAuditLog swallows its own
+ * failures today, but that is its contract, not ours: this wrapper makes the
+ * "audit never changes the response" guarantee local and unconditional.
+ */
+async function auditQuietly(...args: Parameters<typeof insertAuditLog>): Promise<void> {
+  try {
+    await insertAuditLog(...args);
+  } catch (e) {
+    console.error("[data-import] audit log failed:", e);
+  }
+}
+
+// --- undo guards -------------------------------------------------------------
+// Each guard answers one question — "which of these ids must undo NOT delete?" —
+// so the guard chain can be read (and tested) one link at a time.
+
+/**
+ * workflow_posts pass. A post that already carries a platform id was published to
+ * Instagram/TikTok; deleting it would drop the record of live content.
+ * Returns the ids to SKIP.
+ */
+async function guardPublishedPosts(db: DbClient, conta_id: string, ids: string[]): Promise<string[]> {
+  const published = new Set<string>();
+  for (const part of chunked(ids)) {
+    const { data, error } = await db
+      .from("workflow_posts")
+      .select("id, instagram_media_id, tiktok_post_id")
+      .eq("conta_id", conta_id)
+      .in("id", part.map(Number))
+      .or("instagram_media_id.not.is.null,tiktok_post_id.not.is.null");
+    if (error) throw error;
+    for (const p of (data ?? []) as any[]) published.add(String(p.id));
+  }
+  return [...published];
+}
+
+/**
+ * workflows pass. workflow_posts.workflow_id is ON DELETE CASCADE, so deleting a
+ * container workflow would silently destroy the very published post
+ * guardPublishedPosts just protected — and any post the user added to it after
+ * the import. Returns the ids to KEEP: any workflow that still holds posts.
+ */
+async function guardContainerWorkflows(db: DbClient, conta_id: string, ids: string[]): Promise<string[]> {
+  const keep = new Set<string>();
+  for (const part of chunked(ids)) {
+    const { data, error } = await db
+      .from("workflow_posts")
+      .select("workflow_id")
+      .eq("conta_id", conta_id)
+      .in("workflow_id", part.map(Number));
+    if (error) throw error;
+    for (const r of (data ?? []) as any[]) keep.add(String(r.workflow_id));
+  }
+  return [...keep];
+}
+
+/**
+ * EVERY table that declares `REFERENCES clientes(id) ON DELETE CASCADE`, with the
+ * column holding the cliente id and the table's tenant-scope column.
+ *
+ * `scopeCol: null` means the table has NO tenant column of its own (it is scoped
+ * transitively through clientes). Adding a `.eq("conta_id", …)` to those raises
+ * `column "conta_id" does not exist` and aborts the entire undo — the same trap
+ * that keeps workflow_etapas out of UNDO_ORDER. The ids being probed are already
+ * known to be this tenant's clientes (they come from a conta-scoped
+ * import_job_items read), so the scope filter is defence in depth, not the
+ * isolation boundary.
+ *
+ * Verified against the migrations on 2026-07-27:
+ *   workflows              cliente_id  conta_id      20260301_baseline_schema.sql:148
+ *   instagram_accounts     client_id   (none)        20260301_baseline_schema.sql:174
+ *   analytics_reports      client_id   conta_id      20260306_analytics_module.sql:37
+ *   hub_briefing_questions cliente_id  conta_id      20260410120000_hub_briefing_questions.sql:3
+ *   ideias                 cliente_id  workspace_id  20260414114009_ideias.sql:5
+ *   client_hub_tokens      cliente_id  conta_id      20260415000001_portal_and_hub_tokens.sql:27
+ *   hub_brand              cliente_id  (none)        20260415000001_portal_and_hub_tokens.sql:47
+ *   hub_brand_files        cliente_id  (none)        20260415000001_portal_and_hub_tokens.sql:68
+ *   hub_pages              cliente_id  conta_id      20260415000001_portal_and_hub_tokens.sql:89
+ *   briefings              cliente_id  conta_id      20260616120000_briefings_table.sql:3
+ *   tiktok_accounts        client_id   (none)        20260718000001_tiktok_core.sql:6
+ *
+ * !!! ANY future table added with `REFERENCES clientes(id) ON DELETE CASCADE`
+ * MUST be added to this list. This is a hand-maintained mirror of the schema and
+ * a missing entry fails SILENTLY: undo deletes the cliente, Postgres cascades
+ * away rows this import never created (an OAuth-linked Instagram account, a live
+ * hub token, the client's own briefing answers), and nothing appears in
+ * skippedClientes. That omission is exactly the bug this list exists to prevent,
+ * and it has already recurred once. Re-derive the list with:
+ *   grep -rn "REFERENCES clientes(id) ON DELETE CASCADE" supabase/migrations/
+ * `ON DELETE SET NULL` references (designs, ai_image_generations, and the two
+ * baseline finance tables) are deliberately absent — those rows survive.
+ */
+const CLIENTE_CASCADE_CHILDREN: Array<{ table: string; column: string; scopeCol: string | null }> = [
+  { table: "workflows", column: "cliente_id", scopeCol: "conta_id" },
+  { table: "ideias", column: "cliente_id", scopeCol: "workspace_id" },
+  { table: "instagram_accounts", column: "client_id", scopeCol: null },
+  { table: "tiktok_accounts", column: "client_id", scopeCol: null },
+  { table: "analytics_reports", column: "client_id", scopeCol: "conta_id" },
+  { table: "briefings", column: "cliente_id", scopeCol: "conta_id" },
+  { table: "hub_briefing_questions", column: "cliente_id", scopeCol: "conta_id" },
+  { table: "client_hub_tokens", column: "cliente_id", scopeCol: "conta_id" },
+  { table: "hub_brand", column: "cliente_id", scopeCol: null },
+  { table: "hub_brand_files", column: "cliente_id", scopeCol: null },
+  { table: "hub_pages", column: "cliente_id", scopeCol: "conta_id" },
+];
+
+/**
+ * clientes pass — the LAST and most dangerous one. Returns the ids to KEEP: any
+ * cliente still referenced by a surviving row in ANY table that cascades from it.
+ *
+ * The workflow_posts and workflows passes have already run, so "still referenced"
+ * means exactly "not deleted by this undo". Every child table is probed
+ * unconditionally (no early exit) so the query sequence is stable and each probe
+ * is independently assertable.
+ */
+async function guardReferencedClientes(db: DbClient, conta_id: string, ids: string[]): Promise<string[]> {
+  const keep = new Set<string>();
+  for (const part of chunked(ids)) {
+    const numericPart = part.map(Number);
+    for (const child of CLIENTE_CASCADE_CHILDREN) {
+      let q = db.from(child.table).select(child.column);
+      if (child.scopeCol) q = q.eq(child.scopeCol, conta_id);
+      const { data, error } = await q.in(child.column, numericPart);
+      if (error) throw error;
+      for (const r of (data ?? []) as any[]) keep.add(String(r[child.column]));
+    }
+  }
+  return [...keep];
 }
 
 export function createDataImportHandler(deps: Deps) {
@@ -78,6 +221,7 @@ export function createDataImportHandler(deps: Deps) {
     } catch {
       /* actions validate below */
     }
+    const ctx: ActionCtx = { db, conta_id, userId: user.id, body, json };
 
     try {
       if (action === "start") {
@@ -102,7 +246,10 @@ export function createDataImportHandler(deps: Deps) {
         // Same shape guard commit applies: without it `rows: "abc"` reaches
         // rows.filter() below and surfaces as an opaque 500.
         if (!Array.isArray(rows)) return json({ error: "Invalid payload" }, 400);
-        if (rows.length > PREVIEW_LIMIT) return json({ error: "Batch too large" }, 400);
+        // Distinct from commit's message on purpose: the two actions enforce
+        // different caps (PREVIEW_LIMIT vs BATCH_LIMIT) and a shared string
+        // leaves the client unable to tell which one it hit.
+        if (rows.length > PREVIEW_LIMIT) return json({ error: "Preview batch too large" }, 400);
         const counts: Record<string, number> = { clientes: 0, posts: 0, entregas: 0, ideias: 0 };
         for (const r of rows) {
           if (r.kind === "cliente") counts.clientes++;
@@ -150,222 +297,8 @@ export function createDataImportHandler(deps: Deps) {
         });
       }
 
-      if (action === "commit") {
-        const jobId = Number(body.jobId);
-        const rows = (body.rows ?? []) as CommitRow[];
-        if (!jobId || !Array.isArray(rows)) return json({ error: "Invalid payload" }, 400);
-        if (rows.length > BATCH_LIMIT) return json({ error: "Batch too large" }, 400);
-        // Job ownership is checked HERE, not only inside the RPC. `db` is the
-        // service-role client (RLS bypassed): a foreign jobId makes every row fail
-        // inside import_commit_row, but control still fell through to the
-        // `final` update below and flipped ANOTHER workspace's job row to
-        // 'completed' — resurrecting an undone job in that tenant's history/undo UI.
-        const { data: job } = await db
-          .from("import_jobs")
-          .select("id")
-          .eq("id", jobId)
-          .eq("conta_id", conta_id)
-          .single();
-        if (!job) return json({ error: "Job not found" }, 404);
-        const results: any[] = [];
-        for (const row of rows) {
-          const { data, error } = await db.rpc("import_commit_row", {
-            p_conta_id: conta_id,
-            p_job_id: jobId,
-            p_source_row_key: row.sourceKey,
-            p_kind: row.kind,
-            p_payload: normalizePayload(row),
-          });
-          if (error) {
-            console.error("[data-import] commit row failed:", row.sourceKey, error);
-            // The plan-count triggers (20260611130003_count_triggers.sql) fire
-            // INSIDE the RPC and raise `plan_limit_exceeded:<key>` — a bulk import
-            // on a limited plan hits this partway through. Translate it into a
-            // user-legible reason instead of a generic failure; the job stays
-            // resumable, since committed rows are skipped on retry.
-            const raw = String((error as { message?: string }).message ?? "");
-            const limitKey = raw.startsWith("plan_limit_exceeded:")
-              ? raw.slice("plan_limit_exceeded:".length).trim()
-              : null;
-            results.push({
-              sourceKey: row.sourceKey,
-              table: null,
-              rowId: null,
-              skipped: false,
-              failed: true,
-              reason: limitKey ? `plan_limit:${limitKey}` : "error",
-            });
-          } else {
-            results.push({ sourceKey: row.sourceKey, table: data.table, rowId: data.row_id, skipped: data.skipped });
-          }
-        }
-        // Last batch marks the job completed (client sets final on its last slice).
-        if (body.final === true) {
-          // conta-scoped as defence in depth, on top of the ownership check above.
-          await db.from("import_jobs").update({ status: "completed" }).eq("id", jobId).eq("conta_id", conta_id);
-        }
-        await insertAuditLog(db, {
-          conta_id,
-          actor_user_id: user.id,
-          action: "import_commit_batch",
-          resource_type: "import_job",
-          resource_id: String(jobId),
-          metadata: { rows: rows.length, failed: results.filter((r: any) => r.failed).length },
-        });
-        return json({ results });
-      }
-
-      if (action === "undo") {
-        const jobId = Number(body.jobId);
-        const { data: job } = await db
-          .from("import_jobs")
-          .select("id, conta_id, status, created_at")
-          .eq("id", jobId)
-          .eq("conta_id", conta_id)
-          .single();
-        if (!job) return json({ error: "Job not found" }, 404);
-        if (job.status === "undone") return json({ error: "Already undone" }, 400);
-        // 7-day undo window (spec: Limits & error handling)
-        if (Date.now() - new Date(job.created_at).getTime() > 7 * 24 * 60 * 60 * 1000) {
-          return json({ error: "Undo window expired" }, 400);
-        }
-        // `.eq("merged", false)` is LOAD-BEARING, not a filter for tidiness.
-        // A "mesclar com existente" row records the pre-existing cliente the
-        // import merged INTO, so it can resolve clienteRef and be skipped on
-        // resume — but that cliente belongs to the customer and predates the
-        // import. Deleting it here would cascade through their workflows,
-        // etapas, posts, ideias, instagram_accounts and folders. The spec is
-        // explicit: undo restores creations only, merges are never undone.
-        //
-        // Paged: an unpaged read is silently truncated by the project's max-rows
-        // cap. Undo would then delete only the first page and STILL mark the job
-        // `undone`, after which a retry returns `Already undone` and the rest is
-        // permanently un-undoable.
-        const items: Array<{ table_name: string; row_id: string }> = [];
-        for (let from = 0; ; from += PAGE_SIZE) {
-          const { data: page, error: itemsErr } = await db
-            .from("import_job_items")
-            .select("table_name, row_id, source_row_key, ordinal, merged")
-            .eq("job_id", jobId)
-            .eq("conta_id", conta_id)
-            .eq("merged", false)
-            .order("id", { ascending: true })
-            .range(from, from + PAGE_SIZE - 1);
-          if (itemsErr) throw itemsErr;
-          const rowsPage = (page ?? []) as Array<{ table_name: string; row_id: string }>;
-          items.push(...rowsPage);
-          if (rowsPage.length < PAGE_SIZE) break;
-        }
-
-        const byTable = new Map<string, string[]>();
-        for (const it of items) {
-          byTable.set(it.table_name, [...(byTable.get(it.table_name) ?? []), it.row_id]);
-        }
-        const skippedPublished: string[] = [];
-        const skippedWorkflows: string[] = [];
-        const skippedClientes: string[] = [];
-        let deleted = 0;
-        for (const table of UNDO_ORDER) {
-          let ids = byTable.get(table) ?? [];
-          if (!ids.length) continue;
-          if (table === "workflow_posts") {
-            const publishedIds = new Set<string>();
-            for (const part of chunked(ids)) {
-              const { data: published, error } = await db
-                .from("workflow_posts")
-                .select("id, instagram_media_id, tiktok_post_id")
-                .eq("conta_id", conta_id)
-                .in("id", part.map(Number))
-                .or("instagram_media_id.not.is.null,tiktok_post_id.not.is.null");
-              if (error) throw error;
-              for (const p of (published ?? []) as any[]) publishedIds.add(String(p.id));
-            }
-            skippedPublished.push(...publishedIds);
-            ids = ids.filter((id) => !publishedIds.has(id));
-          }
-          if (table === "workflows") {
-            // workflow_posts.workflow_id is ON DELETE CASCADE, so deleting a
-            // container workflow would silently destroy the very published post
-            // the guard above just protected — and any post the user added to it
-            // after the import. Keep any workflow that still holds posts.
-            const keep = new Set<string>();
-            for (const part of chunked(ids)) {
-              const { data: remaining, error } = await db
-                .from("workflow_posts")
-                .select("workflow_id")
-                .eq("conta_id", conta_id)
-                .in("workflow_id", part.map(Number));
-              if (error) throw error;
-              for (const r of (remaining ?? []) as any[]) keep.add(String(r.workflow_id));
-            }
-            skippedWorkflows.push(...keep);
-            ids = ids.filter((id) => !keep.has(id));
-          }
-          if (table === "clientes") {
-            // clientes is the LAST pass and the most dangerous one: workflows.cliente_id
-            // (20260301_baseline_schema.sql:148) and ideias.cliente_id
-            // (20260414114009_ideias.sql:5) are both ON DELETE CASCADE, and
-            // workflow_posts cascades from workflows in turn. Deleting a cliente
-            // unguarded therefore destroys the published post the workflow_posts pass
-            // just protected — and every workflow / post / ideia the user created under
-            // an imported cliente AFTER the import, rows this job never created.
-            // So: keep any cliente still referenced by a SURVIVING workflows or ideias
-            // row. Both passes above have already run, so "surviving" means exactly
-            // "not deleted by this undo" — which also subsumes skippedWorkflows: a kept
-            // workflow is still in the table, so its cliente is found here by
-            // construction.
-            const keep = new Set<string>();
-            for (const part of chunked(ids)) {
-              const numericPart = part.map(Number);
-              const { data: wf, error: wfErr } = await db
-                .from("workflows")
-                .select("cliente_id")
-                .eq("conta_id", conta_id)
-                .in("cliente_id", numericPart);
-              if (wfErr) throw wfErr;
-              for (const r of (wf ?? []) as any[]) keep.add(String(r.cliente_id));
-              const { data: ideias, error: idErr } = await db
-                .from("ideias")
-                .select("cliente_id")
-                .eq("workspace_id", conta_id)
-                .in("cliente_id", numericPart);
-              if (idErr) throw idErr;
-              for (const r of (ideias ?? []) as any[]) keep.add(String(r.cliente_id));
-            }
-            skippedClientes.push(...keep);
-            ids = ids.filter((id) => !keep.has(id));
-          }
-          if (ids.length) {
-            const numeric = table !== "ideias";
-            // ideias is scoped by workspace_id, every other target by conta_id
-            // (both hold the workspace uuid).
-            const scopeCol = table === "ideias" ? "workspace_id" : "conta_id";
-            for (const part of chunked(ids)) {
-              // `.select("id")` makes the delete return the rows it actually removed,
-              // so `deleted` reports reality — a row filtered out by the scope guard or
-              // already gone must not inflate the number shown to the user.
-              const { data: removed, error } = await db
-                .from(table)
-                .delete()
-                .in("id", numeric ? part.map(Number) : part)
-                .eq(scopeCol, conta_id)
-                .select("id");
-              if (error) throw error;
-              deleted += ((removed ?? []) as unknown[]).length;
-            }
-          }
-        }
-        await db.from("import_jobs").update({ status: "undone" }).eq("id", jobId).eq("conta_id", conta_id);
-        await insertAuditLog(db, {
-          conta_id,
-          actor_user_id: user.id,
-          action: "import_undo",
-          resource_type: "import_job",
-          resource_id: String(jobId),
-          metadata: { deleted, skippedPublished, skippedWorkflows, skippedClientes },
-        });
-        return json({ deleted, skippedPublished, skippedWorkflows, skippedClientes });
-      }
+      if (action === "commit") return await handleCommit(ctx);
+      if (action === "undo") return await handleUndo(ctx);
 
       return json({ error: "Unknown action" }, 404);
     } catch (e) {
@@ -373,6 +306,188 @@ export function createDataImportHandler(deps: Deps) {
       return json({ error: "Internal error" }, 500);
     }
   };
+}
+
+async function handleCommit({ db, conta_id, userId, body, json }: ActionCtx): Promise<Response> {
+  const jobId = Number(body.jobId);
+  const rows = (body.rows ?? []) as CommitRow[];
+  if (!jobId || !Array.isArray(rows)) return json({ error: "Invalid payload" }, 400);
+  if (rows.length > BATCH_LIMIT) return json({ error: "Commit batch too large" }, 400);
+  // Job ownership is checked HERE, not only inside the RPC. `db` is the
+  // service-role client (RLS bypassed): a foreign jobId makes every row fail
+  // inside import_commit_row, but control still fell through to the
+  // `final` update below and flipped ANOTHER workspace's job row to
+  // 'completed' — resurrecting an undone job in that tenant's history/undo UI.
+  //
+  // `status` is selected, not just `id`: an existence-only probe passes an
+  // already-undone job. import_commit_row refuses to write to one
+  // (20260727000001_data_import_jobs.sql:89-90), so every row fails — but
+  // control still reached the `final` update, flipping 'undone' -> 'completed',
+  // re-arming the undo button on a job that was already undone and corrupting
+  // the very history the audit trail exists to record. Reject it up front, the
+  // same way undo already does.
+  const { data: job } = await db
+    .from("import_jobs")
+    .select("id, status")
+    .eq("id", jobId)
+    .eq("conta_id", conta_id)
+    .single();
+  if (!job) return json({ error: "Job not found" }, 404);
+  if (job.status === "undone") return json({ error: "Already undone" }, 400);
+  const results: any[] = [];
+  for (const row of rows) {
+    const { data, error } = await db.rpc("import_commit_row", {
+      p_conta_id: conta_id,
+      p_job_id: jobId,
+      p_source_row_key: row.sourceKey,
+      p_kind: row.kind,
+      p_payload: normalizePayload(row),
+    });
+    if (error) {
+      console.error("[data-import] commit row failed:", row.sourceKey, error);
+      // The plan-count triggers (20260611130003_count_triggers.sql) fire
+      // INSIDE the RPC and raise `plan_limit_exceeded:<key>` — a bulk import
+      // on a limited plan hits this partway through. Translate it into a
+      // user-legible reason instead of a generic failure; the job stays
+      // resumable, since committed rows are skipped on retry.
+      const raw = String((error as { message?: string }).message ?? "");
+      const limitKey = raw.startsWith("plan_limit_exceeded:") ? raw.slice("plan_limit_exceeded:".length).trim() : null;
+      results.push({
+        sourceKey: row.sourceKey,
+        table: null,
+        rowId: null,
+        skipped: false,
+        failed: true,
+        reason: limitKey ? `plan_limit:${limitKey}` : "error",
+      });
+    } else {
+      results.push({ sourceKey: row.sourceKey, table: data.table, rowId: data.row_id, skipped: data.skipped });
+    }
+  }
+  // Last batch marks the job completed (client sets final on its last slice).
+  if (body.final === true) {
+    // conta-scoped as defence in depth, on top of the ownership check above.
+    await db.from("import_jobs").update({ status: "completed" }).eq("id", jobId).eq("conta_id", conta_id);
+  }
+  await auditQuietly(db, {
+    conta_id,
+    actor_user_id: userId,
+    action: "import_commit_batch",
+    resource_type: "import_job",
+    resource_id: String(jobId),
+    metadata: { rows: rows.length, failed: results.filter((r: any) => r.failed).length },
+  });
+  return json({ results });
+}
+
+async function handleUndo({ db, conta_id, userId, body, json }: ActionCtx): Promise<Response> {
+  const jobId = Number(body.jobId);
+  const { data: job } = await db
+    .from("import_jobs")
+    .select("id, conta_id, status, created_at")
+    .eq("id", jobId)
+    .eq("conta_id", conta_id)
+    .single();
+  if (!job) return json({ error: "Job not found" }, 404);
+  if (job.status === "undone") return json({ error: "Already undone" }, 400);
+  // 7-day undo window (spec: Limits & error handling)
+  if (Date.now() - new Date(job.created_at).getTime() > 7 * 24 * 60 * 60 * 1000) {
+    return json({ error: "Undo window expired" }, 400);
+  }
+  // `.eq("merged", false)` is LOAD-BEARING, not a filter for tidiness.
+  // A "mesclar com existente" row records the pre-existing cliente the
+  // import merged INTO, so it can resolve clienteRef and be skipped on
+  // resume — but that cliente belongs to the customer and predates the
+  // import. Deleting it here would cascade through their workflows,
+  // etapas, posts, ideias, instagram_accounts and folders. The spec is
+  // explicit: undo restores creations only, merges are never undone.
+  //
+  // Paged: an unpaged read is silently truncated by the project's max-rows
+  // cap. Undo would then delete only the first page and STILL mark the job
+  // `undone`, after which a retry returns `Already undone` and the rest is
+  // permanently un-undoable.
+  //
+  // The loop advances by the number of rows ACTUALLY returned and stops only on
+  // an EMPTY page. Breaking on `length < PAGE_SIZE` would re-introduce the very
+  // dependency this pagination removes: if the project's PostgREST `max-rows` is
+  // ever set below PAGE_SIZE, the first page comes back short, the read stops
+  // there, and undo deletes a subset while still marking the job `undone`.
+  const items: Array<{ table_name: string; row_id: string }> = [];
+  for (let from = 0; ; ) {
+    const { data: page, error: itemsErr } = await db
+      .from("import_job_items")
+      .select("table_name, row_id, source_row_key, ordinal, merged")
+      .eq("job_id", jobId)
+      .eq("conta_id", conta_id)
+      .eq("merged", false)
+      .order("id", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (itemsErr) throw itemsErr;
+    const rowsPage = (page ?? []) as Array<{ table_name: string; row_id: string }>;
+    if (rowsPage.length === 0) break;
+    items.push(...rowsPage);
+    from += rowsPage.length;
+  }
+
+  const byTable = new Map<string, string[]>();
+  for (const it of items) {
+    byTable.set(it.table_name, [...(byTable.get(it.table_name) ?? []), it.row_id]);
+  }
+  const skippedPublished: string[] = [];
+  const skippedWorkflows: string[] = [];
+  const skippedClientes: string[] = [];
+  let deleted = 0;
+  for (const table of UNDO_ORDER) {
+    let ids = byTable.get(table) ?? [];
+    if (!ids.length) continue;
+    if (table === "workflow_posts") {
+      const published = await guardPublishedPosts(db, conta_id, ids);
+      skippedPublished.push(...published);
+      const skip = new Set(published);
+      ids = ids.filter((id) => !skip.has(id));
+    }
+    if (table === "workflows") {
+      const keptIds = await guardContainerWorkflows(db, conta_id, ids);
+      skippedWorkflows.push(...keptIds);
+      const keep = new Set(keptIds);
+      ids = ids.filter((id) => !keep.has(id));
+    }
+    if (table === "clientes") {
+      const keptIds = await guardReferencedClientes(db, conta_id, ids);
+      skippedClientes.push(...keptIds);
+      const keep = new Set(keptIds);
+      ids = ids.filter((id) => !keep.has(id));
+    }
+    if (ids.length) {
+      const numeric = table !== "ideias";
+      // ideias is scoped by workspace_id, every other target by conta_id
+      // (both hold the workspace uuid).
+      const scopeCol = table === "ideias" ? "workspace_id" : "conta_id";
+      for (const part of chunked(ids)) {
+        // `.select("id")` makes the delete return the rows it actually removed,
+        // so `deleted` reports reality — a row filtered out by the scope guard or
+        // already gone must not inflate the number shown to the user.
+        const { data: removed, error } = await db
+          .from(table)
+          .delete()
+          .in("id", numeric ? part.map(Number) : part)
+          .eq(scopeCol, conta_id)
+          .select("id");
+        if (error) throw error;
+        deleted += ((removed ?? []) as unknown[]).length;
+      }
+    }
+  }
+  await db.from("import_jobs").update({ status: "undone" }).eq("id", jobId).eq("conta_id", conta_id);
+  await auditQuietly(db, {
+    conta_id,
+    actor_user_id: userId,
+    action: "import_undo",
+    resource_type: "import_job",
+    resource_id: String(jobId),
+    metadata: { deleted, skippedPublished, skippedWorkflows, skippedClientes },
+  });
+  return json({ deleted, skippedPublished, skippedWorkflows, skippedClientes });
 }
 
 /** Maps a CommitRow's wire fields onto the RPC's jsonb payload keys. */

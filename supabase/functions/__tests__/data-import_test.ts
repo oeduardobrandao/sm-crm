@@ -74,9 +74,9 @@ function post(path: string, body: unknown) {
   });
 }
 
-/** commit now verifies job ownership before touching a row; queue that lookup. */
-function queueJobOwned(db: ReturnType<typeof createSupabaseQueryMock>) {
-  db.queue("import_jobs", "select", { data: { id: 7 }, error: null });
+/** commit now verifies job ownership AND status before touching a row. */
+function queueJobOwned(db: ReturnType<typeof createSupabaseQueryMock>, status = "committing") {
+  db.queue("import_jobs", "select", { data: { id: 7, status }, error: null });
 }
 
 Deno.test("data-import: rejects when feature_csv_import is off", async () => {
@@ -179,7 +179,9 @@ Deno.test("data-import: preview caps the row count", async () => {
   const rows = Array.from({ length: 5001 }, (_, i) => ({ kind: "cliente", sourceKey: String(i), nome: "X" }));
   const res = await makeHandler(db)(post("preview", { rows }));
   assertEquals(res.status, 400);
-  assertEquals(await readJson(res), { error: "Batch too large" });
+  // distinct from commit's cap: preview and commit enforce different limits, so
+  // a shared string leaves the client unable to tell which one it hit.
+  assertEquals(await readJson(res), { error: "Preview batch too large" });
 });
 
 Deno.test("data-import: commit calls the RPC per row and reports skips", async () => {
@@ -255,8 +257,49 @@ Deno.test("data-import: commit rejects an oversized batch", async () => {
   const rows = Array.from({ length: 201 }, (_, i) => ({ kind: "cliente", sourceKey: String(i), nome: "X" }));
   const res = await makeHandler(db)(post("commit", { jobId: 7, rows }));
   assertEquals(res.status, 400);
-  assertEquals(await readJson(res), { error: "Batch too large" });
+  assertEquals(await readJson(res), { error: "Commit batch too large" });
   assertEquals(db.calls.filter((c) => c.operation === "rpc").length, 0);
+});
+
+Deno.test("data-import: commit refuses a job that has already been undone", async () => {
+  // The ownership probe used to select only `id`, so an undone job passed it.
+  // import_commit_row refuses to write to an undone job, so every row failed —
+  // but control still reached the `final` update, flipping undone -> completed
+  // and re-arming the undo button on a job that was already undone.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueJobOwned(db, "undone");
+  const rows = [{ kind: "cliente", sourceKey: "a", nome: "Ana" }];
+  const res = await makeHandler(db)(post("commit", { jobId: 7, rows, final: true }));
+  assertEquals(res.status, 400);
+  assertEquals(await readJson(res), { error: "Already undone" });
+  assertEquals(db.calls.filter((c) => c.operation === "rpc").length, 0);
+  assertEquals(callsFor(db, "import_jobs", "update").length, 0);
+  assertEquals(callsFor(db, "audit_log", "insert").length, 0);
+  // an existence-only probe cannot see the status it must reject on
+  const probe = oneCall(db, "import_jobs", "select");
+  assert(
+    probe.selectArgs.some((a) => String(a[0] ?? "").includes("status")),
+    `commit's ownership probe must select status — got ${JSON.stringify(probe.selectArgs)}`,
+  );
+});
+
+Deno.test("data-import: a failing audit write does not turn a committed batch into a 500", async () => {
+  // The audit write happens AFTER the rows have landed, inside the outer try. A
+  // rejection there would report Internal error for a batch that committed, and
+  // the client would retry work that is already done.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueJobOwned(db);
+  db.queueRpc("import_commit_row", { data: { skipped: false, table: "clientes", row_id: "3" }, error: null });
+  db.queue("audit_log", "insert", () => {
+    throw new Error("audit_log is unreachable");
+  });
+  const rows = [{ kind: "cliente", sourceKey: "a", nome: "Ana" }];
+  const res = await makeHandler(db)(post("commit", { jobId: 7, rows }));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.results[0].rowId, "3");
 });
 
 Deno.test("data-import: commit forwards conta_id so the RPC can reject foreign clientes", async () => {
@@ -409,6 +452,13 @@ Deno.test("data-import: undo deletes recorded rows in order, skips published pos
   assertModifier(itemRead, "range", [0, 499]);
 
   // --- every guard and delete is conta-scoped by hand ----------------------
+  // The published-post predicate itself: inverting `.not.is.null` to `.is.null`
+  // would make undo delete every PUBLISHED post and keep the drafts, and no
+  // other assertion here would notice — the fixture would still produce the
+  // same shape.
+  assertModifier(oneCall(db, "workflow_posts", "select", 0), "or", [
+    "instagram_media_id.not.is.null,tiktok_post_id.not.is.null",
+  ]);
   assertModifier(oneCall(db, "workflow_posts", "select", 0), "eq", ["conta_id", "conta-1"]);
   assertModifier(oneCall(db, "workflow_posts", "select", 1), "eq", ["conta_id", "conta-1"]);
   assertModifier(oneCall(db, "workflows", "select"), "eq", ["conta_id", "conta-1"]);
@@ -441,6 +491,64 @@ Deno.test("data-import: undo keeps a cliente that still holds a user-created ide
   assertEquals(body.deleted, 0);
   assertEquals(callsFor(db, "clientes", "delete").length, 0);
 });
+
+// Every table that declares `REFERENCES clientes(id) ON DELETE CASCADE`, as
+// verified against supabase/migrations. A cliente still referenced by ANY of them
+// must survive undo: those rows were not created by the import, and the cascade
+// would destroy them silently — an OAuth-linked Instagram account, the live hub
+// token behind the client's link, the client's own briefing answers.
+//
+// `scope: null` means the table has NO tenant column. Adding `.eq("conta_id", …)`
+// there raises `column "conta_id" does not exist` and aborts the ENTIRE undo —
+// the same trap that keeps workflow_etapas out of UNDO_ORDER — so the absence is
+// asserted, not just the presence.
+const CLIENTE_CASCADE_CHILDREN: Array<{ table: string; column: string; scope: string | null }> = [
+  { table: "workflows", column: "cliente_id", scope: "conta_id" },
+  { table: "ideias", column: "cliente_id", scope: "workspace_id" },
+  { table: "instagram_accounts", column: "client_id", scope: null },
+  { table: "tiktok_accounts", column: "client_id", scope: null },
+  { table: "analytics_reports", column: "client_id", scope: "conta_id" },
+  { table: "briefings", column: "cliente_id", scope: "conta_id" },
+  { table: "hub_briefing_questions", column: "cliente_id", scope: "conta_id" },
+  { table: "client_hub_tokens", column: "cliente_id", scope: "conta_id" },
+  { table: "hub_brand", column: "cliente_id", scope: null },
+  { table: "hub_brand_files", column: "cliente_id", scope: null },
+  { table: "hub_pages", column: "cliente_id", scope: "conta_id" },
+];
+
+for (const child of CLIENTE_CASCADE_CHILDREN) {
+  Deno.test(`data-import: undo keeps a cliente still referenced by ${child.table}`, async () => {
+    const db = createSupabaseQueryMock();
+    authAs(db);
+    queueOwnedJob(db);
+    db.queue("import_job_items", "select", {
+      data: [{ table_name: "clientes", row_id: "3", source_row_key: "a", ordinal: 0, merged: false }],
+      error: null,
+    });
+    // ONLY this child still references cliente 3 — every other probe falls
+    // through to the mock's empty default, so a missing table in the handler's
+    // enumeration shows up as a deleted cliente right here.
+    db.queue(child.table, "select", { data: [{ [child.column]: 3 }], error: null });
+    db.queue("clientes", "delete", { data: [{ id: 3 }], error: null }); // must go unused
+    db.queue("import_jobs", "update", { data: null, error: null });
+    db.queue("audit_log", "insert", { data: null, error: null });
+    const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+    const body = await readJson(res);
+    assertEquals(body.skippedClientes, ["3"]);
+    assertEquals(body.deleted, 0);
+    assertEquals(callsFor(db, "clientes", "delete").length, 0);
+    const probe = oneCall(db, child.table, "select");
+    assertModifier(probe, "in", [child.column, [3]]);
+    if (child.scope) {
+      assertModifier(probe, "eq", [child.scope, "conta-1"]);
+    } else {
+      assert(
+        !probe.modifiers.some((m) => m.method === "eq"),
+        `${child.table} has no tenant column — a scope filter raises "column does not exist" and aborts the whole undo`,
+      );
+    }
+  });
+}
 
 Deno.test("data-import: undo does delete a cliente nothing else references", async () => {
   const db = createSupabaseQueryMock();
@@ -504,6 +612,7 @@ Deno.test("data-import: undo pages the item read past the REST max-rows cap", as
     data: [{ table_name: "clientes", row_id: "501", source_row_key: "k500", ordinal: 0, merged: false }],
     error: null,
   });
+  db.queue("import_job_items", "select", { data: [], error: null }); // end of data
   // guard SELECTs and deletes are chunked at 500, so 501 ids = 2 of each
   db.queue("workflows", "select", { data: [], error: null }, { data: [], error: null });
   db.queue("ideias", "select", { data: [], error: null }, { data: [], error: null });
@@ -518,16 +627,77 @@ Deno.test("data-import: undo pages the item read past the REST max-rows cap", as
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
   assertEquals(body.deleted, 501);
+  // the read stops on an EMPTY page, not a short one, so the last page costs an
+  // extra round-trip — that is the price of not depending on PAGE_SIZE matching
+  // the project's max-rows setting.
   const reads = callsFor(db, "import_job_items", "select");
-  assertEquals(reads.length, 2);
+  assertEquals(reads.length, 3);
   assertModifier(reads[0], "range", [0, 499]);
   assertModifier(reads[1], "range", [500, 999]);
+  assertModifier(reads[2], "range", [501, 1000]);
   // chunked `.in()` lists: 500 + 1
   const deletes = callsFor(db, "clientes", "delete");
   assertEquals(deletes.length, 2);
   assertModifier(deletes[1], "in", ["id", [501]]);
   assertEquals(callsFor(db, "workflows", "select").length, 2);
   assertEquals(callsFor(db, "ideias", "select").length, 2);
+});
+
+Deno.test("data-import: undo keeps paging when a page comes back shorter than PAGE_SIZE", async () => {
+  // PAGE_SIZE must be genuinely independent of the project's PostgREST max-rows.
+  // If max-rows is ever set below PAGE_SIZE, EVERY page comes back short —
+  // breaking on `length < PAGE_SIZE` would stop after the first one, and undo
+  // would delete a subset while still marking the job `undone`, making the rest
+  // permanently un-undoable. That is precisely the bug pagination was added for.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  const item = (id: string) => ({ table_name: "clientes", row_id: id, source_row_key: id, ordinal: 0, merged: false });
+  db.queue(
+    "import_job_items",
+    "select",
+    { data: [item("3")], error: null }, // short page, but NOT the end
+    { data: [item("4")], error: null },
+    { data: [], error: null }, // empty page is the only end-of-data signal
+  );
+  db.queue("clientes", "delete", { data: [{ id: 3 }, { id: 4 }], error: null });
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.deleted, 2);
+  const reads = callsFor(db, "import_job_items", "select");
+  assertEquals(reads.length, 3);
+  // the window advances by the rows ACTUALLY returned, not by PAGE_SIZE
+  assertModifier(reads[0], "range", [0, 499]);
+  assertModifier(reads[1], "range", [1, 500]);
+  assertModifier(reads[2], "range", [2, 501]);
+  assertModifier(oneCall(db, "clientes", "delete"), "in", ["id", [3, 4]]);
+});
+
+Deno.test("data-import: undo deletes an imported ideia by uuid, scoped to workspace_id", async () => {
+  // ideias is the only UNDO_ORDER target with a different scope column
+  // (workspace_id, not conta_id) and non-numeric uuid ids. Making the numeric-id
+  // branch unconditional would send [NaN] and silently delete nothing.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  const ideiaId = "1f6d0b4e-1c3a-4f2b-9a77-0c5d8e2b4a91";
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "ideias", row_id: ideiaId, source_row_key: "i1", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("ideias", "delete", { data: [{ id: ideiaId }], error: null });
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.deleted, 1);
+  const del = oneCall(db, "ideias", "delete");
+  // ideias.workspace_id, NOT conta_id — the wrong column aborts the delete
+  assertModifier(del, "eq", ["workspace_id", "conta-1"]);
+  // ids pass through un-numbered; `.map(Number)` here would send [null]/[NaN]
+  assertModifier(del, "in", ["id", [ideiaId]]);
 });
 
 Deno.test("data-import: undo never leaks a database message to the client", async () => {
