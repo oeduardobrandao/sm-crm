@@ -87,6 +87,53 @@ Deno.test("data-import: rejects when feature_csv_import is off", async () => {
   assertEquals(res.status, 403);
 });
 
+// --- entitlement gate scope ---------------------------------------------------
+// The gate must only cover actions that consume NEW use of the feature. Whether
+// csv import is gated at all is an open pricing question, and a plan/flag change
+// inside the 7-day undo window must not make an already-authorized job
+// permanently unrecoverable through the wizard.
+
+Deno.test("data-import: preview is gated behind feature_csv_import, same as start", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  const gated = { ...ENTITLED, features: { feature_csv_import: false } };
+  const res = await makeHandler(db, gated)(post("preview", { rows: [] }));
+  assertEquals(res.status, 403);
+  assertEquals(await readJson(res), { error: "upgrade_required" });
+});
+
+Deno.test("data-import: undo succeeds even when feature_csv_import is false", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  db.queue("import_jobs", "select", {
+    data: { id: 7, conta_id: "conta-1", status: "completed", created_at: new Date().toISOString() },
+    error: null,
+  });
+  db.queue("import_job_items", "select", { data: [], error: null });
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const gated = { ...ENTITLED, features: { feature_csv_import: false } };
+  const res = await makeHandler(db, gated)(post("undo", { jobId: 7 }));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.deleted, 0);
+});
+
+Deno.test("data-import: commit resumes an owned job even when feature_csv_import is false", async () => {
+  // commit needs no gate of its own: it can only ever act on a jobId a gated
+  // `start` already minted, so leaving it ungated does not let an ungated
+  // workspace begin a fresh import.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  db.queue("import_jobs", "select", { data: { id: 7, status: "committing" }, error: null });
+  db.queueRpc("import_commit_row", { data: { skipped: false, table: "clientes", row_id: "3" }, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const gated = { ...ENTITLED, features: { feature_csv_import: false } };
+  const rows = [{ kind: "cliente", sourceKey: "a", nome: "Ana" }];
+  const res = await makeHandler(db, gated)(post("commit", { jobId: 7, rows }));
+  assertEquals(res.status, 200);
+});
+
 Deno.test("data-import: rejects a request with no Authorization header", async () => {
   const db = createSupabaseQueryMock();
   authAs(db);
@@ -307,6 +354,23 @@ Deno.test("data-import: commit rejects a foreign jobId before processing any row
   assertEquals(db.calls.filter((c) => c.operation === "rpc").length, 0);
   assertEquals(callsFor(db, "import_jobs", "update").length, 0);
   assertEquals(callsFor(db, "audit_log", "insert").length, 0);
+});
+
+Deno.test("data-import: commit's ownership probe surfaces a DB error as 500, not 404, without leaking it", async () => {
+  // Destructuring only `data` from the ownership select made a genuine query
+  // failure (timeout, connection loss) indistinguishable from "job not found".
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  db.queue("import_jobs", "select", { data: null, error: { message: 'relation "import_jobs" does not exist' } });
+  const rows = [{ kind: "cliente", sourceKey: "a", nome: "Ana" }];
+  const res = await makeHandler(db)(post("commit", { jobId: 7, rows }));
+  assertEquals(res.status, 500);
+  const body = await readJson(res);
+  assertEquals(body, { error: "Internal error" });
+  assertEquals(JSON.stringify(body).includes("relation"), false);
+  // a probe failure must not fall through to processing rows or touching the job
+  assertEquals(db.calls.filter((c) => c.operation === "rpc").length, 0);
+  assertEquals(callsFor(db, "import_jobs", "update").length, 0);
 });
 
 Deno.test("data-import: commit with final marks the job completed, conta-scoped", async () => {
@@ -554,6 +618,19 @@ Deno.test("data-import: undo refuses a job that is not the caller's", async () =
   assertEquals(callsFor(db, "import_job_items", "select").length, 0);
 });
 
+Deno.test("data-import: undo's ownership probe surfaces a DB error as 500, not 404, without leaking it", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  db.queue("import_jobs", "select", { data: null, error: { message: "connection reset by peer" } });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  assertEquals(res.status, 500);
+  const body = await readJson(res);
+  assertEquals(body, { error: "Internal error" });
+  assertEquals(JSON.stringify(body).includes("connection"), false);
+  assertEquals(callsFor(db, "import_job_items", "select").length, 0);
+  assertEquals(callsFor(db, "import_jobs", "update").length, 0);
+});
+
 Deno.test("data-import: undo refuses an already-undone job", async () => {
   const db = createSupabaseQueryMock();
   authAs(db);
@@ -647,6 +724,136 @@ Deno.test("data-import: undo deletes recorded rows in order, skips published pos
   const jobUpdate = oneCall(db, "import_jobs", "update", 1);
   assertEquals(jobUpdate.payload, { status: "undone" });
   assertModifier(jobUpdate, "eq", ["conta_id", "conta-1"]);
+});
+
+// --- published-post guard: post_property_values cascade ---------------------
+// Reported gap #2 from the previous review round: post_property_values.post_id
+// is ON DELETE CASCADE from workflow_posts (20260403_custom_properties.sql:27)
+// and import_commit_row never writes it — any row there is a custom field
+// value the user recorded on the post's own card after the import landed it.
+
+Deno.test("data-import: undo keeps an unpublished post that still has a post_property_values row", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflow_posts", row_id: "31", source_row_key: "p1", ordinal: 0, merged: false }],
+    error: null,
+  });
+  // not published...
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  // ...but the user set a custom field value on it after the import.
+  db.queue("post_property_values", "select", { data: [{ post_id: 31 }], error: null });
+  db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedPublished, ["31"]);
+  assertEquals(body.deleted, 0);
+  assertEquals(callsFor(db, "workflow_posts", "delete").length, 0);
+  const probe = oneCall(db, "post_property_values", "select");
+  assertModifier(probe, "in", ["post_id", [31]]);
+  // post_property_values has no tenant column — a scope filter there raises
+  // "column does not exist" and aborts the whole undo.
+  assert(
+    !probe.modifiers.some((m) => m.method === "eq"),
+    `post_property_values has no tenant column — got ${JSON.stringify(probe.modifiers)}`,
+  );
+});
+
+Deno.test("data-import: undo still deletes an unpublished post with no surviving post_property_values row", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflow_posts", row_id: "31", source_row_key: "p1", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null });
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedPublished, []);
+  assertEquals(body.deleted, 1);
+});
+
+// --- workflow container guard: workflow_select_options / portal_tokens ------
+// Reported gap #1 from the previous review round: guardContainerWorkflows only
+// probed workflow_posts. workflow_select_options.workflow_id
+// (20260403_custom_properties.sql:41) and portal_tokens.workflow_id
+// (20260415000001_portal_and_hub_tokens.sql:8) are two more ON DELETE CASCADE
+// children of workflows(id), both entirely user-authored and both conta_id-scoped.
+
+Deno.test("data-import: undo keeps a workflow that still has a surviving workflow_select_options row", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflows", row_id: "9", source_row_key: "container:1:0", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [], error: null }); // no surviving posts
+  db.queue("workflow_select_options", "select", { data: [{ workflow_id: 9 }], error: null });
+  db.queue("portal_tokens", "select", { data: [], error: null });
+  db.queue("workflows", "delete", { data: [{ id: 9 }], error: null }); // must go unused
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedWorkflows, ["9"]);
+  assertEquals(body.deleted, 0);
+  assertEquals(callsFor(db, "workflows", "delete").length, 0);
+  const probe = oneCall(db, "workflow_select_options", "select");
+  assertModifier(probe, "in", ["workflow_id", [9]]);
+  assertModifier(probe, "eq", ["conta_id", "conta-1"]);
+});
+
+Deno.test("data-import: undo keeps a workflow that still has a surviving portal_tokens row", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflows", row_id: "9", source_row_key: "container:1:0", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+  db.queue("portal_tokens", "select", { data: [{ workflow_id: 9 }], error: null });
+  db.queue("workflows", "delete", { data: [{ id: 9 }], error: null }); // must go unused
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedWorkflows, ["9"]);
+  assertEquals(body.deleted, 0);
+  assertEquals(callsFor(db, "workflows", "delete").length, 0);
+  const probe = oneCall(db, "portal_tokens", "select");
+  assertModifier(probe, "in", ["workflow_id", [9]]);
+  assertModifier(probe, "eq", ["conta_id", "conta-1"]);
+});
+
+Deno.test("data-import: undo still deletes a workflow with no surviving posts, select options, or portal tokens", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflows", row_id: "9", source_row_key: "container:1:0", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+  db.queue("portal_tokens", "select", { data: [], error: null });
+  db.queue("workflows", "delete", { data: [{ id: 9 }], error: null });
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedWorkflows, []);
+  assertEquals(body.deleted, 1);
 });
 
 Deno.test("data-import: undo claims the job as 'undoing' BEFORE reading its items", async () => {

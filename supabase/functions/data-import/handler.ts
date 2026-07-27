@@ -86,12 +86,54 @@ async function auditQuietly(...args: Parameters<typeof insertAuditLog>): Promise
 // so the guard chain can be read (and tested) one link at a time.
 
 /**
- * workflow_posts pass. A post that already carries a platform id was published to
- * Instagram/TikTok; deleting it would drop the record of live content.
- * Returns the ids to SKIP.
+ * EVERY table that declares `REFERENCES workflow_posts(id) ON DELETE CASCADE`
+ * and holds a row `import_commit_row` never writes itself — i.e. a table
+ * whose rows, if any exist, were authored by the user after the import
+ * landed the post. Column holding the post id + the table's tenant-scope
+ * column, same {table, column, scopeCol} shape as CLIENTE_CASCADE_CHILDREN
+ * below.
+ *
+ * post_property_values is the only entry today: import_commit_row never
+ * inserts into it (custom field values are set through the post's own
+ * card UI, the same way template_property_definitions is never written by
+ * the import — see TEMPLATE_REFERENCING_TABLES below), so a surviving row
+ * means the user recorded data against THIS post after the import landed
+ * it. Deleting the post would cascade that data away with no error and no
+ * mention in skippedPublished.
+ *
+ * Verified against the migrations on 2026-07-27:
+ *   post_property_values  post_id  (none)  20260403_custom_properties.sql:27
+ *
+ * workflow_posts(id) also cascades ON DELETE to post_edit_suggestions,
+ * post_media, post_designs, the instagram_scheduling queue row, and
+ * post_comment_threads (all `REFERENCES workflow_posts(id) ON DELETE
+ * CASCADE`) — none of those are probed here. This round's scope (review
+ * round 6) was the reported gaps only; the remaining workflow_posts children
+ * are a known follow-up, not a silent omission — see the task-9 report.
+ *
+ * !!! ANY future table added with `REFERENCES workflow_posts(id) ON DELETE
+ * CASCADE` that can hold user-authored data belongs in this list — the same
+ * discipline as CLIENTE_CASCADE_CHILDREN, and a missing entry fails exactly
+ * as silently. Re-derive with:
+ *   grep -rn "REFERENCES workflow_posts(id)" supabase/migrations/
+ */
+const PUBLISHED_POST_CASCADE_CHILDREN: Array<{ table: string; column: string; scopeCol: string | null }> = [
+  { table: "post_property_values", column: "post_id", scopeCol: null },
+];
+
+/**
+ * workflow_posts pass. Returns the ids to SKIP — the union of two distinct
+ * hazards:
+ *   - a post that already carries a platform id was published to
+ *     Instagram/TikTok; deleting it would drop the record of live content.
+ *   - a post with a surviving row in any PUBLISHED_POST_CASCADE_CHILDREN
+ *     table carries user-authored data the import never wrote, which undo
+ *     must not cascade away.
+ * The first is a column check on workflow_posts itself (not a cascade-child
+ * probe, so it is not expressed via the declared list); the second is.
  */
 async function guardPublishedPosts(db: DbClient, conta_id: string, ids: string[]): Promise<string[]> {
-  const published = new Set<string>();
+  const skip = new Set<string>();
   for (const part of chunked(ids)) {
     const { data, error } = await db
       .from("workflow_posts")
@@ -100,27 +142,85 @@ async function guardPublishedPosts(db: DbClient, conta_id: string, ids: string[]
       .in("id", part.map(Number))
       .or("instagram_media_id.not.is.null,tiktok_post_id.not.is.null");
     if (error) throw error;
-    for (const p of (data ?? []) as any[]) published.add(String(p.id));
+    for (const p of (data ?? []) as any[]) skip.add(String(p.id));
   }
-  return [...published];
+  for (const part of chunked(ids)) {
+    const numericPart = part.map(Number);
+    for (const child of PUBLISHED_POST_CASCADE_CHILDREN) {
+      let q = db.from(child.table).select(child.column);
+      if (child.scopeCol) q = q.eq(child.scopeCol, conta_id);
+      const { data, error } = await q.in(child.column, numericPart);
+      if (error) throw error;
+      for (const r of (data ?? []) as any[]) {
+        const v = r[child.column];
+        if (v != null) skip.add(String(v));
+      }
+    }
+  }
+  return [...skip];
 }
 
 /**
- * workflows pass. workflow_posts.workflow_id is ON DELETE CASCADE, so deleting a
+ * EVERY table that declares `REFERENCES workflows(id) ON DELETE CASCADE` and
+ * holds a row that must not be cascaded away silently, with the column
+ * holding the workflow id and the table's tenant-scope column — the same
+ * {table, column, scopeCol} shape as CLIENTE_CASCADE_CHILDREN below.
+ *
+ * workflow_posts is the ORIGINAL hazard this guard exists for: deleting a
  * container workflow would silently destroy the very published post
- * guardPublishedPosts just protected — and any post the user added to it after
- * the import. Returns the ids to KEEP: any workflow that still holds posts.
+ * guardPublishedPosts just protected — and any post the user added to it
+ * after the import. workflow_select_options and portal_tokens are two more,
+ * reported by the previous review round and left unfixed then:
+ * import_commit_row never writes either table, so any row there (an
+ * on-the-fly select option added while working a custom field, a shared
+ * portal link) is entirely user-authored, and both carry conta_id.
+ *
+ * Verified against the migrations on 2026-07-27:
+ *   workflow_posts          workflow_id  conta_id  20260402_workflow_posts.sql:14
+ *   workflow_select_options workflow_id  conta_id  20260403_custom_properties.sql:41
+ *   portal_tokens           workflow_id  conta_id  20260415000001_portal_and_hub_tokens.sql:8
+ *
+ * !!! ANY future table added with `REFERENCES workflows(id) ON DELETE
+ * CASCADE` MUST be added to this list — the same discipline as
+ * CLIENTE_CASCADE_CHILDREN, and a missing entry fails exactly as silently:
+ * undo deletes the workflow, Postgres cascades away rows this import never
+ * created, and nothing appears in skippedWorkflows. Re-derive with:
+ *   grep -rn "REFERENCES workflows(id) ON DELETE CASCADE" supabase/migrations/
+ * (workflow_etapas also cascades from workflows but is excluded — see the
+ * UNDO_ORDER note at the top of this file: it has no conta_id column, and it
+ * holds no data of its own beyond the workflow's own stage config, so there
+ * is nothing on it worth protecting.)
+ */
+const WORKFLOW_CASCADE_CHILDREN: Array<{ table: string; column: string; scopeCol: string | null }> = [
+  { table: "workflow_posts", column: "workflow_id", scopeCol: "conta_id" },
+  { table: "workflow_select_options", column: "workflow_id", scopeCol: "conta_id" },
+  { table: "portal_tokens", column: "workflow_id", scopeCol: "conta_id" },
+];
+
+/**
+ * workflows pass. Returns the ids to KEEP: any workflow still referenced by a
+ * surviving row in ANY table in WORKFLOW_CASCADE_CHILDREN.
+ *
+ * Runs after the workflow_posts pass has already issued its deletes for this
+ * undo, so a plain query against the current table state is enough — the
+ * same reasoning guardReferencedTemplates documents for its own re-query.
+ * Every child table is probed unconditionally (no early exit), matching the
+ * other three guards' stable query sequence.
  */
 async function guardContainerWorkflows(db: DbClient, conta_id: string, ids: string[]): Promise<string[]> {
   const keep = new Set<string>();
   for (const part of chunked(ids)) {
-    const { data, error } = await db
-      .from("workflow_posts")
-      .select("workflow_id")
-      .eq("conta_id", conta_id)
-      .in("workflow_id", part.map(Number));
-    if (error) throw error;
-    for (const r of (data ?? []) as any[]) keep.add(String(r.workflow_id));
+    const numericPart = part.map(Number);
+    for (const child of WORKFLOW_CASCADE_CHILDREN) {
+      let q = db.from(child.table).select(child.column);
+      if (child.scopeCol) q = q.eq(child.scopeCol, conta_id);
+      const { data, error } = await q.in(child.column, numericPart);
+      if (error) throw error;
+      for (const r of (data ?? []) as any[]) {
+        const v = r[child.column];
+        if (v != null) keep.add(String(v));
+      }
+    }
   }
   return [...keep];
 }
@@ -285,15 +385,32 @@ export function createDataImportHandler(deps: Deps) {
     if (!profile?.conta_id) return json({ error: "Profile not found" }, 403);
     const conta_id = profile.conta_id as string;
 
-    const ent = await deps.resolveEntitlements(db, conta_id);
-    if (!ent?.features?.feature_csv_import) return json({ error: "upgrade_required" }, 403);
-
     const parts = new URL(req.url).pathname.split("/").filter(Boolean);
     // Guard the indexOf: when the segment is absent it returns -1 and a bare
     // `parts[idx + 1]` silently reads parts[0], routing an unknown path to a real
     // action. Mirrors ideia-media-manage/handler.ts:43-44.
     const actionIdx = parts.indexOf("data-import");
     const action = actionIdx >= 0 ? (parts[actionIdx + 1] ?? "") : "";
+
+    // The entitlement gate only covers actions that consume NEW use of the
+    // feature. `undo` is cleanup of a previously authorized action, not new
+    // use of it — whether csv import is gated at all is still an open pricing
+    // question, and if a workspace's plan or flag flips inside the 7-day undo
+    // window, the customer must still be able to undo (and, symmetrically,
+    // resume a half-finished commit) or the job becomes permanently
+    // unrecoverable through the wizard. `commit` is left ungated for the same
+    // reason: it only ever resumes a job `start` already created under the
+    // gate, and it is the ownership check inside handleCommit — not this gate
+    // — that refuses a foreign or nonexistent jobId. Leaving commit ungated
+    // here does not let an ungated workspace begin a fresh import, because a
+    // commit requires a jobId only a gated `start` can mint.
+    const GATE_REQUIRED_ACTIONS = new Set(["start", "analyze", "preview"]);
+    let ent: Entitlements | null = null;
+    if (GATE_REQUIRED_ACTIONS.has(action)) {
+      ent = await deps.resolveEntitlements(db, conta_id);
+      if (!ent?.features?.feature_csv_import) return json({ error: "upgrade_required" }, 403);
+    }
+
     let body: any = {};
     try {
       body = await req.json();
@@ -321,6 +438,10 @@ export function createDataImportHandler(deps: Deps) {
       }
 
       if (action === "preview") {
+        // GATE_REQUIRED_ACTIONS includes "preview", so reaching here means the
+        // gate above already ran and returned early on a falsy ent — this cast
+        // just tells the compiler what the runtime already guarantees.
+        const entitlements = ent as Entitlements;
         const rows = (body.rows ?? []) as CommitRow[];
         // Same shape guard commit applies: without it `rows: "abc"` reaches
         // rows.filter() below and surfaces as an opaque 500.
@@ -337,7 +458,7 @@ export function createDataImportHandler(deps: Deps) {
           else if (r.kind === "ideia") counts.ideias++;
         }
         const warnings: string[] = [];
-        const maxClients = ent.limits.max_clients;
+        const maxClients = entitlements.limits.max_clients;
         if (counts.clientes > 0 && maxClients != null) {
           // db is the service-role client (RLS bypassed) — every count MUST be
           // conta_id-scoped by hand or it returns a platform-wide total.
@@ -360,7 +481,7 @@ export function createDataImportHandler(deps: Deps) {
           }
         }
         const templateRows = rows.filter((r) => r.kind === "template").length;
-        const maxTemplates = ent.limits.max_workflow_templates;
+        const maxTemplates = entitlements.limits.max_workflow_templates;
         if (templateRows > 0 && maxTemplates != null) {
           // Matches trg_limit_templates -> enforce_plan_count_limit(
           // 'max_workflow_templates', 'direct', 'conta_id', 'conta_id')
@@ -385,7 +506,7 @@ export function createDataImportHandler(deps: Deps) {
         // given client still shares ONE containerKey here, and a group larger
         // than the cap is exactly the group the commit step will split into
         // numbered containers. Warn, do not block: nothing is lost.
-        const maxPosts = ent.limits.max_posts_per_workflow;
+        const maxPosts = entitlements.limits.max_posts_per_workflow;
         if (counts.posts > 0 && maxPosts != null) {
           const perContainer = new Map<string, number>();
           for (const r of rows) {
@@ -407,9 +528,9 @@ export function createDataImportHandler(deps: Deps) {
           counts,
           warnings,
           limits: {
-            maxClients: ent.limits.max_clients ?? null,
-            maxWorkflowTemplates: ent.limits.max_workflow_templates ?? null,
-            maxPostsPerWorkflow: ent.limits.max_posts_per_workflow ?? null,
+            maxClients: entitlements.limits.max_clients ?? null,
+            maxWorkflowTemplates: entitlements.limits.max_workflow_templates ?? null,
+            maxPostsPerWorkflow: entitlements.limits.max_posts_per_workflow ?? null,
           },
         });
       }
@@ -443,12 +564,21 @@ async function handleCommit({ db, conta_id, userId, body, json }: ActionCtx): Pr
   // re-arming the undo button on a job that was already undone and corrupting
   // the very history the audit trail exists to record. Reject it up front, the
   // same way undo already does.
-  const { data: job } = await db
+  const { data: job, error: jobErr } = await db
     .from("import_jobs")
     .select("id, status")
     .eq("id", jobId)
     .eq("conta_id", conta_id)
     .single();
+  // A genuine query failure (timeout, connection loss) must not present as
+  // "job not found" — that masks a backend problem as routine user error and
+  // sends the client down the wrong recovery path. Reserve 404 for a row that
+  // is genuinely absent; log the real failure internally and never let its
+  // text reach the client.
+  if (jobErr) {
+    console.error("[data-import] commit job ownership probe failed:", jobErr);
+    return json({ error: "Internal error" }, 500);
+  }
   if (!job) return json({ error: "Job not found" }, 404);
   if (job.status === "undone") return json({ error: "Already undone" }, 400);
   // 'undoing' is refused for exactly the same reason, one step earlier: undo has
@@ -516,12 +646,20 @@ async function handleCommit({ db, conta_id, userId, body, json }: ActionCtx): Pr
 
 async function handleUndo({ db, conta_id, userId, body, json }: ActionCtx): Promise<Response> {
   const jobId = Number(body.jobId);
-  const { data: job } = await db
+  const { data: job, error: jobErr } = await db
     .from("import_jobs")
     .select("id, conta_id, status, created_at, undo_started_at")
     .eq("id", jobId)
     .eq("conta_id", conta_id)
     .single();
+  // Same distinction as commit's probe: a real query failure here (timeout,
+  // connection loss) is not "job not found" and must not be reported as one —
+  // that hides a backend problem behind a routine-looking 404. Log internally,
+  // return a generic 500, never the error text.
+  if (jobErr) {
+    console.error("[data-import] undo job ownership probe failed:", jobErr);
+    return json({ error: "Internal error" }, 500);
+  }
   if (!job) return json({ error: "Job not found" }, 404);
   if (job.status === "undone") return json({ error: "Already undone" }, 400);
   // A job already claimed by another undo is refused — two undos racing over the
