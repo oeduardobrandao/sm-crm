@@ -16,7 +16,13 @@
 .blog-prose h2{font-size:1.55rem;font-weight:700;color:#12151a;margin:44px 0 14px;line-height:1.25}
 .blog-prose h3{font-size:1.2rem;font-weight:700;color:#12151a;margin:32px 0 10px}
 .blog-prose p{margin:0 0 18px}
+/* Tailwind's preflight sets `list-style:none` on every ol/ul, so the markers
+   have to be put back by hand — padding-left alone only indents unmarked
+   lines. Set on the list, not the li: preflight never touches li, and
+   list-style-type inherits. `.blog-related ul` keeps its own list-style:none. */
 .blog-prose ul,.blog-prose ol{margin:0 0 18px;padding-left:22px}
+.blog-prose ul{list-style-type:disc}
+.blog-prose ol{list-style-type:decimal}
 .blog-prose li{margin-bottom:8px}
 .blog-prose a{color:#ca8a04;text-decoration:underline;text-underline-offset:2px}
 .blog-prose strong{font-weight:700;color:#12151a}

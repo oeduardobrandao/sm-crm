@@ -21,11 +21,11 @@ Dois testes valem para qualquer pergunta:
 - **A resposta decide alguma coisa?** Se ela não aprova um tema nem barra uma palavra, é campo preenchido, não informação.
 - **Dá para responder errado?** Pergunta que aceita "qualidade e atendimento" não separa este cliente de nenhum outro.
 
-Daí a forma das perguntas abaixo: pedem exemplo, nome e episódio no lugar de adjetivo. Mande o formulário antes da reunião e guarde as desconfortáveis para a conversa: no texto é fácil pular a linha, e no telefone a pausa antes da resposta já é informação.
+Daí a forma das perguntas abaixo: pedem exemplo, nome e episódio no lugar de adjetivo. Mande o formulário antes da reunião e guarde as desconfortáveis para a conversa: no texto é fácil pular a linha; no telefone, a pausa antes da resposta já é informação.
 
 ## Bloco 1: negócio e oferta
 
-Uma peça que promove o produto errado não tem defeito de execução: está bem-feita e serve para outra coisa — e isso não é visível antes de ela existir.
+Uma peça que promove o produto errado não tem defeito de execução: está bem-feita e serve para outra coisa.
 
 - O que você vende, na ordem do que mais entra no caixa, não na ordem do site.
 - O que quer vender mais e hoje vende menos, e por quê.
@@ -45,12 +45,12 @@ Uma objeção é um roteiro pela metade: tem tema, começo e fim, e falta o text
 
 ## Bloco 3: tom de voz e referências
 
-Tom de voz não sobrevive como adjetivo: "leve, mas profissional" cabe em qualquer marca. O que resolve é referência com motivo, e o motivo é a metade que decide.
+Tom de voz não sobrevive como adjetivo: "leve, mas profissional" cabe em qualquer marca. O que resolve é referência com motivo.
 
-- Três perfis que você admira: um post de cada um e o que exatamente nele — o texto, o ritmo, o assunto, a imagem.
-- Três que você acha ruins, com o mesmo detalhe. Concorrente vale.
+- Três perfis que você admira, inclusive o concorrente que dá inveja: um post de cada um e o que exatamente nele — o texto, o ritmo, o assunto, a imagem.
+- Três que você acha ruins, com o mesmo detalhe.
 
-A lista negativa aponta onde a positiva descreve. E referência sem motivo não diz qual atributo copiar: você imita a paleta quando ele queria o jeito de começar o texto.
+A lista negativa aponta onde a positiva descreve. E referência sem motivo não diz qual atributo copiar: a paleta e o jeito de começar o texto chegam no mesmo link.
 
 ## Bloco 4: restrições e proibições
 
@@ -65,7 +65,7 @@ Uma pergunta aberta — "tem alguma restrição?" — pede que o cliente lembre 
 - **Pessoas e imagem.** Quem pode aparecer nas fotos, quem não pode, e onde está a autorização de uso.
 - **Assuntos fora.** Política, religião, futebol e as datas comemorativas em que a marca não entra — pergunte pelas datas uma a uma, porque a resposta genérica não cobre a data que importa.
 - **A história interna.** Unidade fechada, produto descontinuado, sócio que saiu, processo em andamento: nada disso está no site, e sem estar escrito não há como saber que a pauta esbarra ali.
-- **O que já deu errado.** Qual publicação gerou reação ruim, do público ou dentro da empresa, e o que incomodou. O episódio carrega a regra e a razão dela juntas — e como não favorece quem responde, vai na conversa, não no formulário.
+- **O que já deu errado.** Qual publicação gerou reação ruim, do público ou dentro da empresa, e o que incomodou. O episódio carrega a regra e a razão dela juntas, mas não favorece quem responde: vai na conversa, não no formulário.
 
 O que sustenta o bloco não é a lista, é o registro: reprovação sem regra escrita é opinião contra opinião, e não há onde conferir. Com a linha escrita, a discussão passa a ser se a peça a respeita — ou vira uma linha nova.
 
@@ -77,11 +77,11 @@ Todo relatório responde a uma pergunta, e a pergunta se escolhe aqui, antes do 
 - Por onde esse pedido chega hoje, quem atende e em quanto tempo.
 - Alguém pergunta "como você chegou até nós"? Quem, e onde isso fica anotado.
 
-A terceira tem motivo mecânico: a agência enxerga o lado do perfil — alcance, salvamento, seguidores —, números que descrevem a peça. O que vem depois do clique passa por preço, resposta e agenda, fora do painel.
+A terceira tem motivo mecânico: a agência enxerga o lado do perfil — alcance, salvamento, seguidores. O que vem depois do clique passa por preço, resposta e agenda, fora do painel.
 
 ## Modelo pronto para copiar
 
-Copie o bloco abaixo, apague o que não se aplica e mande. O "você" das perguntas é o cliente.
+Copie o bloco abaixo, apague o que não se aplica e mande. O "você" das perguntas é o cliente. A pergunta do que já deu errado fica na conversa.
 
 > **Briefing — [nome do cliente]**
 >
@@ -105,7 +105,7 @@ Copie o bloco abaixo, apague o que não se aplica e mande. O "você" das pergunt
 >
 > **3. Tom de voz e referências**
 >
-> - Três perfis que admira: link de um post de cada e o que exatamente nele.
+> - Três perfis que admira, inclusive o concorrente que dá inveja: link de um post de cada e o que exatamente nele.
 > - Três perfis que acha ruins, com o mesmo detalhe.
 > - O post seu de que mais gostou e o de que mais se arrependeu.
 > - Você aparece? Vídeo, áudio, só texto — e quantas gravações por mês.
@@ -121,13 +121,12 @@ Copie o bloco abaixo, apague o que não se aplica e mande. O "você" das pergunt
 > - Quem não pode ser citado, marcado ou aparecer ao fundo.
 > - Parceiros que precisam ser marcados sempre.
 > - Quem pode aparecer nas fotos, e onde está a autorização.
-> - Assuntos e datas comemorativas em que a marca não entra.
+> - Assuntos fora. Liste uma a uma as datas comemorativas em que a marca não entra.
 > - Fora de pauta: unidade fechada, produto descontinuado, sócio que saiu.
-> - Uma publicação que gerou reação ruim, e o que incomodou.
 >
 > **5. Metas e medição**
 >
-> - O que precisa acontecer no negócio para isso ter valido.
+> - O que precisa acontecer no negócio para isso ter valido: venda, orçamento, agendamento, gente na loja?
 > - Por onde o pedido chega, quem atende e em quanto tempo.
 > - Quem pergunta "como você chegou até nós", e onde fica anotado.
 > - Que números do perfil você quer no relatório, e quando.
@@ -135,17 +134,17 @@ Copie o bloco abaixo, apague o que não se aplica e mande. O "você" das pergunt
 >
 > **Fecho**
 >
-> - Quem responde por este briefing, e quem aprova os posts no dia a dia.
+> - Quem responde por este briefing, quem aprova os posts no dia a dia e quem mais comenta antes do sim: sócio, jurídico, cônjuge.
 > - Data de hoje e data da próxima revisão.
 
 ## Como manter o briefing vivo
 
-Um briefing é a fotografia de uma semana: entra produto, sai sócio, muda preço, a categoria ganha regra nova. O documento de janeiro passa a descrever uma empresa que não existe mais, e nada avisa.
+Um briefing é a fotografia de uma semana: quando entra produto, sai sócio ou muda preço, o documento de janeiro passa a descrever uma empresa que não existe mais, e nada avisa.
 
 - **Uma data fixa.** Reveja na renovação do contrato ou num dia marcado do trimestre, bloco por bloco: mudou alguma coisa aqui?
 - **Uma lista de gatilhos.** Produto novo, mudança de posicionamento, entrada ou saída de quem aparece nas peças: cada um abre uma revisão fora da data marcada.
 
-A terceira fonte não depende de calendário: as reprovações. Cada uma carrega um critério, e o que não descer para o Bloco 4 fica só na cabeça de quem reprovou.
+A terceira fonte não depende de calendário: as reprovações. Cada uma carrega um critério, e o que não descer para o Bloco 4 fica na cabeça de quem reprovou.
 
 Onde ele mora decide se é atualizado, e isso não exige ferramenta: um arquivo compartilhado com data de revisão no topo resolve, desde que não exista uma segunda cópia. No Mesaas o briefing mora dentro do [portal do cliente](/portal-do-cliente), ao lado da tela de aprovação: você monta as perguntas em blocos e o cliente reescreve qualquer resposta quando algo mudar.
 
