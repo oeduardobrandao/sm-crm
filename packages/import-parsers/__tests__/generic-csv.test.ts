@@ -21,4 +21,22 @@ describe('parseGenericCsv', () => {
     const col = parseGenericCsv('x.csv', 'A,B\n1');
     expect(col.rows[0].cells).toEqual({ A: '1', B: '' });
   });
+
+  test('duplicate header names are deduplicated, both columns preserved', () => {
+    const col = parseGenericCsv('dup.csv', 'Status,Name,Status\nOpen,X,Done');
+    expect(col.columns).toEqual(['Status', 'Name', 'Status (2)']);
+    expect(col.rows[0].cells).toEqual({ Status: 'Open', Name: 'X', 'Status (2)': 'Done' });
+  });
+
+  test('a data row with more fields than the header preserves the overflow value', () => {
+    const col = parseGenericCsv('overflow.csv', 'A,B\n1,2,3');
+    expect(col.columns).toEqual(['A', 'B', 'Coluna 3']);
+    expect(col.rows[0].cells).toEqual({ A: '1', B: '2', 'Coluna 3': '3' });
+  });
+
+  test('an empty header cell gets a synthesized name instead of colliding', () => {
+    const col = parseGenericCsv('empty-header.csv', 'A,,C\n1,2,3');
+    expect(col.columns).toEqual(['A', 'Coluna 2', 'C']);
+    expect(col.rows[0].cells).toEqual({ A: '1', 'Coluna 2': '2', C: '3' });
+  });
 });
