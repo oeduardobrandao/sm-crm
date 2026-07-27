@@ -16,7 +16,7 @@ npm workspaces (`apps/*`, `packages/*`):
 | `apps/hub/` | Client-facing portal. `createBrowserRouter`. Token auth, no login. Port 5175 |
 | `apps/admin/` | Platform admin. Port 5177 |
 | `packages/ui/`, `packages/i18n/` | Shared primitives and translations |
-| `supabase/functions/` | 56 **Deno** edge functions (not Node) |
+| `supabase/functions/` | 54 **Deno** edge functions (not Node), plus `_shared/` and `__tests__/` |
 | `supabase/migrations/` | 161 SQL migrations |
 | `workers/media-proxy/` | Cloudflare Worker, deployed manually |
 | `docs/superpowers/specs/` | Design specs and implementation plans |
