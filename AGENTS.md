@@ -78,11 +78,11 @@ CI enforces these as separate jobs — `typecheck-and-test`, `edge-function-test
   | Hub (`hub-*`) | Hub token from the URL — the client portal has no Supabase auth |
   | OAuth callbacks | Signed `state` parameter (e.g. `instagram-integration`) |
   | Report generators | `X-Internal-Token` matched against `INTERNAL_FUNCTION_SECRET`, **or** `x-cron-secret` |
+  | Everything else | JWT via `Authorization: Bearer` |
 
   Judge a function by what it accepts *inbound*. `report-worker` is the trap: it authenticates
   callers with `x-cron-secret` only, and merely *sends* `X-Internal-Token` when it fans out to
   a generator. That outbound header is caller behaviour, not its auth class.
-  | Everything else | JWT via `Authorization: Bearer` |
 
 - **Secrets**: `TOKEN_ENCRYPTION_KEY` is required with no fallback — throw if missing. Never
   commit a real `.env`, `.env.local` or `.env.staging`. The `*.example` templates
