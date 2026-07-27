@@ -43,12 +43,35 @@ const MESAAS = /mesaas/i;
 const COMPETITOR = /aprova\s*post|mlabs|etus|doo\s*studio|postgrain|robopost/i;
 
 /**
- * A line that *denies* a capability rather than claiming one. Saying "o Mesaas
- * não gera imagens com IA" is the honest boundary these articles are supposed
- * to draw — the rule exists to stop us claiming what we do not ship, so it
- * must not block us from stating plainly that we do not ship it.
+ * Negation, and the punctuation and conjunctions that end the clause it can
+ * reach. Saying "o Mesaas não gera imagens com IA" is the honest boundary
+ * these articles are supposed to draw, so the unshipped-feature rules have to
+ * stay writable in the negative — but a negation anywhere on the line is not
+ * evidence of one.
+ *
+ * "sem" in particular is ordinary marketing register here ("sem login, sem
+ * app, sem fricção"), so a line-wide test disables the rules on a large slice
+ * of the corpus and waves through "o Mesaas publica no TikTok sem sair do
+ * kanban". Scope decides it instead: the negation only counts when it sits in
+ * the same clause as the claim *and* before it.
  */
-const DENIAL = /\b(n[ãa]o|nunca|sem)\b/i;
+const NEGATION = /\b(n[ãa]o|nunca|sem|jamais)\b/i;
+const CLAUSE_BREAK = /[.;:!?]|—|\bmas\b|\bpor[ée]m\b|\bembora\b|\bj[áa]\b/i;
+
+/**
+ * Whether `line` makes the claim `re` matches without negating it first.
+ *
+ * Only the text before the match is considered, and only back to the nearest
+ * clause break: "não gera imagens com IA" is a denial, "gera imagens com IA
+ * sem custo" is a claim, and "Não é editor de design. O Mesaas gera imagens
+ * com IA." is a claim in the second sentence whatever the first one says.
+ */
+function claimsUnnegated(line: string, re: RegExp): boolean {
+  const m = re.exec(line);
+  if (!m) return false;
+  const clause = line.slice(0, m.index).split(CLAUSE_BREAK).pop() ?? '';
+  return !NEGATION.test(clause);
+}
 
 /**
  * First-person plural attribution ("publicamos no TikTok", "nosso plano").
@@ -141,10 +164,10 @@ function claimIsAboutMesaas(line: string, heading = ''): boolean {
 /** Names the rules a line breaks by claiming something this repo does not ship. */
 function unshippedClaims(line: string, heading = ''): string[] {
   if (!claimIsAboutMesaas(line, heading)) return [];
-  if (DENIAL.test(line)) return [];
   const broken: string[] = [];
-  if (TIKTOK.test(line)) broken.push('TikTok is not launched');
-  if (AI_IMAGE.some((re) => re.test(line))) broken.push('there is no AI image generation');
+  if (claimsUnnegated(line, TIKTOK)) broken.push('TikTok is not launched');
+  if (AI_IMAGE.some((re) => claimsUnnegated(line, re)))
+    broken.push('there is no AI image generation');
   return broken;
 }
 
@@ -364,8 +387,22 @@ describe('content lint rules', () => {
     });
   });
 
+  /**
+   * One table per verdict rather than a fixture per phrasing. The rule this
+   * exercises has two failure modes that pull in opposite directions — too
+   * loose and we publish a feature we do not ship, too tight and we cannot
+   * write the sentence that says we do not ship it — and only a table carrying
+   * both halves at once shows a change did not trade one for the other.
+   *
+   * The negation cases are the sharp ones. An earlier version tested for
+   * "não"/"nunca"/"sem" anywhere on the line, which reads as a denial and
+   * behaves as an off switch: every string in the "trailing or out-of-clause
+   * negation" block below carries one of those words and is still a false
+   * claim about the product.
+   */
   describe('unshipped-feature claims', () => {
     test.each([
+      // Named or unattributed — an unattributed claim counts as ours.
       'O Mesaas publica no TikTok',
       'Publicamos no Tik Tok também',
       'agendamento no tiktok direto do kanban',
@@ -378,46 +415,47 @@ describe('content lint rules', () => {
       'artes criadas por inteligência artificial',
       'geração de imagens por IA',
       'o Mesaas gera as imagens do post usando IA',
-    ])('rejects the unattributed or Mesaas-attributed claim %j', (s) => {
+      // First-person plural, no product name.
+      '- Também publicamos no TikTok.',
+      '- Publicamos no TikTok e no Instagram.',
+      'Diferente do Aprova Post, já publicamos no TikTok.',
+      'Ao contrário do Aprova Post, geramos imagens com IA.',
+      // Trailing or out-of-clause negation: the words of a denial around the
+      // substance of a claim. "sem" after the claim qualifies the claim.
+      'O Mesaas publica no TikTok sem sair do kanban.',
+      'O Mesaas gera imagens com IA sem custo adicional.',
+      'Não é só o Instagram: o Mesaas também publica no TikTok.',
+      'A criação de imagens com IA está inclusa e não custa nada a mais.',
+      'O Mesaas gera imagens com IA. Nunca foi tão fácil.',
+      // Same shape, one clause apart: the denial is spent on the first
+      // sentence and cannot cover the second.
+      'Não é editor de design. O Mesaas gera imagens com IA.',
+      'Sem multirredes por enquanto — mas o Mesaas publica no TikTok.',
+    ])('rejects %j', (s) => {
       expect(unshippedClaims(s)).not.toEqual([]);
     });
 
-    test('allows a competitor-attributed TikTok mention on the same line', () => {
-      expect(unshippedClaims('O Aprova Post aprova os formatos do TikTok e do Instagram.')).toEqual(
-        [],
-      );
-    });
-
-    // The rule exists to stop us claiming what we do not ship. Drawing the
-    // boundary out loud — which is what the "o que o Mesaas não faz" sections
-    // are for — is the honest use of the same words, and must stay writable.
     test.each([
+      // Honest denials. Drawing the boundary out loud is what the "o que o
+      // Mesaas não faz" sections are for, and must stay writable.
       'O Mesaas não gera imagens com IA.',
       'O Mesaas não publica no TikTok.',
       'Não geramos imagens com IA: o agente escreve o texto e anexa a sua arte.',
       'O Mesaas é focado no Instagram, sem publicação no TikTok.',
       'Nunca publicamos no TikTok em seu nome.',
-    ])('allows the honest denial %j', (s) => {
+      // Competitor-attributed capability. Refusing to describe what a rival
+      // genuinely ships would make our own comparison dishonest.
+      'O Doo Studio aprova os formatos do TikTok.',
+      'O Aprova Post aprova os formatos do TikTok e do Instagram.',
+      'Diferente de nós, o Aprova Post já publica no TikTok.',
+      // The AI content agent we do ship: it writes text, so no image rule fires.
+      'Há um agente de conteúdo com IA que cria o rascunho por MCP.',
+    ])('allows %j', (s) => {
       expect(unshippedClaims(s)).toEqual([]);
     });
 
-    test('treats Doo Studio as a competitor, so its capabilities are attributable', () => {
-      expect(unshippedClaims('O Doo Studio aprova os formatos do TikTok.')).toEqual([]);
-    });
-
-    test.each([
-      '- Também publicamos no TikTok.',
-      '- Publicamos no TikTok e no Instagram.',
-      'Diferente do Aprova Post, já publicamos no TikTok.',
-      'Ao contrário do Aprova Post, geramos imagens com IA.',
-    ])('rejects the first-person-plural claim %j even without the Mesaas name', (s) => {
-      expect(unshippedClaims(s)).not.toEqual([]);
-    });
-
-    test('still allows a competitor-attributed TikTok mention with no first-person verb', () => {
-      expect(unshippedClaims('Diferente de nós, o Aprova Post já publica no TikTok.')).toEqual([]);
-    });
-
+    // Attribution can also come from the section a line sits under, so these
+    // carry a heading and cannot ride in the tables above.
     test('allows a TikTok mention inside a competitor section', () => {
       expect(
         unshippedClaims('- Aprovação dos formatos do TikTok.', '## O que o Aprova Post entrega'),
@@ -428,12 +466,6 @@ describe('content lint rules', () => {
       expect(
         unshippedClaims('O Mesaas também publica no TikTok.', '## O que o Aprova Post entrega'),
       ).not.toEqual([]);
-    });
-
-    test('leaves the AI content agent we do ship alone', () => {
-      expect(
-        unshippedClaims('Há um agente de conteúdo com IA que cria o rascunho por MCP.'),
-      ).toEqual([]);
     });
   });
 

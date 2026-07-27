@@ -40,12 +40,15 @@ describe('BlogIndexPage', () => {
   // is easy to break later with a `.reverse()`, a `.sort()` on the render
   // list, or a switch to an unsorted source.
   //
-  // Note what carries the weight here. Every post currently shares the date
-  // 2026-07-25, so "the dates never increase" holds even if the list renders
-  // backwards; that check is necessary but blind on its own. The exact slug
-  // sequence is the assertion that actually fails on a reversal, and it is
-  // compared against an ordering computed here (date desc, slug asc) instead
-  // of reusing the sortPosts the page's own data already went through.
+  // Note what carries the weight here. Both assertions below now discriminate
+  // on their own: the posts carry distinct dates, so a reversed render breaks
+  // the monotonic-dates check as well as the slug sequence. Keep both. The
+  // dates one states the intent; the slug sequence survives a future pair of
+  // posts published on the same day, when date order alone stops deciding.
+  //
+  // The expected order is computed here (date desc, slug asc) rather than by
+  // reusing the sortPosts the page's own data already went through — a test
+  // that sorts with the code under test asserts nothing about the sort.
   it('renders the cards newest-first', () => {
     const { container } = render(
       <MemoryRouter>
