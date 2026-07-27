@@ -20,7 +20,7 @@ O que separa as categorias é o alcance: a demanda termina quando o conteúdo va
 
 ## O que o mLabs faz bem
 
-Comparativo em que o autor ganha todas as linhas não decide nada, e o lado deles é largo. A mecânica abaixo está na [central de ajuda](https://ajuda.mlabs.com.br) e no blog deles — o site institucional entra só na lista de redes. Tudo lido em julho de 2026:
+Comparativo em que o autor ganha todas as linhas não decide nada, e o lado deles é largo. A mecânica abaixo está espalhada entre a [central de ajuda](https://ajuda.mlabs.com.br), o blog e as páginas de produto e planos deles — o fluxo de aprovação e as colunas do quadro só na ajuda, o comparativo de planos só em `/planos`. Tudo lido em julho de 2026:
 
 - **Largura de canais e formatos.** Instagram, Facebook, LinkedIn, TikTok, YouTube, X, Pinterest, Threads e Google Meu Negócio; no Instagram, Feed, Stories, Reels com capa e menções, Collab e repost.
 - **Um painel de produção.** O Workflow abre em painel ou em lista e move a demanda por colunas nomeadas: Conteúdo, Aprovação interna, Aprovação do cliente, Aguardando agendamento, Aprovado e agendado, Concluídos.
