@@ -28,9 +28,17 @@ projections, portfolio summaries).
   gate stays `get_my_role() IS DISTINCT FROM 'agent'`.
 - `/equipe` as a route. Restricted admins keep team management; only the money
   inside it is hidden. Agents remain blocked from the route entirely.
-- Owner and agent behaviour. Owners always see financials; agents never do.
+- Owner behaviour. Owners always see financials.
 - The systemic `get_my_conta_id()` weakness (see Known Gaps).
 - Running `test:db` in CI (see Known Gaps).
+
+**In scope by consequence — agent hardening.** Agents are masked in the UI today
+but retain database access to `membros.custo_mensal`, `clientes.valor_mensal`,
+and financial DML on `transacoes`/`contratos`. Migration B closes all of it,
+because `can_see_financials()` returns `false` for agents on the same policies
+and triggers. This is a deliberate security fix shipping in this release, not a
+side effect: it carries its own acceptance tests (see Testing) and must be
+announced. The "default `true` is inert" property applies to **admins only**.
 
 ## Decisions
 
@@ -114,10 +122,52 @@ predicate.
 
 ### Tier 1: whole-row (`transacoes`, `contratos`)
 
-`public.can_see_financials()` replaces the agent predicate on **all four**
-policies. `UPDATE` carries it in both `USING` and `WITH CHECK`. `SELECT` RLS
-alone would leave INSERT open, letting a restricted admin post entries they
-cannot read.
+The capability is **conjoined with** the existing tenant check — never
+substituted for it. `can_see_financials()` does not authorize a target row's
+`conta_id`, so replacing a `USING` expression with it alone would expose every
+workspace's rows. Only `SELECT` currently carries an agent predicate
+(`20260404`); `INSERT`, `UPDATE` and `DELETE` carry tenant checks only
+(`20260315`). Each policy is therefore rewritten in full:
+
+```sql
+DROP POLICY IF EXISTS "transacoes_select" ON transacoes;
+CREATE POLICY "transacoes_select" ON transacoes
+  FOR SELECT USING (
+    conta_id IN (SELECT public.get_my_conta_id())
+    AND public.can_see_financials()
+  );
+
+DROP POLICY IF EXISTS "transacoes_insert" ON transacoes;
+CREATE POLICY "transacoes_insert" ON transacoes
+  FOR INSERT WITH CHECK (
+    conta_id IN (SELECT public.get_my_conta_id())
+    AND public.can_see_financials()
+  );
+
+DROP POLICY IF EXISTS "transacoes_update" ON transacoes;
+CREATE POLICY "transacoes_update" ON transacoes
+  FOR UPDATE USING (
+    conta_id IN (SELECT public.get_my_conta_id())
+    AND public.can_see_financials()
+  ) WITH CHECK (
+    conta_id IN (SELECT public.get_my_conta_id())
+    AND public.can_see_financials()
+  );
+
+DROP POLICY IF EXISTS "transacoes_delete" ON transacoes;
+CREATE POLICY "transacoes_delete" ON transacoes
+  FOR DELETE USING (
+    conta_id IN (SELECT public.get_my_conta_id())
+    AND public.can_see_financials()
+  );
+```
+
+`contratos` receives the identical four. `SELECT` RLS alone would leave INSERT
+open, letting a restricted admin post entries they cannot read.
+
+The pgTAP matrix includes a cross-tenant case on every one of these eight
+policies specifically to catch a regression where the tenant conjunct is
+dropped.
 
 ### Tier 2: column-level (`membros.custo_mensal`, `clientes.valor_mensal`)
 
@@ -136,6 +186,31 @@ allowlist re-granted. The allowlist is also what keeps `UPDATE … RETURNING`
 working on write paths.
 
 The same treatment applies to `clientes`, omitting `valor_mensal`.
+
+#### Blocker: the `clientes` allowlist cannot be authored from migrations
+
+The allowlist is an exhaustive enumeration, so an omitted column silently
+disappears from the CRM. `clientes` has drifted from its migration history:
+`data_aniversario` is read **and written** by the app
+(`ClienteDetalhePage.tsx:750,784,1060`, `CalendarioPage.tsx:897`) yet no
+checked-in migration creates it. A database built from `supabase/migrations`
+therefore has a different shape from production.
+
+**This must be resolved before the allowlist is written.** Required first step
+of implementation:
+
+1. Dump the live `clientes` and `membros` column lists from production *and*
+   staging (`information_schema.columns`).
+2. Diff against a database built purely from checked-in migrations.
+3. Add a reconciling migration for every drifted column — following the
+   precedent of `20260720000004_reconcile_prod_missing_functions.sql` — so
+   migration history and production agree.
+4. Only then author the allowlists, generated from the reconciled schema rather
+   than hand-typed.
+
+Until step 3 lands, any allowlist written here would be wrong on one
+environment or the other. Reconciliation is a prerequisite migration, sequenced
+before Migration A.
 
 ### Read views
 
@@ -203,20 +278,42 @@ precedent in this repo (`20260526000000`, `20260718000001`).
 workspace and exposes:
 
 ```ts
-workspaceRole: 'owner' | 'admin' | 'agent' | null;  // from workspace_members
-canSeeFinancials: boolean;                          // same 3-way logic as SQL
+workspaceRole: 'owner' | 'admin' | 'agent' | null;   // from workspace_members
+canSeeFinancials: boolean | 'unknown';               // never a bare optimistic boolean
 ```
 
-`role` remains profile-based for now. The owner-only toggle **must** gate on
-`workspaceRole`, or `MembrosTab` could render a control that the setter then
-correctly rejects — or the reverse.
+`role` remains profile-based for now.
+
+**Hydration contract.** `AuthContext` currently clears `loading` after the
+profile request alone (`AuthContext.tsx:96-140`). The membership request must
+join that same guarded flow: it participates in `loading`, reuses the
+`profileRequestId` generation guard keyed to the active workspace, and on error
+resolves to `'unknown'` — never to a boolean. A bare boolean is unsafe in both
+directions: defaulting `true` briefly exposes restricted cached values,
+defaulting `false` renders restriction UI at owners. Consumers treat `'unknown'`
+as "not yet decided" and render neither financial values nor the restriction
+screen until it resolves; `formatFinancialBRL` masks on anything that is not
+literal `true`.
+
+**The toggle is not the only surface needing `workspaceRole`.** The route to it
+is gated by profile role today — `ConfiguracaoLayout.tsx:31` builds the tab
+strip and guards direct URLs from `role`, and `MembrosTab.tsx:52` disables its
+member query from the same value. A genuine owner whose stale `profiles.role`
+reads `agent` cannot reach the toggle at all, so gating only the control is
+insufficient. The Membros **route, query and member-management actions** move to
+`workspaceRole`.
 
 | Layer | Change |
 |---|---|
-| `ProtectedRoute` | Two separate branches (below) |
+| `ProtectedRoute` | Agent redirect branch only (below) |
+| `AppLayout` | Hosts the financial route guard so the shell survives (below) |
 | `nav-data.ts` | `getNavGroups` **and** `getMoreSheetGroups` take the capability; hide `financeiro`/`contratos`. Also fixes `equipe` remaining in the sidebar for agents who are route-blocked from it |
-| `configTabs.ts` | Unchanged — Cobrança is already owner-only |
+| `configTabs.ts` | Route/query/actions move to `workspaceRole` (see above) |
 | `clienteDetalheNav.model.ts` | Separate `isAgent` and `canSeeFinancials` inputs: Relatório and Hub stay role-based, Financeiro becomes capability-based |
+| `ClienteDetalhePage.tsx:1793` | The finance section render gate and its edit field are `!isAgent` today — the nav model alone does not hide them. Becomes capability-based |
+| `MembroDetalhePage.tsx` | Salary display, salary edit field, edit action gate (`:140`) and transaction history all become capability-based |
+| `CalendarioPage.tsx:870-989` | Income/expense projection, day cells and payment confirmation live in the page, **not** `computed.ts`. Each needs its own capability gate |
+| `EquipePage.tsx` | Cost KPI and cost column |
 | Dashboard | KPI strip **and** recebimento/despesa events |
 | `GlobalSearchTrigger` | Disable the `contratos`/`transacoes` queries and groups when access is absent |
 | `formatBRL` | Replaced by `formatFinancialBRL(value, canSeeFinancials)` |
@@ -224,16 +321,30 @@ correctly rejects — or the reverse.
 
 ### Route guard
 
-Agents keep today's silent redirect; restricted admins get an explanation:
+The two branches live in **different components**, because they need different
+outcomes. `ProtectedRoute` wraps `AppLayout` (`App.tsx:119-121`), so anything it
+returns replaces the entire application shell — acceptable for a redirect,
+wrong for a restriction screen that should keep sidebar and nav.
+
+`ProtectedRoute` — agents only, unchanged behaviour, redirect:
 
 ```tsx
 if (role === 'agent' && isAgentBlockedPath) return <Navigate to="/dashboard" replace />;
-if (role !== 'agent' && isFinancialPath && !canSeeFinancials) return <FinancialRestrictionScreen />;
 ```
 
-`ProtectedRoute` wraps `AppLayout`, so anything returned from it replaces the
-entire application shell. The financial guard therefore lives **inside** the
-layout. `UpgradeLockedScreen` has this exact defect today — see Known Gaps.
+`AppLayout`, wrapping its `<Outlet />` — restricted admins, shell preserved:
+
+```tsx
+if (isFinancialPath && canSeeFinancials !== true) return <FinancialRestrictionScreen />;
+```
+
+Agents never reach the second guard for `/financeiro` and `/contratos` because
+those paths stay in the agent redirect set, preserving today's behaviour exactly.
+Splitting the branches across the two components is required, not stylistic: a
+single implementation in `ProtectedRoute` would destroy the shell, and a single
+implementation in `AppLayout` would change agent UX.
+
+`UpgradeLockedScreen` has this exact shell defect today — see Known Gaps.
 
 ### Why `formatBRL` is replaced
 
@@ -249,12 +360,24 @@ field is blank. Without shaping, the trigger rejects **every** client edit a
 restricted admin attempts, including changing a phone number; and if the guard
 were loosened, that payload would silently zero the retainer.
 
+The same defect exists on the member side: `EquipePage.tsx:174` sends
+`custo_mensal: values.custo ? Number(values.custo) : null` and
+`MembroDetalhePage.tsx:107` always includes it from form state.
+
 For restricted callers:
 
 - Omit the property from update payloads entirely.
 - Insert it absent/NULL.
-- Strip or reject the protected CSV import column with a clear message.
 - Hide monthly-value sorting and the financial form inputs.
+
+**CSV imports — reject, do not strip.** If a restricted admin uploads a file
+containing the protected column, the import fails as a whole with a message
+naming the offending column, for both client and member imports. Silent
+stripping is rejected: it reports success while discarding exactly the data the
+admin believed they were importing, and leaves no signal that the records are
+incomplete. Whole-file rejection rather than per-row skipping, so a partially
+imported file never needs reconciling. *(Product decision — reversible if you
+prefer silent stripping.)*
 
 ### Live revocation
 
@@ -262,12 +385,26 @@ The database blocks new reads immediately, but React Query holds previously
 fetched values — `staleTime: 30_000`, and indefinitely while a tab stays open.
 Because both permission states share query keys, a cache purge is mandatory.
 
-`AuthContext` subscribes to the active membership row (or refetches on focus if
-Realtime is unavailable). On `true → false`:
+**Severity, stated precisely:** this is a correctness and UX concern, not a
+disclosure boundary. The database denies the read regardless of what the client
+believes, so a stale cache cannot survive a refetch and no new financial data
+can be obtained. The subscription is defence-in-depth over values already in
+memory — it must not be described, or relied upon, as the enforcement boundary.
+
+**Realtime is not currently deployable from this repo.** No migration adds
+`workspace_members` to the `supabase_realtime` publication. Migration A must
+enable and verify it, or the subscription silently never fires.
+
+`AuthContext` subscribes to the active membership row. The fallback when
+Realtime is unavailable is **bounded polling with retry**, not refetch-on-focus
+alone — focus events never fire for the tab that stays foregrounded, which is
+precisely the indefinite-cache case this section exists to address. On
+`true → false`:
 
 1. Set `canSeeFinancials` false immediately.
 2. Remove and refetch `clientes`, `membros`, `transacoes`, `contratos`,
-   `dashboardStats`, `portfolioSummary`.
+   `dashboardStats`. (`portfolioSummary` is excluded — it holds no financial
+   data.)
 3. Close or reset dialogs holding financial values in component state.
 4. Navigate away from financial routes.
 
@@ -290,6 +427,20 @@ New `set-financial-access` action on `manage-workspace-user`:
 - Audits old → new values.
 - Owner check, update and audit insert happen in one transaction via RPC.
 
+**No-op semantics.** Setting the flag to its current value succeeds with a 200
+and writes **no** audit row. Auditing no-ops would let anyone with the toggle
+pad the trail with entries that record no change.
+
+**Role transitions: the flag is preserved, never auto-reset.** An admin set to
+`false`, demoted to agent, then promoted back to admin returns *restricted*. The
+alternative — resetting to the `true` default on role change — would silently
+restore access an owner deliberately revoked, which is the one transition that
+must not fail open. The asymmetry Codex identified is intentional and
+documented: a *newly* promoted agent who never had the flag set defaults to
+`true`, because they have no prior revocation to preserve. Since the setter
+rejects non-admin targets, an owner cannot pre-set the flag before promotion;
+they set it afterwards. *(Product decision — reversible.)*
+
 ## Query inventory
 
 Client-side reads to move to views:
@@ -298,17 +449,26 @@ Client-side reads to move to views:
 |---|---|
 | `store/team.ts:16` `getMembros` | `select('*')` |
 | `store/clients.ts:52` `getClientes` | `select('*')` |
-| `services/analytics.ts:239` `getPortfolioSummary` | `select('*')` |
+| `services/analytics.ts:239` `getPortfolioSummary` | `select('*')` must change to survive the grant — but see note below |
 | `ClienteDetalhePage.tsx:2467,2480` | reads only — the update stays on the base table |
 | `store/workflows.ts:456` | |
 | `GlobalSearchTrigger.tsx:50-56` | gate rather than migrate |
 
+**`getPortfolioSummary` is not financial.** Its contract is Instagram accounts,
+top/worst posts and growth counters (`analytics.ts:192`) — no monetary field.
+Its client lookup must stop using `select('*')` so it survives the grant change,
+but the summary itself is **not** capability-gated and is **not** part of the
+revocation cache purge.
+
 Write-returns needing an explicit column list excluding the protected column
-(`UPDATE … RETURNING` requires SELECT on returned columns; an authorized caller
-needing the new value re-fetches through the view):
+(`INSERT`/`UPDATE … RETURNING` requires SELECT on returned columns; an
+authorized caller needing the new value re-fetches through the view):
 
 - `team.ts:29` `addMembro`, `team.ts:41` `updateMembro`
 - `clients.ts:95` `updateCliente`
+- `clients.ts:65` `addCliente` — `.insert(…).select()` is `RETURNING *`. Without
+  this, a restricted admin's otherwise-valid NULL-valued insert fails and rolls
+  back, so client creation breaks entirely rather than degrading.
 
 The ~13 `from('clientes')` sites in `supabase/functions/` are service-role and
 bypass grants and RLS — no migration needed.
@@ -346,6 +506,13 @@ Matrix:
 - Views expose `SELECT` only; writes through them fail.
 - `transacoes`/`contratos`: restricted admin blocked on all four verbs, **plus**
   positive CRUD cases confirming allowed users are not over-blocked.
+- **Cross-tenant regression on all eight rewritten policies:** a user with
+  financial access in workspace A cannot read or write workspace B's rows. This
+  is the guard against a future edit dropping the `conta_id` conjunct and
+  turning a capability check into a tenant-wide exposure.
+- **Agent hardening acceptance** (this release changes agent behaviour): an
+  agent cannot select `custo_mensal` or `valor_mensal`, and cannot INSERT,
+  UPDATE or DELETE `transacoes`/`contratos` — all of which they can do today.
 - Write guards on both tables: restricted INSERT with NULL succeeds; restricted
   INSERT with a value fails; restricted UPDATE of a non-financial field
   succeeds; authorized admin/owner can change the value; anonymous does not get
@@ -425,6 +592,15 @@ policies.
 calls no longer work. The runbook needs either a forward client fix or the SQL
 restoring previous grants.
 
+**Restoring grants and policies is not a complete rollback.** The two write-guard
+triggers survive a grant/policy restore, so the old bundle's `0`/`null` payloads
+would keep rejecting ordinary client and member edits for restricted admins —
+a rollback that leaves the app broken in a new way. The checked-in rollback
+script must, in order: drop both triggers and their functions, restore the exact
+prior `SELECT` and DML policies, re-grant table-level `SELECT` to
+`authenticated`, and drop the views. It is written and rehearsed on staging
+during the step 1–5 rehearsal, not authored under incident pressure.
+
 **Staging cannot take `npx supabase db push`** (an orphaned `130000` migration
 aborts the run). Apply the exact checked-in SQL via the SQL editor, then
 mark/repair both versions as applied — the SQL editor does not reconcile
@@ -461,3 +637,9 @@ staging rehearsal instead.
    `membros` or `clientes` is invisible to the CRM until granted, and the
    failure surfaces as a confusing missing-column error. Add to `CLAUDE.md`
    Gotchas.
+6. **`clientes` schema drift** — `data_aniversario` exists in production but in
+   no migration. Unlike the others this is *not* deferred: it blocks the
+   allowlist and is fixed by a prerequisite reconciling migration sequenced
+   before Migration A. Listed here because the underlying question — what else
+   has drifted across all tables — is broader than this feature and deserves its
+   own audit.
