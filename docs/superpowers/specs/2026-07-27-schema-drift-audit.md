@@ -187,6 +187,43 @@ staging, the last three are written and tested but applied nowhere.
 | 3 | `20260727000003_reconcile_adopt_contas_columns` | `contas.brand_color`, `contas.hub_enabled` | Keep + adopt | — |
 | 4 | `20260727000004_reconcile_drop_google_drive_columns` | 3 × `files.google_drive_*` | Drop + rewrite constraints | — |
 | 5 | `20260727000005_reconcile_add_missing_created_at` | 4 × `created_at` (Finding C) | Add, no backfill | — |
+| 6 | `20260727000006_fix_cliente_tables_active_workspace_rls` | RLS on the two adopted tables | **Security fix** | — |
+
+### Finding E — adopting production's RLS adopted a cross-workspace leak
+
+Surfaced by external review of migration 1 and confirmed by live reproduction.
+
+The adopted policies scope by *any* workspace the caller belongs to
+(`conta_id IN (SELECT workspace_id FROM workspace_members WHERE user_id =
+auth.uid())`), where every other tenant table scopes to the **active** workspace
+via `get_my_conta_id()`. The client adds no tenant filter of its own:
+
+- `getClienteEnderecos` / `getClienteDatas` filter only by `cliente_id`, and
+  `ClienteDetalhePage` fires both off the `:id` route param regardless of
+  whether the parent `clientes` row loaded. `clientes.id` is a globally
+  sequential bigint, so `/clientes/<id-in-another-workspace>` renders that
+  workspace's addresses and dates, with UPDATE/DELETE equally reachable.
+- **`getAllClienteDatas()` has no filter at all** and feeds `CalendarioPage`, so
+  a multi-workspace user's calendar passively shows other workspaces' client
+  dates. No crafted URL needed — this is the default rendering.
+
+Reproduced under real RLS (role impersonation via `SET LOCAL ROLE authenticated`
+plus a JWT claim, since running as table owner bypasses RLS entirely): a user in
+workspaces A and B with A active read a row belonging to B. After migration 6,
+the same session sees only A's row, and UPDATE/DELETE against B's row affect
+**0 rows** — checked by affected-row count, because RLS denies by filtering
+rather than raising. Same-workspace INSERT and UPDATE still affect 1 row, so no
+legitimate flow regresses.
+
+The new predicate keeps the membership proof **and** adds active-workspace
+scoping, making it stronger than both the adopted policy and the
+`get_my_conta_id()`-only pattern used elsewhere — which proves no membership, so
+a stale `active_workspace_id` would otherwise still grant access.
+
+**This is a live defect in production, not one these migrations introduce.**
+Migration 1 propagated it to staging and would carry it into every fresh
+environment. It is fixed rather than deferred to the general hardening pass,
+which covers a different issue.
 
 ### Accepted residual difference
 
