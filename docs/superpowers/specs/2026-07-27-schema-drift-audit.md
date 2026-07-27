@@ -223,13 +223,37 @@ six `workspaces` billing columns and `instagram_accounts.updated_at` dropped,
 `cliente_datas`/`cliente_enderecos` present, `contas.brand_color` present. The
 `files.google_drive_*` columns remain, as expected.
 
+### 2026-07-27 — staging fully reconciled
+
+Migrations 3, 5, 6, 7 and 8 all applied cleanly to staging. Migration 8 succeeded
+there (rather than refusing as it does on production) because staging's `files`
+table comes from `20260425000001`, where `r2_key` is `NOT NULL` — so it has no
+Drive-only rows for the guard to catch.
+
+Verified after the fact:
+
+- **Migration 7 worked** — both `cliente_datas.id` and `cliente_enderecos.id`
+  now carry `nextval(...)` sequence defaults with no `ADD GENERATED ... IDENTITY`,
+  matching production. The identity divergence migration 1 introduced is gone.
+- **Migration 6 worked** — all eight `cliente_*` policies reference
+  `get_my_conta_id()`, so the cross-workspace read/write path is closed on
+  staging.
+- Migration 7's own assertion (types, nullability, identity-ness, CHECK
+  constraint) passed, which is a genuine structural check rather than a name diff.
+
+Staging 73 tables / 757 columns; production 73 / 756. Every remaining difference
+is expected and explained: production still carries the three
+`files.google_drive_*` columns (migration 8 blocked there) and still lacks the
+four `created_at` columns (migration 5 pending there).
+
 **Outstanding:**
 
-- Production needs 5, 6, 7 (and 8 once the Drive files are migrated to R2).
-- **Staging has only 1–2** and still needs 3, 5, 6, 7 — including 7, which
-  repairs the identity-vs-sequence divergence migration 1 introduced there.
-- The Drive-file cleanup is now its own unblocked piece of work rather than a
-  gate on the security fix.
+- Production needs 5, 6 and 7. Once applied, the only production↔staging
+  difference will be the three `google_drive` columns.
+- Migration 8 on production requires migrating the Drive-sourced files to R2
+  first. It is sequenced last, so its refusal blocks nothing else.
+- The **RLS security fix is live on staging but still pending on production**,
+  where the cross-workspace leak remains open.
 
 ### Finding E — adopting production's RLS adopted a cross-workspace leak
 
