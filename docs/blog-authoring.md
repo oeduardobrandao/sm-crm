@@ -25,10 +25,17 @@ title: <título da aba/Google — 50 a 60 caracteres>
 h1: <título da página — 10 a 120 caracteres, pode ser mais longo que o title>
 description: <resumo para o Google — 120 a 160 caracteres>
 date: AAAA-MM-DD
-updated: AAAA-MM-DD # opcional; use ao revisar um artigo antigo
+updated: AAAA-MM-DD
 category: comparativo | guia
 ---
 ```
+
+`updated` é o único campo opcional; use ao revisar um artigo antigo, e nunca
+com data anterior à de `date`. Não escreva comentário na mesma linha: o parser
+toma tudo depois dos dois-pontos como valor literal, então `# opcional` viraria
+parte da data. Campo com nome errado (`udpated`) também falha o build, de
+propósito — se fosse ignorado em silêncio, o artigo revisado sairia com data de
+modificação velha no sitemap.
 
 Os limites de caracteres são checados por schema (zod) e falham o build se
 violados. `title`, `h1` e `description` passam pelas mesmas regras de conteúdo
@@ -67,9 +74,10 @@ Isso é mais estrito do que parece à primeira vista:
 - A citação precisa **abrir** com "Exemplo" — um blockquote que fala de preço
   três linhas depois de um bloco já rotulado não herda o rótulo; cada `>`
   novo (separado por uma linha em branco) reabre a checagem.
-- Um preço que é o **do cliente do leitor** (ex.: "cobrar R$ 300 por reels do
-  cliente") é permitido mesmo fora de citação — desde que a frase não cite o
-  nome Mesaas.
+- A citação vale para **qualquer** valor, inclusive o preço do cliente do
+  leitor. Não existe exceção por "de quem é o preço": o que muda conforme o
+  dono é a segunda checagem, a que proíbe citar preço de plano do Mesaas. A
+  regra da citação se aplica a toda linha com dinheiro, sem exceção.
 - Mencionar "exemplo" no meio de uma frase normal ("veja o exemplo: são R$ 49
   por post") não conta como rótulo — só a citação conta.
 

@@ -126,3 +126,29 @@ describe('calendar dates', () => {
     expect(() => parsePost(raw({ updated: '2026-04-31' }), 'x')).toThrow(/x\.md/);
   });
 });
+
+describe('frontmatter contract strictness', () => {
+  test('rejects an unknown key instead of dropping it', () => {
+    // `udpated` silently discarded would ship a stale dateModified.
+    expect(() => parsePost(raw({ udpated: '2026-08-01' }), 'x')).toThrow(/x\.md/);
+  });
+
+  test('rejects a comment written on the same line as a value', () => {
+    expect(() => parsePost(raw({ date: '2026-07-25 # publicado' }), 'x')).toThrow(/x\.md/);
+  });
+
+  test('rejects updated earlier than date', () => {
+    expect(() => parsePost(raw({ date: '2026-07-25', updated: '2026-07-20' }), 'x')).toThrow(
+      /x\.md/,
+    );
+  });
+
+  test('accepts updated on or after date', () => {
+    expect(parsePost(raw({ date: '2026-07-25', updated: '2026-07-25' }), 'x').updated).toBe(
+      '2026-07-25',
+    );
+    expect(parsePost(raw({ date: '2026-07-25', updated: '2026-08-02' }), 'x').updated).toBe(
+      '2026-08-02',
+    );
+  });
+});

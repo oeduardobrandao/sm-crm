@@ -25,15 +25,24 @@ const isoDate = z
   .regex(DATE, 'must be YYYY-MM-DD')
   .refine(isRealCalendarDate, 'must be a real calendar date');
 
-/** Ranges mirror the SERP limits enforced for static routes in site-meta.ts. */
-export const blogFrontmatterSchema = z.object({
-  title: z.string().min(50).max(60),
-  h1: z.string().min(10).max(120),
-  description: z.string().min(120).max(160),
-  date: isoDate,
-  updated: isoDate.optional(),
-  category: z.enum(BLOG_CATEGORIES),
-});
+/** Ranges mirror the SERP limits enforced for static routes in site-meta.ts.
+ * Strict on purpose: zod drops unknown keys silently, so a typo like `udpated`
+ * would be discarded, `updated` would fall back to `date`, and a revised
+ * article would ship a stale dateModified in its schema and its sitemap. */
+export const blogFrontmatterSchema = z
+  .object({
+    title: z.string().min(50).max(60),
+    h1: z.string().min(10).max(120),
+    description: z.string().min(120).max(160),
+    date: isoDate,
+    updated: isoDate.optional(),
+    category: z.enum(BLOG_CATEGORIES),
+  })
+  .strict()
+  .refine((fm) => !fm.updated || fm.updated >= fm.date, {
+    path: ['updated'],
+    message: 'must not be earlier than date',
+  });
 
 export type BlogFrontmatter = z.infer<typeof blogFrontmatterSchema>;
 
