@@ -15,7 +15,7 @@ required knowing the true `clientes` / `membros` columns. A single drifted colum
 | Staging | 68 | 706 |
 | Checked-in migrations | 71 | ~714 |
 
-**Production contains 3 tables and 11 columns that no migration creates.**
+**Production contains 3 tables and 13 columns that no migration creates.**
 **Production is also missing 4 columns that migrations do define.** Drift runs in
 both directions, so neither the migration history nor production alone is a
 reliable description of the schema.
@@ -47,7 +47,14 @@ parser artifacts, *not* drift:
 
 - All 15 `post_media` columns — the table is created in two migrations and the
   second body failed to parse.
-- `contas.brand_color`, `contas.hub_enabled` — real `ADD COLUMN` migrations exist.
+- ~~`contas.brand_color`, `contas.hub_enabled`~~ — **this clearance was wrong.**
+  `20260505100002_workspaces_hub_columns.sql` adds those columns to
+  **`workspaces`**, not `contas`. Matching a column name without checking the
+  table produced a false clear; both are genuine drift and are listed in
+  Finding B. The same mistake was caught on `workspaces.stripe_customer_id`
+  (defined on `workspace_subscriptions`) and missed here. **Any name-based
+  adjudication must match table *and* column.** Discovered when staging still
+  differed from production on exactly these two columns after reconciliation.
 - `hub_brand.primary_color`, `instagram_posts.likes`, `tiktok_posts.likes`,
   `tiktok_accounts.likes_count`, `tiktok_account_metrics_daily.likes_count` —
   all present in their `CREATE TABLE` bodies.
@@ -77,7 +84,9 @@ migrations would lack them entirely.
 | Column | Used by code | Assessment |
 |---|---|---|
 | `clientes.data_aniversario` | **Yes — read and written** (`ClienteDetalhePage:750,784,1060`, `CalendarioPage:897`) | Adopt |
-| `instagram_accounts.updated_at` | — | Adopt or drop |
+| `instagram_accounts.updated_at` | No references | Drop |
+| `contas.brand_color` | No references *on `contas`* | Drop candidate |
+| `contas.hub_enabled` | No references *on `contas`* | Drop candidate |
 | `files.google_drive_file_id` | No references | Likely drop |
 | `files.google_drive_thumbnail_url` | No references | Likely drop |
 | `files.google_drive_view_url` | No references | Likely drop |
@@ -133,6 +142,32 @@ The reverse direction is more surprising — staging has, and prod lacks:
 Staging is therefore not a valid rehearsal environment for production migrations
 today. Any rollout that depends on rehearsing against staging — including the
 financial-visibility rollout — is rehearsing against a different schema.
+
+## Status — staging reconciled 2026-07-27
+
+Both reconciliation migrations are applied to staging
+(`wlyzhyfondykzpsiqsce`), along with the twelve previously-pending migrations
+that had never reached it. Staging went from 68 tables / 706 columns to
+73 / 755.
+
+Verified after the fact by re-dumping staging: `cliente_datas` (6 cols) and
+`cliente_enderecos` (13 cols) match production exactly, and
+`clientes.data_aniversario` is present. The Endereços and Datas features are no
+longer broken there.
+
+**The drop migration was a complete no-op on staging** — every one of its
+targets was already absent. Staging therefore validates the adopt path only and
+gives **no** evidence about the destructive path. That still needs proving
+before production.
+
+Remaining staging↔production differences, all accounted for:
+
+| Difference | Reason |
+|---|---|
+| `subscription_events`, `instagram_accounts.updated_at`, 6 `workspaces` billing cols (prod only) | Slated for removal; disappear when the drop migration reaches production |
+| 3 × `files.google_drive_*` (prod only) | Deliberately held back — CHECK-constraint entanglement |
+| `contas.brand_color`, `contas.hub_enabled` (prod only) | Newly found drift, undecided |
+| 4 × `created_at` (staging only) | Finding C, undecided |
 
 ## Recommended reconciliation
 
