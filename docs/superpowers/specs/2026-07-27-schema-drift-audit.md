@@ -175,14 +175,38 @@ data. The dependency checks behind it were thorough (no referencing code, and no
 dependent function, view, trigger or policy in the production schema dump), but
 they are static analysis, not a live rehearsal.
 
-Remaining staging↔production differences, all accounted for:
+## Decisions and migrations
 
-| Difference | Reason |
-|---|---|
-| `subscription_events`, `instagram_accounts.updated_at`, 6 `workspaces` billing cols (prod only) | Slated for removal; disappear when the drop migration reaches production |
-| 3 × `files.google_drive_*` (prod only) | Deliberately held back — CHECK-constraint entanglement |
-| `contas.brand_color`, `contas.hub_enabled` (prod only) | Newly found drift, undecided |
-| 4 × `created_at` (staging only) | Finding C, undecided |
+All items are now ruled on. Five migrations; the first two are applied to
+staging, the last three are written and tested but applied nowhere.
+
+| # | Migration | Covers | Decision | Applied |
+|---|---|---|---|---|
+| 1 | `20260727000001_reconcile_adopt_client_tables` | `cliente_enderecos`, `cliente_datas`, `clientes.data_aniversario` | Adopt | staging |
+| 2 | `20260727000002_reconcile_drop_unreferenced` | `subscription_events`, 6 `workspaces` billing cols, `instagram_accounts.updated_at` | Drop | staging (no-op) |
+| 3 | `20260727000003_reconcile_adopt_contas_columns` | `contas.brand_color`, `contas.hub_enabled` | Keep + adopt | — |
+| 4 | `20260727000004_reconcile_drop_google_drive_columns` | 3 × `files.google_drive_*` | Drop + rewrite constraints | — |
+| 5 | `20260727000005_reconcile_add_missing_created_at` | 4 × `created_at` (Finding C) | Add, no backfill | — |
+
+### Accepted residual difference
+
+Migration 5 adds the four `created_at` columns as **nullable with a default**,
+not `NOT NULL DEFAULT now()` as the original definitions have them. Existing
+rows keep `created_at IS NULL` — honestly "unknown" — rather than being stamped
+with the migration date, which for `instagram_posts` and
+`instagram_follower_history` would have fabricated creation times for thousands
+of historical rows.
+
+Production and staging will therefore still differ on the effective value for
+pre-existing rows. This is a deliberate trade of exact schema parity for data
+honesty, recorded here rather than left to be rediscovered as drift.
+
+**Postgres gotcha this depends on:** in PG 11+,
+`ADD COLUMN x timestamptz DEFAULT now()` populates every existing row with the
+default. Leaving old rows NULL requires adding the column bare and attaching the
+default in a second statement. Verified empirically — the single-statement form
+backfilled 3 of 3 existing rows in a fixture; the two-statement form left all 3
+NULL while new inserts still received a timestamp.
 
 ## Recommended reconciliation
 
