@@ -71,7 +71,7 @@ Na coluna do Aprova Post, **Não informado** significa que não localizamos a in
 | Agente de conteúdo com IA (MCP) | Sim | Não informado |
 | Plano gratuito | Sim | Não informado |
 
-Informações sobre outras ferramentas verificadas em julho de 2026 nos sites oficiais.
+Dados sobre concorrentes conferidos diretamente no site de cada ferramenta, em julho de 2026.
 
 ## Quando o Aprova Post faz mais sentido
 
