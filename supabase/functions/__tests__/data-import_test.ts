@@ -151,7 +151,35 @@ Deno.test("data-import: preview counts rows and warns on max_clients", async () 
   // db is the service-role client: an unscoped count returns a PLATFORM-WIDE
   // total and would warn (or not) on other tenants' data.
   assertModifier(oneCall(db, "clientes", "select"), "eq", ["conta_id", "conta-1"]);
-  assertModifier(oneCall(db, "clientes", "select"), "eq", ["status", "ativo"]);
+});
+
+Deno.test("data-import: preview's max_clients count matches what the plan trigger enforces (all statuses, no filter)", async () => {
+  // trg_limit_clientes -> enforce_plan_count_limit('max_clients', 'direct',
+  // 'conta_id', 'conta_id') (20260611130003_count_triggers.sql:3-4) is called with
+  // only 4 args, so TG_ARGV[4] (the optional status predicate) is absent and
+  // v_pred stays '' inside enforce_plan_count_limit() — the trigger counts EVERY
+  // clientes row for the workspace, regardless of status. clientes.status can be
+  // 'ativo' | 'pausado' | 'encerrado' (20260301_baseline_schema.sql:49). Preview
+  // used to filter its own count to status='ativo', so a workspace with 7 ativo +
+  // 3 encerrado clients on a 10-client plan saw no warning here (7 + 2 = 9) and
+  // then hit plan_limit:max_clients failures partway through commit.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  // 7 ativo + 3 encerrado = 10 rows the trigger actually counts.
+  db.queue("clientes", "select", { data: null, error: null, count: 10 });
+  const rows = [
+    { kind: "cliente", sourceKey: "a", nome: "Ana" },
+    { kind: "cliente", sourceKey: "b", nome: "Bia" },
+  ];
+  const res = await makeHandler(db)(post("preview", { rows }));
+  const body = await readJson(res);
+  assertEquals(body.warnings.length, 1); // 10 + 2 > 10
+  const call = oneCall(db, "clientes", "select");
+  assertModifier(call, "eq", ["conta_id", "conta-1"]);
+  assert(
+    !call.modifiers.some((m) => m.method === "eq" && m.args[0] === "status"),
+    `preview's max_clients count must not filter by status — the enforcing trigger has no status predicate — got ${JSON.stringify(call.modifiers)}`,
+  );
 });
 
 Deno.test("data-import: preview scopes the workflow_templates count to the caller", async () => {
@@ -721,6 +749,59 @@ Deno.test("data-import: undo keeps a cliente that still holds a user-created ide
   assertEquals(body.skippedClientes, ["3"]);
   assertEquals(body.deleted, 0);
   assertEquals(callsFor(db, "clientes", "delete").length, 0);
+});
+
+// --- workflow_templates guard ------------------------------------------------
+// workflows.template_id REFERENCES workflow_templates(id) ON DELETE SET NULL
+// (20260301_baseline_schema.sql:150). The workflows pass above deliberately
+// KEEPS an imported workflow that still holds posts (guardContainerWorkflows);
+// without a matching guard here, the very next pass deleted every imported
+// workflow_templates row unconditionally, silently nulling template_id on the
+// workflow undo just decided to preserve — no error, no skipped* mention.
+
+Deno.test("data-import: undo keeps a template still referenced by a surviving workflow", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflow_templates", row_id: "5", source_row_key: "t1", ordinal: 0, merged: false }],
+    error: null,
+  });
+  // A workflow still pointing at template 5 — whether it is one the workflows
+  // pass just kept (guardContainerWorkflows) or one never touched by this import
+  // at all, it is not this undo's to break.
+  db.queue("workflows", "select", { data: [{ template_id: 5 }], error: null });
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedTemplates, ["5"]);
+  assertEquals(body.deleted, 0);
+  assertEquals(callsFor(db, "workflow_templates", "delete").length, 0);
+  const probe = oneCall(db, "workflows", "select");
+  assertModifier(probe, "in", ["template_id", [5]]);
+  assertModifier(probe, "eq", ["conta_id", "conta-1"]);
+});
+
+Deno.test("data-import: undo still deletes a template nothing references", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflow_templates", row_id: "5", source_row_key: "t1", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [], error: null });
+  db.queue("workflow_templates", "delete", { data: [{ id: 5 }], error: null });
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedTemplates, []);
+  assertEquals(body.deleted, 1);
+  const del = oneCall(db, "workflow_templates", "delete");
+  assertModifier(del, "eq", ["conta_id", "conta-1"]);
+  assertModifier(del, "in", ["id", [5]]);
 });
 
 // Every table that declares `REFERENCES clientes(id) ON DELETE CASCADE`, as

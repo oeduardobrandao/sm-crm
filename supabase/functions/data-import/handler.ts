@@ -126,6 +126,38 @@ async function guardContainerWorkflows(db: DbClient, conta_id: string, ids: stri
 }
 
 /**
+ * workflow_templates pass. workflows.template_id REFERENCES workflow_templates(id)
+ * ON DELETE SET NULL (20260301_baseline_schema.sql:150), so deleting a template
+ * that a surviving workflow still points at would silently null that workflow's
+ * template_id — orphaning the entrega configuration the workflows pass just
+ * decided to keep (guardContainerWorkflows), with no error and no mention in any
+ * skipped* array. Returns the ids to KEEP: any template still referenced by a
+ * workflows.template_id row.
+ *
+ * Runs after the workflows pass has already issued its deletes for this undo, so
+ * a plain query against the current `workflows` table state is enough — it will
+ * only see rows that survived (never touched by this import, or kept because they
+ * still hold posts). No locally cached "kept" set is needed, the same way
+ * guardReferencedClientes re-queries its child tables rather than reasoning about
+ * what earlier passes decided.
+ */
+async function guardReferencedTemplates(db: DbClient, conta_id: string, ids: string[]): Promise<string[]> {
+  const keep = new Set<string>();
+  for (const part of chunked(ids)) {
+    const { data, error } = await db
+      .from("workflows")
+      .select("template_id")
+      .eq("conta_id", conta_id)
+      .in("template_id", part.map(Number));
+    if (error) throw error;
+    for (const r of (data ?? []) as any[]) {
+      if (r.template_id != null) keep.add(String(r.template_id));
+    }
+  }
+  return [...keep];
+}
+
+/**
  * EVERY table that declares `REFERENCES clientes(id) ON DELETE CASCADE`, with the
  * column holding the cliente id and the table's tenant-scope column.
  *
@@ -274,11 +306,18 @@ export function createDataImportHandler(deps: Deps) {
         if (counts.clientes > 0 && maxClients != null) {
           // db is the service-role client (RLS bypassed) — every count MUST be
           // conta_id-scoped by hand or it returns a platform-wide total.
+          //
+          // No `.eq("status", ...)` here: the trigger that actually enforces this
+          // cap (trg_limit_clientes -> enforce_plan_count_limit('max_clients',
+          // 'direct', 'conta_id', 'conta_id'), 20260611130003_count_triggers.sql:3-4)
+          // passes no status predicate (TG_ARGV[4] is absent), so it counts every
+          // clientes row for the workspace regardless of status. A workspace with
+          // pausado/encerrado clients would otherwise be undercounted here, see no
+          // warning, and hit plan_limit:max_clients failures partway through commit.
           const { count } = await db
             .from("clientes")
             .select("id", { count: "exact", head: true })
-            .eq("conta_id", conta_id)
-            .eq("status", "ativo");
+            .eq("conta_id", conta_id);
           if ((count ?? 0) + counts.clientes > maxClients) {
             warnings.push(
               `${counts.clientes} novos clientes excedem o limite de ${maxClients} do seu plano (${count ?? 0} existentes).`,
@@ -288,6 +327,12 @@ export function createDataImportHandler(deps: Deps) {
         const templateRows = rows.filter((r) => r.kind === "template").length;
         const maxTemplates = ent.limits.max_workflow_templates;
         if (templateRows > 0 && maxTemplates != null) {
+          // Matches trg_limit_templates -> enforce_plan_count_limit(
+          // 'max_workflow_templates', 'direct', 'conta_id', 'conta_id')
+          // (20260611130003_count_triggers.sql:19-21): no status predicate there
+          // either, and workflow_templates has no status column at all
+          // (20260301_baseline_schema.sql:134-141), so this count already matches
+          // what the trigger enforces with nothing further to drop.
           const { count } = await db
             .from("workflow_templates")
             .select("id", { count: "exact", head: true })
@@ -518,6 +563,7 @@ async function handleUndo({ db, conta_id, userId, body, json }: ActionCtx): Prom
   }
   const skippedPublished: string[] = [];
   const skippedWorkflows: string[] = [];
+  const skippedTemplates: string[] = [];
   const skippedClientes: string[] = [];
   let deleted = 0;
   for (const table of UNDO_ORDER) {
@@ -532,6 +578,12 @@ async function handleUndo({ db, conta_id, userId, body, json }: ActionCtx): Prom
     if (table === "workflows") {
       const keptIds = await guardContainerWorkflows(db, conta_id, ids);
       skippedWorkflows.push(...keptIds);
+      const keep = new Set(keptIds);
+      ids = ids.filter((id) => !keep.has(id));
+    }
+    if (table === "workflow_templates") {
+      const keptIds = await guardReferencedTemplates(db, conta_id, ids);
+      skippedTemplates.push(...keptIds);
       const keep = new Set(keptIds);
       ids = ids.filter((id) => !keep.has(id));
     }
@@ -568,9 +620,9 @@ async function handleUndo({ db, conta_id, userId, body, json }: ActionCtx): Prom
     action: "import_undo",
     resource_type: "import_job",
     resource_id: String(jobId),
-    metadata: { deleted, skippedPublished, skippedWorkflows, skippedClientes },
+    metadata: { deleted, skippedPublished, skippedWorkflows, skippedTemplates, skippedClientes },
   });
-  return json({ deleted, skippedPublished, skippedWorkflows, skippedClientes });
+  return json({ deleted, skippedPublished, skippedWorkflows, skippedTemplates, skippedClientes });
 }
 
 /** Maps a CommitRow's wire fields onto the RPC's jsonb payload keys. */
