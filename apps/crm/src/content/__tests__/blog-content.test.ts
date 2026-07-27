@@ -43,6 +43,20 @@ const MESAAS = /mesaas/i;
 const COMPETITOR = /aprova\s*post|mlabs|etus|doo\s*studio|postgrain|robopost/i;
 
 /**
+ * A contrast whose *object* is the rival: "Diferente do Aprova Post, aqui você
+ * agenda no TikTok" names them and then claims the capability for us. Whatever
+ * follows belongs to our side, so the competitor exemption must not apply.
+ *
+ * The mirror image stays exempt on purpose — in "Diferente de nós, o Aprova
+ * Post já publica no TikTok" the contrast is about us and the claim is theirs,
+ * which is the honest attribution the exemption exists to permit.
+ */
+const CONTRAST_AGAINST_COMPETITOR = new RegExp(
+  `\\b(?:diferente d|ao contr[áa]rio d|enquanto|j[áa] o)\\w*\\s+(?:[oa]s?\\s+)?(?:${COMPETITOR.source})`,
+  'i',
+);
+
+/**
  * Negation, and the punctuation and conjunctions that end the clause it can
  * reach. Saying "o Mesaas não gera imagens com IA" is the honest boundary
  * these articles are supposed to draw, so the unshipped-feature rules have to
@@ -71,10 +85,15 @@ const CLAUSE_BREAK = /[,.;:!?]|—|\bmas\b|\bpor[ée]m\b|\bj[áa]\b/i;
  * com IA." is a claim in the second sentence whatever the first one says.
  */
 function claimsUnnegated(line: string, re: RegExp): boolean {
-  const m = re.exec(line);
-  if (!m) return false;
-  const clause = line.slice(0, m.index).split(CLAUSE_BREAK).pop() ?? '';
-  return !NEGATION.test(clause);
+  // Every occurrence, not just the first: a denial followed by a claim on the
+  // same line ("não publica no TikTok hoje; a partir de agosto publica no
+  // TikTok") negates only the first one.
+  const scan = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+  for (let m = scan.exec(line); m; m = scan.exec(line)) {
+    const clause = line.slice(0, m.index).split(CLAUSE_BREAK).pop() ?? '';
+    if (!NEGATION.test(clause)) return true;
+  }
+  return false;
 }
 
 /**
@@ -160,7 +179,11 @@ const AI_IMAGE = [
 function claimIsAboutMesaas(line: string, heading = ''): boolean {
   for (const scope of [line, heading]) {
     if (MESAAS.test(scope) || FIRST_PERSON_MESAAS.test(scope)) return true;
-    if (COMPETITOR.test(scope)) return false;
+    // A contrast names the rival and then claims something for US — "Diferente
+    // do Aprova Post, aqui você agenda no TikTok". The competitor exemption
+    // cannot read that, so a contrastive line fails closed: write the two
+    // halves as two sentences and each gets attributed on its own.
+    if (COMPETITOR.test(scope)) return CONTRAST_AGAINST_COMPETITOR.test(scope);
   }
   return true;
 }
@@ -514,5 +537,26 @@ describe('content lint rules', () => {
         '/aprovacao-de-post',
       ]);
     });
+  });
+});
+
+describe('bypasses found by the whole-branch review', () => {
+  test.each([
+    // A contrast names the rival and claims for our side. These articles
+    // address the reader as "você" constantly, so this is the realistic hole.
+    'Diferente do Aprova Post, aqui você agenda no TikTok sem sair do painel.',
+    'Ao contrário do mLabs, a geração de imagens com IA já vem inclusa.',
+    'Enquanto o Doo Studio cobra à parte, aqui a criação de imagens com IA é inclusa.',
+    // A denial spends itself on the first occurrence and cannot cover a second.
+    'O Mesaas não publica no TikTok hoje; a partir de agosto o Mesaas publica no TikTok.',
+  ])('rejects %j', (s) => {
+    expect(unshippedClaims(s)).not.toEqual([]);
+  });
+
+  test.each([
+    'O Aprova Post aprova os formatos do TikTok e do Instagram.',
+    'O Doo Studio anuncia geração de imagens com IA nos módulos dele.',
+  ])('still allows the plainly competitor-attributed %j', (s) => {
+    expect(unshippedClaims(s)).toEqual([]);
   });
 });
