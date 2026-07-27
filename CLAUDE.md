@@ -1,6 +1,6 @@
 # Mesaas CRM
 
-Social media agency CRM (React + Supabase). Two apps: **CRM** (internal dashboard) and **Hub** (client-facing portal). Portuguese-language UI.
+Social media agency CRM (React + Supabase). Three apps: **CRM** (internal dashboard), **Hub** (client-facing portal), and **Admin** (platform admin). Portuguese-language UI.
 
 ## Workflow skills (superpowers)
 
@@ -60,8 +60,8 @@ Monorepo with npm workspaces:
 
 ### CRM app structure (`apps/crm/src/`)
 
-- `App.tsx` -- Routes (React Router v7 BrowserRouter, lazy-loaded pages)
-- `main.tsx` -- Bootstrap (BrowserRouter wraps App)
+- `App.tsx` -- Routes (React Router v7, lazy-loaded pages)
+- `main.tsx` -- Bootstrap: `createBrowserRouter` + `RouterProvider` (a data router). Swapping it back to `<BrowserRouter>` is a behaviour change -- data-router APIs like blockers and loaders depend on it
 - `store.ts` -- Data layer: types + Supabase CRUD functions (NOT a state manager)
 - `lib/supabase.ts` -- Supabase client singleton, auth helpers, profile cache
 - `context/AuthContext.tsx` -- Auth provider with roles (owner | admin | agent)
@@ -98,7 +98,7 @@ Monorepo with npm workspaces:
 - Rich text: TipTap editor
 - Toasts: `sonner` via `toast()` from `sonner` (NOT the legacy `showToast()` from router.ts for new code)
 - Tailwind theme uses CSS variables (`hsl(var(--primary))` etc.) with dark mode via `[data-theme='dark']` class
-- Fonts: DM Sans (body), Playfair Display (headings), DM Mono (inputs/data)
+- Fonts: SF Pro Text (body/mono) and SF Pro Display (headings) in CRM and Admin; Fraunces + Instrument Sans in Hub. DM Sans/Playfair references left in a few files are dead fallbacks
 
 ## Security rules -- NEVER violate these
 
