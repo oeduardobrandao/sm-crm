@@ -1548,6 +1548,7 @@ Deno.test("data-import: undo deletes recorded rows in order, skips published pos
       { table_name: "workflow_posts", row_id: "31", source_row_key: "p1", ordinal: 0 },
       { table_name: "workflow_posts", row_id: "32", source_row_key: "p2", ordinal: 0 },
       { table_name: "workflows", row_id: "9", source_row_key: "container:1:0", ordinal: 0 },
+      { table_name: "workflow_etapas", row_id: "77", source_row_key: "e1", ordinal: 1 },
       { table_name: "clientes", row_id: "3", source_row_key: "a", ordinal: 0 },
     ],
     error: null,
@@ -1558,14 +1559,20 @@ Deno.test("data-import: undo deletes recorded rows in order, skips published pos
     error: null,
   });
   db.queue("workflow_posts", "delete", { data: null, error: null });
-  db.queue("workflows", "delete", { data: null, error: null });
+  // container-guard lookup: workflow 9 still holds the surviving published post
+  db.queue("workflow_posts", "select", { data: [{ workflow_id: 9 }], error: null });
   db.queue("clientes", "delete", { data: null, error: null });
   db.queue("import_jobs", "update", { data: null, error: null });
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
   assertEquals(body.skippedPublished, ["31"]);
-  assertEquals(body.deleted, 3);
+  // workflow 9 is NOT deleted: cascading it would destroy published post 31.
+  assertEquals(body.skippedWorkflows, ["9"]);
+  // deleted = post 32 + cliente 3. workflow_etapas is never deleted explicitly
+  // (no conta_id column; cascades from workflows) — asserting it is absent from
+  // UNDO_ORDER is the point of including an etapa item in the fixture above.
+  assertEquals(body.deleted, 2);
 });
 ```
 
@@ -1605,7 +1612,12 @@ interface Deps {
   geminiKey: string | null;
 }
 
-const UNDO_ORDER = ["workflow_posts", "workflow_etapas", "workflows", "workflow_templates", "ideias", "clientes"];
+// workflow_etapas is deliberately ABSENT: it has no conta_id column (it is
+// tenant-scoped transitively through workflow_id), so a .eq("conta_id", ...)
+// delete against it raises `column "conta_id" does not exist` and aborts the
+// whole undo. It needs no explicit delete anyway — workflow_etapas.workflow_id
+// is ON DELETE CASCADE from workflows (20260301_baseline_schema.sql:159).
+const UNDO_ORDER = ["workflow_posts", "workflows", "workflow_templates", "ideias", "clientes"];
 const BATCH_LIMIT = 200;
 
 export function createDataImportHandler(deps: Deps) {
@@ -1745,6 +1757,7 @@ export function createDataImportHandler(deps: Deps) {
           byTable.set(it.table_name, [...(byTable.get(it.table_name) ?? []), it.row_id]);
         }
         const skippedPublished: string[] = [];
+        const skippedWorkflows: string[] = [];
         let deleted = 0;
         for (const table of UNDO_ORDER) {
           let ids = byTable.get(table) ?? [];
@@ -1757,6 +1770,17 @@ export function createDataImportHandler(deps: Deps) {
             const publishedIds = new Set((published ?? []).map((p: any) => String(p.id)));
             skippedPublished.push(...publishedIds);
             ids = ids.filter((id) => !publishedIds.has(id));
+          }
+          if (table === "workflows") {
+            // workflow_posts.workflow_id is ON DELETE CASCADE, so deleting a
+            // container workflow would silently destroy the very published post
+            // the guard above just protected — and any post the user added to it
+            // after the import. Keep any workflow that still holds posts.
+            const { data: remaining } = await db.from("workflow_posts")
+              .select("workflow_id").in("workflow_id", ids.map(Number));
+            const keep = new Set((remaining ?? []).map((r: any) => String(r.workflow_id)));
+            skippedWorkflows.push(...keep);
+            ids = ids.filter((id) => !keep.has(id));
           }
           if (ids.length) {
             const numeric = table !== "ideias";
@@ -1773,9 +1797,9 @@ export function createDataImportHandler(deps: Deps) {
         await insertAuditLog(db, {
           conta_id, actor_user_id: user.id, action: "import_undo",
           resource_type: "import_job", resource_id: String(jobId),
-          metadata: { deleted, skippedPublished },
+          metadata: { deleted, skippedPublished, skippedWorkflows },
         });
-        return json({ deleted, skippedPublished });
+        return json({ deleted, skippedPublished, skippedWorkflows });
       }
 
       return json({ error: "Unknown action" }, 404);
