@@ -121,7 +121,7 @@ Copie o bloco abaixo, apague o que não se aplica e mande. O "você" das pergunt
 > - Quem não pode ser citado, marcado ou aparecer ao fundo.
 > - Parceiros que precisam ser marcados sempre.
 > - Quem pode aparecer nas fotos, e onde está a autorização.
-> - Assuntos fora. Liste uma a uma as datas comemorativas em que a marca não entra.
+> - Assuntos em que a marca não entra — política, religião, futebol —, e as datas comemorativas uma a uma.
 > - Fora de pauta: unidade fechada, produto descontinuado, sócio que saiu.
 >
 > **5. Metas e medição**
