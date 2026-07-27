@@ -87,4 +87,7 @@ describe('mapStatus clamp', () => {
     expect(mapStatus('Publicado')).toBe('postado');
     expect(mapStatus('???')).toBe('rascunho');
   });
+  test('correction wins over enviado/client when both match (order-dependent branch)', () => {
+    expect(mapStatus('Correção Cliente')).toBe('correcao_cliente');
+  });
 });

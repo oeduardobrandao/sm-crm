@@ -46,4 +46,56 @@ describe('parseNotionExport', () => {
     const { warnings } = parseNotionExport('export.zip', zip, /* maxBytes */ 100);
     expect(warnings.some((w) => w.includes('grande'))).toBe(true);
   });
+
+  test('two distinct databases sharing a title both survive, with distinct names and rows', () => {
+    const zip = makeZip({
+      'Export/Tarefas 11112222333344445555666677778888.csv':
+        'Nome,Data\nTarefa Cliente A,2026-08-01',
+      'Export/Cliente A/Tarefas aaaabbbbccccddddeeeeffff00001111.csv':
+        'Nome,Data\nTarefa Cliente B,2026-08-02',
+    });
+    const { collections, warnings } = parseNotionExport('export.zip', zip);
+    expect(warnings).toEqual([]);
+    expect(collections).toHaveLength(2);
+    const names = collections.map((c) => c.name).sort();
+    expect(names).toEqual(['Tarefas', 'Tarefas (2)']);
+    // each keeps its own row — no cross-contamination / silent overwrite
+    const allRows = collections.flatMap((c) => c.rows.map((r) => r.cells.Nome));
+    expect(allRows).toContain('Tarefa Cliente A');
+    expect(allRows).toContain('Tarefa Cliente B');
+  });
+
+  test('_all.csv preference wins within one database regardless of entry order (all-then-plain)', () => {
+    const zip = makeZip({
+      'Export/Calendário 0a1b2c3d4e5f60718293a4b5c6d7e8f9_all.csv':
+        'Name,Data\nPost A,2026-08-01\nPost B,2026-08-02',
+      'Export/Calendário 0a1b2c3d4e5f60718293a4b5c6d7e8f9.csv': 'Name,Data\nPost A,2026-08-01',
+    });
+    const { collections, warnings } = parseNotionExport('export.zip', zip);
+    expect(warnings).toEqual([]);
+    expect(collections).toHaveLength(1);
+    expect(collections[0].name).toBe('Calendário');
+    expect(collections[0].rows).toHaveLength(2);
+  });
+
+  test('non-csv entries (e.g. large attachments) do not count against the size cap', () => {
+    const bigAttachment = 'x'.repeat(5000);
+    const zip = makeZip({
+      'Export/imagem-grande.png': bigAttachment,
+      'Export/Notas.md': bigAttachment,
+      'Export/Clientes 0a1b2c3d4e5f60718293a4b5c6d7e8f9.csv': 'Nome,Email\nAna,a@x.com',
+    });
+    const { collections, warnings } = parseNotionExport('export.zip', zip, /* maxBytes */ 200);
+    expect(warnings).toEqual([]);
+    expect(collections).toHaveLength(1);
+    expect(collections[0].rows).toHaveLength(1);
+  });
+
+  test('zip whose actual decompressed csv content exceeds the cap: no collections, warning names what was dropped', () => {
+    const big = 'A,B\n' + '1,2\n'.repeat(400);
+    const zip = makeZip({ 'Export/Calendário 0a1b2c3d4e5f60718293a4b5c6d7e8f9.csv': big });
+    const { collections, warnings } = parseNotionExport('export.zip', zip, /* maxBytes */ 100);
+    expect(collections).toHaveLength(0);
+    expect(warnings.some((w) => w.includes('grande') && w.includes('Calendário'))).toBe(true);
+  });
 });
