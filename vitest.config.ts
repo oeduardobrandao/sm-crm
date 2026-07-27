@@ -9,6 +9,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'apps/crm/src'),
       '@mesaas/i18n': path.resolve(__dirname, 'packages/i18n/index.ts'),
       '@mesaas/ui': path.resolve(__dirname, 'packages/ui'),
+      '@mesaas/import-parsers': path.resolve(__dirname, 'packages/import-parsers/index.ts'),
     },
   },
   define: {
@@ -22,6 +23,7 @@ export default defineConfig({
     include: [
       'apps/**/__tests__/**/*.test.{ts,tsx}',
       'apps/**/*.{test,spec}.{ts,tsx}',
+      'packages/**/__tests__/**/*.test.{ts,tsx}',
       'test/**/*.{test,spec}.{ts,tsx}',
       'scripts/**/*.test.mjs',
       // Scoped to e2e/screenshots/__tests__ today (safety.ts unit tests).
