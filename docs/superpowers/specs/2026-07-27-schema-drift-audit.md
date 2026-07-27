@@ -199,15 +199,37 @@ to staging; migrations 3–7 are written and tested but applied nowhere.
 | 1 | `20260727000001_reconcile_adopt_client_tables` | `cliente_enderecos`, `cliente_datas`, `clientes.data_aniversario` | Adopt | staging |
 | 2 | `20260727000002_reconcile_drop_unreferenced` | `subscription_events`, 6 `workspaces` billing cols, `instagram_accounts.updated_at` | Drop | staging (no-op) |
 | 3 | `20260727000003_reconcile_adopt_contas_columns` | `contas.brand_color`, `contas.hub_enabled` | Keep + adopt | — |
-| 4 | `20260727000004_reconcile_drop_google_drive_columns` | 3 × `files.google_drive_*` | Drop + rewrite constraints | — |
 | 5 | `20260727000005_reconcile_add_missing_created_at` | 4 × `created_at` (Finding C) | Add, no backfill | — |
 | 6 | `20260727000006_fix_cliente_tables_active_workspace_rls` | RLS on the two adopted tables | **Security fix** | — |
 | 7 | `20260727000007_normalize_cliente_tables_shape` | `id` on both adopted tables | Normalize to prod's shape | — |
+| 8 | `20260727000008_reconcile_drop_google_drive_columns` | 3 × `files.google_drive_*` | Drop + rewrite constraints | **blocked** |
 
-**Staging is not finished.** It has migrations 1–2 only, so it still needs 3–7 —
-including 7, which is the one that repairs the identity-vs-sequence divergence
-migration 1 introduced there. Treating the Status section below as "staging is
-done" is wrong.
+### 2026-07-27 — production partially applied, then blocked
+
+`db push` against production applied the three unrecorded July-22 migrations
+plus 1, 2 and 3, then **stopped at the `google_drive` drop**: its guard refused
+because production holds files whose only source is Google Drive. The guard
+behaved correctly, but because `db push` halts at the first failure it also
+prevented migrations 5, 6 and 7 from landing — including the **RLS security fix**
+for a live cross-workspace PII leak.
+
+That migration was therefore renumbered from `...000004` to `...000008` so it
+sequences last and a refusal blocks only itself. Nothing about its content
+changed; the reordering is safe because it touches only `files`, which none of
+the other pending migrations touch.
+
+Verified applied on production by re-dumping: `subscription_events` dropped, the
+six `workspaces` billing columns and `instagram_accounts.updated_at` dropped,
+`cliente_datas`/`cliente_enderecos` present, `contas.brand_color` present. The
+`files.google_drive_*` columns remain, as expected.
+
+**Outstanding:**
+
+- Production needs 5, 6, 7 (and 8 once the Drive files are migrated to R2).
+- **Staging has only 1–2** and still needs 3, 5, 6, 7 — including 7, which
+  repairs the identity-vs-sequence divergence migration 1 introduced there.
+- The Drive-file cleanup is now its own unblocked piece of work rather than a
+  gate on the security fix.
 
 ### Finding E — adopting production's RLS adopted a cross-workspace leak
 

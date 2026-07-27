@@ -1,6 +1,17 @@
 -- =============================================================
--- Schema drift reconciliation (4/4) — DROP files.google_drive_*
+-- Schema drift reconciliation (last) — DROP files.google_drive_*
 -- See docs/superpowers/specs/2026-07-27-schema-drift-audit.md
+--
+-- SEQUENCED LAST, DELIBERATELY. This migration was originally numbered
+-- ...000004. On 2026-07-27 its guard refused against production — files exist
+-- whose only source is Google Drive — which is the guard working as intended,
+-- but `supabase db push` stops at the first failure, so it also blocked the
+-- RLS security fix (...000006) and everything after it from reaching prod.
+--
+-- Renumbered to run after the rest so a refusal here blocks only itself.
+-- Applying it requires migrating the Drive-sourced files to R2 first; until
+-- then it is expected to refuse, and that refusal is no longer load-bearing on
+-- anything else.
 --
 -- files.google_drive_file_id / _thumbnail_url / _view_url exist in production,
 -- are created by no migration, and are read by no code. Held back from the
