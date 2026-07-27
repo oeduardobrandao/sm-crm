@@ -27,6 +27,22 @@ interface Deps {
 // is ON DELETE CASCADE from workflows (20260301_baseline_schema.sql:159).
 const UNDO_ORDER = ["workflow_posts", "workflows", "workflow_templates", "ideias", "clientes"];
 const BATCH_LIMIT = 200;
+// preview is a pure counting pass over the WHOLE parsed file (commit is what gets
+// sliced into BATCH_LIMIT batches), so it needs its own, larger ceiling — but it
+// still needs one, so a malformed/huge payload can't be walked unbounded.
+const PREVIEW_LIMIT = 5000;
+// Supabase's REST layer applies a project-level max-rows cap (commonly 1000), so
+// every unbounded read has to be paged explicitly — the handler must not depend on
+// that setting in either direction. A short page is the end-of-data signal.
+const PAGE_SIZE = 500;
+// `.in()` lists ride in the query string, so they are chunked to keep URLs sane.
+const IN_CHUNK = 500;
+
+function chunked<T>(items: T[], size = IN_CHUNK): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
 
 export function createDataImportHandler(deps: Deps) {
   return async (req: Request): Promise<Response> => {
@@ -51,7 +67,11 @@ export function createDataImportHandler(deps: Deps) {
     if (!ent?.features?.feature_csv_import) return json({ error: "upgrade_required" }, 403);
 
     const parts = new URL(req.url).pathname.split("/").filter(Boolean);
-    const action = parts[parts.indexOf("data-import") + 1] ?? "";
+    // Guard the indexOf: when the segment is absent it returns -1 and a bare
+    // `parts[idx + 1]` silently reads parts[0], routing an unknown path to a real
+    // action. Mirrors ideia-media-manage/handler.ts:43-44.
+    const actionIdx = parts.indexOf("data-import");
+    const action = actionIdx >= 0 ? (parts[actionIdx + 1] ?? "") : "";
     let body: any = {};
     try {
       body = await req.json();
@@ -79,6 +99,10 @@ export function createDataImportHandler(deps: Deps) {
 
       if (action === "preview") {
         const rows = (body.rows ?? []) as CommitRow[];
+        // Same shape guard commit applies: without it `rows: "abc"` reaches
+        // rows.filter() below and surfaces as an opaque 500.
+        if (!Array.isArray(rows)) return json({ error: "Invalid payload" }, 400);
+        if (rows.length > PREVIEW_LIMIT) return json({ error: "Batch too large" }, 400);
         const counts: Record<string, number> = { clientes: 0, posts: 0, entregas: 0, ideias: 0 };
         for (const r of rows) {
           if (r.kind === "cliente") counts.clientes++;
@@ -131,6 +155,18 @@ export function createDataImportHandler(deps: Deps) {
         const rows = (body.rows ?? []) as CommitRow[];
         if (!jobId || !Array.isArray(rows)) return json({ error: "Invalid payload" }, 400);
         if (rows.length > BATCH_LIMIT) return json({ error: "Batch too large" }, 400);
+        // Job ownership is checked HERE, not only inside the RPC. `db` is the
+        // service-role client (RLS bypassed): a foreign jobId makes every row fail
+        // inside import_commit_row, but control still fell through to the
+        // `final` update below and flipped ANOTHER workspace's job row to
+        // 'completed' — resurrecting an undone job in that tenant's history/undo UI.
+        const { data: job } = await db
+          .from("import_jobs")
+          .select("id")
+          .eq("id", jobId)
+          .eq("conta_id", conta_id)
+          .single();
+        if (!job) return json({ error: "Job not found" }, 404);
         const results: any[] = [];
         for (const row of rows) {
           const { data, error } = await db.rpc("import_commit_row", {
@@ -165,7 +201,8 @@ export function createDataImportHandler(deps: Deps) {
         }
         // Last batch marks the job completed (client sets final on its last slice).
         if (body.final === true) {
-          await db.from("import_jobs").update({ status: "completed" }).eq("id", jobId);
+          // conta-scoped as defence in depth, on top of the ownership check above.
+          await db.from("import_jobs").update({ status: "completed" }).eq("id", jobId).eq("conta_id", conta_id);
         }
         await insertAuditLog(db, {
           conta_id,
@@ -199,30 +236,50 @@ export function createDataImportHandler(deps: Deps) {
         // import. Deleting it here would cascade through their workflows,
         // etapas, posts, ideias, instagram_accounts and folders. The spec is
         // explicit: undo restores creations only, merges are never undone.
-        const { data: items, error: itemsErr } = await db
-          .from("import_job_items")
-          .select("table_name, row_id, source_row_key, ordinal, merged")
-          .eq("job_id", jobId)
-          .eq("merged", false);
-        if (itemsErr) throw itemsErr;
+        //
+        // Paged: an unpaged read is silently truncated by the project's max-rows
+        // cap. Undo would then delete only the first page and STILL mark the job
+        // `undone`, after which a retry returns `Already undone` and the rest is
+        // permanently un-undoable.
+        const items: Array<{ table_name: string; row_id: string }> = [];
+        for (let from = 0; ; from += PAGE_SIZE) {
+          const { data: page, error: itemsErr } = await db
+            .from("import_job_items")
+            .select("table_name, row_id, source_row_key, ordinal, merged")
+            .eq("job_id", jobId)
+            .eq("conta_id", conta_id)
+            .eq("merged", false)
+            .order("id", { ascending: true })
+            .range(from, from + PAGE_SIZE - 1);
+          if (itemsErr) throw itemsErr;
+          const rowsPage = (page ?? []) as Array<{ table_name: string; row_id: string }>;
+          items.push(...rowsPage);
+          if (rowsPage.length < PAGE_SIZE) break;
+        }
 
         const byTable = new Map<string, string[]>();
-        for (const it of items ?? []) {
+        for (const it of items) {
           byTable.set(it.table_name, [...(byTable.get(it.table_name) ?? []), it.row_id]);
         }
         const skippedPublished: string[] = [];
         const skippedWorkflows: string[] = [];
+        const skippedClientes: string[] = [];
         let deleted = 0;
         for (const table of UNDO_ORDER) {
           let ids = byTable.get(table) ?? [];
           if (!ids.length) continue;
           if (table === "workflow_posts") {
-            const { data: published } = await db
-              .from("workflow_posts")
-              .select("id, instagram_media_id, tiktok_post_id")
-              .in("id", ids.map(Number))
-              .or("instagram_media_id.not.is.null,tiktok_post_id.not.is.null");
-            const publishedIds = new Set((published ?? []).map((p: any) => String(p.id)));
+            const publishedIds = new Set<string>();
+            for (const part of chunked(ids)) {
+              const { data: published, error } = await db
+                .from("workflow_posts")
+                .select("id, instagram_media_id, tiktok_post_id")
+                .eq("conta_id", conta_id)
+                .in("id", part.map(Number))
+                .or("instagram_media_id.not.is.null,tiktok_post_id.not.is.null");
+              if (error) throw error;
+              for (const p of (published ?? []) as any[]) publishedIds.add(String(p.id));
+            }
             skippedPublished.push(...publishedIds);
             ids = ids.filter((id) => !publishedIds.has(id));
           }
@@ -231,12 +288,51 @@ export function createDataImportHandler(deps: Deps) {
             // container workflow would silently destroy the very published post
             // the guard above just protected — and any post the user added to it
             // after the import. Keep any workflow that still holds posts.
-            const { data: remaining } = await db
-              .from("workflow_posts")
-              .select("workflow_id")
-              .in("workflow_id", ids.map(Number));
-            const keep = new Set((remaining ?? []).map((r: any) => String(r.workflow_id)));
+            const keep = new Set<string>();
+            for (const part of chunked(ids)) {
+              const { data: remaining, error } = await db
+                .from("workflow_posts")
+                .select("workflow_id")
+                .eq("conta_id", conta_id)
+                .in("workflow_id", part.map(Number));
+              if (error) throw error;
+              for (const r of (remaining ?? []) as any[]) keep.add(String(r.workflow_id));
+            }
             skippedWorkflows.push(...keep);
+            ids = ids.filter((id) => !keep.has(id));
+          }
+          if (table === "clientes") {
+            // clientes is the LAST pass and the most dangerous one: workflows.cliente_id
+            // (20260301_baseline_schema.sql:148) and ideias.cliente_id
+            // (20260414114009_ideias.sql:5) are both ON DELETE CASCADE, and
+            // workflow_posts cascades from workflows in turn. Deleting a cliente
+            // unguarded therefore destroys the published post the workflow_posts pass
+            // just protected — and every workflow / post / ideia the user created under
+            // an imported cliente AFTER the import, rows this job never created.
+            // So: keep any cliente still referenced by a SURVIVING workflows or ideias
+            // row. Both passes above have already run, so "surviving" means exactly
+            // "not deleted by this undo" — which also subsumes skippedWorkflows: a kept
+            // workflow is still in the table, so its cliente is found here by
+            // construction.
+            const keep = new Set<string>();
+            for (const part of chunked(ids)) {
+              const numericPart = part.map(Number);
+              const { data: wf, error: wfErr } = await db
+                .from("workflows")
+                .select("cliente_id")
+                .eq("conta_id", conta_id)
+                .in("cliente_id", numericPart);
+              if (wfErr) throw wfErr;
+              for (const r of (wf ?? []) as any[]) keep.add(String(r.cliente_id));
+              const { data: ideias, error: idErr } = await db
+                .from("ideias")
+                .select("cliente_id")
+                .eq("workspace_id", conta_id)
+                .in("cliente_id", numericPart);
+              if (idErr) throw idErr;
+              for (const r of (ideias ?? []) as any[]) keep.add(String(r.cliente_id));
+            }
+            skippedClientes.push(...keep);
             ids = ids.filter((id) => !keep.has(id));
           }
           if (ids.length) {
@@ -244,25 +340,31 @@ export function createDataImportHandler(deps: Deps) {
             // ideias is scoped by workspace_id, every other target by conta_id
             // (both hold the workspace uuid).
             const scopeCol = table === "ideias" ? "workspace_id" : "conta_id";
-            const { error } = await db
-              .from(table)
-              .delete()
-              .in("id", numeric ? ids.map(Number) : ids)
-              .eq(scopeCol, conta_id);
-            if (error) throw error;
-            deleted += ids.length;
+            for (const part of chunked(ids)) {
+              // `.select("id")` makes the delete return the rows it actually removed,
+              // so `deleted` reports reality — a row filtered out by the scope guard or
+              // already gone must not inflate the number shown to the user.
+              const { data: removed, error } = await db
+                .from(table)
+                .delete()
+                .in("id", numeric ? part.map(Number) : part)
+                .eq(scopeCol, conta_id)
+                .select("id");
+              if (error) throw error;
+              deleted += ((removed ?? []) as unknown[]).length;
+            }
           }
         }
-        await db.from("import_jobs").update({ status: "undone" }).eq("id", jobId);
+        await db.from("import_jobs").update({ status: "undone" }).eq("id", jobId).eq("conta_id", conta_id);
         await insertAuditLog(db, {
           conta_id,
           actor_user_id: user.id,
           action: "import_undo",
           resource_type: "import_job",
           resource_id: String(jobId),
-          metadata: { deleted, skippedPublished, skippedWorkflows },
+          metadata: { deleted, skippedPublished, skippedWorkflows, skippedClientes },
         });
-        return json({ deleted, skippedPublished, skippedWorkflows });
+        return json({ deleted, skippedPublished, skippedWorkflows, skippedClientes });
       }
 
       return json({ error: "Unknown action" }, 404);
