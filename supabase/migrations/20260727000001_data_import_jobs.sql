@@ -21,6 +21,14 @@ create table if not exists public.import_job_items (
   row_id text not null,
   source_row_key text not null,
   ordinal integer not null default 0,
+  -- true = this row records a PRE-EXISTING cliente that the import merged into,
+  -- not a row the import created. Reference resolution and the resume probe must
+  -- still find it (a merged cliente is a valid clienteRef target, and a
+  -- re-committed merge must still be skipped), but UNDO MUST NEVER DELETE IT --
+  -- deleting it would destroy a client the customer already owned, cascading into
+  -- their workflows, etapas, posts, ideias, instagram_accounts and folders.
+  -- Every undo delete must therefore filter `where not merged`.
+  merged boolean not null default false,
   -- Where this row came from (source tool, collection, original item URL,
   -- raw cells, any attachment URLs). The design promises source traceability
   -- for every imported row; it lives HERE rather than as a new jsonb column on
@@ -28,17 +36,21 @@ create table if not exists public.import_job_items (
   -- unchanged and provenance is deleted automatically when a job is undone.
   provenance jsonb,
   created_at timestamptz not null default now(),
+  -- job_id lookups ride this index's leading column, so no separate (job_id) index.
   unique (job_id, source_row_key, table_name, ordinal)
 );
-create index if not exists import_job_items_job_idx on public.import_job_items (job_id);
 
 alter table public.import_jobs enable row level security;
 alter table public.import_job_items enable row level security;
 
 -- Workspace members may read their own jobs (wizard history / undo button state).
 -- Writes happen only through the service-role edge function.
+-- drop-then-create (Postgres has no `create policy if not exists`) so a partially
+-- applied file can be re-run -- matches 20260720000002_kb_images_bucket.sql:22.
+drop policy if exists import_jobs_select on public.import_jobs;
 create policy import_jobs_select on public.import_jobs
   for select using (conta_id = public.get_my_conta_id());
+drop policy if exists import_job_items_select on public.import_job_items;
 create policy import_job_items_select on public.import_job_items
   for select using (conta_id = public.get_my_conta_id());
 
@@ -67,6 +79,7 @@ declare
   v_etapa text;
   v_etapa_id text;
   v_status text;
+  v_tipo text;
   v_i integer;
   v_user_id uuid;
 begin
@@ -100,16 +113,29 @@ begin
 
   if p_kind = 'cliente' then
     if p_payload ? 'mergeClienteId' then
-      -- fill-only-empty-fields merge; nothing recorded (merge is not undoable by design)
+      -- fill-only-empty-fields merge into a cliente the workspace already owns.
+      -- A bookkeeping row IS recorded (later rows resolve clienteRef{created} through
+      -- it), but flagged merged=true so undo can never delete the pre-existing cliente.
       update public.clientes set
         email = coalesce(nullif(email, ''), p_payload->>'email', email),
         telefone = coalesce(nullif(telefone, ''), p_payload->>'telefone', telefone),
         especialidade = coalesce(nullif(especialidade, ''), p_payload->>'especialidade', especialidade),
         notion_page_url = coalesce(nullif(notion_page_url, ''), p_payload->>'notionPageUrl', notion_page_url)
       where id = (p_payload->>'mergeClienteId')::bigint and conta_id = p_conta_id;
+      -- TENANT GATE: mergeClienteId is client-supplied and clientes.id is a sequential
+      -- bigint. Without this check a zero-row UPDATE would pass silently and the
+      -- bookkeeping row below would map source_row_key -> another workspace's cliente,
+      -- which import_resolve_cliente would then hand to workflows/ideias inserts.
+      -- Also turns a nonexistent id into a clear error instead of a downstream FK failure.
+      if not found then
+        raise exception 'cliente % does not belong to this workspace',
+          (p_payload->>'mergeClienteId')::bigint;
+      end if;
       -- record the mapping so later rows can resolve clienteRef{created:sourceKey}
-      insert into public.import_job_items (job_id, conta_id, table_name, row_id, source_row_key, ordinal)
-        values (p_job_id, p_conta_id, 'clientes', p_payload->>'mergeClienteId', p_source_row_key, 0);
+      insert into public.import_job_items (job_id, conta_id, table_name, row_id, source_row_key,
+                                           ordinal, merged)
+        values (p_job_id, p_conta_id, 'clientes', p_payload->>'mergeClienteId', p_source_row_key,
+                0, true);
       return jsonb_build_object('skipped', false, 'table', 'clientes', 'row_id', p_payload->>'mergeClienteId');
     end if;
     insert into public.clientes (conta_id, user_id, nome, sigla, cor, plano, email, telefone,
@@ -125,9 +151,16 @@ begin
   elsif p_kind = 'template' then
     insert into public.workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
     values (p_conta_id, v_user_id, p_payload->>'nome',
-      (select jsonb_agg(jsonb_build_object(
+      -- coalesce to '[]': jsonb_agg over an empty set returns NULL, and
+      -- jsonb_array_elements_text is STRICT so a missing/empty 'etapas' yields no rows.
+      -- Naming `etapas` in the column list defeats the table DEFAULT '[]'
+      -- (20260301_baseline_schema.sql:139), so the row would land with etapas IS NULL --
+      -- and the Entregas wizard is not null-safe: StepTemplate.tsx:131 reads
+      -- `t.etapas.length` for EVERY template in the picker, so one NULL row throws
+      -- while rendering the list and breaks the wizard workspace-wide.
+      coalesce((select jsonb_agg(jsonb_build_object(
          'nome', e.value, 'prazo_dias', 1, 'tipo_prazo', 'uteis', 'tipo', 'padrao'))
-       from jsonb_array_elements_text(p_payload->'etapas') e),
+       from jsonb_array_elements_text(p_payload->'etapas') e), '[]'::jsonb),
       'padrao')
     returning id::text into v_id;
 
@@ -201,12 +234,31 @@ begin
                     (p_payload->>'scheduledAt')::timestamptz, now()) > now() then
       v_status := 'aprovado_cliente';
     end if;
+    -- SERVER-SIDE TIPO CLAMP, same reasoning as the status clamp above: `tipo` is
+    -- CHECK-constrained to ('feed','reels','stories','carrossel')
+    -- (20260402_workflow_posts.sql:19-20) and arrives in the same untrusted JSON blob.
+    -- A CSV carrying 'Carrossel' / 'video' / 'Vídeo' would otherwise raise a
+    -- constraint violation and lose the row. Unrecognized degrades to 'feed'.
+    v_tipo := coalesce(p_payload->>'tipo', 'feed');
+    if v_tipo not in ('feed', 'reels', 'stories', 'carrossel') then
+      v_tipo := 'feed';
+    end if;
     insert into public.workflow_posts (workflow_id, conta_id, titulo, conteudo, conteudo_plain, tipo,
                                        ordem, status, scheduled_at, published_at, created_via)
-    values (v_workflow_id, p_conta_id, p_payload->>'titulo',
+    -- titulo is `text not null default ''` (20260402_workflow_posts.sql:16), but naming
+    -- it in the column list defeats the default -- an absent/JSON-null titulo would
+    -- raise a NOT NULL violation and lose the row. A blank title is routine in a
+    -- content-calendar CSV where the caption carries the content.
+    values (v_workflow_id, p_conta_id, coalesce(p_payload->>'titulo', ''),
             p_payload->'conteudo', coalesce(p_payload->>'conteudoPlain', ''),
-            coalesce(p_payload->>'tipo', 'feed'),
-            0, v_status,
+            v_tipo,
+            -- ordem: next free slot in this container, derived from the posts already
+            -- inserted for this workflow rather than carried on the wire. Keeps a stable
+            -- order within a container and stays correct across a resumed/retried batch
+            -- (already-committed posts are counted, so the sequence continues).
+            (select coalesce(max(wp.ordem) + 1, 0) from public.workflow_posts wp
+              where wp.workflow_id = v_workflow_id),
+            v_status,
             (p_payload->>'scheduledAt')::timestamptz, (p_payload->>'publishedAt')::timestamptz, 'human')
     returning id::text into v_id;
 
@@ -254,12 +306,21 @@ begin
     end if;
     return v_id;
   end if;
+  -- 'created' branch: note `conta_id = p_conta_id` proves only that the BOOKKEEPING
+  -- row belongs to the caller -- never that the cliente id inside row_id does. The
+  -- writers above keep that invariant (both the insert and the merge path are
+  -- conta-scoped and the merge now raises on a zero-row UPDATE), but re-assert it
+  -- here so the guarantee is local to this function and cannot be broken by a future
+  -- writer of import_job_items.
   select row_id::bigint into v_id from public.import_job_items
     where job_id = p_job_id and conta_id = p_conta_id
       and source_row_key = p_payload->'clienteRef'->>'sourceKey'
       and table_name = 'clientes' and ordinal = 0;
   if v_id is null then
     raise exception 'cliente % not committed yet', p_payload->'clienteRef'->>'sourceKey';
+  end if;
+  if not exists (select 1 from public.clientes where id = v_id and conta_id = p_conta_id) then
+    raise exception 'cliente % does not belong to this workspace', v_id;
   end if;
   return v_id;
 end;
