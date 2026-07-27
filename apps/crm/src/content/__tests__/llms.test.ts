@@ -30,7 +30,13 @@ describe('buildLlmsTxt', () => {
       ],
     );
     expect(txt).toContain('## Blog');
-    expect(txt).toContain('https://www.mesaas.com.br/blog/artigo');
+    // Exact bullet: h1 (not the longer SEO `title`) as the link text, and a
+    // `: <description>` suffix — pins both fields so swapping p.h1 -> p.title
+    // or dropping the description suffix fails this assertion.
+    expect(txt).toContain(
+      '- [Mesaas ou Aprova Post](https://www.mesaas.com.br/blog/artigo): Descrição do artigo.',
+    );
+    expect(txt).not.toContain('Mesaas ou Aprova Post: qual usar na sua agência em 2026');
   });
 
   test('omits the blog section when there are no posts', () => {

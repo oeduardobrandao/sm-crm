@@ -33,4 +33,14 @@ describe('seo-head', () => {
     expect(head).toContain('<script type="application/ld+json" data-seo="jsonld">');
     expect(head).not.toContain('</script>b');
   });
+
+  test('og:type defaults to website when the route has no ogType', () => {
+    expect(buildHeadTags(META)).toContain('<meta property="og:type" content="website" />');
+  });
+
+  test('og:type is article for routes that set ogType', () => {
+    const head = buildHeadTags({ ...META, ogType: 'article' });
+    expect(head).toContain('<meta property="og:type" content="article" />');
+    expect(head).not.toContain('content="website"');
+  });
 });

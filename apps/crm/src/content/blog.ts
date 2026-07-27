@@ -42,6 +42,7 @@ export function blogPostRouteMeta(post: BlogPost): RouteMeta {
     description: post.description,
     lastmod: post.updated,
     ogImage: postOgImage(post.slug),
+    ogType: 'article',
   };
 }
 

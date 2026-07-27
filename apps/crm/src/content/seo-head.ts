@@ -19,7 +19,7 @@ export function buildHeadTags(meta: RouteMeta, jsonLd: object[] = []): string {
     `<title>${esc(meta.title)}</title>`,
     `<meta name="description" content="${esc(meta.description)}" />`,
     `<link rel="canonical" href="${url}" />`,
-    `<meta property="og:type" content="website" />`,
+    `<meta property="og:type" content="${meta.ogType ?? 'website'}" />`,
     `<meta property="og:site_name" content="${SITE_NAME}" />`,
     `<meta property="og:title" content="${esc(meta.title)}" />`,
     `<meta property="og:description" content="${esc(meta.description)}" />`,

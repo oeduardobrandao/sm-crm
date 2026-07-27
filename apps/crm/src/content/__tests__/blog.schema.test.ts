@@ -98,6 +98,7 @@ describe('blog helpers', () => {
     expect(meta.file).toBe('blog/b.html');
     expect(meta.lastmod).toBe('2026-07-25');
     expect(meta.ogImage).toBe('https://www.mesaas.com.br/og/blog/b.png');
+    expect(meta.ogType).toBe('article');
   });
 
   test('relatedPosts excludes the post itself and prefers the same category', () => {

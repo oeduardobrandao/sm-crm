@@ -49,6 +49,8 @@ export interface RouteMeta {
   /** YYYY-MM-DD, bumped when the page content changes. */
   lastmod: string;
   ogImage?: string;
+  /** Open Graph object type. Defaults to 'website'; blog posts use 'article'. */
+  ogType?: 'article';
 }
 
 export const PUBLIC_ROUTES: RouteMeta[] = [
