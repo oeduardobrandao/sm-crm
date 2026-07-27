@@ -70,6 +70,25 @@ create table if not exists public.import_job_items (
   unique (job_id, source_row_key, table_name, ordinal)
 );
 
+-- IDEMPOTENCY (added round 3, 2026-07-27): `undo_started_at` and the widened
+-- status check above were edited straight into this `create table if not
+-- exists` block. If any environment already applied the pre-round-3 version
+-- of this file, the create is a no-op there and its migration version is
+-- already recorded in schema_migrations, so it never replays -- these two
+-- statements would then never land. The failure is silent and misleading:
+-- handleUndo's probe selects undo_started_at, PostgREST rejects the unknown
+-- column, `.single()` returns null, and undo answers 404 "Job not found" for
+-- every job, while the handler's own `update({status:'undoing'})` would also
+-- violate the old, narrower check. `add column if not exists` / drop-then-add
+-- the constraint converge the file to the intended shape whether or not the
+-- pre-round-3 version ever ran, while the column staying in the `create table`
+-- above keeps a fresh apply producing the right shape in one step.
+alter table public.import_jobs add column if not exists undo_started_at timestamptz;
+
+alter table public.import_jobs drop constraint if exists import_jobs_status_check;
+alter table public.import_jobs add constraint import_jobs_status_check
+  check (status in ('committing', 'completed', 'undoing', 'undone'));
+
 alter table public.import_jobs enable row level security;
 alter table public.import_job_items enable row level security;
 

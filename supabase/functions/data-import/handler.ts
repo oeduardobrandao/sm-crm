@@ -126,32 +126,67 @@ async function guardContainerWorkflows(db: DbClient, conta_id: string, ids: stri
 }
 
 /**
- * workflow_templates pass. workflows.template_id REFERENCES workflow_templates(id)
- * ON DELETE SET NULL (20260301_baseline_schema.sql:150), so deleting a template
- * that a surviving workflow still points at would silently null that workflow's
- * template_id — orphaning the entrega configuration the workflows pass just
- * decided to keep (guardContainerWorkflows), with no error and no mention in any
- * skipped* array. Returns the ids to KEEP: any template still referenced by a
- * workflows.template_id row.
+ * EVERY table that references `workflow_templates(id)`, whether the FK is
+ * ON DELETE SET NULL or ON DELETE CASCADE, with the column holding the
+ * template id and the table's tenant-scope column.
+ *
+ * Two different hazards share this list:
+ *   - workflows.template_id (SET NULL) — deleting a template a surviving
+ *     workflow still points at would silently null that workflow's
+ *     template_id, orphaning the entrega configuration the workflows pass
+ *     just decided to keep (guardContainerWorkflows). No data is destroyed,
+ *     but the link is, with no error and no mention in any skipped* array.
+ *   - template_property_definitions.template_id (CASCADE) — import_commit_row
+ *     never writes a template_property_definitions row itself, so every one
+ *     that exists was authored by the user after the import (custom property
+ *     fields defined on the template). Deleting the template cascades it
+ *     away, and post_property_values.property_definition_id cascades from
+ *     THAT column in turn (20260403_custom_properties.sql:28) — losing the
+ *     definition's row is enough to lose every value recorded against it, so
+ *     no separate probe of post_property_values is needed.
+ *
+ * Verified against the migrations on 2026-07-27:
+ *   workflows                      template_id  SET NULL  conta_id  20260301_baseline_schema.sql:150
+ *   template_property_definitions  template_id  CASCADE   conta_id  20260403_custom_properties.sql:8
+ *
+ * !!! ANY future table added with `REFERENCES workflow_templates(id)` (SET
+ * NULL or CASCADE) MUST be added to this list — the same discipline as
+ * CLIENTE_CASCADE_CHILDREN below, and a missing CASCADE entry fails exactly
+ * as silently: undo deletes the template, Postgres cascades away rows this
+ * import never created, and nothing appears in skippedTemplates. Re-derive
+ * with:
+ *   grep -rn "REFERENCES workflow_templates(id)" supabase/migrations/
+ */
+const TEMPLATE_REFERENCING_TABLES: Array<{ table: string; column: string; scopeCol: string | null }> = [
+  { table: "workflows", column: "template_id", scopeCol: "conta_id" },
+  { table: "template_property_definitions", column: "template_id", scopeCol: "conta_id" },
+];
+
+/**
+ * workflow_templates pass. Returns the ids to KEEP: any template still
+ * referenced by a row in ANY table in TEMPLATE_REFERENCING_TABLES.
  *
  * Runs after the workflows pass has already issued its deletes for this undo, so
  * a plain query against the current `workflows` table state is enough — it will
  * only see rows that survived (never touched by this import, or kept because they
  * still hold posts). No locally cached "kept" set is needed, the same way
  * guardReferencedClientes re-queries its child tables rather than reasoning about
- * what earlier passes decided.
+ * what earlier passes decided. Every referencing table is probed unconditionally
+ * (no early exit), matching guardReferencedClientes's stable query sequence.
  */
 async function guardReferencedTemplates(db: DbClient, conta_id: string, ids: string[]): Promise<string[]> {
   const keep = new Set<string>();
   for (const part of chunked(ids)) {
-    const { data, error } = await db
-      .from("workflows")
-      .select("template_id")
-      .eq("conta_id", conta_id)
-      .in("template_id", part.map(Number));
-    if (error) throw error;
-    for (const r of (data ?? []) as any[]) {
-      if (r.template_id != null) keep.add(String(r.template_id));
+    const numericPart = part.map(Number);
+    for (const ref of TEMPLATE_REFERENCING_TABLES) {
+      let q = db.from(ref.table).select(ref.column);
+      if (ref.scopeCol) q = q.eq(ref.scopeCol, conta_id);
+      const { data, error } = await q.in(ref.column, numericPart);
+      if (error) throw error;
+      for (const r of (data ?? []) as any[]) {
+        const v = r[ref.column];
+        if (v != null) keep.add(String(v));
+      }
     }
   }
   return [...keep];

@@ -752,12 +752,20 @@ Deno.test("data-import: undo keeps a cliente that still holds a user-created ide
 });
 
 // --- workflow_templates guard ------------------------------------------------
-// workflows.template_id REFERENCES workflow_templates(id) ON DELETE SET NULL
-// (20260301_baseline_schema.sql:150). The workflows pass above deliberately
-// KEEPS an imported workflow that still holds posts (guardContainerWorkflows);
-// without a matching guard here, the very next pass deleted every imported
-// workflow_templates row unconditionally, silently nulling template_id on the
-// workflow undo just decided to preserve — no error, no skipped* mention.
+// Two references into workflow_templates(id), both probed by
+// TEMPLATE_REFERENCING_TABLES (handler.ts):
+//   workflows.template_id                     ON DELETE SET NULL (20260301_baseline_schema.sql:150)
+//   template_property_definitions.template_id ON DELETE CASCADE  (20260403_custom_properties.sql:8)
+// The workflows pass above deliberately KEEPS an imported workflow that still
+// holds posts (guardContainerWorkflows); without the first guard, the very next
+// pass deleted every imported workflow_templates row unconditionally, silently
+// nulling template_id on the workflow undo just decided to preserve — no error,
+// no skipped* mention. Without the second, import_commit_row never writes a
+// template_property_definitions row itself, so every one that exists was
+// authored by the user after the import (custom property fields on the
+// template) — deleting the template cascades it (and every post_property_values
+// row that in turn cascades from IT) away, again with no error and no mention
+// in skippedTemplates.
 
 Deno.test("data-import: undo keeps a template still referenced by a surviving workflow", async () => {
   const db = createSupabaseQueryMock();
@@ -771,6 +779,9 @@ Deno.test("data-import: undo keeps a template still referenced by a surviving wo
   // pass just kept (guardContainerWorkflows) or one never touched by this import
   // at all, it is not this undo's to break.
   db.queue("workflows", "select", { data: [{ template_id: 5 }], error: null });
+  // No property definitions in this fixture — only the workflows probe should
+  // account for the keep.
+  db.queue("template_property_definitions", "select", { data: [], error: null });
   db.queue("import_jobs", "update", { data: null, error: null });
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
@@ -783,7 +794,12 @@ Deno.test("data-import: undo keeps a template still referenced by a surviving wo
   assertModifier(probe, "eq", ["conta_id", "conta-1"]);
 });
 
-Deno.test("data-import: undo still deletes a template nothing references", async () => {
+Deno.test("data-import: undo keeps a template that still has a template_property_definitions row", async () => {
+  // This is the CASCADE hazard: no surviving workflow points at the template,
+  // but the user defined a custom property field on it after the import.
+  // import_commit_row never writes this table, so the row is entirely
+  // user-authored — deleting the template here would cascade it (and any
+  // post_property_values recorded against it) away with no error.
   const db = createSupabaseQueryMock();
   authAs(db);
   queueOwnedJob(db);
@@ -792,6 +808,32 @@ Deno.test("data-import: undo still deletes a template nothing references", async
     error: null,
   });
   db.queue("workflows", "select", { data: [], error: null });
+  db.queue("template_property_definitions", "select", { data: [{ template_id: 5 }], error: null });
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedTemplates, ["5"]);
+  assertEquals(body.deleted, 0);
+  assertEquals(callsFor(db, "workflow_templates", "delete").length, 0);
+  const probe = oneCall(db, "template_property_definitions", "select");
+  assertModifier(probe, "in", ["template_id", [5]]);
+  // conta_id: template_property_definitions carries its own tenant column
+  // (20260403_custom_properties.sql:9) — an unscoped probe here would be a
+  // missed tenant filter, not just a missing guard.
+  assertModifier(probe, "eq", ["conta_id", "conta-1"]);
+});
+
+Deno.test("data-import: undo still deletes a template with no workflow and no property definitions referencing it", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflow_templates", row_id: "5", source_row_key: "t1", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [], error: null });
+  db.queue("template_property_definitions", "select", { data: [], error: null });
   db.queue("workflow_templates", "delete", { data: [{ id: 5 }], error: null });
   db.queue("import_jobs", "update", { data: null, error: null });
   db.queue("audit_log", "insert", { data: null, error: null });
