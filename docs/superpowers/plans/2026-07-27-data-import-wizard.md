@@ -1177,6 +1177,7 @@ declare
   v_template_id bigint;
   v_etapa text;
   v_etapa_id text;
+  v_status text;
   v_i integer;
   v_user_id uuid;
 begin
@@ -1291,12 +1292,29 @@ begin
       where job_id = p_job_id and source_row_key = p_payload->>'containerKey'
         and table_name = 'workflows' and ordinal = 0;
     if v_workflow_id is null then raise exception 'container % not committed yet', p_payload->>'containerKey'; end if;
+    -- SERVER-SIDE STATUS CLAMP (defense in depth — do not rely on the browser).
+    -- The mapper's clamp lives in client code, but /data-import/commit accepts
+    -- arbitrary JSON from any authenticated member, so an 'agendado' row posted
+    -- directly (or produced by a buildCommitRows bug) would be picked up by
+    -- instagram-publish-cron / tiktok-publish-cron with no media attached.
+    -- 'agendado' and 'falha_publicacao' are never importable; 'postado' requires
+    -- a past date. Anything unrecognized degrades to 'rascunho'.
+    v_status := coalesce(p_payload->>'status', 'rascunho');
+    if v_status not in ('rascunho', 'revisao_interna', 'aprovado_interno',
+                        'enviado_cliente', 'aprovado_cliente', 'correcao_cliente', 'postado') then
+      v_status := 'rascunho';
+    end if;
+    if v_status = 'postado'
+       and coalesce((p_payload->>'publishedAt')::timestamptz,
+                    (p_payload->>'scheduledAt')::timestamptz, now()) > now() then
+      v_status := 'aprovado_cliente';
+    end if;
     insert into public.workflow_posts (workflow_id, conta_id, titulo, conteudo, conteudo_plain, tipo,
                                        ordem, status, scheduled_at, published_at, created_via)
     values (v_workflow_id, p_conta_id, p_payload->>'titulo',
             p_payload->'conteudo', coalesce(p_payload->>'conteudoPlain', ''),
             coalesce(p_payload->>'tipo', 'feed'),
-            0, p_payload->>'status',
+            0, v_status,
             (p_payload->>'scheduledAt')::timestamptz, (p_payload->>'publishedAt')::timestamptz, 'human')
     returning id::text into v_id;
 
@@ -1378,7 +1396,9 @@ npx supabase db push --linked
 
 If staging push is blocked by the known orphaned-backfill state, apply this single migration via the SQL editor and record its version, per the established workaround.
 
-Also assert the tenant guard: calling `import_commit_row` with a `clienteRef` naming a cliente from a different `conta_id` must raise `cliente % does not belong to this workspace` — verify this in the smoke test below before considering the task done.
+Two guards must be verified in the smoke test below before considering the task done, since both are security properties rather than conveniences:
+1. **Tenant guard:** calling `import_commit_row` with a `clienteRef` naming a cliente from a different `conta_id` must raise `cliente % does not belong to this workspace`.
+2. **Status clamp:** committing a `post` row with `"status":"agendado"` must land as `rascunho`, and one with `"status":"postado"` and a FUTURE date must land as `aprovado_cliente`. Neither may be trusted to the client.
 
 Smoke-test in the SQL editor (staging):
 
@@ -1392,6 +1412,8 @@ rollback;
 ```
 
 Expected: first call returns `{"skipped": false, ...}`, second returns `{"skipped": true, ...}` with the same row_id.
+
+Then, in a second `begin; … rollback;` block, commit a container plus two posts — one with `"status":"agendado"`, one with `"status":"postado"` and a `scheduledAt` a year in the future — and `select status from workflow_posts where id in (…)`. Expected: `rascunho` and `aprovado_cliente` respectively. If either comes back as sent, the clamp is not wired and the task is not done.
 
 - [ ] **Step 4: Commit**
 
