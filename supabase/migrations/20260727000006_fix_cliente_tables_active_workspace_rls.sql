@@ -26,10 +26,21 @@
 -- verified cross-workspace PII read/write path into every environment that runs
 -- the adoption migration, so it is corrected here instead.
 --
--- The new predicate keeps the membership proof AND adds active-workspace
--- scoping, making it strictly stronger than both the previous policy and the
--- get_my_conta_id()-only pattern used elsewhere (which proves no membership --
--- a stale profiles.active_workspace_id would otherwise still grant access).
+-- The new predicate adds active-workspace scoping, which is the actual fix.
+--
+-- It also retains the original membership clause, but purely as belt-and-braces:
+-- get_my_conta_id() has proven membership itself since
+-- 20260713000001_secure_workspace_invites.sql, which redefined it to require
+-- EXISTS (SELECT 1 FROM workspace_members WHERE user_id = auth.uid()
+--         AND workspace_id = p.active_workspace_id),
+-- and 20260720000004_reconcile_prod_missing_functions.sql re-delivered that
+-- hardened body to production. No later migration redefines it.
+--
+-- So the conjunct is redundant, not load-bearing. It is kept because it costs
+-- nothing and reads explicitly, but do NOT infer from its presence that
+-- get_my_conta_id() is unsafe on its own — it is not, and an earlier version of
+-- this comment wrongly said otherwise by citing the superseded 20260315
+-- definition.
 --
 -- BEHAVIOUR CHANGE: this tightens production. No legitimate flow regresses,
 -- because every other table already restricts the caller to the active

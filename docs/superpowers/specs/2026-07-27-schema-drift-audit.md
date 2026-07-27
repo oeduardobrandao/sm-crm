@@ -215,10 +215,13 @@ the same session sees only A's row, and UPDATE/DELETE against B's row affect
 rather than raising. Same-workspace INSERT and UPDATE still affect 1 row, so no
 legitimate flow regresses.
 
-The new predicate keeps the membership proof **and** adds active-workspace
-scoping, making it stronger than both the adopted policy and the
-`get_my_conta_id()`-only pattern used elsewhere — which proves no membership, so
-a stale `active_workspace_id` would otherwise still grant access.
+The new predicate adds active-workspace scoping, which is the fix. It also
+retains the membership clause, but only as belt-and-braces:
+`get_my_conta_id()` has proven membership itself since `20260713000001`
+(re-delivered to production by `20260720000004`), so the conjunct is redundant
+rather than load-bearing. An earlier version of this section claimed the
+`get_my_conta_id()`-only pattern proved no membership; that was read off the
+superseded `20260315` definition and is withdrawn.
 
 **This is a live defect in production, not one these migrations introduce.**
 Migration 1 propagated it to staging and would carry it into every fresh

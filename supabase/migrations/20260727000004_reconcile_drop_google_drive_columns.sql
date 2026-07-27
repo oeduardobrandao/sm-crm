@@ -27,18 +27,26 @@
 -- Guard: refuse if any row depends on Drive as its only source, or would
 -- violate the tightened video constraint. Runs before anything is dropped.
 -- -------------------------------------------------------------
+-- NOTE ON CONTROL FLOW: an early RETURN here would exit only this DO block, not
+-- the script — the ALTER TABLE statements below would still run. An earlier
+-- draft did exactly that, printing "nothing to do" and then reshaping
+-- constraints anyway. Both checks therefore run unconditionally; they are valid
+-- and cheap on every environment, including ones that never had the columns.
 DO $$
 DECLARE
   drive_only bigint;
   video_bad  bigint;
+  has_col    boolean;
 BEGIN
-  IF NOT EXISTS (
+  has_col := EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name='files'
       AND column_name='google_drive_file_id'
-  ) THEN
-    RAISE NOTICE 'google_drive_file_id already absent — nothing to do';
-    RETURN;
+  );
+
+  IF NOT has_col THEN
+    RAISE NOTICE 'google_drive_file_id absent — no columns to drop; '
+                 'constraints will still be normalised to the target shape';
   END IF;
 
   EXECUTE 'SELECT count(*) FROM public.files WHERE r2_key IS NULL'
@@ -66,6 +74,15 @@ END $$;
 -- -------------------------------------------------------------
 -- Replace the constraints explicitly, so the tightening is deliberate and
 -- reviewable rather than an implicit side effect of the column drop.
+--
+-- These run on EVERY environment, by design. Migrations-built databases
+-- (`20260425000001_file_system_tables.sql`) declare files.r2_key NOT NULL and
+-- carry files_video_requires_thumbnail but no files_has_source, whereas
+-- production has a nullable r2_key and both constraints. Running the block
+-- everywhere is what converges the two on one shape; gating it on column
+-- existence would leave production with files_has_source and every other
+-- environment without it. On migrations-built databases the added constraint is
+-- redundant against the NOT NULL column — deliberately so.
 -- -------------------------------------------------------------
 ALTER TABLE public.files DROP CONSTRAINT IF EXISTS files_has_source;
 ALTER TABLE public.files DROP CONSTRAINT IF EXISTS files_video_requires_thumbnail;

@@ -298,11 +298,18 @@ Design constraints, each load-bearing:
   very column we revoked.
 - **The view owner bypasses RLS**, so the explicit `WHERE` is the *only* tenant
   isolation on this path. It must never rely on base-table RLS.
-- **`get_my_conta_id()` alone is insufficient.** It returns
-  `profiles.active_workspace_id` and does not prove current membership; a stale
-  pointer would expose non-financial rows. Hence the `is_member_of` conjunct,
-  correlated on `m.conta_id` so it stays correct even if the first predicate is
-  ever deleted.
+- **`get_my_conta_id()` already proves membership.** An earlier version of this
+  spec claimed it did not, based on the superseded `20260315` definition. It was
+  hardened in `20260713000001_secure_workspace_invites.sql` to require
+  `EXISTS (SELECT 1 FROM workspace_members WHERE user_id = auth.uid()
+   AND workspace_id = p.active_workspace_id)`, and `20260720000004` re-delivered
+  that body to production. No later migration redefines it.
+
+  **Consequence: the `is_member_of()` helper below is redundant and should be
+  dropped from the implementation.** Its entire justification was a gap that
+  does not exist. `WHERE m.conta_id = public.get_my_conta_id()` is sufficient
+  and already fails closed on a stale or foreign active-workspace pointer.
+  Retained in the text only so the reasoning is traceable — do not build it.
 - **Not granted to `service_role`.** Trusted callers would get masked values and
   zero rows, since they have no `auth.uid()`. Edge functions read base tables
   directly, where their existing grants are untouched — the revoke targets
@@ -703,11 +710,16 @@ staging rehearsal instead.
 
 ## Known gaps (tracked separately, not fixed here)
 
-1. **`get_my_conta_id()` proves no membership.** Every existing policy —
-   `clientes_select`, `membros_select`, `transacoes_select` — is
-   `conta_id IN (SELECT public.get_my_conta_id())`. The new views are hardened
-   via `is_member_of`, making them stronger than the base tables. The systemic
-   fix is a separate hardening pass.
+1. ~~**`get_my_conta_id()` proves no membership.**~~ **WITHDRAWN — this gap does
+   not exist.** The claim came from the superseded `20260315` definition without
+   checking for later redefinitions. `20260713000001` hardened the function to
+   require an `EXISTS` membership check, and `20260720000004` re-delivered that
+   body to production; no later migration changes it. Every policy using
+   `conta_id IN (SELECT public.get_my_conta_id())` therefore already fails
+   closed on a stale or foreign active-workspace pointer. **No systemic
+   hardening pass is needed, and `is_member_of()` should not be built.**
+   Recorded rather than deleted so nobody re-derives the same wrong conclusion
+   from the same old migration.
 2. **Workspace switching never updates `profiles.role`.** All three switch paths
    write only `active_workspace_id` and `conta_id`, so a user who is owner in A
    and agent in B keeps `owner` after switching. This feature sidesteps it by
