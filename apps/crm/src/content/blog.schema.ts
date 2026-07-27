@@ -8,13 +8,30 @@ export type BlogCategory = (typeof BLOG_CATEGORIES)[number];
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** The shape check alone lets `2026-02-30` and `2026-13-01` through, and
+ * JavaScript then rolls them over in silence: the page would print "02 de
+ * março" while the sitemap kept an impossible `lastmod`. Round-tripping the
+ * parts through Date is what catches a typo the author would never see. */
+function isRealCalendarDate(value: string): boolean {
+  const [y, m, d] = value.split('-').map(Number);
+  const parsed = new Date(Date.UTC(y, m - 1, d));
+  return (
+    parsed.getUTCFullYear() === y && parsed.getUTCMonth() === m - 1 && parsed.getUTCDate() === d
+  );
+}
+
+const isoDate = z
+  .string()
+  .regex(DATE, 'must be YYYY-MM-DD')
+  .refine(isRealCalendarDate, 'must be a real calendar date');
+
 /** Ranges mirror the SERP limits enforced for static routes in site-meta.ts. */
 export const blogFrontmatterSchema = z.object({
   title: z.string().min(50).max(60),
   h1: z.string().min(10).max(120),
   description: z.string().min(120).max(160),
-  date: z.string().regex(DATE),
-  updated: z.string().regex(DATE).optional(),
+  date: isoDate,
+  updated: isoDate.optional(),
   category: z.enum(BLOG_CATEGORIES),
 });
 

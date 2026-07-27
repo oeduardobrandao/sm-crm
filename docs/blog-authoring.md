@@ -139,9 +139,14 @@ frontmatter. Rode de novo (e re-commite o PNG) sempre que o `h1` mudar.
 ## 6. Valide e publique
 
 ```bash
-npm run test        # inclui o content lint (blog-content.test.ts)
-npm run prerender    # gera o HTML estático em dist/blog/<slug>.html — confira
+npm run test                          # inclui o content lint (blog-content.test.ts)
+npm run build && npm run prerender    # gera dist/blog/<slug>.html — abra e confira
 ```
+
+O `build` antes do `prerender` não é opcional: o prerender lê `dist/index.html`
+como molde e o reescreve no caminho, então rodá-lo sozinho falha num checkout
+limpo e falha de novo se você já rodou uma vez. Ele avisa alto quando isso
+acontece (`marker not found: 404.html:body`) — a correção é sempre buildar antes.
 
 Faça commit do `.md` **e** do PNG em `public/og/blog/`. Não há mais nada para
 registrar em `vercel.json`, no `App.tsx` ou no sitemap — tudo isso deriva dos

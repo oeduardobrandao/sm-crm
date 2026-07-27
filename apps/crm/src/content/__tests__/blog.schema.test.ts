@@ -109,3 +109,20 @@ describe('blog helpers', () => {
     expect(related.map((p) => p.slug)).toEqual(['b', 'd']);
   });
 });
+
+describe('calendar dates', () => {
+  test.each(['2026-02-30', '2026-13-01', '2026-00-10', '2025-02-29'])(
+    'rejects the impossible date %s',
+    (date) => {
+      expect(() => parsePost(raw({ date }), 'x')).toThrow(/x\.md/);
+    },
+  );
+
+  test.each(['2026-02-28', '2024-02-29', '2026-12-31'])('accepts the real date %s', (date) => {
+    expect(parsePost(raw({ date }), 'x').date).toBe(date);
+  });
+
+  test('applies the same rule to updated', () => {
+    expect(() => parsePost(raw({ updated: '2026-04-31' }), 'x')).toThrow(/x\.md/);
+  });
+});

@@ -24,6 +24,10 @@ function applyHead(meta: RouteMeta, jsonLd: object[]): void {
   upsertMeta('property', 'og:description', meta.description);
   upsertMeta('property', 'og:url', url);
   upsertMeta('property', 'og:image', image);
+  // Mirrors buildHeadTags: without this the prerendered og:type survives into
+  // the next route, so an article's "article" would stick to whatever page the
+  // reader went to next.
+  upsertMeta('property', 'og:type', meta.ogType ?? 'website');
   upsertMeta('name', 'twitter:title', meta.title);
   upsertMeta('name', 'twitter:description', meta.description);
   upsertMeta('name', 'twitter:image', image);
