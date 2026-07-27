@@ -88,7 +88,8 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
     AND wm.workspace_id = public.get_my_conta_id();
 $$;
 
-REVOKE ALL ON FUNCTION public.can_see_financials() FROM PUBLIC;
+-- See "Read views" for why named roles must be enumerated, not just PUBLIC.
+REVOKE ALL ON FUNCTION public.can_see_financials() FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.can_see_financials() TO authenticated;
 ```
 
@@ -111,7 +112,7 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
   );
 $$;
 
-REVOKE ALL ON FUNCTION public.is_member_of(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.is_member_of(uuid) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.is_member_of(uuid) TO authenticated;
 ```
 
@@ -227,9 +228,41 @@ CREATE VIEW public.membros_v WITH (security_barrier = true) AS
   WHERE m.conta_id = public.get_my_conta_id()
     AND public.is_member_of(m.conta_id);
 
-REVOKE ALL ON public.membros_v FROM PUBLIC;
+-- PUBLIC alone is NOT sufficient: Supabase's default privileges grant new
+-- objects in `public` directly to anon, authenticated and service_role, and a
+-- revoke from PUBLIC leaves those intact.
+REVOKE ALL ON public.membros_v FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT ON public.membros_v TO authenticated;
 ```
+
+**Why the enumerated revoke is security-critical, not tidiness.** The view is
+auto-updatable on its simple columns, its owner bypasses base-table RLS, and it
+carries no `CHECK OPTION`. Left with the default `authenticated` write grants, a
+caller could INSERT a row with an arbitrary `conta_id`, or UPDATE an existing
+row's `conta_id` into another workspace — writing straight past every policy
+this design relies on. `WITH CHECK OPTION` is added as belt-and-braces, but the
+ACL is the actual control.
+
+The same enumerated revoke applies to `clientes_v` and to both helper functions:
+
+```sql
+REVOKE ALL ON FUNCTION public.can_see_financials()  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.is_member_of(uuid)    FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.can_see_financials() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.is_member_of(uuid)   TO authenticated;
+```
+
+Without this the spec's "anonymous cannot execute the helpers" assertion fails.
+
+**Both failure directions are live in this repo, so neither may be assumed.**
+Named roles may hold grants you never intended (this finding), *and* they may
+depend on a PUBLIC grant you are about to remove — a `REVOKE … FROM PUBLIC` on a
+SECURITY DEFINER function previously broke edge-function calls here because
+`service_role` had no direct grant of its own. Every object this design creates
+or alters therefore gets its final ACL **asserted** in pgTAP by reading
+`relacl` / `proacl` directly. `has_table_privilege` and `has_function_privilege`
+are not acceptable evidence: they collapse PUBLIC-derived and role-derived
+access into one boolean, which is precisely the distinction that matters here.
 
 Design constraints, each load-bearing:
 
@@ -335,8 +368,25 @@ if (role === 'agent' && isAgentBlockedPath) return <Navigate to="/dashboard" rep
 `AppLayout`, wrapping its `<Outlet />` — restricted admins, shell preserved:
 
 ```tsx
-if (isFinancialPath && canSeeFinancials !== true) return <FinancialRestrictionScreen />;
+if (isFinancialPath && canSeeFinancials === 'unknown') return <FinancialRouteLoading />;
+if (isFinancialPath && canSeeFinancials === false)     return <FinancialRestrictionScreen />;
 ```
+
+**`'unknown'` is deliberately excluded from the denial branch.** Writing this as
+`!== true` would show an owner the restriction screen during hydration or a
+transient membership-lookup failure, contradicting the hydration contract above.
+The two states need opposite handling and the distinction is easy to collapse by
+accident:
+
+- **Values** fail closed — `formatFinancialBRL` masks on anything that is not
+  literal `true`, because rendering a real figure to someone who may be
+  restricted is the harm.
+- **The route screen** fails neutral — a denial screen is only correct on an
+  explicit `false`, because falsely telling an owner they lack access is the
+  harm, and the loading state leaks nothing (route content is unrendered either
+  way, and the data layer denies regardless).
+
+Vitest covers all three capability states against both branches.
 
 Agents never reach the second guard for `/financeiro` and `/contratos` because
 those paths stay in the agent redirect set, preserving today's behaviour exactly.
@@ -503,7 +553,15 @@ Matrix:
 - `authenticated` cannot select the protected columns from base tables, and
   *can* still select every allowlisted column.
 - Anonymous cannot select the views or execute the helpers.
-- Views expose `SELECT` only; writes through them fail.
+- **ACL assertions read `relacl` / `proacl` directly** for both views and both
+  helper functions, confirming the exact final grant set. `has_table_privilege`
+  and `has_function_privilege` are not acceptable evidence — they cannot
+  distinguish PUBLIC-derived from role-derived access, which is the whole
+  question.
+- **Writes through the views fail for `authenticated`** — INSERT, UPDATE and
+  DELETE each rejected, including the specific attempts to insert a foreign
+  `conta_id` and to move an existing row's `conta_id` to another workspace. This
+  is the regression test for the auto-updatable-view escape path.
 - `transacoes`/`contratos`: restricted admin blocked on all four verbs, **plus**
   positive CRUD cases confirming allowed users are not over-blocked.
 - **Cross-tenant regression on all eight rewritten policies:** a user with
