@@ -16,7 +16,7 @@ describe('parseTrelloJson', () => {
   });
 
   test('open cards become rows with list, due, desc, checklist, url', () => {
-    expect(col.rows).toHaveLength(2); // closed card dropped
+    expect(col.rows).toHaveLength(2); // closed card and card in closed list dropped
     expect(col.rows[0]).toEqual({
       key: 'c1',
       cells: { Nome: 'Post mitos da amamentação', Etiquetas: 'Dra. Marina' },
@@ -26,6 +26,8 @@ describe('parseTrelloJson', () => {
       checklist: ['Arte final'],
       sourceUrl: 'https://trello.com/c/abc123',
     });
+    // Verify that open cards in closed lists are excluded
+    expect(col.rows.map((r) => r.key)).not.toContain('c4');
   });
 
   test('actions[] content never leaks into the bundle', () => {

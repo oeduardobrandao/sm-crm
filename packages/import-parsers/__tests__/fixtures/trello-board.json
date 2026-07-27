@@ -35,6 +35,16 @@
       "closed": true,
       "shortUrl": "https://trello.com/c/ghi789",
       "labels": []
+    },
+    {
+      "id": "c4",
+      "name": "Card em lista arquivada",
+      "desc": "",
+      "due": null,
+      "idList": "l3",
+      "closed": false,
+      "shortUrl": "https://trello.com/c/jkl012",
+      "labels": []
     }
   ],
   "checklists": [
