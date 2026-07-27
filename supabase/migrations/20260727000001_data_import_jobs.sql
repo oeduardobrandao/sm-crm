@@ -4,7 +4,7 @@
 create table if not exists public.import_jobs (
   id bigint generated always as identity primary key,
   conta_id uuid not null,
-  created_by uuid,
+  created_by uuid not null,
   source text not null,
   status text not null default 'committing'
     check (status in ('committing', 'completed', 'undone')),
@@ -90,6 +90,13 @@ begin
     raise exception 'import job not found or undone';
   end if;
   v_user_id := v_job.created_by;
+  -- Belt and braces: created_by is NOT NULL on new rows, but this guards any row
+  -- that predates the constraint or arrives through another path -- without it,
+  -- a NULL here surfaces three inserts later as an opaque
+  -- `null value in column "user_id"` with no hint that the job row is the cause.
+  if v_user_id is null then
+    raise exception 'import job % has no created_by user', p_job_id;
+  end if;
 
   v_primary_table := case p_kind
     when 'cliente' then 'clientes'
@@ -121,7 +128,11 @@ begin
         telefone = coalesce(nullif(telefone, ''), p_payload->>'telefone', telefone),
         especialidade = coalesce(nullif(especialidade, ''), p_payload->>'especialidade', especialidade),
         notion_page_url = coalesce(nullif(notion_page_url, ''), p_payload->>'notionPageUrl', notion_page_url)
-      where id = (p_payload->>'mergeClienteId')::bigint and conta_id = p_conta_id;
+      where id = (p_payload->>'mergeClienteId')::bigint and conta_id = p_conta_id
+      -- Canonicalize row_id to Postgres's own rendering of the bigint (rather than
+      -- the raw client-supplied text) so a payload like " 42 " or "042" can't leave
+      -- row_id holding a string a future text comparison would fail to match.
+      returning id::text into v_id;
       -- TENANT GATE: mergeClienteId is client-supplied and clientes.id is a sequential
       -- bigint. Without this check a zero-row UPDATE would pass silently and the
       -- bookkeeping row below would map source_row_key -> another workspace's cliente,
@@ -131,12 +142,14 @@ begin
         raise exception 'cliente % does not belong to this workspace',
           (p_payload->>'mergeClienteId')::bigint;
       end if;
-      -- record the mapping so later rows can resolve clienteRef{created:sourceKey}
+      -- record the mapping so later rows can resolve clienteRef{created:sourceKey}.
+      -- provenance is carried here too so a merged cliente is not the one import
+      -- outcome with no source traceability.
       insert into public.import_job_items (job_id, conta_id, table_name, row_id, source_row_key,
-                                           ordinal, merged)
-        values (p_job_id, p_conta_id, 'clientes', p_payload->>'mergeClienteId', p_source_row_key,
-                0, true);
-      return jsonb_build_object('skipped', false, 'table', 'clientes', 'row_id', p_payload->>'mergeClienteId');
+                                           ordinal, merged, provenance)
+        values (p_job_id, p_conta_id, 'clientes', v_id, p_source_row_key,
+                0, true, p_payload->'provenance');
+      return jsonb_build_object('skipped', false, 'table', 'clientes', 'row_id', v_id);
     end if;
     insert into public.clientes (conta_id, user_id, nome, sigla, cor, plano, email, telefone,
                                  status, valor_mensal, especialidade, notion_page_url)
@@ -224,7 +237,10 @@ begin
     -- instagram-publish-cron / tiktok-publish-cron with no media attached.
     -- 'agendado' and 'falha_publicacao' are never importable; 'postado' requires
     -- a past date. Anything unrecognized degrades to 'rascunho'.
-    v_status := coalesce(p_payload->>'status', 'rascunho');
+    -- lower/trim first so casing and stray whitespace ('Agendado', ' postado ')
+    -- don't fall through to the else branch below -- 'agendado'/'falha_publicacao'
+    -- still can't survive the allow-list check regardless of how they're cased.
+    v_status := lower(trim(coalesce(p_payload->>'status', 'rascunho')));
     if v_status not in ('rascunho', 'revisao_interna', 'aprovado_interno',
                         'enviado_cliente', 'aprovado_cliente', 'correcao_cliente', 'postado') then
       v_status := 'rascunho';
@@ -239,7 +255,9 @@ begin
     -- (20260402_workflow_posts.sql:19-20) and arrives in the same untrusted JSON blob.
     -- A CSV carrying 'Carrossel' / 'video' / 'Vídeo' would otherwise raise a
     -- constraint violation and lose the row. Unrecognized degrades to 'feed'.
-    v_tipo := coalesce(p_payload->>'tipo', 'feed');
+    -- lower/trim first: 'Carrossel' (the clamp comment's own motivating example)
+    -- must land as 'carrossel', not fall through to 'feed'.
+    v_tipo := lower(trim(coalesce(p_payload->>'tipo', 'feed')));
     if v_tipo not in ('feed', 'reels', 'stories', 'carrossel') then
       v_tipo := 'feed';
     end if;
