@@ -47,4 +47,17 @@ describe('vercel.json routing contract', () => {
     expect(noindexSources).toContain('/:workspace/hub/:token');
     expect(noindexSources).toContain('/:workspace/hub/:token/(.*)');
   });
+
+  test('blog index and post rewrites exist', () => {
+    expect(rewrites).toContainEqual({ source: '/blog', destination: '/blog.html' });
+    expect(rewrites).toContainEqual({ source: '/blog/:slug', destination: '/blog/:slug.html' });
+  });
+
+  test('the blog is public — never covered by a noindex header', () => {
+    const noindexSources = headers
+      .filter((h) => h.headers.some((x) => x.key === 'X-Robots-Tag' && /noindex/.test(x.value)))
+      .map((h) => h.source);
+    for (const source of noindexSources) expect(source).not.toContain('blog');
+    expect(APP_ROUTE_PREFIXES as readonly string[]).not.toContain('blog');
+  });
 });

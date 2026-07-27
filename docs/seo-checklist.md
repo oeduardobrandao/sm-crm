@@ -33,3 +33,36 @@ Itens que o código não resolve sozinho. Marcar conforme concluído.
   "alternativa ao Doo Studio", "migração da Etus", comparativo de plataformas de aprovação).
 - Fase 3: conteúdo de autoridade IA/MCP (documentar o agente, casos reais).
 - Fase 4: ativo proprietário (calculadora de precificação de social media / benchmark de engajamento).
+
+## Blog (fase 2)
+
+### Antes do merge — trava, não conselho
+- [ ] **Rewrite parametrizado no preview da Vercel.** É a única coisa desta fase que não dá
+      para provar localmente: `/blog/:slug` → `/blog/:slug.html` depende da interpolação da
+      Vercel. Na URL do preview do PR:
+      ```
+      curl -sI https://<preview>.vercel.app/blog | head -3
+      curl -sI https://<preview>.vercel.app/blog/mesaas-vs-aprova-post | head -3
+      curl -s  https://<preview>.vercel.app/blog/mesaas-vs-aprova-post | grep -o '<title>[^<]*</title>'
+      curl -sI https://<preview>.vercel.app/blog/nao-existe | head -3
+      curl -sI https://<preview>.vercel.app/og/blog/mesaas-vs-aprova-post.png | head -3
+      ```
+      Esperado: `200` no índice e no artigo, o `<title>` do próprio artigo, **`404`** no slug
+      inexistente, e `200` + `image/png` na imagem.
+      **Se o `:slug` não interpolar:** troque por um rewrite explícito por artigo e estenda o
+      teste-guarda para exigir um por `.md`. Não mergeie com `/blog/<slug>` quebrado — artigo
+      que dá 404 em produção é pior que artigo nenhum.
+
+### Depois do deploy
+- [ ] Pedir indexação de `/blog` e dos 6 artigos no Search Console.
+- [ ] Validar um artigo em https://search.google.com/test/rich-results — deve reconhecer
+      `BlogPosting` e `BreadcrumbList`.
+- [ ] Testar o card de compartilhamento de um artigo no WhatsApp: a imagem vem de
+      `/og/blog/<slug>.png`, e é a primeira vez que esses arquivos existem em produção.
+- [ ] Conferir que `/blog` e os artigos **não** aparecem como "Excluída por noindex" no GSC.
+
+### Em 30 dias
+- [ ] Cruzar as impressões dos 6 artigos no GSC com o mapa de keywords para decidir a próxima
+      leva: fase 1b (as 4 páginas de funil restantes) ou fase 3 (autoridade IA/MCP).
+- [ ] Os 3 comparativos citam concorrentes com dados verificados em julho de 2026. Reconferir
+      antes de considerar o conteúdo estável — site de concorrente muda sem avisar.

@@ -1,4 +1,6 @@
 import { SITE_NAME, SITE_URL, SOCIAL_PROFILES } from './site-meta';
+import { BLOG_AUTHOR, postOgImage, postPath } from './blog';
+import type { BlogPost } from './blog.schema';
 
 const CONTEXT = 'https://schema.org';
 
@@ -63,6 +65,60 @@ export function breadcrumbJsonLd(crumbs: Array<{ name: string; path: string }>):
       position: i + 1,
       name: c.name,
       item: c.path === '/' ? `${SITE_URL}/` : `${SITE_URL}${c.path}`,
+    })),
+  };
+}
+
+function personAuthor(): object {
+  return {
+    '@type': 'Person',
+    name: BLOG_AUTHOR.name,
+    jobTitle: BLOG_AUTHOR.role,
+    description: BLOG_AUTHOR.bio,
+    url: BLOG_AUTHOR.url,
+  };
+}
+
+function publisher(): object {
+  return {
+    '@type': 'Organization',
+    name: SITE_NAME,
+    logo: { '@type': 'ImageObject', url: `${SITE_URL}/mesaas-icon-192.png` },
+  };
+}
+
+export function blogPostingJsonLd(post: BlogPost): object {
+  const url = `${SITE_URL}${postPath(post)}`;
+  return {
+    '@context': CONTEXT,
+    '@type': 'BlogPosting',
+    headline: post.h1,
+    description: post.description,
+    datePublished: post.date,
+    dateModified: post.updated,
+    inLanguage: 'pt-BR',
+    mainEntityOfPage: { '@type': 'WebPage', '@id': url },
+    url,
+    image: postOgImage(post.slug),
+    author: personAuthor(),
+    publisher: publisher(),
+  };
+}
+
+export function blogIndexJsonLd(posts: BlogPost[]): object {
+  return {
+    '@context': CONTEXT,
+    '@type': 'Blog',
+    name: `Blog do ${SITE_NAME}`,
+    url: `${SITE_URL}/blog`,
+    inLanguage: 'pt-BR',
+    publisher: publisher(),
+    blogPost: posts.map((p) => ({
+      '@type': 'BlogPosting',
+      headline: p.h1,
+      description: p.description,
+      datePublished: p.date,
+      url: `${SITE_URL}${postPath(p)}`,
     })),
   };
 }

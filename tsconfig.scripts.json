@@ -13,10 +13,14 @@
   },
   "include": [
     "scripts/changelog/**/*.ts",
+    "scripts/blog/**/*.ts",
     "scripts/seo/**/*.ts",
     "scripts/seo/**/*.tsx",
+    "apps/crm/src/content/**/*.ts",
+    "apps/crm/src/content/**/*.tsx",
     "apps/crm/src/pages/politica-privacidade/**/*.tsx",
     "apps/crm/src/pages/termos-de-uso/**/*.tsx",
     "apps/crm/src/pages/lgpd/**/*.tsx"
-  ]
+  ],
+  "exclude": ["apps/crm/src/content/blog.client.ts", "apps/crm/src/content/__tests__/**"]
 }

@@ -40,11 +40,12 @@ export function LandingHeader({ variant }: { variant: 'landing' | 'subpage' }) {
     <header className="site-hdr">
       <div className="hdr-inner">
         <a
-          href="#top"
+          href={variant === 'landing' ? '#top' : '/'}
+          aria-label="Mesaas"
           style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}
         >
-          <img src="/logo-black.svg" className="hdr-logo logo-light" alt="Mesaas" />
-          <img src="/logo-white.svg" className="hdr-logo logo-dark" alt="Mesaas" />
+          <img src="/logo-black.svg" className="hdr-logo logo-light" alt="" />
+          <img src="/logo-white.svg" className="hdr-logo logo-dark" alt="" />
         </a>
         <nav className="hdr-nav">
           {variant === 'landing'
@@ -102,16 +103,16 @@ export function LandingFooter() {
             <p className="ft-label">Produto</p>
             <ul>
               <li>
-                <a href="#features">Funcionalidades</a>
+                <a href="/#features">Funcionalidades</a>
               </li>
               <li>
-                <a href="#how">Como funciona</a>
+                <a href="/#how">Como funciona</a>
               </li>
               <li>
-                <a href="#pricing">Preços</a>
+                <a href="/#pricing">Preços</a>
               </li>
               <li>
-                <a href="#faq">FAQ</a>
+                <a href="/#faq">FAQ</a>
               </li>
               <li>
                 <a href="/aprovacao-de-post">Aprovação de posts</a>
@@ -130,6 +131,9 @@ export function LandingFooter() {
               </li>
               <li>
                 <a href="/novidades">Novidades</a>
+              </li>
+              <li>
+                <a href="/blog">Blog</a>
               </li>
             </ul>
           </div>

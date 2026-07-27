@@ -21,6 +21,8 @@ const TermosPage = lazy(() => import('./pages/termos-de-uso/TermosPage'));
 const LgpdPage = lazy(() => import('./pages/lgpd/LgpdPage'));
 const LandingPage = lazy(() => import('./pages/landing/LandingPage'));
 const NovidadesPage = lazy(() => import('./pages/novidades/NovidadesPage'));
+const BlogIndexPage = lazy(() => import('./pages/blog/BlogIndexPage'));
+const BlogPostPage = lazy(() => import('./pages/blog/BlogPostPage'));
 const PrecosPage = lazy(() => import('./pages/precos/PrecosPage'));
 const MarketingPage = lazy(() => import('./pages/marketing/MarketingPage'));
 
@@ -117,6 +119,8 @@ export default function App() {
               <Route path="/termos-de-uso" element={<TermosPage />} />
               <Route path="/lgpd" element={<LgpdPage />} />
               <Route path="/novidades" element={<NovidadesPage />} />
+              <Route path="/blog" element={<BlogIndexPage />} />
+              <Route path="/blog/:slug" element={<BlogPostPage />} />
 
               {/* Protected routes without sidebar layout */}
               <Route

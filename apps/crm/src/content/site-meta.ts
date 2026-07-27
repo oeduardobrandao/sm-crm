@@ -49,6 +49,8 @@ export interface RouteMeta {
   /** YYYY-MM-DD, bumped when the page content changes. */
   lastmod: string;
   ogImage?: string;
+  /** Open Graph object type. Defaults to 'website'; blog posts use 'article'. */
+  ogType?: 'article';
 }
 
 export const PUBLIC_ROUTES: RouteMeta[] = [
@@ -91,6 +93,14 @@ export const PUBLIC_ROUTES: RouteMeta[] = [
     description:
       'Conecte o Claude ao Mesaas via MCP: o agente lê briefing e estratégia, escreve com a voz de cada cliente e entrega o post no seu fluxo de aprovação.',
     lastmod: '2026-07-24',
+  },
+  {
+    path: '/blog',
+    file: 'blog.html',
+    title: 'Blog do Mesaas — gestão de social media na prática',
+    description:
+      'Guias práticos para agências e gestores de social media: aprovação de posts, briefing, precificação, relatórios e rotina de entregas.',
+    lastmod: '2026-07-25',
   },
   {
     path: '/sobre',
