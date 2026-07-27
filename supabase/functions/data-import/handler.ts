@@ -1,5 +1,6 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
+import { refineMapping } from "../_shared/import-ai.ts";
 import type { CommitRow } from "./types.ts";
 
 type DbClient = {
@@ -433,8 +434,12 @@ export function createDataImportHandler(deps: Deps) {
       }
 
       if (action === "analyze") {
-        // AI refinement lands in Task 10; without a key the client keeps its heuristic proposal.
-        return json({ proposal: null });
+        // No key configured (GEMINI_API_KEY unset, same as the analytics
+        // functions): the client keeps its already-computed heuristic
+        // proposal, no fetch attempted.
+        if (!deps.geminiKey) return json({ proposal: null });
+        const proposal = await refineMapping(body.summary, body.heuristic, deps.geminiKey);
+        return json({ proposal });
       }
 
       if (action === "preview") {

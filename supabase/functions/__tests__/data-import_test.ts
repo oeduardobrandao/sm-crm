@@ -182,6 +182,35 @@ Deno.test("data-import: start creates a job", async () => {
   assertEquals(await readJson(res), { jobId: 7 });
 });
 
+// analyze is an enhancement, never a dependency: without GEMINI_API_KEY the
+// wizard must keep working off the heuristic proposal it already computed,
+// and the handler must not even attempt a network call — a hung/slow Gemini
+// call with no key configured would otherwise still cost the request a
+// round trip for nothing.
+Deno.test("data-import: analyze with no Gemini key returns the heuristic (null) proposal and calls no fetch", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  const originalFetch = globalThis.fetch;
+  let fetchCalled = false;
+  globalThis.fetch = ((..._args: Parameters<typeof fetch>) => {
+    fetchCalled = true;
+    throw new Error("fetch must not be called when geminiKey is null");
+  }) as typeof fetch;
+  try {
+    const res = await makeHandler(db)(
+      post("analyze", {
+        summary: { collections: [] },
+        heuristic: { collections: [] },
+      }),
+    );
+    assertEquals(res.status, 200);
+    assertEquals(await readJson(res), { proposal: null });
+    assertEquals(fetchCalled, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 Deno.test("data-import: preview counts rows and warns on max_clients", async () => {
   const db = createSupabaseQueryMock();
   authAs(db);

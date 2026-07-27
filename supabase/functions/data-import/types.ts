@@ -68,3 +68,31 @@ export type CommitRow =
   | CommitPostRow
   | CommitEntregaRow
   | CommitIdeiaRow;
+
+// Wire contract for the "analyze" action: the browser-side parser summarizes
+// each parsed collection (column headers, list/board-column names, row count,
+// and a FEW sample cell values — never the full roster) and sends it alongside
+// the deterministic heuristic mapping proposal for optional Gemini refinement.
+// See _shared/import-ai.ts for the validation this shape is defended by.
+export interface AnalyzeCollectionSummary {
+  collectionId: string;
+  name: string;
+  source: string;
+  columns: string[];
+  listNames: string[];
+  rowCount: number;
+  sampleCells: Record<string, string[]>; // per column, at most 3 sample values
+}
+export interface AnalyzeSummary {
+  collections: AnalyzeCollectionSummary[];
+}
+export interface WireCollectionMapping {
+  collectionId: string;
+  destination: "clientes" | "posts" | "entregas" | "ideias" | "ignorar";
+  columnRoles: Record<string, string>;
+  statusMap: Record<string, string>;
+  clientAssignment: { mode: "column"; column: string } | { mode: "fixed"; clienteNome: string };
+}
+export interface WireMappingProposal {
+  collections: WireCollectionMapping[];
+}
