@@ -8,7 +8,7 @@ category: guia
 
 Existe um jeito rápido de chegar ao primeiro preço: perguntar num grupo, escolher o menor número que apareceu por medo de perder a proposta e passar doze meses descobrindo que a conta consome o triplo do tempo previsto.
 
-Este guia não traz tabela de mercado. Eu não fiz essa pesquisa: o preço sai do seu custo, das suas horas e do escopo que você aceita — três coisas que nenhuma média nacional conhece. Fora a alíquota de imposto, todo número daqui é invenção minha, escolhida para deixar a conta visível; troque cada um pelos seus e o método devolve um valor que você defende linha por linha.
+Este guia não traz tabela de mercado. Eu não fiz essa pesquisa: o preço sai do seu custo, das suas horas e do escopo que você aceita — três coisas que nenhuma média nacional conhece. Fora o imposto, que depende do seu regime, todo número daqui é invenção minha, escolhida para deixar a conta visível; troque cada um pelos seus e o método devolve um valor que você defende linha por linha.
 
 ## Os três modelos de cobrança
 
