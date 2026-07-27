@@ -1,0 +1,51 @@
+{
+  "name": "Calendário Dra. Marina",
+  "lists": [
+    { "id": "l1", "name": "Rascunho", "closed": false, "pos": 1 },
+    { "id": "l2", "name": "Aprovado", "closed": false, "pos": 2 },
+    { "id": "l3", "name": "Antiga", "closed": true, "pos": 3 }
+  ],
+  "cards": [
+    {
+      "id": "c1",
+      "name": "Post mitos da amamentação",
+      "desc": "Legenda: **mitos** comuns",
+      "due": "2026-08-03T12:00:00.000Z",
+      "idList": "l1",
+      "closed": false,
+      "shortUrl": "https://trello.com/c/abc123",
+      "labels": [{ "name": "Dra. Marina" }]
+    },
+    {
+      "id": "c2",
+      "name": "Reels bastidores",
+      "desc": "",
+      "due": null,
+      "idList": "l2",
+      "closed": false,
+      "shortUrl": "https://trello.com/c/def456",
+      "labels": []
+    },
+    {
+      "id": "c3",
+      "name": "Card arquivado",
+      "desc": "",
+      "due": null,
+      "idList": "l1",
+      "closed": true,
+      "shortUrl": "https://trello.com/c/ghi789",
+      "labels": []
+    }
+  ],
+  "checklists": [
+    {
+      "id": "ck1",
+      "idCard": "c1",
+      "name": "Tarefas",
+      "checkItems": [{ "name": "Arte final", "state": "incomplete" }]
+    }
+  ],
+  "actions": [
+    { "id": "a1", "type": "commentCard", "data": { "text": "should never appear in output" } }
+  ]
+}
