@@ -9,7 +9,7 @@ type Node = {
 /** Inline markdown -> text nodes with bold/italic/link marks. Unmatched syntax stays literal text. */
 function inline(text: string): Node[] {
   const out: Node[] = [];
-  const re = /\*\*(.+?)\*\*|\*(.+?)\*|\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g;
+  const re = /\*\*(.+?)\*\*|\*(.+?)\*|\[(.+?)\]\((https?:\/\/(?:[^\s()]|\([^\s()]*\))*)\)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
@@ -55,10 +55,7 @@ export function toTipTapDoc(text: string): { doc: Record<string, unknown> | null
   flushBullets();
 
   const plainOf = (n: Node): string =>
-    n.text ??
-    (n.content ?? [])
-      .map(plainOf)
-      .join(n.type === 'bulletList' ? '\n' : n.type === 'doc' ? '\n' : '');
+    n.text ?? (n.content ?? []).map(plainOf).join(n.type === 'bulletList' ? '\n' : '');
   const doc: Node = { type: 'doc', content };
   return { doc: doc as Record<string, unknown>, plain: content.map(plainOf).join('\n') };
 }
