@@ -48,7 +48,7 @@ Wizard steps:
   - "Desfazer" deletes exactly the recorded rows, in reverse dependency order (`workflow_posts`/`workflow_etapas` → `workflows` → `workflow_templates` → `clientes`/`ideias`) — no reliance on FK cascade.
   - Undo restores **creations only** — and to keep that honest, "mesclar com existente" is **fill-only-empty-fields**: merge never overwrites populated fields on an existing Cliente, so there is nothing destructive that undo would need to revert (the preview states that merges are not undone).
   - `commit` and undo both call `insertAuditLog()` from `_shared/audit.ts`, alongside the job bookkeeping.
-- **Media:** none moved. Source attachment URLs stored in the provenance blob on each imported row.
+- **Media:** none moved. Source attachment URLs stored in the provenance blob on each imported row — the blob lives on that row's `import_job_items` record (not as a new jsonb column on `clientes`/`workflows`/`workflow_posts`/`ideias`), so the domain tables stay unchanged and provenance disappears with the job when an import is undone.
 
 ## Entity mapping
 

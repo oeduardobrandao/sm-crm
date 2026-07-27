@@ -1132,6 +1132,12 @@ create table if not exists public.import_job_items (
   row_id text not null,
   source_row_key text not null,
   ordinal integer not null default 0,
+  -- Where this row came from (source tool, collection, original item URL,
+  -- raw cells, any attachment URLs). The design promises source traceability
+  -- for every imported row; it lives HERE rather than as a new jsonb column on
+  -- clientes/workflows/workflow_posts/ideias, so the hot domain tables stay
+  -- unchanged and provenance is deleted automatically when a job is undone.
+  provenance jsonb,
   created_at timestamptz not null default now(),
   unique (job_id, source_row_key, table_name, ordinal)
 );
@@ -1236,14 +1242,19 @@ begin
     returning id::text into v_id;
 
   elsif p_kind = 'container' then
-    v_cliente_id := public.import_resolve_cliente(p_job_id, p_payload);
+    v_cliente_id := public.import_resolve_cliente(p_conta_id, p_job_id, p_payload);
     insert into public.workflows (conta_id, user_id, cliente_id, titulo, status,
                                   etapa_atual, recorrente, created_via)
-    values (p_conta_id, v_user_id, v_cliente_id, p_payload->>'titulo', 'ativo', 0, false, 'agent')
+    -- created_via 'human', NOT 'agent': the enum is only ('human','agent') and the
+    -- UI renders 'agent' as a "Criado por agente de IA" badge
+    -- (apps/crm/src/pages/entregas/components/WorkflowCard.tsx:276). Imported rows
+    -- were authored by a person in another tool, and their real origin is recorded
+    -- in import_job_items.provenance.
+    values (p_conta_id, v_user_id, v_cliente_id, p_payload->>'titulo', 'ativo', 0, false, 'human')
     returning id::text into v_id;
 
   elsif p_kind = 'entrega' then
-    v_cliente_id := public.import_resolve_cliente(p_job_id, p_payload);
+    v_cliente_id := public.import_resolve_cliente(p_conta_id, p_job_id, p_payload);
     select row_id::bigint into v_template_id from public.import_job_items
       where job_id = p_job_id and source_row_key = p_payload->>'templateKey'
         and table_name = 'workflow_templates' and ordinal = 0;
@@ -1251,7 +1262,7 @@ begin
     insert into public.workflows (conta_id, user_id, cliente_id, titulo, template_id, status,
                                   etapa_atual, recorrente, modo_prazo, created_via)
     values (p_conta_id, v_user_id, v_cliente_id, p_payload->>'titulo', v_template_id, 'ativo',
-            coalesce((p_payload->>'etapaIndex')::int, 0), false, 'padrao', 'agent')
+            coalesce((p_payload->>'etapaIndex')::int, 0), false, 'padrao', 'human')
     returning id::text into v_id;
     -- etapas come from the TEMPLATE row (single source of truth — the wire
     -- CommitEntregaRow carries only templateKey + etapaIndex, never etapa names).
@@ -1286,11 +1297,11 @@ begin
             p_payload->'conteudo', coalesce(p_payload->>'conteudoPlain', ''),
             coalesce(p_payload->>'tipo', 'feed'),
             0, p_payload->>'status',
-            (p_payload->>'scheduledAt')::timestamptz, (p_payload->>'publishedAt')::timestamptz, 'agent')
+            (p_payload->>'scheduledAt')::timestamptz, (p_payload->>'publishedAt')::timestamptz, 'human')
     returning id::text into v_id;
 
   elsif p_kind = 'ideia' then
-    v_cliente_id := public.import_resolve_cliente(p_job_id, p_payload);
+    v_cliente_id := public.import_resolve_cliente(p_conta_id, p_job_id, p_payload);
     -- links deliberately omitted: let the column default apply (verify the
     -- column's type/default in the ideias migration before assuming '{}').
     insert into public.ideias (workspace_id, cliente_id, titulo, descricao, status)
@@ -1299,15 +1310,25 @@ begin
     returning id::text into v_id;
   end if;
 
-  insert into public.import_job_items (job_id, conta_id, table_name, row_id, source_row_key, ordinal)
-    values (p_job_id, p_conta_id, v_primary_table, v_id, p_source_row_key, 0);
+  insert into public.import_job_items (job_id, conta_id, table_name, row_id, source_row_key,
+                                       ordinal, provenance)
+    values (p_job_id, p_conta_id, v_primary_table, v_id, p_source_row_key, 0,
+            p_payload->'provenance');
   return jsonb_build_object('skipped', false, 'table', v_primary_table, 'row_id', v_id);
 end;
 $$;
 
 -- Resolves a payload's clienteRef: {"clienteRef":{"type":"existing","clienteId":N}}
 -- or {"clienteRef":{"type":"created","sourceKey":"..."}} via import_job_items.
-create or replace function public.import_resolve_cliente(p_job_id bigint, p_payload jsonb)
+--
+-- SECURITY: clienteRef is fully client-supplied and clientes.id is a sequential
+-- bigint, so the 'existing' branch MUST verify tenant ownership. Without it, a
+-- user of workspace A could attach workflows/ideias to workspace B's cliente_id
+-- (this function is SECURITY DEFINER, so RLS does not save us). Both branches are
+-- conta-scoped below.
+create or replace function public.import_resolve_cliente(
+  p_conta_id uuid, p_job_id bigint, p_payload jsonb
+)
 returns bigint
 language plpgsql
 security definer
@@ -1317,10 +1338,15 @@ declare
   v_id bigint;
 begin
   if p_payload->'clienteRef'->>'type' = 'existing' then
-    return (p_payload->'clienteRef'->>'clienteId')::bigint;
+    v_id := (p_payload->'clienteRef'->>'clienteId')::bigint;
+    if not exists (select 1 from public.clientes where id = v_id and conta_id = p_conta_id) then
+      raise exception 'cliente % does not belong to this workspace', v_id;
+    end if;
+    return v_id;
   end if;
   select row_id::bigint into v_id from public.import_job_items
-    where job_id = p_job_id and source_row_key = p_payload->'clienteRef'->>'sourceKey'
+    where job_id = p_job_id and conta_id = p_conta_id
+      and source_row_key = p_payload->'clienteRef'->>'sourceKey'
       and table_name = 'clientes' and ordinal = 0;
   if v_id is null then
     raise exception 'cliente % not committed yet', p_payload->'clienteRef'->>'sourceKey';
@@ -1333,8 +1359,8 @@ $$;
 -- The explicit grants below are what let the edge function call these at all.
 revoke all on function public.import_commit_row(uuid, bigint, text, text, jsonb) from public;
 grant execute on function public.import_commit_row(uuid, bigint, text, text, jsonb) to service_role;
-revoke all on function public.import_resolve_cliente(bigint, jsonb) from public;
-grant execute on function public.import_resolve_cliente(bigint, jsonb) to service_role;
+revoke all on function public.import_resolve_cliente(uuid, bigint, jsonb) from public;
+grant execute on function public.import_resolve_cliente(uuid, bigint, jsonb) to service_role;
 ```
 
 - [ ] **Step 2: Verify column assumptions against the real schema**
@@ -1351,6 +1377,8 @@ npx supabase db push --linked
 ```
 
 If staging push is blocked by the known orphaned-backfill state, apply this single migration via the SQL editor and record its version, per the established workaround.
+
+Also assert the tenant guard: calling `import_commit_row` with a `clienteRef` naming a cliente from a different `conta_id` must raise `cliente % does not belong to this workspace` — verify this in the smoke test below before considering the task done.
 
 Smoke-test in the SQL editor (staging):
 
@@ -1473,6 +1501,23 @@ Deno.test("data-import: commit calls the RPC per row and reports skips", async (
     { sourceKey: "a", table: "clientes", rowId: "3", skipped: false },
     { sourceKey: "a", table: "clientes", rowId: "3", skipped: true },
   ]);
+});
+
+Deno.test("data-import: commit forwards conta_id so the RPC can reject foreign clientes", async () => {
+  // Tenant isolation lives in import_resolve_cliente (it raises when clienteId
+  // belongs to another workspace); this asserts the handler actually passes the
+  // caller's conta_id through, and surfaces the rejection as a failed row.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  db.queueRpc("import_commit_row", { data: null, error: { message: "cliente 99 does not belong to this workspace" } });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const rows = [
+    { kind: "ideia", sourceKey: "x", clienteRef: { type: "existing", clienteId: 99 }, titulo: "T", descricao: "", provenance: {} },
+  ];
+  const res = await makeHandler(db)(post("commit", { jobId: 7, rows }));
+  const body = await readJson(res);
+  assertEquals(body.results[0].failed, true);
+  assertEquals(db.lastRpcArgs("import_commit_row").p_conta_id, "conta-1");
 });
 
 Deno.test("data-import: commit reports per-row failures without aborting the batch", async () => {
@@ -1615,8 +1660,11 @@ export function createDataImportHandler(deps: Deps) {
         const warnings: string[] = [];
         const maxClients = ent.limits.max_clients;
         if (counts.clientes > 0 && maxClients != null) {
+          // db is the service-role client (RLS bypassed) — every count MUST be
+          // conta_id-scoped by hand or it returns a platform-wide total.
           const { count } = await db.from("clientes")
-            .select("id", { count: "exact", head: true }).eq("status", "ativo");
+            .select("id", { count: "exact", head: true })
+            .eq("conta_id", conta_id).eq("status", "ativo");
           if ((count ?? 0) + counts.clientes > maxClients) {
             warnings.push(
               `${counts.clientes} novos clientes excedem o limite de ${maxClients} do seu plano (${count ?? 0} existentes).`,
@@ -1627,7 +1675,7 @@ export function createDataImportHandler(deps: Deps) {
         const maxTemplates = ent.limits.max_workflow_templates;
         if (templateRows > 0 && maxTemplates != null) {
           const { count } = await db.from("workflow_templates")
-            .select("id", { count: "exact", head: true });
+            .select("id", { count: "exact", head: true }).eq("conta_id", conta_id);
           if ((count ?? 0) + templateRows > maxTemplates) {
             warnings.push(
               `${templateRows} novos modelos de fluxo excedem o limite de ${maxTemplates} do seu plano (${count ?? 0} existentes).`,
