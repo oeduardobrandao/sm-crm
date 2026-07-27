@@ -56,7 +56,11 @@ const COMPETITOR = /aprova\s*post|mlabs|etus|doo\s*studio|postgrain|robopost/i;
  * the same clause as the claim *and* before it.
  */
 const NEGATION = /\b(n[ãa]o|nunca|sem|jamais)\b/i;
-const CLAUSE_BREAK = /[.;:!?]|—|\bmas\b|\bpor[ée]m\b|\bembora\b|\bj[áa]\b/i;
+// The comma matters: "Sem editor de design, o Mesaas gera imagens com IA" is a
+// false claim whose negation belongs to a different clause. `embora` is
+// deliberately absent — a break word that PRECEDES the negation would hand the
+// negation to the claim ("Embora não seja um editor, o Mesaas gera imagens").
+const CLAUSE_BREAK = /[,.;:!?]|—|\bmas\b|\bpor[ée]m\b|\bj[áa]\b/i;
 
 /**
  * Whether `line` makes the claim `re` matches without negating it first.
@@ -431,6 +435,14 @@ describe('content lint rules', () => {
       // sentence and cannot cover the second.
       'Não é editor de design. O Mesaas gera imagens com IA.',
       'Sem multirredes por enquanto — mas o Mesaas publica no TikTok.',
+      // Leading subordinate clause, separated only by a comma. This shape
+      // survived the clause-scoped rule until the comma joined CLAUSE_BREAK,
+      // and `embora` left it — a break word before the negation would hand
+      // that negation to the claim it was supposed to be shielding us from.
+      'Sem editor de design, o Mesaas gera imagens com IA.',
+      'Como não há limite, o Mesaas publica no TikTok.',
+      'Se você não usa Instagram, o Mesaas publica no TikTok também.',
+      'Embora não seja um editor, o Mesaas gera imagens com IA.',
     ])('rejects %j', (s) => {
       expect(unshippedClaims(s)).not.toEqual([]);
     });
