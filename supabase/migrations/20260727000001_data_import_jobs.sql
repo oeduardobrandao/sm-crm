@@ -1,14 +1,44 @@
 -- Data import wizard: job bookkeeping + atomic per-source-row commit.
 -- Spec: docs/superpowers/specs/2026-07-27-data-import-migration-design.md
+--
+-- OPERATOR SMOKE TESTS -- run these in the SQL editor (inside begin; … rollback;)
+-- after applying, BEFORE this ships. The Deno edge-function suite mocks the RPC,
+-- so none of the behaviour below is covered by an executable test anywhere else.
+--   1. Tenant guard: import_commit_row with a clienteRef naming a cliente from
+--      another conta_id must raise `cliente % does not belong to this workspace`.
+--   2. Idempotency: a second call with the same (job_id, source_row_key) returns
+--      skipped=true and the SAME row_id.
+--   3. Status clamp: a post row with "status":"agendado" lands as 'rascunho';
+--      one with "status":"postado" and a FUTURE date lands as 'aprovado_cliente'.
+--   4. published_at invariant (added 2026-07-27): the SAME future-dated 'postado'
+--      row from (3) must land with published_at IS NULL and scheduled_at holding
+--      that future date. A past-dated 'postado' row must land with published_at
+--      set. Assert it directly:
+--        select count(*) from workflow_posts
+--         where published_at is not null and status <> 'postado';  -- must be 0
+--   5. Undo lockout: set import_jobs.status='undoing', then call
+--      import_commit_row for that job -- it must raise, not insert.
 
 create table if not exists public.import_jobs (
   id bigint generated always as identity primary key,
   conta_id uuid not null,
   created_by uuid not null,
   source text not null,
+  -- 'undoing' is the in-flight undo state and it is LOAD-BEARING, not cosmetic.
+  -- Undo pages through import_job_items, deletes, and only then marks the job.
+  -- Without a state set BEFORE that read, a commit batch running concurrently
+  -- inserts rows the undo never saw; the job then lands 'undone' and a retried
+  -- undo short-circuits on "Already undone", orphaning those rows forever.
+  -- import_commit_row refuses to write to an 'undoing' job (see below), which is
+  -- what actually closes the window for a commit already inside its RPC loop.
   status text not null default 'committing'
-    check (status in ('committing', 'completed', 'undone')),
+    check (status in ('committing', 'completed', 'undoing', 'undone')),
   total_rows integer,
+  -- When the current/last undo attempt claimed the job. An edge-function kill
+  -- mid-undo leaves status='undoing' forever; the handler treats an 'undoing'
+  -- job whose claim is older than its stale window as resumable (the deletes are
+  -- id-based and idempotent), so a stuck job self-heals without operator SQL.
+  undo_started_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -80,14 +110,25 @@ declare
   v_etapa_id text;
   v_status text;
   v_tipo text;
+  v_source_at timestamptz;
+  v_scheduled_at timestamptz;
+  v_published_at timestamptz;
   v_i integer;
   v_user_id uuid;
 begin
   select * into v_job from public.import_jobs where id = p_job_id and conta_id = p_conta_id;
   -- 'completed' stays writable: a retry after a failed FINAL batch re-runs from
   -- batch 0 against a job already marked completed; idempotency makes it a no-op.
-  if not found or v_job.status = 'undone' then
-    raise exception 'import job not found or undone';
+  --
+  -- 'undoing' is refused for the same reason as 'undone', and this check is the
+  -- ONLY thing that closes the undo/commit race: the edge function's own guard
+  -- runs once, before its RPC loop, so a commit that started while the job was
+  -- still 'completed' would otherwise keep inserting rows for the whole batch
+  -- while undo is already reading and deleting. Undo flips the job to 'undoing'
+  -- BEFORE it reads import_job_items, so every row of that in-flight batch dies
+  -- here instead of surviving as an orphan the wizard can never clean up.
+  if not found or v_job.status in ('undoing', 'undone') then
+    raise exception 'import job not found or being undone';
   end if;
   v_user_id := v_job.created_by;
   -- Belt and braces: created_by is NOT NULL on new rows, but this guards any row
@@ -245,10 +286,34 @@ begin
                         'enviado_cliente', 'aprovado_cliente', 'correcao_cliente', 'postado') then
       v_status := 'rascunho';
     end if;
-    if v_status = 'postado'
-       and coalesce((p_payload->>'publishedAt')::timestamptz,
-                    (p_payload->>'scheduledAt')::timestamptz, now()) > now() then
+    -- The one date the row actually carries, whichever key it arrived under. It
+    -- is BOTH the clamp's evidence and (when the clamp's verdict is 'postado')
+    -- the published_at written below, so status and date can never disagree.
+    v_source_at := coalesce((p_payload->>'publishedAt')::timestamptz,
+                            (p_payload->>'scheduledAt')::timestamptz);
+    if v_status = 'postado' and coalesce(v_source_at, now()) > now() then
       v_status := 'aprovado_cliente';
+    end if;
+    -- DATE COLUMNS DERIVE FROM THE CLAMPED VERDICT, NEVER FROM THE RAW PAYLOAD.
+    -- Writing p_payload->>'publishedAt' unconditionally half-executed the clamp:
+    -- a future-dated 'postado' row was downgraded to 'aprovado_cliente' and STILL
+    -- got a published_at, and the CRM reads published_at alone as "this is live"
+    -- (apps/crm/src/pages/entregas/components/WorkflowDrawer.tsx:1092 --
+    -- `const isPublished = post.published_at != null`, no status check), so the
+    -- row displayed as "Publicado em <future date>" while sitting unapproved.
+    -- INVARIANT: published_at is non-null only when v_status = 'postado'.
+    -- The source date is not discarded on a downgrade -- it moves to scheduled_at,
+    -- so the downgraded post still lands on the calendar on the day the source
+    -- tool said. Safe because the status clamp guarantees v_status is never
+    -- 'agendado', and instagram-publish-cron/tiktok-publish-cron claim on that
+    -- status, not on scheduled_at alone.
+    if v_status = 'postado' then
+      v_published_at := v_source_at;
+      v_scheduled_at := (p_payload->>'scheduledAt')::timestamptz;
+    else
+      v_published_at := null;
+      v_scheduled_at := coalesce((p_payload->>'scheduledAt')::timestamptz,
+                                 (p_payload->>'publishedAt')::timestamptz);
     end if;
     -- SERVER-SIDE TIPO CLAMP, same reasoning as the status clamp above: `tipo` is
     -- CHECK-constrained to ('feed','reels','stories','carrossel')
@@ -277,7 +342,7 @@ begin
             (select coalesce(max(wp.ordem) + 1, 0) from public.workflow_posts wp
               where wp.workflow_id = v_workflow_id),
             v_status,
-            (p_payload->>'scheduledAt')::timestamptz, (p_payload->>'publishedAt')::timestamptz, 'human')
+            v_scheduled_at, v_published_at, 'human')
     returning id::text into v_id;
 
   elsif p_kind = 'ideia' then

@@ -165,6 +165,63 @@ Deno.test("data-import: preview scopes the workflow_templates count to the calle
   assertModifier(oneCall(db, "workflow_templates", "select"), "eq", ["conta_id", "conta-1"]);
 });
 
+// containerKey is the grouping key the commit step chunks on. Preview is called
+// with chunking OFF, so every post of one client shares a single containerKey.
+function postRow(sourceKey: string, containerKey: string) {
+  return {
+    kind: "post",
+    sourceKey,
+    containerKey,
+    titulo: "T",
+    conteudo: null,
+    conteudoPlain: "",
+    tipo: "feed",
+    status: "rascunho",
+    scheduledAt: null,
+    publishedAt: null,
+    provenance: {},
+  };
+}
+
+Deno.test("data-import: preview warns when one container exceeds max_posts_per_workflow", async () => {
+  // The design promises all THREE caps are checked at preview time so the user
+  // sees them up front; maxPostsPerWorkflow was only echoed back in `limits`.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  const capped = { ...ENTITLED, limits: { ...ENTITLED.limits, max_posts_per_workflow: 2 } };
+  const rows = [
+    postRow("p1", "container:a:0"),
+    postRow("p2", "container:a:0"),
+    postRow("p3", "container:a:0"),
+    postRow("p4", "container:b:0"), // a second client, within the cap
+  ];
+  const res = await makeHandler(db, capped)(post("preview", { rows }));
+  const body = await readJson(res);
+  assertEquals(body.counts.posts, 4);
+  assertEquals(body.warnings.length, 1);
+  // the warning must name the real numbers and say the import splits rather than fails
+  assert(body.warnings[0].includes("3 posts"), `got ${body.warnings[0]}`);
+  assert(body.warnings[0].includes("limite de 2"), `got ${body.warnings[0]}`);
+  assert(body.warnings[0].includes("divididos"), `got ${body.warnings[0]}`);
+});
+
+Deno.test("data-import: preview does not warn when every container is within the cap", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  const capped = { ...ENTITLED, limits: { ...ENTITLED.limits, max_posts_per_workflow: 2 } };
+  // 4 posts total but never more than 2 in one container: the cap is per
+  // container, so a total-count check here would false-positive.
+  const rows = [
+    postRow("p1", "container:a:0"),
+    postRow("p2", "container:a:0"),
+    postRow("p3", "container:b:0"),
+    postRow("p4", "container:b:0"),
+  ];
+  const res = await makeHandler(db, capped)(post("preview", { rows }));
+  const body = await readJson(res);
+  assertEquals(body.warnings, []);
+});
+
 Deno.test("data-import: preview rejects a non-array rows payload instead of 500-ing", async () => {
   const db = createSupabaseQueryMock();
   authAs(db);
@@ -282,6 +339,97 @@ Deno.test("data-import: commit refuses a job that has already been undone", asyn
     probe.selectArgs.some((a) => String(a[0] ?? "").includes("status")),
     `commit's ownership probe must select status — got ${JSON.stringify(probe.selectArgs)}`,
   );
+});
+
+Deno.test("data-import: commit refuses a job an undo has claimed", async () => {
+  // Undo flips the job to 'undoing' BEFORE reading its items, so anything
+  // committed from here is invisible to the undo in flight and would be orphaned
+  // once the job lands 'undone' (a retried undo short-circuits on Already undone).
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueJobOwned(db, "undoing");
+  const rows = [{ kind: "cliente", sourceKey: "a", nome: "Ana" }];
+  const res = await makeHandler(db)(post("commit", { jobId: 7, rows, final: true }));
+  assertEquals(res.status, 400);
+  assertEquals(await readJson(res), { error: "Undo in progress" });
+  assertEquals(db.calls.filter((c) => c.operation === "rpc").length, 0);
+  // critically, the `final` update must not fire — it would flip 'undoing' back
+  // to 'completed' and cancel the undo's lockout.
+  assertEquals(callsFor(db, "import_jobs", "update").length, 0);
+  assertEquals(callsFor(db, "audit_log", "insert").length, 0);
+});
+
+Deno.test("data-import: the final update cannot resurrect a job an undo claimed mid-batch", async () => {
+  // An undo can claim the job WHILE this batch is running: the rows then all fail
+  // inside the RPC, but control still reaches the `final` update. Without the
+  // status filter that update flips 'undoing'/'undone' back to 'completed'.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueJobOwned(db);
+  db.queueRpc("import_commit_row", { data: { skipped: false, table: "clientes", row_id: "3" }, error: null });
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const rows = [{ kind: "cliente", sourceKey: "a", nome: "Ana" }];
+  await makeHandler(db)(post("commit", { jobId: 7, rows, final: true }));
+  const update = oneCall(db, "import_jobs", "update");
+  assertModifier(update, "in", ["status", ["committing", "completed"]]);
+});
+
+Deno.test("data-import: a future-dated postado post never reaches the RPC with a publishedAt", async () => {
+  // The clamp used to only half-execute: status was downgraded to
+  // 'aprovado_cliente' but the raw publishedAt was still written, and the CRM
+  // reads published_at ALONE as "this is live" (WorkflowDrawer.tsx:1092,
+  // `const isPublished = post.published_at != null`) — so the row displayed as
+  // "Publicado em <future date>" while sitting unapproved.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueJobOwned(db);
+  db.queueRpc("import_commit_row", { data: { skipped: false, table: "workflow_posts", row_id: "5" }, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const rows = [{ ...postRow("p1", "container:a:0"), status: "postado", publishedAt: future, scheduledAt: null }];
+  await makeHandler(db)(post("commit", { jobId: 7, rows }));
+  const payload = lastRpcArgs(db, "import_commit_row").p_payload as Record<string, unknown>;
+  assertEquals(payload.status, "aprovado_cliente");
+  assertEquals(payload.publishedAt, null);
+  // the date is NOT discarded — a downgraded post still needs a calendar day.
+  assertEquals(payload.scheduledAt, future);
+});
+
+Deno.test("data-import: a past-dated postado post keeps its publishedAt", async () => {
+  // The other half of the invariant: the clamp must not blank the date on a row
+  // that really is published, or every imported archive lands undated.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueJobOwned(db);
+  db.queueRpc("import_commit_row", { data: { skipped: false, table: "workflow_posts", row_id: "5" }, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const past = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const rows = [{ ...postRow("p1", "container:a:0"), status: "postado", publishedAt: past, scheduledAt: null }];
+  await makeHandler(db)(post("commit", { jobId: 7, rows }));
+  const payload = lastRpcArgs(db, "import_commit_row").p_payload as Record<string, unknown>;
+  assertEquals(payload.status, "postado");
+  assertEquals(payload.publishedAt, past);
+});
+
+Deno.test("data-import: a non-postado post never carries a publishedAt to the RPC", async () => {
+  // The invariant is about the STATUS, not about the clamp's downgrade path: a
+  // row that arrives already 'aprovado_cliente' with a publishedAt would display
+  // as live just the same.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueJobOwned(db);
+  db.queueRpc("import_commit_row", { data: { skipped: false, table: "workflow_posts", row_id: "5" }, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const past = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const rows = [
+    { ...postRow("p1", "container:a:0"), status: "aprovado_cliente", publishedAt: past, scheduledAt: null },
+  ];
+  await makeHandler(db)(post("commit", { jobId: 7, rows }));
+  const payload = lastRpcArgs(db, "import_commit_row").p_payload as Record<string, unknown>;
+  assertEquals(payload.status, "aprovado_cliente");
+  assertEquals(payload.publishedAt, null);
+  assertEquals(payload.scheduledAt, past);
 });
 
 Deno.test("data-import: a failing audit write does not turn a committed batch into a 500", async () => {
@@ -466,9 +614,92 @@ Deno.test("data-import: undo deletes recorded rows in order, skips published pos
   const del = oneCall(db, "workflow_posts", "delete");
   assertModifier(del, "eq", ["conta_id", "conta-1"]);
   assertModifier(del, "in", ["id", [32]]);
-  const jobUpdate = oneCall(db, "import_jobs", "update");
+  // update #0 is the 'undoing' claim (asserted on its own below); #1 is the final
+  // 'undone' flip.
+  const jobUpdate = oneCall(db, "import_jobs", "update", 1);
   assertEquals(jobUpdate.payload, { status: "undone" });
   assertModifier(jobUpdate, "eq", ["conta_id", "conta-1"]);
+});
+
+Deno.test("data-import: undo claims the job as 'undoing' BEFORE reading its items", async () => {
+  // Ordering is the whole fix. The item read defines the set of rows this undo
+  // will ever delete; a commit batch landing rows after it produces rows that are
+  // in no undo's list, and the job still ends 'undone' — after which a retried
+  // undo short-circuits on "Already undone" and those rows are orphaned for good.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "clientes", row_id: "3", source_row_key: "a", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [], error: null });
+  db.queue("ideias", "select", { data: [], error: null });
+  db.queue("clientes", "delete", { data: [{ id: 3 }], error: null });
+  db.queue("import_jobs", "update", { data: null, error: null }, { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  assertEquals(res.status, 200);
+
+  const updates = callsFor(db, "import_jobs", "update");
+  assertEquals(updates.length, 2);
+  const claim = updates[0].payload as Record<string, unknown>;
+  assertEquals(claim.status, "undoing");
+  assert(
+    typeof claim.undo_started_at === "string",
+    "the claim must stamp undo_started_at, or a killed undo can never be resumed",
+  );
+  assertModifier(updates[0], "eq", ["id", 7]);
+  assertModifier(updates[0], "eq", ["conta_id", "conta-1"]);
+  assertEquals(updates[1].payload, { status: "undone" });
+
+  // ...and the claim must come FIRST in the wire order, before the item read.
+  const claimIdx = db.calls.indexOf(updates[0]);
+  const readIdx = db.calls.indexOf(oneCall(db, "import_job_items", "select"));
+  const doneIdx = db.calls.indexOf(updates[1]);
+  assert(claimIdx < readIdx, `the 'undoing' claim must precede the item read (${claimIdx} vs ${readIdx})`);
+  assert(readIdx < doneIdx, `'undone' must be written after the item read (${readIdx} vs ${doneIdx})`);
+});
+
+Deno.test("data-import: undo refuses a job another undo has just claimed", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db, { status: "undoing", undo_started_at: new Date().toISOString() });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  assertEquals(res.status, 400);
+  assertEquals(await readJson(res), { error: "Undo in progress" });
+  assertEquals(callsFor(db, "import_job_items", "select").length, 0);
+  assertEquals(callsFor(db, "import_jobs", "update").length, 0);
+});
+
+Deno.test("data-import: undo resumes a job left stuck in 'undoing' by a killed run", async () => {
+  // An edge-function kill mid-undo leaves the job 'undoing' with commits locked
+  // out. Refusing the retry unconditionally would make that permanently
+  // unrecoverable through the wizard; resuming is safe because the item read is
+  // redone from scratch, the deletes are id-based and idempotent, and no commit
+  // can have added rows while the job sat in 'undoing'.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db, {
+    status: "undoing",
+    undo_started_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+  });
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "clientes", row_id: "3", source_row_key: "a", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [], error: null });
+  db.queue("ideias", "select", { data: [], error: null });
+  // the killed run already removed this one: an id-based delete simply returns
+  // nothing, so the resumed run reports 0 rather than double-counting.
+  db.queue("clientes", "delete", { data: [], error: null });
+  db.queue("import_jobs", "update", { data: null, error: null }, { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  assertEquals(res.status, 200);
+  assertEquals((await readJson(res)).deleted, 0);
+  const updates = callsFor(db, "import_jobs", "update");
+  assertEquals(updates[updates.length - 1].payload, { status: "undone" });
 });
 
 Deno.test("data-import: undo keeps a cliente that still holds a user-created ideia", async () => {

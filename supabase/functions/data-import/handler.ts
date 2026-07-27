@@ -46,6 +46,18 @@ const PREVIEW_LIMIT = 5000;
 const PAGE_SIZE = 500;
 // `.in()` lists ride in the query string, so they are chunked to keep URLs sane.
 const IN_CHUNK = 500;
+// How long a job may sit in 'undoing' before a retry is allowed to resume it. An
+// undo that is killed mid-flight (edge runtime CPU/wall kill) leaves the job in
+// 'undoing' with commits locked out, which would be permanently stuck if a retry
+// were refused unconditionally. Resuming is safe: the deletes are id-based and
+// idempotent, the item read is redone from scratch, and no commit can have added
+// rows in the meantime (import_commit_row refuses an 'undoing' job). The window
+// only has to exceed the edge runtime's wall-clock ceiling, which is far below
+// 5 minutes, so a genuinely concurrent second undo is still refused.
+const UNDO_STALE_MS = 5 * 60 * 1000;
+// The statuses a commit batch may be written into. Anything else means an undo
+// has claimed the job.
+const COMMITTABLE_STATUSES = ["committing", "completed"];
 
 function chunked<T>(items: T[], size = IN_CHUNK): T[][] {
   const out: T[][] = [];
@@ -286,6 +298,31 @@ export function createDataImportHandler(deps: Deps) {
             );
           }
         }
+        // max_posts_per_workflow is the third cap the design promises at preview
+        // time ("surfacing warnings up front instead of letting commit fail
+        // mid-way"). Preview is called with buildCommitRows(..., null) — chunking
+        // is deliberately OFF so preview counts stay stable — so every post of a
+        // given client still shares ONE containerKey here, and a group larger
+        // than the cap is exactly the group the commit step will split into
+        // numbered containers. Warn, do not block: nothing is lost.
+        const maxPosts = ent.limits.max_posts_per_workflow;
+        if (counts.posts > 0 && maxPosts != null) {
+          const perContainer = new Map<string, number>();
+          for (const r of rows) {
+            if (r.kind !== "post") continue;
+            const key = String((r as { containerKey?: unknown }).containerKey ?? "");
+            perContainer.set(key, (perContainer.get(key) ?? 0) + 1);
+          }
+          const over = [...perContainer.values()].filter((n) => n > maxPosts);
+          if (over.length > 0) {
+            const largest = Math.max(...over);
+            warnings.push(
+              over.length === 1
+                ? `Um calendário do import tem ${largest} posts, acima do limite de ${maxPosts} posts por calendário do seu plano — os posts serão divididos automaticamente em vários calendários, sem perder nenhuma linha.`
+                : `${over.length} calendários do import têm até ${largest} posts, acima do limite de ${maxPosts} posts por calendário do seu plano — os posts serão divididos automaticamente em vários calendários, sem perder nenhuma linha.`,
+            );
+          }
+        }
         return json({
           counts,
           warnings,
@@ -334,6 +371,13 @@ async function handleCommit({ db, conta_id, userId, body, json }: ActionCtx): Pr
     .single();
   if (!job) return json({ error: "Job not found" }, 404);
   if (job.status === "undone") return json({ error: "Already undone" }, 400);
+  // 'undoing' is refused for exactly the same reason, one step earlier: undo has
+  // claimed this job and is deleting its rows right now. Anything committed from
+  // here is invisible to the undo already in flight and would be orphaned when it
+  // finishes. This check is best-effort (a batch that got past it keeps running);
+  // the authoritative gate is inside import_commit_row, which re-reads the job
+  // status on every single row.
+  if (job.status === "undoing") return json({ error: "Undo in progress" }, 400);
   const results: any[] = [];
   for (const row of rows) {
     const { data, error } = await db.rpc("import_commit_row", {
@@ -367,7 +411,17 @@ async function handleCommit({ db, conta_id, userId, body, json }: ActionCtx): Pr
   // Last batch marks the job completed (client sets final on its last slice).
   if (body.final === true) {
     // conta-scoped as defence in depth, on top of the ownership check above.
-    await db.from("import_jobs").update({ status: "completed" }).eq("id", jobId).eq("conta_id", conta_id);
+    // `.in("status", …)` closes the same window one more time: an undo may have
+    // claimed the job WHILE this batch was running (its rows all failed inside
+    // the RPC, but control still arrives here), and an unconditional update would
+    // flip 'undoing'/'undone' back to 'completed' — cancelling the undo's lockout
+    // and re-arming the undo button on a job that was already being undone.
+    await db
+      .from("import_jobs")
+      .update({ status: "completed" })
+      .eq("id", jobId)
+      .eq("conta_id", conta_id)
+      .in("status", COMMITTABLE_STATUSES);
   }
   await auditQuietly(db, {
     conta_id,
@@ -384,16 +438,45 @@ async function handleUndo({ db, conta_id, userId, body, json }: ActionCtx): Prom
   const jobId = Number(body.jobId);
   const { data: job } = await db
     .from("import_jobs")
-    .select("id, conta_id, status, created_at")
+    .select("id, conta_id, status, created_at, undo_started_at")
     .eq("id", jobId)
     .eq("conta_id", conta_id)
     .single();
   if (!job) return json({ error: "Job not found" }, 404);
   if (job.status === "undone") return json({ error: "Already undone" }, 400);
+  // A job already claimed by another undo is refused — two undos racing over the
+  // same job would both report the same deletions and double-audit them. The
+  // refusal is time-bounded on purpose: an undo killed mid-flight (edge runtime
+  // kill) leaves the job in 'undoing' with commits locked out, and an
+  // unconditional refusal would make that state permanently unrecoverable
+  // through the wizard. Past UNDO_STALE_MS the claim is treated as abandoned and
+  // the retry resumes — safe because the item read is redone from scratch, the
+  // deletes are id-based and idempotent (a row already gone is simply not
+  // returned, so `deleted` stays honest), and no commit can have added rows in
+  // the meantime. A missing undo_started_at on an 'undoing' row is inconsistent
+  // state, so it too is treated as resumable rather than as a permanent block.
+  if (job.status === "undoing") {
+    const claimedAt = job.undo_started_at ? new Date(job.undo_started_at).getTime() : null;
+    if (claimedAt !== null && Number.isFinite(claimedAt) && Date.now() - claimedAt < UNDO_STALE_MS) {
+      return json({ error: "Undo in progress" }, 400);
+    }
+  }
   // 7-day undo window (spec: Limits & error handling)
   if (Date.now() - new Date(job.created_at).getTime() > 7 * 24 * 60 * 60 * 1000) {
     return json({ error: "Undo window expired" }, 400);
   }
+  // CLAIM THE JOB BEFORE READING ITS ITEMS. Ordering is the whole point: the read
+  // below defines the set of rows this undo will ever delete, so any commit that
+  // lands a row after it is orphaned — the job ends 'undone', a retried undo
+  // short-circuits on "Already undone", and nothing can ever clean those rows up
+  // through the wizard. Flipping to 'undoing' first makes import_commit_row
+  // refuse every subsequent row, including the remaining rows of a batch that is
+  // already inside its RPC loop.
+  await db
+    .from("import_jobs")
+    .update({ status: "undoing", undo_started_at: new Date().toISOString() })
+    .eq("id", jobId)
+    .eq("conta_id", conta_id);
   // `.eq("merged", false)` is LOAD-BEARING, not a filter for tidiness.
   // A "mesclar com existente" row records the pre-existing cliente the
   // import merged INTO, so it can resolve clienteRef and be skipped on
@@ -497,5 +580,56 @@ function normalizePayload(row: CommitRow): Record<string, unknown> {
     const { merge, ...fields } = rest as any;
     return { ...fields, mergeClienteId: merge.clienteId };
   }
+  if (kind === "post") return normalizePostPayload(rest as Record<string, unknown>);
   return rest as Record<string, unknown>;
+}
+
+// The importable post statuses, mirroring the allow-list inside import_commit_row
+// (supabase/migrations/20260727000001_data_import_jobs.sql). 'agendado' and
+// 'falha_publicacao' are deliberately absent: the publish crons claim on
+// 'agendado' and imported posts carry no media.
+const IMPORTABLE_POST_STATUSES = new Set([
+  "rascunho",
+  "revisao_interna",
+  "aprovado_interno",
+  "enviado_cliente",
+  "aprovado_cliente",
+  "correcao_cliente",
+  "postado",
+]);
+
+/**
+ * Applies the post status/date clamp at the wire boundary, so the payload handed
+ * to the RPC can never describe a post as published on a date it was not.
+ *
+ * The RPC remains AUTHORITATIVE — it re-derives all three fields itself, because
+ * /data-import/commit is not the only conceivable caller and the database is the
+ * last line. This mirror exists because it is the only layer the Deno suite can
+ * observe (the RPC is mocked), and because the payload is what the audit trail
+ * and any future replay would carry. Both implementations must agree; they are
+ * commented as a pair. Any change here needs the same change in the migration.
+ *
+ * INVARIANT (both layers): publishedAt is non-null only when status is 'postado'.
+ * The source date is never discarded on a downgrade — it moves to scheduledAt so
+ * the post still lands on the calendar on the day the source tool said.
+ */
+function normalizePostPayload(fields: Record<string, unknown>): Record<string, unknown> {
+  const rawStatus = typeof fields.status === "string" ? fields.status : "rascunho";
+  let status = rawStatus.trim().toLowerCase();
+  if (!IMPORTABLE_POST_STATUSES.has(status)) status = "rascunho";
+  const scheduledAt = (fields.scheduledAt ?? null) as unknown;
+  const publishedAt = (fields.publishedAt ?? null) as unknown;
+  // Whichever key carried the date; publishedAt wins, matching the RPC's coalesce.
+  const sourceAt = publishedAt ?? scheduledAt;
+  // Unparseable/absent dates are left to the RPC's own cast to reject or ignore.
+  // A non-finite `ms` reproduces the SQL `coalesce(v_source_at, now()) > now()`,
+  // which is false when there is no date, so a dateless 'postado' row stays
+  // 'postado' — and, per the rule below, still gets a null publishedAt.
+  const ms = typeof sourceAt === "string" ? Date.parse(sourceAt) : NaN;
+  if (status === "postado" && Number.isFinite(ms) && ms > Date.now()) {
+    status = "aprovado_cliente";
+  }
+  return status === "postado"
+    ? { ...fields, status, scheduledAt, publishedAt: sourceAt }
+    : { ...fields, status, scheduledAt: scheduledAt ?? publishedAt, publishedAt: null };
 }
