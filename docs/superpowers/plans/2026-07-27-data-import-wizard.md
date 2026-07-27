@@ -925,7 +925,7 @@ Classification rules (deterministic, in priority order):
 
 Column roles by header regex (first match wins): title `/^(nome|name|task ?name|título|titulo)$/i`; date `/data|date|publica|agendad/i`; status `/status|fase|etapa/i`; client `/cliente|client|marca|conta|etiquetas/i`; caption `/legenda|caption|texto|conte[uú]do/i`; email `/e-?mail/i`; phone `/telefone|phone|celular|whats/i`; monthlyValue `/valor|mensalidade|fee/i`; specialty `/especialidade|specialty/i`; tipo `/tipo|formato|format/i`; url `/^(url|link)$/i`.
 
-`mapStatus`: `aprovad` → `aprovado_cliente`; `revis|review` → `revisao_interna`; `enviado|client` → `enviado_cliente`; `corre` → `correcao_cliente`; `postado|publicado|published|done|conclu` → `postado`; `agendad|sched` → `aprovado_cliente` (clamp — never `agendado`); everything else → `rascunho`.
+`mapStatus`, in this exact priority order (order matters — a source status like "Correção Cliente" matches both `corre` and `client`, and the correction meaning must win): `aprovad` → `aprovado_cliente`; `revis|review` → `revisao_interna`; `corre` → `correcao_cliente`; `enviado|client` → `enviado_cliente`; `postado|publicado|published|done|conclu` → `postado`; `agendad|sched` → `aprovado_cliente` (clamp — never `agendado`); everything else → `rascunho`.
 
 `clientAssignment`: `{ mode: 'column', column }` when a client-role column exists, else `{ mode: 'fixed', clienteNome: '' }`.
 
@@ -1554,8 +1554,19 @@ Deno.test("data-import: commit reports per-row failures without aborting the bat
   ];
   const res = await makeHandler(db)(post("commit", { jobId: 7, rows }));
   const body = await readJson(res);
-  assertEquals(body.results[0], { sourceKey: "x", table: null, rowId: null, skipped: false, failed: true });
+  assertEquals(body.results[0].failed, true);
   assertEquals(body.results[1].rowId, "u-1");
+});
+
+Deno.test("data-import: a plan-limit trigger becomes a legible reason, not a generic failure", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  db.queueRpc("import_commit_row", { data: null, error: { message: "plan_limit_exceeded:max_clients" } });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const rows = [{ kind: "cliente", sourceKey: "a", nome: "Ana" }];
+  const res = await makeHandler(db)(post("commit", { jobId: 7, rows }));
+  const body = await readJson(res);
+  assertEquals(body.results[0].reason, "plan_limit:max_clients");
 });
 
 Deno.test("data-import: undo deletes recorded rows in order, skips published posts", async () => {
@@ -1743,7 +1754,19 @@ export function createDataImportHandler(deps: Deps) {
           });
           if (error) {
             console.error("[data-import] commit row failed:", row.sourceKey, error);
-            results.push({ sourceKey: row.sourceKey, table: null, rowId: null, skipped: false, failed: true });
+            // The plan-count triggers (20260611130003_count_triggers.sql) fire
+            // INSIDE the RPC and raise `plan_limit_exceeded:<key>` — a bulk import
+            // on a limited plan hits this partway through. Translate it into a
+            // user-legible reason instead of a generic failure; the job stays
+            // resumable, since committed rows are skipped on retry.
+            const raw = String((error as { message?: string }).message ?? "");
+            const limitKey = raw.startsWith("plan_limit_exceeded:")
+              ? raw.slice("plan_limit_exceeded:".length).trim()
+              : null;
+            results.push({
+              sourceKey: row.sourceKey, table: null, rowId: null, skipped: false,
+              failed: true, reason: limitKey ? `plan_limit:${limitKey}` : "error",
+            });
           } else {
             results.push({ sourceKey: row.sourceKey, table: data.table, rowId: data.row_id, skipped: data.skipped });
           }
@@ -1770,8 +1793,16 @@ export function createDataImportHandler(deps: Deps) {
         if (Date.now() - new Date(job.created_at).getTime() > 7 * 24 * 60 * 60 * 1000) {
           return json({ error: "Undo window expired" }, 400);
         }
+        // `.eq("merged", false)` is LOAD-BEARING, not a filter for tidiness.
+        // A "mesclar com existente" row records the pre-existing cliente the
+        // import merged INTO, so it can resolve clienteRef and be skipped on
+        // resume — but that cliente belongs to the customer and predates the
+        // import. Deleting it here would cascade through their workflows,
+        // etapas, posts, ideias, instagram_accounts and folders. The spec is
+        // explicit: undo restores creations only, merges are never undone.
         const { data: items, error: itemsErr } = await db.from("import_job_items")
-          .select("table_name, row_id, source_row_key, ordinal").eq("job_id", jobId);
+          .select("table_name, row_id, source_row_key, ordinal, merged")
+          .eq("job_id", jobId).eq("merged", false);
         if (itemsErr) throw itemsErr;
 
         const byTable = new Map<string, string[]>();
