@@ -78,7 +78,7 @@ import { useEntitlements } from '../../hooks/useEntitlements';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
 import { captureEvent } from '@/lib/analytics';
 import { useAuth } from '../../context/AuthContext';
-import { stripFinancialFields } from '@/lib/financialAccess';
+import { assertNoFinancialColumns, stripFinancialFields } from '@/lib/financialAccess';
 
 type ClienteFormValues = z.infer<ReturnType<typeof createClienteSchema>>;
 
@@ -271,6 +271,12 @@ export default function ClientesPage() {
   const handleCSVImport = () => {
     openCSVSelector(
       async (rows) => {
+        try {
+          assertNoFinancialColumns(rows, canSeeFinancials, ['valor_mensal']);
+        } catch (e) {
+          toast.error((e as Error).message);
+          return;
+        }
         let count = 0;
         for (const row of rows) {
           if (!row.nome) continue;

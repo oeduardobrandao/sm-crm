@@ -70,3 +70,28 @@ export function stripFinancialFields<T extends Record<string, unknown>>(
   for (const k of keys) delete out[k];
   return out;
 }
+
+/**
+ * Reject a CSV import that carries a protected column the caller cannot write.
+ *
+ * MUST be called on the parsed rows BEFORE the first insert. Both importers loop
+ * row-by-row with no enclosing transaction, so a per-row check would commit
+ * every preceding row before failing.
+ *
+ * Rejects the whole file rather than silently stripping: stripping reports
+ * success while discarding exactly the data the user believed they imported.
+ */
+export function assertNoFinancialColumns(
+  rows: Record<string, unknown>[],
+  access: FinancialAccess,
+  keys: string[],
+): void {
+  if (access === true) return;
+  const present = keys.filter((k) => rows.some((r) => k in r));
+  if (present.length > 0) {
+    throw new Error(
+      `Importação cancelada: seu acesso não permite enviar a coluna "${present.join('", "')}". ` +
+        `Remova-a do arquivo e tente novamente. Nenhum registro foi importado.`,
+    );
+  }
+}

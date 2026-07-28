@@ -802,6 +802,27 @@ describe('ClientesPage', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientes'] });
   });
 
+  it('rejects the whole CSV import when a restricted user supplies the protected column', async () => {
+    mockUseAuth.mockReturnValue({ canSeeFinancials: false });
+
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Importar CSV' }));
+
+    const { onUpload } = getCSVCallbacks();
+
+    await act(async () => {
+      await onUpload([
+        { nome: 'Atlas Saúde', email: 'atlas@saude.com', valor_mensal: '1200' },
+        { nome: 'Beta Labs', email: 'beta@labs.com', valor_mensal: '1800' },
+      ]);
+    });
+
+    expect(mockedAddCliente).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(expect.stringMatching(/valor_mensal/));
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+
   it('surfaces CSV parsing errors through toast feedback', async () => {
     renderPage();
 

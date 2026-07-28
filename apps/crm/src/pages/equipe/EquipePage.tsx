@@ -77,7 +77,11 @@ import {
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
 import { avatarColorClass } from '@/lib/avatarColor';
-import { formatFinancialBRL, stripFinancialFields } from '@/lib/financialAccess';
+import {
+  assertNoFinancialColumns,
+  formatFinancialBRL,
+  stripFinancialFields,
+} from '@/lib/financialAccess';
 
 type FilterTipo = 'todos' | 'clt' | 'freelancer_mensal' | 'freelancer_demanda';
 type SortKey = 'nome' | 'custo_maior' | 'custo_menor';
@@ -213,6 +217,12 @@ export default function EquipePage() {
   const handleCSVImport = () => {
     openCSVSelector(
       async (rows) => {
+        try {
+          assertNoFinancialColumns(rows, canSeeFinancials, ['custo_mensal']);
+        } catch (e) {
+          toast.error((e as Error).message);
+          return;
+        }
         let count = 0;
         for (const row of rows) {
           if (!row.nome || !row.cargo) continue;
