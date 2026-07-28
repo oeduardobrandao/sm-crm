@@ -18,7 +18,7 @@ declare
   v_none  uuid := gen_random_uuid();
   v_got   boolean;
 begin
-  v_ws := et_make_workspace('start');
+  v_ws := et_make_workspace('max');
 
   insert into auth.users (id) values (v_owner), (v_admin), (v_agent), (v_none);
   insert into workspace_members (user_id, workspace_id, role) values
@@ -27,6 +27,22 @@ begin
     (v_agent, v_ws, 'agent');
   update profiles set conta_id = v_ws, active_workspace_id = v_ws
    where id in (v_owner, v_admin, v_agent);
+
+  -- v_none must be made a genuine non-participant, and inserting them into
+  -- auth.users is NOT enough. That insert fires handle_new_user_workspace()
+  -- (20260317_multi_workspace.sql), which auto-creates a throwaway workspace
+  -- and makes the new user its OWNER. Verified live on a fresh local database:
+  -- memberships=1, role=owner, active_workspace_id NOT NULL. Left alone,
+  -- v_none is an owner of their own workspace and the predicate correctly
+  -- returns true — the assertion below would fail for a reason that has
+  -- nothing to do with the code under test.
+  --
+  -- Null the pointer instead of deleting the membership:
+  -- trg_validate_active_workspace forbids active_workspace_id pointing at a
+  -- workspace the user does not belong to, so "member of nothing, pointing
+  -- somewhere" is unreachable by construction. Same precedent as
+  -- 31_hub_token_rotate_extend.sql:34.
+  update profiles set active_workspace_id = null where id = v_none;
 
   -- owner: true regardless of the flag
   update workspace_members set can_see_financials = false
@@ -74,14 +90,17 @@ begin
     raise exception 'agent with flag=true should NOT see financials, got %', v_got;
   end if;
 
-  -- no membership: NULL (fails closed in an RLS USING clause)
+  -- No active workspace: NULL, which fails closed in an RLS USING clause.
+  -- (The other NULL-yielding case — membership deleted while
+  -- active_workspace_id still points at the workspace — is the stale-pointer
+  -- assertion in 51_financial_views.sql.)
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_none, 'role', 'authenticated')::text, true);
   set local role authenticated;
   select public.can_see_financials() into v_got;
   reset role;
   if v_got is not null then
-    raise exception 'non-member should get NULL, got %', v_got;
+    raise exception 'user with no active workspace should get NULL, got %', v_got;
   end if;
 
   raise notice '50_can_see_financials: all predicate cases passed';
