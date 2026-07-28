@@ -34,6 +34,15 @@ describe('parseGenericCsv', () => {
     expect(col.rows[0].cells).toEqual({ A: '1', B: '2', 'Coluna 3': '3' });
   });
 
+  // The pt-BR Excel export the upload guide tells users to produce: before
+  // delimiter detection this yielded a single column named
+  // "Nome;Email;Telefone", so the mapping step could not address any field.
+  test('a semicolon-separated export produces addressable columns, not one blob', () => {
+    const col = parseGenericCsv('clientes.csv', 'Nome;Email;Telefone\nAna;ana@x.com;11999');
+    expect(col.columns).toEqual(['Nome', 'Email', 'Telefone']);
+    expect(col.rows[0].cells).toEqual({ Nome: 'Ana', Email: 'ana@x.com', Telefone: '11999' });
+  });
+
   test('an empty header cell gets a synthesized name instead of colliding', () => {
     const col = parseGenericCsv('empty-header.csv', 'A,,C\n1,2,3');
     expect(col.columns).toEqual(['A', 'Coluna 2', 'C']);

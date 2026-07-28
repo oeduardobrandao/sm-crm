@@ -21,17 +21,20 @@
 //
 // The outbound side gets the same defence in depth applied to BOTH values
 // embedded into the prompt:
-//   - clampSummaryForRequest (below) caps sample values per column, columns
-//     per collection, and the number of collections in the server-derived
-//     summary before it is serialized into the Gemini request body, so the
-//     request never carries more than column headers plus a few sample
-//     values per column — never the full roster — regardless of what the
-//     caller (packages/import-parsers, via the future import wizard)
-//     actually sends.
-//   - clampHeuristicForRequest (below) applies the same collection-count cap,
-//     plus a per-string length cap, to `heuristic` — the client-supplied
-//     mapping proposal. heuristic carries no sample cell values (so it is not
-//     the data-leak concern the summary is), but /analyze accepts arbitrary
+//   - clampSummaryForRequest (below) caps the number of collections, the
+//     columns per collection, the sample values per column, AND the LENGTH of
+//     every individual string (collection name, source, column header, list
+//     name, sample value) in the server-derived summary before it is
+//     serialized into the Gemini request body. Counting alone was not enough:
+//     a single Notion caption or spreadsheet cell can be megabytes on its own,
+//     so "at most 3 samples per column" bounded the number of values crossing
+//     the boundary to Google while bounding none of their size. Both the
+//     data-minimization promise and the bounded-request intent need the length
+//     cap, so it is applied here rather than trusted to the caller.
+//   - clampHeuristicForRequest (below) applies the same collection-count and
+//     per-string length caps to `heuristic` — the client-supplied mapping
+//     proposal. heuristic carries no sample cell values (so it is not the
+//     data-leak concern the summary is), but /analyze accepts arbitrary
 //     JSON from any authenticated member of an entitled workspace, and
 //     buildPrompt serializes it wholesale via JSON.stringify — an oversized or
 //     hostile heuristic (thousands of synthetic collections, huge strings as
@@ -65,36 +68,60 @@ const STATUS_TARGETS = new Set([
 const MAX_COLLECTIONS = 50;
 const MAX_COLUMNS_PER_COLLECTION = 60;
 const MAX_SAMPLES_PER_COLUMN = 3;
-// heuristic.collections has no natural per-field cap the way the summary's
-// sample counts do — its columnRoles/statusMap/clientAssignment values are
-// free-form strings a hostile caller could inflate arbitrarily. This bounds
-// any single string embedded into the prompt from the heuristic proposal.
-const MAX_HEURISTIC_STRING_LENGTH = 200;
+// Applies to EVERY free-form string embedded into the prompt, from either
+// side: the summary's collection/column/list names and sample cell values, and
+// the heuristic proposal's columnRoles/statusMap/clientAssignment strings. A
+// mapping decision is made from the SHAPE of a value ("is this column a date?
+// an email? a status?"), which 200 characters shows as well as 2 megabytes do
+// — so nothing longer has a reason to leave this process.
+const MAX_STRING_LENGTH = 200;
+
+function clampString(value: unknown): string {
+  const s = typeof value === "string" ? value : "";
+  return s.length > MAX_STRING_LENGTH ? s.slice(0, MAX_STRING_LENGTH) : s;
+}
 
 /**
- * Clamps the collection/column/sample-value counts before the summary is
- * embedded into the Gemini request body. This — not caller discipline — is
- * what enforces "column headers plus at most a few sample values per
- * column, never the full roster": client names, emails, phone numbers, and
- * other per-row values living in `sampleCells` are third-party personal
- * data belonging to the agency's clients, and this request leaves the
- * process boundary to Google.
+ * Clamps the collection/column/sample-value COUNTS and every individual string
+ * LENGTH before the summary is embedded into the Gemini request body. This —
+ * not caller discipline — is what enforces "column headers plus at most a few
+ * short sample values per column, never the full roster": client names,
+ * emails, phone numbers, and other per-row values living in `sampleCells` are
+ * third-party personal data belonging to the agency's clients, and this
+ * request leaves the process boundary to Google.
+ *
+ * `collectionId` is length-clamped too, and deliberately with the SAME bound
+ * clampHeuristicForRequest already applies to its own collectionId — the two
+ * are matched against each other (knownIds, below, and mergeAiProposal on the
+ * client), so clamping one side and not the other is what would actually break
+ * them. A collection whose id is longer than the cap simply loses its AI
+ * refinement and keeps the heuristic mapping, which is this module's documented
+ * safe fallback.
  */
 function clampSummaryForRequest(summary: AnalyzeSummary): AnalyzeSummary {
   const collections = summary.collections.slice(0, MAX_COLLECTIONS).map((c) => {
-    const columns = c.columns.slice(0, MAX_COLUMNS_PER_COLLECTION);
+    const columns = c.columns.slice(0, MAX_COLUMNS_PER_COLLECTION).map(clampString);
     const sampleCells: Record<string, string[]> = {};
     for (const [col, values] of Object.entries(c.sampleCells).slice(0, MAX_COLUMNS_PER_COLLECTION)) {
-      sampleCells[col] = (Array.isArray(values) ? values : []).slice(0, MAX_SAMPLES_PER_COLUMN);
+      sampleCells[clampString(col)] = (Array.isArray(values) ? values : [])
+        .slice(0, MAX_SAMPLES_PER_COLUMN)
+        .map(clampString);
     }
-    return { ...c, columns, sampleCells };
+    return {
+      ...c,
+      collectionId: clampString(c.collectionId),
+      name: clampString(c.name),
+      source: clampString(c.source),
+      // listNames is free text from the user's board columns, and unbounded in
+      // both count and length before this.
+      listNames: (Array.isArray(c.listNames) ? c.listNames : [])
+        .slice(0, MAX_COLUMNS_PER_COLLECTION)
+        .map(clampString),
+      columns,
+      sampleCells,
+    };
   });
   return { collections };
-}
-
-function clampHeuristicString(value: unknown): string {
-  const s = typeof value === "string" ? value : "";
-  return s.length > MAX_HEURISTIC_STRING_LENGTH ? s.slice(0, MAX_HEURISTIC_STRING_LENGTH) : s;
 }
 
 /** Caps both the number of entries and the length of every key/value string. */
@@ -102,7 +129,7 @@ function clampHeuristicStringMap(value: unknown): Record<string, string> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>).slice(0, MAX_COLUMNS_PER_COLLECTION)) {
-    out[clampHeuristicString(k)] = clampHeuristicString(v);
+    out[clampString(k)] = clampString(v);
   }
   return out;
 }
@@ -110,10 +137,10 @@ function clampHeuristicStringMap(value: unknown): Record<string, string> {
 function clampHeuristicClientAssignment(value: unknown): WireCollectionMapping["clientAssignment"] {
   const mode = (value as { mode?: unknown } | null | undefined)?.mode;
   if (mode === "column") {
-    return { mode: "column", column: clampHeuristicString((value as { column?: unknown }).column) };
+    return { mode: "column", column: clampString((value as { column?: unknown }).column) };
   }
   const clienteNome = (value as { clienteNome?: unknown } | null | undefined)?.clienteNome;
-  return { mode: "fixed", clienteNome: clampHeuristicString(clienteNome) };
+  return { mode: "fixed", clienteNome: clampString(clienteNome) };
 }
 
 /**
@@ -130,8 +157,8 @@ function clampHeuristicForRequest(heuristic: WireMappingProposal): WireMappingPr
   const rawCollections = Array.isArray(heuristic?.collections) ? heuristic.collections : [];
   const collections = rawCollections.slice(0, MAX_COLLECTIONS).map(
     (c): WireCollectionMapping => ({
-      collectionId: clampHeuristicString((c as { collectionId?: unknown })?.collectionId),
-      destination: clampHeuristicString(
+      collectionId: clampString((c as { collectionId?: unknown })?.collectionId),
+      destination: clampString(
         (c as { destination?: unknown })?.destination,
       ) as WireCollectionMapping["destination"],
       columnRoles: clampHeuristicStringMap((c as { columnRoles?: unknown })?.columnRoles),
@@ -185,8 +212,9 @@ function sanitizeClientAssignment(value: unknown): WireCollectionMapping["client
 
 /**
  * Sends the parsed-collection summary (headers + at most MAX_SAMPLES_PER_COLUMN
- * sample values per column, clamped by clampSummaryForRequest — never the
- * full roster) plus the heuristic proposal to Gemini, and returns a
+ * sample values per column, each truncated to MAX_STRING_LENGTH characters,
+ * clamped by clampSummaryForRequest — never the full roster, and never a whole
+ * caption) plus the heuristic proposal to Gemini, and returns a
  * validated replacement proposal — or null on ANY failure, so the caller
  * always has a safe fallback (the heuristic it already has).
  */

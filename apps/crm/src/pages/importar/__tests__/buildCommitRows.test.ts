@@ -521,6 +521,43 @@ describe('posts', () => {
     expect(new Date(post.scheduledAt!).getMonth()).toBe(7); // August, dd/mm/yyyy
     expect(new Date(post.scheduledAt!).getDate()).toBe(5);
   });
+
+  // `new Date(2026, 1, 31)` does not fail — it NORMALIZES to 3 March 2026. A
+  // calendar-invalid cell must therefore be rejected outright rather than
+  // silently scheduling the post on a day nobody wrote.
+  describe('dd/mm/yyyy calendar validation', () => {
+    function postFor(data: string): CommitPostRow {
+      const bundle = mkBundle(
+        mkCollection('cal', {
+          columns: ['Nome', 'Data'],
+          rows: [mkRow('p1', { cells: { Nome: 'x', Data: data } })],
+        }),
+      );
+      const proposal = mkProposal(
+        mkMapping('cal', 'posts', {
+          columnRoles: { title: 'Nome', date: 'Data' },
+          clientAssignment: { mode: 'fixed', clienteNome: 'Ana' },
+        }),
+      );
+      return byKind<CommitPostRow>(buildCommitRows(bundle, proposal, [ANA], null), 'post')[0];
+    }
+
+    test.each(['31/02/2026', '31/04/2026', '29/02/2027'])(
+      'rejects the impossible date %s instead of shifting it',
+      (data) => {
+        expect(postFor(data).scheduledAt).toBeNull();
+      },
+    );
+
+    test('accepts a real leap day (29/02/2028)', () => {
+      const scheduledAt = postFor('29/02/2028').scheduledAt;
+      expect(scheduledAt).not.toBeNull();
+      const d = new Date(scheduledAt!);
+      expect(d.getFullYear()).toBe(2028);
+      expect(d.getMonth()).toBe(1); // February
+      expect(d.getDate()).toBe(29);
+    });
+  });
 });
 
 // --- entregas ---------------------------------------------------------------

@@ -105,14 +105,34 @@ function parseValor(raw: string): number | undefined {
  * ISO first (what every parser emits for first-class dates), then dd/mm/yyyy —
  * the shape a Brazilian spreadsheet exports, which `Date.parse` reads as
  * mm/dd/yyyy or rejects outright.
+ *
+ * CALENDAR VALIDATION: the `Date` constructor NORMALIZES out-of-range
+ * components instead of failing — `new Date(2026, 1, 31)` is 3 March 2026, and
+ * `new Date(2026, 12, 1)` is January 2027. Left unchecked, a cell reading
+ * "31/02/2026" would silently schedule a post or an entrega on a day the user
+ * never wrote. Reading the components back off the constructed date is the only
+ * way to tell a real date from a normalized one; a mismatch means the cell was
+ * never a valid date, so it takes the same path as any other garbage input
+ * (null — the caller treats a dateless row as unscheduled).
  */
 function parseDate(raw: string): string | null {
   const value = raw.trim();
   if (!value) return null;
   const br = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(value);
   if (br) {
-    const d = new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1]), 12, 0, 0);
-    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    const day = Number(br[1]);
+    const month = Number(br[2]);
+    const year = Number(br[3]);
+    const d = new Date(year, month - 1, day, 12, 0, 0);
+    if (
+      Number.isNaN(d.getTime()) ||
+      d.getFullYear() !== year ||
+      d.getMonth() !== month - 1 ||
+      d.getDate() !== day
+    ) {
+      return null;
+    }
+    return d.toISOString();
   }
   const ms = Date.parse(value);
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;

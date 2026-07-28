@@ -258,6 +258,52 @@ describe('ImportarPage', () => {
     ).toBeInTheDocument();
   });
 
+  // A commit that returns PER-ROW failures lands in the completed state, not
+  // the error state — so before this, the only way forward was restarting the
+  // wizard, which opens a NEW job. None of this job's rows are recorded against
+  // that id, so every row that already succeeded would be inserted twice.
+  test('retries the failed rows on the SAME job instead of starting a new import', async () => {
+    mockedCommit.mockImplementation(async (_job, rows, final) => ({
+      results: final
+        ? [
+            ...okResults(rows.slice(1)),
+            {
+              sourceKey: rows[0].sourceKey,
+              table: null,
+              rowId: null,
+              skipped: false,
+              failed: true,
+              reason: 'plan_limit:max_posts_per_workflow',
+            },
+          ]
+        : okResults(rows),
+    }));
+
+    await advanceToPreview();
+    fireEvent.click(screen.getByRole('button', { name: /Importar/ }));
+    await screen.findByText('Importação concluída');
+
+    expect(mockedStart).toHaveBeenCalledTimes(1);
+    mockedCommit.mockClear();
+
+    // Second run succeeds outright, so the failure block disappears.
+    mockedCommit.mockImplementation(async (_job, rows) => ({ results: okResults(rows) }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Tentar novamente as linhas que falharam' }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByText(/Limite do plano atingido/)).not.toBeInTheDocument(),
+    );
+
+    // THE POINT OF THE FIX: no second job, and every retried batch carries the
+    // original job id — which is what makes import_commit_row's per-row
+    // idempotency apply and stops the successful rows being re-inserted.
+    expect(mockedStart).toHaveBeenCalledTimes(1);
+    expect(mockedCommit).toHaveBeenCalledTimes(2);
+    for (const [jobId] of mockedCommit.mock.calls) expect(jobId).toBe(42);
+  });
+
   test('lets the user retry after a failed batch', async () => {
     mockedCommit.mockRejectedValueOnce(new Error('boom'));
 
@@ -270,6 +316,50 @@ describe('ImportarPage', () => {
     await screen.findByText('Importação concluída');
     // The retry reuses the job (idempotent server-side) instead of starting a new one.
     expect(mockedStart).toHaveBeenCalledTimes(1);
+  });
+
+  // startImport opens a job in status 'committing' and ONLY a batch sent with
+  // `final: true` closes it. If every source row is dropped while building the
+  // commit rows (here: a posts collection whose client column is blank on every
+  // row), a job created for that empty array would never receive a final batch
+  // and would sit in 'committing' forever, with the UI spinning. The prévia
+  // button is what makes this unreachable — this test is what keeps it that way.
+  test('never opens a job when every source row was dropped while building', async () => {
+    parseGenericCsv.mockReturnValue({
+      ...calendarCollection(),
+      rows: Array.from({ length: 5 }, (_, i) => ({
+        key: `r${i + 1}`,
+        cells: { Nome: `Post ${i + 1}`, Cliente: '', Data: '01/08/2026' },
+      })),
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Planilha (CSV)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    fireEvent.change(screen.getByLabelText('Arquivos de exportação'), {
+      target: { files: [new File(['a,b'], 'calendario.csv')] },
+    });
+    await screen.findByText('1 coleção · 5 linhas');
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    await screen.findByText('calendario');
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    await screen.findByText('Prévia da importação');
+
+    // Every one of the 5 rows dropped, so there is nothing to commit.
+    expect(screen.getByText(/5 linhas serão ignoradas/)).toBeInTheDocument();
+
+    // Layer 1 — the button the user sees is disabled...
+    const importar = screen.getByRole('button', { name: /Importar/ });
+    expect(importar).toBeDisabled();
+
+    // ...layer 2 — and even driven directly, the commit refuses to open a job
+    // rather than opening one it could never send a `final: true` batch for.
+    // (Asserted on the calls, not on what is rendered, so this still holds if
+    // the disabled attribute above ever regresses.)
+    fireEvent.click(importar);
+    await waitFor(() => expect(mockedPreview).toHaveBeenCalled());
+    expect(mockedStart).not.toHaveBeenCalled();
+    expect(mockedCommit).not.toHaveBeenCalled();
   });
 
   test('tells the user what undo kept and why', async () => {

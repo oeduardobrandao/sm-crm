@@ -193,6 +193,20 @@ export default function ImportarPage() {
     setCommitError(null);
     setResults(null);
     setProgress({ done: 0, total: rows.length });
+    // NOTHING TO COMMIT. `startImport` opens a job in status 'committing' and
+    // only a batch sent with `final: true` closes it — so creating a job for an
+    // empty row set would strand it there, with the UI stuck on its spinner.
+    // The prévia's "Importar" button is already disabled at rowCount === 0
+    // (rowCount IS commitRows.length, so it can only be 0 when this array is),
+    // making this defence in depth rather than a reachable path — but the cost
+    // of the guard is one comparison and the cost of the hole is a permanently
+    // stuck job, so it stays.
+    if (rows.length === 0 && existingJobId == null) {
+      setCommitError(
+        'Nenhum registro para importar — volte e ajuste o mapeamento antes de tentar de novo.',
+      );
+      return;
+    }
     try {
       let id = existingJobId;
       if (id == null) {
@@ -201,13 +215,20 @@ export default function ImportarPage() {
         id = (await startImport(source ?? 'csv', rows.length)).jobId;
         setJobId(id);
       }
+      // Materialized rather than looped over `rows` directly so that an ALREADY
+      // OPEN job with nothing left to send still gets one closing `final: true`
+      // batch instead of being abandoned in 'committing'.
+      const batches: CommitRow[][] = [];
+      for (let i = 0; i < rows.length; i += BATCH_SIZE) batches.push(rows.slice(i, i + BATCH_SIZE));
+      if (batches.length === 0) batches.push([]);
+
       const acc: CommitRowResult[] = [];
-      for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-        const batch = rows.slice(i, i + BATCH_SIZE);
-        const isLast = i + BATCH_SIZE >= rows.length;
-        const result = await commitBatch(id, batch, isLast);
+      let done = 0;
+      for (const [index, batch] of batches.entries()) {
+        const result = await commitBatch(id, batch, index === batches.length - 1);
         acc.push(...result.results);
-        setProgress({ done: Math.min(i + batch.length, rows.length), total: rows.length });
+        done += batch.length;
+        setProgress({ done, total: rows.length });
       }
       setResults(acc);
       const failed = acc.filter((r) => r.failed).length;

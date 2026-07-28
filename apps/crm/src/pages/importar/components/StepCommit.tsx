@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Download, Undo2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, RefreshCw, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -149,9 +149,28 @@ export default function StepCommit({
               </li>
             ))}
           </ul>
-          <Button variant="secondary" onClick={() => downloadFailures(summary.failed)}>
-            <Download aria-hidden /> Baixar relatório de falhas (CSV)
-          </Button>
+          {/*
+            Per-row failures land here, not in the `error` branch above — so
+            without this button the only exit was restarting the wizard, which
+            opens a NEW job. Nothing from this job is recorded against that new
+            id, so every row that already succeeded would be inserted a second
+            time. Retrying HERE reuses the current job, where import_commit_row
+            is idempotent per (job_id, source_row_key): the rows that landed are
+            skipped and only the failed ones do real work.
+          */}
+          <p className="text-muted">
+            Se a causa já foi resolvida (por exemplo, o limite do plano), você pode tentar de novo
+            sem risco: continuamos a mesma importação, então nada do que já entrou é duplicado — só
+            as linhas que falharam são gravadas.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={onRetry}>
+              <RefreshCw aria-hidden /> Tentar novamente as linhas que falharam
+            </Button>
+            <Button variant="secondary" onClick={() => downloadFailures(summary.failed)}>
+              <Download aria-hidden /> Baixar relatório de falhas (CSV)
+            </Button>
+          </div>
         </div>
       )}
 

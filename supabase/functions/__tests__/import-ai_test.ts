@@ -380,3 +380,44 @@ Deno.test("refineMapping: clamps outbound collection and column counts before ca
   assertEquals(sent.collections[0].columns.length, 60);
   assertEquals(Object.keys(sent.collections[0].sampleCells).length, 60);
 });
+
+Deno.test("refineMapping: truncates an oversized sample value so the request body stays bounded", async () => {
+  // Counting samples bounded HOW MANY values crossed the boundary to Google
+  // but nothing about their size: one Notion caption or spreadsheet cell can
+  // be megabytes on its own, and 3-of-those is still megabytes of third-party
+  // personal data in the request.
+  const hugeValue = "x".repeat(2_000_000);
+  const summary = {
+    collections: [
+      {
+        collectionId: "c1",
+        name: "N".repeat(5000),
+        source: "notion",
+        columns: ["Legenda", "C".repeat(5000)],
+        listNames: ["L".repeat(5000)],
+        rowCount: 1,
+        sampleCells: { Legenda: [hugeValue], ["C".repeat(5000)]: [hugeValue] },
+      },
+    ],
+  };
+  const capture: { body?: string } = {};
+  await refineMapping(summary, HEURISTIC, "key", geminiOkCapturing({ collections: [] }, capture));
+  const sent = extractSentSummary(capture.body!);
+
+  for (const values of Object.values(sent.collections[0].sampleCells)) {
+    for (const v of values) {
+      assert(v.length <= 200, `sample value must be truncated, got length ${v.length}`);
+    }
+  }
+  for (const col of sent.collections[0].columns) {
+    assert(col.length <= 200, `column name must be truncated, got length ${col.length}`);
+  }
+  for (const key of Object.keys(sent.collections[0].sampleCells)) {
+    assert(key.length <= 200, `sampleCells key must be truncated, got length ${key.length}`);
+  }
+
+  // The raw value must not appear anywhere in what leaves this process, and
+  // the whole body must stay small — 4MB of input collapses to a few KB.
+  assert(!capture.body!.includes(hugeValue), "the full sample value must never be sent");
+  assert(capture.body!.length < 100_000, `request body must stay bounded, got ${capture.body!.length} bytes`);
+});
