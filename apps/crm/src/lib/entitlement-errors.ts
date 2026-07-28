@@ -3,8 +3,10 @@ export type EntitlementError =
   | { kind: 'feature'; key: string; label: string }
   | { kind: 'quota'; key: 'storage'; label: string; used?: number; quota?: number };
 
-// PT labels for the limit_key / feature flag surfaced to users.
-const LIMIT_LABELS: Record<string, string> = {
+// PT labels for the limit_key / feature flag surfaced to users. Exported so the
+// import wizard renders the SAME wording for a `plan_limit:<key>` commit failure
+// instead of keeping its own drifting copy.
+export const LIMIT_LABELS: Record<string, string> = {
   max_clients: 'clientes',
   max_team_members: 'usuários',
   max_leads: 'leads',

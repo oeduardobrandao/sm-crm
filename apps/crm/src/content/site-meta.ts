@@ -35,6 +35,7 @@ export const APP_ROUTE_PREFIXES = [
   'analytics',
   'ideias',
   'ajuda',
+  'importar',
 ] as const;
 
 export interface RouteMeta {
