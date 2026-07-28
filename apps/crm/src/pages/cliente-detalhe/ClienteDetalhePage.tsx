@@ -239,6 +239,12 @@ export default function ClienteDetalhePage() {
   const [revertTarget, setRevertTarget] = useState<BoardCard | null>(null);
   const [approvalChoiceCard, setApprovalChoiceCard] = useState<BoardCard | null>(null);
 
+  // The edit modal can hold a valor_mensal value in its form state. On live
+  // revocation, close it rather than let the value linger on screen.
+  useEffect(() => {
+    if (canSeeFinancials !== true) setEditOpen(false);
+  }, [canSeeFinancials]);
+
   // Address modal state
   const [addrModalOpen, setAddrModalOpen] = useState(false);
   const [addrLoading, setAddrLoading] = useState(false);

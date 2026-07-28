@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -63,6 +63,12 @@ export default function MembroDetalhePage() {
   const [fTipo, setFTipo] = useState<Membro['tipo']>('clt');
   const [fCusto, setFCusto] = useState('');
   const [fDiaPag, setFDiaPag] = useState('');
+
+  // The edit modal can hold a custo_mensal value in its form state. On live
+  // revocation, close it rather than let the value linger on screen.
+  useEffect(() => {
+    if (canSeeFinancials !== true) setModalOpen(false);
+  }, [canSeeFinancials]);
 
   const { data: membros = [], isLoading: loadingMembros } = useQuery({
     queryKey: ['membros'],

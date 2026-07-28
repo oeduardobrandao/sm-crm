@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -133,6 +133,12 @@ export default function EquipePage() {
     enabled: !isAgent,
   });
   const totalCost = membros.reduce((s, m) => s + (m.custo_mensal ?? 0), 0);
+
+  // The edit/add modal can hold a custo_mensal value in its form state. On
+  // live revocation, close it rather than let the value linger on screen.
+  useEffect(() => {
+    if (canSeeFinancials !== true) setModalOpen(false);
+  }, [canSeeFinancials]);
 
   const filtered = membros
     .filter((m) => filter === 'todos' || m.tipo === filter)

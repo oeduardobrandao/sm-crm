@@ -9,7 +9,7 @@ import {
   healPendingInvite,
 } from '../lib/supabase';
 import { initStoreRole } from '../store/core';
-import { getMyMembership } from '../store/workspace';
+import { getMyMembership, type MyMembership } from '../store/workspace';
 import { deriveFinancialAccess, type FinancialAccess } from '../lib/financialAccess';
 import { identifyWorkspaceUser, resetAnalytics } from '../lib/analytics';
 
@@ -21,6 +21,21 @@ interface Profile {
   active_workspace_id?: string;
   [key: string]: unknown;
 }
+
+/**
+ * Caches holding financial values, purged on live revocation (true -> false).
+ *
+ * Deliberately excludes `portfolioSummary`: that query is Instagram accounts,
+ * top/worst posts and growth counters (services/analytics.ts) — no monetary
+ * field. Purging it would refetch a large payload for nothing.
+ */
+export const FINANCIAL_QUERY_KEYS = [
+  'clientes',
+  'membros',
+  'transacoes',
+  'contratos',
+  'dashboardStats',
+];
 
 interface AuthContextValue {
   user: User | null;
@@ -166,6 +181,94 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       active = false;
     };
   }, [sessionReady, userId]);
+
+  // Mirrors canSeeFinancials into a ref so the revocation handler below reads
+  // the CURRENT value without needing to re-subscribe every time it changes.
+  const canSeeFinancialsRef = useRef<FinancialAccess>('unknown');
+  useEffect(() => {
+    canSeeFinancialsRef.current = canSeeFinancials;
+  }, [canSeeFinancials]);
+
+  // Live revocation.
+  //
+  // Severity, stated precisely: this is a correctness/UX concern, not a
+  // disclosure boundary. After Migration B the database denies the read
+  // regardless of what this client believes, so a stale cache cannot survive
+  // a refetch and no new financial data can be obtained either way. This
+  // effect is defence-in-depth over values already sitting in memory (query
+  // cache, open dialogs) for a tab that never refetches on its own — it must
+  // never be described or relied upon as the enforcement boundary.
+  //
+  // Keyed on [userId, profile?.conta_id] rather than [sessionReady, userId]
+  // (the hydration effect above): that effect never re-runs on a workspace
+  // switch, which is safe today only because the sole switch path
+  // (Sidebar.tsx) does a full window.location.reload(). Keying here on the
+  // workspace id too means this subscription still re-points itself at the
+  // new workspace if that assumption ever changes.
+  useEffect(() => {
+    const workspaceId = profile?.conta_id;
+    if (!userId || !workspaceId) return;
+
+    const applyMembership = (next: { role?: string; can_see_financials?: boolean } | null) => {
+      if (!next) return;
+      const wasAllowed = canSeeFinancialsRef.current === true;
+      setWorkspaceRole((next.role as 'owner' | 'admin' | 'agent') ?? null);
+      // Same derivation as hydration — never re-implement the role semantics
+      // here. Two copies drift; this bug already shipped once on this branch
+      // (a raw can_see_financials assignment gave agents access and denied
+      // restricted owners).
+      const nowAllowed = deriveFinancialAccess(next as MyMembership);
+      setCanSeeFinancials(nowAllowed);
+
+      if (wasAllowed && !nowAllowed) {
+        for (const key of FINANCIAL_QUERY_KEYS) {
+          queryClient.removeQueries({ queryKey: [key] });
+        }
+        void queryClient.refetchQueries({ type: 'active' });
+      }
+    };
+
+    // Migration A adds workspace_members to the realtime publication under
+    // the DEFAULT replica identity, so DELETE events carry only the primary
+    // key. A filter on user_id=eq.<uid> matches no DELETE payload, so being
+    // removed from the workspace entirely would look "subscribed and
+    // healthy" while silently going unnoticed. Subscribe to UPDATE only (it
+    // carries the full new row) — the bounded poll below is what actually
+    // covers deletion, which is why it is mandatory rather than a nicety.
+    // Do NOT add REPLICA IDENTITY FULL to make DELETE usable here: that
+    // costs write amplification on every update to this table and is a
+    // deliberate trade to leave for later, not to slip in.
+    const channel = supabase
+      .channel(`wm:${userId}:${workspaceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'workspace_members',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) =>
+          applyMembership(payload.new as { role?: string; can_see_financials?: boolean }),
+      )
+      .subscribe();
+
+    // Bounded polling fallback. Refetch-on-focus alone is insufficient: focus
+    // events never fire for a tab that stays foregrounded, which is precisely
+    // the indefinite-cache case this exists to address. This is also the only
+    // path that covers revocation-by-deletion (see REPLICA IDENTITY note
+    // above).
+    const poll = setInterval(() => {
+      void getMyMembership()
+        .then(applyMembership)
+        .catch(() => {});
+    }, 60_000);
+
+    return () => {
+      clearInterval(poll);
+      void supabase.removeChannel(channel);
+    };
+  }, [userId, profile?.conta_id, queryClient]);
 
   const fetchProfile = async () => {
     if (!sessionReady || !user) {

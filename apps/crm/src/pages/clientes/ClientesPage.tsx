@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -128,6 +128,12 @@ export default function ClientesPage() {
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // The edit/add modal can hold a valor_mensal value in its form state. On
+  // live revocation, close it rather than let the value linger on screen.
+  useEffect(() => {
+    if (canSeeFinancials !== true) setModalOpen(false);
+  }, [canSeeFinancials]);
 
   const schema = useMemo(() => createClienteSchema(t), [t]);
   const form = useForm<ClienteFormValues>({

@@ -23,9 +23,38 @@ const subscription = {
 type AuthChangeCallback = (event: string, session: { user: { id: string } | null } | null) => void;
 let authChangeCallback: AuthChangeCallback | null = null;
 
+// Minimal postgres_changes realtime stand-in for AuthContext's live-revocation
+// subscription. Only supports a single active UPDATE listener at a time,
+// which is all AuthProvider ever registers.
+type PostgresChangesCallback = (payload: { new: Record<string, unknown> }) => void;
+let workspaceMemberUpdateCallback: PostgresChangesCallback | null = null;
+export const removedChannelCalls: unknown[] = [];
+
+function makeChannelMock() {
+  const channel = {
+    on(
+      _event: 'postgres_changes',
+      _filter: Record<string, unknown>,
+      callback: PostgresChangesCallback,
+    ) {
+      workspaceMemberUpdateCallback = callback;
+      return channel;
+    },
+    subscribe() {
+      return channel;
+    },
+  };
+  return channel;
+}
+
 export const supabase = {
   from: (table: string) => queryMock.from(table),
   rpc: (name: string, params: Record<string, unknown>) => queryMock.rpc(name, params),
+  channel: (_name: string) => makeChannelMock(),
+  removeChannel: (ch: unknown) => {
+    removedChannelCalls.push(ch);
+    return Promise.resolve('ok');
+  },
   auth: {
     async getSession() {
       return { data: { session: currentSession }, error: null };
@@ -79,6 +108,8 @@ export async function signOut() {
 export function __resetSupabaseMock() {
   queryMock.reset();
   profileResponses = [];
+  workspaceMemberUpdateCallback = null;
+  removedChannelCalls.length = 0;
   currentUser = { id: 'user-1' };
   currentProfile = {
     id: 'user-1',
@@ -135,4 +166,8 @@ export async function healPendingInvite() {}
 
 export function __emitAuthChange(event: string, session: { user: { id: string } | null } | null) {
   authChangeCallback?.(event, session);
+}
+
+export function __emitWorkspaceMemberUpdate(newRow: Record<string, unknown>) {
+  workspaceMemberUpdateCallback?.({ new: newRow });
 }
