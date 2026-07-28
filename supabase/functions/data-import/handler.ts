@@ -390,7 +390,9 @@ async function guardContainerWorkflows(db: DbClient, conta_id: string, ids: stri
  * as silently: undo deletes the template, Postgres cascades away rows this
  * import never created, and nothing appears in skippedTemplates. Re-derive
  * with:
- *   grep -rn "REFERENCES workflow_templates(id)" supabase/migrations/
+ *   grep -rni "references workflow_templates(id)" supabase/migrations/
+ * The -i is load-bearing: some migrations write `references` in lowercase, so a
+ * case-sensitive grep reports a SHORTER list and reads as "complete".
  */
 const TEMPLATE_REFERENCING_TABLES: Array<{ table: string; column: string; scopeCol: string | null }> = [
   { table: "workflows", column: "template_id", scopeCol: "conta_id" },
@@ -459,7 +461,9 @@ async function guardReferencedTemplates(db: DbClient, conta_id: string, ids: str
  * hub token, the client's own briefing answers), and nothing appears in
  * skippedClientes. That omission is exactly the bug this list exists to prevent,
  * and it has already recurred once. Re-derive the list with:
- *   grep -rn "REFERENCES clientes(id) ON DELETE CASCADE" supabase/migrations/
+ *   grep -rni "references clientes(id) on delete cascade" supabase/migrations/
+ * The -i is load-bearing: `ideias` writes `references` in lowercase, so the
+ * case-sensitive form returns 14 rows instead of 15 and reads as "complete".
  * `ON DELETE SET NULL` references (designs, ai_image_generations, and the two
  * baseline finance tables) are deliberately absent — those rows survive.
  */
