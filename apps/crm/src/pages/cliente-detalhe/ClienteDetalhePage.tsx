@@ -66,7 +66,6 @@ import {
   getClientes,
   getTransacoes,
   getContratos,
-  formatBRL,
   formatDate,
   getInitials,
   updateCliente,
@@ -135,6 +134,7 @@ import {
 } from '../../services/instagram';
 import { sanitizeUrl } from '../../utils/security';
 import { useAuth } from '../../context/AuthContext';
+import { formatFinancialBRL, stripFinancialFields } from '@/lib/financialAccess';
 import { useTranslation } from 'react-i18next';
 import { renderInstagramOverviewCard } from '../../components/instagram/InstagramOverviewCard';
 import { renderInstagramFollowerChart } from '../../components/instagram/InstagramFollowerChart';
@@ -223,7 +223,7 @@ export default function ClienteDetalhePage() {
   const { id: idParam } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { role } = useAuth();
+  const { role, canSeeFinancials } = useAuth();
   const isAgent = role === 'agent';
   const { t, i18n } = useTranslation('clients');
   const { t: tc } = useTranslation();
@@ -770,7 +770,7 @@ export default function ClienteDetalhePage() {
     }
     setEditLoading(true);
     try {
-      await updateCliente(clienteId, {
+      const payload = {
         nome: fNome,
         email: fEmail,
         telefone: fTelefone,
@@ -782,7 +782,11 @@ export default function ClienteDetalhePage() {
         status: fStatus,
         especialidade: fEspecialidade,
         data_aniversario: fAniMes && fAniDia ? `${fAniMes}-${fAniDia}` : null,
-      });
+      };
+      await updateCliente(
+        clienteId,
+        stripFinancialFields(payload, canSeeFinancials, ['valor_mensal']),
+      );
       queryClient.invalidateQueries({ queryKey: ['clientes'] });
       setEditOpen(false);
       toast.success(t('detail.clientUpdated'));
@@ -980,6 +984,7 @@ export default function ClienteDetalhePage() {
 
   const navModel = buildNavModel({
     isAgent,
+    canSeeFinancials: canSeeFinancials === true,
     activeDeliveriesCount: boardCards.length,
     deliveryHistoryCount: concludedSummaries.length,
     igSummary,
@@ -1790,7 +1795,7 @@ export default function ClienteDetalhePage() {
         )}
       </div>
 
-      {!isAgent && (
+      {canSeeFinancials === true && (
         <>
           {/* KPI Cards */}
           <StatCardGrid
@@ -1800,21 +1805,21 @@ export default function ClienteDetalhePage() {
           >
             <StatCard
               label={t('detail.monthlyValue')}
-              value={formatBRL(Number(cliente.valor_mensal))}
+              value={formatFinancialBRL(cliente.valor_mensal, canSeeFinancials)}
               icon={Wallet}
               tone="blue"
               compactValue
             />
             <StatCard
               label={t('detail.totalReceived')}
-              value={formatBRL(receitaTotal)}
+              value={formatFinancialBRL(receitaTotal, canSeeFinancials)}
               icon={CheckCircle2}
               tone="green"
               compactValue
             />
             <StatCard
               label={t('detail.pending')}
-              value={formatBRL(pendente)}
+              value={formatFinancialBRL(pendente, canSeeFinancials)}
               valueColor="var(--warning)"
               icon={Clock}
               tone="amber"
@@ -1853,7 +1858,7 @@ export default function ClienteDetalhePage() {
                         {formatDate(r.data_inicio)} – {formatDate(r.data_fim)}
                       </TableCell>
                       <TableCell data-label={t('detail.contractValue')}>
-                        {formatBRL(Number(r.valor_total))}
+                        {formatFinancialBRL(r.valor_total, canSeeFinancials)}
                       </TableCell>
                       <TableCell data-label={t('detail.contractStatus')}>
                         <StatusBadge status={r.status} />
@@ -1901,7 +1906,7 @@ export default function ClienteDetalhePage() {
                           }}
                         >
                           {r.tipo === 'entrada' ? '+' : '-'}
-                          {formatBRL(Number(r.valor))}
+                          {formatFinancialBRL(r.valor, canSeeFinancials)}
                         </span>
                       </TableCell>
                       <TableCell data-label={t('detail.txStatus')}>
@@ -1939,10 +1944,12 @@ export default function ClienteDetalhePage() {
               <Label>{t('detail.formPlan')}</Label>
               <Input value={fPlano} onChange={(e) => setFPlano(e.target.value)} />
             </div>
-            <div className="space-y-1">
-              <Label>{t('detail.formMonthlyValue')}</Label>
-              <Input type="number" value={fValor} onChange={(e) => setFValor(e.target.value)} />
-            </div>
+            {canSeeFinancials === true && (
+              <div className="space-y-1">
+                <Label>{t('detail.formMonthlyValue')}</Label>
+                <Input type="number" value={fValor} onChange={(e) => setFValor(e.target.value)} />
+              </div>
+            )}
             <div className="space-y-1">
               <Label>{t('detail.formNotionUrl')}</Label>
               <Input value={fNotion} onChange={(e) => setFNotion(e.target.value)} />

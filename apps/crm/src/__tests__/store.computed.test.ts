@@ -57,7 +57,7 @@ describe('store computed helpers', () => {
           error: null,
         });
 
-        const stats = await store.getDashboardStats();
+        const stats = await store.getDashboardStats(true);
 
         expect(stats.clientesAtivos).toHaveLength(2);
         expect(stats.receitaMensal).toBe(5000);
@@ -80,7 +80,7 @@ describe('store computed helpers', () => {
           error: null,
         });
 
-        const stats = await store.getDashboardStats();
+        const stats = await store.getDashboardStats(true);
 
         expect(
           stats.transacoes.some((t) => t.referencia_agendamento?.startsWith('membro_1_')),
@@ -99,7 +99,7 @@ describe('store computed helpers', () => {
         mockedSupabase.__queueSupabaseResult('transacoes', 'select', { data: [], error: null });
         mockedSupabase.__queueSupabaseResult('membros_v', 'select', { data: [], error: null });
 
-        const stats = await store.getDashboardStats();
+        const stats = await store.getDashboardStats(true);
 
         expect(stats.receitaMensal).toBe(0);
         expect(stats.despesaTotal).toBe(0);

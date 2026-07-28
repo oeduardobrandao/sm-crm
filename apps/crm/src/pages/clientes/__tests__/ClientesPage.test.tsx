@@ -31,6 +31,14 @@ vi.mock('../../../lib/csv', () => ({
 
 vi.mock('../../../lib/supabase');
 
+vi.mock('../../../context/AuthContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../context/AuthContext')>();
+  return {
+    ...actual,
+    useAuth: () => ({ canSeeFinancials: true }),
+  };
+});
+
 vi.mock('../../../store', async () => {
   const actual = await vi.importActual<typeof import('../../../store')>('../../../store');
   return {

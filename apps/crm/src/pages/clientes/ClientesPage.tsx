@@ -77,6 +77,8 @@ import { supabase } from '../../lib/supabase';
 import { useEntitlements } from '../../hooks/useEntitlements';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
 import { captureEvent } from '@/lib/analytics';
+import { useAuth } from '../../context/AuthContext';
+import { stripFinancialFields } from '@/lib/financialAccess';
 
 type ClienteFormValues = z.infer<ReturnType<typeof createClienteSchema>>;
 
@@ -115,6 +117,7 @@ async function fetchAvatars(clientIds: number[]): Promise<Record<number, string>
 export default function ClientesPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { canSeeFinancials } = useAuth();
   const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
   const [filter, setFilter] = useState<FilterStatus>('todos');
@@ -206,7 +209,7 @@ export default function ClientesPage() {
     setSaving(true);
     try {
       if (editing?.id) {
-        await updateCliente(editing.id, {
+        const payload = {
           nome: values.nome,
           email: values.email,
           telefone: values.telefone,
@@ -215,11 +218,15 @@ export default function ClientesPage() {
           notion_page_url: values.notion,
           data_pagamento: diaPag,
           status: values.status,
-        });
+        };
+        await updateCliente(
+          editing.id,
+          stripFinancialFields(payload, canSeeFinancials, ['valor_mensal']),
+        );
         toast.success(t('toast.updated'));
       } else {
         const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
-        await addCliente({
+        const payload = {
           nome: values.nome,
           email: values.email,
           telefone: values.telefone,
@@ -229,8 +236,14 @@ export default function ClientesPage() {
           data_pagamento: diaPag,
           sigla: getInitials(values.nome),
           cor: randomColor,
-          status: 'ativo',
-        });
+          status: 'ativo' as const,
+        };
+        await addCliente(
+          stripFinancialFields(payload, canSeeFinancials, ['valor_mensal']) as Omit<
+            Cliente,
+            'id' | 'user_id' | 'conta_id'
+          >,
+        );
         toast.success(t('toast.added'));
         captureEvent('client_created');
       }
@@ -263,7 +276,7 @@ export default function ClientesPage() {
           if (!row.nome) continue;
           try {
             const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
-            await addCliente({
+            const rowPayload = {
               nome: row.nome,
               email: row.email || '',
               telefone: row.telefone || '',
@@ -273,8 +286,14 @@ export default function ClientesPage() {
               data_pagamento: row.data_pagamento ? Number(row.data_pagamento) : undefined,
               sigla: getInitials(row.nome),
               cor: randomColor,
-              status: 'ativo',
-            });
+              status: 'ativo' as const,
+            };
+            await addCliente(
+              stripFinancialFields(rowPayload, canSeeFinancials, ['valor_mensal']) as Omit<
+                Cliente,
+                'id' | 'user_id' | 'conta_id'
+              >,
+            );
             count++;
           } catch {
             /* skip row */
@@ -390,9 +409,11 @@ export default function ClientesPage() {
               onValueChange={(v) => setSortBy(v as typeof sortBy)}
             >
               <DropdownMenuRadioItem value="nome">{tc('sort.name')}</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="valor_mensal">
-                {t('sort.monthlyValue')}
-              </DropdownMenuRadioItem>
+              {canSeeFinancials === true && (
+                <DropdownMenuRadioItem value="valor_mensal">
+                  {t('sort.monthlyValue')}
+                </DropdownMenuRadioItem>
+              )}
               <DropdownMenuRadioItem value="data_pagamento">
                 {t('sort.paymentDay')}
               </DropdownMenuRadioItem>

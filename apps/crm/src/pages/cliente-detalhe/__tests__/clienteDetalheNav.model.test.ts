@@ -7,6 +7,7 @@ const NOW = 1_000_000_000_000; // fixed "now" for expiry math
 function makeInput(over: Partial<BuildNavModelInput> = {}): BuildNavModelInput {
   return {
     isAgent: false,
+    canSeeFinancials: true,
     activeDeliveriesCount: 0,
     deliveryHistoryCount: 0,
     igSummary: undefined,
@@ -60,17 +61,40 @@ describe('buildNavModel — sections', () => {
   });
 
   it('agent: no relatorio and no financeiro, but hub still present', () => {
-    const m = buildNavModel(makeInput({ isAgent: true }));
+    // Real agents always resolve canSeeFinancials to false (deriveFinancialAccess
+    // denies non-owner/non-admin roles outright) — set it explicitly here since
+    // this is a pure unit test of buildNavModel, not of deriveFinancialAccess.
+    const m = buildNavModel(makeInput({ isAgent: true, canSeeFinancials: false }));
     expect(sectionKeys(m)).not.toContain('relatorio');
     expect(sectionKeys(m)).not.toContain('financeiro');
     expect(sectionKeys(m)).toContain('hub');
   });
 
   it('agent: hub present even without contaId and workspaceSlug', () => {
-    const m = buildNavModel(makeInput({ isAgent: true, contaId: null, workspaceSlug: undefined }));
+    const m = buildNavModel(
+      makeInput({
+        isAgent: true,
+        canSeeFinancials: false,
+        contaId: null,
+        workspaceSlug: undefined,
+      }),
+    );
     expect(sectionKeys(m)).toContain('hub');
     expect(sectionKeys(m)).not.toContain('relatorio');
     expect(sectionKeys(m)).not.toContain('financeiro');
+  });
+
+  it('hides the financeiro section from a restricted admin but keeps relatorio and hub', () => {
+    const model = buildNavModel(makeInput({ isAgent: false, canSeeFinancials: false }));
+    const keys = sectionKeys(model);
+    expect(keys).not.toContain('financeiro');
+    expect(keys).toContain('relatorio');
+    expect(keys).toContain('hub');
+  });
+
+  it('shows financeiro to an authorized admin', () => {
+    const model = buildNavModel(makeInput({ isAgent: false, canSeeFinancials: true }));
+    expect(sectionKeys(model)).toContain('financeiro');
   });
 
   it('owner: hub section absent until workspaceSlug and contaId are both present', () => {

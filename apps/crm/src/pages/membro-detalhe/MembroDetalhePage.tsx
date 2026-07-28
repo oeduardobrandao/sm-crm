@@ -34,7 +34,6 @@ import {
 import {
   getMembros,
   getTransacoes,
-  formatBRL,
   formatDate,
   getInitials,
   updateMembro,
@@ -42,6 +41,7 @@ import {
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { formatFinancialBRL, stripFinancialFields } from '@/lib/financialAccess';
 
 const TIPO_LABEL: Record<string, string> = {
   clt: 'CLT',
@@ -50,7 +50,7 @@ const TIPO_LABEL: Record<string, string> = {
 };
 
 export default function MembroDetalhePage() {
-  const { role } = useAuth();
+  const { role, canSeeFinancials } = useAuth();
   const isAgent = role === 'agent';
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -112,13 +112,17 @@ export default function MembroDetalhePage() {
     }
     setSaving(true);
     try {
-      await updateMembro(Number(id), {
+      const payload = {
         nome: fNome,
         cargo: fCargo,
         tipo: fTipo,
         custo_mensal: fCusto ? Number(fCusto) : null,
         data_pagamento: diaPag,
-      } as Partial<Omit<Membro, 'id' | 'user_id' | 'conta_id'>>);
+      } as Partial<Omit<Membro, 'id' | 'user_id' | 'conta_id'>>;
+      await updateMembro(
+        Number(id),
+        stripFinancialFields(payload, canSeeFinancials, ['custo_mensal']),
+      );
       toast.success('Membro atualizado');
       qc.invalidateQueries({ queryKey: ['membros'] });
       setModalOpen(false);
@@ -173,19 +177,19 @@ export default function MembroDetalhePage() {
                 [
                   {
                     label: 'Custo mensal',
-                    value: formatBRL(membro.custo_mensal ?? 0),
+                    value: formatFinancialBRL(membro.custo_mensal, canSeeFinancials),
                     icon: Wallet,
                     tone: 'blue' as const,
                   },
                   {
                     label: 'Total pago',
-                    value: formatBRL(totalPago),
+                    value: formatFinancialBRL(totalPago, canSeeFinancials),
                     icon: CheckCircle2,
                     tone: 'green' as const,
                   },
                   {
                     label: 'Pendente',
-                    value: formatBRL(pendente),
+                    value: formatFinancialBRL(pendente, canSeeFinancials),
                     icon: Clock,
                     tone: 'amber' as const,
                   },
@@ -219,7 +223,8 @@ export default function MembroDetalhePage() {
               )}
               {!isAgent && (
                 <div>
-                  <strong>Custo Mensal:</strong> {formatBRL(membro.custo_mensal ?? 0)}
+                  <strong>Custo Mensal:</strong>{' '}
+                  {formatFinancialBRL(membro.custo_mensal, canSeeFinancials)}
                 </div>
               )}
             </div>
@@ -245,7 +250,9 @@ export default function MembroDetalhePage() {
                         <TableCell data-label="Data">{formatDate(t.data)}</TableCell>
                         <TableCell data-label="Descrição">{t.descricao}</TableCell>
                         <TableCell data-label="Categoria">{t.categoria}</TableCell>
-                        <TableCell data-label="Valor">{formatBRL(t.valor)}</TableCell>
+                        <TableCell data-label="Valor">
+                          {formatFinancialBRL(t.valor, canSeeFinancials)}
+                        </TableCell>
                         <TableCell data-label="Status">{t.status}</TableCell>
                       </TableRow>
                     ))}
@@ -284,16 +291,18 @@ export default function MembroDetalhePage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
-              <Label>Custo Mensal (R$)</Label>
-              <Input
-                type="number"
-                min={0}
-                step={0.01}
-                value={fCusto}
-                onChange={(e) => setFCusto(e.target.value)}
-              />
-            </div>
+            {canSeeFinancials === true && (
+              <div className="space-y-1">
+                <Label>Custo Mensal (R$)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={fCusto}
+                  onChange={(e) => setFCusto(e.target.value)}
+                />
+              </div>
+            )}
             <div className="space-y-1">
               <Label>Dia de Pagamento (1-31)</Label>
               <Input

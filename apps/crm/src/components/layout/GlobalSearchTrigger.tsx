@@ -29,11 +29,14 @@ import { getWorkflows } from '@/store/workflows';
 import { getAllWorkflowPosts } from '@/store/posts';
 import { getIdeias } from '@/store/ideias';
 import { getAllHubPages } from '@/store/hub';
+import { useAuth } from '@/context/AuthContext';
 
 export default function GlobalSearchTrigger() {
   const [open, setOpen] = useState(false);
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { canSeeFinancials } = useAuth();
+  const financialsAllowed = canSeeFinancials === true;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -49,9 +52,9 @@ export default function GlobalSearchTrigger() {
   const results = useQueries({
     queries: [
       { queryKey: ['clientes'], queryFn: getClientes, enabled: open },
-      { queryKey: ['contratos'], queryFn: getContratos, enabled: open },
+      { queryKey: ['contratos'], queryFn: getContratos, enabled: open && financialsAllowed },
       { queryKey: ['membros'], queryFn: getMembros, enabled: open },
-      { queryKey: ['transacoes'], queryFn: getTransacoes, enabled: open },
+      { queryKey: ['transacoes'], queryFn: getTransacoes, enabled: open && financialsAllowed },
       { queryKey: ['workflows'], queryFn: getWorkflows, enabled: open },
       { queryKey: ['all-workflow-posts'], queryFn: getAllWorkflowPosts, enabled: open },
       { queryKey: ['ideias'], queryFn: () => getIdeias(), enabled: open },
@@ -72,9 +75,12 @@ export default function GlobalSearchTrigger() {
   const isLoading = results.some((r) => r.isLoading);
 
   const clientes = clientesRes.data ?? [];
-  const contratos = contratosRes.data ?? [];
+  // Guard the result too, not just the query: `enabled: false` only stops a new
+  // fetch — a query with the same key already populated elsewhere (e.g. the
+  // Financeiro or Contratos pages) can still leave cached data on this hook.
+  const contratos = financialsAllowed ? (contratosRes.data ?? []) : [];
   const membros = membrosRes.data ?? [];
-  const transacoes = transacoesRes.data ?? [];
+  const transacoes = financialsAllowed ? (transacoesRes.data ?? []) : [];
   const workflows = workflowsRes.data ?? [];
   const posts = postsRes.data ?? [];
   const ideias = ideiasRes.data ?? [];

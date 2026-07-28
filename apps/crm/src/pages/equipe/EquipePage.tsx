@@ -72,12 +72,12 @@ import {
   removeMembro,
   getWorkspaceUsers,
   setMembroCrmUser,
-  formatBRL,
   getInitials,
   type Membro,
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { formatFinancialBRL, stripFinancialFields } from '@/lib/financialAccess';
 
 type FilterTipo = 'todos' | 'clt' | 'freelancer_mensal' | 'freelancer_demanda';
 type SortKey = 'nome' | 'custo_maior' | 'custo_menor';
@@ -103,7 +103,7 @@ const TIPO_LABEL: Record<string, string> = {
 export default function EquipePage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { role } = useAuth();
+  const { role, canSeeFinancials } = useAuth();
   const isAgent = role === 'agent';
 
   const [filter, setFilter] = useState<FilterTipo>('todos');
@@ -175,6 +175,7 @@ export default function EquipePage() {
         avatar_url: '',
         data_pagamento: diaPag,
       };
+      const safePayload = stripFinancialFields(payload, canSeeFinancials, ['custo_mensal']);
       if (editing?.id) {
         const desiredCrmUser =
           values.crmUserId === '' || values.crmUserId == null ? null : values.crmUserId;
@@ -182,10 +183,10 @@ export default function EquipePage() {
         if (desiredCrmUser !== currentCrmUser) {
           await setMembroCrmUser(editing.id, desiredCrmUser);
         }
-        await updateMembro(editing.id, payload);
+        await updateMembro(editing.id, safePayload);
         toast.success('Membro atualizado');
       } else {
-        await addMembro(payload);
+        await addMembro(safePayload as Omit<Membro, 'id' | 'user_id' | 'conta_id'>);
         toast.success('Membro adicionado');
       }
       qc.invalidateQueries({ queryKey: ['membros'] });
@@ -221,14 +222,20 @@ export default function EquipePage() {
                 ? row.tipo
                 : 'clt'
             ) as Membro['tipo'];
-            await addMembro({
+            const rowPayload = {
               nome: row.nome,
               cargo: row.cargo,
               tipo,
               custo_mensal: row.custo_mensal ? Number(row.custo_mensal) : null,
               avatar_url: '',
               data_pagamento: row.data_pagamento ? Number(row.data_pagamento) : undefined,
-            });
+            };
+            await addMembro(
+              stripFinancialFields(rowPayload, canSeeFinancials, ['custo_mensal']) as Omit<
+                Membro,
+                'id' | 'user_id' | 'conta_id'
+              >,
+            );
             count++;
           } catch {
             /* skip row */
@@ -309,10 +316,10 @@ export default function EquipePage() {
 
       <StatCardGrid style={{ marginBottom: '1.5rem' }}>
         <StatCard label="Total de membros" value={membros.length} icon={UsersRound} tone="blue" />
-        {!isAgent && (
+        {canSeeFinancials === true && (
           <StatCard
             label="Custo mensal total"
-            value={formatBRL(totalCost)}
+            value={formatFinancialBRL(totalCost, canSeeFinancials)}
             icon={Wallet}
             tone="violet"
             compactValue
@@ -371,7 +378,7 @@ export default function EquipePage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="nome">Nome</SelectItem>
-            {!isAgent && (
+            {canSeeFinancials === true && (
               <>
                 <SelectItem value="custo_maior">Custo (maior)</SelectItem>
                 <SelectItem value="custo_menor">Custo (menor)</SelectItem>

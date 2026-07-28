@@ -181,6 +181,7 @@ describe('store core helpers and CRUD', () => {
             custo_mensal: 900,
           } as store.Membro,
         ],
+        true,
       );
 
       expect(projected.some((item) => item.referencia_agendamento?.startsWith('membro_2_'))).toBe(

@@ -43,6 +43,11 @@ export interface NavHandlers {
 
 export interface BuildNavModelInput {
   isAgent: boolean;
+  /**
+   * Separate from `isAgent` on purpose: Relatório and Hub stay role-based while
+   * Financeiro becomes capability-based. A restricted ADMIN keeps the first two.
+   */
+  canSeeFinancials: boolean;
   activeDeliveriesCount: number;
   deliveryHistoryCount: number;
   igSummary: IgSummaryLike | null | undefined;
@@ -76,6 +81,7 @@ export function buildNavModel(input: BuildNavModelInput): {
 } {
   const {
     isAgent,
+    canSeeFinancials,
     activeDeliveriesCount,
     deliveryHistoryCount,
     igSummary,
@@ -102,7 +108,7 @@ export function buildNavModel(input: BuildNavModelInput): {
   addSection('arquivos', true);
   addSection('datas', true);
   addSection('enderecos', true);
-  addSection('financeiro', !isAgent);
+  addSection('financeiro', canSeeFinancials);
 
   const igDisconnected = !igSummary;
   const igSynced = !!igSummary?.account?.last_synced_at;

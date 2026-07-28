@@ -36,6 +36,10 @@ vi.mock('../../../hooks/useEntitlements', () => ({
   useEntitlements: () => ({ isAtLimit: isAtLimitMock }),
 }));
 
+vi.mock('../../../context/AuthContext', () => ({
+  useAuth: () => ({ canSeeFinancials: true }),
+}));
+
 vi.mock('@/components/paywall/FeatureGate', () => ({
   FeatureGate: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));

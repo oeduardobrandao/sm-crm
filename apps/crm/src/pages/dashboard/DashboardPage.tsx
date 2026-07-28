@@ -21,13 +21,17 @@ import { TodayCard, type TodayEvent } from './components/TodayCard';
 import { FinanceKpiStrip } from './components/FinanceKpiStrip';
 
 export default function DashboardPage() {
-  const { role } = useAuth();
+  const { role, canSeeFinancials } = useAuth();
   const { t } = useTranslation('dashboard');
   const isAgent = role === 'agent';
 
   const results = useQueries({
     queries: [
-      { queryKey: ['dashboardStats'], queryFn: getDashboardStats, retry: 1 },
+      {
+        queryKey: ['dashboardStats', canSeeFinancials],
+        queryFn: () => getDashboardStats(canSeeFinancials),
+        retry: 1,
+      },
       { queryKey: ['membros'], queryFn: getMembros, retry: 1 },
       { queryKey: ['clientes'], queryFn: getClientes, retry: 1 },
       { queryKey: ['workflows'], queryFn: getWorkflows, retry: 1 },
@@ -95,7 +99,7 @@ export default function DashboardPage() {
     d.getDate() === todayDay && d.getMonth() === todayMonth && d.getFullYear() === todayYear;
 
   const todayEvents: TodayEvent[] = [];
-  if (!isAgent) {
+  if (canSeeFinancials === true) {
     clientes
       .filter((c) => c.data_pagamento === todayDay && c.status === 'ativo')
       .forEach((c) =>
@@ -158,12 +162,13 @@ export default function DashboardPage() {
         <TodayCard events={todayEvents} />
       </div>
 
-      {!isAgent && stats && (
+      {canSeeFinancials === true && stats && (
         <FinanceKpiStrip
           aReceber={aReceber}
           aPagar={aPagar}
           saldoProjetado={stats.saldo}
           receitaMensal={stats.receitaMensal}
+          canSeeFinancials={canSeeFinancials}
         />
       )}
     </div>

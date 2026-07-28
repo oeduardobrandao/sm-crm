@@ -93,7 +93,7 @@ describe('DashboardPage', () => {
     mockedUseQuery.mockReset();
     mockedOnboardingBanner.mockReset();
 
-    mockedUseAuth.mockReturnValue({ role: 'admin' } as never);
+    mockedUseAuth.mockReturnValue({ role: 'admin', canSeeFinancials: true } as never);
     mockedUseQueries.mockReturnValue(makeDefaultUseQueries() as never);
     mockedUseQuery.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
       if (queryKey[0] === 'allClienteDatas') return makeQueryResult([]);
@@ -116,7 +116,7 @@ describe('DashboardPage', () => {
   });
 
   it('renders the agent branch without onboarding banner or finance strip', () => {
-    mockedUseAuth.mockReturnValue({ role: 'agent' } as never);
+    mockedUseAuth.mockReturnValue({ role: 'agent', canSeeFinancials: false } as never);
     mockedUseQueries.mockReturnValue(
       makeDefaultUseQueries({
         0: makeQueryResult({

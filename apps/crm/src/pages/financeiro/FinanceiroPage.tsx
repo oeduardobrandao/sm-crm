@@ -88,10 +88,11 @@ import {
   addTransacao,
   updateTransacao,
   removeTransacao,
-  formatBRL,
   formatDate,
   type Transacao,
 } from '../../store';
+import { useAuth } from '../../context/AuthContext';
+import { formatFinancialBRL } from '@/lib/financialAccess';
 
 const CATEGORIAS = [
   'Mensalidade',
@@ -131,6 +132,7 @@ function dateToIso(date: Date | undefined): string {
 }
 
 export default function FinanceiroPage() {
+  const { canSeeFinancials } = useAuth();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<FilterType>('todas');
   const [search, setSearch] = useState('');
@@ -157,7 +159,7 @@ export default function FinanceiroPage() {
     queryFn: getTransacoes,
   });
 
-  const projected = projetarAgendamentos(transacoesFisicas, clientes, membros);
+  const projected = projetarAgendamentos(transacoesFisicas, clientes, membros, canSeeFinancials);
   const allTransacoes = projected.filter((t) => !monthFilter || t.data.startsWith(monthFilter));
 
   const recebido = allTransacoes
@@ -359,31 +361,31 @@ export default function FinanceiroPage() {
           [
             {
               label: 'Recebido',
-              value: formatBRL(recebido),
+              value: formatFinancialBRL(recebido, canSeeFinancials),
               icon: CheckCircle2,
               tone: 'green' as const,
             },
             {
               label: 'A receber',
-              value: formatBRL(aReceber),
+              value: formatFinancialBRL(aReceber, canSeeFinancials),
               icon: ArrowDownCircle,
               tone: 'amber' as const,
             },
             {
               label: 'A pagar',
-              value: formatBRL(aPagar),
+              value: formatFinancialBRL(aPagar, canSeeFinancials),
               icon: ArrowUpCircle,
               tone: 'red' as const,
             },
             {
               label: 'Saldo atual',
-              value: formatBRL(saldoAtual),
+              value: formatFinancialBRL(saldoAtual, canSeeFinancials),
               icon: Wallet,
               tone: saldoAtual >= 0 ? ('green' as const) : ('red' as const),
             },
             {
               label: 'Saldo projetado',
-              value: formatBRL(saldoProjetado),
+              value: formatFinancialBRL(saldoProjetado, canSeeFinancials),
               icon: TrendingUp,
               tone: saldoProjetado >= 0 ? ('green' as const) : ('red' as const),
             },
@@ -500,7 +502,7 @@ export default function FinanceiroPage() {
                         }}
                       >
                         {t.tipo === 'entrada' ? '+' : '-'}
-                        {formatBRL(t.valor)}
+                        {formatFinancialBRL(t.valor, canSeeFinancials)}
                       </span>
                     </TableCell>
                     <TableCell data-label="Status">
@@ -579,7 +581,7 @@ export default function FinanceiroPage() {
                         }}
                       >
                         {t.tipo === 'entrada' ? '+' : '-'}
-                        {formatBRL(t.valor)}
+                        {formatFinancialBRL(t.valor, canSeeFinancials)}
                       </span>
                       <span style={{ fontSize: '0.75rem', color: '#888' }}>&bull;</span>
                       <span style={{ fontSize: '0.75rem', color: '#888' }}>
