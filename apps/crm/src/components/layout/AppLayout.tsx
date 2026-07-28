@@ -5,8 +5,41 @@ import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
 import TopBar from './TopBar';
 import { DunningBanner } from '../billing/DunningBanner';
+import { useAuth } from '../../context/AuthContext';
+import type { FinancialAccess } from '../../lib/financialAccess';
+import FinancialRestrictionScreen from './FinancialRestrictionScreen';
+import { Spinner } from '../ui/spinner';
 
 const GlobalBannerContainer = lazy(() => import('./GlobalBannerContainer'));
+
+export const FINANCIAL_PATHS = ['/financeiro', '/contratos'];
+
+export function isFinancialPath(pathname: string): boolean {
+  return FINANCIAL_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
+}
+
+/**
+ * Pure decision function so all three capability states are unit-testable
+ * without rendering the shell.
+ *
+ * 'unknown' is deliberately excluded from the denial branch: the route guard
+ * fails NEUTRAL (loading), not closed. Writing this as `!== true` would show
+ * an owner the restriction screen during hydration or a transient
+ * membership-lookup failure. The loading state leaks nothing -- route
+ * content is unrendered either way and the database denies regardless. This
+ * is intentionally asymmetric with `formatFinancialBRL`, which fails CLOSED
+ * (masks unless access is literally `true`) because the harm there is
+ * showing a real figure, not withholding one.
+ */
+export function financialGuardOutcome(
+  pathname: string,
+  canSeeFinancials: FinancialAccess,
+): 'content' | 'loading' | 'denied' {
+  if (!isFinancialPath(pathname)) return 'content';
+  if (canSeeFinancials === true) return 'content';
+  if (canSeeFinancials === 'unknown') return 'loading';
+  return 'denied';
+}
 
 function useIsTablet() {
   const [isTablet, setIsTablet] = useState(() => {
@@ -39,9 +72,11 @@ function useIsMobile() {
 
 export default function AppLayout() {
   const location = useLocation();
+  const { canSeeFinancials } = useAuth();
   const isTablet = useIsTablet();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const outcome = financialGuardOutcome(location.pathname, canSeeFinancials);
 
   useEffect(() => {
     if (!isTablet) setDrawerOpen(false);
@@ -82,7 +117,13 @@ export default function AppLayout() {
 
       <main className="main-content" id="app">
         <ContextHelpLinks />
-        <Outlet />
+        {outcome === 'content' && <Outlet />}
+        {outcome === 'loading' && (
+          <div style={{ padding: '3rem', textAlign: 'center' }}>
+            <Spinner size="lg" />
+          </div>
+        )}
+        {outcome === 'denied' && <FinancialRestrictionScreen />}
       </main>
 
       <MobileNav />
