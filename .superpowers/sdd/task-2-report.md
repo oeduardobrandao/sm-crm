@@ -1,367 +1,208 @@
-# Task 2 report — Embedded fonts pipeline
+# Task 2 report — Migration A masking views (membros_v / clientes_v)
+
+Note: this path previously held an unrelated report ("Embedded fonts pipeline") from a different
+task numbering in a different worktree (`cliente-detalhe-floating-nav-b97521`,
+`claude/analytics-conta-report-be880c`). Replaced with this task's report, per the instruction to
+write to this exact path.
 
 ## Environment check
 
 ```
 $ pwd
-/Users/eduardosouza/Projects/sm-crm/.claude/worktrees/cliente-detalhe-floating-nav-b97521
+/Users/eduardosouza/Projects/sm-crm/.claude/worktrees/analytics-conta-visual-design-3f5fc3
 $ git branch --show-current
-claude/analytics-conta-report-be880c
+claude/mises-access-levels-c956a8
+$ git status
+On branch claude/mises-access-levels-c956a8
+Your branch is ahead of 'origin/claude/mises-access-levels-c956a8' by 9 commits.
+nothing to commit, working tree clean
 ```
 
-## What was created
+Docker stack for this worktree (`supabase_db_analytics-conta-visual-design-3f5fc3`, port 54322)
+was already running. Not linked to remote in this session — no `db push`, no `--linked`, no
+`supabase link` was run.
 
-- **`scripts/build-report-fonts.ts`** (new, committed) — one-off Deno script.
-  Fetches the Google Fonts CSS2 endpoint with a Chrome UA for `Fraunces:opsz,wght@9..144,500;9..144,600`
-  and `Instrument+Sans:wght@400;500;600;700`, extracts only the `/* latin */`-tagged
-  `@font-face` blocks, downloads each block's `.woff2` URL, base64-encodes the binary,
-  and writes the result to `fonts.ts`.
-- **`supabase/functions/_shared/report-template/fonts.ts`** (new, generated/committed) —
-  exports `REPORT_FONTS_CSS: string`, a CSS string of 6 `@font-face` rules with
-  `data:font/woff2;base64,...` sources (no network fetch required at render time).
-  File starts with:
+## What I read before touching anything
+
+- `.superpowers/sdd/task-2-brief.md` — the task spec, in full.
+- `supabase/migrations/20260728000001_financial_visibility_a_additive.sql` (as it existed before my
+  edit) — confirmed Task 1's content (column, predicate, realtime block) and the post-condition `DO
+  $$` block's exact current shape/position, since the brief warned it had been revised by a later
+  fix pass.
+- `supabase/tests/entitlements/_helpers.sql` — confirmed `et_make_workspace(p_plan_id, overrides)`
+  signature and that `et_grant_hosted_parity()` is a distinct, unneeded helper for this suite (my
+  suite only reads `membros_v`/`clientes_v`, which the migration grants explicitly).
+- `supabase/tests/entitlements/50_can_see_financials.sql` — confirmed the established idiom for
+  impersonating a user (`set_config('request.jwt.claims', ...)` + `SET LOCAL ROLE authenticated`)
+  and for the non-member fixture (`update profiles set active_workspace_id = null`).
+- Base table shapes: grepped `supabase/migrations/` for every column the brief's views enumerate
+  (`crm_user_id`, `especialidade`, `data_aniversario`, `dia_entrega`, `auto_publish_on_approval`,
+  `send_report_email`, `include_ai_analysis`) to confirm each exists on `membros`/`clientes` before
+  transcribing the `CREATE VIEW` statements — all confirmed present.
+- `public.get_my_conta_id()` (`20260720000004_reconcile_prod_missing_functions.sql:25-41`) —
+  confirmed it's the "hardened" version requiring a live `workspace_members` row for
+  `active_workspace_id`, which is what makes the brief's stale-pointer test case meaningful (delete
+  the membership, pointer still set → 0 rows, not an error).
+
+No ambiguity found worth escalating — brief's SQL matched the schema on disk exactly, the resolved
+ambiguities in the assignment (skip `et_grant_hosted_parity`, use `et_make_workspace('max')`, null
+out `active_workspace_id` for non-members) all checked out against the actual helper/fixture code.
+
+## What I implemented
+
+1. Appended to `supabase/migrations/20260728000001_financial_visibility_a_additive.sql`, transcribed
+   verbatim from the brief:
+   - `CREATE OR REPLACE VIEW public.membros_v` (security_barrier, 10 allowlisted columns + masked
+     `custo_mensal`), `WHERE m.conta_id = public.get_my_conta_id()`.
+   - `CREATE OR REPLACE VIEW public.clientes_v` (security_barrier, 19 allowlisted columns + masked
+     `valor_mensal`), `WHERE c.conta_id = public.get_my_conta_id()`.
+   - `REVOKE ALL ... FROM PUBLIC, anon, authenticated, service_role` + `GRANT SELECT ... TO
+     authenticated` on both views.
+   - Placed *before* the existing post-condition `DO $$` block (which asserts the Task-1 column and
+     `can_see_financials()` ACL), as instructed — the file now reads: column → predicate → realtime
+     → **views + grants** → post-conditions.
+   - Appended the second `DO $$` block (view-ACL assertions reading `relacl` directly) as a new,
+     separate `DO $$ ... $$;` statement immediately after the existing post-condition block, matching
+     the brief's SQL exactly (not merged into the existing block's body).
+2. Created `supabase/tests/entitlements/51_financial_views.sql`, transcribed verbatim from the
+   brief — masking (authorized vs. restricted admin), row-visibility-survives-masking, tenant
+   isolation, stale-pointer (0 rows), and INSERT/UPDATE write-denial through both views.
+
+No redesign of the brief's SQL. No changes to the test file's content.
+
+## Step 3: run the test to verify it fails (before `db reset`)
+
+Ran `./scripts/test-entitlements.sh` immediately after writing both files, deliberately *before*
+`npx supabase db reset`, so the live DB still lacked the new views:
+
+```
+$ ./scripts/test-entitlements.sh
+PASS supabase/tests/entitlements/01_effective_plan_limit.sql
+PASS supabase/tests/entitlements/02_clientes_limit.sql
+PASS supabase/tests/entitlements/03_workspace_scoped.sql
+PASS supabase/tests/entitlements/04_sub_entity.sql
+PASS supabase/tests/entitlements/05_more_count_limits.sql
+PASS supabase/tests/entitlements/06_downgrade_keep_existing.sql
+PASS supabase/tests/entitlements/10_effective_plan_feature.sql
+PASS supabase/tests/entitlements/11_feature_triggers.sql
+PASS supabase/tests/entitlements/20_storage_rpcs.sql
+PASS supabase/tests/entitlements/30_hub_token_touch.sql
+PASS supabase/tests/entitlements/31_hub_token_rotate_extend.sql
+PASS supabase/tests/entitlements/40_cliente_tables_tenant_isolation.sql
+PASS supabase/tests/entitlements/50_can_see_financials.sql
+FAIL supabase/tests/entitlements/51_financial_views.sql
+    CREATE FUNCTION
+    CREATE FUNCTION
+    BEGIN
+    psql:.../supabase/tests/entitlements/51_financial_views.sql:119: ERROR:  relation "public.membros_v" does not exist
+    LINE 1: select custo_mensal            from public.membros_v where n...
+                                                ^
+    QUERY:  select custo_mensal            from public.membros_v where nome = 'Fulano'
+    CONTEXT:  PL/pgSQL function inline_code_block line 31 at SQL statement
+----------------------------------------
+ran=14  failures=1
+```
+
+Matches the brief's expected failure exactly: `relation "public.membros_v" does not exist`, and all
+13 pre-existing suites (including `50_can_see_financials`) still pass.
+
+## Step 4: apply and verify
+
+```
+$ npx supabase db reset
+... (full migration replay, all prior migrations applied cleanly) ...
+Applying migration 20260728000001_financial_visibility_a_additive.sql...
+NOTICE (00000): added workspace_members to supabase_realtime
+Seeding data from supabase/seed.sql...
+Restarting containers...
+Finished supabase db reset on branch main.
+{"target":"local","version":"","message":"Reset local database."}
+```
+
+No exception raised by either post-condition `DO $$` block — the ACL assertions for
+`membros_v`/`clientes_v` passed inline during the reset.
+
+```
+$ ./scripts/test-entitlements.sh
+PASS supabase/tests/entitlements/01_effective_plan_limit.sql
+PASS supabase/tests/entitlements/02_clientes_limit.sql
+PASS supabase/tests/entitlements/03_workspace_scoped.sql
+PASS supabase/tests/entitlements/04_sub_entity.sql
+PASS supabase/tests/entitlements/05_more_count_limits.sql
+PASS supabase/tests/entitlements/06_downgrade_keep_existing.sql
+PASS supabase/tests/entitlements/10_effective_plan_feature.sql
+PASS supabase/tests/entitlements/11_feature_triggers.sql
+PASS supabase/tests/entitlements/20_storage_rpcs.sql
+PASS supabase/tests/entitlements/30_hub_token_touch.sql
+PASS supabase/tests/entitlements/31_hub_token_rotate_extend.sql
+PASS supabase/tests/entitlements/40_cliente_tables_tenant_isolation.sql
+PASS supabase/tests/entitlements/50_can_see_financials.sql
+PASS supabase/tests/entitlements/51_financial_views.sql
+----------------------------------------
+ran=14  failures=0
+```
+
+`ran=14 failures=0` — matches the expected outcome exactly.
+
+## Self-review
+
+- **ACL evidence, checked directly (not `has_table_privilege`)**, matching the project constraint
+  that ACL assertions must read `relacl` and not rely on privilege-check functions:
+
   ```
-  // GENERATED by scripts/build-report-fonts.ts — do not edit by hand.
-  // Fraunces 500/600 + Instrument Sans 400/500/600/700, latin subset, base64 woff2.
+  $ psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c "
+  SELECT c.relname, array_to_string(c.relacl, ',') AS acl
+  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname='public' AND c.relname IN ('membros_v','clientes_v');
+  "
+    relname   |                         acl
+  ------------+-----------------------------------------------------
+   clientes_v | postgres=arwdDxtm/postgres,authenticated=r/postgres
+   membros_v  | postgres=arwdDxtm/postgres,authenticated=r/postgres
   ```
 
-The `supabase/functions/_shared/report-template/` directory already existed (populated by a
-parallel task in this same SDD run — `render.ts`, `template.html`, etc.); this task only added
-`fonts.ts` into it, per the Task 2 brief's interface contract (`REPORT_FONTS_CSS` consumed by
-Task 5's `render.ts` via `{{FONTS_CSS}}`).
+  Only the view owner (`postgres`) holds write privileges; `authenticated` holds `r` (SELECT) only;
+  no `anon` or `service_role` entries at all — confirms both the REVOKE and the GRANT landed exactly
+  as intended, and that the auto-updatable-view write-escape path is closed.
+- Confirmed all 19 `clientes_v` / 10 `membros_v` columns exist on the base tables (grepped every
+  migration that adds a non-baseline column) before transcribing — no invented columns, nothing
+  `SELECT *`.
+- Confirmed placement: views + grants sit between the realtime block and the (now two) `DO $$`
+  post-condition blocks, matching "what is actually on disk" per the brief's own warning, not a
+  guess from the brief's prose.
+- Did not call `et_grant_hosted_parity()` anywhere in the new suite — the passing run confirms the
+  environment note held: local grants from this migration alone were sufficient for `authenticated`
+  to read through the views.
+- Ran the full suite twice (pre-reset expected-fail, post-reset expected-pass) rather than only the
+  new file, to catch any regression in the pre-existing 13 suites — none occurred.
+- No frontend/TS files touched; this is a pure SQL change. `npm run test`/`tsc` are not applicable
+  here, consistent with the brief's own verification list (`db reset` + `test-entitlements.sh`
+  only). Did not run `npm run build`/`npm run test` since no `apps/**` or `packages/**` code changed.
 
-Note: this worktree's `.superpowers/sdd/task-2-report.md` previously held an unrelated report
-("Finance empty states and mobile KPIs") from a different task numbering used earlier in this
-worktree. That content has been replaced with this report, per the explicit instruction to write
-this task's report to this exact path.
+## Deviations from the brief
 
-## Deviation from the brief's script, and why
+None. Both the migration append and the test file are verbatim transcriptions of the brief's SQL.
 
-The brief's Step 1 script parses Google's CSS response with:
-```js
-const blocks = css.split("/*").filter((b) => b.startsWith(" latin */"));
-```
-This is fragile — it assumes every `@font-face` block is preceded by a comment and that the
-comment is *exactly* `/* latin */` with a specific single-space format. I replaced it with a more
-robust variant before the first run:
+## Files changed
 
-- Instead of `split("/*")`, I used a single regex over the whole CSS text —
-  `/(?:\/\*\s*[\w-]+\s*\*\/\s*)?@font-face\s*\{[^}]*\}/g` — to extract complete `@font-face { ... }`
-  blocks directly (doesn't depend on a comment always preceding a block, tolerates extra
-  whitespace in the comment).
-- Filtered those blocks to the ones whose comment matches `/\/\*\s*latin\s*\*\//` (still the
-  latin-subset-only requirement from the brief, just whitespace-tolerant).
-- Added an explicit failure path (`console.error` + `Deno.exit(1)`) if zero latin blocks are
-  found, instead of silently emitting an empty/broken `fonts.ts` — so a future Google Fonts
-  response-format change fails loudly instead of shipping a silently-broken font asset.
-
-In practice, the brief's script would very likely have worked as-is (Google's response format
-matched the expected shape on this run — see "First-run result" below), but I judged the more
-resilient block-matching approach worth keeping since this is a "run manually when fonts change"
-script with no CI coverage; a comment-format quirk in a future run would otherwise fail silently.
-
-The byte-level per-face logic (chunked `String.fromCharCode` → `btoa`, `data:font/woff2;base64,`
-substitution, final `fonts.ts` file template with the "GENERATED" header) is unchanged from the brief.
-
-## First-run result
-
-The script worked correctly on the **first run**, no debugging needed:
-
-```
-$ deno run --allow-net --allow-write scripts/build-report-fonts.ts
-fonts.ts written: 334KB
-```
-
-334KB is within the brief's ≤~450KB budget.
-
-## Verification commands (literal output)
-
-### Occurrence counts
-
-`grep -c` counts *matching lines*, and the entire `REPORT_FONTS_CSS` value is emitted as a single
-JSON-escaped line (all `\n` are literal 2-char escapes, not real newlines), so `grep -c` returns `1`
-regardless of how many times a pattern occurs on that one line. I used `grep -o | wc -l` instead to
-get true occurrence counts:
-
-```
-$ grep -o "font-family: 'Fraunces'" supabase/functions/_shared/report-template/fonts.ts | wc -l
-       2
-$ grep -o "font-family: 'Instrument Sans'" supabase/functions/_shared/report-template/fonts.ts | wc -l
-       4
-$ grep -o "@font-face" supabase/functions/_shared/report-template/fonts.ts | wc -l
-       6
-```
-
-Matches the brief's expected `2` and `4` (one face per weight), 6 faces total.
-
-### File size
-
-```
-$ wc -c supabase/functions/_shared/report-template/fonts.ts
-  341638 supabase/functions/_shared/report-template/fonts.ts
-```
-≈ 334 KiB (341,638 bytes / 1024 = 333.6). Within the ≤~450KB budget.
-
-### Type-check
-
-```
-$ deno check supabase/functions/_shared/report-template/fonts.ts
-Check supabase/functions/_shared/report-template/fonts.ts
-```
-(exit 0, no errors)
-
-### Format / lint
-
-```
-$ npx prettier --check scripts/build-report-fonts.ts supabase/functions/_shared/report-template/fonts.ts
-Checking formatting...
-All matched files use Prettier code style!
-```
-(ran once before with a formatting issue in the hand-written script — fixed via `prettier --write`,
-re-checked clean; the generated `fonts.ts` was prettier-clean as emitted.)
-
-```
-$ npx eslint scripts/build-report-fonts.ts
-(no output, exit 0)
-```
-
-### woff2 sanity check (magic bytes)
-
-All 6 embedded base64 payloads share the same leading bytes, decoding to the `wOF2` magic header
-(base64 `d09GMg` == bytes `77 4F 46 32` == ASCII `wOF2`), confirming valid woff2 binaries were
-embedded (not, e.g., an HTML error page):
-
-```
-$ grep -o "base64,[A-Za-z0-9+/]\{20\}" supabase/functions/_shared/report-template/fonts.ts | sort -u
-base64,d09GMgABAAAAAHTQABMA
-base64,d09GMgABAAAAAQc8ABMA
-```
-
-### Final `@font-face` family/weight inventory (parsed out of fonts.ts)
-
-| font-family | font-weight | font-style | base64 payload present |
-|---|---|---|---|
-| Fraunces | 500 | normal | yes |
-| Fraunces | 600 | normal | yes |
-| Instrument Sans | 400 | normal | yes |
-| Instrument Sans | 500 | normal | yes |
-| Instrument Sans | 600 | normal | yes |
-| Instrument Sans | 700 | normal | yes |
-
-Total: 6 `@font-face` rules, matching `FAMILIES` in the build script (Fraunces: [500, 600],
-Instrument Sans: [400, 500, 600, 700]).
-
-Note on weight scope: the Hub app (`apps/hub/index.html`) loads Fraunces at 400/500/600/700 (4
-weights), but the Task 2 brief explicitly scopes Fraunces to only 500/600 for the report. Per the
-orchestrator's context note, the brief's weight list is authoritative for this generated asset —
-Instrument Sans weights (400/500/600/700) match the Hub exactly; Fraunces is a deliberate subset
-(500/600 only) for the report's typographic needs, not a gap.
-
-### deno.lock hygiene
-
-Running `deno run` and `deno check` from the repo root each dirtied the **root** `deno.lock` (as
-warned) — confirmed and reverted both times:
-
-```
-$ git status --short deno.lock
- M deno.lock
-$ git checkout -- deno.lock
-$ git status --short deno.lock
-(no output — clean)
-```
-
-Final working-tree status right before commit:
-```
-$ git status --short
-?? scripts/build-report-fonts.ts
-?? supabase/functions/_shared/report-template/fonts.ts
-```
-Root `deno.lock` was NOT part of the commit and is unmodified in the working tree — confirmed
-again after the commit:
-```
-$ git status --short deno.lock
-(no output — clean)
-```
+- `supabase/migrations/20260728000001_financial_visibility_a_additive.sql` (appended: views, grants,
+  second post-condition block)
+- `supabase/tests/entitlements/51_financial_views.sql` (new)
+- `.superpowers/sdd/task-2-report.md` (this report)
 
 ## Commit
 
 ```
-$ git add scripts/build-report-fonts.ts supabase/functions/_shared/report-template/fonts.ts
-$ git commit -m "feat(report): embed Fraunces + Instrument Sans as base64 woff2 subsets ..."
-[claude/analytics-conta-report-be880c 8cd38aa6] feat(report): embed Fraunces + Instrument Sans as base64 woff2 subsets
- 2 files changed, 68 insertions(+)
- create mode 100644 scripts/build-report-fonts.ts
- create mode 100644 supabase/functions/_shared/report-template/fonts.ts
+$ git add supabase/migrations/20260728000001_financial_visibility_a_additive.sql \
+    supabase/tests/entitlements/51_financial_views.sql .superpowers/sdd/task-2-report.md
+$ git commit -m "feat(db): add membros_v/clientes_v masking views (Migration A, part 2)"
 ```
 
-**Commit SHA:** `8cd38aa6f425fe79255c75f40e018c5732a17f26`
-
-Full commit message:
-```
-feat(report): embed Fraunces + Instrument Sans as base64 woff2 subsets
-
-Generates supabase/functions/_shared/report-template/fonts.ts (334KB,
-6 @font-face rules: Fraunces 500/600, Instrument Sans 400/500/600/700)
-so Gotenberg's network-isolated Chromium can render the analytics
-report with the same fonts as the Hub app, instead of falling back to
-Helvetica.
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-```
-
-`git log -1 --stat` confirms only the two intended files were committed (no `deno.lock`).
+**Commit SHA:** filled in below after the commit.
 
 ## Status
 
-DONE. `fonts.ts` is a valid, self-contained (no network refs), committed build artifact exporting
-`REPORT_FONTS_CSS` with 6 embedded latin-subset woff2 `@font-face` rules covering both families at
-the weights the brief specifies. Ready for Task 5 (`render.ts`) to consume via `{{FONTS_CSS}}`.
-
-## Fix pass 1
-
-Addressed 4 review findings against `scripts/build-report-fonts.ts` (Finding 1–4). Summary of
-changes to the script:
-
-1. **Finding 1 (dedup)** — Both families are variable fonts; Google returns one woff2 file per
-   family regardless of how many weights are requested. The script now downloads every latin
-   block's font file, hashes the raw bytes with SHA-256, and groups blocks by hash. Each unique
-   hash produces exactly one `@font-face` rule with `font-weight` declared as a **range**
-   (`min max`, or a single value if only one weight maps to that file) spanning the weights that
-   map to it — not hardcoded. A family whose weights genuinely resolve to distinct files would
-   still emit one rule per distinct file.
-2. **Finding 2 (fetch success)** — Both the CSS2 fetch and the per-block woff2 fetch now check
-   `res.ok` and exit non-zero with a descriptive message on failure. Each downloaded font body is
-   also checked for the woff2 magic bytes (`77 4F 46 32` / `wOF2`) before being embedded; a
-   mismatch (e.g. an HTML error page) fails the build loudly.
-3. **Finding 3 (coverage guard)** — After building a family's rules, the script asserts every
-   weight in that family's `weights` list is covered by at least one emitted rule's
-   `[min, max]` range. Missing coverage (a dropped weight, or an entirely missing family — the
-   pre-existing zero-blocks guard) exits non-zero with the family name and the missing weight(s).
-4. **Finding 4 (self-containment)** — Before writing the file, the script checks the assembled
-   CSS for the substring `https://` and throws (non-zero exit) if found, since Gotenberg's
-   headless Chromium cannot fetch anything over the network.
-
-Also fixed one `deno check` type error surfaced by the new SHA-256 hashing code
-(`crypto.subtle.digest` requires a `BufferSource` typed to a concrete `ArrayBuffer`; the fetched
-`Uint8Array<ArrayBufferLike>` needed an explicit `as BufferSource` cast — no runtime behavior
-change).
-
-### 1. Regenerate
-
-```
-$ deno run --allow-net --allow-write scripts/build-report-fonts.ts
-fonts.ts written: 128KB
-Families: Fraunces 500-600 (1 unique file); Instrument Sans 400-700 (1 unique file)
-```
-
-### 2. Dedup proof — rule count, unique payload count, per-rule family/weight, file size
-
-```
-$ wc -c supabase/functions/_shared/report-template/fonts.ts
-  130717 supabase/functions/_shared/report-template/fonts.ts
-```
-
-```
-$ node -e "... parse REPORT_FONTS_CSS out of fonts.ts and report faces/payloads ..."
-num @font-face rules: 2
-num payloads: 2 unique: 2
-Fraunces | font-weight=500 600 | bytes~67389
-Instrument Sans | font-weight=400 700 | bytes~29904
-https:// occurrences: 0
-```
-
-Unique payload count (2) equals rule count (2). Before → after: **341,638 bytes → 130,717 bytes**
-(6 `@font-face` rules / 2 unique payloads → 2 rules / 2 unique payloads). The two surviving
-payload byte sizes (~67,389 and ~29,904) match the two distinct payload sizes measured in the
-Finding-1 report exactly, confirming the right bytes were kept and only the duplicates were
-dropped.
-
-woff2 magic-byte spot check (both payloads decode to `wOF2`):
-
-```
-$ grep -o "base64,[A-Za-z0-9+/]\{20\}" supabase/functions/_shared/report-template/fonts.ts | sort -u
-base64,d09GMgABAAAAAHTQABMA
-base64,d09GMgABAAAAAQc8ABMA
-```
-
-### 3. Self-containment check
-
-```
-$ grep -c "https://" supabase/functions/_shared/report-template/fonts.ts
-0
-```
-(also asserted programmatically inside the build script itself before the file is written)
-
-### 4. Deliberate-failure demonstrations (Findings 2 & 3)
-
-**Finding 2 — bad fetch response.** Temporarily pointed the Fraunces `css` query at a nonexistent
-Google Fonts family name (`ThisFontDoesNotExistXYZ:wght@500;600`), which makes Google's CSS2
-endpoint return `400 Bad Request` instead of CSS:
-
-```
-$ deno run --allow-net --allow-write scripts/build-report-fonts.ts
-Google Fonts CSS2 request failed for family "Fraunces": 400 Bad Request
-EXIT CODE: 1
-```
-
-**Finding 3 — dropped weight.** Restored the correct `css` query, then temporarily added a weight
-(900) to Fraunces' `weights` list that the CSS query does not request (so no block/rule ever
-covers it):
-
-```
-$ deno run --allow-net --allow-write scripts/build-report-fonts.ts
-Family "Fraunces" is missing @font-face coverage for weight(s): 900. Requested: 500, 600, 900. Emitted ranges: 500-600.
-EXIT CODE: 1
-```
-
-Both cases exit non-zero with a clear, specific message and do not write `fonts.ts`. The script
-was then restored to the correct `FAMILIES` config (diffed byte-identical against a pre-edit
-backup) and re-run to produce the final committed artifact — the same 128KB / 130,717-byte / 2
-unique-payload result shown in section 1–2 above.
-
-### 5. Type-check, format, lint
-
-```
-$ deno check scripts/build-report-fonts.ts supabase/functions/_shared/report-template/fonts.ts
-Check scripts/build-report-fonts.ts
-Check supabase/functions/_shared/report-template/fonts.ts
-```
-
-```
-$ npx prettier --check scripts/build-report-fonts.ts supabase/functions/_shared/report-template/fonts.ts .superpowers/sdd/task-2-report.md
-Checking formatting...
-All matched files use Prettier code style!
-```
-
-```
-$ npx eslint scripts/build-report-fonts.ts
-(no output, exit 0)
-```
-
-### 6. deno.lock hygiene
-
-Every `deno run`/`deno check` invocation from the repo root dirtied the root `deno.lock`; reverted
-each time with `git checkout -- deno.lock`, confirmed clean before committing:
-
-```
-$ git status --short deno.lock
-(no output — clean)
-```
-
-### Commit
-
-```
-$ git add scripts/build-report-fonts.ts supabase/functions/_shared/report-template/fonts.ts .superpowers/sdd/task-2-report.md
-$ git commit -m "fix(report): dedupe variable-font payloads, verify fetches, guard weight coverage ..."
-```
-
-**Commit SHA:** `<filled in after commit — see below>`
-
-### Status (fix pass 1)
-
-DONE. All 4 review findings addressed and verified. `fonts.ts` regenerated: 2 `@font-face` rules
-(down from 6), 2 unique payloads (down from 6, matching rule count exactly), 130,717 bytes (down
-from 341,638 bytes — a 61.7% size reduction). Fetches are checked for `res.ok` and woff2 magic
-bytes on both the CSS2 and font-file requests. Missing-family and missing-weight cases both fail
-loudly with a non-zero exit and a specific message (demonstrated above). The build refuses to
-write `fonts.ts` if any `https://` reference survives into the output.
+DONE. `ran=14 failures=0`. Deliberate pre-reset failing run confirmed the exact expected error.
+Post-reset run and direct `relacl` inspection both confirm `authenticated` has SELECT-only on
+`membros_v`/`clientes_v`, `anon`/`service_role`/`PUBLIC` have nothing, and the views' owner (bypass
+of base-table RLS) is closed off by the explicit `WHERE conta_id = get_my_conta_id()` on each view.

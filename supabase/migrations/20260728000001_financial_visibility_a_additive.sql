@@ -78,6 +78,58 @@ BEGIN
 END $$;
 
 -- -------------------------------------------------------------
+-- Masking views.
+--
+-- security_invoker is IMPOSSIBLE here: an invoker view evaluates the CASE with
+-- the caller's privileges, so the caller would need SELECT on the very column
+-- Migration B revokes. The view owner therefore bypasses base-table RLS, which
+-- makes the explicit WHERE the ONLY tenant isolation on this path — it must
+-- never be removed in favour of "RLS handles it".
+--
+-- Columns are enumerated, never SELECT *: a new base-table column would
+-- otherwise appear here ungranted and unreviewed.
+-- -------------------------------------------------------------
+CREATE OR REPLACE VIEW public.membros_v WITH (security_barrier = true) AS
+  SELECT m.id, m.user_id, m.conta_id, m.nome, m.cargo, m.tipo,
+         m.avatar_url, m.data_pagamento, m.created_at, m.crm_user_id,
+         CASE WHEN public.can_see_financials()
+              THEN m.custo_mensal ELSE NULL END AS custo_mensal
+  FROM public.membros m
+  WHERE m.conta_id = public.get_my_conta_id();
+
+CREATE OR REPLACE VIEW public.clientes_v WITH (security_barrier = true) AS
+  SELECT c.id, c.user_id, c.conta_id, c.nome, c.sigla, c.cor, c.plano,
+         c.email, c.telefone, c.status, c.created_at, c.notion_page_url,
+         c.data_pagamento, c.especialidade, c.data_aniversario, c.dia_entrega,
+         c.auto_publish_on_approval, c.send_report_email, c.include_ai_analysis,
+         CASE WHEN public.can_see_financials()
+              THEN c.valor_mensal ELSE NULL END AS valor_mensal
+  FROM public.clientes c
+  WHERE c.conta_id = public.get_my_conta_id();
+
+-- The enumerated revoke is SECURITY-CRITICAL, not tidiness. These views are
+-- auto-updatable on their simple columns, their owner bypasses base-table RLS,
+-- and they carry no CHECK OPTION. Left with Supabase's default write grants to
+-- `authenticated`, a caller could INSERT a row with an arbitrary conta_id, or
+-- UPDATE an existing row's conta_id into another workspace — writing straight
+-- past every policy this design relies on.
+--
+-- NOT granted to service_role, and the reason is stronger than "they would see
+-- masked values": EXECUTE on a function is checked against the CURRENT USER
+-- even inside a non-security_invoker view, so a service_role client selecting
+-- this view hits permission denied on can_see_financials() given its REVOKE.
+-- Edge functions must keep reading base tables, where their grants are
+-- untouched. Do NOT "fix" this by granting EXECUTE to service_role.
+--
+-- NOT granted to service_role: trusted callers have no auth.uid(), so they
+-- would get masked values and zero rows. Edge functions read base tables
+-- directly, where their grants are untouched.
+REVOKE ALL ON public.membros_v  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON public.clientes_v FROM PUBLIC, anon, authenticated, service_role;
+GRANT SELECT ON public.membros_v  TO authenticated;
+GRANT SELECT ON public.clientes_v TO authenticated;
+
+-- -------------------------------------------------------------
 -- Post-conditions
 -- -------------------------------------------------------------
 DO $$
@@ -118,4 +170,28 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'workspace_members not in supabase_realtime publication';
   END IF;
+END $$;
+
+DO $$
+DECLARE
+  v      text;
+  acl    text;
+BEGIN
+  FOREACH v IN ARRAY ARRAY['membros_v', 'clientes_v'] LOOP
+    SELECT array_to_string(c.relacl, ',') INTO acl
+    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname='public' AND c.relname=v;
+
+    IF acl IS NULL OR acl NOT LIKE '%authenticated=r/%' THEN
+      RAISE EXCEPTION '%: authenticated lacks SELECT — acl=%', v, acl;
+    END IF;
+    -- 'a' = INSERT, 'w' = UPDATE, 'd' = DELETE. Any of them on authenticated is
+    -- the auto-updatable-view escape path this design exists to close.
+    IF acl ~ ('authenticated=[rwad]*[awd]') THEN
+      RAISE EXCEPTION '%: authenticated retains write privilege — acl=%', v, acl;
+    END IF;
+    IF acl LIKE '%anon=%' THEN
+      RAISE EXCEPTION '%: anon retains privilege — acl=%', v, acl;
+    END IF;
+  END LOOP;
 END $$;
