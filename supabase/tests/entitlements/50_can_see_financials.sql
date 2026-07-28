@@ -3,10 +3,40 @@
 
 -- Predicate truth table for can_see_financials().
 --
--- IMPORTANT: these assertions must impersonate `authenticated`, not merely set
--- a JWT claim. Claims alone are enough for a SECURITY DEFINER function reading
--- auth.uid(), but the test session runs as the table owner, who bypasses RLS and
--- column privileges — a claims-only test would pass with the policies reverted.
+-- IMPORTANT: two mechanisms are combined below, for two different reasons —
+-- neither is redundant with the other.
+--
+-- `request.jwt.claims` is strictly necessary: auth.uid() reads it, and without
+-- it every case here returns NULL regardless of role.
+--
+-- `SET LOCAL ROLE authenticated` is NOT needed for the five truth-table
+-- outcomes themselves — can_see_financials() is SECURITY DEFINER, so its
+-- internal read of workspace_members is role-independent. It is load-bearing
+-- anyway, as the only positive proof in this file that `authenticated`
+-- actually holds EXECUTE on the function: delete the GRANT in the migration
+-- and this first block dies with insufficient_privilege instead of silently
+-- passing.
+
+-- Anonymous cannot execute the helper. Runs first and stays independent of
+-- the truth-table block below (own transaction) so it still executes even if
+-- ON_ERROR_STOP aborts the file on a truth-table failure.
+begin;
+do $$
+declare v_ok boolean := false;
+begin
+  set local role anon;
+  begin
+    perform public.can_see_financials();
+  exception when insufficient_privilege then
+    v_ok := true;
+  end;
+  reset role;
+  if not v_ok then
+    raise exception 'anon must not be able to execute can_see_financials()';
+  end if;
+  raise notice '50_can_see_financials: anon correctly denied';
+end $$;
+rollback;
 
 begin;
 do $$
@@ -104,24 +134,5 @@ begin
   end if;
 
   raise notice '50_can_see_financials: all predicate cases passed';
-end $$;
-rollback;
-
--- Anonymous cannot execute the helper.
-begin;
-do $$
-declare v_ok boolean := false;
-begin
-  set local role anon;
-  begin
-    perform public.can_see_financials();
-  exception when insufficient_privilege then
-    v_ok := true;
-  end;
-  reset role;
-  if not v_ok then
-    raise exception 'anon must not be able to execute can_see_financials()';
-  end if;
-  raise notice '50_can_see_financials: anon correctly denied';
 end $$;
 rollback;

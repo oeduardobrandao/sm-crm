@@ -21,11 +21,19 @@ COMMENT ON COLUMN public.workspace_members.can_see_financials IS
 -- switch (no switch path writes it), which would make an owner in workspace A
 -- read as owner in workspace B where they are an agent.
 --
--- pg_temp is named LAST and every relation is schema-qualified. Without both, a
--- caller able to run CREATE TEMP TABLE workspace_members(...) could shadow the
--- real table and dictate this function's answer — PostgreSQL searches the
--- session temp schema FIRST for relation names when pg_temp is absent from the
--- path.
+-- pg_temp is named LAST and the relation this function reads directly
+-- (workspace_members) is schema-qualified, so THIS function's own lookups
+-- cannot be redirected by a session-local CREATE TEMP TABLE
+-- workspace_members(...).
+--
+-- That hardening does not extend end-to-end. Workspace resolution is
+-- delegated to public.get_my_conta_id(), whose live definition
+-- (20260720000004_reconcile_prod_missing_functions.sql:25-41) is SECURITY
+-- DEFINER with a bare `SET search_path = public` and unqualified `profiles` /
+-- `workspace_members` references. With pg_temp absent from ITS path, a caller
+-- running CREATE TEMP TABLE profiles(...) (or workspace_members(...)) still
+-- controls which workspace get_my_conta_id() resolves to, one call below this
+-- one. Hardening that shared function is out of scope here.
 -- -------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.can_see_financials()
 RETURNS boolean
@@ -37,7 +45,7 @@ AS $$
   SELECT CASE wm.role
     WHEN 'owner' THEN true
     WHEN 'admin' THEN wm.can_see_financials
-    ELSE false
+    ELSE false -- covers role='agent'; any other value is blocked at the source by workspace_members.role's CHECK (role IN ('owner','admin','agent')), so that path is unreachable and this suite cannot cover it
   END
   FROM public.workspace_members AS wm
   WHERE wm.user_id = auth.uid()
@@ -94,6 +102,13 @@ BEGIN
   END IF;
   IF acl LIKE '%anon=X%' THEN
     RAISE EXCEPTION 'can_see_financials(): anon retains EXECUTE — acl=%', acl;
+  END IF;
+  -- A PUBLIC grant renders as a grantee-less aclitem (`=X/postgres`), not
+  -- `anon=X` — textually distinct from the check above. array_to_string(...,
+  -- ',') puts it either first in the string (no leading comma: `=X%`) or
+  -- after another entry (preceded by a comma: `%,=X%`); check both.
+  IF acl LIKE '=X%' OR acl LIKE '%,=X%' THEN
+    RAISE EXCEPTION 'can_see_financials(): PUBLIC retains EXECUTE — acl=%', acl;
   END IF;
 
   IF NOT EXISTS (
