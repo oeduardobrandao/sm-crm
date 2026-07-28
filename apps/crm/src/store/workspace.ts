@@ -4,7 +4,9 @@ export async function getWorkspaceUsers(): Promise<any[]> {
   const conta_id = await getContaId();
   const { data, error } = await supabase
     .from('workspace_members')
-    .select('user_id, role, joined_at, profiles!inner(id, nome, avatar_url, created_at)')
+    .select(
+      'user_id, role, joined_at, can_see_financials, profiles!inner(id, nome, avatar_url, created_at)',
+    )
     .eq('workspace_id', conta_id)
     .order('joined_at', { ascending: true });
   if (error) throw error;
@@ -13,6 +15,7 @@ export async function getWorkspaceUsers(): Promise<any[]> {
     id: m.profiles.id,
     nome: m.profiles.nome,
     role: m.role,
+    can_see_financials: m.can_see_financials,
     avatar_url: m.profiles.avatar_url,
     created_at: m.profiles.created_at,
   }));

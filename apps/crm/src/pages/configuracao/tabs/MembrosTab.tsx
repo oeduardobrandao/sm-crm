@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -37,6 +38,7 @@ import {
   getInitials,
   getWorkspaceUsers,
   removeWorkspaceUser,
+  setWorkspaceUserFinancialAccess,
   updateWorkspaceUserRole,
 } from '../../../store';
 import {
@@ -51,8 +53,8 @@ import {
 export default function MembrosTab() {
   const { user, profile, workspaceRole } = useAuth();
   const isOwnerOrAdmin = workspaceRole === 'owner' || workspaceRole === 'admin';
-  // Not yet consumed in this file — the financial-access toggle (a later task)
-  // is the first owner-only member-management action here.
+  // The financial-access toggle is the first owner-only member-management
+  // action here — gates rendering the switch on admin rows below.
   const isOwner = workspaceRole === 'owner';
 
   const { data: wsUsers, refetch: refetchWsUsers } = useQuery({
@@ -118,6 +120,25 @@ export default function MembrosTab() {
       toast.error('Erro: ' + (err as Error).message);
     } finally {
       setRemoveUserId(null);
+    }
+  };
+
+  // Financial-access toggle (owner-only, admin rows only). No optimistic
+  // update: the switch stays put until the server call resolves, then the
+  // list is refetched — a rejection surfaces as an error toast, not a flip
+  // that silently reverts.
+  const [financialAccessLoadingId, setFinancialAccessLoadingId] = useState<string | null>(null);
+
+  const handleToggleFinancialAccess = async (memberId: string, checked: boolean) => {
+    setFinancialAccessLoadingId(memberId);
+    try {
+      await setWorkspaceUserFinancialAccess(memberId, checked);
+      toast.success(checked ? 'Acesso financeiro liberado.' : 'Acesso financeiro restrito.');
+      await refetchWsUsers();
+    } catch {
+      toast.error('Não foi possível atualizar o acesso.');
+    } finally {
+      setFinancialAccessLoadingId(null);
     }
   };
 
@@ -246,6 +267,26 @@ export default function MembrosTab() {
                 </div>
                 <RoleBadge role={u.role} />
               </div>
+              {isOwner && u.role === 'admin' && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    flexShrink: 0,
+                  }}
+                >
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    Ver financeiro
+                  </span>
+                  <Switch
+                    checked={Boolean(u.can_see_financials)}
+                    disabled={financialAccessLoadingId === u.id}
+                    onCheckedChange={(checked) => handleToggleFinancialAccess(u.id, checked)}
+                    aria-label={`Acesso financeiro de ${u.nome}`}
+                  />
+                </div>
+              )}
               {u.id !== user?.id && (
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   <Button size="sm" variant="outline" onClick={() => handleEditRole(u)}>
