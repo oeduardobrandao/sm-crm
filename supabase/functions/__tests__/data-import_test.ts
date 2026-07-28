@@ -269,7 +269,7 @@ Deno.test("data-import: preview's max_clients count matches what the plan trigge
 
 // A "mesclar com existente" cliente row: still `kind: "cliente"` on the wire
 // (types.ts's CommitClienteRow.merge), but import_commit_row's merge branch
-// (20260727000001_data_import_jobs.sql:221-253) only UPDATEs the pre-existing
+// (20260728000001_data_import_jobs.sql:221-253) only UPDATEs the pre-existing
 // cliente — it never INSERTs, so it never trips trg_limit_clientes.
 function mergeClienteRow(sourceKey: string, clienteId: number, nome = "Ana") {
   return { kind: "cliente", sourceKey, nome, merge: { clienteId } };
@@ -874,7 +874,7 @@ Deno.test("data-import: commit forwards conta_id so the RPC can reject foreign c
 });
 
 Deno.test("data-import: commit forwards valorMensal intact on a merge cliente row", async () => {
-  // The SQL merge branch (20260727000001_data_import_jobs.sql) fills
+  // The SQL merge branch (20260728000001_data_import_jobs.sql) fills
   // valor_mensal only when the existing row is NULL — but that fill can only
   // work if the payload it reads still carries valorMensal. This is the one
   // part of that fix the Deno suite (which mocks the RPC) can actually

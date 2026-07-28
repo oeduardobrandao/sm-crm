@@ -45,7 +45,7 @@ import type { AnalyzeSummary, WireCollectionMapping, WireMappingProposal } from 
 const DESTINATIONS = new Set(["clientes", "posts", "entregas", "ideias", "ignorar"]);
 
 // Mirrors IMPORTABLE_POST_STATUSES in data-import/handler.ts (and the RPC's
-// own allow-list in 20260727000001_data_import_jobs.sql). 'agendado' and
+// own allow-list in 20260728000001_data_import_jobs.sql). 'agendado' and
 // 'falha_publicacao' are deliberately absent — see the module comment above.
 const STATUS_TARGETS = new Set([
   "rascunho",

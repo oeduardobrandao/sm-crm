@@ -160,7 +160,7 @@ async function auditQuietly(...args: Parameters<typeof insertAuditLog>): Promise
  * post_status_events (20260606000001_post_status_events.sql:12) is an
  * append-only audit trail (status transitions + actor + the approval that
  * triggered them) captured by an AFTER UPDATE OF status trigger — import only
- * ever INSERTs a post (20260727000001_data_import_jobs.sql:418), never
+ * ever INSERTs a post (20260728000001_data_import_jobs.sql:418), never
  * UPDATEs its status, so the trigger cannot have fired for anything the
  * import itself did; any row here is a real status change made after import.
  *
@@ -639,7 +639,7 @@ export function createDataImportHandler(deps: Deps) {
         // the separate CAP-DRIVING number: only rows that will actually INSERT a
         // new clientes row. A "mesclar com existente" row (CommitClienteRow.merge
         // set) is still `kind: 'cliente'` on the wire, but import_commit_row's
-        // merge branch (20260727000001_data_import_jobs.sql:221-253) only UPDATEs
+        // merge branch (20260728000001_data_import_jobs.sql:221-253) only UPDATEs
         // the pre-existing cliente — it never inserts, so it never trips
         // trg_limit_clientes. Counting it toward the cap warning below described a
         // commit outcome that can never happen (0 real growth still read as
@@ -739,7 +739,7 @@ export function createDataImportHandler(deps: Deps) {
         //     and its status predicate agree), so only 'ativo' rows count —
         //     archived/concluded workflows never touch this cap.
         // Both 'container' and 'entrega' rows insert exactly one 'ativo' row into
-        // workflows each (20260727000001_data_import_jobs.sql:294-316: the
+        // workflows each (20260728000001_data_import_jobs.sql:294-316: the
         // `container` branch and the `entrega` branch each do a single `insert
         // into public.workflows (...) values (..., 'ativo', ...)`), so every
         // incoming container/entrega row is one unit against this cap — EXCEPT
@@ -865,7 +865,7 @@ async function handleCommit({ db, conta_id, userId, body, json }: ActionCtx): Pr
   //
   // `status` is selected, not just `id`: an existence-only probe passes an
   // already-undone job. import_commit_row refuses to write to one
-  // (20260727000001_data_import_jobs.sql:89-90), so every row fails — but
+  // (20260728000001_data_import_jobs.sql:89-90), so every row fails — but
   // control still reached the `final` update, flipping 'undone' -> 'completed',
   // re-arming the undo button on a job that was already undone and corrupting
   // the very history the audit trail exists to record. Reject it up front, the
@@ -1179,7 +1179,7 @@ function normalizePayload(row: CommitRow): Record<string, unknown> {
 }
 
 // The importable post statuses, mirroring the allow-list inside import_commit_row
-// (supabase/migrations/20260727000001_data_import_jobs.sql). 'agendado' and
+// (supabase/migrations/20260728000001_data_import_jobs.sql). 'agendado' and
 // 'falha_publicacao' are deliberately absent: the publish crons claim on
 // 'agendado' and imported posts carry no media.
 const IMPORTABLE_POST_STATUSES = new Set([

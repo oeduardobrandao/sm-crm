@@ -46,7 +46,7 @@ const BATCH_SIZE = 200;
  * app on every commit/undo:
  *   - cliente        -> clientes table          -> ['clientes']            (ClientesPage, ClienteDetalhePage, dashboard, financeiro, contratos, ideias, entregas, analytics-fluxos, ...)
  *   - container       -> workflows table         -> ['workflows']           (CalendarioPage, DashboardPage, useEntregasData, AnalyticsFluxosPage, ConcludedView)
- *   - entrega         -> workflows table         -> ['workflows']           (same table as containers -- see data-import migration 20260727000001, `when 'entrega' then 'workflows'`)
+ *   - entrega         -> workflows table         -> ['workflows']           (same table as containers -- see data-import migration 20260728000001, `when 'entrega' then 'workflows'`)
  *   - template        -> workflow_templates table -> ['workflow-templates'] (useEntregasData, AnalyticsFluxosPage)
  *   - post            -> workflow_posts table    -> ['scheduled-posts']    (Entregas Calendar "publicações" mode reads posts workspace-wide by date range; per-workflow/per-client keys like workflow-posts-with-props or clientePosts are parameterized by an id that did not exist before the import, so there is no stale cache entry for them to begin with)
  *   - ideia           -> ideias table            -> ['hub-ideias-all']     (IdeiasPage's global list)
