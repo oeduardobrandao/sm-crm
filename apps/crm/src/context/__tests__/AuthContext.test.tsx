@@ -33,8 +33,21 @@ vi.mock('../../store/core', () => ({
   getContaId: mockGetContaId,
 }));
 
+// Real analytics.ts no-ops every export unless VITE_POSTHOG_KEY is set (never
+// true in this test env), so without this mock `resetAnalytics()` silently
+// does nothing and a regression that drops its call from AuthContext would
+// go uncaught. Mocked so the A -> B test below can assert it was actually
+// invoked, not just that it wouldn't have thrown.
+vi.mock('../../lib/analytics', () => ({
+  identifyWorkspaceUser: vi.fn(),
+  resetAnalytics: vi.fn(),
+}));
+
 import * as supabaseModule from '../../lib/supabase';
+import { resetAnalytics } from '../../lib/analytics';
 import { AuthProvider, useAuth } from '../AuthContext';
+
+const mockedResetAnalytics = vi.mocked(resetAnalytics);
 
 type MockedSupabaseModule = typeof supabaseModule & {
   __resetSupabaseMock: () => void;
@@ -57,8 +70,21 @@ function renderWithAuth() {
   );
 }
 
+// Populated during Probe's render body (not an effect), so it captures every
+// distinct commit React produces -- including one that a later effect's own
+// setState corrects before `act()` settles and before any effect-driven
+// commit is visible to a `screen.getByTestId` query afterwards. That later
+// correction (the "Fetch profile whenever user changes" effect always calls
+// setLoading(true) at its top once userId changes) means a plain "check
+// `loading` after `act()` resolves" assertion can't tell a fixed
+// synchronous reset apart from a delayed one -- both settle to the same
+// final value. Recording every render this way is what makes the
+// distinction observable in a test at all.
+let renderHistory: Array<{ user: string; loading: string }> = [];
+
 function Probe() {
   const auth = useAuth();
+  renderHistory.push({ user: auth.user?.id ?? 'anon', loading: String(auth.loading) });
   return (
     <div>
       <span data-testid="role">{auth.role}</span>
@@ -154,7 +180,7 @@ describe('AuthProvider', () => {
     expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
   });
 
-  it('resets profile/financial state immediately on a same-tab A -> B user switch (cross-account bleed regression)', async () => {
+  it('resets profile/financial/analytics state and re-raises loading on a same-tab A -> B user switch (cross-account bleed + spurious-redirect regression)', async () => {
     // Both users non-null — e.g. another tab signing in against shared
     // storage. Gating the reset on `!nextUser` alone let B render with A's
     // profile/canSeeFinancials/query cache until B's own membership resolved.
@@ -199,6 +225,10 @@ describe('AuthProvider', () => {
       }),
     );
 
+    // Reset right before the switch: everything captured from here on is
+    // renders caused by the switch itself.
+    renderHistory = [];
+
     await act(async () => {
       mockedSupabase.__emitAuthChange('SIGNED_IN', { user: { id: 'user-B' } });
     });
@@ -206,10 +236,34 @@ describe('AuthProvider', () => {
     // B must never render with A's identity still attached, even before B's
     // own membership/profile resolve.
     expect(screen.getByTestId('user')).toHaveTextContent('user-B');
-    expect(screen.getByTestId('role')).toHaveTextContent('agent');
+    // `role` reads 'agent' right here too, purely because `profile` was just
+    // reset to null — that is the fallback formula (`profile?.role ?? 'agent'`),
+    // true before AND after the fix below, so asserting it here would never
+    // catch a regression.
+    //
+    // What actually gates a consumer like ProtectedRoute from acting on that
+    // fallback is `loading`. Checking `screen.getByTestId('loading')` here
+    // (the settled DOM, after `act()` has fully resolved) can NOT tell the
+    // fix apart from the bug: the "fetch profile whenever user changes"
+    // effect (keyed on userId) unconditionally sets loading(true) at its own
+    // top, so by the time `act()` settles, `loading` reads 'true' either
+    // way — whether this reset set it synchronously in the SAME commit as
+    // `user`/`profile`, or only that later effect did. The bug is a commit
+    // that is briefly live (and, outside a test, paintable) with
+    // `user: 'user-B'` and `loading: false` before that correction —
+    // exactly the window a real route guard's render can observe. Render-body
+    // history (captured on every commit, not just the final one visible
+    // after `act()`) is what makes that window observable at all: it must
+    // never show B's id paired with loading:false.
+    expect(renderHistory).not.toContainEqual({ user: 'user-B', loading: 'false' });
+    expect(screen.getByTestId('loading')).toHaveTextContent('true');
     expect(screen.getByTestId('workspaceRole')).toHaveTextContent('null');
     expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('unknown');
     expect(queryClient.getQueryData(['transacoes'])).toBeUndefined();
+    // posthog-js keeps A's distinct_id across a second identify() call
+    // without an explicit reset() first — omitting this call would merge
+    // B's events/person-properties into A's PostHog profile.
+    expect(mockedResetAnalytics).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       resolveProfileB({

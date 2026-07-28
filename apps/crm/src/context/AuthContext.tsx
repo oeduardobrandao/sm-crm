@@ -47,6 +47,18 @@ interface AuthContextValue {
    * stale on workspace switch. `null` while unresolved.
    */
   workspaceRole: 'owner' | 'admin' | 'agent' | null;
+  /**
+   * Whether the membership lookup behind `workspaceRole` has actually
+   * settled, and how: `true` means it ran to completion (whether or not it
+   * found a row); `'error'` means it threw (network/RLS blip) without ever
+   * determining membership one way or the other; `false` means it hasn't
+   * run yet for the current identity. `workspaceRole === null` alone is
+   * ambiguous between "removed from the workspace" and "could not
+   * determine" — this disambiguates. Consumers should treat only
+   * `workspaceRole === null && membershipResolved === true` as a genuine
+   * "no longer a member".
+   */
+  membershipResolved: boolean | 'error';
   canSeeFinancials: FinancialAccess;
   loading: boolean;
   refetchProfile: () => Promise<void>;
@@ -60,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [workspaceRole, setWorkspaceRole] = useState<'owner' | 'admin' | 'agent' | null>(null);
+  const [membershipResolved, setMembershipResolved] = useState<boolean | 'error'>(false);
   const [canSeeFinancials, setCanSeeFinancials] = useState<FinancialAccess>('unknown');
   const [loading, setLoading] = useState(true);
   const [sessionReady, setSessionReady] = useState(false);
@@ -114,10 +127,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setWorkspaceRole(null);
         setCanSeeFinancials('unknown');
+        setMembershipResolved(false);
+        // Without this, posthog-js keeps A's distinct_id: it never switches
+        // identity on a second identify() call without an explicit reset()
+        // first. Skipping this let B's events and person-properties land on
+        // A's PostHog profile -- the same cross-account bleed the resets
+        // above exist to close, one layer over. Mirrors `signOut` below.
+        resetAnalytics();
         queryClient.clear();
-        // For a non-null nextUser, the profile-fetch effect (keyed on userId)
-        // takes over `loading` for the new identity's hydration.
-        if (!nextUser) setLoading(false);
+        // A non-null nextUser still has hydration ahead of it (the
+        // profile-fetch effect below, keyed on userId, takes over `loading`
+        // from here). Raising it back to true -- rather than leaving it at
+        // whatever value A's completed hydration left it at -- closes the
+        // window where a render sees `loading: false` with `profile: null`:
+        // `role` falls back to 'agent' there (see the derivation below), and
+        // consumers gating on `loading` (ProtectedRoute, ConfiguracaoLayout)
+        // must not be allowed to act on that fallback before B's real role
+        // resolves.
+        if (nextUser) setLoading(true);
+        else setLoading(false);
       }
     });
 
@@ -140,6 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profileRequestId.current += 1;
       setProfile(null);
       setWorkspaceRole(null);
+      setMembershipResolved(false);
       setCanSeeFinancials('unknown');
       setLoading(false);
       return;
@@ -175,15 +204,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (!active || profileRequestId.current !== requestId) return;
           setWorkspaceRole(membership?.role ?? null);
           setCanSeeFinancials(deriveFinancialAccess(membership));
+          // The lookup ran to completion -- `membership === null` here means
+          // it genuinely found no row, not that it failed. Either way this
+          // is a real, resolved answer about membership.
+          setMembershipResolved(true);
         } catch {
           if (!active || profileRequestId.current !== requestId) return;
           setWorkspaceRole(null);
           setCanSeeFinancials('unknown');
+          // The lookup THREW (network/RLS blip) -- membership was never
+          // actually determined. Must stay distinguishable from a genuine
+          // "no row found" (`true`, above) so callers don't tell a real
+          // member they've been removed over a transient error.
+          setMembershipResolved('error');
         }
 
         void healPendingInvite();
       } catch {
-        if (active && profileRequestId.current === requestId) setProfile(null);
+        if (active && profileRequestId.current === requestId) {
+          setProfile(null);
+          // getCurrentProfile()/initStoreRole() threw before the membership
+          // lookup ever ran -- nothing about membership is known.
+          setMembershipResolved('error');
+        }
       } finally {
         if (active && profileRequestId.current === requestId) setLoading(false);
       }
@@ -225,6 +268,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       next: { workspace_id?: string; role?: string; can_see_financials?: boolean } | null,
     ) => {
       setWorkspaceRole(next ? ((next.role as 'owner' | 'admin' | 'agent') ?? null) : null);
+      // Both callers of applyMembership (the realtime UPDATE payload and the
+      // poll's getMyMembership() result) only ever invoke it with a genuine,
+      // resolved answer -- the poll's own `.catch(() => {})` below swallows
+      // lookup errors before they would reach here. So every call is a real
+      // resolution, whether membership is present or (`next === null`) gone.
+      setMembershipResolved(true);
       // Same derivation as hydration — never re-implement the role semantics
       // here. Two copies drift; this bug already shipped once on this branch
       // (a raw can_see_financials assignment gave agents access and denied
@@ -320,6 +369,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profileRequestId.current += 1;
       setProfile(null);
       setWorkspaceRole(null);
+      setMembershipResolved(false);
       setCanSeeFinancials('unknown');
       setLoading(false);
       return;
@@ -355,6 +405,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSessionReady(true);
     setProfile(null);
     setWorkspaceRole(null);
+    setMembershipResolved(false);
     setCanSeeFinancials('unknown');
     setLoading(false);
     // Drop all cached per-user data (entitlements, notifications, …) so the next
@@ -369,6 +420,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         role,
         workspaceRole,
+        membershipResolved,
         canSeeFinancials,
         loading,
         refetchProfile: fetchProfile,

@@ -130,6 +130,20 @@ begin
 
   -- =============================================================
   -- 3. Non-owner actor is rejected, regardless of the target.
+  --
+  --    Unstated dependency: this only exercises the RPC's *actor* scoping
+  --    (workspace_members.role for p_actor/p_workspace) rather than being
+  --    trivially satisfiable by a profiles.role check, because v_admin's
+  --    profiles.role is ALSO 'owner' here -- not because anything below sets
+  --    it, but because handle_new_user_workspace's ELSE branch (invoked by
+  --    the bare `insert into auth.users` above, since none of these test
+  --    users carries invite metadata) writes profiles.role = 'owner' for
+  --    every new auth.users row, and line ~53 only overwrites conta_id/
+  --    active_workspace_id, never role. So if the RPC read profiles.role
+  --    instead of workspace_members.role, v_admin would show 'owner' and
+  --    this assertion would incorrectly pass. Anyone "tidying up" by setting
+  --    profiles.role = 'admin' explicitly for v_admin would silently
+  --    un-test the escalation path this assertion exists to catch.
   -- =============================================================
   begin
     perform public.set_financial_access(v_admin, v_agent, v_ws, false);
@@ -162,15 +176,35 @@ begin
   raise notice '53_set_financial_access: unknown target correctly rejected (target_not_member)';
 
   -- =============================================================
-  -- 6. Cross-workspace stale-role escalation: v_dual is a genuine owner of
-  --    workspace B, calling with p_workspace = B (exactly the workspace they
-  --    own). v_admin is a real admin of workspace A only -- not a member of
-  --    B at all. The Deno layer cannot express this (it mocks the RPC and
-  --    never has real workspace_members rows to misuse); only a real lookup
-  --    against workspace_members catches it. If the RPC instead trusted
-  --    profiles.role (stale 'owner') or matched the target across ANY
-  --    workspace the target belongs to rather than scoping strictly to
-  --    p_workspace, this would incorrectly succeed instead of being rejected.
+  -- 6. Cross-workspace stale-role escalation: v_dual's profiles.role is
+  --    stale at 'owner' (set when they signed up and own their own
+  --    throwaway workspace B) and active_workspace_id points at A, where
+  --    their REAL membership role is only 'admin'. Calling with
+  --    p_workspace = A is the actual escalation attempt this fixture exists
+  --    for. The Deno layer cannot express this (it mocks the RPC and never
+  --    has real workspace_members rows to misuse); only a real lookup
+  --    against workspace_members, scoped to p_actor + p_workspace, catches
+  --    it. If the RPC instead trusted profiles.role, or matched the actor's
+  --    role across ANY workspace they belong to rather than scoping
+  --    strictly to p_workspace, this would incorrectly succeed instead of
+  --    being rejected.
+  -- =============================================================
+  begin
+    perform public.set_financial_access(v_dual, v_admin, v_ws, false);
+    raise exception 'admin-of-A (stale profiles.role=owner) should have been rejected with not_owner';
+  exception when others then
+    if sqlerrm <> 'not_owner' then raise; end if;
+  end;
+  raise notice '53_set_financial_access: cross-workspace stale-role escalation correctly rejected (not_owner)';
+
+  -- =============================================================
+  -- 7. Cross-workspace target scoping: v_dual calling with p_workspace = B,
+  --    exactly the workspace they genuinely own -- the owner check
+  --    legitimately passes here, so this does NOT exercise actor scoping
+  --    (block 6 above does). It instead covers the TARGET lookup: v_admin
+  --    is a real admin of workspace A only and not a member of B at all, so
+  --    the target must be rejected as not-a-member of B rather than found
+  --    via some other workspace they do belong to.
   -- =============================================================
   begin
     perform public.set_financial_access(v_dual, v_admin, v_ws_b, false);
@@ -178,8 +212,8 @@ begin
   exception when others then
     if sqlerrm <> 'target_not_member' then raise; end if;
   end;
-  raise notice '53_set_financial_access: cross-workspace stale-role escalation correctly rejected (target_not_member)';
+  raise notice '53_set_financial_access: cross-workspace target scoping correctly rejected (target_not_member)';
 
-  raise notice '53_set_financial_access: all six assertions passed';
+  raise notice '53_set_financial_access: all seven assertions passed';
 end $$;
 rollback;
