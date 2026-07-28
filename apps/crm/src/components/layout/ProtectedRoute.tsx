@@ -36,13 +36,21 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (role === 'agent' && AGENT_BLOCKED.some((p) => location.pathname.startsWith(p))) {
+  // React Router matches routes case-insensitively by default (no `caseSensitive`
+  // prop is set in App.tsx), so `/Financeiro` renders the same page as
+  // `/financeiro` while `location.pathname` keeps the literal casing the user
+  // typed. Comparing that raw pathname against lowercase literals below is
+  // bypassable (e.g. an agent hitting `/Financeiro` would skip the guard) — do
+  // not "simplify" this back to `location.pathname`.
+  const pathname = location.pathname.toLowerCase();
+
+  if (role === 'agent' && AGENT_BLOCKED.some((p) => pathname.startsWith(p))) {
     return <Navigate to="/dashboard" replace />;
   }
 
   if (!isUnlimited && features) {
     for (const [path, { flag, label }] of Object.entries(FEATURE_GATED)) {
-      if (location.pathname.startsWith(path) && features[flag as keyof typeof features] === false) {
+      if (pathname.startsWith(path) && features[flag as keyof typeof features] === false) {
         return <UpgradeLockedScreen featureLabel={label} />;
       }
     }

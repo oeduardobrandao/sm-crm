@@ -192,6 +192,95 @@ describe('ProtectedRoute', () => {
     expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
   });
 
+  it('redirects an agent at /Financeiro (capitalized) exactly as at /financeiro', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'u' } as never,
+      profile: { id: 'u', role: 'agent' } as never,
+      role: 'agent',
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    renderRoute('/Financeiro');
+
+    expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
+  });
+
+  it('still redirects an agent at /financeiro (lowercase, no regression)', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'u' } as never,
+      profile: { id: 'u', role: 'agent' } as never,
+      role: 'agent',
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    renderRoute('/financeiro');
+
+    expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
+  });
+
+  it('does NOT redirect a non-agent (owner) at a capitalized blocked path', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'owner-1' } as never,
+      profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
+      role: 'owner',
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    renderRoute('/Financeiro');
+
+    expect(screen.queryByText('Área protegida: dashboard')).not.toBeInTheDocument();
+    expect(screen.getByText('Área protegida')).toBeInTheDocument();
+  });
+
+  it('shows upgrade screen for a capitalized feature-gated path (/Leads) exactly as the lowercase path does', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'owner-1' } as never,
+      profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
+      role: 'owner',
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    mockedUseWorkspaceLimits.mockReturnValue({
+      limits: null,
+      features: {
+        feature_instagram: true,
+        feature_instagram_ai: false,
+        feature_analytics_reports: false,
+        feature_best_times: false,
+        feature_audience_demographics: false,
+        feature_hub_portal: false,
+        feature_leads: false,
+        feature_financial: false,
+        feature_contracts: false,
+        feature_ideas: false,
+        feature_workflow_gantt: false,
+        feature_workflow_recurrence: false,
+        feature_csv_import: false,
+        feature_custom_properties: false,
+        feature_post_scheduling: false,
+        feature_auto_sync_cron: false,
+        feature_post_tagging: false,
+        feature_brand_customization: false,
+      },
+      planName: 'starter',
+      isLoading: false,
+      isUnlimited: false,
+    });
+
+    renderRoute('/Leads');
+
+    expect(screen.getByText(/Leads não está no seu plano/)).toBeInTheDocument();
+    expect(screen.queryByText('Área protegida: dashboard')).toBeNull();
+  });
+
   it('shows upgrade screen (not dashboard redirect) when owner visits /leads with feature_leads:false', () => {
     mockedUseAuth.mockReturnValue({
       user: { id: 'owner-1' } as never,
