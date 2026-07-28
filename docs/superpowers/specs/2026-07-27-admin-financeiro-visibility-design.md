@@ -401,6 +401,25 @@ Rejects only an INSERT carrying a non-null financial value, or an UPDATE where
 anonymous requests. Only named trusted roles bypass. `auth.role()` has working
 precedent in this repo (`20260526000000`, `20260718000001`).
 
+**The trigger function MUST be `SECURITY INVOKER`. Making it `SECURITY DEFINER`
+silently disables the entire guard.** This is not a style preference and it is
+easy to get wrong, because `SECURITY DEFINER` + `SET search_path` is the correct
+reflex for almost every other function in this design — but this one's logic
+*reads* `current_user`, so changing whose identity that reports destroys it.
+Verified empirically against a live database:
+
+```
+SECURITY DEFINER  current_user = postgres        -> bypass fires: TRUE
+SECURITY INVOKER  current_user = authenticated   -> bypass fires: FALSE
+```
+
+Owned by `postgres`, a `SECURITY DEFINER` guard evaluates
+`current_user IN ('postgres','supabase_admin')` as true **for every caller**,
+returns `NEW` unconditionally, and blocks nothing at all. The implementation
+plan specified `SECURITY DEFINER` here and it took an implementer probing the
+running database to catch it; a reviewer reading the SQL would not obviously see
+that the function had become a no-op.
+
 **The `current_user` bypass is wider than it reads.** A `SECURITY DEFINER`
 function owned by `postgres` executes with `current_user = 'postgres'`, so every
 such function is exempt from these guards — not only direct superuser sessions.

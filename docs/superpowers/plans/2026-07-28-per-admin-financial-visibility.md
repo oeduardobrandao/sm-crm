@@ -2346,7 +2346,14 @@ END $$;
 CREATE OR REPLACE FUNCTION public.guard_financial_write()
 RETURNS trigger
 LANGUAGE plpgsql
-SECURITY DEFINER
+-- SECURITY INVOKER, NOT DEFINER. This function's logic READS current_user, so
+-- SECURITY DEFINER (owned by postgres) would make its own bypass check
+-- `current_user IN ('postgres','supabase_admin')` true for EVERY caller and
+-- disable the guard entirely. Verified live:
+--   SECURITY DEFINER -> current_user = postgres      -> bypass fires
+--   SECURITY INVOKER -> current_user = authenticated -> bypass does not fire
+-- An earlier draft of this plan said DEFINER. It shipped a no-op guard.
+SECURITY INVOKER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
