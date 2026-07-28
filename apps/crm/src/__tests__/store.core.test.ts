@@ -198,7 +198,7 @@ describe('store core helpers and CRUD', () => {
     {
       name: 'getClientes',
       operation: 'select' as const,
-      table: 'clientes',
+      table: 'clientes_v',
       run: () => store.getClientes(),
       response: [{ id: 1, nome: 'Clínica Aurora' }],
       expected: [{ id: 1, nome: 'Clínica Aurora' }],
@@ -249,7 +249,7 @@ describe('store core helpers and CRUD', () => {
     {
       name: 'getMembros',
       operation: 'select' as const,
-      table: 'membros',
+      table: 'membros_v',
       run: () => store.getMembros(),
       response: [{ id: 1, nome: 'Paulo Editor' }],
       expected: [{ id: 1, nome: 'Paulo Editor' }],
@@ -400,6 +400,10 @@ describe('store core helpers and CRUD', () => {
     {
       name: 'addMembro',
       table: 'membros',
+      // addMembro resolves void: RETURNING is narrowed to an allowlist that
+      // excludes custo_mensal, so the write path never surfaces the inserted
+      // row to the caller (see store/team.ts).
+      returnsVoid: true,
       run: () =>
         store.addMembro({
           nome: 'Paulo Editor',
@@ -453,19 +457,27 @@ describe('store core helpers and CRUD', () => {
         conta_id: 'conta-1',
       },
     },
-  ])('$name inserts with the authenticated workspace context', async ({ table, run, payload }) => {
-    mockedSupabase.__queueSupabaseResult(table, 'insert', {
-      data: { id: 1, ...payload },
-      error: null,
-    });
+  ])(
+    '$name inserts with the authenticated workspace context',
+    async ({ table, run, payload, returnsVoid }) => {
+      mockedSupabase.__queueSupabaseResult(table, 'insert', {
+        data: { id: 1, ...payload },
+        error: null,
+      });
 
-    await expect(run()).resolves.toMatchObject({ id: 1, ...payload });
+      const result = await run();
+      if (returnsVoid) {
+        expect(result).toBeUndefined();
+      } else {
+        expect(result).toMatchObject({ id: 1, ...payload });
+      }
 
-    expect(getLastCall(table)).toMatchObject({
-      operation: 'insert',
-      payload,
-    });
-  });
+      expect(getLastCall(table)).toMatchObject({
+        operation: 'insert',
+        payload,
+      });
+    },
+  );
 
   it.each([
     {

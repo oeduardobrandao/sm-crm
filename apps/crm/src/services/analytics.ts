@@ -235,9 +235,12 @@ export interface AnalyticsReport {
 
 export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> {
   // Get active clients — use RLS-filtered query (same pattern as store.ts getClientes)
+  // Not capability-gated: this reads Instagram accounts/posts/growth counters only,
+  // no monetary field — so the base table (not clientes_v) is fine, as long as the
+  // projection excludes valor_mensal (narrowed here to survive the later grant change).
   const { data: allClients, error: clientsError } = await supabase
     .from('clientes')
-    .select('*')
+    .select('id, nome, sigla, cor, especialidade, status, created_at')
     .order('created_at', { ascending: false });
 
   if (clientsError) {

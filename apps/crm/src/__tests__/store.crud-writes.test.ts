@@ -79,9 +79,11 @@ describe('store CRUD write operations', () => {
         error: null,
       });
 
+      // updateCliente resolves void: RETURNING is narrowed to an allowlist that
+      // excludes valor_mensal, so the write path never surfaces the row back.
       const result = await store.updateCliente(5, { status: 'pausado' });
 
-      expect(result).toMatchObject({ id: 5, status: 'pausado' });
+      expect(result).toBeUndefined();
       const call = getLastCall('clientes');
       expect(call.operation).toBe('update');
       expect(call.payload).toEqual({ status: 'pausado' });
@@ -241,6 +243,8 @@ describe('store CRUD write operations', () => {
         error: null,
       });
 
+      // addMembro resolves void: RETURNING is narrowed to an allowlist that
+      // excludes custo_mensal, so the write path never surfaces the row back.
       const result = await store.addMembro({
         nome: 'Paulo Editor',
         cargo: 'Editor',
@@ -249,7 +253,7 @@ describe('store CRUD write operations', () => {
         avatar_url: '',
       });
 
-      expect(result).toMatchObject({ id: 40, nome: 'Paulo Editor' });
+      expect(result).toBeUndefined();
       const call = getLastCall('membros');
       expect(call.payload).toMatchObject({ user_id: 'user-1', conta_id: 'conta-1' });
     });

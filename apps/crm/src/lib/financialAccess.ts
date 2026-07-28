@@ -51,3 +51,22 @@ export function formatFinancialBRL(
   if (access !== true) return MASKED_BRL;
   return (val ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
+
+/**
+ * Remove financial keys from a write payload when the caller lacks access.
+ *
+ * OMITS the key rather than nulling or zeroing it, so the database write guard
+ * sees no financial column in the statement at all and lets ordinary edits
+ * through. Hiding the input alone is insufficient — the forms send a literal `0`
+ * for a blank field.
+ */
+export function stripFinancialFields<T extends Record<string, unknown>>(
+  payload: T,
+  access: FinancialAccess,
+  keys: string[],
+): Partial<T> {
+  if (access === true) return payload;
+  const out = { ...payload };
+  for (const k of keys) delete out[k];
+  return out;
+}

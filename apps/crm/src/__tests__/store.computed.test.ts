@@ -36,7 +36,7 @@ describe('store computed helpers', () => {
       vi.setSystemTime(new Date('2026-04-15T12:00:00.000Z'));
 
       try {
-        mockedSupabase.__queueSupabaseResult('clientes', 'select', {
+        mockedSupabase.__queueSupabaseResult('clientes_v', 'select', {
           data: [
             { id: 1, nome: 'Cliente A', status: 'ativo', valor_mensal: 3000, data_pagamento: 10 },
             { id: 2, nome: 'Cliente B', status: 'ativo', valor_mensal: 2000, data_pagamento: 15 },
@@ -52,7 +52,7 @@ describe('store computed helpers', () => {
           ],
           error: null,
         });
-        mockedSupabase.__queueSupabaseResult('membros', 'select', {
+        mockedSupabase.__queueSupabaseResult('membros_v', 'select', {
           data: [{ id: 1, nome: 'Editor', data_pagamento: 20, custo_mensal: 1000 }],
           error: null,
         });
@@ -73,9 +73,9 @@ describe('store computed helpers', () => {
       vi.setSystemTime(new Date('2026-04-05T12:00:00.000Z'));
 
       try {
-        mockedSupabase.__queueSupabaseResult('clientes', 'select', { data: [], error: null });
+        mockedSupabase.__queueSupabaseResult('clientes_v', 'select', { data: [], error: null });
         mockedSupabase.__queueSupabaseResult('transacoes', 'select', { data: [], error: null });
-        mockedSupabase.__queueSupabaseResult('membros', 'select', {
+        mockedSupabase.__queueSupabaseResult('membros_v', 'select', {
           data: [{ id: 1, nome: 'Paulo', data_pagamento: 10, custo_mensal: 900 }],
           error: null,
         });
@@ -95,9 +95,9 @@ describe('store computed helpers', () => {
       vi.setSystemTime(new Date('2026-04-15T12:00:00.000Z'));
 
       try {
-        mockedSupabase.__queueSupabaseResult('clientes', 'select', { data: [], error: null });
+        mockedSupabase.__queueSupabaseResult('clientes_v', 'select', { data: [], error: null });
         mockedSupabase.__queueSupabaseResult('transacoes', 'select', { data: [], error: null });
-        mockedSupabase.__queueSupabaseResult('membros', 'select', { data: [], error: null });
+        mockedSupabase.__queueSupabaseResult('membros_v', 'select', { data: [], error: null });
 
         const stats = await store.getDashboardStats();
 
