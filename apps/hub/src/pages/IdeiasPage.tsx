@@ -424,9 +424,14 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
     }
   }
 
-  // Rendered via a portal to <body>: the page content lives inside `.hub-fade-up`,
+  // Rendered via a portal because the page content lives inside `.hub-fade-up`,
   // whose persistent CSS transform would otherwise make this `fixed` overlay
   // position relative to that wrapper (clipping the modal's top off-screen).
+  // The target is the `.hub-root` element, NOT document.body: index.html scopes
+  // every hub-* rule as `.hub-root .hub-*` and dark mode sets data-theme on that
+  // element, so a body portal loses the card background, text colors, and button
+  // styles (the modal renders transparent over the scrim). `.hub-root` itself has
+  // no transform, so `fixed` still positions against the viewport.
   return createPortal(
     <div
       role="dialog"
@@ -538,6 +543,6 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
         </div>
       </div>
     </div>,
-    document.body,
+    document.querySelector('.hub-root') ?? document.body,
   );
 }
