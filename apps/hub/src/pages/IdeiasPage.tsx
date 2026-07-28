@@ -431,7 +431,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
     >
       <div className="hub-bg-card rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <div className="flex items-center justify-between">
