@@ -976,6 +976,166 @@ Deno.test("data-import: undo still deletes an unpublished post with no surviving
   assertEquals(body.deleted, 1);
 });
 
+// --- published-post guard: post_media / post_file_links cascades -----------
+// task-9 gap #1: post_media.post_id (20260411_post_media.sql:11) and
+// post_file_links.post_id (20260425000001_file_system_tables.sql:74) are both
+// ON DELETE CASCADE from workflow_posts, import_commit_row never writes
+// either, and both hold the actual media a user attached to an imported post
+// after the fact — the exact "attach a cover image, then undo" scenario the
+// wizard's own copy promises to protect against. Unlike post_property_values,
+// both tables carry their own conta_id.
+
+Deno.test("data-import: undo keeps an unpublished post that still has a post_media row", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflow_posts", row_id: "31", source_row_key: "p1", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [], error: null }); // not published
+  db.queue("post_property_values", "select", { data: [], error: null });
+  // the user attached media to the post after the import landed it.
+  db.queue("post_media", "select", { data: [{ post_id: 31 }], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_status_events", "select", { data: [], error: null });
+  db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedPublished, ["31"]);
+  assertEquals(body.deleted, 0);
+  assertEquals(callsFor(db, "workflow_posts", "delete").length, 0);
+  const probe = oneCall(db, "post_media", "select");
+  assertModifier(probe, "in", ["post_id", [31]]);
+  // post_media carries its own conta_id — unlike post_property_values, the
+  // scope filter belongs here.
+  assertModifier(probe, "eq", ["conta_id", "conta-1"]);
+});
+
+Deno.test("data-import: undo keeps an unpublished post that still has a post_file_links row", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflow_posts", row_id: "31", source_row_key: "p1", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("post_media", "select", { data: [], error: null });
+  // the user attached a file (image/video) to the post after the import.
+  db.queue("post_file_links", "select", { data: [{ post_id: 31 }], error: null });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_status_events", "select", { data: [], error: null });
+  db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedPublished, ["31"]);
+  assertEquals(body.deleted, 0);
+  assertEquals(callsFor(db, "workflow_posts", "delete").length, 0);
+  const probe = oneCall(db, "post_file_links", "select");
+  assertModifier(probe, "in", ["post_id", [31]]);
+  assertModifier(probe, "eq", ["conta_id", "conta-1"]);
+});
+
+// --- published-post guard: post_approvals / post_status_events cascades ----
+// Found in the task-9 systematic sweep (not previously reported OR deferred):
+// post_approvals.post_id (20260402_workflow_posts.sql:60) is "per-post client
+// feedback" — the exact post-level sibling of portal_approvals below — and
+// post_status_events.post_id (20260606000001_post_status_events.sql:12) is an
+// append-only status-transition audit trail. import_commit_row only ever
+// INSERTs a workflow_posts row, never UPDATEs its status, so neither table
+// can hold anything the import itself produced.
+
+Deno.test("data-import: undo keeps an unpublished post that still has a post_approvals row", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflow_posts", row_id: "31", source_row_key: "p1", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("post_media", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  // the client left an approval/comment on the post's own share link.
+  db.queue("post_approvals", "select", { data: [{ post_id: 31 }], error: null });
+  db.queue("post_status_events", "select", { data: [], error: null });
+  db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedPublished, ["31"]);
+  assertEquals(body.deleted, 0);
+  assertEquals(callsFor(db, "workflow_posts", "delete").length, 0);
+  const probe = oneCall(db, "post_approvals", "select");
+  assertModifier(probe, "in", ["post_id", [31]]);
+  // post_approvals has no tenant column of its own.
+  assert(
+    !probe.modifiers.some((m) => m.method === "eq"),
+    `post_approvals has no tenant column — got ${JSON.stringify(probe.modifiers)}`,
+  );
+});
+
+Deno.test("data-import: undo keeps an unpublished post that still has a post_status_events row", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflow_posts", row_id: "31", source_row_key: "p1", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("post_media", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  // the post's status was changed by a real user after the import, leaving a
+  // captured transition row behind.
+  db.queue("post_status_events", "select", { data: [{ post_id: 31 }], error: null });
+  db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedPublished, ["31"]);
+  assertEquals(body.deleted, 0);
+  assertEquals(callsFor(db, "workflow_posts", "delete").length, 0);
+  const probe = oneCall(db, "post_status_events", "select");
+  assertModifier(probe, "in", ["post_id", [31]]);
+  assertModifier(probe, "eq", ["conta_id", "conta-1"]);
+});
+
+Deno.test("data-import: undo still deletes an unpublished post with no surviving cascade-child rows at all", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflow_posts", row_id: "31", source_row_key: "p1", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("post_media", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_status_events", "select", { data: [], error: null });
+  db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null });
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedPublished, []);
+  assertEquals(body.deleted, 1);
+});
+
 // --- workflow container guard: workflow_select_options / portal_tokens ------
 // Reported gap #1 from the previous review round: guardContainerWorkflows only
 // probed workflow_posts. workflow_select_options.workflow_id
@@ -1029,6 +1189,78 @@ Deno.test("data-import: undo keeps a workflow that still has a surviving portal_
   const probe = oneCall(db, "portal_tokens", "select");
   assertModifier(probe, "in", ["workflow_id", [9]]);
   assertModifier(probe, "eq", ["conta_id", "conta-1"]);
+});
+
+// --- workflow container guard: transitive portal_approvals cascade ---------
+// task-9 gap #2: workflow_etapas has no conta_id column and is correctly never
+// deleted directly (it cascades from workflows automatically), but the
+// previous comment's claim that it "holds no data of its own... worth
+// protecting" was false: portal_approvals.workflow_etapa_id is itself
+// ON DELETE CASCADE from workflow_etapas (20260325_portal_approvals.sql:9) and
+// stores the client's real approval action + comment from the portal.
+// Deleting the workflow cascades workflows -> workflow_etapas ->
+// portal_approvals, destroying that feedback silently. This is a two-hop
+// probe (guardWorkflowEtapaApprovals): find the workflow's surviving etapas,
+// then check those etapa ids for a surviving portal_approvals row.
+
+Deno.test("data-import: undo keeps a workflow whose etapa still has a surviving portal_approvals row", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflows", row_id: "9", source_row_key: "container:1:0", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+  db.queue("portal_tokens", "select", { data: [], error: null });
+  // workflow 9's etapa 77 is still standing...
+  db.queue("workflow_etapas", "select", { data: [{ id: 77, workflow_id: 9 }], error: null });
+  // ...and the client left a real approval/comment against it via the portal.
+  db.queue("portal_approvals", "select", { data: [{ workflow_etapa_id: 77 }], error: null });
+  db.queue("workflows", "delete", { data: [{ id: 9 }], error: null }); // must go unused
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedWorkflows, ["9"]);
+  assertEquals(body.deleted, 0);
+  assertEquals(callsFor(db, "workflows", "delete").length, 0);
+  const etapaProbe = oneCall(db, "workflow_etapas", "select");
+  assertModifier(etapaProbe, "in", ["workflow_id", [9]]);
+  // workflow_etapas has no conta_id — same trap as its exclusion from UNDO_ORDER.
+  assert(
+    !etapaProbe.modifiers.some((m) => m.method === "eq"),
+    `workflow_etapas has no tenant column — got ${JSON.stringify(etapaProbe.modifiers)}`,
+  );
+  const approvalProbe = oneCall(db, "portal_approvals", "select");
+  assertModifier(approvalProbe, "in", ["workflow_etapa_id", [77]]);
+  assert(
+    !approvalProbe.modifiers.some((m) => m.method === "eq"),
+    `portal_approvals has no tenant column — got ${JSON.stringify(approvalProbe.modifiers)}`,
+  );
+});
+
+Deno.test("data-import: undo still deletes a workflow whose surviving etapa has no portal_approvals row", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflows", row_id: "9", source_row_key: "container:1:0", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+  db.queue("portal_tokens", "select", { data: [], error: null });
+  db.queue("workflow_etapas", "select", { data: [{ id: 77, workflow_id: 9 }], error: null });
+  db.queue("portal_approvals", "select", { data: [], error: null });
+  db.queue("workflows", "delete", { data: [{ id: 9 }], error: null });
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedWorkflows, []);
+  assertEquals(body.deleted, 1);
 });
 
 Deno.test("data-import: undo still deletes a workflow with no surviving posts, select options, or portal tokens", async () => {

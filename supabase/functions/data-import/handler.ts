@@ -34,7 +34,10 @@ interface ActionCtx {
 // tenant-scoped transitively through workflow_id), so a .eq("conta_id", ...)
 // delete against it raises `column "conta_id" does not exist` and aborts the
 // whole undo. It needs no explicit delete anyway — workflow_etapas.workflow_id
-// is ON DELETE CASCADE from workflows (20260301_baseline_schema.sql:159).
+// is ON DELETE CASCADE from workflows (20260301_baseline_schema.sql:160).
+// It DOES need protecting, though: portal_approvals cascades from IT in turn
+// and holds real client data — see guardWorkflowEtapaApprovals below and the
+// comment on WORKFLOW_CASCADE_CHILDREN.
 const UNDO_ORDER = ["workflow_posts", "workflows", "workflow_templates", "ideias", "clientes"];
 const BATCH_LIMIT = 200;
 // preview is a pure counting pass over the WHOLE parsed file (commit is what gets
@@ -94,32 +97,67 @@ async function auditQuietly(...args: Parameters<typeof insertAuditLog>): Promise
  * column, same {table, column, scopeCol} shape as CLIENTE_CASCADE_CHILDREN
  * below.
  *
- * post_property_values is the only entry today: import_commit_row never
- * inserts into it (custom field values are set through the post's own
- * card UI, the same way template_property_definitions is never written by
- * the import — see TEMPLATE_REFERENCING_TABLES below), so a surviving row
- * means the user recorded data against THIS post after the import landed
- * it. Deleting the post would cascade that data away with no error and no
- * mention in skippedPublished.
+ * post_property_values: import_commit_row never inserts into it (custom
+ * field values are set through the post's own card UI, the same way
+ * template_property_definitions is never written by the import — see
+ * TEMPLATE_REFERENCING_TABLES below), so a surviving row means the user
+ * recorded data against THIS post after the import landed it.
+ *
+ * post_media / post_file_links (task-9 gap #1): both hold the actual
+ * uploaded cover image / video attached to the post after import — exactly
+ * the "open the imported post and attach media" flow the wizard's own undo
+ * copy promises to protect. import_commit_row never writes either table.
+ * NOTE the schema differs from what was reported when this gap was filed:
+ * post_media's *current* definition is 20260411_post_media.sql:11 (the
+ * 20260409_instagram_scheduling.sql:22 version was DROPPED and replaced by
+ * that migration, see its line 8), and — unlike the original report — it
+ * DOES carry its own conta_id (20260411_post_media.sql:12), so it is scoped
+ * like post_file_links, not like post_property_values.
+ *
+ * post_approvals / post_status_events (found in the task-9 sweep, not
+ * previously reported or deferred): post_approvals is "per-post client
+ * feedback" (20260402_workflow_posts.sql:58) — the exact post-level sibling
+ * of portal_approvals below, and import_commit_row never writes it either.
+ * post_status_events (20260606000001_post_status_events.sql:12) is an
+ * append-only audit trail (status transitions + actor + the approval that
+ * triggered them) captured by an AFTER UPDATE OF status trigger — import only
+ * ever INSERTs a post (20260727000001_data_import_jobs.sql:418), never
+ * UPDATEs its status, so the trigger cannot have fired for anything the
+ * import itself did; any row here is a real status change made after import.
  *
  * Verified against the migrations on 2026-07-27:
- *   post_property_values  post_id  (none)  20260403_custom_properties.sql:27
+ *   post_property_values  post_id  (none)      20260403_custom_properties.sql:27
+ *   post_media            post_id  conta_id    20260411_post_media.sql:11-12
+ *   post_file_links        post_id  conta_id    20260425000001_file_system_tables.sql:74,76
+ *   post_approvals         post_id  (none)      20260402_workflow_posts.sql:60
+ *   post_status_events     post_id  conta_id    20260606000001_post_status_events.sql:12-13
  *
- * workflow_posts(id) also cascades ON DELETE to post_edit_suggestions,
- * post_media, post_designs, the instagram_scheduling queue row, and
- * post_comment_threads (all `REFERENCES workflow_posts(id) ON DELETE
- * CASCADE`) — none of those are probed here. This round's scope (review
- * round 6) was the reported gaps only; the remaining workflow_posts children
- * are a known follow-up, not a silent omission — see the task-9 report.
+ * workflow_posts(id) also cascades ON DELETE to post_edit_suggestions
+ * (20260521000001_post_edit_suggestions.sql:8) and post_comment_threads
+ * (20260423_post_comment_threads.sql:4) — both hold real user-authored data
+ * (client-suggested edits; inline comment threads) and neither is probed
+ * here. That is a known, intentional gap carried forward from the previous
+ * review round (round 6), not a silent omission — see the task-9 report.
+ * The previous round's comment here also listed "post_designs" and "the
+ * instagram_scheduling queue row" as unprobed cascade children; post_designs
+ * (20260702000001_post_designs.sql) was dropped outright by
+ * 20260705000001_designs_first_class.sql:25 and no longer exists, and no
+ * separate "instagram_scheduling queue" table was ever found — both were
+ * stale/inaccurate and have been removed from this list rather than carried
+ * forward.
  *
  * !!! ANY future table added with `REFERENCES workflow_posts(id) ON DELETE
  * CASCADE` that can hold user-authored data belongs in this list — the same
  * discipline as CLIENTE_CASCADE_CHILDREN, and a missing entry fails exactly
  * as silently. Re-derive with:
- *   grep -rn "REFERENCES workflow_posts(id)" supabase/migrations/
+ *   grep -rni "references workflow_posts(id)" supabase/migrations/
  */
 const PUBLISHED_POST_CASCADE_CHILDREN: Array<{ table: string; column: string; scopeCol: string | null }> = [
   { table: "post_property_values", column: "post_id", scopeCol: null },
+  { table: "post_media", column: "post_id", scopeCol: "conta_id" },
+  { table: "post_file_links", column: "post_id", scopeCol: "conta_id" },
+  { table: "post_approvals", column: "post_id", scopeCol: null },
+  { table: "post_status_events", column: "post_id", scopeCol: "conta_id" },
 ];
 
 /**
@@ -186,11 +224,34 @@ async function guardPublishedPosts(db: DbClient, conta_id: string, ids: string[]
  * CLIENTE_CASCADE_CHILDREN, and a missing entry fails exactly as silently:
  * undo deletes the workflow, Postgres cascades away rows this import never
  * created, and nothing appears in skippedWorkflows. Re-derive with:
- *   grep -rn "REFERENCES workflows(id) ON DELETE CASCADE" supabase/migrations/
- * (workflow_etapas also cascades from workflows but is excluded — see the
- * UNDO_ORDER note at the top of this file: it has no conta_id column, and it
- * holds no data of its own beyond the workflow's own stage config, so there
- * is nothing on it worth protecting.)
+ *   grep -rni "references workflows(id)" supabase/migrations/
+ *
+ * workflow_etapas ALSO cascades from workflows and is deliberately excluded
+ * from this list (and, per the UNDO_ORDER note at the top of this file, from
+ * UNDO_ORDER itself: it has no conta_id column). A previous version of this
+ * comment claimed that was safe because workflow_etapas "holds no data of its
+ * own beyond the workflow's own stage config, so there is nothing on it worth
+ * protecting" — that claim was FALSE (task-9 finding, gap #2):
+ * portal_approvals.workflow_etapa_id is itself `ON DELETE CASCADE` from
+ * workflow_etapas (20260325_portal_approvals.sql:9) and stores the client's
+ * real approval action + comment from the portal. import_commit_row writes
+ * neither workflow_etapas (etapas come from the template's stage config) nor
+ * portal_approvals (a client action recorded after the fact), so a surviving
+ * approval is exactly the same class of hazard as anything in this list —
+ * just one hop further down the cascade: workflows -> workflow_etapas ->
+ * portal_approvals, both links CASCADE.
+ *
+ * That transitive hop doesn't fit THIS list's shape: every entry here is
+ * probed with `.in(column, workflowIds)` directly against the workflow id,
+ * but portal_approvals has no workflow_id column of its own to filter on.
+ * Rather than force it in with a wrong column, or query a nonexistent
+ * embedded-resource join the shared test mock (test/shared/supabaseMock.ts)
+ * can't express, it gets its own chained step —
+ * guardWorkflowEtapaApprovals below — that mirrors this list's per-entry
+ * probe shape one level down: fetch the surviving workflow_etapas for these
+ * workflow ids, then probe portal_approvals against THOSE ids, then map
+ * survivors back to their workflow_id. guardContainerWorkflows merges its
+ * result into the same `keep` set as this list.
  */
 const WORKFLOW_CASCADE_CHILDREN: Array<{ table: string; column: string; scopeCol: string | null }> = [
   { table: "workflow_posts", column: "workflow_id", scopeCol: "conta_id" },
@@ -199,8 +260,59 @@ const WORKFLOW_CASCADE_CHILDREN: Array<{ table: string; column: string; scopeCol
 ];
 
 /**
+ * Transitive step for the workflows pass: workflows -> workflow_etapas ->
+ * portal_approvals, both hops `ON DELETE CASCADE`. See the comment on
+ * WORKFLOW_CASCADE_CHILDREN above for why this can't be one more entry in
+ * that flat list.
+ *
+ * Verified against the migrations on 2026-07-27:
+ *   workflow_etapas   workflow_id        (none)  20260301_baseline_schema.sql:160
+ *   portal_approvals  workflow_etapa_id  (none)  20260325_portal_approvals.sql:9
+ *
+ * Neither table has a tenant column of its own (both are scoped transitively
+ * through workflows), so — same trap as workflow_etapas' exclusion from
+ * UNDO_ORDER — no `.eq(scopeCol, ...)` is applied to either probe; a scope
+ * filter on a column that does not exist aborts the whole undo. The workflow
+ * ids being probed are already conta-scoped (they come from the same
+ * conta-scoped import_job_items read every other guard uses), so this is
+ * defence in depth, not the isolation boundary.
+ *
+ * Returns the workflow ids to KEEP: any workflow with a still-living etapa
+ * that itself has a still-living portal_approvals row.
+ */
+async function guardWorkflowEtapaApprovals(db: DbClient, ids: string[]): Promise<string[]> {
+  const keep = new Set<string>();
+  for (const part of chunked(ids)) {
+    const numericPart = part.map(Number);
+    const { data: etapas, error: etapaErr } = await db
+      .from("workflow_etapas")
+      .select("id, workflow_id")
+      .in("workflow_id", numericPart);
+    if (etapaErr) throw etapaErr;
+    const etapaRows = (etapas ?? []) as Array<{ id: number; workflow_id: number }>;
+    if (etapaRows.length === 0) continue;
+    const workflowByEtapa = new Map<number, number>();
+    for (const e of etapaRows) workflowByEtapa.set(e.id, e.workflow_id);
+    const etapaIds = etapaRows.map((e) => e.id);
+    for (const etapaPart of chunked(etapaIds.map(String))) {
+      const { data: approvals, error: apprErr } = await db
+        .from("portal_approvals")
+        .select("workflow_etapa_id")
+        .in("workflow_etapa_id", etapaPart.map(Number));
+      if (apprErr) throw apprErr;
+      for (const a of (approvals ?? []) as Array<{ workflow_etapa_id: number }>) {
+        const wf = workflowByEtapa.get(a.workflow_etapa_id);
+        if (wf != null) keep.add(String(wf));
+      }
+    }
+  }
+  return [...keep];
+}
+
+/**
  * workflows pass. Returns the ids to KEEP: any workflow still referenced by a
- * surviving row in ANY table in WORKFLOW_CASCADE_CHILDREN.
+ * surviving row in ANY table in WORKFLOW_CASCADE_CHILDREN, plus any workflow
+ * whose etapa still has a surviving portal_approvals row (guardWorkflowEtapaApprovals).
  *
  * Runs after the workflow_posts pass has already issued its deletes for this
  * undo, so a plain query against the current table state is enough — the
@@ -223,6 +335,7 @@ async function guardContainerWorkflows(db: DbClient, conta_id: string, ids: stri
       }
     }
   }
+  for (const wf of await guardWorkflowEtapaApprovals(db, ids)) keep.add(wf);
   return [...keep];
 }
 
