@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -224,6 +225,17 @@ export default function WorkspaceTab() {
           </p>
         </div>
       )}
+
+      {/* Import Wizard */}
+      <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+        <h3 className="config-title">Importar dados</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+          Traga clientes, posts, entregas e ideias de Notion, Trello, ClickUp ou planilhas.
+        </p>
+        <Link to="/importar" className="btn-secondary">
+          Abrir assistente de importação
+        </Link>
+      </div>
 
       {/* Remove Logo Confirm */}
       <AlertDialog open={removeLogoOpen} onOpenChange={setRemoveLogoOpen}>
