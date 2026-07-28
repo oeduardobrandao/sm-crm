@@ -483,6 +483,91 @@ describe('live revocation handler', () => {
   });
 
   it(
+    'purges financial caches when a grant is immediately followed by a revoke ' +
+      'with no render in between them (the ref-lag race: applyMembership must ' +
+      'assign canSeeFinancialsRef synchronously itself, because the passive ' +
+      'mirror effect that otherwise copies canSeeFinancials into the ref only ' +
+      'runs after React commits, and two applyMembership calls batched into the ' +
+      'same commit never give it that chance)',
+    async () => {
+      mockedSupabase.__resetSupabaseMock();
+      mockedSupabase.__setCurrentUser({ id: 'user-41' });
+      mockedSupabase.__setCurrentProfile({
+        id: 'user-41',
+        nome: 'Admin Instável',
+        role: 'admin',
+        conta_id: 'conta-41',
+      });
+      mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-41' } } });
+      mockGetContaId.mockResolvedValue('conta-41');
+      // Hydration: admin currently restricted, so the ref starts at `false`
+      // and has already been flushed by the mirror effect (we wait for it
+      // below) before the race is set up.
+      mockMaybeSingle.mockResolvedValue({
+        data: { role: 'admin', can_see_financials: false },
+        error: null,
+      });
+
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      for (const key of FINANCIAL_QUERY_KEYS) {
+        queryClient.setQueryData([key], ['masked-value']);
+      }
+
+      renderWithAuth(queryClient);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
+      });
+
+      const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+      // Both postgres_changes payloads are delivered synchronously by the
+      // mock (see __emitWorkspaceMemberUpdate), so calling them back to back
+      // inside a single, NON-async act() callback — no `await` between them —
+      // keeps both applyMembership invocations in the same JS tick. React 18
+      // automatic batching then folds the two setCanSeeFinancials calls into
+      // one commit, so the passive `useEffect(() => { canSeeFinancialsRef
+      // .current = canSeeFinancials }, [canSeeFinancials])` mirror runs only
+      // once, AFTER both applyMembership calls already executed — it cannot
+      // run between them. That is the exact shape of the race: grant
+      // (false -> true) then revoke (true -> false) before any render/flush.
+      act(() => {
+        mockedSupabase.__emitWorkspaceMemberUpdate({
+          workspace_id: 'conta-41',
+          role: 'admin',
+          can_see_financials: true, // grant
+        });
+        mockedSupabase.__emitWorkspaceMemberUpdate({
+          workspace_id: 'conta-41',
+          role: 'admin',
+          can_see_financials: false, // revoke, same tick, right behind the grant
+        });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
+      });
+
+      // The revoke must still purge outright, even though it landed in the
+      // same batch as the grant right before it. Against the pre-fix code
+      // (guard reads the passive-mirror ref instead of one applyMembership
+      // assigns itself) both calls compare against the SAME stale `false`
+      // ref, so the revoke's `false !== false` looks like a no-op and this
+      // assertion fails — removeQueries is never called and the grant's
+      // invalidate+refetch is left free to repopulate the cache with
+      // authorised rows after access was already revoked.
+      for (const key of FINANCIAL_QUERY_KEYS) {
+        expect(queryClient.getQueryData([key])).toBeUndefined();
+        expect(removeSpy).toHaveBeenCalledWith({ queryKey: [key] });
+      }
+
+      removeSpy.mockRestore();
+      invalidateSpy.mockRestore();
+    },
+  );
+
+  it(
     "invalidates and refetches financial caches on an 'unknown' -> true UPDATE " +
       '(the ordinary first-resolution path for an authorised admin, mirroring the ' +
       "'unknown' -> false grant-denial race above)",
