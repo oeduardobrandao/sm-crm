@@ -776,7 +776,44 @@ git commit -m "feat(crm): add formatFinancialBRL and FinancialAccess type"
 
 **Interfaces:**
 - Consumes: `FinancialAccess` from Task 3
-- Produces: `getMyMembership(): Promise<{ role: 'owner'|'admin'|'agent'; can_see_financials: boolean } | null>` from `@/store/workspace`; `useAuth()` gains `workspaceRole: 'owner'|'admin'|'agent'|null` and `canSeeFinancials: FinancialAccess`.
+- Produces: `getMyMembership(): Promise<MyMembership | null>` from `@/store/workspace`; `deriveFinancialAccess(membership: MyMembership | null): FinancialAccess` from `@/lib/financialAccess`; `useAuth()` gains `workspaceRole: 'owner'|'admin'|'agent'|null` and `canSeeFinancials: FinancialAccess`.
+
+### The capability is DERIVED, not read
+
+`can_see_financials` is a **column, not the answer.** It is meaningful only for admins. Assigning it straight through — `setCanSeeFinancials(membership.can_see_financials)` — is wrong in both directions and both are user-visible:
+
+- an **agent** carries the column's `true` default, so the client would grant access while the database denies every read: nav appears, the route renders, and then each query fails;
+- an **owner** with the flag set `false` would be shown the restriction screen although the database grants access.
+
+The client must apply the same `CASE` the SQL predicate applies. Put it in `apps/crm/src/lib/financialAccess.ts` so exactly one implementation exists and Task 11's revocation handler reuses it rather than re-deriving:
+
+```ts
+import type { MyMembership } from '@/store/workspace';
+
+/**
+ * Mirror of the SQL predicate `public.can_see_financials()`. Keep the two in
+ * step: this is the only place the role semantics are encoded client-side.
+ *
+ * `can_see_financials` on the row is meaningful for admins ONLY. Owners always
+ * see financials; agents never do, whatever the column says.
+ */
+export function deriveFinancialAccess(
+  membership: MyMembership | null,
+): FinancialAccess {
+  if (!membership) return 'unknown';
+  switch (membership.role) {
+    case 'owner':
+      return true;
+    case 'admin':
+      return membership.can_see_financials;
+    default:
+      // Agents, and any role added later: deny rather than fall through.
+      return false;
+  }
+}
+```
+
+Its tests are the frontend mirror of the SQL truth table the spec asks for — owner true regardless of the flag, agent false regardless, admin follows the flag, no membership `'unknown'`, and an unrecognised role false.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -944,7 +981,9 @@ In the profile effect, add the membership fetch immediately after the existing
           const membership = await getMyMembership();
           if (!active || profileRequestId.current !== requestId) return;
           setWorkspaceRole(membership?.role ?? null);
-          setCanSeeFinancials(membership ? membership.can_see_financials : 'unknown');
+          // deriveFinancialAccess, NEVER membership.can_see_financials directly
+          // — see "The capability is DERIVED, not read" above.
+          setCanSeeFinancials(deriveFinancialAccess(membership));
         } catch {
           if (!active || profileRequestId.current !== requestId) return;
           setWorkspaceRole(null);
@@ -2102,8 +2141,9 @@ Add an effect keyed on `[userId, profile?.conta_id]`:
       if (!next) return;
       const wasAllowed = canSeeFinancialsRef.current === true;
       setWorkspaceRole((next.role as 'owner' | 'admin' | 'agent') ?? null);
-      const nowAllowed =
-        next.role === 'owner' ? true : next.role === 'admin' ? !!next.can_see_financials : false;
+      // Same derivation as hydration — never re-implement the role semantics
+      // here. Two copies drift; this bug already shipped once.
+      const nowAllowed = deriveFinancialAccess(next as MyMembership);
       setCanSeeFinancials(nowAllowed);
 
       if (wasAllowed && !nowAllowed) {
