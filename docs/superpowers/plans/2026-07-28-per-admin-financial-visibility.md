@@ -22,6 +22,17 @@
 - **Wrap the predicate as `(SELECT public.can_see_financials())`** in policies so it hoists to an InitPlan instead of evaluating per row.
 - **CI gates:** `npm run lint`, `npm run format:check`, `npm run build`, `npm run test` must all pass before pushing. Run `npm run format` to auto-fix.
 - **New SQL suites must be numbered.** `scripts/test-entitlements.sh` globs `[0-9]*.sql` under `supabase/tests/entitlements/` only. The `50_`/`51_`/`52_` names here run under the existing glob; a differently-named file would be silently skipped. (Three unnumbered suites elsewhere in `supabase/tests/` are never executed — out of scope, tracked in the spec's Known Gaps.)
+- **PL/pgSQL assertions must be NULL-safe, or they silently cannot fail.** A zero-row `SELECT … INTO` leaves every target variable NULL, `NULL <> 1` evaluates to NULL, and PL/pgSQL treats a NULL `IF` condition as **false** — so the guard never fires. Verified live:
+
+  ```
+  v_rows=<NULL>   if v_rows <> 1            -> GUARD DID NOT FIRE (vacuous)
+                  if coalesce(v_rows,0) <> 1 -> fired (correct)
+  ```
+
+  This bit `51_financial_views.sql` in exactly the case it existed to catch: "the view masked the column but did not hide the row". Use `coalesce(x, <sentinel>) <> y` or `x IS DISTINCT FROM y` for every comparison against a variable that a zero-row query could leave NULL. `is not true` / `is not false` / `is not null` are already NULL-strict and are fine.
+
+- **Every masking assertion needs a positive counterpart in the same suite.** "Restricted caller reads NULL" is also what a broken `WHERE`, a hidden row, or a hard-coded `NULL` projection produce. Without an authorized read of the same column proving it returns the real value, the pair does not distinguish masking from breakage.
+
 - **Test fixtures must use `et_make_workspace('max')`, never `'start'`.** The `start` and `free` plans set `max_team_members = 1` and the `trg_limit_seats` trigger (`20260611130003`) enforces it, so a fixture seeding an owner + admin + agent into one workspace aborts with `plan_limit_exceeded:max_team_members` during setup — before it reaches the behaviour under test. `max` has `max_team_members = NULL` (unlimited).
 
 ### Local vs hosted table ACLs — call `et_grant_hosted_parity()` in any suite that impersonates `authenticated`
