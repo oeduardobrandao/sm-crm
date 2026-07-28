@@ -5,6 +5,7 @@
 // resolution, the status/date clamp, commit ordering) is unit-tested in
 // __tests__/buildCommitRows.test.ts.
 import {
+  isIsoCalendarValid,
   POST_STATUS_TARGETS,
   toTipTapDoc,
   type CollectionMapping,
@@ -114,6 +115,17 @@ function parseValor(raw: string): number | undefined {
  * way to tell a real date from a normalized one; a mismatch means the cell was
  * never a valid date, so it takes the same path as any other garbage input
  * (null — the caller treats a dateless row as unscheduled).
+ *
+ * The same normalization hazard applies to the ISO fallback below — `new
+ * Date('2026-02-31')` is `2026-03-03T00:00:00.000Z` just the same, since ISO
+ * is what every parser emits for first-class dates and so is the common case,
+ * not a rare edge. That path defers to the shared `isIsoCalendarValid` (see
+ * packages/import-parsers/src/dates.ts) instead of repeating the dd/mm/yyyy
+ * branch's round-trip-through-getters trick above: getters need UTC vs. local
+ * picked per string shape (date-only is parsed as UTC midnight, a bare
+ * date-time with no offset is parsed as local time), and picking the wrong
+ * one for the shape is its own bug. The shared helper instead validates the
+ * written digits directly and never touches `Date` for the check.
  */
 function parseDate(raw: string): string | null {
   const value = raw.trim();
@@ -134,6 +146,7 @@ function parseDate(raw: string): string | null {
     }
     return d.toISOString();
   }
+  if (!isIsoCalendarValid(value)) return null;
   const ms = Date.parse(value);
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }

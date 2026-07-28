@@ -1,11 +1,21 @@
 import { parseCsv } from './csv';
 import { buildColumnNames } from './columns';
+import { isIsoCalendarValid } from './dates';
 import type { ImportCollection, ImportRow } from './types';
 
 function toIso(v: string): string | null {
-  if (!v.trim()) return null;
-  const n = Number(v);
-  const d = Number.isFinite(n) && v.trim().length >= 12 ? new Date(n) : new Date(v);
+  const value = v.trim();
+  if (!value) return null;
+  const n = Number(value);
+  if (Number.isFinite(n) && value.length >= 12) {
+    const d = new Date(n);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  // String branch: reject a calendar-invalid ISO date ("2026-02-31") instead
+  // of letting `Date` normalize it into a real-but-unwritten day. See
+  // ./dates.ts for why the check doesn't use `Date` getters.
+  if (!isIsoCalendarValid(value)) return null;
+  const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 

@@ -54,6 +54,44 @@ describe('parseClickupCsv', () => {
     expect(result.rows[0].dueDate).toBeNull();
   });
 
+  // `new Date('2026-02-31')` silently normalizes to 2026-03-03 instead of
+  // failing -- an invalid Due Date cell must not become a real, wrong
+  // deadline. Same hazard, same fix as apps/crm's buildCommitRows.ts.
+  test.each(['2026-02-31', '2026-04-31', '2026-02-29'])(
+    'a Due Date holding the calendar-invalid ISO date %s yields null',
+    (due) => {
+      const csv = ['Task ID,Due Date', `1,${due}`].join('\n');
+      const result = parseClickupCsv('calendar-invalid.csv', csv);
+      expect(result.rows[0].dueDate).toBeNull();
+    },
+  );
+
+  test('a Due Date holding a real leap day (2028-02-29) parses to a valid ISO timestamp', () => {
+    const csv = ['Task ID,Due Date', '1,2028-02-29'].join('\n');
+    const result = parseClickupCsv('leap-day.csv', csv);
+    expect(result.rows[0].dueDate).toBe(new Date('2028-02-29').toISOString());
+  });
+
+  test('a Due Date holding a valid full ISO timestamp parses through', () => {
+    const csv = ['Task ID,Due Date', '1,2026-08-03T12:00:00Z'].join('\n');
+    const result = parseClickupCsv('full-timestamp.csv', csv);
+    expect(result.rows[0].dueDate).toBe(new Date('2026-08-03T12:00:00Z').toISOString());
+  });
+
+  test('a Due Date holding a calendar-invalid full ISO timestamp yields null', () => {
+    const csv = ['Task ID,Due Date', '1,2026-02-31T12:00:00Z'].join('\n');
+    const result = parseClickupCsv('bad-full-timestamp.csv', csv);
+    expect(result.rows[0].dueDate).toBeNull();
+  });
+
+  test('a Due Date holding epoch milliseconds still parses unchanged (not routed through calendar validation)', () => {
+    // 13-digit epoch ms for 2026-08-03T00:00:00.000Z; must NOT be treated as
+    // ISO-shaped text (it isn't) and must still resolve via `new Date(n)`.
+    const csv = ['Task ID,Due Date', '1,1785715200000'].join('\n');
+    const result = parseClickupCsv('epoch.csv', csv);
+    expect(result.rows[0].dueDate).toBe(new Date(1785715200000).toISOString());
+  });
+
   test('a CSV with no Task ID column falls back to fileName:n keys', () => {
     const csv = ['Status,Due Date,Task Content', 'aprovado,,Texto 1', 'aprovado,,Texto 2'].join(
       '\n',

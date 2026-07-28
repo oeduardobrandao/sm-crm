@@ -558,6 +558,52 @@ describe('posts', () => {
       expect(d.getDate()).toBe(29);
     });
   });
+
+  // The ISO fallback (every parser's first-class date shape) has the exact
+  // same `Date` normalization hazard as dd/mm/yyyy above: `new
+  // Date('2026-02-31')` silently becomes 2026-03-03.
+  describe('ISO calendar validation', () => {
+    function postFor(data: string): CommitPostRow {
+      const bundle = mkBundle(
+        mkCollection('cal', {
+          columns: ['Nome', 'Data'],
+          rows: [mkRow('p1', { cells: { Nome: 'x', Data: data } })],
+        }),
+      );
+      const proposal = mkProposal(
+        mkMapping('cal', 'posts', {
+          columnRoles: { title: 'Nome', date: 'Data' },
+          clientAssignment: { mode: 'fixed', clienteNome: 'Ana' },
+        }),
+      );
+      return byKind<CommitPostRow>(buildCommitRows(bundle, proposal, [ANA], null), 'post')[0];
+    }
+
+    test.each(['2026-02-31', '2026-04-31', '2026-02-29'])(
+      'rejects the calendar-invalid ISO date %s instead of shifting it',
+      (data) => {
+        expect(postFor(data).scheduledAt).toBeNull();
+      },
+    );
+
+    test('accepts a real leap day (2028-02-29)', () => {
+      const scheduledAt = postFor('2028-02-29').scheduledAt;
+      expect(scheduledAt).not.toBeNull();
+      const d = new Date(scheduledAt!);
+      expect(d.getUTCFullYear()).toBe(2028);
+      expect(d.getUTCMonth()).toBe(1); // February
+      expect(d.getUTCDate()).toBe(29);
+    });
+
+    test('accepts a valid full ISO timestamp', () => {
+      const scheduledAt = postFor('2026-08-03T12:00:00Z').scheduledAt;
+      expect(scheduledAt).toBe(new Date('2026-08-03T12:00:00Z').toISOString());
+    });
+
+    test('rejects a calendar-invalid full ISO timestamp instead of shifting it', () => {
+      expect(postFor('2026-02-31T12:00:00Z').scheduledAt).toBeNull();
+    });
+  });
 });
 
 // --- entregas ---------------------------------------------------------------
