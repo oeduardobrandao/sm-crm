@@ -120,10 +120,6 @@ CREATE OR REPLACE VIEW public.clientes_v WITH (security_barrier = true) AS
 -- this view hits permission denied on can_see_financials() given its REVOKE.
 -- Edge functions must keep reading base tables, where their grants are
 -- untouched. Do NOT "fix" this by granting EXECUTE to service_role.
---
--- NOT granted to service_role: trusted callers have no auth.uid(), so they
--- would get masked values and zero rows. Edge functions read base tables
--- directly, where their grants are untouched.
 REVOKE ALL ON public.membros_v  FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON public.clientes_v FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT ON public.membros_v  TO authenticated;
@@ -192,6 +188,18 @@ BEGIN
     END IF;
     IF acl LIKE '%anon=%' THEN
       RAISE EXCEPTION '%: anon retains privilege — acl=%', v, acl;
+    END IF;
+    -- "Nothing may be granted to service_role" is a binding constraint, not an
+    -- oversight (see the comment above the REVOKE), so it gets the same
+    -- post-condition weight as authenticated/anon.
+    IF acl LIKE '%service_role=%' THEN
+      RAISE EXCEPTION '%: service_role retains privilege — acl=%', v, acl;
+    END IF;
+    -- A PUBLIC grant renders as a grantee-less aclitem (`=X/postgres`), not
+    -- `anon=X` — textually distinct from the checks above, same as the
+    -- function-ACL block a few lines up. Check both string positions.
+    IF acl LIKE '=%' OR acl LIKE '%,=%' THEN
+      RAISE EXCEPTION '%: PUBLIC retains privilege — acl=%', v, acl;
     END IF;
   END LOOP;
 END $$;

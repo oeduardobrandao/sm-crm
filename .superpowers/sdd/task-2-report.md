@@ -206,3 +206,152 @@ DONE. `ran=14 failures=0`. Deliberate pre-reset failing run confirmed the exact 
 Post-reset run and direct `relacl` inspection both confirm `authenticated` has SELECT-only on
 `membros_v`/`clientes_v`, `anon`/`service_role`/`PUBLIC` have nothing, and the views' owner (bypass
 of base-table RLS) is closed off by the explicit `WHERE conta_id = get_my_conta_id()` on each view.
+
+## Fix pass
+
+External review of this task found the production SQL (the two views themselves) sound, but flagged
+defects in the test suite and in the migration's post-condition. Applied all five findings.
+
+### Finding 1 (CRITICAL) — vacuous assertion in the row-hidden guard
+
+`51_financial_views.sql`'s restricted-admin block did
+`select custo_mensal, count(*) over () into v_val, v_rows ... if v_rows <> 1 then`. A zero-row
+`SELECT INTO` leaves both variables NULL; `NULL <> 1` is NULL, and PL/pgSQL's `IF` treats a NULL
+condition as false — so if the view ever hid the row instead of masking the column (the exact
+regression this assertion exists to catch), the guard never fired and the suite stayed green.
+
+Fix: `if coalesce(v_rows, 0) <> 1 then` on both the `membros_v` and (new) `clientes_v` restricted
+reads. Audited every other comparison in the file: the `IS DISTINCT FROM` / `IS NOT NULL` checks
+were already NULL-strict (left untouched per the brief), and the two `select count(*) into
+v_rows ... if v_rows <> 0` checks (tenant-isolation, stale-pointer) use a bare aggregate with no
+window function and no GROUP BY, which always returns exactly one row — those can never see NULL
+and needed no change.
+
+**Verified the fix actually bites** (see "Deliberate-break verification" below): temporarily
+rewrote `membros_v` to `AND public.can_see_financials()` in its WHERE clause (hides the row instead
+of masking the column) and reran the suite — it failed with
+`restricted admin must still SEE the member row, got <NULL> rows`, exactly the case Finding 1
+describes. Reverted via `db reset`; suite is green again.
+
+### Finding 2 (IMPORTANT) — `clientes_v` masking tested one-sided
+
+Only assertion was "restricted admin gets NULL" — indistinguishable from a zero-row result, a
+broken WHERE, or a hard-coded `NULL AS valor_mensal`. Added an authorized read of
+`clientes_v.valor_mensal` (asserting the real seeded value `3000`) placed *before* the
+`can_see_financials` flag flips, mirroring the existing `membros_v` authorized-then-restricted
+structure. Also mirrored the restricted-read row-count guard (Finding 1's coalesce pattern) for
+`clientes_v`, so the same row-hidden failure mode is covered for both views, not just `membros_v`.
+
+### Finding 3 (IMPORTANT) — write-denial assertions don't prove the enumerated REVOKE
+
+Locally the default ACL never grants `authenticated` `arwd` on a fresh view, so the write-denial
+`INSERT`/`UPDATE` cases would still pass even if the migration's REVOKE were reduced to
+`FROM PUBLIC` alone — they were not proof of the grant surface. Added a direct `relacl` assertion
+inside `51_financial_views.sql` for both views (loop over `membros_v`/`clientes_v`, read
+`pg_class.relacl`, fail unless `authenticated` holds `r` only and `anon`/`service_role`/PUBLIC hold
+nothing), with a comment explaining that the write-denial cases below remain useful behavioural
+checks but do not by themselves prove the enumerated revoke. No source comment in this file or the
+migration claimed the write-denial cases were proof, so nothing needed correcting there; the
+existing write-denial cases were kept as-is.
+
+### Finding 4 (IMPORTANT) — migration's view ACL post-condition ignored service_role and PUBLIC
+
+The second `DO $$` post-condition block in the migration checked only `authenticated` and `anon`.
+Extended it to also fail on a `service_role=` aclitem and on a PUBLIC aclitem (leading `=` or `,=`
+in the `array_to_string` output), mirroring the pattern already used ~40 lines above in the
+function-ACL post-condition block for `can_see_financials()`.
+
+### Finding 5 (MINOR) — contradictory comment
+
+Deleted the second, incorrect "NOT granted to service_role: ... would get masked values and zero
+rows" paragraph (service_role calling through the view actually hits `permission denied` on
+`can_see_financials()`, not masked/zero-row results). Kept the first, correct paragraph explaining
+the EXECUTE-checked-against-current-user reasoning.
+
+### Verification
+
+Baseline (post-fix, clean reset):
+
+```
+$ npx supabase db reset
+... Applying migration 20260728000001_financial_visibility_a_additive.sql...
+NOTICE (00000): added workspace_members to supabase_realtime
+... Finished supabase db reset on branch main.
+{"target":"local","version":"","message":"Reset local database."}
+
+$ ./scripts/test-entitlements.sh
+PASS supabase/tests/entitlements/01_effective_plan_limit.sql
+PASS supabase/tests/entitlements/02_clientes_limit.sql
+PASS supabase/tests/entitlements/03_workspace_scoped.sql
+PASS supabase/tests/entitlements/04_sub_entity.sql
+PASS supabase/tests/entitlements/05_more_count_limits.sql
+PASS supabase/tests/entitlements/06_downgrade_keep_existing.sql
+PASS supabase/tests/entitlements/10_effective_plan_feature.sql
+PASS supabase/tests/entitlements/11_feature_triggers.sql
+PASS supabase/tests/entitlements/20_storage_rpcs.sql
+PASS supabase/tests/entitlements/30_hub_token_touch.sql
+PASS supabase/tests/entitlements/31_hub_token_rotate_extend.sql
+PASS supabase/tests/entitlements/40_cliente_tables_tenant_isolation.sql
+PASS supabase/tests/entitlements/50_can_see_financials.sql
+PASS supabase/tests/entitlements/51_financial_views.sql
+----------------------------------------
+ran=14  failures=0
+```
+
+Deliberate-break verification (proves Finding 1's fix is not vacuous):
+
+```
+$ psql "$SUPABASE_DB_URL" -c "
+CREATE OR REPLACE VIEW public.membros_v WITH (security_barrier = true) AS
+  SELECT m.id, m.user_id, m.conta_id, m.nome, m.cargo, m.tipo,
+         m.avatar_url, m.data_pagamento, m.created_at, m.crm_user_id,
+         CASE WHEN public.can_see_financials()
+              THEN m.custo_mensal ELSE NULL END AS custo_mensal
+  FROM public.membros m
+  WHERE m.conta_id = public.get_my_conta_id()
+    AND public.can_see_financials();   -- deliberately HIDES the row instead of masking the column
+"
+CREATE VIEW
+
+$ ./scripts/test-entitlements.sh
+...
+PASS supabase/tests/entitlements/50_can_see_financials.sql
+FAIL supabase/tests/entitlements/51_financial_views.sql
+    CREATE FUNCTION
+    CREATE FUNCTION
+    BEGIN
+    psql:.../51_financial_views.sql:177: ERROR:  restricted admin must still SEE the member row, got <NULL> rows
+    CONTEXT:  PL/pgSQL function inline_code_block line 68 at RAISE
+----------------------------------------
+ran=14  failures=1
+```
+
+Reverted the break and confirmed green again:
+
+```
+$ npx supabase db reset
+... Finished supabase db reset on branch main.
+{"target":"local","version":"","message":"Reset local database."}
+
+$ ./scripts/test-entitlements.sh
+...
+PASS supabase/tests/entitlements/51_financial_views.sql
+----------------------------------------
+ran=14  failures=0
+```
+
+### Files changed
+
+- `supabase/tests/entitlements/51_financial_views.sql` — coalesce-guarded row-count checks
+  (Finding 1), authorized `clientes_v` read + mirrored restricted-read row-count guard (Finding 2),
+  direct `relacl` assertions for both views (Finding 3).
+- `supabase/migrations/20260728000001_financial_visibility_a_additive.sql` — view-ACL post-condition
+  extended to check `service_role` and PUBLIC (Finding 4), contradictory comment paragraph removed
+  (Finding 5).
+- `.superpowers/sdd/task-2-report.md` (this section).
+
+### Status
+
+DONE. `ran=14 failures=0` after the fix, and again after reverting the deliberate-break run. The
+deliberate break reproduced the exact NULL-guard failure Finding 1 describes, confirming the
+coalesce fix is not itself vacuous.

@@ -12,6 +12,8 @@ declare
   v_val   numeric;
   v_rows  bigint;
   v_ok    boolean;
+  v_acl   text;
+  v_view  text;
 begin
   v_ws_a := et_make_workspace('max');
   v_ws_b := et_make_workspace('max');
@@ -30,7 +32,7 @@ begin
   insert into clientes (user_id, conta_id, nome, sigla, cor, valor_mensal)
     values (v_owner, v_ws_a, 'Cliente A', 'CA', '#000', 3000);
 
-  -- authorized admin sees the real values
+  -- authorized admin sees the real membros_v value
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
   set local role authenticated;
@@ -40,31 +42,87 @@ begin
     raise exception 'authorized admin should read custo_mensal=5000, got %', v_val;
   end if;
 
+  -- authorized admin sees the real clientes_v value (done before the flag
+  -- flips below, so this exercises the un-masked CASE branch — the one-sided
+  -- "restricted -> NULL" check further down cannot tell a real mask from a
+  -- hard-coded `NULL AS valor_mensal` or a broken predicate; this can)
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  select valor_mensal into v_val from public.clientes_v where nome = 'Cliente A';
+  reset role;
+  if v_val is distinct from 3000 then
+    raise exception 'authorized admin should read valor_mensal=3000, got %', v_val;
+  end if;
+
   -- restricted admin sees NULL, but still sees the ROW
   update workspace_members set can_see_financials = false
    where user_id = v_admin and workspace_id = v_ws_a;
+
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
   set local role authenticated;
   select custo_mensal, count(*) over () into v_val, v_rows
     from public.membros_v where nome = 'Fulano';
   reset role;
-  if v_rows <> 1 then
+  -- A zero-row SELECT INTO leaves BOTH v_val and v_rows NULL, and
+  -- `NULL <> 1` evaluates to NULL — which PL/pgSQL's IF treats as false, so an
+  -- unguarded `if v_rows <> 1` never fires in exactly the case (the view
+  -- hiding the row instead of masking the column) it exists to catch.
+  -- coalesce() forces the zero-row case to a value the <> can actually catch.
+  if coalesce(v_rows, 0) <> 1 then
     raise exception 'restricted admin must still SEE the member row, got % rows', v_rows;
   end if;
   if v_val is not null then
     raise exception 'restricted admin should read custo_mensal=NULL, got %', v_val;
   end if;
 
-  -- clientes_v masks the same way
+  -- clientes_v masks the same way, and the restricted read still proves the
+  -- row is visible (not hidden) via the same coalesce()'d row-count guard
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  select valor_mensal into v_val from public.clientes_v where nome = 'Cliente A';
+  select valor_mensal, count(*) over () into v_val, v_rows
+    from public.clientes_v where nome = 'Cliente A';
   reset role;
+  if coalesce(v_rows, 0) <> 1 then
+    raise exception 'restricted admin must still SEE the client row, got % rows', v_rows;
+  end if;
   if v_val is not null then
     raise exception 'restricted admin should read valor_mensal=NULL, got %', v_val;
   end if;
+
+  -- Direct ACL assertions: this is what actually proves the migration's
+  -- enumerated `REVOKE ... FROM PUBLIC, anon, authenticated, service_role` is
+  -- necessary. Locally the default ACL on a freshly created view never grants
+  -- `authenticated` INSERT/UPDATE in the first place, so the write-denial
+  -- cases further below would still pass even if that REVOKE were reduced to
+  -- `FROM PUBLIC` alone — they remain useful behavioural checks, but reading
+  -- relacl directly is the only thing that proves the grant surface itself.
+  foreach v_view in array array['membros_v', 'clientes_v'] loop
+    select array_to_string(c.relacl, ',') into v_acl
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = v_view;
+
+    if v_acl is null or v_acl !~ 'authenticated=r/' then
+      raise exception '%: authenticated lacks SELECT — acl=%', v_view, v_acl;
+    end if;
+    -- 'a' = INSERT, 'w' = UPDATE, 'd' = DELETE.
+    if v_acl ~ 'authenticated=[rwad]*[awd]' then
+      raise exception '%: authenticated retains write privilege — acl=%', v_view, v_acl;
+    end if;
+    if v_acl like '%anon=%' then
+      raise exception '%: anon retains privilege — acl=%', v_view, v_acl;
+    end if;
+    if v_acl like '%service_role=%' then
+      raise exception '%: service_role retains privilege — acl=%', v_view, v_acl;
+    end if;
+    -- PUBLIC renders as a grantee-less aclitem (`=X/postgres`): first in the
+    -- string with no leading comma, or after another entry with one.
+    if v_acl like '=%' or v_acl like '%,=%' then
+      raise exception '%: PUBLIC retains privilege — acl=%', v_view, v_acl;
+    end if;
+  end loop;
 
   -- tenant isolation: workspace B's member is invisible through the view
   perform set_config('request.jwt.claims',
