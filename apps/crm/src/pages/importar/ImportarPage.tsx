@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   proposeMapping,
@@ -34,6 +34,43 @@ import StepCommit from './components/StepCommit';
 /** Server cap per commit request (handler.ts BATCH_LIMIT). */
 const BATCH_SIZE = 200;
 
+/**
+ * Query keys that read data an import (or its undo) can create/delete rows in.
+ * The global `staleTime` (30s, App.tsx's QueryClient) means any of these caches
+ * can still be "fresh" right after a commit, so without an explicit
+ * invalidation here the pages below would render the pre-import snapshot until
+ * the cache naturally expires.
+ *
+ * Scoped to what `buildCommitRows` actually emits — not a blanket
+ * `invalidateQueries()` with no key, which would refetch every query in the
+ * app on every commit/undo:
+ *   - cliente        -> clientes table          -> ['clientes']            (ClientesPage, ClienteDetalhePage, dashboard, financeiro, contratos, ideias, entregas, analytics-fluxos, ...)
+ *   - container       -> workflows table         -> ['workflows']           (CalendarioPage, DashboardPage, useEntregasData, AnalyticsFluxosPage, ConcludedView)
+ *   - entrega         -> workflows table         -> ['workflows']           (same table as containers -- see data-import migration 20260727000001, `when 'entrega' then 'workflows'`)
+ *   - template        -> workflow_templates table -> ['workflow-templates'] (useEntregasData, AnalyticsFluxosPage)
+ *   - post            -> workflow_posts table    -> ['scheduled-posts']    (Entregas Calendar "publicações" mode reads posts workspace-wide by date range; per-workflow/per-client keys like workflow-posts-with-props or clientePosts are parameterized by an id that did not exist before the import, so there is no stale cache entry for them to begin with)
+ *   - ideia           -> ideias table            -> ['hub-ideias-all']     (IdeiasPage's global list)
+ *
+ * Per-workflow/per-client aggregate counts (workflow-posts-counts and its
+ * siblings) are DERIVED from the `['workflows']` query inside useEntregasData
+ * (keyed on the active workflow ids) -- invalidating `['workflows']` changes
+ * that derived key once it refetches, which is what makes those counts fresh
+ * again without needing their own explicit invalidation here.
+ */
+const IMPORT_AFFECTED_QUERY_KEYS: QueryKey[] = [
+  ['clientes'],
+  ['workflows'],
+  ['workflow-templates'],
+  ['hub-ideias-all'],
+  ['scheduled-posts'],
+];
+
+function invalidateImportedData(queryClient: QueryClient) {
+  for (const queryKey of IMPORT_AFFECTED_QUERY_KEYS) {
+    void queryClient.invalidateQueries({ queryKey });
+  }
+}
+
 type Step = 'origem' | 'upload' | 'mapeamento' | 'previa' | 'commit';
 
 const STEP_TITLES: [Step, string][] = [
@@ -45,6 +82,7 @@ const STEP_TITLES: [Step, string][] = [
 ];
 
 export default function ImportarPage() {
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>('origem');
   const [source, setSource] = useState<SourceKind | null>(null);
   const [bundle, setBundle] = useState<ImportBundle | null>(null);
@@ -233,6 +271,13 @@ export default function ImportarPage() {
       setResults(acc);
       const failed = acc.filter((r) => r.failed).length;
       if (failed === 0) toast.success('Importação concluída.');
+      // A retried/idempotent batch can come back with every row `skipped`
+      // (already committed by an earlier attempt) or `failed` (plan-limit
+      // refusal) — neither actually changed the database, so invalidating
+      // caches on THAT run would just be a wasted refetch. Only a row that
+      // landed this call (`skipped: false, failed: false`) means something new
+      // is now in a table one of IMPORT_AFFECTED_QUERY_KEYS reads.
+      if (acc.some((r) => !r.skipped && !r.failed)) invalidateImportedData(queryClient);
     } catch (err) {
       setCommitError(friendlyImportError(err));
     }
@@ -247,7 +292,12 @@ export default function ImportarPage() {
     if (jobId == null) return;
     setUndoing(true);
     try {
-      setUndoResult(await undoImport(jobId));
+      const result = await undoImport(jobId);
+      setUndoResult(result);
+      // `deleted` is the count of rows undo actually removed; a job with
+      // nothing committed (or one where every row was already undone) leaves
+      // every cache above genuinely unchanged.
+      if (result.deleted > 0) invalidateImportedData(queryClient);
     } catch (err) {
       toast.error(friendlyImportError(err));
     } finally {

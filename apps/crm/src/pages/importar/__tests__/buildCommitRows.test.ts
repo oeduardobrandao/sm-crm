@@ -661,6 +661,60 @@ describe('entregas', () => {
     expect(byKind<CommitTemplateRow>(rows, 'template')[0].etapas).toEqual(['Importado']);
     expect(byKind<CommitEntregaRow>(rows, 'entrega')[0].etapaIndex).toBe(0);
   });
+
+  // A blank client column drops every row via resolveRef (same as posts/ideias
+  // collections). Before this fix, the template was pushed unconditionally
+  // BEFORE that loop ran, so a collection like this still committed an empty
+  // workflow template no entrega ever referenced -- burning a
+  // max_workflow_templates slot for nothing while the preview correctly showed
+  // every source row as ignored.
+  test('an entregas collection whose client column is entirely blank produces no template and no entregas', () => {
+    const bundle = mkBundle(
+      mkCollection('board', {
+        columns: ['Nome', 'Cliente'],
+        listNames: ['A'],
+        rows: [
+          mkRow('c1', { cells: { Nome: 'Card 1', Cliente: '' }, listName: 'A' }),
+          mkRow('c2', { cells: { Nome: 'Card 2', Cliente: '  ' }, listName: 'A' }),
+        ],
+      }),
+    );
+    const proposal = mkProposal(
+      mkMapping('board', 'entregas', { clientAssignment: { mode: 'column', column: 'Cliente' } }),
+    );
+
+    const rows = buildCommitRows(bundle, proposal, [ANA], null);
+
+    expect(rows).toEqual([]);
+  });
+
+  test('an entregas collection with at least one resolvable client still produces exactly one template, ordered before its entregas', () => {
+    const bundle = mkBundle(
+      mkCollection('board', {
+        columns: ['Nome', 'Cliente'],
+        listNames: ['A'],
+        rows: [
+          mkRow('c1', { cells: { Nome: 'Card 1', Cliente: '' }, listName: 'A' }),
+          mkRow('c2', { cells: { Nome: 'Card 2', Cliente: 'Ana' }, listName: 'A' }),
+        ],
+      }),
+    );
+    const proposal = mkProposal(
+      mkMapping('board', 'entregas', { clientAssignment: { mode: 'column', column: 'Cliente' } }),
+    );
+
+    const rows = buildCommitRows(bundle, proposal, [ANA], null);
+
+    const templates = byKind<CommitTemplateRow>(rows, 'template');
+    const entregas = byKind<CommitEntregaRow>(rows, 'entrega');
+    expect(templates).toHaveLength(1);
+    // Only the resolvable row ('c1' was dropped, blank client).
+    expect(entregas.map((e) => e.sourceKey)).toEqual(['c2']);
+    expect(entregas[0].templateKey).toBe(templates[0].sourceKey);
+
+    const keys = rows.map((r) => r.sourceKey);
+    expect(keys.indexOf(templates[0].sourceKey)).toBeLessThan(keys.indexOf(entregas[0].sourceKey));
+  });
 });
 
 // --- ideias -----------------------------------------------------------------

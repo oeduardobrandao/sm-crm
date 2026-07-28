@@ -352,17 +352,19 @@ export function buildCommitRows(
       const etapas = collection.listNames.length ? collection.listNames : ['Importado'];
       const templateKey = `template:${collection.id}`;
       const label = SOURCE_LABELS[collection.source] ?? collection.source;
-      templateRows.push({
-        kind: 'template',
-        sourceKey: templateKey,
-        nome: `Importado do ${label} — ${collection.name}`,
-        etapas,
-      });
+      // Build every resolvable entrega BEFORE deciding whether to emit the
+      // template: a collection whose client column is blank (or unmatched) on
+      // every row drops every row here via resolveRef, and a template with
+      // zero entregas is not a partial import, it is a bare workflow template
+      // the user never asked for — one that still counts against
+      // max_workflow_templates. Only commit the template once at least one row
+      // survives resolution.
+      const entregaRows: CommitEntregaRow[] = [];
       for (const row of collection.rows) {
         const ref = resolveRef(rowClientName(row, mapping));
         if (!ref) continue;
         const idx = row.listName ? etapas.indexOf(row.listName) : -1;
-        const entrega: CommitEntregaRow = {
+        entregaRows.push({
           kind: 'entrega',
           sourceKey: row.key,
           templateKey,
@@ -371,8 +373,16 @@ export function buildCommitRows(
           etapaIndex: idx >= 0 ? idx : 0,
           dueDate: row.dueDate ?? parseDate(cell(row, mapping.columnRoles.date)),
           provenance: provenanceOf(collection, row),
-        };
-        rest.push(entrega);
+        });
+      }
+      if (entregaRows.length > 0) {
+        templateRows.push({
+          kind: 'template',
+          sourceKey: templateKey,
+          nome: `Importado do ${label} — ${collection.name}`,
+          etapas,
+        });
+        rest.push(...entregaRows);
       }
       continue;
     }

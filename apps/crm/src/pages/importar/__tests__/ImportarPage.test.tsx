@@ -125,8 +125,9 @@ function calendarCollection(): ImportCollection {
   };
 }
 
-function renderPage() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderPage(
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
@@ -140,8 +141,8 @@ const okResults = (rows: CommitRow[]) =>
   rows.map((r) => ({ sourceKey: r.sourceKey, table: 'x', rowId: '1', skipped: false }));
 
 /** Drives origem -> upload -> mapeamento (stops before the prévia click). */
-async function advanceToMapping() {
-  renderPage();
+async function advanceToMapping(queryClient?: QueryClient) {
+  renderPage(queryClient);
   fireEvent.click(await screen.findByRole('button', { name: 'Planilha (CSV)' }));
   fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
 
@@ -154,8 +155,8 @@ async function advanceToMapping() {
 }
 
 /** Drives origem -> upload -> mapeamento -> prévia. */
-async function advanceToPreview() {
-  await advanceToMapping();
+async function advanceToPreview(queryClient?: QueryClient) {
+  await advanceToMapping(queryClient);
   fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
   await screen.findByText('Prévia da importação');
 }
@@ -229,6 +230,51 @@ describe('ImportarPage', () => {
     const committed = [...firstRows, ...secondRows];
     expect(committed.filter((r) => r.kind === 'container')).toHaveLength(3);
     expect(committed.filter((r) => r.kind === 'post')).toHaveLength(POST_COUNT);
+  });
+
+  // The global QueryClient staleTime (30s, App.tsx) means ['clientes'] and the
+  // other pages this wizard can affect stay "fresh" — i.e. NOT refetched —
+  // right after a commit unless something explicitly invalidates them. Without
+  // that invalidation, navigating straight to /clientes (or Entregas, or
+  // Ideias) after an import renders the pre-import snapshot.
+  const IMPORT_AFFECTED_KEYS = [
+    ['clientes'],
+    ['workflows'],
+    ['workflow-templates'],
+    ['hub-ideias-all'],
+    ['scheduled-posts'],
+  ];
+
+  test('invalidates the CRM caches an import can affect after a commit that creates rows', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+
+    await advanceToPreview(qc);
+    fireEvent.click(screen.getByRole('button', { name: /Importar/ }));
+    await screen.findByText('Importação concluída');
+
+    for (const queryKey of IMPORT_AFFECTED_KEYS) {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey });
+    }
+  });
+
+  test('does not invalidate anything when a commit run creates no rows', async () => {
+    // Every row comes back `skipped: true` -- as import_commit_row does on a
+    // retried batch that was already fully committed by an earlier attempt.
+    // Nothing landed this call, so refetching the caches above would just be
+    // wasted work, not a correctness fix.
+    mockedCommit.mockImplementation(async (_job, rows) => ({
+      results: rows.map((r) => ({ sourceKey: r.sourceKey, table: 'x', rowId: '1', skipped: true })),
+    }));
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+
+    await advanceToPreview(qc);
+    fireEvent.click(screen.getByRole('button', { name: /Importar/ }));
+    await screen.findByText('Importação concluída');
+
+    expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
   test('reports a plan-limit failure in words the user can act on', async () => {
@@ -383,6 +429,54 @@ describe('ImportarPage', () => {
     expect(screen.getByText(/2 posts mantidos/)).toBeInTheDocument();
     expect(screen.getByText(/1 cliente mantido/)).toBeInTheDocument();
     expect(screen.queryByText(/modelos de fluxo mantidos/)).not.toBeInTheDocument();
+  });
+
+  test('invalidates the CRM caches an import can affect after an undo that deletes rows', async () => {
+    mockedUndo.mockResolvedValue({
+      deleted: 250,
+      skippedPublished: [],
+      skippedWorkflows: [],
+      skippedTemplates: [],
+      skippedClientes: [],
+    });
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await advanceToPreview(qc);
+    fireEvent.click(screen.getByRole('button', { name: /Importar/ }));
+    await screen.findByText('Importação concluída');
+
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    fireEvent.click(screen.getByRole('button', { name: 'Desfazer importação' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar e desfazer' }));
+    await screen.findByText('250 registros removidos.');
+
+    for (const queryKey of IMPORT_AFFECTED_KEYS) {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey });
+    }
+  });
+
+  test('does not invalidate anything when an undo deletes nothing', async () => {
+    // `deleted: 0` -- e.g. every row in the job was already undone by a prior,
+    // interrupted attempt (import_commit_row/undo is resumable).
+    mockedUndo.mockResolvedValue({
+      deleted: 0,
+      skippedPublished: [],
+      skippedWorkflows: [],
+      skippedTemplates: [],
+      skippedClientes: [],
+    });
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await advanceToPreview(qc);
+    fireEvent.click(screen.getByRole('button', { name: /Importar/ }));
+    await screen.findByText('Importação concluída');
+
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    fireEvent.click(screen.getByRole('button', { name: 'Desfazer importação' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar e desfazer' }));
+    await screen.findByText('0 registros removidos.');
+
+    expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
   test('shows the upgrade nudge instead of the wizard when the plan lacks the feature', async () => {
