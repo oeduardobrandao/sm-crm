@@ -1,8 +1,15 @@
 # Per-admin financial visibility
 
-**Date:** 2026-07-27
+**Date:** 2026-07-27 (last revised 2026-07-28)
 **Status:** Approved design, ready for implementation planning
 **Branch:** `claude/mises-access-levels-c956a8`
+
+Load-bearing claims in this document were re-verified against source on
+2026-07-28 — policy names and shapes, `get_my_conta_id()`'s current definition,
+the read/embed inventory, `get_client_health_aggregates()`'s column set, and
+production's migration state. Where a line reference is cited it was checked, not
+remembered. Anything not re-checkable from the repo is marked as needing
+verification at implementation time rather than asserted.
 
 ## Problem
 
@@ -77,7 +84,8 @@ Meaningful only for admins; the predicate ignores it for owners and agents.
 
 ```sql
 CREATE OR REPLACE FUNCTION public.can_see_financials()
-RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp AS $$
   SELECT CASE wm.role
     WHEN 'owner' THEN true
     WHEN 'admin' THEN wm.can_see_financials
@@ -100,6 +108,22 @@ Properties:
 - Unknown future roles fall to `false`, not through to `true`.
 - No membership returns `NULL`, which fails closed in an RLS `USING` clause.
 - `UNIQUE(user_id, workspace_id)` on `workspace_members` guarantees a scalar.
+- **Every relation is schema-qualified, and `pg_temp` is named last.** Both are
+  required, and this deliberately departs from the repo's existing convention —
+  see Known Gap 7. If `pg_temp` is not listed in a function's `search_path`,
+  PostgreSQL searches the session's temporary schema *first* for relation names,
+  so a caller able to execute `CREATE TEMP TABLE workspace_members (…)` could
+  shadow the real table and dictate this function's answer. Naming `pg_temp`
+  explicitly at the end moves it to last place; qualifying `public.workspace_members`
+  makes the point moot for this body. Both, because the belt and the braces cost
+  nothing.
+
+**The flag is readable by co-members.** `wm_select_same_workspace` lets every
+member of a workspace — agents included — read every other member's
+`workspace_members` row, so an agent can observe which admins are restricted.
+This is accepted, not overlooked: it is metadata about a permission, not
+financial data, and the CRM already exposes each member's role to everyone in the
+workspace. Recorded so it is a decision rather than a later surprise.
 
 ### ~~Membership helper~~ — DO NOT BUILD
 
@@ -142,36 +166,44 @@ DROP POLICY IF EXISTS "transacoes_select" ON transacoes;
 CREATE POLICY "transacoes_select" ON transacoes
   FOR SELECT USING (
     conta_id IN (SELECT public.get_my_conta_id())
-    AND public.can_see_financials()
+    AND (SELECT public.can_see_financials())
   );
 
 DROP POLICY IF EXISTS "transacoes_insert" ON transacoes;
 CREATE POLICY "transacoes_insert" ON transacoes
   FOR INSERT WITH CHECK (
     conta_id IN (SELECT public.get_my_conta_id())
-    AND public.can_see_financials()
+    AND (SELECT public.can_see_financials())
   );
 
 DROP POLICY IF EXISTS "transacoes_update" ON transacoes;
 CREATE POLICY "transacoes_update" ON transacoes
   FOR UPDATE USING (
     conta_id IN (SELECT public.get_my_conta_id())
-    AND public.can_see_financials()
+    AND (SELECT public.can_see_financials())
   ) WITH CHECK (
     conta_id IN (SELECT public.get_my_conta_id())
-    AND public.can_see_financials()
+    AND (SELECT public.can_see_financials())
   );
 
 DROP POLICY IF EXISTS "transacoes_delete" ON transacoes;
 CREATE POLICY "transacoes_delete" ON transacoes
   FOR DELETE USING (
     conta_id IN (SELECT public.get_my_conta_id())
-    AND public.can_see_financials()
+    AND (SELECT public.can_see_financials())
   );
 ```
 
 `contratos` receives the identical four. `SELECT` RLS alone would leave INSERT
 open, letting a restricted admin post entries they cannot read.
+
+**The `(SELECT …)` wrapper around the capability call is deliberate.** A bare
+`STABLE` function reference in a policy can be evaluated per row; wrapped as a
+scalar sub-select it is hoisted to an InitPlan and evaluated once per query.
+The tenant conjunct already uses that idiom — `transacoes` is the largest table
+here, and the capability answer is identical for every row by construction. The
+existing `20260404` agent predicate is unwrapped, so this corrects the precedent
+rather than following it.
 
 The pgTAP matrix includes a cross-tenant case on every one of these eight
 policies specifically to catch a regression where the tenant conjunct is
@@ -221,6 +253,31 @@ must be regenerated rather than edited if either table changes. The
 implementation plan should regenerate and diff them immediately before writing
 Migration B, since any column added between now and then would otherwise vanish
 from the CRM.
+
+#### Silent dependants of the allowlist
+
+Three categories of existing SQL read `clientes`/`membros` under the *caller's*
+column privileges and therefore break the moment a column they touch falls
+outside the allowlist. All three survive Migration B today, but only by
+coincidence of which columns they happen to read — nothing pins that, so each
+gets a pgTAP assertion (see Testing) rather than a comment.
+
+1. **Other tables' RLS policies.** Ten tables carry policy expressions with a
+   sub-select on `clientes`: `instagram_accounts`, `instagram_posts`,
+   `instagram_follower_history`, `instagram_analytics_cache`,
+   `instagram_post_tag_assignments`, `hub_brand`, `hub_brand_files` and the three
+   `tiktok_*` tables. Policy expressions run with the querying user's privileges,
+   so a revoked column referenced in one of them would fail every query against
+   the *dependent* table, not against `clientes`. Verified: across all of them
+   the referenced columns are `id`, `conta_id` and `status` — all allowlisted.
+2. **`get_client_health_aggregates(int)`** (`20260625130000`) — the repo's one
+   `SECURITY INVOKER` function reading `clientes`, granted to `authenticated`.
+   Its body reads `id`, `nome`, `sigla`, `cor`, `status`, `conta_id`: all
+   allowlisted.
+3. **PostgREST embedded selects** (see Query inventory).
+
+A future allowlist regeneration that drops any of `id`, `conta_id`, `status`,
+`nome`, `sigla`, `cor` takes all three down with it.
 
 #### Original blocker (retained for context)
 
@@ -344,6 +401,15 @@ Rejects only an INSERT carrying a non-null financial value, or an UPDATE where
 anonymous requests. Only named trusted roles bypass. `auth.role()` has working
 precedent in this repo (`20260526000000`, `20260718000001`).
 
+**The `current_user` bypass is wider than it reads.** A `SECURITY DEFINER`
+function owned by `postgres` executes with `current_user = 'postgres'`, so every
+such function is exempt from these guards — not only direct superuser sessions.
+That is acceptable today: the only SECURITY DEFINER path writing these tables is
+`set_membro_crm_user`, which touches `crm_user_id` alone. It is stated here so a
+future SECURITY DEFINER write path does not silently inherit a bypass nobody
+chose. Any new one that can write a financial column must call
+`can_see_financials()` itself.
+
 ## Enforcement — client
 
 `AuthContext` fetches the caller's `workspace_members` row for the active
@@ -356,11 +422,15 @@ canSeeFinancials: boolean | 'unknown';               // never a bare optimistic 
 
 `role` remains profile-based for now.
 
-**Hydration contract.** `AuthContext` currently clears `loading` after the
-profile request alone (`AuthContext.tsx:96-140`). The membership request must
-join that same guarded flow: it participates in `loading`, reuses the
-`profileRequestId` generation guard keyed to the active workspace, and on error
-resolves to `'unknown'` — never to a boolean. A bare boolean is unsafe in both
+**Hydration contract.** `AuthContext` sets `loading` true at
+`AuthContext.tsx:108`, fetches the profile, `await`s `initStoreRole()` at `:126`,
+and clears `loading` in the `finally` at `:133` — all under one
+`profileRequestId` generation guard. The membership request joins that same
+flow: it participates in `loading`, reuses the generation guard keyed to the
+active workspace, and on error resolves to `'unknown'` — never to a boolean.
+The existing `initStoreRole()` await is a ready-made sibling, so this is adding a
+second call to a sequence that already exists rather than restructuring the
+hydration. A bare boolean is unsafe in both
 directions: defaulting `true` briefly exposes restricted cached values,
 defaulting `false` renders restriction UI at owners. Consumers treat `'unknown'`
 as "not yet decided" and render neither financial values nor the restriction
@@ -394,9 +464,11 @@ insufficient. The Membros **route, query and member-management actions** move to
 ### Route guard
 
 The two branches live in **different components**, because they need different
-outcomes. `ProtectedRoute` wraps `AppLayout` (`App.tsx:119-121`), so anything it
+outcomes. `ProtectedRoute` wraps `AppLayout` (`App.tsx:141-147`), so anything it
 returns replaces the entire application shell — acceptable for a redirect,
-wrong for a restriction screen that should keep sidebar and nav.
+wrong for a restriction screen that should keep sidebar and nav. The agent
+redirect and its blocked-path set live in
+`components/layout/ProtectedRoute.tsx:8,39-41`, not in `App.tsx`.
 
 `ProtectedRoute` — agents only, unchanged behaviour, redirect:
 
@@ -451,7 +523,11 @@ were loosened, that payload would silently zero the retainer.
 
 The same defect exists on the member side: `EquipePage.tsx:174` sends
 `custo_mensal: values.custo ? Number(values.custo) : null` and
-`MembroDetalhePage.tsx:107` always includes it from form state.
+`MembroDetalhePage.tsx:119` always includes it from form state.
+
+There is a third client-side site, in the CSV path: `ClientesPage.tsx:271` sends
+`valor_mensal: row.valor_mensal ? Number(row.valor_mensal) : 0` per imported row
+(the form paths are `:214` and `:227`).
 
 For restricted callers:
 
@@ -467,6 +543,23 @@ admin believed they were importing, and leaves no signal that the records are
 incomplete. Whole-file rejection rather than per-row skipping, so a partially
 imported file never needs reconciling. *(Product decision — reversible if you
 prefer silent stripping.)*
+
+**"Fails as a whole" is a claim about *when* the check runs.** Both importers
+loop `addCliente` / `addMembro` one row at a time
+(`ClientesPage.tsx:258`, `EquipePage.tsx:212`) with no transaction around the
+loop, so a check that fires on the offending *row* would leave every preceding
+row committed — the partial import this rule exists to prevent. The column check
+must therefore run **on the parsed header, before the first insert**, and abort
+without writing anything. This is a requirement on the implementation, not a
+property that falls out of the trigger.
+
+**Cross-initiative: the planned `data-import` edge function bypasses all of
+this.** The competitor-migration wizard on its own branch (see
+`2026-07-27-data-import-migration` spec) writes via service role, which bypasses
+column grants, RLS *and* the write-guard triggers. Every protection in this
+design is client- and database-side; a service-role import path must enforce the
+capability itself, in its own code. Flagged here so the two initiatives do not
+each assume the other covers it.
 
 ### Live revocation
 
@@ -538,7 +631,7 @@ Client-side reads to move to views:
 |---|---|
 | `store/team.ts:16` `getMembros` | `select('*')` |
 | `store/clients.ts:52` `getClientes` | `select('*')` |
-| `services/analytics.ts:239` `getPortfolioSummary` | `select('*')` must change to survive the grant — but see note below |
+| `services/analytics.ts:236-239` `getPortfolioSummary` | `select('*')` must change to survive the grant — but see note below |
 | `ClienteDetalhePage.tsx:2467,2480` | reads only — the update stays on the base table |
 | `store/workflows.ts:456` | |
 | `GlobalSearchTrigger.tsx:50-56` | gate rather than migrate |
@@ -559,7 +652,27 @@ authorized caller needing the new value re-fetches through the view):
   this, a restricted admin's otherwise-valid NULL-valued insert fails and rolls
   back, so client creation breaks entirely rather than degrading.
 
-The ~13 `from('clientes')` sites in `supabase/functions/` are service-role and
+**Embedded selects are a second read surface, and the grep for them is
+different.** A PostgREST embed such as `workflows!inner(…, clientes!inner(nome))`
+never mentions `from('clientes')` — it resolves against the base table under the
+caller's column privileges all the same. Six exist today:
+
+| Site | Embed |
+|---|---|
+| `store/workflows.ts:250` | `clientes!inner(nome)` |
+| `store/workflows.ts:276` | `clientes!inner(nome)` |
+| `store/posts.ts:154` | `clientes!inner(nome)` |
+| `store/ideias.ts:38` | `clientes(nome)` |
+| `store/ideias.ts:40` | `membros(nome)` |
+| `configuracao/tabs/WorkspaceTab.tsx:117` | `clientes!inner(conta_id)` |
+
+Every one reads a single allowlisted column, so none breaks under Migration B and
+none needs migrating to a view. The property that must hold — and be re-checked
+when the plan is written, since embeds are added casually — is **no embed selects
+`*` or a financial column from either table**. The implementation plan runs this
+grep alongside the direct-read inventory.
+
+The 23 `from('clientes')` sites in `supabase/functions/` are service-role and
 bypass grants and RLS — no migration needed.
 
 ## Testing
@@ -590,9 +703,9 @@ Matrix:
   `NULL`.
 - `authenticated` cannot select the protected columns from base tables, and
   *can* still select every allowlisted column.
-- Anonymous cannot select the views or execute the helpers.
-- **ACL assertions read `relacl` / `proacl` directly** for both views and both
-  helper functions, confirming the exact final grant set. `has_table_privilege`
+- Anonymous cannot select the views or execute `can_see_financials()`.
+- **ACL assertions read `relacl` / `proacl` directly** for both views and for
+  `can_see_financials()`, confirming the exact final grant set. `has_table_privilege`
   and `has_function_privilege` are not acceptable evidence — they cannot
   distinguish PUBLIC-derived from role-derived access, which is the whole
   question.
@@ -613,6 +726,16 @@ Matrix:
   INSERT with a value fails; restricted UPDATE of a non-financial field
   succeeds; authorized admin/owner can change the value; anonymous does not get
   the trusted-role bypass.
+- **Allowlist dependants still work** (see "Silent dependants of the allowlist").
+  These fail on the *dependent* object, not on `clientes`, so nothing else in
+  this matrix would catch a regression:
+  - an `authenticated` caller can still `SELECT` from `instagram_accounts` and
+    `hub_brand`, whose RLS policies sub-select `clientes`;
+  - an `authenticated` caller can still execute
+    `get_client_health_aggregates(28)` and get rows.
+  Both assertions run as a restricted admin *and* as an authorized one — the
+  point is that the allowlist keeps them working for everybody, since the
+  columns they touch are not financial.
 
 For denied UPDATE/DELETE, assert **both** affected-row count and unchanged
 underlying data — RLS yields zero affected rows rather than raising.
@@ -692,14 +815,43 @@ triggers survive a grant/policy restore, so the old bundle's `0`/`null` payloads
 would keep rejecting ordinary client and member edits for restricted admins —
 a rollback that leaves the app broken in a new way. The checked-in rollback
 script must, in order: drop both triggers and their functions, restore the exact
-prior `SELECT` and DML policies, re-grant table-level `SELECT` to
-`authenticated`, and drop the views. It is written and rehearsed on staging
-during the step 1–5 rehearsal, not authored under incident pressure.
+prior `SELECT` and DML policies, and re-grant table-level `SELECT` to
+`authenticated`. It is written and rehearsed on staging during the step 1–5
+rehearsal, not authored under incident pressure.
 
-**Staging cannot take `npx supabase db push`** (an orphaned `130000` migration
-aborts the run). Apply the exact checked-in SQL via the SQL editor, then
-mark/repair both versions as applied — the SQL editor does not reconcile
-migration history, and skipping this leaves permanent drift.
+**The rollback script must NOT drop the views.** Rolling back Migration B happens
+while the *step-2 bundle is still deployed*, and that bundle reads `membros_v`
+and `clientes_v` — dropping them would break the very client the rollback is
+meant to stabilise, trading one outage for a worse one. The views are harmless
+once table grants are restored: the `CASE` mask keeps evaluating and simply stops
+masking, because everyone who can reach them can now read the base column
+anyway. View teardown belongs to a **separate full-teardown script**, run only
+when the frontend is also being rolled back to a pre-view bundle. Two scripts,
+two triggers to run them:
+
+| Script | Undoes | Safe while step-2 bundle is live |
+|---|---|---|
+| `rollback-migration-b.sql` | triggers, policies, grants | yes |
+| `teardown-financial-visibility.sql` | the above **plus** views, helper, column | no — pair with a frontend rollback |
+
+**Staging's `npx supabase db push` history is unreliable — re-test it, do not
+assume either answer.** The known blocker is an orphaned `130000` migration that
+aborts the run. If it still bites, apply the exact checked-in SQL via the SQL
+editor and then mark/repair both versions as applied — the SQL editor does not
+reconcile migration history, and skipping the repair leaves permanent drift.
+
+Two facts to re-check at implementation time rather than inherit from this
+document, since both moved during the reconciliation work:
+
+- **Production's migration chain is clear.** Verified 2026-07-28 via
+  `supabase migration list --linked`: every local migration through
+  `20260727000008` is applied remotely. An earlier draft of this section warned
+  that `20260727000008` would block all future pushes to production; that was
+  true only while its guard was refusing, and it no longer is.
+- **Staging is missing `20260727000004`** (the `file_enqueue_delete` fix), which
+  was authored after staging's last push. Reconcile that before the first
+  Migration A rehearsal, or the rehearsal runs against a schema production does
+  not have.
 
 Migration filenames need unique timestamp prefixes or the CI version guard fails
 the build.
@@ -736,10 +888,35 @@ staging rehearsal instead.
 5. **Column allowlists are a maintenance hazard.** Any column later added to
    `membros` or `clientes` is invisible to the CRM until granted, and the
    failure surfaces as a confusing missing-column error. Add to `CLAUDE.md`
-   Gotchas.
+   Gotchas. The hazard extends past direct reads: an allowlist regeneration also
+   has to keep the six PostgREST embeds, the ten dependent RLS policies and
+   `get_client_health_aggregates()` working — none of which mention `clientes`
+   in a way the obvious grep finds. The property to preserve is **no embed
+   selects `*` or a financial column** from either table.
 6. **`clientes` schema drift** — `data_aniversario` exists in production but in
    no migration. Unlike the others this is *not* deferred: it blocks the
    allowlist and is fixed by a prerequisite reconciling migration sequenced
    before Migration A. Listed here because the underlying question — what else
    has drifted across all tables — is broader than this feature and deserves its
-   own audit.
+   own audit. **Resolved** — see [the drift audit](2026-07-27-schema-drift-audit.md).
+
+7. **Every `SECURITY DEFINER` function in this repo omits `pg_temp` from its
+   `search_path`.** All 102 occurrences across `supabase/migrations/` are
+   `SET search_path = public`; none names `pg_temp`. PostgreSQL searches the
+   session's temporary schema *first* for relation names when `pg_temp` is
+   absent from the path, so any such function referencing a table by unqualified
+   name can be pointed at a caller-created temp table of the same name. The
+   consequential instance is **not** a financial one: `get_my_conta_id()` is
+   `SECURITY DEFINER`, reads `profiles` and `workspace_members` unqualified, and
+   is the sole tenant predicate in essentially every RLS policy in the schema —
+   shadowing both tables would forge membership in an arbitrary workspace.
+
+   **Not currently exploitable through the product.** The attack needs
+   `CREATE TEMP TABLE` executed as `authenticated`, and PostgREST issues no DDL
+   on a caller's behalf; there is no arbitrary-SQL surface exposed to the role.
+   So this is hardening of a linchpin, not an open hole — but it is a one-token
+   fix per function and the linchpin deserves it.
+
+   Out of scope here beyond this design's own function, which uses
+   `SET search_path = public, pg_temp` and schema-qualifies every relation.
+   A repo-wide pass is its own migration and its own decision.
