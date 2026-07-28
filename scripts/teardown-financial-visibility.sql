@@ -1,8 +1,17 @@
+\set ON_ERROR_STOP on
 -- =============================================================
 -- FULL teardown of the financial-visibility feature:
 --   20260728000001_financial_visibility_a_additive.sql   (Migration A)
 --   20260728000002_financial_visibility_b_enforcement.sql (Migration B)
 --   20260728000003_set_financial_access_rpc.sql            (the RPC)
+--
+-- MUST BE RUN FROM THE REPO ROOT. The \i below is repo-root-relative
+-- ("scripts/rollback-migration-b.sql"), matching how psql resolves \i:
+-- relative to the CURRENT WORKING DIRECTORY, not this file's location. Run
+-- this from any other directory and psql logs "could not open file" for that
+-- \i and CONTINUES past it -- with \set ON_ERROR_STOP on (above) that now
+-- aborts the whole script instead, but the safe way to invoke this is still:
+--   cd <repo-root> && psql "$DB_URL" -f scripts/teardown-financial-visibility.sql
 --
 -- Run ONLY together with a frontend rollback to a pre-view bundle -- i.e. a
 -- deployed client that predates task 3 (the one that first reads

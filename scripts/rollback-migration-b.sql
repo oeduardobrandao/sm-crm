@@ -1,3 +1,4 @@
+\set ON_ERROR_STOP on
 -- =============================================================
 -- Rollback for Migration B ONLY
 -- (supabase/migrations/20260728000002_financial_visibility_b_enforcement.sql)

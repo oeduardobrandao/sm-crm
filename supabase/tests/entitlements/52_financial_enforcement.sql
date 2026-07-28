@@ -13,10 +13,19 @@
 -- UPDATE/DELETE on them locally to exercise the write-guard trigger and the
 -- RLS write-denial paths at all -- hosted Supabase's default ACL already
 -- grants those in production (same rationale as et_grant_hosted_parity
--- itself: a test-harness fix, not a migration). Granted explicitly below,
+-- itself: a test-harness fix, not a migration). Granted explicitly,
 -- deliberately NOT including SELECT.
-select et_grant_hosted_parity(ARRAY['membros', 'clientes']);
-grant insert, update, delete on public.membros, public.clientes to anon, authenticated;
+--
+-- Both statements are issued INSIDE each begin/rollback block below (right
+-- after `begin;`), not once here at file scope. GRANT is transactional DDL:
+-- issuing it here, before the first `begin;`, would COMMIT it as soon as
+-- psql executed the statement (autocommit, since no transaction is open
+-- yet) and leave it permanently in place after this file's rollbacks run --
+-- polluting reruns of this suite and every later suite in the same run.
+-- 40_cliente_tables_tenant_isolation.sql already gets this right (helper
+-- called inside its one rolled-back block); repeating the grants per-block
+-- here costs nothing (GRANT is cheap and idempotent) and keeps every side
+-- effect of this file inside a transaction that gets rolled back.
 
 -- =============================================================
 -- 1. Column grants: authenticated can select every allowlisted column on
@@ -27,6 +36,8 @@ grant insert, update, delete on public.membros, public.clientes to anon, authent
 --    would go uncaught.
 -- =============================================================
 begin;
+select et_grant_hosted_parity(ARRAY['membros', 'clientes']);
+grant insert, update, delete on public.membros, public.clientes to anon, authenticated;
 do $$
 declare
   v_ws   uuid;
@@ -119,6 +130,8 @@ rollback;
 --    regression across all four of this table's policies.
 -- =============================================================
 begin;
+select et_grant_hosted_parity(ARRAY['membros', 'clientes']);
+grant insert, update, delete on public.membros, public.clientes to anon, authenticated;
 do $$
 declare
   v_ws_a uuid; v_ws_b uuid;
@@ -318,6 +331,8 @@ rollback;
 --    set of four rewritten policies).
 -- =============================================================
 begin;
+select et_grant_hosted_parity(ARRAY['membros', 'clientes']);
+grant insert, update, delete on public.membros, public.clientes to anon, authenticated;
 do $$
 declare
   v_ws_a uuid; v_ws_b uuid;
@@ -526,6 +541,8 @@ rollback;
 -- this suite.
 -- =============================================================
 begin;
+select et_grant_hosted_parity(ARRAY['membros', 'clientes']);
+grant insert, update, delete on public.membros, public.clientes to anon, authenticated;
 do $$
 declare
   v_ws uuid;
@@ -655,6 +672,8 @@ rollback;
 -- 5. Write guards on membros.custo_mensal / clientes.valor_mensal.
 -- =============================================================
 begin;
+select et_grant_hosted_parity(ARRAY['membros', 'clientes']);
+grant insert, update, delete on public.membros, public.clientes to anon, authenticated;
 do $$
 declare
   v_ws uuid;
@@ -786,18 +805,44 @@ begin
   -- denial or via lacking EXECUTE on can_see_financials(), the "postgres" /
   -- "service_role" bypass branch must not fire just because the caller is
   -- unauthenticated.
+  --
+  -- The specific failure matters, not just "some exception was raised".
+  -- membros_insert (20260315_rls_security_audit.sql:164) already denies anon
+  -- outright via a NULL get_my_conta_id(), so even a guard that silently
+  -- handed anon the trusted bypass -- the exact SECURITY DEFINER defect this
+  -- guard once had, which made current_user read as the function owner for
+  -- every caller, skipping the can_see_financials() call entirely -- would
+  -- still fail this INSERT via that unrelated RLS policy (a DIFFERENT
+  -- message: "new row violates row-level security policy..."), and a bare
+  -- `exception when others` would count that as a pass without the guard
+  -- ever having done anything. Asserting the guard's own 'financial_access_
+  -- denied' (P0001, same sentinel asserted for the restricted-admin case
+  -- above) proves the guard actually evaluated can_see_financials() and got
+  -- a non-true result, rather than bypassing the check and having some
+  -- unrelated policy deny the write instead.
+  --
+  -- (Note: anon's own lack of EXECUTE on can_see_financials() -- REVOKEd by
+  -- Migration A -- does NOT surface here as a 42501 "permission denied for
+  -- function" the way it would in a fresh session. Earlier in this same
+  -- do-block, can_see_financials() was already called as `authenticated`,
+  -- which DOES hold EXECUTE; plpgsql caches that call as a "simple
+  -- expression" plan and reuses it for later invocations in the same
+  -- transaction without re-checking EXECUTE, so by the time this anon call
+  -- runs, it actually reaches the function body and gets a real NULL/false
+  -- result -- which the guard then correctly treats as "not authorized".)
   perform set_config('request.jwt.claims', json_build_object('role', 'anon')::text, true);
   v_ok := false;
   set local role anon;
   begin
     insert into membros (user_id, conta_id, nome, cargo, tipo, avatar_url, custo_mensal)
       values (v_owner, v_ws, 'AnonRow', 'X', 'clt', '', 555);
-  exception when others then
+  exception when sqlstate 'P0001' then
+    if sqlerrm <> 'financial_access_denied' then raise; end if;
     v_ok := true;
   end;
   reset role;
   if not v_ok then
-    raise exception 'anonymous insert of membros carrying a financial value must be denied';
+    raise exception 'anonymous insert of membros carrying a financial value must be denied by the guard (financial_access_denied)';
   end if;
   if exists (select 1 from membros where nome = 'AnonRow') then
     raise exception 'anonymous insert must not have created a row despite being denied';
@@ -813,6 +858,8 @@ rollback;
 --    column-level grant, not just the base table itself.
 -- =============================================================
 begin;
+select et_grant_hosted_parity(ARRAY['membros', 'clientes']);
+grant insert, update, delete on public.membros, public.clientes to anon, authenticated;
 do $$
 declare
   v_ws uuid;

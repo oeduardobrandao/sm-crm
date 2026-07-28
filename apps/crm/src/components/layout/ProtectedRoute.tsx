@@ -48,7 +48,7 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (!isUnlimited && features) {
     for (const [path, { flag, label }] of Object.entries(FEATURE_GATED)) {
-      if (location.pathname.startsWith(path) && features[flag as keyof typeof features] === false) {
+      if (pathname.startsWith(path) && features[flag as keyof typeof features] === false) {
         return <UpgradeLockedScreen featureLabel={label} />;
       }
     }
