@@ -22,25 +22,32 @@
 - **New SQL suites must be numbered.** `scripts/test-entitlements.sh` globs `[0-9]*.sql` under `supabase/tests/entitlements/` only. The `50_`/`51_`/`52_` names here run under the existing glob; a differently-named file would be silently skipped. (Three unnumbered suites elsewhere in `supabase/tests/` are never executed — out of scope, tracked in the spec's Known Gaps.)
 - **Test fixtures must use `et_make_workspace('max')`, never `'start'`.** The `start` and `free` plans set `max_team_members = 1` and the `trg_limit_seats` trigger (`20260611130003`) enforces it, so a fixture seeding an owner + admin + agent into one workspace aborts with `plan_limit_exceeded:max_team_members` during setup — before it reaches the behaviour under test. `max` has `max_team_members = NULL` (unlimited).
 
-### Local vs production table ACLs — read before writing any suite that impersonates `authenticated`
+### Local vs hosted table ACLs — call `et_grant_hosted_parity()` in any suite that impersonates `authenticated`
 
-Verified 2026-07-28 against both. **`authenticated` cannot SELECT `clientes` or `membros` on a local migrations-built database, but can in production.**
+Measured 2026-07-28 against a local database and the production dump.
 
-- Local `pg_default_acl` for role `postgres` in schema `public` grants `anon`/`authenticated`/`service_role` only `Dxtm` (TRUNCATE, REFERENCES, TRIGGER, MAINTAIN) — no `arwd`. Migrations run as `postgres`, so every migration-created table inherits that.
-- Production has an explicit `GRANT ALL ON TABLE clientes/membros TO anon, authenticated, service_role`, applied when those tables were created outside the migration history.
-- **No migration in this repo grants DML on `clientes` or `membros`.** Production's privileges on them come from nothing checked in — the same class of undocumented environment state this branch's drift audit existed to remove, one level down from columns.
+- **Hosted** Supabase projects carry a `pg_default_acl` granting ALL on new `public` tables to `anon`/`authenticated`/`service_role`. The production dump shows **70 tables** with `GRANT ALL ON TABLE … TO "authenticated"`, including migration-created ones such as `workspace_members`.
+- **Local** CLI images set that default only for `supabase_admin`; for role `postgres` — which is what applies migrations — the default is `Dxtm` (TRUNCATE, REFERENCES, TRIGGER, MAINTAIN), with no `arwd`.
+- Result: locally, the **only** tables `authenticated` can read are the four carrying an explicit `GRANT` in a migration (`post_designs`, `design_asset_refs`, `ai_image_generations`, `designs`). Everything else returns `permission denied` under `SET LOCAL ROLE authenticated`.
 
-Consequences for this plan, each already accounted for:
+**This is an environment difference, not a schema defect.** Do not "fix" it by adding grants to migrations: that would single out a couple of tables while 68 others rely on the same implicit mechanism, and would misrepresent a local-image quirk as a production bug. An earlier draft of this section drew the opposite conclusion from an incomplete sample — it inferred from `clientes`/`membros` alone that production's grants were applied out-of-band. `workspace_members` disproves that: it is migration-created and carries the same grant.
 
-| Suite | Reads | Works locally? |
-|---|---|---|
-| `50_` (Task 1) | `can_see_financials()` only | **Yes** — the migration grants EXECUTE explicitly |
-| `51_` (Task 2) | `membros_v` / `clientes_v` | **Yes** — the views are explicitly granted, and a non-`security_invoker` view reads its base tables as the view owner, so the caller needs no base-table privilege |
-| `52_` (Task 12) | base-table columns, **after** Migration B | **Yes** — Migration B's explicit column grants are what create the privilege locally |
+Use the harness helper instead. `supabase/tests/entitlements/_helpers.sql` provides:
 
-So every suite here passes locally. What does *not* work locally is asserting the **pre-**Migration-B baseline, because that baseline exists only in production. Do not write an assertion of the form "authenticated can select `membros.custo_mensal` before the revoke" — it is false locally and true in production, and it is not what any of these suites are for.
+```sql
+select et_grant_hosted_parity();                              -- all public tables
+select et_grant_hosted_parity(ARRAY['membros','clientes']);   -- except these
+```
 
-**Migration B is the first thing in this repo to state these grants explicitly.** That is a real improvement, not a side effect: after it, `clientes`/`membros` privileges are checked-in fact rather than inherited environment state, and local and production converge. Say so in its header comment.
+It grants table privileges and sequence `USAGE` (needed separately — `nextval()` on a column default is checked against the caller). `p_exclude` exists because **a suite asserting a REVOKE must exclude the affected tables, or the helper silently undoes the assertion.**
+
+| Suite | Needs parity? |
+|---|---|
+| `50_` (Task 1) | No — calls only `can_see_financials()`, whose EXECUTE grant is explicit in the migration |
+| `51_` (Task 2) | No — reads `membros_v`/`clientes_v`, which are explicitly granted; a non-`security_invoker` view reads its base tables as the view owner |
+| `52_` (Task 12) | **Yes** — `select et_grant_hosted_parity(ARRAY['membros','clientes'])`. The dependant assertions read `instagram_accounts` and `hub_brand` directly, and the `transacoes`/`contratos` policies need no parity because `get_my_conta_id()` and `can_see_financials()` are both `SECURITY DEFINER`. `membros`/`clientes` are excluded because Migration B's column-level grants on them are precisely what the suite asserts. |
+
+Do not assert the **pre**-Migration-B baseline. It exists only on hosted projects, and no suite here is for it.
 - **`git checkout -- deno.lock`** after running `npm run test:functions` — it always dirties the root lockfile.
 - **Roles are `owner | admin | agent`**, always read via `AuthContext`, never hardcoded.
 - **Portuguese UI copy.** All user-facing strings in pt-BR.

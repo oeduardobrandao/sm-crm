@@ -20,6 +20,12 @@
 -- the policies reverted to the broken form.
 
 begin;
+-- Local databases do not reproduce a hosted project's table grants; without
+-- this the SET LOCAL ROLE below fails with permission denied for environmental
+-- reasons rather than for anything this suite is testing. No-op on a database
+-- that already has the grants.
+select et_grant_hosted_parity();
+
 do $$
 declare
   v_ws_a uuid; v_ws_b uuid;
