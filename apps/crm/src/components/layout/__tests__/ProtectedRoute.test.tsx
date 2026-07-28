@@ -151,6 +151,26 @@ describe('ProtectedRoute', () => {
     expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
   });
 
+  it('still redirects an agent at /financeiro (lowercase, no regression)', () => {
+    // Companion to the capitalized case above: proves the lowercasing fix
+    // didn't break the original, un-capitalized redirect path. A "fix" that
+    // only handled capitalized input (e.g. matching uppercase variants
+    // instead of lowercasing before comparison) would pass the test above
+    // but fail this one.
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'u' } as never,
+      profile: { id: 'u', role: 'agent' } as never,
+      role: 'agent',
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    renderRoute('/financeiro');
+
+    expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
+  });
+
   it('allows an agent to reach non-blocked routes', () => {
     mockedUseAuth.mockReturnValue({
       user: { id: 'u' } as never,
@@ -299,5 +319,25 @@ describe('ProtectedRoute', () => {
 
     expect(screen.getByText(/Leads não está no seu plano/)).toBeInTheDocument();
     expect(screen.queryByText('Área protegida')).toBeNull();
+  });
+
+  it('does NOT redirect a non-agent (owner) at a capitalized blocked path', () => {
+    // /Financeiro is in AGENT_BLOCKED, but AGENT_BLOCKED only applies to the
+    // 'agent' role. A guard that over-matched on the lowercased pathname
+    // (e.g. redirecting every role instead of just agents) would send an
+    // owner to /dashboard too, and this test would catch it.
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'owner-1' } as never,
+      profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
+      role: 'owner',
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    renderRoute('/Financeiro');
+
+    expect(screen.getByText('Área protegida')).toBeInTheDocument();
+    expect(screen.queryByText('Área protegida: dashboard')).toBeNull();
   });
 });
