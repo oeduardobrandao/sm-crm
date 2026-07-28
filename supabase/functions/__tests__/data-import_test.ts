@@ -1,6 +1,6 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
-import { createDataImportHandler } from "../data-import/handler.ts";
+import { createDataImportHandler, MAX_SOURCE_ROWS, PREVIEW_LIMIT } from "../data-import/handler.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
@@ -74,6 +74,15 @@ function post(path: string, body: unknown) {
   });
 }
 
+// undo's claim is a compare-and-set: `update(...).select("id")` returns the rows
+// it actually changed, and the handler refuses to delete anything unless that is
+// EXACTLY one. The mock's default update result is `data: null`, which correctly
+// reads as "matched nothing", so every test whose undo is supposed to proceed has
+// to queue a one-row claim result. Queue this for the FIRST import_jobs update;
+// the second (status -> 'undone') is not inspected and can fall through to the
+// default.
+const UNDO_CLAIM_OK = { data: [{ id: 7 }], error: null };
+
 /** commit now verifies job ownership AND status before touching a row. */
 function queueJobOwned(db: ReturnType<typeof createSupabaseQueryMock>, status = "committing") {
   db.queue("import_jobs", "select", { data: { id: 7, status }, error: null });
@@ -110,7 +119,7 @@ Deno.test("data-import: undo succeeds even when feature_csv_import is false", as
     error: null,
   });
   db.queue("import_job_items", "select", { data: [], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const gated = { ...ENTITLED, features: { feature_csv_import: false } };
   const res = await makeHandler(db, gated)(post("undo", { jobId: 7 }));
@@ -499,12 +508,82 @@ Deno.test("data-import: preview rejects a non-array rows payload instead of 500-
 Deno.test("data-import: preview caps the row count", async () => {
   const db = createSupabaseQueryMock();
   authAs(db);
-  const rows = Array.from({ length: 5001 }, (_, i) => ({ kind: "cliente", sourceKey: String(i), nome: "X" }));
+  const rows = Array.from({ length: PREVIEW_LIMIT + 1 }, (_, i) => ({
+    kind: "cliente",
+    sourceKey: String(i),
+    nome: "X",
+  }));
   const res = await makeHandler(db)(post("preview", { rows }));
   assertEquals(res.status, 400);
   // distinct from commit's cap: preview and commit enforce different limits, so
   // a shared string leaves the client unable to tell which one it hit.
   assertEquals(await readJson(res), { error: "Preview batch too large" });
+});
+
+// The cap is sized for EXPANDED commit rows, not source rows. buildCommitRows
+// turns one posts row whose client column holds a distinct name into three wire
+// rows (post + auto-created cliente + container, chunking off at preview), so a
+// MAX_SOURCE_ROWS upload the browser accepts arrives here as ~3x that many rows.
+// A cap set to the source-row budget would refuse it — and since preview gates
+// commit, that import could never be committed at all.
+Deno.test("data-import: preview accepts the worst-case expansion of a permitted upload", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  // Exactly what buildCommitRows emits for MAX_SOURCE_ROWS posts rows, each with
+  // its own client name: the auto-created clientes, then the containers, then the
+  // posts (commit order).
+  const rows: unknown[] = [];
+  for (let i = 0; i < MAX_SOURCE_ROWS; i++) {
+    rows.push({ kind: "cliente", sourceKey: `auto-cliente:C${i}`, nome: `C${i}` });
+  }
+  for (let i = 0; i < MAX_SOURCE_ROWS; i++) {
+    rows.push({
+      kind: "container",
+      sourceKey: `container:created-auto-cliente:C${i}:0`,
+      clienteRef: { type: "created", sourceKey: `auto-cliente:C${i}` },
+      titulo: "Calendário importado — jan",
+    });
+  }
+  for (let i = 0; i < MAX_SOURCE_ROWS; i++) {
+    rows.push({
+      kind: "post",
+      sourceKey: `p${i}`,
+      containerKey: `container:created-auto-cliente:C${i}:0`,
+      titulo: `Post ${i}`,
+      status: "rascunho",
+    });
+  }
+  assertEquals(rows.length, MAX_SOURCE_ROWS * 3);
+  assert(rows.length <= PREVIEW_LIMIT, "the worst-case expansion must fit under the preview cap");
+  // The cliente-cap warning path counts existing clientes; keep it quiet.
+  db.queue("clientes", "select", { data: [], error: null, count: 0 });
+  const res = await makeHandler(db)(post("preview", { rows }));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.counts.posts, MAX_SOURCE_ROWS);
+  assertEquals(body.counts.clientes, MAX_SOURCE_ROWS);
+});
+
+// The browser refuses an upload above MAX_ROWS source rows, and PREVIEW_LIMIT is
+// derived from that number. They live in two runtimes that cannot import each
+// other (Vite/TS vs Deno), so nothing but this test stops them drifting apart:
+// raising or lowering either literal alone fails here.
+Deno.test("data-import: the preview cap stays derived from the browser's source-row cap", async () => {
+  const parseFiles = await Deno.readTextFile(
+    new URL("../../../apps/crm/src/pages/importar/parseFiles.ts", import.meta.url),
+  );
+  const match = /export const MAX_ROWS = (\d+);/.exec(parseFiles);
+  assert(match, "could not find `export const MAX_ROWS` in apps/crm/src/pages/importar/parseFiles.ts");
+  assertEquals(
+    Number(match![1]),
+    MAX_SOURCE_ROWS,
+    "MAX_SOURCE_ROWS in data-import/handler.ts must mirror MAX_ROWS in parseFiles.ts",
+  );
+  // ...and the cap must still leave room for the 3x worst-case expansion.
+  assert(
+    PREVIEW_LIMIT >= MAX_SOURCE_ROWS * 3,
+    `PREVIEW_LIMIT (${PREVIEW_LIMIT}) must admit 3 x MAX_SOURCE_ROWS (${MAX_SOURCE_ROWS * 3})`,
+  );
 });
 
 Deno.test("data-import: commit calls the RPC per row and reports skips", async () => {
@@ -944,7 +1023,7 @@ Deno.test("data-import: undo deletes recorded rows in order, skips published pos
   // clientes guard: workflow 9 survived, so cliente 3 is still referenced
   db.queue("workflows", "select", { data: [{ cliente_id: 3 }], error: null });
   db.queue("ideias", "select", { data: [], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1013,7 +1092,7 @@ Deno.test("data-import: undo keeps an unpublished post that still has a post_pro
   // ...but the user set a custom field value on it after the import.
   db.queue("post_property_values", "select", { data: [{ post_id: 31 }], error: null });
   db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1041,7 +1120,7 @@ Deno.test("data-import: undo still deletes an unpublished post with no surviving
   db.queue("workflow_posts", "select", { data: [], error: null });
   db.queue("post_property_values", "select", { data: [], error: null });
   db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1074,7 +1153,7 @@ Deno.test("data-import: undo keeps an unpublished post that still has a post_med
   db.queue("post_approvals", "select", { data: [], error: null });
   db.queue("post_status_events", "select", { data: [], error: null });
   db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1104,7 +1183,7 @@ Deno.test("data-import: undo keeps an unpublished post that still has a post_fil
   db.queue("post_approvals", "select", { data: [], error: null });
   db.queue("post_status_events", "select", { data: [], error: null });
   db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1141,7 +1220,7 @@ Deno.test("data-import: undo keeps an unpublished post that still has a post_app
   db.queue("post_approvals", "select", { data: [{ post_id: 31 }], error: null });
   db.queue("post_status_events", "select", { data: [], error: null });
   db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1174,7 +1253,7 @@ Deno.test("data-import: undo keeps an unpublished post that still has a post_sta
   // captured transition row behind.
   db.queue("post_status_events", "select", { data: [{ post_id: 31 }], error: null });
   db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1213,7 +1292,7 @@ Deno.test("data-import: undo keeps an unpublished post that still has a post_com
   db.queue("post_comment_threads", "select", { data: [{ post_id: 31 }], error: null });
   db.queue("post_edit_suggestions", "select", { data: [], error: null });
   db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1244,7 +1323,7 @@ Deno.test("data-import: undo keeps an unpublished post that still has a post_edi
   // a client submitted an edit suggestion through the Hub after the import.
   db.queue("post_edit_suggestions", "select", { data: [{ post_id: 31 }], error: null });
   db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1274,7 +1353,7 @@ Deno.test("data-import: undo still deletes an unpublished post with no surviving
   db.queue("post_comment_threads", "select", { data: [], error: null });
   db.queue("post_edit_suggestions", "select", { data: [], error: null });
   db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1301,7 +1380,7 @@ Deno.test("data-import: undo keeps a workflow that still has a surviving workflo
   db.queue("workflow_select_options", "select", { data: [{ workflow_id: 9 }], error: null });
   db.queue("portal_tokens", "select", { data: [], error: null });
   db.queue("workflows", "delete", { data: [{ id: 9 }], error: null }); // must go unused
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1325,7 +1404,7 @@ Deno.test("data-import: undo keeps a workflow that still has a surviving portal_
   db.queue("workflow_select_options", "select", { data: [], error: null });
   db.queue("portal_tokens", "select", { data: [{ workflow_id: 9 }], error: null });
   db.queue("workflows", "delete", { data: [{ id: 9 }], error: null }); // must go unused
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1365,7 +1444,7 @@ Deno.test("data-import: undo keeps a workflow whose etapa still has a surviving 
   // ...and the client left a real approval/comment against it via the portal.
   db.queue("portal_approvals", "select", { data: [{ workflow_etapa_id: 77 }], error: null });
   db.queue("workflows", "delete", { data: [{ id: 9 }], error: null }); // must go unused
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1401,7 +1480,7 @@ Deno.test("data-import: undo still deletes a workflow whose surviving etapa has 
   db.queue("workflow_etapas", "select", { data: [{ id: 77, workflow_id: 9 }], error: null });
   db.queue("portal_approvals", "select", { data: [], error: null });
   db.queue("workflows", "delete", { data: [{ id: 9 }], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1421,7 +1500,7 @@ Deno.test("data-import: undo still deletes a workflow with no surviving posts, s
   db.queue("workflow_select_options", "select", { data: [], error: null });
   db.queue("portal_tokens", "select", { data: [], error: null });
   db.queue("workflows", "delete", { data: [{ id: 9 }], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1444,7 +1523,7 @@ Deno.test("data-import: undo claims the job as 'undoing' BEFORE reading its item
   db.queue("workflows", "select", { data: [], error: null });
   db.queue("ideias", "select", { data: [], error: null });
   db.queue("clientes", "delete", { data: [{ id: 3 }], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null }, { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK, { data: null, error: null });
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   assertEquals(res.status, 200);
@@ -1488,10 +1567,8 @@ Deno.test("data-import: undo resumes a job left stuck in 'undoing' by a killed r
   // can have added rows while the job sat in 'undoing'.
   const db = createSupabaseQueryMock();
   authAs(db);
-  queueOwnedJob(db, {
-    status: "undoing",
-    undo_started_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-  });
+  const staleAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  queueOwnedJob(db, { status: "undoing", undo_started_at: staleAt });
   db.queue("import_job_items", "select", {
     data: [{ table_name: "clientes", row_id: "3", source_row_key: "a", ordinal: 0, merged: false }],
     error: null,
@@ -1501,13 +1578,120 @@ Deno.test("data-import: undo resumes a job left stuck in 'undoing' by a killed r
   // the killed run already removed this one: an id-based delete simply returns
   // nothing, so the resumed run reports 0 rather than double-counting.
   db.queue("clientes", "delete", { data: [], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null }, { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK, { data: null, error: null });
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   assertEquals(res.status, 200);
   assertEquals((await readJson(res)).deleted, 0);
   const updates = callsFor(db, "import_jobs", "update");
   assertEquals(updates[updates.length - 1].payload, { status: "undone" });
+  // The compare-and-set must not block this path: it re-claims 'undoing' -> 'undoing'
+  // while pinning the STALE undo_started_at it read, so a second resume of the same
+  // abandoned claim (whose stamp has since moved) matches nothing.
+  const claim = updates[0];
+  assertEquals((claim.payload as Record<string, unknown>).status, "undoing");
+  assertModifier(claim, "eq", ["status", "undoing"]);
+  assertModifier(claim, "eq", ["undo_started_at", staleAt]);
+});
+
+Deno.test("data-import: undo's claim is a compare-and-set on the status it read", async () => {
+  // The status read and the claim are two round trips. Without a predicate on the
+  // state that was read, two undos that both pass the checks above both claim the
+  // job, both snapshot the items, and both delete.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db); // status 'completed'
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK, { data: null, error: null });
+  db.queue("import_job_items", "select", { data: [], error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  assertEquals(res.status, 200);
+  const claim = oneCall(db, "import_jobs", "update");
+  assertModifier(claim, "eq", ["id", 7]);
+  assertModifier(claim, "eq", ["conta_id", "conta-1"]);
+  assertModifier(claim, "eq", ["status", "completed"]);
+  // ...and it must ASK for the affected rows back, or "claimed it" and "someone
+  // else got there first" are indistinguishable.
+  assert(
+    claim.selectArgs.some((args) => args[0] === "id"),
+    `the claim must .select() the rows it changed — got ${JSON.stringify(claim.selectArgs)}`,
+  );
+  // A fresh claim must NOT pin undo_started_at: the value read is the previous
+  // run's (or null), and pinning it here would be meaningless on a 'completed' job.
+  assertEquals(hasModifier(claim, "eq", ["undo_started_at", null]), false);
+});
+
+Deno.test("data-import: a second concurrent undo whose claim matches zero rows deletes nothing", async () => {
+  // Both requests read 'completed' before either wrote. The first flips the job to
+  // 'undoing'; this one's compare-and-set then matches no row. It must stop right
+  // there — snapshotting and deleting from here is the exact double-undo (and
+  // orphaning) the 'undoing' state exists to prevent.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_jobs", "update", { data: [], error: null });
+  // Queued but must never be reached: if the guard is removed, the handler walks
+  // straight into the item read and the deletes below.
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "clientes", row_id: "3", source_row_key: "a", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("ideias", "select", { data: [], error: null });
+  db.queue("clientes", "delete", { data: [{ id: 3 }], error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  assertEquals(res.status, 400);
+  // Reuses the string the read-time refusal returns, which the wizard already maps
+  // (ERROR_MESSAGES in apps/crm/src/services/dataImport.ts).
+  assertEquals(await readJson(res), { error: "Undo in progress" });
+  assertEquals(callsFor(db, "import_job_items", "select").length, 0);
+  assertEquals(callsFor(db, "clientes", "delete").length, 0);
+  // exactly one import_jobs update — the lost claim — and never the 'undone' flip.
+  const updates = callsFor(db, "import_jobs", "update");
+  assertEquals(updates.length, 1);
+  assertEquals(updates.some((u) => JSON.stringify(u.payload).includes('"undone"')), false);
+  assertEquals(callsFor(db, "audit_log", "insert").length, 0);
+});
+
+Deno.test("data-import: a claim that fails outright is a 500 with no database text, and deletes nothing", async () => {
+  // A failed claim used to be invisible: the result was never read, so the handler
+  // snapshotted and deleted while the job was still committable.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_jobs", "update", { data: null, error: { message: 'relation "import_jobs" does not exist' } });
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "clientes", row_id: "3", source_row_key: "a", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("ideias", "select", { data: [], error: null });
+  db.queue("clientes", "delete", { data: [{ id: 3 }], error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  assertEquals(res.status, 500);
+  const body = await readJson(res);
+  assertEquals(body, { error: "Internal error" });
+  assertEquals(JSON.stringify(body).includes("relation"), false);
+  assertEquals(JSON.stringify(body).includes("import_jobs"), false);
+  assertEquals(callsFor(db, "import_job_items", "select").length, 0);
+  assertEquals(callsFor(db, "clientes", "delete").length, 0);
+  assertEquals(callsFor(db, "import_jobs", "update").length, 1);
+});
+
+Deno.test("data-import: a stale-undoing job with no undo_started_at is re-claimed with an IS NULL pin", async () => {
+  // Inconsistent state ('undoing' with no stamp) is treated as resumable, so the
+  // claim still has to pin it — and PostgREST cannot express NULL equality through
+  // .eq(), so it must use .is().
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db, { status: "undoing", undo_started_at: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK, { data: null, error: null });
+  db.queue("import_job_items", "select", { data: [], error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  assertEquals(res.status, 200);
+  const claim = callsFor(db, "import_jobs", "update")[0];
+  assertModifier(claim, "eq", ["status", "undoing"]);
+  assertModifier(claim, "is", ["undo_started_at", null]);
+  assertEquals(hasModifier(claim, "eq", ["undo_started_at", null]), false);
 });
 
 Deno.test("data-import: undo keeps a cliente that still holds a user-created ideia", async () => {
@@ -1522,7 +1706,7 @@ Deno.test("data-import: undo keeps a cliente that still holds a user-created ide
   // an ideia the user wrote under the imported cliente AFTER the import: it is
   // not in import_job_items, and ideias.cliente_id is ON DELETE CASCADE.
   db.queue("ideias", "select", { data: [{ cliente_id: 3 }], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1562,7 +1746,7 @@ Deno.test("data-import: undo keeps a template still referenced by a surviving wo
   // No property definitions in this fixture — only the workflows probe should
   // account for the keep.
   db.queue("template_property_definitions", "select", { data: [], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1589,7 +1773,7 @@ Deno.test("data-import: undo keeps a template that still has a template_property
   });
   db.queue("workflows", "select", { data: [], error: null });
   db.queue("template_property_definitions", "select", { data: [{ template_id: 5 }], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1615,7 +1799,7 @@ Deno.test("data-import: undo still deletes a template with no workflow and no pr
   db.queue("workflows", "select", { data: [], error: null });
   db.queue("template_property_definitions", "select", { data: [], error: null });
   db.queue("workflow_templates", "delete", { data: [{ id: 5 }], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1664,7 +1848,7 @@ for (const child of CLIENTE_CASCADE_CHILDREN) {
     // enumeration shows up as a deleted cliente right here.
     db.queue(child.table, "select", { data: [{ [child.column]: 3 }], error: null });
     db.queue("clientes", "delete", { data: [{ id: 3 }], error: null }); // must go unused
-    db.queue("import_jobs", "update", { data: null, error: null });
+    db.queue("import_jobs", "update", UNDO_CLAIM_OK);
     db.queue("audit_log", "insert", { data: null, error: null });
     const res = await makeHandler(db)(post("undo", { jobId: 7 }));
     const body = await readJson(res);
@@ -1695,7 +1879,7 @@ Deno.test("data-import: undo does delete a cliente nothing else references", asy
   db.queue("workflows", "select", { data: [], error: null });
   db.queue("ideias", "select", { data: [], error: null });
   db.queue("clientes", "delete", { data: [{ id: 3 }], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1720,7 +1904,7 @@ Deno.test("data-import: undo counts rows actually removed, not rows attempted", 
   db.queue("workflows", "select", { data: [], error: null });
   db.queue("ideias", "select", { data: [], error: null });
   db.queue("clientes", "delete", { data: [{ id: 3 }], error: null }); // 4 was already gone
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1756,7 +1940,7 @@ Deno.test("data-import: undo pages the item read past the REST max-rows cap", as
     { data: page1.map((r) => ({ id: Number(r.row_id) })), error: null },
     { data: [{ id: 501 }], error: null },
   );
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1795,7 +1979,7 @@ Deno.test("data-import: undo keeps paging when a page comes back shorter than PA
     { data: [], error: null }, // empty page is the only end-of-data signal
   );
   db.queue("clientes", "delete", { data: [{ id: 3 }, { id: 4 }], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1822,7 +2006,7 @@ Deno.test("data-import: undo deletes an imported ideia by uuid, scoped to worksp
     error: null,
   });
   db.queue("ideias", "delete", { data: [{ id: ideiaId }], error: null });
-  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("audit_log", "insert", { data: null, error: null });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   const body = await readJson(res);
@@ -1838,6 +2022,7 @@ Deno.test("data-import: undo never leaks a database message to the client", asyn
   const db = createSupabaseQueryMock();
   authAs(db);
   queueOwnedJob(db);
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
   db.queue("import_job_items", "select", { data: null, error: { message: 'relation "x" does not exist' } });
   const res = await makeHandler(db)(post("undo", { jobId: 7 }));
   assertEquals(res.status, 500);

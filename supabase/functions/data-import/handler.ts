@@ -43,7 +43,46 @@ const BATCH_LIMIT = 200;
 // preview is a pure counting pass over the WHOLE parsed file (commit is what gets
 // sliced into BATCH_LIMIT batches), so it needs its own, larger ceiling — but it
 // still needs one, so a malformed/huge payload can't be walked unbounded.
-const PREVIEW_LIMIT = 5000;
+//
+// THE CAP IS SIZED FOR EXPANDED COMMIT ROWS, NOT SOURCE ROWS. `body.rows` is the
+// output of buildCommitRows, which emits SEVERAL wire rows per source row; a cap
+// set to the source-row budget rejects uploads the wizard itself accepts, and
+// since preview must pass before commit, such an import becomes a dead end that
+// can never be committed at all.
+//
+// MAX_SOURCE_ROWS mirrors the browser's own upload cap
+// (`MAX_ROWS` in apps/crm/src/pages/importar/parseFiles.ts). It is duplicated,
+// not imported: the frontend is Vite/TS and this is Deno, and neither can import
+// the other's module. The two are pinned together by the "browser source-row cap
+// and PREVIEW_LIMIT stay in sync" test in __tests__/data-import_test.ts, which
+// reads parseFiles.ts and fails if either literal is changed alone.
+export const MAX_SOURCE_ROWS = 2000;
+// Worst-case expansion, from buildCommitRows (apps/crm/src/pages/importar/):
+//   posts collection:    1 post
+//                      + 1 auto-created cliente  (worst case: the client column
+//                        holds a DISTINCT name on every row, so resolveRef
+//                        synthesizes one `auto-cliente:` row per source row)
+//                      + 1 container             (preview calls buildCommitRows
+//                        with maxPostsPerWorkflow = null, i.e. chunking OFF, so a
+//                        client group yields exactly ONE container — and with a
+//                        distinct client per row there are as many groups as rows)
+//                      = 3 commit rows per source row  <- the ceiling
+//   entregas collection: 1 entrega + 1 auto-created cliente = 2 per source row,
+//                        plus 1 template per COLLECTION. A collection with r >= 1
+//                        rows emits 1 + 2r <= 3r, so the template fits inside the
+//                        spare third slot its own rows already carry.
+//   ideias collection:   1 ideia + 1 auto-created cliente = 2 per source row.
+//   roster (clientes):   1 cliente per source row.
+// => 3 x MAX_SOURCE_ROWS = 6000 rows for any upload the browser permits.
+//
+// COLLECTION_ROW_ALLOWANCE covers the one term that is NOT per source row: an
+// entregas collection with ZERO rows still pushes its template (buildCommitRows
+// emits it before iterating rows), and a Notion zip can carry more collections
+// than the 5-file limit suggests. A payload that exhausts even this allowance is
+// mostly empty collections — precisely the malformed input the cap exists to
+// refuse.
+const COLLECTION_ROW_ALLOWANCE = 500;
+export const PREVIEW_LIMIT = MAX_SOURCE_ROWS * 3 + COLLECTION_ROW_ALLOWANCE; // 6500
 // Supabase's REST layer applies a project-level max-rows cap (commonly 1000), so
 // every unbounded read has to be paged explicitly — the handler must not depend on
 // that setting in either direction. A short page is the end-of-data signal.
@@ -974,11 +1013,57 @@ async function handleUndo({ db, conta_id, userId, body, json }: ActionCtx): Prom
   // through the wizard. Flipping to 'undoing' first makes import_commit_row
   // refuse every subsequent row, including the remaining rows of a batch that is
   // already inside its RPC loop.
-  await db
+  //
+  // THE CLAIM IS A COMPARE-AND-SET, and its result is CHECKED. The status read
+  // above and this write are two separate round trips: between them, another undo
+  // request can pass the very same checks. An unconditional update lets BOTH
+  // claim the job, both snapshot the items, and both delete and report a
+  // successful undo — and, worse, an update that silently affects zero rows (or
+  // fails outright) leaves the job still committable while the code below starts
+  // deleting, which is exactly the orphaning the 'undoing' state exists to
+  // prevent. So the update is predicated on the EXACT state that was read:
+  //
+  //   - `.eq("status", job.status)` — the fresh case. Two racing undos both read
+  //     'completed'; the first flips it to 'undoing', the second's predicate no
+  //     longer matches and it updates nothing.
+  //   - plus, for a stale-'undoing' resume, `undo_started_at` pinned to the value
+  //     that was read (`.is(..., null)` when the row carries none — PostgREST
+  //     cannot express NULL equality through `.eq`). Without it, the status
+  //     predicate alone is satisfied by 'undoing' -> 'undoing' and two resumes of
+  //     the same stale claim would both proceed. With it, the first resume stamps
+  //     a new undo_started_at and the second matches zero rows.
+  //
+  // `.select("id")` makes the update RETURN the rows it changed, which is the
+  // only way to tell "claimed it" from "someone else got there first" — a bare
+  // update reports neither.
+  let claim = db
     .from("import_jobs")
     .update({ status: "undoing", undo_started_at: new Date().toISOString() })
     .eq("id", jobId)
-    .eq("conta_id", conta_id);
+    .eq("conta_id", conta_id)
+    .eq("status", job.status);
+  if (job.status === "undoing") {
+    claim = job.undo_started_at == null
+      ? claim.is("undo_started_at", null)
+      : claim.eq("undo_started_at", job.undo_started_at);
+  }
+  const { data: claimed, error: claimErr } = await claim.select("id");
+  // A genuine write failure is not "someone else claimed it": log it internally
+  // and return the generic 500, never the database text (same rule as the probes
+  // above). Either way NOTHING below this point runs — the item read and every
+  // delete are past this gate.
+  if (claimErr) {
+    console.error("[data-import] undo claim failed:", claimErr);
+    return json({ error: "Internal error" }, 500);
+  }
+  // Zero rows means the compare-and-set lost the race. Reuse the SAME string the
+  // read-time refusal above returns: it already maps to pt-BR copy in
+  // apps/crm/src/services/dataImport.ts (ERROR_MESSAGES['Undo in progress']),
+  // and the user-facing situation is identical — another undo owns this job.
+  // Adding a new string here would need the same key added there.
+  if (((claimed ?? []) as unknown[]).length !== 1) {
+    return json({ error: "Undo in progress" }, 400);
+  }
   // `.eq("merged", false)` is LOAD-BEARING, not a filter for tidiness.
   // A "mesclar com existente" row records the pre-existing cliente the
   // import merged INTO, so it can resolve clienteRef and be skipped on

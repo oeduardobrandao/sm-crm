@@ -142,6 +142,12 @@ const ERROR_MESSAGES: Record<string, string> = {
   upgrade_required: 'A importação de dados não está disponível no seu plano.',
   'Job not found': 'Não encontramos esta importação.',
   'Already undone': 'Esta importação já foi desfeita.',
+  // Covers BOTH server refusals for a job another undo owns: the up-front status
+  // check, and the compare-and-set claim losing the race (handleUndo in
+  // supabase/functions/data-import/handler.ts deliberately reuses this one string
+  // for both, so this mapping does not have to grow a second key). Any new error
+  // string added there needs a key added here, or it falls back to the generic
+  // "Falha na importação".
   'Undo in progress': 'Já existe um "desfazer" em andamento para esta importação.',
   'Undo window expired': 'O prazo de 7 dias para desfazer esta importação já passou.',
   'Invalid source': 'Origem inválida.',
