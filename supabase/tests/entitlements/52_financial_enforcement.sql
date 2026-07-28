@@ -681,6 +681,8 @@ declare
   v_admin_no uuid := gen_random_uuid();
   v_mid bigint;
   v_cid bigint;
+  v_mid_val bigint;
+  v_cid_val bigint;
   v_val  numeric;
   v_nome text;
   v_rows bigint;
@@ -695,6 +697,28 @@ begin
    where user_id = v_admin_no and workspace_id = v_ws;
   update profiles set conta_id = v_ws, active_workspace_id = v_ws
    where id in (v_owner, v_admin_no);
+
+  -- Seed a SECOND row per table carrying a REAL financial value, inserted
+  -- directly as postgres (current_user IN ('postgres','supabase_admin')
+  -- bypasses the guard -- see guard_financial_write() -- so this seeding
+  -- step itself proves nothing about the guard; it only sets up state).
+  --
+  -- Why this row is needed at all: v_mid/v_cid below are seeded through the
+  -- restricted-admin "INSERT carrying NULL succeeds" step, so
+  -- custo_mensal/valor_mensal stay NULL for their entire lifetime in this
+  -- block. A non-financial UPDATE against a permanently-NULL column can
+  -- never distinguish the correct guard (`new_val IS DISTINCT FROM
+  -- old_val`) from the over-broad, previously-shipped variant (`new_val IS
+  -- NOT NULL`) -- both evaluate to false when the column never carries a
+  -- value, so a test built only on v_mid/v_cid would pass even against a
+  -- guard that rejects every edit to a member/client that actually has a
+  -- retainer. v_mid_val/v_cid_val close that hole.
+  insert into membros (user_id, conta_id, nome, cargo, tipo, avatar_url, custo_mensal)
+    values (v_owner, v_ws, 'HasValue', 'X', 'clt', '', 5000)
+    returning id into v_mid_val;
+  insert into clientes (user_id, conta_id, nome, sigla, cor, valor_mensal)
+    values (v_owner, v_ws, 'HasValueCli', 'HV', '#000', 3000)
+    returning id into v_cid_val;
 
   -- restricted admin INSERT carrying NULL succeeds (no change to guard).
   perform set_config('request.jwt.claims',
@@ -725,7 +749,7 @@ begin
     raise exception 'restricted admin insert of membros carrying a financial value must be denied';
   end if;
 
-  -- restricted admin UPDATE of a non-financial field succeeds.
+  -- restricted admin UPDATE of a non-financial field succeeds (NULL-row case).
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_admin_no, 'role', 'authenticated')::text, true);
   set local role authenticated;
@@ -738,6 +762,28 @@ begin
   select nome into v_nome from membros where id = v_mid;
   if v_nome is distinct from 'Renamed' then
     raise exception 'restricted admin non-financial update did not take effect, got %', v_nome;
+  end if;
+
+  -- restricted admin UPDATE of a non-financial field on a row that HAS a
+  -- real custo_mensal succeeds, and the financial value is left untouched.
+  -- This is the case the NULL-row test above cannot exercise: a restricted
+  -- admin changing a phone number / name on a member who actually has a
+  -- retainer -- the single most common edit this feature must not break.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_admin_no, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  update membros set nome = 'RenamedHasValue' where id = v_mid_val;
+  get diagnostics v_rows = row_count;
+  reset role;
+  if v_rows <> 1 then
+    raise exception 'restricted admin should be able to rename a member with a real custo_mensal, affected %', v_rows;
+  end if;
+  select nome, custo_mensal into v_nome, v_val from membros where id = v_mid_val;
+  if v_nome is distinct from 'RenamedHasValue' then
+    raise exception 'restricted admin non-financial update (real-value row) did not take effect, got %', v_nome;
+  end if;
+  if v_val is distinct from 5000 then
+    raise exception 'restricted admin non-financial update mutated custo_mensal on a real-value row, got %', v_val;
   end if;
 
   -- authorized owner CAN change the financial value (positive counterpart).
@@ -784,6 +830,28 @@ begin
   select valor_mensal into v_val from clientes where id = v_cid;
   if v_val is not null then
     raise exception 'restricted admin mutated clientes.valor_mensal despite the raised exception, got %', v_val;
+  end if;
+
+  -- restricted admin UPDATE of a non-financial field on a client that HAS a
+  -- real valor_mensal succeeds, and the financial value is left untouched.
+  -- Same rationale as the membros case above: clientes has the identical
+  -- hole, and this is the single most common edit this feature must not
+  -- break (e.g. a restricted admin fixing a client's phone number).
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_admin_no, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  update clientes set nome = 'RenamedHasValueCli' where id = v_cid_val;
+  get diagnostics v_rows = row_count;
+  reset role;
+  if v_rows <> 1 then
+    raise exception 'restricted admin should be able to rename a client with a real valor_mensal, affected %', v_rows;
+  end if;
+  select nome, valor_mensal into v_nome, v_val from clientes where id = v_cid_val;
+  if v_nome is distinct from 'RenamedHasValueCli' then
+    raise exception 'restricted admin non-financial update (real-value row) did not take effect, got %', v_nome;
+  end if;
+  if v_val is distinct from 3000 then
+    raise exception 'restricted admin non-financial update mutated valor_mensal on a real-value row, got %', v_val;
   end if;
 
   perform set_config('request.jwt.claims',

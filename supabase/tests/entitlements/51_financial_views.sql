@@ -92,13 +92,29 @@ begin
     raise exception 'restricted admin should read valor_mensal=NULL, got %', v_val;
   end if;
 
-  -- Direct ACL assertions: this is what actually proves the migration's
-  -- enumerated `REVOKE ... FROM PUBLIC, anon, authenticated, service_role` is
-  -- necessary. Locally the default ACL on a freshly created view never grants
-  -- `authenticated` INSERT/UPDATE in the first place, so the write-denial
-  -- cases further below would still pass even if that REVOKE were reduced to
-  -- `FROM PUBLIC` alone — they remain useful behavioural checks, but reading
-  -- relacl directly is the only thing that proves the grant surface itself.
+  -- Direct ACL assertions, mirroring the behavioural write-denial checks
+  -- above. NEITHER form actually proves the migration's enumerated
+  -- `REVOKE ... FROM PUBLIC, anon, authenticated, service_role` is necessary
+  -- (as opposed to a narrower `REVOKE ... FROM PUBLIC`) in THIS suite: the
+  -- behavioural cases pass either way because the local default ACL on a
+  -- freshly created view never grants `authenticated` INSERT/UPDATE in the
+  -- first place, and these relacl assertions below have the identical local
+  -- weakness for the same reason -- `et_grant_hosted_parity()` (used
+  -- elsewhere in this file to backfill hosted-parity grants) iterates
+  -- `pg_tables`, so it never touches `membros_v`/`clientes_v` at all, and
+  -- isn't even called in this file; there is nothing here that would
+  -- re-grant a view the way a reduced REVOKE would leave it. Both forms of
+  -- assertion remain useful regression coverage for the CURRENT grant state,
+  -- just not proof that the wider enumeration in the REVOKE was required.
+  --
+  -- What actually proves that is Migration A's own post-condition `DO` block
+  -- (supabase/migrations/20260728000001_financial_visibility_a_additive.sql,
+  -- the `FOREACH v IN ARRAY ARRAY['membros_v', 'clientes_v']` block at the
+  -- end of the file), which reads relacl the same way but runs immediately
+  -- after the migration applies -- including on hosted, where the default
+  -- ACL actually does grant authenticated/anon/service_role broadly, so a
+  -- too-narrow REVOKE there would leave a real grant behind for that block
+  -- to catch.
   foreach v_view in array array['membros_v', 'clientes_v'] loop
     select array_to_string(c.relacl, ',') into v_acl
     from pg_class c join pg_namespace n on n.oid = c.relnamespace

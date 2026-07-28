@@ -45,28 +45,8 @@ describe('store core helpers and CRUD', () => {
     });
   });
 
-  it('formats money according to the current role', () => {
-    mockedSupabase.__setCurrentProfile({
-      id: 'user-1',
-      nome: 'Eduardo Souza',
-      role: 'agent',
-      conta_id: 'conta-1',
-    });
-
-    return store.initStoreRole().then(async () => {
-      expect(store.formatBRL(1490)).toBe('R$ •••••');
-
-      mockedSupabase.__setCurrentProfile({
-        id: 'user-1',
-        nome: 'Eduardo Souza',
-        role: 'admin',
-        conta_id: 'conta-1',
-      });
-      await store.initStoreRole();
-
-      expect(store.formatBRL(1490)).toContain('R$');
-      expect(store.getInitials('Joana Lima')).toBe('JL');
-    });
+  it('builds initials from a name', () => {
+    expect(store.getInitials('Joana Lima')).toBe('JL');
   });
 
   it('flattens workspace users from the joined Supabase shape', async () => {

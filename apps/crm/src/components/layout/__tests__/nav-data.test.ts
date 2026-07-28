@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { getNavGroups, getMoreSheetGroups } from '../nav-data';
+import { deriveFinancialAccess } from '@/lib/financialAccess';
+import type { MyMembership } from '@/store/workspace';
 
 const ids = (groups: ReturnType<typeof getNavGroups>) =>
   groups.flatMap((g) => g.items.map((i) => i.id));
@@ -25,7 +27,29 @@ describe('getNavGroups financial capability', () => {
     expect(got).not.toContain('contratos');
   });
 
-  it('always shows them to an owner, even with the flag false', () => {
+  // `deriveFinancialAccess` (lib/financialAccess.ts) always maps
+  // membership.role === 'owner' to `true`, and both real callers
+  // (Sidebar.tsx, MobileNav.tsx) source `canSeeFinancials` and
+  // `workspaceRole` from the SAME useAuth() membership snapshot -- so
+  // `workspaceRole: 'owner'` paired with `canSeeFinancials: false` cannot
+  // occur through the app's actual derivation. Proven directly below rather
+  // than asserted in prose.
+  it('deriveFinancialAccess never produces false for an owner (documents why the case below is synthetic)', () => {
+    const access = deriveFinancialAccess({
+      role: 'owner',
+      can_see_financials: false,
+    } as MyMembership);
+    expect(access).toBe(true);
+  });
+
+  // Because that combination is unreachable via deriveFinancialAccess, this
+  // input is synthetic -- not a simulation of real app state. It is kept as
+  // a defense-in-depth check on getNavGroups' OWN contract: the function is
+  // exported and callable directly (as this test does) with no compile-time
+  // link to deriveFinancialAccess, so a future caller -- or a bug that
+  // decouples the two values -- must still not be able to hide financial
+  // nav from a confirmed workspace owner.
+  it('exempts a confirmed owner from the financial gate even if canSeeFinancials were wrongly false (defense-in-depth; synthetic input)', () => {
     const got = ids(getNavGroups('owner', null, false, 'owner'));
     expect(got).toContain('financeiro');
     expect(got).toContain('contratos');

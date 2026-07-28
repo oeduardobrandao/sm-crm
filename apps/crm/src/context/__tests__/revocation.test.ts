@@ -13,7 +13,6 @@ const { mockMaybeSingle, mockMembershipGetUser, mockGetContaId } = vi.hoisted(()
 
 vi.mock('../../lib/supabase');
 vi.mock('../../store/core', () => ({
-  initStoreRole: vi.fn(async () => undefined),
   supabase: {
     auth: { getUser: mockMembershipGetUser },
     from: () => ({

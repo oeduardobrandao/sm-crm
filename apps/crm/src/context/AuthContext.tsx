@@ -8,7 +8,6 @@ import {
   signOut as supabaseSignOut,
   healPendingInvite,
 } from '../lib/supabase';
-import { initStoreRole } from '../store/core';
 import { getMyMembership, type MyMembership } from '../store/workspace';
 import { deriveFinancialAccess, type FinancialAccess } from '../lib/financialAccess';
 import { identifyWorkspaceUser, resetAnalytics } from '../lib/analytics';
@@ -194,7 +193,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             role: (nextProfile as Profile).role,
           });
         }
-        await initStoreRole();
         if (!active || profileRequestId.current !== requestId) return;
 
         // Joins the existing guarded hydration flow so `loading` covers it too.
@@ -223,8 +221,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         if (active && profileRequestId.current === requestId) {
           setProfile(null);
-          // getCurrentProfile()/initStoreRole() threw before the membership
-          // lookup ever ran -- nothing about membership is known.
+          // getCurrentProfile() threw before the membership lookup ever ran
+          // -- nothing about membership is known.
           setMembershipResolved('error');
         }
       } finally {
@@ -382,7 +380,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (profileRequestId.current !== requestId) return;
 
       setProfile(nextProfile as Profile | null);
-      await initStoreRole();
     } catch {
       if (profileRequestId.current === requestId) setProfile(null);
     } finally {

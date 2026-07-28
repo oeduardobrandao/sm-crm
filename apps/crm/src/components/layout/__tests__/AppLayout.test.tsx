@@ -72,6 +72,7 @@ function setCanSeeFinancials(canSeeFinancials: FinancialAccess) {
     profile: { id: 'u1', nome: 'Ana', role: 'owner', conta_id: 'c1' } as never,
     role: 'owner',
     workspaceRole: 'owner',
+    membershipResolved: true,
     canSeeFinancials,
     loading: false,
     refetchProfile: vi.fn(),

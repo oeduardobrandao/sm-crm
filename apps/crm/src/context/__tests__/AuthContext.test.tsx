@@ -14,14 +14,13 @@ const { mockMaybeSingle, mockMembershipGetUser, mockGetContaId } = vi.hoisted(()
 
 vi.mock('../../lib/supabase');
 // getMyMembership() (store/workspace.ts) reads `supabase` and `getContaId`
-// from THIS module, not from '../../lib/supabase'. The previous factory only
-// exported `initStoreRole`, so `supabase` was undefined inside
-// getMyMembership() and every call threw before reaching the mocked
-// maybeSingle() — canSeeFinancials always resolved via the catch path to
-// 'unknown', and the membership happy path (the one AuthContext.tsx:150
-// actually exercises) was never covered by this suite.
+// from THIS module, not from '../../lib/supabase'. A factory that omits
+// them leaves `supabase` undefined inside getMyMembership(), so every call
+// throws before reaching the mocked maybeSingle() — canSeeFinancials always
+// resolves via the catch path to 'unknown', and the membership happy path
+// (the one AuthContext.tsx actually exercises) never gets covered by this
+// suite.
 vi.mock('../../store/core', () => ({
-  initStoreRole: vi.fn(async () => undefined),
   supabase: {
     auth: { getUser: mockMembershipGetUser },
     from: () => ({
