@@ -125,26 +125,45 @@ async function auditQuietly(...args: Parameters<typeof insertAuditLog>): Promise
  * UPDATEs its status, so the trigger cannot have fired for anything the
  * import itself did; any row here is a real status change made after import.
  *
+ * post_comment_threads / post_edit_suggestions (task-9 final cascade-child
+ * gap, now closed): a previous review round named both as a known,
+ * intentional gap and deferred them rather than probing them. Both hold real
+ * user-authored data import_commit_row never writes: post_comment_threads
+ * (20260423_post_comment_threads.sql:4) is an inline PostEditor comment
+ * thread anchored to a text selection; post_edit_suggestions
+ * (20260521000001_post_edit_suggestions.sql:8) is a client-submitted edit
+ * suggestion from the Hub. post_comment_threads also has its own child:
+ * post_comments.thread_id (20260423_post_comment_threads.sql:18) is itself
+ * `ON DELETE CASCADE` from post_comment_threads, so guarding the thread row
+ * here protects the comments transitively — post_comments carries no
+ * conta_id or post_id column of its own to probe directly, but it needs
+ * none: it cannot survive without its thread, so there is no separate entry
+ * for it in this list.
+ *
  * Verified against the migrations on 2026-07-27:
- *   post_property_values  post_id  (none)      20260403_custom_properties.sql:27
- *   post_media            post_id  conta_id    20260411_post_media.sql:11-12
+ *   post_property_values   post_id  (none)      20260403_custom_properties.sql:27
+ *   post_media             post_id  conta_id    20260411_post_media.sql:11-12
  *   post_file_links        post_id  conta_id    20260425000001_file_system_tables.sql:74,76
  *   post_approvals         post_id  (none)      20260402_workflow_posts.sql:60
  *   post_status_events     post_id  conta_id    20260606000001_post_status_events.sql:12-13
+ *   post_comment_threads   post_id  conta_id    20260423_post_comment_threads.sql:4-5
+ *   post_edit_suggestions  post_id  conta_id    20260521000001_post_edit_suggestions.sql:8-9
  *
- * workflow_posts(id) also cascades ON DELETE to post_edit_suggestions
- * (20260521000001_post_edit_suggestions.sql:8) and post_comment_threads
- * (20260423_post_comment_threads.sql:4) — both hold real user-authored data
- * (client-suggested edits; inline comment threads) and neither is probed
- * here. That is a known, intentional gap carried forward from the previous
- * review round (round 6), not a silent omission — see the task-9 report.
  * The previous round's comment here also listed "post_designs" and "the
  * instagram_scheduling queue row" as unprobed cascade children; post_designs
  * (20260702000001_post_designs.sql) was dropped outright by
  * 20260705000001_designs_first_class.sql:25 and no longer exists, and no
  * separate "instagram_scheduling queue" table was ever found — both were
  * stale/inaccurate and have been removed from this list rather than carried
- * forward.
+ * forward. designs.post_id (20260705000001_designs_first_class.sql:55) is
+ * `ON DELETE SET NULL`, not CASCADE, so it does not belong in this list
+ * either: deleting the post detaches the design instead of cascading it away.
+ *
+ * Re-derived against `grep -rni "references workflow_posts(id)"
+ * supabase/migrations/` on 2026-07-27, every hit is accounted for above or in
+ * this list, and every one of them is either CASCADE-and-guarded, CASCADE-and-
+ * dropped/stale, or SET NULL (not a cascade-delete hazard at all). This list
+ * is therefore exhaustive as of that grep.
  *
  * !!! ANY future table added with `REFERENCES workflow_posts(id) ON DELETE
  * CASCADE` that can hold user-authored data belongs in this list — the same
@@ -158,6 +177,8 @@ const PUBLISHED_POST_CASCADE_CHILDREN: Array<{ table: string; column: string; sc
   { table: "post_file_links", column: "post_id", scopeCol: "conta_id" },
   { table: "post_approvals", column: "post_id", scopeCol: null },
   { table: "post_status_events", column: "post_id", scopeCol: "conta_id" },
+  { table: "post_comment_threads", column: "post_id", scopeCol: "conta_id" },
+  { table: "post_edit_suggestions", column: "post_id", scopeCol: "conta_id" },
 ];
 
 /**

@@ -1113,6 +1113,77 @@ Deno.test("data-import: undo keeps an unpublished post that still has a post_sta
   assertModifier(probe, "eq", ["conta_id", "conta-1"]);
 });
 
+// --- published-post guard: post_comment_threads / post_edit_suggestions ----
+// task-9 final cascade-child gap, now closed: a previous review round named
+// both as a known, intentional gap and deferred them. post_comment_threads
+// (20260423_post_comment_threads.sql:4) is an inline PostEditor comment
+// thread anchored to a text selection; post_edit_suggestions
+// (20260521000001_post_edit_suggestions.sql:8) is a client-submitted edit
+// suggestion from the Hub. import_commit_row never writes either table, and
+// both carry their own conta_id.
+
+Deno.test("data-import: undo keeps an unpublished post that still has a post_comment_threads row", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflow_posts", row_id: "31", source_row_key: "p1", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [], error: null }); // not published
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("post_media", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_status_events", "select", { data: [], error: null });
+  // a teammate left an inline comment on the post after the import landed it.
+  db.queue("post_comment_threads", "select", { data: [{ post_id: 31 }], error: null });
+  db.queue("post_edit_suggestions", "select", { data: [], error: null });
+  db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedPublished, ["31"]);
+  assertEquals(body.deleted, 0);
+  assertEquals(callsFor(db, "workflow_posts", "delete").length, 0);
+  const probe = oneCall(db, "post_comment_threads", "select");
+  assertModifier(probe, "in", ["post_id", [31]]);
+  // post_comment_threads carries its own conta_id.
+  assertModifier(probe, "eq", ["conta_id", "conta-1"]);
+});
+
+Deno.test("data-import: undo keeps an unpublished post that still has a post_edit_suggestions row", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflow_posts", row_id: "31", source_row_key: "p1", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("post_media", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_status_events", "select", { data: [], error: null });
+  db.queue("post_comment_threads", "select", { data: [], error: null });
+  // a client submitted an edit suggestion through the Hub after the import.
+  db.queue("post_edit_suggestions", "select", { data: [{ post_id: 31 }], error: null });
+  db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
+  db.queue("import_jobs", "update", { data: null, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedPublished, ["31"]);
+  assertEquals(body.deleted, 0);
+  assertEquals(callsFor(db, "workflow_posts", "delete").length, 0);
+  const probe = oneCall(db, "post_edit_suggestions", "select");
+  assertModifier(probe, "in", ["post_id", [31]]);
+  // post_edit_suggestions carries its own conta_id.
+  assertModifier(probe, "eq", ["conta_id", "conta-1"]);
+});
+
 Deno.test("data-import: undo still deletes an unpublished post with no surviving cascade-child rows at all", async () => {
   const db = createSupabaseQueryMock();
   authAs(db);
@@ -1127,6 +1198,8 @@ Deno.test("data-import: undo still deletes an unpublished post with no surviving
   db.queue("post_file_links", "select", { data: [], error: null });
   db.queue("post_approvals", "select", { data: [], error: null });
   db.queue("post_status_events", "select", { data: [], error: null });
+  db.queue("post_comment_threads", "select", { data: [], error: null });
+  db.queue("post_edit_suggestions", "select", { data: [], error: null });
   db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null });
   db.queue("import_jobs", "update", { data: null, error: null });
   db.queue("audit_log", "insert", { data: null, error: null });
