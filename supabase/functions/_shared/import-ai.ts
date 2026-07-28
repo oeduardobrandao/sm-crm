@@ -19,13 +19,24 @@
 //     Any value outside the allow-list is clamped to "rascunho", not dropped
 //     silently — the column still gets a status, just the safe one.
 //
-// The outbound side gets the same defence in depth: clampSummaryForRequest
-// (below) caps sample values per column, columns per collection, and the
-// number of collections before the summary is serialized into the Gemini
-// request body, so the request never carries more than column headers plus
-// a few sample values per column — never the full roster — regardless of
-// what the caller (packages/import-parsers, via the future import wizard)
-// actually sends.
+// The outbound side gets the same defence in depth applied to BOTH values
+// embedded into the prompt:
+//   - clampSummaryForRequest (below) caps sample values per column, columns
+//     per collection, and the number of collections in the server-derived
+//     summary before it is serialized into the Gemini request body, so the
+//     request never carries more than column headers plus a few sample
+//     values per column — never the full roster — regardless of what the
+//     caller (packages/import-parsers, via the future import wizard)
+//     actually sends.
+//   - clampHeuristicForRequest (below) applies the same collection-count cap,
+//     plus a per-string length cap, to `heuristic` — the client-supplied
+//     mapping proposal. heuristic carries no sample cell values (so it is not
+//     the data-leak concern the summary is), but /analyze accepts arbitrary
+//     JSON from any authenticated member of an entitled workspace, and
+//     buildPrompt serializes it wholesale via JSON.stringify — an oversized or
+//     hostile heuristic (thousands of synthetic collections, huge strings as
+//     columnRoles/statusMap keys) would otherwise inflate every Gemini
+//     request unbounded, with no cap and no rate limit on repeated calls.
 import type { AnalyzeSummary, WireCollectionMapping, WireMappingProposal } from "../data-import/types.ts";
 
 const DESTINATIONS = new Set(["clientes", "posts", "entregas", "ideias", "ignorar"]);
@@ -54,6 +65,11 @@ const STATUS_TARGETS = new Set([
 const MAX_COLLECTIONS = 50;
 const MAX_COLUMNS_PER_COLLECTION = 60;
 const MAX_SAMPLES_PER_COLUMN = 3;
+// heuristic.collections has no natural per-field cap the way the summary's
+// sample counts do — its columnRoles/statusMap/clientAssignment values are
+// free-form strings a hostile caller could inflate arbitrarily. This bounds
+// any single string embedded into the prompt from the heuristic proposal.
+const MAX_HEURISTIC_STRING_LENGTH = 200;
 
 /**
  * Clamps the collection/column/sample-value counts before the summary is
@@ -73,6 +89,56 @@ function clampSummaryForRequest(summary: AnalyzeSummary): AnalyzeSummary {
     }
     return { ...c, columns, sampleCells };
   });
+  return { collections };
+}
+
+function clampHeuristicString(value: unknown): string {
+  const s = typeof value === "string" ? value : "";
+  return s.length > MAX_HEURISTIC_STRING_LENGTH ? s.slice(0, MAX_HEURISTIC_STRING_LENGTH) : s;
+}
+
+/** Caps both the number of entries and the length of every key/value string. */
+function clampHeuristicStringMap(value: unknown): Record<string, string> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>).slice(0, MAX_COLUMNS_PER_COLLECTION)) {
+    out[clampHeuristicString(k)] = clampHeuristicString(v);
+  }
+  return out;
+}
+
+function clampHeuristicClientAssignment(value: unknown): WireCollectionMapping["clientAssignment"] {
+  const mode = (value as { mode?: unknown } | null | undefined)?.mode;
+  if (mode === "column") {
+    return { mode: "column", column: clampHeuristicString((value as { column?: unknown }).column) };
+  }
+  const clienteNome = (value as { clienteNome?: unknown } | null | undefined)?.clienteNome;
+  return { mode: "fixed", clienteNome: clampHeuristicString(clienteNome) };
+}
+
+/**
+ * Clamps the client-supplied heuristic mapping proposal before it is embedded
+ * into the Gemini request body — the same data-minimization discipline
+ * clampSummaryForRequest applies to the server-derived summary, adapted to
+ * heuristic's shape: a bounded number of collections, each with bounded
+ * columnRoles/statusMap maps and length-capped strings throughout. Tolerant
+ * of a malformed (non-array/non-object) heuristic — refineMapping's own
+ * try/catch still covers anything this cannot make sense of, but a merely
+ * oversized-and-well-shaped payload is the case this function exists to cap.
+ */
+function clampHeuristicForRequest(heuristic: WireMappingProposal): WireMappingProposal {
+  const rawCollections = Array.isArray(heuristic?.collections) ? heuristic.collections : [];
+  const collections = rawCollections.slice(0, MAX_COLLECTIONS).map(
+    (c): WireCollectionMapping => ({
+      collectionId: clampHeuristicString((c as { collectionId?: unknown })?.collectionId),
+      destination: clampHeuristicString(
+        (c as { destination?: unknown })?.destination,
+      ) as WireCollectionMapping["destination"],
+      columnRoles: clampHeuristicStringMap((c as { columnRoles?: unknown })?.columnRoles),
+      statusMap: clampHeuristicStringMap((c as { statusMap?: unknown })?.statusMap),
+      clientAssignment: clampHeuristicClientAssignment((c as { clientAssignment?: unknown })?.clientAssignment),
+    }),
+  );
   return { collections };
 }
 
@@ -132,13 +198,14 @@ export async function refineMapping(
 ): Promise<WireMappingProposal | null> {
   try {
     const clampedSummary = clampSummaryForRequest(summary);
+    const clampedHeuristic = clampHeuristicForRequest(heuristic);
     const res = await fetchFn(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
       {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: buildPrompt(clampedSummary, heuristic) }] }],
+          contents: [{ parts: [{ text: buildPrompt(clampedSummary, clampedHeuristic) }] }],
           generationConfig: { responseMimeType: "application/json" },
         }),
       },

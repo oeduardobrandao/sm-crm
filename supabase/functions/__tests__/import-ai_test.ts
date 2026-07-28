@@ -278,6 +278,90 @@ Deno.test("refineMapping: clamps outbound sample values to at most 3 per column 
   assertEquals(sent.collections[0].sampleCells.Nome, manySamples.slice(0, 3));
 });
 
+// Pulls the clamped heuristic back out of the request body handed to the fake
+// fetch — mirrors extractSentSummary above, applied to the "Proposta
+// heurística atual: " line instead.
+function extractSentHeuristic(body: string): {
+  collections: Array<{
+    collectionId: string;
+    destination: string;
+    columnRoles: Record<string, string>;
+    statusMap: Record<string, string>;
+    clientAssignment: { mode: string; column?: string; clienteNome?: string };
+  }>;
+} {
+  const parsedBody = JSON.parse(body);
+  const text = parsedBody.contents[0].parts[0].text as string;
+  const marker = "Proposta heurística atual: ";
+  const line = text.split("\n").find((l: string) => l.startsWith(marker));
+  assert(!!line, "prompt must include the heuristic line");
+  return JSON.parse(line!.slice(marker.length));
+}
+
+Deno.test("refineMapping: clamps an oversized heuristic (collection count + string lengths) before calling Gemini", async () => {
+  const hugeString = "x".repeat(5000);
+  const manyCollections = Array.from({ length: 200 }, (_, i) => ({
+    collectionId: `synthetic-${i}`,
+    destination: "clientes",
+    // Distinguishing prefix comes FIRST so 60 columnRoles entries stay
+    // distinct keys after 200-char truncation — a huge-string PREFIX would
+    // make every truncated key identical and silently collapse the map,
+    // which would make the entry-count assertion below meaningless.
+    columnRoles: Object.fromEntries(
+      Array.from({ length: 200 }, (_, j) => [`col${j}-${hugeString}`, hugeString]),
+    ),
+    statusMap: Object.fromEntries(Array.from({ length: 200 }, (_, j) => [`status${j}`, hugeString])),
+    clientAssignment: { mode: "fixed" as const, clienteNome: hugeString },
+  }));
+  const oversizedHeuristic = { collections: manyCollections };
+  const capture: { body?: string } = {};
+  // The AI response itself is irrelevant here (nothing in it matches any
+  // known collectionId from SUMMARY, so refineMapping returns null) — the
+  // test only cares about what got SENT, captured via geminiOkCapturing.
+  await refineMapping(SUMMARY, oversizedHeuristic, "key", geminiOkCapturing({ collections: [] }, capture));
+  const sent = extractSentHeuristic(capture.body!);
+
+  // Collection count capped the same way summary.collections is (MAX_COLLECTIONS = 50).
+  assertEquals(sent.collections.length, 50);
+
+  const first = sent.collections[0];
+  // columnRoles/statusMap entry counts capped (MAX_COLUMNS_PER_COLLECTION = 60).
+  assertEquals(Object.keys(first.columnRoles).length, 60);
+  assertEquals(Object.keys(first.statusMap).length, 60);
+
+  // Every string surviving into the request body is bounded, not just truncated
+  // counts — keys and values alike, plus clientAssignment's free-form field.
+  for (const [k, v] of Object.entries(first.columnRoles)) {
+    assert(k.length <= 200, `columnRoles key must be capped, got length ${k.length}`);
+    assert(v.length <= 200, `columnRoles value must be capped, got length ${v.length}`);
+  }
+  for (const [k, v] of Object.entries(first.statusMap)) {
+    assert(k.length <= 200, `statusMap key must be capped, got length ${k.length}`);
+    assert(v.length <= 200, `statusMap value must be capped, got length ${v.length}`);
+  }
+  assert(first.clientAssignment.clienteNome!.length <= 200, "clientAssignment.clienteNome must be capped");
+
+  // The overall request body itself must stay bounded — this is the actual
+  // budget/DoS concern, not just each individual field in isolation. The
+  // theoretical ceiling implied by the caps is on the order of
+  // 50 collections * 60 entries * 2 maps * 2 (key+value) * 200 chars ≈ 2.4M
+  // characters, plus JSON punctuation/escaping overhead; 5MB is a generous
+  // margin above that ceiling while still being tiny next to what the
+  // UNCLAMPED input here would have produced (200 collections * 200 entries
+  // * 2 maps * 2 * 5000-char strings ≈ hundreds of megabytes).
+  assert(capture.body!.length < 5_000_000, `request body must stay bounded, got ${capture.body!.length} bytes`);
+});
+
+Deno.test("refineMapping: a malformed (non-array collections) heuristic degrades to an empty proposal, not a crash", async () => {
+  const capture: { body?: string } = {};
+  const malformedHeuristic = { collections: "not-an-array" } as unknown as {
+    collections: unknown[];
+  };
+  await refineMapping(SUMMARY, malformedHeuristic as any, "key", geminiOkCapturing({ collections: [] }, capture));
+  const sent = extractSentHeuristic(capture.body!);
+  assertEquals(sent.collections, []);
+});
+
 Deno.test("refineMapping: clamps outbound collection and column counts before calling Gemini", async () => {
   const manyCollections = Array.from({ length: 80 }, (_, i) => ({
     collectionId: `c${i}`,

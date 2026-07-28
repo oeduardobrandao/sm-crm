@@ -58,14 +58,44 @@ export interface ClienteData {
 const CLIENTE_SAFE_COLUMNS =
   'id, user_id, conta_id, nome, sigla, cor, plano, email, telefone, status, created_at, notion_page_url, data_pagamento, especialidade, data_aniversario, dia_entrega, auto_publish_on_approval, send_report_email, include_ai_analysis';
 
+// Supabase's REST layer applies a project-level max-rows cap (commonly 1000), so
+// an unbounded `.select('*')` is silently truncated once a workspace has more
+// clientes than that cap — the same trap supabase/functions/data-import/handler.ts
+// pages around for import_job_items (see its own PAGE_SIZE comment). getClientes()
+// backs the client roster used across the whole app, including the import
+// wizard's merge-vs-create decision (ImportarPage.tsx): a truncated list there
+// silently turns a merge into a duplicate cliente, and because the read is
+// ordered newest-first, the rows that fall off are always the OLDEST clients.
+// Paged explicitly rather than trusting the cap, following the same pattern.
+const PAGE_SIZE = 500;
+
 export async function getClientes(): Promise<Cliente[]> {
-  // Reads go through the masking view; writes stay on the base table.
-  const { data, error } = await supabase
-    .from('clientes_v')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return data || [];
+  const all: Cliente[] = [];
+  for (let from = 0; ; ) {
+    // Reads go through the masking view; writes stay on the base table.
+    //
+    // Secondary sort by `id` makes the ordering fully deterministic: range-based
+    // (OFFSET/LIMIT) pagination requires a stable sort across separate queries,
+    // and `created_at` alone is not guaranteed unique (bulk inserts/imports can
+    // share a timestamp), which could otherwise skip or duplicate rows at a page
+    // boundary.
+    const { data, error } = await supabase
+      .from('clientes_v')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = data ?? [];
+    // Stop only on an EMPTY page, never on `page.length < PAGE_SIZE`. Breaking
+    // on a short page would re-introduce a dependency on the server's max-rows
+    // setting: if that cap is ever set below PAGE_SIZE, the first page comes
+    // back short and the read would stop there, silently truncating again.
+    if (page.length === 0) break;
+    all.push(...page);
+    from += page.length;
+  }
+  return all;
 }
 
 export async function addCliente(
