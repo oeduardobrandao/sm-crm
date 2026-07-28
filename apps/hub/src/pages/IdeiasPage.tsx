@@ -424,9 +424,14 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
     }
   }
 
-  // Rendered via a portal to <body>: the page content lives inside `.hub-fade-up`,
+  // Rendered via a portal because the page content lives inside `.hub-fade-up`,
   // whose persistent CSS transform would otherwise make this `fixed` overlay
   // position relative to that wrapper (clipping the modal's top off-screen).
+  // The target is the `.hub-root` element, NOT document.body: index.html scopes
+  // every hub-* rule as `.hub-root .hub-*` and dark mode sets data-theme on that
+  // element, so a body portal loses the card background, text colors, and button
+  // styles (the modal renders transparent over the scrim). `.hub-root` itself has
+  // no transform, so `fixed` still positions against the viewport.
   return createPortal(
     <div
       role="dialog"
@@ -450,7 +455,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           <div>
             <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">Título</label>
             <input
-              className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-focus-accent focus:ring-2 ${errors.titulo ? 'border-red-400' : 'hub-border'}`}
+              className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] hub-focus-accent focus:ring-2 ${errors.titulo ? 'border-red-400' : 'hub-border'}`}
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
               placeholder="Ex: Reel mostrando os bastidores..."
@@ -461,7 +466,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           <div>
             <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">Descrição</label>
             <textarea
-              className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-focus-accent focus:ring-2 resize-none min-h-[100px] ${errors.descricao ? 'border-red-400' : 'hub-border'}`}
+              className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] hub-focus-accent focus:ring-2 resize-none min-h-[100px] ${errors.descricao ? 'border-red-400' : 'hub-border'}`}
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
               placeholder="Descreva sua ideia com detalhes..."
@@ -477,7 +482,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             {links.map((link, i) => (
               <div key={i} className="flex gap-2 mb-2">
                 <input
-                  className="flex-1 border hub-border rounded-lg px-3 py-2 text-sm outline-none hub-focus-accent focus:ring-2"
+                  className="flex-1 border hub-border rounded-lg px-3 py-2 text-sm outline-none hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] hub-focus-accent focus:ring-2"
                   value={link}
                   onChange={(e) =>
                     setLinks((ls) => ls.map((l, j) => (j === i ? e.target.value : l)))
@@ -538,6 +543,6 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
         </div>
       </div>
     </div>,
-    document.body,
+    document.querySelector('.hub-root') ?? document.body,
   );
 }
