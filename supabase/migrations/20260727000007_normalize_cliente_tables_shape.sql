@@ -23,9 +23,11 @@
 
 DO $$
 DECLARE
-  t       text;
-  seq     text;
-  next_id bigint;
+  t         text;
+  seq       text;
+  ident_seq text;
+  seq_next  bigint;
+  next_id   bigint;
 BEGIN
   FOREACH t IN ARRAY ARRAY['cliente_enderecos', 'cliente_datas'] LOOP
     IF NOT EXISTS (SELECT 1 FROM information_schema.tables
@@ -56,7 +58,23 @@ BEGIN
     -- transaction can insert between the read and the sequence takeover.
     EXECUTE format('LOCK TABLE public.%I IN ACCESS EXCLUSIVE MODE', t);
 
+    -- max(id) alone is not the high-water mark. The identity sequence can sit
+    -- ABOVE it — after deleting the newest rows, or from gaps left by rolled-back
+    -- inserts — and seeding the replacement from max(id) would then reissue ids
+    -- the identity had already handed out. Read the identity's own next value
+    -- first (it is dropped along with the identity below) and take whichever is
+    -- higher.
+    SELECT pg_get_serial_sequence(format('public.%I', t), 'id') INTO ident_seq;
+    IF ident_seq IS NOT NULL THEN
+      EXECUTE format(
+        'SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END FROM %s',
+        ident_seq) INTO seq_next;
+    ELSE
+      seq_next := NULL;
+    END IF;
+
     EXECUTE format('SELECT COALESCE(max(id), 0) + 1 FROM public.%I', t) INTO next_id;
+    next_id := GREATEST(next_id, COALESCE(seq_next, 1));
 
     EXECUTE format('ALTER TABLE public.%I ALTER COLUMN id DROP IDENTITY IF EXISTS', t);
     EXECUTE format('CREATE SEQUENCE IF NOT EXISTS %s', seq);
