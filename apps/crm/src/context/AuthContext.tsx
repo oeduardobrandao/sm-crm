@@ -98,16 +98,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const nextUser = session?.user ?? null;
       const nextUserId = nextUser?.id ?? null;
-      if (activeUserId.current !== nextUserId) profileRequestId.current += 1;
+      // Any identity change — including A -> B with both non-null, e.g.
+      // another tab signing in against shared storage — must reset every
+      // per-user value below. Gating this on `!nextUser` alone left B
+      // rendering with A's profile/canSeeFinancials/query cache until B's
+      // membership resolved: a brief cross-account exposure. Match `signOut`
+      // below (clearProfileCache, all four resets, queryClient.clear()).
+      const userChanged = activeUserId.current !== nextUserId;
+      if (userChanged) profileRequestId.current += 1;
       activeUserId.current = nextUserId;
       setUser(nextUser);
       setSessionReady(true);
-      if (!nextUser) {
+      if (userChanged) {
         clearProfileCache();
         setProfile(null);
         setWorkspaceRole(null);
         setCanSeeFinancials('unknown');
-        setLoading(false);
+        queryClient.clear();
+        // For a non-null nextUser, the profile-fetch effect (keyed on userId)
+        // takes over `loading` for the new identity's hydration.
+        if (!nextUser) setLoading(false);
       }
     });
 
@@ -118,7 +128,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       activeUserId.current = null;
       subscription.unsubscribe();
     };
-  }, []);
+    // queryClient is a stable module-level singleton (see App.tsx), so listing
+    // it here satisfies exhaustive-deps without causing extra effect runs.
+  }, [queryClient]);
 
   // Fetch profile whenever user changes
   useEffect(() => {

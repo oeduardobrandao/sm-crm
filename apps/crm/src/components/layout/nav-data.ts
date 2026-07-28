@@ -206,6 +206,7 @@ export function getNavGroups(
   role: string,
   features: Record<string, boolean> | null,
   canSeeFinancials: FinancialAccess,
+  workspaceRole: 'owner' | 'admin' | 'agent' | null,
 ): NavGroup[] {
   let groups = ALL_NAV_GROUPS;
 
@@ -238,9 +239,19 @@ export function getNavGroups(
   // Restricted admins lose the financial routes. Owners are never restricted,
   // and agents already lost them above.
   //
-  // Fails CLOSED on 'unknown', matching formatFinancialBRL: flashing a nav item
+  // Sourced from `workspaceRole` (workspace_members for the ACTIVE workspace),
+  // NOT the profile-derived `role`: switchWorkspace never writes
+  // profiles.role, so an owner in workspace A who is a restricted admin in B
+  // would otherwise keep seeing Financeiro/Contratos while working in B — the
+  // link then bounces to the restriction screen, which is exactly the
+  // flash-then-bounce this feature set exists to remove. Accepted cost:
+  // workspaceRole is null until membership resolves, so an owner's financial
+  // nav items appear a beat later instead of immediately — a brief flicker,
+  // traded against a persistently wrong nav for multi-workspace users.
+  //
+  // Fails CLOSED on 'unknown'/null, matching formatFinancialBRL: flashing a nav item
   // that then bounces to a restriction screen is worse than a brief absence.
-  if (role !== 'owner' && canSeeFinancials !== true) {
+  if (workspaceRole !== 'owner' && canSeeFinancials !== true) {
     groups = groups
       .map((g) =>
         g.id === 'gestao'
@@ -270,8 +281,9 @@ export function getMoreSheetGroups(
   role: string,
   features: Record<string, boolean> | null,
   canSeeFinancials: FinancialAccess,
+  workspaceRole: 'owner' | 'admin' | 'agent' | null,
 ): NavGroup[] {
-  return getNavGroups(role, features, canSeeFinancials)
+  return getNavGroups(role, features, canSeeFinancials, workspaceRole)
     .map((g) => ({
       ...g,
       items: g.items.filter((i) => !PRIMARY_NAV_IDS.includes(i.id)),

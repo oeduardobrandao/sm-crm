@@ -74,9 +74,15 @@ export function projetarAgendamentos(
 }
 
 export async function getDashboardStats(canSeeFinancials: FinancialAccess) {
+  // Skip the transactions fetch entirely when the caller lacks the capability.
+  // Before Migration B lands, RLS still returns real rows here — the UI masks
+  // aReceber/aPagar behind `canSeeFinancials === true` (DashboardPage.tsx),
+  // but the raw transacoes would otherwise sit in the network response and
+  // the React Query cache, readable in devtools, in the window between the
+  // client deploy and that migration.
   const [clientes, transacoesFisicas, membros] = await Promise.all([
     getClientes(),
-    getTransacoes(),
+    canSeeFinancials === true ? getTransacoes() : Promise.resolve([]),
     getMembros(),
   ]);
 

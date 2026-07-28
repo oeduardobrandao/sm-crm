@@ -15,7 +15,11 @@ const GlobalBannerContainer = lazy(() => import('./GlobalBannerContainer'));
 export const FINANCIAL_PATHS = ['/financeiro', '/contratos'];
 
 export function isFinancialPath(pathname: string): boolean {
-  return FINANCIAL_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
+  // App.tsx declares routes lowercase with no `caseSensitive`, so React
+  // Router matches `/Financeiro` to the same page as `/financeiro`. Lowercase
+  // before matching here too, or a capitalized path slips past this guard.
+  const lower = pathname.toLowerCase();
+  return FINANCIAL_PATHS.some((p) => lower === p || lower.startsWith(p + '/'));
 }
 
 /**

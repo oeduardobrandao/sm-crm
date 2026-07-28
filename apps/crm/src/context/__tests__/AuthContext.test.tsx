@@ -154,6 +154,77 @@ describe('AuthProvider', () => {
     expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
   });
 
+  it('resets profile/financial state immediately on a same-tab A -> B user switch (cross-account bleed regression)', async () => {
+    // Both users non-null — e.g. another tab signing in against shared
+    // storage. Gating the reset on `!nextUser` alone let B render with A's
+    // profile/canSeeFinancials/query cache until B's own membership resolved.
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-A' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-A',
+      nome: 'Ana',
+      role: 'owner',
+      conta_id: 'conta-A',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-A' } } });
+    mockGetContaId.mockResolvedValue('conta-A');
+    mockMaybeSingle.mockResolvedValue({
+      data: { role: 'owner', can_see_financials: true },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+    });
+
+    // Seed a cache entry the way a real financial query would, so we can
+    // prove it is purged on the switch instead of surviving for user B.
+    queryClient.setQueryData(['transacoes'], [{ id: 'tx-a' }]);
+
+    // Block B's profile fetch so we can observe the state in between the
+    // auth event and B's own hydration completing.
+    let resolveProfileB!: (profile: Record<string, unknown> | null) => void;
+    mockedSupabase.__queueCurrentProfileResponse(
+      new Promise((resolve) => {
+        resolveProfileB = resolve;
+      }),
+    );
+
+    await act(async () => {
+      mockedSupabase.__emitAuthChange('SIGNED_IN', { user: { id: 'user-B' } });
+    });
+
+    // B must never render with A's identity still attached, even before B's
+    // own membership/profile resolve.
+    expect(screen.getByTestId('user')).toHaveTextContent('user-B');
+    expect(screen.getByTestId('role')).toHaveTextContent('agent');
+    expect(screen.getByTestId('workspaceRole')).toHaveTextContent('null');
+    expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('unknown');
+    expect(queryClient.getQueryData(['transacoes'])).toBeUndefined();
+
+    await act(async () => {
+      resolveProfileB({
+        id: 'user-B',
+        nome: 'Beto',
+        role: 'agent',
+        conta_id: 'conta-B',
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('false');
+    });
+  });
+
   it('clears profile when onAuthStateChange emits a signed-out session', async () => {
     mockedSupabase.__resetSupabaseMock();
     mockedSupabase.__setCurrentUser({ id: 'user-1' });

@@ -132,6 +132,25 @@ describe('ProtectedRoute', () => {
     },
   );
 
+  it('redirects agent away from /Financeiro (capitalized) exactly like /financeiro', () => {
+    // App.tsx declares routes lowercase with no `caseSensitive`, so React
+    // Router itself renders /Financeiro the same as /financeiro. AGENT_BLOCKED
+    // previously matched against lowercase literals only, so a capitalized
+    // path bypassed this redirect for an agent.
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'u' } as never,
+      profile: { id: 'u', role: 'agent' } as never,
+      role: 'agent',
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    renderRoute('/Financeiro');
+
+    expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
+  });
+
   it('allows an agent to reach non-blocked routes', () => {
     mockedUseAuth.mockReturnValue({
       user: { id: 'u' } as never,

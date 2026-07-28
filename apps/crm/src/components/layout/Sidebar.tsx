@@ -18,7 +18,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: SidebarProps) {
-  const { user, profile, role, signOut, canSeeFinancials } = useAuth();
+  const { user, profile, role, signOut, canSeeFinancials, workspaceRole } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
@@ -33,6 +33,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
     role,
     features as Record<string, boolean> | null,
     canSeeFinancials,
+    workspaceRole,
   );
   const activeRoute = location.pathname;
 

@@ -13,6 +13,15 @@ describe('isFinancialPath', () => {
     expect(isFinancialPath('/equipe')).toBe(false);
     expect(isFinancialPath('/clientes/1')).toBe(false);
   });
+
+  // App.tsx declares routes lowercase with no `caseSensitive`, so React
+  // Router itself renders /Financeiro the same as /financeiro. This guard
+  // must treat the two identically instead of letting the capitalized form
+  // slip past as "not a financial path".
+  it('treats a capitalized path exactly like its lowercase form', () => {
+    expect(isFinancialPath('/Financeiro')).toBe(true);
+    expect(isFinancialPath('/Contratos/42')).toBe(true);
+  });
 });
 
 describe('financialGuardOutcome', () => {

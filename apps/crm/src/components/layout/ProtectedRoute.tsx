@@ -36,7 +36,13 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (role === 'agent' && AGENT_BLOCKED.some((p) => location.pathname.startsWith(p))) {
+  // App.tsx declares routes lowercase with no `caseSensitive`, so React Router
+  // matches `/Financeiro` to the same page as `/financeiro`. Lowercase the
+  // pathname before matching here too, or an agent typing a capital letter
+  // bypasses this redirect entirely.
+  const pathname = location.pathname.toLowerCase();
+
+  if (role === 'agent' && AGENT_BLOCKED.some((p) => pathname.startsWith(p))) {
     return <Navigate to="/dashboard" replace />;
   }
 

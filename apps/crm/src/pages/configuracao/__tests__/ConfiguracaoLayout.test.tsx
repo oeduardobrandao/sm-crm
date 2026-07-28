@@ -126,17 +126,38 @@ describe('ConfiguracaoLayout', () => {
     expect(screen.getByTestId('path')).toHaveTextContent('/configuracao/membros');
   });
 
-  it('shows the spinner (not a bounce) while auth is done loading but workspaceRole has not resolved yet', () => {
-    // Auth can finish loading before the workspace_members lookup resolves.
-    // `workspaceRole` stays null for that window. If the gate below only
-    // checked `loading`/`user`, the guard would run with a null role and
-    // immediately redirect an owner off /membros before their real role
-    // arrives — this pins the "extend the loading gate" half of the fix.
+  it('never renders the tab strip or bounces while workspaceRole is null, loading or resolved', () => {
+    // Whether workspaceRole is null because loading:true (unresolved) or
+    // because loading:false (genuinely no membership row / live-revoked —
+    // see the dedicated "removed from workspace" test below), the guard must
+    // never run `canAccessConfigTab` with a null role: that would redirect a
+    // real owner off /membros before their real role arrives.
     setAuth(null, { loading: false });
     renderAt('/configuracao/membros');
     expect(tabLabels()).toEqual([]);
     expect(screen.queryByText('conteudo membros')).not.toBeInTheDocument();
     expect(screen.getByTestId('path')).toHaveTextContent('/configuracao/membros');
+  });
+
+  it('shows a short explanatory message instead of spinning forever once workspaceRole resolves to no membership', () => {
+    // Regression: live revocation sets workspaceRole to null when a
+    // membership row disappears mid-session. Gating the spinner on
+    // `workspaceRole === null` (same as the `loading` case above) left a
+    // removed user stuck on the spinner indefinitely, since nothing was ever
+    // going to make workspaceRole non-null again. `loading:false` is the
+    // signal that the lookup has actually settled, so this state must render
+    // a message, not the spinner.
+    setAuth(null, { loading: false });
+    const { container } = renderAt('/configuracao/membros');
+    expect(screen.getByText('Sem acesso a este workspace')).toBeInTheDocument();
+    expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
+  });
+
+  it('shows the spinner (not the removed-from-workspace message) while still loading', () => {
+    setAuth(null, { loading: true });
+    const { container } = renderAt('/configuracao/membros');
+    expect(screen.queryByText('Sem acesso a este workspace')).not.toBeInTheDocument();
+    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
   });
 
   it('lets a genuine owner reach Membros even when profiles.role is stale ("agent")', () => {
