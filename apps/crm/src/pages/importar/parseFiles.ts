@@ -46,6 +46,47 @@ export function totalRows(bundle: ImportBundle): number {
 }
 
 /**
+ * Individual parsers only ever see their own file, so `generic-csv.ts` and
+ * `clickup-csv.ts` both mint `ImportCollection.id = fileName` with no way to
+ * know a sibling file shares that name (e.g. two uploads both called
+ * `dados.csv`). Every downstream consumer — `proposeMapping`, the
+ * `StepMapeamento` card lookup, and `buildCommitRows`'s `Map` keyed by
+ * `collectionId` — treats `id` as a genuine unique key, so a collision here
+ * silently desyncs which mapping the user reviewed from which mapping
+ * actually gets committed. This is the one place that sees every file in the
+ * upload, so it's the only place that CAN de-duplicate.
+ *
+ * `name` (shown to the user) is left untouched; only `id` gets a
+ * `" (n)"` suffix, mirroring `buildColumnNames`'s de-dup convention. Row keys
+ * that were derived from the same fileName (the `${fileName}:${n}` shape
+ * generic-csv/clickup-csv fall back to) are rewritten in lockstep so two
+ * same-named files never produce identical `provenance.sourceKey`s either —
+ * otherwise the commit RPC's `(job_id, source_row_key, table_name)`
+ * idempotency check would silently treat the second file's row as an
+ * already-imported duplicate of the first's.
+ */
+function dedupeCollectionIds(collections: ImportCollection[]): ImportCollection[] {
+  const seen = new Map<string, number>();
+  return collections.map((collection) => {
+    const count = (seen.get(collection.id) ?? 0) + 1;
+    seen.set(collection.id, count);
+    if (count === 1) return collection;
+    const oldId = collection.id;
+    const newId = `${oldId} (${count})`;
+    const prefix = `${oldId}:`;
+    return {
+      ...collection,
+      id: newId,
+      rows: collection.rows.map((row) =>
+        row.key.startsWith(prefix)
+          ? { ...row, key: `${newId}:${row.key.slice(prefix.length)}` }
+          : row,
+      ),
+    };
+  });
+}
+
+/**
  * Reads and parses the chosen files into one bundle, enforcing the browser-side
  * caps. Throws ParseFilesError with a message meant to be shown as-is.
  */
@@ -80,7 +121,7 @@ export async function parseFiles(source: SourceKind, files: File[]): Promise<Imp
     }
   }
 
-  const bundle: ImportBundle = { source, collections, warnings };
+  const bundle: ImportBundle = { source, collections: dedupeCollectionIds(collections), warnings };
   const rows = totalRows(bundle);
   if (rows === 0) throw new ParseFilesError(UNREADABLE_MESSAGE);
   if (rows > MAX_ROWS) {

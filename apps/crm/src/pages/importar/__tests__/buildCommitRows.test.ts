@@ -606,6 +606,47 @@ describe('ideias', () => {
   });
 });
 
+// --- duplicate collection ids ------------------------------------------------
+
+describe('duplicate collection ids', () => {
+  test('applies each collection its own mapping instead of one mapping to both', () => {
+    // Two files that both uploaded as "dados.csv" get de-duplicated ids by
+    // parseFiles (id: 'dados.csv' / 'dados.csv (2)') before reaching here —
+    // this test exercises buildCommitRows directly with that already-unique
+    // shape and confirms the Map lookup in buildCommitRows keys correctly:
+    // collection #1 -> its own 'ideias' mapping, collection #2 -> its own
+    // 'posts' mapping. Before the id de-dup fix, both collections shared the
+    // id 'dados.csv' and buildCommitRows's `new Map(...)` (last write wins)
+    // would have applied collection #2's mapping to BOTH collections' rows.
+    const bundle = mkBundle(
+      mkCollection('dados.csv', {
+        name: 'dados',
+        rows: [mkRow('dados.csv:1', { cells: { Nome: 'Ideia A' }, description: 'Corpo A' })],
+      }),
+      mkPostsCollection('dados.csv (2)', 1, { name: 'dados' }),
+    );
+    const proposal = mkProposal(
+      mkMapping('dados.csv', 'ideias', { clientAssignment: { mode: 'fixed', clienteNome: 'Ana' } }),
+      mkMapping('dados.csv (2)', 'posts', {
+        clientAssignment: { mode: 'fixed', clienteNome: 'Ana' },
+      }),
+    );
+
+    const rows = buildCommitRows(bundle, proposal, [ANA], null);
+
+    // Collection #1's row was committed as an ideia (its own mapping)...
+    const ideias = byKind<CommitIdeiaRow>(rows, 'ideia');
+    expect(ideias).toHaveLength(1);
+    expect(ideias[0].titulo).toBe('Ideia A');
+
+    // ...and collection #2's row was committed as a post (its own mapping) —
+    // neither collection's rows were committed under the other's mapping.
+    const posts = byKind<CommitPostRow>(rows, 'post');
+    expect(posts).toHaveLength(1);
+    expect(posts[0].titulo).toBe('Post 1');
+  });
+});
+
 // --- ordering ---------------------------------------------------------------
 
 describe('commit ordering', () => {

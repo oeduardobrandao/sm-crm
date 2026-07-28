@@ -32,6 +32,11 @@
 --      separately, a payload where "nome" is entirely absent) -- both must
 --      raise `import row % has no usable nome (cliente name)`, never a bare
 --      `null value in column "nome"` / "sigla" constraint violation.
+--   8. Dateless postado (added 2026-07-27): a post row with "status":"postado"
+--      and NEITHER "publishedAt" NOR "scheduledAt" set must land as
+--      status='rascunho' with published_at IS NULL, never status='postado'
+--      with published_at IS NULL. Re-run the (4) invariant query afterwards --
+--      still must return 0.
 
 create table if not exists public.import_jobs (
   id bigint generated always as identity primary key,
@@ -364,7 +369,18 @@ begin
     -- the published_at written below, so status and date can never disagree.
     v_source_at := coalesce((p_payload->>'publishedAt')::timestamptz,
                             (p_payload->>'scheduledAt')::timestamptz);
-    if v_status = 'postado' and coalesce(v_source_at, now()) > now() then
+    if v_status = 'postado' and v_source_at is null then
+      -- A dateless 'postado' row has no date for coalesce(v_source_at, now())
+      -- > now() to ever compare against -- it collapses to `now() > now()`,
+      -- which is always false, so the future-date branch below never fires
+      -- and the row would land as status='postado' with published_at NULL,
+      -- an internally inconsistent "published with nothing published" state.
+      -- Downgrades to 'rascunho', mirroring the client-side clamp's own
+      -- dateless case (apps/crm/src/pages/importar/buildCommitRows.ts's
+      -- postRow: "Dateless rows import as unscheduled rascunho") -- not
+      -- 'aprovado_cliente', which implies a date to schedule against.
+      v_status := 'rascunho';
+    elsif v_status = 'postado' and v_source_at > now() then
       v_status := 'aprovado_cliente';
     end if;
     -- DATE COLUMNS DERIVE FROM THE CLAMPED VERDICT, NEVER FROM THE RAW PAYLOAD.

@@ -664,6 +664,28 @@ Deno.test("data-import: a past-dated postado post keeps its publishedAt", async 
   assertEquals(payload.publishedAt, past);
 });
 
+Deno.test("data-import: a dateless postado post downgrades to rascunho instead of publishing with a null date", async () => {
+  // Neither the future-date nor the past-date branch ever fires when there is
+  // no date at all: `coalesce(v_source_at, now()) > now()` in the SQL clamp
+  // collapses to `now() > now()`, which is always false, so a dateless
+  // 'postado' row used to sail straight through as status='postado' with
+  // publishedAt null — an internally inconsistent "published with nothing
+  // published" state. This mirrors the client wizard's own dateless clamp
+  // (buildCommitRows.ts's postRow), which downgrades to 'rascunho', not
+  // 'aprovado_cliente' (that status implies a date to schedule against).
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueJobOwned(db);
+  db.queueRpc("import_commit_row", { data: { skipped: false, table: "workflow_posts", row_id: "5" }, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const rows = [{ ...postRow("p1", "container:a:0"), status: "postado", publishedAt: null, scheduledAt: null }];
+  await makeHandler(db)(post("commit", { jobId: 7, rows }));
+  const payload = lastRpcArgs(db, "import_commit_row").p_payload as Record<string, unknown>;
+  assertEquals(payload.status, "rascunho");
+  assertEquals(payload.publishedAt, null);
+  assertEquals(payload.scheduledAt, null);
+});
+
 Deno.test("data-import: a non-postado post never carries a publishedAt to the RPC", async () => {
   // The invariant is about the STATUS, not about the clamp's downgrade path: a
   // row that arrives already 'aprovado_cliente' with a publishedAt would display

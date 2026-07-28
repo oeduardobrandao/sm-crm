@@ -978,13 +978,18 @@ function normalizePostPayload(fields: Record<string, unknown>): Record<string, u
   const publishedAt = (fields.publishedAt ?? null) as unknown;
   // Whichever key carried the date; publishedAt wins, matching the RPC's coalesce.
   const sourceAt = publishedAt ?? scheduledAt;
-  // Unparseable/absent dates are left to the RPC's own cast to reject or ignore.
-  // A non-finite `ms` reproduces the SQL `coalesce(v_source_at, now()) > now()`,
-  // which is false when there is no date, so a dateless 'postado' row stays
-  // 'postado' — and, per the rule below, still gets a null publishedAt.
   const ms = typeof sourceAt === "string" ? Date.parse(sourceAt) : NaN;
-  if (status === "postado" && Number.isFinite(ms) && ms > Date.now()) {
-    status = "aprovado_cliente";
+  if (status === "postado") {
+    if (!Number.isFinite(ms)) {
+      // Dateless (or unparseable) 'postado' rows have no date to have been
+      // published on — 'postado' with publishedAt null is an internally
+      // inconsistent "published with nothing published" state. Downgrades to
+      // 'rascunho', mirroring both the client wizard's postRow clamp
+      // (buildCommitRows.ts) and the SQL clamp's matching branch.
+      status = "rascunho";
+    } else if (ms > Date.now()) {
+      status = "aprovado_cliente";
+    }
   }
   return status === "postado"
     ? { ...fields, status, scheduledAt, publishedAt: sourceAt }

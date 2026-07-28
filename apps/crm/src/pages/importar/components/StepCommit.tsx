@@ -20,10 +20,26 @@ function reasonLabel(reason: string | undefined): string {
   return 'Erro ao gravar a linha';
 }
 
+/**
+ * Neutralizes CSV formula injection. `sourceKey` derives from the uploaded
+ * filename — a file named e.g. `=cmd|'/c calc'!A0.csv` would otherwise put a
+ * cell starting with `=` into the downloaded report, which spreadsheet
+ * software with legacy formula execution enabled may run on open. Prefixing
+ * a leading `=`, `+`, `-`, or `@` with a single quote forces the cell to be
+ * read as literal text (the same convention Excel/Sheets use themselves),
+ * without changing how the value displays. Applied to every field written to
+ * this CSV, not just sourceKey, since any of them could carry attacker-chosen
+ * text.
+ */
+export function csvCell(value: string): string {
+  const safe = /^[=+\-@]/.test(value) ? `'${value}` : value;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
+
 function downloadFailures(failed: CommitRowResult[]) {
   const csv = [
     'linha_origem;motivo',
-    ...failed.map((r) => `"${r.sourceKey.replace(/"/g, '""')}";"${reasonLabel(r.reason)}"`),
+    ...failed.map((r) => `${csvCell(r.sourceKey)};${csvCell(reasonLabel(r.reason))}`),
   ].join('\n');
   // UTF-8 BOM so Excel opens the accented pt-BR text correctly.
   const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });

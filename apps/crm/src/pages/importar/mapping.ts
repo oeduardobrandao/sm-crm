@@ -78,8 +78,7 @@ export function mergeAiProposal(heuristic: MappingProposal, ai: unknown): Mappin
         }
       }
       const assignment = entry.clientAssignment as
-        | CollectionMapping['clientAssignment']
-        | undefined;
+        CollectionMapping['clientAssignment'] | undefined;
       const clientAssignment =
         assignment?.mode === 'column' && typeof assignment.column === 'string'
           ? assignment

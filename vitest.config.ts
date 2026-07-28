@@ -39,11 +39,9 @@ export default defineConfig({
       include: [
         'apps/crm/src/**/*.{ts,tsx}',
         'apps/hub/src/**/*.{ts,tsx}',
+        'packages/import-parsers/src/**/*.{ts,tsx}',
       ],
-      exclude: [
-        '**/*.d.ts',
-        '**/__tests__/**',
-      ],
+      exclude: ['**/*.d.ts', '**/__tests__/**'],
     },
   },
 });
