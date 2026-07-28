@@ -37,6 +37,16 @@
 --      status='rascunho' with published_at IS NULL, never status='postado'
 --      with published_at IS NULL. Re-run the (4) invariant query afterwards --
 --      still must return 0.
+--   9. Merge fills valor_mensal only when empty (task-9, 2026-07-27): create a
+--      cliente with valor_mensal = NULL, then call import_commit_row with
+--      p_kind='cliente' and a payload carrying "mergeClienteId" that cliente's
+--      id and "valorMensal": 1500 -- the row must land with valor_mensal = 1500.
+--      Separately, create a cliente with valor_mensal = 800 (a real, non-null
+--      value), merge a payload carrying "valorMensal": 2000 into it -- the row
+--      must land with valor_mensal STILL 800, never 2000. Also try a cliente
+--      with valor_mensal = 0 merged against "valorMensal": 500 -- must land
+--      still 0 (0 is a real value here, e.g. a pro-bono client, not "empty";
+--      see the comment on the merge UPDATE's valor_mensal expression above).
 
 create table if not exists public.import_jobs (
   id bigint generated always as identity primary key,
@@ -227,7 +237,23 @@ begin
         email = coalesce(nullif(email, ''), p_payload->>'email', email),
         telefone = coalesce(nullif(telefone, ''), p_payload->>'telefone', telefone),
         especialidade = coalesce(nullif(especialidade, ''), p_payload->>'especialidade', especialidade),
-        notion_page_url = coalesce(nullif(notion_page_url, ''), p_payload->>'notionPageUrl', notion_page_url)
+        notion_page_url = coalesce(nullif(notion_page_url, ''), p_payload->>'notionPageUrl', notion_page_url),
+        -- valor_mensal is `numeric`, nullable, no default (20260301_baseline_schema.sql:50)
+        -- -- unlike the four text columns above, it has no empty-string state to
+        -- test with nullif(col, ''): a numeric column is either NULL or a real
+        -- number. The fill-only-empty test here is therefore `valor_mensal is
+        -- null`, not `= 0`. This is deliberately conservative: 0 is a value this
+        -- same function's own 'cliente' insert branch writes for a NEW client with
+        -- no monthly value supplied (line ~279's `coalesce((...)::numeric, 0)`),
+        -- and the CRM's own client-edit forms (ClientesPage.tsx, LeadsPage.tsx)
+        -- write 0 for "no value entered" too -- so an existing row holding 0 is
+        -- indistinguishable, from here, between "never set" and "a real $0/pro-bono
+        -- client the workspace owner configured on purpose". Treating 0 as
+        -- fillable risks silently overwriting the latter, which is worse than the
+        -- bug this fixes. Only a genuine SQL NULL (a row untouched by any of those
+        -- paths, e.g. one inserted directly) is filled from the payload; every
+        -- non-null existing value, including 0, is left exactly as it was.
+        valor_mensal = coalesce(valor_mensal, nullif(p_payload->>'valorMensal', '')::numeric)
       where id = (p_payload->>'mergeClienteId')::bigint and conta_id = p_conta_id
       -- Canonicalize row_id to Postgres's own rendering of the bigint (rather than
       -- the raw client-supplied text) so a payload like " 42 " or "042" can't leave

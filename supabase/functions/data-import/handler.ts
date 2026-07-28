@@ -590,15 +590,29 @@ export function createDataImportHandler(deps: Deps) {
         // leaves the client unable to tell which one it hit.
         if (rows.length > PREVIEW_LIMIT) return json({ error: "Preview batch too large" }, 400);
         const counts: Record<string, number> = { clientes: 0, posts: 0, entregas: 0, ideias: 0 };
+        // counts.clientes (below) is the DISPLAY number in the prévia's "Clientes"
+        // tile — every roster row of kind 'cliente', matching the plain row-count
+        // semantics of the posts/entregas/ideias tiles next to it. newClientes is
+        // the separate CAP-DRIVING number: only rows that will actually INSERT a
+        // new clientes row. A "mesclar com existente" row (CommitClienteRow.merge
+        // set) is still `kind: 'cliente'` on the wire, but import_commit_row's
+        // merge branch (20260727000001_data_import_jobs.sql:221-253) only UPDATEs
+        // the pre-existing cliente — it never inserts, so it never trips
+        // trg_limit_clientes. Counting it toward the cap warning below described a
+        // commit outcome that can never happen (0 real growth still read as
+        // "N novos clientes excedem o limite").
+        let newClientes = 0;
         for (const r of rows) {
-          if (r.kind === "cliente") counts.clientes++;
-          else if (r.kind === "post") counts.posts++;
+          if (r.kind === "cliente") {
+            counts.clientes++;
+            if (!r.merge) newClientes++;
+          } else if (r.kind === "post") counts.posts++;
           else if (r.kind === "entrega") counts.entregas++;
           else if (r.kind === "ideia") counts.ideias++;
         }
         const warnings: string[] = [];
         const maxClients = entitlements.limits.max_clients;
-        if (counts.clientes > 0 && maxClients != null) {
+        if (newClientes > 0 && maxClients != null) {
           // db is the service-role client (RLS bypassed) — every count MUST be
           // conta_id-scoped by hand or it returns a platform-wide total.
           //
@@ -613,9 +627,9 @@ export function createDataImportHandler(deps: Deps) {
             .from("clientes")
             .select("id", { count: "exact", head: true })
             .eq("conta_id", conta_id);
-          if ((count ?? 0) + counts.clientes > maxClients) {
+          if ((count ?? 0) + newClientes > maxClients) {
             warnings.push(
-              `${counts.clientes} novos clientes excedem o limite de ${maxClients} do seu plano (${count ?? 0} existentes).`,
+              `${newClientes} novos clientes excedem o limite de ${maxClients} do seu plano (${count ?? 0} existentes).`,
             );
           }
         }

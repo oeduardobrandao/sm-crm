@@ -258,6 +258,56 @@ Deno.test("data-import: preview's max_clients count matches what the plan trigge
   );
 });
 
+// A "mesclar com existente" cliente row: still `kind: "cliente"` on the wire
+// (types.ts's CommitClienteRow.merge), but import_commit_row's merge branch
+// (20260727000001_data_import_jobs.sql:221-253) only UPDATEs the pre-existing
+// cliente — it never INSERTs, so it never trips trg_limit_clientes.
+function mergeClienteRow(sourceKey: string, clienteId: number, nome = "Ana") {
+  return { kind: "cliente", sourceKey, nome, merge: { clienteId } };
+}
+
+Deno.test("data-import: preview's max_clients warning excludes merge rows from the create count", async () => {
+  // 9 existing, cap 10. 2 merge rows (0 real growth) + 1 real create =
+  // 9 + 1 = 10, NOT over the cap. Counting the merges too (9 + 3 = 12) would
+  // warn about growth commit will never actually cause.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  db.queue("clientes", "select", { data: null, error: null, count: 9 });
+  const rows = [
+    mergeClienteRow("m1", 101),
+    mergeClienteRow("m2", 102),
+    { kind: "cliente", sourceKey: "a", nome: "Carla" },
+  ];
+  const res = await makeHandler(db)(post("preview", { rows }));
+  const body = await readJson(res);
+  // the display tile still reflects every roster row of kind 'cliente'...
+  assertEquals(body.counts.clientes, 3);
+  // ...but the cap warning must not fire: only 1 of those 3 actually creates.
+  assertEquals(body.warnings, []);
+});
+
+Deno.test("data-import: preview's max_clients warning still fires when real creates (excluding merges) exceed the cap", async () => {
+  // 9 existing, cap 10. 2 merge rows + 2 real creates: 9 + 2 = 11, over the cap
+  // — and the warning text must cite the real create count (2), not the total
+  // number of cliente rows in the payload (4).
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  db.queue("clientes", "select", { data: null, error: null, count: 9 });
+  const rows = [
+    mergeClienteRow("m1", 101),
+    mergeClienteRow("m2", 102),
+    { kind: "cliente", sourceKey: "a", nome: "Carla" },
+    { kind: "cliente", sourceKey: "b", nome: "Duda" },
+  ];
+  const res = await makeHandler(db)(post("preview", { rows }));
+  const body = await readJson(res);
+  assertEquals(body.counts.clientes, 4);
+  assertEquals(body.warnings.length, 1);
+  assert(body.warnings[0].includes("2 novos clientes"), `expected the create count (2), got ${body.warnings[0]}`);
+  assert(body.warnings[0].includes("limite de 10"), `got ${body.warnings[0]}`);
+  assert(body.warnings[0].includes("9 existentes"), `got ${body.warnings[0]}`);
+});
+
 Deno.test("data-import: preview scopes the workflow_templates count to the caller", async () => {
   const db = createSupabaseQueryMock();
   authAs(db);
@@ -742,6 +792,29 @@ Deno.test("data-import: commit forwards conta_id so the RPC can reject foreign c
   assertEquals(lastRpcArgs(db, "import_commit_row").p_conta_id, "conta-1");
   // the DB's message must never reach the client
   assertEquals(body.results[0].reason, "error");
+});
+
+Deno.test("data-import: commit forwards valorMensal intact on a merge cliente row", async () => {
+  // The SQL merge branch (20260727000001_data_import_jobs.sql) fills
+  // valor_mensal only when the existing row is NULL — but that fill can only
+  // work if the payload it reads still carries valorMensal. This is the one
+  // part of that fix the Deno suite (which mocks the RPC) can actually
+  // observe: normalizePayload must forward valorMensal alongside
+  // mergeClienteId, not drop it the way `merge` itself is dropped.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueJobOwned(db);
+  db.queueRpc("import_commit_row", { data: { skipped: false, table: "clientes", row_id: "42" }, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const rows = [
+    { kind: "cliente", sourceKey: "m1", nome: "Ana", valorMensal: 1500, merge: { clienteId: 42 } },
+  ];
+  await makeHandler(db)(post("commit", { jobId: 7, rows }));
+  const payload = lastRpcArgs(db, "import_commit_row").p_payload as Record<string, unknown>;
+  assertEquals(payload.mergeClienteId, 42);
+  assertEquals(payload.valorMensal, 1500);
+  // `merge` itself must not leak through as a stray jsonb key.
+  assertEquals("merge" in payload, false);
 });
 
 Deno.test("data-import: commit reports per-row failures without aborting the batch", async () => {
