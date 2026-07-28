@@ -18,6 +18,7 @@ export type AnalyticsEvent =
   | 'entregas_tour_completed'
   | 'entregas_tour_dismissed'
   | 'hub_link_copied'
+  | 'hub_upgrade_prompt_clicked'
   | 'report_generated'
   | 'invite_sent';
 

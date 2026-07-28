@@ -112,10 +112,17 @@ vi.mock('@/components/ui/alert-dialog', async () => {
   };
 });
 
+vi.mock('@/hooks/useEntitlements', () => ({
+  useEntitlements: () => mockEntitlements,
+}));
+
 import { HubTab } from '../HubTab';
 import * as hubStore from '../../../store/hub';
 
 vi.mock('../../../store/hub');
+
+// Fail-open by default (matches useEntitlements while the plan is still loading).
+let mockEntitlements: { hasFeature: (flag: string) => boolean } = { hasFeature: () => true };
 
 const DAY = 86_400_000;
 const token = (expiresInDays: number) => ({
@@ -149,6 +156,7 @@ function renderTab() {
 describe('HubTab — Acesso', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mockEntitlements = { hasFeature: () => true };
     scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
     scrollToDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo');
     Object.defineProperty(Element.prototype, 'scrollIntoView', {
@@ -215,6 +223,28 @@ describe('HubTab — Acesso', () => {
     renderTab();
     await waitFor(() => expect(screen.getByText('Expirado')).toBeInTheDocument());
     expect(screen.queryByText(/Expira em 0 dias/)).not.toBeInTheDocument();
+  });
+
+  it('offers to generate a link when the plan includes the hub portal', async () => {
+    vi.mocked(hubStore.getHubToken).mockResolvedValue(null);
+    renderTab();
+    await waitFor(() => expect(screen.getByText('Nenhum link gerado ainda.')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /Gerar link/ })).toBeInTheDocument();
+  });
+
+  it('prompts for an upgrade instead of generating when feature_hub_portal is off', async () => {
+    mockEntitlements = { hasFeature: (flag) => flag !== 'feature_hub_portal' };
+    vi.mocked(hubStore.getHubToken).mockResolvedValue(null);
+    renderTab();
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('O Portal do Cliente faz parte dos planos pagos.'),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: 'Ver planos' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Gerar link/ })).not.toBeInTheDocument();
+    expect(hubStore.createHubToken).not.toHaveBeenCalled();
   });
 
   it('does not rotate until the confirm dialog is accepted', async () => {

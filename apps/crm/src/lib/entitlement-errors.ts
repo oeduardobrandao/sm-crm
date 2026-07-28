@@ -52,8 +52,12 @@ export function mapEntitlementError(err: unknown): EntitlementError | null {
     const key = limitMatch?.[1] ?? 'max_team_members';
     return { kind: 'limit', key, label: LIMIT_LABELS[key] ?? key };
   }
-  if (e.error === 'feature_disabled' && e.feature) {
-    return { kind: 'feature', key: e.feature, label: FEATURE_LABELS[e.feature] ?? e.feature };
+  // Two shapes: the DB trigger raises "feature_disabled:feature_hub_portal" as a
+  // PostgREST message; edge functions return { error, feature } as JSON.
+  const featureMatch = msg.match(/feature_disabled:([a-z_]+)/);
+  const featureKey = featureMatch?.[1] ?? (e.error === 'feature_disabled' ? e.feature : undefined);
+  if (featureKey) {
+    return { kind: 'feature', key: featureKey, label: FEATURE_LABELS[featureKey] ?? featureKey };
   }
   if (e.error === 'quota_exceeded' || /quota_exceeded/.test(msg)) {
     return { kind: 'quota', key: 'storage', label: 'armazenamento', used: e.used, quota: e.quota };

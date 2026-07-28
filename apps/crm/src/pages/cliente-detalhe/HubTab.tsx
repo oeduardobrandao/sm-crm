@@ -23,6 +23,7 @@ import {
   ChevronRight,
   RefreshCw,
   CalendarClock,
+  Lock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
@@ -119,6 +120,8 @@ import {
   applyReorderToCache,
 } from '@/lib/briefingReorder';
 import { captureEvent } from '@/lib/analytics';
+import { useEntitlements } from '@/hooks/useEntitlements';
+import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 
 // Raw Postgres error text must never reach the user.
 function mapTokenError(e: { message?: string }): string {
@@ -150,6 +153,12 @@ interface HubTabProps {
 
 export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
   const qc = useQueryClient();
+
+  // The DB gates client_hub_tokens inserts on feature_hub_portal. Reading the flag up
+  // front turns what used to be a raw "feature_disabled:…" error into an upgrade nudge.
+  // hasFeature is true while entitlements load, so the paywall never flashes.
+  const { hasFeature } = useEntitlements();
+  const hubPortalEnabled = hasFeature('feature_hub_portal');
 
   const { data: tokenData } = useQuery({
     queryKey: ['hub-token', clienteId],
@@ -351,6 +360,27 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
                 </p>
               )}
             </>
+          ) : !hubPortalEnabled ? (
+            <div className="hub-access__upgrade rounded-xl border border-dashed border-border p-6 text-center">
+              <Lock size={18} className="mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm font-medium text-foreground">
+                O Portal do Cliente faz parte dos planos pagos.
+              </p>
+              <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+                Faça upgrade para gerar um link de acesso e entregar aprovações, briefing, postagens
+                e ideias em um portal com a sua marca.
+              </p>
+              <Button
+                size="sm"
+                className="mt-3"
+                onClick={() => {
+                  captureEvent('hub_upgrade_prompt_clicked', { cliente_id: clienteId });
+                  window.location.href = '/configuracao/cobranca';
+                }}
+              >
+                Ver planos
+              </Button>
+            </div>
           ) : (
             <div className="flex items-center gap-3">
               <p className="text-sm text-muted-foreground">Nenhum link gerado ainda.</p>
@@ -362,7 +392,9 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
                     qc.invalidateQueries({ queryKey: ['hub-token', clienteId] });
                     toast.success('Link gerado!');
                   } catch (e: any) {
-                    toast.error(e.message ?? 'Erro ao gerar link.');
+                    // Entitlements can go stale between load and click — fall back to the
+                    // upgrade toast rather than leaking the raw Postgres message.
+                    if (!handleEntitlementMutationError(e)) toast.error(mapTokenError(e));
                   }
                 }}
               >
