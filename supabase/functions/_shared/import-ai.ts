@@ -18,6 +18,14 @@
 //     "agendado" must never reach a proposal a human could confirm through.
 //     Any value outside the allow-list is clamped to "rascunho", not dropped
 //     silently — the column still gets a status, just the safe one.
+//
+// The outbound side gets the same defence in depth: clampSummaryForRequest
+// (below) caps sample values per column, columns per collection, and the
+// number of collections before the summary is serialized into the Gemini
+// request body, so the request never carries more than column headers plus
+// a few sample values per column — never the full roster — regardless of
+// what the caller (packages/import-parsers, via the future import wizard)
+// actually sends.
 import type { AnalyzeSummary, WireCollectionMapping, WireMappingProposal } from "../data-import/types.ts";
 
 const DESTINATIONS = new Set(["clientes", "posts", "entregas", "ideias", "ignorar"]);
@@ -34,6 +42,39 @@ const STATUS_TARGETS = new Set([
   "correcao_cliente",
   "postado",
 ]);
+
+// Outbound data-minimization caps. The caller (packages/import-parsers,
+// exercised through the future import wizard) is documented to already send
+// only headers + a few sample values, but that caller doesn't exist yet as
+// of this module's introduction — so the guarantee this module's original
+// comment asserted was 100% trust in code that hadn't been written. These
+// caps make the guarantee real regardless of what any future or hostile
+// caller sends, mirroring the defence-in-depth already applied to the
+// inbound `destination`/`statusMap` values above.
+const MAX_COLLECTIONS = 50;
+const MAX_COLUMNS_PER_COLLECTION = 60;
+const MAX_SAMPLES_PER_COLUMN = 3;
+
+/**
+ * Clamps the collection/column/sample-value counts before the summary is
+ * embedded into the Gemini request body. This — not caller discipline — is
+ * what enforces "column headers plus at most a few sample values per
+ * column, never the full roster": client names, emails, phone numbers, and
+ * other per-row values living in `sampleCells` are third-party personal
+ * data belonging to the agency's clients, and this request leaves the
+ * process boundary to Google.
+ */
+function clampSummaryForRequest(summary: AnalyzeSummary): AnalyzeSummary {
+  const collections = summary.collections.slice(0, MAX_COLLECTIONS).map((c) => {
+    const columns = c.columns.slice(0, MAX_COLUMNS_PER_COLLECTION);
+    const sampleCells: Record<string, string[]> = {};
+    for (const [col, values] of Object.entries(c.sampleCells).slice(0, MAX_COLUMNS_PER_COLLECTION)) {
+      sampleCells[col] = (Array.isArray(values) ? values : []).slice(0, MAX_SAMPLES_PER_COLUMN);
+    }
+    return { ...c, columns, sampleCells };
+  });
+  return { collections };
+}
 
 function buildPrompt(summary: AnalyzeSummary, heuristic: WireMappingProposal): string {
   return [
@@ -77,8 +118,9 @@ function sanitizeClientAssignment(value: unknown): WireCollectionMapping["client
 }
 
 /**
- * Sends the parsed-collection summary (headers + a few sample values, never
- * the full roster) plus the heuristic proposal to Gemini, and returns a
+ * Sends the parsed-collection summary (headers + at most MAX_SAMPLES_PER_COLUMN
+ * sample values per column, clamped by clampSummaryForRequest — never the
+ * full roster) plus the heuristic proposal to Gemini, and returns a
  * validated replacement proposal — or null on ANY failure, so the caller
  * always has a safe fallback (the heuristic it already has).
  */
@@ -89,13 +131,14 @@ export async function refineMapping(
   fetchFn: typeof fetch = fetch,
 ): Promise<WireMappingProposal | null> {
   try {
+    const clampedSummary = clampSummaryForRequest(summary);
     const res = await fetchFn(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
       {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: buildPrompt(summary, heuristic) }] }],
+          contents: [{ parts: [{ text: buildPrompt(clampedSummary, heuristic) }] }],
           generationConfig: { responseMimeType: "application/json" },
         }),
       },
@@ -116,14 +159,22 @@ export async function refineMapping(
     const rawCollections = (parsed as { collections?: unknown })?.collections;
     if (!Array.isArray(rawCollections)) return null;
 
-    const knownIds = new Set(summary.collections.map((c) => c.collectionId));
-    const collections: WireCollectionMapping[] = [];
+    const knownIds = new Set(clampedSummary.collections.map((c) => c.collectionId));
+    // Keyed by collectionId, not pushed to an array: a response with two
+    // entries for the same collectionId (malformed or adversarial) would
+    // otherwise both survive into the proposal, and downstream code that
+    // expects one mapping per collection would silently see the wrong one
+    // depending on iteration order. Map.set on a repeated key keeps the
+    // first entry's position but the LAST entry's content — deliberate
+    // last-value-wins, applied consistently with how sanitizeColumnRoles/
+    // sanitizeStatusMap already resolve repeated keys within one object.
+    const collectionsById = new Map<string, WireCollectionMapping>();
     for (const c of rawCollections as Array<Record<string, unknown>>) {
       const collectionId = c?.collectionId;
       const destination = c?.destination;
       if (typeof collectionId !== "string" || !knownIds.has(collectionId)) continue;
       if (typeof destination !== "string" || !DESTINATIONS.has(destination)) continue;
-      collections.push({
+      collectionsById.set(collectionId, {
         collectionId,
         destination: destination as WireCollectionMapping["destination"],
         columnRoles: sanitizeColumnRoles(c?.columnRoles),
@@ -131,6 +182,7 @@ export async function refineMapping(
         clientAssignment: sanitizeClientAssignment(c?.clientAssignment),
       });
     }
+    const collections = [...collectionsById.values()];
     return collections.length ? { collections } : null;
   } catch {
     return null;
