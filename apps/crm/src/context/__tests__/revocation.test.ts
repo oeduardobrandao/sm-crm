@@ -288,6 +288,77 @@ describe('live revocation handler', () => {
     },
   );
 
+  it(
+    'purges financial caches on the very first resolution into a non-authorised ' +
+      "state ('unknown' -> false) — the transition a `wasAllowed`-style boolean " +
+      "(captured only as `ref === true`) cannot see, because 'unknown' was never " +
+      '`true` either',
+    async () => {
+      mockedSupabase.__resetSupabaseMock();
+      mockedSupabase.__setCurrentUser({ id: 'user-20' });
+      mockedSupabase.__setCurrentProfile({
+        id: 'user-20',
+        nome: 'Admin Restrito',
+        role: 'admin',
+        conta_id: 'conta-20',
+      });
+      mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-20' } } });
+      mockGetContaId.mockResolvedValue('conta-20');
+
+      // Hold the hydration effect's OWN getMyMembership() call pending, so
+      // canSeeFinancials (and its ref) stay at their untouched initial
+      // 'unknown' — exactly the state on every fresh page load — while the
+      // separate live-revocation effect below still mounts (it only needs
+      // `profile`, which the hydration flow sets before it ever calls
+      // getMyMembership) and can react on its own.
+      let resolveMembership!: (v: { data: unknown; error: null }) => void;
+      mockMaybeSingle.mockReturnValue(
+        new Promise((resolve) => {
+          resolveMembership = resolve;
+        }),
+      );
+
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      for (const key of FINANCIAL_QUERY_KEYS) {
+        queryClient.setQueryData([key], ['cached-value']);
+      }
+
+      renderWithAuth(queryClient);
+
+      // Confirm the race is actually set up: hydration is stuck mid-flight
+      // (still 'unknown') by the time the subscription exists.
+      await waitFor(() => {
+        expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
+      });
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('unknown');
+
+      // A postgres_changes UPDATE resolves the same admin to
+      // can_see_financials: false through applyMembership, while the ref is
+      // still sitting at its never-started 'unknown'.
+      await act(async () => {
+        mockedSupabase.__emitWorkspaceMemberUpdate({
+          workspace_id: 'conta-20',
+          role: 'admin',
+          can_see_financials: false,
+        });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
+      });
+
+      for (const key of FINANCIAL_QUERY_KEYS) {
+        expect(queryClient.getQueryData([key])).toBeUndefined();
+      }
+
+      // Let the stalled hydration path resolve too, so nothing leaks into
+      // later tests.
+      await act(async () => {
+        resolveMembership({ data: { role: 'admin', can_see_financials: false }, error: null });
+      });
+    },
+  );
+
   it('registers the workspace_members subscription with the expected table/event/filter', async () => {
     mockedSupabase.__resetSupabaseMock();
     mockedSupabase.__setCurrentUser({ id: 'user-13' });

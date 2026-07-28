@@ -1468,7 +1468,20 @@ export default function CalendarioPage() {
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
   const { data: membros = [] } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
-  const { data: transacoes = [] } = useQuery({ queryKey: ['transacoes'], queryFn: getTransacoes });
+  // getTransacoes returns raw financial rows: this page is not a financial
+  // route, so the route guard never covers it. Gate the fetch itself, not
+  // just its rendering — the day/selected-day views below already mask via
+  // `canSeeFinancials !== true ? [] : ...`, but that only hid the values from
+  // render; the rows still landed in the shared React Query cache otherwise.
+  const { data: transacoesRaw = [] } = useQuery({
+    queryKey: ['transacoes'],
+    queryFn: getTransacoes,
+    enabled: canSeeFinancials === true,
+  });
+  // Guard the read too, not just the query: `enabled: false` only stops a new
+  // fetch — a query with the same key already populated elsewhere (matches
+  // GlobalSearchTrigger's pattern) can still leave cached data on this hook.
+  const transacoes = canSeeFinancials === true ? transacoesRaw : [];
   const { data: workflows = [] } = useQuery({ queryKey: ['workflows'], queryFn: getWorkflows });
   const { data: datasImportantes = [] } = useQuery({
     queryKey: ['allClienteDatas'],

@@ -301,13 +301,21 @@ export default function ClienteDetalhePage() {
     queryKey: ['clientes'],
     queryFn: getClientes,
   });
+  // Both queries return raw financial rows: this page is not a financial
+  // route, so the route guard never covers it. Gate the fetch on the
+  // capability itself — the finance section below already only RENDERS when
+  // `canSeeFinancials === true` (see the JSX further down), but that gate
+  // never stopped the fetch, so the rows still landed in the shared React
+  // Query cache (and devtools) for a restricted admin.
   const { data: transacoes, isLoading: loadingTx } = useQuery({
     queryKey: ['transacoes'],
     queryFn: getTransacoes,
+    enabled: canSeeFinancials === true,
   });
   const { data: contratos, isLoading: loadingContratos } = useQuery({
     queryKey: ['contratos'],
     queryFn: getContratos,
+    enabled: canSeeFinancials === true,
   });
   const {
     data: igSummary,
@@ -957,10 +965,13 @@ export default function ClienteDetalhePage() {
     setDateDeleteId(null);
   };
 
-  const contratosCliente: Contrato[] = (contratos ?? []).filter((c) => c.cliente_id === clienteId);
-  const transacoesCliente: Transacao[] = (transacoes ?? []).filter(
-    (t) => t.cliente_id === clienteId,
-  );
+  // Guard the read too, not just the query: `enabled: false` only stops a new
+  // fetch — a query with the same key already populated elsewhere (matches
+  // GlobalSearchTrigger's pattern) can still leave cached data on this hook.
+  const contratosCliente: Contrato[] =
+    canSeeFinancials === true ? (contratos ?? []).filter((c) => c.cliente_id === clienteId) : [];
+  const transacoesCliente: Transacao[] =
+    canSeeFinancials === true ? (transacoes ?? []).filter((t) => t.cliente_id === clienteId) : [];
 
   if (isLoading) {
     return (

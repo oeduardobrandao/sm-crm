@@ -2,7 +2,8 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- Regression test for the cross-workspace leak fixed by
--- 20260727000006_fix_cliente_tables_active_workspace_rls.sql.
+-- 20260727000006_fix_cliente_tables_active_workspace_rls.sql, extended by
+-- 20260728000004_scope_cliente_child_rows_to_client_workspace.sql.
 --
 -- cliente_enderecos / cliente_datas were adopted from production with policies
 -- scoping by ANY workspace the caller belongs to rather than the ACTIVE one.
@@ -11,6 +12,14 @@
 -- has no filter at all. A multi-workspace user therefore saw, and could edit,
 -- another workspace's client addresses and important dates through ordinary
 -- app usage.
+--
+-- 20260727000006 scoped the CHILD row's own conta_id to the active workspace,
+-- but left cliente_id unchecked against it. 20260728000004 closes that gap:
+-- a member of workspace A could still INSERT/UPDATE a cliente_datas /
+-- cliente_enderecos row with conta_id = A and cliente_id pointing at a client
+-- that belongs to workspace B — not a read leak (SELECT still scopes by
+-- conta_id), but relationship corruption, a weak cross-tenant existence
+-- oracle, and CASCADE collateral if B ever deletes that client.
 --
 -- IMPORTANT — this test MUST impersonate the `authenticated` role, not merely
 -- set a JWT claim. Sibling tests (e.g. 31_hub_token_rotate_extend) set claims
@@ -33,6 +42,7 @@ declare
   v_cli_a bigint; v_cli_b bigint;
   v_seen  bigint;
   v_rows  bigint;
+  v_rejected boolean;
 begin
   v_ws_a := et_make_workspace('start');
   v_ws_b := et_make_workspace('start');
@@ -92,6 +102,53 @@ begin
 
   insert into cliente_datas (cliente_id, conta_id, titulo, data)
     values (v_cli_a, v_ws_a, 'A-new', '2026-03-03');
+
+  -- Positive counterpart for cliente_enderecos too — a same-workspace insert
+  -- (cliente_id and conta_id both pointing at A) must still succeed under the
+  -- migration 20260728000004 anti-corruption check.
+  insert into cliente_enderecos (cliente_id, conta_id, cidade)
+    values (v_cli_a, v_ws_a, 'A-city-2');
+
+  -- Regression for 20260728000004_scope_cliente_child_rows_to_client_workspace:
+  -- conta_id alone was never enough — nothing tied cliente_id to that SAME
+  -- workspace. The active-workspace predicate above (workspace_members +
+  -- get_my_conta_id) is satisfied by A on its own; only the new
+  -- EXISTS(clientes ...) conjunct catches cliente_id pointing at B's client
+  -- while conta_id claims A. Without it this INSERT would silently succeed,
+  -- corrupting the relationship (and becoming CASCADE collateral whenever B
+  -- deletes that client).
+  v_rejected := false;
+  begin
+    insert into cliente_datas (cliente_id, conta_id, titulo, data)
+      values (v_cli_b, v_ws_a, 'cross-tenant-attempt', '2026-04-04');
+  exception when others then
+    v_rejected := true;
+  end;
+  assert v_rejected,
+    'cliente_datas: insert with cliente_id from another workspace was NOT rejected';
+
+  v_rejected := false;
+  begin
+    insert into cliente_enderecos (cliente_id, conta_id, cidade)
+      values (v_cli_b, v_ws_a, 'cross-tenant-attempt-city');
+  exception when others then
+    v_rejected := true;
+  end;
+  assert v_rejected,
+    'cliente_enderecos: insert with cliente_id from another workspace was NOT rejected';
+
+  -- Same corruption attempt via UPDATE (re-pointing an existing A row's
+  -- cliente_id at B's client) must be rejected too — WITH CHECK covers
+  -- UPDATE's resulting row just like INSERT's.
+  v_rejected := false;
+  begin
+    update cliente_datas set cliente_id = v_cli_b
+     where conta_id = v_ws_a and titulo = 'A-renamed';
+  exception when others then
+    v_rejected := true;
+  end;
+  assert v_rejected,
+    'cliente_datas: update re-pointing cliente_id to another workspace was NOT rejected';
 
   execute 'reset role';
 

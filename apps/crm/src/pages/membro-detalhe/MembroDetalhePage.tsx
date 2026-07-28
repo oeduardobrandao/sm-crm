@@ -42,6 +42,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { formatFinancialBRL, stripFinancialFields } from '@/lib/financialAccess';
+import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 
 const TIPO_LABEL: Record<string, string> = {
   clt: 'CLT',
@@ -74,10 +75,19 @@ export default function MembroDetalhePage() {
     queryKey: ['membros'],
     queryFn: getMembros,
   });
-  const { data: transacoes = [], isLoading: loadingTx } = useQuery({
+  // getTransacoes returns raw financial rows: this page is not a financial
+  // route, so the route guard never covers it. Gate the fetch on the
+  // capability itself, not just `!isAgent` (a restricted admin is not an
+  // agent either).
+  const { data: transacoesRaw = [], isLoading: loadingTx } = useQuery({
     queryKey: ['transacoes'],
     queryFn: getTransacoes,
+    enabled: canSeeFinancials === true,
   });
+  // Guard the read too, not just the query: `enabled: false` only stops a new
+  // fetch — a query with the same key already populated elsewhere (matches
+  // GlobalSearchTrigger's pattern) can still leave cached data on this hook.
+  const transacoes = canSeeFinancials === true ? transacoesRaw : [];
 
   const membro = membros.find((m) => m.id?.toString() === id);
 
@@ -239,32 +249,45 @@ export default function MembroDetalhePage() {
           {!isAgent && (
             <>
               <h3 style={{ marginBottom: 12 }}>Transações</h3>
-              <div className="card">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Descrição</TableHead>
-                      <TableHead>Categoria</TableHead>
-                      <TableHead>Valor</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {membroTx.map((t, i) => (
-                      <TableRow key={t.id ?? `tx-${i}`}>
-                        <TableCell data-label="Data">{formatDate(t.data)}</TableCell>
-                        <TableCell data-label="Descrição">{t.descricao}</TableCell>
-                        <TableCell data-label="Categoria">{t.categoria}</TableCell>
-                        <TableCell data-label="Valor">
-                          {formatFinancialBRL(t.valor, canSeeFinancials)}
-                        </TableCell>
-                        <TableCell data-label="Status">{t.status}</TableCell>
+              {canSeeFinancials === true ? (
+                <div className="card">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead>Categoria</TableHead>
+                        <TableHead>Valor</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {membroTx.map((t, i) => (
+                        <TableRow key={t.id ?? `tx-${i}`}>
+                          <TableCell data-label="Data">{formatDate(t.data)}</TableCell>
+                          <TableCell data-label="Descrição">{t.descricao}</TableCell>
+                          <TableCell data-label="Categoria">{t.categoria}</TableCell>
+                          <TableCell data-label="Valor">
+                            {formatFinancialBRL(t.valor, canSeeFinancials)}
+                          </TableCell>
+                          <TableCell data-label="Status">{t.status}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                // The query above is gated on canSeeFinancials === true, so
+                // membroTx is always [] here — an empty table would read as
+                // "this member has no transactions", which is false for a
+                // restricted admin. Say why it's hidden instead.
+                <div className="card">
+                  <RoleRestrictionNotice
+                    title="Transações"
+                    description="A visualização de transações financeiras está disponível apenas para quem tem acesso financeiro liberado."
+                  />
+                </div>
+              )}
             </>
           )}
         </>

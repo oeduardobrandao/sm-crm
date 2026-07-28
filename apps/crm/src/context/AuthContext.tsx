@@ -224,7 +224,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const applyMembership = (
       next: { workspace_id?: string; role?: string; can_see_financials?: boolean } | null,
     ) => {
-      const wasAllowed = canSeeFinancialsRef.current === true;
       setWorkspaceRole(next ? ((next.role as 'owner' | 'admin' | 'agent') ?? null) : null);
       // Same derivation as hydration — never re-implement the role semantics
       // here. Two copies drift; this bug already shipped once on this branch
@@ -236,10 +235,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const nowAllowed = deriveFinancialAccess(next as MyMembership | null);
       setCanSeeFinancials(nowAllowed);
 
-      // `!nowAllowed` would miss a `true -> 'unknown'` transition (`!'unknown'`
-      // is `false` in JS) — including the deletion path above. Purge whenever
-      // access is no longer definitely granted, not only when it is definitely denied.
-      if (wasAllowed && nowAllowed !== true) {
+      // Purge on ANY transition INTO a non-authorised state, not only a
+      // transition FROM a definitely-granted one. A `wasAllowed` boolean
+      // (`ref === true`) cannot see this: hydration starts the ref at
+      // 'unknown', so a restricted admin's very first resolution is
+      // `'unknown' -> false` — `wasAllowed` is `false` going in, so the old
+      // `wasAllowed && nowAllowed !== true` check never fires for it, even
+      // though that is exactly the transition that must purge (a prior fetch
+      // could already have populated the cache with real rows while access
+      // was still unresolved). Comparing the ref's actual value instead of
+      // collapsing it to a boolean catches that case too, while `ref !==
+      // nowAllowed` still skips a same-state repeat from the 60s poll
+      // (e.g. false -> false), which is not a transition and must not
+      // re-purge or re-trigger a refetch storm every tick.
+      if (nowAllowed !== true && canSeeFinancialsRef.current !== nowAllowed) {
         for (const key of FINANCIAL_QUERY_KEYS) {
           queryClient.removeQueries({ queryKey: [key] });
         }
