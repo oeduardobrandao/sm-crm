@@ -175,7 +175,12 @@ beforeEach(() => {
   mockedPreview.mockResolvedValue({
     counts: { clientes: 0, posts: POST_COUNT, entregas: 0, ideias: 0 },
     warnings: ['Um calendário do import tem 250 posts, acima do limite do seu plano.'],
-    limits: { maxClients: null, maxWorkflowTemplates: null, maxPostsPerWorkflow: 100 },
+    limits: {
+      maxClients: null,
+      maxWorkflowTemplates: null,
+      maxPostsPerWorkflow: 100,
+      maxActiveWorkflowsPerClient: null,
+    },
   });
   mockedStart.mockResolvedValue({ jobId: 42 });
   mockedCommit.mockImplementation(async (_job, rows) => ({ results: okResults(rows) }));

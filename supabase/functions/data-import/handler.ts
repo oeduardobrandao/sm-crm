@@ -1,7 +1,7 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { refineMapping } from "../_shared/import-ai.ts";
-import type { CommitRow } from "./types.ts";
+import type { ClienteRef, CommitContainerRow, CommitEntregaRow, CommitRow } from "./types.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -511,14 +511,20 @@ export function createDataImportHandler(deps: Deps) {
         // given client still shares ONE containerKey here, and a group larger
         // than the cap is exactly the group the commit step will split into
         // numbered containers. Warn, do not block: nothing is lost.
+        //
+        // perContainer is built unconditionally (not just under the maxPosts
+        // guard below) because the max_active_workflows_per_client check further
+        // down also needs each container's post count, to project how many
+        // 'ativo' workflows a still-unchunked preview container will actually
+        // become once commit rebuilds it with the real cap.
         const maxPosts = entitlements.limits.max_posts_per_workflow;
+        const perContainer = new Map<string, number>();
+        for (const r of rows) {
+          if (r.kind !== "post") continue;
+          const key = String((r as { containerKey?: unknown }).containerKey ?? "");
+          perContainer.set(key, (perContainer.get(key) ?? 0) + 1);
+        }
         if (counts.posts > 0 && maxPosts != null) {
-          const perContainer = new Map<string, number>();
-          for (const r of rows) {
-            if (r.kind !== "post") continue;
-            const key = String((r as { containerKey?: unknown }).containerKey ?? "");
-            perContainer.set(key, (perContainer.get(key) ?? 0) + 1);
-          }
           const over = [...perContainer.values()].filter((n) => n > maxPosts);
           if (over.length > 0) {
             const largest = Math.max(...over);
@@ -529,6 +535,109 @@ export function createDataImportHandler(deps: Deps) {
             );
           }
         }
+        // max_active_workflows_per_client is the fourth (and previously missing)
+        // cap the design promises at preview time. The trigger that enforces it —
+        // trg_limit_workflows -> enforce_plan_count_limit(
+        // 'max_active_workflows_per_client', 'direct', 'conta_id', 'cliente_id',
+        // "status = 'ativo'") (20260611130003_count_triggers.sql:33-37) — differs
+        // from the other three triggers in TWO ways that shape this check:
+        //   - it scopes the count PER CLIENT (cliente_id), not per workspace, so
+        //     the warning below groups by client instead of counting one
+        //     workspace-wide total; and
+        //   - it filters to status='ativo' (both the trigger's own WHEN guard
+        //     and its status predicate agree), so only 'ativo' rows count —
+        //     archived/concluded workflows never touch this cap.
+        // Both 'container' and 'entrega' rows insert exactly one 'ativo' row into
+        // workflows each (20260727000001_data_import_jobs.sql:294-316: the
+        // `container` branch and the `entrega` branch each do a single `insert
+        // into public.workflows (...) values (..., 'ativo', ...)`), so every
+        // incoming container/entrega row is one unit against this cap — EXCEPT
+        // that preview runs with post-chunking off (buildCommitRows(..., null)),
+        // so a client's whole posts collection arrives as ONE container row here
+        // no matter how many posts it holds. Commit rebuilds with the plan's real
+        // max_posts_per_workflow cap and SPLITS that same group into
+        // ceil(postCount / maxPosts) separate 'ativo' workflows — so counting
+        // "1 container row = 1 workflow" would undercount exactly the clients the
+        // max_posts_per_workflow warning above just flagged. perContainer (built
+        // above) gives each container's post count, which is projected forward
+        // through the same ceil-division commit will actually apply.
+        const maxActiveWorkflows = entitlements.limits.max_active_workflows_per_client;
+        const containerRowsForWorkflows = rows.filter((r): r is CommitContainerRow => r.kind === "container");
+        const entregaRowsForWorkflows = rows.filter((r): r is CommitEntregaRow => r.kind === "entrega");
+        if (maxActiveWorkflows != null && (containerRowsForWorkflows.length > 0 || entregaRowsForWorkflows.length > 0)) {
+          const clientGroupKey = (ref: ClienteRef): string =>
+            ref.type === "existing" ? `existing:${ref.clienteId}` : `created:${ref.sourceKey}`;
+          const incomingByClient = new Map<string, number>();
+          for (const c of containerRowsForWorkflows) {
+            const key = clientGroupKey(c.clienteRef);
+            const postCount = perContainer.get(c.sourceKey) ?? 0;
+            // A container is only ever emitted for a non-empty group, so it is
+            // always at least one workflow, even if postCount ends up 0 here
+            // (defensive — should not happen with well-formed rows).
+            const workflowsFromThis = maxPosts != null ? Math.max(1, Math.ceil(postCount / maxPosts)) : 1;
+            incomingByClient.set(key, (incomingByClient.get(key) ?? 0) + workflowsFromThis);
+          }
+          for (const e of entregaRowsForWorkflows) {
+            const key = clientGroupKey(e.clienteRef);
+            incomingByClient.set(key, (incomingByClient.get(key) ?? 0) + 1);
+          }
+
+          const existingClienteIds = [...incomingByClient.keys()]
+            .filter((k) => k.startsWith("existing:"))
+            .map((k) => Number(k.slice("existing:".length)));
+
+          // Existing active workflow counts are fetched per-client (not via a
+          // single head-count) because the cap is scoped per client: a combined
+          // count across every referenced client would say nothing about any
+          // ONE of them exceeding the limit. db is the service-role client, so
+          // conta_id scoping is manual, same as the other three checks above.
+          const existingActiveByClient = new Map<number, number>();
+          const clienteNameById = new Map<number, string>();
+          if (existingClienteIds.length > 0) {
+            for (const part of chunked(existingClienteIds)) {
+              const { data: wf, error: wfErr } = await db
+                .from("workflows")
+                .select("cliente_id")
+                .eq("conta_id", conta_id)
+                .eq("status", "ativo")
+                .in("cliente_id", part);
+              if (wfErr) throw wfErr;
+              for (const w of (wf ?? []) as Array<{ cliente_id: number }>) {
+                existingActiveByClient.set(w.cliente_id, (existingActiveByClient.get(w.cliente_id) ?? 0) + 1);
+              }
+              const { data: cl, error: clErr } = await db
+                .from("clientes")
+                .select("id, nome")
+                .eq("conta_id", conta_id)
+                .in("id", part);
+              if (clErr) throw clErr;
+              for (const c of (cl ?? []) as Array<{ id: number; nome: string }>) {
+                clienteNameById.set(c.id, c.nome);
+              }
+            }
+          }
+          // Created (brand-new-this-import) clients have no prior workflows, and
+          // their name is already in this same payload's own cliente rows.
+          const nameByCreatedSourceKey = new Map<string, string>();
+          for (const r of rows) {
+            if (r.kind === "cliente") nameByCreatedSourceKey.set(r.sourceKey, r.nome);
+          }
+
+          for (const [key, incoming] of incomingByClient) {
+            const isExisting = key.startsWith("existing:");
+            const clienteId = isExisting ? Number(key.slice("existing:".length)) : null;
+            const existingCount = clienteId != null ? (existingActiveByClient.get(clienteId) ?? 0) : 0;
+            const total = existingCount + incoming;
+            if (total > maxActiveWorkflows) {
+              const name = isExisting
+                ? (clienteNameById.get(clienteId as number) ?? `cliente #${clienteId}`)
+                : (nameByCreatedSourceKey.get(key.slice("created:".length)) ?? "um dos clientes do import");
+              warnings.push(
+                `${name} ficaria com ${total} fluxos ativos, acima do limite de ${maxActiveWorkflows} fluxos ativos por cliente do seu plano (${existingCount} existentes).`,
+              );
+            }
+          }
+        }
         return json({
           counts,
           warnings,
@@ -536,6 +645,7 @@ export function createDataImportHandler(deps: Deps) {
             maxClients: entitlements.limits.max_clients ?? null,
             maxWorkflowTemplates: entitlements.limits.max_workflow_templates ?? null,
             maxPostsPerWorkflow: entitlements.limits.max_posts_per_workflow ?? null,
+            maxActiveWorkflowsPerClient: entitlements.limits.max_active_workflows_per_client ?? null,
           },
         });
       }

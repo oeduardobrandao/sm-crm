@@ -9,8 +9,7 @@ import { supabase } from '@/lib/supabase';
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/data-import`;
 
 export type ClienteRef =
-  | { type: 'existing'; clienteId: number }
-  | { type: 'created'; sourceKey: string };
+  { type: 'existing'; clienteId: number } | { type: 'created'; sourceKey: string };
 
 export type Provenance = {
   source: string;
@@ -104,6 +103,7 @@ export interface PreviewResult {
     maxClients: number | null;
     maxWorkflowTemplates: number | null;
     maxPostsPerWorkflow: number | null;
+    maxActiveWorkflowsPerClient: number | null;
   };
 }
 export interface CommitRowResult {

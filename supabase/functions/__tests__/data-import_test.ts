@@ -326,6 +326,118 @@ Deno.test("data-import: preview does not warn when every container is within the
   assertEquals(body.warnings, []);
 });
 
+// clienteRef shape shared by container/entrega rows, per types.ts's ClienteRef.
+type Ref = { type: "existing"; clienteId: number } | { type: "created"; sourceKey: string };
+
+function containerRow(sourceKey: string, clienteRef: Ref, titulo = "Calendário") {
+  return { kind: "container", sourceKey, clienteRef, titulo };
+}
+
+function entregaRow(sourceKey: string, clienteRef: Ref) {
+  return {
+    kind: "entrega",
+    sourceKey,
+    templateKey: "template:t",
+    clienteRef,
+    titulo: "Entrega",
+    etapaIndex: 0,
+    dueDate: null,
+    provenance: {},
+  };
+}
+
+Deno.test("data-import: preview warns when a client would exceed max_active_workflows_per_client", async () => {
+  // trg_limit_workflows -> enforce_plan_count_limit('max_active_workflows_per_client',
+  // 'direct', 'conta_id', 'cliente_id', "status = 'ativo'")
+  // (20260611130003_count_triggers.sql:33-37) scopes the count PER CLIENT, unlike
+  // the workspace-wide max_clients/max_workflow_templates/max_posts_per_workflow
+  // checks above.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  const capped = { ...ENTITLED, limits: { ...ENTITLED.limits, max_active_workflows_per_client: 3 } };
+  const ref: Ref = { type: "existing", clienteId: 42 };
+  const rows = [
+    containerRow("container:existing-42:0", ref),
+    postRow("p1", "container:existing-42:0"),
+    postRow("p2", "container:existing-42:0"),
+    entregaRow("e1", ref),
+  ];
+  // 2 workflows already 'ativo' for cliente 42; incoming is 1 container + 1
+  // entrega = 2 more (posts stay under the 100-post cap, so the container is
+  // NOT split) -> projected total 4, over the cap of 3.
+  db.queue("workflows", "select", { data: [{ cliente_id: 42 }, { cliente_id: 42 }], error: null });
+  db.queue("clientes", "select", { data: [{ id: 42, nome: "Ana" }], error: null });
+  const res = await makeHandler(db, capped)(post("preview", { rows }));
+  const body = await readJson(res);
+  assertEquals(body.limits.maxActiveWorkflowsPerClient, 3);
+  const warning = body.warnings.find((w: string) => w.includes("Ana"));
+  assert(warning, `expected a warning naming Ana, got ${JSON.stringify(body.warnings)}`);
+  assert(warning.includes("4"), `expected the projected total (4), got ${warning}`);
+  assert(warning.includes("limite de 3"), `expected the plan cap (3), got ${warning}`);
+  const wfCall = oneCall(db, "workflows", "select");
+  assertModifier(wfCall, "eq", ["conta_id", "conta-1"]);
+  assertModifier(wfCall, "eq", ["status", "ativo"]);
+  assertModifier(wfCall, "in", ["cliente_id", [42]]);
+});
+
+Deno.test("data-import: preview does not warn when a client stays within max_active_workflows_per_client", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  const capped = { ...ENTITLED, limits: { ...ENTITLED.limits, max_active_workflows_per_client: 3 } };
+  const ref: Ref = { type: "existing", clienteId: 42 };
+  const rows = [
+    containerRow("container:existing-42:0", ref),
+    postRow("p1", "container:existing-42:0"),
+    entregaRow("e1", ref),
+  ];
+  // 0 existing 'ativo' workflows for cliente 42; incoming 2 (1 container + 1
+  // entrega), well within the cap of 3.
+  db.queue("workflows", "select", { data: [], error: null });
+  db.queue("clientes", "select", { data: [{ id: 42, nome: "Ana" }], error: null });
+  const res = await makeHandler(db, capped)(post("preview", { rows }));
+  const body = await readJson(res);
+  assertEquals(body.warnings, []);
+});
+
+Deno.test("data-import: preview projects post-chunking when checking max_active_workflows_per_client", async () => {
+  // Preview runs with container chunking OFF (buildCommitRows(..., null)), so
+  // all 5 posts below arrive under ONE container row here — but commit
+  // rebuilds with the real max_posts_per_workflow cap and splits them into
+  // ceil(5/2)=3 separate 'ativo' workflows. Counting "1 container row = 1
+  // workflow" would miss this client entirely (an off-by-one that never fires).
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  const capped = {
+    ...ENTITLED,
+    limits: { ...ENTITLED.limits, max_posts_per_workflow: 2, max_active_workflows_per_client: 2 },
+  };
+  const ref: Ref = { type: "existing", clienteId: 9 };
+  const rows = [
+    containerRow("container:existing-9:0", ref),
+    postRow("p1", "container:existing-9:0"),
+    postRow("p2", "container:existing-9:0"),
+    postRow("p3", "container:existing-9:0"),
+    postRow("p4", "container:existing-9:0"),
+    postRow("p5", "container:existing-9:0"),
+  ];
+  db.queue("workflows", "select", { data: [], error: null });
+  db.queue("clientes", "select", { data: [{ id: 9, nome: "Bia" }], error: null });
+  const res = await makeHandler(db, capped)(post("preview", { rows }));
+  const body = await readJson(res);
+  const warning = body.warnings.find((w: string) => w.includes("Bia"));
+  assert(warning, `expected a warning naming Bia, got ${JSON.stringify(body.warnings)}`);
+  assert(warning.includes("3"), `expected the projected total (3), got ${warning}`);
+});
+
+Deno.test("data-import: preview echoes maxActiveWorkflowsPerClient in limits with no incoming workflows", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  const capped = { ...ENTITLED, limits: { ...ENTITLED.limits, max_active_workflows_per_client: 5 } };
+  const res = await makeHandler(db, capped)(post("preview", { rows: [] }));
+  const body = await readJson(res);
+  assertEquals(body.limits.maxActiveWorkflowsPerClient, 5);
+});
+
 Deno.test("data-import: preview rejects a non-array rows payload instead of 500-ing", async () => {
   const db = createSupabaseQueryMock();
   authAs(db);
