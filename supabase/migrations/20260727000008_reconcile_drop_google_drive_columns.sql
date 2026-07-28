@@ -2,16 +2,28 @@
 -- Schema drift reconciliation (last) — DROP files.google_drive_*
 -- See docs/superpowers/specs/2026-07-27-schema-drift-audit.md
 --
--- SEQUENCED LAST, DELIBERATELY. This migration was originally numbered
--- ...000004. On 2026-07-27 its guard refused against production — files exist
--- whose only source is Google Drive — which is the guard working as intended,
--- but `supabase db push` stops at the first failure, so it also blocked the
--- RLS security fix (...000006) and everything after it from reaching prod.
+-- STATUS: APPLIED to production and staging on 2026-07-28. The guard passed
+-- (0 Drive-only rows, 0 thumbnail-less videos) after the four remaining
+-- Drive-sourced file rows were deleted. Nothing here is pending, and this
+-- migration blocks nothing.
 --
--- Renumbered to run after the rest so a refusal here blocks only itself.
--- Applying it requires migrating the Drive-sourced files to R2 first; until
--- then it is expected to refuse, and that refusal is no longer load-bearing on
--- anything else.
+-- SEQUENCED LAST, DELIBERATELY. It was originally numbered ...000004. On
+-- 2026-07-27 its guard refused against production — files existed whose only
+-- source was Google Drive — which is the guard working as intended, but
+-- `supabase db push` stops at the first failure, so it also blocked the RLS
+-- security fix (...000006) and everything after it from reaching prod.
+--
+-- Renumbering bought time; it did not make a refusal harmless. An earlier
+-- version of this comment claimed "a refusal here blocks only itself", which
+-- is FALSE: db push applies in version order and aborts on the first failure,
+-- so while this migration was refusing it would have blocked every migration
+-- authored after it, not just itself. Renumbering only protected the
+-- migrations that already existed on 2026-07-27. The real fix was clearing
+-- the data, which has been done.
+--
+-- Keep this note. The stale "expected to refuse" wording it replaces caused
+-- repeated external review findings asserting that production deploys were
+-- blocked, long after they were not.
 --
 -- files.google_drive_file_id / _thumbnail_url / _view_url exist in production,
 -- are created by no migration, and are read by no code. Held back from the
