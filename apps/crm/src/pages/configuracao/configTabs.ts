@@ -30,11 +30,14 @@ export const CONFIG_TABS: ConfigTab[] = [
   { path: 'cobranca', label: 'Plano & Cobrança', roles: ['owner'] },
 ];
 
-export function visibleConfigTabs(role: string | null | undefined): ConfigTab[] {
-  return CONFIG_TABS.filter((tab) => tab.roles.includes(role as ConfigRole));
+export function visibleConfigTabs(workspaceRole: string | null | undefined): ConfigTab[] {
+  return CONFIG_TABS.filter((tab) => tab.roles.includes(workspaceRole as ConfigRole));
 }
 
-export function canAccessConfigTab(path: string, role: string | null | undefined): boolean {
+export function canAccessConfigTab(
+  path: string,
+  workspaceRole: string | null | undefined,
+): boolean {
   const tab = CONFIG_TABS.find((t) => t.path === path);
-  return tab ? tab.roles.includes(role as ConfigRole) : false;
+  return tab ? tab.roles.includes(workspaceRole as ConfigRole) : false;
 }

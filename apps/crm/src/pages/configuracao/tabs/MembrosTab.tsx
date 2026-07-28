@@ -49,8 +49,11 @@ import {
 
 /** Workspace members and pending invites. */
 export default function MembrosTab() {
-  const { user, profile, role } = useAuth();
-  const isOwnerOrAdmin = role === 'owner' || role === 'admin';
+  const { user, profile, workspaceRole } = useAuth();
+  const isOwnerOrAdmin = workspaceRole === 'owner' || workspaceRole === 'admin';
+  // Not yet consumed in this file — the financial-access toggle (a later task)
+  // is the first owner-only member-management action here.
+  const isOwner = workspaceRole === 'owner';
 
   const { data: wsUsers, refetch: refetchWsUsers } = useQuery({
     queryKey: ['workspaceUsers'],

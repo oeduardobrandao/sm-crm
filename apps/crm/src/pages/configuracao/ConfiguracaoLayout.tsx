@@ -9,7 +9,7 @@ import { visibleConfigTabs, canAccessConfigTab } from './configTabs';
  * route so a tab is deep-linkable and survives a refresh.
  */
 export default function ConfiguracaoLayout() {
-  const { user, role, loading } = useAuth();
+  const { user, workspaceRole, loading } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
@@ -20,7 +20,7 @@ export default function ConfiguracaoLayout() {
   // Wait for the role before deciding anything: rendering the strip early would
   // flash the agent-sized set of tabs at an owner, and the guard below would
   // bounce them off a tab they are allowed to see.
-  if (loading || !user) {
+  if (loading || !user || workspaceRole === null) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center' }}>
         <Spinner size="lg" />
@@ -28,10 +28,10 @@ export default function ConfiguracaoLayout() {
     );
   }
 
-  const tabs = visibleConfigTabs(role);
+  const tabs = visibleConfigTabs(workspaceRole);
   const current = pathname.replace(/^\/configuracao\/?/, '').split('/')[0];
 
-  if (current && !canAccessConfigTab(current, role)) {
+  if (current && !canAccessConfigTab(current, workspaceRole)) {
     return <Navigate to="/configuracao/perfil" replace />;
   }
 

@@ -11,11 +11,26 @@ import ConfiguracaoLayout from '../ConfiguracaoLayout';
 
 const mockedUseAuth = vi.mocked(useAuth);
 
-function setAuth(role: string | null, { loading = false, signedIn = true } = {}) {
+/**
+ * `workspaceRole` (from `workspace_members`, correct per workspace) is the
+ * source this layout gates on. `role` (from `profiles.role`) goes stale on
+ * workspace switch — nothing writes it on switch — so it defaults here to a
+ * DIFFERENT value than `workspaceRole` unless a test overrides it, to make
+ * sure no assertion could accidentally pass by reading the stale field.
+ */
+function setAuth(
+  workspaceRole: string | null,
+  {
+    loading = false,
+    signedIn = true,
+    staleProfileRole = workspaceRole === 'owner' ? 'agent' : 'owner',
+  }: { loading?: boolean; signedIn?: boolean; staleProfileRole?: string | null } = {},
+) {
   mockedUseAuth.mockReturnValue({
     user: signedIn ? { id: 'u1', email: 'a@b.c' } : null,
     profile: { nome: 'Débora Kristin' },
-    role,
+    role: staleProfileRole,
+    workspaceRole,
     loading,
     signOut: vi.fn(),
     refetchProfile: vi.fn(),
@@ -109,5 +124,40 @@ describe('ConfiguracaoLayout', () => {
     renderAt('/configuracao/membros');
     expect(tabLabels()).toEqual([]);
     expect(screen.getByTestId('path')).toHaveTextContent('/configuracao/membros');
+  });
+
+  it('shows the spinner (not a bounce) while auth is done loading but workspaceRole has not resolved yet', () => {
+    // Auth can finish loading before the workspace_members lookup resolves.
+    // `workspaceRole` stays null for that window. If the gate below only
+    // checked `loading`/`user`, the guard would run with a null role and
+    // immediately redirect an owner off /membros before their real role
+    // arrives — this pins the "extend the loading gate" half of the fix.
+    setAuth(null, { loading: false });
+    renderAt('/configuracao/membros');
+    expect(tabLabels()).toEqual([]);
+    expect(screen.queryByText('conteudo membros')).not.toBeInTheDocument();
+    expect(screen.getByTestId('path')).toHaveTextContent('/configuracao/membros');
+  });
+
+  it('lets a genuine owner reach Membros even when profiles.role is stale ("agent")', () => {
+    // The motivating bug: profiles.role never gets rewritten on workspace
+    // switch, so an owner who switched workspaces can be stuck reading
+    // role: 'agent'. workspaceRole (from workspace_members) is correct and
+    // must be what gates the tab strip and the route guard.
+    setAuth('owner', { staleProfileRole: 'agent' });
+    renderAt('/configuracao/membros');
+    expect(tabLabels()).toContain('Membros');
+    expect(screen.getByText('conteudo membros')).toBeInTheDocument();
+    expect(screen.getByTestId('path')).toHaveTextContent('/configuracao/membros');
+  });
+
+  it('blocks a real agent from Membros even when profiles.role stale-reads "owner"', () => {
+    // The converse: a stale profiles.role of 'owner' must not grant access
+    // to someone whose real, current-workspace role is agent.
+    setAuth('agent', { staleProfileRole: 'owner' });
+    renderAt('/configuracao/membros');
+    expect(tabLabels()).toEqual([]);
+    expect(screen.queryByText('conteudo membros')).not.toBeInTheDocument();
+    expect(screen.getByTestId('path')).toHaveTextContent('/configuracao/perfil');
   });
 });
