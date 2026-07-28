@@ -45,7 +45,17 @@ BEGIN
 
     seq := format('public.%I', t || '_id_seq');
 
-    -- Preserve the high-water mark before the identity's sequence is dropped.
+    -- Lock BEFORE reading the high-water mark. Reading max(id) first would leave
+    -- a window in which the identity's still-live sequence hands `next_id` to a
+    -- concurrent INSERT that then commits; setval(..., next_id, false) below
+    -- would prime the new sequence to reissue that same value, and the next
+    -- ordinary app insert would die on a duplicate primary key.
+    --
+    -- DROP IDENTITY takes ACCESS EXCLUSIVE anyway, so taking it explicitly one
+    -- statement earlier costs nothing and closes the window: once held, no other
+    -- transaction can insert between the read and the sequence takeover.
+    EXECUTE format('LOCK TABLE public.%I IN ACCESS EXCLUSIVE MODE', t);
+
     EXECUTE format('SELECT COALESCE(max(id), 0) + 1 FROM public.%I', t) INTO next_id;
 
     EXECUTE format('ALTER TABLE public.%I ALTER COLUMN id DROP IDENTITY IF EXISTS', t);
