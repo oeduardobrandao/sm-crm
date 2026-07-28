@@ -134,6 +134,13 @@ export async function removeWorkspaceUser(userId: string): Promise<void> {
   await callManageWorkspaceUser('remove', userId);
 }
 
+export async function setWorkspaceUserFinancialAccess(
+  userId: string,
+  value: boolean,
+): Promise<void> {
+  await callManageWorkspaceUser('set-financial-access', userId, { value });
+}
+
 export interface MyMembership {
   role: 'owner' | 'admin' | 'agent';
   can_see_financials: boolean;

@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
+import { handleSetFinancialAccess } from "./setFinancialAccess.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -78,6 +79,42 @@ Deno.serve(async (req: Request) => {
       });
 
       return new Response(JSON.stringify({ message: "Convite aceito." }), { status: 200, headers });
+    }
+
+    // --- Set Financial Access (owner-only) ---
+    //
+    // Wired here, BEFORE the profiles-based caller resolution below: that
+    // resolution reads profiles.role, which goes stale on workspace switch
+    // (no switch path writes it). This action must not inherit that stale-role
+    // check — the owner check happens inside the RPC, against
+    // workspace_members, which is always current.
+    if (action === "set-financial-access") {
+      const { value } = body;
+      if (typeof value !== "boolean") {
+        return new Response(JSON.stringify({ error: "value must be a boolean" }), { status: 400, headers });
+      }
+      if (!targetUserId) {
+        return new Response(JSON.stringify({ error: "targetUserId is required" }), { status: 400, headers });
+      }
+
+      // Resolve the workspace from the caller's own membership, not profiles.
+      const { data: prof } = await serviceClient
+        .from("profiles").select("active_workspace_id").eq("id", user.id).single();
+      const workspaceId = prof?.active_workspace_id;
+      if (!workspaceId) {
+        return new Response(JSON.stringify({ error: "Workspace não encontrado." }), { status: 403, headers });
+      }
+
+      const result = await handleSetFinancialAccess(serviceClient, {
+        actorUserId: user.id,
+        targetUserId,
+        workspaceId,
+        value,
+      });
+      return new Response(
+        JSON.stringify(result.status === 200 ? { message: result.message, changed: result.changed } : { error: result.message }),
+        { status: result.status, headers },
+      );
     }
 
     // All administrative actions below are scoped to the caller's current workspace.
