@@ -20,6 +20,27 @@
 - **Wrap the predicate as `(SELECT public.can_see_financials())`** in policies so it hoists to an InitPlan instead of evaluating per row.
 - **CI gates:** `npm run lint`, `npm run format:check`, `npm run build`, `npm run test` must all pass before pushing. Run `npm run format` to auto-fix.
 - **New SQL suites must be numbered.** `scripts/test-entitlements.sh` globs `[0-9]*.sql` under `supabase/tests/entitlements/` only. The `50_`/`51_`/`52_` names here run under the existing glob; a differently-named file would be silently skipped. (Three unnumbered suites elsewhere in `supabase/tests/` are never executed — out of scope, tracked in the spec's Known Gaps.)
+- **Test fixtures must use `et_make_workspace('max')`, never `'start'`.** The `start` and `free` plans set `max_team_members = 1` and the `trg_limit_seats` trigger (`20260611130003`) enforces it, so a fixture seeding an owner + admin + agent into one workspace aborts with `plan_limit_exceeded:max_team_members` during setup — before it reaches the behaviour under test. `max` has `max_team_members = NULL` (unlimited).
+
+### Local vs production table ACLs — read before writing any suite that impersonates `authenticated`
+
+Verified 2026-07-28 against both. **`authenticated` cannot SELECT `clientes` or `membros` on a local migrations-built database, but can in production.**
+
+- Local `pg_default_acl` for role `postgres` in schema `public` grants `anon`/`authenticated`/`service_role` only `Dxtm` (TRUNCATE, REFERENCES, TRIGGER, MAINTAIN) — no `arwd`. Migrations run as `postgres`, so every migration-created table inherits that.
+- Production has an explicit `GRANT ALL ON TABLE clientes/membros TO anon, authenticated, service_role`, applied when those tables were created outside the migration history.
+- **No migration in this repo grants DML on `clientes` or `membros`.** Production's privileges on them come from nothing checked in — the same class of undocumented environment state this branch's drift audit existed to remove, one level down from columns.
+
+Consequences for this plan, each already accounted for:
+
+| Suite | Reads | Works locally? |
+|---|---|---|
+| `50_` (Task 1) | `can_see_financials()` only | **Yes** — the migration grants EXECUTE explicitly |
+| `51_` (Task 2) | `membros_v` / `clientes_v` | **Yes** — the views are explicitly granted, and a non-`security_invoker` view reads its base tables as the view owner, so the caller needs no base-table privilege |
+| `52_` (Task 12) | base-table columns, **after** Migration B | **Yes** — Migration B's explicit column grants are what create the privilege locally |
+
+So every suite here passes locally. What does *not* work locally is asserting the **pre-**Migration-B baseline, because that baseline exists only in production. Do not write an assertion of the form "authenticated can select `membros.custo_mensal` before the revoke" — it is false locally and true in production, and it is not what any of these suites are for.
+
+**Migration B is the first thing in this repo to state these grants explicitly.** That is a real improvement, not a side effect: after it, `clientes`/`membros` privileges are checked-in fact rather than inherited environment state, and local and production converge. Say so in its header comment.
 - **`git checkout -- deno.lock`** after running `npm run test:functions` — it always dirties the root lockfile.
 - **Roles are `owner | admin | agent`**, always read via `AuthContext`, never hardcoded.
 - **Portuguese UI copy.** All user-facing strings in pt-BR.
@@ -224,7 +245,7 @@ declare
   v_none  uuid := gen_random_uuid();
   v_got   boolean;
 begin
-  v_ws := et_make_workspace('start');
+  v_ws := et_make_workspace('max');
 
   insert into auth.users (id) values (v_owner), (v_admin), (v_agent), (v_none);
   insert into workspace_members (user_id, workspace_id, role) values
@@ -458,8 +479,8 @@ declare
   v_rows  bigint;
   v_ok    boolean;
 begin
-  v_ws_a := et_make_workspace('start');
-  v_ws_b := et_make_workspace('start');
+  v_ws_a := et_make_workspace('max');
+  v_ws_b := et_make_workspace('max');
 
   insert into auth.users (id) values (v_owner), (v_admin);
   insert into workspace_members (user_id, workspace_id, role) values
