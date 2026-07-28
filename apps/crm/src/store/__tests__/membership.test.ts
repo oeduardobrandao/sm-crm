@@ -55,7 +55,8 @@ describe('getMyMembership', () => {
   });
 
   it('throws on a query error so the caller can resolve to unknown', async () => {
-    mockMaybeSingle.mockResolvedValue({ data: null, error: { message: 'boom' } });
-    await expect(getMyMembership()).rejects.toBeTruthy();
+    const queryError = { message: 'boom' };
+    mockMaybeSingle.mockResolvedValue({ data: null, error: queryError });
+    await expect(getMyMembership()).rejects.toBe(queryError);
   });
 });

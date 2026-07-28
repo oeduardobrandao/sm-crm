@@ -171,6 +171,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!sessionReady || !user) {
       profileRequestId.current += 1;
       setProfile(null);
+      setWorkspaceRole(null);
+      setCanSeeFinancials('unknown');
       setLoading(false);
       return;
     }

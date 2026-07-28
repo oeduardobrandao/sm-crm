@@ -156,8 +156,10 @@ export async function getMyMembership(): Promise<MyMembership | null> {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
+  // getContaId() throws rather than returning a falsy value when there is no
+  // active workspace, so "no active workspace" surfaces as a rejection here
+  // (getMyMembership() throws too), never as this function returning null.
   const conta_id = await getContaId();
-  if (!conta_id) return null;
 
   const { data, error } = await supabase
     .from('workspace_members')

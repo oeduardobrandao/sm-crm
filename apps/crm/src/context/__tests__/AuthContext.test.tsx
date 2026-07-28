@@ -2,9 +2,35 @@ import { act, render, renderHook, screen, waitFor } from '@testing-library/react
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 
+// vi.hoisted: the vi.mock('../../store/core', ...) factory below runs before
+// this file's own top-level statements, so a plain `const mock... = vi.fn()`
+// would still be in the TDZ when the factory executes. Same reasoning as
+// store/__tests__/membership.test.ts.
+const { mockMaybeSingle, mockMembershipGetUser, mockGetContaId } = vi.hoisted(() => ({
+  mockMaybeSingle: vi.fn(),
+  mockMembershipGetUser: vi.fn(),
+  mockGetContaId: vi.fn(),
+}));
+
 vi.mock('../../lib/supabase');
+// getMyMembership() (store/workspace.ts) reads `supabase` and `getContaId`
+// from THIS module, not from '../../lib/supabase'. The previous factory only
+// exported `initStoreRole`, so `supabase` was undefined inside
+// getMyMembership() and every call threw before reaching the mocked
+// maybeSingle() — canSeeFinancials always resolved via the catch path to
+// 'unknown', and the membership happy path (the one AuthContext.tsx:150
+// actually exercises) was never covered by this suite.
 vi.mock('../../store/core', () => ({
   initStoreRole: vi.fn(async () => undefined),
+  supabase: {
+    auth: { getUser: mockMembershipGetUser },
+    from: () => ({
+      select: () => ({
+        eq: () => ({ eq: () => ({ maybeSingle: mockMaybeSingle }) }),
+      }),
+    }),
+  },
+  getContaId: mockGetContaId,
 }));
 
 import * as supabaseModule from '../../lib/supabase';
@@ -38,6 +64,8 @@ function Probe() {
       <span data-testid="role">{auth.role}</span>
       <span data-testid="user">{auth.user?.id ?? 'anon'}</span>
       <span data-testid="loading">{String(auth.loading)}</span>
+      <span data-testid="workspaceRole">{auth.workspaceRole ?? 'null'}</span>
+      <span data-testid="canSeeFinancials">{String(auth.canSeeFinancials)}</span>
       <button
         onClick={() => {
           void auth.signOut();
@@ -68,6 +96,62 @@ describe('AuthProvider', () => {
 
     expect(screen.getByTestId('user')).toHaveTextContent('user-99');
     expect(screen.getByTestId('role')).toHaveTextContent('admin');
+  });
+
+  it('resolves canSeeFinancials to true for an owner whose can_see_financials column is false', async () => {
+    // Guards AuthContext.tsx:150 — deriveFinancialAccess(membership), not the
+    // raw `membership.can_see_financials` column. can_see_financials is only
+    // meaningful for admins; owners must see financials regardless of it.
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo',
+      role: 'owner',
+      conta_id: 'conta-1',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    mockGetContaId.mockResolvedValue('conta-1');
+    mockMaybeSingle.mockResolvedValue({
+      data: { role: 'owner', can_see_financials: false },
+      error: null,
+    });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('false');
+    });
+
+    expect(screen.getByTestId('workspaceRole')).toHaveTextContent('owner');
+    expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+  });
+
+  it('resolves canSeeFinancials to false for an agent whose can_see_financials column is true', async () => {
+    // Mirror case: agents never see financials, whatever the column says.
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-2' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-2',
+      nome: 'Agente',
+      role: 'agent',
+      conta_id: 'conta-1',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-2' } } });
+    mockGetContaId.mockResolvedValue('conta-1');
+    mockMaybeSingle.mockResolvedValue({
+      data: { role: 'agent', can_see_financials: true },
+      error: null,
+    });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('false');
+    });
+
+    expect(screen.getByTestId('workspaceRole')).toHaveTextContent('agent');
+    expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
   });
 
   it('clears profile when onAuthStateChange emits a signed-out session', async () => {
