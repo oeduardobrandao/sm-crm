@@ -569,12 +569,22 @@ async function handleCommit({ db, conta_id, userId, body, json }: ActionCtx): Pr
   // re-arming the undo button on a job that was already undone and corrupting
   // the very history the audit trail exists to record. Reject it up front, the
   // same way undo already does.
+  // .maybeSingle(), NOT .single(): a foreign/stale/mistyped jobId is a routine
+  // zero-row result, not a failure. PostgREST's .single() sends
+  // `Accept: application/vnd.pgrst.object+json`; on zero rows it replies 406
+  // and postgrest-js surfaces THAT as a non-null `error` (code PGRST116) with
+  // `data: null` — so the ordinary "not found" case would always take the
+  // `jobErr` branch below and return a noisy 500 instead of a clean 404.
+  // .maybeSingle() returns `data: null, error: null` for zero rows, leaving
+  // `error` populated only for a genuine query failure. Do not "simplify" this
+  // back to .single() — the mock used in tests replays whatever is queued and
+  // cannot reproduce PostgREST's real 406, so it will not catch a revert.
   const { data: job, error: jobErr } = await db
     .from("import_jobs")
     .select("id, status")
     .eq("id", jobId)
     .eq("conta_id", conta_id)
-    .single();
+    .maybeSingle();
   // A genuine query failure (timeout, connection loss) must not present as
   // "job not found" — that masks a backend problem as routine user error and
   // sends the client down the wrong recovery path. Reserve 404 for a row that
@@ -651,12 +661,19 @@ async function handleCommit({ db, conta_id, userId, body, json }: ActionCtx): Pr
 
 async function handleUndo({ db, conta_id, userId, body, json }: ActionCtx): Promise<Response> {
   const jobId = Number(body.jobId);
+  // .maybeSingle(), NOT .single() — same reasoning as commit's probe above:
+  // .single() turns PostgREST's real zero-row 406 into a non-null `error`
+  // (PGRST116), which would send every foreign/stale/mistyped jobId down the
+  // `jobErr` -> 500 branch instead of the intended 404. The shared test mock
+  // cannot reproduce that 406 (it replays whatever is queued regardless of
+  // which method is called), so nothing here will fail if this is reverted to
+  // .single() — do not "simplify" it back.
   const { data: job, error: jobErr } = await db
     .from("import_jobs")
     .select("id, conta_id, status, created_at, undo_started_at")
     .eq("id", jobId)
     .eq("conta_id", conta_id)
-    .single();
+    .maybeSingle();
   // Same distinction as commit's probe: a real query failure here (timeout,
   // connection loss) is not "job not found" and must not be reported as one —
   // that hides a backend problem behind a routine-looking 404. Log internally,

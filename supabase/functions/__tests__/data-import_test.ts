@@ -402,6 +402,25 @@ Deno.test("data-import: commit's ownership probe surfaces a DB error as 500, not
   assertEquals(callsFor(db, "import_jobs", "update").length, 0);
 });
 
+Deno.test("data-import: commit's ownership probe uses maybeSingle, not single", async () => {
+  // PostgREST turns .single()'s zero-row case into a 406 that postgrest-js
+  // surfaces as a non-null `error` — the exact "foreign jobId" case the two
+  // tests above exercise. The mock replays whatever is queued regardless of
+  // which method is called, so it cannot reproduce that 406; this only pins
+  // the call SHAPE (maybeSingle, not single), which is the one property the
+  // mock CAN express and which would fail if the fix were reverted.
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueJobOwned(db);
+  db.queueRpc("import_commit_row", { data: { skipped: false, table: "clientes", row_id: "3" }, error: null });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const rows = [{ kind: "cliente", sourceKey: "a", nome: "Ana" }];
+  await makeHandler(db)(post("commit", { jobId: 7, rows }));
+  const probe = oneCall(db, "import_jobs", "select");
+  assertModifier(probe, "maybeSingle", []);
+  assertEquals(hasModifier(probe, "single", []), false);
+});
+
 Deno.test("data-import: commit with final marks the job completed, conta-scoped", async () => {
   const db = createSupabaseQueryMock();
   authAs(db);
@@ -658,6 +677,19 @@ Deno.test("data-import: undo's ownership probe surfaces a DB error as 500, not 4
   assertEquals(JSON.stringify(body).includes("connection"), false);
   assertEquals(callsFor(db, "import_job_items", "select").length, 0);
   assertEquals(callsFor(db, "import_jobs", "update").length, 0);
+});
+
+Deno.test("data-import: undo's ownership probe uses maybeSingle, not single", async () => {
+  // Same reasoning as commit's equivalent test: the mock cannot reproduce
+  // PostgREST's real 406-on-zero-rows behavior, so this pins the call SHAPE
+  // instead — it would fail if .maybeSingle() here were reverted to .single().
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db, { status: "undone" }); // any queued response exercises the probe
+  await makeHandler(db)(post("undo", { jobId: 7 }));
+  const probe = oneCall(db, "import_jobs", "select");
+  assertModifier(probe, "maybeSingle", []);
+  assertEquals(hasModifier(probe, "single", []), false);
 });
 
 Deno.test("data-import: undo refuses an already-undone job", async () => {
