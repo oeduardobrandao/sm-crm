@@ -10,6 +10,10 @@ describe('mapEntitlementError', () => {
     const r = mapEntitlementError({ error: 'feature_disabled', feature: 'feature_leads' });
     expect(r).toEqual({ kind: 'feature', key: 'feature_leads', label: 'Leads' });
   });
+  it('maps a raised feature_disabled message from the DB trigger', () => {
+    const r = mapEntitlementError({ message: 'feature_disabled:feature_hub_portal' });
+    expect(r).toEqual({ kind: 'feature', key: 'feature_hub_portal', label: 'Portal do Cliente' });
+  });
   it('maps a quota_exceeded body', () => {
     const r = mapEntitlementError({ error: 'quota_exceeded', used: 9, quota: 10 });
     expect(r).toEqual({
