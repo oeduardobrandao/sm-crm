@@ -15,6 +15,8 @@
 - **Migration filenames need unique timestamp prefixes.** The `migration-version-guard` CI job fails the build on duplicates. This plan uses `20260728000001`–`20260728000003`; verify none exist before creating (`ls supabase/migrations/ | grep 20260728`).
 - **Author migrations in ascending numeric order — never fill a lower-numbered slot after a higher one has been pushed.** `supabase db push` refuses out-of-order migrations without `--include-all`, and a migration that fails leaves everything numerically after it unreachable. This branch already lost a day to that: `20260727000008`'s guard refused on production and blocked five unrelated migrations behind it. The numbering here is deliberate — A = `…0001` (Task 1–2), B = `…0002` (Task 12), RPC = `…0003` (Task 13) — so authoring order, numeric order and apply order are the same sequence.
 - **`SET search_path = public, pg_temp` on every new `SECURITY DEFINER` function**, and schema-qualify every relation inside it. This departs from the repo's existing convention deliberately — see Known Gap 7 in the spec.
+
+  **Do not claim this closes temp-schema shadowing for the capability check.** It does not, and a migration comment asserting otherwise is a false statement about the code. `can_see_financials()` delegates workspace resolution to `public.get_my_conta_id()`, whose live definition (`20260720000004_reconcile_prod_missing_functions.sql:25-41`) is `SECURITY DEFINER` with a bare `SET search_path = public` and **unqualified** `profiles` / `workspace_members`. With `pg_temp` absent there it is searched first for relations, so `CREATE TEMP TABLE profiles(...)` still controls which workspace the predicate resolves — one call below ours. Hardening a shared function is out of scope here; the honest comment says the new function is hardened *and names the dependency that is not*.
 - **Never `SELECT *` in a view definition.** A later base-table column would appear ungranted and unreviewed.
 - **The capability is conjoined with the tenant check, never substituted for it.** `can_see_financials()` does not authorize a row's `conta_id`.
 - **Wrap the predicate as `(SELECT public.can_see_financials())`** in policies so it hoists to an InitPlan instead of evaluating per row.
@@ -447,6 +449,13 @@ CREATE OR REPLACE VIEW public.clientes_v WITH (security_barrier = true) AS
 -- `authenticated`, a caller could INSERT a row with an arbitrary conta_id, or
 -- UPDATE an existing row's conta_id into another workspace — writing straight
 -- past every policy this design relies on.
+--
+-- NOT granted to service_role, and the reason is stronger than "they would see
+-- masked values": EXECUTE on a function is checked against the CURRENT USER
+-- even inside a non-security_invoker view, so a service_role client selecting
+-- this view hits permission denied on can_see_financials() given its REVOKE.
+-- Edge functions must keep reading base tables, where their grants are
+-- untouched. Do NOT "fix" this by granting EXECUTE to service_role.
 --
 -- NOT granted to service_role: trusted callers have no auth.uid(), so they
 -- would get masked values and zero rows. Edge functions read base tables
@@ -2016,6 +2025,13 @@ git commit -m "feat(crm): reject CSV imports carrying protected financial column
 - Produces: `FINANCIAL_QUERY_KEYS: string[]` exported from `AuthContext.tsx`
 
 **Severity, stated precisely:** this is a correctness and UX concern, not a disclosure boundary. The database denies the read regardless of what the client believes, so a stale cache cannot survive a refetch and no new financial data can be obtained. This is defence-in-depth over values already in memory — it must not be described, or relied upon, as the enforcement boundary.
+
+**`REPLICA IDENTITY` limits what the subscription can see.** Migration A adds `workspace_members` to the publication under the *default* replica identity, so DELETE events carry only the primary key. A subscription filtered on `user_id=eq.<uid>` matches no DELETE payload, and therefore **silently misses revocation-by-deletion** — removing someone from the workspace entirely — while looking perfectly healthy. Two consequences, both binding:
+
+- Subscribe to `UPDATE` for the flag flip, which carries the full new row. Do not rely on the subscription for deletions.
+- **The bounded poll is what actually covers deletion.** That is a second, independent reason it is mandatory rather than a nicety, alongside the focus-event gap.
+
+Making DELETE usable would need `ALTER TABLE public.workspace_members REPLICA IDENTITY FULL`, which costs write amplification on every update to that table. That is a deliberate trade, not something to add in passing — leave it.
 
 - [ ] **Step 1: Write the failing test**
 
