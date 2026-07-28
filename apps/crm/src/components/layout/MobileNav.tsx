@@ -30,7 +30,7 @@ function getActiveIndex(pathname: string): number {
 export default function MobileNav() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { profile, role, signOut } = useAuth();
+  const { profile, role, signOut, canSeeFinancials } = useAuth();
   const { features } = useWorkspaceLimits();
   const { t } = useTranslation();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -39,7 +39,11 @@ export default function MobileNav() {
   );
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const moreSheetGroups = getMoreSheetGroups(role, features as Record<string, boolean> | null);
+  const moreSheetGroups = getMoreSheetGroups(
+    role,
+    features as Record<string, boolean> | null,
+    canSeeFinancials,
+  );
   const isMoreRouteActive = moreSheetGroups.some((group) =>
     group.items.some((item) => location.pathname.startsWith(item.route)),
   );

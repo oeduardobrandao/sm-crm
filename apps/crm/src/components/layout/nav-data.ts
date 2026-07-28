@@ -1,3 +1,5 @@
+import type { FinancialAccess } from '@/lib/financialAccess';
+
 export interface NavItem {
   id: string;
   route: string;
@@ -200,7 +202,11 @@ const NAV_FEATURE: Record<string, string> = {
   'post-express': 'feature_post_scheduling',
 };
 
-export function getNavGroups(role: string, features?: Record<string, boolean> | null): NavGroup[] {
+export function getNavGroups(
+  role: string,
+  features: Record<string, boolean> | null,
+  canSeeFinancials: FinancialAccess,
+): NavGroup[] {
   let groups = ALL_NAV_GROUPS;
 
   // Billing is owner-only.
@@ -217,10 +223,30 @@ export function getNavGroups(role: string, features?: Record<string, boolean> | 
         if (g.id === 'gestao')
           return {
             ...g,
-            items: g.items.filter((i) => i.id !== 'financeiro' && i.id !== 'contratos'),
+            // `equipe` is included because ProtectedRoute redirects agents away
+            // from /equipe. Leaving the link visible rendered an item that
+            // bounced them to /dashboard.
+            items: g.items.filter(
+              (i) => i.id !== 'financeiro' && i.id !== 'contratos' && i.id !== 'equipe',
+            ),
           };
         return g;
       })
+      .filter((g) => g.items.length > 0);
+  }
+
+  // Restricted admins lose the financial routes. Owners are never restricted,
+  // and agents already lost them above.
+  //
+  // Fails CLOSED on 'unknown', matching formatFinancialBRL: flashing a nav item
+  // that then bounces to a restriction screen is worse than a brief absence.
+  if (role !== 'owner' && canSeeFinancials !== true) {
+    groups = groups
+      .map((g) =>
+        g.id === 'gestao'
+          ? { ...g, items: g.items.filter((i) => i.id !== 'financeiro' && i.id !== 'contratos') }
+          : g,
+      )
       .filter((g) => g.items.length > 0);
   }
 
@@ -242,9 +268,10 @@ export function getNavGroups(role: string, features?: Record<string, boolean> | 
 
 export function getMoreSheetGroups(
   role: string,
-  features?: Record<string, boolean> | null,
+  features: Record<string, boolean> | null,
+  canSeeFinancials: FinancialAccess,
 ): NavGroup[] {
-  return getNavGroups(role, features)
+  return getNavGroups(role, features, canSeeFinancials)
     .map((g) => ({
       ...g,
       items: g.items.filter((i) => !PRIMARY_NAV_IDS.includes(i.id)),
