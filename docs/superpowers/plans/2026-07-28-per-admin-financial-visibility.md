@@ -933,7 +933,9 @@ git commit -m "feat(crm): expose workspaceRole and canSeeFinancials from AuthCon
 
 **Interfaces:**
 - Consumes: `FinancialAccess` from Task 3
-- Produces: `getNavGroups(role: string, features?: Record<string, boolean> | null, canSeeFinancials?: FinancialAccess): NavGroup[]` — third parameter optional and defaulting to `true`, so existing callers keep compiling until updated in this same task. `getMoreSheetGroups` takes the same third parameter.
+- Produces: `getNavGroups(role: string, features: Record<string, boolean> | null, canSeeFinancials: FinancialAccess): NavGroup[]`. `getMoreSheetGroups` takes the same three parameters.
+
+**The capability parameter is REQUIRED, not defaulted.** A default of `true` would be a fail-open default: any future call site that forgets the argument silently shows financial nav to a restricted admin, and TypeScript would not complain. Making it required means Step 5 below is enforced by the compiler rather than by memory — `npm run build` fails until every call site passes it.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1012,8 +1014,8 @@ Replace `getNavGroups` and `getMoreSheetGroups` (`:203-256`) with:
 ```ts
 export function getNavGroups(
   role: string,
-  features?: Record<string, boolean> | null,
-  canSeeFinancials: FinancialAccess = true,
+  features: Record<string, boolean> | null,
+  canSeeFinancials: FinancialAccess,
 ): NavGroup[] {
   let groups = ALL_NAV_GROUPS;
 
@@ -1076,8 +1078,8 @@ export function getNavGroups(
 
 export function getMoreSheetGroups(
   role: string,
-  features?: Record<string, boolean> | null,
-  canSeeFinancials: FinancialAccess = true,
+  features: Record<string, boolean> | null,
+  canSeeFinancials: FinancialAccess,
 ): NavGroup[] {
   return getNavGroups(role, features, canSeeFinancials)
     .map((g) => ({
