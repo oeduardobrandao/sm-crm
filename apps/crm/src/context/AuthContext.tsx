@@ -295,9 +295,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // nowAllowed` still skips a same-state repeat from the 60s poll
       // (e.g. false -> false), which is not a transition and must not
       // re-purge or re-trigger a refetch storm every tick.
-      if (nowAllowed !== true && canSeeFinancialsRef.current !== nowAllowed) {
+      if (canSeeFinancialsRef.current !== nowAllowed) {
+        // Revocation (transition INTO a non-authorised state): the cache may
+        // hold real, unmasked values from before access was lost, so it must
+        // be wiped outright — merely invalidating could still serve a stale
+        // authorised value to someone who just lost access before the
+        // refetch lands.
+        //
+        // Grant (transition TO true): the cached rows came from the masking
+        // views (clientes_v / membros_v) with financial columns NULLed, so
+        // nothing sensitive leaks by keeping them a moment longer. Only
+        // invalidate + refetch — removeQueries here would blank the UI
+        // (Clientes/Equipe rows disappearing) until the refetch lands, a
+        // worse experience than briefly showing masked values.
         for (const key of FINANCIAL_QUERY_KEYS) {
-          queryClient.removeQueries({ queryKey: [key] });
+          if (nowAllowed !== true) {
+            queryClient.removeQueries({ queryKey: [key] });
+          } else {
+            queryClient.invalidateQueries({ queryKey: [key] });
+          }
         }
         void queryClient.refetchQueries({ type: 'active' });
       }

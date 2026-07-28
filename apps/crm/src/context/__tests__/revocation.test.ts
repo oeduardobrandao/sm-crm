@@ -108,6 +108,9 @@ describe('live revocation handler', () => {
       expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
     });
 
+    const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
     // Simulate the owner revoking this admin's can_see_financials flag: a
     // postgres_changes UPDATE payload on workspace_members carries the full
     // new row (unlike DELETE, which is why revocation-by-deletion relies on
@@ -126,8 +129,17 @@ describe('live revocation handler', () => {
 
     for (const key of FINANCIAL_QUERY_KEYS) {
       expect(queryClient.getQueryData([key])).toBeUndefined();
+      // Revocation must use removeQueries (outright purge), never merely
+      // invalidateQueries — a merge/refactor that swapped this for
+      // invalidation would still leave a stale authorised value reachable
+      // from cache for an instant.
+      expect(removeSpy).toHaveBeenCalledWith({ queryKey: [key] });
     }
+    expect(invalidateSpy).not.toHaveBeenCalled();
     expect(queryClient.getQueryData(['portfolioSummary'])).toEqual(['cached-analytics']);
+
+    removeSpy.mockRestore();
+    invalidateSpy.mockRestore();
   });
 
   it('does not purge caches when the update leaves access unchanged (owner stays owner)', async () => {
@@ -261,6 +273,9 @@ describe('live revocation handler', () => {
         });
         expect(pollCallbacks.length).toBeGreaterThan(0);
 
+        const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+        const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
         // The membership row is gone: getMyMembership() resolves to null,
         // exactly as it does after a deletion (see store/workspace.ts).
         mockMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
@@ -280,7 +295,12 @@ describe('live revocation handler', () => {
         // missed exactly this transition).
         for (const key of FINANCIAL_QUERY_KEYS) {
           expect(queryClient.getQueryData([key])).toBeUndefined();
+          expect(removeSpy).toHaveBeenCalledWith({ queryKey: [key] });
         }
+        expect(invalidateSpy).not.toHaveBeenCalled();
+
+        removeSpy.mockRestore();
+        invalidateSpy.mockRestore();
       } finally {
         setIntervalSpy.mockRestore();
       }
@@ -331,6 +351,9 @@ describe('live revocation handler', () => {
       });
       expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('unknown');
 
+      const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
       // A postgres_changes UPDATE resolves the same admin to
       // can_see_financials: false through applyMembership, while the ref is
       // still sitting at its never-started 'unknown'.
@@ -348,7 +371,12 @@ describe('live revocation handler', () => {
 
       for (const key of FINANCIAL_QUERY_KEYS) {
         expect(queryClient.getQueryData([key])).toBeUndefined();
+        expect(removeSpy).toHaveBeenCalledWith({ queryKey: [key] });
       }
+      expect(invalidateSpy).not.toHaveBeenCalled();
+
+      removeSpy.mockRestore();
+      invalidateSpy.mockRestore();
 
       // Let the stalled hydration path resolve too, so nothing leaks into
       // later tests.
@@ -393,4 +421,210 @@ describe('live revocation handler', () => {
     });
     expect(subscription?.filter).toBe('user_id=eq.user-13');
   });
+
+  it('invalidates and refetches financial caches on a false -> true UPDATE (grant)', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-30' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-30',
+      nome: 'Admin Promovido',
+      role: 'admin',
+      conta_id: 'conta-30',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-30' } } });
+    mockGetContaId.mockResolvedValue('conta-30');
+    // Hydration: admin currently restricted.
+    mockMaybeSingle.mockResolvedValue({
+      data: { role: 'admin', can_see_financials: false },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    for (const key of FINANCIAL_QUERY_KEYS) {
+      queryClient.setQueryData([key], ['masked-value']);
+    }
+
+    renderWithAuth(queryClient);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
+    });
+
+    const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const refetchSpy = vi.spyOn(queryClient, 'refetchQueries');
+
+    // Simulate the owner granting this admin can_see_financials.
+    await act(async () => {
+      mockedSupabase.__emitWorkspaceMemberUpdate({
+        workspace_id: 'conta-30',
+        role: 'admin',
+        can_see_financials: true,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+    });
+
+    // Grant must invalidate (so a refetch replaces the masked rows) but must
+    // NOT remove: the cache holds masked (NULL) values, not sensitive ones,
+    // and blanking the UI here would be strictly worse than the brief stale
+    // read while the invalidated queries refetch.
+    for (const key of FINANCIAL_QUERY_KEYS) {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: [key] });
+    }
+    expect(removeSpy).not.toHaveBeenCalled();
+    expect(refetchSpy).toHaveBeenCalledWith({ type: 'active' });
+
+    removeSpy.mockRestore();
+    invalidateSpy.mockRestore();
+    refetchSpy.mockRestore();
+  });
+
+  it(
+    "invalidates and refetches financial caches on an 'unknown' -> true UPDATE " +
+      '(the ordinary first-resolution path for an authorised admin, mirroring the ' +
+      "'unknown' -> false grant-denial race above)",
+    async () => {
+      mockedSupabase.__resetSupabaseMock();
+      mockedSupabase.__setCurrentUser({ id: 'user-31' });
+      mockedSupabase.__setCurrentProfile({
+        id: 'user-31',
+        nome: 'Admin Autorizado',
+        role: 'admin',
+        conta_id: 'conta-31',
+      });
+      mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-31' } } });
+      mockGetContaId.mockResolvedValue('conta-31');
+
+      // Hold the hydration effect's OWN getMyMembership() call pending, so
+      // canSeeFinancials (and its ref) stay at their untouched initial
+      // 'unknown' while the live-revocation effect's subscription mounts and
+      // reacts to a realtime UPDATE on its own — same technique as the
+      // "'unknown' -> false" race test above.
+      let resolveMembership!: (v: { data: unknown; error: null }) => void;
+      mockMaybeSingle.mockReturnValue(
+        new Promise((resolve) => {
+          resolveMembership = resolve;
+        }),
+      );
+
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      for (const key of FINANCIAL_QUERY_KEYS) {
+        queryClient.setQueryData([key], ['masked-value']);
+      }
+
+      renderWithAuth(queryClient);
+
+      await waitFor(() => {
+        expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
+      });
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('unknown');
+
+      const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+      await act(async () => {
+        mockedSupabase.__emitWorkspaceMemberUpdate({
+          workspace_id: 'conta-31',
+          role: 'admin',
+          can_see_financials: true,
+        });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+      });
+
+      for (const key of FINANCIAL_QUERY_KEYS) {
+        expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: [key] });
+      }
+      expect(removeSpy).not.toHaveBeenCalled();
+
+      removeSpy.mockRestore();
+      invalidateSpy.mockRestore();
+
+      // Let the stalled hydration path resolve too, so nothing leaks into
+      // later tests.
+      await act(async () => {
+        resolveMembership({ data: { role: 'admin', can_see_financials: true }, error: null });
+      });
+    },
+  );
+
+  it(
+    'does not invalidate, remove, or refetch on a true -> true poll no-op ' +
+      '(the ref-comparison guard must still suppress a same-state repeat, ' +
+      'or the 60s poll would refetch storm every tick)',
+    async () => {
+      mockedSupabase.__resetSupabaseMock();
+      mockedSupabase.__setCurrentUser({ id: 'user-32' });
+      mockedSupabase.__setCurrentProfile({
+        id: 'user-32',
+        nome: 'Owner Estável',
+        role: 'owner',
+        conta_id: 'conta-32',
+      });
+      mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-32' } } });
+      mockGetContaId.mockResolvedValue('conta-32');
+      // Hydration: owner, always allowed.
+      mockMaybeSingle.mockResolvedValueOnce({
+        data: { role: 'owner', can_see_financials: false },
+        error: null,
+      });
+
+      const pollCallbacks: Array<() => void> = [];
+      const setIntervalSpy = vi.spyOn(globalThis, 'setInterval').mockImplementation(((
+        fn: () => void,
+      ) => {
+        pollCallbacks.push(fn);
+        return 0 as unknown as ReturnType<typeof setInterval>;
+      }) as typeof setInterval);
+
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      for (const key of FINANCIAL_QUERY_KEYS) {
+        queryClient.setQueryData([key], ['cached-value']);
+      }
+
+      try {
+        renderWithAuth(queryClient);
+
+        await waitFor(() => {
+          expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+        });
+        expect(pollCallbacks.length).toBeGreaterThan(0);
+
+        const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+        const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+        const refetchSpy = vi.spyOn(queryClient, 'refetchQueries');
+
+        // The poll resolves to the SAME state (owner, still allowed): a
+        // true -> true repeat, not a transition.
+        mockMaybeSingle.mockResolvedValueOnce({
+          data: { role: 'owner', can_see_financials: false },
+          error: null,
+        });
+
+        await act(async () => {
+          pollCallbacks[pollCallbacks.length - 1]();
+        });
+
+        // Still true, and untouched — the guard must have skipped entirely.
+        expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+        for (const key of FINANCIAL_QUERY_KEYS) {
+          expect(queryClient.getQueryData([key])).toEqual(['cached-value']);
+        }
+        expect(removeSpy).not.toHaveBeenCalled();
+        expect(invalidateSpy).not.toHaveBeenCalled();
+        expect(refetchSpy).not.toHaveBeenCalled();
+
+        removeSpy.mockRestore();
+        invalidateSpy.mockRestore();
+        refetchSpy.mockRestore();
+      } finally {
+        setIntervalSpy.mockRestore();
+      }
+    },
+  );
 });
