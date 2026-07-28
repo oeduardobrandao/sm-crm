@@ -246,14 +246,45 @@ is expected and explained: production still carries the three
 `files.google_drive_*` columns (migration 8 blocked there) and still lacks the
 four `created_at` columns (migration 5 pending there).
 
-**Outstanding:**
+### 2026-07-28 — COMPLETE. Production and staging identical.
 
-- Production needs 5, 6 and 7. Once applied, the only production↔staging
-  difference will be the three `google_drive` columns.
-- Migration 8 on production requires migrating the Drive-sourced files to R2
-  first. It is sequenced last, so its refusal blocks nothing else.
-- The **RLS security fix is live on staging but still pending on production**,
-  where the cross-workspace leak remains open.
+All eight migrations are applied to production. Verified against a fresh dump:
+zero `google_drive` occurrences in the schema; `files_has_source` tightened to
+`r2_key IS NOT NULL`; `files_video_requires_thumbnail` tightened with the Drive
+clause removed. **Production and staging both report 73 tables / 757 columns
+with no column-name difference.**
+
+Two things surfaced during the final step that were not part of the original
+audit:
+
+1. **`file_enqueue_delete()` could never delete a Drive-sourced file.** The
+   trigger unconditionally inserted `OLD.r2_key` into `file_deletions.r2_key`,
+   which is `NOT NULL`, while `files.r2_key` is nullable by design — the trigger
+   contradicted its own table's constraint. Fixed by
+   `20260727000004_fix_file_enqueue_delete_null_r2_key.sql`, numbered into a
+   vacant slot so it sorted *before* migration 8: clearing the rows that
+   unblocked 8 required this fix, so a later number would have been unreachable
+   behind the migration it unblocks.
+2. **Four orphaned Drive-only file rows** (ids 147–150, one workspace, a single
+   session on 2026-05-07, zero references from `post_file_links`, `hub_brand` or
+   `ideia_files`) were deleted. Note the FK scan alone was insufficient here:
+   `hub_brand.logo_file_id` is `ON DELETE SET NULL` and `ideia_files` is
+   `ON DELETE CASCADE`, either of which would have destroyed data silently. Only
+   `post_file_links` is `RESTRICT`. **Check triggers as well as foreign keys
+   before deleting.**
+
+**Still outstanding (tracked separately, not part of this audit):**
+
+- `hub_brand` and `hub_brand_files` each carry a legacy broad policy OR'd
+  alongside a correctly-scoped one, so a multi-workspace user can read and write
+  brand settings across workspaces. Same class as Finding E, discovered while
+  verifying it, **live in production**, and not yet fixed.
+- The adopted `cliente_*` policies scope the child row's `conta_id` but do not
+  constrain `cliente_id` to a client in the same workspace, unlike the
+  `hub_brand` convention. Permits relationship corruption via a crafted request,
+  not a read leak.
+- `supabase/tests/entitlements/40_cliente_tables_tenant_isolation.sql` has never
+  been executed.
 
 ### Finding E — adopting production's RLS adopted a cross-workspace leak
 
