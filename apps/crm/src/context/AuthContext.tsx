@@ -10,7 +10,7 @@ import {
 } from '../lib/supabase';
 import { initStoreRole } from '../store/core';
 import { getMyMembership } from '../store/workspace';
-import type { FinancialAccess } from '../lib/financialAccess';
+import { deriveFinancialAccess, type FinancialAccess } from '../lib/financialAccess';
 import { identifyWorkspaceUser, resetAnalytics } from '../lib/analytics';
 
 interface Profile {
@@ -147,7 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const membership = await getMyMembership();
           if (!active || profileRequestId.current !== requestId) return;
           setWorkspaceRole(membership?.role ?? null);
-          setCanSeeFinancials(membership ? membership.can_see_financials : 'unknown');
+          setCanSeeFinancials(deriveFinancialAccess(membership));
         } catch {
           if (!active || profileRequestId.current !== requestId) return;
           setWorkspaceRole(null);

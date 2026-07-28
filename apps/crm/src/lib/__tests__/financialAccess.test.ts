@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { formatFinancialBRL, MASKED_BRL } from '../financialAccess';
+import { formatFinancialBRL, MASKED_BRL, deriveFinancialAccess } from '../financialAccess';
+import type { MyMembership } from '@/store/workspace';
 
 describe('formatFinancialBRL', () => {
   it('formats the value when access is literally true', () => {
@@ -26,5 +27,51 @@ describe('formatFinancialBRL', () => {
 
   it('masks null when not authorized rather than showing R$ 0', () => {
     expect(formatFinancialBRL(null, false)).toBe(MASKED_BRL);
+  });
+});
+
+// Frontend mirror of the SQL truth table for `public.can_see_financials()`:
+// owners always see financials regardless of the column, agents never do
+// regardless of the column, admins follow the column, and no membership is
+// 'unknown'. `can_see_financials` on workspace_members is meaningful for
+// admins ONLY — assigning it raw for any other role is the bug this guards.
+describe('deriveFinancialAccess', () => {
+  it('owner sees financials even when the column is false', () => {
+    const membership: MyMembership = { role: 'owner', can_see_financials: false };
+    expect(deriveFinancialAccess(membership)).toBe(true);
+  });
+
+  it('owner sees financials when the column is true', () => {
+    const membership: MyMembership = { role: 'owner', can_see_financials: true };
+    expect(deriveFinancialAccess(membership)).toBe(true);
+  });
+
+  it('admin follows the column when true', () => {
+    const membership: MyMembership = { role: 'admin', can_see_financials: true };
+    expect(deriveFinancialAccess(membership)).toBe(true);
+  });
+
+  it('admin follows the column when false', () => {
+    const membership: MyMembership = { role: 'admin', can_see_financials: false };
+    expect(deriveFinancialAccess(membership)).toBe(false);
+  });
+
+  it('agent never sees financials even when the column is true (the shipped bug)', () => {
+    const membership: MyMembership = { role: 'agent', can_see_financials: true };
+    expect(deriveFinancialAccess(membership)).toBe(false);
+  });
+
+  it('agent never sees financials when the column is false', () => {
+    const membership: MyMembership = { role: 'agent', can_see_financials: false };
+    expect(deriveFinancialAccess(membership)).toBe(false);
+  });
+
+  it('no membership resolves to unknown', () => {
+    expect(deriveFinancialAccess(null)).toBe('unknown');
+  });
+
+  it('denies rather than falls through for a role outside the three known ones', () => {
+    const membership = { role: 'superadmin', can_see_financials: true } as unknown as MyMembership;
+    expect(deriveFinancialAccess(membership)).toBe(false);
   });
 });

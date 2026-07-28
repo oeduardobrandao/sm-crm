@@ -1,3 +1,5 @@
+import type { MyMembership } from '@/store/workspace';
+
 /**
  * Whether the current user may see financial values.
  *
@@ -10,6 +12,26 @@
 export type FinancialAccess = boolean | 'unknown';
 
 export const MASKED_BRL = 'R$ •••••';
+
+/**
+ * Mirror of the SQL predicate `public.can_see_financials()`. Keep the two in
+ * step: this is the only place the role semantics are encoded client-side.
+ *
+ * `can_see_financials` on the row is meaningful for admins ONLY. Owners always
+ * see financials; agents never do, whatever the column says.
+ */
+export function deriveFinancialAccess(membership: MyMembership | null): FinancialAccess {
+  if (!membership) return 'unknown';
+  switch (membership.role) {
+    case 'owner':
+      return true;
+    case 'admin':
+      return membership.can_see_financials;
+    default:
+      // Agents, and any role added later: deny rather than fall through.
+      return false;
+  }
+}
 
 /**
  * Format a monetary value, masking unless access is explicitly granted.
