@@ -133,3 +133,39 @@ export async function updateWorkspaceUserRole(userId: string, role: string): Pro
 export async function removeWorkspaceUser(userId: string): Promise<void> {
   await callManageWorkspaceUser('remove', userId);
 }
+
+export interface MyMembership {
+  role: 'owner' | 'admin' | 'agent';
+  can_see_financials: boolean;
+}
+
+/**
+ * The caller's membership row for the ACTIVE workspace.
+ *
+ * Read from workspace_members rather than profiles: no workspace-switch path
+ * writes profiles.role, so a user who is owner in A and agent in B keeps
+ * `owner` after switching. This is the same staleness the SQL predicate avoids.
+ *
+ * Throws on a query error — the caller must be able to tell "no membership"
+ * (null) from "could not determine" (throw), because those resolve to different
+ * capability states.
+ */
+export async function getMyMembership(): Promise<MyMembership | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const conta_id = await getContaId();
+  if (!conta_id) return null;
+
+  const { data, error } = await supabase
+    .from('workspace_members')
+    .select('role, can_see_financials')
+    .eq('user_id', user.id)
+    .eq('workspace_id', conta_id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as MyMembership | null) ?? null;
+}

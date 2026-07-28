@@ -9,6 +9,8 @@ import {
   healPendingInvite,
 } from '../lib/supabase';
 import { initStoreRole } from '../store/core';
+import { getMyMembership } from '../store/workspace';
+import type { FinancialAccess } from '../lib/financialAccess';
 import { identifyWorkspaceUser, resetAnalytics } from '../lib/analytics';
 
 interface Profile {
@@ -24,6 +26,13 @@ interface AuthContextValue {
   user: User | null;
   profile: Profile | null;
   role: 'owner' | 'admin' | 'agent';
+  /**
+   * Role from workspace_members for the ACTIVE workspace. Prefer this over
+   * `role` for anything permission-bearing; `role` comes from profiles and goes
+   * stale on workspace switch. `null` while unresolved.
+   */
+  workspaceRole: 'owner' | 'admin' | 'agent' | null;
+  canSeeFinancials: FinancialAccess;
   loading: boolean;
   refetchProfile: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -35,6 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [workspaceRole, setWorkspaceRole] = useState<'owner' | 'admin' | 'agent' | null>(null);
+  const [canSeeFinancials, setCanSeeFinancials] = useState<FinancialAccess>('unknown');
   const [loading, setLoading] = useState(true);
   const [sessionReady, setSessionReady] = useState(false);
   const authGeneration = useRef(0);
@@ -79,6 +90,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!nextUser) {
         clearProfileCache();
         setProfile(null);
+        setWorkspaceRole(null);
+        setCanSeeFinancials('unknown');
         setLoading(false);
       }
     });
@@ -99,6 +112,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!userId) {
       profileRequestId.current += 1;
       setProfile(null);
+      setWorkspaceRole(null);
+      setCanSeeFinancials('unknown');
       setLoading(false);
       return;
     }
@@ -125,6 +140,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         await initStoreRole();
         if (!active || profileRequestId.current !== requestId) return;
+
+        // Joins the existing guarded hydration flow so `loading` covers it too.
+        // On failure resolve to 'unknown', NEVER to a boolean.
+        try {
+          const membership = await getMyMembership();
+          if (!active || profileRequestId.current !== requestId) return;
+          setWorkspaceRole(membership?.role ?? null);
+          setCanSeeFinancials(membership ? membership.can_see_financials : 'unknown');
+        } catch {
+          if (!active || profileRequestId.current !== requestId) return;
+          setWorkspaceRole(null);
+          setCanSeeFinancials('unknown');
+        }
 
         void healPendingInvite();
       } catch {
@@ -176,6 +204,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setSessionReady(true);
     setProfile(null);
+    setWorkspaceRole(null);
+    setCanSeeFinancials('unknown');
     setLoading(false);
     // Drop all cached per-user data (entitlements, notifications, …) so the next
     // account that logs in never sees the previous user's plan/limits.
@@ -184,7 +214,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, role, loading, refetchProfile: fetchProfile, signOut }}
+      value={{
+        user,
+        profile,
+        role,
+        workspaceRole,
+        canSeeFinancials,
+        loading,
+        refetchProfile: fetchProfile,
+        signOut,
+      }}
     >
       {children}
     </AuthContext.Provider>
