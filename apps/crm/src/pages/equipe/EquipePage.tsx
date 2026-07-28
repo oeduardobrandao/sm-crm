@@ -532,19 +532,21 @@ export default function EquipePage() {
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="custo"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Custo Mensal (R$)</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={0} step={0.01} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {canSeeFinancials === true && (
+                <FormField
+                  control={form.control}
+                  name="custo"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Custo Mensal (R$)</FormLabel>
+                      <FormControl>
+                        <Input type="number" min={0} step={0.01} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
               <FormField
                 control={form.control}
                 name="diaPag"

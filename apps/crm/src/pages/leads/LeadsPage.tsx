@@ -962,19 +962,21 @@ export default function LeadsPage() {
                   </FormItem>
                 )}
               />
-              <FormField
-                control={convertForm.control}
-                name="valor"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.monthlyValue')}</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={0} step={0.01} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {canSeeFinancials === true && (
+                <FormField
+                  control={convertForm.control}
+                  name="valor"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('form.monthlyValue')}</FormLabel>
+                      <FormControl>
+                        <Input type="number" min={0} step={0.01} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
               <FormField
                 control={convertForm.control}
                 name="diaPag"

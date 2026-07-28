@@ -622,19 +622,21 @@ export default function ClientesPage() {
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="valor"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.monthlyValue')}</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={0} step={0.01} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {canSeeFinancials === true && (
+                <FormField
+                  control={form.control}
+                  name="valor"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('form.monthlyValue')}</FormLabel>
+                      <FormControl>
+                        <Input type="number" min={0} step={0.01} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
               <FormField
                 control={form.control}
                 name="notion"

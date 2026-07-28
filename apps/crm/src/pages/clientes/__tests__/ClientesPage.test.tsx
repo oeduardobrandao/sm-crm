@@ -3,12 +3,14 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockNavigate, openCSVSelectorMock, toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
-  mockNavigate: vi.fn(),
-  openCSVSelectorMock: vi.fn(),
-  toastSuccessMock: vi.fn(),
-  toastErrorMock: vi.fn(),
-}));
+const { mockNavigate, openCSVSelectorMock, toastSuccessMock, toastErrorMock, mockUseAuth } =
+  vi.hoisted(() => ({
+    mockNavigate: vi.fn(),
+    openCSVSelectorMock: vi.fn(),
+    toastSuccessMock: vi.fn(),
+    toastErrorMock: vi.fn(),
+    mockUseAuth: vi.fn(() => ({ canSeeFinancials: true as boolean | 'unknown' })),
+  }));
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
@@ -35,7 +37,7 @@ vi.mock('../../../context/AuthContext', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../context/AuthContext')>();
   return {
     ...actual,
-    useAuth: () => ({ canSeeFinancials: true }),
+    useAuth: mockUseAuth,
   };
 });
 
@@ -466,6 +468,8 @@ beforeEach(() => {
   openCSVSelectorMock.mockReset();
   toastSuccessMock.mockReset();
   toastErrorMock.mockReset();
+  mockUseAuth.mockReset();
+  mockUseAuth.mockReturnValue({ canSeeFinancials: true });
   mockedSupabase.__resetSupabaseMock();
 
   mockedGetClientes.mockReset();
@@ -618,6 +622,41 @@ describe('ClientesPage', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
+  });
+
+  it('hides the monthly value field and omits valor_mensal from the payload when canSeeFinancials is false', async () => {
+    mockUseAuth.mockReturnValue({ canSeeFinancials: false });
+
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Novo Cliente' }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryByLabelText('Valor Mensal (R$)')).not.toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText('Nome *'), {
+      target: { value: 'Clínica Sigma' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('E-mail'), {
+      target: { value: 'oi@sigma.com' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Telefone'), {
+      target: { value: '(85) 96666-0000' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Plano'), { target: { value: 'Growth' } });
+    fireEvent.change(within(dialog).getByLabelText('Dia de Pagamento (1-31)'), {
+      target: { value: '5' },
+    });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => {
+      expect(mockedAddCliente).toHaveBeenCalled();
+    });
+
+    expect(mockedAddCliente).toHaveBeenCalledWith(
+      expect.not.objectContaining({ valor_mensal: expect.anything() }),
+    );
   });
 
   it('prefills and submits the edit flow, including status updates', async () => {

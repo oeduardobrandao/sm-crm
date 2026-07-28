@@ -109,6 +109,39 @@ describe('store computed helpers', () => {
         vi.useRealTimers();
       }
     });
+
+    it.each([false, 'unknown'] as const)(
+      'returns null (not 0) for receitaMensal, despesaTotal and saldo when canSeeFinancials is %s',
+      async (access) => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-04-15T12:00:00.000Z'));
+
+        try {
+          mockedSupabase.__queueSupabaseResult('clientes_v', 'select', {
+            data: [
+              { id: 1, nome: 'Cliente A', status: 'ativo', valor_mensal: 3000, data_pagamento: 10 },
+            ],
+            error: null,
+          });
+          mockedSupabase.__queueSupabaseResult('transacoes', 'select', {
+            data: [{ id: 1, tipo: 'saida', valor: 500, data: '2026-04-05', status: 'pago' }],
+            error: null,
+          });
+          mockedSupabase.__queueSupabaseResult('membros_v', 'select', {
+            data: [{ id: 1, nome: 'Editor', data_pagamento: 20, custo_mensal: 1000 }],
+            error: null,
+          });
+
+          const stats = await store.getDashboardStats(access);
+
+          expect(stats.receitaMensal).toBeNull();
+          expect(stats.despesaTotal).toBeNull();
+          expect(stats.saldo).toBeNull();
+        } finally {
+          vi.useRealTimers();
+        }
+      },
+    );
   });
 
   describe('getDeadlineInfo', () => {
