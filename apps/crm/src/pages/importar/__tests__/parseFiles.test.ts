@@ -26,6 +26,29 @@ describe('parseFiles — duplicate collection ids', () => {
     expect(second.rows[0].key).toBe('dados.csv (2):1');
   });
 
+  test('a file already named like a generated id does not collide with a renamed one', async () => {
+    // Counting occurrences of the original id would rename the third file to
+    // 'dados.csv (2)' — the literal name the second file already has — and its
+    // row keys would collide too, so the commit RPC's idempotency check would
+    // treat one file's rows as an already-imported duplicate of the other's.
+    const files = [
+      new File(['Nome\nAna'], 'dados.csv', { type: 'text/csv' }),
+      new File(['Nome\nBia'], 'dados.csv (2)', { type: 'text/csv' }),
+      new File(['Nome\nCau'], 'dados.csv', { type: 'text/csv' }),
+    ];
+
+    const bundle = await parseFiles('csv', files);
+    const ids = bundle.collections.map((c) => c.id);
+
+    expect(new Set(ids).size).toBe(3);
+    expect(ids[0]).toBe('dados.csv');
+    expect(ids[1]).toBe('dados.csv (2)');
+    expect(ids[2]).toBe('dados.csv (3)');
+
+    const keys = bundle.collections.flatMap((c) => c.rows.map((r) => r.key));
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
   test('three same-named files each get their own suffixed id', async () => {
     const files = [
       new File(['Nome\nAna'], 'dados.csv', { type: 'text/csv' }),

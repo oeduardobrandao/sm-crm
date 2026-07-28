@@ -66,13 +66,22 @@ export function totalRows(bundle: ImportBundle): number {
  * already-imported duplicate of the first's.
  */
 function dedupeCollectionIds(collections: ImportCollection[]): ImportCollection[] {
-  const seen = new Map<string, number>();
+  // Track the ids actually ALLOCATED, not a count per original id. Counting is
+  // the classic dedup bug: with `dados.csv`, `dados.csv (2)` and a second
+  // `dados.csv`, the third is renamed to `dados.csv (2)` and collides with the
+  // real file of that name — taking its row keys with it, which is what the
+  // note above warns is silently destructive.
+  const taken = new Set<string>();
   return collections.map((collection) => {
-    const count = (seen.get(collection.id) ?? 0) + 1;
-    seen.set(collection.id, count);
-    if (count === 1) return collection;
     const oldId = collection.id;
-    const newId = `${oldId} (${count})`;
+    if (!taken.has(oldId)) {
+      taken.add(oldId);
+      return collection;
+    }
+    let n = 2;
+    while (taken.has(`${oldId} (${n})`)) n += 1;
+    const newId = `${oldId} (${n})`;
+    taken.add(newId);
     const prefix = `${oldId}:`;
     return {
       ...collection,
