@@ -209,18 +209,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const workspaceId = profile?.conta_id;
     if (!userId || !workspaceId) return;
 
-    const applyMembership = (next: { role?: string; can_see_financials?: boolean } | null) => {
-      if (!next) return;
+    const applyMembership = (
+      next: { workspace_id?: string; role?: string; can_see_financials?: boolean } | null,
+    ) => {
       const wasAllowed = canSeeFinancialsRef.current === true;
-      setWorkspaceRole((next.role as 'owner' | 'admin' | 'agent') ?? null);
+      setWorkspaceRole(next ? ((next.role as 'owner' | 'admin' | 'agent') ?? null) : null);
       // Same derivation as hydration — never re-implement the role semantics
       // here. Two copies drift; this bug already shipped once on this branch
       // (a raw can_see_financials assignment gave agents access and denied
-      // restricted owners).
-      const nowAllowed = deriveFinancialAccess(next as MyMembership);
+      // restricted owners). `next === null` — membership row gone, which is
+      // exactly what a deletion resolves to via getMyMembership() — derives
+      // to 'unknown' here too: it masks financial values and fails the route
+      // guard neutral instead of keeping a stale role/grant alive.
+      const nowAllowed = deriveFinancialAccess(next as MyMembership | null);
       setCanSeeFinancials(nowAllowed);
 
-      if (wasAllowed && !nowAllowed) {
+      // `!nowAllowed` would miss a `true -> 'unknown'` transition (`!'unknown'`
+      // is `false` in JS) — including the deletion path above. Purge whenever
+      // access is no longer definitely granted, not only when it is definitely denied.
+      if (wasAllowed && nowAllowed !== true) {
         for (const key of FINANCIAL_QUERY_KEYS) {
           queryClient.removeQueries({ queryKey: [key] });
         }
@@ -228,13 +235,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    // wm_select_same_workspace (migration 20260612120000) lets this user read
+    // their membership row in EVERY workspace they belong to, not just the
+    // active one, so a `user_id=eq.<uid>` filter alone lets Realtime deliver
+    // UPDATEs from other workspaces too. Without the workspace_id guard below,
+    // a row from a different workspace would overwrite workspaceRole/
+    // canSeeFinancials for the active one — a spurious revocation or grant.
+    //
     // Migration A adds workspace_members to the realtime publication under
     // the DEFAULT replica identity, so DELETE events carry only the primary
     // key. A filter on user_id=eq.<uid> matches no DELETE payload, so being
     // removed from the workspace entirely would look "subscribed and
     // healthy" while silently going unnoticed. Subscribe to UPDATE only (it
     // carries the full new row) — the bounded poll below is what actually
-    // covers deletion, which is why it is mandatory rather than a nicety.
+    // covers deletion (see its comment for how).
     // Do NOT add REPLICA IDENTITY FULL to make DELETE usable here: that
     // costs write amplification on every update to this table and is a
     // deliberate trade to leave for later, not to slip in.
@@ -248,16 +262,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           table: 'workspace_members',
           filter: `user_id=eq.${userId}`,
         },
-        (payload) =>
-          applyMembership(payload.new as { role?: string; can_see_financials?: boolean }),
+        (payload) => {
+          const row = payload.new as {
+            workspace_id?: string;
+            role?: string;
+            can_see_financials?: boolean;
+          };
+          if (row.workspace_id !== workspaceId) return;
+          applyMembership(row);
+        },
       )
       .subscribe();
 
     // Bounded polling fallback. Refetch-on-focus alone is insufficient: focus
     // events never fire for a tab that stays foregrounded, which is precisely
-    // the indefinite-cache case this exists to address. This is also the only
-    // path that covers revocation-by-deletion (see REPLICA IDENTITY note
-    // above).
+    // the indefinite-cache case this exists to address. It is also the only
+    // path that covers revocation-by-deletion: getMyMembership() resolves to
+    // `null` once the row is gone (filtered by both user_id AND workspace_id,
+    // so it is immune to the cross-workspace bleed above), and applyMembership
+    // now lets that `null` flow through instead of early-returning — see its
+    // comment for what that derives to.
     const poll = setInterval(() => {
       void getMyMembership()
         .then(applyMembership)
