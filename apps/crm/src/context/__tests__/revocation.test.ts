@@ -107,9 +107,23 @@ describe('live revocation handler', () => {
     await waitFor(() => {
       expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
     });
+    // canSeeFinancials settling proves hydration resolved, but the live-
+    // revocation effect is a SEPARATE effect keyed on [userId, profile?.conta_id]
+    // — it only needs `profile`, which the hydration flow's async IIFE sets
+    // BEFORE it goes on to await getMyMembership() and set canSeeFinancials.
+    // That makes this subscription wait usually redundant in practice, but
+    // "usually" is exactly what makes the emit below racy under load: without
+    // this wait there is no guarantee the channel's UPDATE callback is
+    // registered yet, and __emitWorkspaceMemberUpdate silently drops the
+    // payload if it isn't (see the working pattern at the 'unknown' -> false
+    // test below).
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
+    });
 
     const removeSpy = vi.spyOn(queryClient, 'removeQueries');
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const refetchSpy = vi.spyOn(queryClient, 'refetchQueries');
 
     // Simulate the owner revoking this admin's can_see_financials flag: a
     // postgres_changes UPDATE payload on workspace_members carries the full
@@ -136,10 +150,17 @@ describe('live revocation handler', () => {
       expect(removeSpy).toHaveBeenCalledWith({ queryKey: [key] });
     }
     expect(invalidateSpy).not.toHaveBeenCalled();
+    // No extra refetchQueries() call either: removeQueries() already deletes
+    // these keys from the cache, so a follow-up refetchQueries() call (scoped
+    // or not) would find nothing left to match for them — it would only end
+    // up refetching unrelated active queries on the page. See the "false ->
+    // true (grant)" test below for the equivalent assertion on that path.
+    expect(refetchSpy).not.toHaveBeenCalled();
     expect(queryClient.getQueryData(['portfolioSummary'])).toEqual(['cached-analytics']);
 
     removeSpy.mockRestore();
     invalidateSpy.mockRestore();
+    refetchSpy.mockRestore();
   });
 
   it('does not purge caches when the update leaves access unchanged (owner stays owner)', async () => {
@@ -166,6 +187,11 @@ describe('live revocation handler', () => {
     await waitFor(() => {
       // Owners always see financials regardless of the can_see_financials column.
       expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+    });
+    // Subscription readiness, not just hydration — see the comment on the
+    // equivalent wait in the first test above.
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
     });
 
     await act(async () => {
@@ -208,6 +234,11 @@ describe('live revocation handler', () => {
       expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
     });
     expect(screen.getByTestId('workspaceRole')).toHaveTextContent('admin');
+    // Subscription readiness, not just hydration — see the comment on the
+    // equivalent wait in the first test above.
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
+    });
 
     // wm_select_same_workspace (migration 20260612120000) lets this user read
     // their membership row in every workspace they belong to, not only the
@@ -449,6 +480,11 @@ describe('live revocation handler', () => {
     await waitFor(() => {
       expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
     });
+    // Subscription readiness, not just hydration — see the comment on the
+    // equivalent wait in the first test above.
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
+    });
 
     const removeSpy = vi.spyOn(queryClient, 'removeQueries');
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
@@ -475,7 +511,21 @@ describe('live revocation handler', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: [key] });
     }
     expect(removeSpy).not.toHaveBeenCalled();
-    expect(refetchSpy).toHaveBeenCalledWith({ type: 'active' });
+    // refetchQueries IS called here — but only as invalidateQueries' own
+    // internal delegation (queryClient.ts: invalidateQueries ends by calling
+    // `this.refetchQueries({ ...filters, type: 'active' })`), which is
+    // already scoped to the invalidated key and is exactly what makes the
+    // per-key invalidate a real refetch. Spying on the shared queryClient
+    // instance picks up that internal call too, so what must NOT appear is
+    // AuthContext's own extra, unfiltered call: `{ type: 'active' }` with no
+    // queryKey, which would redundantly cancel+restart the refetch
+    // invalidateQueries just started AND blast every other unrelated active
+    // query mounted on the page (workflows, integrations, Instagram, …) on
+    // every single grant.
+    expect(refetchSpy).not.toHaveBeenCalledWith({ type: 'active' });
+    for (const call of refetchSpy.mock.calls) {
+      expect(call[0]).toEqual(expect.objectContaining({ queryKey: expect.any(Array) }));
+    }
 
     removeSpy.mockRestore();
     invalidateSpy.mockRestore();
@@ -517,6 +567,14 @@ describe('live revocation handler', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
+      });
+      // Subscription readiness, not just hydration — see the comment on the
+      // equivalent wait in the first test above. Both waits are needed here:
+      // one proves hydration settled to the expected starting state, the
+      // other proves the channel's UPDATE callback is actually registered,
+      // so neither of the two emits below is silently dropped.
+      await waitFor(() => {
+        expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
       });
 
       const removeSpy = vi.spyOn(queryClient, 'removeQueries');

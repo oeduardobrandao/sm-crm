@@ -326,14 +326,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // hold real, unmasked values from before access was lost, so it must
         // be wiped outright — merely invalidating could still serve a stale
         // authorised value to someone who just lost access before the
-        // refetch lands.
+        // refetch lands. No follow-up refetchQueries() call is needed (or
+        // even useful) here: removeQueries() deletes the query from the
+        // QueryCache's map outright, so a refetchQueries() call made right
+        // after — scoped or not — finds nothing left to match and is a
+        // no-op for these keys (verified against @tanstack/query-core
+        // 5.91.0's source: removeQueries -> queryCache.remove() ->
+        // #queries.delete(queryHash), then refetchQueries -> findAll() reads
+        // that same now-empty map). What actually clears a currently-
+        // mounted observer's stale render is TanStack Query's own
+        // optimistic-result rebuild the next time it re-renders
+        // (getOptimisticResult -> queryCache.build(), which recreates the
+        // query with empty state since it's gone from the cache) — and the
+        // setCanSeeFinancials() call above already forces that re-render for
+        // every component gating financial data on `canSeeFinancials`.
         //
         // Grant (transition TO true): the cached rows came from the masking
         // views (clientes_v / membros_v) with financial columns NULLed, so
         // nothing sensitive leaks by keeping them a moment longer. Only
-        // invalidate + refetch — removeQueries here would blank the UI
-        // (Clientes/Equipe rows disappearing) until the refetch lands, a
-        // worse experience than briefly showing masked values.
+        // invalidate — removeQueries here would blank the UI (Clientes/
+        // Equipe rows disappearing) until the refetch lands, a worse
+        // experience than briefly showing masked values. No separate
+        // refetchQueries() call is needed either: invalidateQueries()
+        // defaults to refetchType: 'active', so it already refetches each
+        // key's active queries on its own. An additional unscoped
+        // refetchQueries({ type: 'active' }) would only cancel and restart
+        // that just-started refetch, and — being unfiltered — also blast
+        // every other unrelated active query on the page (workflows,
+        // integrations, Instagram, …) on every grant.
         for (const key of FINANCIAL_QUERY_KEYS) {
           if (nowAllowed !== true) {
             queryClient.removeQueries({ queryKey: [key] });
@@ -341,7 +361,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             queryClient.invalidateQueries({ queryKey: [key] });
           }
         }
-        void queryClient.refetchQueries({ type: 'active' });
       }
     };
 
