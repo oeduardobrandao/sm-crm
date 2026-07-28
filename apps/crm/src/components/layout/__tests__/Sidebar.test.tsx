@@ -58,6 +58,7 @@ function setAuth(overrides: Record<string, unknown> = {}) {
       active_workspace_id: 'w-1',
     } as never,
     role: 'owner',
+    canSeeFinancials: true,
     loading: false,
     refetchProfile: vi.fn(),
     signOut: vi.fn(),
@@ -112,7 +113,9 @@ describe('Sidebar', () => {
     expect(screen.queryByText('Financeiro')).not.toBeInTheDocument();
     expect(screen.queryByText('Contratos')).not.toBeInTheDocument();
     expect(screen.getByText('Clientes')).toBeInTheDocument();
-    expect(screen.getByText('Equipe')).toBeInTheDocument();
+    // Agents are route-blocked from /equipe by ProtectedRoute, so the link
+    // must not render here either (previously it did, bouncing them back).
+    expect(screen.queryByText('Equipe')).not.toBeInTheDocument();
     expect(screen.getByText('Instagram').closest('a')).toHaveClass('active');
   });
 

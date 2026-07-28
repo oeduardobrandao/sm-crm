@@ -2,13 +2,51 @@ import { act, render, renderHook, screen, waitFor } from '@testing-library/react
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 
+// vi.hoisted: the vi.mock('../../store/core', ...) factory below runs before
+// this file's own top-level statements, so a plain `const mock... = vi.fn()`
+// would still be in the TDZ when the factory executes. Same reasoning as
+// store/__tests__/membership.test.ts.
+const { mockMaybeSingle, mockMembershipGetUser, mockGetContaId } = vi.hoisted(() => ({
+  mockMaybeSingle: vi.fn(),
+  mockMembershipGetUser: vi.fn(),
+  mockGetContaId: vi.fn(),
+}));
+
 vi.mock('../../lib/supabase');
+// getMyMembership() (store/workspace.ts) reads `supabase` and `getContaId`
+// from THIS module, not from '../../lib/supabase'. A factory that omits
+// them leaves `supabase` undefined inside getMyMembership(), so every call
+// throws before reaching the mocked maybeSingle() — canSeeFinancials always
+// resolves via the catch path to 'unknown', and the membership happy path
+// (the one AuthContext.tsx actually exercises) never gets covered by this
+// suite.
 vi.mock('../../store/core', () => ({
-  initStoreRole: vi.fn(async () => undefined),
+  supabase: {
+    auth: { getUser: mockMembershipGetUser },
+    from: () => ({
+      select: () => ({
+        eq: () => ({ eq: () => ({ maybeSingle: mockMaybeSingle }) }),
+      }),
+    }),
+  },
+  getContaId: mockGetContaId,
+}));
+
+// Real analytics.ts no-ops every export unless VITE_POSTHOG_KEY is set (never
+// true in this test env), so without this mock `resetAnalytics()` silently
+// does nothing and a regression that drops its call from AuthContext would
+// go uncaught. Mocked so the A -> B test below can assert it was actually
+// invoked, not just that it wouldn't have thrown.
+vi.mock('../../lib/analytics', () => ({
+  identifyWorkspaceUser: vi.fn(),
+  resetAnalytics: vi.fn(),
 }));
 
 import * as supabaseModule from '../../lib/supabase';
+import { resetAnalytics } from '../../lib/analytics';
 import { AuthProvider, useAuth } from '../AuthContext';
+
+const mockedResetAnalytics = vi.mocked(resetAnalytics);
 
 type MockedSupabaseModule = typeof supabaseModule & {
   __resetSupabaseMock: () => void;
@@ -31,13 +69,28 @@ function renderWithAuth() {
   );
 }
 
+// Populated during Probe's render body (not an effect), so it captures every
+// distinct commit React produces -- including one that a later effect's own
+// setState corrects before `act()` settles and before any effect-driven
+// commit is visible to a `screen.getByTestId` query afterwards. That later
+// correction (the "Fetch profile whenever user changes" effect always calls
+// setLoading(true) at its top once userId changes) means a plain "check
+// `loading` after `act()` resolves" assertion can't tell a fixed
+// synchronous reset apart from a delayed one -- both settle to the same
+// final value. Recording every render this way is what makes the
+// distinction observable in a test at all.
+let renderHistory: Array<{ user: string; loading: string }> = [];
+
 function Probe() {
   const auth = useAuth();
+  renderHistory.push({ user: auth.user?.id ?? 'anon', loading: String(auth.loading) });
   return (
     <div>
       <span data-testid="role">{auth.role}</span>
       <span data-testid="user">{auth.user?.id ?? 'anon'}</span>
       <span data-testid="loading">{String(auth.loading)}</span>
+      <span data-testid="workspaceRole">{auth.workspaceRole ?? 'null'}</span>
+      <span data-testid="canSeeFinancials">{String(auth.canSeeFinancials)}</span>
       <button
         onClick={() => {
           void auth.signOut();
@@ -68,6 +121,161 @@ describe('AuthProvider', () => {
 
     expect(screen.getByTestId('user')).toHaveTextContent('user-99');
     expect(screen.getByTestId('role')).toHaveTextContent('admin');
+  });
+
+  it('resolves canSeeFinancials to true for an owner whose can_see_financials column is false', async () => {
+    // Guards AuthContext.tsx:150 — deriveFinancialAccess(membership), not the
+    // raw `membership.can_see_financials` column. can_see_financials is only
+    // meaningful for admins; owners must see financials regardless of it.
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo',
+      role: 'owner',
+      conta_id: 'conta-1',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    mockGetContaId.mockResolvedValue('conta-1');
+    mockMaybeSingle.mockResolvedValue({
+      data: { role: 'owner', can_see_financials: false },
+      error: null,
+    });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('false');
+    });
+
+    expect(screen.getByTestId('workspaceRole')).toHaveTextContent('owner');
+    expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+  });
+
+  it('resolves canSeeFinancials to false for an agent whose can_see_financials column is true', async () => {
+    // Mirror case: agents never see financials, whatever the column says.
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-2' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-2',
+      nome: 'Agente',
+      role: 'agent',
+      conta_id: 'conta-1',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-2' } } });
+    mockGetContaId.mockResolvedValue('conta-1');
+    mockMaybeSingle.mockResolvedValue({
+      data: { role: 'agent', can_see_financials: true },
+      error: null,
+    });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('false');
+    });
+
+    expect(screen.getByTestId('workspaceRole')).toHaveTextContent('agent');
+    expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
+  });
+
+  it('resets profile/financial/analytics state and re-raises loading on a same-tab A -> B user switch (cross-account bleed + spurious-redirect regression)', async () => {
+    // Both users non-null — e.g. another tab signing in against shared
+    // storage. Gating the reset on `!nextUser` alone let B render with A's
+    // profile/canSeeFinancials/query cache until B's own membership resolved.
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-A' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-A',
+      nome: 'Ana',
+      role: 'owner',
+      conta_id: 'conta-A',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-A' } } });
+    mockGetContaId.mockResolvedValue('conta-A');
+    mockMaybeSingle.mockResolvedValue({
+      data: { role: 'owner', can_see_financials: true },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+    });
+
+    // Seed a cache entry the way a real financial query would, so we can
+    // prove it is purged on the switch instead of surviving for user B.
+    queryClient.setQueryData(['transacoes'], [{ id: 'tx-a' }]);
+
+    // Block B's profile fetch so we can observe the state in between the
+    // auth event and B's own hydration completing.
+    let resolveProfileB!: (profile: Record<string, unknown> | null) => void;
+    mockedSupabase.__queueCurrentProfileResponse(
+      new Promise((resolve) => {
+        resolveProfileB = resolve;
+      }),
+    );
+
+    // Reset right before the switch: everything captured from here on is
+    // renders caused by the switch itself.
+    renderHistory = [];
+
+    await act(async () => {
+      mockedSupabase.__emitAuthChange('SIGNED_IN', { user: { id: 'user-B' } });
+    });
+
+    // B must never render with A's identity still attached, even before B's
+    // own membership/profile resolve.
+    expect(screen.getByTestId('user')).toHaveTextContent('user-B');
+    // `role` reads 'agent' right here too, purely because `profile` was just
+    // reset to null — that is the fallback formula (`profile?.role ?? 'agent'`),
+    // true before AND after the fix below, so asserting it here would never
+    // catch a regression.
+    //
+    // What actually gates a consumer like ProtectedRoute from acting on that
+    // fallback is `loading`. Checking `screen.getByTestId('loading')` here
+    // (the settled DOM, after `act()` has fully resolved) can NOT tell the
+    // fix apart from the bug: the "fetch profile whenever user changes"
+    // effect (keyed on userId) unconditionally sets loading(true) at its own
+    // top, so by the time `act()` settles, `loading` reads 'true' either
+    // way — whether this reset set it synchronously in the SAME commit as
+    // `user`/`profile`, or only that later effect did. The bug is a commit
+    // that is briefly live (and, outside a test, paintable) with
+    // `user: 'user-B'` and `loading: false` before that correction —
+    // exactly the window a real route guard's render can observe. Render-body
+    // history (captured on every commit, not just the final one visible
+    // after `act()`) is what makes that window observable at all: it must
+    // never show B's id paired with loading:false.
+    expect(renderHistory).not.toContainEqual({ user: 'user-B', loading: 'false' });
+    expect(screen.getByTestId('loading')).toHaveTextContent('true');
+    expect(screen.getByTestId('workspaceRole')).toHaveTextContent('null');
+    expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('unknown');
+    expect(queryClient.getQueryData(['transacoes'])).toBeUndefined();
+    // posthog-js keeps A's distinct_id across a second identify() call
+    // without an explicit reset() first — omitting this call would merge
+    // B's events/person-properties into A's PostHog profile.
+    expect(mockedResetAnalytics).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveProfileB({
+        id: 'user-B',
+        nome: 'Beto',
+        role: 'agent',
+        conta_id: 'conta-B',
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('false');
+    });
   });
 
   it('clears profile when onAuthStateChange emits a signed-out session', async () => {

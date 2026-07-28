@@ -19,7 +19,6 @@ import {
   getWorkflows,
   getWorkflowEtapas,
   addTransacao,
-  formatBRL,
   formatDate,
   getAllClienteDatas,
   type Cliente,
@@ -28,6 +27,7 @@ import {
   type ClienteData,
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
+import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
 import { formatDeadlineStatus } from './deadlineStatus';
 
 // ---- Types ----
@@ -827,14 +827,14 @@ function FinanceiroCalendar({
   transacoes,
   deadlineEvents,
   datasImportantes,
-  role,
+  canSeeFinancials,
 }: {
   clientes: Cliente[];
   membros: Membro[];
   transacoes: Transacao[];
   deadlineEvents: DeadlineEvent[];
   datasImportantes: ClienteData[];
-  role: string;
+  canSeeFinancials: FinancialAccess;
 }) {
   const qc = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -867,7 +867,6 @@ function FinanceiroCalendar({
   ];
   const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-  const isAgent = role === 'agent';
   const today = new Date();
   const isSameMonth =
     currentDate.getMonth() === today.getMonth() &&
@@ -876,15 +875,20 @@ function FinanceiroCalendar({
 
   const isPaid = (refId: string) => transacoes.some((t) => t.referencia_agendamento === refId);
 
-  const selectedIncomes = isAgent
-    ? []
-    : clientes.filter(
-        (c) =>
-          c.data_pagamento === selectedDay &&
-          c.status === 'ativo' &&
-          currentDate.getMonth() === currentDate.getMonth(),
-      );
-  const selectedExpenses = isAgent ? [] : membros.filter((m) => m.data_pagamento === selectedDay);
+  // Branch on the explicit capability, never on a nullable financial value: a
+  // legitimately null retainer is indistinguishable from a masked one, and
+  // Number(null) is 0, so inference would render phantom R$ 0 entries.
+  const selectedIncomes =
+    canSeeFinancials !== true
+      ? []
+      : clientes.filter(
+          (c) =>
+            c.data_pagamento === selectedDay &&
+            c.status === 'ativo' &&
+            currentDate.getMonth() === currentDate.getMonth(),
+        );
+  const selectedExpenses =
+    canSeeFinancials !== true ? [] : membros.filter((m) => m.data_pagamento === selectedDay);
   const selectedDeadlines = deadlineEvents.filter(
     (d) =>
       d.deadlineDate.getDate() === selectedDay &&
@@ -983,10 +987,12 @@ function FinanceiroCalendar({
             ))}
             {Array.from({ length: daysInMonth }, (_, i) => {
               const d = i + 1;
-              const dayIncomes = isAgent
-                ? []
-                : clientes.filter((c) => c.data_pagamento === d && c.status === 'ativo');
-              const dayExpenses = isAgent ? [] : membros.filter((m) => m.data_pagamento === d);
+              const dayIncomes =
+                canSeeFinancials !== true
+                  ? []
+                  : clientes.filter((c) => c.data_pagamento === d && c.status === 'ativo');
+              const dayExpenses =
+                canSeeFinancials !== true ? [] : membros.filter((m) => m.data_pagamento === d);
               const dayDeadlines = deadlineEvents.filter(
                 (de) =>
                   de.deadlineDate.getDate() === d &&
@@ -1120,7 +1126,8 @@ function FinanceiroCalendar({
                       <div className="item-subtitle">PLANO: {c.plano?.toUpperCase() || 'N/A'}</div>
                       <div className="item-divider" />
                       <div className="item-meta">
-                        <i className="ph ph-money" /> Previsto: {formatBRL(c.valor_mensal)}
+                        <i className="ph ph-money" /> Previsto:{' '}
+                        {formatFinancialBRL(c.valor_mensal, canSeeFinancials)}
                       </div>
                     </div>
                   );
@@ -1170,7 +1177,8 @@ function FinanceiroCalendar({
                       </div>
                       <div className="item-divider" />
                       <div className="item-meta">
-                        <i className="ph ph-money" /> Previsto: {formatBRL(m.custo_mensal || 0)}
+                        <i className="ph ph-money" /> Previsto:{' '}
+                        {formatFinancialBRL(m.custo_mensal, canSeeFinancials)}
                       </div>
                     </div>
                   );
@@ -1283,7 +1291,7 @@ function FinanceiroCalendar({
             <AlertDialogTitle>Confirmar Agendamento</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmPayload &&
-                `Confirmar o recebimento/pagamento agendado de ${confirmPayload.desc} (${formatBRL(confirmPayload.val)})?`}
+                `Confirmar o recebimento/pagamento agendado de ${confirmPayload.desc} (${formatFinancialBRL(confirmPayload.val, canSeeFinancials)})?`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1456,11 +1464,24 @@ function MedicoCalendar() {
 // ---- Main Page ----
 export default function CalendarioPage() {
   const [activeTab, setActiveTab] = useState<'financeiro' | 'medico'>('financeiro');
-  const { role } = useAuth();
+  const { canSeeFinancials } = useAuth();
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
   const { data: membros = [] } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
-  const { data: transacoes = [] } = useQuery({ queryKey: ['transacoes'], queryFn: getTransacoes });
+  // getTransacoes returns raw financial rows: this page is not a financial
+  // route, so the route guard never covers it. Gate the fetch itself, not
+  // just its rendering — the day/selected-day views below already mask via
+  // `canSeeFinancials !== true ? [] : ...`, but that only hid the values from
+  // render; the rows still landed in the shared React Query cache otherwise.
+  const { data: transacoesRaw = [] } = useQuery({
+    queryKey: ['transacoes'],
+    queryFn: getTransacoes,
+    enabled: canSeeFinancials === true,
+  });
+  // Guard the read too, not just the query: `enabled: false` only stops a new
+  // fetch — a query with the same key already populated elsewhere (matches
+  // GlobalSearchTrigger's pattern) can still leave cached data on this hook.
+  const transacoes = canSeeFinancials === true ? transacoesRaw : [];
   const { data: workflows = [] } = useQuery({ queryKey: ['workflows'], queryFn: getWorkflows });
   const { data: datasImportantes = [] } = useQuery({
     queryKey: ['allClienteDatas'],
@@ -1545,7 +1566,7 @@ export default function CalendarioPage() {
             transacoes={transacoes}
             deadlineEvents={deadlineEvents}
             datasImportantes={datasImportantes}
-            role={role || 'owner'}
+            canSeeFinancials={canSeeFinancials}
           />
         ) : (
           <MedicoCalendar />

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -34,7 +34,6 @@ import {
 import {
   getMembros,
   getTransacoes,
-  formatBRL,
   formatDate,
   getInitials,
   updateMembro,
@@ -42,6 +41,8 @@ import {
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { formatFinancialBRL, stripFinancialFields } from '@/lib/financialAccess';
+import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 
 const TIPO_LABEL: Record<string, string> = {
   clt: 'CLT',
@@ -50,7 +51,7 @@ const TIPO_LABEL: Record<string, string> = {
 };
 
 export default function MembroDetalhePage() {
-  const { role } = useAuth();
+  const { role, canSeeFinancials } = useAuth();
   const isAgent = role === 'agent';
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -64,14 +65,29 @@ export default function MembroDetalhePage() {
   const [fCusto, setFCusto] = useState('');
   const [fDiaPag, setFDiaPag] = useState('');
 
+  // The edit modal can hold a custo_mensal value in its form state. On live
+  // revocation, close it rather than let the value linger on screen.
+  useEffect(() => {
+    if (canSeeFinancials !== true) setModalOpen(false);
+  }, [canSeeFinancials]);
+
   const { data: membros = [], isLoading: loadingMembros } = useQuery({
     queryKey: ['membros'],
     queryFn: getMembros,
   });
-  const { data: transacoes = [], isLoading: loadingTx } = useQuery({
+  // getTransacoes returns raw financial rows: this page is not a financial
+  // route, so the route guard never covers it. Gate the fetch on the
+  // capability itself, not just `!isAgent` (a restricted admin is not an
+  // agent either).
+  const { data: transacoesRaw = [], isLoading: loadingTx } = useQuery({
     queryKey: ['transacoes'],
     queryFn: getTransacoes,
+    enabled: canSeeFinancials === true,
   });
+  // Guard the read too, not just the query: `enabled: false` only stops a new
+  // fetch — a query with the same key already populated elsewhere (matches
+  // GlobalSearchTrigger's pattern) can still leave cached data on this hook.
+  const transacoes = canSeeFinancials === true ? transacoesRaw : [];
 
   const membro = membros.find((m) => m.id?.toString() === id);
 
@@ -112,13 +128,17 @@ export default function MembroDetalhePage() {
     }
     setSaving(true);
     try {
-      await updateMembro(Number(id), {
+      const payload = {
         nome: fNome,
         cargo: fCargo,
         tipo: fTipo,
         custo_mensal: fCusto ? Number(fCusto) : null,
         data_pagamento: diaPag,
-      } as Partial<Omit<Membro, 'id' | 'user_id' | 'conta_id'>>);
+      } as Partial<Omit<Membro, 'id' | 'user_id' | 'conta_id'>>;
+      await updateMembro(
+        Number(id),
+        stripFinancialFields(payload, canSeeFinancials, ['custo_mensal']),
+      );
       toast.success('Membro atualizado');
       qc.invalidateQueries({ queryKey: ['membros'] });
       setModalOpen(false);
@@ -173,19 +193,19 @@ export default function MembroDetalhePage() {
                 [
                   {
                     label: 'Custo mensal',
-                    value: formatBRL(membro.custo_mensal ?? 0),
+                    value: formatFinancialBRL(membro.custo_mensal, canSeeFinancials),
                     icon: Wallet,
                     tone: 'blue' as const,
                   },
                   {
                     label: 'Total pago',
-                    value: formatBRL(totalPago),
+                    value: formatFinancialBRL(totalPago, canSeeFinancials),
                     icon: CheckCircle2,
                     tone: 'green' as const,
                   },
                   {
                     label: 'Pendente',
-                    value: formatBRL(pendente),
+                    value: formatFinancialBRL(pendente, canSeeFinancials),
                     icon: Clock,
                     tone: 'amber' as const,
                   },
@@ -219,7 +239,8 @@ export default function MembroDetalhePage() {
               )}
               {!isAgent && (
                 <div>
-                  <strong>Custo Mensal:</strong> {formatBRL(membro.custo_mensal ?? 0)}
+                  <strong>Custo Mensal:</strong>{' '}
+                  {formatFinancialBRL(membro.custo_mensal, canSeeFinancials)}
                 </div>
               )}
             </div>
@@ -228,30 +249,45 @@ export default function MembroDetalhePage() {
           {!isAgent && (
             <>
               <h3 style={{ marginBottom: 12 }}>Transações</h3>
-              <div className="card">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Descrição</TableHead>
-                      <TableHead>Categoria</TableHead>
-                      <TableHead>Valor</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {membroTx.map((t, i) => (
-                      <TableRow key={t.id ?? `tx-${i}`}>
-                        <TableCell data-label="Data">{formatDate(t.data)}</TableCell>
-                        <TableCell data-label="Descrição">{t.descricao}</TableCell>
-                        <TableCell data-label="Categoria">{t.categoria}</TableCell>
-                        <TableCell data-label="Valor">{formatBRL(t.valor)}</TableCell>
-                        <TableCell data-label="Status">{t.status}</TableCell>
+              {canSeeFinancials === true ? (
+                <div className="card">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead>Categoria</TableHead>
+                        <TableHead>Valor</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {membroTx.map((t, i) => (
+                        <TableRow key={t.id ?? `tx-${i}`}>
+                          <TableCell data-label="Data">{formatDate(t.data)}</TableCell>
+                          <TableCell data-label="Descrição">{t.descricao}</TableCell>
+                          <TableCell data-label="Categoria">{t.categoria}</TableCell>
+                          <TableCell data-label="Valor">
+                            {formatFinancialBRL(t.valor, canSeeFinancials)}
+                          </TableCell>
+                          <TableCell data-label="Status">{t.status}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                // The query above is gated on canSeeFinancials === true, so
+                // membroTx is always [] here — an empty table would read as
+                // "this member has no transactions", which is false for a
+                // restricted admin. Say why it's hidden instead.
+                <div className="card">
+                  <RoleRestrictionNotice
+                    title="Transações"
+                    description="A visualização de transações financeiras está disponível apenas para quem tem acesso financeiro liberado."
+                  />
+                </div>
+              )}
             </>
           )}
         </>
@@ -284,16 +320,18 @@ export default function MembroDetalhePage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
-              <Label>Custo Mensal (R$)</Label>
-              <Input
-                type="number"
-                min={0}
-                step={0.01}
-                value={fCusto}
-                onChange={(e) => setFCusto(e.target.value)}
-              />
-            </div>
+            {canSeeFinancials === true && (
+              <div className="space-y-1">
+                <Label>Custo Mensal (R$)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={fCusto}
+                  onChange={(e) => setFCusto(e.target.value)}
+                />
+              </div>
+            )}
             <div className="space-y-1">
               <Label>Dia de Pagamento (1-31)</Label>
               <Input

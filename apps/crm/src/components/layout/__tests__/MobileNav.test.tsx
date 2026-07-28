@@ -45,6 +45,7 @@ function setAuth(overrides: Record<string, unknown> = {}) {
       ...overrides,
     } as any,
     role: (overrides.role as string) || 'owner',
+    canSeeFinancials: overrides.canSeeFinancials ?? true,
     loading: false,
     signOut: (overrides.signOut as any) || vi.fn(),
     refreshProfile: vi.fn(),

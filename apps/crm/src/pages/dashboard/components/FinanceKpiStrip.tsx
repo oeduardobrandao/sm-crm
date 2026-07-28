@@ -1,17 +1,24 @@
 import { useTranslation } from 'react-i18next';
 import { ArrowDownCircle, ArrowUpCircle, Wallet, TrendingUp } from 'lucide-react';
-import { formatBRL } from '../../../store';
 import { StatCard, type StatTone } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
+import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
 
 interface Props {
   aReceber: number;
   aPagar: number;
-  saldoProjetado: number;
-  receitaMensal: number;
+  saldoProjetado: number | null;
+  receitaMensal: number | null;
+  canSeeFinancials: FinancialAccess;
 }
 
-export function FinanceKpiStrip({ aReceber, aPagar, saldoProjetado, receitaMensal }: Props) {
+export function FinanceKpiStrip({
+  aReceber,
+  aPagar,
+  saldoProjetado,
+  receitaMensal,
+  canSeeFinancials,
+}: Props) {
   const { t } = useTranslation('dashboard');
   const items: {
     label: string;
@@ -22,22 +29,27 @@ export function FinanceKpiStrip({ aReceber, aPagar, saldoProjetado, receitaMensa
   }[] = [
     {
       label: t('kpi.aReceber'),
-      value: formatBRL(aReceber),
+      value: formatFinancialBRL(aReceber, canSeeFinancials),
       color: 'var(--success)',
       icon: ArrowDownCircle,
       tone: 'green',
     },
     {
       label: t('kpi.aPagar'),
-      value: formatBRL(aPagar),
+      value: formatFinancialBRL(aPagar, canSeeFinancials),
       color: 'var(--danger)',
       icon: ArrowUpCircle,
       tone: 'red',
     },
-    { label: t('kpi.saldo'), value: formatBRL(saldoProjetado), icon: Wallet, tone: 'blue' },
+    {
+      label: t('kpi.saldo'),
+      value: formatFinancialBRL(saldoProjetado, canSeeFinancials),
+      icon: Wallet,
+      tone: 'blue',
+    },
     {
       label: t('kpi.receitaMensal'),
-      value: formatBRL(receitaMensal),
+      value: formatFinancialBRL(receitaMensal, canSeeFinancials),
       icon: TrendingUp,
       tone: 'violet',
     },

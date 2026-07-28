@@ -18,7 +18,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: SidebarProps) {
-  const { user, profile, role, signOut } = useAuth();
+  const { user, profile, role, signOut, canSeeFinancials, workspaceRole } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
@@ -29,7 +29,12 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<any[]>([]);
 
-  const navGroups = getNavGroups(role, features as Record<string, boolean> | null);
+  const navGroups = getNavGroups(
+    role,
+    features as Record<string, boolean> | null,
+    canSeeFinancials,
+    workspaceRole,
+  );
   const activeRoute = location.pathname;
 
   // Load workspaces for switcher

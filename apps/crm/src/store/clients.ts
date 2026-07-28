@@ -47,9 +47,21 @@ export interface ClienteData {
   created_at?: string;
 }
 
+/**
+ * Allowlisted columns — must match the GRANT in Migration B exactly.
+ *
+ * Must stay a single string literal (no `+` concatenation): supabase-js parses
+ * the `.select()` argument at the type level to infer the return shape, and a
+ * concatenated expression widens to plain `string`, which the parser can't
+ * read — it falls back to a `GenericStringError` result type.
+ */
+const CLIENTE_SAFE_COLUMNS =
+  'id, user_id, conta_id, nome, sigla, cor, plano, email, telefone, status, created_at, notion_page_url, data_pagamento, especialidade, data_aniversario, dia_entrega, auto_publish_on_approval, send_report_email, include_ai_analysis';
+
 export async function getClientes(): Promise<Cliente[]> {
+  // Reads go through the masking view; writes stay on the base table.
   const { data, error } = await supabase
-    .from('clientes')
+    .from('clientes_v')
     .select('*')
     .order('created_at', { ascending: false });
   if (error) throw error;
@@ -58,13 +70,17 @@ export async function getClientes(): Promise<Cliente[]> {
 
 export async function addCliente(
   c: Omit<Cliente, 'id' | 'user_id' | 'conta_id'>,
-): Promise<Cliente> {
+  // Return type excludes valor_mensal: the RETURNING projection below is
+  // narrowed to the allowlist, so the row this resolves with never carries it.
+): Promise<Omit<Cliente, 'valor_mensal'>> {
   const user_id = await getUserId();
   const conta_id = await getContaId();
+  // RETURNING is narrowed to the allowlist: `.select()` is RETURNING *, which
+  // needs SELECT on valor_mensal and would fail for a restricted admin.
   const { data, error } = await supabase
     .from('clientes')
     .insert({ ...c, user_id, conta_id })
-    .select()
+    .select(CLIENTE_SAFE_COLUMNS)
     .single();
   if (error) throw error;
 
@@ -91,10 +107,14 @@ export async function addCliente(
 export async function updateCliente(
   id: number,
   c: Partial<Omit<Cliente, 'id' | 'user_id' | 'conta_id'>>,
-): Promise<Cliente> {
-  const { data, error } = await supabase.from('clientes').update(c).eq('id', id).select().single();
+): Promise<void> {
+  const { error } = await supabase
+    .from('clientes')
+    .update(c)
+    .eq('id', id)
+    .select(CLIENTE_SAFE_COLUMNS)
+    .single();
   if (error) throw error;
-  return data;
 }
 
 export async function removeCliente(id: number): Promise<void> {

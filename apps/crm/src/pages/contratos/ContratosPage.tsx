@@ -65,10 +65,11 @@ import {
   updateContrato,
   removeContrato,
   getClientes,
-  formatBRL,
   formatDate,
   type Contrato,
 } from '../../store';
+import { useAuth } from '../../context/AuthContext';
+import { formatFinancialBRL } from '@/lib/financialAccess';
 
 const contratoSchema = z.object({
   titulo: z.string().min(1, 'Título obrigatório'),
@@ -101,6 +102,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function ContratosPage() {
+  const { canSeeFinancials } = useAuth();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterStatus>('todos');
@@ -358,7 +360,9 @@ export default function ContratosPage() {
                   <TableCell data-label="Período">
                     {formatDate(c.data_inicio)} → {formatDate(c.data_fim)}
                   </TableCell>
-                  <TableCell data-label="Valor">{formatBRL(c.valor_total)}</TableCell>
+                  <TableCell data-label="Valor">
+                    {formatFinancialBRL(c.valor_total, canSeeFinancials)}
+                  </TableCell>
                   <TableCell data-label="Status">
                     <Badge
                       variant={

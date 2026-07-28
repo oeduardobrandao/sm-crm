@@ -36,7 +36,7 @@ describe('store computed helpers', () => {
       vi.setSystemTime(new Date('2026-04-15T12:00:00.000Z'));
 
       try {
-        mockedSupabase.__queueSupabaseResult('clientes', 'select', {
+        mockedSupabase.__queueSupabaseResult('clientes_v', 'select', {
           data: [
             { id: 1, nome: 'Cliente A', status: 'ativo', valor_mensal: 3000, data_pagamento: 10 },
             { id: 2, nome: 'Cliente B', status: 'ativo', valor_mensal: 2000, data_pagamento: 15 },
@@ -52,12 +52,12 @@ describe('store computed helpers', () => {
           ],
           error: null,
         });
-        mockedSupabase.__queueSupabaseResult('membros', 'select', {
+        mockedSupabase.__queueSupabaseResult('membros_v', 'select', {
           data: [{ id: 1, nome: 'Editor', data_pagamento: 20, custo_mensal: 1000 }],
           error: null,
         });
 
-        const stats = await store.getDashboardStats();
+        const stats = await store.getDashboardStats(true);
 
         expect(stats.clientesAtivos).toHaveLength(2);
         expect(stats.receitaMensal).toBe(5000);
@@ -73,14 +73,14 @@ describe('store computed helpers', () => {
       vi.setSystemTime(new Date('2026-04-05T12:00:00.000Z'));
 
       try {
-        mockedSupabase.__queueSupabaseResult('clientes', 'select', { data: [], error: null });
+        mockedSupabase.__queueSupabaseResult('clientes_v', 'select', { data: [], error: null });
         mockedSupabase.__queueSupabaseResult('transacoes', 'select', { data: [], error: null });
-        mockedSupabase.__queueSupabaseResult('membros', 'select', {
+        mockedSupabase.__queueSupabaseResult('membros_v', 'select', {
           data: [{ id: 1, nome: 'Paulo', data_pagamento: 10, custo_mensal: 900 }],
           error: null,
         });
 
-        const stats = await store.getDashboardStats();
+        const stats = await store.getDashboardStats(true);
 
         expect(
           stats.transacoes.some((t) => t.referencia_agendamento?.startsWith('membro_1_')),
@@ -95,11 +95,11 @@ describe('store computed helpers', () => {
       vi.setSystemTime(new Date('2026-04-15T12:00:00.000Z'));
 
       try {
-        mockedSupabase.__queueSupabaseResult('clientes', 'select', { data: [], error: null });
+        mockedSupabase.__queueSupabaseResult('clientes_v', 'select', { data: [], error: null });
         mockedSupabase.__queueSupabaseResult('transacoes', 'select', { data: [], error: null });
-        mockedSupabase.__queueSupabaseResult('membros', 'select', { data: [], error: null });
+        mockedSupabase.__queueSupabaseResult('membros_v', 'select', { data: [], error: null });
 
-        const stats = await store.getDashboardStats();
+        const stats = await store.getDashboardStats(true);
 
         expect(stats.receitaMensal).toBe(0);
         expect(stats.despesaTotal).toBe(0);
@@ -109,6 +109,39 @@ describe('store computed helpers', () => {
         vi.useRealTimers();
       }
     });
+
+    it.each([false, 'unknown'] as const)(
+      'returns null (not 0) for receitaMensal, despesaTotal and saldo when canSeeFinancials is %s',
+      async (access) => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-04-15T12:00:00.000Z'));
+
+        try {
+          mockedSupabase.__queueSupabaseResult('clientes_v', 'select', {
+            data: [
+              { id: 1, nome: 'Cliente A', status: 'ativo', valor_mensal: 3000, data_pagamento: 10 },
+            ],
+            error: null,
+          });
+          mockedSupabase.__queueSupabaseResult('transacoes', 'select', {
+            data: [{ id: 1, tipo: 'saida', valor: 500, data: '2026-04-05', status: 'pago' }],
+            error: null,
+          });
+          mockedSupabase.__queueSupabaseResult('membros_v', 'select', {
+            data: [{ id: 1, nome: 'Editor', data_pagamento: 20, custo_mensal: 1000 }],
+            error: null,
+          });
+
+          const stats = await store.getDashboardStats(access);
+
+          expect(stats.receitaMensal).toBeNull();
+          expect(stats.despesaTotal).toBeNull();
+          expect(stats.saldo).toBeNull();
+        } finally {
+          vi.useRealTimers();
+        }
+      },
+    );
   });
 
   describe('getDeadlineInfo', () => {

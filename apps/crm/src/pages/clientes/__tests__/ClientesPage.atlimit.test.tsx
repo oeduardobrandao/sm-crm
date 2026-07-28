@@ -36,6 +36,10 @@ vi.mock('../../../hooks/useEntitlements', () => ({
   useEntitlements: () => ({ isAtLimit: isAtLimitMock }),
 }));
 
+vi.mock('../../../context/AuthContext', () => ({
+  useAuth: () => ({ canSeeFinancials: true }),
+}));
+
 // The CSV import button is wrapped in FeatureGate; render its children unconditionally
 // so it does not interfere with the create-button assertions.
 vi.mock('@/components/paywall/FeatureGate', () => ({

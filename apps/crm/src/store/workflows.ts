@@ -453,7 +453,7 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
   let nextDeliveryDeadlines: Map<number, string> | null = null;
   if (modoPrazo === 'data_entrega') {
     const { data: clienteRow } = await supabase
-      .from('clientes')
+      .from('clientes_v')
       .select('dia_entrega')
       .eq('id', workflow.cliente_id)
       .single();

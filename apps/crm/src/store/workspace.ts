@@ -4,7 +4,9 @@ export async function getWorkspaceUsers(): Promise<any[]> {
   const conta_id = await getContaId();
   const { data, error } = await supabase
     .from('workspace_members')
-    .select('user_id, role, joined_at, profiles!inner(id, nome, avatar_url, created_at)')
+    .select(
+      'user_id, role, joined_at, can_see_financials, profiles!inner(id, nome, avatar_url, created_at)',
+    )
     .eq('workspace_id', conta_id)
     .order('joined_at', { ascending: true });
   if (error) throw error;
@@ -13,6 +15,7 @@ export async function getWorkspaceUsers(): Promise<any[]> {
     id: m.profiles.id,
     nome: m.profiles.nome,
     role: m.role,
+    can_see_financials: m.can_see_financials,
     avatar_url: m.profiles.avatar_url,
     created_at: m.profiles.created_at,
   }));
@@ -132,4 +135,49 @@ export async function updateWorkspaceUserRole(userId: string, role: string): Pro
 
 export async function removeWorkspaceUser(userId: string): Promise<void> {
   await callManageWorkspaceUser('remove', userId);
+}
+
+export async function setWorkspaceUserFinancialAccess(
+  userId: string,
+  value: boolean,
+): Promise<void> {
+  await callManageWorkspaceUser('set-financial-access', userId, { value });
+}
+
+export interface MyMembership {
+  role: 'owner' | 'admin' | 'agent';
+  can_see_financials: boolean;
+}
+
+/**
+ * The caller's membership row for the ACTIVE workspace.
+ *
+ * Read from workspace_members rather than profiles: no workspace-switch path
+ * writes profiles.role, so a user who is owner in A and agent in B keeps
+ * `owner` after switching. This is the same staleness the SQL predicate avoids.
+ *
+ * Throws on a query error — the caller must be able to tell "no membership"
+ * (null) from "could not determine" (throw), because those resolve to different
+ * capability states.
+ */
+export async function getMyMembership(): Promise<MyMembership | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  // getContaId() throws rather than returning a falsy value when there is no
+  // active workspace, so "no active workspace" surfaces as a rejection here
+  // (getMyMembership() throws too), never as this function returning null.
+  const conta_id = await getContaId();
+
+  const { data, error } = await supabase
+    .from('workspace_members')
+    .select('role, can_see_financials')
+    .eq('user_id', user.id)
+    .eq('workspace_id', conta_id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as MyMembership | null) ?? null;
 }

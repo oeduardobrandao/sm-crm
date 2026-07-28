@@ -1,6 +1,11 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FinancialAccess } from '../../../lib/financialAccess';
+
+vi.mock('../../../context/AuthContext', () => ({
+  useAuth: vi.fn(),
+}));
 
 vi.mock('../Sidebar', () => ({
   default: ({ isDrawer, isOpen }: { isDrawer?: boolean; isOpen?: boolean }) => (
@@ -56,7 +61,30 @@ vi.mock('../../help/ContextHelpLinks', () => ({
   ContextHelpLinks: () => null,
 }));
 
+import { useAuth } from '../../../context/AuthContext';
 import AppLayout from '../AppLayout';
+
+const mockedUseAuth = vi.mocked(useAuth);
+
+function setCanSeeFinancials(canSeeFinancials: FinancialAccess) {
+  mockedUseAuth.mockReturnValue({
+    user: { id: 'u1' } as never,
+    profile: { id: 'u1', nome: 'Ana', role: 'owner', conta_id: 'c1' } as never,
+    role: 'owner',
+    workspaceRole: 'owner',
+    membershipResolved: true,
+    canSeeFinancials,
+    loading: false,
+    refetchProfile: vi.fn(),
+    signOut: vi.fn(),
+  });
+}
+
+beforeEach(() => {
+  // Default: unrestricted. Non-financial routes render regardless of this
+  // value, so only the financial-guard tests below need to vary it.
+  setCanSeeFinancials(true);
+});
 
 function setViewport(width: number) {
   Object.defineProperty(window, 'innerWidth', {
@@ -118,6 +146,7 @@ function renderLayout(pathname = '/dashboard') {
             }
           />
           <Route path="/clientes" element={<div>Clientes screen</div>} />
+          <Route path="/financeiro" element={<div>Financeiro screen</div>} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -182,5 +211,61 @@ describe('AppLayout', () => {
 
     expect(screen.getByText('Clientes screen')).toBeInTheDocument();
     expect(main.scrollTop).toBe(0);
+  });
+});
+
+// These prove AppLayout actually wires `canSeeFinancials` from `useAuth()`
+// into the guard, not merely that the pure `financialGuardOutcome` helper
+// (covered in financialRouteGuard.test.ts) returns the right label.
+describe('AppLayout financial guard wiring', () => {
+  it('renders the restriction screen instead of the route when access is explicitly denied', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+    setCanSeeFinancials(false);
+
+    renderLayout('/financeiro');
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByText('Acesso financeiro restrito')).toBeInTheDocument();
+    expect(screen.queryByText('Financeiro screen')).not.toBeInTheDocument();
+    // The shell survives -- this is what a ProtectedRoute-level redirect could not do.
+    expect(screen.getByTestId('sidebar')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav')).toBeInTheDocument();
+  });
+
+  it('renders the route when access is granted', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+    setCanSeeFinancials(true);
+
+    renderLayout('/financeiro');
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByText('Financeiro screen')).toBeInTheDocument();
+    expect(screen.queryByText('Acesso financeiro restrito')).not.toBeInTheDocument();
+  });
+
+  it('shows a loading spinner, not the restriction screen, while capability is unknown', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+    setCanSeeFinancials('unknown');
+
+    const { container } = renderLayout('/financeiro');
+    await screen.findByTestId('global-banner');
+
+    expect(screen.queryByText('Financeiro screen')).not.toBeInTheDocument();
+    expect(screen.queryByText('Acesso financeiro restrito')).not.toBeInTheDocument();
+    expect(container.querySelector('.animate-spin')).not.toBeNull();
+  });
+
+  it('leaves non-financial routes unaffected when access is denied', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+    setCanSeeFinancials(false);
+
+    renderLayout('/dashboard');
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByText('Dashboard screen')).toBeInTheDocument();
   });
 });

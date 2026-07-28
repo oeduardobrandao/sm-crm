@@ -82,9 +82,12 @@ import {
   addCliente,
   getInitials,
   type Lead,
+  type Cliente,
 } from '../../store';
 import { useEntitlements } from '../../hooks/useEntitlements';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
+import { useAuth } from '../../context/AuthContext';
+import { stripFinancialFields } from '@/lib/financialAccess';
 
 function createLeadSchema(t: (key: string) => string) {
   return z.object({
@@ -148,6 +151,7 @@ function parseInstagram(raw: string): string {
 
 export default function LeadsPage() {
   const qc = useQueryClient();
+  const { canSeeFinancials } = useAuth();
   const { t, i18n } = useTranslation('leads');
   const { t: tc } = useTranslation();
   const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
@@ -326,7 +330,7 @@ export default function LeadsPage() {
     setConvertSaving(true);
     try {
       const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
-      await addCliente({
+      const payload = {
         nome: values.nome,
         email: values.email,
         telefone: values.telefone,
@@ -336,8 +340,14 @@ export default function LeadsPage() {
         data_pagamento: values.diaPag ? parseInt(values.diaPag, 10) : undefined,
         sigla: getInitials(values.nome),
         cor: randomColor,
-        status: 'ativo',
-      });
+        status: 'ativo' as const,
+      };
+      await addCliente(
+        stripFinancialFields(payload, canSeeFinancials, ['valor_mensal']) as Omit<
+          Cliente,
+          'id' | 'user_id' | 'conta_id'
+        >,
+      );
       await updateLead(convertingLead.id, { status: 'convertido' });
       toast.success(t('toast.converted'));
       qc.invalidateQueries({ queryKey: ['leads'] });
@@ -952,19 +962,21 @@ export default function LeadsPage() {
                   </FormItem>
                 )}
               />
-              <FormField
-                control={convertForm.control}
-                name="valor"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.monthlyValue')}</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={0} step={0.01} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {canSeeFinancials === true && (
+                <FormField
+                  control={convertForm.control}
+                  name="valor"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('form.monthlyValue')}</FormLabel>
+                      <FormControl>
+                        <Input type="number" min={0} step={0.01} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
               <FormField
                 control={convertForm.control}
                 name="diaPag"

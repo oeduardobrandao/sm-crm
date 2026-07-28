@@ -23,9 +23,55 @@ const subscription = {
 type AuthChangeCallback = (event: string, session: { user: { id: string } | null } | null) => void;
 let authChangeCallback: AuthChangeCallback | null = null;
 
+// Minimal postgres_changes realtime stand-in for AuthContext's live-revocation
+// subscription. Only supports a single active UPDATE listener at a time,
+// which is all AuthProvider ever registers.
+type PostgresChangesCallback = (payload: { new: Record<string, unknown> }) => void;
+type PostgresChangesFilter = {
+  event: string;
+  schema: string;
+  table: string;
+  filter: string;
+};
+// Only set from inside subscribe(): a channel that registers a callback via
+// on() but never calls subscribe() must NOT route emits to it. A real
+// (unsubscribed) supabase-js channel delivers nothing either — deleting the
+// `.subscribe()` call in AuthContext must make tests that rely on the
+// subscription fail, not silently pass.
+let workspaceMemberUpdateCallback: PostgresChangesCallback | null = null;
+let workspaceMemberUpdateFilter: PostgresChangesFilter | null = null;
+export const removedChannelCalls: unknown[] = [];
+
+function makeChannelMock() {
+  let pendingCallback: PostgresChangesCallback | null = null;
+  let pendingFilter: PostgresChangesFilter | null = null;
+  const channel = {
+    on(
+      _event: 'postgres_changes',
+      filter: PostgresChangesFilter,
+      callback: PostgresChangesCallback,
+    ) {
+      pendingCallback = callback;
+      pendingFilter = filter;
+      return channel;
+    },
+    subscribe() {
+      workspaceMemberUpdateCallback = pendingCallback;
+      workspaceMemberUpdateFilter = pendingFilter;
+      return channel;
+    },
+  };
+  return channel;
+}
+
 export const supabase = {
   from: (table: string) => queryMock.from(table),
   rpc: (name: string, params: Record<string, unknown>) => queryMock.rpc(name, params),
+  channel: (_name: string) => makeChannelMock(),
+  removeChannel: (ch: unknown) => {
+    removedChannelCalls.push(ch);
+    return Promise.resolve('ok');
+  },
   auth: {
     async getSession() {
       return { data: { session: currentSession }, error: null };
@@ -79,6 +125,9 @@ export async function signOut() {
 export function __resetSupabaseMock() {
   queryMock.reset();
   profileResponses = [];
+  workspaceMemberUpdateCallback = null;
+  workspaceMemberUpdateFilter = null;
+  removedChannelCalls.length = 0;
   currentUser = { id: 'user-1' };
   currentProfile = {
     id: 'user-1',
@@ -135,4 +184,14 @@ export async function healPendingInvite() {}
 
 export function __emitAuthChange(event: string, session: { user: { id: string } | null } | null) {
   authChangeCallback?.(event, session);
+}
+
+export function __emitWorkspaceMemberUpdate(newRow: Record<string, unknown>) {
+  workspaceMemberUpdateCallback?.({ new: newRow });
+}
+
+// Only non-null once subscribe() has actually been called — see the comment
+// above workspaceMemberUpdateCallback.
+export function __getWorkspaceMemberSubscription(): PostgresChangesFilter | null {
+  return workspaceMemberUpdateFilter;
 }

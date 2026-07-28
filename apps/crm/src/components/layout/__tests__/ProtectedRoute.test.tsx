@@ -132,6 +132,25 @@ describe('ProtectedRoute', () => {
     },
   );
 
+  it('redirects agent away from /Financeiro (capitalized) exactly like /financeiro', () => {
+    // App.tsx declares routes lowercase with no `caseSensitive`, so React
+    // Router itself renders /Financeiro the same as /financeiro. AGENT_BLOCKED
+    // previously matched against lowercase literals only, so a capitalized
+    // path bypassed this redirect for an agent.
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'u' } as never,
+      profile: { id: 'u', role: 'agent' } as never,
+      role: 'agent',
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    renderRoute('/Financeiro');
+
+    expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
+  });
+
   it('allows an agent to reach non-blocked routes', () => {
     mockedUseAuth.mockReturnValue({
       user: { id: 'u' } as never,
@@ -233,5 +252,52 @@ describe('ProtectedRoute', () => {
 
     expect(screen.getByText(/Leads não está no seu plano/)).toBeInTheDocument();
     expect(screen.queryByText('Área protegida: dashboard')).toBeNull();
+  });
+
+  it('shows the upgrade screen for a capitalized gated path (/Leads), not the raw children', () => {
+    // React Router matches /Leads to the same lowercase route as /leads (no
+    // caseSensitive routes in App.tsx). FEATURE_GATED previously matched
+    // against the raw, non-lowercased location.pathname, so a capitalized
+    // URL slipped past the gate and rendered the plan-gated page directly.
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'owner-1' } as never,
+      profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
+      role: 'owner',
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    mockedUseWorkspaceLimits.mockReturnValue({
+      limits: null,
+      features: {
+        feature_instagram: true,
+        feature_instagram_ai: false,
+        feature_analytics_reports: false,
+        feature_best_times: false,
+        feature_audience_demographics: false,
+        feature_hub_portal: false,
+        feature_leads: false,
+        feature_financial: false,
+        feature_contracts: false,
+        feature_ideas: false,
+        feature_workflow_gantt: false,
+        feature_workflow_recurrence: false,
+        feature_csv_import: false,
+        feature_custom_properties: false,
+        feature_post_scheduling: false,
+        feature_auto_sync_cron: false,
+        feature_post_tagging: false,
+        feature_brand_customization: false,
+      },
+      planName: 'starter',
+      isLoading: false,
+      isUnlimited: false,
+    });
+
+    renderRoute('/Leads');
+
+    expect(screen.getByText(/Leads não está no seu plano/)).toBeInTheDocument();
+    expect(screen.queryByText('Área protegida')).toBeNull();
   });
 });
