@@ -39,8 +39,13 @@ const SOURCE_LABELS: Record<string, string> = {
 
 type PostTipo = 'feed' | 'reels' | 'stories' | 'carrossel';
 
-/** Case-, accent- and whitespace-insensitive key for matching client names. */
-function norm(value: string): string {
+/**
+ * Case-, accent- and whitespace-insensitive key for matching client names.
+ * Exported so every place that needs to answer "is this the same client as
+ * that roster row" (the mapping-step hint included) uses the one definition \u2014
+ * two normalizations of the same concept only ever drift apart.
+ */
+export function norm(value: string): string {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -54,17 +59,44 @@ function cell(row: ImportRow, column: string | undefined): string {
 }
 
 /**
- * pt-BR ("1.200,50") and en ("1,200.75") thousand/decimal separators, decided by
- * whichever separator comes last. Returns undefined when nothing numeric remains.
+ * pt-BR ("1.200,50") and en ("1,200.75") thousand/decimal separators.
+ *
+ * When BOTH a comma and a dot are present, whichever comes last is the decimal
+ * mark and the other is a thousands separator (stripped entirely).
+ *
+ * When only ONE separator type is present, it's ambiguous — pt-BR sheets
+ * routinely omit cents, so "1.200" means 1200, not 1.2. The rule: if the LAST
+ * (and, for a lone separator, only) occurrence is followed by exactly three
+ * digits and nothing else, every occurrence of that separator is a thousands
+ * mark and gets stripped ("1.500" -> 1500, "1.234.567" -> 1234567). Otherwise —
+ * one or two trailing digits, an explicit decimal part — only the last
+ * occurrence is treated as the decimal point ("1.50" -> 1.5, "12.5" -> 12.5).
+ *
+ * Returns undefined when nothing numeric remains.
  */
 function parseValor(raw: string): number | undefined {
   const cleaned = raw.replace(/[^\d,.-]/g, '');
   if (!/\d/.test(cleaned)) return undefined;
+
   const lastComma = cleaned.lastIndexOf(',');
   const lastDot = cleaned.lastIndexOf('.');
   let normalized = cleaned;
-  if (lastComma > lastDot) normalized = cleaned.replace(/\./g, '').replace(',', '.');
-  else if (lastDot > lastComma) normalized = cleaned.replace(/,/g, '');
+
+  if (lastComma !== -1 && lastDot !== -1) {
+    normalized =
+      lastComma > lastDot
+        ? cleaned.replace(/\./g, '').replace(',', '.')
+        : cleaned.replace(/,/g, '');
+  } else if (lastComma !== -1 || lastDot !== -1) {
+    const sep = lastComma !== -1 ? ',' : '.';
+    const sepPattern = sep === '.' ? /\./g : /,/g;
+    const lastIndex = Math.max(lastComma, lastDot);
+    const after = cleaned.slice(lastIndex + 1);
+    normalized = /^\d{3}$/.test(after)
+      ? cleaned.replace(sepPattern, '')
+      : `${cleaned.slice(0, lastIndex).replace(sepPattern, '')}.${after}`;
+  }
+
   const n = Number(normalized);
   return Number.isFinite(n) ? n : undefined;
 }
@@ -260,7 +292,13 @@ export function buildCommitRows(
         groups.set(key, group);
       }
       for (const [key, group] of groups) {
-        for (const part of chunk(group.rows, maxPostsPerWorkflow)) {
+        const parts = chunk(group.rows, maxPostsPerWorkflow);
+        parts.forEach((part, partIndex) => {
+          // `n` only guarantees a collision-free key across the whole job (it
+          // runs per client across collections). The "(n)" TITLE suffix must
+          // instead reflect this collection's OWN chunk index — otherwise two
+          // single-chunk collections for the same client render "jan" then
+          // "fev (2)", a "(2)" with no "(1)".
           const n = containerCount.get(key) ?? 0;
           containerCount.set(key, n + 1);
           const containerKey = `container:${key}:${n}`;
@@ -268,10 +306,10 @@ export function buildCommitRows(
             kind: 'container',
             sourceKey: containerKey,
             clienteRef: group.ref,
-            titulo: `Calendário importado — ${collection.name}${n > 0 ? ` (${n + 1})` : ''}`,
+            titulo: `Calendário importado — ${collection.name}${partIndex > 0 ? ` (${partIndex + 1})` : ''}`,
           });
           for (const row of part) rest.push(postRow(row, collection, mapping, containerKey));
-        }
+        });
       }
       continue;
     }

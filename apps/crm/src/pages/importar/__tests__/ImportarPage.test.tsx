@@ -139,8 +139,8 @@ function renderPage() {
 const okResults = (rows: CommitRow[]) =>
   rows.map((r) => ({ sourceKey: r.sourceKey, table: 'x', rowId: '1', skipped: false }));
 
-/** Drives origem -> upload -> mapeamento -> prévia. */
-async function advanceToPreview() {
+/** Drives origem -> upload -> mapeamento (stops before the prévia click). */
+async function advanceToMapping() {
   renderPage();
   fireEvent.click(await screen.findByRole('button', { name: 'Planilha (CSV)' }));
   fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
@@ -151,6 +151,11 @@ async function advanceToPreview() {
   fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
 
   await screen.findByText('calendario');
+}
+
+/** Drives origem -> upload -> mapeamento -> prévia. */
+async function advanceToPreview() {
+  await advanceToMapping();
   fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
   await screen.findByText('Prévia da importação');
 }
@@ -317,5 +322,46 @@ describe('ImportarPage', () => {
     );
     expect(screen.getByLabelText('Arquivos de exportação')).toBeInTheDocument();
     await waitFor(() => expect(mockedAnalyze).not.toHaveBeenCalled());
+  });
+
+  // An unresolved or failed clientes list silently resolves every referenced
+  // name to "created" instead of "existing", turning a merge into a duplicate
+  // client — see buildCommitRows.ts. Advancing must be unreachable until the
+  // list has loaded successfully.
+  test('blocks advancing past mapping while the clientes list is still loading', async () => {
+    vi.mocked(getClientes).mockReturnValue(new Promise(() => {})); // never resolves
+
+    await advanceToMapping();
+
+    expect(screen.getByText(/Carregando a lista de clientes existentes/)).toBeInTheDocument();
+    const continuar = screen.getByRole('button', { name: 'Continuar' });
+    expect(continuar).toBeDisabled();
+
+    fireEvent.click(continuar);
+    expect(mockedPreview).not.toHaveBeenCalled();
+    expect(screen.queryByText('Prévia da importação')).not.toBeInTheDocument();
+  });
+
+  test('blocks advancing and offers a retry when the clientes list fails to load', async () => {
+    vi.mocked(getClientes).mockRejectedValueOnce(new Error('network down'));
+
+    await advanceToMapping();
+
+    expect(
+      screen.getByText(/Não foi possível carregar a lista de clientes existentes/),
+    ).toBeInTheDocument();
+    const continuar = screen.getByRole('button', { name: 'Continuar' });
+    expect(continuar).toBeDisabled();
+
+    fireEvent.click(continuar);
+    expect(mockedPreview).not.toHaveBeenCalled();
+
+    // Retrying succeeds (beforeEach's default mock takes over past the
+    // one-shot rejection) and unblocks the wizard.
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    await waitFor(() => expect(continuar).not.toBeDisabled());
+
+    fireEvent.click(continuar);
+    await screen.findByText('Prévia da importação');
   });
 });

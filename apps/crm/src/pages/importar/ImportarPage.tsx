@@ -65,10 +65,24 @@ export default function ImportarPage() {
   const [undoResult, setUndoResult] = useState<UndoResult | null>(null);
   const [undoing, setUndoing] = useState(false);
 
-  const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
+  const {
+    data: clientes = [],
+    isPending: clientesPending,
+    isError: clientesIsError,
+    refetch: refetchClientes,
+  } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
   const existingClientes: ExistingCliente[] = clientes
     .filter((c): c is typeof c & { id: number } => typeof c.id === 'number')
     .map((c) => ({ id: c.id, nome: c.nome }));
+  // A client name referenced by the import resolves to "existing" only via
+  // existingClientes: an unresolved or failed load silently reads as "no
+  // existing clients", turning every merge into a brand-new duplicate.
+  // Advancing past mapping is blocked (Continuar disabled) until this is 'ready'.
+  const clientesStatus: 'pending' | 'error' | 'ready' = clientesPending
+    ? 'pending'
+    : clientesIsError
+      ? 'error'
+      : 'ready';
 
   // --- step 2: parse ---------------------------------------------------------
   async function handleFiles(files: File[]) {
@@ -113,6 +127,10 @@ export default function ImportarPage() {
   // --- step 4: preview -------------------------------------------------------
   async function goToPreview() {
     if (!bundle || !proposal) return;
+    // Defence in depth: the "Continuar" button is already disabled while this
+    // is true, but a client resolution bug here can turn a whole existing
+    // client into a duplicate, so this never proceeds on an unresolved guess.
+    if (clientesStatus !== 'ready') return;
     const unassigned = proposal.collections.filter(
       (m) =>
         m.destination !== 'ignorar' &&
@@ -254,6 +272,8 @@ export default function ImportarPage() {
             bundle={bundle}
             proposal={proposal}
             clientes={existingClientes}
+            clientesStatus={clientesStatus}
+            onRetryClientes={() => void refetchClientes()}
             error={mappingError}
             onChange={setProposal}
             onBack={() => setStep('upload')}

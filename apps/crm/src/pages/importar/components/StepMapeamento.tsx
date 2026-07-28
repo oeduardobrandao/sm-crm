@@ -18,7 +18,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { ExistingCliente } from '../buildCommitRows';
+import { Spinner } from '@/components/ui/spinner';
+import { norm, type ExistingCliente } from '../buildCommitRows';
+
+/**
+ * Status of the existing-clientes lookup this step's "existing vs. created"
+ * decisions depend on. While it's anything but 'ready', advancing is blocked:
+ * an unresolved or failed list silently resolves every referenced name to
+ * "created", which the server cannot tell apart from a real instruction to
+ * create a duplicate client.
+ */
+export type ClientesStatus = 'pending' | 'error' | 'ready';
 
 export const DESTINATION_LABELS: Record<Destination, string> = {
   clientes: 'Clientes',
@@ -51,6 +61,8 @@ export default function StepMapeamento({
   bundle,
   proposal,
   clientes,
+  clientesStatus,
+  onRetryClientes,
   error,
   onChange,
   onBack,
@@ -59,6 +71,8 @@ export default function StepMapeamento({
   bundle: ImportBundle;
   proposal: MappingProposal;
   clientes: ExistingCliente[];
+  clientesStatus: ClientesStatus;
+  onRetryClientes: () => void;
   error: string | null;
   onChange: (proposal: MappingProposal) => void;
   onBack: () => void;
@@ -79,6 +93,28 @@ export default function StepMapeamento({
         da sua confirmação.
       </p>
 
+      {clientesStatus === 'pending' && (
+        <div className="flex items-center gap-2 rounded-xl border border-border p-4 text-sm text-muted">
+          <Spinner size="sm" /> Carregando a lista de clientes existentes — precisamos dela para
+          saber quem já é seu cliente antes de continuar.
+        </div>
+      )}
+
+      {clientesStatus === 'error' && (
+        <div className="flex flex-col gap-3 rounded-xl border border-danger/40 bg-danger/5 p-4 text-sm text-danger sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <p>
+              Não foi possível carregar a lista de clientes existentes. Continuar sem ela pode
+              duplicar um cliente que já existe.
+            </p>
+          </div>
+          <Button variant="secondary" onClick={onRetryClientes}>
+            Tentar novamente
+          </Button>
+        </div>
+      )}
+
       {bundle.collections.map((collection) => {
         const mapping = proposal.collections.find((m) => m.collectionId === collection.id);
         if (!mapping) return null;
@@ -86,9 +122,7 @@ export default function StepMapeamento({
         const assignment = mapping.clientAssignment;
         const fixedMatch =
           assignment.mode === 'fixed'
-            ? clientes.find(
-                (c) => c.nome.trim().toLowerCase() === assignment.clienteNome.trim().toLowerCase(),
-              )
+            ? clientes.find((c) => norm(c.nome) === norm(assignment.clienteNome))
             : undefined;
         const keys = mapping.destination === 'posts' ? statusKeys(collection, mapping) : [];
 
@@ -227,7 +261,9 @@ export default function StepMapeamento({
         <Button variant="secondary" onClick={onBack}>
           Voltar
         </Button>
-        <Button onClick={onNext}>Continuar</Button>
+        <Button disabled={clientesStatus !== 'ready'} onClick={onNext}>
+          Continuar
+        </Button>
       </div>
     </div>
   );

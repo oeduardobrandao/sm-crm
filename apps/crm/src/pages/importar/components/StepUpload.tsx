@@ -40,7 +40,14 @@ export default function StepUpload({
             accept={guide.accept}
             aria-label="Arquivos de exportação"
             className="block w-full text-sm"
-            onChange={(e) => onFiles(Array.from(e.target.files ?? []))}
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              // Reset so picking the SAME file again (retrying after a parse
+              // error) still fires onChange — otherwise the browser sees no
+              // value change and the user is stuck needing a different file.
+              e.target.value = '';
+              onFiles(files);
+            }}
           />
           <p className="text-xs text-muted">
             Até {MAX_FILES} arquivos, 20 MB cada e {MAX_ROWS.toLocaleString('pt-BR')} linhas por

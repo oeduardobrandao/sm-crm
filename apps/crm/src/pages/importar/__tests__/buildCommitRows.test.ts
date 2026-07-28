@@ -169,6 +169,36 @@ describe('clientes', () => {
     expect(clientes[1].valorMensal).toBeUndefined();
   });
 
+  test('reads a pt-BR value with the cents omitted as thousands, not a decimal', () => {
+    // A dot followed by exactly three digits, with no other separator in the
+    // string, is a thousands mark ("1.500" is R$1500 — a very common shape
+    // when a sheet skips cents), not a decimal point (which would read R$1,50).
+    const values: [string, number][] = [
+      ['1.500', 1500],
+      ['1.200,50', 1200.5],
+      ['1,500', 1500],
+      ['1500', 1500],
+      ['1.50', 1.5], // two digits after the dot -> an explicit decimal, not thousands
+      ['1.234.567', 1234567], // repeated thousands separators
+    ];
+    for (const [raw, expected] of values) {
+      const bundle = mkBundle(
+        mkCollection('roster', {
+          columns: ['Nome', 'Valor'],
+          rows: [mkRow('r1', { cells: { Nome: 'A', Valor: raw } })],
+        }),
+      );
+      const proposal = mkProposal(
+        mkMapping('roster', 'clientes', { columnRoles: { title: 'Nome', monthlyValue: 'Valor' } }),
+      );
+      const clientes = byKind<CommitClienteRow>(
+        buildCommitRows(bundle, proposal, [], null),
+        'cliente',
+      );
+      expect(clientes[0].valorMensal).toBe(expected);
+    }
+  });
+
   test('skips roster rows with no usable name', () => {
     const bundle = mkBundle(
       mkCollection('roster', {
@@ -312,9 +342,45 @@ describe('posts', () => {
       buildCommitRows(bundle, proposal, [ANA], null),
       'container',
     );
+    // Keys stay globally unique per client (existing-3:0, existing-3:1), but
+    // each collection is its own single chunk, so neither title gets a "(n)"
+    // suffix — that suffix reflects THIS collection's chunk index, not the
+    // cross-collection container counter.
     expect(containers.map((c) => [c.sourceKey, c.titulo])).toEqual([
       ['container:existing-3:0', 'Calendário importado — jan'],
-      ['container:existing-3:1', 'Calendário importado — fev (2)'],
+      ['container:existing-3:1', 'Calendário importado — fev'],
+    ]);
+  });
+
+  test('does not suffix the title when a client posts group lands exactly at the cap', () => {
+    const bundle = mkBundle(mkPostsCollection('cal', 2));
+    const proposal = mkProposal(
+      mkMapping('cal', 'posts', { clientAssignment: { mode: 'fixed', clienteNome: 'Ana' } }),
+    );
+
+    const containers = byKind<CommitContainerRow>(
+      buildCommitRows(bundle, proposal, [ANA], 2),
+      'container',
+    );
+    expect(containers.map((c) => c.titulo)).toEqual(['Calendário importado — cal']);
+    expect(byKind<CommitPostRow>(buildCommitRows(bundle, proposal, [ANA], 2), 'post')).toHaveLength(
+      2,
+    );
+  });
+
+  test('splits into two containers as soon as a client posts group exceeds the cap by one', () => {
+    const bundle = mkBundle(mkPostsCollection('cal', 3));
+    const proposal = mkProposal(
+      mkMapping('cal', 'posts', { clientAssignment: { mode: 'fixed', clienteNome: 'Ana' } }),
+    );
+
+    const containers = byKind<CommitContainerRow>(
+      buildCommitRows(bundle, proposal, [ANA], 2),
+      'container',
+    );
+    expect(containers.map((c) => c.titulo)).toEqual([
+      'Calendário importado — cal',
+      'Calendário importado — cal (2)',
     ]);
   });
 
