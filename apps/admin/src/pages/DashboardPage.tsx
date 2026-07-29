@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { listWorkspaces, listPlans, getMrr } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
-import { formatMoney } from '../lib/subscription';
+import { formatMoney, intervalLabel, statusMeta, toneBadgeClass } from '../lib/subscription';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -56,6 +56,109 @@ export default function DashboardPage() {
             <p className="text-3xl font-bold font-sf">{isLoading ? '—' : kpi.value}</p>
           </div>
         ))}
+      </div>
+
+      <div className="glass-surface bg-card border border-border rounded-2xl p-5 mb-8">
+        <div className="flex items-baseline justify-between mb-4 gap-3">
+          <h2 className="font-semibold">Paying Workspaces</h2>
+          <span className="text-sm text-muted-foreground">
+            {isLoading
+              ? '—'
+              : `${mrrData?.paying_count ?? 0} · ${formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency)}/mês`}
+          </span>
+        </div>
+
+        {/* Desktop table header */}
+        <div className="hidden md:grid grid-cols-[2fr_1fr_1.25fr_1fr] gap-2 text-xs text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
+          <span>Workspace</span>
+          <span>Plan</span>
+          <span>Billing</span>
+          <span className="text-right">MRR</span>
+        </div>
+
+        {isLoading ? (
+          <p className="text-sm text-dim-foreground py-4">Loading...</p>
+        ) : (mrrData?.workspaces?.length ?? 0) === 0 ? (
+          <p className="text-sm text-dim-foreground py-4">No paying workspaces yet.</p>
+        ) : (
+          (mrrData?.workspaces || []).map((ws) => {
+            const meta = statusMeta(ws.status);
+            return (
+              <div
+                key={ws.workspace_id}
+                onClick={() => navigate(`/admin/workspaces/${ws.workspace_id}`)}
+                className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1fr_1.25fr_1fr] md:gap-2 md:items-center"
+              >
+                {/* Mobile card layout */}
+                <div className="md:hidden flex items-center justify-between gap-3">
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <span className="text-foreground font-medium truncate">{ws.name}</span>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      {ws.plan_name && (
+                        <span
+                          className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm"
+                          style={{
+                            color: getPlanColor(ws.plan_name),
+                            backgroundColor: getPlanColor(ws.plan_name) + '26',
+                          }}
+                        >
+                          {ws.plan_name}
+                        </span>
+                      )}
+                      <span>{intervalLabel(ws.interval) || '—'}</span>
+                      {ws.status !== 'active' && (
+                        <span className={`px-1.5 py-0.5 rounded-sm ${toneBadgeClass(meta.tone)}`}>
+                          {meta.label}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className="font-sf font-medium whitespace-nowrap">
+                    {formatMoney(ws.monthly_cents, mrrData?.currency)}
+                  </span>
+                </div>
+
+                {/* Desktop row */}
+                <span className="hidden md:flex items-center gap-2 min-w-0">
+                  <span className="text-foreground font-medium text-sm truncate">{ws.name}</span>
+                  {ws.status !== 'active' && (
+                    <span
+                      className={`shrink-0 text-[0.7rem] px-1.5 py-0.5 rounded-sm whitespace-nowrap ${toneBadgeClass(meta.tone)}`}
+                    >
+                      {meta.label}
+                    </span>
+                  )}
+                </span>
+                <span className="hidden md:inline text-sm">
+                  {ws.plan_name ? (
+                    <span
+                      className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm"
+                      style={{
+                        color: getPlanColor(ws.plan_name),
+                        backgroundColor: getPlanColor(ws.plan_name) + '26',
+                      }}
+                    >
+                      {ws.plan_name}
+                    </span>
+                  ) : (
+                    <span className="text-dim-foreground">—</span>
+                  )}
+                </span>
+                <span className="hidden md:flex items-center gap-2 text-muted-foreground text-sm min-w-0">
+                  <span className="shrink-0">{intervalLabel(ws.interval) || '—'}</span>
+                  {ws.discount_label && (
+                    <span className="text-[0.7rem] text-success truncate" title={ws.discount_label}>
+                      {ws.discount_label}
+                    </span>
+                  )}
+                </span>
+                <span className="hidden md:block text-right font-sf text-sm">
+                  {formatMoney(ws.monthly_cents, mrrData?.currency)}
+                </span>
+              </div>
+            );
+          })
+        )}
       </div>
 
       <div className="glass-surface bg-card border border-border rounded-2xl p-5">

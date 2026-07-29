@@ -47,54 +47,56 @@ export function resolvePlanFromPriceId(
 
 // ─── MRR ───────────────────────────────────────────────────────────────────
 
-export interface MrrSubRow {
-  status: string | null;
-  plan_id: string | null;
-  billing_interval: string | null;
-}
-
-export interface MrrPlanRow {
-  id: string;
-  price_brl: number | null;
-  price_brl_annual: number | null;
-}
-
 /**
  * Statuses that count toward MRR: an in-force paid subscription that owes money.
  * `trialing` is excluded — a trial pays nothing yet. Terminal states (canceled/unpaid/
  * incomplete_expired/paused) and `incomplete` (never charged) are excluded too. `past_due`
  * is kept: the subscription still exists and Stripe is retrying, so the revenue is in-force.
  */
-const MRR_STATUSES = new Set(["active", "past_due"]);
+export const MRR_STATUSES = new Set(["active", "past_due"]);
+
+export function isMrrStatus(status: string | null | undefined): boolean {
+  return !!status && MRR_STATUSES.has(status);
+}
 
 /**
- * Monthly recurring revenue, in centavos, from the Stripe subscription mirror — NOT from plan
- * assignment counts, so complimentary/manual plan grants (which have no subscription row) never
- * inflate it. Each paying subscription is priced from its plan's catalog price by billing
- * interval, with annual normalized to a monthly figure (price_brl_annual / 12). This is gross
- * MRR: per-customer Stripe coupons/discounts are not applied.
+ * Normalizes a per-interval charge (centavos) to a monthly figure: an annual price is divided
+ * by 12 and rounded to the nearest centavo. Returns null for a non-positive/absent amount, so a
+ * $0 or unpriced subscription contributes nothing and is not counted as "paying".
  */
-export function computeMrrCents(
-  subs: MrrSubRow[],
-  plans: MrrPlanRow[],
-): { mrr_cents: number; paying_count: number } {
-  const priceById = new Map(plans.map((p) => [p.id, p]));
+export function toMonthlyCents(
+  interval: string | null | undefined,
+  amountCents: number | null | undefined,
+): number | null {
+  if (amountCents == null || amountCents <= 0) return null;
+  return interval === "year" ? Math.round(amountCents / 12) : amountCents;
+}
+
+export interface MrrRow {
+  status: string | null;
+  /** Billing interval the amount is charged over ("month" | "year"). */
+  interval: string | null;
+  /** The charge for one `interval`, in centavos — e.g. live from Stripe, net of coupons. */
+  amount_cents: number | null;
+}
+
+/**
+ * Aggregates monthly recurring revenue from already-priced subscription rows. Rows come from the
+ * Stripe subscription mirror (comps have no row, so they never appear). Each qualifying row is
+ * normalized to a monthly figure; the total is the exact sum of those per-row monthly amounts, so
+ * it always reconciles with a per-workspace breakdown built from `priced`.
+ */
+export function aggregateMrr<T extends MrrRow>(
+  rows: T[],
+): { mrr_cents: number; paying_count: number; priced: Array<T & { monthly_cents: number }> } {
   let mrr_cents = 0;
-  let paying_count = 0;
-  for (const s of subs) {
-    if (!s.status || !MRR_STATUSES.has(s.status) || !s.plan_id) continue;
-    const plan = priceById.get(s.plan_id);
-    if (!plan) continue;
-    const cents =
-      s.billing_interval === "year"
-        ? plan.price_brl_annual != null
-          ? Math.round(plan.price_brl_annual / 12)
-          : null
-        : plan.price_brl;
-    // A $0/absent price is not revenue and its subscriber is not "paying".
-    if (cents == null || cents <= 0) continue;
-    mrr_cents += cents;
-    paying_count += 1;
+  const priced: Array<T & { monthly_cents: number }> = [];
+  for (const r of rows) {
+    if (!isMrrStatus(r.status)) continue;
+    const monthly = toMonthlyCents(r.interval, r.amount_cents);
+    if (monthly == null) continue;
+    mrr_cents += monthly;
+    priced.push({ ...r, monthly_cents: monthly });
   }
-  return { mrr_cents, paying_count };
+  return { mrr_cents, paying_count: priced.length, priced };
 }
