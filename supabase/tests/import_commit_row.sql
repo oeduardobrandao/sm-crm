@@ -1,5 +1,5 @@
 -- Regression tests for public.import_commit_row / public.import_resolve_cliente
--- (supabase/migrations/20260728000001_data_import_jobs.sql).
+-- (supabase/migrations/20260729000004_data_import_jobs.sql).
 --
 -- These functions are SECURITY DEFINER, so RLS does not protect them, and their
 -- p_payload is client-supplied JSON from any authenticated workspace member.

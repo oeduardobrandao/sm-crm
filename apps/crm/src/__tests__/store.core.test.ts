@@ -280,15 +280,18 @@ describe('store core helpers and CRUD', () => {
       id: PAGE_SIZE + i + 1,
       nome: `Cliente ${PAGE_SIZE + i + 1}`,
     }));
-    mockedSupabase.__queueSupabaseResult('clientes', 'select', { data: page1, error: null });
-    mockedSupabase.__queueSupabaseResult('clientes', 'select', { data: page2, error: null });
+    // Reads go through the masking view 'clientes_v' (per-admin financial
+    // visibility, migration 20260728000001), not the base table — writes still
+    // target 'clientes'.
+    mockedSupabase.__queueSupabaseResult('clientes_v', 'select', { data: page1, error: null });
+    mockedSupabase.__queueSupabaseResult('clientes_v', 'select', { data: page2, error: null });
 
     const result = await store.getClientes();
 
     expect(result).toHaveLength(PAGE_SIZE * 2);
     expect(result).toEqual([...page1, ...page2]);
 
-    const calls = mockedSupabase.__getSupabaseCalls().filter((c) => c.table === 'clientes');
+    const calls = mockedSupabase.__getSupabaseCalls().filter((c) => c.table === 'clientes_v');
     // Three calls: the two queued pages plus one more that drained the queue
     // and got the mock's default empty result, which is what actually stops
     // the loop.

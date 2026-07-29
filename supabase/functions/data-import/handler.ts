@@ -160,7 +160,7 @@ async function auditQuietly(...args: Parameters<typeof insertAuditLog>): Promise
  * post_status_events (20260606000001_post_status_events.sql:12) is an
  * append-only audit trail (status transitions + actor + the approval that
  * triggered them) captured by an AFTER UPDATE OF status trigger — import only
- * ever INSERTs a post (20260728000001_data_import_jobs.sql:418), never
+ * ever INSERTs a post (20260729000004_data_import_jobs.sql:418), never
  * UPDATEs its status, so the trigger cannot have fired for anything the
  * import itself did; any row here is a real status change made after import.
  *
@@ -480,7 +480,8 @@ async function guardReferencedTemplates(db: DbClient, conta_id: string, ids: str
  * import_job_items read), so the scope filter is defence in depth, not the
  * isolation boundary.
  *
- * Verified against the migrations on 2026-07-27:
+ * Verified against the migrations on 2026-07-29 (re-derived after rebasing onto
+ * the schema-drift reconciliation series, see the note below):
  *   workflows              cliente_id  conta_id      20260301_baseline_schema.sql:148
  *   instagram_accounts     client_id   (none)        20260301_baseline_schema.sql:174
  *   analytics_reports      client_id   conta_id      20260306_analytics_module.sql:37
@@ -492,6 +493,36 @@ async function guardReferencedTemplates(db: DbClient, conta_id: string, ids: str
  *   hub_pages              cliente_id  conta_id      20260415000001_portal_and_hub_tokens.sql:89
  *   briefings              cliente_id  conta_id      20260616120000_briefings_table.sql:3
  *   tiktok_accounts        client_id   (none)        20260718000001_tiktok_core.sql:6
+ *   cliente_enderecos      cliente_id  conta_id      20260727000001_reconcile_adopt_client_tables.sql:40
+ *   cliente_datas          cliente_id  conta_id      20260727000001_reconcile_adopt_client_tables.sql:68
+ *
+ * The last two are the exact failure this list's warning predicts, and they are
+ * worth understanding rather than just patching. They back the live Endereços
+ * and Datas sections of the client detail page, but they were hand-created in
+ * production and never captured in a migration — so until
+ * 20260727000001_reconcile_adopt_client_tables.sql adopted them, the re-derivation
+ * grep below could not return them NO MATTER how carefully it was run. The list
+ * was complete with respect to the migrations and still wrong with respect to the
+ * database. A cliente whose user later filled in an address or a key date would
+ * have had both silently cascaded away by undo.
+ *
+ * The lesson for whoever maintains this next: the grep is necessary but not
+ * sufficient. When production and the migration set are known to have drifted,
+ * this list has to be checked against the LIVE schema too:
+ *   select tc.table_name, kcu.column_name
+ *     from information_schema.table_constraints tc
+ *     join information_schema.key_column_usage kcu using (constraint_name)
+ *     join information_schema.referential_constraints rc using (constraint_name)
+ *    where tc.constraint_type = 'FOREIGN KEY'
+ *      and rc.delete_rule = 'CASCADE'
+ *      and kcu.table_schema = 'public'
+ *      and (select ccu.table_name from information_schema.constraint_column_usage ccu
+ *            where ccu.constraint_name = tc.constraint_name limit 1) = 'clientes';
+ *
+ * Both carry their own conta_id, and 20260728000004 additionally constrains that
+ * conta_id to match the referenced cliente's workspace, so scoping by conta_id is
+ * sound. import_commit_row never writes either table (grep the migration), so a
+ * surviving row always means the user entered it after the import landed.
  *
  * !!! ANY future table added with `REFERENCES clientes(id) ON DELETE CASCADE`
  * MUST be added to this list. This is a hand-maintained mirror of the schema and
@@ -518,6 +549,8 @@ const CLIENTE_CASCADE_CHILDREN: Array<{ table: string; column: string; scopeCol:
   { table: "hub_brand", column: "cliente_id", scopeCol: null },
   { table: "hub_brand_files", column: "cliente_id", scopeCol: null },
   { table: "hub_pages", column: "cliente_id", scopeCol: "conta_id" },
+  { table: "cliente_enderecos", column: "cliente_id", scopeCol: "conta_id" },
+  { table: "cliente_datas", column: "cliente_id", scopeCol: "conta_id" },
 ];
 
 /**
@@ -559,9 +592,44 @@ export function createDataImportHandler(deps: Deps) {
       error: authErr,
     } = await db.auth.getUser(authHeader.replace("Bearer ", ""));
     if (authErr || !user) return json({ error: "Unauthorized" }, 401);
-    const { data: profile } = await db.from("profiles").select("conta_id").eq("id", user.id).single();
-    if (!profile?.conta_id) return json({ error: "Profile not found" }, 403);
-    const conta_id = profile.conta_id as string;
+    // Tenant scope MUST come from active_workspace_id, not conta_id.
+    //
+    // Every RLS policy in this schema resolves the caller's tenant through
+    // get_my_conta_id() (20260720000004_reconcile_prod_missing_functions.sql:25),
+    // which returns `profiles.active_workspace_id` — NOT `profiles.conta_id`.
+    // The two diverge permanently the moment a member of more than one workspace
+    // switches: conta_id keeps pointing at the workspace they were originally
+    // provisioned into, while everything the CRM reads and writes follows the
+    // active one.
+    //
+    // Scoping this function by conta_id therefore writes an import into workspace
+    // A while the user is looking at workspace B, and it fails in the worst
+    // possible direction: import_commit_row is SECURITY DEFINER and takes the
+    // conta_id as a parameter, so the rows are created successfully — just in the
+    // wrong tenant, invisible to the RLS-filtered CRM the user is staring at, and
+    // invisible to B's undo UI, so they cannot even roll it back. Any attempt to
+    // merge onto a client they can actually see fails the RPC's ownership check
+    // instead, because that client belongs to B.
+    //
+    // The `workspace_members` check mirrors the EXISTS clause inside
+    // get_my_conta_id: a stale active_workspace_id pointing at a workspace the
+    // user has since been removed from must resolve to no tenant at all, not to
+    // one they no longer belong to.
+    const { data: profile } = await db
+      .from("profiles")
+      .select("active_workspace_id")
+      .eq("id", user.id)
+      .maybeSingle();
+    const activeWorkspaceId = profile?.active_workspace_id as string | null | undefined;
+    if (!activeWorkspaceId) return json({ error: "Profile not found" }, 403);
+    const { data: membership } = await db
+      .from("workspace_members")
+      .select("workspace_id")
+      .eq("user_id", user.id)
+      .eq("workspace_id", activeWorkspaceId)
+      .maybeSingle();
+    if (!membership) return json({ error: "Profile not found" }, 403);
+    const conta_id = activeWorkspaceId;
 
     const parts = new URL(req.url).pathname.split("/").filter(Boolean);
     // Guard the indexOf: when the segment is absent it returns -1 and a bare
@@ -639,7 +707,7 @@ export function createDataImportHandler(deps: Deps) {
         // the separate CAP-DRIVING number: only rows that will actually INSERT a
         // new clientes row. A "mesclar com existente" row (CommitClienteRow.merge
         // set) is still `kind: 'cliente'` on the wire, but import_commit_row's
-        // merge branch (20260728000001_data_import_jobs.sql:221-253) only UPDATEs
+        // merge branch (20260729000004_data_import_jobs.sql:221-253) only UPDATEs
         // the pre-existing cliente — it never inserts, so it never trips
         // trg_limit_clientes. Counting it toward the cap warning below described a
         // commit outcome that can never happen (0 real growth still read as
@@ -739,7 +807,7 @@ export function createDataImportHandler(deps: Deps) {
         //     and its status predicate agree), so only 'ativo' rows count —
         //     archived/concluded workflows never touch this cap.
         // Both 'container' and 'entrega' rows insert exactly one 'ativo' row into
-        // workflows each (20260728000001_data_import_jobs.sql:294-316: the
+        // workflows each (20260729000004_data_import_jobs.sql:294-316: the
         // `container` branch and the `entrega` branch each do a single `insert
         // into public.workflows (...) values (..., 'ativo', ...)`), so every
         // incoming container/entrega row is one unit against this cap — EXCEPT
@@ -865,7 +933,7 @@ async function handleCommit({ db, conta_id, userId, body, json }: ActionCtx): Pr
   //
   // `status` is selected, not just `id`: an existence-only probe passes an
   // already-undone job. import_commit_row refuses to write to one
-  // (20260728000001_data_import_jobs.sql:89-90), so every row fails — but
+  // (20260729000004_data_import_jobs.sql:89-90), so every row fails — but
   // control still reached the `final` update, flipping 'undone' -> 'completed',
   // re-arming the undo button on a job that was already undone and corrupting
   // the very history the audit trail exists to record. Reject it up front, the
@@ -1179,7 +1247,7 @@ function normalizePayload(row: CommitRow): Record<string, unknown> {
 }
 
 // The importable post statuses, mirroring the allow-list inside import_commit_row
-// (supabase/migrations/20260728000001_data_import_jobs.sql). 'agendado' and
+// (supabase/migrations/20260729000004_data_import_jobs.sql). 'agendado' and
 // 'falha_publicacao' are deliberately absent: the publish crons claim on
 // 'agendado' and imported posts carry no media.
 const IMPORTABLE_POST_STATUSES = new Set([

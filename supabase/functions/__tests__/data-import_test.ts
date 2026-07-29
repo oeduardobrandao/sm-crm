@@ -23,9 +23,13 @@ function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>, entitlement
 // post-media-manage_test.ts) authenticate via withAuth(user) + queuing the
 // profiles lookup the handler performs right after. Mirrored here rather than
 // inventing a new mock method.
+// The handler scopes every import to profiles.active_workspace_id (the column
+// get_my_conta_id / RLS actually use), then confirms the caller still belongs to
+// that workspace — so the happy path needs BOTH rows queued.
 function authAs(db: ReturnType<typeof createSupabaseQueryMock>) {
   db.withAuth({ id: "user-1" });
-  db.queue("profiles", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("profiles", "select", { data: { active_workspace_id: "conta-1" }, error: null });
+  db.queue("workspace_members", "select", { data: { workspace_id: "conta-1" }, error: null });
 }
 
 // The mock has no lastRpcArgs() accessor; db.calls already records every rpc
@@ -158,6 +162,53 @@ Deno.test("data-import: rejects a request with no Authorization header", async (
   assertEquals(db.calls.length, 0);
 });
 
+// --- tenant scope: active_workspace_id, not conta_id ------------------------
+// Every RLS policy resolves the tenant via get_my_conta_id(), which reads
+// active_workspace_id. For a member of two workspaces who has switched, conta_id
+// still names the workspace they were provisioned into, so scoping by it would
+// write the import into a tenant the user is not looking at — created
+// successfully (import_commit_row is SECURITY DEFINER), invisible to the
+// RLS-filtered CRM, and unreachable by that workspace's undo UI.
+Deno.test("data-import: scopes the import to active_workspace_id when it differs from conta_id", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  // The realistic divergence: provisioned into conta-OLD, currently in conta-NEW.
+  db.queue("profiles", "select", {
+    data: { active_workspace_id: "conta-NEW", conta_id: "conta-OLD" },
+    error: null,
+  });
+  db.queue("workspace_members", "select", { data: { workspace_id: "conta-NEW" }, error: null });
+  db.queue("import_jobs", "insert", { data: { id: 7 }, error: null });
+  const res = await makeHandler(db)(post("start", { source: "csv" }));
+  assertEquals(res.status, 200);
+
+  const insert = oneCall(db, "import_jobs", "insert");
+  const payload = insert.payload as Record<string, unknown>;
+  assertEquals(payload.conta_id, "conta-NEW");
+  // The whole point: the legacy column must not leak through anywhere.
+  assert(payload.conta_id !== "conta-OLD", "import was scoped to the legacy conta_id");
+
+  // ...and the profile read must ask for the right column in the first place.
+  // Asserted on selectArgs (where the mock records `.select(...)` arguments),
+  // not payload — payload is only set for insert/update/upsert/rpc.
+  const profileRead = oneCall(db, "profiles", "select");
+  assertEquals(profileRead.selectArgs, [["active_workspace_id"]]);
+});
+
+Deno.test("data-import: refuses when active_workspace_id names a workspace the caller has left", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", { data: { active_workspace_id: "conta-STALE" }, error: null });
+  // Removed from that workspace — workspace_members has no matching row. This
+  // mirrors the EXISTS clause inside get_my_conta_id, which resolves to NULL
+  // rather than to a workspace the user no longer belongs to.
+  db.queue("workspace_members", "select", { data: null, error: null });
+  db.queue("import_jobs", "insert", { data: { id: 7 }, error: null }); // must go unused
+  const res = await makeHandler(db)(post("start", { source: "csv" }));
+  assertEquals(res.status, 403);
+  assertEquals(callsFor(db, "import_jobs", "insert").length, 0);
+});
+
 Deno.test("data-import: an unknown action is a 404, not a mis-routed real action", async () => {
   const db = createSupabaseQueryMock();
   authAs(db);
@@ -269,7 +320,7 @@ Deno.test("data-import: preview's max_clients count matches what the plan trigge
 
 // A "mesclar com existente" cliente row: still `kind: "cliente"` on the wire
 // (types.ts's CommitClienteRow.merge), but import_commit_row's merge branch
-// (20260728000001_data_import_jobs.sql:221-253) only UPDATEs the pre-existing
+// (20260729000004_data_import_jobs.sql:221-253) only UPDATEs the pre-existing
 // cliente — it never INSERTs, so it never trips trg_limit_clientes.
 function mergeClienteRow(sourceKey: string, clienteId: number, nome = "Ana") {
   return { kind: "cliente", sourceKey, nome, merge: { clienteId } };
@@ -874,7 +925,7 @@ Deno.test("data-import: commit forwards conta_id so the RPC can reject foreign c
 });
 
 Deno.test("data-import: commit forwards valorMensal intact on a merge cliente row", async () => {
-  // The SQL merge branch (20260728000001_data_import_jobs.sql) fills
+  // The SQL merge branch (20260729000004_data_import_jobs.sql) fills
   // valor_mensal only when the existing row is NULL — but that fill can only
   // work if the payload it reads still carries valorMensal. This is the one
   // part of that fix the Deno suite (which mocks the RPC) can actually
@@ -1820,6 +1871,12 @@ Deno.test("data-import: undo still deletes a template with no workflow and no pr
 // there raises `column "conta_id" does not exist` and aborts the ENTIRE undo —
 // the same trap that keeps workflow_etapas out of UNDO_ORDER — so the absence is
 // asserted, not just the presence.
+//
+// cliente_enderecos / cliente_datas were added on 2026-07-29 after rebasing onto
+// the schema-drift reconciliation series. They existed in production all along but
+// had no migration behind them until 20260727000001 adopted them, so no amount of
+// grepping supabase/migrations/ could have surfaced them earlier — see the longer
+// note on CLIENTE_CASCADE_CHILDREN in handler.ts.
 const CLIENTE_CASCADE_CHILDREN: Array<{ table: string; column: string; scope: string | null }> = [
   { table: "workflows", column: "cliente_id", scope: "conta_id" },
   { table: "ideias", column: "cliente_id", scope: "workspace_id" },
@@ -1832,6 +1889,8 @@ const CLIENTE_CASCADE_CHILDREN: Array<{ table: string; column: string; scope: st
   { table: "hub_brand", column: "cliente_id", scope: null },
   { table: "hub_brand_files", column: "cliente_id", scope: null },
   { table: "hub_pages", column: "cliente_id", scope: "conta_id" },
+  { table: "cliente_enderecos", column: "cliente_id", scope: "conta_id" },
+  { table: "cliente_datas", column: "cliente_id", scope: "conta_id" },
 ];
 
 for (const child of CLIENTE_CASCADE_CHILDREN) {

@@ -287,6 +287,21 @@ begin
     if nullif(trim(coalesce(p_payload->>'nome', '')), '') is null then
       raise exception 'import row % has no usable nome (cliente name)', p_source_row_key;
     end if;
+    -- DEPENDENCY on the financial-visibility guard (20260728000002):
+    -- clientes carries a BEFORE INSERT trigger (trg_guard_clientes_valor) that
+    -- raises `financial_access_denied` for any INSERT supplying a NON-NULL
+    -- valor_mensal when can_see_financials() is false. The valor_mensal below is
+    -- coalesced to 0, so it is ALWAYS non-null and always trips that condition;
+    -- the insert survives only because guard_financial_write returns early when
+    -- auth.role() = 'service_role', and data-import/index.ts calls this RPC with
+    -- the service-role key.
+    --
+    -- So: if this RPC is ever moved onto a user-scoped client — an otherwise
+    -- reasonable hardening step — every cliente insert here starts failing for
+    -- any admin without financial access, and the whole import aborts. Either
+    -- keep the service-role caller, or drop the `coalesce(..., 0)` so an unmapped
+    -- value inserts SQL NULL (the column is nullable with no default) and passes
+    -- the guard on its own merits.
     insert into public.clientes (conta_id, user_id, nome, sigla, cor, plano, email, telefone,
                                  status, valor_mensal, especialidade, notion_page_url)
     values (p_conta_id, v_user_id, p_payload->>'nome',

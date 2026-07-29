@@ -9,7 +9,8 @@ import { supabase } from '@/lib/supabase';
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/data-import`;
 
 export type ClienteRef =
-  { type: 'existing'; clienteId: number } | { type: 'created'; sourceKey: string };
+  | { type: 'existing'; clienteId: number }
+  | { type: 'created'; sourceKey: string };
 
 export type Provenance = {
   source: string;
