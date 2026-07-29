@@ -285,6 +285,18 @@ export function listPlans() {
   return adminApi<{ plans: Plan[] }>('list-plans');
 }
 
+export interface MrrSummary {
+  /** Monthly recurring revenue in centavos (annual subs normalized to monthly). */
+  mrr_cents: number;
+  /** Number of in-force paid subscriptions counted (active + past_due). */
+  paying_count: number;
+  currency: string;
+}
+
+export function getMrr() {
+  return adminApi<MrrSummary>('get-mrr');
+}
+
 export function createPlan(params: Record<string, unknown>) {
   return adminApi<{ plan: Plan }>('create-plan', params);
 }

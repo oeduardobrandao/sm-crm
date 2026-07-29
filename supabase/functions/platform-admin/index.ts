@@ -5,6 +5,7 @@ import { handleCreatePlan, handleUpdatePlan } from "./plan-mutations.ts";
 import { handleGetWorkspaceInvites, handleAdminCancelInvite, handleAdminResendInvite, handleAdminCreateInvite } from "./invite-handlers.ts";
 // Single source of truth for plan columns (includes max_mcp_keys / feature_mcp).
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
+import { computeMrrCents } from "../_shared/billing-logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -82,6 +83,8 @@ Deno.serve(async (req: Request) => {
         return await handleAdminCreateInvite(svc, body, user.id, headers);
       case "list-plans":
         return await handleListPlans(svc, headers);
+      case "get-mrr":
+        return await handleGetMrr(svc, headers);
       case "create-plan":
         return await handleCreatePlan(svc, body, headers);
       case "update-plan":
@@ -783,6 +786,34 @@ async function handleListPlans(
   );
 
   return new Response(JSON.stringify({ plans: enriched }), { status: 200, headers });
+}
+
+/**
+ * Monthly recurring revenue, driven by the Stripe subscription mirror (workspace_subscriptions),
+ * NOT by plan assignment counts. Comped/manual plan grants have no subscription row, so they
+ * never inflate the figure. Annual subscriptions are normalized to a monthly amount. Priced from
+ * catalog plan prices (gross MRR — per-customer Stripe coupons are not applied).
+ */
+async function handleGetMrr(
+  svc: ReturnType<typeof createClient>,
+  headers: Record<string, string>,
+) {
+  const { data: subs, error: subsError } = await svc
+    .from("workspace_subscriptions")
+    .select("status, plan_id, billing_interval");
+  if (subsError) throw subsError;
+
+  const { data: plans, error: plansError } = await svc
+    .from("plans")
+    .select("id, price_brl, price_brl_annual");
+  if (plansError) throw plansError;
+
+  const { mrr_cents, paying_count } = computeMrrCents(subs ?? [], plans ?? []);
+
+  return new Response(JSON.stringify({ mrr_cents, paying_count, currency: "brl" }), {
+    status: 200,
+    headers,
+  });
 }
 
 async function handleDeletePlan(
