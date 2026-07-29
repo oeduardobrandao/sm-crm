@@ -944,43 +944,490 @@ git commit -m "ci: run the entitlement SQL suites"
 
 ---
 
+### Task 6: Remediate drift + promote the Finding 1 reproduction to a permanent suite
+
+**Added after the final whole-branch review.** Tasks 1–5 stop *new* writes to
+the tenant selector; they do nothing about rows a client already poisoned
+while the vulnerability was live, and the only thing proving the exploit is
+actually closed end-to-end was a scratch reproduction script, never a suite —
+so it never ran in the CI job Task 5 just added.
+
+**Files:**
+- Create: `supabase/migrations/20260729000003_backfill_conta_id_drift.sql`
+- Create: `supabase/tests/entitlements/57_finding1_repro_closed.sql`
+
+**Interfaces:**
+- Consumes: `profiles(id, conta_id, active_workspace_id)`, `workspace_members`.
+- Produces: no new function or column. A one-time data backfill, and a
+  permanent regression suite.
+
+- [ ] **Step 1: Write the backfill migration**
+
+Create `supabase/migrations/20260729000003_backfill_conta_id_drift.sql`:
+
+```sql
+-- =============================================================
+-- Backfill profiles.conta_id drift left by the pre-fix vulnerability.
+--
+-- 20260729000001-000002 stop NEW writes to conta_id/active_workspace_id
+-- outside switch_workspace(). They do nothing about rows a client already
+-- wrote directly, while GRANT ALL + a WITH CHECK-less UPDATE policy made
+-- `UPDATE profiles SET conta_id = <any workspace>` succeed for any
+-- authenticated user (reproduced empirically pre-fix: 0 rows visible in a
+-- foreign workspace, one UPDATE, 1 row visible).
+--
+-- A poisoned conta_id is not a one-time read — it is read by the legacy
+-- FOR ALL policies on clientes/membros/leads/integracoes_status via
+-- get_user_conta_id() on EVERY subsequent request, until the user's next
+-- legitimate workspace switch happens to overwrite it. Closing the write
+-- path does not revoke access already granted by a poisoned value sitting
+-- in the row today.
+--
+-- active_workspace_id is the trustworthy column to backfill FROM: it has
+-- been guarded by trg_validate_active_workspace (20260317_multi_workspace.sql)
+-- since before conta_id existed as an independent write target, so a
+-- divergence between the two columns can only be explained by a direct
+-- write to conta_id that bypassed that guard — exactly the exploited path,
+-- and nothing else. Every legitimate writer (switch_workspace(), the
+-- signup trigger, invite acceptance, manage-workspace-user's remove action)
+-- has always set both columns to the same value in one statement.
+--
+-- IDEMPOTENT. A second run finds nothing to change and its post-condition
+-- still passes -- safe to re-run if this migration is ever replayed.
+-- =============================================================
+
+DO $$
+DECLARE
+  v_drifted int;
+BEGIN
+  SELECT count(*) INTO v_drifted
+    FROM public.profiles
+   WHERE conta_id IS DISTINCT FROM active_workspace_id;
+
+  RAISE NOTICE 'profiles with conta_id != active_workspace_id before backfill: %', v_drifted;
+END $$;
+
+UPDATE public.profiles
+   SET conta_id = active_workspace_id
+ WHERE conta_id IS DISTINCT FROM active_workspace_id;
+
+-- -------------------------------------------------------------
+-- Post-condition: zero divergence, AND — the paranoid double-check — no
+-- non-null conta_id lacks a real workspace_members row. The second check is
+-- normally implied by the first (active_workspace_id is trigger-guarded to
+-- always correspond to real membership), but asserting it separately means
+-- this migration does not silently rely on that guarantee holding in a
+-- database state it hasn't itself verified.
+-- -------------------------------------------------------------
+DO $$
+DECLARE
+  v_still_drifted int;
+  v_unauthorized  int;
+BEGIN
+  SELECT count(*) INTO v_still_drifted
+    FROM public.profiles
+   WHERE conta_id IS DISTINCT FROM active_workspace_id;
+  IF v_still_drifted <> 0 THEN
+    RAISE EXCEPTION 'backfill incomplete: % row(s) still have conta_id != active_workspace_id',
+      v_still_drifted;
+  END IF;
+
+  SELECT count(*) INTO v_unauthorized
+    FROM public.profiles p
+   WHERE p.conta_id IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM public.workspace_members wm
+        WHERE wm.user_id = p.id AND wm.workspace_id = p.conta_id
+     );
+  IF v_unauthorized <> 0 THEN
+    RAISE EXCEPTION 'backfill left % row(s) with a conta_id the user is not a member of',
+      v_unauthorized;
+  END IF;
+
+  RAISE NOTICE 'backfill verified: every profiles.conta_id matches active_workspace_id '
+               'and corresponds to real membership';
+END $$;
+```
+
+- [ ] **Step 2: Apply locally and confirm the backfill is a no-op on a fresh database**
+
+Run: `npx supabase db reset --local`
+Expected: `NOTICE: profiles with conta_id != active_workspace_id before backfill: 0` (a fresh
+seed has no drift), no `ERROR`.
+
+- [ ] **Step 3: Prove the backfill actually fixes drift, not just detects it**
+
+Run this against the local database to inject drift the way the exploit did,
+then confirm the migration's own logic (not yet re-run — you're checking the
+UPDATE statement in isolation first) would fix it:
+
+```bash
+psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -q <<'EOF'
+BEGIN;
+\i supabase/tests/entitlements/_helpers.sql
+DO $$
+DECLARE
+  v_ws_home uuid; v_ws_victim uuid; v_uid uuid := gen_random_uuid(); v_before uuid; v_after uuid;
+BEGIN
+  v_ws_home := et_make_workspace('max');
+  v_ws_victim := et_make_workspace('max');
+  INSERT INTO auth.users (id) VALUES (v_uid);
+  INSERT INTO workspace_members (user_id, workspace_id, role) VALUES (v_uid, v_ws_home, 'owner');
+  UPDATE profiles SET conta_id = v_ws_home, active_workspace_id = v_ws_home WHERE id = v_uid;
+
+  -- Simulate the exploit: conta_id poisoned, active_workspace_id untouched.
+  UPDATE profiles SET conta_id = v_ws_victim WHERE id = v_uid;
+  SELECT conta_id INTO v_before FROM profiles WHERE id = v_uid;
+
+  UPDATE public.profiles SET conta_id = active_workspace_id
+   WHERE conta_id IS DISTINCT FROM active_workspace_id;
+
+  SELECT conta_id INTO v_after FROM profiles WHERE id = v_uid;
+  RAISE NOTICE 'before=%  after=%  fixed=%', v_before, v_after, (v_after = v_ws_home);
+END $$;
+ROLLBACK;
+EOF
+```
+
+Expected: `fixed=t` — `conta_id` moves from the poisoned `v_ws_victim` back to
+`v_ws_home` (matching `active_workspace_id`), proving the backfill statement
+itself does the right thing, independent of whether any row happens to need
+it on this particular database.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add supabase/migrations/20260729000003_backfill_conta_id_drift.sql
+git commit -m "fix(rls): backfill profiles.conta_id rows poisoned before the write lockdown"
+```
+
+- [ ] **Step 5: Promote the Finding 1 reproduction into a permanent suite**
+
+`docs/superpowers/specs/2026-07-28-finding1-reproduction.sql` proves the
+exploit is closed by recreating production's exact pre-fix ACL/policies and
+asserting the write now fails — but it is a one-time manual script, not a
+suite, so Task 5's new CI job never runs it. Create
+`supabase/tests/entitlements/57_finding1_repro_closed.sql`:
+
+```sql
+\set ON_ERROR_STOP on
+\i supabase/tests/entitlements/_helpers.sql
+
+-- Permanent regression gate for the ORIGINAL Finding 1 exploit, promoted from
+-- the one-time manual reproduction at
+-- docs/superpowers/specs/2026-07-28-finding1-reproduction.sql (which stays as
+-- historical record; this suite is what actually runs on every PR via Task 5's
+-- CI job).
+--
+-- Suite 56 section 1 proves the UPDATE is refused at the column-privilege
+-- level, WITH RLS DELIBERATELY DISABLED so nothing else can mask that signal.
+-- This suite proves something suite 56 does not: the actual CONSEQUENCE under
+-- production's legacy policy shape -- that no cross-tenant rows become
+-- visible even though RLS stays fully enabled throughout. It recreates
+-- get_user_conta_id() and the legacy clientes pair exactly as they exist in
+-- production today (Finding 3 removes them; until it does, they are real
+-- production state, not a hypothetical this suite invents).
+begin;
+select et_grant_hosted_parity(ARRAY['profiles']);
+
+create or replace function public.get_user_conta_id() returns uuid
+  language sql security definer set search_path to ''
+  as $fn$ select conta_id from public.profiles where id = auth.uid(); $fn$;
+
+drop policy if exists clientes_select on public.clientes;
+drop policy if exists clientes_insert on public.clientes;
+drop policy if exists clientes_update on public.clientes;
+drop policy if exists clientes_delete on public.clientes;
+create policy "Users can CRUD own clientes" on public.clientes
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Usuários podem gerenciar clientes da sua conta" on public.clientes
+  using ((auth.uid() = user_id) or (conta_id = public.get_user_conta_id()))
+  with check ((auth.uid() = user_id) or (conta_id = public.get_user_conta_id()));
+
+do $$
+declare
+  v_attacker_ws uuid; v_victim_ws uuid;
+  v_attacker    uuid := gen_random_uuid();
+  v_victim      uuid := gen_random_uuid();
+  v_before      int;
+  v_after       int;
+  v_switched    boolean := false;
+begin
+  v_attacker_ws := et_make_workspace('max');
+  v_victim_ws   := et_make_workspace('max');
+
+  insert into auth.users (id) values (v_attacker), (v_victim);
+  insert into workspace_members (user_id, workspace_id, role)
+    values (v_attacker, v_attacker_ws, 'owner'), (v_victim, v_victim_ws, 'owner');
+  update profiles set conta_id = v_attacker_ws, active_workspace_id = v_attacker_ws
+   where id = v_attacker;
+  update profiles set conta_id = v_victim_ws, active_workspace_id = v_victim_ws
+   where id = v_victim;
+
+  insert into clientes (nome, sigla, cor, conta_id, user_id, valor_mensal)
+    values ('VICTIM CONFIDENTIAL', 'VC', '#000000', v_victim_ws, v_victim, 99999);
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_attacker, 'role', 'authenticated')::text, true);
+
+  select count(*) into v_before from clientes where conta_id = v_victim_ws;
+
+  begin
+    update profiles set conta_id = v_victim_ws where id = v_attacker;
+    v_switched := true;
+  exception when others then
+    v_switched := false;
+  end;
+
+  select count(*) into v_after from clientes where conta_id = v_victim_ws;
+  reset role;
+
+  if v_before <> 0 then
+    raise exception 'test setup is wrong: attacker could already see % victim row(s) '
+                     'before attempting the exploit', v_before;
+  end if;
+  if v_switched then
+    raise exception 'Finding 1 REGRESSION: attacker''s UPDATE profiles SET conta_id '
+                     '= <victim workspace> succeeded — the write lockdown is not in effect';
+  end if;
+  if v_after <> 0 then
+    raise exception 'Finding 1 REGRESSION: attacker can see % victim workspace row(s) '
+                     'despite the conta_id write being refused — a different path is '
+                     'leaking cross-tenant access', v_after;
+  end if;
+
+  raise notice '57_finding1_repro_closed: attacker cannot poison conta_id and gains '
+               'zero cross-tenant rows';
+end $$;
+rollback;
+```
+
+- [ ] **Step 6: Run the suite**
+
+Run: `bash scripts/test-entitlements.sh`
+Expected: `PASS supabase/tests/entitlements/57_finding1_repro_closed.sql`, `ran=20 failures=0`.
+
+- [ ] **Step 7: Prove it actually catches the original vulnerability**
+
+Temporarily add `conta_id` to migration `20260729000002`'s `GRANT UPDATE (...)`
+list (the same mutation Task 3 used), run `npx supabase db reset --local`
+with BOTH that migration's post-conditions ALSO temporarily loosened enough
+to let it apply (mirroring Task 3's own Step 5), and re-run this suite.
+Expected: `Finding 1 REGRESSION: attacker's UPDATE profiles SET conta_id = <victim workspace> succeeded`.
+Restore everything exactly, reset again, confirm `ran=20 failures=0`.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add supabase/tests/entitlements/57_finding1_repro_closed.sql
+git commit -m "test(rls): promote the Finding 1 reproduction to a permanent CI-gated suite"
+```
+
+---
+
 ## Deployment runbook
 
 The ordering is the whole point. Do not compress it.
 
-1. **Apply `20260729000001`** (the RPC) to staging, then production. Additive — nothing depends on it yet.
-   ```bash
-   npx supabase db push --linked
-   ```
-   Confirm the linked project first: `cat supabase/.temp/project-ref` — `skjzpekeqefvlojenfsw` is **production**, `wlyzhyfondykzpsiqsce` is staging. The link state flips; never assume.
-2. **Merge and deploy the Task 2 client.** Verify workspace switching works in production before continuing. At this point both paths function: the RPC exists and the direct UPDATE is still permitted.
-3. **Apply `20260729000002`** (the revocation). The old client is gone by now, so nothing breaks. If a switch fails after this, the cause is a client still on the previous bundle.
-4. **Deploy `manage-workspace-user`.** Independent of 1–3; can go earlier if preferred.
+**`supabase db push --linked` has no version target — `--to`/`--target-version`
+does not exist (confirmed against the installed CLI's own `--help`).** Run
+today, it applies every pending migration in one shot, collapsing steps 1 and
+3 into a single command and landing the revocation while every user is still
+on the pre-merge client bundle — the exact thing "do not compress it" means to
+prevent. Step 1 below must NOT be `db push`.
+
+1. **Apply `20260729000001`** (the RPC) to staging, then production, WITHOUT
+   also applying `20260729000002`. `db push`'s all-or-nothing behavior means
+   this must be done by hand: run the migration's SQL directly against the
+   database (SQL editor or `psql`), then insert its own version row into
+   `supabase_migrations.schema_migrations` so the CLI's own bookkeeping
+   matches reality and a later `db push` doesn't try to re-apply it. This
+   mirrors the version-recording technique already used elsewhere in this
+   repo for exactly this situation (see `reference_supabase_db_push_blocked_dup_timestamp`
+   in project memory). Confirm the linked project first: `cat
+   supabase/.temp/project-ref` — `skjzpekeqefvlojenfsw` is **production**,
+   `wlyzhyfondykzpsiqsce` is staging. The link state flips; never assume.
+2. **Merge and deploy the Task 2 client.** Before continuing, verify ALL of
+   the following in production (jsdom cannot exercise any of them — this is
+   the deploy-time gate the plan's browser-verification gap resolves to, not
+   a merge-time blocker, since merging is what makes the client deployable in
+   the first place):
+   - Sign in as a user belonging to ≥2 workspaces; open the sidebar switcher
+     and click the non-active workspace.
+   - Confirm the page reloads and now shows the OTHER workspace's data, not
+     just that nothing errored.
+   - In the Network tab, confirm the request goes to
+     `rest/v1/rpc/switch_workspace`, not a `PATCH .../profiles`.
+   - Revoke the test user's membership in the target workspace directly in
+     the DB, retry the switch, and confirm the sidebar shows the toast ("Não
+     foi possível trocar de workspace.") instead of reloading — this is the
+     specific bug Task 2 fixed (the old code discarded the error and reloaded
+     regardless of success), and it is exactly the failure mode that would
+     make step 3 unsafe if skipped.
+   At this point both paths function: the RPC exists and the direct UPDATE is
+   still permitted.
+3. **Remediate rows already poisoned while the vulnerability was live**,
+   using Task 6's migration (`20260729000003_backfill_conta_id_drift.sql`).
+   Do this BEFORE the revocation: the revocation stops new poisoning, it does
+   not touch existing values, and a `conta_id` already pointed at a foreign
+   workspace grants that cross-tenant read indefinitely (until the user's
+   next legitimate switch happens to overwrite it) — that is not a
+   theoretical residual, the vulnerability was live and reproducible in
+   production. Task 6 also asserts, as its own post-condition, that the
+   count of divergent/unauthorized rows is zero after running — treat a
+   non-zero count surviving the migration as a stop-ship signal, not a thing
+   to retry past.
+4. **Apply `20260729000002`** (the revocation). The old client is gone by
+   now (step 2), and existing drift is already backfilled (step 3), so
+   nothing breaks and nothing is silently left exploitable. If a switch
+   fails after this, the cause is a client still on the previous bundle.
+5. **Deploy `manage-workspace-user`.** Independent of 1–4; can go earlier if
+   preferred.
    ```bash
    npx supabase functions deploy manage-workspace-user --use-api
    ```
    `--use-api` because the local Docker bundler is broken in this repo.
 
-**Rollback.** Step 3 is the only breaking step, and it reverses cleanly:
+**Rollback.** Step 4 is the only breaking step, and it reverses cleanly:
 
 ```sql
 GRANT UPDATE ON public.profiles TO authenticated;
 ```
 
-That restores the previous behaviour — including the vulnerability — so treat it as an emergency measure and re-apply the migration once the client is sorted. Steps 1 and 4 are additive and need no rollback.
+That restores the previous behaviour — including the vulnerability — so treat it as an emergency measure and re-apply the migration once the client is sorted. Steps 1, 3, and 5 are additive/idempotent and need no rollback (step 3's backfill is a no-op if re-run against already-consistent rows).
 
 ## Verification that the P0 is actually closed
 
-After step 3, re-run the original reproduction against a local database built from the new migrations:
+This is now a permanent, CI-gated suite rather than a one-time manual step:
+`supabase/tests/entitlements/57_finding1_repro_closed.sql` (Task 6) runs on
+every PR via Task 5's `entitlement-tests` job and asserts the exact property
+the original scratch reproduction demonstrated by hand.
+
+To re-run it manually against any database:
 
 ```bash
 psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
-  -f docs/superpowers/specs/2026-07-28-finding1-reproduction.sql
+  -f supabase/tests/entitlements/57_finding1_repro_closed.sql
 ```
 
-Expected: the `UPDATE profiles SET conta_id = <victim_ws>` step now fails with `insufficient_privilege`, and the final notice reads `>>> not exploitable by this path <<<` instead of `>>> EXPLOIT CONFIRMED <<<`.
+Expected: `PASS`/`NOTICE: 57_finding1_repro_closed: attacker cannot poison conta_id and gains zero cross-tenant rows`.
+
+The original one-time script, `docs/superpowers/specs/2026-07-28-finding1-reproduction.sql`,
+stays as historical record of the initial manual verification but is superseded by the suite for
+ongoing protection.
 
 Note that the reproduction recreates production's *legacy* policies on `clientes` deliberately. Those remain in place after this plan — Finding 3 removes them. What changes is that the attacker can no longer reach them, because the selector they keyed on is no longer writable.
+
+### Task 7: Final-review hardening pass
+
+**Added after the final whole-branch review.** Five Minor findings, all cheap
+and low-risk, bundled into one pass. None are security-blocking on their own;
+together they close small gaps a future edit could otherwise widen.
+
+**Files:**
+- Modify: `supabase/migrations/20260729000001_switch_workspace_rpc.sql`
+- Modify: `supabase/migrations/20260729000002_profiles_write_lockdown.sql`
+- Modify: `.github/workflows/ci.yml`
+- Modify: `apps/crm/src/lib/__tests__/supabase.test.ts`
+- Modify: `supabase/tests/entitlements/56_profiles_write_lockdown.sql`
+
+Both migration files are still local-only (never applied to staging or
+production — confirmed via `npx supabase migration list --linked` showing no
+remote entry for either version), so editing their post-conditions now is
+safe; nothing external has taken a dependency on their exact SQL yet.
+
+- [ ] **Step 1: Assert `service_role`/`PUBLIC` also lack EXECUTE on `switch_workspace`**
+
+In `supabase/migrations/20260729000001_switch_workspace_rpc.sql`'s post-condition `DO $$` block, after the existing `anon`/`authenticated` checks, add:
+
+```sql
+  IF has_function_privilege('service_role', 'public.switch_workspace(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'service_role must not hold EXECUTE on switch_workspace '
+                    '(it never needs to call this — it writes profiles directly)';
+  END IF;
+  IF has_function_privilege('public', 'public.switch_workspace(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'PUBLIC must not hold EXECUTE on switch_workspace';
+  END IF;
+```
+
+The `REVOKE` already names both roles; this only makes the post-condition assert what the `REVOKE` already claims.
+
+- [ ] **Step 2: Assert RLS is actually enabled on `profiles`**
+
+In `supabase/migrations/20260729000002_profiles_write_lockdown.sql`'s post-condition, add a check that the policy it just created isn't inert:
+
+```sql
+  IF NOT (
+    SELECT relrowsecurity FROM pg_class WHERE oid = 'public.profiles'::regclass
+  ) THEN
+    RAISE EXCEPTION 'RLS is not enabled on profiles — profiles_update_own would be inert. '
+                    'This is exactly the class of drift this migration exists to close: '
+                    '20260315_rls_security_audit.sql (the migration that enables RLS on '
+                    'profiles) is recorded as applied in production but never actually ran.';
+  END IF;
+```
+
+Column privileges are enforced independent of RLS, so this does not change what the migration protects against — it only ensures the policy layer isn't silently a no-op.
+
+- [ ] **Step 3: Pin the Supabase CLI version in CI**
+
+In `.github/workflows/ci.yml`, in the `entitlement-tests` job added by Task 5, change:
+
+```yaml
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+```
+
+to a specific pinned version, matching this repo's convention of pinning every other tool in the file (`denoland/setup-deno@v2` pins `deno-version: v2.x`). Check `npx supabase --version` locally for the version currently in use and pin to that exact value, e.g.:
+
+```yaml
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.x
+```
+
+(Use whatever major version `npx supabase --version` reports locally — do not guess a number.)
+
+- [ ] **Step 4: Trim the CI job to only the services the suites need**
+
+Still in the `entitlement-tests` job, change:
+
+```yaml
+      - name: Start Supabase
+        run: supabase start
+```
+
+to:
+
+```yaml
+      - name: Start Supabase
+        run: supabase start -x studio,imgproxy,edge-runtime,realtime,storage-api,logflare,vector,supavisor,mailpit,postgres-meta
+```
+
+This was verified directly (not just suggested): `npx supabase start` with this exact exclusion list still exposes the DB at `127.0.0.1:54322`, and `bash scripts/test-entitlements.sh` still passes all 19 suites unchanged — the entitlement suites only ever talk to raw Postgres via `psql`, never through PostgREST/Kong/GoTrue's HTTP API, so none of the excluded containers are load-bearing for them.
+
+- [ ] **Step 5: Remove dead test setup and an unused variable**
+
+In `apps/crm/src/lib/__tests__/supabase.test.ts`, remove the stale, never-consumed line (added before the RPC migration, now dead): `queryMock.queue('profiles', 'update', { data: null, error: null })` in the workspace-switch test — find it by searching for that exact call in the file; nothing asserts on it and removing it changes no behavior.
+
+In `supabase/tests/entitlements/56_profiles_write_lockdown.sql` section 1, remove the declared-but-unused `v_rows int;` variable if it is genuinely unused after Task 3's fix commit — check first with a search for `v_rows` in that section; if it's still referenced, leave it and note that in your report instead of removing something still in use.
+
+- [ ] **Step 6: Verify everything still passes**
+
+Run: `npx supabase db reset --local && bash scripts/test-entitlements.sh`
+Expected: `ran=20 failures=0` (19 from before + suite 57 from Task 6, assuming Task 6 has already landed — if executing Task 7 before Task 6, expect `ran=19 failures=0` instead and adjust).
+
+Run: `npm run test -- supabase.test`
+Expected: passes, unaffected by the removed dead queue call.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add supabase/migrations/20260729000001_switch_workspace_rpc.sql supabase/migrations/20260729000002_profiles_write_lockdown.sql .github/workflows/ci.yml apps/crm/src/lib/__tests__/supabase.test.ts supabase/tests/entitlements/56_profiles_write_lockdown.sql
+git commit -m "chore(rls): final-review hardening — tighter post-conditions, pinned CI, trimmed stack"
+```
 
 ## Self-review
 
