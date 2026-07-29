@@ -22,6 +22,26 @@
 -- migrations-built database, which never has the legacy policies. This suite
 -- covers both directions -- the invariant on the built schema, and the sweep's
 -- behaviour against a reproduction of production's real starting state.
+--
+-- NOT COVERED HERE, and deliberately so: the RESTRICTIVE case. The sweep only
+-- removes PERMISSIVE policies -- a restrictive one is ANDed, can only narrow
+-- access, and dropping it would silently WIDEN access -- so an unowned
+-- restrictive policy must abort the migration rather than be swept. Asserting
+-- that means asserting the migration FAILS, and this harness has no
+-- expect-failure mode: psql's \i is a client-side meta-command, so it cannot be
+-- placed inside a plpgsql exception handler, and a raised error exits non-zero
+-- and is reported as a suite failure. Verified by hand instead:
+--
+--   BEGIN;
+--   CREATE POLICY "emergency_lockdown" ON public.transacoes AS RESTRICTIVE USING (false);
+--   \i supabase/migrations/20260728000002_financial_visibility_b_enforcement.sql
+--   ROLLBACK;
+--
+--   NOTICE:  legacy policy sweep on transacoes/contratos: 0 dropped
+--   ERROR:   unowned policy survives on transacoes/contratos:
+--            transacoes.emergency_lockdown (RESTRICTIVE)
+--
+-- Re-run that by hand if the sweep's WHERE clause is ever touched.
 
 -- =============================================================
 -- 1. Invariant on the built schema: exactly the eight owned policies, and

@@ -93,7 +93,8 @@ GRANT SELECT (
 -- instead of being evaluated per row.
 -- -------------------------------------------------------------
 
--- Sweep any policy on these two tables that this migration does not own.
+-- Sweep any PERMISSIVE policy on these two tables that this migration does not
+-- own.
 --
 -- Deliberately name-independent. Dropping by literal name would depend on
 -- transcribing accented identifiers ("Usuários podem gerenciar transações da
@@ -102,6 +103,19 @@ GRANT SELECT (
 -- migration owns the complete policy set on both tables, anything else present
 -- would abort the migration anyway — dropping it, loudly and with a name in the
 -- log, is strictly better than failing on it.
+--
+-- RESTRICTIVE POLICIES ARE EXCLUDED, and that exclusion is load-bearing. The
+-- justification for sweeping is that permissive policies are OR'd, so an unowned
+-- one can grant access the capability check is meant to deny. Restrictive
+-- policies are ANDed: they can only ever narrow access, never widen it, so they
+-- cannot defeat can_see_financials() and the rationale above does not apply to
+-- them. Dropping one would do the opposite of this migration's purpose — it
+-- would silently GRANT access that something else deliberately denied, and the
+-- post-condition would then pass, because the evidence had just been removed.
+--
+-- An unowned restrictive policy therefore aborts the migration instead, via the
+-- exact-name-set post-condition. That is the correct outcome: nobody should
+-- discover an emergency lockdown by having it deleted.
 DO $$
 DECLARE
   p record;
@@ -112,6 +126,7 @@ BEGIN
       FROM pg_policies
      WHERE schemaname = 'public'
        AND tablename IN ('transacoes', 'contratos')
+       AND permissive = 'PERMISSIVE'
        AND policyname NOT IN (
              'transacoes_select', 'transacoes_insert',
              'transacoes_update', 'transacoes_delete',
@@ -275,15 +290,13 @@ BEGIN
 
   SELECT count(*) INTO n FROM pg_policies
    WHERE schemaname='public' AND tablename IN ('transacoes','contratos');
-  IF n <> 8 THEN
-    RAISE EXCEPTION 'expected 8 policies on transacoes/contratos, found %', n;
-  END IF;
 
-  -- The count alone cannot catch a SUBSTITUTION — one of ours dropped and a
-  -- foreign one added keeps the total at 8. Assert the exact name set. This is
-  -- what makes the sweep above safe to write as "drop anything unowned": the
-  -- two together mean this migration provably owns the whole policy set.
-  SELECT string_agg(policyname, ', ' ORDER BY policyname) INTO stray
+  -- Name set BEFORE count, deliberately. Both catch an unowned policy, but this
+  -- one names it and reports whether it is PERMISSIVE or RESTRICTIVE, where the
+  -- count says only "found 9". The restrictive case is exactly the one where an
+  -- operator most needs to know what they are looking at.
+  SELECT string_agg(format('%s.%s (%s)', tablename, policyname, permissive),
+                    ', ' ORDER BY policyname) INTO stray
     FROM pg_policies
    WHERE schemaname='public' AND tablename IN ('transacoes','contratos')
      AND policyname NOT IN (
@@ -292,7 +305,17 @@ BEGIN
            'contratos_select',  'contratos_insert',
            'contratos_update',  'contratos_delete');
   IF stray IS NOT NULL THEN
+    -- A RESTRICTIVE entry here is the expected, deliberate abort: the sweep
+    -- leaves those alone rather than silently widening access (see its comment).
+    -- Decide what it is and why it exists before re-running; do not just drop it.
     RAISE EXCEPTION 'unowned policy survives on transacoes/contratos: %', stray;
+  END IF;
+
+  -- The name set alone cannot catch a MISSING policy — drop one of ours and
+  -- nothing is "unowned". The count is what closes that half; together they
+  -- mean this migration provably owns the whole policy set.
+  IF n <> 8 THEN
+    RAISE EXCEPTION 'expected 8 policies on transacoes/contratos, found %', n;
   END IF;
 
   -- Every one must still carry the tenant conjunct. A policy that lost it would
