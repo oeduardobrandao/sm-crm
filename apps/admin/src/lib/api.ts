@@ -322,11 +322,16 @@ export interface TrialWorkspace {
   interval: string | null;
   /** Trial-end date (ISO string), i.e. the subscription's current_period_end. Null if unknown. */
   trial_ends_at: string | null;
+  /** Expected monthly contribution once converted (catalog price, annual→monthly). Null if unpriced. */
+  monthly_cents: number | null;
 }
 
 export interface TrialsSummary {
   trials: TrialWorkspace[];
   trial_count: number;
+  /** Sum of the trials' expected monthly contributions, in centavos. */
+  trial_mrr_cents: number;
+  currency: string;
 }
 
 export function getTrials() {

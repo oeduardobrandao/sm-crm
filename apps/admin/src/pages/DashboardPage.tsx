@@ -38,13 +38,31 @@ export default function DashboardPage() {
 
   const isLoading = wsLoading || plansLoading || mrrLoading || trialsLoading;
 
-  const kpis = [
+  // Trials carry an *expected* MRR (what they convert to); the Total card sums realized + expected.
+  const trialMrrCents = trialsData?.trial_mrr_cents ?? null;
+  const totalMrrCents = (mrrData?.mrr_cents ?? 0) + (trialsData?.trial_mrr_cents ?? 0);
+  const currency = mrrData?.currency ?? trialsData?.currency;
+
+  const kpis: { label: string; value: string | number; sub?: string }[] = [
     { label: 'Workspaces', value: totalWorkspaces },
     { label: 'Total Users', value: totalMembers },
     { label: 'Active Plans', value: activePlans },
-    { label: 'MRR', value: formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency) },
-    { label: 'Trials', value: trialsData?.trial_count ?? 0 },
     { label: 'With Overrides', value: withOverrides },
+    {
+      label: 'MRR',
+      value: formatMoney(mrrData?.mrr_cents ?? null, currency),
+      sub: mrrData ? `${mrrData.paying_count} pagantes` : undefined,
+    },
+    {
+      label: 'Trials',
+      value: formatMoney(trialMrrCents, currency),
+      sub: trialsData ? `${trialsData.trial_count} em teste` : undefined,
+    },
+    {
+      label: 'Total MRR',
+      value: formatMoney(totalMrrCents, currency),
+      sub: 'MRR + trials',
+    },
   ];
 
   return (
@@ -52,7 +70,7 @@ export default function DashboardPage() {
       <h1 className="font-sf text-2xl font-bold mb-1">Dashboard</h1>
       <p className="text-sm text-muted-foreground mb-8">Platform overview</p>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
         {kpis.map((kpi) => (
           <div
             key={kpi.label}
@@ -62,6 +80,9 @@ export default function DashboardPage() {
               {kpi.label}
             </p>
             <p className="text-3xl font-bold font-sf">{isLoading ? '—' : kpi.value}</p>
+            {!isLoading && kpi.sub ? (
+              <p className="text-xs text-muted-foreground mt-1">{kpi.sub}</p>
+            ) : null}
           </div>
         ))}
       </div>
@@ -173,16 +194,18 @@ export default function DashboardPage() {
         <div className="flex items-baseline justify-between mb-4 gap-3">
           <h2 className="font-semibold">Trials</h2>
           <span className="text-sm text-muted-foreground">
-            {isLoading ? '—' : `${trialsData?.trial_count ?? 0} em teste`}
+            {isLoading
+              ? '—'
+              : `${trialsData?.trial_count ?? 0} · ${formatMoney(trialMrrCents, currency)}/mês`}
           </span>
         </div>
 
         {/* Desktop table header */}
-        <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr] gap-2 text-xs text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
+        <div className="hidden md:grid grid-cols-[2fr_1fr_1.25fr_1fr] gap-2 text-xs text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
           <span>Workspace</span>
           <span>Plan</span>
-          <span>Billing</span>
-          <span className="text-right">Trial ends</span>
+          <span>Trial ends</span>
+          <span className="text-right">MRR</span>
         </div>
 
         {isLoading ? (
@@ -229,7 +252,7 @@ export default function DashboardPage() {
               <div
                 key={ws.workspace_id}
                 onClick={() => navigate(`/admin/workspaces/${ws.workspace_id}`)}
-                className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1fr_1fr_1fr] md:gap-2 md:items-center"
+                className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1fr_1.25fr_1fr] md:gap-2 md:items-center"
               >
                 {/* Mobile card layout */}
                 <div className="md:hidden flex items-center justify-between gap-3">
@@ -251,10 +274,13 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-0.5 whitespace-nowrap">
-                    <span className="font-sf text-sm">{endLabel}</span>
-                    {daysLabel && (
-                      <span className={`text-[0.7rem] ${daysTextClass}`}>{daysLabel}</span>
-                    )}
+                    <span className="font-sf text-sm font-medium">
+                      {formatMoney(ws.monthly_cents, currency)}
+                    </span>
+                    <span className="text-[0.7rem] text-muted-foreground">
+                      {endLabel}
+                      {daysLabel && <span className={daysTextClass}> · {daysLabel}</span>}
+                    </span>
                   </div>
                 </div>
 
@@ -277,16 +303,18 @@ export default function DashboardPage() {
                     <span className="text-dim-foreground">—</span>
                   )}
                 </span>
-                <span className="hidden md:inline text-muted-foreground text-sm truncate">
-                  {intervalLabel(ws.interval) || '—'}
-                </span>
-                <span className="hidden md:flex items-center justify-end gap-2 text-sm whitespace-nowrap">
-                  <span className="font-sf">{endLabel}</span>
+                <span className="hidden md:flex items-center gap-2 text-sm min-w-0">
+                  <span className="text-muted-foreground truncate">{endLabel}</span>
                   {daysLabel && (
-                    <span className={`text-[0.7rem] px-1.5 py-0.5 rounded-sm ${daysToneClass}`}>
+                    <span
+                      className={`shrink-0 text-[0.7rem] px-1.5 py-0.5 rounded-sm ${daysToneClass}`}
+                    >
                       {daysLabel}
                     </span>
                   )}
+                </span>
+                <span className="hidden md:block text-right font-sf text-sm">
+                  {formatMoney(ws.monthly_cents, currency)}
                 </span>
               </div>
             );
