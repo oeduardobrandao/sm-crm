@@ -235,8 +235,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [sessionReady, userId]);
 
-  // Mirrors canSeeFinancials into a ref so the revocation handler below reads
-  // the CURRENT value without needing to re-subscribe every time it changes.
+  // Backstop mirror: keeps the ref in sync with every OTHER setCanSeeFinancials
+  // call site (the userChanged reset, both branches of the hydration effect,
+  // and signOut) that sets React state directly and never goes through
+  // applyMembership below, so nothing else can update the ref for it.
+  // applyMembership itself assigns the ref synchronously and reads it back
+  // BEFORE this effect gets a chance to run -- see its comment -- so this
+  // passive effect must not be the only writer, or a hydration/sign-out write
+  // in between two applyMembership calls would leave the ref one step behind
+  // rendered state, and a later real transition would compare against that
+  // stale value and wrongly look like a no-op.
   const canSeeFinancialsRef = useRef<FinancialAccess>('unknown');
   useEffect(() => {
     canSeeFinancialsRef.current = canSeeFinancials;
@@ -282,6 +290,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const nowAllowed = deriveFinancialAccess(next as MyMembership | null);
       setCanSeeFinancials(nowAllowed);
 
+      // Read the ref BEFORE overwriting it, then overwrite it synchronously
+      // (not via the passive mirror effect above). The ref must lead the
+      // render, never lag it: setCanSeeFinancials above only takes effect on
+      // the next render, and the mirror effect that copies it into the ref
+      // runs even later, after React flushes. Two applyMembership calls can
+      // land back-to-back with no render in between (e.g. a live grant event
+      // immediately followed by a live revoke event) — with a lagging ref,
+      // BOTH calls would read the same pre-render value, so a grant
+      // (false -> true) and the revoke right behind it (true -> false) both
+      // compare against the original `false` and the revoke looks like a
+      // no-op (false !== false), silently skipping its purge while the
+      // grant's in-flight refetch goes on to repopulate the cache with
+      // authorised data after access was already revoked. Assigning here
+      // makes `previous` the last value this handler itself applied, so the
+      // second call always sees what the first one just set.
+      const previous = canSeeFinancialsRef.current;
+      canSeeFinancialsRef.current = nowAllowed;
+
       // Purge on ANY transition INTO a non-authorised state, not only a
       // transition FROM a definitely-granted one. A `wasAllowed` boolean
       // (`ref === true`) cannot see this: hydration starts the ref at
@@ -291,15 +317,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // though that is exactly the transition that must purge (a prior fetch
       // could already have populated the cache with real rows while access
       // was still unresolved). Comparing the ref's actual value instead of
-      // collapsing it to a boolean catches that case too, while `ref !==
+      // collapsing it to a boolean catches that case too, while `previous !==
       // nowAllowed` still skips a same-state repeat from the 60s poll
       // (e.g. false -> false), which is not a transition and must not
       // re-purge or re-trigger a refetch storm every tick.
-      if (nowAllowed !== true && canSeeFinancialsRef.current !== nowAllowed) {
+      if (previous !== nowAllowed) {
+        // Revocation (transition INTO a non-authorised state): the cache may
+        // hold real, unmasked values from before access was lost, so it must
+        // be wiped outright — merely invalidating could still serve a stale
+        // authorised value to someone who just lost access before the
+        // refetch lands. No follow-up refetchQueries() call is needed (or
+        // even useful) here: removeQueries() deletes the query from the
+        // QueryCache's map outright, so a refetchQueries() call made right
+        // after — scoped or not — finds nothing left to match and is a
+        // no-op for these keys (verified against @tanstack/query-core
+        // 5.91.0's source: removeQueries -> queryCache.remove() ->
+        // #queries.delete(queryHash), then refetchQueries -> findAll() reads
+        // that same now-empty map). What actually clears a currently-
+        // mounted observer's stale render is TanStack Query's own
+        // optimistic-result rebuild the next time it re-renders
+        // (getOptimisticResult -> queryCache.build(), which recreates the
+        // query with empty state since it's gone from the cache) — and the
+        // setCanSeeFinancials() call above already forces that re-render for
+        // every component gating financial data on `canSeeFinancials`.
+        //
+        // Grant (transition TO true): the cached rows came from the masking
+        // views (clientes_v / membros_v) with financial columns NULLed, so
+        // nothing sensitive leaks by keeping them a moment longer. Only
+        // invalidate — removeQueries here would blank the UI (Clientes/
+        // Equipe rows disappearing) until the refetch lands, a worse
+        // experience than briefly showing masked values. No separate
+        // refetchQueries() call is needed either: invalidateQueries()
+        // defaults to refetchType: 'active', so it already refetches each
+        // key's active queries on its own. An additional unscoped
+        // refetchQueries({ type: 'active' }) would only cancel and restart
+        // that just-started refetch, and — being unfiltered — also blast
+        // every other unrelated active query on the page (workflows,
+        // integrations, Instagram, …) on every grant.
         for (const key of FINANCIAL_QUERY_KEYS) {
-          queryClient.removeQueries({ queryKey: [key] });
+          if (nowAllowed !== true) {
+            queryClient.removeQueries({ queryKey: [key] });
+          } else {
+            queryClient.invalidateQueries({ queryKey: [key] });
+          }
         }
-        void queryClient.refetchQueries({ type: 'active' });
       }
     };
 
