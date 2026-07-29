@@ -85,6 +85,8 @@ Deno.serve(async (req: Request) => {
         return await handleListPlans(svc, headers);
       case "get-mrr":
         return await handleGetMrr(svc, headers);
+      case "get-trials":
+        return await handleGetTrials(svc, headers);
       case "create-plan":
         return await handleCreatePlan(svc, body, headers);
       case "update-plan":
@@ -936,6 +938,59 @@ async function handleGetMrr(
     .sort((a, b) => b.monthly_cents - a.monthly_cents);
 
   return new Response(JSON.stringify({ mrr_cents, paying_count, currency: "brl", workspaces }), {
+    status: 200,
+    headers,
+  });
+}
+
+/**
+ * Workspaces on a Stripe trial. Trials are `workspace_subscriptions.status = 'trialing'` (the
+ * app-level workspaces.trial_ends_at column was dropped as unreferenced), and for a trialing
+ * subscription `current_period_end` is the trial-end date. No Stripe calls: a trial bills nothing
+ * yet, so the mirror + plan/workspace names are all we need. Sorted soonest-ending first.
+ */
+async function handleGetTrials(
+  svc: ReturnType<typeof createClient>,
+  headers: Record<string, string>,
+) {
+  const { data: subs, error } = await svc
+    .from("workspace_subscriptions")
+    .select("workspace_id, plan_id, billing_interval, current_period_end")
+    .eq("status", "trialing");
+  if (error) throw error;
+
+  const rows = subs ?? [];
+  const wsIds = rows.map((s) => s.workspace_id);
+  const planIds = [...new Set(rows.map((s) => s.plan_id).filter(Boolean))] as string[];
+
+  const nameByWs = new Map<string, string>();
+  if (wsIds.length) {
+    const { data: wsRows } = await svc.from("workspaces").select("id, name").in("id", wsIds);
+    for (const w of wsRows ?? []) nameByWs.set(w.id, w.name);
+  }
+
+  const planNameById = new Map<string, string>();
+  if (planIds.length) {
+    const { data: planRows } = await svc.from("plans").select("id, name").in("id", planIds);
+    for (const p of planRows ?? []) planNameById.set(p.id, p.name);
+  }
+
+  const trials = rows
+    .map((s) => ({
+      workspace_id: s.workspace_id,
+      name: nameByWs.get(s.workspace_id) ?? "—",
+      plan_name: s.plan_id ? planNameById.get(s.plan_id) ?? null : null,
+      interval: s.billing_interval ?? null,
+      trial_ends_at: s.current_period_end ?? null,
+    }))
+    .sort((a, b) => {
+      // Soonest-ending first; rows with no known end date go last.
+      if (!a.trial_ends_at) return 1;
+      if (!b.trial_ends_at) return -1;
+      return a.trial_ends_at < b.trial_ends_at ? -1 : a.trial_ends_at > b.trial_ends_at ? 1 : 0;
+    });
+
+  return new Response(JSON.stringify({ trials, trial_count: trials.length }), {
     status: 200,
     headers,
   });

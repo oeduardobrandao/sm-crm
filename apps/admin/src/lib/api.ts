@@ -314,6 +314,25 @@ export function getMrr() {
   return adminApi<MrrSummary>('get-mrr');
 }
 
+export interface TrialWorkspace {
+  workspace_id: string;
+  name: string;
+  plan_name: string | null;
+  /** Billing interval that will apply once the trial converts ("month" | "year"). */
+  interval: string | null;
+  /** Trial-end date (ISO string), i.e. the subscription's current_period_end. Null if unknown. */
+  trial_ends_at: string | null;
+}
+
+export interface TrialsSummary {
+  trials: TrialWorkspace[];
+  trial_count: number;
+}
+
+export function getTrials() {
+  return adminApi<TrialsSummary>('get-trials');
+}
+
 export function createPlan(params: Record<string, unknown>) {
   return adminApi<{ plan: Plan }>('create-plan', params);
 }
