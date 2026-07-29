@@ -195,34 +195,29 @@ export default function DashboardPage() {
             const endLabel = end
               ? end.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
               : '—';
-            // Compare by calendar day, not 24h windows: a trial ending later *today* reads
-            // "expira hoje" (Math.ceil would say "1d"), and one whose end has already passed
-            // reads "expirado" — not "expira hoje" indefinitely while a webhook update is in
-            // flight. Math.round absorbs the ±1h DST wobble between two local midnights.
-            let dayDiff: number | null = null;
+            // An end time that has already passed is "expirado" — decided by exact timestamp, so a
+            // trial that ended earlier *today* (webhook status update still in flight) isn't shown
+            // as "expira hoje". For a still-future end, the calendar-day delta distinguishes
+            // "expira hoje" (ends later today) from "Nd" — a 24h-window Math.ceil would mislabel
+            // "later today" as "1d". Math.round absorbs the ±1h DST wobble between two midnights.
+            let daysLabel: string | null = null;
+            let daysTone: 'danger' | 'warning' | 'muted' = 'muted';
             if (end) {
-              const startOfToday = new Date();
-              startOfToday.setHours(0, 0, 0, 0);
-              const endDay = new Date(end);
-              endDay.setHours(0, 0, 0, 0);
-              dayDiff = Math.round((endDay.getTime() - startOfToday.getTime()) / 86_400_000);
+              if (end.getTime() <= Date.now()) {
+                daysLabel = 'expirado';
+                daysTone = 'danger';
+              } else {
+                const startOfToday = new Date();
+                startOfToday.setHours(0, 0, 0, 0);
+                const endDay = new Date(end);
+                endDay.setHours(0, 0, 0, 0);
+                const dayDiff = Math.round(
+                  (endDay.getTime() - startOfToday.getTime()) / 86_400_000,
+                );
+                daysLabel = dayDiff === 0 ? 'expira hoje' : `${dayDiff}d`;
+                daysTone = dayDiff <= 3 ? 'warning' : 'muted';
+              }
             }
-            const daysLabel =
-              dayDiff == null
-                ? null
-                : dayDiff < 0
-                  ? 'expirado'
-                  : dayDiff === 0
-                    ? 'expira hoje'
-                    : `${dayDiff}d`;
-            const daysTone: 'danger' | 'warning' | 'muted' =
-              dayDiff == null
-                ? 'muted'
-                : dayDiff < 0
-                  ? 'danger'
-                  : dayDiff <= 3
-                    ? 'warning'
-                    : 'muted';
             const daysToneClass = toneBadgeClass(daysTone);
             const daysTextClass =
               daysTone === 'danger'
