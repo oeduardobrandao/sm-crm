@@ -265,7 +265,8 @@ Deno tests alongside the existing edge suites (`supabase/functions/__tests__/`):
 
 ## Rollout
 
-Order matters (the schedule migration fires the function immediately):
+Order matters (the schedule migration fires the function immediately once applied, so
+the function must already be live before that migration lands):
 
 1. Verify `eduardo@mesaas.com.br` is usable as a Resend sender (domain already verified;
    this is address choice only), and verify the `APP_BASE_URL` secret is set on **both**
@@ -280,11 +281,15 @@ Order matters (the schedule migration fires the function immediately):
    (Crisp: Settings → Workspace Settings → Setup & Integrations → Email), so replies
    become Crisp conversations. Test by mailing `eduardo@mesaas.com.br` and seeing it in
    Crisp. Without this, "é só responder este e-mail" bounces.
-3. Push **Migration A** (ledger + RPCs + seeds) — staging first (check link state per repo
-   rule: `cat supabase/.temp/project-ref`), then prod.
-4. Deploy `lifecycle-email-cron` (`--no-verify-jwt`, `--use-api`) to the same project.
-5. Push **Migration B** (pg_cron schedule).
-6. Verify on staging: confirm a fresh signup receives the welcome email within ~15 min;
+3. Deploy `lifecycle-email-cron` (`--no-verify-jwt`, `--use-api`) to the target project —
+   safe before the migrations since nothing invokes it yet and a manual hit just errors
+   into triage.
+4. `npx supabase db push --linked` — staging first (check link state per repo rule:
+   `cat supabase/.temp/project-ref`), then prod. `db push` applies ALL pending migrations
+   in one shot, so this single push applies both Migration A (ledger + RPCs + seeds) and
+   Migration B (pg_cron schedule) in order — the schedule goes live pointing at the
+   already-deployed function.
+5. Verify on staging: confirm a fresh signup receives the welcome email within ~15 min;
    for the thank-you path, insert a synthetic `workspace_subscriptions` row (status
    `trialing`, non-null `stripe_subscription_id`) for a test workspace and watch the next
    run send exactly once. (Staging shares the prod Stripe key and test-mode events are

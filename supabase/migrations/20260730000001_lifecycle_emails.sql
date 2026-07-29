@@ -48,22 +48,26 @@ language sql
 security definer
 set search_path = public
 as $$
-  select distinct on (u.id) u.id, u.email::text, p.nome, coalesce(le.attempts, 0)
-  from auth.users u
-  join workspaces ws on ws.created_by = u.id
-  join workspace_members wm
-    on wm.user_id = u.id and wm.workspace_id = ws.id and wm.role = 'owner'
-  left join profiles p on p.id = u.id
-  left join lifecycle_emails le
-    on le.email_type = 'welcome' and le.user_id = u.id
-  where u.email_confirmed_at is not null
-    and u.email is not null
-    and nullif(u.raw_user_meta_data ->> 'conta_id', '') is null
-    and (le.id is null
-         or (le.delivered_at is null
-             and le.sent_at <= now() - interval '1 hour'
-             and le.attempts < 30))
-  order by u.id, u.email_confirmed_at asc
+  select c.user_id, c.email, c.nome, c.attempts
+  from (
+    select distinct u.id as user_id, u.email::text as email, p.nome,
+           coalesce(le.attempts, 0) as attempts, u.email_confirmed_at
+    from auth.users u
+    join workspaces ws on ws.created_by = u.id
+    join workspace_members wm
+      on wm.user_id = u.id and wm.workspace_id = ws.id and wm.role = 'owner'
+    left join profiles p on p.id = u.id
+    left join lifecycle_emails le
+      on le.email_type = 'welcome' and le.user_id = u.id
+    where u.email_confirmed_at is not null
+      and u.email is not null
+      and nullif(u.raw_user_meta_data ->> 'conta_id', '') is null
+      and (le.id is null
+           or (le.delivered_at is null
+               and le.sent_at <= now() - interval '1 hour'
+               and le.attempts < 30))
+  ) c
+  order by c.email_confirmed_at asc, c.user_id asc
   limit 50
 $$;
 
