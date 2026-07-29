@@ -615,8 +615,22 @@ function trimPercent(n: number): string {
   return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
 }
 
+// Peak Stripe throughput = STRIPE_CONCURRENCY requests every STRIPE_TIMEOUT_MS at worst; 8 keeps
+// us well under Stripe's rate limit even with a large paying/trialing base. The timeout is enforced
+// twice: the SDK's per-request `timeout` aborts the underlying fetch (freeing the connection), and
+// withTimeout backstops the await — together they stop a stalled call from running the edge isolate
+// to its kill.
+const STRIPE_CONCURRENCY = 8;
+const STRIPE_TIMEOUT_MS = 5000;
+
 type StripeClient = {
-  subscriptions: { retrieve: (id: string, opts: { expand: string[] }) => Promise<unknown> };
+  subscriptions: {
+    retrieve: (
+      id: string,
+      params: { expand: string[] },
+      options?: { timeout?: number },
+    ) => Promise<unknown>;
+  };
 };
 
 type StripeAmount = {
@@ -662,12 +676,18 @@ async function fetchStripeAmount(
 ): Promise<StripeAmount> {
   let sub: unknown;
   try {
-    sub = await stripe.subscriptions.retrieve(subscriptionId, {
-      expand: ["items.data.price", "discounts"],
-    });
+    sub = await stripe.subscriptions.retrieve(
+      subscriptionId,
+      { expand: ["items.data.price", "discounts"] },
+      { timeout: STRIPE_TIMEOUT_MS },
+    );
   } catch (_e) {
     // Some API versions reject expanding `discounts`; retry with price only.
-    sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ["items.data.price"] });
+    sub = await stripe.subscriptions.retrieve(
+      subscriptionId,
+      { expand: ["items.data.price"] },
+      { timeout: STRIPE_TIMEOUT_MS },
+    );
   }
   const s = sub as {
     livemode?: boolean;
@@ -819,6 +839,94 @@ async function handleListPlans(
  * is unreachable it falls back to the plan's catalog price. Annual is normalized to monthly, and
  * the total is the exact sum of the per-workspace monthly amounts returned in `workspaces`.
  */
+interface PriceableSub {
+  workspace_id: string;
+  status?: string | null;
+  plan_id: string | null;
+  billing_interval: string | null;
+  stripe_subscription_id: string | null;
+}
+
+/**
+ * Prices subscription rows from live Stripe (net of coupons), falling back to the plan's catalog
+ * price when Stripe is unreachable or the row has no subscription id. Shared by get-mrr and
+ * get-trials so both report the same real, discount-aware amounts the workspaces list shows.
+ * Requests run in bounded batches (not one unbounded Promise.all) and each is time-bounded, so a
+ * growing base can't breach Stripe's rate limit and a stalled call can't hang the isolate.
+ */
+async function priceSubscriptionRows<T extends PriceableSub>(
+  rows: T[],
+  nameByWs: Map<string, string>,
+  planById: Map<string, { name: string; price_brl: number | null; price_brl_annual: number | null }>,
+): Promise<
+  Array<
+    T & {
+      name: string;
+      plan_name: string | null;
+      interval: string | null;
+      amount_cents: number | null;
+      discount_label: string | null;
+      amount_source: "stripe" | "catalog" | null;
+    }
+  >
+> {
+  let stripeClient: StripeClient | null = null;
+  if (rows.some((s) => s.stripe_subscription_id)) {
+    try {
+      stripeClient = (await import("../_shared/stripe.ts")).stripe;
+    } catch (err) {
+      console.error("[platform-admin] stripe import failed:", (err as Error).message);
+    }
+  }
+
+  const priceRow = async (s: T) => {
+    const planMeta = s.plan_id ? planById.get(s.plan_id) : undefined;
+    let amount_cents: number | null = null;
+    let interval: string | null = s.billing_interval;
+    let discount_label: string | null = null;
+    let amount_source: "stripe" | "catalog" | null = null;
+
+    if (stripeClient && s.stripe_subscription_id) {
+      try {
+        const amt = await withTimeout(
+          fetchStripeAmount(stripeClient, s.stripe_subscription_id, s.billing_interval),
+          STRIPE_TIMEOUT_MS,
+          "stripe retrieve",
+        );
+        amount_cents = amt.amount_cents;
+        interval = amt.interval ?? s.billing_interval;
+        discount_label = amt.discount_label;
+        amount_source = "stripe";
+      } catch (err) {
+        console.error("[platform-admin] price stripe fetch failed:", (err as Error).message);
+      }
+    }
+    if (amount_cents == null && planMeta) {
+      const cents = s.billing_interval === "year" ? planMeta.price_brl_annual : planMeta.price_brl;
+      if (cents != null) {
+        amount_cents = cents;
+        amount_source = "catalog";
+      }
+    }
+
+    return {
+      ...s,
+      name: nameByWs.get(s.workspace_id) ?? "—",
+      plan_name: planMeta?.name ?? null,
+      interval,
+      amount_cents,
+      discount_label,
+      amount_source,
+    };
+  };
+
+  const priced: Array<Awaited<ReturnType<typeof priceRow>>> = [];
+  for (let i = 0; i < rows.length; i += STRIPE_CONCURRENCY) {
+    priced.push(...(await Promise.all(rows.slice(i, i + STRIPE_CONCURRENCY).map(priceRow))));
+  }
+  return priced;
+}
+
 async function handleGetMrr(
   svc: ReturnType<typeof createClient>,
   headers: Record<string, string>,
@@ -857,71 +965,7 @@ async function handleGetMrr(
     }
   }
 
-  // Load the Stripe client once if any row actually has a subscription to price live.
-  let stripeClient: StripeClient | null = null;
-  if (rows.some((s) => s.stripe_subscription_id)) {
-    try {
-      stripeClient = (await import("../_shared/stripe.ts")).stripe;
-    } catch (err) {
-      console.error("[platform-admin] stripe import failed:", (err as Error).message);
-    }
-  }
-
-  const priceRow = async (s: (typeof rows)[number]) => {
-    const planMeta = s.plan_id ? planById.get(s.plan_id) : undefined;
-    let amount_cents: number | null = null;
-    let interval: string | null = s.billing_interval;
-    let discount_label: string | null = null;
-    let amount_source: "stripe" | "catalog" | null = null;
-
-    if (stripeClient && s.stripe_subscription_id) {
-      try {
-        // Bound the live call: a hung Stripe fetch never reaches this catch, and the edge
-        // runtime would kill the whole isolate before get-mrr could return. On timeout this
-        // rejects and we fall through to the catalog price below.
-        const amt = await withTimeout(
-          fetchStripeAmount(stripeClient, s.stripe_subscription_id, s.billing_interval),
-          STRIPE_TIMEOUT_MS,
-          "stripe retrieve",
-        );
-        amount_cents = amt.amount_cents;
-        interval = amt.interval ?? s.billing_interval;
-        discount_label = amt.discount_label;
-        amount_source = "stripe";
-      } catch (err) {
-        console.error("[platform-admin] mrr stripe fetch failed:", (err as Error).message);
-      }
-    }
-    if (amount_cents == null && planMeta) {
-      const cents = s.billing_interval === "year" ? planMeta.price_brl_annual : planMeta.price_brl;
-      if (cents != null) {
-        amount_cents = cents;
-        amount_source = "catalog";
-      }
-    }
-
-    return {
-      workspace_id: s.workspace_id,
-      name: nameByWs.get(s.workspace_id) ?? "—",
-      plan_name: planMeta?.name ?? null,
-      status: s.status ?? null,
-      interval,
-      amount_cents,
-      discount_label,
-      amount_source,
-    };
-  };
-
-  // Price rows in bounded batches rather than one unbounded Promise.all: each paying row is a
-  // live Stripe request, and a full fan-out would breach Stripe's rate limit as the paying base
-  // grows — the caught 429s would then silently fall back to catalog prices, making the total
-  // inconsistent exactly when it matters most. 8 keeps peak throughput well under Stripe's limit.
-  const STRIPE_CONCURRENCY = 8;
-  const STRIPE_TIMEOUT_MS = 5000;
-  const priceable: Array<Awaited<ReturnType<typeof priceRow>>> = [];
-  for (let i = 0; i < rows.length; i += STRIPE_CONCURRENCY) {
-    priceable.push(...(await Promise.all(rows.slice(i, i + STRIPE_CONCURRENCY).map(priceRow))));
-  }
+  const priceable = await priceSubscriptionRows(rows, nameByWs, planById);
 
   const { mrr_cents, paying_count, priced } = aggregateMrr(priceable);
   const workspaces = priced
@@ -948,11 +992,10 @@ async function handleGetMrr(
  * app-level workspaces.trial_ends_at column was dropped as unreferenced), and for a trialing
  * subscription `current_period_end` is the trial-end date.
  *
- * Each trial also carries its EXPECTED monthly contribution (`monthly_cents`) — the plan's catalog
- * price for its billing interval, annual normalized to monthly. Deliberately catalog, not live
- * Stripe: a trial has been billed nothing yet, so this is a forecast of what it converts to (gross
- * of any future coupon), and it keeps the endpoint free of per-trial Stripe fan-out. `trial_mrr_cents`
- * is the sum. Sorted soonest-ending first.
+ * Each trial carries its EXPECTED monthly contribution (`monthly_cents`) priced from the LIVE
+ * Stripe amount, net of coupons (catalog price only as a fallback), so it matches the exact
+ * per-subscription amounts the Workspaces list shows — including per-trial discounts, which a flat
+ * catalog price cannot represent. `trial_mrr_cents` is the sum. Sorted soonest-ending first.
  */
 async function handleGetTrials(
   svc: ReturnType<typeof createClient>,
@@ -960,7 +1003,7 @@ async function handleGetTrials(
 ) {
   const { data: subs, error } = await svc
     .from("workspace_subscriptions")
-    .select("workspace_id, plan_id, billing_interval, current_period_end")
+    .select("workspace_id, plan_id, billing_interval, stripe_subscription_id, current_period_end")
     .eq("status", "trialing");
   if (error) throw error;
 
@@ -992,19 +1035,16 @@ async function handleGetTrials(
     }
   }
 
-  const trials = rows
-    .map((s) => {
-      const plan = s.plan_id ? planById.get(s.plan_id) : undefined;
-      const catalog = s.billing_interval === "year" ? plan?.price_brl_annual : plan?.price_brl;
-      return {
-        workspace_id: s.workspace_id,
-        name: nameByWs.get(s.workspace_id) ?? "—",
-        plan_name: plan?.name ?? null,
-        interval: s.billing_interval ?? null,
-        trial_ends_at: s.current_period_end ?? null,
-        monthly_cents: toMonthlyCents(s.billing_interval, catalog ?? null),
-      };
-    })
+  const priced = await priceSubscriptionRows(rows, nameByWs, planById);
+  const trials = priced
+    .map((r) => ({
+      workspace_id: r.workspace_id,
+      name: r.name,
+      plan_name: r.plan_name,
+      interval: r.interval,
+      trial_ends_at: r.current_period_end ?? null,
+      monthly_cents: toMonthlyCents(r.interval, r.amount_cents),
+    }))
     .sort((a, b) => {
       // Soonest-ending first; rows with no known end date go last.
       if (!a.trial_ends_at) return 1;
