@@ -21,8 +21,9 @@
 -- divergence between the two columns can only be explained by a direct
 -- write to conta_id that bypassed that guard — exactly the exploited path,
 -- and nothing else. Every legitimate writer (switch_workspace(), the
--- signup trigger, invite acceptance, manage-workspace-user's remove action)
--- has always set both columns to the same value in one statement.
+-- signup trigger, invite creation/acceptance, manage-workspace-user's
+-- remove action) has always set both columns to the same value in one
+-- statement.
 --
 -- IDEMPOTENT. A second run finds nothing to change and its post-condition
 -- still passes -- safe to re-run if this migration is ever replayed.
@@ -44,17 +45,41 @@ UPDATE public.profiles
  WHERE conta_id IS DISTINCT FROM active_workspace_id;
 
 -- -------------------------------------------------------------
--- Post-condition: zero divergence, AND — the paranoid double-check — no
--- non-null conta_id lacks a real workspace_members row. The second check is
--- normally implied by the first (active_workspace_id is trigger-guarded to
--- always correspond to real membership), but asserting it separately means
--- this migration does not silently rely on that guarantee holding in a
--- database state it hasn't itself verified.
+-- Post-condition: zero divergence between conta_id and active_workspace_id.
+--
+-- DELIBERATELY NOT ALSO ASSERTED HERE: that every non-null conta_id has a
+-- matching workspace_members row. An earlier draft of this migration
+-- included that as a "paranoid double-check", reasoning that
+-- active_workspace_id is trigger-guarded to always correspond to real
+-- membership. That reasoning is WRONG, and asserting it aborts this
+-- migration on completely ordinary, ongoing production state:
+-- handle_new_user_workspace() (the trigger that fires on signup, current
+-- definition confirmed directly against the live function body) sets a
+-- pending invitee's conta_id AND active_workspace_id to the invite's
+-- workspace in ONE INSERT statement, deliberately BEFORE any
+-- workspace_members row exists — that row is only created later, when the
+-- invite is accepted (manage-workspace-user's accept-invite action). This
+-- is not a rare edge case; any workspace with an unaccepted invite has a
+-- profile in exactly this shape at any given moment, and invites routinely
+-- sit unaccepted for their full 7-day expiry window.
+--
+-- Reproduced directly: a real invites row (status='pending') plus the
+-- actual live handle_new_user_workspace() trigger firing on a matching
+-- auth.users insert leaves conta_id = active_workspace_id (zero drift, the
+-- check above is unaffected) with no workspace_members row at all. The
+-- removed second check would have raised on that state and aborted this
+-- migration -- on every database with even one outstanding invite, which
+-- in production is not a hypothetical.
+--
+-- Dropping it costs nothing: the actual security property (conta_id cannot
+-- diverge from the trigger-guarded active_workspace_id) is fully covered by
+-- the check above, and INSERT-time membership deferral for invites is a
+-- pre-existing, intentional design (20260421000001_defer_invited_user_workspace_membership.sql),
+-- not a gap this migration exists to close.
 -- -------------------------------------------------------------
 DO $$
 DECLARE
   v_still_drifted int;
-  v_unauthorized  int;
 BEGIN
   SELECT count(*) INTO v_still_drifted
     FROM public.profiles
@@ -64,18 +89,5 @@ BEGIN
       v_still_drifted;
   END IF;
 
-  SELECT count(*) INTO v_unauthorized
-    FROM public.profiles p
-   WHERE p.conta_id IS NOT NULL
-     AND NOT EXISTS (
-       SELECT 1 FROM public.workspace_members wm
-        WHERE wm.user_id = p.id AND wm.workspace_id = p.conta_id
-     );
-  IF v_unauthorized <> 0 THEN
-    RAISE EXCEPTION 'backfill left % row(s) with a conta_id the user is not a member of',
-      v_unauthorized;
-  END IF;
-
-  RAISE NOTICE 'backfill verified: every profiles.conta_id matches active_workspace_id '
-               'and corresponds to real membership';
+  RAISE NOTICE 'backfill verified: every profiles.conta_id matches active_workspace_id';
 END $$;
