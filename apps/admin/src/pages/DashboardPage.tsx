@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { listWorkspaces, listPlans, getMrr } from '../lib/api';
+import { listWorkspaces, listPlans, getMrr, getTrials } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
 import { formatMoney, intervalLabel, statusMeta, toneBadgeClass } from '../lib/subscription';
 
@@ -24,18 +24,26 @@ export default function DashboardPage() {
     queryFn: getMrr,
   });
 
+  // Workspaces on a Stripe trial (status 'trialing') — separate from MRR, which they don't
+  // contribute to until they convert.
+  const { data: trialsData, isLoading: trialsLoading } = useQuery({
+    queryKey: ['admin', 'trials'],
+    queryFn: getTrials,
+  });
+
   const totalWorkspaces = workspacesData?.total ?? 0;
   const activePlans = plansData?.plans?.length ?? 0;
   const withOverrides = workspacesData?.workspaces?.filter((w) => w.has_overrides).length ?? 0;
   const totalMembers = workspacesData?.workspaces?.reduce((sum, w) => sum + w.member_count, 0) ?? 0;
 
-  const isLoading = wsLoading || plansLoading || mrrLoading;
+  const isLoading = wsLoading || plansLoading || mrrLoading || trialsLoading;
 
   const kpis = [
     { label: 'Workspaces', value: totalWorkspaces },
     { label: 'Total Users', value: totalMembers },
     { label: 'Active Plans', value: activePlans },
     { label: 'MRR', value: formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency) },
+    { label: 'Trials', value: trialsData?.trial_count ?? 0 },
     { label: 'With Overrides', value: withOverrides },
   ];
 
@@ -44,7 +52,7 @@ export default function DashboardPage() {
       <h1 className="font-sf text-2xl font-bold mb-1">Dashboard</h1>
       <p className="text-sm text-muted-foreground mb-8">Platform overview</p>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
         {kpis.map((kpi) => (
           <div
             key={kpi.label}
@@ -154,6 +162,116 @@ export default function DashboardPage() {
                 </span>
                 <span className="hidden md:block text-right font-sf text-sm">
                   {formatMoney(ws.monthly_cents, mrrData?.currency)}
+                </span>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="glass-surface bg-card border border-border rounded-2xl p-5 mb-8">
+        <div className="flex items-baseline justify-between mb-4 gap-3">
+          <h2 className="font-semibold">Trials</h2>
+          <span className="text-sm text-muted-foreground">
+            {isLoading ? '—' : `${trialsData?.trial_count ?? 0} em teste`}
+          </span>
+        </div>
+
+        {/* Desktop table header */}
+        <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr] gap-2 text-xs text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
+          <span>Workspace</span>
+          <span>Plan</span>
+          <span>Billing</span>
+          <span className="text-right">Trial ends</span>
+        </div>
+
+        {isLoading ? (
+          <p className="text-sm text-dim-foreground py-4">Loading...</p>
+        ) : (trialsData?.trials?.length ?? 0) === 0 ? (
+          <p className="text-sm text-dim-foreground py-4">No workspaces on trial right now.</p>
+        ) : (
+          (trialsData?.trials || []).map((ws) => {
+            const end = ws.trial_ends_at ? new Date(ws.trial_ends_at) : null;
+            const daysLeft = end ? Math.ceil((end.getTime() - Date.now()) / 86_400_000) : null;
+            const endLabel = end
+              ? end.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+              : '—';
+            const daysLabel =
+              daysLeft == null ? null : daysLeft <= 0 ? 'expira hoje' : `${daysLeft}d`;
+            const endingSoon = daysLeft != null && daysLeft <= 3;
+            const daysToneClass = endingSoon
+              ? 'text-warning bg-warning/10'
+              : 'text-muted-foreground bg-muted-foreground/10';
+            return (
+              <div
+                key={ws.workspace_id}
+                onClick={() => navigate(`/admin/workspaces/${ws.workspace_id}`)}
+                className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1fr_1fr_1fr] md:gap-2 md:items-center"
+              >
+                {/* Mobile card layout */}
+                <div className="md:hidden flex items-center justify-between gap-3">
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <span className="text-foreground font-medium truncate">{ws.name}</span>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      {ws.plan_name && (
+                        <span
+                          className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm"
+                          style={{
+                            color: getPlanColor(ws.plan_name),
+                            backgroundColor: getPlanColor(ws.plan_name) + '26',
+                          }}
+                        >
+                          {ws.plan_name}
+                        </span>
+                      )}
+                      <span>{intervalLabel(ws.interval) || '—'}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-0.5 whitespace-nowrap">
+                    <span className="font-sf text-sm">{endLabel}</span>
+                    {daysLabel && (
+                      <span
+                        className={
+                          endingSoon
+                            ? 'text-[0.7rem] text-warning'
+                            : 'text-[0.7rem] text-muted-foreground'
+                        }
+                      >
+                        {daysLabel}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Desktop row */}
+                <span className="hidden md:inline text-foreground font-medium text-sm truncate">
+                  {ws.name}
+                </span>
+                <span className="hidden md:inline text-sm">
+                  {ws.plan_name ? (
+                    <span
+                      className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm"
+                      style={{
+                        color: getPlanColor(ws.plan_name),
+                        backgroundColor: getPlanColor(ws.plan_name) + '26',
+                      }}
+                    >
+                      {ws.plan_name}
+                    </span>
+                  ) : (
+                    <span className="text-dim-foreground">—</span>
+                  )}
+                </span>
+                <span className="hidden md:inline text-muted-foreground text-sm truncate">
+                  {intervalLabel(ws.interval) || '—'}
+                </span>
+                <span className="hidden md:flex items-center justify-end gap-2 text-sm whitespace-nowrap">
+                  <span className="font-sf">{endLabel}</span>
+                  {daysLabel && (
+                    <span className={`text-[0.7rem] px-1.5 py-0.5 rounded-sm ${daysToneClass}`}>
+                      {daysLabel}
+                    </span>
+                  )}
                 </span>
               </div>
             );
