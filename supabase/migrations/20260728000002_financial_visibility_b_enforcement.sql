@@ -40,6 +40,22 @@
 -- The post-condition caught this. That is the whole reason it is written as an
 -- exact count rather than a smoke test.
 --
+-- WHY THIS EDITS AN ALREADY-COMMITTED MIGRATION RATHER THAN ADDING A LATER ONE.
+--
+-- Normally you do not edit a migration that is on main. Here a follow-up
+-- migration cannot work, because `supabase db push` applies in version order and
+-- stops at the first failure: anything numbered after this file is never reached
+-- on production, since THIS file is what aborts. Production is also the only
+-- environment that needs the sweep, and it has not applied this version —
+-- `migration list --linked` shows 20260728000002 with no remote entry, because
+-- the failed attempt rolled back cleanly.
+--
+-- The environments that will skip the revised version are staging and local dev,
+-- both of which applied the original. In both the new logic is a verified no-op:
+-- the original post-condition asserted exactly 8 policies on transacoes/contratos
+-- and PASSED there, which is itself proof that no unowned policy existed — 9 would
+-- have aborted it. The sweep has nothing to remove in either.
+--
 -- DELIBERATELY NOT FIXED HERE: clientes and membros carry the same legacy pair.
 -- They do not defeat this migration — protection there is column-level SELECT
 -- privilege plus the write trigger, and both are evaluated independently of
