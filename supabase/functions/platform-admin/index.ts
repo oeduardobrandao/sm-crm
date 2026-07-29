@@ -5,7 +5,7 @@ import { handleCreatePlan, handleUpdatePlan } from "./plan-mutations.ts";
 import { handleGetWorkspaceInvites, handleAdminCancelInvite, handleAdminResendInvite, handleAdminCreateInvite } from "./invite-handlers.ts";
 // Single source of truth for plan columns (includes max_mcp_keys / feature_mcp).
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
-import { computeMrrCents } from "../_shared/billing-logic.ts";
+import { aggregateMrr } from "../_shared/billing-logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -789,10 +789,12 @@ async function handleListPlans(
 }
 
 /**
- * Monthly recurring revenue, driven by the Stripe subscription mirror (workspace_subscriptions),
- * NOT by plan assignment counts. Comped/manual plan grants have no subscription row, so they
- * never inflate the figure. Annual subscriptions are normalized to a monthly amount. Priced from
- * catalog plan prices (gross MRR — per-customer Stripe coupons are not applied).
+ * Monthly recurring revenue + the paying-workspace breakdown behind it, driven by the Stripe
+ * subscription mirror (workspace_subscriptions), NOT by plan-assignment counts — so comped/manual
+ * plan grants (which have no subscription row) never inflate it. Only in-force paid subscriptions
+ * count (active/past_due). Each is priced from its live Stripe amount, net of coupons; if Stripe
+ * is unreachable it falls back to the plan's catalog price. Annual is normalized to monthly, and
+ * the total is the exact sum of the per-workspace monthly amounts returned in `workspaces`.
  */
 async function handleGetMrr(
   svc: ReturnType<typeof createClient>,
@@ -800,17 +802,103 @@ async function handleGetMrr(
 ) {
   const { data: subs, error: subsError } = await svc
     .from("workspace_subscriptions")
-    .select("status, plan_id, billing_interval");
+    .select("workspace_id, status, plan_id, billing_interval, stripe_subscription_id")
+    .in("status", ["active", "past_due"]);
   if (subsError) throw subsError;
 
-  const { data: plans, error: plansError } = await svc
-    .from("plans")
-    .select("id, price_brl, price_brl_annual");
-  if (plansError) throw plansError;
+  const rows = subs ?? [];
+  const wsIds = rows.map((s) => s.workspace_id);
+  const planIds = [...new Set(rows.map((s) => s.plan_id).filter(Boolean))] as string[];
 
-  const { mrr_cents, paying_count } = computeMrrCents(subs ?? [], plans ?? []);
+  const nameByWs = new Map<string, string>();
+  if (wsIds.length) {
+    const { data: wsRows } = await svc.from("workspaces").select("id, name").in("id", wsIds);
+    for (const w of wsRows ?? []) nameByWs.set(w.id, w.name);
+  }
 
-  return new Response(JSON.stringify({ mrr_cents, paying_count, currency: "brl" }), {
+  const planById = new Map<
+    string,
+    { name: string; price_brl: number | null; price_brl_annual: number | null }
+  >();
+  if (planIds.length) {
+    const { data: planRows } = await svc
+      .from("plans")
+      .select("id, name, price_brl, price_brl_annual")
+      .in("id", planIds);
+    for (const p of planRows ?? []) {
+      planById.set(p.id, {
+        name: p.name,
+        price_brl: p.price_brl ?? null,
+        price_brl_annual: p.price_brl_annual ?? null,
+      });
+    }
+  }
+
+  // Load the Stripe client once if any row actually has a subscription to price live.
+  let stripeClient: StripeClient | null = null;
+  if (rows.some((s) => s.stripe_subscription_id)) {
+    try {
+      stripeClient = (await import("../_shared/stripe.ts")).stripe;
+    } catch (err) {
+      console.error("[platform-admin] stripe import failed:", (err as Error).message);
+    }
+  }
+
+  const priceable = await Promise.all(
+    rows.map(async (s) => {
+      const planMeta = s.plan_id ? planById.get(s.plan_id) : undefined;
+      let amount_cents: number | null = null;
+      let interval: string | null = s.billing_interval;
+      let discount_label: string | null = null;
+      let amount_source: "stripe" | "catalog" | null = null;
+
+      if (stripeClient && s.stripe_subscription_id) {
+        try {
+          const amt = await fetchStripeAmount(stripeClient, s.stripe_subscription_id, s.billing_interval);
+          amount_cents = amt.amount_cents;
+          interval = amt.interval ?? s.billing_interval;
+          discount_label = amt.discount_label;
+          amount_source = "stripe";
+        } catch (err) {
+          console.error("[platform-admin] mrr stripe fetch failed:", (err as Error).message);
+        }
+      }
+      if (amount_cents == null && planMeta) {
+        const cents = s.billing_interval === "year" ? planMeta.price_brl_annual : planMeta.price_brl;
+        if (cents != null) {
+          amount_cents = cents;
+          amount_source = "catalog";
+        }
+      }
+
+      return {
+        workspace_id: s.workspace_id,
+        name: nameByWs.get(s.workspace_id) ?? "—",
+        plan_name: planMeta?.name ?? null,
+        status: s.status ?? null,
+        interval,
+        amount_cents,
+        discount_label,
+        amount_source,
+      };
+    }),
+  );
+
+  const { mrr_cents, paying_count, priced } = aggregateMrr(priceable);
+  const workspaces = priced
+    .map((r) => ({
+      workspace_id: r.workspace_id,
+      name: r.name,
+      plan_name: r.plan_name,
+      status: r.status,
+      interval: r.interval,
+      monthly_cents: r.monthly_cents,
+      discount_label: r.discount_label,
+      amount_source: r.amount_source,
+    }))
+    .sort((a, b) => b.monthly_cents - a.monthly_cents);
+
+  return new Response(JSON.stringify({ mrr_cents, paying_count, currency: "brl", workspaces }), {
     status: 200,
     headers,
   });
