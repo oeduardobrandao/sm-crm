@@ -5,7 +5,7 @@ import { handleCreatePlan, handleUpdatePlan } from "./plan-mutations.ts";
 import { handleGetWorkspaceInvites, handleAdminCancelInvite, handleAdminResendInvite, handleAdminCreateInvite } from "./invite-handlers.ts";
 // Single source of truth for plan columns (includes max_mcp_keys / feature_mcp).
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
-import { aggregateMrr } from "../_shared/billing-logic.ts";
+import { aggregateMrr, toMonthlyCents } from "../_shared/billing-logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -946,8 +946,13 @@ async function handleGetMrr(
 /**
  * Workspaces on a Stripe trial. Trials are `workspace_subscriptions.status = 'trialing'` (the
  * app-level workspaces.trial_ends_at column was dropped as unreferenced), and for a trialing
- * subscription `current_period_end` is the trial-end date. No Stripe calls: a trial bills nothing
- * yet, so the mirror + plan/workspace names are all we need. Sorted soonest-ending first.
+ * subscription `current_period_end` is the trial-end date.
+ *
+ * Each trial also carries its EXPECTED monthly contribution (`monthly_cents`) — the plan's catalog
+ * price for its billing interval, annual normalized to monthly. Deliberately catalog, not live
+ * Stripe: a trial has been billed nothing yet, so this is a forecast of what it converts to (gross
+ * of any future coupon), and it keeps the endpoint free of per-trial Stripe fan-out. `trial_mrr_cents`
+ * is the sum. Sorted soonest-ending first.
  */
 async function handleGetTrials(
   svc: ReturnType<typeof createClient>,
@@ -969,20 +974,37 @@ async function handleGetTrials(
     for (const w of wsRows ?? []) nameByWs.set(w.id, w.name);
   }
 
-  const planNameById = new Map<string, string>();
+  const planById = new Map<
+    string,
+    { name: string; price_brl: number | null; price_brl_annual: number | null }
+  >();
   if (planIds.length) {
-    const { data: planRows } = await svc.from("plans").select("id, name").in("id", planIds);
-    for (const p of planRows ?? []) planNameById.set(p.id, p.name);
+    const { data: planRows } = await svc
+      .from("plans")
+      .select("id, name, price_brl, price_brl_annual")
+      .in("id", planIds);
+    for (const p of planRows ?? []) {
+      planById.set(p.id, {
+        name: p.name,
+        price_brl: p.price_brl ?? null,
+        price_brl_annual: p.price_brl_annual ?? null,
+      });
+    }
   }
 
   const trials = rows
-    .map((s) => ({
-      workspace_id: s.workspace_id,
-      name: nameByWs.get(s.workspace_id) ?? "—",
-      plan_name: s.plan_id ? planNameById.get(s.plan_id) ?? null : null,
-      interval: s.billing_interval ?? null,
-      trial_ends_at: s.current_period_end ?? null,
-    }))
+    .map((s) => {
+      const plan = s.plan_id ? planById.get(s.plan_id) : undefined;
+      const catalog = s.billing_interval === "year" ? plan?.price_brl_annual : plan?.price_brl;
+      return {
+        workspace_id: s.workspace_id,
+        name: nameByWs.get(s.workspace_id) ?? "—",
+        plan_name: plan?.name ?? null,
+        interval: s.billing_interval ?? null,
+        trial_ends_at: s.current_period_end ?? null,
+        monthly_cents: toMonthlyCents(s.billing_interval, catalog ?? null),
+      };
+    })
     .sort((a, b) => {
       // Soonest-ending first; rows with no known end date go last.
       if (!a.trial_ends_at) return 1;
@@ -990,10 +1012,12 @@ async function handleGetTrials(
       return a.trial_ends_at < b.trial_ends_at ? -1 : a.trial_ends_at > b.trial_ends_at ? 1 : 0;
     });
 
-  return new Response(JSON.stringify({ trials, trial_count: trials.length }), {
-    status: 200,
-    headers,
-  });
+  const trial_mrr_cents = trials.reduce((sum, t) => sum + (t.monthly_cents ?? 0), 0);
+
+  return new Response(
+    JSON.stringify({ trials, trial_count: trials.length, trial_mrr_cents, currency: "brl" }),
+    { status: 200, headers },
+  );
 }
 
 async function handleDeletePlan(
