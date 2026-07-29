@@ -615,8 +615,22 @@ function trimPercent(n: number): string {
   return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
 }
 
+// Peak Stripe throughput = STRIPE_CONCURRENCY requests every STRIPE_TIMEOUT_MS at worst; 8 keeps
+// us well under Stripe's rate limit even with a large paying/trialing base. The timeout is enforced
+// twice: the SDK's per-request `timeout` aborts the underlying fetch (freeing the connection), and
+// withTimeout backstops the await — together they stop a stalled call from running the edge isolate
+// to its kill.
+const STRIPE_CONCURRENCY = 8;
+const STRIPE_TIMEOUT_MS = 5000;
+
 type StripeClient = {
-  subscriptions: { retrieve: (id: string, opts: { expand: string[] }) => Promise<unknown> };
+  subscriptions: {
+    retrieve: (
+      id: string,
+      params: { expand: string[] },
+      options?: { timeout?: number },
+    ) => Promise<unknown>;
+  };
 };
 
 type StripeAmount = {
@@ -662,12 +676,18 @@ async function fetchStripeAmount(
 ): Promise<StripeAmount> {
   let sub: unknown;
   try {
-    sub = await stripe.subscriptions.retrieve(subscriptionId, {
-      expand: ["items.data.price", "discounts"],
-    });
+    sub = await stripe.subscriptions.retrieve(
+      subscriptionId,
+      { expand: ["items.data.price", "discounts"] },
+      { timeout: STRIPE_TIMEOUT_MS },
+    );
   } catch (_e) {
     // Some API versions reject expanding `discounts`; retry with price only.
-    sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ["items.data.price"] });
+    sub = await stripe.subscriptions.retrieve(
+      subscriptionId,
+      { expand: ["items.data.price"] },
+      { timeout: STRIPE_TIMEOUT_MS },
+    );
   }
   const s = sub as {
     livemode?: boolean;
@@ -819,12 +839,6 @@ async function handleListPlans(
  * is unreachable it falls back to the plan's catalog price. Annual is normalized to monthly, and
  * the total is the exact sum of the per-workspace monthly amounts returned in `workspaces`.
  */
-// Peak Stripe throughput = STRIPE_CONCURRENCY requests every STRIPE_TIMEOUT_MS at worst; 8 keeps
-// us well under Stripe's rate limit even with a large paying/trialing base, and the per-call
-// timeout stops a hung fetch from running the edge isolate to its kill.
-const STRIPE_CONCURRENCY = 8;
-const STRIPE_TIMEOUT_MS = 5000;
-
 interface PriceableSub {
   workspace_id: string;
   status?: string | null;
