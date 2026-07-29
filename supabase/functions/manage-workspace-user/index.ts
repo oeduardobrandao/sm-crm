@@ -117,19 +117,41 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // All administrative actions below are scoped to the caller's current workspace.
+    // All administrative actions below are scoped to the caller's current
+    // workspace, resolved from their MEMBERSHIP rather than from profiles.
+    //
+    // profiles.role is global, not per-workspace: switching workspaces never
+    // rewrites it, so an owner in workspace A who is an agent in workspace B
+    // kept `owner` while working in B. profiles.conta_id was worse still --
+    // until 20260729000002 the client could write it directly, so both the role
+    // and the workspace this function trusted were attacker-controlled, and it
+    // acts through a service-role client that bypasses RLS entirely.
+    //
+    // This mirrors set-financial-access above, which already does it correctly.
     const { data: callerProfile, error: profileError } = await serviceClient
       .from("profiles")
-      .select("role, conta_id")
+      .select("active_workspace_id")
       .eq("id", user.id)
       .single();
 
-    if (profileError || !callerProfile) {
+    if (profileError || !callerProfile?.active_workspace_id) {
       return new Response(JSON.stringify({ error: "Profile not found" }), { status: 403, headers });
     }
+    const workspaceId = callerProfile.active_workspace_id;
 
-    // All other actions require owner/admin
-    if (callerProfile.role !== "owner" && callerProfile.role !== "admin") {
+    const { data: callerMembership, error: membershipError } = await serviceClient
+      .from("workspace_members")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("workspace_id", workspaceId)
+      .single();
+
+    if (membershipError || !callerMembership) {
+      return new Response(JSON.stringify({ error: "Insufficient permissions" }), { status: 403, headers });
+    }
+
+    const callerRole = callerMembership.role;
+    if (callerRole !== "owner" && callerRole !== "admin") {
       return new Response(JSON.stringify({ error: "Insufficient permissions" }), { status: 403, headers });
     }
 
@@ -148,7 +170,7 @@ Deno.serve(async (req: Request) => {
       if (inviteError || !invite) {
         return new Response(JSON.stringify({ error: "Convite não encontrado." }), { status: 404, headers });
       }
-      if (invite.conta_id !== callerProfile.conta_id) {
+      if (invite.conta_id !== workspaceId) {
         return new Response(JSON.stringify({ error: "Convite não pertence a este workspace." }), { status: 403, headers });
       }
       if (invite.status !== "pending") {
@@ -174,7 +196,7 @@ Deno.serve(async (req: Request) => {
       .from("workspace_members")
       .select("role, workspace_id")
       .eq("user_id", targetUserId)
-      .eq("workspace_id", callerProfile.conta_id)
+      .eq("workspace_id", workspaceId)
       .single();
 
     if (targetError || !targetMembership) {
@@ -182,7 +204,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Cannot modify an owner (unless caller is also owner)
-    if (targetMembership.role === "owner" && callerProfile.role !== "owner") {
+    if (targetMembership.role === "owner" && callerRole !== "owner") {
       return new Response(JSON.stringify({ error: "Cannot modify workspace owner" }), { status: 403, headers });
     }
 
@@ -197,7 +219,7 @@ Deno.serve(async (req: Request) => {
         return new Response(JSON.stringify({ error: "role must be one of: owner, admin, agent" }), { status: 400, headers });
       }
       // Only owner can assign owner role
-      if (role === "owner" && callerProfile.role !== "owner") {
+      if (role === "owner" && callerRole !== "owner") {
         return new Response(JSON.stringify({ error: "Only owner can assign owner role" }), { status: 403, headers });
       }
 
@@ -205,7 +227,7 @@ Deno.serve(async (req: Request) => {
         .from("workspace_members")
         .update({ role })
         .eq("user_id", targetUserId)
-        .eq("workspace_id", callerProfile.conta_id);
+        .eq("workspace_id", workspaceId);
 
       if (updateError) throw updateError;
 
@@ -214,17 +236,17 @@ Deno.serve(async (req: Request) => {
         .from("profiles")
         .update({ role })
         .eq("id", targetUserId)
-        .eq("conta_id", callerProfile.conta_id);
+        .eq("conta_id", workspaceId);
 
       if (profileUpdateError) throw profileUpdateError;
 
       await insertAuditLog(serviceClient, {
-        conta_id: callerProfile.conta_id,
+        conta_id: workspaceId,
         actor_user_id: user.id,
         action: 'update-role',
         resource_type: 'workspace_member',
         resource_id: targetUserId,
-        metadata: { new_role: role, workspace_id: callerProfile.conta_id },
+        metadata: { new_role: role, workspace_id: workspaceId },
       });
 
       return new Response(JSON.stringify({ message: "Permissão atualizada com sucesso." }), { status: 200, headers });
@@ -235,7 +257,7 @@ Deno.serve(async (req: Request) => {
         .from("workspace_members")
         .delete()
         .eq("user_id", targetUserId)
-        .eq("workspace_id", callerProfile.conta_id);
+        .eq("workspace_id", workspaceId);
 
       if (removeError) throw removeError;
 
@@ -256,12 +278,12 @@ Deno.serve(async (req: Request) => {
         .eq("id", targetUserId);
 
       await insertAuditLog(serviceClient, {
-        conta_id: callerProfile.conta_id,
+        conta_id: workspaceId,
         actor_user_id: user.id,
         action: 'remove-user',
         resource_type: 'workspace_member',
         resource_id: targetUserId,
-        metadata: { workspace_id: callerProfile.conta_id },
+        metadata: { workspace_id: workspaceId },
       });
 
       return new Response(JSON.stringify({ message: "Usuário removido do workspace." }), { status: 200, headers });

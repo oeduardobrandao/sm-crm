@@ -94,14 +94,13 @@ export async function updateWorkspaceBranding(fields: {
 }
 
 export async function switchWorkspace(workspaceId: string): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Não autenticado');
-  const { error } = await supabase
-    .from('profiles')
-    .update({ active_workspace_id: workspaceId, conta_id: workspaceId })
-    .eq('id', user.id);
+  // Goes through the RPC, not a direct UPDATE: profiles.active_workspace_id and
+  // profiles.conta_id are not writable by the client, because conta_id is the
+  // tenant selector the legacy RLS policies and ~15 edge functions read.
+  // See migration 20260729000002.
+  const { error } = await supabase.rpc('switch_workspace', {
+    p_workspace: workspaceId,
+  });
   if (error) throw error;
   // Clear cached profile so next call fetches fresh data
   clearProfileCache();

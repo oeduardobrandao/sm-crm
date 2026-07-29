@@ -190,3 +190,21 @@ jobs:
             exit 1
           fi
           echo "No duplicate migration versions."
+
+  # Leak 6: entitlement SQL test suites (supabase/tests/entitlements/) — 20 suites
+  # that gate plan limits, feature gates, role isolation, and the P0 workspace
+  # selector lockdown. They run against a local Supabase database.
+  entitlement-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.110.0
+
+      - name: Start Supabase
+        run: supabase start -x studio,imgproxy,edge-runtime,realtime,storage-api,logflare,vector,supavisor,mailpit,postgres-meta
+
+      - name: Run entitlement suites
+        run: bash scripts/test-entitlements.sh

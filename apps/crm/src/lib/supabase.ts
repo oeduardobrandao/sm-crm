@@ -126,10 +126,9 @@ async function populateWorkspaceSwitcher(activeWorkspaceId: string | null) {
       if (!isActive) {
         btn.addEventListener('click', async () => {
           try {
-            const { error: switchErr } = await supabase
-              .from('profiles')
-              .update({ active_workspace_id: m.workspaces.id, conta_id: m.workspaces.id })
-              .eq('id', user.id);
+            const { error: switchErr } = await supabase.rpc('switch_workspace', {
+              p_workspace: m.workspaces.id,
+            });
             if (switchErr) throw switchErr;
             cachedProfile = null;
             window.location.reload();
