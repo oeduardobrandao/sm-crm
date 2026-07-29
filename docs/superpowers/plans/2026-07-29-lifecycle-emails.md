@@ -12,7 +12,9 @@
 
 - All emails PT-BR. Sender exactly: `Eduardo do Mesaas <eduardo@mesaas.com.br>`.
 - Welcome subject exactly: `Bem-vindo ao Mesaas 👋`. Thank-you subject exactly: `Obrigado pela confiança 💚`.
-- CSS-only visuals: inline-styled `<table>` HTML, zero external images. Palette: green `#1a3d2b`, cream `#f5f3ee`, white card `border-radius:16px`, `font-family:Arial,Helvetica,sans-serif` (match `_shared/invite-email.ts`).
+- CSS-only visuals: inline-styled `<table>` HTML. The ONLY external image is the header logo `{appBaseUrl}/logo-white-email.png` (`width="221" height="28"`, `alt="Mesaas"`, white bold alt-text styling as blocked-image fallback). The asset `public/logo-white-email.png` is already committed on this branch. Palette: green `#1a3d2b`, cream `#f5f3ee`, white card `border-radius:16px`, `font-family:Arial,Helvetica,sans-serif` (match `_shared/invite-email.ts`).
+- Positioning copy is "plataforma de gestão para agências de social media" (NOT "CRM").
+- **No em-dashes (—) anywhere in either email's HTML** (user requirement: reads as AI slop). Tests enforce this.
 - Every dynamic value through `escapeHtml` from `_shared/report-template/escape.ts` — including URLs in attribute context.
 - Edge runtime is Deno: imports are `npm:` specifiers or relative `.ts` paths.
 - Never log/return raw error details to clients; generic out, detailed `console.error` in.
@@ -41,6 +43,7 @@
 **Files:**
 - Create: `supabase/functions/_shared/lifecycle-emails.ts`
 - Test: `supabase/functions/__tests__/lifecycle-emails_test.ts`
+- Already committed on this branch (do not create): `public/logo-white-email.png` — the header logo the templates reference via `{appBaseUrl}/logo-white-email.png`
 
 **Interfaces:**
 - Consumes: `escapeHtml` from `supabase/functions/_shared/report-template/escape.ts`.
@@ -87,10 +90,23 @@ Deno.test("buildWelcomeEmail falls back to a nameless greeting", () => {
   assert(!html.includes("Olá, "), "name greeting rendered without a name");
 });
 
+Deno.test("both emails carry the logo and never an em-dash", () => {
+  for (
+    const html of [
+      buildWelcomeEmail({ firstName: "Ana", appBaseUrl: BASE }),
+      buildThankYouEmail({ firstName: "Ana", workspaceName: "X", appBaseUrl: BASE }),
+    ]
+  ) {
+    assert(html.includes(`src="${BASE}/logo-white-email.png"`), "logo img missing");
+    assert(html.includes('alt="Mesaas"'), "logo alt missing");
+    assert(!html.includes("—"), "em-dash found in email copy");
+  }
+});
+
 Deno.test("buildWelcomeEmail carries the core content and links", () => {
   const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: BASE });
   // positioning + feature cards
-  assert(html.includes("CRM para agências de social media"));
+  assert(html.includes("plataforma de gestão para agências de social media"));
   assert(html.includes("Clientes &amp; CRM"));
   assert(html.includes("kanban"));
   assert(html.includes("Hub do cliente"));
@@ -174,21 +190,25 @@ function greeting(firstNameEscaped: string | null): string {
 /**
  * Shared visual shell so both emails render as one family. Matches the
  * invite/dunning palette: green #1a3d2b on cream #f5f3ee, white 16px card.
- * `bodyHtml` is trusted template HTML built by this module only.
+ * `bodyHtml` is trusted template HTML built by this module only;
+ * `baseEscaped` is the already-escaped app base URL. The header logo is the
+ * one external image (email clients don't render SVG, so it's a hosted PNG);
+ * its alt text is styled white/bold so blocked-image clients still show the
+ * brand on the green header.
  */
-function layout(bodyHtml: string, footerLine: string): string {
+function layout(bodyHtml: string, footerLine: string, baseEscaped: string): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR"><body style="margin:0;background:#f5f3ee;font-family:Arial,Helvetica,sans-serif;color:#1a3d2b">
   <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
     <table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden">
       <tr><td style="background:#1a3d2b;padding:26px 28px;text-align:center">
-        <span style="color:#ffffff;font-size:22px;font-weight:700;letter-spacing:0.5px">Mesaas</span>
+        <img src="${baseEscaped}/logo-white-email.png" width="221" height="28" alt="Mesaas" style="display:block;margin:0 auto;border:0;color:#ffffff;font-size:22px;font-weight:700">
       </td></tr>
       <tr><td style="padding:32px 28px;font-size:14px;line-height:1.7;color:#444441">
 ${bodyHtml}
       </td></tr>
       <tr><td style="padding:18px 28px;background:#f5f3ee;text-align:center;font-size:11px;color:#888780;line-height:1.5">
-        ${footerLine}<br>Mesaas — gestão inteligente para social media managers
+        ${footerLine}<br>Mesaas · gestão inteligente para social media managers
       </td></tr>
     </table>
   </td></tr></table>
@@ -224,8 +244,8 @@ export function buildWelcomeEmail(p: { firstName: string | null; appBaseUrl: str
   const base = escapeHtml(p.appBaseUrl);
   const body = `
 <p style="font-size:16px;font-weight:700;color:#1a3d2b;margin:0 0 12px">${greeting(name)}</p>
-<p style="margin:0 0 8px">Aqui é o Eduardo, do Mesaas. Que bom ter você por aqui — obrigado por criar sua conta.</p>
-<p style="margin:0 0 20px">O Mesaas é um <strong>CRM para agências de social media</strong>: clientes, entregas, aprovações e analytics em um lugar só, com um portal whitelabel para o seu cliente final.</p>
+<p style="margin:0 0 8px">Aqui é o Eduardo, do Mesaas. Que bom ter você por aqui. Obrigado por criar sua conta.</p>
+<p style="margin:0 0 20px">O Mesaas é uma <strong>plataforma de gestão para agências de social media</strong>: clientes, entregas, aprovações e analytics em um lugar só, com um portal whitelabel para o seu cliente final.</p>
 
 <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">
   <tr>
@@ -244,7 +264,7 @@ export function buildWelcomeEmail(p: { firstName: string | null; appBaseUrl: str
   ${
     stepRow(
       2,
-      `<strong>Importe seus dados</strong> — trazemos tudo do Notion, Trello, ClickUp ou CSV em poucos cliques.<br>
+      `<strong>Importe seus dados</strong>: trazemos tudo do Notion, Trello, ClickUp ou CSV em poucos cliques.<br>
        <span style="display:inline-block;margin-top:10px">${ctaButton(`${base}/importar`, "Importar meus dados")}</span>`,
     )
   }
@@ -258,9 +278,9 @@ export function buildWelcomeEmail(p: { firstName: string | null; appBaseUrl: str
   </td></tr>
 </table>
 
-<p style="margin:0 0 4px">Qualquer dúvida, é só <strong>responder este e-mail</strong> — eu leio e respondo pessoalmente.</p>
+<p style="margin:0 0 4px">Qualquer dúvida, é só <strong>responder este e-mail</strong>. Eu leio e respondo pessoalmente.</p>
 <p style="margin:0">Um abraço,<br><strong>Eduardo</strong> · Mesaas</p>`;
-  return layout(body, "Você recebeu este e-mail porque criou uma conta no Mesaas.");
+  return layout(body, "Você recebeu este e-mail porque criou uma conta no Mesaas.", base);
 }
 
 export function buildThankYouEmail(
@@ -272,7 +292,7 @@ export function buildThankYouEmail(
   const body = `
 <p style="font-size:16px;font-weight:700;color:#1a3d2b;margin:0 0 12px">${greeting(name)}</p>
 <p style="margin:0 0 8px">Aqui é o Eduardo, do Mesaas. Vi que o <strong>${ws}</strong> acabou de ativar um plano e queria agradecer pessoalmente.</p>
-<p style="margin:0 0 20px">Confiança não se ganha à toa — obrigado por escolher o Mesaas para cuidar da operação da sua agência. Vamos trabalhar todos os dias para merecer essa escolha.</p>
+<p style="margin:0 0 20px">Confiança não se ganha à toa. Obrigado por escolher o Mesaas para cuidar da operação da sua agência. Vamos trabalhar todos os dias para merecer essa escolha.</p>
 
 <p style="font-size:15px;font-weight:700;color:#1a3d2b;margin:0 0 4px">Para aproveitar ao máximo</p>
 <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">
@@ -280,7 +300,7 @@ export function buildThankYouEmail(
   ${
     stepRow(
       2,
-      `Traga seus dados de outras ferramentas — <a href="${base}/importar" style="color:#1a3d2b;font-weight:700">importe do Notion, Trello, ClickUp ou CSV</a>.`,
+      `Traga seus dados de outras ferramentas: <a href="${base}/importar" style="color:#1a3d2b;font-weight:700">importe do Notion, Trello, ClickUp ou CSV</a>.`,
     )
   }
   ${stepRow(3, "Ative o Hub para os seus clientes aprovarem posts sem precisar de login.")}
@@ -290,7 +310,7 @@ export function buildThankYouEmail(
 
 <p style="margin:0 0 4px">Me conta: o que faria o Mesaas ser ainda melhor para a sua agência? É só <strong>responder este e-mail</strong>.</p>
 <p style="margin:0">Um abraço,<br><strong>Eduardo</strong> · Mesaas</p>`;
-  return layout(body, `Você recebeu este e-mail porque o workspace ${ws} ativou um plano no Mesaas.`);
+  return layout(body, `Você recebeu este e-mail porque o workspace ${ws} ativou um plano no Mesaas.`, base);
 }
 ```
 
@@ -1390,7 +1410,7 @@ gh pr create --title "feat: welcome + subscription thank-you lifecycle emails" -
 Spec: `docs/superpowers/specs/2026-07-29-lifecycle-emails-design.md`
 
 ## Deploy runbook (ordered — schedule migration LAST)
-1. Confirm `eduardo@mesaas.com.br` works as a Resend sender, and confirm the `APP_BASE_URL` secret is set on BOTH staging and prod (`npx supabase secrets list`) — the cron has no request Origin and `appBaseUrl()` throws without it
+1. Confirm `eduardo@mesaas.com.br` works as a Resend sender; confirm the `APP_BASE_URL` secret is set on BOTH staging and prod (`npx supabase secrets list`); after the Vercel deploy, confirm https://www.mesaas.com.br/logo-white-email.png returns 200
 2. `npx supabase db push --linked` (applies 20260730000001; check `supabase/.temp/project-ref` first — staging before prod)
 3. `npx supabase functions deploy lifecycle-email-cron --no-verify-jwt --use-api`
 4. Push 20260730000002 (pg_cron schedule) — only after step 3

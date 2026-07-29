@@ -22,7 +22,8 @@ Resend from the founder's address:
 | Sender (both emails) | `Eduardo do Mesaas <eduardo@mesaas.com.br>` |
 | Welcome trigger | Cron sweep after email confirmation |
 | Trial vs paid thank-you | Identical copy for both |
-| Visual approach | Rich CSS-only (inline-styled tables, zero external images) |
+| Visual approach | Rich CSS-only (inline-styled tables); the ONLY external image is the hosted Mesaas logo PNG in the header, with a styled alt-text fallback |
+| Copy rules | Positioning is "plataforma de gestão para agências de social media" (not "CRM"); **no em-dashes (—) anywhere in the email copy** (user: reads as AI slop) |
 | Welcome audience | **Self-serve signups only** (see discriminator below) — invited members, including invited owners, already get the invite email and must not get "import your agency's data" |
 
 ## Architecture
@@ -60,7 +61,12 @@ payload — e.g. `profiles.nome` changed between attempts) means the key was alr
 accepted, i.e. the original send happened: it is treated as **success**, not an error. All dynamic values pass through `escapeHtml` from
 `_shared/report-template/escape.ts`. Palette matches the existing emails: green `#1a3d2b`
 on cream `#f5f3ee`, white 16px-radius card, Arial stack. A shared internal layout function
-provides header/footer so both emails render as one family.
+provides header/footer so both emails render as one family. The header carries the real
+Mesaas logo: `<img src="{appBaseUrl}/logo-white-email.png" width="221" height="28"
+alt="Mesaas">` with white bold alt-text styling so blocked-image clients still show the
+brand on the green header. The asset is `public/logo-white-email.png` (442×56, 2× retina,
+rasterized from `public/logo-white.svg` because email clients do not render SVG), shipped
+with this branch and served by Vercel.
 
 **Name handling (both builders):** `firstName` = first whitespace-separated word of
 `profiles.nome`, which `handle_new_user_workspace` populates from signup metadata `nome`
@@ -71,10 +77,10 @@ source; auth metadata is not read.
 **`buildWelcomeEmail({ firstName, appBaseUrl })`**
 Subject: `Bem-vindo ao Mesaas 👋`. Sections, top to bottom:
 
-1. Branded header — "Mesaas" text wordmark on green.
+1. Branded header: Mesaas logo PNG on green (alt-text fallback).
 2. Personal opening from Eduardo (2–3 sentences, first person, greets by first name).
-3. One-line positioning: CRM para agências de social media — clientes, entregas, aprovações
-   e analytics em um lugar só.
+3. One-line positioning: "plataforma de gestão para agências de social media": clientes,
+   entregas, aprovações e analytics em um lugar só.
 4. Four feature cards (2×2 table-based, stacking gracefully), emoji icons:
    - 👥 Clientes & CRM
    - 📋 Entregas — kanban + calendário editorial
@@ -245,7 +251,8 @@ Deno tests alongside the existing edge suites (`supabase/functions/__tests__/`):
 
 - **Template builders:** subjects/copy present, `firstName`/`workspaceName` escaping (XSS
   strings), all links built from `appBaseUrl`, nameless-greeting fallback, no unescaped
-  interpolation.
+  interpolation, logo `<img>` present with `alt="Mesaas"`, and **no em-dash (—) anywhere
+  in either email's HTML**.
 - **Senders:** payload shape, founder from-address, `Idempotency-Key` header value,
   bounded fetch (`AbortSignal` present), 409 treated as success, throw on other
   non-2xx / missing key.
@@ -263,7 +270,9 @@ Order matters (the schedule migration fires the function immediately):
 1. Verify `eduardo@mesaas.com.br` is usable as a Resend sender (domain already verified;
    this is address choice only), and verify the `APP_BASE_URL` secret is set on **both**
    staging and prod (`npx supabase secrets list`) — the cron has no request Origin to
-   fall back on, and `appBaseUrl()` throws without it.
+   fall back on, and `appBaseUrl()` throws without it. After the Vercel deploy of this
+   branch, confirm `https://www.mesaas.com.br/logo-white-email.png` returns 200 before
+   scheduling the cron (blocked-image clients fall back to alt text either way).
 2. Push **Migration A** (ledger + RPCs + seeds) — staging first (check link state per repo
    rule: `cat supabase/.temp/project-ref`), then prod.
 3. Deploy `lifecycle-email-cron` (`--no-verify-jwt`, `--use-api`) to the same project.
