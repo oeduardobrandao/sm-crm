@@ -1,8 +1,10 @@
 import { assert, assertEquals } from "./assert.ts";
 import {
-  computeMrrCents,
+  aggregateMrr,
+  isMrrStatus,
   resolvePlanFromPriceId,
   statusToPlanId,
+  toMonthlyCents,
 } from "../_shared/billing-logic.ts";
 
 Deno.test("statusToPlanId: active/trialing grant the subscribed plan", () => {
@@ -35,57 +37,65 @@ Deno.test("resolvePlanFromPriceId: matches monthly and annual prices", () => {
   assert(resolvePlanFromPriceId("price_unknown", plans) === null);
 });
 
-// ─── computeMrrCents ─────────────────────────────────────────────────────────
+// ─── MRR helpers ─────────────────────────────────────────────────────────────
 
-const MRR_PLANS = [
-  { id: "starter", price_brl: 9900, price_brl_annual: 99000 }, // annual/12 = 8250
-  { id: "pro", price_brl: 29900, price_brl_annual: 358800 }, // annual/12 = 29900
-  { id: "free", price_brl: 0, price_brl_annual: null },
-];
+Deno.test("isMrrStatus: active/past_due count; trialing and terminal states do not", () => {
+  assert(isMrrStatus("active"));
+  assert(isMrrStatus("past_due"));
+  for (
+    const s of [
+      "trialing",
+      "canceled",
+      "unpaid",
+      "incomplete",
+      "incomplete_expired",
+      "paused",
+      null,
+      undefined,
+      "",
+    ]
+  ) {
+    assert(!isMrrStatus(s), `expected ${String(s)} to be excluded`);
+  }
+});
 
-Deno.test("computeMrrCents: sums active monthly subs at catalog price", () => {
-  const subs = [
-    { status: "active", plan_id: "starter", billing_interval: "month" },
-    { status: "active", plan_id: "pro", billing_interval: "month" },
+Deno.test("toMonthlyCents: monthly passthrough, annual /12 rounded, non-positive → null", () => {
+  assertEquals(toMonthlyCents("month", 19990), 19990);
+  assertEquals(toMonthlyCents("year", 99000), 8250);
+  assertEquals(toMonthlyCents("year", 101900), 8492); // R$1019,00/yr → R$84,92/mo
+  assertEquals(toMonthlyCents(null, 12345), 12345); // unknown interval treated as monthly
+  assertEquals(toMonthlyCents("month", 0), null);
+  assertEquals(toMonthlyCents("month", null), null);
+  assertEquals(toMonthlyCents("year", -100), null);
+});
+
+Deno.test("aggregateMrr: sums monthly-normalized paying rows; total reconciles with breakdown", () => {
+  const rows = [
+    { workspace_id: "a", status: "active", interval: "month", amount_cents: 19990 }, // 199,90
+    { workspace_id: "b", status: "active", interval: "year", amount_cents: 101900 }, // → 84,92
+    { workspace_id: "c", status: "active", interval: "month", amount_cents: 9990 }, //   99,90
+    { workspace_id: "d", status: "past_due", interval: "month", amount_cents: 11892 }, // 118,92
+    { workspace_id: "e", status: "trialing", interval: "month", amount_cents: 9990 }, // excluded
+    { workspace_id: "f", status: "active", interval: "month", amount_cents: 0 }, // excluded ($0)
   ];
-  assertEquals(computeMrrCents(subs, MRR_PLANS), { mrr_cents: 39800, paying_count: 2 });
+  const r = aggregateMrr(rows);
+  assertEquals(r.mrr_cents, 50364); // R$503,64
+  assertEquals(r.paying_count, 4);
+  assertEquals(r.priced.map((p) => p.monthly_cents), [19990, 8492, 9990, 11892]);
+  assertEquals(r.priced.reduce((s, p) => s + p.monthly_cents, 0), r.mrr_cents);
 });
 
-Deno.test("computeMrrCents: annual subs are normalized to a monthly figure", () => {
-  const subs = [{ status: "active", plan_id: "starter", billing_interval: "year" }];
-  assertEquals(computeMrrCents(subs, MRR_PLANS), { mrr_cents: 8250, paying_count: 1 });
+Deno.test("aggregateMrr: comps and empty input are R$0 (no subscription rows exist)", () => {
+  assertEquals(aggregateMrr([]), { mrr_cents: 0, paying_count: 0, priced: [] });
 });
 
-Deno.test("computeMrrCents: past_due counts, trialing/canceled/incomplete do not", () => {
-  const subs = [
-    { status: "active", plan_id: "starter", billing_interval: "month" },
-    { status: "past_due", plan_id: "pro", billing_interval: "month" },
-    { status: "trialing", plan_id: "pro", billing_interval: "month" },
-    { status: "canceled", plan_id: "pro", billing_interval: "month" },
-    { status: "incomplete", plan_id: "pro", billing_interval: "month" },
+Deno.test("aggregateMrr: rows that cannot be priced are dropped, not counted", () => {
+  const rows = [
+    { status: "active", interval: "month", amount_cents: null }, // unpriced
+    { status: "active", interval: "year", amount_cents: 0 }, // $0
+    { status: "active", interval: "month", amount_cents: 5000 }, // kept
   ];
-  // 9900 (starter active) + 29900 (pro past_due)
-  assertEquals(computeMrrCents(subs, MRR_PLANS), { mrr_cents: 39800, paying_count: 2 });
-});
-
-Deno.test("computeMrrCents: comped/manual plan grants never appear (no subscription rows)", () => {
-  // A comp sets workspaces.plan_id but writes no workspace_subscriptions row, so the input
-  // to computeMrrCents simply does not contain it. An empty subscription set is R$ 0.
-  assertEquals(computeMrrCents([], MRR_PLANS), { mrr_cents: 0, paying_count: 0 });
-});
-
-Deno.test("computeMrrCents: free (price 0) and unknown/absent plan prices contribute nothing", () => {
-  const subs = [
-    { status: "active", plan_id: "free", billing_interval: "month" },
-    { status: "active", plan_id: "ghost", billing_interval: "month" }, // not in catalog
-    { status: "active", plan_id: null, billing_interval: "month" },
-    { status: "active", plan_id: "starter", billing_interval: "year" }, // 8250, priced
-  ];
-  assertEquals(computeMrrCents(subs, MRR_PLANS), { mrr_cents: 8250, paying_count: 1 });
-});
-
-Deno.test("computeMrrCents: annual sub with no annual price is skipped, not mispriced", () => {
-  const plans = [{ id: "starter", price_brl: 9900, price_brl_annual: null }];
-  const subs = [{ status: "active", plan_id: "starter", billing_interval: "year" }];
-  assertEquals(computeMrrCents(subs, plans), { mrr_cents: 0, paying_count: 0 });
+  const r = aggregateMrr(rows);
+  assertEquals(r.mrr_cents, 5000);
+  assertEquals(r.paying_count, 1);
 });

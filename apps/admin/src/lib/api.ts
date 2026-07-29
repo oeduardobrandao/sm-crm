@@ -285,12 +285,29 @@ export function listPlans() {
   return adminApi<{ plans: Plan[] }>('list-plans');
 }
 
+export interface PayingWorkspace {
+  workspace_id: string;
+  name: string;
+  plan_name: string | null;
+  status: string | null;
+  /** Billing interval ("month" | "year"). */
+  interval: string | null;
+  /** This workspace's monthly contribution to MRR, in centavos. */
+  monthly_cents: number;
+  /** Coupon/discount label when the live Stripe amount is discounted. */
+  discount_label: string | null;
+  /** Whether monthly_cents came from live Stripe or the plan's catalog price. */
+  amount_source: 'stripe' | 'catalog' | null;
+}
+
 export interface MrrSummary {
   /** Monthly recurring revenue in centavos (annual subs normalized to monthly). */
   mrr_cents: number;
   /** Number of in-force paid subscriptions counted (active + past_due). */
   paying_count: number;
   currency: string;
+  /** Per-workspace breakdown, highest monthly contribution first. Sums to mrr_cents. */
+  workspaces: PayingWorkspace[];
 }
 
 export function getMrr() {
