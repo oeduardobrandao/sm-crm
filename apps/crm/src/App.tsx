@@ -88,7 +88,7 @@ export default function App() {
         <div className="flex items-center justify-center h-screen text-center p-8">
           <div>
             <h1 className="text-xl font-bold mb-2">Algo deu errado</h1>
-            <p className="text-muted">Recarregue a página para tentar novamente.</p>
+            <p className="text-muted-foreground">Recarregue a página para tentar novamente.</p>
           </div>
         </div>
       }

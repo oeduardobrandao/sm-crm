@@ -88,13 +88,13 @@ export default function StepMapeamento({
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted">
+      <p className="text-sm text-muted-foreground">
         Confira o que encontramos em cada parte do arquivo. Tudo é editável — nada é importado antes
         da sua confirmação.
       </p>
 
       {clientesStatus === 'pending' && (
-        <div className="flex items-center gap-2 rounded-xl border border-border p-4 text-sm text-muted">
+        <div className="flex items-center gap-2 rounded-xl border border-border p-4 text-sm text-muted-foreground">
           <Spinner size="sm" /> Carregando a lista de clientes existentes — precisamos dela para
           saber quem já é seu cliente antes de continuar.
         </div>
@@ -131,7 +131,7 @@ export default function StepMapeamento({
             <CardContent className="space-y-4 pt-6">
               <div>
                 <h2 className="text-base font-semibold">{collection.name}</h2>
-                <p className="text-xs text-muted">
+                <p className="text-xs text-muted-foreground">
                   {collection.rows.length} {collection.rows.length === 1 ? 'linha' : 'linhas'} ·{' '}
                   {collection.columns.length}{' '}
                   {collection.columns.length === 1 ? 'coluna' : 'colunas'}
@@ -140,7 +140,9 @@ export default function StepMapeamento({
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <span className="text-xs font-semibold uppercase text-muted">Importar como</span>
+                  <span className="text-xs font-semibold uppercase text-muted-foreground">
+                    Importar como
+                  </span>
                   <Select
                     value={mapping.destination}
                     onValueChange={(v) => update(collection.id, { destination: v as Destination })}
@@ -160,7 +162,9 @@ export default function StepMapeamento({
 
                 {needsClient && (
                   <div className="space-y-1">
-                    <span className="text-xs font-semibold uppercase text-muted">Cliente</span>
+                    <span className="text-xs font-semibold uppercase text-muted-foreground">
+                      Cliente
+                    </span>
                     <Select
                       value={assignment.mode === 'column' ? assignment.column : FIXED}
                       onValueChange={(v) =>
@@ -196,7 +200,7 @@ export default function StepMapeamento({
                             })
                           }
                         />
-                        <p className="text-xs text-muted">
+                        <p className="text-xs text-muted-foreground">
                           {fixedMatch
                             ? 'Usaremos o cliente que já existe com esse nome.'
                             : 'Se não existir um cliente com esse nome, ele será criado.'}
@@ -209,7 +213,7 @@ export default function StepMapeamento({
 
               {keys.length > 0 && (
                 <div className="space-y-2">
-                  <span className="text-xs font-semibold uppercase text-muted">
+                  <span className="text-xs font-semibold uppercase text-muted-foreground">
                     Equivalência de status
                   </span>
                   <div className="grid gap-2 sm:grid-cols-2">

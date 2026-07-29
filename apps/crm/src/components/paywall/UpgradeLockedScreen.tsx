@@ -11,11 +11,13 @@ export function UpgradeLockedScreen({ featureLabel }: { featureLabel: string }) 
       <h1 className="text-xl font-bold">{featureLabel} não está no seu plano</h1>
       {isOwner ? (
         <>
-          <p className="text-muted">Faça upgrade para desbloquear este recurso.</p>
+          <p className="text-muted-foreground">Faça upgrade para desbloquear este recurso.</p>
           <Button onClick={() => navigate('/configuracao/cobranca')}>Fazer upgrade</Button>
         </>
       ) : (
-        <p className="text-muted">Fale com o dono do workspace para liberar este recurso.</p>
+        <p className="text-muted-foreground">
+          Fale com o dono do workspace para liberar este recurso.
+        </p>
       )}
     </div>
   );

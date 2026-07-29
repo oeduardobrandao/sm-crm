@@ -33,7 +33,7 @@ export default function StepPrevia({
       <h2 className="text-base font-semibold">Prévia da importação</h2>
 
       {busy && (
-        <div className="flex items-center gap-2 text-sm text-muted">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner size="sm" /> Conferindo os dados…
         </div>
       )}
@@ -52,7 +52,7 @@ export default function StepPrevia({
               {COUNT_LABELS.map(([key, label]) => (
                 <div key={key}>
                   <p className="text-2xl font-bold">{preview.counts[key] ?? 0}</p>
-                  <p className="text-xs uppercase text-muted">{label}</p>
+                  <p className="text-xs uppercase text-muted-foreground">{label}</p>
                 </div>
               ))}
             </CardContent>
@@ -73,14 +73,14 @@ export default function StepPrevia({
           )}
 
           {ignoredRows > 0 && (
-            <p className="flex gap-2 text-sm text-muted">
+            <p className="flex gap-2 text-sm text-muted-foreground">
               <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               {ignoredRows} {ignoredRows === 1 ? 'linha será ignorada' : 'linhas serão ignoradas'}{' '}
               por não ter cliente ou título — volte e ajuste o mapeamento se não for o esperado.
             </p>
           )}
 
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             Clientes com o mesmo nome de um cliente que já existe são mesclados: só preenchemos
             campos vazios, nunca sobrescrevemos. Por isso, a mesclagem não é desfeita pelo “Desfazer
             importação”.
