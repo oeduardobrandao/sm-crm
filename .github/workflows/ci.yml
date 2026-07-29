@@ -191,7 +191,7 @@ jobs:
           fi
           echo "No duplicate migration versions."
 
-  # Leak 6: entitlement SQL test suites (supabase/tests/entitlements/) — 19 suites
+  # Leak 6: entitlement SQL test suites (supabase/tests/entitlements/) — 20 suites
   # that gate plan limits, feature gates, role isolation, and the P0 workspace
   # selector lockdown. They run against a local Supabase database.
   entitlement-tests:
