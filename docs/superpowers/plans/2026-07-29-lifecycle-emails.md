@@ -1411,6 +1411,7 @@ Spec: `docs/superpowers/specs/2026-07-29-lifecycle-emails-design.md`
 
 ## Deploy runbook (ordered — schedule migration LAST)
 1. Confirm `eduardo@mesaas.com.br` works as a Resend sender; confirm the `APP_BASE_URL` secret is set on BOTH staging and prod (`npx supabase secrets list`); after the Vercel deploy, confirm https://www.mesaas.com.br/logo-white-email.png returns 200
+1b. Reply handling (user-side): create `eduardo@mesaas.com.br` as an alias in the UOL Host mail panel (domain MX = mx.uhserver.com) forwarding to the Crisp workspace's email redirection address, and test that a mail to it appears in Crisp — replies bounce without this
 2. `npx supabase db push --linked` (applies 20260730000001; check `supabase/.temp/project-ref` first — staging before prod)
 3. `npx supabase functions deploy lifecycle-email-cron --no-verify-jwt --use-api`
 4. Push 20260730000002 (pg_cron schedule) — only after step 3

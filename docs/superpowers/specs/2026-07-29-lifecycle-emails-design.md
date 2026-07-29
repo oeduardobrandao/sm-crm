@@ -273,11 +273,18 @@ Order matters (the schedule migration fires the function immediately):
    fall back on, and `appBaseUrl()` throws without it. After the Vercel deploy of this
    branch, confirm `https://www.mesaas.com.br/logo-white-email.png` returns 200 before
    scheduling the cron (blocked-image clients fall back to alt text either way).
-2. Push **Migration A** (ledger + RPCs + seeds) — staging first (check link state per repo
+2. **Reply handling (user-side, before the cron goes live):** sending needs no mailbox
+   (Resend authenticates by domain DKIM), but replies land at the domain MX, which is
+   UOL Host (`mx.uhserver.com`). Create `eduardo@mesaas.com.br` as an alias/redirect in
+   the UOL Host mail panel forwarding to the Crisp workspace's email redirection address
+   (Crisp: Settings → Workspace Settings → Setup & Integrations → Email), so replies
+   become Crisp conversations. Test by mailing `eduardo@mesaas.com.br` and seeing it in
+   Crisp. Without this, "é só responder este e-mail" bounces.
+3. Push **Migration A** (ledger + RPCs + seeds) — staging first (check link state per repo
    rule: `cat supabase/.temp/project-ref`), then prod.
-3. Deploy `lifecycle-email-cron` (`--no-verify-jwt`, `--use-api`) to the same project.
-4. Push **Migration B** (pg_cron schedule).
-5. Verify on staging: confirm a fresh signup receives the welcome email within ~15 min;
+4. Deploy `lifecycle-email-cron` (`--no-verify-jwt`, `--use-api`) to the same project.
+5. Push **Migration B** (pg_cron schedule).
+6. Verify on staging: confirm a fresh signup receives the welcome email within ~15 min;
    for the thank-you path, insert a synthetic `workspace_subscriptions` row (status
    `trialing`, non-null `stripe_subscription_id`) for a test workspace and watch the next
    run send exactly once. (Staging shares the prod Stripe key and test-mode events are
