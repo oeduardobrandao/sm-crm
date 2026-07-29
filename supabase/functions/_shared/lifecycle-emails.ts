@@ -139,3 +139,72 @@ export function buildThankYouEmail(
 <p style="margin:0">Um abraço,<br><strong>Eduardo</strong> · Mesaas</p>`;
   return layout(body, `Você recebeu este e-mail porque o workspace ${ws} ativou um plano no Mesaas.`, base);
 }
+
+export const LIFECYCLE_FROM = "Eduardo do Mesaas <eduardo@mesaas.com.br>";
+
+/**
+ * Throwing Resend POST. The Idempotency-Key makes retries after ambiguous
+ * failures (lost response, crash after acceptance) safe: Resend dedupes the
+ * same key for 24h. Callers pass a key deterministic per subject
+ * (welcome/<user_id>, subscription_thanks/<workspace_id>).
+ *
+ * Bounded by AbortSignal: the edge runtime kills isolates on unbounded I/O in
+ * ways that bypass catch entirely (repo-documented failure mode) — a timeout
+ * must surface as a normal retryable throw instead.
+ */
+async function sendViaResend(
+  to: string,
+  subject: string,
+  html: string,
+  idempotencyKey: string,
+): Promise<void> {
+  const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+  if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY not configured");
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({ from: LIFECYCLE_FROM, to: [to], subject, html }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  // 409 invalid_idempotent_request: this key was already accepted with a
+  // different payload (name/email drifted between attempts). The original
+  // send happened — success, so the caller marks the claim delivered.
+  if (res.status === 409) return;
+  if (!res.ok) throw new Error(`Resend send failed: ${res.status}`);
+}
+
+export async function sendWelcomeEmail(
+  p: { to: string; firstName: string | null; appBaseUrl: string; idempotencyKey: string },
+): Promise<void> {
+  await sendViaResend(
+    p.to,
+    WELCOME_SUBJECT,
+    buildWelcomeEmail({ firstName: p.firstName, appBaseUrl: p.appBaseUrl }),
+    p.idempotencyKey,
+  );
+}
+
+export async function sendThankYouEmail(
+  p: {
+    to: string;
+    firstName: string | null;
+    workspaceName: string;
+    appBaseUrl: string;
+    idempotencyKey: string;
+  },
+): Promise<void> {
+  await sendViaResend(
+    p.to,
+    THANKYOU_SUBJECT,
+    buildThankYouEmail({
+      firstName: p.firstName,
+      workspaceName: p.workspaceName,
+      appBaseUrl: p.appBaseUrl,
+    }),
+    p.idempotencyKey,
+  );
+}
