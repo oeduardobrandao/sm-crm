@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { listWorkspaces, listPlans } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
+import { formatMoney } from '../lib/subscription';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -21,12 +22,20 @@ export default function DashboardPage() {
   const withOverrides = workspacesData?.workspaces?.filter((w) => w.has_overrides).length ?? 0;
   const totalMembers = workspacesData?.workspaces?.reduce((sum, w) => sum + w.member_count, 0) ?? 0;
 
+  // Committed MRR: each plan's monthly price (in centavos) × workspaces assigned to it.
+  // Free plans (price_brl 0/null) contribute nothing.
+  const mrrCents = (plansData?.plans ?? []).reduce(
+    (sum, p) => sum + (p.price_brl ?? 0) * p.workspace_count,
+    0,
+  );
+
   const isLoading = wsLoading || plansLoading;
 
   const kpis = [
     { label: 'Workspaces', value: totalWorkspaces },
     { label: 'Total Users', value: totalMembers },
     { label: 'Active Plans', value: activePlans },
+    { label: 'MRR', value: formatMoney(mrrCents, 'brl') },
     { label: 'With Overrides', value: withOverrides },
   ];
 
@@ -35,7 +44,7 @@ export default function DashboardPage() {
       <h1 className="font-sf text-2xl font-bold mb-1">Dashboard</h1>
       <p className="text-sm text-muted-foreground mb-8">Platform overview</p>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
         {kpis.map((kpi) => (
           <div
             key={kpi.label}
