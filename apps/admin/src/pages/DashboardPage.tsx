@@ -192,16 +192,44 @@ export default function DashboardPage() {
         ) : (
           (trialsData?.trials || []).map((ws) => {
             const end = ws.trial_ends_at ? new Date(ws.trial_ends_at) : null;
-            const daysLeft = end ? Math.ceil((end.getTime() - Date.now()) / 86_400_000) : null;
             const endLabel = end
               ? end.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
               : '—';
+            // Compare by calendar day, not 24h windows: a trial ending later *today* reads
+            // "expira hoje" (Math.ceil would say "1d"), and one whose end has already passed
+            // reads "expirado" — not "expira hoje" indefinitely while a webhook update is in
+            // flight. Math.round absorbs the ±1h DST wobble between two local midnights.
+            let dayDiff: number | null = null;
+            if (end) {
+              const startOfToday = new Date();
+              startOfToday.setHours(0, 0, 0, 0);
+              const endDay = new Date(end);
+              endDay.setHours(0, 0, 0, 0);
+              dayDiff = Math.round((endDay.getTime() - startOfToday.getTime()) / 86_400_000);
+            }
             const daysLabel =
-              daysLeft == null ? null : daysLeft <= 0 ? 'expira hoje' : `${daysLeft}d`;
-            const endingSoon = daysLeft != null && daysLeft <= 3;
-            const daysToneClass = endingSoon
-              ? 'text-warning bg-warning/10'
-              : 'text-muted-foreground bg-muted-foreground/10';
+              dayDiff == null
+                ? null
+                : dayDiff < 0
+                  ? 'expirado'
+                  : dayDiff === 0
+                    ? 'expira hoje'
+                    : `${dayDiff}d`;
+            const daysTone: 'danger' | 'warning' | 'muted' =
+              dayDiff == null
+                ? 'muted'
+                : dayDiff < 0
+                  ? 'danger'
+                  : dayDiff <= 3
+                    ? 'warning'
+                    : 'muted';
+            const daysToneClass = toneBadgeClass(daysTone);
+            const daysTextClass =
+              daysTone === 'danger'
+                ? 'text-destructive'
+                : daysTone === 'warning'
+                  ? 'text-warning'
+                  : 'text-muted-foreground';
             return (
               <div
                 key={ws.workspace_id}
@@ -230,15 +258,7 @@ export default function DashboardPage() {
                   <div className="flex flex-col items-end gap-0.5 whitespace-nowrap">
                     <span className="font-sf text-sm">{endLabel}</span>
                     {daysLabel && (
-                      <span
-                        className={
-                          endingSoon
-                            ? 'text-[0.7rem] text-warning'
-                            : 'text-[0.7rem] text-muted-foreground'
-                        }
-                      >
-                        {daysLabel}
-                      </span>
+                      <span className={`text-[0.7rem] ${daysTextClass}`}>{daysLabel}</span>
                     )}
                   </div>
                 </div>
