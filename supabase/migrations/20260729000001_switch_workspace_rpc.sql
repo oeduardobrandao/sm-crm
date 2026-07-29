@@ -94,4 +94,12 @@ BEGIN
   IF NOT has_function_privilege('authenticated', 'public.switch_workspace(uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'authenticated lost EXECUTE on switch_workspace';
   END IF;
+
+  IF has_function_privilege('service_role', 'public.switch_workspace(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'service_role must not hold EXECUTE on switch_workspace '
+                    '(it never needs to call this — it writes profiles directly)';
+  END IF;
+  IF has_function_privilege('public', 'public.switch_workspace(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'PUBLIC must not hold EXECUTE on switch_workspace';
+  END IF;
 END $$;

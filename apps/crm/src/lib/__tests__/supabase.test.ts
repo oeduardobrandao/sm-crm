@@ -197,10 +197,6 @@ describe('supabase helpers', () => {
       ],
       error: null,
     });
-    queryMock.queue('profiles', 'update', {
-      data: null,
-      error: null,
-    });
 
     module.updateSidebarUI({
       nome: 'Ana Maria',

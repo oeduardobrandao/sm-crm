@@ -201,10 +201,10 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.110.0
 
       - name: Start Supabase
-        run: supabase start
+        run: supabase start -x studio,imgproxy,edge-runtime,realtime,storage-api,logflare,vector,supavisor,mailpit,postgres-meta
 
       - name: Run entitlement suites
         run: bash scripts/test-entitlements.sh

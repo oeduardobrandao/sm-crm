@@ -100,4 +100,13 @@ BEGIN
   IF v_stray IS NOT NULL THEN
     RAISE EXCEPTION 'unexpected or WITH CHECK-less UPDATE policy on profiles: %', v_stray;
   END IF;
+
+  IF NOT (
+    SELECT relrowsecurity FROM pg_class WHERE oid = 'public.profiles'::regclass
+  ) THEN
+    RAISE EXCEPTION 'RLS is not enabled on profiles — profiles_update_own would be inert. '
+                    'This is exactly the class of drift this migration exists to close: '
+                    '20260315_rls_security_audit.sql (the migration that enables RLS on '
+                    'profiles) is recorded as applied in production but never actually ran.';
+  END IF;
 END $$;

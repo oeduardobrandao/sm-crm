@@ -128,7 +128,6 @@ declare
   v_col    text;
   v_got    uuid;
   v_role   text;
-  v_rows   int;
 begin
   v_ws_a := et_make_workspace('max');
   v_ws_b := et_make_workspace('max');
