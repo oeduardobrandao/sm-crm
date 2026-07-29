@@ -16,6 +16,7 @@ import {
 import { getPortfolioSummary, type PortfolioSummary } from '../../services/analytics';
 import { useAuth } from '../../context/AuthContext';
 import { OnboardingBanner } from '../../components/OnboardingBanner';
+import { ImportBanner } from '../../components/import/ImportBanner';
 import { ClientHealthMonitor } from './components/ClientHealthMonitor';
 import { TodayCard, type TodayEvent } from './components/TodayCard';
 import { FinanceKpiStrip } from './components/FinanceKpiStrip';
@@ -157,6 +158,8 @@ export default function DashboardPage() {
       )}
 
       <ClientHealthMonitor />
+
+      {clientesRes.data && <ImportBanner clienteCount={clientes.length} />}
 
       <div className="dashboard-hub" style={{ marginTop: '1.5rem' }}>
         <TodayCard events={todayEvents} />

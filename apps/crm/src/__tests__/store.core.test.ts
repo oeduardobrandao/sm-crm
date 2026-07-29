@@ -264,6 +264,49 @@ describe('store core helpers and CRUD', () => {
     },
   );
 
+  it('getClientes pages through multiple full pages instead of trusting a single response', async () => {
+    // PAGE_SIZE in store/clients.ts is 500 — queue two FULL pages (proving the
+    // loop does not stop just because a page came back "big enough to look
+    // complete") followed by nothing, so the mock's default empty-select
+    // response ends the loop. If getClientes stopped after the first page
+    // (the pre-fix behaviour), this would resolve to only 500 rows instead of
+    // 1000, and would never even attempt a second `clientes` select call.
+    const PAGE_SIZE = 500;
+    const page1 = Array.from({ length: PAGE_SIZE }, (_, i) => ({
+      id: i + 1,
+      nome: `Cliente ${i + 1}`,
+    }));
+    const page2 = Array.from({ length: PAGE_SIZE }, (_, i) => ({
+      id: PAGE_SIZE + i + 1,
+      nome: `Cliente ${PAGE_SIZE + i + 1}`,
+    }));
+    // Reads go through the masking view 'clientes_v' (per-admin financial
+    // visibility, migration 20260728000001), not the base table — writes still
+    // target 'clientes'.
+    mockedSupabase.__queueSupabaseResult('clientes_v', 'select', { data: page1, error: null });
+    mockedSupabase.__queueSupabaseResult('clientes_v', 'select', { data: page2, error: null });
+
+    const result = await store.getClientes();
+
+    expect(result).toHaveLength(PAGE_SIZE * 2);
+    expect(result).toEqual([...page1, ...page2]);
+
+    const calls = mockedSupabase.__getSupabaseCalls().filter((c) => c.table === 'clientes_v');
+    // Three calls: the two queued pages plus one more that drained the queue
+    // and got the mock's default empty result, which is what actually stops
+    // the loop.
+    expect(calls).toHaveLength(3);
+    expect(calls[0].modifiers).toContainEqual({ method: 'range', args: [0, PAGE_SIZE - 1] });
+    expect(calls[1].modifiers).toContainEqual({
+      method: 'range',
+      args: [PAGE_SIZE, PAGE_SIZE * 2 - 1],
+    });
+    expect(calls[2].modifiers).toContainEqual({
+      method: 'range',
+      args: [PAGE_SIZE * 2, PAGE_SIZE * 3 - 1],
+    });
+  });
+
   it.each([
     {
       name: 'addCliente',

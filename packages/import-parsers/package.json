@@ -1,0 +1,9 @@
+{
+  "name": "@mesaas/import-parsers",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "fflate": "0.8.2"
+  }
+}
