@@ -627,6 +627,27 @@ type StripeAmount = {
 };
 
 /**
+ * Rejects if `p` has not settled within `ms`, so an awaited external call can't hang a handler
+ * until the edge runtime kills the isolate. The underlying promise stays handled after the race
+ * is lost (its late settle hits the no-op resolve/reject), so no unhandled rejection escapes.
+ */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+/**
  * Retrieves a subscription's current price from Stripe and applies any active coupon,
  * so the returned amount is what the customer actually pays. Shared by the detail
  * view and the list. `fallbackInterval` is the mirror's billing_interval, used when
@@ -844,45 +865,61 @@ async function handleGetMrr(
     }
   }
 
-  const priceable = await Promise.all(
-    rows.map(async (s) => {
-      const planMeta = s.plan_id ? planById.get(s.plan_id) : undefined;
-      let amount_cents: number | null = null;
-      let interval: string | null = s.billing_interval;
-      let discount_label: string | null = null;
-      let amount_source: "stripe" | "catalog" | null = null;
+  const priceRow = async (s: (typeof rows)[number]) => {
+    const planMeta = s.plan_id ? planById.get(s.plan_id) : undefined;
+    let amount_cents: number | null = null;
+    let interval: string | null = s.billing_interval;
+    let discount_label: string | null = null;
+    let amount_source: "stripe" | "catalog" | null = null;
 
-      if (stripeClient && s.stripe_subscription_id) {
-        try {
-          const amt = await fetchStripeAmount(stripeClient, s.stripe_subscription_id, s.billing_interval);
-          amount_cents = amt.amount_cents;
-          interval = amt.interval ?? s.billing_interval;
-          discount_label = amt.discount_label;
-          amount_source = "stripe";
-        } catch (err) {
-          console.error("[platform-admin] mrr stripe fetch failed:", (err as Error).message);
-        }
+    if (stripeClient && s.stripe_subscription_id) {
+      try {
+        // Bound the live call: a hung Stripe fetch never reaches this catch, and the edge
+        // runtime would kill the whole isolate before get-mrr could return. On timeout this
+        // rejects and we fall through to the catalog price below.
+        const amt = await withTimeout(
+          fetchStripeAmount(stripeClient, s.stripe_subscription_id, s.billing_interval),
+          STRIPE_TIMEOUT_MS,
+          "stripe retrieve",
+        );
+        amount_cents = amt.amount_cents;
+        interval = amt.interval ?? s.billing_interval;
+        discount_label = amt.discount_label;
+        amount_source = "stripe";
+      } catch (err) {
+        console.error("[platform-admin] mrr stripe fetch failed:", (err as Error).message);
       }
-      if (amount_cents == null && planMeta) {
-        const cents = s.billing_interval === "year" ? planMeta.price_brl_annual : planMeta.price_brl;
-        if (cents != null) {
-          amount_cents = cents;
-          amount_source = "catalog";
-        }
+    }
+    if (amount_cents == null && planMeta) {
+      const cents = s.billing_interval === "year" ? planMeta.price_brl_annual : planMeta.price_brl;
+      if (cents != null) {
+        amount_cents = cents;
+        amount_source = "catalog";
       }
+    }
 
-      return {
-        workspace_id: s.workspace_id,
-        name: nameByWs.get(s.workspace_id) ?? "—",
-        plan_name: planMeta?.name ?? null,
-        status: s.status ?? null,
-        interval,
-        amount_cents,
-        discount_label,
-        amount_source,
-      };
-    }),
-  );
+    return {
+      workspace_id: s.workspace_id,
+      name: nameByWs.get(s.workspace_id) ?? "—",
+      plan_name: planMeta?.name ?? null,
+      status: s.status ?? null,
+      interval,
+      amount_cents,
+      discount_label,
+      amount_source,
+    };
+  };
+
+  // Price rows in bounded batches rather than one unbounded Promise.all: each paying row is a
+  // live Stripe request, and a full fan-out would breach Stripe's rate limit as the paying base
+  // grows — the caught 429s would then silently fall back to catalog prices, making the total
+  // inconsistent exactly when it matters most. 8 keeps peak throughput well under Stripe's limit.
+  const STRIPE_CONCURRENCY = 8;
+  const STRIPE_TIMEOUT_MS = 5000;
+  const priceable: Array<Awaited<ReturnType<typeof priceRow>>> = [];
+  for (let i = 0; i < rows.length; i += STRIPE_CONCURRENCY) {
+    priceable.push(...(await Promise.all(rows.slice(i, i + STRIPE_CONCURRENCY).map(priceRow))));
+  }
 
   const { mrr_cents, paying_count, priced } = aggregateMrr(priceable);
   const workspaces = priced
