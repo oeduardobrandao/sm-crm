@@ -78,12 +78,35 @@
 -- specific to conta_id, because its incidental backstop happens to share a
 -- SQLSTATE with genuine privilege denial and active_workspace_id's does not.
 --
--- Not fixed here: closing this would mean either dropping/disabling
--- profiles_select_same_workspace for the duration of the check (mirroring
--- 55_switch_workspace_rpc.sql's DISABLE TRIGGER isolation) or reworking the
--- assertion to distinguish on message text as well as SQLSTATE, and either
--- changes this suite's committed behavior -- left for a follow-up review
--- rather than a same-pass patch.
+-- FIXED HERE. Section 1 below wraps its authenticated-role checks with
+-- ALTER TABLE public.profiles DISABLE/ENABLE ROW LEVEL SECURITY, mirroring
+-- 55_switch_workspace_rpc.sql's DISABLE TRIGGER isolation technique. With RLS
+-- disabled for the duration of the check, profiles_select_same_workspace has
+-- no qual left to enforce as an implicit WITH CHECK on the UPDATE, so a
+-- caught insufficient_privilege can only mean the tested column-level
+-- privilege revoke is actually in effect -- exactly what section 1 claims to
+-- prove, and nothing else. The ALTER TABLE statements run while the session
+-- is still the table owner (before SET LOCAL ROLE authenticated / after
+-- RESET ROLE), which is required: ROW LEVEL SECURITY DDL needs table-owner
+-- privilege, and `authenticated` does not have it.
+--
+-- Disabling RLS here is the correct isolation, not a workaround that happens
+-- to make the test pass. profiles_select_same_workspace was never a policy
+-- that holds where the vulnerability actually lives: production's real
+-- SELECT policy on profiles ("Users can view own workspace profiles") is
+-- `USING ((id = auth.uid()) OR (conta_id = get_my_conta_id()))` -- the
+-- `id = auth.uid()` arm always passes for the attacker's own row, so it never
+-- backstops a self-row conta_id rewrite regardless of the target workspace.
+-- profiles_select_same_workspace -- the stricter, no-escape-hatch version
+-- that incidentally masks this test locally -- only exists here because
+-- 20260315_rls_security_audit.sql never actually ran on production; it is
+-- environment drift, not a real defense. Leaving the mask in place would mean
+-- this specific check could report a false PASS locally while a future
+-- regression that re-grants UPDATE (conta_id) reopens the exact cross-tenant
+-- takeover fully, with no backstop at all, in production. The property under
+-- test is the column-level GRANT, not any SELECT policy, so removing RLS as a
+-- variable does not weaken the assertion -- it makes the assertion test the
+-- thing it claims to test.
 
 -- =============================================================
 -- 1. The tenant selector and the role are not writable by their owner.
@@ -91,6 +114,12 @@
 begin;
 select et_grant_hosted_parity(ARRAY['profiles']);
 grant select on public.profiles to authenticated;
+-- Table-owner privilege is required for this DDL, and this is the last point
+-- in the section where the session is still the owner (the DO block below is
+-- what switches to `authenticated`). See the comment block above this section
+-- for why RLS -- specifically profiles_select_same_workspace -- must be out
+-- of the picture for the isolation checks that follow to mean what they claim.
+alter table public.profiles disable row level security;
 do $$
 declare
   v_ws_a   uuid;
@@ -118,8 +147,10 @@ begin
   -- Each protected column, individually. Privilege denial RAISES (unlike RLS's
   -- USING clause, which silently filters), so a plain exception check is the
   -- right shape here. Caveat: RLS's WITH CHECK also RAISES, with the same
-  -- SQLSTATE as privilege denial -- see the mutation-test note above the top
-  -- of this file for the one case (conta_id) where that overlap matters.
+  -- SQLSTATE as privilege denial -- RLS is disabled for the duration of this
+  -- section (above) specifically so that overlap cannot happen here; see the
+  -- mutation-test note above the top of this file for the conta_id case where
+  -- it otherwise would.
   foreach v_col in array ARRAY['conta_id','active_workspace_id'] loop
     begin
       execute format('update public.profiles set %I = $1 where id = $2', v_col)
@@ -154,6 +185,16 @@ begin
 
   raise notice '56: tenant selector and role are not client-writable';
 end $$;
+-- Restores the normal (enabled) state before section 2/3 run -- both of those
+-- exercise RLS itself (section 3 in particular is testing the RLS policy, not
+-- privilege) and must not inherit this section's isolation. Belt-and-braces
+-- only: even if the DO block above raised something uncaught instead of
+-- reaching this line, ALTER TABLE ... ROW LEVEL SECURITY is ordinary
+-- transactional DDL, so the `rollback;` below (or, on ON_ERROR_STOP causing a
+-- non-zero psql exit before that line runs, the implicit rollback Postgres
+-- performs on disconnect of an open transaction) would revert it regardless --
+-- verified directly against this database in a scratch transaction.
+alter table public.profiles enable row level security;
 rollback;
 
 -- =============================================================
