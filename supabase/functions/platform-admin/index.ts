@@ -844,45 +844,53 @@ async function handleGetMrr(
     }
   }
 
-  const priceable = await Promise.all(
-    rows.map(async (s) => {
-      const planMeta = s.plan_id ? planById.get(s.plan_id) : undefined;
-      let amount_cents: number | null = null;
-      let interval: string | null = s.billing_interval;
-      let discount_label: string | null = null;
-      let amount_source: "stripe" | "catalog" | null = null;
+  const priceRow = async (s: (typeof rows)[number]) => {
+    const planMeta = s.plan_id ? planById.get(s.plan_id) : undefined;
+    let amount_cents: number | null = null;
+    let interval: string | null = s.billing_interval;
+    let discount_label: string | null = null;
+    let amount_source: "stripe" | "catalog" | null = null;
 
-      if (stripeClient && s.stripe_subscription_id) {
-        try {
-          const amt = await fetchStripeAmount(stripeClient, s.stripe_subscription_id, s.billing_interval);
-          amount_cents = amt.amount_cents;
-          interval = amt.interval ?? s.billing_interval;
-          discount_label = amt.discount_label;
-          amount_source = "stripe";
-        } catch (err) {
-          console.error("[platform-admin] mrr stripe fetch failed:", (err as Error).message);
-        }
+    if (stripeClient && s.stripe_subscription_id) {
+      try {
+        const amt = await fetchStripeAmount(stripeClient, s.stripe_subscription_id, s.billing_interval);
+        amount_cents = amt.amount_cents;
+        interval = amt.interval ?? s.billing_interval;
+        discount_label = amt.discount_label;
+        amount_source = "stripe";
+      } catch (err) {
+        console.error("[platform-admin] mrr stripe fetch failed:", (err as Error).message);
       }
-      if (amount_cents == null && planMeta) {
-        const cents = s.billing_interval === "year" ? planMeta.price_brl_annual : planMeta.price_brl;
-        if (cents != null) {
-          amount_cents = cents;
-          amount_source = "catalog";
-        }
+    }
+    if (amount_cents == null && planMeta) {
+      const cents = s.billing_interval === "year" ? planMeta.price_brl_annual : planMeta.price_brl;
+      if (cents != null) {
+        amount_cents = cents;
+        amount_source = "catalog";
       }
+    }
 
-      return {
-        workspace_id: s.workspace_id,
-        name: nameByWs.get(s.workspace_id) ?? "—",
-        plan_name: planMeta?.name ?? null,
-        status: s.status ?? null,
-        interval,
-        amount_cents,
-        discount_label,
-        amount_source,
-      };
-    }),
-  );
+    return {
+      workspace_id: s.workspace_id,
+      name: nameByWs.get(s.workspace_id) ?? "—",
+      plan_name: planMeta?.name ?? null,
+      status: s.status ?? null,
+      interval,
+      amount_cents,
+      discount_label,
+      amount_source,
+    };
+  };
+
+  // Price rows in bounded batches rather than one unbounded Promise.all: each paying row is a
+  // live Stripe request, and a full fan-out would breach Stripe's rate limit as the paying base
+  // grows — the caught 429s would then silently fall back to catalog prices, making the total
+  // inconsistent exactly when it matters most. 8 keeps peak throughput well under Stripe's limit.
+  const STRIPE_CONCURRENCY = 8;
+  const priceable: Array<Awaited<ReturnType<typeof priceRow>>> = [];
+  for (let i = 0; i < rows.length; i += STRIPE_CONCURRENCY) {
+    priceable.push(...(await Promise.all(rows.slice(i, i + STRIPE_CONCURRENCY).map(priceRow))));
+  }
 
   const { mrr_cents, paying_count, priced } = aggregateMrr(priceable);
   const workspaces = priced
