@@ -35,27 +35,112 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-// `text-muted` NOT followed by `-foreground`, and not preceded by `--` (which
+// `text-muted` NOT followed by `-foreground`, and not preceded by `-` (which
 // would be the unrelated, legitimate `var(--text-muted)` CSS variable).
 const BAD_CLASS = /(?<!-)\btext-muted\b(?!-)/;
+
+/**
+ * Only `className` / `class` VALUES are scanned, never whole lines.
+ *
+ * Scanning lines would fail on any comment, doc string, or unrelated literal
+ * that merely names the class — including this file's own header, which is why
+ * an earlier draft had to exclude itself. A guard that trips on prose about the
+ * rule is a guard that gets deleted the first time it blocks someone.
+ *
+ * Returns each value region with the offset it started at, so an offender can
+ * still be reported as file:line.
+ */
+/**
+ * Blanks comment bodies, preserving length so byte offsets still map to lines.
+ *
+ * Needed because comments legitimately contain example markup: this file's own
+ * header explains the rule by quoting `className="text-muted"`, and without
+ * this the guard reports its own documentation as the violation.
+ *
+ * A regex cannot do this safely (`'https://x'` contains `//`), so this walks
+ * the source tracking string, template and comment state.
+ */
+function blankComments(source: string): string {
+  const out = source.split('');
+  let i = 0;
+  while (i < source.length) {
+    const c = source[i];
+    const next = source[i + 1];
+
+    if (c === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') out[i++] = ' ';
+      continue;
+    }
+    if (c === '/' && next === '*') {
+      const end = source.indexOf('*/', i + 2);
+      const stop = end === -1 ? source.length : end + 2;
+      // Keep newlines so line numbering downstream stays correct.
+      for (; i < stop; i += 1) if (source[i] !== '\n') out[i] = ' ';
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      i += 1;
+      while (i < source.length && source[i] !== c) {
+        if (source[i] === '\\') i += 1;
+        i += 1;
+      }
+      i += 1;
+      continue;
+    }
+    i += 1;
+  }
+  return out.join('');
+}
+
+function classValueRegions(source: string): Array<{ text: string; index: number }> {
+  const regions: Array<{ text: string; index: number }> = [];
+  const attr = /\bclass(?:Name)?\s*=\s*/g;
+  let m: RegExpExecArray | null;
+
+  while ((m = attr.exec(source)) !== null) {
+    let i = m.index + m[0].length;
+    const opener = source[i];
+
+    if (opener === '"' || opener === "'") {
+      const end = source.indexOf(opener, i + 1);
+      if (end === -1) continue;
+      regions.push({ text: source.slice(i + 1, end), index: i + 1 });
+      attr.lastIndex = end;
+    } else if (opener === '{') {
+      // Balanced-brace scan: className={cond ? 'a' : 'b'} and template literals
+      // both nest braces, so a naive indexOf('}') would truncate the value and
+      // silently stop checking the rest of it.
+      let depth = 0;
+      const start = i;
+      for (; i < source.length; i += 1) {
+        if (source[i] === '{') depth += 1;
+        else if (source[i] === '}') {
+          depth -= 1;
+          if (depth === 0) break;
+        }
+      }
+      regions.push({ text: source.slice(start + 1, i), index: start + 1 });
+      attr.lastIndex = i;
+    }
+  }
+  return regions;
+}
+
+const lineOf = (source: string, index: number) => source.slice(0, index).split('\n').length;
 
 describe('muted token contract', () => {
   it('never uses the Tailwind class `text-muted` (a near-invisible surface token)', () => {
     const offenders: string[] = [];
 
     for (const file of sourceFiles(SOURCE_ROOT)) {
-      // This file necessarily spells the banned class out, in the doc comment
-      // and in the matcher itself; it would otherwise be its own only offender.
-      if (file.endsWith('mutedTokenContract.test.ts')) continue;
-      const source = readFileSync(file, 'utf8');
-      source.split('\n').forEach((line, i) => {
-        // Only class strings matter. `var(--text-muted)` is the legitimate
-        // design-system variable and is explicitly allowed.
-        const withoutCssVar = line.replace(/var\(--text-muted\)/g, '');
-        if (BAD_CLASS.test(withoutCssVar)) {
-          offenders.push(`${file}:${i + 1}: ${line.trim()}`);
-        }
-      });
+      const source = blankComments(readFileSync(file, 'utf8'));
+      for (const region of classValueRegions(source)) {
+        // `var(--text-muted)` is the legitimate design-system variable and is
+        // explicitly allowed; it can legally appear inside a style-ish value.
+        if (!BAD_CLASS.test(region.text.replace(/var\(--text-muted\)/g, ''))) continue;
+        const line = lineOf(source, region.index);
+        offenders.push(`${file}:${line}: ${region.text.trim().replace(/\s+/g, ' ')}`);
+      }
     }
 
     expect(
