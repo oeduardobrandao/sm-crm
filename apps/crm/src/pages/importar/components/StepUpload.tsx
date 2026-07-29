@@ -33,13 +33,21 @@ export default function StepUpload({
           <label htmlFor="import-files" className="block text-sm font-semibold">
             Arquivos de exportação
           </label>
+          {/* file inputs cannot be styled directly — the browser paints the
+              "Choose Files" control itself. ::file-selector-button is the one
+              hook that reaches it, so the trigger is styled to match <Button
+              variant="secondary"> instead of being left as the raw grey OS
+              widget. */}
           <input
             id="import-files"
             type="file"
             multiple
             accept={guide.accept}
             aria-label="Arquivos de exportação"
-            className="block w-full text-sm"
+            className="block w-full cursor-pointer text-sm text-muted-foreground
+              file:mr-3 file:cursor-pointer file:rounded-md file:border-0
+              file:bg-secondary file:px-4 file:py-2 file:text-sm file:font-medium
+              file:text-secondary-foreground file:transition hover:file:bg-secondary/80"
             onChange={(e) => {
               const files = Array.from(e.target.files ?? []);
               // Reset so picking the SAME file again (retrying after a parse
@@ -49,7 +57,7 @@ export default function StepUpload({
               onFiles(files);
             }}
           />
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             Até {MAX_FILES} arquivos, 20 MB cada e {MAX_ROWS.toLocaleString('pt-BR')} linhas por
             importação. Os arquivos são lidos no seu navegador — nenhum arquivo é enviado para
             nossos servidores.
@@ -58,7 +66,7 @@ export default function StepUpload({
       </Card>
 
       {busy && (
-        <div className="flex items-center gap-2 text-sm text-muted">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner size="sm" /> Lendo os arquivos…
         </div>
       )}
@@ -76,7 +84,7 @@ export default function StepUpload({
             {collections} {collections === 1 ? 'coleção' : 'coleções'} · {rows}{' '}
             {rows === 1 ? 'linha' : 'linhas'}
           </p>
-          <ul className="text-muted">
+          <ul className="text-muted-foreground">
             {bundle.collections.map((c) => (
               <li key={c.id}>
                 {c.name} — {c.rows.length} {c.rows.length === 1 ? 'linha' : 'linhas'}

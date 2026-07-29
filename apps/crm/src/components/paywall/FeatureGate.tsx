@@ -16,7 +16,7 @@ export function FeatureGate({
   const navigate = useNavigate();
   if (isLoading || hasFeature(flag)) return <>{children}</>;
   return (
-    <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted">
+    <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
       <p>{label ?? 'Este recurso'} não está disponível no seu plano.</p>
       <button
         className="mt-2 underline text-primary"

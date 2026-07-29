@@ -312,9 +312,16 @@ export default function ImportarPage() {
     <div className="mx-auto max-w-4xl space-y-6 p-6">
       <div>
         <h1 className="text-2xl font-bold">Importar dados</h1>
-        <ol className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs uppercase text-muted">
+        <ol className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs uppercase text-muted-foreground">
           {STEP_TITLES.map(([id, label], i) => (
-            <li key={id} className={i === currentIndex ? 'font-bold text-primary' : undefined}>
+            <li
+              key={id}
+              // Colour alone carried "which step am I on"; aria-current states it
+              // for screen readers and for anyone who cannot separate the yellow
+              // from the grey.
+              aria-current={i === currentIndex ? 'step' : undefined}
+              className={i === currentIndex ? 'font-bold text-primary' : undefined}
+            >
               {i + 1}. {label}
             </li>
           ))}

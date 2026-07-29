@@ -229,12 +229,16 @@ export default function WorkspaceTab() {
       {/* Import Wizard */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <h3 className="config-title">Importar dados</h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
           Traga clientes, posts, entregas e ideias de Notion, Trello, ClickUp ou planilhas.
         </p>
-        <Link to="/importar" className="btn-secondary">
-          Abrir assistente de importação
-        </Link>
+        {/* Button + asChild rather than `className="btn-secondary"` on the Link:
+            btn-secondary is the legacy style.css class, which renders a bare
+            bordered box that matches nothing else on this screen. Every other
+            action in this tab uses <Button>, so this one does too. */}
+        <Button asChild>
+          <Link to="/importar">Abrir assistente de importação</Link>
+        </Button>
       </div>
 
       {/* Remove Logo Confirm */}

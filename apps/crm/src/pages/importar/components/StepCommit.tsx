@@ -94,7 +94,7 @@ export default function StepCommit({
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <p>{error}</p>
         </div>
-        <p className="text-sm text-muted">
+        <p className="text-sm text-muted-foreground">
           As linhas que já entraram não serão duplicadas: ao tentar novamente, continuamos de onde
           paramos.
         </p>
@@ -111,7 +111,7 @@ export default function StepCommit({
           <Spinner size="sm" /> Importando… {progress.done} de {progress.total}
         </div>
         <Progress value={pct} />
-        <p className="text-sm text-muted">Não feche esta aba até terminar.</p>
+        <p className="text-sm text-muted-foreground">Não feche esta aba até terminar.</p>
       </div>
     );
   }
@@ -127,15 +127,15 @@ export default function StepCommit({
         <CardContent className="grid grid-cols-3 gap-4 pt-6">
           <div>
             <p className="text-2xl font-bold">{summary.created}</p>
-            <p className="text-xs uppercase text-muted">Importados</p>
+            <p className="text-xs uppercase text-muted-foreground">Importados</p>
           </div>
           <div>
             <p className="text-2xl font-bold">{summary.skipped}</p>
-            <p className="text-xs uppercase text-muted">Já existiam</p>
+            <p className="text-xs uppercase text-muted-foreground">Já existiam</p>
           </div>
           <div>
             <p className="text-2xl font-bold">{summary.failed.length}</p>
-            <p className="text-xs uppercase text-muted">Falharam</p>
+            <p className="text-xs uppercase text-muted-foreground">Falharam</p>
           </div>
         </CardContent>
       </Card>
@@ -158,7 +158,7 @@ export default function StepCommit({
             is idempotent per (job_id, source_row_key): the rows that landed are
             skipped and only the failed ones do real work.
           */}
-          <p className="text-muted">
+          <p className="text-muted-foreground">
             Se a causa já foi resolvida (por exemplo, o limite do plano), você pode tentar de novo
             sem risco: continuamos a mesma importação, então nada do que já entrou é duplicado — só
             as linhas que falharam são gravadas.
@@ -211,13 +211,13 @@ export default function StepCommit({
               já têm dados criados fora desta importação (fluxos, ideias, contas conectadas).
             </p>
           )}
-          <p className="text-muted">
+          <p className="text-muted-foreground">
             Clientes mesclados com registros que já existiam nunca são apagados.
           </p>
         </div>
       ) : (
         <div className="space-y-2 rounded-xl border border-border p-4 text-sm">
-          <p className="text-muted">
+          <p className="text-muted-foreground">
             Você tem 7 dias para desfazer esta importação. Nós mantemos o que passou a depender de
             outras coisas — posts já publicados, calendários com conteúdo novo e clientes com dados
             criados depois — e listamos tudo o que ficou.
