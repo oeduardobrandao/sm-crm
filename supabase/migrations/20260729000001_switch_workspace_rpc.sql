@@ -41,7 +41,18 @@ BEGIN
 
   -- Both selectors in ONE statement. Two statements would leave a window in
   -- which conta_id and active_workspace_id disagree, and conta_id is what the
-  -- legacy policies read.
+  -- legacy policies read. This also means trg_validate_active_workspace (from
+  -- 20260317_multi_workspace.sql, fires BEFORE UPDATE OF active_workspace_id
+  -- whenever the new value is non-NULL) independently re-checks membership
+  -- every time this UPDATE runs -- overlapping, not redundant, with the guard
+  -- above. The two are complementary: that trigger only ever looks at
+  -- active_workspace_id changing to non-NULL, so it would NOT catch a future
+  -- edit to this function that wrote conta_id without also changing
+  -- active_workspace_id in the same statement (or split the two writes across
+  -- statements). Do not remove this function's own membership check on the
+  -- assumption the trigger alone covers it -- see
+  -- supabase/tests/entitlements/55_switch_workspace_rpc.sql for the verified
+  -- mutation-test writeup of exactly what each mechanism catches.
   UPDATE public.profiles
      SET active_workspace_id = p_workspace,
          conta_id            = p_workspace
