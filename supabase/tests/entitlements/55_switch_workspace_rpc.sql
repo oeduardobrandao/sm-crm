@@ -97,17 +97,21 @@ do $$
 declare
   v_ws_a   uuid;
   v_ws_b   uuid;
+  v_ws_c   uuid;
   v_uid    uuid := gen_random_uuid();
   v_got    uuid;
   v_denied boolean := false;
 begin
   v_ws_a := et_make_workspace('max');
   v_ws_b := et_make_workspace('max');
+  v_ws_c := et_make_workspace('max');
 
   insert into auth.users (id) values (v_uid);
-  -- Member of A only.
+  -- Member of A and C, not B.
   insert into workspace_members (user_id, workspace_id, role)
     values (v_uid, v_ws_a, 'owner');
+  insert into workspace_members (user_id, workspace_id, role)
+    values (v_uid, v_ws_c, 'owner');
   update profiles set conta_id = v_ws_a, active_workspace_id = v_ws_a
    where id = v_uid;
 
@@ -115,17 +119,19 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_uid, 'role', 'authenticated')::text, true);
 
-  -- Positive: switching to a workspace we belong to succeeds and moves BOTH
-  -- selectors. Checking only active_workspace_id would miss a partial write,
+  -- Positive: switching to a DIFFERENT workspace we belong to (A -> C) succeeds
+  -- and moves BOTH selectors. Starting and ending on the same workspace (A -> A)
+  -- would let a no-op implementation pass trivially; A -> C is a genuine state
+  -- transition. Checking only active_workspace_id would miss a partial write,
   -- and conta_id is the column the legacy policies actually read.
-  perform public.switch_workspace(v_ws_a);
+  perform public.switch_workspace(v_ws_c);
   reset role;
   select active_workspace_id into v_got from profiles where id = v_uid;
-  if v_got is distinct from v_ws_a then
+  if v_got is distinct from v_ws_c then
     raise exception 'authorized switch did not set active_workspace_id (got %)', v_got;
   end if;
   select conta_id into v_got from profiles where id = v_uid;
-  if v_got is distinct from v_ws_a then
+  if v_got is distinct from v_ws_c then
     raise exception 'authorized switch did not set conta_id (got %)', v_got;
   end if;
 
@@ -144,12 +150,13 @@ begin
     raise exception 'switch_workspace allowed a non-member to switch';
   end if;
 
-  -- And the refusal left nothing behind.
+  -- And the refusal left nothing behind. The user's real current workspace at
+  -- this point is C (set by the positive case above), not the original A.
   select conta_id into v_got from profiles where id = v_uid;
-  if v_got is distinct from v_ws_a then
+  if v_got is distinct from v_ws_c then
     raise exception 'refused switch still mutated conta_id (got %)', v_got;
   end if;
 
-  raise notice '55_switch_workspace_rpc: member switches, non-member refused';
+  raise notice '55_switch_workspace_rpc: member switches A -> C, non-member switch to B refused';
 end $$;
 rollback;
