@@ -627,6 +627,27 @@ type StripeAmount = {
 };
 
 /**
+ * Rejects if `p` has not settled within `ms`, so an awaited external call can't hang a handler
+ * until the edge runtime kills the isolate. The underlying promise stays handled after the race
+ * is lost (its late settle hits the no-op resolve/reject), so no unhandled rejection escapes.
+ */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+/**
  * Retrieves a subscription's current price from Stripe and applies any active coupon,
  * so the returned amount is what the customer actually pays. Shared by the detail
  * view and the list. `fallbackInterval` is the mirror's billing_interval, used when
@@ -853,7 +874,14 @@ async function handleGetMrr(
 
     if (stripeClient && s.stripe_subscription_id) {
       try {
-        const amt = await fetchStripeAmount(stripeClient, s.stripe_subscription_id, s.billing_interval);
+        // Bound the live call: a hung Stripe fetch never reaches this catch, and the edge
+        // runtime would kill the whole isolate before get-mrr could return. On timeout this
+        // rejects and we fall through to the catalog price below.
+        const amt = await withTimeout(
+          fetchStripeAmount(stripeClient, s.stripe_subscription_id, s.billing_interval),
+          STRIPE_TIMEOUT_MS,
+          "stripe retrieve",
+        );
         amount_cents = amt.amount_cents;
         interval = amt.interval ?? s.billing_interval;
         discount_label = amt.discount_label;
@@ -887,6 +915,7 @@ async function handleGetMrr(
   // grows — the caught 429s would then silently fall back to catalog prices, making the total
   // inconsistent exactly when it matters most. 8 keeps peak throughput well under Stripe's limit.
   const STRIPE_CONCURRENCY = 8;
+  const STRIPE_TIMEOUT_MS = 5000;
   const priceable: Array<Awaited<ReturnType<typeof priceRow>>> = [];
   for (let i = 0; i < rows.length; i += STRIPE_CONCURRENCY) {
     priceable.push(...(await Promise.all(rows.slice(i, i + STRIPE_CONCURRENCY).map(priceRow))));
