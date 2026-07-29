@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
@@ -10,6 +11,7 @@ import type { NavGroup } from './nav-data';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { FlagIcon } from '@mesaas/ui/FlagIcon';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { switchWorkspace } from '@/store/workspace';
 
 interface SidebarProps {
   isDrawer?: boolean;
@@ -73,11 +75,14 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
 
   const handleWorkspaceSwitch = async (workspaceId: string) => {
     if (!user) return;
-    await supabase
-      .from('profiles')
-      .update({ active_workspace_id: workspaceId, conta_id: workspaceId })
-      .eq('id', user.id);
-    window.location.reload();
+    try {
+      await switchWorkspace(workspaceId);
+      window.location.reload();
+    } catch {
+      // Previously the error was discarded and the page reloaded regardless, so
+      // a refused switch was indistinguishable from a successful one.
+      toast.error('Não foi possível trocar de workspace.');
+    }
   };
 
   const handleLanguageChange = (lang: Language) => {

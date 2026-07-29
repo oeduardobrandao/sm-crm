@@ -40,6 +40,7 @@ function createMockClient(initialUser: SessionUser = { id: 'user-1' }) {
 
   const client = {
     from: (table: string) => queryMock.from(table),
+    rpc: (name: string, params: Record<string, unknown>) => queryMock.rpc(name, params),
     auth,
   };
 
@@ -216,9 +217,9 @@ describe('supabase helpers', () => {
       expect(
         queryMock.calls.some(
           (call) =>
-            call.table === 'profiles' &&
-            call.operation === 'update' &&
-            (call.payload as Record<string, string>).active_workspace_id === 'w-2',
+            call.table === 'rpc:switch_workspace' &&
+            call.operation === 'rpc' &&
+            (call.payload as Record<string, string>).p_workspace === 'w-2',
         ),
       ).toBe(true);
     });

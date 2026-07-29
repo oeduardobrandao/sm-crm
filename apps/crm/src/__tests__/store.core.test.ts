@@ -17,6 +17,10 @@ type MockedSupabaseModule = typeof supabaseModule & {
     operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
     ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
   ) => void;
+  __queueSupabaseRpc: (
+    name: string,
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
   __setCurrentUser: (user: { id: string } | null) => void;
@@ -91,16 +95,16 @@ describe('store core helpers and CRUD', () => {
   });
 
   it('updates the active workspace and clears the cached profile', async () => {
-    mockedSupabase.__queueSupabaseResult('profiles', 'update', {
+    mockedSupabase.__queueSupabaseRpc('switch_workspace', {
       data: null,
       error: null,
     });
 
     await store.switchWorkspace('conta-9');
 
-    expect(getLastCall('profiles')).toMatchObject({
-      operation: 'update',
-      payload: { active_workspace_id: 'conta-9', conta_id: 'conta-9' },
+    expect(getLastCall('rpc:switch_workspace')).toMatchObject({
+      operation: 'rpc',
+      payload: { p_workspace: 'conta-9' },
     });
     await expect(supabaseModule.getCurrentProfile()).resolves.toBeNull();
   });
