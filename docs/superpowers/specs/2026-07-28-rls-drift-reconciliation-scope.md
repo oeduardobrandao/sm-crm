@@ -8,10 +8,14 @@ exposure.
 
 ## Summary
 
-**Production has a confirmed, reproducible cross-tenant read.** Any authenticated
-user can issue one UPDATE against their own `profiles` row and read another
-workspace's data without holding any membership in it. This is Finding 1 and it
-is the reason this document exists; everything else is secondary.
+**Production has a confirmed, reproducible cross-tenant compromise.** One UPDATE
+against your own `profiles` row grants read access to any workspace's data
+without membership — verified empirically. The same rewritten field also drives
+`manage-workspace-user`, so the chain extends past disclosure into changing
+roles and removing members in a workspace you do not belong to.
+
+This is Finding 1 and it is the reason this document exists; everything else is
+secondary.
 
 The root cause is that `20260315_rls_security_audit.sql` is recorded in
 `schema_migrations` but never executed. It was written to close exactly this.
@@ -97,10 +101,39 @@ rows visible in victim workspace AFTER:  1
 
 One statement, against the attacker's own row, no membership required.
 
+### It is not only a read — it chains to full workspace administration
+
+`manage-workspace-user` authorizes every administrative action from
+`profiles.role` and `profiles.conta_id`, read through a **service-role client
+that bypasses RLS entirely** ([index.ts:121](supabase/functions/manage-workspace-user/index.ts#L121)):
+
+```ts
+const { data: callerProfile } = await serviceClient
+  .from("profiles").select("role, conta_id").eq("id", user.id).single();
+if (callerProfile.role !== "owner" && callerProfile.role !== "admin") { /* 403 */ }
+```
+
+Every action below that line then scopes to `callerProfile.conta_id` —
+`update-role` (`:208`), `remove` (`:238`), `cancel-invite` (`:151`). Both fields
+are attacker-controlled: `role` is whatever they hold in their *own* workspace,
+`conta_id` is whatever they last wrote.
+
+So the chain is: be an owner of your own workspace → point `conta_id` at any
+other workspace → call the function. The result is role changes, member removal
+and invite cancellation in a workspace you have no membership in. **Tenant
+takeover, not just disclosure.**
+
+`set-financial-access`, 30 lines above in the same file (`:100`), already does it
+correctly — it resolves the workspace from `active_workspace_id` (which *is*
+membership-guarded by `trg_validate_active_workspace`) and delegates
+authorization to a `workspace_members` lookup. The correct pattern is already in
+the file; the older actions never adopted it.
+
 ### Also open: self-promotion
 
 The same missing `WITH CHECK` allows `update profiles set role = 'owner'`.
-Lower severity than the above but the same root cause and the same fix.
+Lower severity on its own, but it is the other half of the chain above — it lets
+an agent manufacture the `role` the edge function checks.
 
 Neither path compromises per-admin financial visibility: `can_see_financials()`
 reads `workspace_members`, which is properly locked
@@ -119,9 +152,21 @@ So an owner in workspace A who is an agent in workspace B keeps
 workspace where they are an agent.
 
 Migration A already treats `workspace_members.role` as the per-workspace source
-of truth for exactly this reason. Any policy still keyed on `get_my_role()` needs
-the same treatment. `20260315` does not address this — it predates
+of truth for exactly this reason. `20260315` does not address this — it predates
 multi-workspace — so remediation must go beyond it.
+
+**The audit is not limited to RLS policies.** Every authorization path reading
+`profiles.role` or `profiles.conta_id` is in scope, whether it lives in a policy,
+a function or application code. Known so far:
+
+| Path | Reads | Consequence |
+|---|---|---|
+| `manage-workspace-user:121` | `profiles.role`, `profiles.conta_id` | tenant takeover — see Finding 1 |
+| `leads_select` (`20260404`) | `get_my_role()` → `profiles.role` | stale cross-workspace lead access |
+| `transacoes_select`, `contratos_select` | `get_my_role()` | superseded by PR #258, which drops the role predicate |
+
+Each must derive both role and workspace from `workspace_members` for the
+*active* workspace, and each needs its own denial test.
 
 ## Finding 3 (P2) — `20260315` never ran; the rest of its intent is unmet
 
@@ -171,11 +216,38 @@ dropped once they are.
    writing both columns together is a convention, not an enforced invariant.
 
    **Preferred:** move switching into a `SECURITY DEFINER` RPC that verifies
-   membership and sets both columns, and grant the client `UPDATE` on neither.
-   `switchWorkspace()` is already a single choke point, so the client change is
-   small. **Alternative:** keep the grants but add a `WITH CHECK` binding *both*
+   membership and sets both columns atomically, and grant the client `UPDATE` on
+   neither. **Alternative:** keep the grants but add a `WITH CHECK` binding *both*
    columns to a real `workspace_members` row. Either way, membership must be
    enforced in the database, not assumed from the caller.
+
+   **There are three switch call sites, not one.** Revoking the grants without
+   migrating all three breaks workspace switching:
+
+   | Site | Note |
+   |---|---|
+   | [`store/workspace.ts:96`](apps/crm/src/store/workspace.ts#L96) | `switchWorkspace()`; throws on error |
+   | [`Sidebar.tsx:74`](apps/crm/src/components/layout/Sidebar.tsx#L74) | **discards the error** and calls `window.location.reload()` regardless — a denied switch looks identical to a successful one |
+   | [`lib/supabase.ts:127`](apps/crm/src/lib/supabase.ts#L127) | legacy DOM switcher; logs to console |
+
+   The Sidebar behaviour matters for deploy order: if the migration lands before
+   the client, users get a silent no-op reload rather than an error. Ship the
+   client change first, or ship both together.
+
+   **RPC security contract**, if that route is taken — under-specifying this is
+   how a definer routine becomes the next hole:
+
+   - caller identity from `auth.uid()` only; never a caller-supplied user id
+   - membership verified against `workspace_members` for the *target* workspace
+   - both `active_workspace_id` and `conta_id` set in one statement, so no
+     partial selector state is observable
+   - `SECURITY DEFINER`, owned by `postgres`, `SET search_path = public, pg_temp`
+   - `REVOKE ALL FROM PUBLIC, anon, authenticated, service_role`, then
+     `GRANT EXECUTE TO authenticated` — Supabase's default privileges grant new
+     functions to all three roles, so a bare `REVOKE … FROM PUBLIC` leaves them
+   - `trg_validate_active_workspace` is **not** a substitute: it fires only on
+     `UPDATE OF active_workspace_id` and enforces nothing about `conta_id` or
+     the relationship between the two
 
 4. **Switching the legacy tables from `get_user_conta_id()` to
    `get_my_conta_id()` is a live visibility change.** It is the correct
@@ -194,16 +266,22 @@ dropped once they are.
 ## Suggested sequencing
 
 1. **PR #258** — unblocks Migration B. Independent of everything below.
-2. **Finding 1, as its own migration.** Highest value, smallest diff: replace the
-   `profiles` UPDATE policy (drop, don't supplement), revoke table UPDATE, grant
-   only the safe columns, and route workspace switching through a membership-
-   checking RPC. Exclude `role`, `conta_id`, `active_workspace_id` from any grant.
-3. **Finding 2** — audit every `get_my_role()` call site and move per-workspace
-   authorization to `workspace_members.role`.
-4. **Finding 3** — per-command policies for the remaining tables, one table per
+2. **Finding 1, as its own slice.** Replace the `profiles` UPDATE policy (drop,
+   don't supplement), revoke table UPDATE, grant only the safe columns, and route
+   workspace switching through the RPC specified above. Exclude `role`,
+   `conta_id` and `active_workspace_id` from any grant. Migrate all three switch
+   call sites; ship the client first or together, never the migration alone.
+3. **`manage-workspace-user`, in the same slice or immediately after.** Closing
+   the `profiles` write without fixing the function still leaves anyone whose
+   `conta_id` is already wrong able to administer that workspace, and the
+   function is the higher-impact half of the chain. Derive role and workspace
+   from `workspace_members`, following `set-financial-access` in the same file.
+4. **Finding 2** — audit the remaining `get_my_role()` call sites and move
+   per-workspace authorization to `workspace_members.role`.
+5. **Finding 3** — per-command policies for the remaining tables, one table per
    migration, each with its own exact-inventory post-condition. Drop
    `get_user_conta_id()` last, once nothing references it.
-5. **A CI job that runs `scripts/test-entitlements.sh`.** It runs in no workflow
+6. **A CI job that runs `scripts/test-entitlements.sh`.** It runs in no workflow
    today, so its 17 suites protect nothing on `main`.
 
 ## Required test coverage
@@ -223,6 +301,13 @@ anything. Each of these is currently uncovered and must land with its slice:
   which an over-broad revoke passes unnoticed.
 - **Per-workspace role** — a user who is owner in A and agent in B is treated as
   an agent while active in B.
+- **`manage-workspace-user` denial** — a caller whose `profiles.conta_id` points
+  at a workspace they do not belong to must be refused `update-role`, `remove`
+  and `cancel-invite`. This path runs through a service-role client, so RLS
+  cannot save it and only a test of the function itself proves anything.
+- **The RPC's own cases** — authorized switch succeeds and sets both columns;
+  unauthorized switch (non-member target) is refused; `anon` cannot execute it.
+  Testing only the direct `UPDATE` leaves the replacement path unproven.
 
 RLS denies by filtering, not by raising, so every denial assertion must check the
 affected-row count *and* that the underlying data is unchanged.
@@ -240,6 +325,21 @@ affected-row count *and* that the underlying data is unchanged.
   severe path and was missed.
 - **The proposed remediation was itself unsafe**, granting `UPDATE (conta_id)` as
   a bare column privilege and so preserving the vulnerability it set out to fix.
+
+Second review round:
+
+- **Finding 1 was scoped as a read.** It chains through
+  `manage-workspace-user` — which authorizes from the same two attacker-controlled
+  profile fields, via a service-role client — into full member administration of
+  an arbitrary workspace.
+- **The role audit was scoped to RLS policies.** It has to cover every
+  authorization path reading `profiles.role`/`profiles.conta_id`, edge functions
+  included.
+- **"`switchWorkspace()` is already a single choke point" was false**, and
+  contradicted this document's own call-site table. There are three, and the
+  Sidebar one discards the error before reloading.
+- **The RPC was specified only as "membership-checking"**, which is not a
+  security contract.
 
 ## Open questions
 
