@@ -74,7 +74,8 @@ function makeIdeia(
     titulo: string;
     descricao: string;
     links: string[];
-    status: 'nova' | 'em_analise' | 'aprovada' | 'descartada';
+    tipo: 'ideia' | 'solicitacao';
+    status: 'nova' | 'em_analise' | 'aprovada' | 'descartada' | 'convertida' | 'concluida';
     comentario_agencia: string | null;
     comentario_autor_id: number | null;
     comentario_at: string | null;
@@ -94,6 +95,7 @@ function makeIdeia(
     titulo: 'Ideia padrão',
     descricao: 'Descrição padrão da ideia.',
     links: ['https://example.com'],
+    tipo: 'ideia' as const,
     status: 'nova' as const,
     comentario_agencia: null,
     comentario_autor_id: null,
@@ -223,6 +225,7 @@ describe('IdeiasPage', () => {
         titulo: 'Campanha junho',
         descricao: 'Sequência de posts com depoimentos reais.',
         links: ['https://www.notion.so/campanha-junho'],
+        tipo: 'ideia',
       });
     });
   });
@@ -325,6 +328,7 @@ describe('IdeiasPage', () => {
         titulo: 'Ideia mutável ajustada',
         descricao: 'Descrição atualizada.',
         links: ['https://example.com/valid-editada'],
+        tipo: 'ideia',
       });
     });
   });
@@ -375,5 +379,27 @@ describe('IdeiasPage', () => {
     });
     expect(await screen.findByText('Continuar')).toBeInTheDocument();
     expect(screen.queryByText('Apagar depois')).not.toBeInTheDocument();
+  });
+
+  it('shows the solicitação badge and the "Em andamento" label for a converted request', async () => {
+    mockedFetchIdeias.mockResolvedValue({
+      ideias: [
+        makeIdeia({
+          id: 'idea-solicitacao',
+          titulo: 'Reduzir prazo de aprovação',
+          tipo: 'solicitacao',
+          status: 'convertida',
+        }),
+      ],
+    } as never);
+
+    renderHubPage(
+      '/mesaas/hub/token-publico/ideias',
+      '/:workspace/hub/:token/ideias',
+      <IdeiasPage />,
+    );
+
+    expect(await screen.findByText('Em andamento')).toBeInTheDocument();
+    expect(screen.getByText('Solicitação')).toBeInTheDocument();
   });
 });

@@ -14,6 +14,8 @@ const STATUS_LABEL: Record<HubIdeia['status'], string> = {
   em_analise: 'Em análise',
   aprovada: 'Aprovada',
   descartada: 'Descartada',
+  convertida: 'Em andamento',
+  concluida: 'Concluída',
 };
 
 const STATUS_COLOR: Record<HubIdeia['status'], string> = {
@@ -21,6 +23,8 @@ const STATUS_COLOR: Record<HubIdeia['status'], string> = {
   em_analise: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-400',
   aprovada: 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400',
   descartada: 'bg-red-100 text-red-600 dark:bg-red-500/10 dark:text-red-400',
+  convertida: 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
+  concluida: 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400',
 };
 
 function isMutable(ideia: HubIdeia): boolean {
@@ -169,7 +173,7 @@ export function IdeiasPage() {
     <div className="max-w-5xl mx-auto hub-fade-up">
       <PageHeader
         title="Compartilhe suas ideias"
-        description="Envie sugestões e a agência responderá em breve."
+        description="Envie ideias e solicitações e a agência responderá em breve."
         action={
           <button
             onClick={openCreate}
@@ -203,7 +207,7 @@ export function IdeiasPage() {
           <span className="text-5xl mb-4">💡</span>
           <p className="font-display text-lg font-semibold hub-txt mb-1">Nenhuma ideia ainda</p>
           <p className="text-sm hub-tx2 mb-6">
-            Clique em "Nova ideia" para compartilhar sua primeira sugestão.
+            Clique em "Nova ideia" para enviar sua primeira sugestão ou solicitação.
           </p>
           <button
             onClick={openCreate}
@@ -279,6 +283,11 @@ function IdeiaCard({
           >
             {STATUS_LABEL[ideia.status]}
           </span>
+          {ideia.tipo === 'solicitacao' && (
+            <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full mb-2 ml-1.5 border hub-border hub-tx2">
+              Solicitação
+            </span>
+          )}
           <h3 className="font-display text-[17px] font-semibold hub-txt leading-snug">
             {ideia.titulo}
           </h3>
@@ -368,6 +377,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
   const [titulo, setTitulo] = useState(editing?.titulo ?? '');
   const [descricao, setDescricao] = useState(editing?.descricao ?? '');
   const [links, setLinks] = useState<string[]>(editing?.links.length ? editing.links : ['']);
+  const [tipo, setTipo] = useState<'ideia' | 'solicitacao'>(editing?.tipo ?? 'ideia');
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<{ titulo?: string; descricao?: string }>({});
   // The idea this modal is editing: the existing one, or the one we just created.
@@ -391,6 +401,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           titulo: titulo.trim(),
           descricao: descricao.trim(),
           links: cleanLinks,
+          tipo,
         });
         setCurrent({ ...current, ...ideia });
       } else {
@@ -398,6 +409,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           titulo: titulo.trim(),
           descricao: descricao.trim(),
           links: cleanLinks,
+          tipo,
         });
         // New idea has no images yet; keep modal open in edit mode so the
         // user can add images against the real ideia_id.
@@ -452,6 +464,27 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
         </div>
 
         <div className="space-y-3">
+          <div>
+            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">Tipo</label>
+            <div className="flex gap-1 p-1 rounded-lg hub-bg-soft w-fit">
+              {(['ideia', 'solicitacao'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTipo(t)}
+                  className={`px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${
+                    tipo === t ? 'hub-btn-primary' : 'hub-tx3'
+                  }`}
+                >
+                  {t === 'ideia' ? 'Ideia' : 'Solicitação'}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11.5px] hub-tx3 mt-1">
+              Ideia: sugestão de conteúdo. Solicitação: pedido para a agência executar.
+            </p>
+          </div>
+
           <div>
             <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">Título</label>
             <input
