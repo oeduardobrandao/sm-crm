@@ -1657,6 +1657,8 @@ function IdeiasTab({ clienteId }: { clienteId: number }) {
           <option value="em_analise">Em análise</option>
           <option value="aprovada">Aprovada</option>
           <option value="descartada">Descartada</option>
+          <option value="convertida">Virou tarefa</option>
+          <option value="concluida">Concluída</option>
         </select>
       </div>
 
