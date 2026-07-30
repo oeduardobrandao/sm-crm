@@ -88,7 +88,7 @@ export function getNotificationDisplay(
       return {
         icon: Lightbulb,
         tone: 'primary',
-        title: 'Nova ideia do cliente',
+        title: m.tipo === 'solicitacao' ? 'Nova solicitação do cliente' : 'Nova ideia do cliente',
         body: `${client} — ${idea}`,
       };
     case 'briefing_answered':
