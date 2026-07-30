@@ -23,6 +23,13 @@
       "autoPort": true
     },
     {
+      "name": "hub-staging",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:hub:staging"],
+      "port": 5175,
+      "autoPort": true
+    },
+    {
       "name": "admin",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:admin"],
