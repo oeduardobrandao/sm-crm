@@ -64,7 +64,7 @@ git commit -m "docs: spec + plano de solicitacoes do hub e conversao em tarefa"
 ### Task 2: Migration — tipo, tarefa_id, derived statuses, RPC, sync trigger, notification trigger
 
 **Files:**
-- Create: `supabase/migrations/20260730000007_ideias_solicitacoes.sql`
+- Create: `supabase/migrations/20260730000009_ideias_solicitacoes.sql`
 
 **Interfaces:**
 - Produces: `ideias.tipo` ('ideia'|'solicitacao'), `ideias.tarefa_id bigint`, status values `convertida`/`concluida`, RPC `convert_solicitacao_em_tarefa(p_ideia_id uuid, p_titulo text, p_descricao text, p_responsavel_id bigint, p_data_limite date) RETURNS bigint`, trigger `sync_ideia_from_tarefa` on `tarefas`, recreated `trg_notify_idea_submitted` with `tipo` in metadata.
@@ -74,7 +74,7 @@ git commit -m "docs: spec + plano de solicitacoes do hub e conversao em tarefa"
 ```bash
 ls supabase/migrations | tail -5
 ```
-Expected: highest existing prefix is `20260730000006` (or another value LOWER than `20260730000007`). If `20260730000007` is taken, bump this file's prefix to the next free value everywhere it appears in this plan.
+Expected: highest existing prefix is `20260730000006` (or another value LOWER than `20260730000009`). If `20260730000009` is taken, bump this file's prefix to the next free value everywhere it appears in this plan.
 
 - [ ] **Step 2: Write the migration**
 
@@ -229,7 +229,7 @@ $$;
 - [ ] **Step 3: Commit**
 
 ```bash
-git add supabase/migrations/20260730000007_ideias_solicitacoes.sql
+git add supabase/migrations/20260730000009_ideias_solicitacoes.sql
 git commit -m "feat(db): ideias.tipo, conversao de solicitacao em tarefa e sync de status"
 ```
 
@@ -1602,7 +1602,7 @@ gh pr create --title "feat: solicitacoes no Hub com conversao em tarefa + MCP ta
 docs/superpowers/specs/2026-07-30-hub-solicitacoes-conversao-tarefa-design.md (2 rodadas de revisão externa incorporadas)
 
 ## Migração
-`20260730000007_ideias_solicitacoes.sql` aplicada no staging; **prod pendente pós-merge** (db push contra prod segue quebrado pelo 20260730000004 sem arquivo: aplicar via db query + registro manual de versão).
+`20260730000009_ideias_solicitacoes.sql` aplicada no staging; **prod pendente pós-merge** (db push contra prod segue quebrado pelo 20260730000004 sem arquivo: aplicar via db query + registro manual de versão).
 
 ## Deploy pós-merge
 - prod: migração manual + `functions deploy hub-ideias mcp --no-verify-jwt --use-api`
