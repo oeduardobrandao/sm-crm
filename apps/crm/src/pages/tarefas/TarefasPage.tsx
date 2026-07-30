@@ -48,8 +48,15 @@ export default function TarefasPage() {
     if (!isNaN(parsed)) {
       pendingTarefaId.current = parsed;
       setSearchParams({}, { replace: true });
+      // Resolve immediately when the list is already loaded (deep link fired
+      // while the page is mounted, e.g. a notification click on /tarefas —
+      // the tarefas-keyed effect below would never re-run in that case).
+      if (tarefas.some((t) => t.id === parsed)) {
+        pendingTarefaId.current = null;
+        setSelectedId(parsed);
+      }
     }
-  }, [tarefaParam, setSearchParams]);
+  }, [tarefaParam, setSearchParams, tarefas]);
 
   useEffect(() => {
     if (pendingTarefaId.current === null || tarefas.length === 0) return;
