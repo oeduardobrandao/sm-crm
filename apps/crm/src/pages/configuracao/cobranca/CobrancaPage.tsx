@@ -13,6 +13,7 @@ import {
   type BillingPlan,
 } from '@/services/billing';
 import { isInternalPlan, resolveCurrentPlanId, isPlanVisible, canUpgradeTo } from './plan-display';
+import { captureEvent } from '@/lib/analytics';
 import './cobranca.css';
 
 const RECOMMENDED_ID = 'pro';
@@ -132,6 +133,7 @@ export default function CobrancaPage() {
     setBusy(planId);
     try {
       const url = await startCheckout(planId, interval, promo.trim() || undefined);
+      captureEvent('checkout_started', { plan_id: planId, billing_interval: interval });
       window.location.assign(url);
     } catch (err) {
       toast.error('Erro ao iniciar checkout: ' + (err as Error).message);

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { captureEvent } from '@/lib/analytics';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
@@ -132,6 +133,7 @@ export function TarefaFormDialog({
         toast.success('Tarefa atualizada!');
       } else {
         await addTarefa(payload, tagIds);
+        captureEvent('task_created', { status: values.status });
         toast.success('Tarefa criada!');
       }
       onSaved();

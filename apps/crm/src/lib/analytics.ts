@@ -20,7 +20,12 @@ export type AnalyticsEvent =
   | 'hub_link_copied'
   | 'hub_upgrade_prompt_clicked'
   | 'report_generated'
-  | 'invite_sent';
+  | 'invite_sent'
+  | 'contract_created'
+  | 'lead_created'
+  | 'lead_converted'
+  | 'task_created'
+  | 'checkout_started';
 
 /**
  * Compile-time guard: `tsc` fails if any of these names is dropped from or misspelled in the union

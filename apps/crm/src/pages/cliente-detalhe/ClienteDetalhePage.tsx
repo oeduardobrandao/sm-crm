@@ -143,6 +143,7 @@ import { TikTokSection } from './TikTokSection';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { LatestInstagramPosts } from '../../components/instagram/LatestInstagramPosts';
 import { supabase } from '@/lib/supabase';
+import { captureEvent } from '@/lib/analytics';
 
 function StatusBadge({ status }: { status: string }) {
   const { t: tc } = useTranslation();
@@ -1014,6 +1015,7 @@ export default function ClienteDetalhePage() {
       onConnectInstagram: async () => {
         try {
           const url = await getInstagramAuthUrl(clienteId);
+          captureEvent('instagram_connected', { cliente_id: clienteId });
           window.location.href = url;
         } catch (err: unknown) {
           toast.error(t('instagram.connectError', { error: (err as Error).message }));
