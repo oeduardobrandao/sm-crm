@@ -18,6 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import { OnboardingBanner } from '../../components/OnboardingBanner';
 import { ImportBanner } from '../../components/import/ImportBanner';
 import { ClientHealthMonitor } from './components/ClientHealthMonitor';
+import { AgentPendingSection } from './components/AgentPendingSection';
 import { TodayCard, type TodayEvent } from './components/TodayCard';
 import { FinanceKpiStrip } from './components/FinanceKpiStrip';
 
@@ -157,7 +158,8 @@ export default function DashboardPage() {
         />
       )}
 
-      <ClientHealthMonitor />
+      {/* Agents see their own pending work where managers see client health. */}
+      {isAgent ? <AgentPendingSection /> : <ClientHealthMonitor />}
 
       {clientesRes.data && <ImportBanner clienteCount={clientes.length} />}
 

@@ -10,6 +10,7 @@ export type NotificationType =
   | 'step_activated'
   | 'step_completed'
   | 'post_assigned'
+  | 'task_assigned'
   | 'workflow_completed'
   | 'deadline_approaching'
   | 'invite_accepted'

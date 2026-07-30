@@ -1,5 +1,15 @@
 {
   "title": "Dashboard",
+  "agentPending": {
+    "title": "My pending work",
+    "semVinculo": "Your user is not linked to a team member yet. Ask an administrator to link it on the Team page.",
+    "vazio": "All clear! Nothing pending assigned to you.",
+    "tarefas": "Tasks",
+    "etapas": "Deliveries · steps",
+    "posts": "Deliveries · posts",
+    "verTodas": "See all",
+    "verEntregas": "See deliveries"
+  },
   "cards": {
     "today": "Today",
     "leads": "Leads",

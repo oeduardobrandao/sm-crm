@@ -308,6 +308,49 @@ export async function getWorkflowPosts(workflowId: number): Promise<WorkflowPost
   return data || [];
 }
 
+/**
+ * Post statuses where the content work is still with the team, i.e. the
+ * assignee has an action: writing, in internal review, client asked for
+ * fixes, or the publish failed. Waiting states (aprovado_interno,
+ * enviado_cliente, aprovado_cliente) and terminal ones (agendado, postado)
+ * are not "pending" for the assignee.
+ */
+export const ASSIGNEE_PENDING_POST_STATUSES = [
+  'rascunho',
+  'revisao_interna',
+  'correcao_cliente',
+  'falha_publicacao',
+] as const;
+
+export interface AssignedPendingPost {
+  id: number;
+  workflow_id: number;
+  titulo: string;
+  status: WorkflowPost['status'];
+  workflow_titulo: string;
+  cliente_nome: string;
+}
+
+/** Pending posts assigned to a membro across active workflows (agent dashboard). */
+export async function getAssignedPendingPosts(membroId: number): Promise<AssignedPendingPost[]> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select('id, workflow_id, titulo, status, workflows!inner(titulo, status, clientes!inner(nome))')
+    .eq('workflows.status', 'ativo')
+    .eq('responsavel_id', membroId)
+    .in('status', ASSIGNEE_PENDING_POST_STATUSES as unknown as string[])
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    workflow_id: row.workflow_id,
+    titulo: row.titulo,
+    status: row.status,
+    workflow_titulo: row.workflows?.titulo ?? '',
+    cliente_nome: row.workflows?.clientes?.nome ?? '',
+  }));
+}
+
 export async function getAllWorkflowPosts(): Promise<WorkflowPost[]> {
   const { data, error } = await supabase
     .from('workflow_posts')
