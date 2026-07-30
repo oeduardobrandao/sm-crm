@@ -6,6 +6,10 @@ vi.mock('../hooks/useEntregasData', () => ({
   useEntregasData: vi.fn(),
 }));
 
+vi.mock('../hooks/useActivePosts', () => ({
+  useActivePosts: vi.fn(() => ({ posts: [], isLoading: false })),
+}));
+
 vi.mock('../../../store', () => ({
   duplicateWorkflow: vi.fn(),
 }));
@@ -26,12 +30,18 @@ vi.mock('../components/EntregasFilters', () => ({
     filterSearch: '',
     filterEtapas: [],
     filterTemplates: [],
+    filterTipos: [],
+    filterPostStatus: [],
+    filterPrazo: [],
+    filterPrazoFrom: '',
+    filterPrazoTo: '',
   },
   EntregasFilters: ({
     filters,
     onChange,
     clientes,
     membros,
+    mode,
   }: {
     filters: { filterClientes: number[]; filterMembros: number[]; filterStatus: string[] };
     onChange: (next: {
@@ -41,9 +51,11 @@ vi.mock('../components/EntregasFilters', () => ({
     }) => void;
     clientes: Array<{ id: number; nome: string }>;
     membros: Array<{ id: number; nome: string }>;
+    mode?: string;
   }) => (
     <div>
       <div>Filters: {filters.filterStatus.join(',')}</div>
+      <div>FiltersMode: {mode}</div>
       <div>Clientes: {clientes.length}</div>
       <div>Membros: {membros.length}</div>
       <button onClick={() => onChange({ ...filters, filterStatus: ['atrasado'] })}>
@@ -54,6 +66,16 @@ vi.mock('../components/EntregasFilters', () => ({
       </button>
       <button onClick={() => onChange({ ...filters, filterClientes: [10] })}>Filter client</button>
       <button onClick={() => onChange({ ...filters, filterMembros: [7] })}>Filter member</button>
+      <button onClick={() => onChange({ ...filters, filterTipos: ['reels'] })}>Filter tipo</button>
+      <button onClick={() => onChange({ ...filters, filterPostStatus: ['rascunho'] })}>
+        Filter post status
+      </button>
+      <button onClick={() => onChange({ ...filters, filterPrazo: ['atrasado'] })}>
+        Filter prazo atrasado
+      </button>
+      <button onClick={() => onChange({ ...filters, filterEtapas: ['Design'] })}>
+        Filter etapa Design
+      </button>
     </div>
   ),
 }));
@@ -154,6 +176,27 @@ vi.mock('../views/ConcludedView', () => ({
   ConcludedView: () => <div>Concluded view</div>,
 }));
 
+vi.mock('../views/PostsKanbanView', () => ({
+  PostsKanbanView: ({ posts }: { posts: unknown[] }) => (
+    <div>Posts kanban view: {posts.length}</div>
+  ),
+}));
+
+vi.mock('../views/PostsListView', () => ({
+  PostsListView: ({
+    posts,
+    onFluxoClick,
+  }: {
+    posts: unknown[];
+    onFluxoClick: (workflowId: number) => void;
+  }) => (
+    <div>
+      <div>Posts list view: {posts.length}</div>
+      <button onClick={() => onFluxoClick(1)}>Open fluxo from tag</button>
+    </div>
+  ),
+}));
+
 vi.mock('../components/WorkflowDrawer', () => ({
   WorkflowDrawer: ({
     card,
@@ -245,11 +288,13 @@ vi.mock('../components/WorkflowModals', () => ({
 }));
 
 import { useEntregasData } from '../hooks/useEntregasData';
+import { useActivePosts } from '../hooks/useActivePosts';
 import { duplicateWorkflow } from '../../../store';
 import { toast } from 'sonner';
 import EntregasPage from '../EntregasPage';
 
 const mockedUseEntregasData = vi.mocked(useEntregasData);
+const mockedUseActivePosts = vi.mocked(useActivePosts);
 const mockedDuplicateWorkflow = vi.mocked(duplicateWorkflow);
 const mockedToast = vi.mocked(toast);
 
@@ -316,6 +361,7 @@ describe('EntregasPage', () => {
     mockedToast.success.mockReset();
     mockedToast.error.mockReset();
     tourMock.startEntregasTour.mockReset();
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false });
     localStorage.clear();
     // Anchors are queried one frame after launch; run the callback inline so launchTour
     // completes within the test tick.
@@ -367,7 +413,7 @@ describe('EntregasPage', () => {
 
     renderPage();
 
-    expect(screen.getByText('Entregas')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Entregas' })).toBeInTheDocument();
     expect(screen.getByText(/fluxos ativos: 2/i)).toBeInTheDocument();
     expect(screen.getByText(/1 atrasado/i)).toBeInTheDocument();
     expect(screen.getByText(/1 urgente/i)).toBeInTheDocument();
@@ -548,5 +594,204 @@ describe('EntregasPage', () => {
     expect(screen.getByText(/ver tour novamente/i)).toBeTruthy();
     fireEvent.click(screen.getByText('Gráfico'));
     expect(screen.queryByText(/ver tour novamente/i)).toBeNull();
+  });
+
+  it('toggles the kanban into Publicações mode: swaps the board, hides the replay link, posts filters', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    expect(screen.getByText(/^kanban view:/i)).toBeInTheDocument();
+    expect(screen.getByText('FiltersMode: entregas')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Publicações'));
+
+    expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
+    expect(screen.queryByText(/^kanban view:/i)).toBeNull();
+    expect(screen.queryByText(/ver tour novamente/i)).toBeNull();
+    expect(screen.getByText('FiltersMode: posts')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Entregas' }));
+    expect(screen.getByText(/^kanban view:/i)).toBeInTheDocument();
+  });
+
+  it('toggles the lista into Publicações mode independently of the kanban mode', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    // Put the kanban in Publicações mode…
+    fireEvent.click(screen.getByText('Publicações'));
+    expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
+
+    // …then Lista still opens in Entregas mode (independent state).
+    fireEvent.click(screen.getByText('Lista'));
+    expect(screen.getByText(/^list view:/i)).toBeInTheDocument();
+    expect(screen.getByText('FiltersMode: entregas')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Publicações'));
+    expect(screen.getByText('Posts list view: 0')).toBeInTheDocument();
+    expect(screen.queryByText(/^list view:/i)).toBeNull();
+    expect(screen.getByText('FiltersMode: posts')).toBeInTheDocument();
+
+    // Kanban kept its own mode.
+    fireEvent.click(screen.getByText('Kanban'));
+    expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
+  });
+
+  it('applies tipo and post-status filters to the posts modes', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [
+        { id: 1, workflow_id: 1, titulo: 'A', tipo: 'reels', status: 'rascunho' },
+        { id: 2, workflow_id: 1, titulo: 'B', tipo: 'feed', status: 'postado' },
+        { id: 3, workflow_id: 1, titulo: 'C', tipo: 'reels', status: 'postado' },
+      ],
+      isLoading: false,
+    } as never);
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    fireEvent.click(screen.getByText('Publicações'));
+    expect(screen.getByText('Posts kanban view: 3')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Filter tipo')); // reels only
+    expect(screen.getByText('Posts kanban view: 2')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Filter post status')); // + rascunho only
+    expect(screen.getByText('Posts kanban view: 1')).toBeInTheDocument();
+  });
+
+  it('hydrates view, mode and filters from the URL and writes them back', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+    // Default state → clean URL
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+  });
+
+  it('opens directly in a shared posts-list view from query params', () => {
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [],
+      membros: [],
+      templates: [],
+      cards: [makeCard()],
+      activeWorkflows: [wfFixture],
+      isLoading: false,
+      refresh: vi.fn(),
+    } as never);
+
+    renderPage('/entregas?view=list&mode=publicacoes');
+
+    expect(screen.getByText('Posts list view: 0')).toBeInTheDocument();
+    expect(screen.getByText('FiltersMode: posts')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      '/entregas?view=list&mode=publicacoes',
+    );
+  });
+
+  it('opens the whole workflow card from a fluxo tag click', async () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    fireEvent.click(screen.getByText('Lista'));
+    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Open fluxo from tag'));
+
+    expect(await screen.findByText('Workflow drawer: Fluxo Editorial')).toBeInTheDocument();
+  });
+
+  it('filters posts by the CURRENT ETAPA responsible, not the post-level responsável', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [
+        // Post-level responsavel_id deliberately contradicts the etapa responsible:
+        // the filter must follow the etapa (workflow 1 → membro 7), matching the column.
+        {
+          id: 1,
+          workflow_id: 1,
+          titulo: 'Etapa da Ana',
+          tipo: 'feed',
+          status: 'rascunho',
+          responsavel_id: 99,
+        },
+        {
+          id: 2,
+          workflow_id: 2,
+          titulo: 'Etapa de outrem',
+          tipo: 'feed',
+          status: 'rascunho',
+          responsavel_id: 7,
+        },
+      ],
+      isLoading: false,
+    } as never);
+    renderEntregasPage({
+      activeWorkflows: [{ id: 1 }, { id: 2 }],
+      cards: [
+        makeCard({
+          workflow: { id: 1, titulo: 'Fluxo Ana', cliente_id: 10, status: 'ativo' },
+          etapa: { responsavel_id: 7 },
+        }),
+        makeCard({
+          workflow: { id: 2, titulo: 'Fluxo Outro', cliente_id: 10, status: 'ativo' },
+          etapa: { responsavel_id: 8 },
+        }),
+      ],
+    });
+
+    fireEvent.click(screen.getByText('Publicações'));
+    expect(screen.getByText('Posts kanban view: 2')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Filter member')); // filterMembros: [7]
+    expect(screen.getByText('Posts kanban view: 1')).toBeInTheDocument();
+  });
+
+  it('filters posts by the workflow current etapa', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [
+        { id: 1, workflow_id: 1, titulo: 'Em design', tipo: 'feed', status: 'rascunho' },
+        { id: 2, workflow_id: 2, titulo: 'Em copy', tipo: 'feed', status: 'rascunho' },
+      ],
+      isLoading: false,
+    } as never);
+    renderEntregasPage({
+      activeWorkflows: [{ id: 1 }, { id: 2 }],
+      cards: [
+        makeCard({
+          workflow: { id: 1, titulo: 'Fluxo Design', cliente_id: 10, status: 'ativo' },
+          etapa: { nome: 'Design', responsavel_id: 7 },
+        }),
+        makeCard({
+          workflow: { id: 2, titulo: 'Fluxo Copy', cliente_id: 10, status: 'ativo' },
+          etapa: { nome: 'Copy', responsavel_id: 7 },
+        }),
+      ],
+    });
+
+    fireEvent.click(screen.getByText('Publicações'));
+    expect(screen.getByText('Posts kanban view: 2')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Filter etapa Design'));
+    expect(screen.getByText('Posts kanban view: 1')).toBeInTheDocument();
+  });
+
+  it('applies the prazo-da-etapa filter through the workflow cards', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [
+        { id: 1, workflow_id: 1, titulo: 'No fluxo atrasado', tipo: 'feed', status: 'rascunho' },
+        { id: 2, workflow_id: 2, titulo: 'No fluxo em dia', tipo: 'feed', status: 'rascunho' },
+      ],
+      isLoading: false,
+    } as never);
+    renderEntregasPage({
+      activeWorkflows: [{ id: 1 }, { id: 2 }],
+      cards: [
+        makeCard({
+          workflow: { id: 1, titulo: 'Atrasado', cliente_id: 10, status: 'ativo' },
+          deadline: { estourado: true, urgente: false },
+        }),
+        makeCard({
+          workflow: { id: 2, titulo: 'Em dia', cliente_id: 10, status: 'ativo' },
+          deadline: { estourado: false, urgente: false },
+        }),
+      ],
+    });
+
+    fireEvent.click(screen.getByText('Publicações'));
+    expect(screen.getByText('Posts kanban view: 2')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Filter prazo atrasado'));
+    expect(screen.getByText('Posts kanban view: 1')).toBeInTheDocument();
   });
 });

@@ -144,22 +144,11 @@ export interface ScheduledPost {
  * schedule/cancel/retry to the correct platform service instead of assuming
  * Instagram for every post (see toWorkflowPost in PublicacoesPanel.tsx).
  */
-export async function getScheduledPosts(
-  startISO: string,
-  endISO: string,
-): Promise<ScheduledPost[]> {
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select(
-      'id, workflow_id, titulo, tipo, status, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id, workflows!inner(titulo, cliente_id, status, clientes!inner(nome))',
-    )
-    .eq('workflows.status', 'ativo')
-    .not('scheduled_at', 'is', null)
-    .gte('scheduled_at', startISO)
-    .lt('scheduled_at', endISO)
-    .order('scheduled_at', { ascending: true });
-  if (error) throw error;
-  return (data || []).map((row: any) => ({
+const POST_CONTEXT_COLUMNS =
+  'id, workflow_id, titulo, tipo, status, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id';
+
+function mapPostContextRow(row: any): ActivePost {
+  return {
     id: row.id,
     workflow_id: row.workflow_id,
     cliente_id: row.workflows?.cliente_id ?? null,
@@ -168,7 +157,7 @@ export async function getScheduledPosts(
     titulo: row.titulo,
     tipo: row.tipo,
     status: row.status,
-    scheduled_at: row.scheduled_at,
+    scheduled_at: row.scheduled_at ?? null,
     published_at: row.published_at ?? null,
     ig_caption: row.ig_caption ?? null,
     instagram_permalink: row.instagram_permalink ?? null,
@@ -180,7 +169,45 @@ export async function getScheduledPosts(
     tiktok_publish_error: row.tiktok_publish_error ?? null,
     tiktok_post_url: row.tiktok_post_url ?? null,
     instagram_media_id: row.instagram_media_id ?? null,
-  }));
+  };
+}
+
+export async function getScheduledPosts(
+  startISO: string,
+  endISO: string,
+): Promise<ScheduledPost[]> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select(
+      `${POST_CONTEXT_COLUMNS}, workflows!inner(titulo, cliente_id, status, clientes!inner(nome))`,
+    )
+    .eq('workflows.status', 'ativo')
+    .not('scheduled_at', 'is', null)
+    .gte('scheduled_at', startISO)
+    .lt('scheduled_at', endISO)
+    .order('scheduled_at', { ascending: true });
+  if (error) throw error;
+  // The scheduled_at range filter guarantees non-null, narrowing ActivePost to ScheduledPost.
+  return (data || []).map(mapPostContextRow) as ScheduledPost[];
+}
+
+/** Same shape as ScheduledPost, but scheduled_at may be null (no range filter). */
+export type ActivePost = Omit<ScheduledPost, 'scheduled_at'> & { scheduled_at: string | null };
+
+/**
+ * Every post of every active workflow, scheduled or not — the data source for the
+ * Entregas Kanban/Lista "Publicações" modes. Unlike getScheduledPosts, `clientes`
+ * is a LEFT join so posts of client-less workflows still appear (cliente_nome '').
+ * RLS enforces conta_id.
+ */
+export async function getActivePosts(): Promise<ActivePost[]> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select(`${POST_CONTEXT_COLUMNS}, workflows!inner(titulo, cliente_id, status, clientes(nome))`)
+    .eq('workflows.status', 'ativo')
+    .order('scheduled_at', { ascending: true, nullsFirst: false });
+  if (error) throw error;
+  return (data || []).map(mapPostContextRow);
 }
 
 export interface PostMedia {

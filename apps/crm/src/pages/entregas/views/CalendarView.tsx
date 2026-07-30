@@ -7,8 +7,9 @@ import { MonthGrid } from '@/components/ui/month-grid';
 import { useScheduledPosts } from '../hooks/useScheduledPosts';
 import { dateDayKey, summarizeDay } from '../hooks/scheduledPostsUtils';
 import { PublicacoesPanel } from '../components/PublicacoesPanel';
+import { ModeToggle, type EntregasMode } from '../components/ModeToggle';
 
-export type CalendarMode = 'entregas' | 'publicacoes';
+export type CalendarMode = EntregasMode;
 
 interface CalendarViewProps {
   cards: BoardCard[];
@@ -99,47 +100,13 @@ export function CalendarView({
 
   const handleStatusChange = () => {
     qc.invalidateQueries({ queryKey: ['scheduled-posts'] });
+    qc.invalidateQueries({ queryKey: ['active-posts'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
     qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
   };
 
-  const toggle = (
-    <div
-      style={{
-        display: 'flex',
-        gap: '0.25rem',
-        background: 'var(--surface-2)',
-        padding: '0.25rem',
-        borderRadius: 8,
-        width: 'fit-content',
-      }}
-    >
-      {(
-        [
-          ['entregas', 'Entregas'],
-          ['publicacoes', 'Publicações'],
-        ] as const
-      ).map(([id, label]) => (
-        <button
-          key={id}
-          onClick={() => onModeChange(id)}
-          style={{
-            padding: '0.35rem 0.85rem',
-            borderRadius: 6,
-            border: 'none',
-            cursor: 'pointer',
-            fontSize: '0.8rem',
-            background: mode === id ? '#000' : 'transparent',
-            color: mode === id ? '#fff' : 'var(--text-secondary)',
-            fontWeight: mode === id ? 600 : 400,
-          }}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
+  const toggle = <ModeToggle mode={mode} onModeChange={onModeChange} />;
 
   if (mode === 'entregas' && cards.length === 0) {
     return (

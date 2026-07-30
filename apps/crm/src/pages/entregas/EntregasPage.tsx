@@ -7,12 +7,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { useAuth } from '@/context/AuthContext';
 import { startEntregasTour, tourStorageKey } from './tour/entregasTour';
 import { useEntregasData, type BoardCard } from './hooks/useEntregasData';
-import {
-  EntregasFilters,
-  EMPTY_FILTERS,
-  type FilterState,
-  type StatusFilter,
-} from './components/EntregasFilters';
+import { EntregasFilters, type FilterState, type StatusFilter } from './components/EntregasFilters';
 import {
   EditWorkflowModal,
   TemplatesModal,
@@ -23,12 +18,17 @@ import { KanbanView } from './views/KanbanView';
 import { ChartView } from './views/ChartView';
 import { CalendarView } from './views/CalendarView';
 import { ListView } from './views/ListView';
+import { PostsKanbanView } from './views/PostsKanbanView';
+import { PostsListView } from './views/PostsListView';
 import { ConcludedView } from './views/ConcludedView';
 import { WorkflowDrawer } from './components/WorkflowDrawer';
+import { ModeToggle, type EntregasMode } from './components/ModeToggle';
+import { VistasTabs } from './components/VistasTabs';
+import { useActivePosts } from './hooks/useActivePosts';
+import { matchesEtapaPrazo } from './etapaPrazo';
+import { parseEntregasQuery, serializeEntregasQuery, type ActiveView } from './viewQuery';
 import { duplicateWorkflow } from '../../store';
 import { captureEvent } from '@/lib/analytics';
-
-type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list' | 'concluded';
 
 const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
   { id: 'kanban', label: 'Kanban', icon: <Columns className="h-4 w-4" /> },
@@ -39,8 +39,13 @@ const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function EntregasPage() {
-  const [activeView, setActiveView] = useState<ActiveView>('kanban');
-  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Parsed exactly once: the URL is only an INPUT at mount time; afterwards the
+  // page state is the source of truth and the sync effect below writes it back.
+  const initialQuery = useRef(parseEntregasQuery(searchParams)).current;
+
+  const [activeView, setActiveView] = useState<ActiveView>(initialQuery.view);
+  const [filters, setFilters] = useState<FilterState>(initialQuery.filters);
   const [listSort, setListSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
     column: 'titulo',
     direction: 'asc',
@@ -50,10 +55,12 @@ export default function EntregasPage() {
   const [editCard, setEditCard] = useState<BoardCard | null>(null);
   const [drawerCard, setDrawerCard] = useState<BoardCard | null>(null);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
-  const [calendarMode, setCalendarMode] = useState<'entregas' | 'publicacoes'>('entregas');
+  const modeFor = (view: ActiveView): EntregasMode =>
+    initialQuery.view === view ? initialQuery.mode : 'entregas';
+  const [kanbanMode, setKanbanMode] = useState<EntregasMode>(() => modeFor('kanban'));
+  const [calendarMode, setCalendarMode] = useState<EntregasMode>(() => modeFor('calendar'));
+  const [listMode, setListMode] = useState<EntregasMode>(() => modeFor('list'));
   const [drawerInitialPostId, setDrawerInitialPostId] = useState<number | null>(null);
-
-  const [searchParams, setSearchParams] = useSearchParams();
   const {
     clientes,
     membros,
@@ -129,9 +136,41 @@ export default function EntregasPage() {
     const parsed = parseInt(drawerParam, 10);
     if (!isNaN(parsed)) {
       pendingDrawerId.current = parsed;
-      setSearchParams({}, { replace: true });
+      // Drop only the transient param — the rest of the query is the shareable
+      // view state and must survive.
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('drawer');
+          return next;
+        },
+        { replace: true },
+      );
     }
   }, [drawerParam, setSearchParams]);
+
+  // Keep the URL in sync with the shareable view state (view + mode + filters),
+  // so any Entregas screen can be shared or bookmarked as-is.
+  const activeMode: EntregasMode =
+    activeView === 'kanban'
+      ? kanbanMode
+      : activeView === 'calendar'
+        ? calendarMode
+        : activeView === 'list'
+          ? listMode
+          : 'entregas';
+  const currentQuery = serializeEntregasQuery({ view: activeView, mode: activeMode, filters });
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(currentQuery);
+        const drawer = prev.get('drawer');
+        if (drawer) next.set('drawer', drawer); // let the drawer effect consume it
+        return next;
+      },
+      { replace: true },
+    );
+  }, [currentQuery, setSearchParams]);
 
   useEffect(() => {
     if (pendingDrawerId.current === null || cards.length === 0) return;
@@ -164,6 +203,80 @@ export default function EntregasPage() {
     setDrawerInitialPostId(postId);
     setDrawerCard(card);
   };
+  // Fluxo tag in the posts list: opens the whole workflow card, not a single post.
+  const handleFluxoClick = (workflowId: number) => {
+    const card = cardsByWorkflowId.get(workflowId);
+    if (!card) return;
+    handleCardClick(card);
+  };
+
+  // A saved view is just a serialized query string; applying one replays it over
+  // the live state (only the target view's mode is touched).
+  const applySavedView = (query: string) => {
+    const parsed = parseEntregasQuery(new URLSearchParams(query));
+    setActiveView(parsed.view);
+    if (parsed.view === 'kanban') setKanbanMode(parsed.mode);
+    if (parsed.view === 'calendar') setCalendarMode(parsed.mode);
+    if (parsed.view === 'list') setListMode(parsed.mode);
+    setFilters(parsed.filters);
+  };
+
+  // Publicações mode (Kanban/Lista): every post of every active workflow, fetched
+  // only while one of those modes is actually visible.
+  const postsMode =
+    (activeView === 'kanban' && kanbanMode === 'publicacoes') ||
+    (activeView === 'list' && listMode === 'publicacoes');
+  const { posts: activePosts, isLoading: activePostsLoading } = useActivePosts(postsMode);
+
+  // Posts-mode filtering: only busca / cliente / responsável do post apply; the
+  // workflow-shaped filters (status, membros, etapas, templates) are not read here
+  // but stay in state so flipping back to Entregas restores them.
+  const filteredPosts = useMemo(() => {
+    let ps = activePosts;
+    if (filters.filterSearch) {
+      const q = filters.filterSearch.toLowerCase();
+      ps = ps.filter((p) => p.titulo.toLowerCase().includes(q));
+    }
+    if (filters.filterClientes.length)
+      ps = ps.filter((p) => p.cliente_id != null && filters.filterClientes.includes(p.cliente_id));
+    // "Responsável" here means the CURRENT ETAPA's responsible — the same
+    // dimension the posts views display — not the post-level responsavel_id.
+    if (filters.filterMembros.length)
+      ps = ps.filter((p) => {
+        const respId = cardsByWorkflowId.get(p.workflow_id)?.etapa.responsavel_id;
+        return respId != null && filters.filterMembros.includes(respId);
+      });
+    // A post "is in" its workflow's current etapa.
+    if (filters.filterEtapas.length)
+      ps = ps.filter((p) => {
+        const etapaNome = cardsByWorkflowId.get(p.workflow_id)?.etapa.nome;
+        return etapaNome != null && filters.filterEtapas.includes(etapaNome);
+      });
+    if (filters.filterTipos.length) ps = ps.filter((p) => filters.filterTipos.includes(p.tipo));
+    if (filters.filterPostStatus.length)
+      ps = ps.filter((p) => filters.filterPostStatus.includes(p.status));
+    ps = ps.filter((p) =>
+      matchesEtapaPrazo(
+        cardsByWorkflowId.get(p.workflow_id),
+        filters.filterPrazo,
+        filters.filterPrazoFrom,
+        filters.filterPrazoTo,
+      ),
+    );
+    return ps;
+  }, [
+    activePosts,
+    cardsByWorkflowId,
+    filters.filterSearch,
+    filters.filterClientes,
+    filters.filterMembros,
+    filters.filterEtapas,
+    filters.filterTipos,
+    filters.filterPostStatus,
+    filters.filterPrazo,
+    filters.filterPrazoFrom,
+    filters.filterPrazoTo,
+  ]);
 
   // Apply filters
   let filteredCards = cards;
@@ -243,10 +356,11 @@ export default function EntregasPage() {
             >
               <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
             </span>
-            {/* Only on the kanban view — the tour's data-tour anchors live there, so a click
-                elsewhere would fire a "started" event and hit startEntregasTour's zero-anchor
-                early return with no visible tour. */}
-            {activeView === 'kanban' && (
+            {/* Only on the kanban view in Entregas mode — the tour's data-tour anchors live
+                there, so a click elsewhere (other views, or the Publicações board) would fire
+                a "started" event and hit startEntregasTour's zero-anchor early return with no
+                visible tour. */}
+            {activeView === 'kanban' && kanbanMode === 'entregas' && (
               <button
                 type="button"
                 onClick={handleReplay}
@@ -288,6 +402,8 @@ export default function EntregasPage() {
           </Button>
         </div>
       </header>
+
+      <VistasTabs contaId={contaId} currentQuery={currentQuery} onApply={applySavedView} />
 
       <div
         style={{
@@ -335,31 +451,42 @@ export default function EntregasPage() {
             membros={membros}
             templates={templates}
             etapaNames={etapaNames}
+            mode={postsMode ? 'posts' : 'entregas'}
           />
         )}
 
-      {activeView === 'kanban' && (
-        <KanbanView
-          cards={filteredCards}
-          onCardClick={handleCardClick}
-          onEditClick={setEditCard}
-          onPostsClick={handleCardClick}
-          onRefresh={refresh}
-          onRecurring={setRecurringWfId}
-          membros={membros}
-          templates={templates}
-          postsCounts={postsCounts}
-          approvedPostsCounts={approvedPostsCounts}
-          clearedClienteCounts={clearedClienteCounts}
-          revisaoInternaCounts={revisaoInternaCounts}
-          awaitingClienteCounts={awaitingClienteCounts}
-          showExample={showExample}
-          onDismissExample={() => {
-            captureEvent('entregas_tour_dismissed', { step: -1 });
-            markTourDone();
-          }}
-        />
-      )}
+      {activeView === 'kanban' && <ModeToggle mode={kanbanMode} onModeChange={setKanbanMode} />}
+      {activeView === 'kanban' &&
+        (kanbanMode === 'entregas' ? (
+          <KanbanView
+            cards={filteredCards}
+            onCardClick={handleCardClick}
+            onEditClick={setEditCard}
+            onPostsClick={handleCardClick}
+            onRefresh={refresh}
+            onRecurring={setRecurringWfId}
+            membros={membros}
+            templates={templates}
+            postsCounts={postsCounts}
+            approvedPostsCounts={approvedPostsCounts}
+            clearedClienteCounts={clearedClienteCounts}
+            revisaoInternaCounts={revisaoInternaCounts}
+            awaitingClienteCounts={awaitingClienteCounts}
+            showExample={showExample}
+            onDismissExample={() => {
+              captureEvent('entregas_tour_dismissed', { step: -1 });
+              markTourDone();
+            }}
+          />
+        ) : (
+          <PostsKanbanView
+            posts={filteredPosts}
+            isLoading={activePostsLoading}
+            openableWorkflowIds={openableWorkflowIds}
+            onPostClick={handlePostClick}
+            cardsByWorkflowId={cardsByWorkflowId}
+          />
+        ))}
       {activeView === 'chart' && <ChartView cards={filteredCards} />}
       {activeView === 'calendar' && (
         <CalendarView
@@ -371,14 +498,25 @@ export default function EntregasPage() {
           onPostClick={handlePostClick}
         />
       )}
-      {activeView === 'list' && (
-        <ListView
-          cards={filteredCards}
-          sort={listSort}
-          onSortChange={setListSort}
-          onCardClick={handleCardClick}
-        />
-      )}
+      {activeView === 'list' && <ModeToggle mode={listMode} onModeChange={setListMode} />}
+      {activeView === 'list' &&
+        (listMode === 'entregas' ? (
+          <ListView
+            cards={filteredCards}
+            sort={listSort}
+            onSortChange={setListSort}
+            onCardClick={handleCardClick}
+          />
+        ) : (
+          <PostsListView
+            posts={filteredPosts}
+            isLoading={activePostsLoading}
+            openableWorkflowIds={openableWorkflowIds}
+            onPostClick={handlePostClick}
+            onFluxoClick={handleFluxoClick}
+            cardsByWorkflowId={cardsByWorkflowId}
+          />
+        ))}
       {activeView === 'concluded' && <ConcludedView />}
 
       {newWorkflowOpen && (

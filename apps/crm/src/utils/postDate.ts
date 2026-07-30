@@ -1,4 +1,4 @@
-const MESES_ABREV = [
+export const MESES_ABREV = [
   'jan',
   'fev',
   'mar',
