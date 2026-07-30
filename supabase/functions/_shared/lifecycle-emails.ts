@@ -1,4 +1,5 @@
 import { escapeHtml } from "./report-template/escape.ts";
+import { fetchStripeAmount } from "./stripe-amount.ts";
 
 export const WELCOME_SUBJECT = "Bem-vindo ao Mesaas 👋";
 export const THANKYOU_SUBJECT = "Obrigado pela confiança 💚";
@@ -142,6 +143,129 @@ export function buildThankYouEmail(
 
 export const LIFECYCLE_FROM = "Eduardo do Mesaas <eduardo@mesaas.com.br>";
 
+/** Internal founder notices ship from the alerts sender, not the founder one. */
+export const FOUNDER_NOTICE_FROM = "Mesaas Alerts <alertas@mesaas.com.br>";
+
+/**
+ * Subjects interpolate user-controlled values (workspace/plan names, emails).
+ * escapeHtml protects only the body; a control character in a subject can make
+ * Resend reject the send, stranding the claim and re-retrying the already-sent
+ * user-facing email. Strip controls, collapse whitespace, bound the length.
+ */
+function sanitizeSubjectValue(value: string): string {
+  // deno-lint-ignore no-control-regex
+  const cleaned = value.replace(/[\x00-\x1f\x7f]+/g, " ").replace(/\s+/g, " ").trim();
+  return cleaned.length > 80 ? `${cleaned.slice(0, 79)}…` : cleaned;
+}
+
+/** Two-column detail row for the internal notices. Args pre-escaped. */
+function noticeRow(label: string, value: string): string {
+  return `<tr><td style="padding:4px 12px 4px 0;font-weight:700;white-space:nowrap">${label}</td><td style="padding:4px 0">${value}</td></tr>`;
+}
+
+function noticeLayout(title: string, rowsHtml: string): string {
+  return `<!DOCTYPE html>
+<html lang="pt-BR"><body style="margin:0;font-family:Arial,Helvetica,sans-serif;color:#1a3d2b;font-size:14px;line-height:1.6">
+  <p style="margin:16px 0 8px;font-size:16px;font-weight:700">${title}</p>
+  <table cellpadding="0" cellspacing="0">${rowsHtml}</table>
+</body></html>`;
+}
+
+export function buildFounderSignupNotice(
+  p: { userEmail: string; nome: string | null },
+): { subject: string; html: string } {
+  const email = escapeHtml(p.userEmail);
+  const nome = escapeHtml(p.nome?.trim() || "(sem nome)");
+  return {
+    subject: `[Mesaas] Novo cadastro: ${sanitizeSubjectValue(p.userEmail)}`,
+    html: noticeLayout(
+      "🆕 Novo cadastro no Mesaas",
+      noticeRow("Nome", nome) + noticeRow("E-mail", email),
+    ),
+  };
+}
+
+/** trialing/active get friendly labels; anything else passes through raw. */
+function subscriptionStatusLabel(status: string | null | undefined): string {
+  if (status === "trialing") return "Trial";
+  if (status === "active") return "Ativa";
+  return status?.trim() || "(desconhecido)";
+}
+
+/** month/year get friendly labels; anything else passes through raw. */
+function billingIntervalLabel(interval: string): string {
+  if (interval === "month") return "Mensal";
+  if (interval === "year") return "Anual";
+  return interval;
+}
+
+/** What the workspace actually pays, net of coupons (priced live from Stripe). */
+export interface SubscriptionAmount {
+  netCents: number;
+  grossCents: number | null;
+  currency: string;
+  interval: string | null;
+  discountLabel: string | null;
+}
+
+/** "R$ 1.490,00" for brl; "14,90 USD" otherwise. Hand-rolled so output is deterministic. */
+function formatMoney(cents: number, currency: string): string {
+  const sign = cents < 0 ? "-" : "";
+  const abs = Math.abs(Math.round(cents));
+  const intPart = String(Math.trunc(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const num = `${sign}${intPart},${String(abs % 100).padStart(2, "0")}`;
+  return currency.toLowerCase() === "brl" ? `R$ ${num}` : `${num} ${currency.toUpperCase()}`;
+}
+
+/**
+ * "R$ 119,20/mês (após o trial) · cupom LANC20 −20%, de R$ 149,00".
+ * During a trial Stripe already reports the post-trial price, hence the suffix.
+ */
+export function subscriptionValueLine(
+  amount: SubscriptionAmount | null,
+  subStatus: string | null | undefined,
+): string {
+  if (!amount) return "(indisponível)";
+  const suffix = amount.interval === "month"
+    ? "/mês"
+    : amount.interval === "year"
+    ? "/ano"
+    : amount.interval
+    ? `/${amount.interval}`
+    : "";
+  let line = `${formatMoney(amount.netCents, amount.currency)}${suffix}`;
+  if (subStatus === "trialing") line += " (após o trial)";
+  if (amount.discountLabel) {
+    line += ` · cupom ${amount.discountLabel}`;
+    if (amount.grossCents != null) line += `, de ${formatMoney(amount.grossCents, amount.currency)}`;
+  }
+  return line;
+}
+
+export function buildFounderSubscriptionNotice(p: {
+  workspaceName: string;
+  ownerEmail: string;
+  ownerNome: string | null;
+  planName: string | null;
+  subStatus: string | null;
+  billingInterval: string | null;
+  amount: SubscriptionAmount | null;
+}): { subject: string; html: string } {
+  const plan = p.planName?.trim() || "(plano desconhecido)";
+  const interval = p.billingInterval?.trim();
+  const rows = noticeRow("Workspace", escapeHtml(p.workspaceName)) +
+    noticeRow("Plano", escapeHtml(plan)) +
+    noticeRow("Valor", escapeHtml(subscriptionValueLine(p.amount, p.subStatus))) +
+    noticeRow("Status", escapeHtml(subscriptionStatusLabel(p.subStatus))) +
+    (interval ? noticeRow("Cobrança", escapeHtml(billingIntervalLabel(interval))) : "") +
+    noticeRow("Dono", escapeHtml(p.ownerNome?.trim() || "(sem nome)")) +
+    noticeRow("E-mail", escapeHtml(p.ownerEmail));
+  const subject = `[Mesaas] Nova assinatura: ${sanitizeSubjectValue(p.workspaceName)} (${
+    sanitizeSubjectValue(plan)
+  })`;
+  return { subject, html: noticeLayout("💰 Nova assinatura no Mesaas", rows) };
+}
+
 /**
  * Throwing Resend POST. The Idempotency-Key makes retries after ambiguous
  * failures (lost response, crash after acceptance) safe: Resend dedupes the
@@ -157,6 +281,7 @@ async function sendViaResend(
   subject: string,
   html: string,
   idempotencyKey: string,
+  from: string = LIFECYCLE_FROM,
 ): Promise<void> {
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
   if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY not configured");
@@ -167,7 +292,7 @@ async function sendViaResend(
       "Content-Type": "application/json",
       "Idempotency-Key": idempotencyKey,
     },
-    body: JSON.stringify({ from: LIFECYCLE_FROM, to: [to], subject, html }),
+    body: JSON.stringify({ from, to: [to], subject, html }),
     signal: AbortSignal.timeout(10_000),
   });
   // 409 invalid_idempotent_request: this key was already accepted with a
@@ -207,4 +332,66 @@ export async function sendThankYouEmail(
     }),
     p.idempotencyKey,
   );
+}
+
+/**
+ * Internal founder notices. ALERT_EMAIL unset (e.g. staging) is a silent
+ * no-op so a missing internal recipient can never block or fail the
+ * user-facing email path. When configured, Resend errors THROW: the caller's
+ * claim stays undelivered and the stale retry re-sends with the same key.
+ */
+export async function sendFounderSignupNotice(
+  p: { userEmail: string; nome: string | null; idempotencyKey: string },
+): Promise<void> {
+  const to = Deno.env.get("ALERT_EMAIL");
+  if (!to) return;
+  const { subject, html } = buildFounderSignupNotice(p);
+  await sendViaResend(to, subject, html, p.idempotencyKey, FOUNDER_NOTICE_FROM);
+}
+
+/**
+ * Best-effort live pricing (net of coupons) for the notice. Returns null on any
+ * failure — missing STRIPE_SECRET_KEY (the ./stripe.ts import throws), Stripe
+ * down, unknown subscription — so the value renders "(indisponível)" instead of
+ * stranding the claim and re-retrying the already-sent user-facing email.
+ */
+async function fetchSubscriptionAmount(
+  stripeSubscriptionId: string | null,
+  fallbackInterval: string | null,
+): Promise<SubscriptionAmount | null> {
+  if (!stripeSubscriptionId) return null;
+  try {
+    const { stripe } = await import("./stripe.ts");
+    const amt = await fetchStripeAmount(stripe, stripeSubscriptionId, fallbackInterval);
+    return {
+      netCents: amt.amount_cents,
+      grossCents: amt.gross_cents,
+      currency: amt.currency,
+      interval: amt.interval,
+      discountLabel: amt.discount_label,
+    };
+  } catch (e) {
+    console.error(
+      "[lifecycle-emails] stripe amount fetch failed:",
+      e instanceof Error ? e.message : String(e),
+    );
+    return null;
+  }
+}
+
+export async function sendFounderSubscriptionNotice(p: {
+  workspaceName: string;
+  ownerEmail: string;
+  ownerNome: string | null;
+  planName: string | null;
+  subStatus: string | null;
+  billingInterval: string | null;
+  stripeSubscriptionId: string | null;
+  idempotencyKey: string;
+}): Promise<void> {
+  const to = Deno.env.get("ALERT_EMAIL");
+  if (!to) return;
+  const amount = await fetchSubscriptionAmount(p.stripeSubscriptionId, p.billingInterval);
+  const { subject, html } = buildFounderSubscriptionNotice({ ...p, amount });
+  await sendViaResend(to, subject, html, p.idempotencyKey, FOUNDER_NOTICE_FROM);
 }

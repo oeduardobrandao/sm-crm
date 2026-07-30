@@ -6,6 +6,11 @@ import { handleGetWorkspaceInvites, handleAdminCancelInvite, handleAdminResendIn
 // Single source of truth for plan columns (includes max_mcp_keys / feature_mcp).
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
 import { aggregateMrr, toMonthlyCents } from "../_shared/billing-logic.ts";
+import {
+  fetchStripeAmount,
+  STRIPE_TIMEOUT_MS,
+  type StripeClient,
+} from "../_shared/stripe-amount.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -591,28 +596,11 @@ async function handleGetWorkspace(
 }
 
 // ─── Stripe subscription detail (live amount, catalog fallback) ────────────────
-
-type CouponLike = {
-  id: string;
-  name?: string | null;
-  percent_off?: number | null;
-  amount_off?: number | null;
-};
-
-/** Reads the active coupon off a subscription (handles both `discounts[]` and legacy `discount`). */
-function extractCoupon(sub: unknown): CouponLike | null {
-  const s = sub as { discounts?: unknown; discount?: unknown };
-  const d = Array.isArray(s.discounts) && s.discounts.length ? s.discounts[0] : s.discount;
-  if (!d || typeof d === "string") return null;
-  return (d as { coupon?: CouponLike }).coupon ?? null;
-}
+// Amount/coupon helpers live in ../_shared/stripe-amount.ts (shared with the
+// lifecycle founder notices).
 
 function stripeDashboardUrl(livemode: boolean, kind: string, id: string): string {
   return `https://dashboard.stripe.com/${livemode ? "" : "test/"}${kind}/${id}`;
-}
-
-function trimPercent(n: number): string {
-  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
 }
 
 // Peak Stripe throughput = STRIPE_CONCURRENCY requests every STRIPE_TIMEOUT_MS at worst; 8 keeps
@@ -621,26 +609,6 @@ function trimPercent(n: number): string {
 // withTimeout backstops the await — together they stop a stalled call from running the edge isolate
 // to its kill.
 const STRIPE_CONCURRENCY = 8;
-const STRIPE_TIMEOUT_MS = 5000;
-
-type StripeClient = {
-  subscriptions: {
-    retrieve: (
-      id: string,
-      params: { expand: string[] },
-      options?: { timeout?: number },
-    ) => Promise<unknown>;
-  };
-};
-
-type StripeAmount = {
-  amount_cents: number;
-  gross_cents: number | null;
-  currency: string;
-  interval: string | null;
-  discount_label: string | null;
-  livemode: boolean;
-};
 
 /**
  * Rejects if `p` has not settled within `ms`, so an awaited external call can't hang a handler
@@ -663,65 +631,6 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 
-/**
- * Retrieves a subscription's current price from Stripe and applies any active coupon,
- * so the returned amount is what the customer actually pays. Shared by the detail
- * view and the list. `fallbackInterval` is the mirror's billing_interval, used when
- * the price object doesn't carry a recurring interval.
- */
-async function fetchStripeAmount(
-  stripe: StripeClient,
-  subscriptionId: string,
-  fallbackInterval: string | null,
-): Promise<StripeAmount> {
-  let sub: unknown;
-  try {
-    sub = await stripe.subscriptions.retrieve(
-      subscriptionId,
-      { expand: ["items.data.price", "discounts"] },
-      { timeout: STRIPE_TIMEOUT_MS },
-    );
-  } catch (_e) {
-    // Some API versions reject expanding `discounts`; retry with price only.
-    sub = await stripe.subscriptions.retrieve(
-      subscriptionId,
-      { expand: ["items.data.price"] },
-      { timeout: STRIPE_TIMEOUT_MS },
-    );
-  }
-  const s = sub as {
-    livemode?: boolean;
-    items?: {
-      data?: Array<{
-        quantity?: number;
-        price?: { unit_amount?: number | null; currency?: string; recurring?: { interval?: string } };
-      }>;
-    };
-  };
-  const item = s.items?.data?.[0];
-  const qty = item?.quantity ?? 1;
-  const gross = (item?.price?.unit_amount ?? 0) * qty;
-  const coupon = extractCoupon(sub);
-  let net = gross;
-  let discountLabel: string | null = null;
-  if (coupon) {
-    if (typeof coupon.percent_off === "number" && coupon.percent_off > 0) {
-      net = Math.round(gross * (1 - coupon.percent_off / 100));
-      discountLabel = `${coupon.name ?? coupon.id} −${trimPercent(coupon.percent_off)}%`;
-    } else if (typeof coupon.amount_off === "number" && coupon.amount_off > 0) {
-      net = Math.max(0, gross - coupon.amount_off);
-      discountLabel = coupon.name ?? coupon.id;
-    }
-  }
-  return {
-    amount_cents: net,
-    gross_cents: net !== gross ? gross : null,
-    currency: item?.price?.currency ?? "brl",
-    interval: item?.price?.recurring?.interval ?? fallbackInterval,
-    discount_label: discountLabel,
-    livemode: s.livemode ?? true,
-  };
-}
 
 /**
  * Builds the Stripe-subscription view for one workspace. The local mirror
