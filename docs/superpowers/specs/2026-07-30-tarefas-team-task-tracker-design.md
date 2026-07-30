@@ -24,7 +24,17 @@ Quatro tabelas, todas com `conta_id uuid NOT NULL REFERENCES workspaces(id) ON D
 - **tarefa_tags**: tags do workspace (nome, cor). UNIQUE (conta_id, nome).
 - **tarefa_tag_links**: join N:N com FKs compostas para tarefas e tarefa_tags.
 
-responsavel_id/cliente_id ficam como FK simples (composta + SET NULL anularia conta_id; segue precedente de workflow_etapas.responsavel_id).
+responsavel_id/cliente_id ficam como FK simples (composta + SET NULL anularia conta_id), MAS o WITH CHECK da policy de tarefas ganha conjuntos EXISTS amarrando responsavel_id e cliente_id ao conta_id da propria linha (padrao 20260728000004). Motivo: resolve_notification_targets le membros por id sem conferir conta_id; um responsavel_id cross-tenant vazaria uma notificacao (titulo da tarefa) para usuario de outro workspace.
+
+### Decisoes da revisao externa (Codex, pre-implementacao)
+
+- ACEITO (P0): conjuntos EXISTS no WITH CHECK acima.
+- ACEITO (P2): "posts pendentes" no dashboard do agent = posts atribuidos ao membro cujo status NAO e final; a lista concreta de status vem de postLabels.ts (estados terminais como postado/agendado ficam de fora; correcao_cliente conta como pendente).
+- ACEITO (P2): datas 'YYYY-MM-DD' sempre parseadas com sufixo 'T00:00:00' (convencao formatDate de store/core.ts) para nao deslocar o dia no fuso brasileiro; buckets e "concluidas hoje" comparam dia-calendario local. "Esta semana" = depois de hoje ate domingo da semana corrente (seg-dom).
+- ACEITO (P2): task_assigned dispara em INSERT ja atribuido e em reatribuicao (responsavel novo nao nulo); nunca em remocao de responsavel; o proprio ator e excluido pelo parametro auth.uid() de insert_notification_batch (mesmo mecanismo de post_assigned).
+- REJEITADO (P1, escrita restrita por papel): o modelo do app inteiro (workflows, ideias, clientes) e "todo membro do workspace escreve"; agents precisam atualizar as proprias tarefas e subtarefas. Restringir escrita por papel na RLS nao foi pedido e conflitaria com o uso real.
+- REJEITADO (P2, RPC transacional para tags): escrita sequencial + refresh() apos falha segue o estilo da casa (updateWorkflowPositions etc.); o modo de falha e benigno (tarefa sem parte das tags, corrigivel na edicao).
+- JA PREVISTO (P1/P2): useCurrentMembro (criado nesta feature), estado vazio para agent sem vinculo crm_user_id, deep link /tarefas?tarefa=<id> abre o TarefaDetailSheet (padrao ?drawer= do EntregasPage), tipo no union de store/notifications.ts + case no notification-config.ts.
 
 ## Arquitetura frontend
 

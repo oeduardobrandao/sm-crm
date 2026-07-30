@@ -29,6 +29,7 @@ export const APP_ROUTE_PREFIXES = [
   'configuracao',
   'calendario',
   'entregas',
+  'tarefas',
   'post-express',
   'arquivos',
   'analytics-fluxos',
