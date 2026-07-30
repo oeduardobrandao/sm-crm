@@ -125,7 +125,9 @@ export function getNotificationDisplay(
         tone: 'teal',
         title: 'Tarefa atribuída a você',
         // Tasks may have no client; skip the prefix instead of a wrong fallback.
-        body: m.client_name ? `${client} · ${s(m.task_title, 'Tarefa')}` : s(m.task_title, 'Tarefa'),
+        body: m.client_name
+          ? `${client} · ${s(m.task_title, 'Tarefa')}`
+          : s(m.task_title, 'Tarefa'),
       };
     case 'workflow_completed':
       return {

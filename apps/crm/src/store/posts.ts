@@ -335,7 +335,9 @@ export interface AssignedPendingPost {
 export async function getAssignedPendingPosts(membroId: number): Promise<AssignedPendingPost[]> {
   const { data, error } = await supabase
     .from('workflow_posts')
-    .select('id, workflow_id, titulo, status, workflows!inner(titulo, status, clientes!inner(nome))')
+    .select(
+      'id, workflow_id, titulo, status, workflows!inner(titulo, status, clientes!inner(nome))',
+    )
     .eq('workflows.status', 'ativo')
     .eq('responsavel_id', membroId)
     .in('status', ASSIGNEE_PENDING_POST_STATUSES as unknown as string[])

@@ -9,6 +9,6 @@ import { useAuth } from '@/context/AuthContext';
 export function useCurrentMembro(): { membro: Membro | null; isLoading: boolean } {
   const { user } = useAuth();
   const { data: membros, isLoading } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
-  const membro = user ? (membros ?? []).find((m) => m.crm_user_id === user.id) ?? null : null;
+  const membro = user ? ((membros ?? []).find((m) => m.crm_user_id === user.id) ?? null) : null;
   return { membro, isLoading };
 }

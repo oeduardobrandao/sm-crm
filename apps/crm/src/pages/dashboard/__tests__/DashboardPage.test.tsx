@@ -44,6 +44,11 @@ vi.mock('../components/ClientHealthMonitor', () => ({
   ClientHealthMonitor: () => <div data-testid="client-health-monitor">Saúde dos clientes</div>,
 }));
 
+// Same for the agent variant — it owns its own queries and is tested separately
+vi.mock('../components/AgentPendingSection', () => ({
+  AgentPendingSection: () => <div data-testid="agent-pending-section">Minhas pendências</div>,
+}));
+
 import DashboardPage from '../DashboardPage';
 
 const mockedUseAuth = vi.mocked(useAuthMock);
@@ -160,8 +165,9 @@ describe('DashboardPage', () => {
     expect(screen.queryByTestId('onboarding-banner')).not.toBeInTheDocument();
     expect(screen.queryByText('A receber')).not.toBeInTheDocument();
     expect(screen.queryByText('Receita mensal')).not.toBeInTheDocument();
-    // Health monitor and today card are always present
-    expect(screen.getByTestId('client-health-monitor')).toBeInTheDocument();
+    // Agent sees their pending-work section INSTEAD of the health monitor
+    expect(screen.getByTestId('agent-pending-section')).toBeInTheDocument();
+    expect(screen.queryByTestId('client-health-monitor')).not.toBeInTheDocument();
     expect(screen.getByText('Hoje')).toBeInTheDocument();
     // Agent: income/expense events are suppressed; birthday still shows
     expect(screen.queryByText('Recebimento')).not.toBeInTheDocument();

@@ -61,13 +61,7 @@ function TarefaChip({
   );
 }
 
-function DraggableChip({
-  tarefa,
-  onClick,
-}: {
-  tarefa: TarefaWithRelations;
-  onClick: () => void;
-}) {
+function DraggableChip({ tarefa, onClick }: { tarefa: TarefaWithRelations; onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: String(tarefa.id),
   });
@@ -112,7 +106,11 @@ function DayCell({
         minHeight: 88,
         borderRadius: '8px',
         border: isToday ? '1.5px solid var(--primary-color)' : '1px solid var(--border-color)',
-        background: isOver ? 'var(--surface-hover)' : isCurrentMonth ? 'var(--card-bg)' : 'transparent',
+        background: isOver
+          ? 'var(--surface-hover)'
+          : isCurrentMonth
+            ? 'var(--card-bg)'
+            : 'transparent',
         opacity: isCurrentMonth ? 1 : 0.45,
         padding: '0.3rem',
         display: 'flex',

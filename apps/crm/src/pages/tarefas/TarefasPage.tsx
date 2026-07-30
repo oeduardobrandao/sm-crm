@@ -60,10 +60,7 @@ export default function TarefasPage() {
     }
   }, [tarefas]);
 
-  const filteredTarefas = useMemo(
-    () => applyTarefaFilters(tarefas, filters),
-    [tarefas, filters],
-  );
+  const filteredTarefas = useMemo(() => applyTarefaFilters(tarefas, filters), [tarefas, filters]);
   const stats = useMemo(() => computeHeaderStats(tarefas, new Date()), [tarefas]);
   const selected = selectedId != null ? (tarefas.find((t) => t.id === selectedId) ?? null) : null;
 
@@ -167,10 +164,7 @@ export default function TarefasPage() {
             borderRadius: '12px',
           }}
         >
-          <ListChecks
-            className="h-8 w-8"
-            style={{ margin: '0 auto 0.75rem', opacity: 0.35 }}
-          />
+          <ListChecks className="h-8 w-8" style={{ margin: '0 auto 0.75rem', opacity: 0.35 }} />
           <p style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>
             Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.
           </p>

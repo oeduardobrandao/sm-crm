@@ -151,8 +151,7 @@ export function applyTarefaFilters(
   if (filters.filterSearch) {
     const q = filters.filterSearch.toLowerCase();
     out = out.filter(
-      (t) =>
-        t.titulo.toLowerCase().includes(q) || (t.cliente_nome ?? '').toLowerCase().includes(q),
+      (t) => t.titulo.toLowerCase().includes(q) || (t.cliente_nome ?? '').toLowerCase().includes(q),
     );
   }
   if (filters.filterMembros.length) {
@@ -164,7 +163,9 @@ export function applyTarefaFilters(
     out = out.filter((t) => t.cliente_id != null && filters.filterClientes.includes(t.cliente_id));
   }
   if (filters.filterTags.length) {
-    out = out.filter((t) => t.tags.some((tag) => tag.id != null && filters.filterTags.includes(tag.id)));
+    out = out.filter((t) =>
+      t.tags.some((tag) => tag.id != null && filters.filterTags.includes(tag.id)),
+    );
   }
   if (filters.filterStatus.length) {
     out = out.filter((t) => filters.filterStatus.includes(t.status));
@@ -210,7 +211,11 @@ export function parseDropId(id: string): DropTarget | null {
 
 // ---- Due badge ---------------------------------------------------------------
 
-export type DeadlineClass = 'deadline-ok' | 'deadline-caution' | 'deadline-warning' | 'deadline-overdue';
+export type DeadlineClass =
+  | 'deadline-ok'
+  | 'deadline-caution'
+  | 'deadline-warning'
+  | 'deadline-overdue';
 
 export interface DueBadge {
   label: string;
@@ -226,12 +231,18 @@ export function dueBadge(t: TarefaWithRelations, now: Date): DueBadge | null {
   const diffDays = Math.round((due.getTime() - today.getTime()) / 86_400_000);
   if (diffDays < 0) {
     const d = Math.abs(diffDays);
-    return { label: d === 1 ? '1 dia de atraso' : `${d} dias de atraso`, className: 'deadline-overdue' };
+    return {
+      label: d === 1 ? '1 dia de atraso' : `${d} dias de atraso`,
+      className: 'deadline-overdue',
+    };
   }
   if (diffDays === 0) return { label: 'Hoje', className: 'deadline-warning' };
   if (diffDays === 1) return { label: 'Amanhã', className: 'deadline-caution' };
   if (diffDays <= 3) return { label: `${diffDays} dias`, className: 'deadline-caution' };
-  return { label: parseDateOnly(t.data_limite).toLocaleDateString('pt-BR'), className: 'deadline-ok' };
+  return {
+    label: parseDateOnly(t.data_limite).toLocaleDateString('pt-BR'),
+    className: 'deadline-ok',
+  };
 }
 
 export const STATUS_LABELS: Record<TarefaStatus, string> = {

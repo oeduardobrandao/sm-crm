@@ -133,7 +133,9 @@ export function TarefaBoard({ columns, membros, now, onCardClick, onDropCard }: 
                     <DraggableTarefaCard
                       key={t.id}
                       tarefa={t}
-                      membro={t.responsavel_id != null ? (membroById.get(t.responsavel_id) ?? null) : null}
+                      membro={
+                        t.responsavel_id != null ? (membroById.get(t.responsavel_id) ?? null) : null
+                      }
                       now={now}
                       onClick={() => onCardClick(t)}
                       hideAssignee={col.hideAssignee}

@@ -17,7 +17,12 @@ import {
 } from '@/components/ui/sheet';
 import { Check, ChevronDown, Search, SlidersHorizontal } from 'lucide-react';
 import type { Cliente, Membro, TarefaTag, TarefaStatus } from '../../../store';
-import { STATUS_LABELS, STATUS_ORDER, type TarefaFilterState, EMPTY_TAREFA_FILTERS } from '../tarefasLogic';
+import {
+  STATUS_LABELS,
+  STATUS_ORDER,
+  type TarefaFilterState,
+  EMPTY_TAREFA_FILTERS,
+} from '../tarefasLogic';
 
 interface TarefasFiltersProps {
   filters: TarefaFilterState;
@@ -212,7 +217,13 @@ function FilterControls({
   );
 }
 
-export function TarefasFilters({ filters, onChange, clientes, membros, tags }: TarefasFiltersProps) {
+export function TarefasFilters({
+  filters,
+  onChange,
+  clientes,
+  membros,
+  tags,
+}: TarefasFiltersProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const activeClientes = clientes
     .filter((c) => c.status === 'ativo')
@@ -242,7 +253,9 @@ export function TarefasFilters({ filters, onChange, clientes, membros, tags }: T
           <Button
             variant="ghost"
             className="h-9 px-3 text-xs font-normal mb-0"
-            onClick={() => onChange({ ...EMPTY_TAREFA_FILTERS, filterSearch: filters.filterSearch })}
+            onClick={() =>
+              onChange({ ...EMPTY_TAREFA_FILTERS, filterSearch: filters.filterSearch })
+            }
           >
             Limpar filtros
           </Button>
