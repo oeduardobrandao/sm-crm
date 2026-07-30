@@ -133,7 +133,11 @@ export default function CobrancaPage() {
     setBusy(planId);
     try {
       const url = await startCheckout(planId, interval, promo.trim() || undefined);
-      captureEvent('checkout_started', { plan_id: planId, billing_interval: interval });
+      captureEvent(
+        'checkout_started',
+        { plan_id: planId, billing_interval: interval },
+        { sendInstantly: true },
+      );
       window.location.assign(url);
     } catch (err) {
       toast.error('Erro ao iniciar checkout: ' + (err as Error).message);

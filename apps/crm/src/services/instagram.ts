@@ -2,6 +2,7 @@
 // Mesaas - Instagram Integration Service
 // =============================================
 import { supabase } from '../lib/supabase';
+import { captureEvent } from '../lib/analytics';
 
 const EDGE_FUNCTION_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/instagram-integration';
 
@@ -47,6 +48,12 @@ export async function getInstagramAuthUrl(clientId: number): Promise<string> {
   }
 
   const data = await res.json();
+  // Instrumented here rather than at the call sites: four of them build this URL and then
+  // immediately assign window.location (cliente-detalhe, InstagramConnectButton,
+  // InstagramOverviewCard, dashboard ClientHealthCard), so per-call-site capture undercounts
+  // the moment anyone adds a fifth. Fires only after the URL resolves, so a failed request is
+  // not a connect attempt, and instantly because every caller navigates away in the next tick.
+  captureEvent('instagram_connect_started', { cliente_id: clientId }, { sendInstantly: true });
   return data.url;
 }
 

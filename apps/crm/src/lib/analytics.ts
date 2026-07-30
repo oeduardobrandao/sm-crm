@@ -10,6 +10,11 @@ export type AnalyticsEvent =
   | 'signup_completed'
   | 'workspace_setup_completed'
   | 'client_created'
+  // Two distinct steps, deliberately not collapsed: `_started` fires when the user leaves for
+  // Meta's consent screen, `instagram_connected` is the activation milestone and may only be
+  // fired once the callback confirms a live connection. Nothing fires it yet — the OAuth success
+  // leg redirects to /clientes/:id with no marker to key off (instagram-integration/index.ts).
+  | 'instagram_connect_started'
   | 'instagram_connected'
   | 'workflow_created'
   | 'workflow_wizard_source'
@@ -73,8 +78,26 @@ export function identifyWorkspaceUser(userId: string, props: WorkspaceUserProps)
   posthog.group('workspace', props.workspace_id);
 }
 
-export function captureEvent(event: AnalyticsEvent, props?: Record<string, unknown>): void {
+export interface CaptureOptions {
+  /**
+   * Bypass posthog-js request batching. `capture()` normally only enqueues, and the queue is
+   * flushed on an interval or by the pagehide handler. That handler usually saves an event
+   * captured immediately before a redirect, but "usually" is not a guarantee worth racing —
+   * set this at any call site that navigates away in the same tick.
+   */
+  sendInstantly?: boolean;
+}
+
+export function captureEvent(
+  event: AnalyticsEvent,
+  props?: Record<string, unknown>,
+  opts?: CaptureOptions,
+): void {
   if (!enabled) return;
+  if (opts?.sendInstantly) {
+    posthog.capture(event, props, { send_instantly: true });
+    return;
+  }
   posthog.capture(event, props);
 }
 
