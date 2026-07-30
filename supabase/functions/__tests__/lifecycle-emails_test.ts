@@ -217,6 +217,23 @@ Deno.test("buildFounderSignupNotice carries nome + email, escaped, with fallback
   assert(noName.html.includes("(sem nome)"), "missing-nome fallback absent");
 });
 
+Deno.test("founder notices pin their backgrounds (dark-mode clients must not restyle)", () => {
+  const signup = buildFounderSignupNotice({ userEmail: "a@x.test", nome: null }).html;
+  const sub = buildFounderSubscriptionNotice({
+    workspaceName: "X",
+    ownerEmail: "d@x.test",
+    ownerNome: null,
+    planName: null,
+    subStatus: null,
+    billingInterval: null,
+    amount: null,
+  }).html;
+  for (const html of [signup, sub]) {
+    assert(html.includes("background:#f5f3ee"), "page background not pinned");
+    assert(html.includes("background:#ffffff"), "card background not pinned");
+  }
+});
+
 Deno.test("buildFounderSubscriptionNotice renders plan, value, labels, owner; escapes", () => {
   const { subject, html } = buildFounderSubscriptionNotice({
     workspaceName: "<i>Agencia X</i>",
