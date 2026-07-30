@@ -7,11 +7,8 @@ import { handleListWorkspaces } from "./list-workspaces.ts";
 // Single source of truth for plan columns (includes max_mcp_keys / feature_mcp).
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
 import { aggregateMrr, toMonthlyCents } from "../_shared/billing-logic.ts";
-import {
-  fetchStripeAmount,
-  STRIPE_TIMEOUT_MS,
-  type StripeClient,
-} from "../_shared/stripe-amount.ts";
+import { buildAmountColumns, fetchStripeAmount } from "../_shared/stripe-amount.ts";
+import { priceSubscriptionRows } from "./pricing.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -387,35 +384,6 @@ function stripeDashboardUrl(livemode: boolean, kind: string, id: string): string
   return `https://dashboard.stripe.com/${livemode ? "" : "test/"}${kind}/${id}`;
 }
 
-// Peak Stripe throughput = STRIPE_CONCURRENCY requests every STRIPE_TIMEOUT_MS at worst; 8 keeps
-// us well under Stripe's rate limit even with a large paying/trialing base. The timeout is enforced
-// twice: the SDK's per-request `timeout` aborts the underlying fetch (freeing the connection), and
-// withTimeout backstops the await — together they stop a stalled call from running the edge isolate
-// to its kill.
-const STRIPE_CONCURRENCY = 8;
-
-/**
- * Rejects if `p` has not settled within `ms`, so an awaited external call can't hang a handler
- * until the edge runtime kills the isolate. The underlying promise stays handled after the race
- * is lost (its late settle hits the no-op resolve/reject), so no unhandled rejection escapes.
- */
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-    p.then(
-      (v) => {
-        clearTimeout(timer);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(timer);
-        reject(e);
-      },
-    );
-  });
-}
-
-
 /**
  * Builds the Stripe-subscription view for one workspace. The local mirror
  * (workspace_subscriptions) always reflects the real Stripe status even when an
@@ -476,6 +444,15 @@ async function buildSubscriptionDetail(
         "subscriptions",
         row.stripe_subscription_id,
       );
+      // Opportunistic refresh: viewing a workspace updates its cached amount, so
+      // the list/MRR pages keep reading a mirror that tracks live Stripe.
+      const { error: writeBackError } = await svc
+        .from("workspace_subscriptions")
+        .update(buildAmountColumns(amt))
+        .eq("workspace_id", workspaceId);
+      if (writeBackError) {
+        console.error("[platform-admin] amount write-back failed:", writeBackError.message);
+      }
       return info;
     } catch (err) {
       console.error("[platform-admin] stripe fetch failed:", (err as Error).message);
@@ -532,101 +509,15 @@ async function handleListPlans(
  * is unreachable it falls back to the plan's catalog price. Annual is normalized to monthly, and
  * the total is the exact sum of the per-workspace monthly amounts returned in `workspaces`.
  */
-interface PriceableSub {
-  workspace_id: string;
-  status?: string | null;
-  plan_id: string | null;
-  billing_interval: string | null;
-  stripe_subscription_id: string | null;
-}
-
-/**
- * Prices subscription rows from live Stripe (net of coupons), falling back to the plan's catalog
- * price when Stripe is unreachable or the row has no subscription id. Shared by get-mrr and
- * get-trials so both report the same real, discount-aware amounts the workspaces list shows.
- * Requests run in bounded batches (not one unbounded Promise.all) and each is time-bounded, so a
- * growing base can't breach Stripe's rate limit and a stalled call can't hang the isolate.
- */
-async function priceSubscriptionRows<T extends PriceableSub>(
-  rows: T[],
-  nameByWs: Map<string, string>,
-  planById: Map<string, { name: string; price_brl: number | null; price_brl_annual: number | null }>,
-): Promise<
-  Array<
-    T & {
-      name: string;
-      plan_name: string | null;
-      interval: string | null;
-      amount_cents: number | null;
-      discount_label: string | null;
-      amount_source: "stripe" | "catalog" | null;
-    }
-  >
-> {
-  let stripeClient: StripeClient | null = null;
-  if (rows.some((s) => s.stripe_subscription_id)) {
-    try {
-      stripeClient = (await import("../_shared/stripe.ts")).stripe;
-    } catch (err) {
-      console.error("[platform-admin] stripe import failed:", (err as Error).message);
-    }
-  }
-
-  const priceRow = async (s: T) => {
-    const planMeta = s.plan_id ? planById.get(s.plan_id) : undefined;
-    let amount_cents: number | null = null;
-    let interval: string | null = s.billing_interval;
-    let discount_label: string | null = null;
-    let amount_source: "stripe" | "catalog" | null = null;
-
-    if (stripeClient && s.stripe_subscription_id) {
-      try {
-        const amt = await withTimeout(
-          fetchStripeAmount(stripeClient, s.stripe_subscription_id, s.billing_interval),
-          STRIPE_TIMEOUT_MS,
-          "stripe retrieve",
-        );
-        amount_cents = amt.amount_cents;
-        interval = amt.interval ?? s.billing_interval;
-        discount_label = amt.discount_label;
-        amount_source = "stripe";
-      } catch (err) {
-        console.error("[platform-admin] price stripe fetch failed:", (err as Error).message);
-      }
-    }
-    if (amount_cents == null && planMeta) {
-      const cents = s.billing_interval === "year" ? planMeta.price_brl_annual : planMeta.price_brl;
-      if (cents != null) {
-        amount_cents = cents;
-        amount_source = "catalog";
-      }
-    }
-
-    return {
-      ...s,
-      name: nameByWs.get(s.workspace_id) ?? "—",
-      plan_name: planMeta?.name ?? null,
-      interval,
-      amount_cents,
-      discount_label,
-      amount_source,
-    };
-  };
-
-  const priced: Array<Awaited<ReturnType<typeof priceRow>>> = [];
-  for (let i = 0; i < rows.length; i += STRIPE_CONCURRENCY) {
-    priced.push(...(await Promise.all(rows.slice(i, i + STRIPE_CONCURRENCY).map(priceRow))));
-  }
-  return priced;
-}
-
 async function handleGetMrr(
   svc: ReturnType<typeof createClient>,
   headers: Record<string, string>,
 ) {
   const { data: subs, error: subsError } = await svc
     .from("workspace_subscriptions")
-    .select("workspace_id, status, plan_id, billing_interval, stripe_subscription_id")
+    .select(
+      "workspace_id, status, plan_id, billing_interval, stripe_subscription_id, amount_cents, currency, amount_interval, discount_label",
+    )
     .in("status", ["active", "past_due"]);
   if (subsError) throw subsError;
 
@@ -658,7 +549,7 @@ async function handleGetMrr(
     }
   }
 
-  const priceable = await priceSubscriptionRows(rows, nameByWs, planById);
+  const priceable = await priceSubscriptionRows(svc, rows, nameByWs, planById);
 
   const { mrr_cents, paying_count, priced } = aggregateMrr(priceable);
   const workspaces = priced
@@ -696,7 +587,9 @@ async function handleGetTrials(
 ) {
   const { data: subs, error } = await svc
     .from("workspace_subscriptions")
-    .select("workspace_id, plan_id, billing_interval, stripe_subscription_id, current_period_end")
+    .select(
+      "workspace_id, plan_id, billing_interval, stripe_subscription_id, current_period_end, amount_cents, currency, amount_interval, discount_label",
+    )
     .eq("status", "trialing");
   if (error) throw error;
 
@@ -728,7 +621,7 @@ async function handleGetTrials(
     }
   }
 
-  const priced = await priceSubscriptionRows(rows, nameByWs, planById);
+  const priced = await priceSubscriptionRows(svc, rows, nameByWs, planById);
   const trials = priced
     .map((r) => ({
       workspace_id: r.workspace_id,
