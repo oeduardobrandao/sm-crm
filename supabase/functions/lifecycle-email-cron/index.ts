@@ -4,7 +4,12 @@ import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createJsonResponder } from "../_shared/http.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import { appBaseUrl } from "../_shared/app-url.ts";
-import { sendThankYouEmail, sendWelcomeEmail } from "../_shared/lifecycle-emails.ts";
+import {
+  sendFounderSignupNotice,
+  sendFounderSubscriptionNotice,
+  sendThankYouEmail,
+  sendWelcomeEmail,
+} from "../_shared/lifecycle-emails.ts";
 import { type LifecycleCronDeps, runLifecycleEmailCron } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -45,6 +50,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       now: () => new Date(),
       sendWelcome: sendWelcomeEmail,
       sendThanks: sendThankYouEmail,
+      sendFounderSignup: sendFounderSignupNotice,
+      sendFounderSubscription: sendFounderSubscriptionNotice,
       report: (detail) => reportCronFailure(svc, CRON_NAME, detail),
     };
     const result = await runLifecycleEmailCron(deps);

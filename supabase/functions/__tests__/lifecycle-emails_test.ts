@@ -1,9 +1,14 @@
 import { assert } from "./assert.ts";
 import {
+  buildFounderSignupNotice,
+  buildFounderSubscriptionNotice,
   buildThankYouEmail,
   buildWelcomeEmail,
   firstNameFrom,
+  FOUNDER_NOTICE_FROM,
   LIFECYCLE_FROM,
+  sendFounderSignupNotice,
+  sendFounderSubscriptionNotice,
   sendThankYouEmail,
   sendWelcomeEmail,
   THANKYOU_SUBJECT,
@@ -193,4 +198,164 @@ Deno.test("send helpers throw when RESEND_API_KEY is missing", async () => {
     if (prev !== undefined) Deno.env.set("RESEND_API_KEY", prev);
   }
   assert(threw, "expected missing key to throw");
+});
+
+// --- Founder notices ---------------------------------------------------------
+
+Deno.test("buildFounderSignupNotice carries nome + email, escaped, with fallback", () => {
+  const withName = buildFounderSignupNotice({
+    userEmail: "ana@x.test",
+    nome: "<b>Ana</b> Souza",
+  });
+  assert(withName.subject === "[Mesaas] Novo cadastro: ana@x.test");
+  assert(withName.html.includes("&lt;b&gt;Ana&lt;/b&gt; Souza"), "nome not escaped");
+  assert(!withName.html.includes("<b>Ana</b>"), "raw nome leaked");
+  assert(withName.html.includes("ana@x.test"));
+
+  const noName = buildFounderSignupNotice({ userEmail: "b@x.test", nome: "  " });
+  assert(noName.html.includes("(sem nome)"), "missing-nome fallback absent");
+});
+
+Deno.test("buildFounderSubscriptionNotice renders plan, labels, owner; escapes", () => {
+  const { subject, html } = buildFounderSubscriptionNotice({
+    workspaceName: "<i>Agencia X</i>",
+    ownerEmail: "dono@x.test",
+    ownerNome: "Bruno Lima",
+    planName: "Pro",
+    subStatus: "trialing",
+    billingInterval: "month",
+  });
+  assert(subject === "[Mesaas] Nova assinatura: <i>Agencia X</i> (Pro)");
+  assert(html.includes("&lt;i&gt;Agencia X&lt;/i&gt;"), "workspace not escaped");
+  assert(!html.includes("<i>Agencia X</i>"), "raw workspace leaked");
+  assert(html.includes("Pro"));
+  assert(html.includes("Trial"), "trialing status label missing");
+  assert(html.includes("Mensal"), "month interval label missing");
+  assert(html.includes("Bruno Lima") && html.includes("dono@x.test"));
+});
+
+Deno.test("buildFounderSubscriptionNotice fallbacks: null plan/status, absent interval", () => {
+  const { subject, html } = buildFounderSubscriptionNotice({
+    workspaceName: "X",
+    ownerEmail: "d@x.test",
+    ownerNome: null,
+    planName: null,
+    subStatus: null,
+    billingInterval: null,
+  });
+  assert(subject === "[Mesaas] Nova assinatura: X ((plano desconhecido))");
+  assert(html.includes("(plano desconhecido)"));
+  assert(html.includes("(desconhecido)"), "null status fallback missing");
+  assert(!html.includes("Cobrança"), "interval row rendered without an interval");
+  assert(html.includes("(sem nome)"));
+  // active labels + raw passthroughs
+  const active = buildFounderSubscriptionNotice({
+    workspaceName: "X",
+    ownerEmail: "d@x.test",
+    ownerNome: null,
+    planName: "Pro",
+    subStatus: "active",
+    billingInterval: "week",
+  });
+  assert(active.html.includes("Ativa"), "active status label missing");
+  assert(active.html.includes("week"), "unknown interval should pass through raw");
+});
+
+Deno.test("founder notice subjects strip control chars and bound length", () => {
+  const { subject } = buildFounderSubscriptionNotice({
+    workspaceName: "Agencia\r\nX: Injected\theader",
+    ownerEmail: "d@x.test",
+    ownerNome: null,
+    planName: "P".repeat(200),
+    subStatus: "active",
+    billingInterval: null,
+  });
+  assert(!/[\r\n\t]/.test(subject), "control characters survived in subject");
+  assert(subject.includes("Agencia X: Injected header"), "whitespace not collapsed");
+  assert(subject.length < 200, `subject not bounded: ${subject.length}`);
+});
+
+Deno.test("founder notices are a silent no-op without ALERT_EMAIL", async () => {
+  const prev = Deno.env.get("ALERT_EMAIL");
+  Deno.env.delete("ALERT_EMAIL");
+  const original = globalThis.fetch;
+  let fetched = false;
+  globalThis.fetch = (() => {
+    fetched = true;
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof fetch;
+  try {
+    await sendFounderSignupNotice({ userEmail: "a@x.test", nome: null, idempotencyKey: "k" });
+    await sendFounderSubscriptionNotice({
+      workspaceName: "X",
+      ownerEmail: "d@x.test",
+      ownerNome: null,
+      planName: null,
+      subStatus: null,
+      billingInterval: null,
+      idempotencyKey: "k",
+    });
+  } finally {
+    globalThis.fetch = original;
+    if (prev !== undefined) Deno.env.set("ALERT_EMAIL", prev);
+  }
+  assert(!fetched, "notice sent without ALERT_EMAIL configured");
+});
+
+Deno.test("sendFounderSignupNotice posts to ALERT_EMAIL from the alerts sender", async () => {
+  const prevAlert = Deno.env.get("ALERT_EMAIL");
+  Deno.env.set("ALERT_EMAIL", "founder@inbox.test");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  const original = globalThis.fetch;
+  let capturedBody = "";
+  let capturedKey: string | null = null;
+  globalThis.fetch = ((_i: unknown, init?: RequestInit) => {
+    capturedBody = String(init?.body ?? "");
+    capturedKey = new Headers(init?.headers).get("Idempotency-Key");
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof fetch;
+  try {
+    await sendFounderSignupNotice({
+      userEmail: "ana@x.test",
+      nome: "Ana",
+      idempotencyKey: "founder_signup/u1",
+    });
+  } finally {
+    globalThis.fetch = original;
+    if (prevAlert !== undefined) Deno.env.set("ALERT_EMAIL", prevAlert);
+    else Deno.env.delete("ALERT_EMAIL");
+  }
+  const payload = JSON.parse(capturedBody);
+  assert(payload.from === FOUNDER_NOTICE_FROM);
+  assert(payload.from === "Mesaas Alerts <alertas@mesaas.com.br>");
+  assert(payload.to[0] === "founder@inbox.test");
+  assert(payload.subject === "[Mesaas] Novo cadastro: ana@x.test");
+  assert(capturedKey === "founder_signup/u1", `Idempotency-Key was ${capturedKey}`);
+});
+
+Deno.test("sendFounderSubscriptionNotice throws on non-2xx (claim retries)", async () => {
+  const prevAlert = Deno.env.get("ALERT_EMAIL");
+  Deno.env.set("ALERT_EMAIL", "founder@inbox.test");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  const original = globalThis.fetch;
+  globalThis.fetch = (() => Promise.resolve(new Response("nope", { status: 500 }))) as typeof fetch;
+  let threw = false;
+  try {
+    await sendFounderSubscriptionNotice({
+      workspaceName: "X",
+      ownerEmail: "d@x.test",
+      ownerNome: null,
+      planName: "Pro",
+      subStatus: "active",
+      billingInterval: "month",
+      idempotencyKey: "founder_subscription/w1",
+    });
+  } catch {
+    threw = true;
+  } finally {
+    globalThis.fetch = original;
+    if (prevAlert !== undefined) Deno.env.set("ALERT_EMAIL", prevAlert);
+    else Deno.env.delete("ALERT_EMAIL");
+  }
+  assert(threw, "expected non-2xx to throw");
 });

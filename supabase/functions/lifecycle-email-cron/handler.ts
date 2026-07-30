@@ -62,6 +62,24 @@ export interface LifecycleCronDeps {
     appBaseUrl: string;
     idempotencyKey: string;
   }) => Promise<void>;
+  // Internal founder notices, sent AFTER the user-facing email and BEFORE
+  // markDelivered: a notice failure leaves the claim undelivered, so the stale
+  // retry re-sends both (the user-facing email deduped by its unchanged
+  // Resend idempotency key).
+  sendFounderSignup: (p: {
+    userEmail: string;
+    nome: string | null;
+    idempotencyKey: string;
+  }) => Promise<void>;
+  sendFounderSubscription: (p: {
+    workspaceName: string;
+    ownerEmail: string;
+    ownerNome: string | null;
+    planName: string | null;
+    subStatus: string | null;
+    billingInterval: string | null;
+    idempotencyKey: string;
+  }) => Promise<void>;
   report: (detail: CronReportDetail) => Promise<void>;
 }
 
@@ -78,6 +96,11 @@ interface ThankCandidate {
   owner_email: string;
   owner_nome: string | null;
   attempts: number;
+  // Added by migration 20260730000003; optional so the function tolerates
+  // running against the pre-migration RPC (deploy-order safety).
+  plan_name?: string | null;
+  sub_status?: string | null;
+  billing_interval?: string | null;
 }
 
 /** Claim refresh: bumps sent_at and writes attempts = prior + 1 (RPC-supplied). */
@@ -138,6 +161,11 @@ export async function runLifecycleEmailCron(
           appBaseUrl: deps.appBaseUrl,
           idempotencyKey: `welcome/${c.user_id}`,
         });
+        await deps.sendFounderSignup({
+          userEmail: c.email,
+          nome: c.nome,
+          idempotencyKey: `founder_signup/${c.user_id}`,
+        });
         await markDelivered(deps, "welcome", "user_id", c.user_id);
         welcomeSent++;
       } catch (e) {
@@ -171,6 +199,15 @@ export async function runLifecycleEmailCron(
           workspaceName: c.workspace_name,
           appBaseUrl: deps.appBaseUrl,
           idempotencyKey: `subscription_thanks/${c.workspace_id}`,
+        });
+        await deps.sendFounderSubscription({
+          workspaceName: c.workspace_name,
+          ownerEmail: c.owner_email,
+          ownerNome: c.owner_nome,
+          planName: c.plan_name ?? null,
+          subStatus: c.sub_status ?? null,
+          billingInterval: c.billing_interval ?? null,
+          idempotencyKey: `founder_subscription/${c.workspace_id}`,
         });
         await markDelivered(deps, "subscription_thanks", "workspace_id", c.workspace_id);
         thanksSent++;

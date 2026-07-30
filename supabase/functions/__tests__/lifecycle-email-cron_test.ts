@@ -15,9 +15,15 @@ import {
  */
 function makeFakeDb(opts: {
   welcomeCandidates?: Array<{ user_id: string; email: string; nome: string | null }>;
-  thankCandidates?: Array<
-    { workspace_id: string; workspace_name: string; owner_email: string; owner_nome: string | null }
-  >;
+  thankCandidates?: Array<{
+    workspace_id: string;
+    workspace_name: string;
+    owner_email: string;
+    owner_nome: string | null;
+    plan_name?: string | null;
+    sub_status?: string | null;
+    billing_interval?: string | null;
+  }>;
 }) {
   type Row = {
     email_type: string;
@@ -115,6 +121,7 @@ function makeFakeDb(opts: {
 
 function makeDeps(db: ReturnType<typeof makeFakeDb>, overrides?: Partial<LifecycleCronDeps>) {
   const sent: Array<{ kind: string; to: string; firstName: string | null; key: string }> = [];
+  const founderSent: Array<{ kind: string; key: string; payload: Record<string, unknown> }> = [];
   const deps: LifecycleCronDeps = {
     db: db as unknown as LifecycleCronDeps["db"],
     appBaseUrl: "https://x.test",
@@ -127,10 +134,18 @@ function makeDeps(db: ReturnType<typeof makeFakeDb>, overrides?: Partial<Lifecyc
       sent.push({ kind: "thanks", to: p.to, firstName: p.firstName, key: p.idempotencyKey });
       return Promise.resolve();
     },
+    sendFounderSignup: (p) => {
+      founderSent.push({ kind: "founder_signup", key: p.idempotencyKey, payload: { ...p } });
+      return Promise.resolve();
+    },
+    sendFounderSubscription: (p) => {
+      founderSent.push({ kind: "founder_subscription", key: p.idempotencyKey, payload: { ...p } });
+      return Promise.resolve();
+    },
     report: () => Promise.resolve(),
     ...overrides,
   };
-  return { deps, sent };
+  return { deps, sent, founderSent };
 }
 
 Deno.test("welcome sweep claims, sends with first name + key, marks delivered", async () => {
@@ -237,4 +252,77 @@ Deno.test("failures are reported through the triage dep", async () => {
   await runLifecycleEmailCron(deps);
   assert(reported !== null, "triage report missing");
   assert((reported as CronReportDetail).failed === 1);
+});
+
+Deno.test("founder notices go out alongside both user-facing emails", async () => {
+  const db = makeFakeDb({
+    welcomeCandidates: [{ user_id: "u1", email: "ana@x.test", nome: "Ana" }],
+    thankCandidates: [{
+      workspace_id: "w1",
+      workspace_name: "Agencia X",
+      owner_email: "dono@x.test",
+      owner_nome: "Bruno",
+      plan_name: "Pro",
+      sub_status: "trialing",
+      billing_interval: "month",
+    }],
+  });
+  const { deps, founderSent } = makeDeps(db);
+  await runLifecycleEmailCron(deps);
+  assert(founderSent.length === 2, `expected 2 founder notices, got ${founderSent.length}`);
+  const signup = founderSent.find((f) => f.kind === "founder_signup")!;
+  assert(signup.key === "founder_signup/u1");
+  assert(signup.payload.userEmail === "ana@x.test" && signup.payload.nome === "Ana");
+  const sub = founderSent.find((f) => f.kind === "founder_subscription")!;
+  assert(sub.key === "founder_subscription/w1");
+  assert(sub.payload.workspaceName === "Agencia X" && sub.payload.ownerEmail === "dono@x.test");
+  assert(sub.payload.planName === "Pro" && sub.payload.subStatus === "trialing");
+  assert(sub.payload.billingInterval === "month");
+});
+
+Deno.test("pre-migration thank candidates (no plan fields) pass nulls through", async () => {
+  const db = makeFakeDb({
+    thankCandidates: [{
+      workspace_id: "w1",
+      workspace_name: "Agencia X",
+      owner_email: "dono@x.test",
+      owner_nome: null,
+    }],
+  });
+  const { deps, founderSent } = makeDeps(db);
+  const result = await runLifecycleEmailCron(deps);
+  assert(result.thanksSent === 1 && result.failed === 0);
+  const sub = founderSent.find((f) => f.kind === "founder_subscription")!;
+  assert(sub.payload.planName === null && sub.payload.subStatus === null);
+  assert(sub.payload.billingInterval === null);
+});
+
+Deno.test("founder-notice failure leaves the claim undelivered; retry re-sends both", async () => {
+  const db = makeFakeDb({
+    welcomeCandidates: [{ user_id: "u1", email: "ana@x.test", nome: "Ana" }],
+  });
+  let founderCalls = 0;
+  const founderSent: Array<{ key: string }> = [];
+  const { deps, sent } = makeDeps(db, {
+    sendFounderSignup: (p) => {
+      founderCalls++;
+      if (founderCalls === 1) return Promise.reject(new Error("resend down"));
+      founderSent.push({ key: p.idempotencyKey });
+      return Promise.resolve();
+    },
+  });
+  const first = await runLifecycleEmailCron(deps);
+  assert(first.welcomeSent === 0 && first.failed === 1);
+  assert(sent.length === 1, "user email should have been sent before the notice failed");
+  assert(db.rows.length === 1 && !db.rows[0].delivered, "claim wrongly delivered");
+
+  db.markStale("welcome", "u1");
+  const second = await runLifecycleEmailCron(deps);
+  assert(second.welcomeSent === 1 && second.failed === 0);
+  // The user email retried with the SAME key (Resend dedupes it) and the
+  // founder notice finally went out with its own stable key.
+  const totalUserSends: number = sent.length;
+  assert(totalUserSends === 2 && sent[1].key === "welcome/u1");
+  assert(founderSent.length === 1 && founderSent[0].key === "founder_signup/u1");
+  assert(db.rows[0].delivered, "claim not delivered after successful retry");
 });
