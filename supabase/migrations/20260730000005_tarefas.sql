@@ -1,4 +1,4 @@
--- supabase/migrations/20260730000003_tarefas.sql
+-- supabase/migrations/20260730000005_tarefas.sql
 -- Team task tracker: tarefas + subtarefas (checklist) + workspace-level tags.
 -- Spec: docs/superpowers/specs/2026-07-30-tarefas-team-task-tracker-design.md
 

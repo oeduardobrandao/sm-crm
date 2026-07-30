@@ -1,4 +1,4 @@
--- supabase/migrations/20260730000004_task_assigned_notification.sql
+-- supabase/migrations/20260730000006_task_assigned_notification.sql
 -- task_assigned notification: fires when a tarefa is created already assigned
 -- or reassigned to a (new, non-null) responsavel. Never fires on unassignment.
 -- Self-assignment is silenced by insert_notification_batch's p_exclude_actor.
