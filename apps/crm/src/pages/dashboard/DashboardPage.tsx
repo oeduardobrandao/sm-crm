@@ -23,9 +23,12 @@ import { TodayCard, type TodayEvent } from './components/TodayCard';
 import { FinanceKpiStrip } from './components/FinanceKpiStrip';
 
 export default function DashboardPage() {
-  const { role, canSeeFinancials } = useAuth();
+  const { role, workspaceRole, canSeeFinancials } = useAuth();
   const { t } = useTranslation('dashboard');
-  const isAgent = role === 'agent';
+  // workspaceRole reflects the ACTIVE workspace; profile-level `role` goes
+  // stale across workspace switches (a user can be owner in one workspace and
+  // agent in another). Fall back to `role` only while membership resolves.
+  const isAgent = (workspaceRole ?? role) === 'agent';
 
   const results = useQueries({
     queries: [
