@@ -203,7 +203,7 @@ describe('IdeiasPage', () => {
     await screen.findByText('Nenhuma ideia ainda');
 
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar ideia' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Salvar e adicionar imagens' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
 
     expect(screen.getByText('Título obrigatório')).toBeInTheDocument();
     expect(screen.getByText('Descrição obrigatória')).toBeInTheDocument();
@@ -218,7 +218,7 @@ describe('IdeiasPage', () => {
     fireEvent.change(screen.getByPlaceholderText('https://...'), {
       target: { value: '  https://www.notion.so/campanha-junho  ' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Salvar e adicionar imagens' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
 
     await waitFor(() => {
       expect(mockedCreateIdeia).toHaveBeenCalledWith('token-publico', {

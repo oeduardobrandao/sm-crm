@@ -231,15 +231,13 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-              Descrição
-            </p>
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">Descrição</p>
             <p className="text-sm whitespace-pre-wrap">{ideia.descricao}</p>
           </div>
 
           {ideia.links.length > 0 && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+              <p className="text-xs font-medium text-muted-foreground mb-1.5">
                 Links de referência
               </p>
               <div className="space-y-1">
@@ -260,9 +258,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
           )}
 
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-              Imagens
-            </p>
+            <p className="text-xs font-medium text-muted-foreground mb-2">Imagens</p>
             {images.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">
                 {images.map((img: CrmIdeiaImage) => (
@@ -317,9 +313,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
           </div>
 
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-              Status
-            </p>
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">Status</p>
             {statusLocked ? (
               <div className="flex items-center gap-3">
                 <IdeiaStatusBadge status={ideia.status} />
@@ -362,9 +356,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
           </div>
 
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-              Reações
-            </p>
+            <p className="text-xs font-medium text-muted-foreground mb-2">Reações</p>
             <div className="flex flex-wrap gap-2">
               {ALLOWED_EMOJI.map((emoji) => {
                 const entry = reactionMap.get(emoji);
@@ -373,7 +365,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
                   <Button
                     key={emoji}
                     type="button"
-                    variant={active ? 'default' : 'outline'}
+                    variant={active ? 'ink' : 'outline'}
                     size="sm"
                     onClick={() => handleReaction(emoji)}
                     disabled={reactionLoading === emoji}
@@ -393,7 +385,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
           </div>
 
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">
               Resposta da agência
               {ideia.comentario_at && (
                 <span className="ml-1.5 normal-case tracking-normal text-muted-foreground/70 font-normal">
@@ -410,6 +402,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
             />
             <Button
               size="sm"
+              variant="ink"
               className="mt-2"
               onClick={handleSaveComentario}
               disabled={comentarioSaving}
