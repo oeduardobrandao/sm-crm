@@ -14,7 +14,11 @@ import {
   type DunningEpisode,
 } from "../_shared/dunning-logic.ts";
 import { sendDunningEmail } from "../_shared/dunning-email.ts";
-import { buildAmountColumns, fetchStripeAmount } from "../_shared/stripe-amount.ts";
+import {
+  buildAmountColumns,
+  clearedAmountColumns,
+  fetchStripeAmount,
+} from "../_shared/stripe-amount.ts";
 import { appBaseUrl } from "../_shared/app-url.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -118,13 +122,17 @@ async function syncSubscription(
   const recovery = isRecoveredStatus(sub.status) ? buildRecoveryEpisode() : {};
 
   // Price the subscription once here so admin reads never have to call Stripe live.
-  // On failure keep whatever amounts the row already has: stale beats nulled.
-  let amountCols: Record<string, unknown> = {};
+  // On failure CLEAR the mirror instead of keeping the old amount: this event may
+  // be the price change itself, and readers treat any non-null amount as
+  // authoritative (no retry). A cleared row is re-priced live and written back on
+  // the next admin read, so it self-heals.
+  let amountCols: Record<string, unknown>;
   try {
     const amt = await fetchStripeAmount(stripe, sub.id, resolved?.interval ?? null);
     amountCols = buildAmountColumns(amt);
   } catch (err) {
     console.error("[stripe-webhook] amount fetch failed:", (err as Error).message);
+    amountCols = clearedAmountColumns();
   }
 
   await svc.from("workspace_subscriptions").upsert({
