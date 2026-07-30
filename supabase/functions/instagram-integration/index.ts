@@ -398,7 +398,10 @@ Deno.serve(async (req) => {
             }
         } catch { /* posts/history fetch is best-effort */ }
 
-        return Response.redirect(`${OAUTH_REDIRECT_BASE}/clientes/${clientId}`, 302);
+        // ig_connected=1 is the CRM's activation signal: the only point in the flow where a
+        // connection is known to exist. The page fires `instagram_connected` on it and strips
+        // it from the URL (useInstagramActivationEvent).
+        return Response.redirect(`${OAUTH_REDIRECT_BASE}/clientes/${clientId}?ig_connected=1`, 302);
     }
 
     // 3. POST /sync/:clientId

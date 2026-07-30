@@ -141,6 +141,7 @@ import { renderInstagramFollowerChart } from '../../components/instagram/Instagr
 import { renderInstagramConnectButton } from '../../components/instagram/InstagramConnectButton';
 import { TikTokSection } from './TikTokSection';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
+import { useInstagramActivationEvent } from '../../hooks/useInstagramActivationEvent';
 import { LatestInstagramPosts } from '../../components/instagram/LatestInstagramPosts';
 import { supabase } from '@/lib/supabase';
 
@@ -286,6 +287,8 @@ export default function ClienteDetalhePage() {
   useEffect(() => {
     if (isNaN(clienteId)) navigate('/clientes');
   }, [clienteId, navigate]);
+
+  useInstagramActivationEvent(clienteId);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
