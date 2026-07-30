@@ -336,13 +336,13 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
                 value={
                   CONVERSIBLE_STATUSES.includes(ideia.status) || ideia.status === 'descartada'
                     ? ideia.status
-                    : 'nova'
+                    : undefined
                 }
                 onValueChange={(v) => handleStatusChange(v as Ideia['status'])}
                 disabled={statusSaving}
               >
                 <SelectTrigger className="w-48">
-                  <SelectValue />
+                  <SelectValue placeholder="Selecionar status..." />
                 </SelectTrigger>
                 <SelectContent>
                   {STATUS_OPTIONS.map((o) => (

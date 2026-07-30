@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createTask, listTasks, updateTask } from "../mcp/queries.ts";
 import type { Deps } from "../mcp/queries.ts";
+import { registerTools } from "../mcp/tools.ts";
 import { McpInputError, type McpKeyContext } from "../_shared/mcp-token.ts";
 
 type Resp = { data: unknown; error: unknown };
@@ -135,4 +136,22 @@ Deno.test("mcp-tarefas: listTasks scopes by conta_id, clamps limit, flattens tag
   assertEquals(out[0].tags.length, 1);
   assertEquals(out[0].subtarefas_total, 2);
   assertEquals(out[0].subtarefas_concluidas, 1);
+});
+
+Deno.test("mcp-tarefas: list_tasks tool denies a ctx missing tarefas:read", async () => {
+  const { db } = makeFakeDb({});
+  const deniedCtx: McpKeyContext = {
+    conta_id: "workspace-A", scopes: ["clientes:read"], key_id: "k1", created_by: "user-1",
+  };
+  const deps = { db, ctx: deniedCtx } as unknown as Deps;
+  const server = {
+    handlers: {} as Record<string, (a: unknown) => Promise<{ content: { type: string; text: string }[]; isError?: boolean }>>,
+    // deno-lint-ignore no-explicit-any
+    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+  };
+  // deno-lint-ignore no-explicit-any
+  registerTools(server as any, deps);
+  const result = await server.handlers["list_tasks"]({});
+  assert(result.isError === true, "scope-denied result is flagged isError");
+  assert(result.content[0].text.includes("tarefas:read"), "error mentions the missing scope");
 });

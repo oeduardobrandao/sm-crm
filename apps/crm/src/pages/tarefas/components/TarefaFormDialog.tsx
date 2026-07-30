@@ -173,7 +173,8 @@ export function TarefaFormDialog({
       onClose();
     } catch (e) {
       const fallback = editing ? 'Erro ao atualizar tarefa' : 'Erro ao criar tarefa';
-      toast.error(e instanceof Error && e.message ? e.message : fallback);
+      const message = onCreate && e instanceof Error && e.message ? e.message : fallback;
+      toast.error(message);
     } finally {
       setSaving(false);
     }

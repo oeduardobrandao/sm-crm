@@ -152,7 +152,10 @@ describe('IdeiaDrawer conversion UI', () => {
 
   it('reopens manual status for an orphaned converted solicitacao', () => {
     renderDrawer({ ...BASE, tipo: 'solicitacao', status: 'convertida', tarefa_id: null });
-    expect(screen.getByRole('combobox')).toBeInTheDocument();
+    const combobox = screen.getByRole('combobox');
+    expect(combobox).toBeInTheDocument();
+    expect(combobox).toHaveTextContent('Selecionar status...');
+    expect(combobox).not.toHaveTextContent('Nova');
   });
 });
 
