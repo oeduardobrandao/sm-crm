@@ -110,6 +110,13 @@ export function TarefaFormDialog({
     defaultValues: BLANK,
   });
 
+  // Destructure to primitives: initialValues is naturally passed as an inline object
+  // literal by callers (conversao de solicitacao), so a new reference on every parent
+  // re-render must NOT retrigger the reset below and clobber in-progress edits.
+  const initialTitulo = initialValues?.titulo;
+  const initialDescricao = initialValues?.descricao;
+  const initialClienteId = initialValues?.cliente_id;
+
   useEffect(() => {
     if (!open) return;
     if (editing) {
@@ -125,13 +132,13 @@ export function TarefaFormDialog({
     } else {
       form.reset({
         ...BLANK,
-        titulo: initialValues?.titulo ?? '',
-        descricao: initialValues?.descricao ?? '',
-        cliente_id: initialValues?.cliente_id != null ? String(initialValues.cliente_id) : 'none',
+        titulo: initialTitulo ?? '',
+        descricao: initialDescricao ?? '',
+        cliente_id: initialClienteId != null ? String(initialClienteId) : 'none',
       });
       setTagIds([]);
     }
-  }, [open, editing, initialValues, form]);
+  }, [open, editing, initialTitulo, initialDescricao, initialClienteId, form]);
 
   const activeClientes = clientes
     .filter(
