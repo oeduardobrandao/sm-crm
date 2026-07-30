@@ -37,6 +37,20 @@ export const PLATFORM_LABELS: Record<NonNullable<WorkflowPost['platform']>, stri
   both: 'Ambas',
 };
 
+/** Pipeline order of post statuses — column order for the Publicações kanban
+ *  and sort order for status columns. */
+export const POST_STATUS_ORDER = [
+  'rascunho',
+  'revisao_interna',
+  'aprovado_interno',
+  'enviado_cliente',
+  'aprovado_cliente',
+  'correcao_cliente',
+  'agendado',
+  'postado',
+  'falha_publicacao',
+] as const satisfies readonly WorkflowPost['status'][];
+
 export const STATUS_LABELS: Record<WorkflowPost['status'], string> = {
   rascunho: 'Rascunho',
   revisao_interna: 'Em revisão',

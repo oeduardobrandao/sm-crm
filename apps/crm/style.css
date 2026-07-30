@@ -5041,6 +5041,234 @@ body.role-agent input[name='valor_total'] {
   letter-spacing: 0.04em;
 }
 
+/* Publicações mode: a .scheduled-item rendered inside a .board-column-body.
+   Deliberately more compact than the workflow .board-card — posts are the
+   smaller unit, so their cards read visually lighter than a Fluxo card. */
+.board-post-card {
+  padding: 0.55rem 0.65rem 0.5rem;
+}
+
+.board-post-card .item-top {
+  gap: 0.4rem;
+}
+
+.board-post-card .post-tipo-badge,
+.board-post-card .post-status-chip {
+  font-size: 0.62rem;
+  padding: 0.08rem 0.45rem;
+}
+
+.board-post-card .item-title {
+  font-size: 0.8rem;
+  line-height: 1.3;
+  margin-top: 0.3rem;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.board-post-card .item-meta {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
+}
+
+.board-post-cliente-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.board-post-cliente-avatar--initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.42rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.board-post-footer {
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.board-post-footer-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+/* Which etapa the post's workflow is currently in ("Design", "Copy", …). */
+.board-post-etapa {
+  margin-top: 2px;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.board-post-prazo {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.board-post-assignee {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--text-muted);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* Shrink the shared .avatar (36px) down to the compact card scale. */
+.board-post-assignee-avatar {
+  width: 16px;
+  height: 16px;
+  font-size: 0.42rem;
+}
+
+/* ===== Vistas salvas (Notion-style tabs, Entregas) ===== */
+.vista-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.vista-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--text-light);
+  padding: 0.45rem 0.4rem 0.45rem 0.6rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: 6px 6px 0 0;
+  white-space: nowrap;
+}
+
+.vista-tab:hover {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.vista-tab--active {
+  color: var(--text-main);
+  font-weight: 700;
+  border-bottom-color: var(--text-main);
+}
+
+.vista-tab-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+}
+
+.vista-tab-ico {
+  display: inline-flex;
+  opacity: 0.65;
+}
+
+.vista-tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.vista-tab-more {
+  visibility: hidden;
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-light);
+  padding: 0.1rem;
+  border-radius: 4px;
+}
+
+.vista-tab:hover .vista-tab-more,
+.vista-tab-more[data-state='open'] {
+  visibility: visible;
+}
+
+.vista-tab-more:hover {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+
+.vista-tab--add {
+  gap: 0.35rem;
+  padding: 0.45rem 0.6rem;
+  color: var(--text-light);
+}
+
+.vista-tab--add:hover {
+  color: var(--text-main);
+}
+
+/* Fluxo value rendered as a clickable tag in the posts list — click opens the
+   whole workflow card. The --static variant is for posts whose workflow has no
+   openable board card. */
+.post-fluxo-tag {
+  display: inline-block;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-2);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.post-fluxo-tag:hover {
+  background: var(--surface-hover);
+  border-color: var(--primary-color);
+}
+
+.post-fluxo-tag--static {
+  cursor: default;
+}
+
+.post-fluxo-tag--static:hover {
+  background: var(--surface-2);
+  border-color: var(--border-color);
+}
+
 .board-card {
   background: var(--card-bg);
   border: 1px solid var(--border-color);

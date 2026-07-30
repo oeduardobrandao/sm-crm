@@ -346,6 +346,7 @@ export function useEntregasData() {
     qc.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
     qc.invalidateQueries({ queryKey: ['workflow-awaiting-cliente-counts'] });
     qc.invalidateQueries({ queryKey: ['workflow-post-responsaveis'] });
+    qc.invalidateQueries({ queryKey: ['active-posts'] });
   }
 
   const isLoading = loadingWf || etapasQuery.isLoading;
