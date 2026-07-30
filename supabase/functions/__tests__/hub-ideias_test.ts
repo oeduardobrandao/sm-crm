@@ -107,3 +107,95 @@ Deno.test("hub-ideias: invalid token returns 404", async () => {
   }));
   assertEquals(res.status, 404);
 });
+
+Deno.test("hub-ideias: POST create with tipo=solicitacao inserts tipo", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("ideias", "insert", { data: { id: "i1", titulo: "T", tipo: "solicitacao" }, error: null });
+  const res = await makeHandler(db)(new Request("https://x.test/hub-ideias?token=t", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: "t", titulo: "T", descricao: "D", tipo: "solicitacao" }),
+  }));
+  assertEquals(res.status, 201);
+  const insert = db.calls.find((c) => c.table === "ideias" && c.operation === "insert");
+  assertEquals((insert?.payload as Record<string, unknown> | undefined)?.tipo, "solicitacao");
+});
+
+Deno.test("hub-ideias: POST create defaults tipo to ideia", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("ideias", "insert", { data: { id: "i1", titulo: "T", tipo: "ideia" }, error: null });
+  const res = await makeHandler(db)(new Request("https://x.test/hub-ideias?token=t", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: "t", titulo: "T", descricao: "D" }),
+  }));
+  assertEquals(res.status, 201);
+  const insert = db.calls.find((c) => c.table === "ideias" && c.operation === "insert");
+  assertEquals((insert?.payload as Record<string, unknown> | undefined)?.tipo, "ideia");
+});
+
+Deno.test("hub-ideias: POST create rejects invalid tipo with 400", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  const res = await makeHandler(db)(new Request("https://x.test/hub-ideias?token=t", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: "t", titulo: "T", descricao: "D", tipo: "pedido" }),
+  }));
+  assertEquals(res.status, 400);
+});
+
+Deno.test("hub-ideias: PATCH accepts tipo under the lock", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("ideias", "select", { data: { status: "nova", comentario_agencia: null }, error: null });
+  db.queue("ideia_reactions", "select", { data: null, error: null, count: 0 });
+  db.queue("ideias", "update", { data: { id: "i1", tipo: "solicitacao" }, error: null });
+  const res = await makeHandler(db)(new Request(
+    "https://x.test/hub-ideias/11111111-1111-1111-1111-111111111111?token=t",
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "t", tipo: "solicitacao" }),
+    },
+  ));
+  assertEquals(res.status, 200);
+  const update = db.calls.find((c) => c.table === "ideias" && c.operation === "update");
+  assertEquals((update?.payload as Record<string, unknown> | undefined)?.tipo, "solicitacao");
+});
+
+Deno.test("hub-ideias: PATCH rejects invalid tipo with 400", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("ideias", "select", { data: { status: "nova", comentario_agencia: null }, error: null });
+  db.queue("ideia_reactions", "select", { data: null, error: null, count: 0 });
+  const res = await makeHandler(db)(new Request(
+    "https://x.test/hub-ideias/11111111-1111-1111-1111-111111111111?token=t",
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "t", tipo: "pedido" }),
+    },
+  ));
+  assertEquals(res.status, 400);
+});
+
+Deno.test("hub-ideias: GET select includes tipo and tarefa_id", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("ideias", "select", {
+    data: [{ id: "i1", titulo: "T", tipo: "solicitacao", tarefa_id: "tarefa-1" }],
+    error: null,
+  });
+  const res = await makeHandler(db)(new Request("https://x.test/hub-ideias?token=t", { method: "GET" }));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.ideias[0].tipo, "solicitacao");
+  assertEquals(body.ideias[0].tarefa_id, "tarefa-1");
+  const select = db.calls.find((c) => c.table === "ideias" && c.operation === "select");
+  const selectStr = (select?.selectArgs?.[0]?.[0] as string | undefined) ?? "";
+  assertEquals(selectStr.includes("tipo"), true);
+  assertEquals(selectStr.includes("tarefa_id"), true);
+});

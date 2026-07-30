@@ -16,6 +16,8 @@ interface HubIdeiasHandlerDeps {
   headObject: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
 }
 
+const HUB_IDEIA_TIPOS = ["ideia", "solicitacao"];
+
 async function checkLock(db: DbClient, ideiaId: string, clienteId: number): Promise<null | boolean> {
   const { data: ideia } = await db
     .from("ideias")
@@ -127,7 +129,7 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
       const { data: ideias } = await db
         .from("ideias")
         .select(`
-        id, titulo, descricao, links, status,
+        id, titulo, descricao, links, status, tipo, tarefa_id,
         comentario_agencia, comentario_autor_id, comentario_at, created_at, updated_at,
         comentario_autor:membros!comentario_autor_id(nome),
         ideia_reactions(id, membro_id, emoji, membros(nome)),
@@ -171,9 +173,12 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
       if (!titulo) return json({ error: "titulo obrigatório" }, 400);
       if (!descricao) return json({ error: "descricao obrigatória" }, 400);
 
+      const tipo = body.tipo === undefined ? "ideia" : String(body.tipo);
+      if (!HUB_IDEIA_TIPOS.includes(tipo)) return json({ error: "tipo inválido" }, 400);
+
       const { data, error } = await db
         .from("ideias")
-        .insert({ workspace_id: workspaceId, cliente_id: clienteId, titulo, descricao, links, status: "nova" })
+        .insert({ workspace_id: workspaceId, cliente_id: clienteId, titulo, descricao, links, tipo, status: "nova" })
         .select()
         .single();
 
@@ -191,6 +196,10 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
       if (body.titulo !== undefined) patch.titulo = (body.titulo ?? "").trim();
       if (body.descricao !== undefined) patch.descricao = (body.descricao ?? "").trim();
       if (body.links !== undefined) patch.links = Array.isArray(body.links) ? body.links.filter((link: string) => typeof link === "string" && link.trim()) : [];
+      if (body.tipo !== undefined) {
+        if (!HUB_IDEIA_TIPOS.includes(String(body.tipo))) return json({ error: "tipo inválido" }, 400);
+        patch.tipo = String(body.tipo);
+      }
 
       if (patch.titulo === "") return json({ error: "titulo obrigatório" }, 400);
       if (patch.descricao === "") return json({ error: "descricao obrigatória" }, 400);
