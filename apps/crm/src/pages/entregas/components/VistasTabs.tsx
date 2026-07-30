@@ -85,7 +85,14 @@ export function VistasTabs({ contaId, currentQuery, onApply }: VistasTabsProps) 
     const to = renameDraft.trim();
     setRenaming(null);
     if (!from || !to || to === from) return;
-    persist(views.map((v) => (v.name === from ? { ...v, name: to } : v)));
+    persist(
+      views
+        // Renaming onto an existing name replaces it (same semantics as saveNew);
+        // without this the list would hold two entries with the same name and
+        // remove() — which filters by name — would delete both.
+        .filter((v) => v.name !== to)
+        .map((v) => (v.name === from ? { ...v, name: to } : v)),
+    );
     if (activeName === from) setActiveName(to);
   };
 

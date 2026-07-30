@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { VistasTabs } from '../VistasTabs';
@@ -113,6 +113,31 @@ describe('VistasTabs', () => {
 
     expect(stored()).toEqual([{ name: 'Nova', query: 'view=list' }]);
     expect(screen.getByText('Nova')).toBeInTheDocument();
+  });
+
+  it('renaming onto an existing name replaces it instead of duplicating', () => {
+    seed([
+      { name: 'Alvo', query: 'view=chart' },
+      { name: 'Origem', query: 'view=list' },
+    ]);
+    render(<VistasTabs contaId={CONTA} currentQuery="" onApply={vi.fn()} />);
+
+    // With the inline dropdown mock every vista renders its menu items, so
+    // scope to the "Origem" tab before clicking its Renomear.
+    const origemTab = screen.getByText('Origem').closest('.vista-tab') as HTMLElement;
+    fireEvent.click(within(origemTab).getByText('Renomear'));
+    const input = screen.getByDisplayValue('Origem');
+    fireEvent.change(input, { target: { value: 'Alvo' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    // Single surviving entry, carrying the renamed view's query
+    expect(stored()).toEqual([{ name: 'Alvo', query: 'view=list' }]);
+    expect(screen.getAllByText('Alvo')).toHaveLength(1);
+
+    // And deleting it removes exactly that one entry
+    fireEvent.click(screen.getByLabelText('Opções da vista Alvo'));
+    fireEvent.click(screen.getByText('Excluir'));
+    expect(stored()).toEqual([]);
   });
 
   it('deletes a vista via the ⋯ menu', () => {
