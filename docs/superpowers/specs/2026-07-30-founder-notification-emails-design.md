@@ -68,12 +68,32 @@ body timestamp: the email's own Date header is within one cron interval
 - **Signup:** subject `[Mesaas] Novo cadastro: <email>`; body with nome and
   email. Missing nome renders `(sem nome)`.
 - **Subscription:** subject `[Mesaas] Nova assinatura: <workspace> (<plano>)`;
-  body with workspace, plan, status, billing interval, owner nome and email.
-  Fallbacks: plan name coalesces to the raw `plan_id` in SQL and to
+  body with workspace, plan, net value, status, billing interval, owner nome
+  and email. Fallbacks: plan name coalesces to the raw `plan_id` in SQL and to
   `(plano desconhecido)` when both are null; status renders `trialing` as
   `Trial`, `active` as `Ativa`, anything else raw (or `(desconhecido)` when
   null); interval renders `month` as `Mensal`, `year` as `Anual`, anything
   else raw, and the row is omitted when null.
+
+### Net value (Valor row)
+
+What the workspace ACTUALLY pays, net of coupons, priced live from Stripe at
+send time (the local mirror only knows catalog prices; discounts live in
+Stripe). The pricing logic is the same one the admin trials-MRR view uses,
+extracted to `_shared/stripe-amount.ts` (`fetchStripeAmount`: first item's
+`unit_amount * quantity`, minus the active coupon's `percent_off`/`amount_off`,
+handling both `discounts[]` and legacy `discount`).
+
+Rendering: `R$ 119,20/mês (após o trial) · cupom LANC20 −20%, de R$ 149,00` —
+the trial suffix appears when status is `trialing` (Stripe reports the
+post-trial price; the workspace pays R$ 0 during the trial), and the coupon
+segment shows the label plus the pre-discount price. No coupon: just
+`R$ 149,00/mês`. Non-BRL currencies render generically (`5,00 USD/week`).
+
+Best-effort: the Stripe lookup (SDK timeout 5s) failing for ANY reason —
+missing `STRIPE_SECRET_KEY`, Stripe down, missing subscription id — renders
+`(indisponível)` instead of failing the send; a Stripe outage must not strand
+the claim and re-retry the already-sent user-facing email.
 
 Subject values are user-controlled (workspace/plan names): interpolations
 are sanitized — control characters and newlines stripped, whitespace
@@ -83,11 +103,12 @@ user-facing email).
 
 ## Migration
 
-`get_thankyou_email_candidates` gains three output columns: `plan_name`
-(`plans.name`, falling back to `plan_id`), `sub_status`, and
-`billing_interval`. A return-type change requires `drop function` +
-`create`, then re-granting execute to `service_role` only (repo gotcha:
-plain `REVOKE FROM PUBLIC` also strips service_role).
+`get_thankyou_email_candidates` gains four output columns: `plan_name`
+(`plans.name`, falling back to `plan_id`), `sub_status`, `billing_interval`,
+and `stripe_subscription_id` (for the live Stripe pricing). A return-type
+change requires `drop function` + `create`, then re-granting execute to
+`service_role` only (repo gotcha: plain `REVOKE FROM PUBLIC` also strips
+service_role).
 
 Deploy-order safety: the handler treats the new fields as optional and falls
 back to a generic label, so the function can deploy before or after the
@@ -96,14 +117,18 @@ migration lands.
 ## Code changes
 
 - `supabase/functions/_shared/lifecycle-emails.ts`: builders + senders for
-  the two notices (`sendFounderSignupNotice`, `sendFounderSubscriptionNotice`).
+  the two notices (`sendFounderSignupNotice`, `sendFounderSubscriptionNotice`),
+  including the value-line rendering and the best-effort Stripe lookup.
+- `supabase/functions/_shared/stripe-amount.ts`: `fetchStripeAmount` +
+  coupon helpers, extracted from `platform-admin/index.ts` (which now imports
+  them; behavior unchanged, no redeploy urgency).
 - `supabase/functions/lifecycle-email-cron/handler.ts`: two new injected
   deps, called between the user-facing send and `markDelivered`; extended
   `ThankCandidate` shape.
 - `supabase/functions/lifecycle-email-cron/index.ts`: wiring.
 - `supabase/migrations/20260730000003_thankyou_candidates_plan_info.sql`.
 - Tests extended in `__tests__/lifecycle-emails_test.ts` and
-  `__tests__/lifecycle-email-cron_test.ts`.
+  `__tests__/lifecycle-email-cron_test.ts`; new `__tests__/stripe-amount_test.ts`.
 
 ## Non-goals
 

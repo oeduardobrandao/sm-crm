@@ -10,6 +10,7 @@ import {
   sendFounderSignupNotice,
   sendFounderSubscriptionNotice,
   sendThankYouEmail,
+  subscriptionValueLine,
   sendWelcomeEmail,
   THANKYOU_SUBJECT,
   WELCOME_SUBJECT,
@@ -216,7 +217,7 @@ Deno.test("buildFounderSignupNotice carries nome + email, escaped, with fallback
   assert(noName.html.includes("(sem nome)"), "missing-nome fallback absent");
 });
 
-Deno.test("buildFounderSubscriptionNotice renders plan, labels, owner; escapes", () => {
+Deno.test("buildFounderSubscriptionNotice renders plan, value, labels, owner; escapes", () => {
   const { subject, html } = buildFounderSubscriptionNotice({
     workspaceName: "<i>Agencia X</i>",
     ownerEmail: "dono@x.test",
@@ -224,17 +225,54 @@ Deno.test("buildFounderSubscriptionNotice renders plan, labels, owner; escapes",
     planName: "Pro",
     subStatus: "trialing",
     billingInterval: "month",
+    amount: {
+      netCents: 11920,
+      grossCents: 14900,
+      currency: "brl",
+      interval: "month",
+      discountLabel: "LANC20 −20%",
+    },
   });
   assert(subject === "[Mesaas] Nova assinatura: <i>Agencia X</i> (Pro)");
   assert(html.includes("&lt;i&gt;Agencia X&lt;/i&gt;"), "workspace not escaped");
   assert(!html.includes("<i>Agencia X</i>"), "raw workspace leaked");
   assert(html.includes("Pro"));
+  assert(
+    html.includes("R$ 119,20/mês (após o trial) · cupom LANC20 −20%, de R$ 149,00"),
+    "value line missing or wrong",
+  );
   assert(html.includes("Trial"), "trialing status label missing");
   assert(html.includes("Mensal"), "month interval label missing");
   assert(html.includes("Bruno Lima") && html.includes("dono@x.test"));
 });
 
-Deno.test("buildFounderSubscriptionNotice fallbacks: null plan/status, absent interval", () => {
+Deno.test("subscriptionValueLine covers coupons, trials, intervals, fallbacks", () => {
+  // No coupon, active, yearly.
+  assert(
+    subscriptionValueLine(
+      { netCents: 149000, grossCents: null, currency: "brl", interval: "year", discountLabel: null },
+      "active",
+    ) === "R$ 1.490,00/ano",
+  );
+  // amount_off coupon (label without percent), monthly trial.
+  assert(
+    subscriptionValueLine(
+      { netCents: 9900, grossCents: 14900, currency: "brl", interval: "month", discountLabel: "PROMO50" },
+      "trialing",
+    ) === "R$ 99,00/mês (após o trial) · cupom PROMO50, de R$ 149,00",
+  );
+  // Unknown interval passes through; non-brl currency is generic.
+  assert(
+    subscriptionValueLine(
+      { netCents: 500, grossCents: null, currency: "usd", interval: "week", discountLabel: null },
+      "active",
+    ) === "5,00 USD/week",
+  );
+  // Stripe unavailable.
+  assert(subscriptionValueLine(null, "active") === "(indisponível)");
+});
+
+Deno.test("buildFounderSubscriptionNotice fallbacks: null plan/status/amount, absent interval", () => {
   const { subject, html } = buildFounderSubscriptionNotice({
     workspaceName: "X",
     ownerEmail: "d@x.test",
@@ -242,9 +280,11 @@ Deno.test("buildFounderSubscriptionNotice fallbacks: null plan/status, absent in
     planName: null,
     subStatus: null,
     billingInterval: null,
+    amount: null,
   });
   assert(subject === "[Mesaas] Nova assinatura: X ((plano desconhecido))");
   assert(html.includes("(plano desconhecido)"));
+  assert(html.includes("(indisponível)"), "null amount fallback missing");
   assert(html.includes("(desconhecido)"), "null status fallback missing");
   assert(!html.includes("Cobrança"), "interval row rendered without an interval");
   assert(html.includes("(sem nome)"));
@@ -256,6 +296,7 @@ Deno.test("buildFounderSubscriptionNotice fallbacks: null plan/status, absent in
     planName: "Pro",
     subStatus: "active",
     billingInterval: "week",
+    amount: null,
   });
   assert(active.html.includes("Ativa"), "active status label missing");
   assert(active.html.includes("week"), "unknown interval should pass through raw");
@@ -269,6 +310,7 @@ Deno.test("founder notice subjects strip control chars and bound length", () => 
     planName: "P".repeat(200),
     subStatus: "active",
     billingInterval: null,
+    amount: null,
   });
   assert(!/[\r\n\t]/.test(subject), "control characters survived in subject");
   assert(subject.includes("Agencia X: Injected header"), "whitespace not collapsed");
@@ -293,6 +335,7 @@ Deno.test("founder notices are a silent no-op without ALERT_EMAIL", async () => 
       planName: null,
       subStatus: null,
       billingInterval: null,
+      stripeSubscriptionId: null,
       idempotencyKey: "k",
     });
   } finally {
@@ -348,6 +391,7 @@ Deno.test("sendFounderSubscriptionNotice throws on non-2xx (claim retries)", asy
       planName: "Pro",
       subStatus: "active",
       billingInterval: "month",
+      stripeSubscriptionId: null,
       idempotencyKey: "founder_subscription/w1",
     });
   } catch {
@@ -358,4 +402,34 @@ Deno.test("sendFounderSubscriptionNotice throws on non-2xx (claim retries)", asy
     else Deno.env.delete("ALERT_EMAIL");
   }
   assert(threw, "expected non-2xx to throw");
+});
+
+Deno.test("sendFounderSubscriptionNotice without a Stripe sub id renders value indisponível", async () => {
+  const prevAlert = Deno.env.get("ALERT_EMAIL");
+  Deno.env.set("ALERT_EMAIL", "founder@inbox.test");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  const original = globalThis.fetch;
+  let capturedBody = "";
+  globalThis.fetch = ((_i: unknown, init?: RequestInit) => {
+    capturedBody = String(init?.body ?? "");
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof fetch;
+  try {
+    await sendFounderSubscriptionNotice({
+      workspaceName: "X",
+      ownerEmail: "d@x.test",
+      ownerNome: null,
+      planName: "Pro",
+      subStatus: "active",
+      billingInterval: "month",
+      stripeSubscriptionId: null,
+      idempotencyKey: "founder_subscription/w1",
+    });
+  } finally {
+    globalThis.fetch = original;
+    if (prevAlert !== undefined) Deno.env.set("ALERT_EMAIL", prevAlert);
+    else Deno.env.delete("ALERT_EMAIL");
+  }
+  const payload = JSON.parse(capturedBody);
+  assert(payload.html.includes("(indisponível)"), "value fallback missing from sent email");
 });

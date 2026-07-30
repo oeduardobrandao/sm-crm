@@ -78,6 +78,7 @@ export interface LifecycleCronDeps {
     planName: string | null;
     subStatus: string | null;
     billingInterval: string | null;
+    stripeSubscriptionId: string | null;
     idempotencyKey: string;
   }) => Promise<void>;
   report: (detail: CronReportDetail) => Promise<void>;
@@ -101,6 +102,7 @@ interface ThankCandidate {
   plan_name?: string | null;
   sub_status?: string | null;
   billing_interval?: string | null;
+  stripe_subscription_id?: string | null;
 }
 
 /** Claim refresh: bumps sent_at and writes attempts = prior + 1 (RPC-supplied). */
@@ -207,6 +209,7 @@ export async function runLifecycleEmailCron(
           planName: c.plan_name ?? null,
           subStatus: c.sub_status ?? null,
           billingInterval: c.billing_interval ?? null,
+          stripeSubscriptionId: c.stripe_subscription_id ?? null,
           idempotencyKey: `founder_subscription/${c.workspace_id}`,
         });
         await markDelivered(deps, "subscription_thanks", "workspace_id", c.workspace_id);

@@ -9,9 +9,10 @@
 drop function if exists get_thankyou_email_candidates();
 
 -- Same candidate semantics as 20260730000001, plus plan_name / sub_status /
--- billing_interval passthrough. plan_name falls back to the raw plan_id when
--- the plans row is missing; all three are nullable and the handler tolerates
--- their absence (deploy-order safety).
+-- billing_interval / stripe_subscription_id passthrough. plan_name falls back
+-- to the raw plan_id when the plans row is missing; all four are nullable and
+-- the handler tolerates their absence (deploy-order safety). The subscription
+-- id lets the founder notice price the sub live from Stripe (net of coupons).
 create function get_thankyou_email_candidates()
 returns table (
   workspace_id uuid,
@@ -21,14 +22,16 @@ returns table (
   attempts int,
   plan_name text,
   sub_status text,
-  billing_interval text
+  billing_interval text,
+  stripe_subscription_id text
 )
 language sql
 security definer
 set search_path = public
 as $$
   select ws.id, ws.name, u.email::text, p.nome, coalesce(le.attempts, 0),
-         coalesce(pl.name, s.plan_id), s.status, s.billing_interval
+         coalesce(pl.name, s.plan_id), s.status, s.billing_interval,
+         s.stripe_subscription_id
   from workspace_subscriptions s
   join workspaces ws on ws.id = s.workspace_id
   left join plans pl on pl.id = s.plan_id

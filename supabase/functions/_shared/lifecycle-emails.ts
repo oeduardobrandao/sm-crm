@@ -1,4 +1,5 @@
 import { escapeHtml } from "./report-template/escape.ts";
+import { fetchStripeAmount } from "./stripe-amount.ts";
 
 export const WELCOME_SUBJECT = "Bem-vindo ao Mesaas 👋";
 export const THANKYOU_SUBJECT = "Obrigado pela confiança 💚";
@@ -198,6 +199,49 @@ function billingIntervalLabel(interval: string): string {
   return interval;
 }
 
+/** What the workspace actually pays, net of coupons (priced live from Stripe). */
+export interface SubscriptionAmount {
+  netCents: number;
+  grossCents: number | null;
+  currency: string;
+  interval: string | null;
+  discountLabel: string | null;
+}
+
+/** "R$ 1.490,00" for brl; "14,90 USD" otherwise. Hand-rolled so output is deterministic. */
+function formatMoney(cents: number, currency: string): string {
+  const sign = cents < 0 ? "-" : "";
+  const abs = Math.abs(Math.round(cents));
+  const intPart = String(Math.trunc(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const num = `${sign}${intPart},${String(abs % 100).padStart(2, "0")}`;
+  return currency.toLowerCase() === "brl" ? `R$ ${num}` : `${num} ${currency.toUpperCase()}`;
+}
+
+/**
+ * "R$ 119,20/mês (após o trial) · cupom LANC20 −20%, de R$ 149,00".
+ * During a trial Stripe already reports the post-trial price, hence the suffix.
+ */
+export function subscriptionValueLine(
+  amount: SubscriptionAmount | null,
+  subStatus: string | null | undefined,
+): string {
+  if (!amount) return "(indisponível)";
+  const suffix = amount.interval === "month"
+    ? "/mês"
+    : amount.interval === "year"
+    ? "/ano"
+    : amount.interval
+    ? `/${amount.interval}`
+    : "";
+  let line = `${formatMoney(amount.netCents, amount.currency)}${suffix}`;
+  if (subStatus === "trialing") line += " (após o trial)";
+  if (amount.discountLabel) {
+    line += ` · cupom ${amount.discountLabel}`;
+    if (amount.grossCents != null) line += `, de ${formatMoney(amount.grossCents, amount.currency)}`;
+  }
+  return line;
+}
+
 export function buildFounderSubscriptionNotice(p: {
   workspaceName: string;
   ownerEmail: string;
@@ -205,11 +249,13 @@ export function buildFounderSubscriptionNotice(p: {
   planName: string | null;
   subStatus: string | null;
   billingInterval: string | null;
+  amount: SubscriptionAmount | null;
 }): { subject: string; html: string } {
   const plan = p.planName?.trim() || "(plano desconhecido)";
   const interval = p.billingInterval?.trim();
   const rows = noticeRow("Workspace", escapeHtml(p.workspaceName)) +
     noticeRow("Plano", escapeHtml(plan)) +
+    noticeRow("Valor", escapeHtml(subscriptionValueLine(p.amount, p.subStatus))) +
     noticeRow("Status", escapeHtml(subscriptionStatusLabel(p.subStatus))) +
     (interval ? noticeRow("Cobrança", escapeHtml(billingIntervalLabel(interval))) : "") +
     noticeRow("Dono", escapeHtml(p.ownerNome?.trim() || "(sem nome)")) +
@@ -303,6 +349,36 @@ export async function sendFounderSignupNotice(
   await sendViaResend(to, subject, html, p.idempotencyKey, FOUNDER_NOTICE_FROM);
 }
 
+/**
+ * Best-effort live pricing (net of coupons) for the notice. Returns null on any
+ * failure — missing STRIPE_SECRET_KEY (the ./stripe.ts import throws), Stripe
+ * down, unknown subscription — so the value renders "(indisponível)" instead of
+ * stranding the claim and re-retrying the already-sent user-facing email.
+ */
+async function fetchSubscriptionAmount(
+  stripeSubscriptionId: string | null,
+  fallbackInterval: string | null,
+): Promise<SubscriptionAmount | null> {
+  if (!stripeSubscriptionId) return null;
+  try {
+    const { stripe } = await import("./stripe.ts");
+    const amt = await fetchStripeAmount(stripe, stripeSubscriptionId, fallbackInterval);
+    return {
+      netCents: amt.amount_cents,
+      grossCents: amt.gross_cents,
+      currency: amt.currency,
+      interval: amt.interval,
+      discountLabel: amt.discount_label,
+    };
+  } catch (e) {
+    console.error(
+      "[lifecycle-emails] stripe amount fetch failed:",
+      e instanceof Error ? e.message : String(e),
+    );
+    return null;
+  }
+}
+
 export async function sendFounderSubscriptionNotice(p: {
   workspaceName: string;
   ownerEmail: string;
@@ -310,10 +386,12 @@ export async function sendFounderSubscriptionNotice(p: {
   planName: string | null;
   subStatus: string | null;
   billingInterval: string | null;
+  stripeSubscriptionId: string | null;
   idempotencyKey: string;
 }): Promise<void> {
   const to = Deno.env.get("ALERT_EMAIL");
   if (!to) return;
-  const { subject, html } = buildFounderSubscriptionNotice(p);
+  const amount = await fetchSubscriptionAmount(p.stripeSubscriptionId, p.billingInterval);
+  const { subject, html } = buildFounderSubscriptionNotice({ ...p, amount });
   await sendViaResend(to, subject, html, p.idempotencyKey, FOUNDER_NOTICE_FROM);
 }

@@ -23,6 +23,7 @@ function makeFakeDb(opts: {
     plan_name?: string | null;
     sub_status?: string | null;
     billing_interval?: string | null;
+    stripe_subscription_id?: string | null;
   }>;
 }) {
   type Row = {
@@ -265,6 +266,7 @@ Deno.test("founder notices go out alongside both user-facing emails", async () =
       plan_name: "Pro",
       sub_status: "trialing",
       billing_interval: "month",
+      stripe_subscription_id: "sub_123",
     }],
   });
   const { deps, founderSent } = makeDeps(db);
@@ -278,6 +280,7 @@ Deno.test("founder notices go out alongside both user-facing emails", async () =
   assert(sub.payload.workspaceName === "Agencia X" && sub.payload.ownerEmail === "dono@x.test");
   assert(sub.payload.planName === "Pro" && sub.payload.subStatus === "trialing");
   assert(sub.payload.billingInterval === "month");
+  assert(sub.payload.stripeSubscriptionId === "sub_123");
 });
 
 Deno.test("pre-migration thank candidates (no plan fields) pass nulls through", async () => {
@@ -295,6 +298,7 @@ Deno.test("pre-migration thank candidates (no plan fields) pass nulls through", 
   const sub = founderSent.find((f) => f.kind === "founder_subscription")!;
   assert(sub.payload.planName === null && sub.payload.subStatus === null);
   assert(sub.payload.billingInterval === null);
+  assert(sub.payload.stripeSubscriptionId === null);
 });
 
 Deno.test("founder-notice failure leaves the claim undelivered; retry re-sends both", async () => {
