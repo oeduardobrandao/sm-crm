@@ -44,6 +44,11 @@ vi.mock('../components/ClientHealthMonitor', () => ({
   ClientHealthMonitor: () => <div data-testid="client-health-monitor">Saúde dos clientes</div>,
 }));
 
+// Same for the agent variant — it owns its own queries and is tested separately
+vi.mock('../components/AgentPendingSection', () => ({
+  AgentPendingSection: () => <div data-testid="agent-pending-section">Minhas pendências</div>,
+}));
+
 import DashboardPage from '../DashboardPage';
 
 const mockedUseAuth = vi.mocked(useAuthMock);
@@ -116,7 +121,11 @@ describe('DashboardPage', () => {
   });
 
   it('renders the agent branch without onboarding banner or finance strip', () => {
-    mockedUseAuth.mockReturnValue({ role: 'agent', canSeeFinancials: false } as never);
+    mockedUseAuth.mockReturnValue({
+      role: 'agent',
+      workspaceRole: 'agent',
+      canSeeFinancials: false,
+    } as never);
     mockedUseQueries.mockReturnValue(
       makeDefaultUseQueries({
         0: makeQueryResult({
@@ -160,13 +169,42 @@ describe('DashboardPage', () => {
     expect(screen.queryByTestId('onboarding-banner')).not.toBeInTheDocument();
     expect(screen.queryByText('A receber')).not.toBeInTheDocument();
     expect(screen.queryByText('Receita mensal')).not.toBeInTheDocument();
-    // Health monitor and today card are always present
-    expect(screen.getByTestId('client-health-monitor')).toBeInTheDocument();
+    // Agent sees their pending-work section INSTEAD of the health monitor
+    expect(screen.getByTestId('agent-pending-section')).toBeInTheDocument();
+    expect(screen.queryByTestId('client-health-monitor')).not.toBeInTheDocument();
     expect(screen.getByText('Hoje')).toBeInTheDocument();
     // Agent: income/expense events are suppressed; birthday still shows
     expect(screen.queryByText('Recebimento')).not.toBeInTheDocument();
     expect(screen.queryByText('Despesa')).not.toBeInTheDocument();
     expect(screen.getByText('Aniversário')).toBeInTheDocument();
+  });
+
+  // The dashboard variant follows the ACTIVE workspace role, not the
+  // profile-level role, which goes stale across workspace switches.
+  it('shows the agent panel when the active workspace role is agent despite a stale owner profile role', () => {
+    mockedUseAuth.mockReturnValue({
+      role: 'owner',
+      workspaceRole: 'agent',
+      canSeeFinancials: false,
+    } as never);
+
+    renderDashboardPage();
+
+    expect(screen.getByTestId('agent-pending-section')).toBeInTheDocument();
+    expect(screen.queryByTestId('client-health-monitor')).not.toBeInTheDocument();
+  });
+
+  it('shows client health when the active workspace role is owner despite a stale agent profile role', () => {
+    mockedUseAuth.mockReturnValue({
+      role: 'agent',
+      workspaceRole: 'owner',
+      canSeeFinancials: true,
+    } as never);
+
+    renderDashboardPage();
+
+    expect(screen.getByTestId('client-health-monitor')).toBeInTheDocument();
+    expect(screen.queryByTestId('agent-pending-section')).not.toBeInTheDocument();
   });
 
   it('shows onboarding, today events, and finance KPIs for non-agent', () => {

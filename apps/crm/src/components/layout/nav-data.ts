@@ -80,6 +80,13 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         icon: 'ph-kanban',
       },
       {
+        id: 'tarefas',
+        route: '/tarefas',
+        label: 'Tarefas',
+        labelKey: 'nav.tarefas',
+        icon: 'ph-list-checks',
+      },
+      {
         id: 'post-express',
         route: '/post-express',
         label: 'Post Express',

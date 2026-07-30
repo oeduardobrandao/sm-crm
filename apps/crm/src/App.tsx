@@ -44,6 +44,7 @@ const CobrancaPage = lazy(() => import('./pages/configuracao/cobranca/CobrancaPa
 const IntegracoesClaudePage = lazy(() => import('./pages/configuracao/mcp/IntegracoesClaudePage'));
 const CalendarioPage = lazy(() => import('./pages/calendario/CalendarioPage'));
 const EntregasPage = lazy(() => import('./pages/entregas/EntregasPage'));
+const TarefasPage = lazy(() => import('./pages/tarefas/TarefasPage'));
 const ExpressPostPage = lazy(() => import('./pages/post-express/ExpressPostPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 const AnalyticsContaPage = lazy(() => import('./pages/analytics-conta/AnalyticsContaPage'));
@@ -169,6 +170,7 @@ export default function App() {
                 </Route>
                 <Route path="/calendario" element={<CalendarioPage />} />
                 <Route path="/entregas" element={<EntregasPage />} />
+                <Route path="/tarefas" element={<TarefasPage />} />
                 <Route path="/post-express" element={<ExpressPostPage />} />
                 <Route path="/arquivos" element={<ArquivosPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />

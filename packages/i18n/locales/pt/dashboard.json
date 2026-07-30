@@ -1,5 +1,15 @@
 {
   "title": "Dashboard",
+  "agentPending": {
+    "title": "Minhas pendências",
+    "semVinculo": "Seu usuário ainda não está vinculado a um membro da equipe. Peça a um administrador para fazer o vínculo na página Equipe.",
+    "vazio": "Tudo em dia! Nenhuma pendência atribuída a você.",
+    "tarefas": "Tarefas",
+    "etapas": "Entregas · etapas",
+    "posts": "Entregas · posts",
+    "verTodas": "Ver todas",
+    "verEntregas": "Ver entregas"
+  },
   "cards": {
     "today": "Hoje",
     "leads": "Leads",
