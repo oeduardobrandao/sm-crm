@@ -590,16 +590,146 @@ export async function listWorkflows(
 
 export async function listIdeas(
   d: Deps,
-  args: { client_id?: number; status?: string },
+  args: { client_id?: number; status?: string; tipo?: string },
 ): Promise<any[]> {
   let q = d.db
     .from("ideias")
-    .select("id, cliente_id, titulo, descricao, status, links, created_at")
+    .select("id, cliente_id, titulo, descricao, status, tipo, tarefa_id, links, created_at")
     .eq("workspace_id", d.ctx.conta_id);
   if (args.client_id !== undefined) q = q.eq("cliente_id", args.client_id);
   if (args.status) q = q.eq("status", args.status);
+  if (args.tipo) q = q.eq("tipo", args.tipo);
   const { data } = await q.order("created_at", { ascending: false });
   return data ?? [];
+}
+
+// ---- tarefas -----------------------------------------------------------------
+
+export const TASK_STATUSES: string[] = ["pendente", "em_andamento", "concluida"];
+
+// deno-lint-ignore no-explicit-any
+function flattenTaskRow(row: any) {
+  const { clientes, tarefa_tag_links, subtarefas, ...t } = row;
+  const subs = subtarefas ?? [];
+  return {
+    ...t,
+    cliente_nome: clientes?.nome ?? null,
+    // deno-lint-ignore no-explicit-any
+    tags: (tarefa_tag_links ?? []).map((l: any) => l.tarefa_tags).filter(Boolean),
+    subtarefas_total: subs.length,
+    // deno-lint-ignore no-explicit-any
+    subtarefas_concluidas: subs.filter((s: any) => s.concluida).length,
+  };
+}
+
+const TASK_SELECT =
+  "id, titulo, descricao, status, responsavel_id, cliente_id, data_limite, concluida_em, created_at, updated_at";
+
+async function assertMembroInWorkspace(d: Deps, membroId: number): Promise<void> {
+  const { data } = await d.db
+    .from("membros").select("id")
+    .eq("conta_id", d.ctx.conta_id).eq("id", membroId).maybeSingle();
+  if (!data) throw new McpInputError("Responsável não encontrado neste workspace.");
+}
+
+async function assertClienteInWorkspace(d: Deps, clienteId: number): Promise<void> {
+  const { data } = await d.db
+    .from("clientes").select("id")
+    .eq("conta_id", d.ctx.conta_id).eq("id", clienteId).maybeSingle();
+  if (!data) throw new McpInputError("Cliente não encontrado neste workspace.");
+}
+
+export async function listTasks(
+  d: Deps,
+  args: { status?: string; responsavel_id?: number; cliente_id?: number; limit?: number },
+): Promise<any[]> {
+  const limit = Math.min(Math.max(1, args.limit ?? 50), 200);
+  let q = d.db
+    .from("tarefas")
+    .select(`${TASK_SELECT}, clientes(nome), tarefa_tag_links(tarefa_tags(id, nome, cor)), subtarefas(id, concluida)`)
+    .eq("conta_id", d.ctx.conta_id);
+  if (args.status) q = q.eq("status", args.status);
+  if (args.responsavel_id !== undefined) q = q.eq("responsavel_id", args.responsavel_id);
+  if (args.cliente_id !== undefined) q = q.eq("cliente_id", args.cliente_id);
+  const { data, error } = await q
+    .order("data_limite", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return ((data ?? []) as any[]).map(flattenTaskRow);
+}
+
+export async function createTask(
+  d: Deps,
+  args: { titulo: string; descricao?: string; responsavel_id?: number; cliente_id?: number; data_limite?: string },
+): Promise<any> {
+  // WITH CHECK da RLS nao protege writes service-role: validacao explicita aqui.
+  if (args.responsavel_id != null) await assertMembroInWorkspace(d, args.responsavel_id);
+  if (args.cliente_id != null) await assertClienteInWorkspace(d, args.cliente_id);
+  const { data, error } = await d.db
+    .from("tarefas")
+    .insert({
+      conta_id: d.ctx.conta_id,
+      user_id: d.ctx.created_by, // uuid do criador da key; NUNCA ctx.key_id (pode nao ser uuid em OAuth)
+      titulo: args.titulo,
+      descricao: args.descricao ?? null,
+      status: "pendente",
+      responsavel_id: args.responsavel_id ?? null,
+      cliente_id: args.cliente_id ?? null,
+      data_limite: args.data_limite ?? null,
+    })
+    .select(TASK_SELECT)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateTask(
+  d: Deps,
+  args: {
+    task_id: number;
+    titulo?: string;
+    descricao?: string | null;
+    status?: string;
+    responsavel_id?: number | null;
+    data_limite?: string | null;
+  },
+): Promise<any> {
+  const FIELDS = ["titulo", "descricao", "status", "responsavel_id", "data_limite"];
+  if (!FIELDS.some((f) => Object.hasOwn(args, f))) {
+    throw new McpInputError("Informe ao menos um campo para atualizar.");
+  }
+  if (Object.hasOwn(args, "status") && !TASK_STATUSES.includes(args.status as string)) {
+    throw new McpInputError("Status inválido.");
+  }
+
+  const { data: existing } = await d.db
+    .from("tarefas").select("id")
+    .eq("conta_id", d.ctx.conta_id).eq("id", args.task_id).maybeSingle();
+  if (!existing) throw new McpInputError("Tarefa não encontrada neste workspace.");
+
+  if (Object.hasOwn(args, "responsavel_id") && args.responsavel_id != null) {
+    await assertMembroInWorkspace(d, args.responsavel_id);
+  }
+
+  // null limpa, omitido preserva (Object.hasOwn distingue os dois).
+  const payload: Record<string, unknown> = {};
+  if (Object.hasOwn(args, "titulo")) payload.titulo = args.titulo;
+  if (Object.hasOwn(args, "descricao")) payload.descricao = args.descricao;
+  if (Object.hasOwn(args, "status")) payload.status = args.status; // concluida_em: trigger do banco
+  if (Object.hasOwn(args, "responsavel_id")) payload.responsavel_id = args.responsavel_id;
+  if (Object.hasOwn(args, "data_limite")) payload.data_limite = args.data_limite;
+
+  const { data, error } = await d.db
+    .from("tarefas")
+    .update(payload)
+    .eq("conta_id", d.ctx.conta_id)
+    .eq("id", args.task_id)
+    .select(TASK_SELECT)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new McpInputError("Tarefa não encontrada neste workspace.");
+  return data;
 }
 
 // ---- pages -------------------------------------------------------------------
