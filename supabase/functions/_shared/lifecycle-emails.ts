@@ -160,14 +160,19 @@ function sanitizeSubjectValue(value: string): string {
 
 /** Two-column detail row for the internal notices. Args pre-escaped. */
 function noticeRow(label: string, value: string): string {
-  return `<tr><td style="padding:4px 12px 4px 0;font-weight:700;white-space:nowrap">${label}</td><td style="padding:4px 0">${value}</td></tr>`;
+  return `<tr><td style="padding:4px 12px 4px 0;font-weight:700;white-space:nowrap;color:#1a3d2b">${label}</td><td style="padding:4px 0">${value}</td></tr>`;
 }
 
+// Backgrounds are pinned (cream page, white card) like the user-facing family:
+// without them the body inherits the client theme, and dark-mode clients render
+// the dark-green text on near-black.
 function noticeLayout(title: string, rowsHtml: string): string {
   return `<!DOCTYPE html>
-<html lang="pt-BR"><body style="margin:0;font-family:Arial,Helvetica,sans-serif;color:#1a3d2b;font-size:14px;line-height:1.6">
-  <p style="margin:16px 0 8px;font-size:16px;font-weight:700">${title}</p>
-  <table cellpadding="0" cellspacing="0">${rowsHtml}</table>
+<html lang="pt-BR"><body style="margin:0;padding:24px 16px;background:#f5f3ee;font-family:Arial,Helvetica,sans-serif;color:#1a3d2b;font-size:14px;line-height:1.6">
+  <div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:12px;padding:20px 24px">
+    <p style="margin:0 0 10px;font-size:16px;font-weight:700;color:#1a3d2b">${title}</p>
+    <table cellpadding="0" cellspacing="0" style="color:#444441">${rowsHtml}</table>
+  </div>
 </body></html>`;
 }
 
