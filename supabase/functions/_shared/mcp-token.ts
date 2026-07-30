@@ -3,18 +3,19 @@ import { effectivePlanFeature } from "./entitlements-rpc.ts";
 
 export const MCP_TOKEN_PREFIX = "mesaas_sk_";
 
-// Scopes that map to a backing tool. Read scopes + the write scopes for posts/templates.
+// Scopes that map to a backing tool. Read scopes + the write scopes for posts/templates/tarefas.
 // The retired Estúdio scopes (designs:write, images:generate) are deliberately absent: existing
 // keys/grants may still carry those strings, and dropping them here is what makes them inert —
 // validateScopes rejects them on creation and the OAuth resolver filters them out of a grant.
 export const MCP_ALLOWED_SCOPES = [
-  "clientes:read", "posts:read", "workflows:read", "ideias:read", "posts:write", "templates:write",
+  "clientes:read", "posts:read", "workflows:read", "ideias:read", "tarefas:read",
+  "posts:write", "templates:write", "tarefas:write",
 ] as const;
 export type McpScope = (typeof MCP_ALLOWED_SCOPES)[number];
 
 /** Least-privilege preset for a content-writing agent (read-only). */
 export const MCP_AGENT_PRESET: McpScope[] = [
-  "clientes:read", "posts:read", "workflows:read", "ideias:read",
+  "clientes:read", "posts:read", "workflows:read", "ideias:read", "tarefas:read",
 ];
 
 /** True if `scopes` is a non-empty array of allowlisted scope strings. */
