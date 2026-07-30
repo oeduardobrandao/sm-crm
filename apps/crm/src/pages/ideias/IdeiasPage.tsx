@@ -251,13 +251,20 @@ export default function IdeiasPage() {
         </div>
       )}
 
-      {selectedIdeia && (
-        <IdeiaDrawer
-          ideia={selectedIdeia}
-          queryKey={queryKey}
-          onClose={() => setSelectedIdeia(null)}
-        />
-      )}
+      {selectedIdeia &&
+        (() => {
+          // The drawer keeps a prop snapshot; once a conversion refetches the list, resolve
+          // the fresh row so the drawer's derived-state UI (locked status, "Ver tarefa") updates
+          // without the user having to close and reopen the drawer.
+          const current = ideias.find((i) => i.id === selectedIdeia.id) ?? selectedIdeia;
+          return (
+            <IdeiaDrawer
+              ideia={current}
+              queryKey={queryKey}
+              onClose={() => setSelectedIdeia(null)}
+            />
+          );
+        })()}
     </div>
   );
 }
