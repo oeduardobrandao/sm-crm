@@ -14,6 +14,7 @@ import {
   type DunningEpisode,
 } from "../_shared/dunning-logic.ts";
 import { sendDunningEmail } from "../_shared/dunning-email.ts";
+import { buildAmountColumns, fetchStripeAmount } from "../_shared/stripe-amount.ts";
 import { appBaseUrl } from "../_shared/app-url.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -116,6 +117,16 @@ async function syncSubscription(
   // without it a recovered workspace reads as permanently troubled in the admin.
   const recovery = isRecoveredStatus(sub.status) ? buildRecoveryEpisode() : {};
 
+  // Price the subscription once here so admin reads never have to call Stripe live.
+  // On failure keep whatever amounts the row already has: stale beats nulled.
+  let amountCols: Record<string, unknown> = {};
+  try {
+    const amt = await fetchStripeAmount(stripe, sub.id, resolved?.interval ?? null);
+    amountCols = buildAmountColumns(amt);
+  } catch (err) {
+    console.error("[stripe-webhook] amount fetch failed:", (err as Error).message);
+  }
+
   await svc.from("workspace_subscriptions").upsert({
     workspace_id: workspaceId,
     stripe_customer_id: customerId,
@@ -126,6 +137,7 @@ async function syncSubscription(
     current_period_end: periodEndUnix
       ? new Date(periodEndUnix * 1000).toISOString() : null,
     cancel_at_period_end: sub.cancel_at_period_end ?? false,
+    ...amountCols,
     ...recovery,
     updated_at: new Date().toISOString(),
   }, { onConflict: "workspace_id" });

@@ -50,6 +50,22 @@ export type StripeAmount = {
 };
 
 /**
+ * Maps a live Stripe amount onto the workspace_subscriptions mirror columns
+ * (migration 20260730000007), so admin reads price from the mirror instead of
+ * calling Stripe on every page load.
+ */
+export function buildAmountColumns(amt: StripeAmount) {
+  return {
+    amount_cents: amt.amount_cents,
+    gross_cents: amt.gross_cents,
+    currency: amt.currency,
+    amount_interval: amt.interval,
+    discount_label: amt.discount_label,
+    amount_refreshed_at: new Date().toISOString(),
+  };
+}
+
+/**
  * Retrieves a subscription's current price from Stripe and applies any active coupon,
  * so the returned amount is what the customer actually pays. `fallbackInterval` is the
  * mirror's billing_interval, used when the price object doesn't carry a recurring interval.
