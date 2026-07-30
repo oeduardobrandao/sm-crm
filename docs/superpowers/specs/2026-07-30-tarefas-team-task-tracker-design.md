@@ -35,6 +35,7 @@ responsavel_id/cliente_id ficam como FK simples (composta + SET NULL anularia co
 - REJEITADO (P1, escrita restrita por papel): o modelo do app inteiro (workflows, ideias, clientes) e "todo membro do workspace escreve"; agents precisam atualizar as proprias tarefas e subtarefas. Restringir escrita por papel na RLS nao foi pedido e conflitaria com o uso real.
 - REJEITADO (P2, RPC transacional para tags): escrita sequencial + refresh() apos falha segue o estilo da casa (updateWorkflowPositions etc.); o modo de falha e benigno (tarefa sem parte das tags, corrigivel na edicao).
 - JA PREVISTO (P1/P2): useCurrentMembro (criado nesta feature), estado vazio para agent sem vinculo crm_user_id, deep link /tarefas?tarefa=<id> abre o TarefaDetailSheet (padrao ?drawer= do EntregasPage), tipo no union de store/notifications.ts + case no notification-config.ts.
+- ACEITO NA REVISAO DO PR (P2): a variante do dashboard usa `(workspaceRole ?? role) === 'agent'` - profile.role e unico por usuario e fica defasado ao trocar de workspace; workspaceRole resolve o workspace ativo, com fallback so enquanto a membership carrega.
 
 ## Arquitetura frontend
 
