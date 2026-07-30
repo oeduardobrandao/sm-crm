@@ -36,32 +36,35 @@ export default function DashboardPage() {
   const withOverrides = workspacesData?.workspaces?.filter((w) => w.has_overrides).length ?? 0;
   const totalMembers = workspacesData?.workspaces?.reduce((sum, w) => sum + w.member_count, 0) ?? 0;
 
-  const isLoading = wsLoading || plansLoading || mrrLoading || trialsLoading;
-
   // Trials carry an *expected* MRR (what they convert to); the Total card sums realized + expected.
   const trialMrrCents = trialsData?.trial_mrr_cents ?? null;
   const totalMrrCents = (mrrData?.mrr_cents ?? 0) + (trialsData?.trial_mrr_cents ?? 0);
   const currency = mrrData?.currency ?? trialsData?.currency;
 
-  const kpis: { label: string; value: string | number; sub?: string }[] = [
-    { label: 'Workspaces', value: totalWorkspaces },
-    { label: 'Total Users', value: totalMembers },
-    { label: 'Active Plans', value: activePlans },
-    { label: 'With Overrides', value: withOverrides },
+  // Each card gates on its own query only: the Stripe-backed MRR/Trials queries
+  // must not hold the instant workspace/plan counts hostage.
+  const kpis: { label: string; value: string | number; sub?: string; loading: boolean }[] = [
+    { label: 'Workspaces', value: totalWorkspaces, loading: wsLoading },
+    { label: 'Total Users', value: totalMembers, loading: wsLoading },
+    { label: 'Active Plans', value: activePlans, loading: plansLoading },
+    { label: 'With Overrides', value: withOverrides, loading: wsLoading },
     {
       label: 'MRR',
       value: formatMoney(mrrData?.mrr_cents ?? null, currency),
       sub: mrrData ? `${mrrData.paying_count} pagantes` : undefined,
+      loading: mrrLoading,
     },
     {
       label: 'Trials',
       value: formatMoney(trialMrrCents, currency),
       sub: trialsData ? `${trialsData.trial_count} em teste` : undefined,
+      loading: trialsLoading,
     },
     {
       label: 'Total MRR',
       value: formatMoney(totalMrrCents, currency),
       sub: 'MRR + trials',
+      loading: mrrLoading || trialsLoading,
     },
   ];
 
@@ -79,8 +82,8 @@ export default function DashboardPage() {
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
               {kpi.label}
             </p>
-            <p className="text-3xl font-bold font-sf">{isLoading ? '—' : kpi.value}</p>
-            {!isLoading && kpi.sub ? (
+            <p className="text-3xl font-bold font-sf">{kpi.loading ? '—' : kpi.value}</p>
+            {!kpi.loading && kpi.sub ? (
               <p className="text-xs text-muted-foreground mt-1">{kpi.sub}</p>
             ) : null}
           </div>
@@ -91,7 +94,7 @@ export default function DashboardPage() {
         <div className="flex items-baseline justify-between mb-4 gap-3">
           <h2 className="font-semibold">Paying Workspaces</h2>
           <span className="text-sm text-muted-foreground">
-            {isLoading
+            {mrrLoading
               ? '—'
               : `${mrrData?.paying_count ?? 0} · ${formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency)}/mês`}
           </span>
@@ -105,7 +108,7 @@ export default function DashboardPage() {
           <span className="text-right">MRR</span>
         </div>
 
-        {isLoading ? (
+        {mrrLoading ? (
           <p className="text-sm text-dim-foreground py-4">Loading...</p>
         ) : (mrrData?.workspaces?.length ?? 0) === 0 ? (
           <p className="text-sm text-dim-foreground py-4">No paying workspaces yet.</p>
@@ -194,7 +197,7 @@ export default function DashboardPage() {
         <div className="flex items-baseline justify-between mb-4 gap-3">
           <h2 className="font-semibold">Trials</h2>
           <span className="text-sm text-muted-foreground">
-            {isLoading
+            {trialsLoading
               ? '—'
               : `${trialsData?.trial_count ?? 0} · ${formatMoney(trialMrrCents, currency)}/mês`}
           </span>
@@ -208,7 +211,7 @@ export default function DashboardPage() {
           <span className="text-right">MRR</span>
         </div>
 
-        {isLoading ? (
+        {trialsLoading ? (
           <p className="text-sm text-dim-foreground py-4">Loading...</p>
         ) : (trialsData?.trials?.length ?? 0) === 0 ? (
           <p className="text-sm text-dim-foreground py-4">No workspaces on trial right now.</p>
@@ -334,7 +337,7 @@ export default function DashboardPage() {
           <span>Created</span>
         </div>
 
-        {isLoading ? (
+        {wsLoading ? (
           <p className="text-sm text-dim-foreground py-4">Loading...</p>
         ) : (
           (workspacesData?.workspaces || []).map((ws) => (
