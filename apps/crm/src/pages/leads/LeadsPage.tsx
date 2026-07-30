@@ -88,6 +88,7 @@ import { useEntitlements } from '../../hooks/useEntitlements';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
 import { useAuth } from '../../context/AuthContext';
 import { stripFinancialFields } from '@/lib/financialAccess';
+import { captureEvent } from '@/lib/analytics';
 
 function createLeadSchema(t: (key: string) => string) {
   return z.object({
@@ -278,6 +279,7 @@ export default function LeadsPage() {
         toast.success(t('toast.updated'));
       } else {
         await addLead(payload);
+        captureEvent('lead_created', { canal: values.canal, status: values.status });
         toast.success(t('toast.created'));
       }
       qc.invalidateQueries({ queryKey: ['leads'] });
@@ -349,6 +351,7 @@ export default function LeadsPage() {
         >,
       );
       await updateLead(convertingLead.id, { status: 'convertido' });
+      captureEvent('lead_converted', { canal: convertingLead.canal ?? undefined });
       toast.success(t('toast.converted'));
       qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['clientes'] });

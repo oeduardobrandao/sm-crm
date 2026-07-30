@@ -1013,6 +1013,8 @@ export default function ClienteDetalhePage() {
     handlers: {
       onConnectInstagram: async () => {
         try {
+          // instagram_connect_started is captured inside getInstagramAuthUrl, which every
+          // connect entry point goes through.
           const url = await getInstagramAuthUrl(clienteId);
           window.location.href = url;
         } catch (err: unknown) {

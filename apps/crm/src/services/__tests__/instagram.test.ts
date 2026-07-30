@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../lib/supabase');
 
+const { captureEventMock } = vi.hoisted(() => ({ captureEventMock: vi.fn() }));
+vi.mock('../../lib/analytics', () => ({ captureEvent: captureEventMock }));
+
 import * as supabaseModule from '../../lib/supabase';
 import {
   disconnectInstagram,
@@ -58,6 +61,24 @@ describe('instagram service', () => {
     expect(url).toBe('https://meta.example/authorize?x=1');
     const calledUrl = fetchSpy.mock.calls[0][0] as string;
     expect(calledUrl).toContain('/instagram-integration/auth/42');
+  });
+
+  it('captures instagram_connect_started once the auth url resolves, never on failure', async () => {
+    // Lives in the service because all four connect entry points funnel through it.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse({ url: 'https://meta' }));
+    await getInstagramAuthUrl(42);
+    expect(captureEventMock).toHaveBeenCalledWith(
+      'instagram_connect_started',
+      { cliente_id: 42 },
+      { sendInstantly: true },
+    );
+
+    captureEventMock.mockClear();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({ message: 'nope' }, { status: 500, ok: false }),
+    );
+    await expect(getInstagramAuthUrl(42)).rejects.toThrow();
+    expect(captureEventMock).not.toHaveBeenCalled();
   });
 
   it('throws the server-provided message when the auth endpoint fails', async () => {

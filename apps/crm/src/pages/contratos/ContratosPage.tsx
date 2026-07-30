@@ -70,6 +70,7 @@ import {
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
 import { formatFinancialBRL } from '@/lib/financialAccess';
+import { captureEvent } from '@/lib/analytics';
 
 const contratoSchema = z.object({
   titulo: z.string().min(1, 'Título obrigatório'),
@@ -184,6 +185,7 @@ export default function ContratosPage() {
         toast.success('Contrato atualizado');
       } else {
         await addContrato(payload);
+        captureEvent('contract_created', { status: values.status });
         toast.success('Contrato criado');
       }
       qc.invalidateQueries({ queryKey: ['contratos'] });

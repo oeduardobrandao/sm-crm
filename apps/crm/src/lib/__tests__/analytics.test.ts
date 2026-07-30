@@ -50,6 +50,23 @@ describe('analytics', () => {
     expect(posthogMock.capture).toHaveBeenCalledWith('hub_link_copied', { cliente_id: 7 });
   });
 
+  it('bypasses request batching only when the call site is about to navigate away', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
+    const { initAnalytics, captureEvent } = await import('../analytics');
+    initAnalytics();
+
+    // Default path stays two-arg: posthog-js batches, which is what we want everywhere else.
+    captureEvent('client_created');
+    expect(posthogMock.capture).toHaveBeenLastCalledWith('client_created', undefined);
+
+    captureEvent('checkout_started', { plan_id: 'pro' }, { sendInstantly: true });
+    expect(posthogMock.capture).toHaveBeenLastCalledWith(
+      'checkout_started',
+      { plan_id: 'pro' },
+      { send_instantly: true },
+    );
+  });
+
   it('groups the user by workspace, because retention is a workspace property', async () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
     const { initAnalytics, identifyWorkspaceUser } = await import('../analytics');
