@@ -558,7 +558,10 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
                   key={t}
                   type="button"
                   onClick={() => setTipo(t)}
-                  className={`px-3 py-1.5 rounded-[var(--hub-r-ctl)] text-[12.5px] font-semibold transition-colors ${
+                  // rounded-md (not the --hub-r-ctl token): the radius preset
+                  // deliberately skips this site to keep the neutral default
+                  // byte-identical.
+                  className={`px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${
                     tipo === t ? 'hub-btn-primary' : 'hub-tx3'
                   }`}
                 >

@@ -143,6 +143,34 @@ describe('WorkspaceMark', () => {
     expect(img.style.height).toBe('36px');
   });
 
+  it('ignores logo_dark_url and logo_style when customized is false (client-side defense in depth)', () => {
+    // Mirrors HubShell's gating: customized: false must read logo_dark_url as
+    // null and logo_style as 'round', even if a malformed/stale payload carries
+    // contrary values.
+    const bootstrap: HubBootstrap = {
+      ...BASE_BOOTSTRAP,
+      hub_theme: {
+        customized: false,
+        surface: 'cool',
+        font_display: 'space-grotesk',
+        font_body: 'manrope',
+        radius: 'pill',
+        card_style: 'outline',
+        logo_style: 'wordmark',
+        logo_dark_url: 'https://cdn.mesaas.com/dark.png',
+        hide_branding: true,
+        default_appearance: 'dark',
+      },
+    };
+    renderMark(bootstrap, 'dark');
+    const img = screen.getByRole('img') as HTMLImageElement;
+    // Stays on the light logo_url in dark mode — the (ignored) dark URL never wins.
+    expect(img.src).toBe('https://cdn.mesaas.com/light.png');
+    // Stays circular ('round') — the (ignored) 'wordmark' style never applies.
+    expect(img.className).toContain('rounded-full');
+    expect(img.className).toContain('object-cover');
+  });
+
   it('logo_style "wordmark" renders at natural aspect ratio, no circular crop', () => {
     const bootstrap: HubBootstrap = {
       ...BASE_BOOTSTRAP,

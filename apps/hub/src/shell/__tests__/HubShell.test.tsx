@@ -296,6 +296,79 @@ describe('HubShell', () => {
       expect(document.querySelector('.hub-root')?.getAttribute('data-theme')).toBeNull();
     });
 
+    it('does NOT override an explicit stored dark preference with the agency light default (explicit wins in both directions)', async () => {
+      localStorage.setItem('hub-theme', 'dark');
+      localStorage.setItem('hub-theme-explicit', '1');
+      mockedFetchBootstrap.mockResolvedValue({
+        workspace: { name: 'Mesaas', logo_url: null, brand_color: '#0f766e' },
+        cliente_nome: 'Clínica Aurora',
+        is_active: true,
+        cliente_id: 14,
+        feature_mensagens: true,
+        hub_theme: { ...CUSTOM_THEME_BASE, default_appearance: 'light' },
+      });
+
+      render(
+        <MemoryRouter initialEntries={['/mesaas/hub/token-publico']}>
+          <Routes>
+            <Route path="/:workspace/hub/:token" element={<HubShell />}>
+              <Route index element={<div>Página inicial do hub</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Página inicial do hub')).toBeInTheDocument();
+      });
+
+      // Asserted via the resolved --hub-* CSS vars (driven directly by the
+      // `theme` react state) rather than the .hub-root DOM attribute: the
+      // loading-state and loaded-state renders mount two different root
+      // elements (div vs HubContext.Provider), and useTheme's DOM-attribute
+      // effect only re-targets the current one when `theme` state actually
+      // changes. Since no setTheme call is expected here (explicit marker
+      // wins), that effect never reruns post-mount and the DOM attribute
+      // check would be a false negative — the resolved theme is still
+      // correctly 'dark', just not (yet) reflected on this render's node.
+      const styleTag = document.querySelector('style');
+      expect(styleTag?.textContent).toContain('--hub-bg: #0E0E0E;');
+    });
+
+    it('applies the light default appearance, resetting an auto-persisted dark value with no explicit marker', async () => {
+      // Regression for the one-way-toward-dark bug: a client who was auto-set to
+      // dark by an earlier visit (hub-theme=dark, no explicit marker) must reset
+      // to light once the agency reverts the configured default appearance —
+      // otherwise they'd be stuck on dark forever.
+      localStorage.setItem('hub-theme', 'dark');
+      mockedFetchBootstrap.mockResolvedValue({
+        workspace: { name: 'Mesaas', logo_url: null, brand_color: '#0f766e' },
+        cliente_nome: 'Clínica Aurora',
+        is_active: true,
+        cliente_id: 14,
+        feature_mensagens: true,
+        hub_theme: { ...CUSTOM_THEME_BASE, default_appearance: 'light' },
+      });
+
+      render(
+        <MemoryRouter initialEntries={['/mesaas/hub/token-publico']}>
+          <Routes>
+            <Route path="/:workspace/hub/:token" element={<HubShell />}>
+              <Route index element={<div>Página inicial do hub</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Página inicial do hub')).toBeInTheDocument();
+      });
+
+      await waitFor(() => {
+        expect(document.querySelector('.hub-root')?.getAttribute('data-theme')).toBeNull();
+      });
+    });
+
     it('DOES apply the agency dark default for a returning client with a stored theme value but no explicit-choice marker', async () => {
       // Regression for the auto-persisted-default bug: useTheme's mount effect
       // persists 'hub-theme' on every visit (including the unchosen default
@@ -388,10 +461,12 @@ describe('HubShell', () => {
 
     it('ignores non-default preset fields when customized is false (client-side defense in depth)', async () => {
       // hub-bootstrap already fails closed server-side, but the client must not
-      // trust surface/font_display/font_body/radius/card_style whenever
-      // customized reads false — only customized: true unlocks them. A
-      // malformed/stale payload with customized: false alongside non-default
+      // trust surface/font_display/font_body/radius/card_style/hide_branding/
+      // logo_style/logo_dark_url/default_appearance whenever customized reads
+      // false — only customized: true unlocks them. A malformed/stale payload
+      // with customized: false alongside contrary values on every one of those
       // fields must still render pixel-identical to the no-hub_theme fallback.
+      localStorage.setItem('hub-theme', 'dark'); // pre-existing stored value, no explicit marker
       mockedFetchBootstrap.mockResolvedValue({
         workspace: { name: 'Mesaas', logo_url: null, brand_color: '#0f766e' },
         cliente_nome: 'Clínica Aurora',
@@ -408,12 +483,7 @@ describe('HubShell', () => {
           logo_style: 'wordmark',
           logo_dark_url: 'https://cdn.mesaas.com/dark.png',
           hide_branding: true,
-          // Left at the neutral 'light' default deliberately — this test isolates
-          // the surface/font/radius/card_style preset gating that Finding 1 fixes;
-          // default_appearance/hide_branding/logo_* aren't part of that gate (the
-          // brief scoped the client-side fix to resolveHubTheme's config inputs
-          // only), so keeping this field neutral avoids conflating the two.
-          default_appearance: 'light',
+          default_appearance: 'dark',
         },
       });
 
@@ -437,6 +507,14 @@ describe('HubShell', () => {
       expect(styleTag?.textContent).toContain('--hub-primary: var(--hub-txt);');
       // No custom font stylesheet loaded for the (ignored) space-grotesk/manrope pick.
       expect(document.getElementById('hub-custom-fonts')).toBeNull();
+      // hide_branding: true is ignored — powered-by mark still shows.
+      expect(screen.getByText('powered by')).toBeInTheDocument();
+      // default_appearance: 'dark' is ignored — no appearance applied, and the
+      // pre-existing stored 'dark' (auto-persisted, no explicit marker) resets
+      // to the neutral light default.
+      await waitFor(() => {
+        expect(document.querySelector('.hub-root')?.getAttribute('data-theme')).toBeNull();
+      });
     });
   });
 });

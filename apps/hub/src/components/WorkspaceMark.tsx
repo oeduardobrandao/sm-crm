@@ -18,9 +18,13 @@ export function WorkspaceMark({ size = 36 }: { size?: number }) {
   const { bootstrap, theme } = useHub();
   const { logo_url: logoUrl, name } = bootstrap.workspace;
   const ht = bootstrap.hub_theme;
-  const darkUrl = ht?.logo_dark_url ?? null;
+  // Defense in depth, same gating as HubShell: customized: false reads
+  // logo_dark_url/logo_style as their neutral defaults (null/'round'), even if a
+  // stale/tampered payload carries contrary values.
+  const isCustomized = ht?.customized ?? false;
+  const darkUrl = isCustomized ? (ht?.logo_dark_url ?? null) : null;
   const chosenUrl = theme === 'dark' && darkUrl ? darkUrl : logoUrl;
-  const isWordmark = ht?.logo_style === 'wordmark';
+  const isWordmark = isCustomized && ht?.logo_style === 'wordmark';
 
   const [failed, setFailed] = useState(false);
   // The broken-image flag is per-URL: if the dark logo 404s but the light one

@@ -217,8 +217,11 @@ export function PostCalendar({ posts }: Props) {
                   {/* The selected/today affordance lives on the number chip itself —
                       highlighting the whole cell stretches into a tall pill once the
                       cell grows to fit its posts. */}
+                  {/* rounded-[13px] (not the --hub-r-ctl token): the radius preset
+                      deliberately skips this site to keep the neutral default
+                      byte-identical to pre-customization. */}
                   <div
-                    className={`w-9 h-9 md:w-7 md:h-7 mb-0.5 md:mb-1.5 flex items-center justify-center rounded-[var(--hub-r-ctl)] md:rounded-full text-[14px] md:text-[12px] font-semibold transition-colors ${
+                    className={`w-9 h-9 md:w-7 md:h-7 mb-0.5 md:mb-1.5 flex items-center justify-center rounded-[13px] md:rounded-full text-[14px] md:text-[12px] font-semibold transition-colors ${
                       isSelected || isToday ? '' : 'text-[var(--hub-txt)] md:text-[var(--hub-tx2)]'
                     }`}
                     style={
@@ -251,9 +254,12 @@ export function PostCalendar({ posts }: Props) {
                   {/* Desktop: full type + count pill, room to spare */}
                   <div className="hidden md:flex md:flex-col gap-1 w-full">
                     {Object.entries(byTipo).map(([tipo, count]) => (
+                      // rounded-md (not the --hub-r-ctl token): the radius preset
+                      // deliberately skips this site to keep the neutral default
+                      // byte-identical to pre-customization.
                       <div
                         key={tipo}
-                        className="text-[10px] px-1.5 py-[3px] rounded-[var(--hub-r-ctl)] font-semibold leading-none truncate"
+                        className="text-[10px] px-1.5 py-[3px] rounded-md font-semibold leading-none truncate"
                         style={{
                           background: `${TIPO_COLOR[tipo] ?? '#78716c'}1c`,
                           color: TIPO_COLOR[tipo] ?? '#78716c',

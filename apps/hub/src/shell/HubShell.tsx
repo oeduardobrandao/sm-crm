@@ -35,6 +35,11 @@ export function HubShell() {
   // keeps the neutral render pixel-identical even if a future bug (or a stale/
   // tampered payload) ever sends non-default fields alongside customized: false.
   const isCustomized = ht?.customized ?? false;
+  // Same gating as isCustomized above, applied to the four hub_theme fields the
+  // resolver doesn't already gate: hide_branding, logo_style, logo_dark_url and
+  // default_appearance. customized: false always reads them as their neutral
+  // defaults, even if a stale/tampered payload carries contrary values.
+  const effectiveHideBranding = isCustomized ? (ht?.hide_branding ?? false) : false;
   const appliedDefaultAppearance = useRef(false);
 
   useEffect(() => {
@@ -88,14 +93,25 @@ export function HubShell() {
   // client choice (a value already in localStorage) always wins on later visits.
   // Guarded by a ref so this only ever fires once per mount, the first time
   // bootstrap resolves — not on every subsequent render.
+  //
+  // Applies in BOTH directions (light and dark), not just toward dark: a client
+  // auto-persisted to dark by an earlier visit must reset to light once the
+  // agency reverts the default appearance, or once the workspace loses
+  // customization entirely (hub_theme.customized flips to false) — otherwise
+  // they'd be stuck on dark forever. The false-customized case reads
+  // default_appearance as the neutral 'light', same gating as isCustomized above.
+  // When hub_theme is entirely absent (old deployed function, pre-migration
+  // bootstrap), this stays a no-op — there is no default to apply.
   useEffect(() => {
     if (appliedDefaultAppearance.current || !bootstrap) return;
     appliedDefaultAppearance.current = true;
-    if (!hasStoredPreference && ht?.default_appearance === 'dark') {
-      setTheme('dark');
+    if (!ht) return;
+    const defaultAppearance = isCustomized ? ht.default_appearance : 'light';
+    if (!hasStoredPreference && (defaultAppearance === 'light' || defaultAppearance === 'dark')) {
+      setTheme(defaultAppearance === 'dark' ? 'dark' : 'light');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bootstrap, hasStoredPreference, ht?.default_appearance]);
+  }, [bootstrap, hasStoredPreference, ht, isCustomized]);
 
   if (loading) {
     return (
@@ -152,7 +168,7 @@ export function HubShell() {
         <main className="hub-noise flex-1 md:pl-[240px]">
           <div className="mx-auto w-full max-w-5xl px-5 sm:px-8 py-8 sm:py-12 pb-28 md:pb-16">
             <Outlet />
-            {!ht?.hide_branding && <PoweredByMesaas />}
+            {!effectiveHideBranding && <PoweredByMesaas />}
           </div>
         </main>
       </div>
