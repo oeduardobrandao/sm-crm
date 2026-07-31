@@ -81,7 +81,7 @@ describe('resolveHubTheme', () => {
       expect(t.vars['--hub-primary-fg']).toBe('var(--hub-card)');
       expect(t.vars['--hub-ring']).toBe('color-mix(in srgb, var(--hub-txt) 15%, transparent)');
       expect(t.vars['--hub-r-card']).toBe('12px');
-      expect(t.vars['--hub-r-ctl']).toBe('8px');
+      expect(t.vars['--hub-r-ctl']).toBe('12px');
       expect(t.vars['--hub-card-bg']).toBe('var(--hub-card)');
       expect(t.vars['--hub-card-bd']).toBe('var(--hub-bd)');
     });
@@ -139,7 +139,7 @@ describe('resolveHubTheme', () => {
     it('soft', () => {
       const t = resolveHubTheme({ ...DEFAULT_HUB_THEME, radius: 'soft' }, false);
       expect(t.vars['--hub-r-card']).toBe('12px');
-      expect(t.vars['--hub-r-ctl']).toBe('8px');
+      expect(t.vars['--hub-r-ctl']).toBe('12px');
     });
     it('pill', () => {
       const t = resolveHubTheme({ ...DEFAULT_HUB_THEME, radius: 'pill' }, false);
@@ -209,7 +209,7 @@ describe('resolveHubTheme', () => {
       expect(() => resolveHubTheme(config, false)).not.toThrow();
       const t = resolveHubTheme(config, false);
       expect(t.vars['--hub-r-card']).toBe('12px');
-      expect(t.vars['--hub-r-ctl']).toBe('8px');
+      expect(t.vars['--hub-r-ctl']).toBe('12px');
     });
 
     it('unknown cardStyle falls back to filled', () => {

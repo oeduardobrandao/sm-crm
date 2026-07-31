@@ -46,7 +46,7 @@ export function HubSidebar() {
               to={href}
               className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13.5px] min-h-[40px] transition-colors ${
                 active
-                  ? 'font-semibold hub-txt hub-bg-soft'
+                  ? 'font-semibold hub-nav-active hub-bg-soft'
                   : 'font-medium hub-tx2 hover:bg-[var(--hub-soft)]'
               }`}
             >

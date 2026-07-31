@@ -74,4 +74,12 @@ describe('HubSidebar', () => {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
   });
+
+  it('marks the active nav item with hub-nav-active (color: var(--hub-primary), a no-op in neutral)', () => {
+    renderSidebar('/ws/hub/tok');
+    const activeLink = screen.getByText('Início').closest('a');
+    expect(activeLink?.className).toContain('hub-nav-active');
+    const inactiveLink = screen.getByText('Postagens').closest('a');
+    expect(inactiveLink?.className).not.toContain('hub-nav-active');
+  });
 });

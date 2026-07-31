@@ -77,4 +77,13 @@ describe('HubMobileNav', () => {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
   });
+
+  it('marks the active drawer nav item with hub-nav-active (color: var(--hub-primary), a no-op in neutral)', () => {
+    renderMobileNav();
+    fireEvent.click(screen.getByRole('button', { name: /abrir menu|open menu/i }));
+    const activeLink = screen.getByText('Início').closest('a');
+    expect(activeLink?.className).toContain('hub-nav-active');
+    const inactiveLink = screen.getByText('Postagens').closest('a');
+    expect(inactiveLink?.className).not.toContain('hub-nav-active');
+  });
 });

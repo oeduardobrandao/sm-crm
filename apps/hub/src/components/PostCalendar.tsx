@@ -208,7 +208,7 @@ export function PostCalendar({ posts }: Props) {
                   onClick={() => setSelectedDay(day)}
                   aria-current={isToday ? 'date' : undefined}
                   aria-pressed={isSelected}
-                  className={`min-h-[54px] md:min-h-[88px] p-1 md:p-2 rounded-xl flex flex-col items-center md:items-start md:text-left transition-colors ${
+                  className={`min-h-[54px] md:min-h-[88px] p-1 md:p-2 rounded-[var(--hub-r-ctl)] flex flex-col items-center md:items-start md:text-left transition-colors ${
                     isSelected
                       ? 'md:bg-[color-mix(in_srgb,var(--hub-acc)_10%,transparent)]'
                       : 'hover:bg-[var(--hub-soft)]'
@@ -218,7 +218,7 @@ export function PostCalendar({ posts }: Props) {
                       highlighting the whole cell stretches into a tall pill once the
                       cell grows to fit its posts. */}
                   <div
-                    className={`w-9 h-9 md:w-7 md:h-7 mb-0.5 md:mb-1.5 flex items-center justify-center rounded-[13px] md:rounded-full text-[14px] md:text-[12px] font-semibold transition-colors ${
+                    className={`w-9 h-9 md:w-7 md:h-7 mb-0.5 md:mb-1.5 flex items-center justify-center rounded-[var(--hub-r-ctl)] md:rounded-full text-[14px] md:text-[12px] font-semibold transition-colors ${
                       isSelected || isToday ? '' : 'text-[var(--hub-txt)] md:text-[var(--hub-tx2)]'
                     }`}
                     style={
@@ -253,7 +253,7 @@ export function PostCalendar({ posts }: Props) {
                     {Object.entries(byTipo).map(([tipo, count]) => (
                       <div
                         key={tipo}
-                        className="text-[10px] px-1.5 py-[3px] rounded-md font-semibold leading-none truncate"
+                        className="text-[10px] px-1.5 py-[3px] rounded-[var(--hub-r-ctl)] font-semibold leading-none truncate"
                         style={{
                           background: `${TIPO_COLOR[tipo] ?? '#78716c'}1c`,
                           color: TIPO_COLOR[tipo] ?? '#78716c',

@@ -131,9 +131,16 @@ const RADIUS_CARD: Record<HubRadius, string> = {
   pill: '18px',
 };
 
+// 'soft' matches the dominant Tailwind radius across shell/chrome .hub-btn-primary /
+// .hub-btn-secondary call sites (rounded-lg, which resolves to 12px via the CRM
+// stylesheet's --radius override that apps/hub/src/main.tsx imports) — see Task 5's
+// radius survey in the report for the full tally. Pill-shaped controls (badges, the
+// circular icon buttons, avatars) keep literal rounded-full/rounded-[...]px and are
+// deliberately NOT wired to this token; they stay circular regardless of the radius
+// preset.
 const RADIUS_CTL: Record<HubRadius, string> = {
   square: '0px',
-  soft: '8px',
+  soft: '12px',
   pill: '999px',
 };
 

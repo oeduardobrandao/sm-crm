@@ -9,7 +9,7 @@ export function FeedPreviewButton({ selectedCount, onClick }: FeedPreviewButtonP
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg hub-btn-primary text-[13px] font-semibold transition-colors"
+      className="inline-flex items-center gap-2 px-4 py-2 rounded-[var(--hub-r-ctl)] hub-btn-primary text-[13px] font-semibold transition-colors"
     >
       <svg
         width="16"

@@ -87,4 +87,51 @@ describe('useTheme', () => {
     expect(() => act(() => result.current.toggleTheme())).not.toThrow();
     expect(result.current.theme).toBe('dark');
   });
+
+  describe('hasStoredPreference', () => {
+    it('is false when nothing is stored', () => {
+      const { result } = renderHook(() => useTheme());
+      expect(result.current.hasStoredPreference).toBe(false);
+    });
+
+    it('is true when a valid "light" value is stored', () => {
+      localStorage.setItem(STORAGE_KEY, 'light');
+      const { result } = renderHook(() => useTheme());
+      expect(result.current.hasStoredPreference).toBe(true);
+    });
+
+    it('is true when a valid "dark" value is stored', () => {
+      localStorage.setItem(STORAGE_KEY, 'dark');
+      const { result } = renderHook(() => useTheme());
+      expect(result.current.hasStoredPreference).toBe(true);
+    });
+
+    it('is false for an unknown stored value', () => {
+      localStorage.setItem(STORAGE_KEY, 'neon');
+      const { result } = renderHook(() => useTheme());
+      expect(result.current.hasStoredPreference).toBe(false);
+    });
+
+    it('stays false for the lifetime of the hook even after setTheme is called', () => {
+      const { result } = renderHook(() => useTheme());
+      act(() => result.current.setTheme('dark'));
+      expect(result.current.hasStoredPreference).toBe(false);
+    });
+  });
+
+  describe('setTheme', () => {
+    it('applies and persists the given theme', () => {
+      const { result } = renderHook(() => useTheme());
+
+      act(() => result.current.setTheme('dark'));
+      expect(result.current.theme).toBe('dark');
+      expect(localStorage.getItem(STORAGE_KEY)).toBe('dark');
+      expect(document.querySelector('.hub-root')!.getAttribute('data-theme')).toBe('dark');
+
+      act(() => result.current.setTheme('light'));
+      expect(result.current.theme).toBe('light');
+      expect(localStorage.getItem(STORAGE_KEY)).toBe('light');
+      expect(document.querySelector('.hub-root')!.getAttribute('data-theme')).toBeNull();
+    });
+  });
 });

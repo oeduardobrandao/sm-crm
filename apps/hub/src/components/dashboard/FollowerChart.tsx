@@ -10,7 +10,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { useHub } from '../../HubContext';
-import { chartInk } from './chartInk';
+import { chartInk, chartFont } from './chartInk';
 import type { DashboardFollowerEntry } from '../../types';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
@@ -81,7 +81,7 @@ export function FollowerChart({ followerHistory }: FollowerChartProps) {
       x: {
         grid: { display: false },
         ticks: {
-          font: { family: 'Instrument Sans, sans-serif', size: 10 },
+          font: { family: chartFont(), size: 10 },
           color: '#9ca3af',
           maxTicksLimit: 6,
         },
@@ -89,7 +89,7 @@ export function FollowerChart({ followerHistory }: FollowerChartProps) {
       y: {
         grid: { color: 'rgba(255,255,255,0.04)' },
         ticks: {
-          font: { family: 'Instrument Sans, sans-serif', size: 10 },
+          font: { family: chartFont(), size: 10 },
           color: '#9ca3af',
           callback: (value: number | string) => formatAbbrev(Number(value)),
         },

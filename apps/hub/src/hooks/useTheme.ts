@@ -15,7 +15,19 @@ function applyTheme(theme: Theme) {
 }
 
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => {
+  // Captured once at init, independent of subsequent setTheme/toggleTheme calls —
+  // callers use this to tell "the client already chose a mode" (their choice always
+  // wins) apart from "this is the very first visit" (safe to apply an agency default).
+  const [hasStoredPreference] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return stored === 'dark' || stored === 'light';
+    } catch {
+      return false;
+    }
+  });
+
+  const [theme, setThemeState] = useState<Theme>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       return stored === 'dark' ? 'dark' : 'light';
@@ -34,8 +46,12 @@ export function useTheme() {
   }, [theme]);
 
   function toggleTheme() {
-    setTheme((t) => (t === 'light' ? 'dark' : 'light'));
+    setThemeState((t) => (t === 'light' ? 'dark' : 'light'));
   }
 
-  return { theme, toggleTheme };
+  function setTheme(t: Theme) {
+    setThemeState(t);
+  }
+
+  return { theme, toggleTheme, setTheme, hasStoredPreference };
 }

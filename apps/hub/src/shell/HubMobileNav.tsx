@@ -180,7 +180,7 @@ export function HubMobileNav() {
                     onClick={() => setOpen(false)}
                     className={`flex items-center gap-3 px-3 py-3 rounded-lg min-h-[48px] transition-colors ${
                       active
-                        ? 'font-semibold hub-txt hub-bg-soft'
+                        ? 'font-semibold hub-nav-active hub-bg-soft'
                         : 'font-medium hub-tx2 hover:bg-[var(--hub-soft)]'
                     }`}
                   >

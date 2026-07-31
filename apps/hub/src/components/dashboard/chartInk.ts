@@ -13,3 +13,17 @@
 export function chartInk(theme: 'light' | 'dark'): string {
   return theme === 'dark' ? '245, 245, 245' : '23, 23, 23';
 }
+
+/**
+ * Chart tick-label font, read live off `:root` at call time.
+ *
+ * Charts render after HubShell has injected the resolved theme's
+ * `<style>:root{ --hub-font-sans: ...; }</style>` tag, so `getComputedStyle` on
+ * the document root already reflects any custom body font — no prop threading
+ * needed. Falls back to the neutral default stack if the variable is somehow
+ * unset (e.g. outside a browser environment).
+ */
+export function chartFont(): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue('--hub-font-sans').trim();
+  return v || "'Instrument Sans', sans-serif";
+}

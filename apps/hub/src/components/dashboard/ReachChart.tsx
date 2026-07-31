@@ -1,7 +1,7 @@
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import { useHub } from '../../HubContext';
-import { chartInk } from './chartInk';
+import { chartInk, chartFont } from './chartInk';
 import type { DashboardReachEntry } from '../../types';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
@@ -61,7 +61,7 @@ export function ReachChart({ reachHistory }: ReachChartProps) {
       x: {
         grid: { display: false },
         ticks: {
-          font: { family: 'Instrument Sans, sans-serif', size: 10 },
+          font: { family: chartFont(), size: 10 },
           color: '#9ca3af',
           maxTicksLimit: 8,
         },
@@ -69,7 +69,7 @@ export function ReachChart({ reachHistory }: ReachChartProps) {
       y: {
         grid: { color: 'rgba(255,255,255,0.04)' },
         ticks: {
-          font: { family: 'Instrument Sans, sans-serif', size: 10 },
+          font: { family: chartFont(), size: 10 },
           color: '#9ca3af',
           callback: (value: number | string) => formatAbbrev(Number(value)),
         },
