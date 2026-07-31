@@ -114,6 +114,29 @@ begin
     return false;
   end if;
 
+  -- Dormancy re-check, dormant_signup ONLY. The three checks above cover what
+  -- every type shares (consent, ownership, free plan, no subscription), but
+  -- dormant_signup has one more defining predicate the others must NOT inherit:
+  -- zero clientes. get_dormant_signup_candidates filters on it (the `not exists`
+  -- over clientes), and the sweep then processes up to 50 candidates in a loop,
+  -- so up to roughly a minute passes before this call. A user who creates their
+  -- FIRST client inside that window is no longer dormant, and without this would
+  -- receive an email whose entire premise -- "you haven't started yet" -- is now
+  -- false, minutes after they did exactly the thing it nags them about.
+  --
+  -- Scoped to the dormant branch deliberately: paywall_hit and checkout_abandoned
+  -- are, if anything, MORE relevant to a workspace that has clients. Widening
+  -- this to all types would silently kill both of the revenue-path triggers for
+  -- every workspace with a single client.
+  --
+  -- Refusing writes no ledger row, so if the client is later removed the
+  -- workspace qualifies again naturally on a subsequent sweep.
+  if p_email_type = 'dormant_signup' and exists (
+    select 1 from clientes c where c.conta_id = p_workspace_id
+  ) then
+    return false;
+  end if;
+
   if exists (
     select 1 from lifecycle_emails
     where workspace_id = p_workspace_id

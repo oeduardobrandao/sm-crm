@@ -223,6 +223,34 @@ begin;
   end $$;
 rollback;
 
+-- 8b. Send-time dormancy re-check: a user who creates their FIRST client between
+--     get_dormant_signup_candidates' SELECT and the claim is no longer dormant,
+--     so the dormant_signup claim must be refused. Otherwise they get a "you
+--     haven't started yet" email minutes after starting.
+--
+--     The second half is the guard that keeps this scoped: the SAME workspace,
+--     with the SAME client, must still win a paywall_hit claim. Widening the
+--     zero-clientes predicate past the dormant branch would kill both
+--     revenue-path triggers for every workspace that has a client, and only
+--     this assertion catches that.
+begin;
+  do $$
+  declare f record; won boolean; won_paywall boolean;
+  begin
+    select * into f from et_loops_fixture((select id from plans where is_default), true);
+    insert into clientes (user_id, conta_id, nome, sigla, cor)
+      values (f.user_id, f.workspace_id, 'Primeiro Cliente', 'PC', '#000');
+
+    won := claim_marketing_email('dormant_signup', f.workspace_id, f.user_id, 1);
+    if won then raise exception 'dormant_signup claim succeeded for a workspace that now has a client'; end if;
+
+    won_paywall := claim_marketing_email('paywall_hit', f.workspace_id, f.user_id, 1);
+    if not won_paywall then
+      raise exception 'the zero-clientes re-check leaked past dormant_signup and refused paywall_hit';
+    end if;
+  end $$;
+rollback;
+
 -- 9. An invited user (conta_id in signup metadata) is not a dormant_signup
 --    candidate, even though workspaces.created_by points at them. Case 2
 --    above is the positive control this negative relies on: without it, this
