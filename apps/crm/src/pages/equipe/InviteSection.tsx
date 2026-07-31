@@ -16,7 +16,7 @@ import type { SeatState } from './inviteSupport';
 
 const ROLE_PT: Record<string, string> = { owner: 'dono', admin: 'admin', agent: 'agente' };
 
-function SeatMeter({ seat }: { seat: SeatState }) {
+function SeatMeter({ seat, previewing }: { seat: SeatState; previewing: boolean }) {
   if (seat.status === 'unlimited') return null;
   if (seat.status === 'loading' || seat.status === 'unavailable') {
     return (
@@ -25,11 +25,14 @@ function SeatMeter({ seat }: { seat: SeatState }) {
       </p>
     );
   }
-  const pct = seat.limit ? Math.min(100, Math.round((seat.used / seat.limit) * 100)) : 0;
+  const doPreview = previewing && seat.status === 'ok';
+  const displayUsed = doPreview ? seat.used + 1 : seat.used;
+  const displayRemaining = doPreview ? Math.max(0, (seat.remaining ?? 0) - 1) : seat.remaining;
+  const pct = seat.limit ? Math.min(100, Math.round((displayUsed / seat.limit) * 100)) : 0;
   const fill =
     seat.status === 'full'
       ? 'var(--danger)'
-      : seat.remaining !== null && seat.remaining <= 1
+      : displayRemaining !== null && displayRemaining <= 1
         ? 'var(--warning)'
         : 'var(--success)';
   return (
@@ -54,10 +57,11 @@ function SeatMeter({ seat }: { seat: SeatState }) {
         }}
       >
         <span>
-          {seat.used} de {seat.limit} vagas do plano usadas
+          {displayUsed} de {seat.limit}{' '}
+          {doPreview ? 'vagas após este convite' : 'vagas do plano usadas'}
         </span>
         <span>
-          {seat.remaining} restante{seat.remaining === 1 ? '' : 's'}
+          {displayRemaining} restante{displayRemaining === 1 ? '' : 's'}
         </span>
       </div>
     </div>
@@ -183,7 +187,7 @@ export function InviteSection({
           />
         </div>
       )}
-      <SeatMeter seat={seat} />
+      <SeatMeter seat={seat} previewing={inviteEnabled} />
       {seat.status === 'full' && (
         <div
           style={{

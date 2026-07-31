@@ -133,11 +133,12 @@ export default function EquipePage() {
   const { data: pendingInvites = [] } = useQuery({
     queryKey: ['invites', 'equipe-pending', profile?.conta_id],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('invites')
         .select('id, email, role, membro_id, expires_at, status')
         .eq('conta_id', profile!.conta_id)
         .eq('status', 'pending');
+      if (error) throw error;
       // Locally-expired invites must not render as pending.
       return computeEffectiveInviteStatus(data ?? []).filter((i) => i.status === 'pending');
     },

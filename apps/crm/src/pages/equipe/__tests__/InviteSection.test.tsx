@@ -45,6 +45,12 @@ describe('InviteSection', () => {
     expect(screen.getByText(/ocupará 1 vaga/)).toBeInTheDocument();
   });
 
+  it('previews post-invite seat usage when the switch is on', () => {
+    render(<Harness seat={OK_SEAT} inviteEnabled />);
+    expect(screen.getByText('4 de 5 vagas após este convite')).toBeInTheDocument();
+    expect(screen.getByText('1 restante')).toBeInTheDocument();
+  });
+
   it('disables the switch and shows upgrade copy when full', () => {
     render(<Harness seat={{ status: 'full', used: 5, limit: 5, remaining: 0 }} />);
     expect(screen.getByRole('switch')).toBeDisabled();
