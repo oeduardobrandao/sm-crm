@@ -1763,6 +1763,37 @@ Deno.test("sends a paywall_hit event with a deterministic idempotency key", asyn
   assertEquals(deps.sent[0].properties.clientCount, 3);
 });
 
+// Regression guard. dormant_signup's ledger row keys on user_id and its
+// workspace_id MOVES when the reported workspace changes, so a workspace-scoped
+// key would change between a send and its retry, Loops would not dedupe, and the
+// person would get a second email. See the comment in handler.ts.
+Deno.test("dormant_signup uses a USER-scoped idempotency key, not workspace-scoped", async () => {
+  const deps = makeDeps({
+    rpc: (name: string) =>
+      Promise.resolve({
+        data: name === "get_dormant_signup_candidates"
+          ? [{
+            workspace_id: "ws-9",
+            workspace_name: "Agência B",
+            owner_user_id: "user-7",
+            owner_email: "d@e.com",
+            owner_nome: "Bruno",
+            days_since_signup: 5,
+            attempts: 0,
+          }]
+          : [],
+        error: null,
+      }),
+  });
+  await runLoopsSyncCron(deps);
+
+  assertEquals(deps.sent[0].idempotencyKey, "dormant_signup/user-7");
+  assert(
+    !deps.sent[0].idempotencyKey.includes("ws-9"),
+    "dormant key must not be scoped to the workspace",
+  );
+});
+
 Deno.test("claims before sending", async () => {
   const order: string[] = [];
   const deps = makeDeps({
@@ -2099,11 +2130,31 @@ export async function runLoopsSyncCron(
         // naturally on a later sweep.
         if (!won) continue;
 
+        // The idempotency key MUST be scoped the same way the ledger row is
+        // keyed, or a retry changes key and Loops stops deduping it.
+        //
+        // `dormant_signup` keys on user_id: it is an email about a PERSON, and
+        // its ledger row's workspace_id moves when the reported workspace
+        // changes. Concretely: U owns free W1 and W2. The claim writes
+        // workspace_id=W1, sendEvent succeeds, markDelivered FAILS (a tolerated,
+        // logged outcome). W1 later gains a client and stops qualifying, so the
+        // next sweep picks W2; the claim's 72h cap looks for workspace_id=W2,
+        // does not see the W1 row, and passes. With a workspace-scoped key the
+        // retry would carry `dormant_signup/W2`, Loops would NOT recognise it,
+        // and the person gets a second email — bypassing both the cap and Loops
+        // dedupe. A user-scoped key makes that retry a 409, which is success.
+        //
+        // The other two types key on workspace_id in the ledger and legitimately
+        // send once per workspace, so their key stays workspace-scoped.
+        const idKey = keyCol === "user_id"
+          ? `${emailType}/${c.owner_user_id}`
+          : `${emailType}/${c.workspace_id}`;
+
         await deps.sendEvent({
           email: c.owner_email,
           eventName: emailType,
           properties: { workspaceName: c.workspace_name, ...props(c) },
-          idempotencyKey: `${emailType}/${c.workspace_id}`,
+          idempotencyKey: idKey,
         });
         await deps.markDelivered(
           emailType,
