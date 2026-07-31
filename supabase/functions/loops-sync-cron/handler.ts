@@ -98,29 +98,35 @@ export async function runLoopsSyncCron(
 
   const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-  // --- Trait sync ----------------------------------------------------------
-  const traitRes = await deps.rpc("get_loops_trait_candidates");
-  if (traitRes.error) {
-    errors.push({ error: `trait candidates: ${traitRes.error.message}` });
+  // --- Ordering is deliberate and encodes priority, do NOT "tidy" it back ---
+  //
+  // Trait sync is `limit 200` with no ledger exclusion (~2 round trips each),
+  // the three trigger sweeps are up to 50 candidates each at ~4 round trips
+  // each, and the deletion sweep is up to 50 more -- worst case is roughly a
+  // thousand sequential awaits in one edge invocation, which can exceed the
+  // wall clock. Whichever sweep runs last is the one a slow run silently
+  // drops. So the sweeps are ordered by what is most costly to lose:
+  //   1. Contact deletions FIRST -- these are consent revocations, an LGPD
+  //      obligation. Losing one means a person who withdrew consent stays
+  //      resident at a US vendor.
+  //   2. Trigger sweeps SECOND -- these are the revenue path.
+  //   3. Trait sync LAST -- pure enrichment. If the clock runs out, this is
+  //      the right thing to drop: it self-heals next run because the RPC's
+  //      ordering is least-recently-synced-first, so nothing is lost, only
+  //      delayed.
+
+  // --- Revocation ------------------------------------------------------------
+  const delRes = await deps.rpc("get_loops_contact_deletions");
+  if (delRes.error) {
+    errors.push({ error: `contact deletions: ${delRes.error.message}` });
   } else {
-    for (const c of (traitRes.data ?? []) as TraitRow[]) {
+    for (const d of (delRes.data ?? []) as DeletionRow[]) {
       try {
-        // Person-level only. Workspace facts go in event properties: Loops keys
-        // contacts by email and one person can own several workspaces, so a
-        // workspace trait would be clobbered by whichever synced last.
-        await deps.updateContact({
-          email: c.email,
-          traits: {
-            firstName: firstNameFrom(c.nome),
-            daysSinceSignup: c.days_since_signup,
-            workspaceCount: c.workspace_count,
-            anyFree: c.any_free,
-          },
-        });
-        await deps.recordContactSync(c.user_id, c.email);
-        traitsSynced++;
+        await deps.deleteContact({ email: d.synced_email });
+        await deps.markContactDeleted(d.id);
+        contactsDeleted++;
       } catch (e) {
-        errors.push({ accountId: c.user_id, error: msg(e) });
+        errors.push({ accountId: d.id, error: msg(e) });
       }
     }
   }
@@ -159,8 +165,10 @@ export async function runLoopsSyncCron(
         // `dormant_signup` keys on user_id: it is an email about a PERSON, and
         // its ledger row's workspace_id moves when the reported workspace
         // changes. Concretely: U owns free W1 and W2. The claim writes
-        // workspace_id=W1, sendEvent succeeds, markDelivered FAILS (a tolerated,
-        // logged outcome). W1 later gains a client and stops qualifying, so the
+        // workspace_id=W1, sendEvent succeeds, markDelivered FAILS -- this
+        // whole candidate iteration is caught below as a candidate error
+        // (failed++, eventsSent NOT incremented for it), even though the email
+        // already went out. W1 later gains a client and stops qualifying, so the
         // next sweep picks W2; the claim's 72h cap looks for workspace_id=W2,
         // does not see the W1 row, and passes. With a workspace-scoped key the
         // retry would carry `dormant_signup/W2`, Loops would NOT recognise it,
@@ -226,18 +234,29 @@ export async function runLoopsSyncCron(
     (r) => ({ daysSinceSignup: r.days_since_signup }),
   );
 
-  // --- Revocation ----------------------------------------------------------
-  const delRes = await deps.rpc("get_loops_contact_deletions");
-  if (delRes.error) {
-    errors.push({ error: `contact deletions: ${delRes.error.message}` });
+  // --- Trait sync (last: pure enrichment, safe to lose to a timeout) --------
+  const traitRes = await deps.rpc("get_loops_trait_candidates");
+  if (traitRes.error) {
+    errors.push({ error: `trait candidates: ${traitRes.error.message}` });
   } else {
-    for (const d of (delRes.data ?? []) as DeletionRow[]) {
+    for (const c of (traitRes.data ?? []) as TraitRow[]) {
       try {
-        await deps.deleteContact({ email: d.synced_email });
-        await deps.markContactDeleted(d.id);
-        contactsDeleted++;
+        // Person-level only. Workspace facts go in event properties: Loops keys
+        // contacts by email and one person can own several workspaces, so a
+        // workspace trait would be clobbered by whichever synced last.
+        await deps.updateContact({
+          email: c.email,
+          traits: {
+            firstName: firstNameFrom(c.nome),
+            daysSinceSignup: c.days_since_signup,
+            workspaceCount: c.workspace_count,
+            anyFree: c.any_free,
+          },
+        });
+        await deps.recordContactSync(c.user_id, c.email);
+        traitsSynced++;
       } catch (e) {
-        errors.push({ accountId: d.id, error: msg(e) });
+        errors.push({ accountId: c.user_id, error: msg(e) });
       }
     }
   }

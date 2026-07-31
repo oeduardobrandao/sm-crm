@@ -141,6 +141,7 @@ Deno.test("a lost claim skips the send entirely (72h cap arbitration)", async ()
   const res = await runLoopsSyncCron(deps);
   assertEquals(res.eventsSent, 0);
   assertEquals(deps.sent.length, 0);
+  assertEquals(res.failed, 0, "a refused claim is an arbitration outcome, not a failure");
 });
 
 Deno.test("a failed send leaves the claim undelivered and is counted as failed", async () => {
@@ -161,6 +162,92 @@ Deno.test("a failed send leaves the claim undelivered and is counted as failed",
   assertEquals(res.eventsSent, 0);
   assertEquals(res.failed, 1);
   assertEquals(delivered, 0, "must not mark delivered after a failed send");
+});
+
+// markDelivered's (keyCol, keyVal) mapping must mirror the idempotency-key
+// scoping rule above it byte-for-byte: paywall_hit stamps workspace_id,
+// dormant_signup stamps user_id. Deleting the markDelivered call, or
+// inverting keyCol/keyVal, leaves every other test in this file green -- these
+// two are the only ones that exercise the mapping on the success path.
+Deno.test("markDelivered stamps workspace_id for a workspace-scoped type (paywall_hit)", async () => {
+  const calls: Array<[string, string, string]> = [];
+  const deps = makeDeps({
+    rpc: (name: string) =>
+      Promise.resolve({
+        data: name === "get_paywall_hit_candidates" ? [PAYWALL_ROW] : [],
+        error: null,
+      }),
+    markDelivered: (emailType: string, keyCol: "user_id" | "workspace_id", keyVal: string) => {
+      calls.push([emailType, keyCol, keyVal]);
+      return Promise.resolve();
+    },
+  });
+  await runLoopsSyncCron(deps);
+  assertEquals(calls, [["paywall_hit", "workspace_id", "ws-1"]]);
+});
+
+Deno.test("markDelivered stamps user_id for the user-scoped type (dormant_signup)", async () => {
+  const calls: Array<[string, string, string]> = [];
+  const deps = makeDeps({
+    rpc: (name: string) =>
+      Promise.resolve({
+        data: name === "get_dormant_signup_candidates"
+          ? [{
+            workspace_id: "ws-9",
+            workspace_name: "Agência B",
+            owner_user_id: "user-7",
+            owner_email: "d@e.com",
+            owner_nome: "Bruno",
+            days_since_signup: 5,
+            attempts: 0,
+          }]
+          : [],
+        error: null,
+      }),
+    markDelivered: (emailType: string, keyCol: "user_id" | "workspace_id", keyVal: string) => {
+      calls.push([emailType, keyCol, keyVal]);
+      return Promise.resolve();
+    },
+  });
+  await runLoopsSyncCron(deps);
+  assertEquals(calls, [["dormant_signup", "user_id", "user-7"]]);
+});
+
+Deno.test("a PostHog capture failure cannot fail an already-sent email", async () => {
+  const deps = makeDeps({
+    rpc: (name: string) =>
+      Promise.resolve({
+        data: name === "get_paywall_hit_candidates" ? [PAYWALL_ROW] : [],
+        error: null,
+      }),
+    capture: () => Promise.reject(new Error("posthog down")),
+  });
+  const res = await runLoopsSyncCron(deps);
+  assertEquals(res.eventsSent, 1);
+  assertEquals(res.failed, 0);
+});
+
+// Regression guard for the reordering fix: trait sync is `limit 200` with no
+// ledger exclusion and the cheapest to lose gracefully (self-heals next run),
+// while contact deletions are LGPD consent revocations and the trigger
+// sweeps are the revenue path -- both must run before trait sync so a slow
+// invocation drops enrichment first, not consent deletions or revenue email.
+Deno.test("sweeps run consent deletions, then trigger sweeps, then trait sync last", async () => {
+  const order: string[] = [];
+  const deps = makeDeps({
+    rpc: (name: string) => {
+      order.push(name);
+      return Promise.resolve({ data: [], error: null });
+    },
+  });
+  await runLoopsSyncCron(deps);
+  assertEquals(order, [
+    "get_loops_contact_deletions",
+    "get_paywall_hit_candidates",
+    "get_abandoned_checkout_candidates",
+    "get_dormant_signup_candidates",
+    "get_loops_trait_candidates",
+  ]);
 });
 
 Deno.test("one failing candidate does not abort the rest of the sweep", async () => {
