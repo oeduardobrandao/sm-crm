@@ -6,6 +6,7 @@ export interface PendingWorkspaceInviteInput {
   role: WorkspaceRole;
   invitedBy: string;
   redirectTo: string;
+  membroId?: number | null;
 }
 
 export interface PendingWorkspaceInviteDeps {

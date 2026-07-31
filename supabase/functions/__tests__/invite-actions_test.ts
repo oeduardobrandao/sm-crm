@@ -237,11 +237,16 @@ function makeInviteAdmin(opts: {
   failAuthInvite?: boolean;         // inviteUserByEmail returns { error } -> send throws
   failInviteDeleteById?: boolean;   // ONLY the rollback delete (.eq("id", ...)) returns { error }
   insertReturnsNoId?: boolean;      // insert resolves with NO error and NO row
+  priorPendingMembroId?: number | null; // the replaced pending row's membro_id, for the inherit lookup
 }) {
   const events: string[] = [];
   const failErr = { message: "injected failure" };
+  const inserts: Array<{ table: string; row: any }> = [];
+  const updates: Array<{ table: string; row: any }> = [];
   return {
     _events: () => events,
+    _inserts: () => inserts,
+    _updates: () => updates,
     auth: {
       admin: {
         // deno-lint-ignore no-explicit-any
@@ -269,17 +274,27 @@ function makeInviteAdmin(opts: {
         eq: (col?: string) => { if (col) eqCols.push(col); return api; },
         neq: (col: string, val: unknown) => { neqFilters.push({ col, val }); return api; },
         in: () => api,
+        not: () => api,
+        is: () => api,
         delete: () => { events.push("del:" + table); isDelete = true; return { ...api, _err: opts.failTable === table }; },
         insert: (row: any) => {
           events.push("ins:" + table + ":" + (row.status ?? ""));
+          inserts.push({ table, row });
           const err = opts.failTable === table ? failErr : null;
           const inserted = err || opts.insertReturnsNoId ? null : { id: "new-invite" };
           return { select: () => ({ single: () => Promise.resolve({ data: inserted, error: err }) }), then: (r: (x: any) => unknown) => Promise.resolve(r({ data: null, error: err })) };
         },
+        update: (row: any) => { events.push("upd:" + table); updates.push({ table, row }); return api; },
         maybeSingle: () => {
           if (table === "profiles") return Promise.resolve({ data: opts.hasProfile === false ? null : { onboarding_complete: opts.onboarding ?? false, id: "u1" }, error: null });
           if (table === "workspace_members") return Promise.resolve({ data: opts.isMember ? { id: "m1" } : null, error: null });
           if (table === "contas") return Promise.resolve({ data: { nome: "WS" }, error: null });
+          if (table === "invites") {
+            return Promise.resolve({
+              data: opts.priorPendingMembroId != null ? { membro_id: opts.priorPendingMembroId } : null,
+              error: null,
+            });
+          }
           return Promise.resolve({ data: null, error: null });
         },
         then: (r: (x: any) => unknown) => {
@@ -590,4 +605,84 @@ Deno.test("inviteOrResend: an ALREADY-ONBOARDED user is never gated — nothing 
   const out = await inviteOrResend(admin as any, baseInput, ADMIN);
   assertEquals(out.route, "already-onboarded");
   assert(!admin._events().includes("delUser:u1"));
+});
+
+Deno.test("inviteOrResend: explicit membroId is stamped on the new pending invite row", async () => {
+  const admin = makeInviteAdmin({ limit: null, members: 0, authUser: null });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, { ...baseInput, membroId: 7 }, CRM);
+  assertEquals(out.route, "invited");
+  const inviteRow = admin._inserts().find((i) => i.table === "invites");
+  assertEquals(inviteRow?.row.membro_id, 7);
+});
+
+Deno.test("inviteOrResend: added route stamps membro_id AND links the membro immediately", async () => {
+  const admin = makeInviteAdmin({
+    limit: null, members: 0,
+    authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+    onboarding: true, hasProfile: true, hasPassword: true, isMember: false,
+  });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, { ...baseInput, membroId: 7 }, CRM);
+  assertEquals(out.route, "added");
+  const inviteRow = admin._inserts().find((i) => i.table === "invites");
+  assertEquals(inviteRow?.row.membro_id, 7);
+  const link = admin._updates().find((u) => u.table === "membros");
+  assertEquals(link?.row.crm_user_id, "u1");
+});
+
+Deno.test("inviteOrResend: added route WITHOUT membroId never touches membros", async () => {
+  const admin = makeInviteAdmin({
+    limit: null, members: 0,
+    authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+    onboarding: true, hasProfile: true, hasPassword: true, isMember: false,
+  });
+  // deno-lint-ignore no-explicit-any
+  await inviteOrResend(admin as any, baseInput, CRM);
+  assertEquals(admin._updates().filter((u) => u.table === "membros").length, 0);
+});
+
+Deno.test("inviteOrResend: a resend with NO membroId inherits the replaced pending row's link", async () => {
+  const admin = makeInviteAdmin({
+    limit: null, members: 0, authUser: null, priorPendingMembroId: 7,
+  });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+  assertEquals(out.route, "invited");
+  const inviteRow = admin._inserts().find((i) => i.table === "invites");
+  assertEquals(inviteRow?.row.membro_id, 7);
+});
+
+Deno.test("inviteOrResend: an explicit membroId beats the inherited one", async () => {
+  const admin = makeInviteAdmin({
+    limit: null, members: 0, authUser: null, priorPendingMembroId: 7,
+  });
+  // deno-lint-ignore no-explicit-any
+  await inviteOrResend(admin as any, { ...baseInput, membroId: 9 }, CRM);
+  const inviteRow = admin._inserts().find((i) => i.table === "invites");
+  assertEquals(inviteRow?.row.membro_id, 9);
+});
+
+Deno.test("inviteOrResend: resend-link route also stamps membro_id", async () => {
+  // Same RESEND_API_KEY/fetch stubbing as the other resend-link tests above —
+  // sendInviteEmail throws without it.
+  const prevKey = Deno.env.get("RESEND_API_KEY");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (() => Promise.resolve(new Response("{}", { status: 200 }))) as typeof fetch;
+  try {
+    const admin = makeInviteAdmin({
+      limit: null, members: 0,
+      authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+      onboarding: false, hasProfile: true, hasPassword: false,
+    });
+    // deno-lint-ignore no-explicit-any
+    const out = await inviteOrResend(admin as any, { ...baseInput, membroId: 7 }, ADMIN);
+    assertEquals(out.route, "resent-link");
+    const inviteRow = admin._inserts().find((i) => i.table === "invites");
+    assertEquals(inviteRow?.row.membro_id, 7);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY"); else Deno.env.set("RESEND_API_KEY", prevKey);
+  }
 });
