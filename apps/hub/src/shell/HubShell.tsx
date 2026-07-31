@@ -6,7 +6,7 @@ import { HubSidebar } from './HubSidebar';
 import { HubMobileNav } from './HubMobileNav';
 import { useTheme } from '../hooks/useTheme';
 import { PoweredByMesaas } from '../components/PoweredByMesaas';
-import { resolveHubTheme } from '../theme';
+import { resolveHubTheme, DEFAULT_HUB_THEME } from '../theme';
 import { fetchBootstrap } from '../api';
 import type { HubBootstrap } from '../types';
 
@@ -63,7 +63,10 @@ export function HubShell() {
     );
   }
 
-  const resolved = resolveHubTheme(bootstrap.workspace.brand_color, theme === 'dark');
+  const resolved = resolveHubTheme(
+    { ...DEFAULT_HUB_THEME, accent: bootstrap.workspace.brand_color },
+    theme === 'dark',
+  );
   const styleText = Object.entries(resolved.vars)
     .map(([k, v]) => `${k}: ${v};`)
     .join(' ');
