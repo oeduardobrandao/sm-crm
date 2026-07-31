@@ -130,8 +130,10 @@ rollback;
 --    emails to the same person -- and nothing else catches it: the two
 --    workspaces take different advisory locks, the 72h cap is keyed by
 --    workspace_id so the second workspace's check never sees the first
---    claim, and the Loops idempotency key is dormant_signup/<workspace_id>,
---    different per workspace. Deliberately filtering by owner_user_id here,
+--    claim. The Loops idempotency key is dormant_signup/<user_id>
+--    (user-scoped), so Loops itself would 409 a second send on the same
+--    key -- but that still means a wasted second claim/send round trip per
+--    extra workspace, not a clean no-op. Deliberately filtering by owner_user_id here,
 --    NOT workspace_id: every other case in this file filters by
 --    workspace_id, which would hide a duplicate row surfacing under the
 --    OTHER workspace_id entirely.

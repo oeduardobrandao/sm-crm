@@ -289,10 +289,13 @@ language sql security definer set search_path = public as $$
   -- in the 3-14 day window, both with zero clientes) would otherwise be
   -- returned TWICE. Nothing downstream catches that: the two workspaces take
   -- different advisory locks, the 72h cap is keyed by workspace_id so the
-  -- second workspace's check never sees the first claim, and the Loops
-  -- idempotency key is dormant_signup/<workspace_id> -- different per
-  -- workspace -- so Loops does not dedupe them either. Net effect would be
-  -- two emails to the same person, minutes apart.
+  -- second workspace's check never sees the first claim. The Loops
+  -- idempotency key is dormant_signup/<user_id> (user-scoped, not
+  -- workspace-scoped -- see the handler.ts comment), so a duplicate row here
+  -- would still cost a second claim upsert and a second outbound Loops call
+  -- even though the 409 Loops returns on the reused key stops it from
+  -- becoming a second email. Net effect without the fix below would be
+  -- redundant claim/send round trips per extra workspace, not a clean no-op.
   --
   -- `distinct on (u.id)` in the inner subquery collapses this to exactly one
   -- row per user, picking the OLDEST qualifying workspace
