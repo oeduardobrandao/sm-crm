@@ -27,7 +27,9 @@ export async function getMembros(): Promise<Membro[]> {
   return data || [];
 }
 
-export async function addMembro(m: Omit<Membro, 'id' | 'user_id' | 'conta_id'>): Promise<Membro> {
+export async function addMembro(
+  m: Omit<Membro, 'id' | 'user_id' | 'conta_id'>,
+): Promise<Omit<Membro, 'custo_mensal'>> {
   const user_id = await getUserId();
   const conta_id = await getContaId();
   // RETURNING is narrowed to the allowlist: `.select()` is RETURNING *, which
@@ -38,7 +40,7 @@ export async function addMembro(m: Omit<Membro, 'id' | 'user_id' | 'conta_id'>):
     .select(MEMBRO_SAFE_COLUMNS)
     .single();
   if (error) throw error;
-  return data as Membro;
+  return data as Omit<Membro, 'custo_mensal'>;
 }
 
 export async function updateMembro(
