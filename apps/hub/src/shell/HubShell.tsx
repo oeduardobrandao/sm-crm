@@ -28,6 +28,13 @@ export function HubShell() {
   const [loading, setLoading] = useState(true);
   const { theme, toggleTheme, setTheme, hasStoredPreference } = useTheme();
   const ht = bootstrap?.hub_theme;
+  // Defense in depth: hub-bootstrap already fails closed (serves NEUTRAL_HUB_THEME
+  // when the workspace isn't entitled), but the client must not trust a `hub_theme`
+  // object's preset fields (surface/font_display/font_body/radius/card_style)
+  // whenever `customized` reads false — only `customized: true` unlocks them. This
+  // keeps the neutral render pixel-identical even if a future bug (or a stale/
+  // tampered payload) ever sends non-default fields alongside customized: false.
+  const isCustomized = ht?.customized ?? false;
   const appliedDefaultAppearance = useRef(false);
 
   useEffect(() => {
@@ -54,8 +61,12 @@ export function HubShell() {
   // are already loaded by index.html) — one shared <link> tag, updated in place
   // when the font choice changes, removed entirely when it reverts to defaults.
   useEffect(() => {
-    const displayId = ht?.font_display ?? DEFAULT_HUB_THEME.fontDisplay;
-    const bodyId = ht?.font_body ?? DEFAULT_HUB_THEME.fontBody;
+    const displayId = isCustomized
+      ? (ht?.font_display ?? DEFAULT_HUB_THEME.fontDisplay)
+      : DEFAULT_HUB_THEME.fontDisplay;
+    const bodyId = isCustomized
+      ? (ht?.font_body ?? DEFAULT_HUB_THEME.fontBody)
+      : DEFAULT_HUB_THEME.fontBody;
     const href = buildGoogleFontsHref(displayId, bodyId);
     const existing = document.getElementById(FONT_LINK_ID) as HTMLLinkElement | null;
     if (href) {
@@ -71,7 +82,7 @@ export function HubShell() {
     } else if (existing) {
       existing.remove();
     }
-  }, [ht?.font_display, ht?.font_body]);
+  }, [isCustomized, ht?.font_display, ht?.font_body]);
 
   // First visit adopts the agency's configured default appearance; an explicit
   // client choice (a value already in localStorage) always wins on later visits.
@@ -112,17 +123,18 @@ export function HubShell() {
     );
   }
 
-  const config: HubThemeConfig = ht
-    ? {
-        accent: bootstrap.workspace.brand_color,
-        surface: ht.surface as HubSurface,
-        fontDisplay: ht.font_display,
-        fontBody: ht.font_body,
-        radius: ht.radius as HubRadius,
-        cardStyle: ht.card_style as HubCardStyle,
-        customized: ht.customized,
-      }
-    : { ...DEFAULT_HUB_THEME, accent: bootstrap.workspace.brand_color };
+  const config: HubThemeConfig =
+    isCustomized && ht
+      ? {
+          accent: bootstrap.workspace.brand_color,
+          surface: ht.surface as HubSurface,
+          fontDisplay: ht.font_display,
+          fontBody: ht.font_body,
+          radius: ht.radius as HubRadius,
+          cardStyle: ht.card_style as HubCardStyle,
+          customized: true,
+        }
+      : { ...DEFAULT_HUB_THEME, accent: bootstrap.workspace.brand_color };
 
   const resolved = resolveHubTheme(config, theme === 'dark');
   const styleText = Object.entries(resolved.vars)

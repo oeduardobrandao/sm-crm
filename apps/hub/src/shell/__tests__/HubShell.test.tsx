@@ -269,6 +269,7 @@ describe('HubShell', () => {
 
     it('does NOT override an explicit stored preference with the agency dark default', async () => {
       localStorage.setItem('hub-theme', 'light');
+      localStorage.setItem('hub-theme-explicit', '1');
       mockedFetchBootstrap.mockResolvedValue({
         workspace: { name: 'Mesaas', logo_url: null, brand_color: '#0f766e' },
         cliente_nome: 'Clínica Aurora',
@@ -293,6 +294,37 @@ describe('HubShell', () => {
       });
 
       expect(document.querySelector('.hub-root')?.getAttribute('data-theme')).toBeNull();
+    });
+
+    it('DOES apply the agency dark default for a returning client with a stored theme value but no explicit-choice marker', async () => {
+      // Regression for the auto-persisted-default bug: useTheme's mount effect
+      // persists 'hub-theme' on every visit (including the unchosen default
+      // 'light'), so a stored value alone must never be read as "the client
+      // chose". Only the explicit marker (set by toggleTheme) should suppress
+      // the agency's configured dark default.
+      localStorage.setItem('hub-theme', 'light');
+      mockedFetchBootstrap.mockResolvedValue({
+        workspace: { name: 'Mesaas', logo_url: null, brand_color: '#0f766e' },
+        cliente_nome: 'Clínica Aurora',
+        is_active: true,
+        cliente_id: 14,
+        feature_mensagens: true,
+        hub_theme: { ...CUSTOM_THEME_BASE, default_appearance: 'dark' },
+      });
+
+      render(
+        <MemoryRouter initialEntries={['/mesaas/hub/token-publico']}>
+          <Routes>
+            <Route path="/:workspace/hub/:token" element={<HubShell />}>
+              <Route index element={<div>Página inicial do hub</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        expect(document.querySelector('.hub-root')?.getAttribute('data-theme')).toBe('dark');
+      });
     });
 
     it('appends a font <link> for non-default fonts', async () => {
@@ -351,6 +383,59 @@ describe('HubShell', () => {
         expect(screen.getByText('Página inicial do hub')).toBeInTheDocument();
       });
 
+      expect(document.getElementById('hub-custom-fonts')).toBeNull();
+    });
+
+    it('ignores non-default preset fields when customized is false (client-side defense in depth)', async () => {
+      // hub-bootstrap already fails closed server-side, but the client must not
+      // trust surface/font_display/font_body/radius/card_style whenever
+      // customized reads false — only customized: true unlocks them. A
+      // malformed/stale payload with customized: false alongside non-default
+      // fields must still render pixel-identical to the no-hub_theme fallback.
+      mockedFetchBootstrap.mockResolvedValue({
+        workspace: { name: 'Mesaas', logo_url: null, brand_color: '#0f766e' },
+        cliente_nome: 'Clínica Aurora',
+        is_active: true,
+        cliente_id: 14,
+        feature_mensagens: true,
+        hub_theme: {
+          customized: false,
+          surface: 'cool',
+          font_display: 'space-grotesk',
+          font_body: 'manrope',
+          radius: 'pill',
+          card_style: 'outline',
+          logo_style: 'wordmark',
+          logo_dark_url: 'https://cdn.mesaas.com/dark.png',
+          hide_branding: true,
+          // Left at the neutral 'light' default deliberately — this test isolates
+          // the surface/font/radius/card_style preset gating that Finding 1 fixes;
+          // default_appearance/hide_branding/logo_* aren't part of that gate (the
+          // brief scoped the client-side fix to resolveHubTheme's config inputs
+          // only), so keeping this field neutral avoids conflating the two.
+          default_appearance: 'light',
+        },
+      });
+
+      render(
+        <MemoryRouter initialEntries={['/mesaas/hub/token-publico']}>
+          <Routes>
+            <Route path="/:workspace/hub/:token" element={<HubShell />}>
+              <Route index element={<div>Página inicial do hub</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Página inicial do hub')).toBeInTheDocument();
+      });
+
+      // Neutral surface vars, not the 'cool' surface's.
+      const styleTag = document.querySelector('style');
+      expect(styleTag?.textContent).toContain('--hub-bg: #FAFAFA;');
+      expect(styleTag?.textContent).toContain('--hub-primary: var(--hub-txt);');
+      // No custom font stylesheet loaded for the (ignored) space-grotesk/manrope pick.
       expect(document.getElementById('hub-custom-fonts')).toBeNull();
     });
   });
