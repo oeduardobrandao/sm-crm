@@ -36,6 +36,8 @@ import {
   type TemplatePropertyDefinition,
   type SelectOption,
 } from '../../../store';
+import { useAuth } from '@/context/AuthContext';
+import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 
 const TYPE_ITEMS: { type: PropertyType; label: string; icon: React.ReactNode }[] = [
   { type: 'text', label: 'Texto', icon: <Type className="h-4 w-4" /> },
@@ -71,6 +73,7 @@ interface Props {
 }
 
 export function PropertyDefinitionPanel({ templateId, definition, onSave, onClose }: Props) {
+  const { profile } = useAuth();
   const isEditing = !!definition?.id;
   const [selectedType, setSelectedType] = useState<PropertyType>(definition?.type ?? 'text');
   const [name, setName] = useState(definition?.name ?? '');
@@ -171,7 +174,15 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
       }
       onSave();
     } catch (err: unknown) {
-      toast.error((err as Error).message || 'Erro ao salvar propriedade');
+      // trg_feature_custom_props gates template_property_definitions at the
+      // database, on a direct client write: no edge function in the path, and
+      // store.ts is not a TanStack mutation, so App.tsx's MutationCache.onError
+      // never sees it. This catch is the only observation point for
+      // feature_custom_properties -- and the raw-message fallback below would
+      // otherwise show the user the literal
+      // "feature_disabled:feature_custom_properties" Postgres string.
+      if (!handleEntitlementMutationError(err, profile?.conta_id ?? null))
+        toast.error((err as Error).message || 'Erro ao salvar propriedade');
     } finally {
       setSaving(false);
     }

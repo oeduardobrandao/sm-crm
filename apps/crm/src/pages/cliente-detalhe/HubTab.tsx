@@ -417,6 +417,7 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
       <TabsContent value="marca">
         <BrandEditor
           clienteId={clienteId}
+          contaId={contaId}
           brand={brandData?.brand ?? null}
           files={brandData?.files ?? []}
           onSaved={() => qc.invalidateQueries({ queryKey: ['hub-brand-crm', clienteId] })}
@@ -441,11 +442,13 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
 
 function BrandEditor({
   clienteId,
+  contaId,
   brand,
   files,
   onSaved,
 }: {
   clienteId: number;
+  contaId: string;
   brand: HubBrandRow | null;
   files: HubBrandFileRow[];
   onSaved: () => void;
@@ -469,6 +472,13 @@ function BrandEditor({
       await upsertHubBrand(clienteId, values);
       toast.success('Marca salva!');
       onSaved();
+    } catch (e) {
+      // trg_feature_brand gates hub_brand at the database, on a direct client
+      // write with no edge function in the path and no TanStack mutation, so
+      // App.tsx's MutationCache.onError never sees it. This catch is the only
+      // observation point for feature_brand_customization.
+      if (!handleEntitlementMutationError(e, contaId ?? null))
+        toast.error('Não foi possível salvar a marca.');
     } finally {
       setSaving(false);
     }
@@ -483,8 +493,10 @@ function BrandEditor({
       await upsertHubBrand(clienteId, { logo_file_id: record.id });
       toast.success('Logo enviado!');
       onSaved();
-    } catch {
-      toast.error('Não foi possível enviar o logo.');
+    } catch (e) {
+      // Same trigger, second write path into hub_brand.
+      if (!handleEntitlementMutationError(e, contaId ?? null))
+        toast.error('Não foi possível enviar o logo.');
     } finally {
       setUploadingLogo(false);
     }

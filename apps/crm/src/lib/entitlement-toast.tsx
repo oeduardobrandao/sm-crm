@@ -8,12 +8,22 @@ import { reportPaywallHit } from './paywall-report';
  * is handled by the upgrade-unlock screen (Plan 2) — here we always offer the link,
  * since only owners trigger plan-limited create flows in practice.
  *
- * Also records feature denials for the `paywall_hit` marketing trigger. This is
- * the ONLY observation point for the trigger-based gates in
- * 20260611140003_feature_triggers.sql (hub portal, ideias, financial, contracts,
- * leads, brand, custom properties): those are DB triggers fired by direct client
- * writes, with no edge function in the path. FeatureGate covers only
- * feature_csv_import and feature_mcp.
+ * Also records feature denials for the `paywall_hit` marketing trigger.
+ *
+ * Wiring this into App.tsx's global MutationCache.onError covers far less than
+ * it looks: useMutation exists at only seven non-test CRM call sites, and NONE
+ * of them is a trigger-gated surface. The gates in
+ * 20260611140003_feature_triggers.sql fire on direct client writes made from
+ * plain store/*.ts functions in event handlers, which never reach the mutation
+ * cache. So this function is called EXPLICITLY from each gated catch block --
+ * HubTab (hub token, brand save, logo upload), LeadsPage, FinanceiroPage,
+ * ContratosPage, PropertyDefinitionPanel. Do not delete those calls as
+ * redundant with the global hook; the global hook does not see them.
+ *
+ * For feature_brand_customization and feature_custom_properties the catch site
+ * is the ONLY observation point. For leads/financial/contracts it is the
+ * stale-entitlement backstop -- ProtectedRoute's UpgradeLockedScreen reports
+ * the common case, before the user can reach the write at all.
  *
  * Limit errors are deliberately NOT reported: limit gates are slice 2.
  */

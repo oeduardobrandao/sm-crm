@@ -300,31 +300,47 @@ The correct check, and the security boundary of this function:
 The `workspace_id` in the body is attacker-controlled input and is never trusted for anything
 except being the subject of that membership check.
 
+This is the ACTUAL post-implementation coverage. An earlier draft of this table claimed the
+global TanStack `MutationCache.onError` in `App.tsx` covered all seven trigger-gated features.
+It did not: `useMutation` exists at only seven non-test CRM call sites (`useBanners`,
+`useNotifications`, `RelatoriosTab`, `IntegracoesClaudePage`, and three files under
+`pages/arquivos/`), and NONE of them is a trigger-gated surface. Leads, financeiro, contratos,
+ideias and marca all write through plain `store/*.ts` async functions called from event
+handlers, so their `feature_disabled:*` PostgREST error never reaches the mutation cache. Each
+row below names a real, verified call site.
+
 | Source | Covers | Reliability |
 |---|---|---|
 | **`FeatureGate` locked-state render** (`components/paywall/FeatureGate.tsx`) | `feature_csv_import`, `feature_mcp` | Best. Fires when the user is *shown* the denial, before any write is attempted. |
-| **CRM mutation error handler** on the PostgREST `feature_disabled` shape | `feature_hub_portal`, `feature_ideas`, `feature_financial`, `feature_contracts`, `feature_leads`, `feature_brand_customization`, `feature_custom_properties` | Good. Requires the user to actually attempt the write. |
+| **`UpgradeLockedScreen` route gate** (`components/paywall/UpgradeLockedScreen.tsx`, fed the flag by `ProtectedRoute`) | `feature_leads`, `feature_financial`, `feature_contracts`, `feature_ideas`, plus `feature_analytics_reports` and `feature_post_scheduling` | Best, and the COMMON path for these: `ProtectedRoute` sends a user whose flag is off here before they can reach the page that performs the write. |
+| **Explicit `handleEntitlementMutationError` catch sites** — `HubTab` (hub token + `BrandEditor.save` + `uploadLogo`), `LeadsPage.onSubmit`, `FinanceiroPage.onSubmit`, `ContratosPage.onSubmit`, `PropertyDefinitionPanel.save` | `feature_hub_portal`, `feature_brand_customization`, `feature_custom_properties`, and as a stale-entitlement backstop `feature_leads`, `feature_financial`, `feature_contracts` | Good. Requires the user to actually attempt the write. For the three route-gated features this only fires in the stale window (flag flips mid-session) or when the workspace is `isUnlimited`. |
 | **MCP edge functions** (`mcp-keys:54`, `mcp-oauth-consent:127`) | `feature_mcp` | Server-side insert, no browser involved. |
 
-The split matters: `FeatureGate` exists at only 5 call sites covering 2 features, so it cannot
-carry this alone. Everything in `20260611140003_feature_triggers.sql` — including
-`feature_hub_portal`, which is the gate most likely to block activation — is a database trigger
-reached by a direct client write and can only be observed from the error handler.
+`feature_brand_customization` and `feature_custom_properties` have NO route gate — `/clientes/:id`
+and the entregas template editor are not in `ProtectedRoute`'s `FEATURE_GATED` map — so the catch
+site is their only observation point. `upsertHubBrand` had to start throwing for that to be
+possible at all: it discarded the PostgREST `error` entirely, so a denied save showed
+"Marca salva!" and nothing was observable anywhere.
 
-`FeatureGate` renders on every page view, so the report is debounced to once per
-(workspace, feature) per session in the browser; the 7-day window in the candidate RPC absorbs
+**`feature_ideas` has no CRM write path at all.** `trg_feature_ideias` fires on `insert on ideias`,
+and the CRM only ever SELECTs and UPDATEs that table (`store/ideias.ts`) — ideas are created by the
+client in the Hub, through the `hub-ideias` edge function. So there is no CRM catch site to
+instrument, and `feature_ideas` is covered by the `/ideias` route gate alone. A client-side denial
+in the Hub is out of scope: the Hub has no authenticated CRM user to attribute a `paywall_hit` to.
+
+Both gate components report from a `useEffect`, not during render, and the report is deduped once
+per (workspace, feature) per session in the browser; the 7-day window in the candidate RPC absorbs
 the rest.
 
-The "Fazer upgrade" button inside `FeatureGate` is a strictly higher-intent signal than the
-render. It sets `clicked_upgrade: true` on the row so Loops can segment "saw the wall" from
-"reached for the door".
+The "Fazer upgrade" button in either component is a strictly higher-intent signal than the render.
+It sets `clicked_upgrade: true` on the row so Loops can segment "saw the wall" from "reached for
+the door", and it deliberately bypasses the render dedupe.
 
 **Honest tradeoff:** this reintroduces a browser dependency for one of the three triggers,
 partially walking back the "server-side only" decision. It is still substantially better than a
 PostHog webhook — a first-party authenticated POST to your own Supabase domain, not a
 third-party analytics beacon, so adblockers are not the failure mode. But a user who closes the
-tab in the same tick loses the report. Accepted for slice 1; the alternative is instrumenting
-each gated route individually, which is slice-2-sized.
+tab in the same tick loses the report. Accepted for slice 1.
 
 **Slice 1 records feature gates only.** Limit gates (`max_clients` and friends) surface as a
 different error shape and are deferred to slice 2 alongside `activated_but_capped`.

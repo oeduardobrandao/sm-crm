@@ -137,9 +137,15 @@ export async function getHubBrand(clienteId: number) {
 }
 
 export async function upsertHubBrand(clienteId: number, values: Partial<HubBrandRow>) {
-  await supabase
+  // Must throw. trg_feature_brand raises feature_disabled:feature_brand_customization
+  // on this exact write, and discarding `error` meant the caller showed "Marca
+  // salva!" for a save the database had refused. That silence is also why the
+  // denial was unobservable: with nothing thrown there is no catch for
+  // handleEntitlementMutationError to sit in.
+  const { error } = await supabase
     .from('hub_brand')
     .upsert({ ...values, cliente_id: clienteId }, { onConflict: 'cliente_id' });
+  if (error) throw error;
 }
 
 export async function addHubBrandFile(

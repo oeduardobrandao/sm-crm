@@ -69,6 +69,7 @@ import {
   type Contrato,
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
+import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { formatFinancialBRL } from '@/lib/financialAccess';
 import { captureEvent } from '@/lib/analytics';
 
@@ -103,7 +104,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function ContratosPage() {
-  const { canSeeFinancials } = useAuth();
+  const { canSeeFinancials, profile } = useAuth();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterStatus>('todos');
@@ -190,8 +191,13 @@ export default function ContratosPage() {
       }
       qc.invalidateQueries({ queryKey: ['contratos'] });
       setModalOpen(false);
-    } catch {
-      toast.error('Erro ao salvar');
+    } catch (e) {
+      // trg_feature_contracts gates `contratos` at the database, on a direct
+      // client write: no edge function in the path, and store.ts is not a
+      // TanStack mutation, so App.tsx's MutationCache.onError never sees it.
+      // This catch is the only observation point for feature_contracts.
+      if (!handleEntitlementMutationError(e, profile?.conta_id ?? null))
+        toast.error('Erro ao salvar');
     } finally {
       setSaving(false);
     }
