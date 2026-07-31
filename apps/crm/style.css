@@ -3519,7 +3519,7 @@ select.form-input option {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: 1.25rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 /* Native colour picker, sized to a 44px touch target and given the same
