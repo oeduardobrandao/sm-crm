@@ -55,6 +55,15 @@ Deno.test("hub-mensagens: GET returns feed items + unread", async () => {
   const body = await readJson(res);
   assertEquals(body.items.length, 1);
   assertEquals(body.unread, 2);
+
+  // Assert tenant scoping: verify RPC calls include correct account/client ids from token
+  const feedCall = db.calls.find((c) => c.table === "rpc:get_mensagens_feed");
+  assertEquals(feedCall?.payload?.p_conta_id, "conta-1");
+  assertEquals(feedCall?.payload?.p_cliente_id, 14);
+
+  const unreadCall = db.calls.find((c) => c.table === "rpc:get_mensagens_unread");
+  assertEquals(unreadCall?.payload?.p_conta_id, "conta-1");
+  assertEquals(unreadCall?.payload?.p_cliente_id, 14);
 });
 
 Deno.test("hub-mensagens: GET with count=1 returns only unread", async () => {
@@ -90,6 +99,15 @@ Deno.test("hub-mensagens: POST inserts a general message scoped to the token's c
   assertEquals(res.status, 200);
   const body = await readJson(res);
   assertEquals(body.ok, true);
+
+  // Assert tenant scoping: verify insert payload uses token-resolved account/client ids, not request body
+  const insertCall = db.calls.find((c) => c.table === "mensagens" && c.operation === "insert");
+  assertEquals(insertCall?.payload, {
+    conta_id: "conta-1",
+    cliente_id: 14,
+    content: "Olá equipe!",
+    is_workspace_user: false,
+  });
 });
 
 Deno.test("hub-mensagens: POST /seen marks the cliente marker", async () => {
