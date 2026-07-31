@@ -379,7 +379,7 @@ export const ColorPickerFormat = ({ className, ...props }: ColorPickerFormatProp
       <div className={cn('flex w-full items-center gap-2', className)} {...props}>
         <Input
           aria-label="Cor em hexadecimal"
-          className="h-8 flex-1 rounded-md bg-secondary px-2 font-mono text-xs shadow-none"
+          className="h-9 flex-1 rounded-md bg-secondary px-2.5 font-mono text-xs shadow-none"
           disabled={disabled}
           onBlur={(e) => commitHex(e.target.value)}
           onChange={(e) => {
