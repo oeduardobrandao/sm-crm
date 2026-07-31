@@ -369,7 +369,36 @@ language sql security definer set search_path = public as $$
   select u.id, u.email::text, p.nome,
          extract(epoch from (now() - u.email_confirmed_at))::int / 86400,
          count(ws.id)::int,
-         bool_or(coalesce(ws.plan_id, default_plan_id()) = default_plan_id())
+         -- any_free MUST stay consistent with the event RPCs' definition of a
+         -- free workspace: effective default plan AND no trialing/active
+         -- subscription. plan_id alone is not sufficient -- it drifts out of
+         -- sync with the real subscription state (Stripe webhook lag, a manual
+         -- action in the Stripe dashboard, plan_source = 'manual'), which is
+         -- exactly why all three event RPCs carry the same workspace_subscriptions
+         -- exclusion. If the two definitions diverge again, a genuinely paying
+         -- customer whose plan_id still resolves to the default plan reports
+         -- any_free = true, and the trait sync files them into whatever Loops
+         -- segment keys on it -- free-to-paid campaigns targeting someone who
+         -- already pays. The symptom is silent mis-segmentation that nobody
+         -- notices, so keep this expression and the RPCs' clause in lockstep.
+         --
+         -- The subscription exclusion belongs INSIDE the per-workspace
+         -- expression bool_or aggregates, never in the WHERE clause: a WHERE
+         -- would drop the user's paid workspaces from the row set entirely and
+         -- silently deflate workspace_count, which must stay a count of ALL
+         -- owned workspaces regardless of plan. A correlated `not exists` is
+         -- used rather than a join partly to keep this byte-identical to the
+         -- clause the three event RPCs carry, and partly because it cannot
+         -- affect count(ws.id) even if workspace_subscriptions ever stops being
+         -- one row per workspace (today workspace_id is its primary key,
+         -- 20260609120003).
+         bool_or(
+           coalesce(ws.plan_id, default_plan_id()) = default_plan_id()
+           and not exists (
+             select 1 from workspace_subscriptions s
+             where s.workspace_id = ws.id and s.status in ('trialing', 'active')
+           )
+         )
   from auth.users u
   join profiles p on p.id = u.id
   join workspace_members wm on wm.user_id = u.id and wm.role = 'owner'

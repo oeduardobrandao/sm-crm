@@ -306,4 +306,48 @@ begin;
   end $$;
 rollback;
 
+-- 12. any_free must mean what the event RPCs mean by free: effective default
+--     plan AND no trialing/active subscription. A workspace whose plan_id still
+--     resolves to the default plan while a real subscription is active (Stripe
+--     webhook lag, a manual dashboard action, plan_source = 'manual') is NOT
+--     free -- reporting it as free files a paying customer into Loops'
+--     free-plan segment and points the free-to-paid campaigns at someone who
+--     already pays.
+--     The delete is load-bearing: the fixture user owns TWO workspaces (v_ws
+--     plus handle_new_user_workspace's throwaway one -- see et_loops_fixture's
+--     comment), and bool_or is true if ANY owned workspace is free, so the
+--     throwaway free workspace would mask the regression entirely. Dropping
+--     that membership makes f.workspace_id genuinely the user's only workspace,
+--     which is also what lets workspace_count be asserted at 1 -- proving the
+--     subscription exclusion narrowed only any_free and did not leak into the
+--     row set and deflate the count.
+begin;
+  do $$
+  declare f record; v_any boolean; n int;
+  begin
+    select * into f from et_loops_fixture((select id from plans where is_default), true);
+    delete from workspace_members
+      where user_id = f.user_id and workspace_id <> f.workspace_id;
+
+    -- Control: with no subscription, the same user MUST report any_free = true.
+    -- Without this, the assertion below would pass identically if the fix had
+    -- inverted the expression or made it constantly false.
+    select any_free into v_any from get_loops_trait_candidates() where user_id = f.user_id;
+    if v_any is not true then
+      raise exception 'default-plan workspace with no subscription should report any_free = true (got %)', v_any;
+    end if;
+
+    insert into workspace_subscriptions (workspace_id, stripe_customer_id, status)
+      values (f.workspace_id, 'cus_' || f.workspace_id, 'active');
+
+    select any_free, workspace_count into v_any, n
+      from get_loops_trait_candidates() where user_id = f.user_id;
+    if n is null then raise exception 'trait candidate row disappeared for the fixture user'; end if;
+    if n <> 1 then raise exception 'workspace_count should stay 1, got %', n; end if;
+    if v_any is not false then
+      raise exception 'active subscription on a default-plan workspace still reported any_free = % (expected false)', v_any;
+    end if;
+  end $$;
+rollback;
+
 drop function if exists et_loops_fixture(text, boolean, int);
