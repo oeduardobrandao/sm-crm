@@ -237,46 +237,78 @@ returns table (
   owner_nome text, days_since_signup int, attempts int
 )
 language sql security definer set search_path = public as $$
-  select ws.id, ws.name, u.id, u.email::text, p.nome,
-         extract(epoch from (now() - u.email_confirmed_at))::int / 86400,
-         coalesce(le.attempts, 0)
-  from auth.users u
-  join workspaces ws on ws.created_by = u.id
-  join workspace_members wm
-    on wm.user_id = u.id and wm.workspace_id = ws.id and wm.role = 'owner'
-  join profiles p on p.id = u.id
-  left join lifecycle_emails le
-    on le.email_type = 'dormant_signup' and le.user_id = u.id
-  where p.marketing_opt_in = true
-    and u.email is not null
-    and u.email_confirmed_at is not null
-    and u.email_confirmed_at <= now() - interval '3 days'
-    and u.email_confirmed_at >= now() - interval '14 days'
-    -- Self-serve discriminator: BOTH halves required. The invite-path fallback
-    -- in 20260719000002 sets created_by to the INVITED user when no workspace
-    -- exists, which the created_by join alone would misclassify as self-serve.
-    and nullif(u.raw_user_meta_data ->> 'conta_id', '') is null
-    and coalesce(ws.plan_id, default_plan_id()) = default_plan_id()
-    -- Same reasoning as get_paywall_hit_candidates: plan_id drift must not
-    -- masquerade as free while a subscription is actually trialing/active,
-    -- or the claim refuses forever and this candidate never clears.
-    and not exists (
-      select 1 from workspace_subscriptions s
-      where s.workspace_id = ws.id and s.status in ('trialing', 'active')
-    )
-    and not exists (select 1 from clientes c where c.conta_id = ws.id)
-    and not exists (
-      select 1 from lifecycle_emails le2
-      where le2.workspace_id = ws.id
-        and le2.email_type in ('paywall_hit', 'checkout_abandoned', 'dormant_signup')
-        and le2.sent_at > now() - interval '72 hours'
-        and (le2.delivered_at is not null or le2.sent_at > now() - interval '1 hour')
-    )
-    and (le.id is null
-         or (le.delivered_at is null
-             and le.sent_at <= now() - interval '1 hour'
-             and le.attempts < 20))
-  order by u.email_confirmed_at asc, u.id asc
+  -- dormant_signup is a USER-scoped email -- its ledger row keys on user_id,
+  -- not workspace_id (claim_marketing_email's dormant_signup branch dedupes
+  -- on (email_type, user_id), unlike the workspace-scoped types). The
+  -- ws.created_by = u.id join below fans out one row per workspace a user
+  -- self-created, so a user who created TWO qualifying free workspaces (both
+  -- in the 3-14 day window, both with zero clientes) would otherwise be
+  -- returned TWICE. Nothing downstream catches that: the two workspaces take
+  -- different advisory locks, the 72h cap is keyed by workspace_id so the
+  -- second workspace's check never sees the first claim, and the Loops
+  -- idempotency key is dormant_signup/<workspace_id> -- different per
+  -- workspace -- so Loops does not dedupe them either. Net effect would be
+  -- two emails to the same person, minutes apart.
+  --
+  -- `distinct on (u.id)` in the inner subquery collapses this to exactly one
+  -- row per user, picking the OLDEST qualifying workspace
+  -- (ws.created_at asc, ws.id asc tiebreak) so the choice is stable across
+  -- sweeps rather than varying between runs. Do NOT flatten this back into a
+  -- single-level query or replace it with a bare `select distinct`: unlike
+  -- get_welcome_email_candidates' distinct fix (20260730000001), this
+  -- function's returned columns (workspace_id, workspace_name) genuinely
+  -- differ per candidate workspace and must be picked, not deduped away by a
+  -- distinct over the whole row. get_welcome_email_candidates hit the
+  -- identical ws.created_by = u.id trap; read its comment for the shape this
+  -- borrows.
+  select d.workspace_id, d.workspace_name, d.owner_user_id, d.owner_email,
+         d.owner_nome, d.days_since_signup, d.attempts
+  from (
+    select distinct on (u.id)
+           ws.id as workspace_id, ws.name as workspace_name, u.id as owner_user_id,
+           u.email::text as owner_email, p.nome as owner_nome,
+           extract(epoch from (now() - u.email_confirmed_at))::int / 86400 as days_since_signup,
+           coalesce(le.attempts, 0) as attempts,
+           u.email_confirmed_at
+    from auth.users u
+    join workspaces ws on ws.created_by = u.id
+    join workspace_members wm
+      on wm.user_id = u.id and wm.workspace_id = ws.id and wm.role = 'owner'
+    join profiles p on p.id = u.id
+    left join lifecycle_emails le
+      on le.email_type = 'dormant_signup' and le.user_id = u.id
+    where p.marketing_opt_in = true
+      and u.email is not null
+      and u.email_confirmed_at is not null
+      and u.email_confirmed_at <= now() - interval '3 days'
+      and u.email_confirmed_at >= now() - interval '14 days'
+      -- Self-serve discriminator: BOTH halves required. The invite-path fallback
+      -- in 20260719000002 sets created_by to the INVITED user when no workspace
+      -- exists, which the created_by join alone would misclassify as self-serve.
+      and nullif(u.raw_user_meta_data ->> 'conta_id', '') is null
+      and coalesce(ws.plan_id, default_plan_id()) = default_plan_id()
+      -- Same reasoning as get_paywall_hit_candidates: plan_id drift must not
+      -- masquerade as free while a subscription is actually trialing/active,
+      -- or the claim refuses forever and this candidate never clears.
+      and not exists (
+        select 1 from workspace_subscriptions s
+        where s.workspace_id = ws.id and s.status in ('trialing', 'active')
+      )
+      and not exists (select 1 from clientes c where c.conta_id = ws.id)
+      and not exists (
+        select 1 from lifecycle_emails le2
+        where le2.workspace_id = ws.id
+          and le2.email_type in ('paywall_hit', 'checkout_abandoned', 'dormant_signup')
+          and le2.sent_at > now() - interval '72 hours'
+          and (le2.delivered_at is not null or le2.sent_at > now() - interval '1 hour')
+      )
+      and (le.id is null
+           or (le.delivered_at is null
+               and le.sent_at <= now() - interval '1 hour'
+               and le.attempts < 20))
+    order by u.id, ws.created_at asc, ws.id asc
+  ) d
+  order by d.email_confirmed_at asc, d.owner_user_id asc
   limit 50
 $$;
 

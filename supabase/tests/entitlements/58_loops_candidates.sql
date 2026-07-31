@@ -69,11 +69,11 @@ rollback;
 -- 2. POSITIVE CONTROL: a well-formed opted-in, default-plan fixture actually
 --    PRODUCES a candidate from get_dormant_signup_candidates,
 --    get_abandoned_checkout_candidates, and get_loops_trait_candidates.
---    Without this, case 7's invited-user exclusion (and the opted-out
+--    Without this, case 9's invited-user exclusion (and the opted-out
 --    negatives in case 1) would pass identically if the underlying predicate
 --    were deleted or the RPC always returned zero rows -- a test that passes
 --    for the wrong reason is worse than no test. get_paywall_hit_candidates
---    already gets its positive control from case 4 below (n <> 1 there
+--    already gets its positive control from case 5 below (n <> 1 there
 --    proves the happy path, not just the cancellation carve-out).
 begin;
   do $$
@@ -96,7 +96,32 @@ begin;
   end $$;
 rollback;
 
--- 3. A workspace on a paid (non-default) plan produces no candidate.
+-- 3. THE REGRESSION: a user who self-created TWO qualifying free workspaces
+--    (the fixture's own v_ws, plus handle_new_user_workspace's throwaway one
+--    -- see et_loops_fixture's comment above) must be counted ONCE by
+--    get_dormant_signup_candidates, not once per workspace. dormant_signup's
+--    ledger row keys on user_id, so two rows here would mean two separate
+--    emails to the same person -- and nothing else catches it: the two
+--    workspaces take different advisory locks, the 72h cap is keyed by
+--    workspace_id so the second workspace's check never sees the first
+--    claim, and the Loops idempotency key is dormant_signup/<workspace_id>,
+--    different per workspace. Deliberately filtering by owner_user_id here,
+--    NOT workspace_id: every other case in this file filters by
+--    workspace_id, which would hide a duplicate row surfacing under the
+--    OTHER workspace_id entirely.
+begin;
+  do $$
+  declare f record; n int;
+  begin
+    select * into f from et_loops_fixture((select id from plans where is_default), true);
+    select count(*) into n from get_dormant_signup_candidates() where owner_user_id = f.user_id;
+    if n <> 1 then
+      raise exception 'user with two qualifying workspaces produced % dormant_signup rows, expected 1', n;
+    end if;
+  end $$;
+rollback;
+
+-- 4. A workspace on a paid (non-default) plan produces no candidate.
 begin;
   do $$
   declare f record; n int; v_paid text;
@@ -109,7 +134,7 @@ begin;
   end $$;
 rollback;
 
--- 4. A CANCELLED subscription still counts as free: the mirror row survives
+-- 5. A CANCELLED subscription still counts as free: the mirror row survives
 --    cancellation, so row existence is not a proxy for paid. This is also
 --    get_paywall_hit_candidates' positive control: n <> 1 fails on either a
 --    broken free-plan check OR a broken happy path.
@@ -126,7 +151,7 @@ begin;
   end $$;
 rollback;
 
--- 5. THE REGRESSION: a dormant_signup sent 12h ago must suppress a paywall_hit
+-- 6. THE REGRESSION: a dormant_signup sent 12h ago must suppress a paywall_hit
 --    for the same workspace. Before dormant rows carried workspace_id, the cap
 --    predicate could not see them at all.
 begin;
@@ -142,7 +167,7 @@ begin;
   end $$;
 rollback;
 
--- 6. Two claim_marketing_email calls for DIFFERENT types on one workspace:
+-- 7. Two claim_marketing_email calls for DIFFERENT types on one workspace:
 --    exactly one wins.
 begin;
   do $$
@@ -156,7 +181,7 @@ begin;
   end $$;
 rollback;
 
--- 7. Send-time re-check: a workspace that subscribed after the RPC selected it
+-- 8. Send-time re-check: a workspace that subscribed after the RPC selected it
 --    loses the claim.
 begin;
   do $$
@@ -170,7 +195,7 @@ begin;
   end $$;
 rollback;
 
--- 8. An invited user (conta_id in signup metadata) is not a dormant_signup
+-- 9. An invited user (conta_id in signup metadata) is not a dormant_signup
 --    candidate, even though workspaces.created_by points at them. Case 2
 --    above is the positive control this negative relies on: without it, this
 --    case would pass identically if the whole RPC always returned zero rows.
@@ -186,7 +211,7 @@ begin;
   end $$;
 rollback;
 
--- 9. Attempt cap: 20 is terminal, 19 with a stale claim is still eligible.
+-- 10. Attempt cap: 20 is terminal, 19 with a stale claim is still eligible.
 begin;
   do $$
   declare f record; n int;
