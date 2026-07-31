@@ -920,7 +920,23 @@ export default function HubTab() {
           >
             <ColorPickerSelection style={{ height: 140 }} />
             <ColorPickerHue />
-            <div style={{ display: 'flex', gap: '0.4rem' }}>
+            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+              {/* The selection/hue surfaces show a gradient, not the committed
+                  color -- this filled swatch is the one unambiguous "this is the
+                  color you picked" signal. */}
+              <div
+                role="img"
+                aria-label={`Cor selecionada: ${brandColor}`}
+                title={brandColor}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 8,
+                  background: brandColor,
+                  border: '1px solid var(--border-color)',
+                  flexShrink: 0,
+                }}
+              />
               <ColorPickerEyeDropper />
               <ColorPickerFormat />
             </div>
