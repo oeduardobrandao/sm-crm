@@ -34,7 +34,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { ColorPicker } from '@/components/shared/ColorPicker';
+import {
+  ColorPicker as FigmaColorPicker,
+  ColorPickerSelection,
+  ColorPickerHue,
+  ColorPickerEyeDropper,
+  ColorPickerFormat,
+} from '@/components/ui/color-picker-advanced';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
 import { useAuth } from '../../../context/AuthContext';
 import { useEntitlements } from '../../../hooks/useEntitlements';
@@ -71,6 +77,11 @@ const HINT: CSSProperties = {
 };
 const FIELD: CSSProperties = { marginBottom: '1.5rem' };
 const FIELD_LABEL: CSSProperties = { display: 'block', marginBottom: '0.5rem' };
+
+// The CRM's own tipo palette (postLabels.ts) -- already the canonical
+// "Mesaas brand-adjacent" colours per PRODUCT.md, so they double as sensible
+// one-click presets here instead of an arbitrary swatch set.
+const BRAND_PRESET_COLORS = ['#eab308', '#E1306C', '#42c8f5', '#3ecf8e'];
 
 const SURFACE_OPTIONS: { value: HubSurface; label: string }[] = [
   { value: 'neutral', label: 'Neutro' },
@@ -572,6 +583,51 @@ function accentChipStyle(kind: 'filled' | 'outline'): CSSProperties {
   };
 }
 
+/** One-click brand-adjacent presets, standing in for the shared ColorPicker's
+ * `brandColors` swatch row (unused by this tab before this change -- HubTab never
+ * passed it any presets). */
+function PresetSwatches({
+  value,
+  onPick,
+  disabled,
+}: {
+  value: string;
+  onPick: (hex: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Cores sugeridas"
+      style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.75rem' }}
+    >
+      {BRAND_PRESET_COLORS.map((hex) => {
+        const active = value.toLowerCase() === hex.toLowerCase();
+        return (
+          <button
+            key={hex}
+            type="button"
+            disabled={disabled}
+            onClick={() => onPick(hex)}
+            aria-label={hex}
+            aria-pressed={active}
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 6,
+              border: active ? '2px solid var(--primary-color)' : '1px solid var(--border-color)',
+              background: hex,
+              cursor: disabled ? 'default' : 'pointer',
+              padding: 0,
+              opacity: disabled ? 0.5 : 1,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 /** Shows where the accent actually lands (button, active nav, calendar), resolved
  * through the real theme resolver -- never a hand-picked shade of the hex the user
  * just typed. Surface/font/radius/card style are fixed neutrals here on purpose:
@@ -851,17 +907,24 @@ export default function HubTab() {
           title="Cor da marca"
           description="Aplicada a botões, navegação ativa e calendário. Contraste garantido."
         >
-          <ColorPicker
+          <PresetSwatches value={brandColor} onPick={setBrandColor} disabled={controlsDisabled} />
+          {/* workspaces.brand_color is CHECK'd to 6-digit hex, and resolveHubTheme
+              rejects anything else (falls back to #171717) -- this picker's public
+              contract is hex-only by construction (see color-picker-advanced.tsx),
+              so there is no alpha slider to opt out of. */}
+          <FigmaColorPicker
             value={brandColor}
-            onChange={(hex) => setBrandColor(hex)}
-            label="Cor da marca"
+            onChange={setBrandColor}
             disabled={controlsDisabled}
-            // workspaces.brand_color is CHECK'd to 6-digit hex, and resolveHubTheme
-            // rejects anything else (falls back to #171717) -- an 8-digit
-            // #rrggbbaa pick here would either fail to save or silently be ignored
-            // by the hub. ColorPicker defaults allowAlpha to true; opt out.
-            allowAlpha={false}
-          />
+            style={{ maxWidth: 280, gap: '0.6rem' }}
+          >
+            <ColorPickerSelection style={{ height: 140 }} />
+            <ColorPickerHue />
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <ColorPickerEyeDropper />
+              <ColorPickerFormat />
+            </div>
+          </FigmaColorPicker>
           <AccentChips brandColor={brandColor} />
           <p style={HINT}>
             A mesma cor do relatório mensal. Marca o calendário do Hub e os destaques do relatório.

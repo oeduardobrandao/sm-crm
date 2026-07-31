@@ -77,29 +77,13 @@ vi.mock('../../HubPreview', () => ({
   },
 }));
 
-// The real popover-based picker isn't the thing under test here — stubbed to a
-// plain button that commits a fixed test hex, same spirit as mocking ReportPreview
-// out of RelatoriosTab.test.tsx.
-vi.mock('@/components/shared/ColorPicker', () => ({
-  ColorPicker: ({
-    value,
-    onChange,
-    allowAlpha,
-  }: {
-    value: string;
-    onChange: (hex: string) => void;
-    allowAlpha?: boolean;
-  }) => (
-    <button
-      type="button"
-      data-testid="color-picker"
-      data-allow-alpha={String(allowAlpha)}
-      onClick={() => onChange('#abcdef')}
-    >
-      {value}
-    </button>
-  ),
-}));
+// The Figma-style picker (color-picker-advanced.tsx) is NOT mocked: its hex
+// input is a plain <input>, so jsdom handles it fine, and its own validation
+// (commit-on-blur, revert-on-invalid) is exactly what a couple of tests below
+// exist to pin. What jsdom genuinely can't do is canvas/pointer-geometry drag
+// interactions (ColorPickerSelection, ColorPickerHue) — those aren't exercised
+// here; HubTab's contract with the picker only depends on value/onChange/disabled,
+// all reachable through the hex input.
 
 // Radix Select needs pointer-capture/scrollIntoView jsdom doesn't implement — same
 // stub TikTokSettingsPanel.test.tsx and WorkflowModals.test.tsx use.
@@ -250,6 +234,19 @@ vi.mock('@/components/ui/alert-dialog', async () => {
 
 import HubTab from '../HubTab';
 
+function getHexInput() {
+  return screen.getByLabelText('Cor em hexadecimal') as HTMLInputElement;
+}
+
+/** Types a hex value into the real picker's hex input and commits it (blur),
+ * mirroring how a user actually edits it -- the input only validates/emits on
+ * blur or Enter, not on every keystroke (see color-picker-advanced.tsx). */
+function setHexColor(hex: string) {
+  const input = getHexInput();
+  fireEvent.change(input, { target: { value: hex } });
+  fireEvent.blur(input);
+}
+
 function renderTab() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -292,15 +289,47 @@ describe('HubTab — Personalizar Hub', () => {
   it('seeds the form from the saved branding, once', async () => {
     renderTab();
     await waitFor(() => {
-      expect(screen.getByTestId('color-picker')).toHaveTextContent('#111111');
+      expect(getHexInput()).toHaveValue('#111111');
     });
   });
 
-  it('rejects alpha hex on the brand colour picker (workspaces.brand_color is 6-digit only)', async () => {
+  it('hex typed in the picker lands normalized (lowercase, 6-digit) in the save payload', async () => {
     renderTab();
+    await waitFor(() => expect(getHexInput()).toHaveValue('#111111'));
+
+    setHexColor('#ABCDEF');
+    await waitFor(() => expect(getHexInput()).toHaveValue('#abcdef'));
+
+    fireEvent.click(screen.getByRole('button', { name: /salvar/i }));
     await waitFor(() => {
-      expect(screen.getByTestId('color-picker')).toHaveAttribute('data-allow-alpha', 'false');
+      expect(storeMock.updateHubBranding).toHaveBeenCalledWith(
+        expect.objectContaining({ brand_color: '#abcdef' }),
+      );
     });
+  });
+
+  it('typing an invalid hex reverts on blur instead of corrupting brandColor', async () => {
+    renderTab();
+    await waitFor(() => expect(getHexInput()).toHaveValue('#111111'));
+
+    setHexColor('not-a-color');
+    // Invalid input never reaches setHue/setSaturation/setLightness in the
+    // picker, so it can never reach HubTab's onChange either -- the field
+    // snaps back to the last committed value on blur.
+    await waitFor(() => expect(getHexInput()).toHaveValue('#111111'));
+
+    fireEvent.click(screen.getByRole('button', { name: /salvar/i }));
+    await waitFor(() => {
+      expect(storeMock.updateHubBranding).toHaveBeenCalledWith(
+        expect.objectContaining({ brand_color: '#111111' }),
+      );
+    });
+  });
+
+  it('disables the colour picker hex input when the branding query failed', async () => {
+    storeMock.getHubBranding.mockRejectedValue(new Error('column does not exist'));
+    renderTab();
+    await waitFor(() => expect(getHexInput()).toBeDisabled());
   });
 
   it('a refetch after an unsaved edit does not clobber it (seed-once)', async () => {
@@ -315,12 +344,10 @@ describe('HubTab — Personalizar Hub', () => {
       </QueryClientProvider>,
     );
 
-    await waitFor(() => {
-      expect(screen.getByTestId('color-picker')).toHaveTextContent('#111111');
-    });
+    await waitFor(() => expect(getHexInput()).toHaveValue('#111111'));
 
-    fireEvent.click(screen.getByTestId('color-picker'));
-    expect(screen.getByTestId('color-picker')).toHaveTextContent('#abcdef');
+    setHexColor('#abcdef');
+    expect(getHexInput()).toHaveValue('#abcdef');
 
     // Something else (e.g. a query invalidation elsewhere) triggers a refetch of
     // the same data. It must not overwrite the unsaved edit above.
@@ -328,15 +355,13 @@ describe('HubTab — Personalizar Hub', () => {
     await waitFor(() => {
       expect(storeMock.getHubBranding).toHaveBeenCalledTimes(2);
     });
-    expect(screen.getByTestId('color-picker')).toHaveTextContent('#abcdef');
+    expect(getHexInput()).toHaveValue('#abcdef');
   });
 
   it('brand colour is editable even when feature_brand_customization is off', async () => {
     mockEntitlements = { hasFeature: () => false, isLoading: false };
     renderTab();
-    await waitFor(() => {
-      expect(screen.getByTestId('color-picker')).toHaveTextContent('#111111');
-    });
+    await waitFor(() => expect(getHexInput()).toHaveValue('#111111'));
     expect(screen.getByText('Cor da marca')).toBeInTheDocument();
     // Customization controls sit inside two gates (Aparência on its own, then
     // Tipografia+Componentes+Identidade together, since Cor da marca sits between
@@ -373,11 +398,9 @@ describe('HubTab — Personalizar Hub', () => {
 
   it('Salvar sends exactly the edited fields', async () => {
     renderTab();
-    await waitFor(() => {
-      expect(screen.getByTestId('color-picker')).toHaveTextContent('#111111');
-    });
+    await waitFor(() => expect(getHexInput()).toHaveValue('#111111'));
 
-    fireEvent.click(screen.getByTestId('color-picker'));
+    setHexColor('#abcdef');
     fireEvent.click(screen.getByRole('button', { name: 'Pílula' }));
     fireEvent.click(screen.getByRole('switch', { name: /ocultar "powered by mesaas"/i }));
 
@@ -402,9 +425,7 @@ describe('HubTab — Personalizar Hub', () => {
     const { queryClient } = renderTab();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
-    await waitFor(() => {
-      expect(screen.getByTestId('color-picker')).toHaveTextContent('#111111');
-    });
+    await waitFor(() => expect(getHexInput()).toHaveValue('#111111'));
     fireEvent.click(screen.getByRole('button', { name: /salvar/i }));
 
     await waitFor(() => {
@@ -465,9 +486,7 @@ describe('HubTab — Personalizar Hub', () => {
 
     try {
       renderTab();
-      await waitFor(() => {
-        expect(screen.getByTestId('color-picker')).toHaveTextContent('#111111');
-      });
+      await waitFor(() => expect(getHexInput()).toHaveValue('#111111'));
 
       const fileInput = document.querySelector(
         'input[type="file"][accept="image/png,image/jpeg,image/webp"]',
