@@ -84,6 +84,39 @@ describe('HubPreview', () => {
     expect(document.getElementById('crm-hub-preview-fonts')).toBeNull();
   });
 
+  it('un-entitled: ignores stored wordmark/dark-logo picks, always renders the round light logo', () => {
+    // A downgraded workspace can still have wordmark + a dark logo URL sitting in
+    // the row (nothing clears them on downgrade) -- the preview must not show a
+    // portal the client can't actually get. Mirrors WorkspaceMark, which only
+    // reads logo_style/logo_dark_url off hub_theme, itself null when hub-bootstrap
+    // resolves the workspace as un-entitled.
+    renderPreview(
+      {
+        logoStyle: 'wordmark',
+        logoDarkUrl: 'https://cdn.example.com/dark-logo.png',
+        defaultAppearance: 'dark',
+      },
+      false,
+    );
+    const img = screen.getByTestId('preview-logo') as HTMLImageElement;
+    expect(img.src).toBe('https://cdn.example.com/logo.png');
+    expect(img.style.borderRadius).toBe('50%');
+  });
+
+  it('entitled: does use the wordmark style and dark logo in dark mode', () => {
+    renderPreview(
+      {
+        logoStyle: 'wordmark',
+        logoDarkUrl: 'https://cdn.example.com/dark-logo.png',
+        defaultAppearance: 'dark',
+      },
+      true,
+    );
+    const img = screen.getByTestId('preview-logo') as HTMLImageElement;
+    expect(img.src).toBe('https://cdn.example.com/dark-logo.png');
+    expect(img.style.borderRadius).not.toBe('50%');
+  });
+
   it('defaults the light/dark toggle from hub_default_appearance', () => {
     renderPreview({ surface: 'warm', defaultAppearance: 'dark' });
     const wrapper = screen.getByTestId('hub-preview-wrapper');

@@ -81,8 +81,21 @@ vi.mock('../../HubPreview', () => ({
 // plain button that commits a fixed test hex, same spirit as mocking ReportPreview
 // out of RelatoriosTab.test.tsx.
 vi.mock('@/components/shared/ColorPicker', () => ({
-  ColorPicker: ({ value, onChange }: { value: string; onChange: (hex: string) => void }) => (
-    <button type="button" data-testid="color-picker" onClick={() => onChange('#abcdef')}>
+  ColorPicker: ({
+    value,
+    onChange,
+    allowAlpha,
+  }: {
+    value: string;
+    onChange: (hex: string) => void;
+    allowAlpha?: boolean;
+  }) => (
+    <button
+      type="button"
+      data-testid="color-picker"
+      data-allow-alpha={String(allowAlpha)}
+      onClick={() => onChange('#abcdef')}
+    >
       {value}
     </button>
   ),
@@ -280,6 +293,13 @@ describe('HubTab — Personalizar Hub', () => {
     renderTab();
     await waitFor(() => {
       expect(screen.getByTestId('color-picker')).toHaveTextContent('#111111');
+    });
+  });
+
+  it('rejects alpha hex on the brand colour picker (workspaces.brand_color is 6-digit only)', async () => {
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId('color-picker')).toHaveAttribute('data-allow-alpha', 'false');
     });
   });
 

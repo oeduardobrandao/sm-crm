@@ -101,8 +101,14 @@ export function HubPreview({
   const resolved = resolveHubTheme(config, dark);
   const wrapperStyle = { ...resolved.vars } as CSSProperties;
 
-  const logoUrl = dark && draft.logoDarkUrl ? draft.logoDarkUrl : workspaceLogoUrl;
-  const isWordmark = draft.logoStyle === 'wordmark';
+  // Mirror WorkspaceMark (apps/hub/src/components/WorkspaceMark.tsx): it reads
+  // logo_style/logo_dark_url off bootstrap.hub_theme, which hub-bootstrap only
+  // populates when the workspace is entitled -- an un-entitled workspace's
+  // stored picks are otherwise inert data the client never sees. Gating on
+  // `customized` here (not just reading `draft` directly) keeps a downgraded
+  // workspace's preview honest instead of showing a portal it can't get.
+  const logoUrl = customized && dark && draft.logoDarkUrl ? draft.logoDarkUrl : workspaceLogoUrl;
+  const isWordmark = customized && draft.logoStyle === 'wordmark';
   const initial = (workspaceName || '?').trim().charAt(0).toUpperCase() || '?';
 
   return (

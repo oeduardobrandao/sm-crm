@@ -370,6 +370,11 @@ export default function HubTab() {
               onChange={(hex) => setBrandColor(hex)}
               label="Cor da marca"
               disabled={brandingPending || brandingFailed}
+              // workspaces.brand_color is CHECK'd to 6-digit hex, and resolveHubTheme
+              // rejects anything else (falls back to #171717) -- an 8-digit
+              // #rrggbbaa pick here would either fail to save or silently be ignored
+              // by the hub. ColorPicker defaults allowAlpha to true; opt out.
+              allowAlpha={false}
             />
             <p style={HINT}>
               A mesma cor do relatório mensal. Marca o calendário do Hub e os destaques do
