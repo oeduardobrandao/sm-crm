@@ -157,11 +157,13 @@ Deno.serve(async (req: Request) => {
     // globalThis (avoids referencing the bare undeclared identifier, which
     // `deno check` rejects with TS2304) and fall back to the previous
     // awaited form so the write still happens somewhere if the global is
-    // ever absent, instead of silently vanishing.
+    // ever absent, instead of silently vanishing. The check is deliberately
+    // on the waitUntil METHOD, not just the EdgeRuntime object, because a
+    // present-but-shapeless global would otherwise 500 a live checkout.
     const edgeRuntime = (
       globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }
     ).EdgeRuntime;
-    if (edgeRuntime) {
+    if (typeof edgeRuntime?.waitUntil === "function") {
       edgeRuntime.waitUntil(recordCheckoutAttempt());
     } else {
       await recordCheckoutAttempt();

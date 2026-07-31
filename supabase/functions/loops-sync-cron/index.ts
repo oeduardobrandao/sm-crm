@@ -24,10 +24,9 @@ const CRON_SECRET = Deno.env.get("CRON_SECRET") ??
 // candidates retryable once the key is actually set. POSTHOG_PROJECT_KEY stays
 // optional and a silent no-op when unset (see _shared/posthog.ts) -- measurement
 // must never block or fail a send, so it is deliberately NOT required here.
-const LOOPS_API_KEY = Deno.env.get("LOOPS_API_KEY") ??
-  (() => {
-    throw new Error("LOOPS_API_KEY is required");
-  })();
+if (!Deno.env.get("LOOPS_API_KEY")) {
+  throw new Error("LOOPS_API_KEY is required");
+}
 
 const CRON_NAME = "loops-sync-cron";
 
