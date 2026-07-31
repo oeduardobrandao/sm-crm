@@ -1,9 +1,9 @@
 # Event-triggered marketing emails via Loops — Design
 
 **Date:** 2026-07-31
-**Status:** Revised after external review (brainstorm 2026-07-31; revised same day — see
-"Review resolutions" at the end). **Blocked on B1** (Loops event dedupe contract) before
-implementation starts.
+**Status:** Approved. Brainstorm 2026-07-31, revised over two external review rounds the same
+day (see "Review resolutions"). **B1 resolved** 2026-07-31: Loops dedupes on an
+`Idempotency-Key` header with a 24h window and a 409 on reuse. Ready for implementation.
 
 ## Goal
 
@@ -114,9 +114,14 @@ consent revoked, the user's current email differs from `synced_email` (delete th
 then re-sync the new one), or `user_id` is now null (account deleted). `deleted_at` is stamped
 on success so the pass is idempotent.
 
-The exact contact-deletion endpoint is unverified and is confirmed alongside B1. If Loops offers
-no delete, the fallback is setting an `unsubscribed` property and relying on Loops' suppression
-— acceptable for sends, but it leaves the PII resident at the vendor.
+**Deletion endpoint, verified 2026-07-31:** `POST /v1/contacts/delete` (base
+`https://app.loops.so/api`), taking **exactly one** of `email` or `userId` — sending both is an
+error. A missing contact returns **404 with `success: false`**, which the sweep must treat as
+success: the goal state is "not present at Loops", and a 404 already satisfies it. Treating 404
+as failure would retry an unresolvable delete until the attempt cap.
+
+Deleting by `email` rather than `userId`, using the `synced_email` recorded in the ledger below,
+is what makes post-email-change and post-account-deletion cleanup possible at all.
 
 **Privacy policy update is a slice-1 deliverable, not a follow-up.**
 `apps/crm/src/pages/politica-privacidade/PoliticaPage.tsx` enumerates subprocessors by name
@@ -211,7 +216,7 @@ actually triggered.
 | `checkout_abandoned` | `workspaceName`, `planName`, `hoursSinceAttempt` |
 | `dormant_signup` | `workspaceName`, `daysSinceSignup` |
 
-### 3. Idempotency — **BLOCKER B1**
+### 3. Idempotency
 
 `lifecycle_emails` gains three `email_type` values and **no schema change**. Its existing
 constraints already fit: `(email_type, workspace_id)` for the two workspace-scoped triggers,
@@ -223,39 +228,42 @@ retry* after an hour; it does not make the retry safe. Resend gives us a true `I
 deduped for 24h, which is what closes that gap today. Whether Loops offers an equivalent on
 `events/send` is **unverified**.
 
-> **B1 — deployment blocker. Owner: Eduardo. Evidence required before any code is written.**
-> Confirm from Loops' API documentation whether `POST /v1/events/send` accepts an idempotency
-> key or otherwise dedupes — and, critically, **on what scope and for how long**. "Accepts a
-> key" is not the contract that matters. Three facts are required:
+> **B1 — RESOLVED 2026-07-31** from the [Loops send-event
+> reference](https://loops.so/docs/api-reference/send-event). The contract is materially
+> identical to Resend's:
 >
-> 1. **Scope** — is dedupe per key, per key+contact, or per key+event-name?
-> 2. **Retention window** — how long is a key remembered?
-> 3. **Behaviour on a repeated key** — silently ignored, or an error the handler must treat as
->    success (Resend's 409 case)?
+> | Fact | Answer |
+> |---|---|
+> | Idempotency key | `Idempotency-Key` header, optional, max 100 chars |
+> | Scope | Per key |
+> | Retention window | **24 hours** |
+> | Behaviour on reuse | **409 Conflict** |
 >
-> **The retention window sets the attempt cap, not the other way round.** The existing Resend
-> path retries hourly up to 30 attempts, a ~30h window against a 24h key retention — meaning a
-> retry landing between hours 24 and 30 can genuinely duplicate. That gap is pre-existing and
-> accepted for a courtesy thank-you; it is not acceptable for a marketing send to a prospect.
-> **Set `attempts < 25` so the retry window stays inside a 24h retention**, and adjust if Loops'
-> window differs. This is why the ledger exclusion above says 25 rather than 30.
+> **Consequences, all mandatory:**
 >
-> - **If yes:** use `<event_type>/<workspace_id>` as the key, exactly as the Resend path does,
->   with the attempt cap tuned to the confirmed retention window.
-> - **If no:** the ledger cannot carry this alone. Every loop in Loops must be configured
->   "a contact can only enter this loop once", which is **UI configuration outside this repo**
->   and therefore must be screenshotted into the rollout runbook and re-checked after any Loops
->   workspace change. A UI setting is a weaker guarantee than an idempotency key, and if it also
->   proves unavailable per-loop, the delivery design changes before implementation rather than
->   after.
+> 1. **A 409 is success, not failure.** The event was already accepted; the handler marks the
+>    claim delivered and moves on. Treating it as an error would strand the claim and retry
+>    forever. This is the same branch `sendViaResend` already has for `invalid_idempotent_request`
+>    (`_shared/lifecycle-emails.ts:306`) and it must be replicated, not assumed.
+> 2. **The attempt cap is 20, not 25 or 30.** The freshness gate is 1h and the cron runs every
+>    15 min, so attempts land 1h00m–1h15m apart. Twenty attempts spans 19h–23h45m, inside the
+>    24h window. Twenty-one could reach 25h and duplicate. The cap is derived from the window,
+>    so if Loops changes the window the cap changes with it.
+> 3. **The key is deterministic, and that is deliberate.** Loops' docs suggest V4 UUIDs, which
+>    is advice for callers wanting each request distinct. We want the opposite:
+>    `<event_type>/<workspace_id>` is identical across retries of the same logical send, which
+>    is precisely what makes the retry safe. The ledger's uniqueness constraint means each
+>    (type, workspace) send happens once ever, so a deterministic key can never collide with a
+>    legitimately different send. **If a future trigger is ever made repeatable, the key needs a
+>    nonce** — noting it here because the collision would be silent.
 >
-> This item is why the spec status is Blocked. It is not a nice-to-have verification — it
-> decides whether an ambiguous network failure re-emails a paying prospect.
+> The pre-existing ~30h-vs-24h gap on the **Resend** path (30 attempts against a 24h window)
+> is real but out of scope: it is live, it affects a courtesy thank-you rather than a prospect,
+> and changing it is a separate change with its own blast radius. Flagged, not fixed.
 
-Additionally, concurrent cron runs must not both claim the same candidate. The candidate RPCs'
-one-hour freshness gate handles the normal case, but the claim upsert and the send are not
-atomic. Slice 1 relies on the same guarantee the Resend path relies on, which is precisely why
-B1 must resolve first.
+The idempotency key covers **same-type** duplicates. It does nothing about two *different*
+triggers firing for one workspace, which is what the atomic claim below exists for. The two
+mechanisms are complementary and neither substitutes for the other.
 
 ### 4. `paywall_hits` — the reporting path had to change
 
@@ -407,8 +415,8 @@ bitten this repo before. Check `proacl`, not `has_function_privilege`.
 3. **72h frequency cap** — as a prefilter only. The authoritative enforcement is the atomic
    claim below, because a predicate evaluated at SELECT time cannot arbitrate between two
    concurrent sweeps.
-4. Ledger exclusion: not delivered, not claimed within the last hour, `attempts < 25` (see B1
-   for why 25 and not 30).
+4. Ledger exclusion: not delivered, not claimed within the last hour, `attempts < 20` (see B1
+   for why 20 — it is derived from Loops' confirmed 24h idempotency window).
 
 #### The 72h cap needs an atomic claim, not a predicate
 
@@ -595,8 +603,7 @@ Contract note: adding `email_type` values touches shared fixtures. Grep both
 
 Order matters — the cron schedule fires immediately on apply.
 
-0. **Resolve B1.** No code before this. Record the answer and, if the fallback applies, the
-   per-loop "enter once" configuration evidence, in the runbook.
+0. ~~Resolve B1.~~ Done 2026-07-31: `Idempotency-Key` header, 24h window, 409 on reuse.
 1. Set `LOOPS_API_KEY` and `POSTHOG_PROJECT_KEY` in Supabase secrets, staging first.
 2. Apply `20260731000001_paywall_hits.sql`, `20260731000002_checkout_attempts.sql` and
    `20260731000003_loops_contacts.sql`.
@@ -620,7 +627,7 @@ re-mails everyone on a future re-rollout.
 
 | Risk | Mitigation |
 |---|---|
-| Loops event API has no idempotency key | **B1, a blocker.** Ledger + per-loop "enter once", evidenced in the runbook, or the delivery design changes. |
+| Duplicate marketing send after an ambiguous failure | Resolved: Loops `Idempotency-Key`, 24h window, 409 treated as success, attempt cap 20 so the retry window stays inside the window. |
 | Emailing users who declined marketing contact | `marketing_opt_in` in every RPC, plus opted-out contacts never synced, plus a revocation delete sweep. |
 | `paywall_hit` misses real denials | Accepted for slice 1 and stated plainly: a closed tab loses the report. First-party authenticated POST, so adblockers are not the failure mode. |
 | Emailing a workspace that just subscribed | Send-time re-check of consent and effective plan. |
@@ -658,7 +665,7 @@ accepted; none rejected.
 |---|---|---|
 | P1 | `clicked_upgrade` required but never persisted or carried | Column added to `paywall_hits`; surfaced by the candidate RPC and sent as the `clickedUpgrade` event property. Self-inflicted inconsistency from the round-1 edit. |
 | P1 | 72h cap unsafe under concurrency; `dormant_signup` invisible to it | Cap demoted to a prefilter; authority moved to `claim_marketing_email`, an atomic SQL claim under a per-workspace advisory lock. `dormant_signup` now writes `workspace_id` too. |
-| P1 | B1 must pin dedupe scope and retention, not just existence | B1 expanded to three required facts. Attempt cap cut 30 → 25 so the retry window stays inside a 24h retention. Documents the pre-existing ~30h-vs-24h gap on the Resend path. |
+| P1 | B1 must pin dedupe scope and retention, not just existence | B1 expanded to three required facts, then **resolved from the docs**: per-key, 24h, 409 on reuse. Attempt cap set to 20 (derived from the window, not guessed). Documents the pre-existing ~30h-vs-24h gap on the Resend path as out of scope. |
 | P1 | Recipient undefined when a workspace has several owners | Deterministic owner pick copied verbatim from `get_thankyou_email_candidates`; consent applies to that owner and explicitly does **not** fall through to another. |
 | P1 | Revocation sweep has no sync state; email change and account deletion orphan contacts | New `loops_contacts` ledger with `on delete set null` so `synced_email` survives account deletion. |
 | P1 | `conta_id` check is a cross-tenant write path | Replaced with a `workspace_members` membership check on the authenticated `user.id`. `conta_id` is the *active* workspace and diverges. |
