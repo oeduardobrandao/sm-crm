@@ -408,7 +408,7 @@ git commit -m "feat(loops): add paywall_hits, checkout_attempts and loops_contac
 
 **Files:**
 - Create: `supabase/migrations/20260731000004_loops_sync_rpcs.sql`
-- Test: `supabase/tests/entitlements/57_loops_candidates.sql`
+- Test: `supabase/tests/entitlements/58_loops_candidates.sql`
 
 **Interfaces:**
 - Consumes: `paywall_hits`, `checkout_attempts` (Task 2).
@@ -765,7 +765,7 @@ on conflict do nothing;
 
 - [ ] **Step 2: Write the SQL tests**
 
-Create `supabase/tests/entitlements/57_loops_candidates.sql`. The harness convention is `\set ON_ERROR_STOP on`, `\i supabase/tests/entitlements/_helpers.sql`, then one `begin` / `rollback` block per case with `raise exception` on a failed assertion. `et_make_workspace(p_plan_id text, p_overrides jsonb)` creates a workspace and returns its id.
+Create `supabase/tests/entitlements/58_loops_candidates.sql`. The harness convention is `\set ON_ERROR_STOP on`, `\i supabase/tests/entitlements/_helpers.sql`, then one `begin` / `rollback` block per case with `raise exception` on a failed assertion. `et_make_workspace(p_plan_id text, p_overrides jsonb)` creates a workspace and returns its id.
 
 ```sql
 \set ON_ERROR_STOP on
@@ -935,14 +935,14 @@ npx supabase start
 npm run test:db
 ```
 
-Expected: a PASS line for `57_loops_candidates.sql` along with every other suite.
+Expected: a PASS line for `58_loops_candidates.sql` along with every other suite.
 
 If Docker is unavailable and `npx supabase start` fails, **stop and report `DONE_WITH_CONCERNS`**: commit the migration and the test file, state clearly that the SQL tests were written but not executed, and do not claim they pass. Do not substitute staging.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20260731000004_loops_sync_rpcs.sql supabase/tests/entitlements/57_loops_candidates.sql
+git add supabase/migrations/20260731000004_loops_sync_rpcs.sql supabase/tests/entitlements/58_loops_candidates.sql
 git commit -m "feat(loops): add claim_marketing_email and candidate RPCs"
 ```
 
