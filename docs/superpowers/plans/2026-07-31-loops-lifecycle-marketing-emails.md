@@ -350,8 +350,15 @@ create policy "checkout_attempts_service_role" on checkout_attempts
 -- must SURVIVE carrying synced_email, because that is the only remaining handle
 -- for deleting the contact at Loops. A cascade would erase the evidence needed
 -- to honour the erasure.
+--
+-- Hence the surrogate `id` primary key: user_id cannot be the PK, because SET
+-- NULL on a primary key column is a constraint violation. A nullable UNIQUE
+-- user_id gives the one-row-per-user guarantee AND survives the user's
+-- deletion; the PK guarantees the row remains addressable afterwards, which is
+-- what markContactDeleted(id) needs.
 create table if not exists loops_contacts (
-  user_id      uuid primary key references auth.users(id) on delete set null,
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid null unique references auth.users(id) on delete set null,
   synced_email text not null,
   synced_at    timestamptz not null default now(),
   deleted_at   timestamptz null
@@ -365,20 +372,6 @@ alter table loops_contacts enable row level security;
 create policy "loops_contacts_service_role" on loops_contacts
   for all to service_role using (true) with check (true);
 ```
-
-Note: `user_id` is the primary key and `on delete set null` would violate that constraint. Change the column to a surrogate key instead — replace the `create table` above with:
-
-```sql
-create table if not exists loops_contacts (
-  id           uuid primary key default gen_random_uuid(),
-  user_id      uuid null unique references auth.users(id) on delete set null,
-  synced_email text not null,
-  synced_at    timestamptz not null default now(),
-  deleted_at   timestamptz null
-);
-```
-
-A surrogate `id` primary key with a nullable unique `user_id` gives both the one-row-per-user guarantee and survival of the user's deletion.
 
 - [ ] **Step 5: Apply to staging and verify**
 
