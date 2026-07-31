@@ -294,7 +294,7 @@ export const ColorPickerEyeDropper = ({ className, ...props }: ColorPickerEyeDro
 
   return (
     <Button
-      className={cn('shrink-0 text-muted-foreground', className)}
+      className={cn('mb-0 shrink-0 text-muted-foreground', className)}
       disabled={disabled}
       onClick={handleEyeDropper}
       size="icon"
