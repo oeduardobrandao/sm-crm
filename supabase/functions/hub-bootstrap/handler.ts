@@ -34,7 +34,11 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
 
     const { data: conta } = await db
       .from("workspaces")
-      .select("id, name, logo_url, brand_color, hub_enabled")
+      .select(
+        "id, name, logo_url, brand_color, hub_enabled, hub_surface_theme, hub_font_display, " +
+          "hub_font_body, hub_radius, hub_card_style, hub_logo_style, hub_logo_dark_url, " +
+          "hub_hide_branding, hub_default_appearance",
+      )
       .eq("slug", workspaceSlug)
       .maybeSingle();
 
@@ -87,10 +91,38 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       // intentionally ignored — defaults to false
     }
 
+    // Fail closed, same defence-in-depth principle as above: an entitlements RPC
+    // hiccup must never break the client's portal.
+    let brandCustomization = false;
+    try {
+      brandCustomization = await effectivePlanFeature(db as any, conta.id, "feature_brand_customization");
+    } catch {
+      // intentionally ignored — defaults to false
+    }
+
+    // When the plan lacks the feature, stored hub_* columns are IGNORED and neutral
+    // defaults are served instead — hide_branding: true must never reach a client
+    // whose workspace isn't entitled, and a plan downgrade reverts the portal's look
+    // instantly without any destructive write to the stored columns.
+    const NEUTRAL_HUB_THEME = {
+      customized: false,
+      surface: "neutral",
+      font_display: "fraunces",
+      font_body: "instrument-sans",
+      radius: "soft",
+      card_style: "filled",
+      logo_style: "round",
+      logo_dark_url: null,
+      hide_branding: false,
+      default_appearance: "light",
+    };
+
     return json({
       workspace: {
         name: conta.name,
         logo_url: conta.logo_url,
+        // brand_color keeps flowing at the top level as today — the calendar
+        // accent is pre-existing, ungated behaviour, unrelated to hub_theme.
         brand_color: conta.brand_color ?? "#1a1a2e",
       },
       cliente_nome: cliente?.nome ?? "",
@@ -98,6 +130,20 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       is_active: hubToken.is_active,
       cliente_id: hubToken.cliente_id,
       feature_mensagens: featureMensagens,
+      hub_theme: brandCustomization
+        ? {
+            customized: true,
+            surface: conta.hub_surface_theme ?? "neutral",
+            font_display: conta.hub_font_display ?? "fraunces",
+            font_body: conta.hub_font_body ?? "instrument-sans",
+            radius: conta.hub_radius ?? "soft",
+            card_style: conta.hub_card_style ?? "filled",
+            logo_style: conta.hub_logo_style ?? "round",
+            logo_dark_url: conta.hub_logo_dark_url ?? null,
+            hide_branding: conta.hub_hide_branding ?? false,
+            default_appearance: conta.hub_default_appearance ?? "light",
+          }
+        : NEUTRAL_HUB_THEME,
     });
   };
 }
