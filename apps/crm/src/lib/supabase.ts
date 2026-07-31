@@ -20,6 +20,16 @@ export function clearProfileCache() {
 }
 
 /**
+ * Synchronous accessor for the already-cached profile, or null if nothing has
+ * been fetched yet. Never triggers a network call — for call sites outside
+ * React's tree (e.g. the global MutationCache onError) that cannot await
+ * getCurrentProfile() and cannot use AuthContext.
+ */
+export function getCachedProfile() {
+  return cachedProfile;
+}
+
+/**
  * Returns the current authenticated user.
  * Uses getSession() directly — zero dependency on event callbacks.
  */

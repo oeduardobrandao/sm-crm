@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
 import { handleEntitlementMutationError } from './lib/entitlement-toast';
+import { getCachedProfile } from './lib/supabase';
 import * as Sentry from '@sentry/react';
 import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './context/AuthContext';
@@ -67,8 +68,9 @@ const queryClient = new QueryClient({
   mutationCache: new MutationCache({
     onError: (error) => {
       // Entitlement errors get a universal upgrade toast; everything else falls
-      // through to each mutation's own onError.
-      handleEntitlementMutationError(error);
+      // through to each mutation's own onError. Also reports feature denials to
+      // the paywall_hit marketing trigger — see entitlement-toast.tsx.
+      handleEntitlementMutationError(error, getCachedProfile()?.conta_id ?? null);
     },
   }),
 });

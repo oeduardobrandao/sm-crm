@@ -125,6 +125,16 @@ Deno.serve(async (req) => {
         await assertPlanFeature(svc, conta_id, "feature_mcp");
       } catch (e) {
         if (e instanceof FeatureDisabledError) {
+          // Marketing signal; never let it change the response.
+          try {
+            await svc.from("paywall_hits").insert({
+              workspace_id: conta_id,
+              user_id: user.id,
+              feature: "feature_mcp",
+            });
+          } catch (insErr) {
+            console.error("[mcp-oauth-consent] paywall_hits insert failed:", insErr instanceof Error ? insErr.message : String(insErr));
+          }
           return json({ error: "feature_disabled", feature: "feature_mcp" }, 403);
         }
         throw e;

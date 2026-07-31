@@ -394,7 +394,8 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
                   } catch (e: any) {
                     // Entitlements can go stale between load and click — fall back to the
                     // upgrade toast rather than leaking the raw Postgres message.
-                    if (!handleEntitlementMutationError(e)) toast.error(mapTokenError(e));
+                    if (!handleEntitlementMutationError(e, contaId ?? null))
+                      toast.error(mapTokenError(e));
                   }
                 }}
               >
