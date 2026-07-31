@@ -170,6 +170,7 @@ function SegmentedControl({
       type="single"
       variant="outline"
       size="sm"
+      className="justify-start"
       value={value}
       // Radix ToggleGroup (type="single") fires an empty string when the active
       // item is clicked again — ignore it, a segmented control always keeps one
@@ -202,6 +203,7 @@ function optionCardStyle(active: boolean, disabled?: boolean): CSSProperties {
     cursor: disabled ? 'default' : 'pointer',
     opacity: disabled ? 0.5 : 1,
     minWidth: 88,
+    flex: '1 1 88px',
     textAlign: 'center',
   };
 }
@@ -273,8 +275,9 @@ function SurfaceGlyph({ surface }: { surface: HubSurface }) {
       aria-hidden="true"
       style={{
         display: 'block',
-        width: 64,
-        height: 44,
+        width: '100%',
+        minWidth: 64,
+        height: 48,
         borderRadius: 8,
         background: palette.bg,
         border: `1px solid ${palette.bd}`,
@@ -929,9 +932,9 @@ export default function HubTab() {
                 aria-label={`Cor selecionada: ${brandColor}`}
                 title={brandColor}
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 8,
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
                   background: brandColor,
                   border: '1px solid var(--border-color)',
                   flexShrink: 0,
