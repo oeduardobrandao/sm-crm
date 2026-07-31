@@ -59,6 +59,14 @@ describe('HubPreview', () => {
     expect(screen.getByText(/powered by mesaas/i)).toBeInTheDocument();
   });
 
+  it('un-entitled: still shows the powered-by line even with a stored hideBranding:true', () => {
+    // hub-bootstrap only honors hub_hide_branding when the workspace is entitled --
+    // a downgraded workspace with the column still set true gets the mark forced
+    // back on by the real hub, so the preview must not misrepresent that.
+    renderPreview({ hideBranding: true }, false);
+    expect(screen.getByText(/powered by mesaas/i)).toBeInTheDocument();
+  });
+
   it('renders the neutral default bg when the workspace is not entitled, regardless of the draft surface pick', () => {
     renderPreview({ surface: 'cool' }, false);
     const wrapper = screen.getByTestId('hub-preview-wrapper');

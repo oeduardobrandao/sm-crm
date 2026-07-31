@@ -310,7 +310,11 @@ export function HubPreview({
             ))}
           </div>
 
-          {!draft.hideBranding && (
+          {/* Same entitlement gate as logoUrl/isWordmark above: hub-bootstrap only
+              honors hub_hide_branding when the workspace is entitled -- an
+              un-entitled workspace with a stored hide_branding=true still gets the
+              mark forced on by the real hub, so the preview must too. */}
+          {!(customized && draft.hideBranding) && (
             <div
               style={{
                 marginTop: 'auto',
