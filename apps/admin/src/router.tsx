@@ -1,11 +1,13 @@
 import { createBrowserRouter } from 'react-router-dom';
 import AdminLayout from './layouts/AdminLayout';
 import AdminProtectedRoute from './layouts/AdminProtectedRoute';
+import RouteErrorPage from './components/RouteErrorPage';
 
 export const router = createBrowserRouter([
   {
     path: '/admin/login',
     lazy: async () => ({ Component: (await import('./pages/LoginPage')).default }),
+    errorElement: <RouteErrorPage />,
   },
   {
     path: '/admin',
@@ -14,6 +16,7 @@ export const router = createBrowserRouter([
         <AdminLayout />
       </AdminProtectedRoute>
     ),
+    errorElement: <RouteErrorPage />,
     children: [
       {
         index: true,

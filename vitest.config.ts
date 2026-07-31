@@ -10,6 +10,7 @@ export default defineConfig({
       '@mesaas/i18n': path.resolve(__dirname, 'packages/i18n/index.ts'),
       '@mesaas/ui': path.resolve(__dirname, 'packages/ui'),
       '@mesaas/import-parsers': path.resolve(__dirname, 'packages/import-parsers/index.ts'),
+      '@mesaas/app-lifecycle': path.resolve(__dirname, 'packages/app-lifecycle/index.ts'),
     },
   },
   define: {

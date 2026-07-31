@@ -6,6 +6,7 @@ import * as Sentry from '@sentry/react';
 import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './context/AuthContext';
 import { Toaster } from '@/components/ui/sonner';
+import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import AppLayout from './components/layout/AppLayout';
 import ProtectedRoute from './components/layout/ProtectedRoute';
@@ -89,7 +90,8 @@ export default function App() {
         <div className="flex items-center justify-center h-screen text-center p-8">
           <div>
             <h1 className="text-xl font-bold mb-2">Algo deu errado</h1>
-            <p className="text-muted-foreground">Recarregue a página para tentar novamente.</p>
+            <p className="text-muted-foreground mb-4">Recarregue a página para tentar novamente.</p>
+            <Button onClick={() => window.location.reload()}>Recarregar página</Button>
           </div>
         </div>
       }

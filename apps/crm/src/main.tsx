@@ -1,8 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { installDeployRecovery, watchForNewVersion } from '@mesaas/app-lifecycle';
 import { initSentry } from '@/lib/sentry';
 import { initAnalytics } from './lib/analytics';
+import { showNewVersionToast } from './lib/new-version-toast';
 import { initI18n } from '@mesaas/i18n';
 import ptCommon from '../../../packages/i18n/locales/pt/common.json';
 import enCommon from '../../../packages/i18n/locales/en/common.json';
@@ -20,6 +22,10 @@ import ptBrand from '../../../packages/i18n/locales/pt/brand.json';
 import enBrand from '../../../packages/i18n/locales/en/brand.json';
 import App from './App';
 import '../style.css';
+
+// Before anything else: a tab open across a deploy loads chunks that no longer exist.
+installDeployRecovery();
+watchForNewVersion({ onNewVersion: showNewVersionToast });
 
 initSentry();
 initAnalytics();

@@ -126,6 +126,11 @@
   "hub": {
     "invalidLink": "Link inválido ou expirado.",
     "accessDisabled": "Acesso desativado.",
-    "contactAgency": "Entre em contato com a agência."
+    "contactAgency": "Entre em contato com a agência.",
+    "newVersion": "Nova versão disponível",
+    "refresh": "Atualizar",
+    "somethingWentWrong": "Algo deu errado",
+    "reloadToRetry": "Recarregue a página para tentar novamente.",
+    "reloadPage": "Recarregar página"
   }
 }
