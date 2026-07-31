@@ -13,6 +13,21 @@ const CRON_SECRET = Deno.env.get("CRON_SECRET") ??
   (() => {
     throw new Error("CRON_SECRET is required");
   })();
+// LOOPS_API_KEY must be validated here, at module load, and NOT left to fail
+// lazily inside sendEvent/apiKey() (_shared/loops.ts). If it's missing, per-candidate
+// sends throw only after claim_marketing_email has already written the claim and
+// incremented attempts. That burns an attempt against the cap the candidate RPCs
+// use to declare a row permanently unsendable (see claim_marketing_email /
+// attempts < 20 in the candidate RPCs) -- a cap designed for transient failures,
+// not for an operator forgetting to set a secret before the cron schedule goes
+// live. Failing the whole invocation before any claim is written keeps the
+// candidates retryable once the key is actually set. POSTHOG_PROJECT_KEY stays
+// optional and a silent no-op when unset (see _shared/posthog.ts) -- measurement
+// must never block or fail a send, so it is deliberately NOT required here.
+const LOOPS_API_KEY = Deno.env.get("LOOPS_API_KEY") ??
+  (() => {
+    throw new Error("LOOPS_API_KEY is required");
+  })();
 
 const CRON_NAME = "loops-sync-cron";
 
