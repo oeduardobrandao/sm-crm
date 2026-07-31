@@ -6,7 +6,25 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // Service-role client + getUser(token) is the repo's user-token verification
 // pattern; the anon client cannot verify these tokens.
-const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+//
+// Bounded global fetch, same shape as loops-sync-cron/index.ts. Every call this
+// client makes -- getUser, the workspace_members lookup, the paywall_hits
+// insert -- is ours, so bounding the client rather than each call is the right
+// scope here (unlike billing-checkout, where a client-wide wrapper would have
+// caught unrelated pre-existing calls too). Unbounded, a stalled call hangs
+// until the edge runtime kills the isolate, which BYPASSES catch: the handler
+// never returns and the browser request never resolves.
+const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  global: {
+    fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+      fetch(input, {
+        ...init,
+        signal: init?.signal
+          ? AbortSignal.any([init.signal, AbortSignal.timeout(10_000)])
+          : AbortSignal.timeout(10_000),
+      }),
+  },
+});
 
 Deno.serve(createPaywallReportHandler({
   getUser: async (token) => {
