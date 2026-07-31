@@ -38,7 +38,7 @@ export function relativeLuminance(hex: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-interface HubPalette {
+export interface HubPalette {
   bg: string;
   card: string;
   txt: string;
@@ -117,7 +117,9 @@ const COOL_DARK: HubPalette = {
   soft: '#202734',
 };
 
-const PALETTES: Record<HubSurface, { light: HubPalette; dark: HubPalette }> = {
+// Exported so tests (and any future consumer) read the same palette data resolveHubTheme()
+// actually uses, instead of re-typing hexes into a second, driftable source of truth.
+export const PALETTES: Record<HubSurface, { light: HubPalette; dark: HubPalette }> = {
   neutral: { light: NEUTRAL_LIGHT, dark: NEUTRAL_DARK },
   warm: { light: WARM_LIGHT, dark: WARM_DARK },
   cool: { light: COOL_LIGHT, dark: COOL_DARK },

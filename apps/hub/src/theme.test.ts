@@ -6,6 +6,7 @@ import {
   DEFAULT_HUB_THEME,
   HUB_DISPLAY_FONTS,
   HUB_BODY_FONTS,
+  PALETTES,
   type HubThemeConfig,
 } from './theme';
 
@@ -165,6 +166,36 @@ describe('resolveHubTheme', () => {
     });
   });
 
+  describe('surface emission', () => {
+    it('warm light', () => {
+      const t = resolveHubTheme({ ...DEFAULT_HUB_THEME, surface: 'warm' }, false);
+      expect(t.vars['--hub-bg']).toBe(PALETTES.warm.light.bg);
+      expect(t.vars['--hub-card']).toBe(PALETTES.warm.light.card);
+      expect(t.vars['--hub-txt']).toBe(PALETTES.warm.light.txt);
+    });
+
+    it('warm dark', () => {
+      const t = resolveHubTheme({ ...DEFAULT_HUB_THEME, surface: 'warm' }, true);
+      expect(t.vars['--hub-bg']).toBe(PALETTES.warm.dark.bg);
+      expect(t.vars['--hub-card']).toBe(PALETTES.warm.dark.card);
+      expect(t.vars['--hub-txt']).toBe(PALETTES.warm.dark.txt);
+    });
+
+    it('cool light', () => {
+      const t = resolveHubTheme({ ...DEFAULT_HUB_THEME, surface: 'cool' }, false);
+      expect(t.vars['--hub-bg']).toBe(PALETTES.cool.light.bg);
+      expect(t.vars['--hub-card']).toBe(PALETTES.cool.light.card);
+      expect(t.vars['--hub-txt']).toBe(PALETTES.cool.light.txt);
+    });
+
+    it('cool dark', () => {
+      const t = resolveHubTheme({ ...DEFAULT_HUB_THEME, surface: 'cool' }, true);
+      expect(t.vars['--hub-bg']).toBe(PALETTES.cool.dark.bg);
+      expect(t.vars['--hub-card']).toBe(PALETTES.cool.dark.card);
+      expect(t.vars['--hub-txt']).toBe(PALETTES.cool.dark.txt);
+    });
+  });
+
   describe('unknown enum values fall back to defaults without throwing', () => {
     it('unknown surface falls back to neutral', () => {
       const config = { ...DEFAULT_HUB_THEME, surface: 'galaxy' } as unknown as HubThemeConfig;
@@ -218,22 +249,9 @@ describe('resolveHubTheme', () => {
 });
 
 describe('contrast floors across all 6 palettes', () => {
-  // Structured identically to the LIGHT/DARK constants in theme.ts.
-  const PALETTES: Record<string, { light: Record<string, string>; dark: Record<string, string> }> =
-    {
-      neutral: {
-        light: { bg: '#FAFAFA', txt: '#171717', tx2: '#525252' },
-        dark: { bg: '#0E0E0E', txt: '#F5F5F5', tx2: '#B3B3B3' },
-      },
-      warm: {
-        light: { bg: '#FAF7F2', txt: '#1C1917', tx2: '#57534E' },
-        dark: { bg: '#151210', txt: '#F5F0EB', tx2: '#B8B0A8' },
-      },
-      cool: {
-        light: { bg: '#F7F9FB', txt: '#0F1728', tx2: '#4B5563' },
-        dark: { bg: '#0D1017', txt: '#EEF2F7', tx2: '#A8B1BF' },
-      },
-    };
+  // Reads the real palette data straight from theme.ts's exported PALETTES — no
+  // hand-duplicated hex table here, so this can't drift from what resolveHubTheme()
+  // actually emits (see the 'surface emission' tests above for the same principle).
 
   // The module's own relativeLuminance() is a deliberately simplified (non-gamma-corrected)
   // linear formula, calibrated only for the accent-clamp thresholds (lum<0.18 / lum>0.85) —
