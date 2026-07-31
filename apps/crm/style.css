@@ -3509,23 +3509,17 @@ select.form-input option {
   }
 }
 
-/* Same two-column shape as .config-report-grid above, widened for the Hub tab's
-   preview (a miniature sidebar + main layout, not a single report card). Not
-   position: sticky -- html/body/#root/.app-container are pinned to
-   overflow-x: hidden (see DESIGN_SYSTEM.md), which silently disables sticky for
-   any descendant in both apps. The preview column just renders short, so it
-   already sits near the top without needing real sticky positioning. */
-.config-hub-grid {
+/* Personalizar Hub's section cards: a responsive 2-column grid (Aparência | Cor da
+   marca on row 1, Tipografia | Componentes on row 2), collapsing to one column
+   itself via auto-fit once two 340px columns no longer fit -- no explicit
+   breakpoint needed. Identidade spans the full row below by setting
+   gridColumn: '1 / -1' on its own SectionCard. The live preview sits OUTSIDE this
+   grid entirely, as a large full-width block (see HubTab.tsx). */
+.config-hub-sections-grid {
   display: grid;
-  grid-template-columns: 1fr 380px;
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1.25rem;
   align-items: start;
-}
-
-@media (max-width: 960px) {
-  .config-hub-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 /* Native colour picker, sized to a 44px touch target and given the same

@@ -111,14 +111,19 @@ function SectionCard({
   title,
   description,
   children,
+  style,
 }: {
   icon: LucideIcon;
   title: string;
   description: string;
   children: ReactNode;
+  /** Merged onto the card's own style -- Identidade uses this to span the full grid
+   * row (gridColumn: '1 / -1'). Spacing between cards comes from the grid's own
+   * `gap`, not a per-card margin, so cards in the same row line up evenly. */
+  style?: CSSProperties;
 }) {
   return (
-    <div className="card animate-up" style={{ marginBottom: '1.25rem' }}>
+    <div className="card animate-up" style={style}>
       <div
         style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}
       >
@@ -800,285 +805,289 @@ export default function HubTab() {
         </p>
       </div>
 
-      <div className="config-hub-grid">
-        <div>
-          <FeatureGate flag="feature_brand_customization" label="Personalização do Hub">
-            <SectionCard
-              icon={Palette}
-              title="Aparência"
-              description="O clima geral do hub. O cliente ainda pode alternar claro e escuro."
-            >
-              <div style={FIELD}>
-                <Label style={FIELD_LABEL}>Tema de superfície</Label>
-                <OptionCardGroup
-                  groupLabel="Tema de superfície"
-                  value={surface}
-                  onChange={setSurface}
-                  disabled={controlsDisabled}
-                  options={SURFACE_OPTIONS.map((opt) => ({
-                    value: opt.value,
-                    label: opt.label,
-                    glyph: <SurfaceGlyph surface={opt.value} />,
-                  }))}
-                />
-              </div>
-              <div>
-                <Label style={FIELD_LABEL}>Aparência padrão</Label>
-                <SegmentedControl
-                  value={defaultAppearance}
-                  onChange={setDefaultAppearance}
-                  options={APPEARANCE_OPTIONS}
-                  ariaLabel="Aparência padrão"
-                  disabled={controlsDisabled}
-                />
-                <p style={HINT}>O cliente ainda pode alternar no hub.</p>
-              </div>
-            </SectionCard>
-          </FeatureGate>
-
-          {/* Brand colour: ungated, drives the Hub calendar accent and the report accent
-              regardless of plan. */}
+      {/* Two-column grid on desktop (row 1: Aparência | Cor da marca; row 2:
+          Tipografia | Componentes), collapsing to one column on narrow viewports via
+          auto-fit — see .config-hub-sections-grid. Identidade spans the full row
+          below (gridColumn: '1 / -1' on its SectionCard). */}
+      <div className="config-hub-sections-grid">
+        <FeatureGate flag="feature_brand_customization" label="Personalização do Hub">
           <SectionCard
-            icon={Droplet}
-            title="Cor da marca"
-            description="Aplicada a botões, navegação ativa e calendário. Contraste garantido."
+            icon={Palette}
+            title="Aparência"
+            description="O clima geral do hub. O cliente ainda pode alternar claro e escuro."
           >
-            <ColorPicker
-              value={brandColor}
-              onChange={(hex) => setBrandColor(hex)}
-              label="Cor da marca"
+            <div style={FIELD}>
+              <Label style={FIELD_LABEL}>Tema de superfície</Label>
+              <OptionCardGroup
+                groupLabel="Tema de superfície"
+                value={surface}
+                onChange={setSurface}
+                disabled={controlsDisabled}
+                options={SURFACE_OPTIONS.map((opt) => ({
+                  value: opt.value,
+                  label: opt.label,
+                  glyph: <SurfaceGlyph surface={opt.value} />,
+                }))}
+              />
+            </div>
+            <div>
+              <Label style={FIELD_LABEL}>Aparência padrão</Label>
+              <SegmentedControl
+                value={defaultAppearance}
+                onChange={setDefaultAppearance}
+                options={APPEARANCE_OPTIONS}
+                ariaLabel="Aparência padrão"
+                disabled={controlsDisabled}
+              />
+              <p style={HINT}>O cliente ainda pode alternar no hub.</p>
+            </div>
+          </SectionCard>
+        </FeatureGate>
+
+        {/* Brand colour: ungated, drives the Hub calendar accent and the report accent
+            regardless of plan. */}
+        <SectionCard
+          icon={Droplet}
+          title="Cor da marca"
+          description="Aplicada a botões, navegação ativa e calendário. Contraste garantido."
+        >
+          <ColorPicker
+            value={brandColor}
+            onChange={(hex) => setBrandColor(hex)}
+            label="Cor da marca"
+            disabled={controlsDisabled}
+            // workspaces.brand_color is CHECK'd to 6-digit hex, and resolveHubTheme
+            // rejects anything else (falls back to #171717) -- an 8-digit
+            // #rrggbbaa pick here would either fail to save or silently be ignored
+            // by the hub. ColorPicker defaults allowAlpha to true; opt out.
+            allowAlpha={false}
+          />
+          <AccentChips brandColor={brandColor} />
+          <p style={HINT}>
+            A mesma cor do relatório mensal. Marca o calendário do Hub e os destaques do relatório.
+          </p>
+        </SectionCard>
+
+        <FeatureGate flag="feature_brand_customization" label="Personalização do Hub">
+          <SectionCard
+            icon={TypeIcon}
+            title="Tipografia"
+            description="Comece por uma combinação pronta. Ajuste fino abaixo, se quiser."
+          >
+            <FontPairingCards
+              fontDisplay={fontDisplay}
+              fontBody={fontBody}
               disabled={controlsDisabled}
-              // workspaces.brand_color is CHECK'd to 6-digit hex, and resolveHubTheme
-              // rejects anything else (falls back to #171717) -- an 8-digit
-              // #rrggbbaa pick here would either fail to save or silently be ignored
-              // by the hub. ColorPicker defaults allowAlpha to true; opt out.
-              allowAlpha={false}
+              onPick={(display, body) => {
+                setFontDisplay(display);
+                setFontBody(body);
+              }}
             />
-            <AccentChips brandColor={brandColor} />
-            <p style={HINT}>
-              A mesma cor do relatório mensal. Marca o calendário do Hub e os destaques do
-              relatório.
-            </p>
+            <FontSelectsDisclosure
+              fontDisplay={fontDisplay}
+              setFontDisplay={setFontDisplay}
+              fontBody={fontBody}
+              setFontBody={setFontBody}
+              disabled={controlsDisabled}
+            />
           </SectionCard>
 
-          <FeatureGate flag="feature_brand_customization" label="Personalização do Hub">
-            <SectionCard
-              icon={TypeIcon}
-              title="Tipografia"
-              description="Comece por uma combinação pronta. Ajuste fino abaixo, se quiser."
-            >
-              <FontPairingCards
-                fontDisplay={fontDisplay}
-                fontBody={fontBody}
+          <SectionCard
+            icon={LayoutGrid}
+            title="Componentes"
+            description="A forma dos cards e controles do hub."
+          >
+            <div style={FIELD}>
+              <Label style={FIELD_LABEL}>Cantos</Label>
+              <OptionCardGroup
+                groupLabel="Cantos"
+                value={radius}
+                onChange={setRadius}
                 disabled={controlsDisabled}
-                onPick={(display, body) => {
-                  setFontDisplay(display);
-                  setFontBody(body);
+                options={RADIUS_OPTIONS.map((opt) => ({
+                  value: opt.value,
+                  label: opt.label,
+                  glyph: <RadiusGlyph radius={opt.value} />,
+                }))}
+              />
+            </div>
+            <div>
+              <Label style={FIELD_LABEL}>Estilo de cards</Label>
+              <OptionCardGroup
+                groupLabel="Estilo de cards"
+                value={cardStyle}
+                onChange={setCardStyle}
+                disabled={controlsDisabled}
+                options={CARD_STYLE_OPTIONS.map((opt) => ({
+                  value: opt.value,
+                  label: opt.label,
+                  glyph: <CardStyleGlyph cardStyle={opt.value} />,
+                }))}
+              />
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            icon={IdCard}
+            title="Identidade"
+            description="Como a marca da agência aparece dentro do hub."
+            style={{ gridColumn: '1 / -1' }}
+          >
+            <div style={FIELD}>
+              <Label style={FIELD_LABEL}>Logo no hub</Label>
+              <OptionCardGroup
+                groupLabel="Logo no hub"
+                value={logoStyle}
+                onChange={setLogoStyle}
+                disabled={controlsDisabled}
+                options={LOGO_STYLE_OPTIONS.map((opt) => ({
+                  value: opt.value,
+                  label: opt.label,
+                  sublabel: opt.sublabel,
+                  glyph: (
+                    <LogoGlyph
+                      kind={opt.value as 'round' | 'wordmark'}
+                      brandColor={brandColor}
+                      initial={workspaceInitial}
+                      workspaceName={workspace?.name ?? ''}
+                      fontDisplayCss={fontDisplayCss}
+                    />
+                  ),
+                }))}
+              />
+            </div>
+
+            <div style={FIELD}>
+              <Label style={FIELD_LABEL}>Logo para modo escuro</Label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {logoDarkUrl && (
+                  <img
+                    src={logoDarkUrl}
+                    alt="Logo para modo escuro"
+                    style={{
+                      width: 56,
+                      height: 56,
+                      objectFit: 'contain',
+                      borderRadius: 8,
+                      border: '1px solid var(--border-color)',
+                      background: '#12151a',
+                      padding: 4,
+                      opacity: logoUploading ? 0.5 : 1,
+                    }}
+                  />
+                )}
+                <button
+                  type="button"
+                  id="hub-logo-dark-trigger"
+                  onClick={() => logoInputRef.current?.click()}
+                  disabled={logoUploading}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    border: '1.5px dashed var(--border-color)',
+                    borderRadius: 10,
+                    padding: '0.85rem',
+                    background: 'transparent',
+                    cursor: logoUploading ? 'default' : 'pointer',
+                    opacity: logoUploading ? 0.6 : 1,
+                  }}
+                >
+                  {logoUploading ? (
+                    <Spinner size="sm" />
+                  ) : (
+                    <Upload size={15} aria-hidden="true" color="var(--text-muted)" />
+                  )}
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-main)' }}>
+                    {logoUploading
+                      ? 'Enviando…'
+                      : logoDarkUrl
+                        ? 'Trocar logo'
+                        : 'Enviar variante clara do logo'}
+                  </span>
+                </button>
+                {logoDarkUrl && (
+                  <Button
+                    variant="ghost"
+                    className="text-destructive"
+                    onClick={() => setRemoveLogoOpen(true)}
+                    disabled={logoUploading}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    Remover
+                  </Button>
+                )}
+              </div>
+              <p style={HINT}>PNG · até 2MB. Usada quando o cliente está no modo escuro.</p>
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) handleLogoDarkUpload(file);
                 }}
               />
-              <FontSelectsDisclosure
-                fontDisplay={fontDisplay}
-                setFontDisplay={setFontDisplay}
-                fontBody={fontBody}
-                setFontBody={setFontBody}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+              <Switch
+                id="hub-hide-branding"
+                checked={hideBranding}
                 disabled={controlsDisabled}
+                onCheckedChange={setHideBranding}
+                style={{ marginTop: 2, flexShrink: 0 }}
               />
-            </SectionCard>
-
-            <SectionCard
-              icon={LayoutGrid}
-              title="Componentes"
-              description="A forma dos cards e controles do hub."
-            >
-              <div style={FIELD}>
-                <Label style={FIELD_LABEL}>Cantos</Label>
-                <OptionCardGroup
-                  groupLabel="Cantos"
-                  value={radius}
-                  onChange={setRadius}
-                  disabled={controlsDisabled}
-                  options={RADIUS_OPTIONS.map((opt) => ({
-                    value: opt.value,
-                    label: opt.label,
-                    glyph: <RadiusGlyph radius={opt.value} />,
-                  }))}
-                />
-              </div>
               <div>
-                <Label style={FIELD_LABEL}>Estilo de cards</Label>
-                <OptionCardGroup
-                  groupLabel="Estilo de cards"
-                  value={cardStyle}
-                  onChange={setCardStyle}
-                  disabled={controlsDisabled}
-                  options={CARD_STYLE_OPTIONS.map((opt) => ({
-                    value: opt.value,
-                    label: opt.label,
-                    glyph: <CardStyleGlyph cardStyle={opt.value} />,
-                  }))}
-                />
+                <Label htmlFor="hub-hide-branding" style={{ fontWeight: 500, cursor: 'pointer' }}>
+                  Ocultar &quot;powered by mesaas&quot;
+                </Label>
               </div>
-            </SectionCard>
+            </div>
+          </SectionCard>
+        </FeatureGate>
+      </div>
 
-            <SectionCard
-              icon={IdCard}
-              title="Identidade"
-              description="Como a marca da agência aparece dentro do hub."
-            >
-              <div style={FIELD}>
-                <Label style={FIELD_LABEL}>Logo no hub</Label>
-                <OptionCardGroup
-                  groupLabel="Logo no hub"
-                  value={logoStyle}
-                  onChange={setLogoStyle}
-                  disabled={controlsDisabled}
-                  options={LOGO_STYLE_OPTIONS.map((opt) => ({
-                    value: opt.value,
-                    label: opt.label,
-                    sublabel: opt.sublabel,
-                    glyph: (
-                      <LogoGlyph
-                        kind={opt.value as 'round' | 'wordmark'}
-                        brandColor={brandColor}
-                        initial={workspaceInitial}
-                        workspaceName={workspace?.name ?? ''}
-                        fontDisplayCss={fontDisplayCss}
-                      />
-                    ),
-                  }))}
-                />
-              </div>
+      {brandingFailed && (
+        <p
+          role="alert"
+          style={{
+            ...HINT,
+            color: 'var(--danger-text)',
+            marginTop: '1.25rem',
+            marginBottom: 0,
+          }}
+        >
+          Não foi possível carregar as configurações do Hub. Recarregue a página. Salvar agora
+          sobrescreveria a sua personalização com os valores padrão.
+        </p>
+      )}
 
-              <div style={FIELD}>
-                <Label style={FIELD_LABEL}>Logo para modo escuro</Label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                  {logoDarkUrl && (
-                    <img
-                      src={logoDarkUrl}
-                      alt="Logo para modo escuro"
-                      style={{
-                        width: 56,
-                        height: 56,
-                        objectFit: 'contain',
-                        borderRadius: 8,
-                        border: '1px solid var(--border-color)',
-                        background: '#12151a',
-                        padding: 4,
-                        opacity: logoUploading ? 0.5 : 1,
-                      }}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    id="hub-logo-dark-trigger"
-                    onClick={() => logoInputRef.current?.click()}
-                    disabled={logoUploading}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '0.5rem',
-                      border: '1.5px dashed var(--border-color)',
-                      borderRadius: 10,
-                      padding: '0.85rem',
-                      background: 'transparent',
-                      cursor: logoUploading ? 'default' : 'pointer',
-                      opacity: logoUploading ? 0.6 : 1,
-                    }}
-                  >
-                    {logoUploading ? (
-                      <Spinner size="sm" />
-                    ) : (
-                      <Upload size={15} aria-hidden="true" color="var(--text-muted)" />
-                    )}
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-main)' }}>
-                      {logoUploading
-                        ? 'Enviando…'
-                        : logoDarkUrl
-                          ? 'Trocar logo'
-                          : 'Enviar variante clara do logo'}
-                    </span>
-                  </button>
-                  {logoDarkUrl && (
-                    <Button
-                      variant="ghost"
-                      className="text-destructive"
-                      onClick={() => setRemoveLogoOpen(true)}
-                      disabled={logoUploading}
-                      style={{ alignSelf: 'flex-start' }}
-                    >
-                      Remover
-                    </Button>
-                  )}
-                </div>
-                <p style={HINT}>PNG · até 2MB. Usada quando o cliente está no modo escuro.</p>
-                <input
-                  ref={logoInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  hidden
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = '';
-                    if (file) handleLogoDarkUpload(file);
-                  }}
-                />
-              </div>
+      <Button
+        onClick={() => saveMutation.mutate()}
+        disabled={saveMutation.isPending || controlsDisabled}
+        style={{ marginTop: brandingFailed ? '0.75rem' : '1.25rem' }}
+      >
+        {saveMutation.isPending && <Spinner size="sm" />} Salvar
+      </Button>
 
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-                <Switch
-                  id="hub-hide-branding"
-                  checked={hideBranding}
-                  disabled={controlsDisabled}
-                  onCheckedChange={setHideBranding}
-                  style={{ marginTop: 2, flexShrink: 0 }}
-                />
-                <div>
-                  <Label htmlFor="hub-hide-branding" style={{ fontWeight: 500, cursor: 'pointer' }}>
-                    Ocultar &quot;powered by mesaas&quot;
-                  </Label>
-                </div>
-              </div>
-            </SectionCard>
-          </FeatureGate>
-
-          {brandingFailed && (
-            <p
-              role="alert"
-              style={{
-                ...HINT,
-                color: 'var(--danger-text)',
-                marginTop: 0,
-                marginBottom: '0.75rem',
-              }}
-            >
-              Não foi possível carregar as configurações do Hub. Recarregue a página. Salvar agora
-              sobrescreveria a sua personalização com os valores padrão.
-            </p>
-          )}
-
-          <Button
-            onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending || controlsDisabled}
-          >
-            {saveMutation.isPending && <Spinner size="sm" />} Salvar
-          </Button>
-        </div>
-
-        {/* Live preview. Configurações → Hub is workspace-level, not per-client, so
-            there is no token to build a real "Ver hub" link from here — every hub URL
-            is per-client (see pages/cliente-detalhe/HubTab.tsx). We deliberately don't
-            invent a tokenless workspace route; the per-client tab is still the place
-            to copy/open a client's actual link. */}
-        <div>
-          <Label style={FIELD_LABEL}>Prévia</Label>
-          <HubPreview
-            draft={previewDraft}
-            workspaceName={workspace?.name ?? ''}
-            workspaceLogoUrl={workspace?.logo_url ?? null}
-            customized={customized}
-          />
-        </div>
+      {/* Live preview: a large full-width block below every section, not a side
+          column -- Configurações → Hub is workspace-level, not per-client, so there
+          is no token to build a real "Ver hub" link from here either; every hub URL
+          is per-client (see pages/cliente-detalhe/HubTab.tsx). We deliberately don't
+          invent a tokenless workspace route; the per-client tab is still the place
+          to copy/open a client's actual link. HubPreview owns its own "Pré-
+          visualização ao vivo" caption + toggles header. */}
+      <div style={{ marginTop: '2rem' }}>
+        <HubPreview
+          draft={previewDraft}
+          workspaceName={workspace?.name ?? ''}
+          workspaceLogoUrl={workspace?.logo_url ?? null}
+          customized={customized}
+        />
       </div>
 
       {/* Remove Dark Logo Confirm */}
