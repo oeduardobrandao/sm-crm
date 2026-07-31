@@ -133,6 +133,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // A's PostHog profile -- the same cross-account bleed the resets
         // above exist to close, one layer over. Mirrors `signOut` below.
         resetAnalytics();
+        // Same shared-machine reasoning as resetAnalytics() above, but for
+        // Crisp: without this, B's chat messages land on A's identified
+        // Crisp contact (A's email/nickname), since Crisp persists the
+        // identity in the browser until told otherwise. Guarded because a
+        // support-tooling failure must never break an auth transition.
+        try {
+          window.$crisp?.push(['do', 'session:reset']);
+        } catch {
+          // Never let a support-tooling nicety break auth.
+        }
         queryClient.clear();
         // A non-null nextUser still has hydration ahead of it (the
         // profile-fetch effect below, keyed on userId, takes over `loading`
@@ -196,12 +206,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // identity. Email + name only: client count is not available from any
           // existing hook, and the spec explicitly says not to build a data path
           // for it. Guarded because Crisp's script may not have loaded yet.
-          try {
-            const p = nextProfile as Profile;
-            window.$crisp?.push(['set', 'user:email', [user?.email ?? '']]);
-            if (p.nome) window.$crisp?.push(['set', 'user:nickname', [p.nome]]);
-          } catch {
-            // Never let a support-tooling nicety break auth.
+          const p = nextProfile as Profile;
+          // Crisp validates the address and can throw on an empty string --
+          // phone-auth users have no email, so guard it the same way the
+          // nickname push is guarded below, and keep each push in its own
+          // try/catch so one throwing (e.g. an empty email) can never skip
+          // the other.
+          if (user?.email) {
+            try {
+              window.$crisp?.push(['set', 'user:email', [user.email]]);
+            } catch {
+              // Never let a support-tooling nicety break auth.
+            }
+          }
+          if (p.nome) {
+            try {
+              window.$crisp?.push(['set', 'user:nickname', [p.nome]]);
+            } catch {
+              // Never let a support-tooling nicety break auth.
+            }
           }
         }
         if (!active || profileRequestId.current !== requestId) return;
@@ -473,6 +496,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabaseSignOut();
     // Prevent the next user on a shared machine from being merged into this identity.
     resetAnalytics();
+    // Same shared-machine reasoning as resetAnalytics() above, but for Crisp:
+    // without this, the next person on this browser inherits the outgoing
+    // user's identified Crisp contact (their email/nickname) and their
+    // support messages land on it. Guarded because a support-tooling failure
+    // must never break sign-out, a security-relevant path.
+    try {
+      window.$crisp?.push(['do', 'session:reset']);
+    } catch {
+      // Never let a support-tooling nicety break auth.
+    }
     clearProfileCache();
     activeUserId.current = null;
     setUser(null);

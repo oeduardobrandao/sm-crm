@@ -451,9 +451,12 @@ language sql security definer set search_path = public as $$
     -- address. Syncing traits now would overwrite synced_email and strand that
     -- address at Loops permanently -- see the block comment above this function.
     -- Written as a correlated `not exists` rather than folded into the `lc` left
-    -- join below on purpose: `not (lc.deleted_at is null and ...)` is
-    -- three-valued and evaluates to NULL, i.e. false, for a never-synced user,
-    -- which would silently drop everyone who has no loops_contacts row at all.
+    -- join below on purpose: for a never-synced user (no lc row), `lc.deleted_at
+    -- is null` is TRUE and `lc.synced_email is distinct from u.email::text` is
+    -- also TRUE (`is distinct from` is two-valued and never yields NULL), so
+    -- `not (lc.deleted_at is null and ...)` evaluates to `not(TRUE and TRUE)` =
+    -- FALSE -- which would silently drop everyone who has no loops_contacts row
+    -- at all.
     and not exists (
       select 1 from loops_contacts lc2
       where lc2.user_id = u.id
