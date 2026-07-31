@@ -45,12 +45,56 @@ begin
 
   -- Send-time re-check, inside the lock rather than as a separate round trip.
   -- Between the candidate RPC's SELECT and this call the workspace can have
-  -- subscribed or the user can have revoked consent. Re-verifying here makes the
-  -- decision atomic with the claim; a separate query would reopen the same race
-  -- it is meant to close.
+  -- subscribed, the user can have revoked consent, or the user can have LOST
+  -- the workspace (removed from workspace_members, or demoted out of 'owner').
+  -- Re-verifying here makes the decision atomic with the claim; a separate query
+  -- would reopen the same race it is meant to close.
   if not exists (
     select 1 from profiles p
     where p.id = p_user_id and p.marketing_opt_in = true
+  ) then
+    return false;
+  end if;
+
+  -- Membership re-check. NOT redundant with the candidate RPCs' own owner join,
+  -- and must not be deleted as such: the sweep processes up to 50 candidates in
+  -- a loop, so up to roughly a minute passes between the RPC's SELECT and this
+  -- call. In that window an owner can be removed from workspace_members or
+  -- demoted. All three checks above still pass -- the ex-owner's profile still
+  -- exists with consent, and the workspace is still free -- so without this the
+  -- claim succeeds and the cron sends that person a Loops event carrying
+  -- workspaceName, planName and clientCount. Someone just removed from an
+  -- agency would receive marketing naming that agency and its client count.
+  --
+  -- It checks that p_user_id is still THE deterministically selected owner, not
+  -- merely *an* owner: if the pick would now resolve to a different person,
+  -- sending to the stale pick is wrong regardless of disclosure. The ORDER BY
+  -- below is copied verbatim from the owner lateral in
+  -- get_paywall_hit_candidates / get_abandoned_checkout_candidates. Keep the two
+  -- in lockstep -- if they diverge, the claim and the candidate RPCs disagree
+  -- about who the recipient is, which is the same bug from the other direction.
+  --
+  -- This also serves get_dormant_signup_candidates, which establishes ownership
+  -- differently (it drives from auth.users and joins workspace_members wm on
+  -- wm.user_id = u.id and wm.workspace_id = ws.id and wm.role = 'owner', with
+  -- ws.created_by = u.id). Whenever that RPC's conditions hold, this lateral
+  -- resolves to the same user: the leading (wm.user_id = ws.created_by) desc
+  -- tiebreak puts the creator first, and at most one member can equal
+  -- ws.created_by. So the workspace-scoped pick is the correct re-check for the
+  -- dormant path too.
+  --
+  -- Refusing writes no ledger row, so the workspace simply becomes eligible
+  -- again on a later sweep, with whoever the correct owner is by then.
+  if not exists (
+    select 1
+    from workspaces ws
+    cross join lateral (
+      select wm.user_id from workspace_members wm
+      where wm.workspace_id = ws.id and wm.role = 'owner'
+      order by (wm.user_id = ws.created_by) desc, wm.joined_at asc, wm.user_id asc
+      limit 1
+    ) o
+    where ws.id = p_workspace_id and o.user_id = p_user_id
   ) then
     return false;
   end if;

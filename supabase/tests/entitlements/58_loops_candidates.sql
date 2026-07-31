@@ -256,4 +256,54 @@ begin;
   end $$;
 rollback;
 
+-- 11. Send-time re-check, MEMBERSHIP leg: the selected owner at SELECT time can
+--     lose the workspace before the claim runs (removed from workspace_members,
+--     or demoted). Consent, free plan and no-subscription all still hold, so
+--     without the membership re-check the claim wins and the cron mails an
+--     ex-member an event carrying workspaceName / planName / clientCount.
+--     Three legs, all asserting FALSE:
+--       (a) still an owner, but NOT the deterministically selected one -- the
+--           pick's leading (wm.user_id = ws.created_by) desc tiebreak keeps
+--           f.user_id ahead of u2 even though u2 joined earlier, so a re-check
+--           written as a bare "is an owner" test, or one that copied only the
+--           joined_at leg of the ORDER BY, would wrongly accept u2 here;
+--       (b) membership row deleted outright -- the removed-member scenario;
+--       (c) row present but demoted out of 'owner'.
+--     u2's profile needs marketing_opt_in set explicitly: the column defaults to
+--     false (20260719000002) and handle_new_user_workspace's new-signup branch
+--     does not write it, so leg (a) would otherwise refuse at the CONSENT check
+--     and pass for the wrong reason.
+begin;
+  do $$
+  declare f record; u2 uuid := gen_random_uuid(); won boolean;
+  begin
+    select * into f from et_loops_fixture((select id from plans where is_default), true);
+
+    insert into auth.users (id, email, email_confirmed_at, raw_user_meta_data)
+      values (u2, u2 || '@et.test', now() - interval '5 days', '{}'::jsonb);
+    update profiles set marketing_opt_in = true where id = u2;
+    insert into workspace_members (user_id, workspace_id, role, joined_at)
+      values (u2, f.workspace_id, 'owner', now() - interval '30 days');
+
+    won := claim_marketing_email('paywall_hit', f.workspace_id, u2, 1);
+    if won then
+      raise exception 'claim succeeded for an owner who is not the deterministically selected one';
+    end if;
+
+    delete from workspace_members
+      where workspace_id = f.workspace_id and user_id = f.user_id;
+    won := claim_marketing_email('paywall_hit', f.workspace_id, f.user_id, 1);
+    if won then
+      raise exception 'claim succeeded for a user removed from workspace_members';
+    end if;
+
+    insert into workspace_members (user_id, workspace_id, role)
+      values (f.user_id, f.workspace_id, 'agent');
+    won := claim_marketing_email('paywall_hit', f.workspace_id, f.user_id, 1);
+    if won then
+      raise exception 'claim succeeded for a user demoted out of owner';
+    end if;
+  end $$;
+rollback;
+
 drop function if exists et_loops_fixture(text, boolean, int);
