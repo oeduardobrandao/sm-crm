@@ -4,7 +4,8 @@
     "paths": {
       "@/*": ["./src/*"],
       "@mesaas/i18n": ["../../packages/i18n/index.ts"],
-      "@mesaas/ui/*": ["../../packages/ui/*"]
+      "@mesaas/ui/*": ["../../packages/ui/*"],
+      "@mesaas/app-lifecycle": ["../../packages/app-lifecycle/index.ts"]
     },
     "target": "ES2020",
     "useDefineForClassFields": true,

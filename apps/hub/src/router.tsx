@@ -1,10 +1,12 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { HubShell } from './shell/HubShell';
+import { RouteErrorPage } from './components/RouteErrorPage';
 
 export const router = createBrowserRouter([
   {
     path: '/:workspace/hub/:token',
     element: <HubShell />,
+    errorElement: <RouteErrorPage />,
     children: [
       {
         index: true,
