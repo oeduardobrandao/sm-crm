@@ -2260,10 +2260,31 @@ git commit -m "feat(loops): add loops-sync-cron sweep handler"
 **Files:**
 - Create: `supabase/functions/_shared/posthog.ts`
 - Create: `supabase/functions/loops-sync-cron/index.ts`
+- Modify: `supabase/config.toml`
 
 **Interfaces:**
 - Consumes: `runLoopsSyncCron`, `LoopsCronDeps` (Task 8); `_shared/loops.ts` (Task 1).
 - Produces: the deployable `loops-sync-cron` function and `capturePostHog(event, distinctId, props)`.
+
+### `config.toml` — required, and easy to miss
+
+`loops-sync-cron` authenticates with the `x-cron-secret` header and carries **no JWT at all**, so the gateway's JWT check must be disabled for it or every pg_cron invocation is rejected before the function runs. That is declared in `supabase/config.toml`, which already lists every such function — including the direct sibling this one is modelled on:
+
+```toml
+[functions.lifecycle-email-cron]
+verify_jwt = false
+```
+
+Add the matching entry, next to the other cron entries:
+
+```toml
+[functions.loops-sync-cron]
+verify_jwt = false
+```
+
+Do **not** add an entry for `paywall-report`. That function is browser-reachable with a real user JWT and deliberately keeps the gateway check on top of its own `getUser` + `workspace_members` verification. `config.toml` in this repo lists only the `verify_jwt = false` functions, so its absence there is the correct state, not an omission.
+
+Symptom if this is skipped: the schedule fires, `net.http_post` returns 401, nothing runs, and nothing in the function's own logs explains why — because the function was never reached.
 
 - [ ] **Step 1: Write `_shared/posthog.ts`**
 
