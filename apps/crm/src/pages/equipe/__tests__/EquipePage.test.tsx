@@ -2,6 +2,10 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// jsdom has no scrollIntoView; Radix's Select calls it when committing a
+// selection, which otherwise throws inside a passive effect.
+Element.prototype.scrollIntoView = vi.fn();
+
 const { mockNavigate, toastSuccessMock, toastErrorMock, mockUseAuth, mockUseWorkspaceLimits } =
   vi.hoisted(() => ({
     mockNavigate: vi.fn(),
@@ -66,6 +70,8 @@ import EquipePage from '../EquipePage';
 
 const mockedGetMembros = vi.mocked(store.getMembros);
 const mockedAddMembro = vi.mocked(store.addMembro);
+const mockedUpdateMembro = vi.mocked(store.updateMembro);
+const mockedSetMembroCrmUser = vi.mocked(store.setMembroCrmUser);
 const mockedGetWorkspaceUsers = vi.mocked(store.getWorkspaceUsers);
 const mockedInviteUser = vi.mocked(inviteService.inviteUser);
 
@@ -156,5 +162,62 @@ describe('EquipePage — onSubmit invite orchestration', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['membros'] });
+  });
+
+  it('never fires an invite when an existing user was just linked via Conta CRM in the same submission', async () => {
+    mockedGetMembros.mockResolvedValue([
+      {
+        id: 7,
+        nome: 'Pessoa Existente',
+        cargo: 'Designer',
+        tipo: 'clt',
+        avatar_url: '',
+        crm_user_id: null,
+      },
+    ] as never);
+    mockedUpdateMembro.mockResolvedValueOnce(undefined as never);
+    mockedSetMembroCrmUser.mockResolvedValueOnce(undefined as never);
+
+    renderPage();
+
+    const nameEl = await screen.findByText('Pessoa Existente');
+    // The name itself is also a button (navigates to the detail page) and is
+    // first in DOM order; the edit action is the icon-only pencil button
+    // (no accessible name) that follows it, before the delete button.
+    const card = nameEl.closest('.team-card') as HTMLElement;
+    const editButton = within(card).getAllByRole('button')[1];
+    fireEvent.click(editButton);
+
+    const dialog = await screen.findByRole('dialog');
+
+    // Turn on the invite switch first (as an admin might, before deciding to
+    // link an existing account instead) — the section only renders while
+    // still unlinked, so this is available alongside Conta CRM.
+    fireEvent.click(within(dialog).getByRole('switch', { name: 'Convidar para o workspace' }));
+    fireEvent.change(within(dialog).getByLabelText('Email *'), {
+      target: { value: 'nova@exemplo.com' },
+    });
+
+    // Then pick an existing workspace user in Conta CRM.
+    fireEvent.click(within(dialog).getByRole('combobox', { name: 'Conta CRM' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Ana' }));
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => {
+      expect(mockedSetMembroCrmUser).toHaveBeenCalledWith(7, 'u1');
+    });
+    await waitFor(() => {
+      expect(mockedUpdateMembro).toHaveBeenCalledTimes(1);
+    });
+
+    // The membro was just linked in this same submission — the invite must
+    // never fire, regardless of the switch's leftover on state.
+    expect(mockedInviteUser).not.toHaveBeenCalled();
+    expect(toastErrorMock).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(toastSuccessMock).toHaveBeenCalledWith('Membro atualizado');
+    });
   });
 });

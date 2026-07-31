@@ -209,10 +209,10 @@ export default function EquipePage() {
         data_pagamento: diaPag,
       };
       const safePayload = stripFinancialFields(payload, canSeeFinancials, ['custo_mensal']);
+      const desiredCrmUser =
+        values.crmUserId === '' || values.crmUserId == null ? null : values.crmUserId;
       let membroId: number | undefined;
       if (editing?.id) {
-        const desiredCrmUser =
-          values.crmUserId === '' || values.crmUserId == null ? null : values.crmUserId;
         const currentCrmUser = editing.crm_user_id ?? null;
         if (desiredCrmUser !== currentCrmUser) {
           await setMembroCrmUser(editing.id, desiredCrmUser);
@@ -225,9 +225,13 @@ export default function EquipePage() {
       }
 
       // The invite is a second, non-atomic operation: a failure here must not
-      // roll back or hide the saved membro.
+      // roll back or hide the saved membro. Guard on desiredCrmUser (the value
+      // just submitted), not editing?.crm_user_id (a stale prop) — otherwise
+      // selecting an existing user in Conta CRM and enabling the invite switch
+      // in the same submission would still fire an invite the server rejects
+      // as already-linked.
       const wantsInvite =
-        values.inviteEnabled && canManageWorkspace && membroId != null && !editing?.crm_user_id;
+        values.inviteEnabled && canManageWorkspace && membroId != null && desiredCrmUser === null;
       if (wantsInvite) {
         try {
           const result = await inviteUser(values.inviteEmail.trim(), values.inviteRole, membroId);
@@ -672,7 +676,7 @@ export default function EquipePage() {
                 </Button>
                 <Button type="submit" disabled={saving}>
                   {saving && <Spinner size="sm" />}{' '}
-                  {form.watch('inviteEnabled') && !editing?.crm_user_id
+                  {form.watch('inviteEnabled') && !form.watch('crmUserId')
                     ? 'Salvar e convidar'
                     : 'Salvar'}
                 </Button>
