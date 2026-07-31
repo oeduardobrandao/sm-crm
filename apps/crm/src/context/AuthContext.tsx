@@ -192,6 +192,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             plan_id: null,
             role: (nextProfile as Profile).role,
           });
+          // Crisp is loaded anonymously in index.html, so the inbox shows no
+          // identity. Email + name only: client count is not available from any
+          // existing hook, and the spec explicitly says not to build a data path
+          // for it. Guarded because Crisp's script may not have loaded yet.
+          try {
+            const p = nextProfile as Profile;
+            window.$crisp?.push(['set', 'user:email', [user?.email ?? '']]);
+            if (p.nome) window.$crisp?.push(['set', 'user:nickname', [p.nome]]);
+          } catch {
+            // Never let a support-tooling nicety break auth.
+          }
         }
         if (!active || profileRequestId.current !== requestId) return;
 
@@ -233,7 +244,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [sessionReady, userId]);
+    // user?.email is read only for the Crisp identify call above and is
+    // sourced from the same render as userId (both derive from the same
+    // `user` state read) -- it never changes independently of an identity
+    // transition already covered by userId, so it's intentionally omitted
+    // here rather than triggering a redundant profile/membership re-fetch.
+  }, [sessionReady, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Backstop mirror: keeps the ref in sync with every OTHER setCanSeeFinancials
   // call site (the userChanged reset, both branches of the hydration effect,
