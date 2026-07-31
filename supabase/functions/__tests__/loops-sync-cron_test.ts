@@ -24,7 +24,7 @@ function makeDeps(over: Partial<LoopsCronDeps> = {}): LoopsCronDeps & {
       return Promise.resolve(true);
     },
     markDelivered: () => Promise.resolve(),
-    recordContactSync: () => Promise.resolve(),
+    recordContactSync: () => Promise.resolve(true),
     markContactDeleted: () => Promise.resolve(),
     sendEvent: (p: Sent) => {
       sent.push(p);
@@ -127,6 +127,142 @@ Deno.test("claims before sending", async () => {
   });
   await runLoopsSyncCron(deps);
   assertEquals(order, ["claim", "send"]);
+});
+
+// --- LGPD: the vendor-identity ledger must be written BEFORE any Loops call --
+//
+// Loops' events/send creates a contact when none exists for the email
+// ("a new contact will be created using both email and userId values"), so the
+// TRIGGER path creates contacts too, not just the trait path. Recording after
+// the call -- or, as the trigger sweeps originally did, not at all -- can leave
+// a person resident at the vendor with nothing in our system able to name or
+// delete them. These four tests are the regression guard; if someone reorders
+// the calls or drops the trigger-path record as "redundant", they fail.
+
+Deno.test("records the contact BEFORE sending a trigger event", async () => {
+  const order: string[] = [];
+  const recorded: Array<{ userId: string; email: string }> = [];
+  const deps = makeDeps({
+    rpc: (name: string) =>
+      Promise.resolve({
+        data: name === "get_paywall_hit_candidates" ? [PAYWALL_ROW] : [],
+        error: null,
+      }),
+    recordContactSync: (userId: string, email: string) => {
+      order.push("record");
+      recorded.push({ userId, email });
+      return Promise.resolve(true);
+    },
+    sendEvent: () => {
+      order.push("send");
+      return Promise.resolve();
+    },
+  });
+  const res = await runLoopsSyncCron(deps);
+
+  assertEquals(order, ["record", "send"]);
+  // The RECIPIENT's identity, which is what the vendor now holds.
+  assertEquals(recorded, [{ userId: "user-1", email: "a@b.com" }]);
+  assertEquals(res.eventsSent, 1);
+});
+
+Deno.test("records the contact BEFORE updating traits", async () => {
+  const order: string[] = [];
+  const deps = makeDeps({
+    rpc: (name: string) =>
+      Promise.resolve({
+        data: name === "get_loops_trait_candidates"
+          ? [{
+            user_id: "user-1",
+            email: "a@b.com",
+            nome: "Ana Silva",
+            days_since_signup: 5,
+            workspace_count: 2,
+            any_free: true,
+          }]
+          : [],
+        error: null,
+      }),
+    recordContactSync: () => {
+      order.push("record");
+      return Promise.resolve(true);
+    },
+    updateContact: () => {
+      order.push("update");
+      return Promise.resolve();
+    },
+  });
+  const res = await runLoopsSyncCron(deps);
+
+  assertEquals(order, ["record", "update"]);
+  assertEquals(res.traitsSynced, 1);
+});
+
+// A refused record means a contact deletion is still OWED at Loops for this
+// person's previous address. Creating a fresh contact for them now would both be
+// wrong on its own terms and strand the old address forever (loops_contacts has
+// one row per user). Skip, and let the deletion sweep land it first.
+Deno.test("a refused contact record skips the trigger send entirely", async () => {
+  const deps = makeDeps({
+    rpc: (name: string) =>
+      Promise.resolve({
+        data: name === "get_paywall_hit_candidates" ? [PAYWALL_ROW] : [],
+        error: null,
+      }),
+    recordContactSync: () => Promise.resolve(false),
+  });
+  const res = await runLoopsSyncCron(deps);
+
+  assertEquals(deps.sent.length, 0, "must not create a contact while a deletion is owed");
+  assertEquals(res.eventsSent, 0);
+  assertEquals(res.failed, 0, "a pending deletion is a deferral, not a failure");
+});
+
+Deno.test("a refused contact record skips the trait update entirely", async () => {
+  const deps = makeDeps({
+    rpc: (name: string) =>
+      Promise.resolve({
+        data: name === "get_loops_trait_candidates"
+          ? [{
+            user_id: "user-1",
+            email: "a@b.com",
+            nome: "Ana",
+            days_since_signup: 5,
+            workspace_count: 1,
+            any_free: true,
+          }]
+          : [],
+        error: null,
+      }),
+    recordContactSync: () => Promise.resolve(false),
+  });
+  const res = await runLoopsSyncCron(deps);
+
+  assertEquals(deps.traits.length, 0, "must not create a contact while a deletion is owed");
+  assertEquals(res.traitsSynced, 0);
+  assertEquals(res.failed, 0);
+});
+
+// The record is only owed once the claim is won: a refused claim (72h cap,
+// consent revoked at send time, workspace subscribed) means no Loops call
+// happens, so writing a ledger row would claim a vendor contact that does not
+// exist.
+Deno.test("a lost claim records no contact", async () => {
+  let records = 0;
+  const deps = makeDeps({
+    rpc: (name: string) =>
+      Promise.resolve({
+        data: name === "get_paywall_hit_candidates" ? [PAYWALL_ROW] : [],
+        error: null,
+      }),
+    claim: () => Promise.resolve(false),
+    recordContactSync: () => {
+      records++;
+      return Promise.resolve(true);
+    },
+  });
+  await runLoopsSyncCron(deps);
+  assertEquals(records, 0);
 });
 
 Deno.test("a lost claim skips the send entirely (72h cap arbitration)", async () => {
@@ -289,7 +425,7 @@ Deno.test("syncs traits and records the synced email", async () => {
       }),
     recordContactSync: (userId: string, email: string) => {
       recorded.push({ userId, email });
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
   });
   const res = await runLoopsSyncCron(deps);

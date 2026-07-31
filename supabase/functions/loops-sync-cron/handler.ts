@@ -35,7 +35,13 @@ export interface LoopsCronDeps {
     keyCol: "user_id" | "workspace_id",
     keyVal: string,
   ) => Promise<void>;
-  recordContactSync: (userId: string, email: string) => Promise<void>;
+  /**
+   * Writes the vendor-identity ledger row for (userId, email). Returns false
+   * when a contact deletion is still OWED at Loops for a different address on
+   * this user's row -- the caller must then skip them entirely this sweep.
+   * See record_loops_contact in 20260731000004_loops_sync_rpcs.sql.
+   */
+  recordContactSync: (userId: string, email: string) => Promise<boolean>;
   markContactDeleted: (id: string) => Promise<void>;
   sendEvent: (p: {
     email: string;
@@ -181,6 +187,23 @@ export async function runLoopsSyncCron(
           ? `${emailType}/${c.owner_user_id}`
           : `${emailType}/${c.workspace_id}`;
 
+        // RECORD BEFORE SENDING. Loops' events/send docs: "if a contact is not
+        // found, a new contact will be created using both email and userId
+        // values." The trigger path therefore CREATES CONTACTS at the vendor,
+        // exactly like contacts/update does -- this is not a trait-only concern
+        // and this call is not redundant. Without the ledger row first, a send
+        // that succeeds and a run that then dies (or a consent revocation that
+        // lands a second later) leaves that person resident at a US vendor with
+        // nothing in our system able to name, find or delete them.
+        //
+        // A refusal means a deletion is still owed at Loops for this person's
+        // previous address. Skip them: creating a fresh contact while we owe
+        // them an erasure is the wrong move, and overwriting synced_email would
+        // strand the old address forever. The claim row stays undelivered, so
+        // the candidate RPC re-offers this workspace in an hour on the SAME
+        // idempotency key once the deletion has landed.
+        if (!(await deps.recordContactSync(c.owner_user_id, c.owner_email))) continue;
+
         await deps.sendEvent({
           email: c.owner_email,
           eventName: emailType,
@@ -242,6 +265,16 @@ export async function runLoopsSyncCron(
   } else {
     for (const c of (traitRes.data ?? []) as TraitRow[]) {
       try {
+        // RECORD BEFORE SYNCING, same rule as the trigger path above and for
+        // the same reason: contacts/update creates the contact, so a successful
+        // call followed by a failed ledger write (recordContactSync DOES throw)
+        // leaves PII at the vendor that no revocation can reach. A refusal means
+        // a deletion is still owed for the previous address; skip and let the
+        // deletion sweep land it first. get_loops_trait_candidates already
+        // excludes that case, so this is the atomic backstop for the window
+        // between its SELECT and this write.
+        if (!(await deps.recordContactSync(c.user_id, c.email))) continue;
+
         // Person-level only. Workspace facts go in event properties: Loops keys
         // contacts by email and one person can own several workspaces, so a
         // workspace trait would be clobbered by whichever synced last.
@@ -254,7 +287,6 @@ export async function runLoopsSyncCron(
             anyFree: c.any_free,
           },
         });
-        await deps.recordContactSync(c.user_id, c.email);
         traitsSynced++;
       } catch (e) {
         errors.push({ accountId: c.user_id, error: msg(e) });

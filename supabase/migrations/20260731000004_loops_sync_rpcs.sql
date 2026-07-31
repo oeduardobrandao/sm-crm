@@ -153,6 +153,72 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- Vendor-identity ledger write. Returns true if the caller may now talk to
+-- Loops about this person, false if it must skip them this sweep.
+--
+-- WHY THIS IS CALLED BEFORE EVERY LOOPS CALL, INCLUDING events/send:
+-- Loops' own docs for POST /events/send state that "if a contact is not found,
+-- a new contact will be created using both email and userId values". So the
+-- TRIGGER path creates contacts at the vendor exactly like contacts/update
+-- does. Recording after the call -- or not at all, as the trigger sweeps
+-- originally did -- means a contact can exist at Loops with NOTHING in our
+-- system recording it, which makes a later consent revocation, email change or
+-- account deletion impossible to honour. Do not remove the trigger-path call as
+-- "redundant, only updateContact creates contacts": it does not, and the residue
+-- is permanent.
+--
+-- Record-FIRST is strictly safe in the other direction: a row written for a
+-- contact that then failed to be created at Loops resolves to a 404 on the
+-- eventual delete, and deleteContact (_shared/loops.ts) treats 404 as success.
+--
+-- THE REFUSAL IS THE WHOLE POINT OF THE FUNCTION. A naive upsert with
+-- `deleted_at = null` would reintroduce, on the trigger path, the exact race
+-- that get_loops_trait_candidates' pending-deletion `not exists` predicate was
+-- added to close:
+--   1. lc row holds synced_email = old@x, deleted_at null.
+--   2. The user changes their email to new@x.
+--   3. The deletion sweep's delete of old@x fails transiently, so deleted_at
+--      stays null.
+--   4. A trigger sweep upserts synced_email = new@x -- and old@x is now
+--      unreachable by get_loops_contact_deletions on ANY branch, stranding that
+--      person's name and address at a US vendor forever.
+-- loops_contacts.user_id is UNIQUE (one row per person, by design, because the
+-- row must survive account deletion), so the old address cannot simply be kept
+-- alongside the new one. Refusing instead is the same bounded, self-healing
+-- tradeoff the trait path already takes: the deletion is retried every sweep, so
+-- the record -- and the email -- land a run or two later. And refusing to email
+-- someone while a deletion we owe them is still outstanding is the correct
+-- behaviour on its own terms, not merely a bookkeeping convenience.
+-- ---------------------------------------------------------------------------
+create or replace function record_loops_contact(p_user_id uuid, p_email text)
+returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  -- Own lock namespace, not the workspace one claim_marketing_email uses: a
+  -- collision would only serialise unrelated callers, but the prefix keeps the
+  -- two independent. Transaction-scoped, so it releases on commit or crash.
+  perform pg_advisory_xact_lock(hashtextextended('loops_contact:' || p_user_id::text, 0));
+
+  if exists (
+    select 1 from loops_contacts lc
+    where lc.user_id = p_user_id
+      and lc.deleted_at is null
+      and lc.synced_email is distinct from p_email
+  ) then
+    return false;
+  end if;
+
+  insert into loops_contacts (user_id, synced_email, synced_at, deleted_at)
+  values (p_user_id, p_email, now(), null)
+  on conflict (user_id) do update
+    set synced_email = excluded.synced_email,
+        synced_at    = excluded.synced_at,
+        deleted_at   = null;
+
+  return true;
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- Candidate RPCs
 -- ---------------------------------------------------------------------------
 
@@ -387,6 +453,12 @@ $$;
 -- deletion lands on a later run, deleted_at gets stamped, and the trait sync
 -- resumes on the run after that. The delay is bounded and it self-heals.
 --
+-- record_loops_contact enforces the same predicate atomically at write time and
+-- is the last line of defence (it also covers the trigger sweeps, which have no
+-- candidate-side exclusion at all). This one stays because it is cheaper to
+-- never select the candidate than to select it and refuse the write, and
+-- because it keeps the reason visible where the candidate set is defined.
+--
 -- Only the email-change branch of get_loops_contact_deletions can collide here,
 -- which is why the predicate mirrors exactly that branch. The other two branches
 -- are already excluded upstream and must stay that way:
@@ -502,6 +574,7 @@ declare fn text;
 begin
   foreach fn in array array[
     'claim_marketing_email(text,uuid,uuid,int)',
+    'record_loops_contact(uuid,text)',
     'get_paywall_hit_candidates()',
     'get_abandoned_checkout_candidates()',
     'get_dormant_signup_candidates()',

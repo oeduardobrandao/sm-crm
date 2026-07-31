@@ -410,4 +410,60 @@ begin;
   end $$;
 rollback;
 
+-- 14. record_loops_contact is the atomic write side of case 13, and it also
+--     covers the TRIGGER sweeps, which have no candidate-side pending-deletion
+--     exclusion at all. Loops' events/send creates a contact when none exists,
+--     so the trigger path puts PII at the vendor exactly like the trait path
+--     does; the ledger row has to be written first, and it must REFUSE rather
+--     than overwrite a synced_email whose deletion is still owed.
+begin;
+  do $$
+  declare f record; ok boolean; v_lc uuid; v_email text; v_deleted timestamptz;
+  begin
+    select * into f from et_loops_fixture((select id from plans where is_default), true);
+
+    -- Never synced before: records, and reports that the caller may proceed.
+    ok := record_loops_contact(f.user_id, 'first@et.test');
+    if not ok then raise exception 'first record for a fresh user should have been accepted'; end if;
+    select synced_email into v_email from loops_contacts where user_id = f.user_id;
+    if v_email <> 'first@et.test' then
+      raise exception 'ledger row holds %, expected first@et.test', v_email;
+    end if;
+
+    -- Same address again: idempotent, still accepted.
+    ok := record_loops_contact(f.user_id, 'first@et.test');
+    if not ok then raise exception 're-recording the same address should be accepted'; end if;
+
+    -- THE REFUSAL: a live row for a DIFFERENT address means a deletion is owed
+    -- at Loops. Overwriting it would make get_loops_contact_deletions unable to
+    -- select the old address on any branch, ever again.
+    ok := record_loops_contact(f.user_id, 'second@et.test');
+    if ok then
+      raise exception 'record was accepted while a deletion was owed for a different address';
+    end if;
+    select synced_email into v_email from loops_contacts where user_id = f.user_id;
+    if v_email <> 'first@et.test' then
+      raise exception 'refused record still clobbered synced_email (now %)', v_email;
+    end if;
+
+    -- Self-heal: once the deletion lands, the new address records normally and
+    -- the row is revived. Without this control the assertion above would pass
+    -- identically if the function simply always refused.
+    select id into v_lc from loops_contacts where user_id = f.user_id;
+    update loops_contacts set deleted_at = now() where id = v_lc;
+    ok := record_loops_contact(f.user_id, 'second@et.test');
+    if not ok then
+      raise exception 'record should be accepted once the pending deletion has landed';
+    end if;
+    select synced_email, deleted_at into v_email, v_deleted
+      from loops_contacts where user_id = f.user_id;
+    if v_email <> 'second@et.test' then
+      raise exception 'ledger row holds % after the deletion landed, expected second@et.test', v_email;
+    end if;
+    if v_deleted is not null then
+      raise exception 'a revived ledger row must clear deleted_at, got %', v_deleted;
+    end if;
+  end $$;
+rollback;
+
 drop function if exists et_loops_fixture(text, boolean, int);
