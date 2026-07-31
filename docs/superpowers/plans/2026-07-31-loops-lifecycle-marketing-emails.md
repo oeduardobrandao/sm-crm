@@ -2486,12 +2486,33 @@ git commit -m "feat(loops): identify the user in Crisp"
 
 ---
 
-## Task 11: Privacy policy subprocessor entry
+## Task 11: Privacy policy subprocessor entry and env documentation
 
 **Files:**
 - Modify: `apps/crm/src/pages/politica-privacidade/PoliticaPage.tsx` (subprocessor list, near line 75)
+- Modify: `CLAUDE.md` (the "Edge functions (Deno.env)" list)
 
 **Interfaces:** none.
+
+Both changes are things that must be true **before the first send**, which is why they share a task rather than trailing as cleanup.
+
+### Env documentation
+
+This feature adds two required edge-function secrets, and CLAUDE.md's `Edge functions (Deno.env)` section is where this repo documents them. Leaving them out reproduces a drift the README already calls out by name: `INTERNAL_FUNCTION_SECRET` is required and crashes `report-worker` at boot, and nobody wrote it down.
+
+Add to that list, matching the surrounding entry style:
+
+```markdown
+- `LOOPS_API_KEY` -- Loops REST API key for marketing lifecycle emails. REQUIRED by
+  loops-sync-cron, no default -- `_shared/loops.ts` throws if missing
+- `POSTHOG_PROJECT_KEY` -- PostHog **project write key** (same value as the frontend's
+  `VITE_POSTHOG_KEY`, NOT a personal API key). Optional: server-side capture is a
+  silent no-op when unset
+```
+
+Note the asymmetry and preserve it: `LOOPS_API_KEY` throws when missing because a marketing email that silently never sends is indistinguishable from having no candidates. `POSTHOG_PROJECT_KEY` no-ops because measurement must never fail a send.
+
+Do **not** add either to `.env.example` — that file is frontend `VITE_*` variables (plus the two Stripe keys), and edge secrets are set via `supabase secrets`, not a local dotenv. Adding them there would imply the wrong mechanism.
 
 **Why this is a task and not a footnote:** Loops is a new US-hosted subprocessor receiving names and email addresses. Shipping sends without the policy entry is the LGPD failure mode here, and no test catches it.
 
