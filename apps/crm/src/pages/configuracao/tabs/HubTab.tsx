@@ -1,6 +1,18 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import {
+  Palette,
+  Droplet,
+  Type as TypeIcon,
+  LayoutGrid,
+  IdCard,
+  Sun,
+  Moon,
+  Upload,
+  ChevronDown,
+  type LucideIcon,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -34,18 +46,21 @@ import {
   type HubBranding,
 } from '../../../store';
 import { HubPreview, HUB_DISPLAY_FONTS, HUB_BODY_FONTS, type HubPreviewDraft } from '../HubPreview';
-// Same cross-boundary reach as HubPreview.tsx (see its header comment): the
-// surface swatches need the resolver's REAL light-mode palette so they never
-// drift from what the Hub actually renders.
+// Same cross-boundary reach as HubPreview.tsx (see its header comment): controls
+// need the resolver's REAL palette/accent math so they never drift from what the
+// Hub actually renders.
 import {
   PALETTES,
   HUB_FONT_PAIRINGS,
+  resolveHubTheme,
+  relativeLuminance,
   type HubSurface,
   type HubRadius,
   type HubCardStyle,
 } from '../../../../../hub/src/theme';
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+const HEX_6_RE = /^#[0-9a-fA-F]{6}$/;
 
 const HINT: CSSProperties = {
   fontSize: '0.8rem',
@@ -62,9 +77,11 @@ const SURFACE_OPTIONS: { value: HubSurface; label: string }[] = [
   { value: 'warm', label: 'Quente' },
   { value: 'cool', label: 'Frio' },
 ];
+// Suave leads: it's hub_radius's default (migration 20260731000001), so it's what
+// most workspaces already have — putting it first matches what they'll see.
 const RADIUS_OPTIONS: { value: HubRadius; label: string }[] = [
-  { value: 'square', label: 'Reto' },
   { value: 'soft', label: 'Suave' },
+  { value: 'square', label: 'Reto' },
   { value: 'pill', label: 'Pílula' },
 ];
 const CARD_STYLE_OPTIONS: { value: HubCardStyle; label: string }[] = [
@@ -72,17 +89,53 @@ const CARD_STYLE_OPTIONS: { value: HubCardStyle; label: string }[] = [
   { value: 'outline', label: 'Contorno' },
   { value: 'tonal', label: 'Tonal' },
 ];
-const LOGO_STYLE_OPTIONS = [
-  { value: 'round', label: 'Redondo' },
-  { value: 'wordmark', label: 'Horizontal' },
+const LOGO_STYLE_OPTIONS: { value: string; label: string; sublabel: string }[] = [
+  { value: 'round', label: 'Redondo', sublabel: 'avatar circular' },
+  { value: 'wordmark', label: 'Horizontal', sublabel: 'wordmark' },
 ];
-const APPEARANCE_OPTIONS = [
-  { value: 'light', label: 'Claro' },
-  { value: 'dark', label: 'Escuro' },
+const APPEARANCE_OPTIONS: { value: string; label: string; icon: LucideIcon }[] = [
+  { value: 'light', label: 'Claro', icon: Sun },
+  { value: 'dark', label: 'Escuro', icon: Moon },
 ];
 
-/** Segmented single-choice control, sharing one look across every "pick one of N" field
- * on this tab (cantos, estilo de cards, logo, aparência padrão). */
+// Radius values a small (~32px) glyph actually renders at. Mirrors theme.ts's
+// RADIUS_CARD/RADIUS_CTL (not exported -- these are display-only, unlike the
+// resolver's own live values, which the preview reads through resolveHubTheme).
+const RADIUS_GLYPH_PX: Record<HubRadius, number> = { square: 0, soft: 12, pill: 999 };
+
+/** Titled control card: icon + 13-14px title + one-line muted description, then
+ * content. Every "Personalizar Hub" section uses this so the tab reads as five
+ * scannable groups instead of one long form. */
+function SectionCard({
+  icon: Icon,
+  title,
+  description,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="card animate-up" style={{ marginBottom: '1.25rem' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}
+      >
+        <Icon size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} aria-hidden="true" />
+        <h4 style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-main)', margin: 0 }}>
+          {title}
+        </h4>
+      </div>
+      <p style={{ ...HINT, marginTop: 0, marginBottom: '1.25rem' }}>{description}</p>
+      {children}
+    </div>
+  );
+}
+
+/** Segmented single-choice control (optionally with a leading icon per option). Used
+ * where the choice is binary/simple text, not a visual pick -- see OptionCardGroup
+ * for the "show me what it looks like" controls. */
 function SegmentedControl({
   value,
   onChange,
@@ -92,7 +145,7 @@ function SegmentedControl({
 }: {
   value: string;
   onChange: (value: string) => void;
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; icon?: LucideIcon }[];
   ariaLabel: string;
   disabled?: boolean;
 }) {
@@ -111,6 +164,7 @@ function SegmentedControl({
     >
       {options.map((opt) => (
         <ToggleGroupItem key={opt.value} value={opt.value} aria-label={opt.label}>
+          {opt.icon && <opt.icon size={13} aria-hidden="true" />}
           {opt.label}
         </ToggleGroupItem>
       ))}
@@ -118,19 +172,55 @@ function SegmentedControl({
   );
 }
 
-function SurfaceSwatches({
+function optionCardStyle(active: boolean, disabled?: boolean): CSSProperties {
+  return {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '0.4rem',
+    padding: '0.6rem',
+    borderRadius: 10,
+    border: active ? '1px solid transparent' : '1px solid var(--border-color)',
+    boxShadow: active ? '0 0 0 1px var(--card-bg), 0 0 0 3px var(--primary-color)' : 'none',
+    background: 'var(--surface-main)',
+    cursor: disabled ? 'default' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+    minWidth: 88,
+    textAlign: 'center',
+  };
+}
+
+interface OptionCardSpec<V extends string> {
+  value: V;
+  label: string;
+  sublabel?: string;
+  glyph: ReactNode;
+}
+
+/** A row of "show me what it looks like" picks: a live glyph, a label, and an
+ * optional sublabel, sharing one look across surface theme, cantos, estilo de
+ * cards and logo. Replaces plain text radios with something the agency can
+ * actually judge visually before saving. */
+function OptionCardGroup<V extends string>({
   value,
   onChange,
+  options,
   disabled,
+  groupLabel,
 }: {
-  value: HubSurface;
-  onChange: (value: HubSurface) => void;
+  value: V;
+  onChange: (value: V) => void;
+  options: OptionCardSpec<V>[];
   disabled?: boolean;
+  groupLabel: string;
 }) {
   return (
-    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-      {SURFACE_OPTIONS.map((opt) => {
-        const palette = PALETTES[opt.value].light;
+    <div
+      role="group"
+      aria-label={groupLabel}
+      style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}
+    >
+      {options.map((opt) => {
         const active = value === opt.value;
         return (
           <button
@@ -139,46 +229,369 @@ function SurfaceSwatches({
             disabled={disabled}
             onClick={() => onChange(opt.value)}
             aria-pressed={active}
-            aria-label={opt.label}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.4rem',
-              padding: '0.5rem',
-              borderRadius: 10,
-              border: active ? '2px solid var(--primary-color)' : '1px solid var(--border-color)',
-              background: 'var(--surface-main)',
-              cursor: disabled ? 'default' : 'pointer',
-              opacity: disabled ? 0.5 : 1,
-              width: 84,
-            }}
+            style={optionCardStyle(active, disabled)}
+          >
+            {opt.glyph}
+            <span style={{ fontSize: '0.72rem', fontWeight: 500, color: 'var(--text-main)' }}>
+              {opt.label}
+            </span>
+            {opt.sublabel && (
+              <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+                {opt.sublabel}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Mini-page swatch: a tiny "page" tinted with the surface palette, holding a card
+ * rect and two text-stroke bars, so a theme reads as a miniature screen instead of
+ * a colour dot. */
+function SurfaceGlyph({ surface }: { surface: HubSurface }) {
+  const palette = PALETTES[surface].light;
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        display: 'block',
+        width: 64,
+        height: 44,
+        borderRadius: 8,
+        background: palette.bg,
+        border: `1px solid ${palette.bd}`,
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      <span
+        style={{
+          position: 'absolute',
+          inset: '6px 6px auto 6px',
+          height: 18,
+          borderRadius: 4,
+          background: palette.card,
+          border: `1px solid ${palette.bd}`,
+        }}
+      />
+      <span
+        style={{
+          position: 'absolute',
+          left: 9,
+          bottom: 6,
+          width: '42%',
+          height: 2,
+          borderRadius: 1,
+          background: palette.txt,
+          opacity: 0.5,
+        }}
+      />
+      <span
+        style={{
+          position: 'absolute',
+          left: 9,
+          bottom: 11,
+          width: '28%',
+          height: 2,
+          borderRadius: 1,
+          background: palette.txt,
+          opacity: 0.3,
+        }}
+      />
+    </span>
+  );
+}
+
+function RadiusGlyph({ radius }: { radius: HubRadius }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        display: 'block',
+        width: 32,
+        height: 32,
+        border: '1.5px solid var(--text-muted)',
+        borderRadius: RADIUS_GLYPH_PX[radius],
+      }}
+    />
+  );
+}
+
+const CARD_STYLE_GLYPH: Record<HubCardStyle, CSSProperties> = {
+  filled: { background: 'var(--card-bg)', border: '1px solid var(--border-color)' },
+  outline: { background: 'transparent', border: '1.5px solid var(--text-muted)' },
+  tonal: { background: 'var(--surface-1)', border: 'none' },
+};
+
+function CardStyleGlyph({ cardStyle }: { cardStyle: HubCardStyle }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        display: 'block',
+        width: 44,
+        height: 32,
+        borderRadius: 6,
+        ...CARD_STYLE_GLYPH[cardStyle],
+      }}
+    />
+  );
+}
+
+/** The round option renders the actual accent-on-avatar fallback (WorkspaceMark's
+ * monogram); the wordmark option renders the workspace name in the CURRENTLY
+ * picked display font, so Identidade stays honest about the Tipografia choice. */
+function LogoGlyph({
+  kind,
+  brandColor,
+  initial,
+  workspaceName,
+  fontDisplayCss,
+}: {
+  kind: 'round' | 'wordmark';
+  brandColor: string;
+  initial: string;
+  workspaceName: string;
+  fontDisplayCss: string;
+}) {
+  if (kind === 'round') {
+    const fg =
+      HEX_6_RE.test(brandColor) && relativeLuminance(brandColor) > 0.55 ? '#171717' : '#ffffff';
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 32,
+          height: 32,
+          borderRadius: '50%',
+          background: HEX_6_RE.test(brandColor) ? brandColor : '#171717',
+          color: fg,
+          fontSize: 12,
+          fontWeight: 600,
+        }}
+      >
+        {initial}
+      </span>
+    );
+  }
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        height: 32,
+        fontFamily: fontDisplayCss,
+        fontSize: 13,
+        color: 'var(--text-main)',
+        maxWidth: 92,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {workspaceName || 'Workspace'}
+    </span>
+  );
+}
+
+function FontPairingCards({
+  fontDisplay,
+  fontBody,
+  onPick,
+  disabled,
+}: {
+  fontDisplay: string;
+  fontBody: string;
+  onPick: (display: string, body: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Combinações de fontes sugeridas"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
+        gap: '0.6rem',
+        marginBottom: '1rem',
+      }}
+    >
+      {HUB_FONT_PAIRINGS.map((pairing) => {
+        const active = fontDisplay === pairing.display && fontBody === pairing.body;
+        const displayFont = HUB_DISPLAY_FONTS[pairing.display];
+        const bodyFont = HUB_BODY_FONTS[pairing.body];
+        return (
+          <button
+            key={pairing.label}
+            type="button"
+            disabled={disabled}
+            aria-pressed={active}
+            onClick={() => onPick(pairing.display, pairing.body)}
+            style={optionCardStyle(active, disabled)}
           >
             <span
               aria-hidden="true"
               style={{
-                display: 'block',
-                width: '100%',
-                height: 36,
-                borderRadius: 6,
-                background: palette.bg,
-                border: `1px solid ${palette.bd}`,
-                position: 'relative',
+                fontFamily: displayFont?.css,
+                fontSize: '1.7rem',
+                lineHeight: 1,
+                color: 'var(--text-main)',
               }}
             >
-              <span
-                style={{
-                  position: 'absolute',
-                  inset: '8px 8px 4px 8px',
-                  borderRadius: 4,
-                  background: palette.card,
-                  border: `1px solid ${palette.bd}`,
-                }}
-              />
+              Ag
             </span>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-main)' }}>{opt.label}</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)' }}>
+              {pairing.label}
+            </span>
+            <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
+              {displayFont?.label} · {bodyFont?.label}
+            </span>
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/** Collapsed by default: the pairing cards above cover the common case, this is the
+ * escape hatch for mixing display/body fonts freely. Same aria-expanded/chevron
+ * pattern as the landing page's FaqSection, this codebase's existing disclosure. */
+function FontSelectsDisclosure({
+  fontDisplay,
+  setFontDisplay,
+  fontBody,
+  setFontBody,
+  disabled,
+}: {
+  fontDisplay: string;
+  setFontDisplay: (v: string) => void;
+  fontBody: string;
+  setFontBody: (v: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls="hub-font-selects-panel"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.3rem',
+          fontSize: '0.78rem',
+          color: 'var(--text-muted)',
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+        }}
+      >
+        <ChevronDown
+          size={14}
+          aria-hidden="true"
+          style={{
+            transform: open ? 'rotate(180deg)' : 'none',
+            transition: 'transform 150ms cubic-bezier(0.4, 0, 0.2, 1)',
+          }}
+        />
+        Escolher fontes separadamente
+      </button>
+      {open && (
+        <div
+          id="hub-font-selects-panel"
+          style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.75rem' }}
+        >
+          <div style={{ flex: '1 1 160px' }}>
+            <Label htmlFor="hub-font-display" style={FIELD_LABEL}>
+              Fonte de títulos
+            </Label>
+            <Select value={fontDisplay} onValueChange={setFontDisplay} disabled={disabled}>
+              <SelectTrigger id="hub-font-display">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(HUB_DISPLAY_FONTS).map(([id, font]) => (
+                  <SelectItem key={id} value={id} style={{ fontFamily: font.css }}>
+                    {font.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div style={{ flex: '1 1 160px' }}>
+            <Label htmlFor="hub-font-body" style={FIELD_LABEL}>
+              Fonte de texto
+            </Label>
+            <Select value={fontBody} onValueChange={setFontBody} disabled={disabled}>
+              <SelectTrigger id="hub-font-body">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(HUB_BODY_FONTS).map(([id, font]) => (
+                  <SelectItem key={id} value={id} style={{ fontFamily: font.css }}>
+                    {font.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function accentChipStyle(kind: 'filled' | 'outline'): CSSProperties {
+  const base: CSSProperties = {
+    fontSize: '0.7rem',
+    fontWeight: 600,
+    padding: '0.3rem 0.65rem',
+    borderRadius: 999,
+  };
+  if (kind === 'filled')
+    return { ...base, background: 'var(--hub-primary)', color: 'var(--hub-primary-fg)' };
+  return {
+    ...base,
+    border: '1px solid var(--hub-acc)',
+    color: 'var(--hub-acc)',
+    background: 'transparent',
+  };
+}
+
+/** Shows where the accent actually lands (button, active nav, calendar), resolved
+ * through the real theme resolver -- never a hand-picked shade of the hex the user
+ * just typed. Surface/font/radius/card style are fixed neutrals here on purpose:
+ * this chip row is about the ACCENT, not a full preview (HubPreview already covers
+ * that), so it stays correct regardless of what the other sections are set to. */
+function AccentChips({ brandColor }: { brandColor: string }) {
+  const vars = resolveHubTheme(
+    {
+      accent: brandColor,
+      surface: 'neutral',
+      fontDisplay: 'fraunces',
+      fontBody: 'instrument-sans',
+      radius: 'soft',
+      cardStyle: 'filled',
+      customized: true,
+    },
+    false,
+  ).vars as CSSProperties;
+  return (
+    <div
+      style={{ ...vars, display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.85rem' }}
+    >
+      <span style={accentChipStyle('filled')}>Botão</span>
+      <span style={accentChipStyle('outline')}>Nav ativa</span>
+      <span style={accentChipStyle('outline')}>Calendário</span>
     </div>
   );
 }
@@ -221,6 +634,7 @@ export default function HubTab() {
   const [removeLogoOpen, setRemoveLogoOpen] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const initializedRef = useRef(false);
+  const controlsDisabled = brandingPending || brandingFailed;
 
   useEffect(() => {
     if (branding) {
@@ -245,6 +659,28 @@ export default function HubTab() {
       setLogoDarkUrl(branding.hub_logo_dark_url ?? null);
     }
   }, [branding]);
+
+  // A single, tab-level Google Fonts <link> for the Tipografia pairing-card
+  // specimens (limited weights, since these are just "Ag" samples, not real body
+  // text). Independent of HubPreview's own font <link>, which loads only the
+  // CURRENTLY picked pair for the preview itself -- this one loads every allowlisted
+  // display face once, so all four pairing cards render in their real fonts
+  // regardless of which pair is selected.
+  useEffect(() => {
+    const linkId = 'crm-hub-specimen-fonts';
+    if (document.getElementById(linkId)) return;
+    const families = Object.values(HUB_DISPLAY_FONTS).map(
+      (font) => `family=${font.gf.split(':')[0]}:wght@500;600`,
+    );
+    const link = document.createElement('link');
+    link.id = linkId;
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?${families.join('&')}&display=swap`;
+    document.head.appendChild(link);
+    return () => {
+      document.getElementById(linkId)?.remove();
+    };
+  }, []);
 
   const handleLogoDarkUpload = async (file: File) => {
     if (!workspace) return;
@@ -352,156 +788,170 @@ export default function HubTab() {
     defaultAppearance,
   };
 
+  const workspaceInitial = (workspace?.name || '?').trim().charAt(0).toUpperCase() || '?';
+  const fontDisplayCss = HUB_DISPLAY_FONTS[fontDisplay]?.css ?? HUB_DISPLAY_FONTS.fraunces.css;
+
   return (
-    <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-      <h3 className="config-title">Personalizar Hub</h3>
-      <p style={{ ...HINT, marginTop: 0, marginBottom: '1.5rem' }}>
-        A aparência do portal que seus clientes usam para aprovar posts e acompanhar entregas.
-      </p>
+    <div>
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h3 className="config-title">Personalizar Hub</h3>
+        <p style={{ ...HINT, marginTop: 0 }}>
+          A aparência do portal que seus clientes usam para aprovar posts e acompanhar entregas.
+        </p>
+      </div>
 
       <div className="config-hub-grid">
         <div>
+          <FeatureGate flag="feature_brand_customization" label="Personalização do Hub">
+            <SectionCard
+              icon={Palette}
+              title="Aparência"
+              description="O clima geral do hub. O cliente ainda pode alternar claro e escuro."
+            >
+              <div style={FIELD}>
+                <Label style={FIELD_LABEL}>Tema de superfície</Label>
+                <OptionCardGroup
+                  groupLabel="Tema de superfície"
+                  value={surface}
+                  onChange={setSurface}
+                  disabled={controlsDisabled}
+                  options={SURFACE_OPTIONS.map((opt) => ({
+                    value: opt.value,
+                    label: opt.label,
+                    glyph: <SurfaceGlyph surface={opt.value} />,
+                  }))}
+                />
+              </div>
+              <div>
+                <Label style={FIELD_LABEL}>Aparência padrão</Label>
+                <SegmentedControl
+                  value={defaultAppearance}
+                  onChange={setDefaultAppearance}
+                  options={APPEARANCE_OPTIONS}
+                  ariaLabel="Aparência padrão"
+                  disabled={controlsDisabled}
+                />
+                <p style={HINT}>O cliente ainda pode alternar no hub.</p>
+              </div>
+            </SectionCard>
+          </FeatureGate>
+
           {/* Brand colour: ungated, drives the Hub calendar accent and the report accent
               regardless of plan. */}
-          <div style={FIELD}>
-            <Label style={FIELD_LABEL}>Cor da marca</Label>
+          <SectionCard
+            icon={Droplet}
+            title="Cor da marca"
+            description="Aplicada a botões, navegação ativa e calendário. Contraste garantido."
+          >
             <ColorPicker
               value={brandColor}
               onChange={(hex) => setBrandColor(hex)}
               label="Cor da marca"
-              disabled={brandingPending || brandingFailed}
+              disabled={controlsDisabled}
               // workspaces.brand_color is CHECK'd to 6-digit hex, and resolveHubTheme
               // rejects anything else (falls back to #171717) -- an 8-digit
               // #rrggbbaa pick here would either fail to save or silently be ignored
               // by the hub. ColorPicker defaults allowAlpha to true; opt out.
               allowAlpha={false}
             />
+            <AccentChips brandColor={brandColor} />
             <p style={HINT}>
               A mesma cor do relatório mensal. Marca o calendário do Hub e os destaques do
               relatório.
             </p>
-          </div>
+          </SectionCard>
 
           <FeatureGate flag="feature_brand_customization" label="Personalização do Hub">
-            <div style={FIELD}>
-              <Label style={FIELD_LABEL}>Tema de superfície</Label>
-              <SurfaceSwatches
-                value={surface}
-                onChange={setSurface}
-                disabled={brandingPending || brandingFailed}
+            <SectionCard
+              icon={TypeIcon}
+              title="Tipografia"
+              description="Comece por uma combinação pronta. Ajuste fino abaixo, se quiser."
+            >
+              <FontPairingCards
+                fontDisplay={fontDisplay}
+                fontBody={fontBody}
+                disabled={controlsDisabled}
+                onPick={(display, body) => {
+                  setFontDisplay(display);
+                  setFontBody(body);
+                }}
               />
-            </div>
-
-            <div style={FIELD}>
-              <Label style={FIELD_LABEL}>Cantos</Label>
-              <SegmentedControl
-                value={radius}
-                onChange={(v) => setRadius(v as HubRadius)}
-                options={RADIUS_OPTIONS}
-                ariaLabel="Cantos"
-                disabled={brandingPending || brandingFailed}
+              <FontSelectsDisclosure
+                fontDisplay={fontDisplay}
+                setFontDisplay={setFontDisplay}
+                fontBody={fontBody}
+                setFontBody={setFontBody}
+                disabled={controlsDisabled}
               />
-            </div>
+            </SectionCard>
 
-            <div style={FIELD}>
-              <Label style={FIELD_LABEL}>Estilo de cards</Label>
-              <SegmentedControl
-                value={cardStyle}
-                onChange={(v) => setCardStyle(v as HubCardStyle)}
-                options={CARD_STYLE_OPTIONS}
-                ariaLabel="Estilo de cards"
-                disabled={brandingPending || brandingFailed}
-              />
-            </div>
-
-            <div style={FIELD}>
-              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 160px' }}>
-                  <Label htmlFor="hub-font-display" style={FIELD_LABEL}>
-                    Fonte de títulos
-                  </Label>
-                  <Select value={fontDisplay} onValueChange={setFontDisplay}>
-                    <SelectTrigger id="hub-font-display">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(HUB_DISPLAY_FONTS).map(([id, font]) => (
-                        <SelectItem key={id} value={id} style={{ fontFamily: font.css }}>
-                          {font.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div style={{ flex: '1 1 160px' }}>
-                  <Label htmlFor="hub-font-body" style={FIELD_LABEL}>
-                    Fonte de texto
-                  </Label>
-                  <Select value={fontBody} onValueChange={setFontBody}>
-                    <SelectTrigger id="hub-font-body">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(HUB_BODY_FONTS).map(([id, font]) => (
-                        <SelectItem key={id} value={id} style={{ fontFamily: font.css }}>
-                          {font.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+            <SectionCard
+              icon={LayoutGrid}
+              title="Componentes"
+              description="A forma dos cards e controles do hub."
+            >
+              <div style={FIELD}>
+                <Label style={FIELD_LABEL}>Cantos</Label>
+                <OptionCardGroup
+                  groupLabel="Cantos"
+                  value={radius}
+                  onChange={setRadius}
+                  disabled={controlsDisabled}
+                  options={RADIUS_OPTIONS.map((opt) => ({
+                    value: opt.value,
+                    label: opt.label,
+                    glyph: <RadiusGlyph radius={opt.value} />,
+                  }))}
+                />
               </div>
-              <p style={{ ...HINT, marginBottom: '0.5rem' }}>Combinações sugeridas</p>
-              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                {HUB_FONT_PAIRINGS.map((pairing) => (
-                  <button
-                    key={pairing.label}
-                    type="button"
-                    onClick={() => {
-                      setFontDisplay(pairing.display);
-                      setFontBody(pairing.body);
-                    }}
-                    style={{
-                      fontSize: '0.75rem',
-                      padding: '0.3rem 0.65rem',
-                      borderRadius: 999,
-                      border: '1px solid var(--border-color)',
-                      background:
-                        fontDisplay === pairing.display && fontBody === pairing.body
-                          ? 'var(--surface-1)'
-                          : 'transparent',
-                      color: 'var(--text-main)',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {pairing.label}
-                  </button>
-                ))}
+              <div>
+                <Label style={FIELD_LABEL}>Estilo de cards</Label>
+                <OptionCardGroup
+                  groupLabel="Estilo de cards"
+                  value={cardStyle}
+                  onChange={setCardStyle}
+                  disabled={controlsDisabled}
+                  options={CARD_STYLE_OPTIONS.map((opt) => ({
+                    value: opt.value,
+                    label: opt.label,
+                    glyph: <CardStyleGlyph cardStyle={opt.value} />,
+                  }))}
+                />
               </div>
-            </div>
+            </SectionCard>
 
-            <div style={FIELD}>
-              <Label style={FIELD_LABEL}>Logo no hub</Label>
-              <SegmentedControl
-                value={logoStyle}
-                onChange={setLogoStyle}
-                options={LOGO_STYLE_OPTIONS}
-                ariaLabel="Logo no hub"
-                disabled={brandingPending || brandingFailed}
-              />
+            <SectionCard
+              icon={IdCard}
+              title="Identidade"
+              description="Como a marca da agência aparece dentro do hub."
+            >
+              <div style={FIELD}>
+                <Label style={FIELD_LABEL}>Logo no hub</Label>
+                <OptionCardGroup
+                  groupLabel="Logo no hub"
+                  value={logoStyle}
+                  onChange={setLogoStyle}
+                  disabled={controlsDisabled}
+                  options={LOGO_STYLE_OPTIONS.map((opt) => ({
+                    value: opt.value,
+                    label: opt.label,
+                    sublabel: opt.sublabel,
+                    glyph: (
+                      <LogoGlyph
+                        kind={opt.value as 'round' | 'wordmark'}
+                        brandColor={brandColor}
+                        initial={workspaceInitial}
+                        workspaceName={workspace?.name ?? ''}
+                        fontDisplayCss={fontDisplayCss}
+                      />
+                    ),
+                  }))}
+                />
+              </div>
 
-              <div style={{ marginTop: '1rem' }}>
-                <Label htmlFor="hub-logo-dark-trigger" style={FIELD_LABEL}>
-                  Logo para modo escuro
-                </Label>
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: '0.75rem',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                  }}
-                >
+              <div style={FIELD}>
+                <Label style={FIELD_LABEL}>Logo para modo escuro</Label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                   {logoDarkUrl && (
                     <img
                       src={logoDarkUrl}
@@ -518,30 +968,50 @@ export default function HubTab() {
                       }}
                     />
                   )}
-                  <Button
+                  <button
+                    type="button"
                     id="hub-logo-dark-trigger"
-                    variant="outline"
                     onClick={() => logoInputRef.current?.click()}
                     disabled={logoUploading}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                      border: '1.5px dashed var(--border-color)',
+                      borderRadius: 10,
+                      padding: '0.85rem',
+                      background: 'transparent',
+                      cursor: logoUploading ? 'default' : 'pointer',
+                      opacity: logoUploading ? 0.6 : 1,
+                    }}
                   >
-                    {logoUploading && <Spinner size="sm" />}
-                    {logoUploading ? 'Enviando…' : logoDarkUrl ? 'Trocar logo' : 'Enviar logo'}
-                  </Button>
+                    {logoUploading ? (
+                      <Spinner size="sm" />
+                    ) : (
+                      <Upload size={15} aria-hidden="true" color="var(--text-muted)" />
+                    )}
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-main)' }}>
+                      {logoUploading
+                        ? 'Enviando…'
+                        : logoDarkUrl
+                          ? 'Trocar logo'
+                          : 'Enviar variante clara do logo'}
+                    </span>
+                  </button>
                   {logoDarkUrl && (
                     <Button
                       variant="ghost"
                       className="text-destructive"
                       onClick={() => setRemoveLogoOpen(true)}
                       disabled={logoUploading}
+                      style={{ alignSelf: 'flex-start' }}
                     >
                       Remover
                     </Button>
                   )}
                 </div>
-                <p style={HINT}>
-                  PNG, JPG ou WebP. Máx 2MB. Usada no lugar da logo principal quando o cliente está
-                  no modo escuro.
-                </p>
+                <p style={HINT}>PNG · até 2MB. Usada quando o cliente está no modo escuro.</p>
                 <input
                   ref={logoInputRef}
                   type="file"
@@ -554,34 +1024,22 @@ export default function HubTab() {
                   }}
                 />
               </div>
-            </div>
 
-            <div style={FIELD}>
-              <Label style={FIELD_LABEL}>Aparência padrão</Label>
-              <SegmentedControl
-                value={defaultAppearance}
-                onChange={setDefaultAppearance}
-                options={APPEARANCE_OPTIONS}
-                ariaLabel="Aparência padrão"
-                disabled={brandingPending || brandingFailed}
-              />
-              <p style={HINT}>O cliente ainda pode alternar no hub.</p>
-            </div>
-
-            <div style={{ ...FIELD, display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-              <Switch
-                id="hub-hide-branding"
-                checked={hideBranding}
-                disabled={brandingPending || brandingFailed}
-                onCheckedChange={setHideBranding}
-                style={{ marginTop: 2, flexShrink: 0 }}
-              />
-              <div>
-                <Label htmlFor="hub-hide-branding" style={{ fontWeight: 500, cursor: 'pointer' }}>
-                  Ocultar &quot;powered by mesaas&quot;
-                </Label>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                <Switch
+                  id="hub-hide-branding"
+                  checked={hideBranding}
+                  disabled={controlsDisabled}
+                  onCheckedChange={setHideBranding}
+                  style={{ marginTop: 2, flexShrink: 0 }}
+                />
+                <div>
+                  <Label htmlFor="hub-hide-branding" style={{ fontWeight: 500, cursor: 'pointer' }}>
+                    Ocultar &quot;powered by mesaas&quot;
+                  </Label>
+                </div>
               </div>
-            </div>
+            </SectionCard>
           </FeatureGate>
 
           {brandingFailed && (
@@ -601,7 +1059,7 @@ export default function HubTab() {
 
           <Button
             onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending || brandingPending || brandingFailed}
+            disabled={saveMutation.isPending || controlsDisabled}
           >
             {saveMutation.isPending && <Spinner size="sm" />} Salvar
           </Button>

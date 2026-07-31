@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HubPreview, type HubPreviewDraft } from '../HubPreview';
 
@@ -132,5 +132,53 @@ describe('HubPreview', () => {
     // toggle actually started dark instead of defaulting to light.
     expect(wrapper.style.getPropertyValue('--hub-bg')).toBe('#151210');
     expect(screen.getByRole('button', { name: 'Escuro' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('defaults to the desktop shell: sidebar present, no bottom nav', () => {
+    renderPreview();
+    expect(screen.getByTestId('hub-preview-sidebar')).toBeInTheDocument();
+    expect(screen.queryByTestId('hub-preview-bottom-nav')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('hub-preview-topbar')).not.toBeInTheDocument();
+  });
+
+  it('switches to the mobile shell: sidebar gone, top bar and bottom nav appear', () => {
+    renderPreview();
+    fireEvent.click(screen.getByRole('button', { name: 'Celular' }));
+    expect(screen.queryByTestId('hub-preview-sidebar')).not.toBeInTheDocument();
+    expect(screen.getByTestId('hub-preview-topbar')).toBeInTheDocument();
+    const bottomNav = screen.getByTestId('hub-preview-bottom-nav');
+    expect(bottomNav).toBeInTheDocument();
+    expect(within(bottomNav).getByText('Início')).toBeInTheDocument();
+    expect(within(bottomNav).getByText('Aprovar')).toBeInTheDocument();
+    expect(within(bottomNav).getByText('Posts')).toBeInTheDocument();
+    expect(within(bottomNav).getByText('Mais')).toBeInTheDocument();
+  });
+
+  it('switching back to Computador restores the desktop shell', () => {
+    renderPreview();
+    fireEvent.click(screen.getByRole('button', { name: 'Celular' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Computador' }));
+    expect(screen.getByTestId('hub-preview-sidebar')).toBeInTheDocument();
+    expect(screen.queryByTestId('hub-preview-bottom-nav')).not.toBeInTheDocument();
+  });
+
+  it('mobile shows only 2 of the 3 KPI sparkline cards; desktop shows all 3', () => {
+    renderPreview();
+    expect(screen.getAllByTestId('preview-sparkline')).toHaveLength(3);
+    fireEvent.click(screen.getByRole('button', { name: 'Celular' }));
+    expect(screen.getAllByTestId('preview-sparkline')).toHaveLength(2);
+  });
+
+  it('renders the status pills row', () => {
+    renderPreview();
+    const pills = screen.getByTestId('preview-status-pills');
+    expect(within(pills).getByText(/aprovado/i)).toBeInTheDocument();
+    expect(within(pills).getByText(/em revisão/i)).toBeInTheDocument();
+    expect(within(pills).getByText(/agendado/i)).toBeInTheDocument();
+  });
+
+  it('shows a "Ver tudo" link on the calendar block', () => {
+    renderPreview();
+    expect(screen.getByText('Ver tudo')).toBeInTheDocument();
   });
 });

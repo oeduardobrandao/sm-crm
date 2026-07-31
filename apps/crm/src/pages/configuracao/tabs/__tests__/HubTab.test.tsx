@@ -338,9 +338,12 @@ describe('HubTab — Personalizar Hub', () => {
       expect(screen.getByTestId('color-picker')).toHaveTextContent('#111111');
     });
     expect(screen.getByText('Cor da marca')).toBeInTheDocument();
-    // Customization controls sit inside the gate and are nudged instead of shown.
+    // Customization controls sit inside two gates (Aparência on its own, then
+    // Tipografia+Componentes+Identidade together, since Cor da marca sits between
+    // them ungated) — both nudge, so the same copy appears twice.
     expect(screen.queryByText('Tema de superfície')).not.toBeInTheDocument();
-    expect(screen.getByText(/não está disponível no seu plano/i)).toBeInTheDocument();
+    expect(screen.queryByText('Cantos')).not.toBeInTheDocument();
+    expect(screen.getAllByText(/não está disponível no seu plano/i)).toHaveLength(2);
   });
 
   it('shows the customization controls when feature_brand_customization is on', async () => {
@@ -353,6 +356,21 @@ describe('HubTab — Personalizar Hub', () => {
     expect(screen.getByText(/ocultar "powered by mesaas"/i)).toBeInTheDocument();
   });
 
+  it('the surface theme picker is an accessible group', async () => {
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByRole('group', { name: 'Tema de superfície' })).toBeInTheDocument();
+    });
+  });
+
+  it('disables the font-pairing cards (and keeps the selects disabled) when the branding query failed', async () => {
+    storeMock.getHubBranding.mockRejectedValue(new Error('column does not exist'));
+    renderTab();
+
+    const pairing = await screen.findByRole('button', { name: /editorial/i });
+    expect(pairing).toBeDisabled();
+  });
+
   it('Salvar sends exactly the edited fields', async () => {
     renderTab();
     await waitFor(() => {
@@ -360,7 +378,7 @@ describe('HubTab — Personalizar Hub', () => {
     });
 
     fireEvent.click(screen.getByTestId('color-picker'));
-    fireEvent.click(screen.getByRole('radio', { name: 'Pílula' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pílula' }));
     fireEvent.click(screen.getByRole('switch', { name: /ocultar "powered by mesaas"/i }));
 
     fireEvent.click(screen.getByRole('button', { name: /salvar/i }));

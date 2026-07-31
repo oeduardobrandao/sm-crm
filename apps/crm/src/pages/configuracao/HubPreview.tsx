@@ -1,4 +1,14 @@
 import { useEffect, useState, type CSSProperties } from 'react';
+import {
+  Monitor,
+  Smartphone,
+  Menu,
+  Image as ImageIcon,
+  Home,
+  CheckSquare,
+  LayoutList,
+  MoreHorizontal,
+} from 'lucide-react';
 // Cross-boundary import, same precedent as ReportPreview.tsx importing the report
 // template's theme resolver: the preview must render with the EXACT resolver the
 // real Hub uses, not a hand-copied approximation that can drift from it. `apps/hub`
@@ -46,15 +56,37 @@ const ACTIVE_NAV_INDEX = 1;
 const CALENDAR_DAYS = [18, 19, 20, 21, 22];
 const ACCENT_DAY_INDEX = 2;
 
+const MOBILE_NAV_ITEMS: { label: string; icon: typeof Home }[] = [
+  { label: 'Início', icon: Home },
+  { label: 'Aprovar', icon: CheckSquare },
+  { label: 'Posts', icon: LayoutList },
+  { label: 'Mais', icon: MoreHorizontal },
+];
+
+const STATUS_PILLS = ['Aprovado · 8', 'Em revisão · 2', 'Agendado · 5'];
+
+// Fixed, illustrative heights (%). Not derived from real data — the preview has
+// none — just enough visual variety that a sparkline reads as a sparkline instead
+// of a flat bar. Last bar always the accent, matching "today" being the highlighted
+// point in a trend.
+const KPI_STATS: { label: string; value: string; spark: number[] }[] = [
+  { label: 'Aprovações', value: '8', spark: [35, 55, 40, 70, 50, 65, 85] },
+  { label: 'Agendados', value: '5', spark: [50, 35, 60, 45, 70, 55, 40] },
+  { label: 'Rascunhos', value: '3', spark: [20, 40, 25, 50, 35, 45, 30] },
+];
+
 /**
- * Pure presentational miniature of the client Hub: sidebar + main content, resolved
- * through the REAL `resolveHubTheme`. No data fetching, no persistence — every value
- * comes from `draft` so the settings tab can preview edits before "Salvar".
+ * Pure presentational miniature of the client Hub: sidebar + main content (desktop)
+ * or top bar + bottom nav (mobile), resolved through the REAL `resolveHubTheme`. No
+ * data fetching, no persistence, no real navigation — everything comes from `draft`
+ * so the settings tab can preview edits before "Salvar", and every colour comes from
+ * the resolved CSS variables, never a hand-picked hex.
  *
  * The wrapper div carries the resolved CSS variables inline (never :root — this sits
  * inside the CRM, which has its own global theme). It also owns its own light/dark
- * toggle so the agency can check both without leaving Configurações, independent of
- * `hub_default_appearance` (which only sets the client's FIRST visit).
+ * and desktop/mobile toggles so the agency can check every combination without
+ * leaving Configurações, independent of `hub_default_appearance` (which only sets
+ * the client's FIRST visit).
  */
 export function HubPreview({
   draft,
@@ -63,6 +95,7 @@ export function HubPreview({
   customized,
 }: HubPreviewProps) {
   const [dark, setDark] = useState(draft.defaultAppearance === 'dark');
+  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
 
   useEffect(() => {
     const href = buildGoogleFontsHref(draft.fontDisplay, draft.fontBody);
@@ -110,6 +143,205 @@ export function HubPreview({
   const logoUrl = customized && dark && draft.logoDarkUrl ? draft.logoDarkUrl : workspaceLogoUrl;
   const isWordmark = customized && draft.logoStyle === 'wordmark';
   const initial = (workspaceName || '?').trim().charAt(0).toUpperCase() || '?';
+  // Same entitlement gate as logoUrl/isWordmark above: hub-bootstrap only honors
+  // hub_hide_branding when the workspace is entitled -- an un-entitled workspace
+  // with a stored hide_branding=true still gets the mark forced on by the real hub.
+  const showPoweredBy = !(customized && draft.hideBranding);
+
+  const logoMark = logoUrl ? (
+    <img
+      data-testid="preview-logo"
+      src={logoUrl}
+      alt=""
+      style={
+        isWordmark
+          ? { height: 20, width: 'auto', maxWidth: 60, objectFit: 'contain' }
+          : { width: 26, height: 26, borderRadius: '50%', objectFit: 'cover' }
+      }
+    />
+  ) : (
+    <div
+      aria-hidden="true"
+      style={{
+        width: 26,
+        height: 26,
+        borderRadius: '50%',
+        background: 'var(--hub-primary)',
+        color: 'var(--hub-primary-fg)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 11,
+        fontWeight: 600,
+        flexShrink: 0,
+      }}
+    >
+      {initial}
+    </div>
+  );
+
+  const kpiCards = (device === 'mobile' ? KPI_STATS.slice(0, 2) : KPI_STATS).map((kpi) => (
+    <div
+      key={kpi.label}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        background: 'var(--hub-card-bg)',
+        border: '1px solid var(--hub-card-bd)',
+        borderRadius: 'var(--hub-r-card)',
+        padding: '7px 8px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+      }}
+    >
+      <div style={{ fontSize: 7, color: 'var(--hub-tx3)', whiteSpace: 'nowrap' }}>{kpi.label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--hub-txt)' }}>{kpi.value}</div>
+      <Sparkline values={kpi.spark} />
+    </div>
+  ));
+
+  const statusPillsRow = (
+    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }} data-testid="preview-status-pills">
+      {STATUS_PILLS.map((pill) => (
+        <span
+          key={pill}
+          style={{
+            fontSize: 7,
+            fontWeight: 500,
+            padding: '3px 7px',
+            borderRadius: 999,
+            background: 'var(--hub-soft)',
+            color: 'var(--hub-tx2)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {pill}
+        </span>
+      ))}
+    </div>
+  );
+
+  const approvalsCard = (
+    <div
+      style={{
+        background: 'var(--hub-card-bg)',
+        border: '1px solid var(--hub-card-bd)',
+        borderRadius: 'var(--hub-r-card)',
+        padding: 10,
+        display: 'flex',
+        gap: 8,
+        alignItems: 'center',
+      }}
+    >
+      <div
+        aria-hidden="true"
+        style={{
+          width: 32,
+          height: 32,
+          flexShrink: 0,
+          borderRadius: 'var(--hub-r-ctl)',
+          background: 'var(--hub-soft)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <ImageIcon size={13} color="var(--hub-tx3)" />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 9, lineHeight: 1.3, color: 'var(--hub-tx2)' }}>
+          Uma postagem nova está pronta para aprovação.
+        </div>
+        <button
+          type="button"
+          disabled
+          style={{
+            alignSelf: 'flex-start',
+            background: 'var(--hub-primary)',
+            color: 'var(--hub-primary-fg)',
+            borderRadius: 'var(--hub-r-ctl)',
+            border: 'none',
+            fontSize: 9,
+            fontWeight: 600,
+            padding: '5px 10px',
+            cursor: 'default',
+          }}
+        >
+          Ver postagem
+        </button>
+      </div>
+    </div>
+  );
+
+  const calendarRow = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+        {CALENDAR_DAYS.map((day, i) => (
+          <div
+            key={day}
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 'var(--hub-r-ctl)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 8,
+              background: i === ACCENT_DAY_INDEX ? 'var(--hub-acc)' : 'var(--hub-soft)',
+              color: i === ACCENT_DAY_INDEX ? 'var(--hub-acc-fg)' : 'var(--hub-tx3)',
+            }}
+          >
+            {day}
+          </div>
+        ))}
+      </div>
+      <span style={{ fontSize: 7, fontWeight: 600, color: 'var(--hub-acc)', whiteSpace: 'nowrap' }}>
+        Ver tudo
+      </span>
+    </div>
+  );
+
+  const greeting = (
+    <div
+      style={{
+        fontFamily: 'var(--hub-font-display)',
+        fontSize: 16,
+        lineHeight: 1.2,
+        color: 'var(--hub-txt)',
+      }}
+    >
+      Bem-vindo(a) de volta
+    </div>
+  );
+
+  const poweredBy = showPoweredBy && (
+    <div style={{ fontSize: 8, textAlign: 'center', color: 'var(--hub-tx3)' }}>
+      powered by mesaas
+    </div>
+  );
+
+  const mainContent = (
+    <div
+      style={{
+        flex: 1,
+        minWidth: 0,
+        minHeight: 0,
+        padding: 14,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        overflow: 'auto',
+      }}
+    >
+      {greeting}
+      {statusPillsRow}
+      <div style={{ display: 'flex', gap: 6 }}>{kpiCards}</div>
+      {approvalsCard}
+      {calendarRow}
+      <div style={{ marginTop: 'auto' }}>{poweredBy}</div>
+    </div>
+  );
 
   return (
     <div>
@@ -117,10 +349,34 @@ export function HubPreview({
         style={{
           display: 'flex',
           justifyContent: 'flex-end',
+          alignItems: 'center',
           gap: '0.35rem',
           marginBottom: '0.5rem',
+          flexWrap: 'wrap',
         }}
       >
+        <button
+          type="button"
+          aria-pressed={device === 'desktop'}
+          aria-label="Computador"
+          onClick={() => setDevice('desktop')}
+          style={togglePillStyle(device === 'desktop')}
+        >
+          <Monitor size={12} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          aria-pressed={device === 'mobile'}
+          aria-label="Celular"
+          onClick={() => setDevice('mobile')}
+          style={togglePillStyle(device === 'mobile')}
+        >
+          <Smartphone size={12} aria-hidden="true" />
+        </button>
+        <span
+          aria-hidden="true"
+          style={{ width: 1, height: 16, background: 'var(--border-color)' }}
+        />
         <button
           type="button"
           aria-pressed={!dark}
@@ -144,7 +400,10 @@ export function HubPreview({
         style={{
           ...wrapperStyle,
           display: 'flex',
-          height: 280,
+          flexDirection: device === 'mobile' ? 'column' : 'row',
+          width: device === 'mobile' ? 232 : '100%',
+          height: device === 'mobile' ? 420 : 340,
+          margin: device === 'mobile' ? '0 auto' : undefined,
           borderRadius: 12,
           overflow: 'hidden',
           border: '1px solid var(--border-color)',
@@ -153,177 +412,125 @@ export function HubPreview({
           fontFamily: 'var(--hub-font-sans)',
         }}
       >
-        {/* Sidebar */}
-        <div
-          style={{
-            width: 88,
-            flexShrink: 0,
-            background: 'var(--hub-soft)',
-            borderRight: '1px solid var(--hub-bd)',
-            padding: '14px 8px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          {logoUrl ? (
-            <img
-              data-testid="preview-logo"
-              src={logoUrl}
-              alt=""
-              style={
-                isWordmark
-                  ? { height: 20, width: 'auto', maxWidth: 60, objectFit: 'contain' }
-                  : {
-                      width: 26,
-                      height: 26,
-                      borderRadius: '50%',
-                      objectFit: 'cover',
-                    }
-              }
-            />
-          ) : (
-            <div
-              aria-hidden="true"
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: '50%',
-                background: 'var(--hub-primary)',
-                color: 'var(--hub-primary-fg)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 11,
-                fontWeight: 600,
-                flexShrink: 0,
-              }}
-            >
-              {initial}
-            </div>
-          )}
+        {device === 'desktop' && (
           <div
+            data-testid="hub-preview-sidebar"
             style={{
-              fontSize: 9,
-              fontWeight: 600,
-              textAlign: 'center',
-              lineHeight: 1.3,
-              color: 'var(--hub-txt)',
-            }}
-          >
-            {workspaceName || 'Seu workspace'}
-          </div>
-          <nav style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
-            {NAV_ITEMS.map((item, i) => (
-              <div
-                key={item}
-                style={{
-                  fontSize: 8,
-                  padding: '4px 6px',
-                  borderRadius: 6,
-                  textAlign: 'center',
-                  background: i === ACTIVE_NAV_INDEX ? 'var(--hub-primary)' : 'transparent',
-                  color: i === ACTIVE_NAV_INDEX ? 'var(--hub-primary-fg)' : 'var(--hub-tx2)',
-                  fontWeight: i === ACTIVE_NAV_INDEX ? 600 : 400,
-                }}
-              >
-                {item}
-              </div>
-            ))}
-          </nav>
-        </div>
-
-        {/* Main */}
-        <div
-          style={{
-            flex: 1,
-            minWidth: 0,
-            padding: 14,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 10,
-          }}
-        >
-          <div
-            style={{
-              fontFamily: 'var(--hub-font-display)',
-              fontSize: 16,
-              lineHeight: 1.2,
-              color: 'var(--hub-txt)',
-            }}
-          >
-            Bem-vindo(a) de volta
-          </div>
-
-          <div
-            style={{
-              background: 'var(--hub-card-bg)',
-              border: '1px solid var(--hub-card-bd)',
-              borderRadius: 'var(--hub-r-card)',
-              padding: 10,
+              width: 88,
+              flexShrink: 0,
+              background: 'var(--hub-soft)',
+              borderRight: '1px solid var(--hub-bd)',
+              padding: '14px 8px',
               display: 'flex',
               flexDirection: 'column',
+              alignItems: 'center',
               gap: 8,
             }}
           >
-            <div style={{ fontSize: 10, lineHeight: 1.4, color: 'var(--hub-tx2)' }}>
-              Uma postagem nova está pronta para aprovação.
-            </div>
-            <button
-              type="button"
-              disabled
-              style={{
-                alignSelf: 'flex-start',
-                background: 'var(--hub-primary)',
-                color: 'var(--hub-primary-fg)',
-                borderRadius: 'var(--hub-r-ctl)',
-                border: 'none',
-                fontSize: 9,
-                fontWeight: 600,
-                padding: '5px 10px',
-                cursor: 'default',
-              }}
-            >
-              Ver postagem
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', gap: 4 }}>
-            {CALENDAR_DAYS.map((day, i) => (
-              <div
-                key={day}
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 'var(--hub-r-ctl)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 8,
-                  background: i === ACCENT_DAY_INDEX ? 'var(--hub-acc)' : 'var(--hub-soft)',
-                  color: i === ACCENT_DAY_INDEX ? 'var(--hub-acc-fg)' : 'var(--hub-tx3)',
-                }}
-              >
-                {day}
-              </div>
-            ))}
-          </div>
-
-          {/* Same entitlement gate as logoUrl/isWordmark above: hub-bootstrap only
-              honors hub_hide_branding when the workspace is entitled -- an
-              un-entitled workspace with a stored hide_branding=true still gets the
-              mark forced on by the real hub, so the preview must too. */}
-          {!(customized && draft.hideBranding) && (
+            {logoMark}
             <div
               style={{
-                marginTop: 'auto',
-                fontSize: 8,
+                fontSize: 9,
+                fontWeight: 600,
                 textAlign: 'center',
-                color: 'var(--hub-tx3)',
+                lineHeight: 1.3,
+                color: 'var(--hub-txt)',
               }}
             >
-              powered by mesaas
+              {workspaceName || 'Seu workspace'}
+            </div>
+            <nav style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
+              {NAV_ITEMS.map((item, i) => (
+                <div
+                  key={item}
+                  style={{
+                    fontSize: 8,
+                    padding: '4px 6px',
+                    borderRadius: 6,
+                    textAlign: 'center',
+                    background: i === ACTIVE_NAV_INDEX ? 'var(--hub-primary)' : 'transparent',
+                    color: i === ACTIVE_NAV_INDEX ? 'var(--hub-primary-fg)' : 'var(--hub-tx2)',
+                    fontWeight: i === ACTIVE_NAV_INDEX ? 600 : 400,
+                  }}
+                >
+                  {item}
+                </div>
+              ))}
+            </nav>
+          </div>
+        )}
+
+        <div
+          style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+        >
+          {device === 'mobile' && (
+            <div
+              data-testid="hub-preview-topbar"
+              style={{
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 10px',
+                borderBottom: '1px solid var(--hub-bd)',
+              }}
+            >
+              {logoMark}
+              <Menu size={14} color="var(--hub-tx2)" aria-hidden="true" />
+            </div>
+          )}
+
+          {mainContent}
+
+          {device === 'mobile' && (
+            <div
+              data-testid="hub-preview-bottom-nav"
+              style={{
+                flexShrink: 0,
+                display: 'flex',
+                borderTop: '1px solid var(--hub-bd)',
+                background: 'var(--hub-card)',
+              }}
+            >
+              {MOBILE_NAV_ITEMS.map(({ label, icon: Icon }, i) => {
+                const active = i === 0;
+                return (
+                  <div
+                    key={label}
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 2,
+                      padding: '6px 0',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 20,
+                        height: 16,
+                        borderRadius: 999,
+                        background: active ? 'var(--hub-primary)' : 'transparent',
+                      }}
+                    >
+                      <Icon
+                        size={10}
+                        color={active ? 'var(--hub-primary-fg)' : 'var(--hub-tx3)'}
+                        aria-hidden="true"
+                      />
+                    </div>
+                    <span
+                      style={{ fontSize: 6, color: active ? 'var(--hub-txt)' : 'var(--hub-tx3)' }}
+                    >
+                      {label}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -342,8 +549,36 @@ export function HubPreview({
   );
 }
 
+/** Six-bar illustrative trend, last bar always the accent (today). Pure divs, no
+ * chart library — this is decoration on a settings preview, not a real chart. */
+function Sparkline({ values }: { values: number[] }) {
+  return (
+    <div
+      data-testid="preview-sparkline"
+      aria-hidden="true"
+      style={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 14 }}
+    >
+      {values.map((v, i) => (
+        // Fixed-length illustrative data, never reordered — index is a stable key here.
+        <div
+          key={i}
+          style={{
+            flex: 1,
+            height: `${Math.max(15, v)}%`,
+            borderRadius: 1,
+            background: i === values.length - 1 ? 'var(--hub-acc)' : 'var(--hub-soft)',
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function togglePillStyle(active: boolean): CSSProperties {
   return {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     fontSize: '0.7rem',
     padding: '0.2rem 0.55rem',
     borderRadius: 999,
