@@ -103,6 +103,35 @@ Deno.serve(async (req: Request) => {
     });
 
     if (!session.url) throw new Error("Stripe returned no checkout URL");
+
+    // Marketing signal for the checkout_abandoned trigger. Placed AFTER the
+    // session exists so only a reachable checkout page is recorded.
+    //
+    // Log and swallow, never fail the checkout: the Stripe session is already
+    // live at this point, so throwing would 500 a user who is one click from
+    // paying and push them to start another session. Losing one marketing
+    // trigger is by far the cheaper failure. stripe_session_id is UNIQUE, so a
+    // retried request reusing a session is a no-op, not a duplicate.
+    //
+    // supabase-js resolves with { error } on a PostgREST failure rather than
+    // throwing, so the error must be checked explicitly -- a bare try/catch
+    // alone would silently drop RLS/constraint/FK failures with no log line.
+    try {
+      const { error } = await svc.from("checkout_attempts").insert({
+        workspace_id: workspaceId,
+        stripe_session_id: session.id,
+        plan_id: planId,
+      });
+      if (error) {
+        console.error("[billing-checkout] checkout_attempts insert failed:", error.message);
+      }
+    } catch (e) {
+      console.error(
+        "[billing-checkout] checkout_attempts insert failed:",
+        e instanceof Error ? e.message : String(e),
+      );
+    }
+
     return json({ url: session.url }, 200, headers);
   } catch (err) {
     console.error("[billing-checkout] error:", err);
