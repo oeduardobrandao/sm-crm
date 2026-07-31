@@ -35,7 +35,7 @@ export function reportPaywallHit(p: {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) return;
-      await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paywall-report`, {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paywall-report`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -44,6 +44,14 @@ export function reportPaywallHit(p: {
           clicked_upgrade: clicked,
         }),
       });
+      // fetch does NOT reject on 4xx/5xx, so without this a CORS-allowlist,
+      // authorization or validation regression is silent on BOTH ends: the
+      // browser sees nothing and no row reaches paywall_hits, so the trigger
+      // just stops firing with no signal anywhere. Warn only — this stays
+      // fire-and-forget: never thrown, never awaited, never user-visible.
+      if (!res.ok) {
+        console.warn(`[paywall-report] ${res.status} for ${p.feature}`);
+      }
     } catch {
       // Marketing signal only. Never surface to the user.
     }
