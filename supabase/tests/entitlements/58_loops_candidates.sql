@@ -20,6 +20,21 @@ begin
     values (v_uid, v_uid || '@et.test',
             now() - make_interval(days => p_confirmed_days_ago), '{}'::jsonb);
   v_ws := et_make_workspace(p_plan_id);
+  -- Force v_ws to be the OLDER of this user's two workspaces. Without this,
+  -- v_ws and the trigger's throwaway workspace (below) share the same
+  -- transaction-start now() -- Postgres now() is fixed per transaction, and
+  -- auth.users insert + et_make_workspace run in the same transaction here --
+  -- so workspaces.created_at (DEFAULT now(), 20260317_multi_workspace.sql:11)
+  -- is IDENTICAL on both rows. get_dormant_signup_candidates' dedupe
+  -- (distinct on (u.id) order by u.id, ws.created_at asc, ws.id asc,
+  -- 20260731000004) would then fall through the tied created_at straight to
+  -- ws.id asc -- a coin flip between two independent gen_random_uuid()s.
+  -- Roughly half the time the RPC would return the THROWAWAY workspace
+  -- instead of v_ws, and every assertion below that filters
+  -- get_dormant_signup_candidates() by workspace_id = f.workspace_id would
+  -- flake. Backdating v_ws makes it deterministically the oldest, so the
+  -- dedupe always picks it.
+  update workspaces set created_at = now() - interval '1 day' where id = v_ws;
   update workspaces set created_by = v_uid where id = v_ws;
   insert into workspace_members (user_id, workspace_id, role)
     values (v_uid, v_ws, 'owner');
@@ -31,12 +46,23 @@ begin
   -- created_by = v_uid and a matching 'owner' workspace_members row (see
   -- 31_hub_token_rotate_extend.sql:19-24 for the same trap, hit first there).
   -- An INSERT here dies on profiles_pkey; UPDATE the row the trigger already
-  -- made instead. Consequence: every fixture user ends up owning TWO
-  -- effectively-free workspaces (v_ws here, plus the trigger's throwaway
-  -- one). All assertions below filter by workspace_id = f.workspace_id
-  -- (or, for get_loops_trait_candidates, by user_id, which is deliberately
-  -- one row per person regardless of workspace count), so the extra
-  -- workspace does not change any expected count.
+  -- made instead.
+  --
+  -- Consequence: every fixture user ends up owning TWO effectively-free
+  -- workspaces (v_ws, forced oldest above, plus the trigger's throwaway one).
+  -- Most assertions below filter get_*_candidates() by workspace_id =
+  -- f.workspace_id: for get_paywall_hit_candidates and
+  -- get_abandoned_checkout_candidates that is safe regardless of the second
+  -- workspace, because both RPCs are genuinely workspace-scoped (one row per
+  -- qualifying workspace, no cross-workspace dedupe). For
+  -- get_dormant_signup_candidates it is safe ONLY because of the created_at
+  -- backdating above, which pins which of the two workspaces its per-user
+  -- dedupe returns. get_loops_trait_candidates is filtered by user_id instead
+  -- (it aggregates across every owned workspace into one row per person, so
+  -- workspace_id was never the right key there). Case 3 below deliberately
+  -- filters get_dormant_signup_candidates by owner_user_id rather than
+  -- workspace_id, specifically because counting by workspace_id can never
+  -- observe the duplicate-user regression that case exists to catch.
   update profiles set conta_id = v_ws, role = 'owner'::user_role,
                        nome = 'Ana Silva', marketing_opt_in = p_opt_in
     where id = v_uid;
