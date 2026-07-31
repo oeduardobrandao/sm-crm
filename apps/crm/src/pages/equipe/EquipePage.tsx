@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -82,21 +81,17 @@ import {
   formatFinancialBRL,
   stripFinancialFields,
 } from '@/lib/financialAccess';
+import { membroSchema, MEMBRO_FORM_DEFAULTS, type MembroFormValues } from './membroForm';
+import { InviteSection } from './InviteSection';
+import { computeSeatState, membroInviteErrorMessage } from './inviteSupport';
+import { inviteUser } from '../../services/invite';
+import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
+import { computeEffectiveInviteStatus, inviteSuccessMessage } from '../configuracao/inviteHelpers';
+import { supabase } from '../../lib/supabase';
+import { captureEvent } from '@/lib/analytics';
 
 type FilterTipo = 'todos' | 'clt' | 'freelancer_mensal' | 'freelancer_demanda';
 type SortKey = 'nome' | 'custo_maior' | 'custo_menor';
-
-const membroSchema = z.object({
-  nome: z.string().min(1, 'Nome obrigatório'),
-  cargo: z.string().min(1, 'Cargo obrigatório'),
-  tipo: z.enum(['clt', 'freelancer_mensal', 'freelancer_demanda']),
-  custo: z.string(),
-  diaPag: z
-    .string()
-    .refine((v) => v === '' || (Number(v) >= 1 && Number(v) <= 31), 'Dia deve ser entre 1 e 31'),
-  crmUserId: z.string().optional(),
-});
-type MembroFormValues = z.infer<typeof membroSchema>;
 
 const TIPO_LABEL: Record<string, string> = {
   clt: 'CLT',
@@ -107,8 +102,10 @@ const TIPO_LABEL: Record<string, string> = {
 export default function EquipePage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { role, canSeeFinancials } = useAuth();
+  const { role, canSeeFinancials, workspaceRole, membershipResolved, profile } = useAuth();
   const isAgent = role === 'agent';
+  const canManageWorkspace =
+    membershipResolved === true && (workspaceRole === 'owner' || workspaceRole === 'admin');
 
   const [filter, setFilter] = useState<FilterTipo>('todos');
   const [search, setSearch] = useState('');
@@ -120,7 +117,7 @@ export default function EquipePage() {
 
   const form = useForm<MembroFormValues>({
     resolver: zodResolver(membroSchema),
-    defaultValues: { nome: '', cargo: '', tipo: 'clt', custo: '', diaPag: '', crmUserId: '' },
+    defaultValues: MEMBRO_FORM_DEFAULTS,
   });
 
   const { data: membros = [], isLoading } = useQuery({
@@ -131,6 +128,31 @@ export default function EquipePage() {
     queryKey: ['workspace-users'],
     queryFn: getWorkspaceUsers,
     enabled: !isAgent,
+  });
+  const { limits, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
+  const { data: pendingInvites = [] } = useQuery({
+    queryKey: ['invites', 'equipe-pending', profile?.conta_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('invites')
+        .select('id, email, role, membro_id, expires_at, status')
+        .eq('conta_id', profile!.conta_id)
+        .eq('status', 'pending');
+      if (error) throw error;
+      // Locally-expired invites must not render as pending.
+      return computeEffectiveInviteStatus(data ?? []).filter((i) => i.status === 'pending');
+    },
+    enabled: canManageWorkspace && !!profile?.conta_id,
+  });
+  const pendingByMembroId = new Map(
+    pendingInvites.filter((i) => i.membro_id != null).map((i) => [i.membro_id as number, i]),
+  );
+  const seat = computeSeatState({
+    isLoading: limitsLoading,
+    isUnlimited,
+    maxTeamMembers: limits === null ? undefined : limits.max_team_members,
+    membersCount: workspaceUsers.length,
+    pendingCount: pendingInvites.length,
   });
   const totalCost = membros.reduce((s, m) => s + (m.custo_mensal ?? 0), 0);
 
@@ -156,13 +178,14 @@ export default function EquipePage() {
 
   const openAdd = () => {
     setEditing(null);
-    form.reset({ nome: '', cargo: '', tipo: 'clt', custo: '', diaPag: '', crmUserId: '' });
+    form.reset(MEMBRO_FORM_DEFAULTS);
     setModalOpen(true);
   };
 
   const openEdit = (m: Membro) => {
     setEditing(m);
     form.reset({
+      ...MEMBRO_FORM_DEFAULTS,
       nome: m.nome,
       cargo: m.cargo || '',
       tipo: m.tipo,
@@ -186,20 +209,44 @@ export default function EquipePage() {
         data_pagamento: diaPag,
       };
       const safePayload = stripFinancialFields(payload, canSeeFinancials, ['custo_mensal']);
+      const desiredCrmUser =
+        values.crmUserId === '' || values.crmUserId == null ? null : values.crmUserId;
+      let membroId: number | undefined;
       if (editing?.id) {
-        const desiredCrmUser =
-          values.crmUserId === '' || values.crmUserId == null ? null : values.crmUserId;
         const currentCrmUser = editing.crm_user_id ?? null;
         if (desiredCrmUser !== currentCrmUser) {
           await setMembroCrmUser(editing.id, desiredCrmUser);
         }
         await updateMembro(editing.id, safePayload);
-        toast.success('Membro atualizado');
+        membroId = editing.id;
       } else {
-        await addMembro(safePayload as Omit<Membro, 'id' | 'user_id' | 'conta_id'>);
-        toast.success('Membro adicionado');
+        const created = await addMembro(safePayload as Omit<Membro, 'id' | 'user_id' | 'conta_id'>);
+        membroId = created.id;
       }
+
+      // The invite is a second, non-atomic operation: a failure here must not
+      // roll back or hide the saved membro. Guard on desiredCrmUser (the value
+      // just submitted), not editing?.crm_user_id (a stale prop) — otherwise
+      // selecting an existing user in Conta CRM and enabling the invite switch
+      // in the same submission would still fire an invite the server rejects
+      // as already-linked.
+      const wantsInvite =
+        values.inviteEnabled && canManageWorkspace && membroId != null && desiredCrmUser === null;
+      if (wantsInvite) {
+        try {
+          const result = await inviteUser(values.inviteEmail.trim(), values.inviteRole, membroId);
+          toast.success(inviteSuccessMessage(result));
+          captureEvent('invite_sent', { source: 'equipe' });
+        } catch (err) {
+          toast.error(membroInviteErrorMessage(err));
+        }
+      } else {
+        toast.success(editing?.id ? 'Membro atualizado' : 'Membro adicionado');
+      }
+
       qc.invalidateQueries({ queryKey: ['membros'] });
+      qc.invalidateQueries({ queryKey: ['workspace-users'] });
+      qc.invalidateQueries({ queryKey: ['invites'] });
       setModalOpen(false);
     } catch {
       toast.error('Erro ao salvar');
@@ -454,11 +501,17 @@ export default function EquipePage() {
                       <Badge variant="neutral" size="sm" style={{ pointerEvents: 'none' }}>
                         {TIPO_LABEL[m.tipo]}
                       </Badge>
-                      {!isAgent && !m.crm_user_id && (
-                        <Badge variant="outline" size="sm">
-                          sem conta vinculada
-                        </Badge>
-                      )}
+                      {!isAgent &&
+                        !m.crm_user_id &&
+                        (pendingByMembroId.has(m.id!) ? (
+                          <Badge variant="warning" size="sm">
+                            convite pendente
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" size="sm">
+                            sem conta vinculada
+                          </Badge>
+                        ))}
                     </div>
                   </div>
 
@@ -576,7 +629,7 @@ export default function EquipePage() {
                   </FormItem>
                 )}
               />
-              {!isAgent && (
+              {canManageWorkspace && !!editing && (
                 <FormField
                   control={form.control}
                   name="crmUserId"
@@ -610,12 +663,22 @@ export default function EquipePage() {
                   )}
                 />
               )}
+              {canManageWorkspace && !editing?.crm_user_id && (
+                <InviteSection
+                  form={form}
+                  seat={seat}
+                  pendingInvite={editing?.id ? (pendingByMembroId.get(editing.id) ?? null) : null}
+                />
+              )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
                   Cancelar
                 </Button>
                 <Button type="submit" disabled={saving}>
-                  {saving && <Spinner size="sm" />} Salvar
+                  {saving && <Spinner size="sm" />}{' '}
+                  {form.watch('inviteEnabled') && !form.watch('crmUserId')
+                    ? 'Salvar e convidar'
+                    : 'Salvar'}
                 </Button>
               </DialogFooter>
             </form>

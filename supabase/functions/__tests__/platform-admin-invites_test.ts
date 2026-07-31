@@ -285,7 +285,7 @@ function makeCreateSvc(opts: {
         _head: false,
         select: (_c?: string, o?: any) => { if (o?.head) api._head = true; return api; },
         _isDelete: false,
-        eq: () => api, neq: () => api, in: () => api,
+        eq: () => api, neq: () => api, in: () => api, not: () => api,
         delete: () => { api._isDelete = true; return api; },
         insert: (row: any) => {
           if (table === "audit_log") { audits.push(row); return Promise.resolve({ error: null }); }

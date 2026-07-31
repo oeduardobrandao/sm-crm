@@ -222,6 +222,9 @@ export interface InviteOrResendInput {
   role: "owner" | "admin" | "agent";
   invitedBy: string;
   redirectBase: string;
+  /** Membro da equipe this invite links to (Equipe form). Stamped on every
+   * invites row; the added route links membros.crm_user_id immediately. */
+  membroId?: number | null;
 }
 export interface InviteOrResendOpts {
   /** true (CRM/invite-user): add-direct adds an onboarded non-member. false
@@ -275,6 +278,19 @@ export async function inviteOrResend(
     return { route: "plan-limit-exceeded" };
   }
 
+  // Resolve the membro link for every invites row written below. When the
+  // caller passes none (resend from Configurações / admin portal), inherit it
+  // from the pending row being replaced: deletePriorInvites + re-insert would
+  // otherwise silently drop a link created from the Equipe form.
+  let membroId = input.membroId ?? null;
+  if (membroId == null) {
+    const { data: prior } = await adminClient
+      .from("invites").select("membro_id")
+      .eq("conta_id", input.contaId).eq("email", email).eq("status", "pending")
+      .not("membro_id", "is", null).maybeSingle();
+    membroId = prior?.membro_id ?? null;
+  }
+
   // (2) Classify the existing auth user BEFORE mutating anything.
   const existingUser = await findAuthUserByEmail(adminClient, email);
   if (existingUser) {
@@ -315,8 +331,14 @@ export async function inviteOrResend(
       }
       const iIns = await adminClient.from("invites").insert({
         conta_id: input.contaId, email, role: input.role, invited_by: input.invitedBy,
-        status: "accepted", accepted_at: new Date().toISOString(),
+        status: "accepted", accepted_at: new Date().toISOString(), membro_id: membroId,
       }).select("id").single();
+      if (membroId != null) {
+        const upd = await adminClient.from("membros")
+          .update({ crm_user_id: existingUser.id })
+          .eq("id", membroId).eq("conta_id", input.contaId).is("crm_user_id", null);
+        ensureOk(upd.error, "membro_link");
+      }
       return { route: "added", inviteId: insertedId(iIns, "invite_insert_accepted") };
     }
 
@@ -333,7 +355,8 @@ export async function inviteOrResend(
         .from("contas").select("nome").eq("id", input.contaId).maybeSingle();
       await sendInviteEmail({ to: email, actionLink: link.properties.action_link, workspaceName: conta?.nome || "seu workspace" });
       const ins = await adminClient.from("invites").insert({
-        conta_id: input.contaId, email, role: input.role, invited_by: input.invitedBy, status: "pending",
+        conta_id: input.contaId, email, role: input.role, invited_by: input.invitedBy,
+        status: "pending", membro_id: membroId,
       }).select("id").single();
       return { route: "resent-link", inviteId: insertedId(ins, "invite_insert_pending") };
     }
@@ -351,13 +374,13 @@ export async function inviteOrResend(
     const affectedWorkspaceIds = [...new Set([
       ...impact.memberWorkspaceIds, ...impact.pendingWorkspaceIds, input.contaId,
     ])];
-    const inviteId = await sendNewUserInvite(adminClient, input, email);
+    const inviteId = await sendNewUserInvite(adminClient, input, email, membroId);
     return { route: "reinvited", affectedWorkspaceIds, inviteId };
   }
 
   // (3) New user.
   await deletePriorInvites(adminClient, email, input.contaId);
-  const inviteId = await sendNewUserInvite(adminClient, input, email);
+  const inviteId = await sendNewUserInvite(adminClient, input, email, membroId);
   return { route: "invited", inviteId };
 }
 
@@ -368,11 +391,12 @@ async function deletePriorInvites(adminClient: any, email: string, contaId: stri
 }
 
 /** Returns the id of the pending invites row it created. */
-async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, email: string): Promise<string> {
+async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, email: string, membroId: number | null): Promise<string> {
   return await sendPendingWorkspaceInvite({
     createPendingInvite: async (p) => {
       const { data, error } = await adminClient.from("invites").insert({
-        conta_id: p.contaId, email: p.email, role: p.role, invited_by: p.invitedBy, status: "pending",
+        conta_id: p.contaId, email: p.email, role: p.role, invited_by: p.invitedBy,
+        status: "pending", membro_id: p.membroId ?? null,
       }).select("id").single();
       if (error || !data) throw error ?? new Error("invite_insert_failed");
       return data;
@@ -393,6 +417,6 @@ async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, e
     },
   }, {
     contaId: input.contaId, email, role: input.role, invitedBy: input.invitedBy,
-    redirectTo: input.redirectBase + "/configurar-senha",
+    redirectTo: input.redirectBase + "/configurar-senha", membroId,
   });
 }

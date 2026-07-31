@@ -110,6 +110,42 @@ describe('invite service', () => {
         'Já existe um convite pendente para este email',
       );
     });
+
+    it('includes membroId in the body when provided', async () => {
+      fetchHarness.queueResponse({ json: { success: true, message: 'Convite enviado!' } });
+
+      await inviteUser('novo@equipe.com', 'agent', 42);
+
+      const body = JSON.parse(String(fetchHarness.calls[0].init?.body));
+      expect(body).toEqual({ email: 'novo@equipe.com', role: 'agent', membroId: 42 });
+    });
+
+    it('omits membroId from the body when not provided', async () => {
+      fetchHarness.queueResponse({ json: { success: true } });
+
+      await inviteUser('novo@equipe.com', 'agent');
+
+      const body = JSON.parse(String(fetchHarness.calls[0].init?.body));
+      expect(body).toEqual({ email: 'novo@equipe.com', role: 'agent' });
+    });
+
+    it('attaches the error payload to the thrown Error so entitlement mapping works', async () => {
+      fetchHarness.queueResponse({
+        ok: false,
+        status: 403,
+        json: { error: 'plan_limit_exceeded', resource: 'max_team_members' },
+      });
+
+      let thrown: unknown;
+      try {
+        await inviteUser('novo@equipe.com', 'agent', 42);
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as { error?: string }).error).toBe('plan_limit_exceeded');
+      expect((thrown as { resource?: string }).resource).toBe('max_team_members');
+    });
   });
 
   describe('cancelInvite', () => {

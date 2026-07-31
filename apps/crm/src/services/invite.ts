@@ -20,16 +20,26 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   };
 }
 
-export async function inviteUser(email: string, role: InviteRole): Promise<InviteResult> {
+export async function inviteUser(
+  email: string,
+  role: InviteRole,
+  membroId?: number,
+): Promise<InviteResult> {
   if (!email) throw new Error('Email é obrigatório');
   const headers = await getAuthHeaders();
   const res = await fetch(`${SUPABASE_URL}/functions/v1/invite-user`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ email, role }),
+    body: JSON.stringify(membroId != null ? { email, role, membroId } : { email, role }),
   });
   const result = await res.json();
-  if (!res.ok) throw new Error(result.error || result.message || `Erro ${res.status}`);
+  if (!res.ok) {
+    // Carry the JSON payload on the Error so mapEntitlementError() can read
+    // { error: 'plan_limit_exceeded', resource } from the edge function.
+    const error = new Error(result.error || result.message || `Erro ${res.status}`);
+    Object.assign(error, result);
+    throw error;
+  }
   return result as InviteResult;
 }
 

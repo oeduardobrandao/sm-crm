@@ -58,7 +58,7 @@ export default function MembrosTab() {
   const isOwner = workspaceRole === 'owner';
 
   const { data: wsUsers, refetch: refetchWsUsers } = useQuery({
-    queryKey: ['workspaceUsers'],
+    queryKey: ['workspace-users'],
     queryFn: getWorkspaceUsers,
     enabled: isOwnerOrAdmin,
   });
@@ -174,7 +174,7 @@ export default function MembrosTab() {
       setInviteEmail('');
       setInviteRole('agent');
       toast.success(inviteSuccessMessage(result));
-      captureEvent('invite_sent');
+      captureEvent('invite_sent', { source: 'configuracao' });
     } catch (err: unknown) {
       toast.error('Erro ao convidar: ' + (err as Error).message);
     } finally {

@@ -27,17 +27,20 @@ export async function getMembros(): Promise<Membro[]> {
   return data || [];
 }
 
-export async function addMembro(m: Omit<Membro, 'id' | 'user_id' | 'conta_id'>): Promise<void> {
+export async function addMembro(
+  m: Omit<Membro, 'id' | 'user_id' | 'conta_id'>,
+): Promise<Omit<Membro, 'custo_mensal'>> {
   const user_id = await getUserId();
   const conta_id = await getContaId();
   // RETURNING is narrowed to the allowlist: `.select()` is RETURNING *, which
   // needs SELECT on custo_mensal and would fail for a restricted admin.
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('membros')
     .insert({ ...m, user_id, conta_id })
     .select(MEMBRO_SAFE_COLUMNS)
     .single();
   if (error) throw error;
+  return data as Omit<Membro, 'custo_mensal'>;
 }
 
 export async function updateMembro(
