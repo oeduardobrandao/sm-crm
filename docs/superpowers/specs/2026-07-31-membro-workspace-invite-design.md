@@ -70,6 +70,7 @@ Notes:
 - Validate before calling `inviteOrResend`: the membro exists, its `conta_id` matches the caller's resolved active workspace, and `crm_user_id` is null. Invalid → 400 with a generic message (no detail leakage).
 - **Pending-invite conflict rule:** if a pending invite for this email already exists in this workspace with a **different non-null** `membro_id`, reject with 400 ("Este e-mail já tem um convite pendente vinculado a outro membro") — `inviteOrResend` deletes-and-recreates same-email pending rows, which would otherwise silently transfer the link from membro A to membro B. A pending invite with `membro_id` null (sent from Configurações) IS upgraded to carry the new `membro_id` — that's the owner explicitly asking for the link.
 - Pass `membroId` into `inviteOrResend` (new optional field on `InviteOrResendInput`); every invite-row insert/update stamps `membro_id`.
+- **Inherit rule (found during planning):** when the caller passes no `membroId` (resend from Configurações or the admin portal), `inviteOrResend` must carry forward the `membro_id` of the pending row it is replacing — `deletePriorInvites` + re-insert would otherwise silently drop an existing link.
 - `added` route (existing user, no acceptance step): set `membros.crm_user_id` immediately via the admin client, same `is null` guard.
 - The CRM-side callers that don't send `membroId` (MembrosTab, resend) are unaffected; `platform-admin` resend path passes nothing.
 
