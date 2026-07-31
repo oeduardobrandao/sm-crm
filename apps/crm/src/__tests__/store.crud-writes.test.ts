@@ -239,12 +239,10 @@ describe('store CRUD write operations', () => {
   describe('membros', () => {
     it('addMembro inserts with user_id and conta_id', async () => {
       mockedSupabase.__queueSupabaseResult('membros', 'insert', {
-        data: { id: 40, nome: 'Paulo Editor' },
+        data: { id: 40, nome: 'Paulo Editor', cargo: 'Editor', tipo: 'freelancer_mensal', avatar_url: '', user_id: 'user-1', conta_id: 'conta-1' },
         error: null,
       });
 
-      // addMembro resolves void: RETURNING is narrowed to an allowlist that
-      // excludes custo_mensal, so the write path never surfaces the row back.
       const result = await store.addMembro({
         nome: 'Paulo Editor',
         cargo: 'Editor',
@@ -253,7 +251,7 @@ describe('store CRUD write operations', () => {
         avatar_url: '',
       });
 
-      expect(result).toBeUndefined();
+      expect(result).toMatchObject({ id: 40, nome: 'Paulo Editor' });
       const call = getLastCall('membros');
       expect(call.payload).toMatchObject({ user_id: 'user-1', conta_id: 'conta-1' });
     });

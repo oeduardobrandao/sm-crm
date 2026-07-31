@@ -428,10 +428,6 @@ describe('store core helpers and CRUD', () => {
     {
       name: 'addMembro',
       table: 'membros',
-      // addMembro resolves void: RETURNING is narrowed to an allowlist that
-      // excludes custo_mensal, so the write path never surfaces the inserted
-      // row to the caller (see store/team.ts).
-      returnsVoid: true,
       run: () =>
         store.addMembro({
           nome: 'Paulo Editor',
