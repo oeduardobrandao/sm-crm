@@ -116,12 +116,23 @@ Deno.serve(async (req: Request) => {
     // supabase-js resolves with { error } on a PostgREST failure rather than
     // throwing, so the error must be checked explicitly -- a bare try/catch
     // alone would silently drop RLS/constraint/FK failures with no log line.
+    //
+    // abortSignal(10s) is load-bearing, not redundant with the try/catch: an
+    // unbounded await on a stalled PostgREST call can have its isolate killed
+    // by the edge runtime before `return json({ url: session.url })` below
+    // ever runs -- a kill bypasses catch entirely, so the user would lose a
+    // live, payable Stripe checkout URL. The timeout forces a stall to
+    // surface as an ordinary catchable rejection/error instead. This write
+    // must never be able to block the checkout -- do not remove this bound.
     try {
-      const { error } = await svc.from("checkout_attempts").insert({
-        workspace_id: workspaceId,
-        stripe_session_id: session.id,
-        plan_id: planId,
-      });
+      const { error } = await svc
+        .from("checkout_attempts")
+        .insert({
+          workspace_id: workspaceId,
+          stripe_session_id: session.id,
+          plan_id: planId,
+        })
+        .abortSignal(AbortSignal.timeout(10_000));
       if (error) {
         console.error("[billing-checkout] checkout_attempts insert failed:", error.message);
       }
