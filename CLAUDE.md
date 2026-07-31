@@ -131,6 +131,11 @@ Monorepo with npm workspaces:
 - `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` -- TikTok Login Kit OAuth (tiktok-integration)
 - `TIKTOK_APP_AUDITED` -- unset until TikTok's Content Posting audit passes; while unset, scheduling enforces SELF_ONLY privacy
 - `TIKTOK_URL_VERIFY_FILENAME`, `TIKTOK_URL_VERIFY_CONTENT` -- TikTok URL-prefix verification file (optional; 404 until set)
+- `LOOPS_API_KEY` -- Loops REST API key for marketing lifecycle emails. REQUIRED by
+  loops-sync-cron, no default -- `_shared/loops.ts` throws if missing
+- `POSTHOG_PROJECT_KEY` -- PostHog **project write key** (same value as the frontend's
+  `VITE_POSTHOG_KEY`, NOT a personal API key). Optional: server-side capture is a
+  silent no-op when unset
 
 ## Gotchas
 
