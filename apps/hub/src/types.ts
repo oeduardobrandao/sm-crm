@@ -279,3 +279,25 @@ export interface HubDashboardResponse {
   account: DashboardAccount | null;
   period: number;
 }
+
+export interface MensagemFeedItem {
+  source: 'post_feedback' | 'edit_suggestion' | 'mensagem';
+  item_id: number;
+  cliente_id: number;
+  cliente_nome: string;
+  post_id: number | null;
+  workflow_id: number | null;
+  post_titulo: string | null;
+  action: string | null;
+  content: string | null;
+  is_workspace_user: boolean;
+  author_user_id: string | null;
+  author_name: string | null;
+  author_avatar_url: string | null;
+  created_at: string;
+}
+
+export interface HubMensagensResponse {
+  items: MensagemFeedItem[];
+  unread: number;
+}

@@ -4,7 +4,8 @@ import { Menu, X, Sun, Moon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { usePendingApprovalsCount } from '../hooks/usePendingApprovalsCount';
-import { getVisibleNavItems } from './navItems';
+import { useMensagensUnreadCount } from '../hooks/useMensagensUnreadCount';
+import { getVisibleNavItems, type HubBadgeKey } from './navItems';
 import { ClientAvatar } from '../components/ClientAvatar';
 import { WorkspaceMark, isWordmarkStyle } from '../components/WorkspaceMark';
 import { FlagIcon } from '@mesaas/ui/FlagIcon';
@@ -23,6 +24,11 @@ export function HubMobileNav() {
   const { t, i18n } = useTranslation();
   const base = `/${workspace}/hub/${token}`;
   const pendingCount = usePendingApprovalsCount(token!);
+  const mensagensUnread = useMensagensUnreadCount(token!, bootstrap.feature_mensagens);
+  const badgeCounts: Record<HubBadgeKey, number> = {
+    aprovacoes: pendingCount,
+    mensagens: mensagensUnread,
+  };
   const navItems = getVisibleNavItems(bootstrap.feature_mensagens);
 
   const [open, setOpen] = useState(false);
@@ -171,11 +177,11 @@ export function HubMobileNav() {
               </button>
             </div>
             <nav className="flex flex-col gap-0.5">
-              {navItems.map(({ label, labelKey, icon: Icon, path }, i) => {
+              {navItems.map(({ label, labelKey, icon: Icon, path, badge: badgeKey }, i) => {
                 const href = `${base}${path}`;
                 const active =
                   path === '' ? pathname === base : pathname.startsWith(`${base}${path}`);
-                const badge = path === '/aprovacoes' ? pendingCount : null;
+                const badge = badgeKey ? badgeCounts[badgeKey] : null;
                 return (
                   <Link
                     key={path}
