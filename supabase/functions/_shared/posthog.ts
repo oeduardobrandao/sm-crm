@@ -6,17 +6,25 @@
  * POSTHOG_PROJECT_KEY is the PROJECT WRITE key (the same value as the frontend's
  * VITE_POSTHOG_KEY), not a personal API key. Unset is a silent no-op so staging
  * and local runs work without it.
+ *
+ * Group association travels inside `properties.$groups` (e.g.
+ * `{ workspace: workspaceId }`), the HTTP-capture-API equivalent of the
+ * frontend's `posthog.group('workspace', ...)` — no dedicated param needed,
+ * `properties` is an open bag.
+ *
+ * Both env vars are read lazily (inside the function), not at module scope,
+ * so tests can set them after import — same pattern as `_shared/notify.ts`.
  */
-const HOST = Deno.env.get("POSTHOG_HOST") ?? "https://eu.i.posthog.com";
-
 export async function capturePostHog(
   event: string,
   distinctId: string,
   properties: Record<string, unknown>,
+  fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
   const key = Deno.env.get("POSTHOG_PROJECT_KEY");
   if (!key) return;
-  const res = await fetch(`${HOST}/capture/`, {
+  const host = Deno.env.get("POSTHOG_HOST") ?? "https://eu.i.posthog.com";
+  const res = await fetchImpl(`${host}/capture/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

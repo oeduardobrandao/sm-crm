@@ -85,8 +85,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
       sendEvent,
       updateContact,
       deleteContact,
-      capture: (event, props) =>
-        capturePostHog(event, String(props.workspace_id ?? "unknown"), props),
+      capture: (event, props) => {
+        // distinct_id MUST be the person (owner_user_id), matching the frontend's
+        // posthog.identify(userId, ...) in apps/crm/src/lib/analytics.ts. Keying
+        // on workspace_id here would create a phantom per-workspace profile that
+        // never joins to the frontend's person-keyed events, breaking the exact
+        // trigger -> checkout_started -> subscription funnel this capture exists
+        // for. The workspace still travels, but as a GROUP (via $groups), the
+        // server-side equivalent of the frontend's posthog.group('workspace', ...).
+        const ownerUserId = props.owner_user_id;
+        if (typeof ownerUserId !== "string" || ownerUserId.length === 0) {
+          // No safe distinct_id to key on. Skipping the capture is strictly
+          // better than falling back to workspace_id and recreating the bug.
+          return Promise.resolve();
+        }
+        return capturePostHog(event, ownerUserId, {
+          ...props,
+          $groups: { workspace: props.workspace_id },
+        });
+      },
       report: (detail) => reportCronFailure(svc, CRON_NAME, detail),
     };
 

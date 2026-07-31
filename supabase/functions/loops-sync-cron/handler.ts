@@ -197,6 +197,7 @@ export async function runLoopsSyncCron(
           await deps.capture("lifecycle_email_triggered", {
             type: emailType,
             workspace_id: c.workspace_id,
+            owner_user_id: c.owner_user_id,
           });
         } catch (e) {
           console.error("[loops-sync-cron] posthog capture failed:", msg(e));
