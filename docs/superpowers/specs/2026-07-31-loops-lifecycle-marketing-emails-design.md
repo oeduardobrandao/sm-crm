@@ -80,10 +80,39 @@ Because the default is `false` and invited users never opt in, the eligible popu
 smaller than it looks. That is correct behaviour, not a bug to work around: expect the first
 sweep to qualify a minority of free workspaces.
 
-**Revocation.** A user who unticks the box in `PerfilTab` stops qualifying on the next sweep,
-but their Loops contact persists. Slice 1 handles this with a fourth sweep pass: contacts whose
-`marketing_opt_in` flipped to `false` since their last sync are **deleted from Loops**. Without
-this, revocation is silently ineffective at the vendor.
+**Revocation needs a sync ledger.** A user who unticks the box in `PerfilTab` stops qualifying
+on the next sweep, but their Loops contact persists. Deleting it requires knowing **which email
+address was actually sent to Loops** — and that cannot be derived from current state:
+
+- Loops contacts are keyed by email, so a user who changes their email leaves an orphaned
+  contact under the old address that no query over live data can find.
+- A deleted account takes its `profiles` row with it, erasing the only pointer to what was
+  synced.
+- Nothing in `lifecycle_emails` records a contact sync at all; it records sends.
+
+So slice 1 adds a vendor-identity ledger, written on every successful `updateContact`:
+
+```sql
+create table loops_contacts (
+  user_id      uuid primary key references auth.users(id) on delete set null,
+  synced_email text not null,
+  synced_at    timestamptz not null default now(),
+  deleted_at   timestamptz null
+);
+create index loops_contacts_pending_delete on loops_contacts (deleted_at) where deleted_at is null;
+alter table loops_contacts enable row level security;
+create policy "loops_contacts_service_role" on loops_contacts
+  for all to service_role using (true) with check (true);
+```
+
+`on delete set null` rather than `cascade` is deliberate: when the account goes, the row must
+**survive** carrying `synced_email`, because that is the only remaining handle for deleting the
+contact at the vendor. A cascade would erase the evidence needed to honour the erasure.
+
+A fourth sweep pass deletes from Loops every row where `deleted_at is null` and any of:
+consent revoked, the user's current email differs from `synced_email` (delete the old address,
+then re-sync the new one), or `user_id` is now null (account deleted). `deleted_at` is stamped
+on success so the pass is idempotent.
 
 The exact contact-deletion endpoint is unverified and is confirmed alongside B1. If Loops offers
 no delete, the fallback is setting an `unsubscribed` property and relying on Loops' suppression
@@ -178,7 +207,7 @@ actually triggered.
 
 | Event | Properties |
 |---|---|
-| `paywall_hit` | `feature`, `workspaceName`, `planName`, `clientCount` |
+| `paywall_hit` | `feature`, `clickedUpgrade`, `workspaceName`, `planName`, `clientCount` |
 | `checkout_abandoned` | `workspaceName`, `planName`, `hoursSinceAttempt` |
 | `dormant_signup` | `workspaceName`, `daysSinceSignup` |
 
@@ -196,10 +225,23 @@ deduped for 24h, which is what closes that gap today. Whether Loops offers an eq
 
 > **B1 — deployment blocker. Owner: Eduardo. Evidence required before any code is written.**
 > Confirm from Loops' API documentation whether `POST /v1/events/send` accepts an idempotency
-> key or otherwise dedupes.
+> key or otherwise dedupes — and, critically, **on what scope and for how long**. "Accepts a
+> key" is not the contract that matters. Three facts are required:
 >
-> - **If yes:** use `<event_type>/<workspace_id>` as the key, exactly as the Resend path does.
->   Design unchanged.
+> 1. **Scope** — is dedupe per key, per key+contact, or per key+event-name?
+> 2. **Retention window** — how long is a key remembered?
+> 3. **Behaviour on a repeated key** — silently ignored, or an error the handler must treat as
+>    success (Resend's 409 case)?
+>
+> **The retention window sets the attempt cap, not the other way round.** The existing Resend
+> path retries hourly up to 30 attempts, a ~30h window against a 24h key retention — meaning a
+> retry landing between hours 24 and 30 can genuinely duplicate. That gap is pre-existing and
+> accepted for a courtesy thank-you; it is not acceptable for a marketing send to a prospect.
+> **Set `attempts < 25` so the retry window stays inside a 24h retention**, and adjust if Loops'
+> window differs. This is why the ledger exclusion above says 25 rather than 30.
+>
+> - **If yes:** use `<event_type>/<workspace_id>` as the key, exactly as the Resend path does,
+>   with the attempt cap tuned to the confirmed retention window.
 > - **If no:** the ledger cannot carry this alone. Every loop in Loops must be configured
 >   "a contact can only enter this loop once", which is **UI configuration outside this repo**
 >   and therefore must be screenshotted into the rollout runbook and re-checked after any Loops
@@ -230,9 +272,25 @@ catch path for `FeatureDisabledError`. Verification against the code shows that 
   permanently empty.
 
 **Replacement: a small authenticated edge function `paywall-report`**, fed by three sources,
-because no single one covers the gated surface. The function verifies the JWT, verifies the
-caller belongs to the workspace (`conta_id` ownership check — never trust the body), and
-inserts the row.
+because no single one covers the gated surface.
+
+**Authorization — the earlier draft of this was a cross-tenant write hole.** It said to check
+`conta_id` ownership. That is wrong: `profiles.conta_id` tracks the **active** workspace
+(`get_my_conta_id()` returns `active_workspace_id`, per `20260317_multi_workspace.sql`), so in a
+multi-workspace account it routinely diverges from the `workspace_id` in the request body. A
+check against it would either reject legitimate reports or, worse, be waved through while the
+service-role insert writes a row attributed to a workspace the caller has no relationship with.
+
+The correct check, and the security boundary of this function:
+
+1. Verify the JWT and resolve `user.id` from it. Use a service-role client with
+   `getUser(token)` — never the anon client.
+2. `select 1 from workspace_members where user_id = <authenticated user.id> and workspace_id =
+   <body workspace_id>`. No row, no insert, 403.
+3. Only then insert with the service role.
+
+The `workspace_id` in the body is attacker-controlled input and is never trusted for anything
+except being the subject of that membership check.
 
 | Source | Covers | Reliability |
 |---|---|---|
@@ -269,11 +327,12 @@ Migration `20260731000001_paywall_hits.sql` (re-verify the version prefix agains
 
 ```sql
 create table paywall_hits (
-  id           uuid primary key default gen_random_uuid(),
-  workspace_id uuid not null references workspaces(id) on delete cascade,
-  user_id      uuid null references auth.users(id) on delete set null,
-  feature      text not null,
-  hit_at       timestamptz not null default now()
+  id              uuid primary key default gen_random_uuid(),
+  workspace_id    uuid not null references workspaces(id) on delete cascade,
+  user_id         uuid null references auth.users(id) on delete set null,
+  feature         text not null,
+  clicked_upgrade boolean not null default false,
+  hit_at          timestamptz not null default now()
 );
 create index paywall_hits_workspace_hit_at on paywall_hits (workspace_id, hit_at desc);
 alter table paywall_hits enable row level security;
@@ -315,6 +374,14 @@ create policy "checkout_attempts_service_role" on checkout_attempts
   for all to service_role using (true) with check (true);
 ```
 
+**If that insert fails, log and continue — never fail the checkout.** The Stripe session already
+exists at that point. Propagating the error returns 500 to a user who is one click from paying,
+blocks them from reaching a checkout page that is live, and pushes them to start another
+session. Losing one marketing trigger is the cheaper failure by a wide margin, and the tradeoff
+is not close enough to leave to whoever writes the code. The insert is wrapped in its own
+try/catch that logs and swallows; `stripe_session_id` is `unique`, so a retried request that
+reuses a session is a no-op rather than a duplicate.
+
 Abandonment is then well-defined: the workspace's **most recent** attempt is older than 24h and
 the workspace still has no active subscription. Each new attempt resets the clock, so repeat
 abandonment works, and the ledger's `(email_type, workspace_id)` uniqueness means a workspace is
@@ -329,22 +396,110 @@ bitten this repo before. Check `proacl`, not `has_function_privilege`.
 
 **Four predicates are shared by all three** and must appear in each:
 
-1. `profiles.marketing_opt_in = true` (consent).
+1. `profiles.marketing_opt_in = true` (consent) — **for the one deterministically chosen
+   recipient**, defined below.
 2. **Effective free plan.** Not `plan_id is null` alone — the convention in
    `_shared/entitlements.ts:51` is that a null `plan_id` resolves to the plan with
    `is_default = true`. The predicate is therefore
    `coalesce(w.plan_id, (select id from plans where is_default)) = (select id from plans where is_default)`.
    A workspace that subscribed and later cancelled retains a `workspace_subscriptions` mirror
    row, so subscription-row existence is **not** a proxy for paid.
-3. **72h frequency cap.** `not exists (select 1 from lifecycle_emails le2 where le2.workspace_id
-   = w.id and le2.email_type in ('paywall_hit','checkout_abandoned','dormant_signup') and
-   le2.sent_at > now() - interval '72 hours')`. In SQL, not in Loops: all three events can fire
-   for the same workspace in the same sweep, and a vendor-side setting cannot arbitrate between
-   events emitted by concurrent cron runs.
-4. Ledger exclusion: not delivered, not claimed within the last hour, `attempts < 30`.
+3. **72h frequency cap** — as a prefilter only. The authoritative enforcement is the atomic
+   claim below, because a predicate evaluated at SELECT time cannot arbitrate between two
+   concurrent sweeps.
+4. Ledger exclusion: not delivered, not claimed within the last hour, `attempts < 25` (see B1
+   for why 25 and not 30).
+
+#### The 72h cap needs an atomic claim, not a predicate
+
+Two independent defects in evaluating the cap inside the candidate RPCs:
+
+- **Concurrency.** Two overlapping cron runs both SELECT before either claims. Run A picks
+  `paywall_hit` for workspace W, run B picks `checkout_abandoned` for the same W. Both pass the
+  cap because neither has written yet, and the per-type idempotency key
+  `<event_type>/<workspace_id>` cannot help — it dedupes a type against itself, not two
+  different types against each other. The workspace gets two marketing emails minutes apart.
+  A 15-minute schedule and a sweep that can exceed 15 minutes makes this reachable, not
+  theoretical.
+- **`dormant_signup` is invisible to the cap.** It claims on `(email_type, user_id)`, leaving
+  `workspace_id` NULL, so `le2.workspace_id = w.id` never matches it. A dormant email sent an
+  hour ago does not suppress anything.
+
+**Fix, both parts:**
+
+1. **`dormant_signup` writes both keys.** The ledger has both columns and the uniqueness
+   constraint is `(email_type, user_id)`, so populating `workspace_id` as well changes no
+   dedupe behaviour and makes the row visible to every workspace-scoped query. The workspace is
+   the one the dormant owner created.
+2. **A single SQL claim function is the arbiter**, replacing the edge function's bare upsert:
+
+```sql
+-- Returns true if the caller won the claim. All checks happen inside one
+-- transaction under a per-workspace advisory lock, so concurrent sweeps
+-- serialise rather than both winning.
+create function claim_marketing_email(
+  p_email_type text, p_workspace_id uuid, p_user_id uuid, p_attempts int
+) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  perform pg_advisory_xact_lock(hashtextextended(p_workspace_id::text, 0));
+  if exists (
+    select 1 from lifecycle_emails
+    where workspace_id = p_workspace_id
+      and email_type in ('paywall_hit','checkout_abandoned','dormant_signup')
+      and sent_at > now() - interval '72 hours'
+  ) then
+    return false;
+  end if;
+  insert into lifecycle_emails (email_type, workspace_id, user_id, sent_at, attempts)
+  values (p_email_type, p_workspace_id, p_user_id, now(), p_attempts)
+  on conflict (email_type, workspace_id) do update
+    set sent_at = now(), attempts = excluded.attempts;
+  return true;
+end $$;
+```
+
+The candidate RPCs keep the cap predicate as a cheap prefilter so the common case does not
+reach the lock. `handler.ts` skips any candidate whose claim returns false. The advisory lock is
+transaction-scoped, so it releases on commit or crash with no cleanup path to get wrong.
+
+Note the `on conflict` target is the workspace constraint; the `dormant_signup` path conflicts
+on `(email_type, user_id)` instead, so the function takes the constraint name as a parameter or
+branches on `p_email_type`. Implementation detail, but it must not be left to inference — the
+wrong target silently creates duplicate ledger rows.
+
+#### Who receives a workspace-scoped event
+
+`workspace_members` is `UNIQUE(user_id, workspace_id)` with a role CHECK, and **nothing
+constrains a workspace to one owner**. Left unspecified, two implementers would reasonably pick
+`workspaces.created_by`, the oldest owner, or every opted-in owner — three different recipient
+sets with three different consent stories.
+
+**The rule is the one `get_thankyou_email_candidates` already uses, copied verbatim:**
+
+```sql
+cross join lateral (
+  select wm.user_id
+  from workspace_members wm
+  where wm.workspace_id = ws.id and wm.role = 'owner'
+  order by (wm.user_id = ws.created_by) desc, wm.joined_at asc, wm.user_id asc
+  limit 1
+) owner_pick
+```
+
+One owner, deterministically chosen, consistent with the transactional emails so a workspace
+never hears from Mesaas at two different addresses.
+
+**Consent applies to that chosen owner, and does not fall through.** If the chosen owner has
+`marketing_opt_in = false`, the workspace produces **no candidate** — the sweep does not look
+for a different, opted-in owner. Falling through would mean the person who declined marketing
+determines that someone *else* gets marketed to about their workspace, and would make the
+recipient depend on consent state, so the same workspace could be emailed at different
+addresses over time. One workspace, one marketing recipient, or none.
 
 `get_paywall_hit_candidates()` — workspaces with a `paywall_hits` row in the last 7 days,
-returning the most recent `feature` so the email can name it.
+returning the most recent `feature` and whether any hit in that window had
+`clicked_upgrade = true`, so the email can name the feature and Loops can segment intent.
 
 `get_abandoned_checkout_candidates()` — latest `checkout_attempts` row older than 24h, and the
 workspace has no `workspace_subscriptions` row in `('trialing','active')`.
@@ -414,8 +569,14 @@ Copy lives in Loops, so these are rules for the human writing there, not lint-en
   subscribed or revoked consent mid-sweep**.
 - **`_shared/loops.ts` unit tests** with a stubbed `fetch`: request shape, auth header, timeout
   wiring, throw-on-non-2xx.
-- **`paywall-report` tests**: rejects an unauthenticated call; rejects a caller posting a
-  `workspace_id` they do not belong to (the ownership check is the security boundary here).
+- **`paywall-report` tests**: rejects an unauthenticated call; **rejects a caller posting a
+  `workspace_id` they are not a `workspace_members` row for, including the case where it is a
+  workspace they once belonged to and the case where their `conta_id` points elsewhere** — this
+  is the security boundary and the exact shape of the hole the earlier draft had.
+- **Concurrency test for the cap**: two `claim_marketing_email` calls for different event types
+  on the same workspace, interleaved, must produce exactly one winner.
+- **`dormant_signup` participates in the cap**: a dormant claim must suppress a `paywall_hit`
+  claim for the same workspace within 72h (the regression that the NULL `workspace_id` caused).
 - **RPC tests** via the existing psql harness, one per shared predicate:
   - an opted-out user produces **no** candidate from any of the three RPCs;
   - a workspace on a paid plan produces no candidate;
@@ -437,14 +598,16 @@ Order matters — the cron schedule fires immediately on apply.
 0. **Resolve B1.** No code before this. Record the answer and, if the fallback applies, the
    per-loop "enter once" configuration evidence, in the runbook.
 1. Set `LOOPS_API_KEY` and `POSTHOG_PROJECT_KEY` in Supabase secrets, staging first.
-2. Apply `20260731000001_paywall_hits.sql` and `20260731000002_checkout_attempts.sql`.
+2. Apply `20260731000001_paywall_hits.sql`, `20260731000002_checkout_attempts.sql` and
+   `20260731000003_loops_contacts.sql`.
 3. Deploy `billing-checkout` (now writing `checkout_attempts`) and `paywall-report`.
    `paywall-report` verifies its own JWT, so deploy it with `--no-verify-jwt --use-api`.
 4. Ship the CRM change that calls `paywall-report`, and let `checkout_attempts` accumulate for
    at least 24h — the abandonment trigger is meaningless against an empty table.
 5. Deploy `loops-sync-cron` with `--no-verify-jwt --use-api`.
-6. Apply `20260731000003_schedule_loops_sync_cron.sql` (candidate RPCs, ledger backfill seed,
-   `cron.schedule`, in that order within the file). It uses the `vault.decrypted_secrets`
+6. Apply `20260731000004_schedule_loops_sync_cron.sql` (candidate RPCs, `claim_marketing_email`,
+   ledger backfill seed, `cron.schedule`, in that order within the file). It uses the
+   `vault.decrypted_secrets`
    subselect form — `vault.decrypted_secret(...)` does not exist on this instance.
 7. **Add Loops to the subprocessor list in `PoliticaPage.tsx` and ship it.** Before any send.
 8. Verify on staging with a seeded free workspace that has opted in, before touching prod.
@@ -468,8 +631,12 @@ re-mails everyone on a future re-rollout.
 
 ## Review resolutions
 
-External review (gpt-5.6-terra), 2026-07-31. All eight points verified against the code and
-accepted; none rejected.
+Two external review rounds, both gpt-5.6-terra, 2026-07-31. Fifteen points raised, all fifteen
+verified against the code and accepted, none rejected.
+
+### Round 1
+
+All eight points verified against the code and accepted; none rejected.
 
 | # | Point | Resolution |
 |---|---|---|
@@ -481,6 +648,21 @@ accepted; none rejected.
 | P1 | Idempotency unresolved but status Approved | Status changed to Blocked; B1 given an owner and required evidence. |
 | P2 | 72h cap deferred to a Loops setting | Made slice 1, enforced in SQL. |
 | P2 | Crisp wiring point has no plan data | Two-stage wiring, with an explicit instruction to cut the second stage if the data is not already at one call site. |
+
+### Round 2
+
+External review (gpt-5.6-terra), 2026-07-31, on the revised spec. All seven points verified and
+accepted; none rejected.
+
+| # | Point | Resolution |
+|---|---|---|
+| P1 | `clicked_upgrade` required but never persisted or carried | Column added to `paywall_hits`; surfaced by the candidate RPC and sent as the `clickedUpgrade` event property. Self-inflicted inconsistency from the round-1 edit. |
+| P1 | 72h cap unsafe under concurrency; `dormant_signup` invisible to it | Cap demoted to a prefilter; authority moved to `claim_marketing_email`, an atomic SQL claim under a per-workspace advisory lock. `dormant_signup` now writes `workspace_id` too. |
+| P1 | B1 must pin dedupe scope and retention, not just existence | B1 expanded to three required facts. Attempt cap cut 30 → 25 so the retry window stays inside a 24h retention. Documents the pre-existing ~30h-vs-24h gap on the Resend path. |
+| P1 | Recipient undefined when a workspace has several owners | Deterministic owner pick copied verbatim from `get_thankyou_email_candidates`; consent applies to that owner and explicitly does **not** fall through to another. |
+| P1 | Revocation sweep has no sync state; email change and account deletion orphan contacts | New `loops_contacts` ledger with `on delete set null` so `synced_email` survives account deletion. |
+| P1 | `conta_id` check is a cross-tenant write path | Replaced with a `workspace_members` membership check on the authenticated `user.id`. `conta_id` is the *active* workspace and diverges. |
+| P2 | `checkout_attempts` insert failure undefined | Log and swallow, never fail the checkout; `stripe_session_id` unique makes retries no-ops. |
 
 ## Slice 2 (out of scope)
 
