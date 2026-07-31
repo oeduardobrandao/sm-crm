@@ -4,10 +4,12 @@ import { insertAuditLog } from "../_shared/audit.ts";
 import { McpInputError, McpScopeError, requireScope } from "../_shared/mcp-token.ts";
 import {
   createPost,
+  createTask,
   createWorkflow,
   createWorkflowTemplate,
   setPostProperty,
   updatePost,
+  updateTask,
   Deps,
   getBrandProfile,
   getClient,
@@ -18,6 +20,7 @@ import {
   listPages,
   listPostFeedback,
   listPosts,
+  listTasks,
   listWorkflowTemplates,
   listWorkflows,
 } from "./queries.ts";
@@ -85,6 +88,8 @@ const METRIC = z.enum([
 const PROPERTY_TYPE = z.enum([
   "text", "url", "email", "phone", "number", "date", "checkbox", "select", "status", "multiselect",
 ]);
+const TASK_STATUS = z.enum(["pendente", "em_andamento", "concluida"]);
+const DATE_ONLY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato YYYY-MM-DD");
 
 export function registerTools(server: any, deps: Deps): void {
   register(server, deps, "list_clients", "clientes:read",
@@ -130,8 +135,12 @@ export function registerTools(server: any, deps: Deps): void {
     (a) => listWorkflows(deps, a));
 
   register(server, deps, "list_ideas", "ideias:read",
-    "Lista o backlog de pautas (ideias) do workspace.",
-    { client_id: z.number().int().optional(), status: z.enum(["nova", "em_analise", "aprovada", "descartada"]).optional() },
+    "Lista o backlog de ideias e solicitações dos clientes. Solicitações convertidas apontam a tarefa via tarefa_id.",
+    {
+      client_id: z.number().int().optional(),
+      status: z.enum(["nova", "em_analise", "aprovada", "descartada", "convertida", "concluida"]).optional(),
+      tipo: z.enum(["ideia", "solicitacao"]).optional(),
+    },
     (a) => listIdeas(deps, a));
 
   register(server, deps, "list_post_feedback", "posts:read",
@@ -266,4 +275,52 @@ export function registerTools(server: any, deps: Deps): void {
     (a) => setPostMedia(deps, a),
     (a) => ({ post_id: a.post_id, item_count: a.items.length,
               total_bytes: a.items.reduce((s: number, i: any) => s + i.size_bytes, 0) }));
+
+  register(server, deps, "list_tasks", "tarefas:read",
+    "Lista as tarefas da equipe (rastreador interno): status, responsável, cliente, prazo, tags e progresso de subtarefas. Ordena por prazo.",
+    {
+      status: TASK_STATUS.optional(),
+      responsavel_id: z.number().int().optional(),
+      cliente_id: z.number().int().optional(),
+      limit: z.number().int().optional(),
+    },
+    (a) => listTasks(deps, a));
+
+  register(server, deps, "create_task", "tarefas:write",
+    "Cria uma tarefa da equipe (status inicial: pendente). Atribuir responsável notifica o membro.",
+    {
+      titulo: z.string().trim().min(1).max(200),
+      descricao: z.string().max(10000).optional(),
+      responsavel_id: z.number().int().positive().optional(),
+      cliente_id: z.number().int().positive().optional(),
+      data_limite: DATE_ONLY.optional(),
+    },
+    (a) => createTask(deps, a),
+    (a, r) => ({
+      task_id: (r as { id?: number })?.id,
+      cliente_id: a.cliente_id,
+      responsavel_id: a.responsavel_id,
+      has_descricao: !!a.descricao,
+      has_data_limite: !!a.data_limite,
+    }));
+
+  register(server, deps, "update_task", "tarefas:write",
+    "Edita uma tarefa: título, descrição, status, responsável, prazo. Passe null em descricao/responsavel_id/data_limite para limpar o campo; campos omitidos não mudam.",
+    {
+      task_id: z.number().int().positive(),
+      titulo: z.string().trim().min(1).max(200).optional(),
+      descricao: z.string().max(10000).nullable().optional(),
+      status: TASK_STATUS.optional(),
+      responsavel_id: z.number().int().positive().nullable().optional(),
+      data_limite: DATE_ONLY.nullable().optional(),
+    },
+    (a) => updateTask(deps, a),
+    (a) => ({
+      task_id: a.task_id,
+      status: a.status,
+      responsavel_id: a.responsavel_id,
+      has_titulo: Object.hasOwn(a, "titulo"),
+      has_descricao: Object.hasOwn(a, "descricao"),
+      has_data_limite: Object.hasOwn(a, "data_limite"),
+    }));
 }

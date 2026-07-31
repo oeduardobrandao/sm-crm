@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { ExternalLink, Save, Loader2, ImagePlus, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ExternalLink, Save, Loader2, ImagePlus, ListChecks, X } from 'lucide-react';
 import {
   listIdeiaImages,
   uploadIdeiaImage,
@@ -25,13 +26,22 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { IdeiaStatusBadge } from './IdeiaStatusBadge';
+import { IdeiaTipoBadge } from './IdeiaTipoBadge';
 import {
   updateIdeiaStatus,
   upsertIdeiaComentario,
   toggleIdeiaReaction,
   getMembros,
+  getClientes,
+  getTarefaTags,
+  setTarefaTags,
+  convertSolicitacaoEmTarefa,
   type Ideia,
 } from '@/store';
+import {
+  TarefaFormDialog,
+  type TarefaFormPayload,
+} from '@/pages/tarefas/components/TarefaFormDialog';
 import { useAuth } from '@/context/AuthContext';
 import { sanitizeExternalUrl, sanitizeUrl } from '@/utils/security';
 
@@ -43,6 +53,8 @@ const STATUS_OPTIONS: { value: Ideia['status']; label: string }[] = [
   { value: 'aprovada', label: 'Aprovada' },
   { value: 'descartada', label: 'Descartada' },
 ];
+
+const CONVERSIBLE_STATUSES: Ideia['status'][] = ['nova', 'em_analise', 'aprovada'];
 
 interface IdeiaDrawerProps {
   ideia: Ideia;
@@ -59,6 +71,40 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
     queryFn: getMembros,
   });
   const membroId: number | undefined = membros.find((m: any) => m.user_id === profile?.id)?.id;
+
+  const [convertOpen, setConvertOpen] = useState(false);
+  const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
+  const { data: tarefaTags = [] } = useQuery({ queryKey: ['tarefa-tags'], queryFn: getTarefaTags });
+
+  const isConverted = ideia.status === 'convertida' || ideia.status === 'concluida';
+  const statusLocked = isConverted && ideia.tarefa_id != null;
+  const canConvert = ideia.tipo === 'solicitacao' && CONVERSIBLE_STATUSES.includes(ideia.status);
+
+  async function handleConvertCreate(payload: TarefaFormPayload, tagIds: number[]) {
+    // A RPC e o commit da conversao; tags sao best-effort depois dela.
+    const tarefaId = await convertSolicitacaoEmTarefa({
+      ideiaId: ideia.id,
+      titulo: payload.titulo,
+      descricao: payload.descricao,
+      responsavelId: payload.responsavel_id,
+      dataLimite: payload.data_limite,
+    });
+    let tagsOk = true;
+    if (tagIds.length > 0) {
+      try {
+        await setTarefaTags(tarefaId, tagIds);
+      } catch {
+        tagsOk = false;
+      }
+    }
+    qc.invalidateQueries({ queryKey });
+    qc.invalidateQueries({ queryKey: ['tarefas'] });
+    if (tagsOk) toast.success('Solicitação convertida em tarefa!');
+    else
+      toast.warning(
+        'Tarefa criada, mas as tags não foram aplicadas. Edite a tarefa para adicioná-las.',
+      );
+  }
 
   const MAX_IMAGES = 10;
   const inputRef = useRef<HTMLInputElement>(null);
@@ -173,8 +219,9 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
     >
       <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0 gap-0">
         <SheetHeader className="px-6 py-5 border-b border-border space-y-1.5">
-          <div className="mb-1.5">
+          <div className="mb-1.5 flex gap-1.5">
             <IdeiaStatusBadge status={ideia.status} />
+            <IdeiaTipoBadge tipo={ideia.tipo} />
           </div>
           <SheetTitle className="text-base leading-snug">{ideia.titulo}</SheetTitle>
           <SheetDescription className="text-xs">
@@ -184,15 +231,13 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-              Descrição
-            </p>
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">Descrição</p>
             <p className="text-sm whitespace-pre-wrap">{ideia.descricao}</p>
           </div>
 
           {ideia.links.length > 0 && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+              <p className="text-xs font-medium text-muted-foreground mb-1.5">
                 Links de referência
               </p>
               <div className="space-y-1">
@@ -213,9 +258,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
           )}
 
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-              Imagens
-            </p>
+            <p className="text-xs font-medium text-muted-foreground mb-2">Imagens</p>
             {images.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">
                 {images.map((img: CrmIdeiaImage) => (
@@ -270,31 +313,50 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
           </div>
 
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-              Status
-            </p>
-            <Select
-              value={ideia.status}
-              onValueChange={(v) => handleStatusChange(v as Ideia['status'])}
-              disabled={statusSaving}
-            >
-              <SelectTrigger className="w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">Status</p>
+            {statusLocked ? (
+              <div className="flex items-center gap-3">
+                <IdeiaStatusBadge status={ideia.status} />
+                <Link
+                  to={`/tarefas?tarefa=${ideia.tarefa_id}`}
+                  className="inline-flex items-center gap-1.5 text-sm underline underline-offset-2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ListChecks size={14} />
+                  Ver tarefa
+                </Link>
+              </div>
+            ) : (
+              <Select
+                value={
+                  CONVERSIBLE_STATUSES.includes(ideia.status) || ideia.status === 'descartada'
+                    ? ideia.status
+                    : undefined
+                }
+                onValueChange={(v) => handleStatusChange(v as Ideia['status'])}
+                disabled={statusSaving}
+              >
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Selecionar status..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {canConvert && (
+              <Button size="sm" className="mt-3" onClick={() => setConvertOpen(true)}>
+                <ListChecks size={13} className="mr-1.5" />
+                Converter em tarefa
+              </Button>
+            )}
           </div>
 
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-              Reações
-            </p>
+            <p className="text-xs font-medium text-muted-foreground mb-2">Reações</p>
             <div className="flex flex-wrap gap-2">
               {ALLOWED_EMOJI.map((emoji) => {
                 const entry = reactionMap.get(emoji);
@@ -303,7 +365,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
                   <Button
                     key={emoji}
                     type="button"
-                    variant={active ? 'default' : 'outline'}
+                    variant={active ? 'ink' : 'outline'}
                     size="sm"
                     onClick={() => handleReaction(emoji)}
                     disabled={reactionLoading === emoji}
@@ -323,7 +385,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
           </div>
 
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">
               Resposta da agência
               {ideia.comentario_at && (
                 <span className="ml-1.5 normal-case tracking-normal text-muted-foreground/70 font-normal">
@@ -340,6 +402,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
             />
             <Button
               size="sm"
+              variant="ink"
               className="mt-2"
               onClick={handleSaveComentario}
               disabled={comentarioSaving}
@@ -351,6 +414,24 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
           </div>
         </div>
       </SheetContent>
+
+      <TarefaFormDialog
+        open={convertOpen}
+        onClose={() => setConvertOpen(false)}
+        editing={null}
+        membros={membros}
+        clientes={clientes}
+        tags={tarefaTags}
+        onSaved={() => {}}
+        onTagCreated={() => qc.invalidateQueries({ queryKey: ['tarefa-tags'] })}
+        initialValues={{
+          titulo: ideia.titulo,
+          descricao: ideia.descricao,
+          cliente_id: ideia.cliente_id,
+        }}
+        lockCliente
+        onCreate={handleConvertCreate}
+      />
     </Sheet>
   );
 }

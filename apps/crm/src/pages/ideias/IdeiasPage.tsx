@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { DateRange } from 'react-day-picker';
 import { getIdeias, getClientes, type Ideia } from '@/store';
 import { IdeiaStatusBadge } from '@/components/ideias/IdeiaStatusBadge';
+import { IdeiaTipoBadge } from '@/components/ideias/IdeiaTipoBadge';
 import { IdeiaDrawer } from '@/components/ideias/IdeiaDrawer';
 import {
   Select,
@@ -31,12 +32,21 @@ import {
 } from '@/components/ui/table';
 import { Spinner } from '@/components/ui/spinner';
 
-const ALL_STATUSES = ['nova', 'em_analise', 'aprovada', 'descartada'] as const;
+const ALL_STATUSES = [
+  'nova',
+  'em_analise',
+  'aprovada',
+  'descartada',
+  'convertida',
+  'concluida',
+] as const;
 const STATUS_LABELS: Record<string, string> = {
   nova: 'Nova',
   em_analise: 'Em análise',
   aprovada: 'Aprovada',
   descartada: 'Descartada',
+  convertida: 'Virou tarefa',
+  concluida: 'Concluída',
 };
 
 function startOfDayIso(d: Date): string {
@@ -65,11 +75,13 @@ export default function IdeiasPage() {
   const [selectedIdeia, setSelectedIdeia] = useState<Ideia | null>(null);
   const [search, setSearch] = useState('');
   const [clienteFilter, setClienteFilter] = useState<string>('all');
+  const [tipoFilter, setTipoFilter] = useState<string>('all');
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
 
   const filtered = ideias.filter((i) => {
     if (clienteFilter !== 'all' && String(i.cliente_id) !== clienteFilter) return false;
+    if (tipoFilter !== 'all' && i.tipo !== tipoFilter) return false;
     if (statusFilters.length > 0 && !statusFilters.includes(i.status)) return false;
     if (dateRange?.from && i.created_at < startOfDayIso(dateRange.from)) return false;
     if (dateRange?.to && i.created_at > endOfDayIso(dateRange.to)) return false;
@@ -136,6 +148,17 @@ export default function IdeiasPage() {
           </SelectContent>
         </Select>
 
+        <Select value={tipoFilter} onValueChange={setTipoFilter}>
+          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 w-auto min-w-[130px] mb-0">
+            <SelectValue placeholder="Tipo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os tipos</SelectItem>
+            <SelectItem value="ideia">Ideia</SelectItem>
+            <SelectItem value="solicitacao">Solicitação</SelectItem>
+          </SelectContent>
+        </Select>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -187,6 +210,7 @@ export default function IdeiasPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Cliente</TableHead>
+                <TableHead>Tipo</TableHead>
                 <TableHead>Título</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Reações</TableHead>
@@ -202,6 +226,9 @@ export default function IdeiasPage() {
                   className="cursor-pointer"
                 >
                   <TableCell className="text-muted-foreground">{ideia.clientes.nome}</TableCell>
+                  <TableCell>
+                    <IdeiaTipoBadge tipo={ideia.tipo} />
+                  </TableCell>
                   <TableCell className="font-medium max-w-[200px] truncate">
                     {ideia.titulo}
                   </TableCell>
@@ -224,13 +251,20 @@ export default function IdeiasPage() {
         </div>
       )}
 
-      {selectedIdeia && (
-        <IdeiaDrawer
-          ideia={selectedIdeia}
-          queryKey={queryKey}
-          onClose={() => setSelectedIdeia(null)}
-        />
-      )}
+      {selectedIdeia &&
+        (() => {
+          // The drawer keeps a prop snapshot; once a conversion refetches the list, resolve
+          // the fresh row so the drawer's derived-state UI (locked status, "Ver tarefa") updates
+          // without the user having to close and reopen the drawer.
+          const current = ideias.find((i) => i.id === selectedIdeia.id) ?? selectedIdeia;
+          return (
+            <IdeiaDrawer
+              ideia={current}
+              queryKey={queryKey}
+              onClose={() => setSelectedIdeia(null)}
+            />
+          );
+        })()}
     </div>
   );
 }

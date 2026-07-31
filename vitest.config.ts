@@ -20,6 +20,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./test/vitest.setup.ts'],
+    // Must outlast the CI-only 10s testing-library asyncUtilTimeout set in
+    // vitest.setup.ts, or slow waits fail on the test ceiling instead.
+    testTimeout: process.env.CI ? 20_000 : 5_000,
     include: [
       'apps/**/__tests__/**/*.test.{ts,tsx}',
       'apps/**/*.{test,spec}.{ts,tsx}',

@@ -162,7 +162,7 @@ export function fetchIdeias(token: string) {
 
 export function createIdeia(
   token: string,
-  payload: { titulo: string; descricao: string; links: string[] },
+  payload: { titulo: string; descricao: string; links: string[]; tipo: 'ideia' | 'solicitacao' },
 ) {
   return post<{ ideia: HubIdeia }>('hub-ideias', { token, ...payload });
 }
@@ -170,7 +170,12 @@ export function createIdeia(
 export function updateIdeia(
   token: string,
   id: string,
-  payload: { titulo?: string; descricao?: string; links?: string[] },
+  payload: {
+    titulo?: string;
+    descricao?: string;
+    links?: string[];
+    tipo?: 'ideia' | 'solicitacao';
+  },
 ) {
   return patch<{ ideia: HubIdeia }>('hub-ideias', id, token, payload);
 }

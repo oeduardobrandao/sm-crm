@@ -175,11 +175,12 @@ export function TarefaDetailSheet({
                   fontWeight: tarefa.status === s ? 700 : 400,
                   border:
                     tarefa.status === s
-                      ? '1px solid var(--primary-color)'
+                      ? '1px solid var(--text-main)'
                       : '1px solid var(--border-color)',
-                  background: tarefa.status === s ? 'var(--primary-color)' : 'transparent',
-                  color: tarefa.status === s ? '#000' : 'var(--text-muted)',
+                  background: tarefa.status === s ? 'var(--text-main)' : 'transparent',
+                  color: tarefa.status === s ? 'var(--card-bg)' : 'var(--text-muted)',
                   cursor: 'pointer',
+                  transition: 'background 150ms ease-out, color 150ms ease-out',
                 }}
               >
                 {STATUS_LABELS[s]}
@@ -385,7 +386,7 @@ export function TarefaDetailSheet({
 
           {/* Actions */}
           <div className="flex items-center justify-between pt-2 border-t border-[var(--border-color)]">
-            <Button type="button" variant="outline" size="sm" onClick={onEdit}>
+            <Button type="button" variant="ink" size="sm" onClick={onEdit}>
               <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar
             </Button>
             <Button
@@ -411,7 +412,12 @@ export function TarefaDetailSheet({
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeleteTarefa}>Excluir</AlertDialogAction>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+                onClick={handleDeleteTarefa}
+              >
+                Excluir tarefa
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

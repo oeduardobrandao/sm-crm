@@ -22,3 +22,14 @@ describe('retired Estúdio scopes', () => {
     expect(AGENT_PRESET).not.toContain('images:generate');
   });
 });
+
+describe('tarefas scopes', () => {
+  it('offers tarefas:read and tarefas:write as selectable scopes', () => {
+    expect(SCOPE_OPTIONS.some((s) => s.value === 'tarefas:read')).toBe(true);
+    expect(SCOPE_OPTIONS.some((s) => s.value === 'tarefas:write')).toBe(true);
+  });
+  it('adds tarefas:read to the preset but keeps tarefas:write out', () => {
+    expect(AGENT_PRESET).toContain('tarefas:read');
+    expect(AGENT_PRESET).not.toContain('tarefas:write');
+  });
+});

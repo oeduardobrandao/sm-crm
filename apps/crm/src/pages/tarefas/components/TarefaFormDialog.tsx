@@ -63,6 +63,15 @@ const BLANK: TarefaFormValues = {
   status: 'pendente',
 };
 
+export type TarefaFormPayload = {
+  titulo: string;
+  descricao: string | null;
+  status: 'pendente' | 'em_andamento' | 'concluida';
+  responsavel_id: number | null;
+  cliente_id: number | null;
+  data_limite: string | null;
+};
+
 interface TarefaFormDialogProps {
   open: boolean;
   onClose: () => void;
@@ -73,6 +82,12 @@ interface TarefaFormDialogProps {
   tags: TarefaTag[];
   onSaved: () => void;
   onTagCreated: () => void;
+  /** Create-mode prefill (conversao de solicitacao). */
+  initialValues?: { titulo?: string; descricao?: string; cliente_id?: number | null };
+  /** Trava o campo cliente (a RPC de conversao fixa o cliente de qualquer forma). */
+  lockCliente?: boolean;
+  /** Substitui o addTarefa interno no submit de criacao. Quem fornece e dono dos toasts de sucesso. */
+  onCreate?: (payload: TarefaFormPayload, tagIds: number[]) => Promise<void>;
 }
 
 export function TarefaFormDialog({
@@ -84,6 +99,9 @@ export function TarefaFormDialog({
   tags,
   onSaved,
   onTagCreated,
+  initialValues,
+  lockCliente,
+  onCreate,
 }: TarefaFormDialogProps) {
   const [saving, setSaving] = useState(false);
   const [tagIds, setTagIds] = useState<number[]>([]);
@@ -92,6 +110,13 @@ export function TarefaFormDialog({
     resolver: zodResolver(tarefaSchema),
     defaultValues: BLANK,
   });
+
+  // Destructure to primitives: initialValues is naturally passed as an inline object
+  // literal by callers (conversao de solicitacao), so a new reference on every parent
+  // re-render must NOT retrigger the reset below and clobber in-progress edits.
+  const initialTitulo = initialValues?.titulo;
+  const initialDescricao = initialValues?.descricao;
+  const initialClienteId = initialValues?.cliente_id;
 
   useEffect(() => {
     if (!open) return;
@@ -106,13 +131,21 @@ export function TarefaFormDialog({
       });
       setTagIds(editing.tags.map((t) => t.id!).filter((id) => id != null));
     } else {
-      form.reset(BLANK);
+      form.reset({
+        ...BLANK,
+        titulo: initialTitulo ?? '',
+        descricao: initialDescricao ?? '',
+        cliente_id: initialClienteId != null ? String(initialClienteId) : 'none',
+      });
       setTagIds([]);
     }
-  }, [open, editing, form]);
+  }, [open, editing, initialTitulo, initialDescricao, initialClienteId, form]);
 
   const activeClientes = clientes
-    .filter((c) => c.status === 'ativo' || c.id === editing?.cliente_id)
+    .filter(
+      (c) =>
+        c.status === 'ativo' || c.id === editing?.cliente_id || c.id === initialValues?.cliente_id,
+    )
     .sort((a, b) => a.nome.localeCompare(b.nome));
   const sortedMembros = [...membros].sort((a, b) => a.nome.localeCompare(b.nome));
 
@@ -131,6 +164,8 @@ export function TarefaFormDialog({
         await updateTarefa(editing.id!, payload);
         await setTarefaTags(editing.id!, tagIds);
         toast.success('Tarefa atualizada!');
+      } else if (onCreate) {
+        await onCreate(payload, tagIds);
       } else {
         await addTarefa(payload, tagIds);
         captureEvent('task_created', { status: values.status });
@@ -138,8 +173,10 @@ export function TarefaFormDialog({
       }
       onSaved();
       onClose();
-    } catch {
-      toast.error(editing ? 'Erro ao atualizar tarefa' : 'Erro ao criar tarefa');
+    } catch (e) {
+      const fallback = editing ? 'Erro ao atualizar tarefa' : 'Erro ao criar tarefa';
+      const message = onCreate && e instanceof Error && e.message ? e.message : fallback;
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -149,9 +186,15 @@ export function TarefaFormDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>{editing ? 'Editar tarefa' : 'Nova tarefa'}</DialogTitle>
+          <DialogTitle>
+            {editing ? 'Editar tarefa' : onCreate ? 'Converter em tarefa' : 'Nova tarefa'}
+          </DialogTitle>
           <DialogDescription className="sr-only">
-            {editing ? 'Edite os campos da tarefa' : 'Preencha os campos da nova tarefa'}
+            {editing
+              ? 'Edite os campos da tarefa'
+              : onCreate
+                ? 'Preencha os campos para converter a solicitação em tarefa'
+                : 'Preencha os campos da nova tarefa'}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -216,7 +259,11 @@ export function TarefaFormDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Cliente</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={lockCliente}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue />

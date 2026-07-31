@@ -79,7 +79,7 @@ describe('ConsentPage', () => {
     expect(recordGrant).toHaveBeenCalledWith({
       authorization_id: 'auth-1',
       conta_id: 'conta-1',
-      scopes: ['clientes:read', 'posts:read', 'workflows:read', 'ideias:read'],
+      scopes: ['clientes:read', 'posts:read', 'workflows:read', 'ideias:read', 'tarefas:read'],
     });
     await waitFor(() => expect(approve).toHaveBeenCalledWith('auth-1'));
   });

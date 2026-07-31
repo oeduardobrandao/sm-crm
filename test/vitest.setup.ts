@@ -1,9 +1,17 @@
 import { afterEach, expect, vi } from 'vitest';
 import * as matchers from '@testing-library/jest-dom/matchers';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { initI18n } from '@mesaas/i18n';
 
 expect.extend(matchers);
+
+// CI's coverage-instrumented run is slow enough that testing-library's 1s
+// default for findBy*/waitFor flakes on unrelated tests (ImportarPage,
+// revocation, LoginPage all tripped it on 2026-07-30). More headroom in CI
+// only; local runs keep the tight default so slow waits still surface.
+if (process.env.CI) {
+  configure({ asyncUtilTimeout: 10_000 });
+}
 import ptCommon from '../packages/i18n/locales/pt/common.json';
 import enCommon from '../packages/i18n/locales/en/common.json';
 import ptDashboard from '../packages/i18n/locales/pt/dashboard.json';

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Pencil, ExternalLink, X, Loader2, ImagePlus } from 'lucide-react';
@@ -14,6 +14,8 @@ const STATUS_LABEL: Record<HubIdeia['status'], string> = {
   em_analise: 'Em análise',
   aprovada: 'Aprovada',
   descartada: 'Descartada',
+  convertida: 'Em andamento',
+  concluida: 'Concluída',
 };
 
 const STATUS_COLOR: Record<HubIdeia['status'], string> = {
@@ -21,6 +23,8 @@ const STATUS_COLOR: Record<HubIdeia['status'], string> = {
   em_analise: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-400',
   aprovada: 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400',
   descartada: 'bg-red-100 text-red-600 dark:bg-red-500/10 dark:text-red-400',
+  convertida: 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
+  concluida: 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400',
 };
 
 function isMutable(ideia: HubIdeia): boolean {
@@ -32,6 +36,25 @@ function isMutable(ideia: HubIdeia): boolean {
 }
 
 const MAX_IMAGES = 10;
+
+const TIPO_COPY: Record<
+  'ideia' | 'solicitacao',
+  { novo: string; editar: string; tituloPh: string; descricaoPh: string }
+> = {
+  ideia: {
+    novo: 'Nova ideia',
+    editar: 'Editar ideia',
+    tituloPh: 'Ex: Reel mostrando os bastidores...',
+    descricaoPh: 'Descreva sua ideia com detalhes...',
+  },
+  solicitacao: {
+    novo: 'Nova solicitação',
+    editar: 'Editar solicitação',
+    tituloPh: 'Ex: Atualizar a foto de capa do perfil...',
+    descricaoPh:
+      'Descreva o que você precisa e, se houver, o prazo. Ex: trocar a bio do Instagram até sexta...',
+  },
+};
 
 function IdeiaImages({
   token,
@@ -169,7 +192,7 @@ export function IdeiasPage() {
     <div className="max-w-5xl mx-auto hub-fade-up">
       <PageHeader
         title="Compartilhe suas ideias"
-        description="Envie sugestões e a agência responderá em breve."
+        description="Envie ideias e solicitações e a agência responderá em breve."
         action={
           <button
             onClick={openCreate}
@@ -203,7 +226,7 @@ export function IdeiasPage() {
           <span className="text-5xl mb-4">💡</span>
           <p className="font-display text-lg font-semibold hub-txt mb-1">Nenhuma ideia ainda</p>
           <p className="text-sm hub-tx2 mb-6">
-            Clique em "Nova ideia" para compartilhar sua primeira sugestão.
+            Clique em "Nova ideia" para enviar sua primeira sugestão ou solicitação.
           </p>
           <button
             onClick={openCreate}
@@ -279,6 +302,11 @@ function IdeiaCard({
           >
             {STATUS_LABEL[ideia.status]}
           </span>
+          {ideia.tipo === 'solicitacao' && (
+            <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full mb-2 ml-1.5 border hub-border hub-tx2">
+              Solicitação
+            </span>
+          )}
           <h3 className="font-display text-[17px] font-semibold hub-txt leading-snug">
             {ideia.titulo}
           </h3>
@@ -368,10 +396,52 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
   const [titulo, setTitulo] = useState(editing?.titulo ?? '');
   const [descricao, setDescricao] = useState(editing?.descricao ?? '');
   const [links, setLinks] = useState<string[]>(editing?.links.length ? editing.links : ['']);
+  const [tipo, setTipo] = useState<'ideia' | 'solicitacao'>(editing?.tipo ?? 'ideia');
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<{ titulo?: string; descricao?: string }>({});
   // The idea this modal is editing: the existing one, or the one we just created.
   const [current, setCurrent] = useState<HubIdeia | null>(editing);
+
+  // Images picked before the ideia exists: held locally, uploaded right after
+  // the create call so saving is a single step for the client.
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+  const pendingInputRef = useRef<HTMLInputElement>(null);
+  const pendingPreviews = useMemo(
+    () => pendingFiles.map((f) => URL.createObjectURL(f)),
+    [pendingFiles],
+  );
+  useEffect(
+    () => () => {
+      pendingPreviews.forEach((u) => URL.revokeObjectURL(u));
+    },
+    [pendingPreviews],
+  );
+
+  function addPendingFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploadErr(null);
+    setPendingFiles((prev) => [...prev, ...Array.from(files)].slice(0, MAX_IMAGES));
+    if (pendingInputRef.current) pendingInputRef.current.value = '';
+  }
+
+  /** Uploads the locally queued files against a real ideia id; returns the ones that failed. */
+  async function flushPendingFiles(ideiaId: string, existingCount: number): Promise<File[]> {
+    const failed: File[] = [];
+    for (let i = 0; i < pendingFiles.length; i++) {
+      try {
+        await uploadIdeiaImage({
+          token,
+          ideiaId,
+          file: pendingFiles[i],
+          sortOrder: existingCount + i,
+        });
+      } catch {
+        failed.push(pendingFiles[i]);
+      }
+    }
+    return failed;
+  }
 
   function validate() {
     const e: typeof errors = {};
@@ -391,19 +461,47 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           titulo: titulo.trim(),
           descricao: descricao.trim(),
           links: cleanLinks,
+          tipo,
         });
         setCurrent({ ...current, ...ideia });
+        if (pendingFiles.length > 0) {
+          const failed = await flushPendingFiles(current.id, current.images.length);
+          setPendingFiles(failed);
+          setUploadErr(
+            failed.length === 0
+              ? null
+              : failed.length === 1
+                ? '1 imagem não foi enviada. Salve novamente para tentar de novo.'
+                : `${failed.length} imagens não foram enviadas. Salve novamente para tentar de novo.`,
+          );
+          refreshCurrent();
+        }
+        qc.invalidateQueries({ queryKey: ['hub-ideias', token] });
       } else {
         const { ideia } = await createIdeia(token, {
           titulo: titulo.trim(),
           descricao: descricao.trim(),
           links: cleanLinks,
+          tipo,
         });
-        // New idea has no images yet; keep modal open in edit mode so the
-        // user can add images against the real ideia_id.
+        // Single-step save: upload any locally queued images right after create.
+        const failed = await flushPendingFiles(ideia.id, 0);
+        qc.invalidateQueries({ queryKey: ['hub-ideias', token] });
+        if (failed.length === 0) {
+          onSaved();
+          return;
+        }
+        // Some uploads failed: switch to edit mode against the created ideia so
+        // "Salvar alterações" retries only what's left.
         setCurrent({ ...ideia, images: [], ideia_reactions: [] } as HubIdeia);
+        setPendingFiles(failed);
+        setUploadErr(
+          failed.length === 1
+            ? '1 imagem não foi enviada. Salve novamente para tentar de novo.'
+            : `${failed.length} imagens não foram enviadas. Salve novamente para tentar de novo.`,
+        );
+        refreshCurrent();
       }
-      qc.invalidateQueries({ queryKey: ['hub-ideias', token] });
     } catch (err: unknown) {
       alert((err as Error).message ?? 'Erro ao salvar.');
     } finally {
@@ -441,7 +539,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
       <div className="hub-bg-card rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg font-semibold hub-txt">
-            {editing ? 'Editar ideia' : 'Nova ideia'}
+            {editing || current ? TIPO_COPY[tipo].editar : TIPO_COPY[tipo].novo}
           </h2>
           <button
             onClick={onClose}
@@ -453,12 +551,33 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
 
         <div className="space-y-3">
           <div>
+            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">Tipo</label>
+            <div className="flex gap-1 p-1 rounded-lg hub-bg-soft w-fit">
+              {(['ideia', 'solicitacao'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTipo(t)}
+                  className={`px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${
+                    tipo === t ? 'hub-btn-primary' : 'hub-tx3'
+                  }`}
+                >
+                  {t === 'ideia' ? 'Ideia' : 'Solicitação'}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11.5px] hub-tx3 mt-1">
+              Ideia: sugestão de conteúdo. Solicitação: pedido para a agência executar.
+            </p>
+          </div>
+
+          <div>
             <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">Título</label>
             <input
               className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] hub-focus-accent focus:ring-2 ${errors.titulo ? 'border-red-400' : 'hub-border'}`}
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
-              placeholder="Ex: Reel mostrando os bastidores..."
+              placeholder={TIPO_COPY[tipo].tituloPh}
             />
             {errors.titulo && <p className="text-xs text-red-500 mt-0.5">{errors.titulo}</p>}
           </div>
@@ -469,7 +588,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
               className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] hub-focus-accent focus:ring-2 resize-none min-h-[100px] ${errors.descricao ? 'border-red-400' : 'hub-border'}`}
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
-              placeholder="Descreva sua ideia com detalhes..."
+              placeholder={TIPO_COPY[tipo].descricaoPh}
             />
             {errors.descricao && <p className="text-xs text-red-500 mt-0.5">{errors.descricao}</p>}
           </div>
@@ -507,20 +626,65 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             </button>
           </div>
 
-          {current && (
-            <div>
-              <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
-                Imagens{' '}
-                <span className="hub-tx3 normal-case tracking-normal font-normal">(até 10)</span>
-              </label>
+          <div>
+            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
+              Imagens{' '}
+              <span className="hub-tx3 normal-case tracking-normal font-normal">(até 10)</span>
+            </label>
+            {current ? (
               <IdeiaImages
                 token={token}
                 ideiaId={current.id}
                 images={current.images}
                 onChanged={refreshCurrent}
               />
-            </div>
-          )}
+            ) : (
+              <div className="space-y-2">
+                {pendingFiles.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {pendingFiles.map((file, i) => (
+                      <div key={`${file.name}-${i}`} className="relative group">
+                        <img
+                          src={pendingPreviews[i]}
+                          alt=""
+                          width={64}
+                          height={64}
+                          className="h-16 w-16 rounded-lg object-cover border hub-border hub-bg-soft"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
+                          aria-label="Remover imagem"
+                          className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full hub-btn-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {pendingFiles.length < MAX_IMAGES && (
+                  <button
+                    type="button"
+                    onClick={() => pendingInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 text-[12px] hub-tx3 transition-colors"
+                  >
+                    <ImagePlus size={13} />
+                    Adicionar imagem
+                  </button>
+                )}
+                <input
+                  ref={pendingInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => addPendingFiles(e.target.files)}
+                />
+              </div>
+            )}
+            {uploadErr && <p className="text-xs text-red-500 mt-1">{uploadErr}</p>}
+          </div>
         </div>
 
         <div className="flex gap-2 pt-2">
@@ -530,7 +694,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg hub-btn-primary text-sm font-semibold disabled:opacity-50 transition-colors"
           >
             {saving && <Loader2 size={15} className="animate-spin" />}
-            {current ? 'Salvar alterações' : 'Salvar e adicionar imagens'}
+            {current ? 'Salvar alterações' : 'Salvar'}
           </button>
           <button
             onClick={() => {

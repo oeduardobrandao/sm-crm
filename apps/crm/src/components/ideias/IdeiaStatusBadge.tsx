@@ -5,6 +5,8 @@ const LABELS: Record<Ideia['status'], string> = {
   em_analise: 'Em análise',
   aprovada: 'Aprovada',
   descartada: 'Descartada',
+  convertida: 'Virou tarefa',
+  concluida: 'Concluída',
 };
 
 const CLASSES: Record<Ideia['status'], string> = {
@@ -12,6 +14,8 @@ const CLASSES: Record<Ideia['status'], string> = {
   em_analise: 'bg-yellow-100 text-yellow-700',
   aprovada: 'bg-green-100 text-green-700',
   descartada: 'bg-red-100 text-red-600',
+  convertida: 'bg-blue-100 text-blue-700',
+  concluida: 'bg-emerald-100 text-emerald-700',
 };
 
 export function IdeiaStatusBadge({ status }: { status: Ideia['status'] }) {

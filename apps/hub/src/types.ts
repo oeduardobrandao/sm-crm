@@ -176,7 +176,8 @@ export interface HubIdeia {
   titulo: string;
   descricao: string;
   links: string[];
-  status: 'nova' | 'em_analise' | 'aprovada' | 'descartada';
+  tipo: 'ideia' | 'solicitacao';
+  status: 'nova' | 'em_analise' | 'aprovada' | 'descartada' | 'convertida' | 'concluida';
   comentario_agencia: string | null;
   comentario_autor_id: number | null;
   comentario_at: string | null;

@@ -16,7 +16,9 @@ export interface Ideia {
   titulo: string;
   descricao: string;
   links: string[];
-  status: 'nova' | 'em_analise' | 'aprovada' | 'descartada';
+  tipo: 'ideia' | 'solicitacao';
+  tarefa_id: number | null;
+  status: 'nova' | 'em_analise' | 'aprovada' | 'descartada' | 'convertida' | 'concluida';
   comentario_agencia: string | null;
   comentario_autor_id: number | null;
   comentario_at: string | null;
@@ -33,7 +35,7 @@ export async function getIdeias(filters: { cliente_id?: number } = {}): Promise<
     .from('ideias')
     .select(
       `
-      id, workspace_id, cliente_id, titulo, descricao, links, status,
+      id, workspace_id, cliente_id, titulo, descricao, links, status, tipo, tarefa_id,
       comentario_agencia, comentario_autor_id, comentario_at, created_at, updated_at,
       clientes(nome),
       comentario_autor:membros!comentario_autor_id(nome),
@@ -97,4 +99,22 @@ export async function toggleIdeiaReaction(
       .insert({ ideia_id: ideiaId, membro_id: membroId, emoji });
     if (error) throw new Error(error.message);
   }
+}
+
+export async function convertSolicitacaoEmTarefa(args: {
+  ideiaId: string;
+  titulo: string;
+  descricao: string | null;
+  responsavelId: number | null;
+  dataLimite: string | null;
+}): Promise<number> {
+  const { data, error } = await supabase.rpc('convert_solicitacao_em_tarefa', {
+    p_ideia_id: args.ideiaId,
+    p_titulo: args.titulo,
+    p_descricao: args.descricao,
+    p_responsavel_id: args.responsavelId,
+    p_data_limite: args.dataLimite,
+  });
+  if (error) throw new Error(error.message);
+  return data as number;
 }
