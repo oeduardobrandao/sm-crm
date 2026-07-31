@@ -20,12 +20,22 @@ CREATE INDEX mensagens_conta_cliente_created_idx
 
 ALTER TABLE mensagens ENABLE ROW LEVEL SECURITY;
 
--- WITH CHECK pins cliente_id to the row's own workspace (20260728000004 pattern);
--- a plain FK alone would let a member of workspace A point at workspace B's cliente.
-CREATE POLICY mensagens_tenant_all ON mensagens
-  FOR ALL USING (conta_id IN (SELECT public.get_my_conta_id()))
-  WITH CHECK (
+-- Workspace members can read the whole tenant thread but may only WRITE as
+-- themselves, flagged as workspace-authored. Client-side rows
+-- (is_workspace_user = false) are written exclusively by the hub-mensagens
+-- edge function via the service role, so an authenticated CRM user can never
+-- forge a client-authored message (which would also fire the client_message
+-- notification to owners/admins). No authenticated UPDATE/DELETE: messages
+-- are immutable from the CRM. WITH CHECK also pins cliente_id to the row's
+-- own workspace (20260728000004 pattern).
+CREATE POLICY mensagens_tenant_select ON mensagens
+  FOR SELECT USING (conta_id IN (SELECT public.get_my_conta_id()));
+
+CREATE POLICY mensagens_tenant_insert ON mensagens
+  FOR INSERT WITH CHECK (
     conta_id IN (SELECT public.get_my_conta_id())
+    AND is_workspace_user = true
+    AND author_user_id = auth.uid()
     AND EXISTS (
       SELECT 1 FROM public.clientes c
       WHERE c.id = mensagens.cliente_id AND c.conta_id = mensagens.conta_id
