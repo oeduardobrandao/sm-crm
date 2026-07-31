@@ -2655,9 +2655,18 @@ Set `LOOPS_API_KEY` and `POSTHOG_PROJECT_KEY` via the Supabase dashboard. Do **n
 
 - [ ] **Step 6: Deploy the functions**
 
+`paywall-report` deploys **WITHOUT** `--no-verify-jwt`, unlike most functions here. It is
+called by an authenticated browser carrying a real Supabase JWT, not by an OAuth callback or a
+cron, so the gateway's JWT check should stay on *in addition to* the function's own
+`getUser(token)` + `workspace_members` check. Passing `--no-verify-jwt` would strip a layer of
+defence from the one function in this feature that is reachable from the open internet.
+
 ```bash
-npx supabase functions deploy paywall-report --no-verify-jwt --use-api
+npx supabase functions deploy paywall-report --use-api
 ```
+
+`loops-sync-cron` DOES need `--no-verify-jwt`: it authenticates with the `x-cron-secret` header
+and carries no JWT at all.
 
 ```bash
 npx supabase functions deploy loops-sync-cron --no-verify-jwt --use-api
