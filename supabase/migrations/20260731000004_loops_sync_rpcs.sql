@@ -363,6 +363,43 @@ $$;
 -- in event properties instead: Loops keys contacts by email, and one person can
 -- own several workspaces (max_workspaces_per_user is a real entitlement), so
 -- per-workspace traits would be clobbered by whichever workspace synced last.
+--
+-- PENDING-DELETION EXCLUSION (the `not exists` in the WHERE clause below): do
+-- NOT remove it as redundant with the deletion sweep. It closes a race that
+-- leaves PII resident at Loops FOREVER, with nothing left in our system that
+-- records it:
+--   1. U's loops_contacts row holds synced_email = old@x.com, deleted_at null.
+--   2. U changes their email to new@x.com.
+--   3. The deletion sweep runs FIRST (handler.ts orders it first, deliberately)
+--      and get_loops_contact_deletions selects the row on its
+--      `u.email is distinct from lc.synced_email` branch. deleteContact
+--      (old@x.com) fails TRANSIENTLY -- a network blip. The handler tolerates
+--      and logs that by design, so deleted_at is NOT stamped.
+--   4. Without this exclusion the trait sweep, which runs LAST in the same
+--      invocation, still returns U. recordContactSync upserts on user_id and
+--      overwrites synced_email = new@x.com, deleted_at = null.
+--   5. u.email now EQUALS lc.synced_email, so get_loops_contact_deletions can
+--      never select that row again on any branch.
+--   6. The Loops contact for old@x.com -- that person's name and email address
+--      -- stays at the vendor permanently. One transient failure, unrecoverable
+--      PII residue, in the consent architecture that exists for LGPD.
+-- Excluding the user costs nothing: deletions are retried every sweep, so the
+-- deletion lands on a later run, deleted_at gets stamped, and the trait sync
+-- resumes on the run after that. The delay is bounded and it self-heals.
+--
+-- Only the email-change branch of get_loops_contact_deletions can collide here,
+-- which is why the predicate mirrors exactly that branch. The other two branches
+-- are already excluded upstream and must stay that way:
+--   * consent revoked (p.marketing_opt_in is distinct from true) -- this RPC's
+--     own `p.marketing_opt_in = true` filter drops the user for as long as the
+--     deletion is owed. If they later re-consent WITHOUT changing their email,
+--     the contact at Loops is legitimately wanted again and matches
+--     synced_email, so no residue exists to clean up.
+--   * account deleted (lc.user_id is null, via loops_contacts' FK ON DELETE SET
+--     NULL) -- there is no auth.users row left for this RPC's join to return,
+--     and recordContactSync only ever upserts a NON-NULL user_id, so it can
+--     never touch that orphan row. It stays selectable by the deletion sweep
+--     indefinitely.
 create or replace function get_loops_trait_candidates()
 returns table (
   user_id uuid, email text, nome text, days_since_signup int,
@@ -410,6 +447,19 @@ language sql security definer set search_path = public as $$
   where p.marketing_opt_in = true
     and u.email is not null
     and u.email_confirmed_at is not null
+    -- A contact deletion is OWED at the vendor for this person's previous
+    -- address. Syncing traits now would overwrite synced_email and strand that
+    -- address at Loops permanently -- see the block comment above this function.
+    -- Written as a correlated `not exists` rather than folded into the `lc` left
+    -- join below on purpose: `not (lc.deleted_at is null and ...)` is
+    -- three-valued and evaluates to NULL, i.e. false, for a never-synced user,
+    -- which would silently drop everyone who has no loops_contacts row at all.
+    and not exists (
+      select 1 from loops_contacts lc2
+      where lc2.user_id = u.id
+        and lc2.deleted_at is null
+        and lc2.synced_email is distinct from u.email::text
+    )
   group by u.id, u.email, p.nome, u.email_confirmed_at, lc.synced_at
   -- The ordering IS the convergence mechanism: this RPC has no time window
   -- and no ledger exclusion, so without a rotating order the same first-200

@@ -1,5 +1,6 @@
 import { assertEquals } from "./assert.ts";
 import { createPaywallReportHandler, type PaywallReportDeps } from "../paywall-report/handler.ts";
+import { FEATURE_COLUMNS } from "../_shared/entitlements.ts";
 
 function makeDeps(over: Partial<PaywallReportDeps> = {}): PaywallReportDeps {
   return {
@@ -27,7 +28,7 @@ Deno.test("rejects a request with no Authorization header", async () => {
 
 Deno.test("rejects when the token resolves to no user", async () => {
   const deps = makeDeps({ getUser: () => Promise.resolve(null) });
-  const res = await createPaywallReportHandler(deps)(req({ workspace_id: "ws-1", feature: "f" }));
+  const res = await createPaywallReportHandler(deps)(req({ workspace_id: "ws-1", feature: "feature_leads" }));
   assertEquals(res.status, 401);
 });
 
@@ -57,13 +58,13 @@ Deno.test("membership is checked against the AUTHENTICATED user id, not the body
     },
   });
   await createPaywallReportHandler(deps)(
-    req({ workspace_id: "ws-1", feature: "f", user_id: "spoofed-user" }),
+    req({ workspace_id: "ws-1", feature: "feature_leads", user_id: "spoofed-user" }),
   );
   assertEquals(seen, [{ userId: "real-user", workspaceId: "ws-1" }]);
 });
 
 Deno.test("rejects a body missing workspace_id or feature", async () => {
-  const res = await createPaywallReportHandler(makeDeps())(req({ feature: "f" }));
+  const res = await createPaywallReportHandler(makeDeps())(req({ feature: "feature_leads" }));
   assertEquals(res.status, 400);
 });
 
@@ -87,11 +88,55 @@ Deno.test("inserts the hit for a valid member and defaults clicked_upgrade to fa
   }]);
 });
 
+// The body is attacker-controlled, so `feature` must name a REAL entitlement
+// flag rather than merely be non-empty. A fabricated value is persisted as a
+// paywall_hit and, for a free opted-in workspace, later selected by
+// get_paywall_hit_candidates -- mailing the owner a marketing email that names a
+// feature which does not exist, with no gated action having occurred.
+Deno.test("accepts every known entitlement flag", async () => {
+  for (const flag of FEATURE_COLUMNS) {
+    const rows: Array<Record<string, unknown>> = [];
+    const deps = makeDeps({ insertHit: (row) => { rows.push(row); return Promise.resolve(); } });
+    const res = await createPaywallReportHandler(deps)(
+      req({ workspace_id: "ws-1", feature: flag }),
+    );
+    assertEquals(res.status, 200, `known flag ${flag} was rejected`);
+    assertEquals(rows.length, 1, `known flag ${flag} was not inserted`);
+  }
+});
+
+Deno.test("rejects an unknown feature with a generic 400 and inserts nothing", async () => {
+  for (
+    const bogus of [
+      "not_a_feature",
+      "feature_does_not_exist",
+      "max_clients", // a real plan column, but a LIMIT, not a feature flag
+      "'; drop table paywall_hits; --",
+    ]
+  ) {
+    let inserted = false;
+    const deps = makeDeps({
+      insertHit: () => {
+        inserted = true;
+        return Promise.resolve();
+      },
+    });
+    const res = await createPaywallReportHandler(deps)(
+      req({ workspace_id: "ws-1", feature: bogus }),
+    );
+    assertEquals(res.status, 400, `unknown feature ${bogus} was not rejected`);
+    assertEquals(inserted, false, `unknown feature ${bogus} was inserted`);
+    // Never echo raw input back to the client.
+    const body = await res.json() as Record<string, unknown>;
+    assertEquals(body, { error: "Invalid request" });
+  }
+});
+
 Deno.test("passes clicked_upgrade through when set", async () => {
   const rows: Array<Record<string, unknown>> = [];
   const deps = makeDeps({ insertHit: (row) => { rows.push(row); return Promise.resolve(); } });
   await createPaywallReportHandler(deps)(
-    req({ workspace_id: "ws-1", feature: "f", clicked_upgrade: true }),
+    req({ workspace_id: "ws-1", feature: "feature_leads", clicked_upgrade: true }),
   );
   assertEquals(rows[0].clicked_upgrade, true);
 });

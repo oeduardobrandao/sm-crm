@@ -352,4 +352,62 @@ begin;
   end $$;
 rollback;
 
+-- 13. THE PII RACE: a user with a PENDING contact deletion must NOT be
+--     trait-synced until that deletion lands.
+--     loops_contacts holds the OLD address after an email change, and
+--     get_loops_contact_deletions selects it on its
+--     `u.email is distinct from lc.synced_email` branch. If that delete fails
+--     transiently at Loops, deleted_at is not stamped -- and the trait sweep,
+--     which runs LAST in the same invocation, would call recordContactSync and
+--     overwrite synced_email with the NEW address. From that moment
+--     u.email = lc.synced_email, the deletions RPC can never select the row on
+--     any branch again, and the Loops contact for the old address (name +
+--     email) is stranded at the vendor permanently with nothing in our system
+--     recording it. One transient failure, unrecoverable PII residue.
+--     Both controls below are load-bearing: without them this case would pass
+--     identically if the exclusion were written too broadly and suppressed
+--     every previously-synced user, which would silently stop trait sync
+--     altogether.
+begin;
+  do $$
+  declare f record; n int; v_lc uuid;
+  begin
+    select * into f from et_loops_fixture((select id from plans where is_default), true);
+
+    -- The email changed; the vendor still holds the old address and no deletion
+    -- has landed. synced_at is backdated deliberately: the RPC orders by
+    -- `lc.synced_at asc nulls first` under `limit 200`, so a fresh timestamp
+    -- would sort this user LAST and a database with 200+ opted-in confirmed
+    -- users could push them out of the window -- making the assertion below
+    -- pass for the wrong reason. Backdating pins them at the front.
+    insert into loops_contacts (user_id, synced_email, synced_at)
+      values (f.user_id, 'old-' || f.user_id || '@et.test', now() - interval '365 days')
+      returning id into v_lc;
+
+    select count(*) into n from get_loops_trait_candidates() where user_id = f.user_id;
+    if n <> 0 then
+      raise exception 'user with a pending contact deletion was trait-synced (got % rows)', n;
+    end if;
+
+    -- Control A: once the deletion LANDS, the user syncs again -- the exclusion
+    -- delays the sync, it does not cancel it. This is the self-heal.
+    update loops_contacts set deleted_at = now() where id = v_lc;
+    select count(*) into n from get_loops_trait_candidates() where user_id = f.user_id;
+    if n <> 1 then
+      raise exception 'user whose contact deletion completed should sync again (got %)', n;
+    end if;
+
+    -- Control B: a live row whose synced_email still MATCHES the user is not a
+    -- pending deletion and must keep syncing normally.
+    update loops_contacts
+      set deleted_at = null,
+          synced_email = (select u.email::text from auth.users u where u.id = f.user_id)
+      where id = v_lc;
+    select count(*) into n from get_loops_trait_candidates() where user_id = f.user_id;
+    if n <> 1 then
+      raise exception 'an up-to-date synced contact should still be trait-synced (got %)', n;
+    end if;
+  end $$;
+rollback;
+
 drop function if exists et_loops_fixture(text, boolean, int);

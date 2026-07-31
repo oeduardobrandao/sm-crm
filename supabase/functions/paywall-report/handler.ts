@@ -1,5 +1,13 @@
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { createJsonResponder } from "../_shared/http.ts";
+import { FEATURE_COLUMNS } from "../_shared/entitlements.ts";
+
+/**
+ * Allowlist of features a hit may name. Derived from FEATURE_COLUMNS, the single
+ * source of truth for entitlement flags -- do NOT hand-copy the list here, a copy
+ * drifts the moment a flag is added and silently starts rejecting real denials.
+ */
+const KNOWN_FEATURES: ReadonlySet<string> = new Set<string>(FEATURE_COLUMNS);
 
 export interface PaywallReportDeps {
   getUser: (token: string) => Promise<{ id: string } | null>;
@@ -46,7 +54,16 @@ export function createPaywallReportHandler(deps: PaywallReportDeps) {
         | null;
       const workspaceId = typeof body?.workspace_id === "string" ? body.workspace_id : "";
       const feature = typeof body?.feature === "string" ? body.feature : "";
-      if (!workspaceId || !feature) return json({ error: "Invalid request" }, 400);
+      // `feature` must name a REAL entitlement flag, not merely be non-empty.
+      // A fabricated string is persisted as a paywall_hit, and for a free,
+      // opted-in workspace get_paywall_hit_candidates later selects it and mails
+      // the owner a marketing email naming a feature that does not exist, with
+      // no gated action having occurred. It also poisons feature attribution in
+      // the analytics. Same generic 400 as a missing field, and the rejected
+      // value is deliberately NOT echoed back.
+      if (!workspaceId || !feature || !KNOWN_FEATURES.has(feature)) {
+        return json({ error: "Invalid request" }, 400);
+      }
 
       if (!(await deps.isMember(user.id, workspaceId))) {
         return json({ error: "Forbidden" }, 403);
