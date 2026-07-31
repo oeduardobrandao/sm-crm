@@ -124,6 +124,9 @@ verify_jwt = false
 [functions.sign-r2-urls]
 verify_jwt = false
 
+[functions.paywall-report]
+verify_jwt = false
+
 [functions.billing-checkout]
 verify_jwt = false
 

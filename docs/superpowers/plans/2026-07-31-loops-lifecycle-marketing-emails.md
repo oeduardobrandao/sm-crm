@@ -2282,7 +2282,14 @@ Add the matching entry, next to the other cron entries:
 verify_jwt = false
 ```
 
-Do **not** add an entry for `paywall-report`. That function is browser-reachable with a real user JWT and deliberately keeps the gateway check on top of its own `getUser` + `workspace_members` verification. `config.toml` in this repo lists only the `verify_jwt = false` functions, so its absence there is the correct state, not an omission.
+**Also add an entry for `paywall-report`.** It is called from the CRM browser with a cross-origin `POST` carrying an `Authorization: Bearer <user JWT>` header, and that header is exactly what makes the browser send an unauthenticated `OPTIONS` preflight first. With the gateway's JWT check enabled, Supabase rejects that preflight before the function runs, so the handler's own CORS response never reaches the browser, the POST is never sent, and `paywall_hits` stays permanently empty — with nothing in the function's logs to explain it, because the function is never reached. The same convention already covers every other browser-called function that verifies its own token — `invite-user`, `manage-workspace-user`, `workspace-limits`, `sign-r2-urls`, `file-upload-url` — all of which have `verify_jwt = false` for the same reason. `paywall-report` belongs in that group, next to `sign-r2-urls`:
+
+```toml
+[functions.paywall-report]
+verify_jwt = false
+```
+
+Disabling the gateway check here does not remove the function's authorization boundary — it was never the boundary. The handler's own `getUser(token)` + `workspace_members` membership check is what authorizes the request, and it runs unchanged whether or not the gateway also checks the JWT. That check must never be weakened.
 
 Symptom if this is skipped: the schedule fires, `net.http_post` returns 401, nothing runs, and nothing in the function's own logs explains why — because the function was never reached.
 
@@ -2717,14 +2724,18 @@ Set `LOOPS_API_KEY` and `POSTHOG_PROJECT_KEY` via the Supabase dashboard. Do **n
 
 - [ ] **Step 6: Deploy the functions**
 
-`paywall-report` deploys **WITHOUT** `--no-verify-jwt`, unlike most functions here. It is
-called by an authenticated browser carrying a real Supabase JWT, not by an OAuth callback or a
-cron, so the gateway's JWT check should stay on *in addition to* the function's own
-`getUser(token)` + `workspace_members` check. Passing `--no-verify-jwt` would strip a layer of
-defence from the one function in this feature that is reachable from the open internet.
+`paywall-report` deploys **WITH** `--no-verify-jwt`, same as the rest of this feature's
+browser- and cron-facing functions. It is called by an authenticated browser carrying a real
+Supabase JWT in an `Authorization` header, and that header is exactly what triggers an
+unauthenticated `OPTIONS` preflight before the real request. With gateway JWT verification on,
+Supabase rejects that preflight before the function ever runs, so the handler's own CORS
+response never reaches the browser, the POST is never sent, and `paywall_hits` stays
+permanently empty — silently, since the function's logs never see the request. The function
+verifies its own token (`getUser(token)` + `workspace_members` membership check), which is the
+real authorization boundary here and is unaffected by the gateway setting either way.
 
 ```bash
-npx supabase functions deploy paywall-report --use-api
+npx supabase functions deploy paywall-report --no-verify-jwt --use-api
 ```
 
 `loops-sync-cron` DOES need `--no-verify-jwt`: it authenticates with the `x-cron-secret` header

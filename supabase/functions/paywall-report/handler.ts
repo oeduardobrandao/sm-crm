@@ -23,6 +23,21 @@ export interface PaywallReportDeps {
 /**
  * Records a paywall denial.
  *
+ * `supabase/config.toml` sets `verify_jwt = false` for this function even
+ * though it is called with a real user JWT. That is deliberate, not an
+ * oversight: this endpoint is invoked cross-origin from the browser with an
+ * `Authorization: Bearer <user JWT>` header, which makes the browser send an
+ * UNAUTHENTICATED `OPTIONS` preflight first. With the gateway's JWT check
+ * enabled, Supabase rejects that preflight before this handler ever runs, the
+ * CORS response below never reaches the browser, and the POST is never sent
+ * -- silently, with nothing in this function's logs to explain it. Disabling
+ * the gateway check is what lets the preflight (and then the real request)
+ * reach this code at all.
+ *
+ * That means the checks below are the ONLY authorization boundary for this
+ * function -- there is no gateway-level check backing them up. Do not weaken
+ * either one:
+ *
  * SECURITY BOUNDARY: authorisation is a workspace_members lookup for the
  * AUTHENTICATED user id against the workspace_id in the body. It is deliberately
  * NOT a profiles.conta_id check — conta_id tracks the ACTIVE workspace
