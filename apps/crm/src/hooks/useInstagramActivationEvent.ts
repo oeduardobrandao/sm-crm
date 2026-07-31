@@ -6,7 +6,7 @@ import { captureEvent } from '@/lib/analytics';
  * Fires the `instagram_connected` activation milestone when the OAuth callback lands back on
  * the client page.
  *
- * The success leg of the Meta flow redirects to `/clientes/:id?ig_connected=1` (see
+ * The success leg of the Meta flow redirects to `/clientes/:id?ig_connected=new|reconnect` (see
  * `supabase/functions/instagram-integration/index.ts`). Counting the return leg rather than the
  * button click is the entire point: an abandoned or denied consent screen is not an activation,
  * and `instagram_connect_started` already covers intent.
@@ -21,10 +21,16 @@ export function useInstagramActivationEvent(clienteId: number): void {
 
   useEffect(() => {
     if (fired.current || Number.isNaN(clienteId)) return;
-    if (searchParams.get('ig_connected') !== '1') return;
+    const marker = searchParams.get('ig_connected');
+    if (marker !== 'new' && marker !== 'reconnect') return;
 
     fired.current = true;
-    captureEvent('instagram_connected', { cliente_id: clienteId });
+    // Both are real connections, so both are worth having: `reconnect` is a token-expiry signal
+    // in its own right. Only `new` is an activation, so funnels must filter on this property.
+    captureEvent('instagram_connected', {
+      cliente_id: clienteId,
+      connection_type: marker,
+    });
 
     const next = new URLSearchParams(searchParams);
     next.delete('ig_connected');

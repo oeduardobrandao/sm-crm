@@ -290,6 +290,16 @@ Deno.serve(async (req) => {
             }
         } catch { /* insights are best-effort */ }
 
+        // Read before the upsert: afterwards the row exists either way, and the reconnect flow
+        // (expired or revoked token, `btn-ig-reconnect`) comes through this same callback. Without
+        // this, every re-authorisation would count as a fresh activation.
+        const { data: priorAccount } = await serviceClient
+            .from('instagram_accounts')
+            .select('id')
+            .eq('client_id', clientId)
+            .maybeSingle();
+        const isFirstConnection = !priorAccount;
+
         // Upsert into DB (with insights + last_synced_at)
         const { data: upsertedAccount, error: dbError } = await serviceClient
             .from('instagram_accounts')
@@ -398,10 +408,15 @@ Deno.serve(async (req) => {
             }
         } catch { /* posts/history fetch is best-effort */ }
 
-        // ig_connected=1 is the CRM's activation signal: the only point in the flow where a
-        // connection is known to exist. The page fires `instagram_connected` on it and strips
-        // it from the URL (useInstagramActivationEvent).
-        return Response.redirect(`${OAUTH_REDIRECT_BASE}/clientes/${clientId}?ig_connected=1`, 302);
+        // The CRM's activation signal: the only point in the flow where a connection is known to
+        // exist. Carries new-vs-reconnect because both reach this line, and only the first is an
+        // activation. The page fires `instagram_connected` on it and strips it from the URL
+        // (useInstagramActivationEvent).
+        const connectedMarker = isFirstConnection ? 'new' : 'reconnect';
+        return Response.redirect(
+            `${OAUTH_REDIRECT_BASE}/clientes/${clientId}?ig_connected=${connectedMarker}`,
+            302,
+        );
     }
 
     // 3. POST /sync/:clientId

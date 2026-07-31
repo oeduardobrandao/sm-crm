@@ -31,16 +31,33 @@ beforeEach(() => {
 
 describe('useInstagramActivationEvent', () => {
   it('fires the milestone when the OAuth callback marker is present, then strips it', () => {
-    const { result } = renderAt('/clientes/7?ig_connected=1');
+    const { result } = renderAt('/clientes/7?ig_connected=new');
 
     expect(captureEventMock).toHaveBeenCalledTimes(1);
-    expect(captureEventMock).toHaveBeenCalledWith('instagram_connected', { cliente_id: 7 });
+    expect(captureEventMock).toHaveBeenCalledWith('instagram_connected', {
+      cliente_id: 7,
+      connection_type: 'new',
+    });
     // Stripped, so a refresh cannot count the same activation twice.
     expect(result.current).toBe('');
   });
 
+  it('separates a reconnect from an activation', () => {
+    renderAt('/clientes/7?ig_connected=reconnect');
+
+    expect(captureEventMock).toHaveBeenCalledWith('instagram_connected', {
+      cliente_id: 7,
+      connection_type: 'reconnect',
+    });
+  });
+
+  it('ignores an unrecognised marker value', () => {
+    renderAt('/clientes/7?ig_connected=1');
+    expect(captureEventMock).not.toHaveBeenCalled();
+  });
+
   it('preserves unrelated query parameters when stripping the marker', () => {
-    const { result } = renderAt('/clientes/7?tab=instagram&ig_connected=1');
+    const { result } = renderAt('/clientes/7?tab=instagram&ig_connected=new');
     expect(result.current).toBe('?tab=instagram');
   });
 
@@ -50,7 +67,7 @@ describe('useInstagramActivationEvent', () => {
   });
 
   it('does not fire again when the component re-renders', () => {
-    const { rerender } = renderAt('/clientes/7?ig_connected=1');
+    const { rerender } = renderAt('/clientes/7?ig_connected=new');
     rerender();
     rerender();
 
@@ -58,7 +75,7 @@ describe('useInstagramActivationEvent', () => {
   });
 
   it('ignores an unparseable client id rather than sending NaN', () => {
-    renderAt('/clientes/abc?ig_connected=1', NaN);
+    renderAt('/clientes/abc?ig_connected=new', NaN);
     expect(captureEventMock).not.toHaveBeenCalled();
   });
 });
