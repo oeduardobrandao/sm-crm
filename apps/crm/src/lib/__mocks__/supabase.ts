@@ -2,7 +2,7 @@ import { createSupabaseQueryMock } from '../../../../../test/shared/supabaseMock
 
 const queryMock = createSupabaseQueryMock();
 
-let currentUser: { id: string } | null = { id: 'user-1' };
+let currentUser: { id: string; email?: string } | null = { id: 'user-1' };
 let currentProfile: Record<string, unknown> | null = {
   id: 'user-1',
   nome: 'Eduardo Souza',
@@ -20,7 +20,10 @@ const subscription = {
   unsubscribe: () => undefined,
 };
 
-type AuthChangeCallback = (event: string, session: { user: { id: string } | null } | null) => void;
+type AuthChangeCallback = (
+  event: string,
+  session: { user: { id: string; email?: string } | null } | null,
+) => void;
 let authChangeCallback: AuthChangeCallback | null = null;
 
 // Minimal postgres_changes realtime stand-in for AuthContext's live-revocation
@@ -161,7 +164,7 @@ export function __getSupabaseCalls() {
   return queryMock.calls;
 }
 
-export function __setCurrentUser(user: { id: string } | null) {
+export function __setCurrentUser(user: { id: string; email?: string } | null) {
   currentUser = user;
   currentSession = user ? { access_token: 'token-de-teste', user } : null;
 }
@@ -182,7 +185,10 @@ export function __setCurrentSession(
 
 export async function healPendingInvite() {}
 
-export function __emitAuthChange(event: string, session: { user: { id: string } | null } | null) {
+export function __emitAuthChange(
+  event: string,
+  session: { user: { id: string; email?: string } | null } | null,
+) {
   authChangeCallback?.(event, session);
 }
 

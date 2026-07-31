@@ -202,30 +202,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             plan_id: null,
             role: (nextProfile as Profile).role,
           });
-          // Crisp is loaded anonymously in index.html, so the inbox shows no
-          // identity. Email + name only: client count is not available from any
-          // existing hook, and the spec explicitly says not to build a data path
-          // for it. Guarded because Crisp's script may not have loaded yet.
-          const p = nextProfile as Profile;
-          // Crisp validates the address and can throw on an empty string --
-          // phone-auth users have no email, so guard it the same way the
-          // nickname push is guarded below, and keep each push in its own
-          // try/catch so one throwing (e.g. an empty email) can never skip
-          // the other.
-          if (user?.email) {
-            try {
-              window.$crisp?.push(['set', 'user:email', [user.email]]);
-            } catch {
-              // Never let a support-tooling nicety break auth.
-            }
-          }
-          if (p.nome) {
-            try {
-              window.$crisp?.push(['set', 'user:nickname', [p.nome]]);
-            } catch {
-              // Never let a support-tooling nicety break auth.
-            }
-          }
         }
         if (!active || profileRequestId.current !== requestId) return;
 
@@ -267,12 +243,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-    // user?.email is read only for the Crisp identify call above and is
-    // sourced from the same render as userId (both derive from the same
-    // `user` state read) -- it never changes independently of an identity
-    // transition already covered by userId, so it's intentionally omitted
-    // here rather than triggering a redundant profile/membership re-fetch.
-  }, [sessionReady, userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionReady, userId]);
+
+  // Crisp identification, split out from the profile-hydration effect above
+  // on purpose: that effect is keyed on [sessionReady, userId] so an email or
+  // name change alone never re-triggers the profile/membership fetch, but
+  // Crisp still needs to learn about exactly those changes. Without its own
+  // effect, a Supabase USER_UPDATED event (e.g. after an email change) would
+  // update `user.email` in state while `userId` stays the same -- the
+  // hydration effect wouldn't re-run, and Crisp would stay identified with
+  // the stale email for the rest of the session.
+  //
+  // Crisp is loaded anonymously in index.html, so the inbox otherwise shows
+  // no identity. Email + name only: client count is not available from any
+  // existing hook, and the spec explicitly says not to build a data path for
+  // it. Guarded because Crisp's script may not have loaded yet, and each push
+  // gets its own try/catch so one throwing (e.g. Crisp rejecting an
+  // unexpected value) can never suppress the other.
+  //
+  // Ordering vs. session:reset: reset is pushed synchronously -- inside the
+  // onAuthStateChange handler for a user change, and inside signOut() -- when
+  // `userId` still holds the OUTGOING identity. This effect only runs after
+  // React commits a render with the NEW userId (or null), which happens
+  // strictly after that synchronous reset call returns. So reset for the old
+  // identity always lands before identify for the new one; there is no
+  // ordering race to resolve.
+  useEffect(() => {
+    if (!userId) return;
+    if (user?.email) {
+      try {
+        window.$crisp?.push(['set', 'user:email', [user.email]]);
+      } catch {
+        // Never let a support-tooling nicety break auth.
+      }
+    }
+    if (profile?.nome) {
+      try {
+        window.$crisp?.push(['set', 'user:nickname', [profile.nome]]);
+      } catch {
+        // Never let a support-tooling nicety break auth.
+      }
+    }
+  }, [userId, user?.email, profile?.nome]);
 
   // Backstop mirror: keeps the ref in sync with every OTHER setCanSeeFinancials
   // call site (the userChanged reset, both branches of the hydration effect,
