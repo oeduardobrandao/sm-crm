@@ -422,6 +422,16 @@ git commit -m "feat(loops): add paywall_hits, checkout_attempts and loops_contac
 
 - [ ] **Step 1: Write the migration**
 
+> **SUPERSEDED — do not re-execute this block verbatim.** The SQL below is the
+> pre-review draft. Five fix rounds landed on top of it and the SHIPPED version is
+> `supabase/migrations/20260731000004_loops_sync_rpcs.sql` in git. Re-running this
+> block would silently regress four fixes: the `distinct on (u.id)` per-user dedupe
+> in `get_dormant_signup_candidates` (duplicate emails), the owner-membership
+> re-check in `claim_marketing_email` (tenant disclosure to a removed member),
+> `user_id` being dropped from the non-dormant ledger insert (uncaught unique
+> violation), and the trialing/active exclusion in `any_free` and two candidate RPCs.
+> Read the committed file, not this block.
+
 Create `supabase/migrations/20260731000004_loops_sync_rpcs.sql`:
 
 ```sql
