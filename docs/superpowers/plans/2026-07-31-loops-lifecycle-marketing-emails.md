@@ -373,25 +373,27 @@ create policy "loops_contacts_service_role" on loops_contacts
   for all to service_role using (true) with check (true);
 ```
 
-- [ ] **Step 5: Apply to staging and verify**
+- [ ] **Step 5: Apply locally and verify**
+
+Apply to the **local** database only. Pushing to staging or prod is the human partner's step in Task 13, not this task's — these migrations must not reach a shared environment before the functions that use them are deployed.
 
 ```bash
-cat supabase/.temp/project-ref
+npx supabase start
 ```
-
-Confirm this reads the STAGING ref `wlyzhyfondykzpsiqsce` before pushing. The link state flips between sessions; pushing these to prod now would apply schema ahead of the functions that use it.
 
 ```bash
-npx supabase db push --linked
+npx supabase db reset
 ```
 
-Then verify all three tables exist and `loops_contacts.user_id` is nullable:
+Confirm all three tables exist and that `loops_contacts.user_id` is nullable (a `not null` here means the `on delete set null` FK was written wrong and account deletion will fail):
 
 ```bash
-npx supabase db push --linked --dry-run
+psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -c "\d loops_contacts"
 ```
 
-Expected: no pending migrations.
+Expected: `user_id | uuid | |` with no `not null`, and a unique constraint on it.
+
+If Docker is unavailable and `npx supabase start` fails, **report `DONE_WITH_CONCERNS`**: commit the migrations, state that they were not applied anywhere, and do not claim verification. Do not substitute staging.
 
 - [ ] **Step 6: Commit**
 
@@ -921,21 +923,21 @@ drop function if exists et_loops_fixture(text, boolean, int);
 
 Note on case 8: the stale claim is 2 hours old, which clears the 1-hour freshness gate, but it also sits inside the 72h cap window. The cap's `not exists` clause excludes rows that are `delivered_at is not null OR sent_at > now() - 1 hour` — a stale undelivered claim satisfies neither, so it does not suppress its own retry. Confirm this by running the case; if it fails, the cap clause is wrong, not the test.
 
-- [ ] **Step 3: Apply to staging and run the tests**
+- [ ] **Step 3: Run the tests against the LOCAL database**
+
+The entitlements harness runs against a local Supabase, **not** staging — see `scripts/test-entitlements.sh` (`SUPABASE_DB_URL` defaults to `postgresql://postgres:postgres@127.0.0.1:54322/postgres`). Never point this suite at a shared environment: the fixtures insert into `auth.users` and `workspaces`, and only the `begin`/`rollback` blocks keep that clean.
 
 ```bash
-cat supabase/.temp/project-ref
+npx supabase start
 ```
-
-Confirm STAGING (`wlyzhyfondykzpsiqsce`), then:
 
 ```bash
-npx supabase db push --linked
+npm run test:db
 ```
 
-Run the SQL test file against staging with `psql` using the Session pooler connection string (the direct DB host is IPv6-only and will not resolve).
+Expected: a PASS line for `57_loops_candidates.sql` along with every other suite.
 
-Expected: all seven assertion blocks pass.
+If Docker is unavailable and `npx supabase start` fails, **stop and report `DONE_WITH_CONCERNS`**: commit the migration and the test file, state clearly that the SQL tests were written but not executed, and do not claim they pass. Do not substitute staging.
 
 - [ ] **Step 4: Commit**
 
