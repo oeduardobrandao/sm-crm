@@ -117,30 +117,54 @@ Deno.serve(async (req: Request) => {
     // throwing, so the error must be checked explicitly -- a bare try/catch
     // alone would silently drop RLS/constraint/FK failures with no log line.
     //
-    // abortSignal(10s) is load-bearing, not redundant with the try/catch: an
-    // unbounded await on a stalled PostgREST call can have its isolate killed
-    // by the edge runtime before `return json({ url: session.url })` below
-    // ever runs -- a kill bypasses catch entirely, so the user would lose a
-    // live, payable Stripe checkout URL. The timeout forces a stall to
-    // surface as an ordinary catchable rejection/error instead. This write
-    // must never be able to block the checkout -- do not remove this bound.
-    try {
-      const { error } = await svc
-        .from("checkout_attempts")
-        .insert({
-          workspace_id: workspaceId,
-          stripe_session_id: session.id,
-          plan_id: planId,
-        })
-        .abortSignal(AbortSignal.timeout(10_000));
-      if (error) {
-        console.error("[billing-checkout] checkout_attempts insert failed:", error.message);
+    // abortSignal(10s) is load-bearing even though this now runs in the
+    // background: it still consumes the isolate's wall clock, and an
+    // unbounded call could stall a later invocation reusing the same warm
+    // instance. The timeout forces a stall to surface as an ordinary
+    // catchable rejection/error instead of an isolate kill.
+    //
+    // This write must run via EdgeRuntime.waitUntil and NEVER be awaited
+    // before the response below. The Stripe checkout session already exists
+    // at this point -- awaiting a slow/unavailable PostgREST insert here
+    // would make a user wait (up to the 10s bound) for a checkout URL that
+    // already exists and cannot be redirected to, risking an abandoned
+    // session and a duplicate Stripe Checkout on retry. Do not "simplify"
+    // this back into a plain await.
+    const recordCheckoutAttempt = async () => {
+      try {
+        const { error } = await svc
+          .from("checkout_attempts")
+          .insert({
+            workspace_id: workspaceId,
+            stripe_session_id: session.id,
+            plan_id: planId,
+          })
+          .abortSignal(AbortSignal.timeout(10_000));
+        if (error) {
+          console.error("[billing-checkout] checkout_attempts insert failed:", error.message);
+        }
+      } catch (e) {
+        console.error(
+          "[billing-checkout] checkout_attempts insert failed:",
+          e instanceof Error ? e.message : String(e),
+        );
       }
-    } catch (e) {
-      console.error(
-        "[billing-checkout] checkout_attempts insert failed:",
-        e instanceof Error ? e.message : String(e),
-      );
+    };
+
+    // EdgeRuntime is a Supabase Edge Runtime global -- not declared in every
+    // type environment, and not guaranteed present in every runtime this
+    // module might load in (e.g. local tooling). Feature-detect via
+    // globalThis (avoids referencing the bare undeclared identifier, which
+    // `deno check` rejects with TS2304) and fall back to the previous
+    // awaited form so the write still happens somewhere if the global is
+    // ever absent, instead of silently vanishing.
+    const edgeRuntime = (
+      globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }
+    ).EdgeRuntime;
+    if (edgeRuntime) {
+      edgeRuntime.waitUntil(recordCheckoutAttempt());
+    } else {
+      await recordCheckoutAttempt();
     }
 
     return json({ url: session.url }, 200, headers);
