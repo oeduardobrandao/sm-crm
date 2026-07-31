@@ -26,6 +26,7 @@ export const CONFIG_TABS: ConfigTab[] = [
   { path: 'workspace', label: 'Workspace', roles: STAFF },
   { path: 'membros', label: 'Membros', roles: STAFF },
   { path: 'relatorios', label: 'Relatórios', roles: STAFF },
+  { path: 'hub', label: 'Hub', roles: STAFF },
   { path: 'mcp', label: 'Claude (MCP)', roles: STAFF },
   { path: 'cobranca', label: 'Plano & Cobrança', roles: ['owner'] },
 ];

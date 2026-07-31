@@ -84,10 +84,46 @@ export async function getWorkspaceBranding(): Promise<{
   return data;
 }
 
-export async function updateWorkspaceBranding(fields: {
-  brand_color?: string;
-  send_report_email?: boolean;
-}) {
+export async function updateWorkspaceBranding(fields: { send_report_email?: boolean }) {
+  const contaId = await getContaId();
+  const { error } = await supabase.from('workspaces').update(fields).eq('id', contaId);
+  if (error) throw error;
+}
+
+// Hub white-label surface (Personalizar Hub, Configurações → Hub). `brand_color` lives
+// here too, not in updateWorkspaceBranding above: it drives the Hub calendar AND the
+// report accent, but this is its ONE writer — updateWorkspaceBranding above no longer
+// accepts it, so a report-tab edit can never race a hub-tab edit for the same column.
+// Throws on failure rather than returning defaults: same discipline as
+// getWorkspaceBranding above, for the same reason (a swallowed error here once caused
+// defaults to overwrite real data, silently reverting a workspace's Hub customization).
+export interface HubBranding {
+  brand_color: string;
+  hub_surface_theme: string;
+  hub_font_display: string;
+  hub_font_body: string;
+  hub_radius: string;
+  hub_card_style: string;
+  hub_logo_style: string;
+  hub_logo_dark_url: string | null;
+  hub_hide_branding: boolean;
+  hub_default_appearance: string;
+}
+
+export async function getHubBranding(): Promise<HubBranding> {
+  const contaId = await getContaId();
+  const { data, error } = await supabase
+    .from('workspaces')
+    .select(
+      'brand_color, hub_surface_theme, hub_font_display, hub_font_body, hub_radius, hub_card_style, hub_logo_style, hub_logo_dark_url, hub_hide_branding, hub_default_appearance',
+    )
+    .eq('id', contaId)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateHubBranding(fields: Partial<HubBranding>): Promise<void> {
   const contaId = await getContaId();
   const { error } = await supabase.from('workspaces').update(fields).eq('id', contaId);
   if (error) throw error;

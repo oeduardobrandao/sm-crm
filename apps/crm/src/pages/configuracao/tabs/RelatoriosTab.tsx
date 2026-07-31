@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -65,7 +66,6 @@ export default function RelatoriosTab() {
     enabled: isOwnerOrAdmin,
   });
 
-  const [brandColor, setBrandColor] = useState('#eab308');
   const [sendReportEmail, setSendReportEmail] = useState(false);
   const [splashUrl, setSplashUrl] = useState<string | null>(null);
   const [splashUploading, setSplashUploading] = useState(false);
@@ -75,12 +75,12 @@ export default function RelatoriosTab() {
 
   useEffect(() => {
     if (branding) {
-      // Seed brandColor/sendReportEmail only once: a refetch triggered by the
-      // splash handlers (e.g. after upload) must not clobber an in-flight,
-      // unsaved edit to these fields. splashUrl has no "Salvar" step of its
-      // own, so it always tracks the server value.
+      // Seed sendReportEmail only once: a refetch triggered by the splash handlers
+      // (e.g. after upload) must not clobber an in-flight, unsaved edit to this
+      // field. splashUrl has no "Salvar" step of its own, so it always tracks the
+      // server value — same for brand_color, which this tab no longer edits (see
+      // the read-only swatch below): it always shows whatever HubTab last saved.
       if (!brandingInitializedRef.current) {
-        setBrandColor(branding.brand_color ?? '#eab308');
         setSendReportEmail(branding.send_report_email ?? false);
         brandingInitializedRef.current = true;
       }
@@ -147,7 +147,6 @@ export default function RelatoriosTab() {
   const brandingMutation = useMutation({
     mutationFn: () =>
       updateWorkspaceBranding({
-        brand_color: brandColor,
         send_report_email: sendReportEmail,
       }),
     onSuccess: () => {
@@ -160,6 +159,12 @@ export default function RelatoriosTab() {
     },
   });
 
+  // Read-only here: brand_color has ONE writer now, updateHubBranding on the Hub
+  // tab (see store/workspace.ts) — a report-tab edit could otherwise race a
+  // hub-tab edit for the same 'workspaces' column. This still reads it live from
+  // the shared workspace-branding query, which HubTab's save invalidates too.
+  const brandColor = branding?.brand_color ?? '#eab308';
+
   return (
     <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
       <h3 className="config-title">Relatório Mensal</h3>
@@ -169,19 +174,21 @@ export default function RelatoriosTab() {
 
       <div className="config-report-grid">
         <div>
-          {/* Accent colour */}
+          {/* Accent colour: read-only, edited from Configurações → Hub now (it's
+              shared with the client Hub calendar, so it has one editor). */}
           <div style={FIELD}>
-            <Label htmlFor="report-accent" style={FIELD_LABEL}>
-              Cor de destaque
-            </Label>
+            <Label style={FIELD_LABEL}>Cor de destaque</Label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <input
-                id="report-accent"
-                className="report-color-swatch"
-                type="color"
-                value={brandColor}
-                disabled={brandingPending || brandingFailed}
-                onChange={(e) => setBrandColor(e.target.value)}
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 8,
+                  border: '1px solid var(--border-color)',
+                  background: brandColor,
+                  flexShrink: 0,
+                }}
               />
               <span
                 style={{
@@ -196,7 +203,8 @@ export default function RelatoriosTab() {
             </div>
             <p style={HINT}>
               A mesma cor do Hub do Cliente. Marca títulos e destaques; os gráficos mantêm as cores
-              próprias, para os dados seguirem legíveis.
+              próprias, para os dados seguirem legíveis.{' '}
+              <Link to="/configuracao/hub">Editar em Configurações · Hub</Link>
             </p>
           </div>
 

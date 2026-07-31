@@ -3509,6 +3509,25 @@ select.form-input option {
   }
 }
 
+/* Same two-column shape as .config-report-grid above, widened for the Hub tab's
+   preview (a miniature sidebar + main layout, not a single report card). Not
+   position: sticky -- html/body/#root/.app-container are pinned to
+   overflow-x: hidden (see DESIGN_SYSTEM.md), which silently disables sticky for
+   any descendant in both apps. The preview column just renders short, so it
+   already sits near the top without needing real sticky positioning. */
+.config-hub-grid {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .config-hub-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Native colour picker, sized to a 44px touch target and given the same
    hover/focus affordances as every other control on the page. */
 .report-color-swatch {

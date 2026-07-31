@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { useAuthMock, storeMock } = vi.hoisted(() => ({
@@ -55,7 +56,9 @@ function renderTab() {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <RelatoriosTab />
+      <MemoryRouter>
+        <RelatoriosTab />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -84,29 +87,27 @@ describe('RelatoriosTab — report branding', () => {
     storeMock.updateWorkspaceBranding.mockResolvedValue(undefined);
   });
 
-  it('seeds the accent picker from the saved brand colour', async () => {
+  it('shows the saved brand colour as a read-only swatch, with a link to Configurações · Hub', async () => {
     renderTab();
     await waitFor(() => {
-      const el = document.querySelector('input[type="color"]') as HTMLInputElement;
-      expect(el.value).toBe('#111111');
+      expect(screen.getByText('#111111')).toBeInTheDocument();
     });
+    // No editable colour control left on this tab (native picker, ColorPicker, etc).
+    expect(document.querySelector('input[type="color"]')).toBeNull();
+    const link = screen.getByRole('link', { name: /editar em configurações · hub/i });
+    expect(link).toHaveAttribute('href', '/configuracao/hub');
   });
 
-  it('saves the accent colour and e-mail toggle via updateWorkspaceBranding', async () => {
+  it('saves only the e-mail toggle via updateWorkspaceBranding, never brand_color', async () => {
     renderTab();
-
-    const colorInput = await waitFor(() => {
-      const el = document.querySelector('input[type="color"]') as HTMLInputElement;
-      expect(el.value).toBe('#111111');
-      return el;
+    await waitFor(() => {
+      expect(screen.getByText('#111111')).toBeInTheDocument();
     });
 
-    fireEvent.change(colorInput, { target: { value: '#abcdef' } });
     fireEvent.click(screen.getByRole('button', { name: /salvar/i }));
 
     await waitFor(() => {
       expect(storeMock.updateWorkspaceBranding).toHaveBeenCalledWith({
-        brand_color: '#abcdef',
         send_report_email: false,
       });
     });
@@ -119,38 +120,19 @@ describe('RelatoriosTab — report branding', () => {
     const salvar = await screen.findByRole('button', { name: /salvar/i });
     await waitFor(() => expect(salvar).toBeDisabled());
 
-    // The picker is still showing its placeholder colour, so a save here would
-    // overwrite the workspace's real brand colour.
     fireEvent.click(salvar);
     expect(storeMock.updateWorkspaceBranding).not.toHaveBeenCalled();
     expect(screen.getByText(/não foi possível carregar as configurações/i)).toBeTruthy();
   });
 
-  it('keeps an unsaved accent-colour edit after a splash upload', async () => {
+  it('the preview still gets a colour, read from the shared workspace-branding query', async () => {
     renderTab();
-
-    // Wait for the branding query to load and seed the colour picker.
-    const colorInput = await waitFor(() => {
-      const el = document.querySelector('input[type="color"]') as HTMLInputElement;
-      expect(el.value).toBe('#111111');
-      return el;
+    // ReportPreview itself is mocked out below — this only pins that RelatoriosTab
+    // keeps resolving accentColor from `branding`, the query HubTab's save
+    // invalidates, instead of a local draft this tab no longer owns.
+    await waitFor(() => {
+      expect(screen.getByText('#111111')).toBeInTheDocument();
     });
-
-    // User picks a new accent colour but has NOT pressed "Salvar" yet.
-    fireEvent.change(colorInput, { target: { value: '#abcdef' } });
-    expect(colorInput.value).toBe('#abcdef');
-
-    // User uploads cover art before saving.
-    const splashInput = document.querySelector(
-      'input[type="file"][accept="image/jpeg,image/png,image/webp"]',
-    ) as HTMLInputElement;
-    const file = new File(['x'], 'capa.png', { type: 'image/png' });
-    fireEvent.change(splashInput, { target: { files: [file] } });
-
-    // Wait for the upload flow to complete (splash preview image appears).
-    await screen.findByAltText('Arte da capa');
-
-    // The unsaved accent-colour edit must survive the upload.
-    expect(colorInput.value).toBe('#abcdef');
+    expect(screen.getByTestId('report-preview')).toBeInTheDocument();
   });
 });
