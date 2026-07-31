@@ -400,4 +400,55 @@ describe('HubTab — Personalizar Hub', () => {
     });
     expect(screen.queryByAltText('Logo para modo escuro')).not.toBeInTheDocument();
   });
+
+  it('bounds the dark-logo canvas to the longest side, without stretching a non-square image', async () => {
+    // Same stub pattern as reportSplash.test.ts's downscaleImage coverage: intercept
+    // only canvas creation, fall through to the real jsdom implementation for
+    // everything else React needs to render.
+    const originalCreateElement = document.createElement.bind(document);
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({ drawImage: vi.fn() }),
+      toBlob: (cb: (b: Blob | null) => void) => cb(new Blob(['x'], { type: 'image/png' })),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, 'createElement')
+      .mockImplementation((tagName: string, options?: ElementCreationOptions) => {
+        if (tagName === 'canvas') return canvas;
+        return originalCreateElement(tagName, options);
+      });
+    vi.stubGlobal(
+      'createImageBitmap',
+      // A 5:1 horizontal wordmark — the exact shape a forced-square canvas
+      // would stretch into 1:1.
+      vi.fn(async () => ({ width: 1000, height: 200 }) as ImageBitmap),
+    );
+
+    try {
+      renderTab();
+      await waitFor(() => {
+        expect(screen.getByTestId('color-picker')).toHaveTextContent('#111111');
+      });
+
+      const fileInput = document.querySelector(
+        'input[type="file"][accept="image/png,image/jpeg,image/webp"]',
+      ) as HTMLInputElement;
+      const file = new File(['x'], 'wordmark.png', { type: 'image/png' });
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      await waitFor(() => {
+        expect(storeMock.updateHubBranding).toHaveBeenCalledWith({
+          hub_logo_dark_url: expect.stringContaining('https://cdn.example.com/logo-dark.png'),
+        });
+      });
+      // Longest side (width, 1000) bounded to 512; height scales by the same
+      // factor (0.512) instead of being forced to match width.
+      expect(canvas.width).toBe(512);
+      expect(canvas.height).toBe(102);
+    } finally {
+      createElementSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
 });

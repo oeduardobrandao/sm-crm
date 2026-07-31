@@ -255,12 +255,20 @@ export default function HubTab() {
     setLogoUploading(true);
     try {
       const bitmap = await createImageBitmap(file);
+      // Bound the longest side at 512px, keeping the source aspect ratio: this
+      // logo can be a 'wordmark' (Horizontal logo style), which is exactly the
+      // shape a forced-square canvas would stretch. WorkspaceTab's logo upload
+      // deliberately squares its canvas for a circular avatar crop, but that
+      // doesn't apply here.
+      const MAX_DIM = 512;
+      const scale = Math.min(1, MAX_DIM / Math.max(bitmap.width, bitmap.height));
+      const w = Math.max(1, Math.round(bitmap.width * scale));
+      const h = Math.max(1, Math.round(bitmap.height * scale));
       const canvas = document.createElement('canvas');
-      const size = Math.min(bitmap.width, bitmap.height, 512);
-      canvas.width = size;
-      canvas.height = size;
+      canvas.width = w;
+      canvas.height = h;
       const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(bitmap, 0, 0, size, size);
+      ctx.drawImage(bitmap, 0, 0, w, h);
       const blob: Blob = await new Promise((res) => canvas.toBlob((b) => res(b!), 'image/png'));
 
       const path = `workspaces/${workspace.id}/logo-dark.png`;
