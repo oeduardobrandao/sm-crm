@@ -239,7 +239,15 @@ describe('store CRUD write operations', () => {
   describe('membros', () => {
     it('addMembro inserts with user_id and conta_id', async () => {
       mockedSupabase.__queueSupabaseResult('membros', 'insert', {
-        data: { id: 40, nome: 'Paulo Editor', cargo: 'Editor', tipo: 'freelancer_mensal', avatar_url: '', user_id: 'user-1', conta_id: 'conta-1' },
+        data: {
+          id: 40,
+          nome: 'Paulo Editor',
+          cargo: 'Editor',
+          tipo: 'freelancer_mensal',
+          avatar_url: '',
+          user_id: 'user-1',
+          conta_id: 'conta-1',
+        },
         error: null,
       });
 

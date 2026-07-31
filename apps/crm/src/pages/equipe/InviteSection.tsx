@@ -137,7 +137,9 @@ export function InviteSection({
           )}
         />
       </div>
-      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.45 }}>
+      <p
+        style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.45 }}
+      >
         <strong>Convidar para o workspace</strong>.{' '}
         {inviteEnabled
           ? 'A pessoa receberá um convite por e-mail e ocupará 1 vaga do plano. Quando aceitar, a conta será vinculada a este membro automaticamente.'
@@ -195,8 +197,8 @@ export function InviteSection({
             border: '1px solid var(--border-color)',
           }}
         >
-          Todas as vagas do plano estão em uso. O membro pode ser salvo normalmente; para
-          convidá-lo ao CRM, faça upgrade do plano ou remova um usuário.
+          Todas as vagas do plano estão em uso. O membro pode ser salvo normalmente; para convidá-lo
+          ao CRM, faça upgrade do plano ou remova um usuário.
         </div>
       )}
     </div>
