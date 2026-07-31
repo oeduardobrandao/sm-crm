@@ -171,6 +171,40 @@ describe('WorkspaceMark', () => {
     expect(img.className).toContain('object-cover');
   });
 
+  it('wordmark style with no logo image renders the workspace name as the mark', () => {
+    const bootstrap: HubBootstrap = {
+      ...BASE_BOOTSTRAP,
+      workspace: { ...BASE_BOOTSTRAP.workspace, logo_url: null },
+      hub_theme: {
+        customized: true,
+        surface: 'neutral',
+        font_display: 'fraunces',
+        font_body: 'instrument-sans',
+        radius: 'soft',
+        card_style: 'filled',
+        logo_style: 'wordmark',
+        logo_dark_url: null,
+        hide_branding: false,
+        default_appearance: 'light',
+      },
+    };
+    renderMark(bootstrap);
+    expect(screen.queryByRole('img')).toBeNull();
+    const mark = screen.getByText('Café da Manhã');
+    expect(mark.className).toContain('font-display');
+    expect(mark.className).not.toContain('rounded-full');
+  });
+
+  it('round style with no logo image keeps the monogram circle', () => {
+    const bootstrap: HubBootstrap = {
+      ...BASE_BOOTSTRAP,
+      workspace: { ...BASE_BOOTSTRAP.workspace, logo_url: null },
+    };
+    renderMark(bootstrap);
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(screen.getByText('C').className).toContain('rounded-full');
+  });
+
   it('logo_style "wordmark" renders at natural aspect ratio, no circular crop', () => {
     const bootstrap: HubBootstrap = {
       ...BASE_BOOTSTRAP,

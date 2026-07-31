@@ -14,6 +14,17 @@ import { useHub } from '../HubContext';
  * of cropping it into a circle — 'round' (and any unrecognized value) keeps
  * today's exact circular rendering.
  */
+/** Whether the entitled workspace renders as a horizontal wordmark. Callers use
+ * this to drop their own adjacent name label -- with wordmark style the mark
+ * itself carries the name (as image or styled text), so repeating it beside the
+ * mark would duplicate the identity. */
+export function isWordmarkStyle(bootstrap: {
+  hub_theme?: { customized: boolean; logo_style: string } | null;
+}): boolean {
+  const ht = bootstrap.hub_theme;
+  return (ht?.customized ?? false) && ht?.logo_style === 'wordmark';
+}
+
 export function WorkspaceMark({ size = 36 }: { size?: number }) {
   const { bootstrap, theme } = useHub();
   const { logo_url: logoUrl, name } = bootstrap.workspace;
@@ -56,6 +67,20 @@ export function WorkspaceMark({ size = 36 }: { size?: number }) {
         onError={() => setFailed(true)}
         className="rounded-full object-cover flex-shrink-0"
       />
+    );
+  }
+
+  // Wordmark style with no usable image: the workspace name itself is the
+  // horizontal mark, set in the display font. A monogram circle here would make
+  // the 'Horizontal' choice look identical to 'Redondo' until a logo is uploaded.
+  if (isWordmark) {
+    return (
+      <span
+        style={{ fontSize: Math.round(size * 0.5), maxWidth: 5 * size }}
+        className="font-display font-semibold tracking-tight truncate flex-shrink-0 hub-txt"
+      >
+        {name.trim()}
+      </span>
     );
   }
 

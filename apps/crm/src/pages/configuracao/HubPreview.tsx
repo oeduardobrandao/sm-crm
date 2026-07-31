@@ -285,6 +285,24 @@ export function HubPreview({
             }
       }
     />
+  ) : isWordmark ? (
+    // Mirrors WorkspaceMark: with wordmark style and no image, the workspace
+    // name itself is the horizontal mark, set in the display font.
+    <div
+      data-testid="preview-wordmark-name"
+      style={{
+        fontFamily: 'var(--hub-font-display)',
+        fontSize: dims.logoSize * 0.5,
+        fontWeight: 600,
+        letterSpacing: '-0.01em',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        maxWidth: dims.logoSize * 5,
+      }}
+    >
+      {(workspaceName || '?').trim()}
+    </div>
   ) : (
     <div
       aria-hidden="true"
@@ -631,17 +649,21 @@ export function HubPreview({
                 }}
               >
                 {logoMark}
-                <div
-                  style={{
-                    fontSize: dims.wsNameFont,
-                    fontWeight: 600,
-                    textAlign: 'center',
-                    lineHeight: 1.3,
-                    color: 'var(--hub-txt)',
-                  }}
-                >
-                  {workspaceName || 'Seu workspace'}
-                </div>
+                {/* With wordmark style the mark carries the name (image or styled
+                    text); repeating it here would duplicate the identity. */}
+                {!isWordmark && (
+                  <div
+                    style={{
+                      fontSize: dims.wsNameFont,
+                      fontWeight: 600,
+                      textAlign: 'center',
+                      lineHeight: 1.3,
+                      color: 'var(--hub-txt)',
+                    }}
+                  >
+                    {workspaceName || 'Seu workspace'}
+                  </div>
+                )}
                 <nav
                   style={{
                     display: 'flex',

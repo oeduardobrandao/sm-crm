@@ -37,6 +37,21 @@ describe('HubPreview', () => {
     expect(wrapper.style.getPropertyValue('--hub-bg')).toBe('#151210');
   });
 
+  it('wordmark with no uploaded logo renders the workspace name as the mark', () => {
+    render(
+      <HubPreview
+        draft={{ ...BASE_DRAFT, logoStyle: 'wordmark' }}
+        workspaceName="Agência Teste"
+        workspaceLogoUrl={null}
+        customized
+      />,
+    );
+    const mark = screen.getByTestId('preview-wordmark-name');
+    expect(mark.textContent).toBe('Agência Teste');
+    // The mark carries the name, so the separate sidebar name label is dropped.
+    expect(screen.queryAllByText('Agência Teste')).toHaveLength(1);
+  });
+
   it('renders a non-circular logo image when logoStyle is wordmark', () => {
     renderPreview({ logoStyle: 'wordmark' });
     const img = screen.getByTestId('preview-logo') as HTMLImageElement;
