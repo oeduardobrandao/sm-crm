@@ -5,7 +5,7 @@ import { useHub } from '../HubContext';
 import { usePendingApprovalsCount } from '../hooks/usePendingApprovalsCount';
 import { getVisibleNavItems } from './navItems';
 import { ClientAvatar } from '../components/ClientAvatar';
-import { WorkspaceMark } from '../components/WorkspaceMark';
+import { WorkspaceMark, isWordmarkStyle } from '../components/WorkspaceMark';
 import { FlagIcon } from '@mesaas/ui/FlagIcon';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
@@ -27,13 +27,22 @@ export function HubSidebar() {
   return (
     <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-[240px] z-30 flex-col hub-bg-card border-r hub-border">
       <div className="flex items-center gap-2.5 px-3.5 pt-[18px] pb-4">
-        <WorkspaceMark />
-        <div className="min-w-0 flex-1">
-          <div className="font-semibold text-[14.5px] tracking-tight truncate hub-txt">
-            {bootstrap.workspace.name}
+        {isWordmarkStyle(bootstrap) ? (
+          <div className="min-w-0 flex-1">
+            <WorkspaceMark />
+            <div className="text-[11.5px] hub-tx3">{t('hub.clientPortal', 'Hub do cliente')}</div>
           </div>
-          <div className="text-[11.5px] hub-tx3">{t('hub.clientPortal', 'Hub do cliente')}</div>
-        </div>
+        ) : (
+          <>
+            <WorkspaceMark />
+            <div className="min-w-0 flex-1">
+              <div className="font-semibold text-[14.5px] tracking-tight truncate hub-txt">
+                {bootstrap.workspace.name}
+              </div>
+              <div className="text-[11.5px] hub-tx3">{t('hub.clientPortal', 'Hub do cliente')}</div>
+            </div>
+          </>
+        )}
       </div>
       <nav className="flex flex-col gap-0.5 px-3 py-3 border-t hub-border overflow-y-auto">
         {navItems.map(({ label, labelKey, icon: Icon, path }) => {
@@ -46,7 +55,7 @@ export function HubSidebar() {
               to={href}
               className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13.5px] min-h-[40px] transition-colors ${
                 active
-                  ? 'font-semibold hub-txt hub-bg-soft'
+                  ? 'font-semibold hub-nav-active hub-bg-soft'
                   : 'font-medium hub-tx2 hover:bg-[var(--hub-soft)]'
               }`}
             >

@@ -4,6 +4,19 @@ export interface WorkspaceInfo {
   brand_color: string;
 }
 
+export interface HubThemeInfo {
+  customized: boolean;
+  surface: string;
+  font_display: string;
+  font_body: string;
+  radius: string;
+  card_style: string;
+  logo_style: string; // 'round' | 'wordmark'
+  logo_dark_url: string | null;
+  hide_branding: boolean;
+  default_appearance: string; // 'light' | 'dark'
+}
+
 export interface HubBootstrap {
   workspace: WorkspaceInfo;
   cliente_nome: string;
@@ -12,6 +25,8 @@ export interface HubBootstrap {
   is_active: boolean;
   cliente_id: number;
   feature_mensagens: boolean;
+  /** Absent on a stale/pre-migration bootstrap response — treat as neutral (no customization). */
+  hub_theme?: HubThemeInfo;
 }
 
 export interface HubPostMedia {

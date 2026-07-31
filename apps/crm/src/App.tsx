@@ -41,6 +41,7 @@ const PerfilTab = lazy(() => import('./pages/configuracao/tabs/PerfilTab'));
 const WorkspaceTab = lazy(() => import('./pages/configuracao/tabs/WorkspaceTab'));
 const MembrosTab = lazy(() => import('./pages/configuracao/tabs/MembrosTab'));
 const RelatoriosTab = lazy(() => import('./pages/configuracao/tabs/RelatoriosTab'));
+const HubTab = lazy(() => import('./pages/configuracao/tabs/HubTab'));
 const CobrancaPage = lazy(() => import('./pages/configuracao/cobranca/CobrancaPage'));
 const IntegracoesClaudePage = lazy(() => import('./pages/configuracao/mcp/IntegracoesClaudePage'));
 const CalendarioPage = lazy(() => import('./pages/calendario/CalendarioPage'));
@@ -167,6 +168,7 @@ export default function App() {
                   <Route path="workspace" element={<WorkspaceTab />} />
                   <Route path="membros" element={<MembrosTab />} />
                   <Route path="relatorios" element={<RelatoriosTab />} />
+                  <Route path="hub" element={<HubTab />} />
                   <Route path="mcp" element={<IntegracoesClaudePage />} />
                   <Route path="cobranca" element={<CobrancaPage />} />
                 </Route>

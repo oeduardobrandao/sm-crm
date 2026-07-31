@@ -208,7 +208,7 @@ export function PostCalendar({ posts }: Props) {
                   onClick={() => setSelectedDay(day)}
                   aria-current={isToday ? 'date' : undefined}
                   aria-pressed={isSelected}
-                  className={`min-h-[54px] md:min-h-[88px] p-1 md:p-2 rounded-xl flex flex-col items-center md:items-start md:text-left transition-colors ${
+                  className={`min-h-[54px] md:min-h-[88px] p-1 md:p-2 rounded-[var(--hub-r-ctl)] flex flex-col items-center md:items-start md:text-left transition-colors ${
                     isSelected
                       ? 'md:bg-[color-mix(in_srgb,var(--hub-acc)_10%,transparent)]'
                       : 'hover:bg-[var(--hub-soft)]'
@@ -217,6 +217,9 @@ export function PostCalendar({ posts }: Props) {
                   {/* The selected/today affordance lives on the number chip itself —
                       highlighting the whole cell stretches into a tall pill once the
                       cell grows to fit its posts. */}
+                  {/* rounded-[13px] (not the --hub-r-ctl token): the radius preset
+                      deliberately skips this site to keep the neutral default
+                      byte-identical to pre-customization. */}
                   <div
                     className={`w-9 h-9 md:w-7 md:h-7 mb-0.5 md:mb-1.5 flex items-center justify-center rounded-[13px] md:rounded-full text-[14px] md:text-[12px] font-semibold transition-colors ${
                       isSelected || isToday ? '' : 'text-[var(--hub-txt)] md:text-[var(--hub-tx2)]'
@@ -251,6 +254,9 @@ export function PostCalendar({ posts }: Props) {
                   {/* Desktop: full type + count pill, room to spare */}
                   <div className="hidden md:flex md:flex-col gap-1 w-full">
                     {Object.entries(byTipo).map(([tipo, count]) => (
+                      // rounded-md (not the --hub-r-ctl token): the radius preset
+                      // deliberately skips this site to keep the neutral default
+                      // byte-identical to pre-customization.
                       <div
                         key={tipo}
                         className="text-[10px] px-1.5 py-[3px] rounded-md font-semibold leading-none truncate"

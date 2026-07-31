@@ -23,7 +23,13 @@
         --hub-soft: #F4F4F4;
         --hub-acc: #171717;
         --hub-acc-fg: #ffffff;
-        --hub-logo-filter: none;
+        --hub-primary: var(--hub-txt);
+        --hub-primary-fg: var(--hub-card);
+        --hub-ring: color-mix(in srgb, var(--hub-txt) 15%, transparent);
+        --hub-r-card: 12px;
+        --hub-r-ctl: 12px;
+        --hub-card-bg: var(--hub-card);
+        --hub-card-bd: var(--hub-bd);
       }
       .hub-root, .hub-root button, .hub-root input, .hub-root textarea, .hub-root select {
         font-family: var(--hub-font-sans);
@@ -46,9 +52,9 @@
           radial-gradient(900px 500px at 110% 10%, color-mix(in srgb, var(--hub-txt) 3.5%, transparent), transparent 60%);
       }
       .hub-root .hub-card {
-        background-color: var(--hub-card);
-        border: 1px solid var(--hub-bd);
-        border-radius: 12px;
+        background-color: var(--hub-card-bg);
+        border: 1px solid var(--hub-card-bd);
+        border-radius: var(--hub-r-card);
         box-shadow: 0 1px 0 rgba(0,0,0,0.02), 0 1px 2px rgba(28, 25, 23, 0.04);
       }
       .hub-root .hub-card-hover:hover {
@@ -65,6 +71,7 @@
       .hub-root .hub-border { border-color: var(--hub-bd); }
       .hub-root .hub-border-strong { border-color: var(--hub-bd2); }
       .hub-root .hub-acc-text { color: var(--hub-txt); }
+      .hub-root .hub-nav-active { color: var(--hub-primary); }
       .hub-root .hub-back-link:hover { color: var(--hub-txt); }
       .hub-root .hub-link-muted:hover { color: var(--hub-txt); }
       .hub-root .hub-divide > * + * { border-top: 1px solid var(--hub-bd); }
@@ -127,13 +134,13 @@
          rule. Fall back to overriding Tailwind's own --tw-ring-color custom
          property (consumed by the `ring-4` utility's box-shadow) directly. */
       .hub-root .hub-focus-accent:focus {
-        --tw-ring-color: color-mix(in srgb, var(--hub-txt) 15%, transparent);
+        --tw-ring-color: var(--hub-ring);
       }
       /* Primary/secondary buttons — replaces the repeated `bg-stone-900 text-white hover:bg-stone-800`
          and `border-stone-200 ... hover:bg-stone-50` pairs found across every post-card component. */
       .hub-root .hub-btn-primary {
-        background-color: var(--hub-txt);
-        color: var(--hub-card);
+        background-color: var(--hub-primary);
+        color: var(--hub-primary-fg);
         transition: opacity 200ms ease;
       }
       .hub-root .hub-btn-primary:hover { opacity: 0.88; }

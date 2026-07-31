@@ -6,7 +6,7 @@ import { useHub } from '../HubContext';
 import { usePendingApprovalsCount } from '../hooks/usePendingApprovalsCount';
 import { getVisibleNavItems } from './navItems';
 import { ClientAvatar } from '../components/ClientAvatar';
-import { WorkspaceMark } from '../components/WorkspaceMark';
+import { WorkspaceMark, isWordmarkStyle } from '../components/WorkspaceMark';
 import { FlagIcon } from '@mesaas/ui/FlagIcon';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
@@ -113,9 +113,11 @@ export function HubMobileNav() {
         >
           <span className="flex items-center gap-2 min-w-0">
             <WorkspaceMark size={28} />
-            <span className="font-display text-[15px] font-medium hub-txt truncate">
-              {bootstrap.workspace.name}
-            </span>
+            {!isWordmarkStyle(bootstrap) && (
+              <span className="font-display text-[15px] font-medium hub-txt truncate">
+                {bootstrap.workspace.name}
+              </span>
+            )}
           </span>
           <div className="flex items-center gap-2">
             <span className="text-[11px] hub-tx3 truncate max-w-[100px]">
@@ -153,9 +155,11 @@ export function HubMobileNav() {
             <div className="flex items-center justify-between px-2 pb-3.5">
               <span className="flex items-center gap-2 min-w-0">
                 <WorkspaceMark size={28} />
-                <span className="font-display text-[15px] font-medium hub-txt truncate">
-                  {bootstrap.workspace.name}
-                </span>
+                {!isWordmarkStyle(bootstrap) && (
+                  <span className="font-display text-[15px] font-medium hub-txt truncate">
+                    {bootstrap.workspace.name}
+                  </span>
+                )}
               </span>
               <button
                 type="button"
@@ -180,7 +184,7 @@ export function HubMobileNav() {
                     onClick={() => setOpen(false)}
                     className={`flex items-center gap-3 px-3 py-3 rounded-lg min-h-[48px] transition-colors ${
                       active
-                        ? 'font-semibold hub-txt hub-bg-soft'
+                        ? 'font-semibold hub-nav-active hub-bg-soft'
                         : 'font-medium hub-tx2 hover:bg-[var(--hub-soft)]'
                     }`}
                   >

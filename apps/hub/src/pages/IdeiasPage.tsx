@@ -196,7 +196,7 @@ export function IdeiasPage() {
         action={
           <button
             onClick={openCreate}
-            className="flex items-center gap-2 shrink-0 px-4 py-2.5 rounded-lg hub-btn-primary text-sm font-semibold transition-colors"
+            className="flex items-center gap-2 shrink-0 px-4 py-2.5 rounded-[var(--hub-r-ctl)] hub-btn-primary text-sm font-semibold transition-colors"
           >
             <Plus size={16} strokeWidth={2.5} />
             Nova ideia
@@ -216,7 +216,7 @@ export function IdeiasPage() {
           <p className="text-sm hub-tx2 mb-6">{error.message}</p>
           <button
             onClick={() => qc.invalidateQueries({ queryKey: ['hub-ideias', token] })}
-            className="px-4 py-2 rounded-lg hub-btn-primary text-sm font-semibold transition-colors"
+            className="px-4 py-2 rounded-[var(--hub-r-ctl)] hub-btn-primary text-sm font-semibold transition-colors"
           >
             Tentar novamente
           </button>
@@ -230,7 +230,7 @@ export function IdeiasPage() {
           </p>
           <button
             onClick={openCreate}
-            className="px-4 py-2 rounded-lg hub-btn-primary text-sm font-semibold transition-colors"
+            className="px-4 py-2 rounded-[var(--hub-r-ctl)] hub-btn-primary text-sm font-semibold transition-colors"
           >
             Adicionar ideia
           </button>
@@ -558,6 +558,9 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
                   key={t}
                   type="button"
                   onClick={() => setTipo(t)}
+                  // rounded-md (not the --hub-r-ctl token): the radius preset
+                  // deliberately skips this site to keep the neutral default
+                  // byte-identical.
                   className={`px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${
                     tipo === t ? 'hub-btn-primary' : 'hub-tx3'
                   }`}
@@ -691,7 +694,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           <button
             onClick={handleSaveText}
             disabled={saving}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg hub-btn-primary text-sm font-semibold disabled:opacity-50 transition-colors"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[var(--hub-r-ctl)] hub-btn-primary text-sm font-semibold disabled:opacity-50 transition-colors"
           >
             {saving && <Loader2 size={15} className="animate-spin" />}
             {current ? 'Salvar alterações' : 'Salvar'}

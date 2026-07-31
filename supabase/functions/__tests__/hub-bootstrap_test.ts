@@ -6,6 +6,40 @@ const cors = () => ({});
 const NOW = "2026-07-16T12:00:00.000Z";
 const TOKEN = "49ded0d7-0c34-4b88-8a60-f9d459113f3c";
 
+// Non-default hub_* values so gating (entitled vs unentitled) is actually
+// observable — if the mock used the column defaults, a gating bug that leaked
+// stored columns to an unentitled workspace would look identical to correct
+// fail-closed behaviour.
+const WORKSPACE_ROW = {
+  id: "ws-1",
+  name: "WS",
+  logo_url: null,
+  brand_color: "#111",
+  hub_enabled: true,
+  hub_surface_theme: "warm",
+  hub_font_display: "sora",
+  hub_font_body: "inter",
+  hub_radius: "pill",
+  hub_card_style: "outline",
+  hub_logo_style: "wordmark",
+  hub_logo_dark_url: "https://example.com/dark-logo.png",
+  hub_hide_branding: true,
+  hub_default_appearance: "dark",
+};
+
+const NEUTRAL_HUB_THEME = {
+  customized: false,
+  surface: "neutral",
+  font_display: "fraunces",
+  font_body: "instrument-sans",
+  radius: "soft",
+  card_style: "filled",
+  logo_style: "round",
+  logo_dark_url: null,
+  hide_branding: false,
+  default_appearance: "light",
+};
+
 function makeDb(tokenRow: unknown) {
   return {
     from: (table: string) => ({
@@ -13,9 +47,7 @@ function makeDb(tokenRow: unknown) {
         eq: () => ({
           eq: () => ({ maybeSingle: async () => ({ data: tokenRow }) }),
           maybeSingle: async () => ({
-            data: table === "workspaces"
-              ? { id: "ws-1", name: "WS", logo_url: null, brand_color: "#111", hub_enabled: true }
-              : tokenRow,
+            data: table === "workspaces" ? WORKSPACE_ROW : tokenRow,
           }),
           gt: () => ({
             eq: () => ({ maybeSingle: async () => ({ data: tokenRow }) }),
@@ -27,6 +59,38 @@ function makeDb(tokenRow: unknown) {
       // effective_plan_feature is reached through rpc, below
     }),
     rpc: async () => ({ data: true, error: null }),
+  };
+}
+
+// Discriminates by feature_key so feature_mensagens and
+// feature_brand_customization can be granted/denied independently, mirroring
+// how effectivePlanFeature actually calls the RPC.
+function makeDbWithFeatureFlags(
+  tokenRow: unknown,
+  flags: Record<string, boolean>,
+) {
+  const db = makeDb(tokenRow);
+  return {
+    ...db,
+    rpc: async (_fn: string, params: Record<string, unknown>) => {
+      const key = params.feature_key as string;
+      return key in flags
+        ? { data: flags[key], error: null }
+        : { data: true, error: null };
+    },
+  };
+}
+
+function makeDbWithThrowingFeature(tokenRow: unknown, throwingKey: string) {
+  const db = makeDb(tokenRow);
+  return {
+    ...db,
+    rpc: async (_fn: string, params: Record<string, unknown>) => {
+      if (params.feature_key === throwingKey) {
+        return { data: null, error: { message: "function does not exist" } };
+      }
+      return { data: true, error: null };
+    },
   };
 }
 
@@ -106,6 +170,98 @@ Deno.test("feature_mensagens defaults to false and does NOT break the response w
   assertEquals(res.status, 200);
   const body = await res.json();
   assertEquals(body.feature_mensagens, false);
+});
+
+// --- hub_theme (feature_brand_customization gate) ---------------------------------------
+
+Deno.test("hub_theme reflects the workspace's stored columns when feature_brand_customization is entitled", async () => {
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () =>
+      makeDbWithFeatureFlags(
+        { cliente_id: 15, conta_id: "ws-1", is_active: true },
+        { feature_brand_customization: true },
+      ) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+  });
+  const res = await handler(req());
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.hub_theme, {
+    customized: true,
+    surface: "warm",
+    font_display: "sora",
+    font_body: "inter",
+    radius: "pill",
+    card_style: "outline",
+    logo_style: "wordmark",
+    logo_dark_url: "https://example.com/dark-logo.png",
+    hide_branding: true,
+    default_appearance: "dark",
+  });
+});
+
+Deno.test("hub_theme falls back to neutral defaults (hide_branding: false) when feature_brand_customization is NOT entitled, even though the row says hide_branding true", async () => {
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () =>
+      makeDbWithFeatureFlags(
+        { cliente_id: 15, conta_id: "ws-1", is_active: true },
+        { feature_brand_customization: false },
+      ) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+  });
+  const res = await handler(req());
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.hub_theme, NEUTRAL_HUB_THEME);
+});
+
+Deno.test("hub_theme falls back to neutral defaults (fail closed) when the feature_brand_customization RPC throws", async () => {
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () =>
+      makeDbWithThrowingFeature(
+        { cliente_id: 15, conta_id: "ws-1", is_active: true },
+        "feature_brand_customization",
+      ) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+  });
+  const res = await handler(req());
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.hub_theme, NEUTRAL_HUB_THEME);
+});
+
+Deno.test("feature_mensagens and feature_brand_customization are resolved independently, and existing top-level fields are unchanged by hub_theme", async () => {
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () =>
+      makeDbWithFeatureFlags(
+        { cliente_id: 15, conta_id: "ws-1", is_active: true },
+        { feature_brand_customization: true, feature_mensagens: false },
+      ) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+  });
+  const res = await handler(req());
+  assertEquals(res.status, 200);
+  const body = await res.json();
+
+  // feature_brand_customization: true, feature_mensagens: false — proves the two
+  // flags are resolved independently, not from a single shared toggle.
+  assertEquals(body.feature_mensagens, false);
+  assertEquals(body.hub_theme.customized, true);
+
+  // Every existing field, byte-identical — deployed frontends must not notice.
+  assertEquals(body.workspace, { name: "WS", logo_url: null, brand_color: "#111" });
+  assertEquals(body.cliente_nome, "Vanessa");
+  assertEquals(body.cliente_foto_url, null);
+  assertEquals(body.is_active, true);
+  assertEquals(body.cliente_id, 15);
 });
 
 // --- makeTouchToken (the real factory wired in index.ts) -------------------------------
