@@ -2491,6 +2491,7 @@ git commit -m "feat(loops): identify the user in Crisp"
 **Files:**
 - Modify: `apps/crm/src/pages/politica-privacidade/PoliticaPage.tsx` (subprocessor list, near line 75)
 - Modify: `CLAUDE.md` (the "Edge functions (Deno.env)" list)
+- Modify: `.env.example` (the "Edge function secrets" section)
 
 **Interfaces:** none.
 
@@ -2512,7 +2513,26 @@ Add to that list, matching the surrounding entry style:
 
 Note the asymmetry and preserve it: `LOOPS_API_KEY` throws when missing because a marketing email that silently never sends is indistinguishable from having no candidates. `POSTHOG_PROJECT_KEY` no-ops because measurement must never fail a send.
 
-Do **not** add either to `.env.example` — that file is frontend `VITE_*` variables (plus the two Stripe keys), and edge secrets are set via `supabase secrets`, not a local dotenv. Adding them there would imply the wrong mechanism.
+**Also add both to `.env.example`.** That file carries an explicit section for exactly this:
+
+```
+# Edge function secrets — set via `npx supabase secrets set`, NOT loaded from this file.
+# Listed here for documentation. Never commit real values.
+# Stripe billing (billing-checkout / billing-portal / stripe-webhook)
+STRIPE_SECRET_KEY=sk_test_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx
+```
+
+Append below the Stripe pair, matching that comment style:
+
+```
+# Loops marketing lifecycle emails (loops-sync-cron)
+LOOPS_API_KEY=
+# PostHog server-side capture — PROJECT WRITE key, same value as VITE_POSTHOG_KEY
+POSTHOG_PROJECT_KEY=
+```
+
+The section header already states these are not loaded from the file, so listing them documents the requirement without implying a dotenv mechanism.
 
 **Why this is a task and not a footnote:** Loops is a new US-hosted subprocessor receiving names and email addresses. Shipping sends without the policy entry is the LGPD failure mode here, and no test catches it.
 
