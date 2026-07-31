@@ -335,12 +335,14 @@ describe('HubShell', () => {
       expect(styleTag?.textContent).toContain('--hub-bg: #0E0E0E;');
     });
 
-    it('applies the light default appearance, resetting an auto-persisted dark value with no explicit marker', async () => {
-      // Regression for the one-way-toward-dark bug: a client who was auto-set to
-      // dark by an earlier visit (hub-theme=dark, no explicit marker) must reset
-      // to light once the agency reverts the configured default appearance —
-      // otherwise they'd be stuck on dark forever.
-      localStorage.setItem('hub-theme', 'dark');
+    it('applies the light default appearance for a non-explicit, never-visited client (nothing stored)', async () => {
+      // The two-way default-appearance behavior (a light agency default must
+      // reach a client who never chose anything, not just a dark one) is only
+      // reachable from a genuinely empty localStorage now: useTheme's legacy
+      // migration (see below) means a stored 'dark' with no marker is always
+      // treated as an explicit past choice, so it can no longer arrive here as
+      // "auto-persisted, still overridable." That's an intentional trade-off of
+      // the migration, not a gap — see the migration test's own comment.
       mockedFetchBootstrap.mockResolvedValue({
         workspace: { name: 'Mesaas', logo_url: null, brand_color: '#0f766e' },
         cliente_nome: 'Clínica Aurora',
@@ -367,6 +369,44 @@ describe('HubShell', () => {
       await waitFor(() => {
         expect(document.querySelector('.hub-root')?.getAttribute('data-theme')).toBeNull();
       });
+    });
+
+    it('migrates a legacy stored "dark" with no marker into an explicit choice, so the agency light default does NOT override it', async () => {
+      // Before the explicit-choice marker existed, the only way 'hub-theme'
+      // could ever hold 'dark' was a client's own toggle — useTheme's init now
+      // backfills the marker for exactly this case (see useTheme.test.tsx for
+      // the hook-level coverage). Confirms the migration is wired all the way
+      // through HubShell, not just inside the hook.
+      localStorage.setItem('hub-theme', 'dark');
+      mockedFetchBootstrap.mockResolvedValue({
+        workspace: { name: 'Mesaas', logo_url: null, brand_color: '#0f766e' },
+        cliente_nome: 'Clínica Aurora',
+        is_active: true,
+        cliente_id: 14,
+        feature_mensagens: true,
+        hub_theme: { ...CUSTOM_THEME_BASE, default_appearance: 'light' },
+      });
+
+      render(
+        <MemoryRouter initialEntries={['/mesaas/hub/token-publico']}>
+          <Routes>
+            <Route path="/:workspace/hub/:token" element={<HubShell />}>
+              <Route index element={<div>Página inicial do hub</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Página inicial do hub')).toBeInTheDocument();
+      });
+
+      expect(localStorage.getItem('hub-theme-explicit')).toBe('1');
+      // Same caveat as the sibling "explicit stored dark" test above: assert via
+      // the resolved --hub-* vars, since no setTheme call (and therefore no DOM
+      // attribute update) is expected on this render.
+      const styleTag = document.querySelector('style');
+      expect(styleTag?.textContent).toContain('--hub-bg: #0E0E0E;');
     });
 
     it('DOES apply the agency dark default for a returning client with a stored theme value but no explicit-choice marker', async () => {
@@ -466,7 +506,14 @@ describe('HubShell', () => {
       // false — only customized: true unlocks them. A malformed/stale payload
       // with customized: false alongside contrary values on every one of those
       // fields must still render pixel-identical to the no-hub_theme fallback.
-      localStorage.setItem('hub-theme', 'dark'); // pre-existing stored value, no explicit marker
+      // 'light' specifically: a stored 'dark' with no marker is now migrated to
+      // an explicit choice by useTheme's init (see the legacy-migration tests),
+      // which would make this scenario stop exercising the default_appearance
+      // gate this test targets. 'light' stays ambiguous/non-explicit, so if the
+      // customized:false gate on default_appearance regressed, this stored
+      // 'light' would get incorrectly forced to 'dark' and the assertion below
+      // would catch it.
+      localStorage.setItem('hub-theme', 'light');
       mockedFetchBootstrap.mockResolvedValue({
         workspace: { name: 'Mesaas', logo_url: null, brand_color: '#0f766e' },
         cliente_nome: 'Clínica Aurora',
@@ -509,9 +556,8 @@ describe('HubShell', () => {
       expect(document.getElementById('hub-custom-fonts')).toBeNull();
       // hide_branding: true is ignored — powered-by mark still shows.
       expect(screen.getByText('powered by')).toBeInTheDocument();
-      // default_appearance: 'dark' is ignored — no appearance applied, and the
-      // pre-existing stored 'dark' (auto-persisted, no explicit marker) resets
-      // to the neutral light default.
+      // default_appearance: 'dark' is ignored (treated as the neutral 'light')
+      // — the stored 'light' theme is left alone, not forced to 'dark'.
       await waitFor(() => {
         expect(document.querySelector('.hub-root')?.getAttribute('data-theme')).toBeNull();
       });

@@ -30,8 +30,27 @@ export function useTheme() {
   const [hasStoredPreference] = useState<boolean>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      const explicit = localStorage.getItem(EXPLICIT_KEY);
-      return explicit === '1' && (stored === 'dark' || stored === 'light');
+      let explicit = localStorage.getItem(EXPLICIT_KEY) === '1';
+
+      // One-time migration for clients who chose their theme before the marker
+      // existed: prior to this feature, 'hub-theme' had no other way to ever
+      // hold 'dark' — the hook's default was always 'light', and the persist
+      // effect only ever wrote back whatever `theme` state already was. So a
+      // stored 'dark' with no marker is provably a past explicit toggle;
+      // backfill the marker so it isn't silently overridden by an agency
+      // default appearance. A stored 'light' stays ambiguous — every
+      // never-chosen visitor's own mount effect writes 'light' too — so it is
+      // deliberately NOT migrated.
+      if (!explicit && stored === 'dark') {
+        try {
+          localStorage.setItem(EXPLICIT_KEY, '1');
+        } catch {
+          /* storage unavailable — proceed without persisting the migration */
+        }
+        explicit = true;
+      }
+
+      return explicit && (stored === 'dark' || stored === 'light');
     } catch {
       return false;
     }

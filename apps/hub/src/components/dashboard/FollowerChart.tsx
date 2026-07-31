@@ -10,7 +10,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { useHub } from '../../HubContext';
-import { chartInk, chartFont } from './chartInk';
+import { chartInk, chartFont, useFontsReady } from './chartInk';
 import type { DashboardFollowerEntry } from '../../types';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
@@ -28,6 +28,11 @@ export function FollowerChart({ followerHistory }: FollowerChartProps) {
   const canvasRef = useRef<ChartJS<'line'>>(null);
   const { theme } = useHub();
   const ink = chartInk(theme);
+  // Forces one extra render (and therefore a fresh `options.scales.*.ticks.font`
+  // with the now-settled chartFont()) once document.fonts.ready resolves — see
+  // useFontsReady's own doc comment for why the canvas otherwise never repaints
+  // when a custom Google Font finishes loading after the chart's first draw.
+  useFontsReady();
 
   const labels = followerHistory.map((e) => {
     const [, m, d] = e.date.split('-');

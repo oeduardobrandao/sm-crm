@@ -133,6 +133,30 @@ describe('useTheme', () => {
     });
   });
 
+  describe('legacy explicit-dark migration (pre-existing "hub-theme": "dark" with no marker)', () => {
+    it('migrates: backfills the marker and reports hasStoredPreference true', () => {
+      // Before the marker existed, the ONLY way 'hub-theme' could ever hold
+      // 'dark' was the client's own toggle — the default was always 'light'.
+      localStorage.setItem(STORAGE_KEY, 'dark');
+      expect(localStorage.getItem(EXPLICIT_KEY)).toBeNull();
+
+      const { result } = renderHook(() => useTheme());
+
+      expect(result.current.hasStoredPreference).toBe(true);
+      expect(localStorage.getItem(EXPLICIT_KEY)).toBe('1');
+      expect(result.current.theme).toBe('dark');
+    });
+
+    it('does NOT migrate a legacy stored "light" (ambiguous — every non-choosing visitor gets it too)', () => {
+      localStorage.setItem(STORAGE_KEY, 'light');
+
+      const { result } = renderHook(() => useTheme());
+
+      expect(result.current.hasStoredPreference).toBe(false);
+      expect(localStorage.getItem(EXPLICIT_KEY)).toBeNull();
+    });
+  });
+
   describe('toggleTheme sets the explicit-choice marker', () => {
     it('writes hub-theme-explicit="1" on toggle', () => {
       const { result } = renderHook(() => useTheme());

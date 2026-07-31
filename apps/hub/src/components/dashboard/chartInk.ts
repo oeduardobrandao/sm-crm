@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+
 /**
  * Chart series colour, as an `r, g, b` triple.
  *
@@ -26,4 +28,40 @@ export function chartInk(theme: 'light' | 'dark'): string {
 export function chartFont(): string {
   const v = getComputedStyle(document.documentElement).getPropertyValue('--hub-font-sans').trim();
   return v || "'Instrument Sans', sans-serif";
+}
+
+/**
+ * Bumps once the browser has finished loading fonts (`document.fonts.ready`).
+ *
+ * Chart.js draws tick/axis labels directly onto a `<canvas>` at construction
+ * time, using whatever `chartFont()` returns right then. When a workspace's
+ * custom font comes from an asynchronously-injected Google Fonts stylesheet
+ * (see HubShell's font-link effect), that stylesheet can still be loading
+ * when the chart first draws — the canvas falls back to the browser's
+ * default font and never repaints on its own once the real font arrives,
+ * unlike DOM text which reflows automatically.
+ *
+ * A chart component calls this hook and passes its return value into
+ * whatever forces its `data`/`options` to recompute (e.g. just calling the
+ * hook is enough if those objects are already rebuilt on every render); the
+ * one-time bump after `document.fonts.ready` resolves triggers exactly the
+ * extra render needed to redraw with the settled font. Guards `document.fonts`
+ * for environments without the CSS Font Loading API (e.g. jsdom in tests).
+ */
+export function useFontsReady(): number {
+  const [generation, setGeneration] = useState(0);
+
+  useEffect(() => {
+    const fonts = document.fonts;
+    if (!fonts?.ready) return;
+    let cancelled = false;
+    fonts.ready.then(() => {
+      if (!cancelled) setGeneration((g) => g + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return generation;
 }

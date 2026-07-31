@@ -1,7 +1,7 @@
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import { useHub } from '../../HubContext';
-import { chartInk, chartFont } from './chartInk';
+import { chartInk, chartFont, useFontsReady } from './chartInk';
 import type { DashboardReachEntry } from '../../types';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
@@ -18,6 +18,11 @@ interface ReachChartProps {
 export function ReachChart({ reachHistory }: ReachChartProps) {
   const { theme } = useHub();
   const ink = chartInk(theme);
+  // Forces one extra render (and therefore a fresh `options.scales.*.ticks.font`
+  // with the now-settled chartFont()) once document.fonts.ready resolves — see
+  // useFontsReady's own doc comment for why the canvas otherwise never repaints
+  // when a custom Google Font finishes loading after the chart's first draw.
+  useFontsReady();
   const totalReach = reachHistory.reduce((sum, e) => sum + e.reach, 0);
 
   const labels = reachHistory.map((e) => {
