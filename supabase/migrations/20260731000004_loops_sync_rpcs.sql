@@ -6,6 +6,13 @@
 --   2. effective free plan (null plan_id resolves to the is_default plan)
 --   3. 72h cap (prefilter only; claim_marketing_email is the authority)
 --   4. ledger exclusion: undelivered, stale >1h, attempts < 20
+--
+-- Note on the 20 vs. 20260730000001's 30: not an inconsistency. Both vendors
+-- dedupe on a 24h Idempotency-Key window (_shared/loops.ts documents Loops'
+-- events/send 409 the same way that ledger's header documents Resend's), but
+-- this sweep deliberately gives up sooner -- 20 hourly retries, not 30 -- so a
+-- permanently unreachable Loops recipient surfaces in cron_failures a day
+-- earlier than the welcome/thank-you path does.
 
 -- Helper: the single default plan id. plans has a unique partial index
 -- guaranteeing at most one is_default row (20260501000002).
@@ -73,17 +80,27 @@ begin
     return false;
   end if;
 
-  -- dormant_signup dedupes on (email_type, user_id); the other two on
-  -- (email_type, workspace_id). Both rows carry workspace_id regardless, so the
-  -- 72h check above sees every marketing send for the workspace.
+  -- dormant_signup dedupes on (email_type, user_id) but also carries
+  -- workspace_id, because the 72h cap above (and every candidate RPC's own
+  -- prefilter) queries lifecycle_emails by workspace_id. The other two types
+  -- dedupe on (email_type, workspace_id) and MUST leave user_id NULL: the
+  -- ledger's header comment (20260730000001) documents the invariant that
+  -- each email type populates only its own keying column, "so the cross-type
+  -- NULL columns never collide". Writing user_id here too breaks that -- a
+  -- user who owns two free workspaces (W1, W2) can have claim(paywall_hit, W1)
+  -- succeed, and once W2 becomes independently eligible, claim(paywall_hit,
+  -- W2) finds no conflict on the (email_type, workspace_id) arbiter, inserts,
+  -- and trips the OTHER unique constraint, lifecycle_emails_user_type, on
+  -- (paywall_hit, user_id) -- a conflict on a non-arbiter index is not caught
+  -- by ON CONFLICT; it raises and fails the whole cron batch.
   if p_email_type = 'dormant_signup' then
     insert into lifecycle_emails (email_type, workspace_id, user_id, sent_at, attempts)
     values (p_email_type, p_workspace_id, p_user_id, now(), p_attempts)
     on conflict (email_type, user_id) do update
       set sent_at = now(), attempts = excluded.attempts, workspace_id = excluded.workspace_id;
   else
-    insert into lifecycle_emails (email_type, workspace_id, user_id, sent_at, attempts)
-    values (p_email_type, p_workspace_id, p_user_id, now(), p_attempts)
+    insert into lifecycle_emails (email_type, workspace_id, sent_at, attempts)
+    values (p_email_type, p_workspace_id, now(), p_attempts)
     on conflict (email_type, workspace_id) do update
       set sent_at = now(), attempts = excluded.attempts;
   end if;
@@ -136,6 +153,16 @@ language sql security definer set search_path = public as $$
   where p.marketing_opt_in = true
     and u.email is not null
     and coalesce(ws.plan_id, default_plan_id()) = default_plan_id()
+    -- A trialing/active subscription with plan_id still resolving to the
+    -- default plan (webhook lag, manual Stripe action, plan_source='manual'
+    -- drift) must not be treated as free: without this, the claim's own
+    -- subscription check refuses every run before writing any ledger row, so
+    -- nothing ever removes the workspace from the candidate set and it
+    -- accumulates at the head of the ORDER BY / LIMIT 50 batch forever.
+    and not exists (
+      select 1 from workspace_subscriptions s
+      where s.workspace_id = ws.id and s.status in ('trialing', 'active')
+    )
     and not exists (
       select 1 from lifecycle_emails le2
       where le2.workspace_id = ws.id
@@ -230,6 +257,13 @@ language sql security definer set search_path = public as $$
     -- exists, which the created_by join alone would misclassify as self-serve.
     and nullif(u.raw_user_meta_data ->> 'conta_id', '') is null
     and coalesce(ws.plan_id, default_plan_id()) = default_plan_id()
+    -- Same reasoning as get_paywall_hit_candidates: plan_id drift must not
+    -- masquerade as free while a subscription is actually trialing/active,
+    -- or the claim refuses forever and this candidate never clears.
+    and not exists (
+      select 1 from workspace_subscriptions s
+      where s.workspace_id = ws.id and s.status in ('trialing', 'active')
+    )
     and not exists (select 1 from clientes c where c.conta_id = ws.id)
     and not exists (
       select 1 from lifecycle_emails le2
@@ -264,11 +298,18 @@ language sql security definer set search_path = public as $$
   join profiles p on p.id = u.id
   join workspace_members wm on wm.user_id = u.id and wm.role = 'owner'
   join workspaces ws on ws.id = wm.workspace_id
+  left join loops_contacts lc on lc.user_id = u.id
   where p.marketing_opt_in = true
     and u.email is not null
     and u.email_confirmed_at is not null
-  group by u.id, u.email, p.nome, u.email_confirmed_at
-  order by u.id
+  group by u.id, u.email, p.nome, u.email_confirmed_at, lc.synced_at
+  -- The ordering IS the convergence mechanism: this RPC has no time window
+  -- and no ledger exclusion, so without a rotating order the same first-200
+  -- users by uuid would re-sync forever and everyone past #200 would never
+  -- sync at all, silently. Never-synced users (lc.synced_at is null, thanks
+  -- to loops_contacts.user_id being nullable-unique per Task 2) sort first,
+  -- then the stalest previous sync, so each run advances the frontier.
+  order by lc.synced_at asc nulls first, u.id
   limit 200
 $$;
 
