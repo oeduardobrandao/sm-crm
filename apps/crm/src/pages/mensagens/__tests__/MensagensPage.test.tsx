@@ -21,6 +21,60 @@ vi.mock('@/store', () => ({
   markMensagensSeen: mockSeen,
 }));
 
+// Radix Select doesn't drive well under jsdom (pointer capture, portals), so the
+// repo convention (see AnalyticsFluxosPage.test.tsx) is a context-based stub
+// where each SelectItem is a plain button clickable by its label.
+vi.mock('@/components/ui/select', async () => {
+  const ReactModule = await import('react');
+  type Ctx = { value?: string; onValueChange?: (v: string) => void };
+  const SelectContext = ReactModule.createContext<Ctx>({});
+
+  function Select({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value?: string;
+    onValueChange?: (v: string) => void;
+    children: React.ReactNode;
+  }) {
+    return (
+      <SelectContext.Provider value={{ value, onValueChange }}>
+        <div>{children}</div>
+      </SelectContext.Provider>
+    );
+  }
+
+  const SelectTrigger = ReactModule.forwardRef<
+    HTMLButtonElement,
+    React.ButtonHTMLAttributes<HTMLButtonElement>
+  >(({ children, type = 'button', ...props }, ref) => (
+    <button ref={ref} type={type} {...props}>
+      {children}
+    </button>
+  ));
+
+  function SelectValue({ placeholder }: { placeholder?: string }) {
+    const { value } = ReactModule.useContext(SelectContext);
+    return <span>{value ?? placeholder ?? ''}</span>;
+  }
+
+  function SelectContent({ children }: { children: React.ReactNode }) {
+    return <div>{children}</div>;
+  }
+
+  function SelectItem({ value, children }: { value: string; children: React.ReactNode }) {
+    const { onValueChange } = ReactModule.useContext(SelectContext);
+    return (
+      <button type="button" onClick={() => onValueChange?.(value)}>
+        {children}
+      </button>
+    );
+  }
+
+  return { Select, SelectTrigger, SelectValue, SelectContent, SelectItem };
+});
+
 import MensagensPage from '../MensagensPage';
 
 const ITEMS = [
@@ -98,7 +152,7 @@ describe('MensagensPage', () => {
     renderPage();
     await screen.findByText('Obrigado!');
     expect(screen.queryByPlaceholderText(/mensagem geral/)).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Filtrar por cliente'), { target: { value: '14' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ACME' }));
     const input = await screen.findByPlaceholderText(/mensagem geral/);
     fireEvent.change(input, { target: { value: 'Olá' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -130,7 +184,7 @@ describe('MensagensPage', () => {
     );
     renderPage();
     await screen.findByText('Obrigado!');
-    fireEvent.change(screen.getByLabelText('Filtrar por cliente'), { target: { value: '14' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ACME' }));
     const input = await screen.findByPlaceholderText(/mensagem geral/);
     fireEvent.change(input, { target: { value: 'Olá' } });
     fireEvent.keyDown(input, { key: 'Enter' });

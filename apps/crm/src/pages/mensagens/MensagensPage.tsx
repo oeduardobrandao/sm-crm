@@ -1,6 +1,13 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Send } from 'lucide-react';
+import { Info, Send } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useMensagensData } from './hooks/useMensagensData';
 import { MensagemFeedCard } from './components/MensagemFeedCard';
 import { feedItemKey, matchesTipo, TIPO_FILTERS, type MensagensTipoFilter } from './mensagensLogic';
@@ -36,31 +43,44 @@ export default function MensagensPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <header className="header animate-up">
-        <div className="header-title">
+        <div
+          className="header-title"
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
           <h1>Mensagens</h1>
-          <p>
-            Toda a comunicação com os clientes em um só lugar. Cada item leva ao post de origem.
-          </p>
+          <span
+            data-tooltip="Toda a comunicação com os clientes em um só lugar. Cada item leva ao post de origem."
+            data-tooltip-dir="right"
+            style={{ display: 'flex' }}
+          >
+            <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+          </span>
         </div>
       </header>
 
       <div className="flex flex-wrap items-center gap-2 animate-up">
-        <select
-          value={clienteId ?? ''}
-          onChange={(e) => setClienteId(e.target.value ? Number(e.target.value) : null)}
-          aria-label="Filtrar por cliente"
-          className="rounded-md border border-[var(--border-color)] bg-[var(--card-bg)] px-3 py-2 text-sm"
+        <Select
+          value={clienteId != null ? String(clienteId) : 'all'}
+          onValueChange={(v) => setClienteId(v === 'all' ? null : Number(v))}
         >
-          <option value="">Todos os clientes</option>
-          {(clientes.data ?? []).map((c) => {
-            const n = c.id != null ? (unreadByCliente.get(c.id) ?? 0) : 0;
-            return (
-              <option key={c.id} value={c.id}>
-                {n > 0 ? `${c.nome} (${n})` : c.nome}
-              </option>
-            );
-          })}
-        </select>
+          <SelectTrigger
+            aria-label="Filtrar por cliente"
+            className="!rounded-full !text-xs h-9 px-4 w-auto min-w-[160px] mb-0"
+          >
+            <SelectValue placeholder="Todos os clientes" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os clientes</SelectItem>
+            {(clientes.data ?? []).map((c) => {
+              const n = c.id != null ? (unreadByCliente.get(c.id) ?? 0) : 0;
+              return (
+                <SelectItem key={c.id} value={String(c.id)}>
+                  {n > 0 ? `${c.nome} (${n})` : c.nome}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
         <div className="flex gap-1">
           {TIPO_FILTERS.map((f) => (
             <button
