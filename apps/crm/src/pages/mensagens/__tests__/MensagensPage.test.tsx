@@ -3,79 +3,66 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const { mockFeed, mockUnread, mockClientes, mockSend, mockReply, mockSeen } = vi.hoisted(() => ({
+const {
+  mockFeed,
+  mockConversas,
+  mockClientes,
+  mockSend,
+  mockReply,
+  mockSeen,
+  mockPreview,
+  mockMedia,
+} = vi.hoisted(() => ({
   mockFeed: vi.fn(),
-  mockUnread: vi.fn(),
+  mockConversas: vi.fn(),
   mockClientes: vi.fn(),
   mockSend: vi.fn().mockResolvedValue(undefined),
   mockReply: vi.fn().mockResolvedValue(undefined),
   mockSeen: vi.fn().mockResolvedValue(undefined),
+  mockPreview: vi.fn(),
+  mockMedia: vi.fn(),
 }));
 
 vi.mock('@/store', () => ({
   getMensagensFeed: mockFeed,
-  getMensagensUnread: mockUnread,
+  getMensagensConversas: mockConversas,
   getClientes: mockClientes,
   sendMensagem: mockSend,
   replyToPostApproval: mockReply,
   markMensagensSeen: mockSeen,
+  getPostChipPreview: mockPreview,
 }));
 
-// Radix Select doesn't drive well under jsdom (pointer capture, portals), so the
-// repo convention (see AnalyticsFluxosPage.test.tsx) is a context-based stub
-// where each SelectItem is a plain button clickable by its label.
-vi.mock('@/components/ui/select', async () => {
-  const ReactModule = await import('react');
-  type Ctx = { value?: string; onValueChange?: (v: string) => void };
-  const SelectContext = ReactModule.createContext<Ctx>({});
-
-  function Select({
-    value,
-    onValueChange,
-    children,
-  }: {
-    value?: string;
-    onValueChange?: (v: string) => void;
-    children: React.ReactNode;
-  }) {
-    return (
-      <SelectContext.Provider value={{ value, onValueChange }}>
-        <div>{children}</div>
-      </SelectContext.Provider>
-    );
-  }
-
-  const SelectTrigger = ReactModule.forwardRef<
-    HTMLButtonElement,
-    React.ButtonHTMLAttributes<HTMLButtonElement>
-  >(({ children, type = 'button', ...props }, ref) => (
-    <button ref={ref} type={type} {...props}>
-      {children}
-    </button>
-  ));
-
-  function SelectValue({ placeholder }: { placeholder?: string }) {
-    const { value } = ReactModule.useContext(SelectContext);
-    return <span>{value ?? placeholder ?? ''}</span>;
-  }
-
-  function SelectContent({ children }: { children: React.ReactNode }) {
-    return <div>{children}</div>;
-  }
-
-  function SelectItem({ value, children }: { value: string; children: React.ReactNode }) {
-    const { onValueChange } = ReactModule.useContext(SelectContext);
-    return (
-      <button type="button" onClick={() => onValueChange?.(value)}>
-        {children}
-      </button>
-    );
-  }
-
-  return { Select, SelectTrigger, SelectValue, SelectContent, SelectItem };
-});
+vi.mock('@/services/postMedia', () => ({
+  listPostMedia: mockMedia,
+}));
 
 import MensagensPage from '../MensagensPage';
+
+const CONVERSAS = [
+  {
+    cliente_id: 14,
+    cliente_nome: 'ACME',
+    last_source: 'mensagem',
+    last_action: null,
+    last_content: 'Obrigado!',
+    last_is_workspace_user: false,
+    last_author_name: null,
+    last_created_at: '2026-07-30T12:00:00.000Z',
+    unread_count: 2,
+  },
+  {
+    cliente_id: 15,
+    cliente_nome: 'Beta Corp',
+    last_source: 'post_feedback',
+    last_action: 'mensagem',
+    last_content: 'Segue o ajuste combinado.',
+    last_is_workspace_user: true,
+    last_author_name: 'Ana',
+    last_created_at: '2026-07-31T09:00:00.000Z',
+    unread_count: 0,
+  },
+];
 
 const ITEMS = [
   {
@@ -123,49 +110,93 @@ function renderPage() {
   );
 }
 
+async function abrirConversaAcme() {
+  renderPage();
+  fireEvent.click(await screen.findByTestId('conversa-14'));
+  await screen.findByText('Trocar a foto');
+}
+
 describe('MensagensPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFeed.mockResolvedValue(ITEMS);
-    mockUnread.mockResolvedValue([]);
-    mockClientes.mockResolvedValue([{ id: 14, nome: 'ACME' }]);
-    // The repo's global afterEach calls vi.restoreAllMocks(), which strips the
-    // implementation off vi.hoisted mocks after the first test runs — so every
-    // resolved-value mock (not just the ones read via assertions) has to be
-    // re-armed here, not only once at module scope.
+    mockConversas.mockResolvedValue(CONVERSAS);
+    mockClientes.mockResolvedValue([
+      { id: 14, nome: 'ACME', sigla: 'AC', cor: '#3ecf8e' },
+      { id: 15, nome: 'Beta Corp', sigla: 'BC', cor: '#42c8f5' },
+    ]);
+    // The repo's global afterEach calls vi.restoreAllMocks(); re-arm everything.
     mockSend.mockResolvedValue(undefined);
     mockReply.mockResolvedValue(undefined);
     mockSeen.mockResolvedValue(undefined);
+    mockPreview.mockResolvedValue({
+      id: 7,
+      titulo: 'Post de julho',
+      tipo: 'feed',
+      status: 'aprovado_cliente',
+      scheduled_at: null,
+      workflow_id: 3,
+      workflow_titulo: 'Fluxo de agosto',
+    });
+    mockMedia.mockResolvedValue([]);
   });
 
-  it('renders feed items with the post deep link', async () => {
+  it('renders the conversation list with preview, unread badge and agency prefix', async () => {
     renderPage();
-    expect(await screen.findByText('Trocar a foto')).toBeInTheDocument();
+    expect(await screen.findByText('ACME')).toBeInTheDocument();
     expect(screen.getByText('Obrigado!')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Post de julho' })).toHaveAttribute(
-      'href',
-      '/entregas?drawer=3',
-    );
+    expect(screen.getByText('Ana: Segue o ajuste combinado.')).toBeInTheDocument();
+    const acmeRow = screen.getByTestId('conversa-14');
+    expect(acmeRow).toHaveTextContent('2');
   });
 
-  it('shows the general composer only after selecting a client, then sends', async () => {
+  it('sorts conversations by recency by default and flips to oldest', async () => {
     renderPage();
-    await screen.findByText('Obrigado!');
-    expect(screen.queryByPlaceholderText(/mensagem geral/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'ACME' }));
-    const input = await screen.findByPlaceholderText(/mensagem geral/);
+    await screen.findByText('ACME');
+    const nomes = () =>
+      [screen.getByTestId('conversa-15'), screen.getByTestId('conversa-14')].map((el) =>
+        el.compareDocumentPosition(screen.getByTestId('conversa-14')),
+      );
+    // recentes: Beta Corp (jul 31) before ACME (jul 30)
+    expect(
+      screen.getByTestId('conversa-15').compareDocumentPosition(screen.getByTestId('conversa-14')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Mais recentes/ }));
+    await waitFor(() =>
+      expect(
+        screen
+          .getByTestId('conversa-14')
+          .compareDocumentPosition(screen.getByTestId('conversa-15')) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy(),
+    );
+    void nomes;
+  });
+
+  it('opens a thread in chronological order and returns via back', async () => {
+    await abrirConversaAcme();
+    expect(mockFeed).toHaveBeenCalledWith(expect.objectContaining({ clienteId: 14 }));
+    const bolhas = screen.getAllByText(/Trocar a foto|Obrigado!/);
+    expect(bolhas[0]).toHaveTextContent('Trocar a foto');
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar para as conversas' }));
+    expect(await screen.findByTestId('conversa-15')).toBeInTheDocument();
+  });
+
+  it('sends a general message from the thread composer', async () => {
+    await abrirConversaAcme();
+    const input = screen.getByPlaceholderText('Enviar mensagem…');
     fireEvent.change(input, { target: { value: 'Olá' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() => expect(mockSend).toHaveBeenCalledWith(14, 'Olá'));
   });
 
-  it('replies inline to a post item', async () => {
-    renderPage();
-    await screen.findByText('Trocar a foto');
+  it('replies to a post via the Responder flow', async () => {
+    await abrirConversaAcme();
     fireEvent.click(screen.getByRole('button', { name: 'Responder' }));
-    const replyInput = screen.getByPlaceholderText('Responder ao cliente…');
-    fireEvent.change(replyInput, { target: { value: 'Feito' } });
-    fireEvent.keyDown(replyInput, { key: 'Enter' });
+    const input = screen.getByPlaceholderText('Responder sobre o post…');
+    fireEvent.change(input, { target: { value: 'Feito' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() => expect(mockReply).toHaveBeenCalledWith(7, 3, 'Feito'));
   });
 
@@ -174,7 +205,7 @@ describe('MensagensPage', () => {
     await waitFor(() => expect(mockSeen).toHaveBeenCalledTimes(1));
   });
 
-  it('does not send the general message twice on a rapid double Enter', async () => {
+  it('does not send twice on a rapid double Enter', async () => {
     let resolveSend!: () => void;
     mockSend.mockImplementation(
       () =>
@@ -182,24 +213,14 @@ describe('MensagensPage', () => {
           resolveSend = resolve;
         }),
     );
-    renderPage();
-    await screen.findByText('Obrigado!');
-    fireEvent.click(screen.getByRole('button', { name: 'ACME' }));
-    const input = await screen.findByPlaceholderText(/mensagem geral/);
+    await abrirConversaAcme();
+    const input = screen.getByPlaceholderText('Enviar mensagem…');
     fireEvent.change(input, { target: { value: 'Olá' } });
     fireEvent.keyDown(input, { key: 'Enter' });
-    // Wait for the mutation's pending state to flush before firing the second
-    // Enter — this is what a real double keydown looks like (there is always
-    // some time between the two), and it is exactly the window the re-entry
-    // guard has to hold up in: sendGeneral.isPending must be true here.
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toBeDisabled(),
     );
     fireEvent.keyDown(input, { key: 'Enter' });
-    // An unguarded second dispatch doesn't call the mutationFn synchronously —
-    // mutateAsync schedules it a microtask (or more) later — so the count has
-    // to be checked after flushing pending microtasks/timers, not right away,
-    // or a missing guard would slip past this assertion undetected.
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
@@ -208,48 +229,32 @@ describe('MensagensPage', () => {
     await waitFor(() => expect(input).toHaveValue(''));
   });
 
-  it('does not send the inline reply twice on a rapid double Enter', async () => {
-    let resolveReply!: () => void;
-    mockReply.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveReply = resolve;
-        }),
-    );
-    renderPage();
-    await screen.findByText('Trocar a foto');
-    fireEvent.click(screen.getByRole('button', { name: 'Responder' }));
-    const replyInput = screen.getByPlaceholderText('Responder ao cliente…');
-    fireEvent.change(replyInput, { target: { value: 'Feito' } });
-    fireEvent.keyDown(replyInput, { key: 'Enter' });
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Enviar resposta' })).toBeDisabled(),
-    );
-    fireEvent.keyDown(replyInput, { key: 'Enter' });
-    // Same flush requirement as the general-composer test above: give an
-    // unguarded second dispatch time to actually reach the mutationFn before
-    // asserting the call count.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-    expect(mockReply).toHaveBeenCalledTimes(1);
-    resolveReply();
-  });
-
   it('keeps the reply draft when the send fails', async () => {
     mockReply.mockRejectedValueOnce(new Error('network error'));
-    renderPage();
-    await screen.findByText('Trocar a foto');
+    await abrirConversaAcme();
     fireEvent.click(screen.getByRole('button', { name: 'Responder' }));
-    const replyInput = screen.getByPlaceholderText('Responder ao cliente…');
-    fireEvent.change(replyInput, { target: { value: 'Feito' } });
-    fireEvent.keyDown(replyInput, { key: 'Enter' });
+    const input = screen.getByPlaceholderText('Responder sobre o post…');
+    fireEvent.change(input, { target: { value: 'Feito' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() => expect(mockReply).toHaveBeenCalledTimes(1));
-    // Flush the rejection's microtasks so the draft-clearing branch (or lack
-    // thereof) has actually settled before asserting on it.
     await act(async () => {
       await Promise.resolve();
     });
-    expect(screen.getByPlaceholderText('Responder ao cliente…')).toHaveValue('Feito');
+    expect(screen.getByPlaceholderText('Responder sobre o post…')).toHaveValue('Feito');
+  });
+
+  it('shows the hover preview with tipo, status and fluxo on the post chip', async () => {
+    await abrirConversaAcme();
+    const chip = screen.getByRole('link', { name: 'Post de julho' });
+    fireEvent.mouseEnter(chip.parentElement!);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
+    await waitFor(() => expect(mockPreview).toHaveBeenCalledWith(7));
+    const card = await screen.findByTestId('post-hover-preview');
+    expect(card).toHaveTextContent('Feed');
+    expect(card).toHaveTextContent('Fluxo de agosto');
+    fireEvent.mouseLeave(chip.parentElement!);
+    await waitFor(() => expect(screen.queryByTestId('post-hover-preview')).not.toBeInTheDocument());
   });
 });

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getMensagensFeed,
-  getMensagensUnread,
+  getMensagensConversas,
   sendMensagem,
   markMensagensSeen,
   replyToPostApproval,
@@ -31,7 +31,10 @@ export function useMensagensData(clienteId: number | null) {
     },
   });
 
-  const unread = useQuery({ queryKey: ['mensagens-unread'], queryFn: getMensagensUnread });
+  const conversas = useQuery({
+    queryKey: ['mensagens-conversas'],
+    queryFn: getMensagensConversas,
+  });
   const clientes = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
 
   // Opening the page marks the whole feed seen for this user.
@@ -48,6 +51,7 @@ export function useMensagensData(clienteId: number | null) {
 
   const invalidateFeed = () => {
     qc.invalidateQueries({ queryKey: ['mensagens-feed'] });
+    qc.invalidateQueries({ queryKey: ['mensagens-conversas'] });
   };
 
   const sendGeneral = useMutation({
@@ -69,5 +73,5 @@ export function useMensagensData(clienteId: number | null) {
     onSuccess: invalidateFeed,
   });
 
-  return { feed, unread, clientes, sendGeneral, replyToPost };
+  return { feed, conversas, clientes, sendGeneral, replyToPost };
 }

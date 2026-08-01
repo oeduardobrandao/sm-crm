@@ -70,3 +70,54 @@ export async function markMensagensSeen(): Promise<void> {
   const { error } = await supabase.rpc('mark_mensagens_seen', {});
   if (error) throw error;
 }
+
+export interface MensagemConversa {
+  cliente_id: number;
+  cliente_nome: string;
+  last_source: MensagemFeedItem['source'];
+  last_action: string | null;
+  last_content: string | null;
+  last_is_workspace_user: boolean;
+  last_author_name: string | null;
+  last_created_at: string;
+  unread_count: number;
+}
+
+/** One row per cliente with the latest feed item + the caller's unread count
+ * (the WhatsApp-style conversation list). */
+export async function getMensagensConversas(): Promise<MensagemConversa[]> {
+  const { data, error } = await supabase.rpc('get_mensagens_conversas', {});
+  if (error) throw error;
+  return (data ?? []) as MensagemConversa[];
+}
+
+export interface PostChipPreview {
+  id: number;
+  titulo: string;
+  tipo: 'feed' | 'reels' | 'stories' | 'carrossel';
+  status: string;
+  scheduled_at: string | null;
+  workflow_id: number;
+  workflow_titulo: string | null;
+}
+
+/** Lightweight post details for the hover preview on linked-post chips. */
+export async function getPostChipPreview(postId: number): Promise<PostChipPreview | null> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select('id, titulo, tipo, status, scheduled_at, workflow_id, workflows!inner(titulo)')
+    .eq('id', postId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const wf = data.workflows as unknown as { titulo: string | null } | null;
+  return {
+    id: data.id,
+    titulo: data.titulo,
+    tipo: data.tipo,
+    status: data.status,
+    scheduled_at: data.scheduled_at ?? null,
+    workflow_id: data.workflow_id,
+    workflow_titulo: wf?.titulo ?? null,
+  };
+}

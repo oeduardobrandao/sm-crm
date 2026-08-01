@@ -18,6 +18,8 @@ vi.mock('../core', () => ({
 import {
   getMensagensFeed,
   getMensagensUnread,
+  getMensagensConversas,
+  getPostChipPreview,
   sendMensagem,
   markMensagensSeen,
 } from '../mensagens';
@@ -70,6 +72,56 @@ describe('store/mensagens', () => {
     mockRpc.mockResolvedValue({ data: null, error: null });
     await markMensagensSeen();
     expect(mockRpc).toHaveBeenCalledWith('mark_mensagens_seen', {});
+  });
+
+  it('getMensagensConversas calls the conversas RPC', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ cliente_id: 14, cliente_nome: 'ACME', unread_count: 2 }],
+      error: null,
+    });
+    const rows = await getMensagensConversas();
+    expect(mockRpc).toHaveBeenCalledWith('get_mensagens_conversas', {});
+    expect(rows[0].cliente_nome).toBe('ACME');
+  });
+
+  it('getPostChipPreview selects the post with its fluxo and flattens the embed', async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: 7,
+        titulo: 'Post de julho',
+        tipo: 'feed',
+        status: 'aprovado_cliente',
+        scheduled_at: null,
+        workflow_id: 3,
+        workflows: { titulo: 'Fluxo de agosto' },
+      },
+      error: null,
+    });
+    const eq = vi.fn().mockReturnValue({ maybeSingle });
+    const select = vi.fn().mockReturnValue({ eq });
+    mockFrom.mockReturnValue({ select });
+    const preview = await getPostChipPreview(7);
+    expect(mockFrom).toHaveBeenCalledWith('workflow_posts');
+    expect(select).toHaveBeenCalledWith(
+      'id, titulo, tipo, status, scheduled_at, workflow_id, workflows!inner(titulo)',
+    );
+    expect(eq).toHaveBeenCalledWith('id', 7);
+    expect(preview).toEqual({
+      id: 7,
+      titulo: 'Post de julho',
+      tipo: 'feed',
+      status: 'aprovado_cliente',
+      scheduled_at: null,
+      workflow_id: 3,
+      workflow_titulo: 'Fluxo de agosto',
+    });
+  });
+
+  it('getPostChipPreview returns null when the post is gone', async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+    const eq = vi.fn().mockReturnValue({ maybeSingle });
+    mockFrom.mockReturnValue({ select: vi.fn().mockReturnValue({ eq }) });
+    expect(await getPostChipPreview(999)).toBeNull();
   });
 
   it('throws on RPC error', async () => {
