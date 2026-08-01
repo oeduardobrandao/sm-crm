@@ -32,7 +32,7 @@ export function MensagemFeedCard({ item, onReply }: Props) {
         : null;
 
   async function submitReply() {
-    if (!draft.trim() || item.post_id == null || item.workflow_id == null) return;
+    if (sending || !draft.trim() || item.post_id == null || item.workflow_id == null) return;
     setSending(true);
     try {
       await onReply(item.post_id, item.workflow_id, draft.trim());

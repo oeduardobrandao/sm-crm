@@ -119,4 +119,53 @@ describe('MensagensPage', () => {
     renderPage();
     await waitFor(() => expect(mockSeen).toHaveBeenCalledTimes(1));
   });
+
+  it('does not send the general message twice on a rapid double Enter', async () => {
+    let resolveSend!: () => void;
+    mockSend.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSend = resolve;
+        }),
+    );
+    renderPage();
+    await screen.findByText('Obrigado!');
+    fireEvent.change(screen.getByLabelText('Filtrar por cliente'), { target: { value: '14' } });
+    const input = await screen.findByPlaceholderText(/mensagem geral/);
+    fireEvent.change(input, { target: { value: 'Olá' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    // Wait for the mutation's pending state to flush before firing the second
+    // Enter — this is what a real double keydown looks like (there is always
+    // some time between the two), and it is exactly the window the re-entry
+    // guard has to hold up in: sendGeneral.isPending must be true here.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toBeDisabled(),
+    );
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    resolveSend();
+    await waitFor(() => expect(input).toHaveValue(''));
+  });
+
+  it('does not send the inline reply twice on a rapid double Enter', async () => {
+    let resolveReply!: () => void;
+    mockReply.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveReply = resolve;
+        }),
+    );
+    renderPage();
+    await screen.findByText('Trocar a foto');
+    fireEvent.click(screen.getByRole('button', { name: 'Responder' }));
+    const replyInput = screen.getByPlaceholderText('Responder ao cliente…');
+    fireEvent.change(replyInput, { target: { value: 'Feito' } });
+    fireEvent.keyDown(replyInput, { key: 'Enter' });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Enviar resposta' })).toBeDisabled(),
+    );
+    fireEvent.keyDown(replyInput, { key: 'Enter' });
+    expect(mockReply).toHaveBeenCalledTimes(1);
+    resolveReply();
+  });
 });

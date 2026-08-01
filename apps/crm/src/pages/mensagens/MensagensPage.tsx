@@ -24,7 +24,7 @@ export default function MensagensPage() {
   }, [unread.data]);
 
   async function submitGeneral() {
-    if (!draft.trim() || clienteId == null) return;
+    if (sendGeneral.isPending || !draft.trim() || clienteId == null) return;
     try {
       await sendGeneral.mutateAsync({ cliente: clienteId, content: draft.trim() });
       setDraft('');
