@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, FilePen, MessageCircle, Send } from 'lucide-react';
-import type { MensagemFeedItem } from '@/store';
+import { ArrowUpRight, CheckCircle2, FilePen, FileText, Send } from 'lucide-react';
+import type { Cliente, MensagemFeedItem } from '@/store';
+import { avatarColorClass } from '@/lib/avatarColor';
 
 interface Props {
   item: MensagemFeedItem;
+  cliente?: Pick<Cliente, 'nome' | 'sigla' | 'cor'>;
   onReply: (postId: number, workflowId: number, content: string) => Promise<unknown>;
 }
 
@@ -17,7 +19,58 @@ const ACTION_LABEL: Record<string, string> = {
   rejected: 'Sugestão de edição rejeitada',
 };
 
-export function MensagemFeedCard({ item, onReply }: Props) {
+function initialsOf(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase();
+}
+
+/** 28px author avatar: member photo (or seeded initials) for agency items,
+ * the cliente's sigla + cor for client items — same tokens as the rest of the CRM. */
+function AuthorAvatar({ item, cliente }: { item: MensagemFeedItem; cliente?: Props['cliente'] }) {
+  const size = { width: 28, height: 28, fontSize: '0.65rem', flexShrink: 0 } as const;
+  if (item.is_workspace_user) {
+    if (item.author_avatar_url) {
+      return (
+        <img
+          src={item.author_avatar_url}
+          alt=""
+          className="avatar"
+          style={{ ...size, objectFit: 'cover' }}
+        />
+      );
+    }
+    const name = item.author_name ?? 'Equipe';
+    return (
+      <div
+        className={`avatar ${avatarColorClass(item.author_user_id ?? name)}`}
+        style={size}
+        aria-hidden="true"
+      >
+        {initialsOf(name)}
+      </div>
+    );
+  }
+  return (
+    <div
+      className="avatar"
+      style={{
+        ...size,
+        background: cliente?.cor || undefined,
+        color: cliente?.cor ? '#fff' : undefined,
+      }}
+      aria-hidden="true"
+    >
+      {cliente?.sigla || initialsOf(item.cliente_nome)}
+    </div>
+  );
+}
+
+export function MensagemFeedCard({ item, cliente, onReply }: Props) {
   const [replying, setReplying] = useState(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -46,18 +99,28 @@ export function MensagemFeedCard({ item, onReply }: Props) {
   }
 
   return (
-    <div className="rounded-lg border border-[var(--border-color)] bg-[var(--card-bg)] p-4 flex flex-col gap-2">
-      <div className="flex items-center gap-2 text-sm">
-        {item.source === 'edit_suggestion' ? (
-          <FilePen size={15} className="shrink-0" />
-        ) : item.action === 'aprovado' ? (
-          <CheckCircle2 size={15} className="shrink-0" />
-        ) : (
-          <MessageCircle size={15} className="shrink-0" />
-        )}
-        <span className="font-semibold">{author}</span>
-        <span className="text-[var(--text-light)]">· {item.cliente_nome}</span>
-        <span className="ml-auto text-xs text-[var(--text-light)]">
+    <div className="rounded-lg border border-[var(--border-color)] bg-[var(--card-bg)] p-4 flex flex-col gap-2.5">
+      <div className="flex items-center gap-2.5 text-sm">
+        <AuthorAvatar item={item} cliente={cliente} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold truncate">{author}</span>
+            {isAgency && (
+              <span className="text-[var(--text-light)] truncate">· {item.cliente_nome}</span>
+            )}
+          </div>
+          {headline && (
+            <div className="flex items-center gap-1 text-xs font-semibold text-[var(--text-muted)]">
+              {item.source === 'edit_suggestion' ? (
+                <FilePen size={12} className="shrink-0" />
+              ) : item.action === 'aprovado' ? (
+                <CheckCircle2 size={12} className="shrink-0" />
+              ) : null}
+              {headline}
+            </div>
+          )}
+        </div>
+        <span className="ml-auto shrink-0 text-xs text-[var(--text-light)]">
           {new Date(item.created_at).toLocaleString('pt-BR', {
             day: '2-digit',
             month: 'short',
@@ -66,15 +129,17 @@ export function MensagemFeedCard({ item, onReply }: Props) {
           })}
         </span>
       </div>
-      {headline && <div className="text-xs font-semibold text-[var(--text-muted)]">{headline}</div>}
       {item.content && <p className="text-sm whitespace-pre-wrap">{item.content}</p>}
-      <div className="flex items-center gap-3 text-xs">
+      <div className="flex flex-wrap items-center gap-3 text-xs">
         {item.workflow_id != null && (
           <Link
             to={`/entregas?drawer=${item.workflow_id}`}
-            className="font-semibold underline text-[var(--text-muted)] hover:text-[var(--text-main)]"
+            className="flex w-fit items-center gap-2 rounded-md border border-[var(--border-color)] px-3 py-2 font-semibold transition-colors hover:bg-[var(--surface-hover)]"
+            style={{ background: 'var(--bg-color)' }}
           >
-            {item.post_titulo ?? 'Ver post'}
+            <FileText size={14} className="shrink-0 text-[var(--text-muted)]" />
+            <span>{item.post_titulo ?? 'Ver post'}</span>
+            <ArrowUpRight size={12} className="shrink-0 text-[var(--text-light)]" />
           </Link>
         )}
         {item.post_id != null && item.source !== 'edit_suggestion' && (

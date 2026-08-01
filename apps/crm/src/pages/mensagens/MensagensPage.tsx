@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import type { Cliente } from '@/store';
 import { useMensagensData } from './hooks/useMensagensData';
 import { MensagemFeedCard } from './components/MensagemFeedCard';
 import { feedItemKey, matchesTipo, TIPO_FILTERS, type MensagensTipoFilter } from './mensagensLogic';
@@ -29,6 +30,13 @@ export default function MensagensPage() {
     for (const r of unread.data ?? []) map.set(r.cliente_id, r.unread_count);
     return map;
   }, [unread.data]);
+
+  // Cliente lookup for the feed-card avatars (sigla + cor).
+  const clientesById = useMemo(() => {
+    const map = new Map<number, Cliente>();
+    for (const c of clientes.data ?? []) if (c.id != null) map.set(c.id, c);
+    return map;
+  }, [clientes.data]);
 
   async function submitGeneral() {
     if (sendGeneral.isPending || !draft.trim() || clienteId == null) return;
@@ -141,6 +149,7 @@ export default function MensagensPage() {
           <MensagemFeedCard
             key={feedItemKey(item)}
             item={item}
+            cliente={clientesById.get(item.cliente_id)}
             onReply={(postId, workflowId, content) =>
               replyToPost.mutateAsync({ postId, workflowId, content }).catch((err) => {
                 toast.error('Não foi possível enviar a resposta.');
