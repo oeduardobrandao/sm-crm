@@ -62,7 +62,7 @@ const ITEMS = [
     is_workspace_user: true,
     author_user_id: 'u-1',
     author_name: 'Ana',
-    author_avatar_url: null,
+    author_avatar_url: 'https://cdn.example.com/ana.png',
     created_at: '2026-07-30T11:00:00.000Z',
   },
   {
@@ -140,6 +140,10 @@ describe('MensagensPage', () => {
       expect(await screen.findByText('Podemos ajustar o CTA?')).toBeInTheDocument();
       expect(screen.getByText('Claro, ajustado!')).toBeInTheDocument();
       expect(screen.getByText('Ana')).toBeInTheDocument();
+      expect(screen.getByTestId('hub-author-avatar')).toHaveAttribute(
+        'src',
+        'https://cdn.example.com/ana.png',
+      );
       const chips = screen.getAllByRole('link', { name: /Post de julho/ });
       expect(chips[0]).toHaveAttribute('href', expect.stringContaining('/postagens/7'));
     });

@@ -42,6 +42,9 @@ export function useMensagensData(clienteId: number | null) {
     markMensagensSeen()
       .then(() => {
         qc.invalidateQueries({ queryKey: ['mensagens-unread'] });
+        // The conversas query races the marker on mount; if it resolved first
+        // its cached unread pills are already stale — refetch them too.
+        qc.invalidateQueries({ queryKey: ['mensagens-conversas'] });
       })
       // A failed marker just leaves the badge as-is until the next poll; it
       // must not surface as an unhandled rejection.
