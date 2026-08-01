@@ -1599,10 +1599,13 @@ export function useMensagensData(clienteId: number | null) {
   const feed = useInfiniteQuery({
     queryKey: ['mensagens-feed', clienteId],
     queryFn: ({ pageParam }) =>
-      getMensagensFeed({ clienteId: clienteId ?? undefined, before: pageParam }),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) =>
-      last.length === PAGE_SIZE ? last[last.length - 1].created_at : undefined,
+      getMensagensFeed({ clienteId: clienteId ?? undefined, cursor: pageParam }),
+    initialPageParam: undefined as MensagensCursor | undefined,
+    getNextPageParam: (last) => {
+      if (last.length !== PAGE_SIZE) return undefined;
+      const oldest = last[last.length - 1];
+      return { before: oldest.created_at, beforeSource: oldest.source, beforeItemId: oldest.item_id };
+    },
   });
 
   const unread = useQuery({ queryKey: ['mensagens-unread'], queryFn: getMensagensUnread });
