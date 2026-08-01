@@ -34,15 +34,17 @@ export default function MensagensPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 max-w-3xl">
-      <header>
-        <h1 className="text-2xl font-semibold">Mensagens</h1>
-        <p className="text-sm text-[var(--text-muted)]">
-          Toda a comunicação com os clientes em um só lugar. Cada item leva ao post de origem.
-        </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <header className="header animate-up">
+        <div className="header-title">
+          <h1>Mensagens</h1>
+          <p>
+            Toda a comunicação com os clientes em um só lugar. Cada item leva ao post de origem.
+          </p>
+        </div>
       </header>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 animate-up">
         <select
           value={clienteId ?? ''}
           onChange={(e) => setClienteId(e.target.value ? Number(e.target.value) : null)}
@@ -64,11 +66,14 @@ export default function MensagensPage() {
             <button
               key={f.id}
               onClick={() => setTipo(f.id)}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold border ${
-                tipo === f.id
-                  ? 'bg-[var(--primary-color)] border-transparent'
-                  : 'border-[var(--border-color)] text-[var(--text-muted)]'
-              }`}
+              className="rounded-full px-3 py-1.5 text-xs whitespace-nowrap"
+              style={{
+                border: 'none',
+                cursor: 'pointer',
+                background: tipo === f.id ? '#000' : 'transparent',
+                color: tipo === f.id ? '#fff' : 'var(--text-muted)',
+                fontWeight: tipo === f.id ? 600 : 400,
+              }}
             >
               {f.label}
             </button>

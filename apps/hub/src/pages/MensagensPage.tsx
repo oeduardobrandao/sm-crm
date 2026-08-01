@@ -164,8 +164,15 @@ export function MensagensPage() {
                   </div>
                 )}
                 <div
-                  className={`px-3.5 py-2.5 rounded-2xl text-sm ${mine ? 'hub-btn-primary' : 'hub-bg-card'}`}
-                  style={mine ? undefined : { boxShadow: 'inset 0 0 0 1px var(--hub-bd)' }}
+                  className={`px-3.5 py-2.5 rounded-2xl text-sm hub-txt ${mine ? '' : 'hub-bg-card'}`}
+                  style={
+                    mine
+                      ? {
+                          background: 'var(--hub-soft)',
+                          boxShadow: 'inset 0 0 0 1px var(--hub-bd2)',
+                        }
+                      : { boxShadow: 'inset 0 0 0 1px var(--hub-bd)' }
+                  }
                 >
                   {m.post_id != null && (
                     <Link
