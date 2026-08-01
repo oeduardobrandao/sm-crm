@@ -77,6 +77,31 @@ describe('mensagensLogic', () => {
     expect(input.map((c) => c.cliente_id)).toEqual([1, 2]);
   });
 
+  it('sortConversas sinks empty conversations to the bottom, alphabetically', () => {
+    const ativa = { ...conversaBase, cliente_id: 1, last_created_at: '2026-07-01T00:00:00Z' };
+    const vaziaB = {
+      ...conversaBase,
+      cliente_id: 2,
+      cliente_nome: 'Beta',
+      last_source: null,
+      last_created_at: null,
+    };
+    const vaziaA = {
+      ...conversaBase,
+      cliente_id: 3,
+      cliente_nome: 'Alfa',
+      last_source: null,
+      last_created_at: null,
+    };
+    expect(sortConversas([vaziaB, ativa, vaziaA], 'recentes').map((c) => c.cliente_id)).toEqual([
+      1, 3, 2,
+    ]);
+    expect(sortConversas([vaziaB, ativa, vaziaA], 'antigas').map((c) => c.cliente_id)).toEqual([
+      1, 3, 2,
+    ]);
+    expect(conversaPreview(vaziaA)).toBe('Sem mensagens ainda. Comece a conversa!');
+  });
+
   it('conversaPreview prefixes agency messages and labels client events', () => {
     expect(conversaPreview(conversaBase)).toBe('oi');
     expect(

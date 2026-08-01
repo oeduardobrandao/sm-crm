@@ -74,12 +74,13 @@ export async function markMensagensSeen(): Promise<void> {
 export interface MensagemConversa {
   cliente_id: number;
   cliente_nome: string;
-  last_source: MensagemFeedItem['source'];
+  /** NULL when the cliente has no feed activity yet (empty conversation row). */
+  last_source: MensagemFeedItem['source'] | null;
   last_action: string | null;
   last_content: string | null;
-  last_is_workspace_user: boolean;
+  last_is_workspace_user: boolean | null;
   last_author_name: string | null;
-  last_created_at: string;
+  last_created_at: string | null;
   unread_count: number;
 }
 

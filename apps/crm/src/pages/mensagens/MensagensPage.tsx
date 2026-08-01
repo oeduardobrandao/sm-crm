@@ -144,9 +144,11 @@ export default function MensagensPage() {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-semibold">{c.cliente_nome}</span>
-                    <span className="shrink-0 text-xs text-[var(--text-light)]">
-                      {formatTime(c.last_created_at)}
-                    </span>
+                    {c.last_created_at != null && (
+                      <span className="shrink-0 text-xs text-[var(--text-light)]">
+                        {formatTime(c.last_created_at)}
+                      </span>
+                    )}
                   </span>
                   <span className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm text-[var(--text-muted)]">

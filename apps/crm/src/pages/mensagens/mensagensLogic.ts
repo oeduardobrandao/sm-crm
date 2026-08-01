@@ -32,9 +32,15 @@ export function unreadTotal(rows: MensagensUnreadRow[]): number {
 
 export type ConversasSort = 'recentes' | 'antigas';
 
+/** Active conversations sorted by recency (or oldest); clientes with no
+ * activity yet always sink to the bottom, alphabetically. */
 export function sortConversas(rows: MensagemConversa[], sort: ConversasSort): MensagemConversa[] {
-  const sorted = [...rows].sort((a, b) => a.last_created_at.localeCompare(b.last_created_at));
-  return sort === 'antigas' ? sorted : sorted.reverse();
+  const ativas = rows.filter((r) => r.last_created_at != null);
+  const vazias = rows
+    .filter((r) => r.last_created_at == null)
+    .sort((a, b) => a.cliente_nome.localeCompare(b.cliente_nome, 'pt-BR'));
+  const sorted = [...ativas].sort((a, b) => a.last_created_at!.localeCompare(b.last_created_at!));
+  return [...(sort === 'antigas' ? sorted : sorted.reverse()), ...vazias];
 }
 
 const SUGGESTION_PREVIEW: Record<string, string> = {
@@ -46,6 +52,7 @@ const SUGGESTION_PREVIEW: Record<string, string> = {
 /** One-line preview for a conversation row, WhatsApp style: agency messages
  * are prefixed with the author, client events get their action label. */
 export function conversaPreview(c: MensagemConversa): string {
+  if (c.last_source == null) return 'Sem mensagens ainda. Comece a conversa!';
   if (c.last_source === 'edit_suggestion') {
     return SUGGESTION_PREVIEW[c.last_action ?? 'pending'] ?? 'Sugestão de edição';
   }
