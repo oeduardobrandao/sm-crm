@@ -66,6 +66,24 @@ Deno.test("hub-mensagens: GET returns feed items + unread", async () => {
   assertEquals(unreadCall?.payload?.p_cliente_id, 14);
 });
 
+Deno.test("hub-mensagens: GET forwards the composite cursor to get_mensagens_feed", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("get_mensagens_feed", { data: [FEED_ROW], error: null });
+  db.queueRpc("get_mensagens_unread", { data: [{ cliente_id: 14, unread_count: 2 }], error: null });
+  const res = await makeHandler(db)(
+    new Request(
+      "https://x.test/hub-mensagens?token=t&before=2026-07-30T10:00:00.000Z&before_source=post_feedback&before_item_id=1",
+    ),
+  );
+  assertEquals(res.status, 200);
+
+  const feedCall = db.calls.find((c) => c.table === "rpc:get_mensagens_feed");
+  assertEquals(feedCall?.payload?.p_before, "2026-07-30T10:00:00.000Z");
+  assertEquals(feedCall?.payload?.p_before_source, "post_feedback");
+  assertEquals(feedCall?.payload?.p_before_item_id, 1);
+});
+
 Deno.test("hub-mensagens: GET with count=1 returns only unread", async () => {
   const db = createSupabaseQueryMock();
   setupToken(db);

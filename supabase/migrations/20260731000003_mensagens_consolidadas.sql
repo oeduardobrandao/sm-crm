@@ -140,10 +140,12 @@ CREATE TRIGGER notify_client_message
 -- All references inside the query are table-qualified: the RETURNS TABLE
 -- column names would otherwise shadow them in plpgsql.
 CREATE OR REPLACE FUNCTION get_mensagens_feed(
-  p_conta_id   uuid        DEFAULT NULL,
-  p_cliente_id bigint      DEFAULT NULL,
-  p_before     timestamptz DEFAULT NULL,
-  p_limit      int         DEFAULT 50
+  p_conta_id       uuid        DEFAULT NULL,
+  p_cliente_id     bigint      DEFAULT NULL,
+  p_before         timestamptz DEFAULT NULL,
+  p_limit          int         DEFAULT 50,
+  p_before_source  text        DEFAULT NULL,
+  p_before_item_id bigint      DEFAULT NULL
 )
 RETURNS TABLE (
   source            text,
@@ -221,14 +223,30 @@ BEGIN
     JOIN clientes c ON c.id = f.f_cliente_id
     LEFT JOIN membros mb ON mb.crm_user_id = f.f_author AND mb.conta_id = v_conta
    WHERE (p_cliente_id IS NULL OR f.f_cliente_id = p_cliente_id)
-     AND (p_before IS NULL OR f.f_created_at < p_before)
-   ORDER BY f.f_created_at DESC
+     -- Composite keyset cursor: now() is transaction-stable, so batch inserts
+     -- can share the exact same created_at. A strict created_at-only cursor
+     -- would silently skip sibling rows sitting on that boundary. Falling
+     -- back to created_at-only when the source/item_id leg is missing keeps
+     -- older callers correct-ish, but every caller in this codebase passes
+     -- the full three-part cursor.
+     AND (
+       p_before IS NULL
+       OR (
+         CASE
+           WHEN p_before_source IS NULL OR p_before_item_id IS NULL
+             THEN f.f_created_at < p_before
+           ELSE (f.f_created_at, f.f_source, f.f_item_id)
+                < (p_before, p_before_source, p_before_item_id)
+         END
+       )
+     )
+   ORDER BY f.f_created_at DESC, f.f_source DESC, f.f_item_id DESC
    LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100);
 END;
 $$;
 
-REVOKE ALL ON FUNCTION get_mensagens_feed(uuid, bigint, timestamptz, int) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION get_mensagens_feed(uuid, bigint, timestamptz, int)
+REVOKE ALL ON FUNCTION get_mensagens_feed(uuid, bigint, timestamptz, int, text, bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION get_mensagens_feed(uuid, bigint, timestamptz, int, text, bigint)
   TO authenticated, service_role;
 
 -- ============ UNREAD RPC ============

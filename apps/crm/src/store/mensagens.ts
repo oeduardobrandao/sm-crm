@@ -22,16 +22,26 @@ export interface MensagensUnreadRow {
   unread_count: number;
 }
 
+export interface MensagensCursor {
+  before: string;
+  beforeSource: MensagemFeedItem['source'];
+  beforeItemId: number;
+}
+
 const FEED_PAGE_SIZE = 50;
 
 export async function getMensagensFeed(params: {
   clienteId?: number;
-  before?: string;
+  cursor?: MensagensCursor;
   limit?: number;
 }): Promise<MensagemFeedItem[]> {
   const rpcParams: Record<string, unknown> = { p_limit: params.limit ?? FEED_PAGE_SIZE };
   if (params.clienteId != null) rpcParams.p_cliente_id = params.clienteId;
-  if (params.before) rpcParams.p_before = params.before;
+  if (params.cursor) {
+    rpcParams.p_before = params.cursor.before;
+    rpcParams.p_before_source = params.cursor.beforeSource;
+    rpcParams.p_before_item_id = params.cursor.beforeItemId;
+  }
   const { data, error } = await supabase.rpc('get_mensagens_feed', rpcParams);
   if (error) throw error;
   return (data ?? []) as MensagemFeedItem[];

@@ -63,11 +63,17 @@ export function createHubMensagensHandler(deps: HubMensagensHandlerDeps) {
       if (url.searchParams.has("count")) return json({ unread });
 
       const before = url.searchParams.get("before");
+      const beforeSource = url.searchParams.get("before_source");
+      const beforeItemIdParam = url.searchParams.get("before_item_id");
+      const beforeItemIdRaw = beforeItemIdParam === null ? NaN : Number(beforeItemIdParam);
+      const beforeItemId = Number.isFinite(beforeItemIdRaw) ? beforeItemIdRaw : null;
       const { data: items, error } = await db.rpc("get_mensagens_feed", {
         p_conta_id: contaId,
         p_cliente_id: clienteId,
         p_before: before || null,
         p_limit: 50,
+        p_before_source: beforeSource || null,
+        p_before_item_id: beforeItemId,
       });
       if (error) {
         console.error("[hub-mensagens] feed error:", error);

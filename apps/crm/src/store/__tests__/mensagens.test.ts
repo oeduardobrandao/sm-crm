@@ -29,12 +29,17 @@ describe('store/mensagens', () => {
     mockGetUserId.mockResolvedValue('user-1');
   });
 
-  it('getMensagensFeed calls the RPC with cliente/before params', async () => {
+  it('getMensagensFeed calls the RPC with cliente/cursor params', async () => {
     mockRpc.mockResolvedValue({ data: [{ source: 'mensagem', item_id: 1 }], error: null });
-    const rows = await getMensagensFeed({ clienteId: 14, before: '2026-07-30T00:00:00Z' });
+    const rows = await getMensagensFeed({
+      clienteId: 14,
+      cursor: { before: '2026-07-30T00:00:00Z', beforeSource: 'mensagem', beforeItemId: 9 },
+    });
     expect(mockRpc).toHaveBeenCalledWith('get_mensagens_feed', {
       p_cliente_id: 14,
       p_before: '2026-07-30T00:00:00Z',
+      p_before_source: 'mensagem',
+      p_before_item_id: 9,
       p_limit: 50,
     });
     expect(rows).toHaveLength(1);

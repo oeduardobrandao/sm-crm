@@ -301,3 +301,9 @@ export interface HubMensagensResponse {
   items: MensagemFeedItem[];
   unread: number;
 }
+
+export interface MensagensCursor {
+  before: string;
+  beforeSource: MensagemFeedItem['source'];
+  beforeItemId: number;
+}

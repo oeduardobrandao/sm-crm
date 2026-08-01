@@ -4,7 +4,7 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import { CheckCircle2, FilePen, X } from 'lucide-react';
 import { useHub } from '../HubContext';
 import { fetchMensagens, markMensagensSeen, sendHubMensagem, submitApproval } from '../api';
-import type { MensagemFeedItem } from '../types';
+import type { MensagemFeedItem, MensagensCursor } from '../types';
 
 const PAGE_SIZE = 50;
 
@@ -44,9 +44,16 @@ export function MensagensPage() {
   const feed = useInfiniteQuery({
     queryKey: ['hub-mensagens', token],
     queryFn: ({ pageParam }) => fetchMensagens(token, pageParam),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) =>
-      last.items.length === PAGE_SIZE ? last.items[last.items.length - 1].created_at : undefined,
+    initialPageParam: undefined as MensagensCursor | undefined,
+    getNextPageParam: (last) => {
+      if (last.items.length !== PAGE_SIZE) return undefined;
+      const lastItem = last.items[last.items.length - 1];
+      return {
+        before: lastItem.created_at,
+        beforeSource: lastItem.source,
+        beforeItemId: lastItem.item_id,
+      };
+    },
     enabled,
   });
 
