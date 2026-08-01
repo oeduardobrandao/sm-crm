@@ -15,6 +15,7 @@ const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
   '/contratos': { flag: 'feature_contracts', label: 'Contratos' },
   '/ideias': { flag: 'feature_ideas', label: 'Ideias' },
   '/post-express': { flag: 'feature_post_scheduling', label: 'Agendamento de Posts' },
+  '/mensagens': { flag: 'feature_mensagens', label: 'Mensagens' },
 };
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {

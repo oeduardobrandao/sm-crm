@@ -321,6 +321,110 @@ describe('ProtectedRoute', () => {
     expect(screen.queryByText('Área protegida')).toBeNull();
   });
 
+  it('shows upgrade screen (not children) when owner visits /mensagens with feature_mensagens:false', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'owner-1' } as never,
+      profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
+      role: 'owner',
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    mockedUseWorkspaceLimits.mockReturnValue({
+      limits: null,
+      features: {
+        feature_instagram: true,
+        feature_instagram_ai: false,
+        feature_analytics_reports: false,
+        feature_best_times: false,
+        feature_audience_demographics: false,
+        feature_hub_portal: false,
+        feature_leads: false,
+        feature_financial: false,
+        feature_contracts: false,
+        feature_ideas: false,
+        feature_workflow_gantt: false,
+        feature_workflow_recurrence: false,
+        feature_csv_import: false,
+        feature_custom_properties: false,
+        feature_post_scheduling: false,
+        feature_auto_sync_cron: false,
+        feature_post_tagging: false,
+        feature_brand_customization: false,
+        feature_mensagens: false,
+      },
+      planName: 'starter',
+      isLoading: false,
+      isUnlimited: false,
+    });
+
+    renderRoute('/mensagens');
+
+    expect(screen.getByText(/Mensagens não está no seu plano/)).toBeInTheDocument();
+    expect(screen.queryByText('Área protegida')).toBeNull();
+  });
+
+  it('renders children at /mensagens when feature_mensagens is true', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'owner-1' } as never,
+      profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
+      role: 'owner',
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    mockedUseWorkspaceLimits.mockReturnValue({
+      limits: null,
+      features: {
+        feature_instagram: true,
+        feature_instagram_ai: false,
+        feature_analytics_reports: false,
+        feature_best_times: false,
+        feature_audience_demographics: false,
+        feature_hub_portal: false,
+        feature_leads: false,
+        feature_financial: false,
+        feature_contracts: false,
+        feature_ideas: false,
+        feature_workflow_gantt: false,
+        feature_workflow_recurrence: false,
+        feature_csv_import: false,
+        feature_custom_properties: false,
+        feature_post_scheduling: false,
+        feature_auto_sync_cron: false,
+        feature_post_tagging: false,
+        feature_brand_customization: false,
+        feature_mensagens: true,
+      },
+      planName: 'starter',
+      isLoading: false,
+      isUnlimited: false,
+    });
+
+    renderRoute('/mensagens');
+
+    expect(screen.getByText('Área protegida')).toBeInTheDocument();
+  });
+
+  it('renders children at /mensagens when features is missing (unlimited workspace)', () => {
+    // defaultLimits from beforeEach: features: null, isUnlimited: true — the
+    // gate loop is skipped entirely, so the route falls through to children.
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'owner-1' } as never,
+      profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
+      role: 'owner',
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    renderRoute('/mensagens');
+
+    expect(screen.getByText('Área protegida')).toBeInTheDocument();
+  });
+
   it('does NOT redirect a non-agent (owner) at a capitalized blocked path', () => {
     // /Financeiro is in AGENT_BLOCKED, but AGENT_BLOCKED only applies to the
     // 'agent' role. A guard that over-matched on the lowercased pathname

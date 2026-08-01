@@ -51,6 +51,25 @@ CREATE POLICY mensagens_service_role_bypass ON mensagens
 ALTER TABLE post_approvals
   ADD COLUMN IF NOT EXISTS author_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL;
 
+-- The author identity above must not be forgeable. The existing permissive
+-- policy (workspace_post_approvals_all) only scopes the post's workspace, so
+-- without this a workspace member could insert a reply carrying a COLLEAGUE's
+-- author_user_id (the feed displays it as the author) or a row flagged
+-- is_workspace_user = false impersonating the client. Restrictive policies AND
+-- with permissive ones. Scoped to `authenticated` only: the service-role hub
+-- path (which writes the client rows) is unaffected. author_user_id IS NULL is
+-- tolerated so CRM sessions still running pre-deploy code (which omit the
+-- column) keep working during the rollout window; a NULL author renders as
+-- "Equipe", never as someone else.
+CREATE POLICY post_approvals_authenticated_insert_author ON post_approvals
+  AS RESTRICTIVE
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    is_workspace_user = true
+    AND (author_user_id IS NULL OR author_user_id = auth.uid())
+  );
+
 -- ============ READ MARKERS ============
 -- Exactly one of (user_id, cliente_id) is set:
 --   user_id set    -> a CRM user's marker (covers the whole workspace feed)
