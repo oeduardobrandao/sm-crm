@@ -74,6 +74,8 @@ export async function markMensagensSeen(): Promise<void> {
 export interface MensagemConversa {
   cliente_id: number;
   cliente_nome: string;
+  /** Connected Instagram profile picture; NULL when no account is linked. */
+  cliente_foto_url: string | null;
   /** NULL when the cliente has no feed activity yet (empty conversation row). */
   last_source: MensagemFeedItem['source'] | null;
   last_action: string | null;

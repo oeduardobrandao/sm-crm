@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { ArrowDownUp, ArrowLeft, CheckCircle2, FilePen, Info, Send, X } from 'lucide-react';
+import { ArrowDownUp, ArrowLeft, CheckCircle2, FilePen, Info, Search, Send, X } from 'lucide-react';
 import type { Cliente, MensagemConversa } from '@/store';
 import { useMensagensData } from './hooks/useMensagensData';
 import { AutorAvatar, ClienteAvatar } from './components/Avatars';
@@ -29,8 +29,13 @@ function formatTime(iso: string) {
 export default function MensagensPage() {
   const [selecionado, setSelecionado] = useState<MensagemConversa | null>(null);
   const [sort, setSort] = useState<ConversasSort>('recentes');
+  const [busca, setBusca] = useState('');
   const [tipo, setTipo] = useState<MensagensTipoFilter>('todas');
   const [draft, setDraft] = useState('');
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Set when a conversation opens or a message is sent: the next settled render
+  // snaps the thread to the bottom (never on "carregar anteriores").
+  const scrollPending = useRef(false);
   const [replyTo, setReplyTo] = useState<{
     postId: number;
     workflowId: number;
@@ -50,11 +55,26 @@ export default function MensagensPage() {
     [conversas.data, sort],
   );
 
+  const conversasVisiveis = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    if (!q) return conversasOrdenadas;
+    return conversasOrdenadas.filter((c) => c.cliente_nome.toLowerCase().includes(q));
+  }, [conversasOrdenadas, busca]);
+
   // Thread renders chat-style: ascending, oldest at the top.
   const itens = useMemo(() => {
     const all = (feed.data?.pages ?? []).flat().filter((i) => matchesTipo(i, tipo));
     return [...all].sort((a, b) => a.created_at.localeCompare(b.created_at));
   }, [feed.data, tipo]);
+
+  useEffect(() => {
+    if (!scrollPending.current || feed.isLoading) return;
+    const el = scrollRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+      scrollPending.current = false;
+    }
+  }, [feed.isLoading, itens.length, clienteId]);
 
   async function enviar() {
     const text = draft.trim();
@@ -71,6 +91,7 @@ export default function MensagensPage() {
       }
       setDraft('');
       setReplyTo(null);
+      scrollPending.current = true;
     } catch {
       toast.error('Não foi possível enviar a mensagem.');
     }
@@ -81,6 +102,7 @@ export default function MensagensPage() {
     setTipo('todas');
     setReplyTo(null);
     setDraft('');
+    scrollPending.current = true;
   }
 
   return (
@@ -104,6 +126,27 @@ export default function MensagensPage() {
       {selecionado == null ? (
         <>
           <div className="flex flex-wrap items-center gap-2 animate-up">
+            <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
+              <Search
+                className="h-4 w-4"
+                style={{
+                  position: 'absolute',
+                  left: '0.625rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)',
+                  pointerEvents: 'none',
+                }}
+              />
+              <input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar cliente..."
+                aria-label="Buscar cliente"
+                className="w-full rounded-md border border-[var(--border-color)] bg-[var(--card-bg)] py-2 pr-3 text-sm outline-none"
+                style={{ paddingLeft: '2rem' }}
+              />
+            </div>
             <button
               onClick={() => setSort((s) => (s === 'recentes' ? 'antigas' : 'recentes'))}
               className="flex items-center gap-1.5 rounded-full border border-[var(--border-color)] px-3 py-1.5 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-main)]"
@@ -123,12 +166,14 @@ export default function MensagensPage() {
                 Não foi possível carregar as conversas.
               </p>
             )}
-            {!conversas.isLoading && !conversas.isError && conversasOrdenadas.length === 0 && (
+            {!conversas.isLoading && !conversas.isError && conversasVisiveis.length === 0 && (
               <p className="py-10 text-center text-sm text-[var(--text-muted)]">
-                Nenhuma conversa ainda. As mensagens dos clientes aparecem aqui.
+                {busca.trim()
+                  ? 'Nenhum cliente encontrado.'
+                  : 'Nenhuma conversa ainda. As mensagens dos clientes aparecem aqui.'}
               </p>
             )}
-            {conversasOrdenadas.map((c) => (
+            {conversasVisiveis.map((c) => (
               <button
                 key={c.cliente_id}
                 onClick={() => abrirConversa(c)}
@@ -138,6 +183,7 @@ export default function MensagensPage() {
               >
                 <ClienteAvatar
                   nome={c.cliente_nome}
+                  fotoUrl={c.cliente_foto_url}
                   cliente={clientesById.get(c.cliente_id)}
                   size="lg"
                 />
@@ -178,6 +224,7 @@ export default function MensagensPage() {
             </button>
             <ClienteAvatar
               nome={selecionado.cliente_nome}
+              fotoUrl={selecionado.cliente_foto_url}
               cliente={clientesById.get(selecionado.cliente_id)}
             />
             <span className="flex-1 truncate text-sm font-semibold">
@@ -204,6 +251,7 @@ export default function MensagensPage() {
           </div>
 
           <div
+            ref={scrollRef}
             className="flex min-h-[380px] flex-col gap-3 overflow-y-auto p-4"
             style={{ background: 'var(--bg-color)', maxHeight: '60vh' }}
           >
@@ -255,7 +303,11 @@ export default function MensagensPage() {
                   key={feedItemKey(m)}
                   className={`flex max-w-[78%] items-end gap-2 ${daEquipe ? 'flex-row-reverse self-end' : 'self-start'}`}
                 >
-                  <AutorAvatar item={m} cliente={clientesById.get(m.cliente_id)} />
+                  <AutorAvatar
+                    item={m}
+                    cliente={clientesById.get(m.cliente_id)}
+                    clienteFotoUrl={selecionado.cliente_foto_url}
+                  />
                   <div className={`flex flex-col gap-1 ${daEquipe ? 'items-end' : 'items-start'}`}>
                     <div
                       className="rounded-2xl px-3.5 py-2.5 text-sm"

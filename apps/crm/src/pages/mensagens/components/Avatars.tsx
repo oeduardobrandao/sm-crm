@@ -14,21 +14,36 @@ export function initialsOf(name: string): string {
 const SMALL = { width: 28, height: 28, fontSize: '0.65rem', flexShrink: 0 } as const;
 const LARGE = { width: 40, height: 40, fontSize: '0.8rem', flexShrink: 0 } as const;
 
-/** Cliente avatar: sigla + cor when known, initials on the base .avatar tokens otherwise. */
+/** Cliente avatar: connected Instagram photo when available, else sigla + cor,
+ * else initials on the base .avatar tokens. */
 export function ClienteAvatar({
   nome,
+  fotoUrl,
   cliente,
   size = 'sm',
 }: {
   nome: string;
+  fotoUrl?: string | null;
   cliente?: Pick<Cliente, 'sigla' | 'cor'>;
   size?: 'sm' | 'lg';
 }) {
+  const dims = size === 'lg' ? LARGE : SMALL;
+  if (fotoUrl) {
+    return (
+      <img
+        src={fotoUrl}
+        alt=""
+        data-testid="cliente-avatar-foto"
+        className="avatar"
+        style={{ ...dims, objectFit: 'cover' }}
+      />
+    );
+  }
   return (
     <div
       className="avatar"
       style={{
-        ...(size === 'lg' ? LARGE : SMALL),
+        ...dims,
         background: cliente?.cor || undefined,
         color: cliente?.cor ? '#fff' : undefined,
       }}
@@ -40,13 +55,15 @@ export function ClienteAvatar({
 }
 
 /** Feed-item author avatar: member photo or seeded initials for agency items,
- * the cliente's sigla + cor for client items. */
+ * the cliente's Instagram photo / sigla + cor for client items. */
 export function AutorAvatar({
   item,
   cliente,
+  clienteFotoUrl,
 }: {
   item: MensagemFeedItem;
   cliente?: Pick<Cliente, 'sigla' | 'cor'>;
+  clienteFotoUrl?: string | null;
 }) {
   if (item.is_workspace_user) {
     if (item.author_avatar_url) {
@@ -70,5 +87,5 @@ export function AutorAvatar({
       </div>
     );
   }
-  return <ClienteAvatar nome={item.cliente_nome} cliente={cliente} />;
+  return <ClienteAvatar nome={item.cliente_nome} fotoUrl={clienteFotoUrl} cliente={cliente} />;
 }

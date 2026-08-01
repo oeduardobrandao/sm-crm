@@ -43,6 +43,7 @@ const CONVERSAS = [
   {
     cliente_id: 14,
     cliente_nome: 'ACME',
+    cliente_foto_url: null,
     last_source: 'mensagem',
     last_action: null,
     last_content: 'Obrigado!',
@@ -54,6 +55,7 @@ const CONVERSAS = [
   {
     cliente_id: 15,
     cliente_nome: 'Beta Corp',
+    cliente_foto_url: 'https://cdn.example.com/beta.png',
     last_source: 'post_feedback',
     last_action: 'mensagem',
     last_content: 'Segue o ajuste combinado.',
@@ -203,6 +205,25 @@ describe('MensagensPage', () => {
   it('marks the feed seen on mount', async () => {
     renderPage();
     await waitFor(() => expect(mockSeen).toHaveBeenCalledTimes(1));
+  });
+
+  it('uses the Instagram profile picture as the client avatar when available', async () => {
+    renderPage();
+    await screen.findByText('Beta Corp');
+    expect(screen.getByTestId('cliente-avatar-foto')).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/beta.png',
+    );
+  });
+
+  it('filters the conversation list by client name', async () => {
+    renderPage();
+    await screen.findByText('Beta Corp');
+    fireEvent.change(screen.getByLabelText('Buscar cliente'), { target: { value: 'acm' } });
+    expect(screen.getByText('ACME')).toBeInTheDocument();
+    expect(screen.queryByText('Beta Corp')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Buscar cliente'), { target: { value: 'zzz' } });
+    expect(screen.getByText('Nenhum cliente encontrado.')).toBeInTheDocument();
   });
 
   it('does not send twice on a rapid double Enter', async () => {
