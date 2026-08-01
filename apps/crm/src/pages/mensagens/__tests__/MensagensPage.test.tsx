@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -142,6 +142,13 @@ describe('MensagensPage', () => {
       expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toBeDisabled(),
     );
     fireEvent.keyDown(input, { key: 'Enter' });
+    // An unguarded second dispatch doesn't call the mutationFn synchronously —
+    // mutateAsync schedules it a microtask (or more) later — so the count has
+    // to be checked after flushing pending microtasks/timers, not right away,
+    // or a missing guard would slip past this assertion undetected.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
     expect(mockSend).toHaveBeenCalledTimes(1);
     resolveSend();
     await waitFor(() => expect(input).toHaveValue(''));
@@ -165,6 +172,12 @@ describe('MensagensPage', () => {
       expect(screen.getByRole('button', { name: 'Enviar resposta' })).toBeDisabled(),
     );
     fireEvent.keyDown(replyInput, { key: 'Enter' });
+    // Same flush requirement as the general-composer test above: give an
+    // unguarded second dispatch time to actually reach the mutationFn before
+    // asserting the call count.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
     expect(mockReply).toHaveBeenCalledTimes(1);
     resolveReply();
   });
