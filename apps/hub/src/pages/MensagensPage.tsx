@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, FilePen, X } from 'lucide-react';
 import { useHub } from '../HubContext';
 import { fetchMensagens, markMensagensSeen, sendHubMensagem, submitApproval } from '../api';
+import { HubPostChip } from '../components/HubPostChip';
 import type { MensagemFeedItem, MensagensCursor } from '../types';
 
 const PAGE_SIZE = 50;
@@ -152,9 +152,12 @@ export function MensagensPage() {
                   )}
                   <span>{eventLabel(m)}</span>
                   {m.post_id != null && (
-                    <Link to={`${base}/postagens/${m.post_id}`} className="underline hover:hub-txt">
-                      {m.post_titulo ?? 'ver post'}
-                    </Link>
+                    <HubPostChip
+                      postId={m.post_id}
+                      titulo={m.post_titulo}
+                      base={base}
+                      token={token}
+                    />
                   )}
                   <span>· {formatTime(m.created_at)}</span>
                 </div>
@@ -179,17 +182,21 @@ export function MensagensPage() {
                   }
                 >
                   {m.post_id != null && (
-                    <Link
-                      to={`${base}/postagens/${m.post_id}`}
-                      className="block text-[11px] font-semibold underline opacity-80 mb-1"
-                    >
-                      {m.post_titulo ?? 'Post'}
-                      {m.action === 'correcao'
-                        ? ' · correção'
-                        : m.action === 'aprovado'
-                          ? ' · aprovação'
-                          : ''}
-                    </Link>
+                    <div className="mb-1.5">
+                      <HubPostChip
+                        postId={m.post_id}
+                        titulo={m.post_titulo}
+                        suffix={
+                          m.action === 'correcao'
+                            ? ' · correção'
+                            : m.action === 'aprovado'
+                              ? ' · aprovação'
+                              : ''
+                        }
+                        base={base}
+                        token={token}
+                      />
+                    </div>
                   )}
                   {m.content}
                 </div>

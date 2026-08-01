@@ -1,23 +1,27 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { MensagensPage } from '../MensagensPage';
 import { HubContext } from '../../HubContext';
 import type { HubBootstrap } from '../../types';
 
-const { mockFetchMensagens, mockSend, mockSeen, mockSubmitApproval } = vi.hoisted(() => ({
-  mockFetchMensagens: vi.fn(),
-  mockSend: vi.fn().mockResolvedValue({ ok: true }),
-  mockSeen: vi.fn().mockResolvedValue({ ok: true }),
-  mockSubmitApproval: vi.fn().mockResolvedValue({ ok: true }),
-}));
+const { mockFetchMensagens, mockSend, mockSeen, mockSubmitApproval, mockFetchPosts } = vi.hoisted(
+  () => ({
+    mockFetchMensagens: vi.fn(),
+    mockSend: vi.fn().mockResolvedValue({ ok: true }),
+    mockSeen: vi.fn().mockResolvedValue({ ok: true }),
+    mockSubmitApproval: vi.fn().mockResolvedValue({ ok: true }),
+    mockFetchPosts: vi.fn(),
+  }),
+);
 
 vi.mock('../../api', () => ({
   fetchMensagens: mockFetchMensagens,
   sendHubMensagem: mockSend,
   markMensagensSeen: mockSeen,
   submitApproval: mockSubmitApproval,
+  fetchPosts: mockFetchPosts,
 }));
 
 const BOOTSTRAP: HubBootstrap = {
@@ -117,6 +121,18 @@ describe('MensagensPage', () => {
       mockSend.mockResolvedValue({ ok: true });
       mockSeen.mockResolvedValue({ ok: true });
       mockSubmitApproval.mockResolvedValue({ ok: true });
+      mockFetchPosts.mockResolvedValue({
+        posts: [
+          {
+            id: 7,
+            titulo: 'Post de julho',
+            tipo: 'feed',
+            status: 'aprovado_cliente',
+            workflow_titulo: 'Fluxo de agosto',
+            media: [],
+          },
+        ],
+      });
     });
 
     it('renders client and agency bubbles with author identity and post chip', async () => {
@@ -152,6 +168,25 @@ describe('MensagensPage', () => {
     it('marks the thread seen on mount', async () => {
       renderPage({ feature_mensagens: true });
       await waitFor(() => expect(mockSeen).toHaveBeenCalledTimes(1));
+    });
+
+    it('shows the hover preview with tipo, status and fluxo on the post chip', async () => {
+      renderPage({ feature_mensagens: true });
+      await screen.findByText('Podemos ajustar o CTA?');
+      const chip = screen.getAllByRole('link', { name: /Post de julho/ })[0];
+      fireEvent.mouseEnter(chip.parentElement!);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      });
+      await waitFor(() => expect(mockFetchPosts).toHaveBeenCalledWith('tok'));
+      const card = await screen.findByTestId('hub-post-hover-preview');
+      expect(card).toHaveTextContent('Feed');
+      expect(card).toHaveTextContent('Aprovado');
+      expect(card).toHaveTextContent('Fluxo de agosto');
+      fireEvent.mouseLeave(chip.parentElement!);
+      await waitFor(() =>
+        expect(screen.queryByTestId('hub-post-hover-preview')).not.toBeInTheDocument(),
+      );
     });
   });
 });
