@@ -45,6 +45,14 @@ CREATE POLICY mensagens_tenant_insert ON mensagens
 CREATE POLICY mensagens_service_role_bypass ON mensagens
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
+-- Server-side plan gate (repo convention, 20260611140003 pattern): direct
+-- PostgREST inserts cannot bypass the feature_mensagens entitlement even
+-- though nav and route gates are client-side. Fires for every role, so the
+-- hub path is double-checked too (it already fails closed in the handler).
+CREATE TRIGGER mensagens_feature_gate
+  BEFORE INSERT ON mensagens
+  FOR EACH ROW EXECUTE FUNCTION enforce_plan_feature('feature_mensagens', 'direct', 'conta_id');
+
 -- ============ AUTHOR IDENTITY ON EXISTING POST FEEDBACK ============
 -- New agency replies record who wrote them; historical rows stay NULL and
 -- render as "Equipe".
