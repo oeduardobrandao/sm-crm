@@ -59,9 +59,13 @@ export function MensagensPage() {
 
   useEffect(() => {
     if (!enabled || !token) return;
-    markMensagensSeen(token).then(() => {
-      qc.invalidateQueries({ queryKey: ['hub-mensagens-count', token] });
-    });
+    markMensagensSeen(token)
+      .then(() => {
+        qc.invalidateQueries({ queryKey: ['hub-mensagens-count', token] });
+      })
+      // A failed marker just leaves the badge as-is until the next poll; it
+      // must not surface as an unhandled rejection.
+      .catch(() => {});
   }, [enabled, token, qc]);
 
   const items = useMemo(() => {

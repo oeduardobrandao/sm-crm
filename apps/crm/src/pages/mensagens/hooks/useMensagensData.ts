@@ -36,9 +36,13 @@ export function useMensagensData(clienteId: number | null) {
 
   // Opening the page marks the whole feed seen for this user.
   useEffect(() => {
-    markMensagensSeen().then(() => {
-      qc.invalidateQueries({ queryKey: ['mensagens-unread'] });
-    });
+    markMensagensSeen()
+      .then(() => {
+        qc.invalidateQueries({ queryKey: ['mensagens-unread'] });
+      })
+      // A failed marker just leaves the badge as-is until the next poll; it
+      // must not surface as an unhandled rejection.
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

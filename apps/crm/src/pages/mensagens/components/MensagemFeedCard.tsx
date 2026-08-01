@@ -103,7 +103,12 @@ export function MensagemFeedCard({ item, onReply }: Props) {
             disabled={sending || !draft.trim()}
             aria-label="Enviar resposta"
             className="rounded-md px-3 py-2 text-sm font-semibold disabled:opacity-50"
-            style={{ background: 'var(--dark)', color: '#fff', border: 'none', cursor: 'pointer' }}
+            style={{
+              background: 'var(--text-main)',
+              color: 'var(--card-bg)',
+              border: 'none',
+              cursor: 'pointer',
+            }}
           >
             <Send size={14} />
           </button>

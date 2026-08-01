@@ -90,8 +90,8 @@ export default function MensagensPage() {
               style={{
                 border: 'none',
                 cursor: 'pointer',
-                background: tipo === f.id ? '#000' : 'transparent',
-                color: tipo === f.id ? '#fff' : 'var(--text-muted)',
+                background: tipo === f.id ? 'var(--text-main)' : 'transparent',
+                color: tipo === f.id ? 'var(--card-bg)' : 'var(--text-muted)',
                 fontWeight: tipo === f.id ? 600 : 400,
               }}
             >
