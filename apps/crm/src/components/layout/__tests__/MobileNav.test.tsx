@@ -310,4 +310,17 @@ describe('MobileNav', () => {
 
     expect(screen.queryByTestId('mensagens-nav-badge')).not.toBeInTheDocument();
   });
+
+  it('shows "99+" in the Mensagens badge in the more sheet when count > 99', () => {
+    setAuth();
+    setLimits({ features: { feature_mensagens: true } });
+    mockedUseMensagensUnread.mockReturnValue(150);
+
+    renderMobileNav('/dashboard');
+    fireEvent.click(document.getElementById('mobile-more-btn')!);
+
+    const badge = screen.getByTestId('mensagens-nav-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('99+');
+  });
 });
