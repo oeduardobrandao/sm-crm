@@ -65,8 +65,8 @@ export function createHubMensagensHandler(deps: HubMensagensHandlerDeps) {
       const before = url.searchParams.get("before");
       const beforeSource = url.searchParams.get("before_source");
       const beforeItemIdParam = url.searchParams.get("before_item_id");
-      const beforeItemIdRaw = beforeItemIdParam === null ? NaN : Number(beforeItemIdParam);
-      const beforeItemId = Number.isFinite(beforeItemIdRaw) ? beforeItemIdRaw : null;
+      const beforeItemIdRaw = beforeItemIdParam === null ? NaN : parseInt(beforeItemIdParam, 10);
+      const beforeItemId = !Number.isNaN(beforeItemIdRaw) ? beforeItemIdRaw : null;
       const { data: items, error } = await db.rpc("get_mensagens_feed", {
         p_conta_id: contaId,
         p_cliente_id: clienteId,

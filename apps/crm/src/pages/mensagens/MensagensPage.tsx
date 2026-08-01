@@ -117,9 +117,10 @@ export default function MensagensPage() {
             key={feedItemKey(item)}
             item={item}
             onReply={(postId, workflowId, content) =>
-              replyToPost
-                .mutateAsync({ postId, workflowId, content })
-                .catch(() => toast.error('Não foi possível enviar a resposta.'))
+              replyToPost.mutateAsync({ postId, workflowId, content }).catch((err) => {
+                toast.error('Não foi possível enviar a resposta.');
+                throw err;
+              })
             }
           />
         ))}

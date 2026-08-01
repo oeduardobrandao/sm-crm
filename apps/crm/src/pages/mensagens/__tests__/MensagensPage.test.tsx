@@ -181,4 +181,21 @@ describe('MensagensPage', () => {
     expect(mockReply).toHaveBeenCalledTimes(1);
     resolveReply();
   });
+
+  it('keeps the reply draft when the send fails', async () => {
+    mockReply.mockRejectedValueOnce(new Error('network error'));
+    renderPage();
+    await screen.findByText('Trocar a foto');
+    fireEvent.click(screen.getByRole('button', { name: 'Responder' }));
+    const replyInput = screen.getByPlaceholderText('Responder ao cliente…');
+    fireEvent.change(replyInput, { target: { value: 'Feito' } });
+    fireEvent.keyDown(replyInput, { key: 'Enter' });
+    await waitFor(() => expect(mockReply).toHaveBeenCalledTimes(1));
+    // Flush the rejection's microtasks so the draft-clearing branch (or lack
+    // thereof) has actually settled before asserting on it.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByPlaceholderText('Responder ao cliente…')).toHaveValue('Feito');
+  });
 });

@@ -38,6 +38,8 @@ export function MensagemFeedCard({ item, onReply }: Props) {
       await onReply(item.post_id, item.workflow_id, draft.trim());
       setDraft('');
       setReplying(false);
+    } catch {
+      // onReply already surfaces a toast; keep the draft so the user doesn't lose their text.
     } finally {
       setSending(false);
     }
