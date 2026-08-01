@@ -220,7 +220,10 @@ export default function MobileNav() {
                     </div>
                     <span>{t(item.labelKey, item.label)}</span>
                     {item.id === 'mensagens' && mensagensUnread > 0 && (
-                      <span className="nav-badge nav-badge--count" data-testid="mensagens-nav-badge">
+                      <span
+                        className="nav-badge nav-badge--count"
+                        data-testid="mensagens-nav-badge"
+                      >
                         {mensagensUnread > 99 ? '99+' : mensagensUnread}
                       </span>
                     )}
