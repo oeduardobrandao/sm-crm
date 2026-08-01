@@ -15,11 +15,33 @@ interface Props {
 }
 
 const OPEN_DELAY_MS = 200;
+/** Rough max height of the open card (thumbnail + body); used to decide the flip. */
+const CARD_ESTIMATE_PX = 240;
+
+/** The absolutely-positioned card is clipped by the nearest scrollable ancestor,
+ * so the flip decision measures the room INSIDE that ancestor, not the viewport. */
+function placementFor(el: HTMLElement | null): 'above' | 'below' {
+  if (!el) return 'above';
+  let boundTop = 0;
+  let parent = el.parentElement;
+  while (parent) {
+    const overflowY = window.getComputedStyle(parent).overflowY;
+    if (overflowY === 'auto' || overflowY === 'scroll') {
+      boundTop = parent.getBoundingClientRect().top;
+      break;
+    }
+    parent = parent.parentElement;
+  }
+  const room = el.getBoundingClientRect().top - boundTop;
+  return room < CARD_ESTIMATE_PX ? 'below' : 'above';
+}
 
 /** Linked-post chip with a hover preview fed entirely from the already-cached
  * hub-posts payload (thumbnail, tipo/status, fluxo). No extra endpoint. */
 export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
   const [open, setOpen] = useState(false);
+  const [placement, setPlacement] = useState<'above' | 'below'>('above');
+  const wrapperRef = useRef<HTMLSpanElement | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data } = useQuery({
@@ -29,7 +51,10 @@ export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
   });
 
   function scheduleOpen() {
-    timer.current = setTimeout(() => setOpen(true), OPEN_DELAY_MS);
+    timer.current = setTimeout(() => {
+      setPlacement(placementFor(wrapperRef.current));
+      setOpen(true);
+    }, OPEN_DELAY_MS);
   }
   function cancelOpen() {
     if (timer.current) clearTimeout(timer.current);
@@ -42,6 +67,7 @@ export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
 
   return (
     <span
+      ref={wrapperRef}
       className="relative inline-flex"
       onMouseEnter={scheduleOpen}
       onMouseLeave={cancelOpen}
@@ -64,7 +90,9 @@ export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
         <div
           role="tooltip"
           data-testid="hub-post-hover-preview"
-          className="absolute bottom-full left-0 z-50 mb-2 w-64 overflow-hidden rounded-xl hub-bg-card text-left"
+          className={`absolute left-0 z-50 w-64 overflow-hidden rounded-xl hub-bg-card text-left ${
+            placement === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
+          }`}
           style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.18), inset 0 0 0 1px var(--hub-bd)' }}
         >
           {thumb && <img src={thumb} alt="" className="h-32 w-full object-cover" loading="lazy" />}
