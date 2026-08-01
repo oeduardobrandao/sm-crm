@@ -77,6 +77,13 @@ export function getNotificationDisplay(
         title: 'Nova mensagem do cliente',
         body: `${client} — ${post}`,
       };
+    case 'client_message':
+      return {
+        icon: MessageSquare,
+        tone: 'teal',
+        title: 'Nova mensagem do cliente',
+        body: `${client}: ${s(m.comentario, '')}`,
+      };
     case 'post_edit_suggestion':
       return {
         icon: FilePen,

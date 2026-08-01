@@ -1,4 +1,4 @@
-import { supabase, getContaId } from './core';
+import { supabase, getContaId, getUserId } from './core';
 
 // =============================================
 // WORKFLOW POSTS (Sub-tasks / Content pieces)
@@ -748,12 +748,14 @@ export async function replyToPostApproval(
   _workflowId: number,
   comentario: string,
 ): Promise<void> {
+  const author_user_id = await getUserId();
   const { error } = await supabase.from('post_approvals').insert({
     post_id: postId,
     token: null,
     action: 'mensagem',
     comentario,
     is_workspace_user: true,
+    author_user_id,
   });
   if (error) throw error;
 }

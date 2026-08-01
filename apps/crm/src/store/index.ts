@@ -12,6 +12,7 @@ export * from './hub';
 export * from './ideias';
 export * from './notifications';
 export * from './tarefas';
+export * from './mensagens';
 export * from './banners';
 export * from './computed';
 export * from './kb';
