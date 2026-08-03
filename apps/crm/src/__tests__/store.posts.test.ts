@@ -65,6 +65,70 @@ describe('store workflow posts', () => {
     expect(call.payload).toMatchObject({ conta_id: 'conta-1', workflow_id: 5 });
   });
 
+  it('addWorkflowPost does not touch sync_mentions when conteudo is null', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'insert', {
+      data: { id: 100, titulo: 'Post Instagram', workflow_id: 5, conta_id: 'conta-1' },
+      error: null,
+    });
+
+    await store.addWorkflowPost({
+      workflow_id: 5,
+      titulo: 'Post Instagram',
+      conteudo: null,
+      conteudo_plain: '',
+      tipo: 'feed',
+      ordem: 0,
+      status: 'rascunho',
+    });
+
+    expect(getCalls('rpc:sync_mentions', 'rpc')).toHaveLength(0);
+  });
+
+  it('addWorkflowPost syncs mentions extracted from a conteudo doc with mention nodes', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'insert', {
+      data: { id: 100, titulo: 'Post Instagram', workflow_id: 5, conta_id: 'conta-1' },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseRpc('sync_mentions', { data: null, error: null });
+
+    const doc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'mention',
+              attrs: { entityType: 'membro', id: 12, label: 'Ana', parentId: null },
+            },
+            { type: 'text', text: ' confere isso' },
+            {
+              type: 'mention',
+              attrs: { entityType: 'cliente', id: 3, label: 'Acme', parentId: null },
+            },
+          ],
+        },
+      ],
+    };
+
+    await store.addWorkflowPost({
+      workflow_id: 5,
+      titulo: 'Post Instagram',
+      conteudo: doc,
+      conteudo_plain: 'confere isso',
+      tipo: 'feed',
+      ordem: 0,
+      status: 'rascunho',
+    });
+
+    const call = getCalls('rpc:sync_mentions', 'rpc').at(-1)!;
+    expect(call.payload).toEqual({
+      p_host_type: 'workflow_post',
+      p_host_id: 100,
+      p_membro_ids: [12],
+    });
+  });
+
   it('updateWorkflowPost patches by id', async () => {
     mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', {
       data: { id: 100, status: 'revisao_interna' },

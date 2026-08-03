@@ -8,16 +8,20 @@ import {
 } from "../mention-email-cron/handler.ts";
 
 /**
- * Fake of the two supabase-js surfaces the handler touches:
- *  - .from("notifications").update(patch).eq/.is/.lte/.gte...select() — the
- *    claim (patch.emailed_at = ISO string) and the per-user reset
- *    (patch.emailed_at = null, filtered by .in("id", ids)).
+ * Fake of the three supabase-js surfaces the handler touches:
+ *  - .from("notifications").select(cols).eq/.is/.lte/.gte/.order/.limit() —
+ *    step 1, the read-only eligibility query (bounded + ordered, claims
+ *    nothing).
+ *  - .from("notifications").update(patch).in/.is...select() — step 2, the
+ *    claim (patch.emailed_at = ISO string, filtered by .in("id", ids) AND
+ *    .is("emailed_at", null)) and the per-user reset (patch.emailed_at =
+ *    null, filtered by .in("id", ids) only, no .select()).
  *  - auth.admin.getUserById(userId) — email resolution.
  *
- * The claim path actually APPLIES the recorded filters against the in-memory
- * rows (not just records that they were called) so the tests prove the five
- * filters are both present AND correct, matching the "claim honors all five
- * filters" requirement in the task brief.
+ * Both the eligibility query and the claim actually APPLY their recorded
+ * filters against the in-memory rows (not just record that they were called)
+ * so the tests prove the filters — including the step-2 emailed_at IS NULL
+ * re-check — are both present AND correct.
  */
 interface FakeNotification {
   id: number;
@@ -35,40 +39,44 @@ function makeFakeDb(
   rows: FakeNotification[],
   userEmails: Record<string, string | null | undefined>,
 ) {
-  const claimCalls: Array<{
+  const eligibleCalls: Array<{
     eq: Record<string, string>;
     is: Record<string, null>;
     lte: Record<string, string>;
     gte: Record<string, string>;
+    limit: number | undefined;
   }> = [];
+  const claimCalls: Array<{ in: number[]; is: Record<string, null> }> = [];
   const resetCalls: number[][] = [];
   let updateCalled = false;
 
   const db = {
     rows,
+    eligibleCalls,
     claimCalls,
     resetCalls,
     updateWasCalled: () => updateCalled,
     from(table: string) {
       assert(table === "notifications", `unexpected table ${table}`);
       return {
-        update(patch: { emailed_at: string | null }) {
-          updateCalled = true;
+        select(_cols: string) {
           const filters = {
             eq: {} as Record<string, string>,
             is: {} as Record<string, null>,
             lte: {} as Record<string, string>,
             gte: {} as Record<string, string>,
-            in: undefined as number[] | undefined,
+            order: undefined as { column: string; ascending: boolean } | undefined,
+            limit: undefined as number | undefined,
           };
-          const applyClaim = () => {
-            claimCalls.push({
+          const run = () => {
+            eligibleCalls.push({
               eq: filters.eq,
               is: filters.is,
               lte: filters.lte,
               gte: filters.gte,
+              limit: filters.limit,
             });
-            const matched = rows.filter((r) => {
+            let matched = rows.filter((r) => {
               for (const [col, val] of Object.entries(filters.eq)) {
                 if ((r as unknown as Record<string, unknown>)[col] !== val) return false;
               }
@@ -80,6 +88,70 @@ function makeFakeDb(
               }
               for (const [col, val] of Object.entries(filters.gte)) {
                 if (!(String((r as unknown as Record<string, unknown>)[col]) >= val)) return false;
+              }
+              return true;
+            });
+            if (filters.order) {
+              const { column, ascending } = filters.order;
+              matched = [...matched].sort((a, b) => {
+                const av = String((a as unknown as Record<string, unknown>)[column]);
+                const bv = String((b as unknown as Record<string, unknown>)[column]);
+                return ascending ? (av < bv ? -1 : av > bv ? 1 : 0) : av < bv ? 1 : av > bv ? -1 : 0;
+              });
+            }
+            if (filters.limit !== undefined) {
+              matched = matched.slice(0, filters.limit);
+            }
+            return Promise.resolve({
+              data: matched.map((r) => ({ id: r.id, created_at: r.created_at })),
+              error: null,
+            });
+          };
+          // deno-lint-ignore no-explicit-any
+          const chain: any = {
+            eq(col: string, val: string) {
+              filters.eq[col] = val;
+              return chain;
+            },
+            is(col: string, val: null) {
+              filters.is[col] = val;
+              return chain;
+            },
+            lte(col: string, val: string) {
+              filters.lte[col] = val;
+              return chain;
+            },
+            gte(col: string, val: string) {
+              filters.gte[col] = val;
+              return chain;
+            },
+            order(col: string, opts: { ascending: boolean }) {
+              filters.order = { column: col, ascending: opts.ascending };
+              return chain;
+            },
+            limit(n: number) {
+              filters.limit = n;
+              return chain;
+            },
+            then(resolve: (v: unknown) => void, reject?: (e: unknown) => void) {
+              return run().then(resolve, reject);
+            },
+          };
+          return chain;
+        },
+        update(patch: { emailed_at: string | null }) {
+          updateCalled = true;
+          const filters = {
+            is: {} as Record<string, null>,
+            in: undefined as number[] | undefined,
+          };
+          const applyClaim = () => {
+            claimCalls.push({ in: filters.in ?? [], is: filters.is });
+            const idSet = new Set(filters.in ?? []);
+            const matched = rows.filter((r) => {
+              if (!idSet.has(r.id)) return false;
+              for (const col of Object.keys(filters.is)) {
+                if ((r as unknown as Record<string, unknown>)[col] !== null) return false;
               }
               return true;
             });
@@ -105,20 +177,8 @@ function makeFakeDb(
           };
           // deno-lint-ignore no-explicit-any
           const chain: any = {
-            eq(col: string, val: string) {
-              filters.eq[col] = val;
-              return chain;
-            },
             is(col: string, val: null) {
               filters.is[col] = val;
-              return chain;
-            },
-            lte(col: string, val: string) {
-              filters.lte[col] = val;
-              return chain;
-            },
-            gte(col: string, val: string) {
-              filters.gte[col] = val;
               return chain;
             },
             in(col: string, vals: number[]) {
@@ -280,12 +340,139 @@ Deno.test("claim honors all five filters: type, read_at, dismissed_at, emailed_a
     );
   }
 
+  // Step 1 (eligibility SELECT) carries the five filters.
+  assertEquals(db.eligibleCalls.length, 1);
+  const eligibleCall = db.eligibleCalls[0];
+  assertEquals(eligibleCall.eq, { type: "mention" });
+  assertEquals(eligibleCall.is, { read_at: null, dismissed_at: null, emailed_at: null });
+  assertEquals(eligibleCall.lte, { created_at: CLAIM_BEFORE });
+  assertEquals(eligibleCall.gte, { created_at: CLAIM_AFTER });
+
+  // Step 2 (claim UPDATE) narrows to exactly the id found by step 1, plus the
+  // emailed_at IS NULL re-check that keeps concurrent runs disjoint.
   assertEquals(db.claimCalls.length, 1);
-  const call = db.claimCalls[0];
-  assertEquals(call.eq, { type: "mention" });
-  assertEquals(call.is, { read_at: null, dismissed_at: null, emailed_at: null });
-  assertEquals(call.lte, { created_at: CLAIM_BEFORE });
-  assertEquals(call.gte, { created_at: CLAIM_AFTER });
+  const claimCall = db.claimCalls[0];
+  assertEquals(claimCall.in, [1]);
+  assertEquals(claimCall.is, { emailed_at: null });
+});
+
+Deno.test("claim batch is capped: with more than CLAIM_BATCH_SIZE eligible rows, only the oldest 200 are claimed", async () => {
+  const rows: FakeNotification[] = [];
+  // 205 eligible rows, oldest first by id, all within the eligibility window.
+  for (let i = 1; i <= 205; i++) {
+    rows.push(
+      row({
+        id: i,
+        user_id: "u1",
+        // Spread creation times a second apart, oldest = id 1.
+        created_at: new Date(new Date(CLAIM_AFTER).getTime() + i * 1000).toISOString(),
+      }),
+    );
+  }
+  const db = makeFakeDb(rows, { u1: "ana@x.test" });
+  const { deps } = makeDeps(db);
+  const result = await runMentionEmailCron(deps);
+
+  assertEquals(result.claimed, 200, "claim must be capped at CLAIM_BATCH_SIZE");
+  assertEquals(db.eligibleCalls[0].limit, 200);
+
+  const claimedRows = db.rows.filter((r) => r.emailed_at === NOW.toISOString());
+  assertEquals(claimedRows.length, 200);
+  // The 200 claimed must be the oldest 200 (ids 1..200), not an arbitrary slice.
+  const claimedIds = claimedRows.map((r) => r.id).sort((a, b) => a - b);
+  assertEquals(claimedIds, Array.from({ length: 200 }, (_, i) => i + 1));
+
+  // The 5 leftover (ids 201..205) stay unclaimed for the next run.
+  const leftover = db.rows.filter((r) => r.emailed_at === null);
+  assertEquals(leftover.length, 5);
+});
+
+Deno.test("claim step re-checks emailed_at IS NULL: a row claimed by another run between step 1 and step 2 is not double-claimed", async () => {
+  // Minimal purpose-built fake (not the shared makeFakeDb) so step 1's
+  // eligibility snapshot can be made stale on purpose: the row looks
+  // unclaimed when SELECTed, but a "concurrent run" claims it for real
+  // before step 2's UPDATE executes. Only the emailed_at IS NULL re-check in
+  // step 2 can stop this from being claimed twice.
+  let emailedAt: string | null = null;
+  const sent: Array<{ to: string }> = [];
+
+  const db = {
+    from(table: string) {
+      assert(table === "notifications", `unexpected table ${table}`);
+      return {
+        // deno-lint-ignore no-explicit-any
+        select(_cols: string): any {
+          const chain: any = {
+            eq: () => chain,
+            is: () => chain,
+            lte: () => chain,
+            gte: () => chain,
+            order: () => chain,
+            limit: () => chain,
+            then(resolve: (v: unknown) => void, reject?: (e: unknown) => void) {
+              // The eligibility snapshot is taken here; then a "concurrent run"
+              // claims the row for real, before this handler's own step 2 runs.
+              emailedAt = "2026-08-03T11:59:00.000Z";
+              return Promise.resolve({
+                data: [{ id: 1, created_at: "2026-08-03T11:00:00.000Z" }],
+                error: null,
+              }).then(resolve, reject);
+            },
+          };
+          return chain;
+        },
+        // deno-lint-ignore no-explicit-any
+        update(patch: { emailed_at: string | null }): any {
+          const filters = { in: [] as number[], is: {} as Record<string, null> };
+          const chain: any = {
+            in(col: string, vals: number[]) {
+              assert(col === "id", `unexpected .in() column ${col}`);
+              filters.in = vals;
+              return chain;
+            },
+            is(col: string, val: null) {
+              filters.is[col] = val;
+              return chain;
+            },
+            select(_cols: string) {
+              const eligible = filters.in.includes(1) &&
+                (!("emailed_at" in filters.is) || emailedAt === null);
+              if (eligible) emailedAt = patch.emailed_at;
+              return Promise.resolve({
+                data: eligible
+                  ? [{ id: 1, user_id: "u1", metadata: {}, link: "/", created_at: "2026-08-03T11:00:00.000Z" }]
+                  : [],
+                error: null,
+              });
+            },
+          };
+          return chain;
+        },
+      };
+    },
+    auth: {
+      admin: {
+        getUserById: () =>
+          Promise.resolve({ data: { user: { email: "ana@x.test" } }, error: null }),
+      },
+    },
+  };
+
+  const deps: MentionEmailCronDeps = {
+    db: db as unknown as MentionEmailDb,
+    now: () => NOW,
+    resendEnabled: true,
+    sendMentionEmail: (p) => {
+      sent.push(p);
+      return Promise.resolve({ skipped: false });
+    },
+  };
+
+  const result = await runMentionEmailCron(deps);
+
+  assertEquals(result.claimed, 0, "the row must not be claimed twice");
+  assertEquals(sent.length, 0);
+  assertEquals(emailedAt, "2026-08-03T11:59:00.000Z", "the other run's claim stands");
 });
 
 Deno.test("one email per user: multiple claimed mentions for the same user are batched into a single send", async () => {

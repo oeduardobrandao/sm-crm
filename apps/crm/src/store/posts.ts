@@ -583,6 +583,12 @@ export async function addWorkflowPost(
     .select()
     .single();
   if (error) throw error;
+  if (p.conteudo != null) {
+    const membroIds = extractMentionsFromDoc(p.conteudo)
+      .filter((ref) => ref.entityType === 'membro')
+      .map((ref) => ref.id);
+    await syncMentions('workflow_post', data.id, membroIds);
+  }
   return data;
 }
 
