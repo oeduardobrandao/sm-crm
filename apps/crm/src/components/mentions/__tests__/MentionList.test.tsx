@@ -1,5 +1,5 @@
 import { createRef } from 'react';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MentionList } from '../MentionList';
 import type { MentionListHandle } from '../MentionList';
@@ -96,6 +96,23 @@ describe('MentionList', () => {
       <MentionList ref={ref} sections={sections()} onSelect={() => {}} referenceRect={RECT} />,
     );
     expect(ref.current!.onKeyDown({ key: 'a', preventDefault: vi.fn() })).toBe(false);
+  });
+
+  it("a row mousedown never reaches a document-level listener (e.g. a host popover's outside-click-closes-me handler)", () => {
+    // Regression: the dropdown is portaled to document.body, outside whatever DOM
+    // subtree it is anchored to. A host that closes itself on any mousedown its own
+    // ref doesn't contain (PostEditor's "Adicionar comentario" popover) would
+    // otherwise unmount before the row's click (which fires later, on mouseup) can
+    // run the selection -- see the onMouseDown handler's comment in MentionList.tsx.
+    const documentListener = vi.fn();
+    document.addEventListener('mousedown', documentListener);
+    try {
+      render(<MentionList sections={sections()} onSelect={() => {}} referenceRect={RECT} />);
+      fireEvent.mouseDown(screen.getByText('Bruno'));
+      expect(documentListener).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener('mousedown', documentListener);
+    }
   });
 
   it('onKeyDown is a no-op (returns false) when there are no results', () => {

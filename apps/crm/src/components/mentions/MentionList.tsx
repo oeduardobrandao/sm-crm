@@ -136,8 +136,18 @@ export const MentionList = forwardRef<MentionListHandle, MentionListProps>(funct
         zIndex: 10050,
       }}
       // Selecting a row must not steal focus from the host editor/textarea before
-      // onSelect runs (mousedown fires before click/blur).
-      onMouseDown={(e) => e.preventDefault()}
+      // onSelect runs (mousedown fires before click/blur) -- preventDefault handles
+      // that. It must also never reach an ANCESTOR "outside click closes me"
+      // listener: this dropdown is portaled to document.body, outside the DOM
+      // subtree of whatever it is anchored to (e.g. PostEditor's "Adicionar
+      // comentario" popover, which closes itself on any mousedown its own ref
+      // doesn't contain) -- without stopPropagation, that listener sees this click
+      // as "outside" and closes/unmounts the host before the row's click handler
+      // (which fires later, on mouseup) ever runs the selection.
+      onMouseDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
     >
       {flatItems.length === 0 ? (
         <div className="mention-suggestion-empty">Nenhum resultado</div>

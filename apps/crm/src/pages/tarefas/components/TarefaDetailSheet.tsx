@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { MentionText } from '@/components/mentions/MentionText';
 import {
   addSubtarefa,
   deleteSubtarefa,
@@ -309,7 +310,7 @@ export function TarefaDetailSheet({
                 Descrição
               </div>
               <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-main)' }}>
-                {tarefa.descricao}
+                <MentionText text={tarefa.descricao} />
               </p>
             </div>
           )}

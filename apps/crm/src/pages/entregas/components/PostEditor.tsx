@@ -29,6 +29,7 @@ import { MentionNode } from '@/components/mentions/MentionNode';
 import { mentionHref } from '@/components/mentions/mentionHref';
 import { MentionSuggestion } from '@/components/mentions/mentionSuggestion';
 import { useMentionSearch } from '@/components/mentions/useMentionSearch';
+import { MentionTextarea } from '@/components/mentions/MentionTextarea';
 import type { MentionEntityType } from '@/components/mentions/types';
 import { createInlineImageExtension } from './InlineImageExtension';
 import type { InlineImageUploadFn } from './InlineImageExtension';
@@ -607,11 +608,11 @@ export function PostEditor({
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="comment-add-label">Adicionar comentário</div>
-            <textarea
+            <MentionTextarea
               className="comment-add-input"
               placeholder="Escreva seu comentário..."
               value={commentAddText}
-              onChange={(e) => setCommentAddText(e.target.value)}
+              onValueChange={setCommentAddText}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
