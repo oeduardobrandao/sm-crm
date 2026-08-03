@@ -2,10 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { listPublicPricingPlans, type PublicPricingPlan } from '@/services/billing';
+import { buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
 import PlanComparison from './PlanComparison';
-
-// Launch promo code — must match LAUNCH_PROMO.code in the billing-checkout edge function.
-export const PROMO_CODE = 'BEMVINDO';
 
 /** Centavos → display string. R$ 0 stays "R$ 0"; otherwise pt-BR currency (e.g. R$ 99,90). */
 function formatPrice(centavos: number): string {
@@ -20,16 +18,16 @@ const PLAN_MARKETING: Record<string, { description: string; cta: string; highlig
   },
   start: {
     description: 'Para freelancers que estão começando.',
-    cta: 'Assinar Start',
+    cta: 'Começar teste grátis',
   },
   pro: {
     description: 'Para freelancers com carteira consolidada.',
-    cta: 'Assinar Pro',
+    cta: 'Começar teste grátis',
     highlight: true,
   },
   max: {
     description: 'Para micro-agências e equipes completas.',
-    cta: 'Assinar Max',
+    cta: 'Começar teste grátis',
   },
 };
 
@@ -87,10 +85,12 @@ export function PricingSection() {
   const isYear = period === 'year';
   const isLoadingPlans = !shouldLoadPlans || isPending;
 
-  // Visitors must sign up before checkout; logged-in owners pick/confirm on Plano & Cobrança.
+  // Visitors must sign up before checkout. Paid plans carry the choice through
+  // signup so the trial starts without another plan decision.
   const planHref = (id: string) => {
     if (id === 'free') return user ? '/dashboard' : '/login?tab=register';
-    return user ? '/configuracao/cobranca' : '/login?tab=register';
+    if (user) return '/configuracao/cobranca';
+    return `/login?tab=register&${buildPlanIntentQuery(id, period)}`;
   };
 
   const planAction = (plan: PublicPricingPlan) => {
@@ -116,8 +116,7 @@ export function PricingSection() {
             qualquer momento.
           </p>
           <div className="pricing-promo-note">
-            🎁 Novos usuários ganham o <strong>1º mês grátis</strong> em qualquer plano — use o
-            código <code className="promo-code">{PROMO_CODE}</code> no checkout.
+            30 dias grátis em qualquer plano pago. Sem código, cancele quando quiser.
           </div>
         </div>
 
@@ -196,6 +195,7 @@ export function PricingSection() {
                       ? `cobrado anualmente (${formatPrice(plan.price_brl_annual)}/ano)`
                       : ' '}
                   </div>
+                  {!isFree && <div className="plan-trial-note">30 dias grátis para começar</div>}
                   <div className="plan-tag">{marketing.description}</div>
                   <div className="plan-label">Limites</div>
                   <ul className="plan-list plan-limits">
