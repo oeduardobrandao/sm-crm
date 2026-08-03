@@ -154,11 +154,21 @@ async function advanceToMapping(queryClient?: QueryClient) {
   await screen.findByText('calendario');
 }
 
-/** Drives origem -> upload -> mapeamento -> prévia. */
+/**
+ * Drives origem -> upload -> mapeamento -> prévia.
+ *
+ * Settles on the Importar button being ENABLED, not on the heading. StepPrevia renders
+ * "Prévia da importação" the moment the step switches, while the preview request is still
+ * in flight and the button is still `disabled={!preview || busy || rowCount === 0}`. A
+ * fireEvent.click on a disabled button is a silent no-op, so a caller that clicked in that
+ * window lost its click and then sat on the findBy ceiling waiting for a commit that never
+ * started. That is what made this file flake on CI.
+ */
 async function advanceToPreview(queryClient?: QueryClient) {
   await advanceToMapping(queryClient);
   fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
   await screen.findByText('Prévia da importação');
+  await waitFor(() => expect(screen.getByRole('button', { name: /Importar/ })).toBeEnabled());
 }
 
 beforeEach(() => {
@@ -195,6 +205,48 @@ beforeEach(() => {
 // --- tests ------------------------------------------------------------------
 
 describe('ImportarPage', () => {
+  // Regression for the CI flake that reddened four unrelated branches between
+  // 2026-07-31 and 2026-08-03. StepPrevia renders its "Prévia da importação"
+  // heading as soon as the step switches, but the Importar button stays disabled
+  // until the preview request lands (`disabled={!preview || busy || rowCount === 0}`).
+  // Waiting on the heading therefore does NOT mean the button is clickable, and a
+  // fireEvent.click on a disabled button is a silent no-op — the commit simply never
+  // ran and the test sat on the findBy ceiling until it gave up. Locally the mocked
+  // preview resolved inside the same flush, hiding it; a loaded CI runner did not.
+  // Deferring the preview by a macrotask reproduces that window deterministically.
+  test('does not drop the Importar click while the prévia is still loading', async () => {
+    mockedPreview.mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                counts: { clientes: 0, posts: POST_COUNT, entregas: 0, ideias: 0 },
+                warnings: [],
+                limits: {
+                  maxClients: null,
+                  maxWorkflowTemplates: null,
+                  maxPostsPerWorkflow: 100,
+                  maxActiveWorkflowsPerClient: null,
+                },
+              }),
+            // Must outlast findByText('Prévia da importação'), which resolves almost
+            // immediately because the heading is already in the DOM. That gap IS the bug.
+            50,
+          ),
+        ),
+    );
+
+    await advanceToPreview();
+
+    // The precondition advanceToPreview owes every caller that clicks Importar.
+    expect(screen.getByRole('button', { name: /Importar/ })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Importar/ }));
+    await screen.findByText('Importação concluída');
+    expect(mockedCommit).toHaveBeenCalled();
+  });
+
   test('walks origem -> upload -> mapeamento -> prévia, previewing unchunked rows', async () => {
     await advanceToPreview();
 
@@ -210,15 +262,16 @@ describe('ImportarPage', () => {
     expect(previewed.filter((r) => r.kind === 'post')).toHaveLength(POST_COUNT);
   });
 
-  // Heaviest test in the file (full wizard walk + 253-row two-slice commit):
-  // under CI load the completion screen can take well over findByText's 1s
-  // default, which made this the suite's recurring red. The generous waits
-  // change nothing about what is asserted.
+  // Heaviest test in the file (full wizard walk + 253-row two-slice commit). It once
+  // carried a 15s findByText timeout, on the theory that CI load made the completion
+  // screen slow. That diagnosis was wrong: the click was landing on a still-disabled
+  // Importar button and never starting a commit at all, so no ceiling could have saved
+  // it. advanceToPreview now waits for the button, and the default timeout is back.
   test('commits in slices of 200, chunked by the plan cap the preview returned', async () => {
     await advanceToPreview();
     fireEvent.click(screen.getByRole('button', { name: /Importar/ }));
 
-    await screen.findByText('Importação concluída', undefined, { timeout: 15_000 });
+    await screen.findByText('Importação concluída');
 
     // 250 posts at a cap of 100 -> 3 containers -> 253 rows -> 200 + 53.
     expect(mockedStart).toHaveBeenCalledWith('csv', 253);
