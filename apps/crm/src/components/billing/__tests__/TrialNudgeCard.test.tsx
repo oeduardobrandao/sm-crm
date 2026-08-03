@@ -82,4 +82,23 @@ describe('TrialNudgeCard', () => {
     renderCard();
     expect(await screen.findByText(TITLE)).toBeInTheDocument();
   });
+
+  it('shows for a brand-new workspace whose effective plan id is still null', async () => {
+    // handle_new_user never sets workspaces.plan_id and there's no DB default, so a
+    // never-touched-billing workspace has plan_id = NULL. That must resolve to
+    // 'free', not be compared against it directly.
+    vi.mocked(getEffectivePlanId).mockResolvedValue(null);
+    renderCard();
+    expect(await screen.findByText(TITLE)).toBeInTheDocument();
+  });
+
+  it('shows when workspaceRole is owner despite a stale profile-level agent role', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      role: 'agent',
+      workspaceRole: 'owner',
+      profile: { conta_id: 'ws-1' },
+    } as never);
+    renderCard();
+    expect(await screen.findByText(TITLE)).toBeInTheDocument();
+  });
 });

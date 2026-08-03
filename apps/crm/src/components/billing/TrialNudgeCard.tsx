@@ -5,6 +5,7 @@ import { Timer, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getEffectivePlanId, getWorkspaceSubscription } from '@/services/billing';
 import { captureEvent } from '@/lib/analytics';
+import { resolveCurrentPlanId } from '@/pages/configuracao/cobranca/plan-display';
 
 const DISMISS_DAYS = 7;
 
@@ -21,8 +22,10 @@ function isDismissalActive(raw: string | null): boolean {
 }
 
 export function TrialNudgeCard() {
-  const { role, profile } = useAuth();
-  const isOwner = role === 'owner';
+  const { role, workspaceRole, profile } = useAuth();
+  // Follow the ACTIVE workspace role, not the stale profile-level role — a user
+  // can be owner in one workspace and agent in another (see DashboardPage).
+  const isOwner = (workspaceRole ?? role) === 'owner';
   const storageKey = `trial_nudge_dismissed_${profile?.conta_id ?? 'unknown'}`;
 
   const [dismissed, setDismissed] = useState(() =>
@@ -44,7 +47,12 @@ export function TrialNudgeCard() {
   // Wait for both answers before deciding: rendering on partial data would flash
   // the card at a paying customer.
   if (planId === undefined || subscription === undefined) return null;
-  if (planId !== 'free') return null;
+  // A brand-new workspace has workspaces.plan_id = NULL (handle_new_user never
+  // sets it and there's no DB default), so the raw effective plan id must not be
+  // compared directly against 'free' — that would hide the card from its entire
+  // audience. Resolve it the same way CobrancaPage does.
+  const currentPlanId = resolveCurrentPlanId(planId, subscription?.plan_id);
+  if (currentPlanId !== 'free') return null;
   if (subscription?.hasEverSubscribed) return null;
 
   function handleDismiss() {
