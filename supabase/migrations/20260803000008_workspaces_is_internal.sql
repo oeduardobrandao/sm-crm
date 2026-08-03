@@ -19,11 +19,21 @@
 -- excluded. Skipping a paying customer is far worse than one wasted sync of a
 -- test account.
 
--- Originally pushed to prod as 20260803000001, before PR #282 landed a
--- paywall_hits migration on that same version prefix. Renumbered above main's
--- tail so the version-guard passes and #282's migration is not shadowed. Every
--- statement below is idempotent, so re-applying under the new version on an
--- environment that already ran the old one is a no-op.
+-- Renumbered TWICE. Pushed to prod as 20260803000001; PR #282 then landed
+-- paywall_hits on that prefix, so this moved to 000006; PR #287 (menções) then
+-- landed on 000006, so this moved to 000008.
+--
+-- Prod history is already correct for the other two PRs: the 000001/000002 rows
+-- this migration's first push had claimed were deleted from
+-- supabase_migrations.schema_migrations before #282's push, and prod now records
+-- paywall_hits, checkout_attempts, loops_* and mencoes under their own versions.
+-- What prod does NOT have is a history row for THIS migration, while its DDL is
+-- applied. That is why every statement below is idempotent: the next push
+-- re-applies it as a no-op and finally records it.
+--
+-- The version prefix is only checked when the file is authored, but main moves
+-- underneath open PRs. Re-verify against origin/main immediately before merge,
+-- not just before opening the PR.
 
 ALTER TABLE workspaces
   ADD COLUMN IF NOT EXISTS is_internal boolean NOT NULL DEFAULT false;

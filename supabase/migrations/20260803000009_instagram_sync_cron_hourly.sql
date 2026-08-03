@@ -21,9 +21,10 @@
 -- is a VIEW, not a function -- an older migration used vault.decrypted_secret()
 -- and every run failed until 2026-06-25).
 
--- Originally pushed to prod as 20260803000002; renumbered above main's tail
--- after PR #282 claimed that prefix (see 20260803000006's note). The unschedule
--- guard below makes re-applying a no-op.
+-- Renumbered twice: pushed to prod as 20260803000002, moved to 000007 when PR
+-- #282 claimed that prefix, moved again to 000009 when PR #287 (menções)
+-- claimed 000007 (see 20260803000008's note). The unschedule guard below makes
+-- re-applying a no-op.
 
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'instagram-sync-cron-daily') THEN
