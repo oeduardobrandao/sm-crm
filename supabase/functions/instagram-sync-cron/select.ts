@@ -21,7 +21,8 @@
 // until the batch fills rather than reading one fixed window.
 
 export interface SyncCandidate {
-  last_synced_at?: string | null;
+  /** When this account was last ATTEMPTED, success or failure. Orders the queue. */
+  last_sync_attempt_at?: string | null;
   clientes: { conta_id: string } | Array<{ conta_id: string }>;
 }
 
@@ -35,7 +36,7 @@ export interface SelectOptions {
 }
 
 export interface SelectResult<T> {
-  /** Accounts to sync this run, stalest first. */
+  /** Accounts to sync this run, least-recently-attempted first. */
   selected: T[];
   /** Eligible accounts left for the next run because the batch was full. */
   deferred: number;
@@ -51,10 +52,17 @@ export function contaIdOf(account: SyncCandidate): string {
   return Array.isArray(c) ? c[0]?.conta_id : c?.conta_id;
 }
 
-/** Oldest last_synced_at first; never-synced (null) accounts sort ahead of all. */
-function byStalest(a: SyncCandidate, b: SyncCandidate): number {
-  const at = a.last_synced_at ? Date.parse(a.last_synced_at) : Number.NEGATIVE_INFINITY;
-  const bt = b.last_synced_at ? Date.parse(b.last_synced_at) : Number.NEGATIVE_INFINITY;
+/**
+ * Least-recently-ATTEMPTED first; never-attempted (null) accounts sort ahead of all.
+ *
+ * Deliberately keyed off last_sync_attempt_at rather than last_synced_at. The
+ * latter is written only on success, so an account that fails permanently never
+ * advances it, stays pinned at the head of this ordering, and is re-selected on
+ * every run until it fills the whole batch.
+ */
+function byLeastRecentlyAttempted(a: SyncCandidate, b: SyncCandidate): number {
+  const at = a.last_sync_attempt_at ? Date.parse(a.last_sync_attempt_at) : Number.NEGATIVE_INFINITY;
+  const bt = b.last_sync_attempt_at ? Date.parse(b.last_sync_attempt_at) : Number.NEGATIVE_INFINITY;
   if (Number.isNaN(at) && Number.isNaN(bt)) return 0;
   if (Number.isNaN(at)) return -1;
   if (Number.isNaN(bt)) return 1;
@@ -180,7 +188,7 @@ export function selectAccountsToSync<T extends SyncCandidate>(
   // Re-sort locally rather than trusting the query's ORDER BY. The rule that
   // matters (stalest first, so a truncated batch rotates instead of starving a
   // fixed tail) is then guaranteed by this module's own tests.
-  eligible.sort(byStalest);
+  eligible.sort(byLeastRecentlyAttempted);
 
   const safeLimit = Math.max(0, limit);
   return {

@@ -5,8 +5,8 @@ const WS_OK = "11111111-1111-1111-1111-111111111111";
 const WS_NO_FEATURE = "22222222-2222-2222-2222-222222222222";
 const WS_INTERNAL = "33333333-3333-3333-3333-333333333333";
 
-function acct(id: string, wsId: string, lastSynced: string | null) {
-  return { id, last_synced_at: lastSynced, clientes: { conta_id: wsId } };
+function acct(id: string, wsId: string, lastAttempt: string | null) {
+  return { id, last_sync_attempt_at: lastAttempt, clientes: { conta_id: wsId } };
 }
 
 /** Serves a fixed ordered list in pages, and records how it was called. */
@@ -41,10 +41,10 @@ Deno.test("stops after one page when the batch fills immediately", async () => {
 });
 
 Deno.test("pages past stale ineligible accounts to reach eligible ones", async () => {
-  // The Codex finding. 500 free-plan accounts that never sync keep
-  // last_synced_at null, so they sort ahead of every paying account. A single
-  // fixed window would return only those and filter down to an empty batch
-  // every run, forever.
+  // First Codex finding. 500 free-plan accounts that are never attempted keep
+  // last_sync_attempt_at null, so they sort ahead of every paying account. A
+  // single fixed window would return only those and filter down to an empty
+  // batch every run, forever.
   const rows = [
     ...Array.from({ length: 500 }, (_, i) => acct(`free-${i}`, WS_NO_FEATURE, null)),
     ...Array.from({ length: 30 }, (_, i) => acct(`paying-${i}`, WS_OK, "2026-07-01T00:00:00Z")),
