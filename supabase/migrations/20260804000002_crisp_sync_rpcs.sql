@@ -309,7 +309,14 @@ language sql security definer set search_path = public as $$
       and cc2.deleted_at is null
       and cc2.synced_email is distinct from f.email
   )
-    and cc.synced_fingerprint is distinct from f.fingerprint
+    -- A swept row is UNSYNCED, whatever its fingerprint says: the profile it
+    -- described was deleted at the vendor. Without this branch a user who
+    -- changes their email and reverts before the new address syncs matches
+    -- their own stale hash and is excluded forever, with no profile at Crisp.
+    -- Change 1 (markContactDeleted nulls the fingerprint) makes this redundant
+    -- on the happy path; it is kept as the backstop for a partial failure.
+    and (cc.deleted_at is not null
+         or cc.synced_fingerprint is distinct from f.fingerprint)
   order by cc.synced_at asc nulls first, f.user_id
   limit 200
 $$;

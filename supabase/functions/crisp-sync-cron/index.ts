@@ -85,12 +85,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return data === true;
       },
       markContactDeleted: async (id) => {
-        // synced_people_id is nulled in the SAME update. On an email change the
-        // ledger row is reused by the next upsert, and a retained id would
-        // address the profile that was just deleted.
+        // synced_people_id AND synced_fingerprint are nulled in the SAME update
+        // that stamps deleted_at.
+        //
+        // people_id: on an email change the ledger row is reused by the next
+        // upsert, and a retained id would address the profile that was just
+        // deleted.
+        //
+        // fingerprint: it describes the payload of what exists AT THE VENDOR,
+        // and after this delete nothing does. Leaving it set lets a user who
+        // reverts to their previous address before the new one syncs match
+        // their own stale hash, fail the candidate predicate, and stay silently
+        // absent from Crisp indefinitely.
         const { error } = await svc
           .from("crisp_contacts")
-          .update({ deleted_at: new Date().toISOString(), synced_people_id: null })
+          .update({
+            deleted_at: new Date().toISOString(),
+            synced_people_id: null,
+            synced_fingerprint: null,
+          })
           .eq("id", id);
         if (error) throw new Error(`contact delete record failed: ${error.message}`);
       },
