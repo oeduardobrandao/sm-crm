@@ -59,7 +59,15 @@ begin
   on conflict (user_id) do update
     set synced_email = excluded.synced_email,
         synced_at    = excluded.synced_at,
-        deleted_at   = null;
+        deleted_at   = null,
+        -- Reactivating a swept row: a cached people_id here addresses a profile
+        -- the deletion sweep already erased, and handing it to the handler would
+        -- 404 that user on every sweep forever. Cleared only on reactivation, so
+        -- the normal path still never touches this column.
+        synced_people_id = case
+          when crisp_contacts.deleted_at is not null then null
+          else crisp_contacts.synced_people_id
+        end;
 
   return true;
 end $$;
@@ -68,15 +76,25 @@ end $$;
 create or replace function confirm_crisp_sync(
   p_user_id uuid, p_people_id text, p_fingerprint text
 )
-returns void
-language sql security definer set search_path = public as $$
+returns boolean
+language plpgsql security definer set search_path = public as $$
+declare v_rows int;
+begin
   update crisp_contacts
      set synced_people_id   = coalesce(p_people_id, synced_people_id),
          synced_fingerprint = p_fingerprint,
          synced_at          = now()
    where user_id = p_user_id
-     and deleted_at is null
-$$;
+     and deleted_at is null;
+
+  get diagnostics v_rows = row_count;
+  -- FALSE means the ledger row moved under us while the vendor call was in
+  -- flight: the deletion sweep swept this person between record and confirm.
+  -- The caller MUST delete the profile it just wrote, or it is stranded at the
+  -- vendor with no ledger row able to select it for erasure. Never widen this
+  -- WHERE to "fix" the zero-row case -- that would resurrect a swept row.
+  return v_rows > 0;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- Profiles to remove at Crisp: the account was deleted (user_id nulled by the
@@ -95,14 +113,14 @@ language sql security definer set search_path = public as $$
   where cc.deleted_at is null
     and (cc.user_id is null
          or u.email::text is distinct from cc.synced_email)
-  order by cc.synced_at asc
+  order by cc.synced_at asc, cc.id
   limit 50
 $$;
 
 -- ---------------------------------------------------------------------------
 -- Candidates.
 --
--- CANONICAL SERIALISATION IS LOad-BEARING. The fingerprint is only as good as
+-- CANONICAL SERIALISATION IS LOAD-BEARING. The fingerprint is only as good as
 -- the determinism of the strings feeding it:
 --   * every string_agg carries an explicit ORDER BY, or PostgreSQL may
 --     serialise an UNCHANGED membership set differently between runs and
@@ -144,8 +162,13 @@ language sql security definer set search_path = public as $$
       -- Crisp REQUIRES a nickname on profile create and replace, and
       -- profiles.nome is NULLABLE (20260301_baseline_schema.sql:27). Without
       -- this fallback a confirmed user with no name 4xxs on every single sweep,
-      -- forever. Same expression handle_new_user_workspace() uses at signup, so
-      -- the two never disagree.
+      -- forever. Compatible with, not identical to, the expression
+      -- handle_new_user_workspace() uses at signup: the trigger is
+      -- COALESCE(NEW.raw_user_meta_data ->> 'nome', split_part(NEW.email, '@', 1)),
+      -- which prefers the signup metadata name and applies no btrim/nullif. This
+      -- fallback instead reads the settled profiles.nome and guards against a
+      -- blank string, since PerfilTab.tsx can leave '' in that column after the
+      -- trigger has already run.
       coalesce(nullif(btrim(p.nome), ''), split_part(u.email::text, '@', 1)) as nome,
       -- WhatsApp preferred: matching an inbound WhatsApp is the channel gap
       -- this sync exists to close. btrim + nullif are REQUIRED, not cosmetic --
@@ -229,7 +252,7 @@ language sql security definer set search_path = public as $$
       coalesce(pw.sub_status, 'nenhuma')    as assinatura,
       pw.plan_source                        as plan_source,
       a.workspaces, a.workspace_count, a.clientes,
-      to_char(a.confirmed_at, 'YYYY-MM-DD') as cliente_desde,
+      to_char(a.confirmed_at at time zone 'utc', 'YYYY-MM-DD') as cliente_desde,
       pw.workspace_id                       as primary_workspace_id,
       (
         select coalesce(array_agg(seg order by seg), array[]::text[])
