@@ -303,11 +303,31 @@ rollback;
 --     false (20260719000002) and handle_new_user_workspace's new-signup branch
 --     does not write it, so leg (a) would otherwise refuse at the CONSENT check
 --     and pass for the wrong reason.
+--
+--     FIXTURE NOTE: et_loops_fixture builds its workspace on the free plan,
+--     whose max_team_members is 1 (supabase/seed.sql), and the workspace
+--     already holds f.user_id as its one seat. This case's whole point is a
+--     SECOND owner (u2) coexisting with f.user_id, so a bare free-plan
+--     workspace trips enforce_plan_count_limit('max_team_members', ...) the
+--     moment u2 is inserted -- a fixture defect, not the product behaviour
+--     under test. Raise the seat ceiling with a workspace_plan_overrides row,
+--     the existing et_make_workspace(p_plan_id, p_overrides) convention (see
+--     01_effective_plan_limit.sql, 02_clientes_limit.sql,
+--     03_workspace_scoped.sql, 06_downgrade_keep_existing.sql). Scoped to this
+--     case's own f.workspace_id inside this case's begin/rollback block, so it
+--     does not touch the other 13 cases' fixtures. resource_overrides only
+--     changes the effective_plan_limit() lookup (20260611130001_effective_plan_limit.sql)
+--     -- it never writes workspaces.plan_id -- so the workspace still reads as
+--     free for every `coalesce(ws.plan_id, default_plan_id()) = default_plan_id()`
+--     gate the candidate RPCs use, which is exactly what this case needs to
+--     keep exercising.
 begin;
   do $$
   declare f record; u2 uuid := gen_random_uuid(); won boolean;
   begin
     select * into f from et_loops_fixture((select id from plans where is_default), true);
+    insert into workspace_plan_overrides (workspace_id, resource_overrides)
+      values (f.workspace_id, jsonb_build_object('max_team_members', 2));
 
     insert into auth.users (id, email, email_confirmed_at, raw_user_meta_data)
       values (u2, u2 || '@et.test', now() - interval '5 days', '{}'::jsonb);
