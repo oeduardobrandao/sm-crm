@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { CalloutExtension } from './CalloutExtension';
 import { CommentHighlight } from './CommentHighlight';
+import { MentionNode } from '@/components/mentions/MentionNode';
 import { createInlineImageExtension } from './InlineImageExtension';
 import type { InlineImageUploadFn } from './InlineImageExtension';
 import PostCommentPopover from './PostCommentPopover';
@@ -123,6 +124,7 @@ export function PostEditor({
       Placeholder.configure({ placeholder: 'Escreva o conteúdo do post...' }),
       CalloutExtension,
       CommentHighlight,
+      MentionNode,
       ...(onUploadInlineImage ? [createInlineImageExtension(onUploadInlineImage)] : []),
     ],
     content: initialContent ?? undefined,

@@ -9,6 +9,7 @@ import Link from '@tiptap/extension-link';
 import { CalloutReadonly } from './CalloutReadonly';
 import { InlineImageReadonly } from './InlineImageReadonly';
 import { CommentHighlightReadonly } from './CommentHighlightReadonly';
+import { MentionReadonly } from './MentionReadonly';
 
 /**
  * The TipTap extension set used to read post `conteudo` in the hub. This must stay a
@@ -27,6 +28,7 @@ export function richTextExtensions(editable = false) {
     CalloutReadonly,
     InlineImageReadonly,
     CommentHighlightReadonly,
+    MentionReadonly,
   ];
 }
 

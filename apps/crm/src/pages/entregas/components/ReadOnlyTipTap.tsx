@@ -6,23 +6,27 @@ import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import Link from '@tiptap/extension-link';
 import { CalloutExtension } from './CalloutExtension';
+import { MentionNode } from '@/components/mentions/MentionNode';
 
 interface ReadOnlyTipTapProps {
   content: Record<string, unknown>;
   className?: string;
 }
 
+export const readOnlyTipTapExtensions = [
+  StarterKit,
+  UnderlineExt,
+  TextStyle,
+  Color,
+  Highlight.configure({ multicolor: true }),
+  Link.configure({ openOnClick: true, autolink: false }),
+  CalloutExtension,
+  MentionNode,
+];
+
 export function ReadOnlyTipTap({ content, className }: ReadOnlyTipTapProps) {
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      UnderlineExt,
-      TextStyle,
-      Color,
-      Highlight.configure({ multicolor: true }),
-      Link.configure({ openOnClick: true, autolink: false }),
-      CalloutExtension,
-    ],
+    extensions: readOnlyTipTapExtensions,
     content,
     editable: false,
   });
