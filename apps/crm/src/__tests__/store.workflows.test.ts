@@ -404,6 +404,7 @@ describe('store workflow functions', () => {
       action: 'mensagem',
       comentario: 'Trocar a imagem principal.',
       is_workspace_user: true,
+      author_user_id: 'user-1',
     });
   });
 });

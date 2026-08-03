@@ -8,6 +8,7 @@ import type { HubBootstrap } from '../../types';
 
 vi.mock('../../api', () => ({
   fetchPosts: vi.fn().mockResolvedValue({ posts: [], postApprovals: [], instagramProfile: null }),
+  fetchMensagensUnread: vi.fn().mockResolvedValue({ unread: 0 }),
 }));
 
 const BOOTSTRAP: HubBootstrap = {

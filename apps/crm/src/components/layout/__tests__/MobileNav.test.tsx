@@ -11,11 +11,17 @@ vi.mock('../../../hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: vi.fn(),
 }));
 
+vi.mock('../../../hooks/useMensagensUnread', () => ({
+  useMensagensUnread: vi.fn(() => 0),
+}));
+
 import MobileNav from '../MobileNav';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
+import { useMensagensUnread } from '../../../hooks/useMensagensUnread';
 
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
+const mockedUseMensagensUnread = vi.mocked(useMensagensUnread);
 
 function setLimits(overrides: Record<string, unknown> = {}) {
   mockedUseWorkspaceLimits.mockReturnValue({
@@ -97,6 +103,7 @@ describe('MobileNav', () => {
     document.documentElement.removeAttribute('data-theme');
     localStorage.clear();
     setLimits();
+    mockedUseMensagensUnread.mockReturnValue(0);
   });
 
   it('renders a stable active route without canvas chrome', () => {
@@ -278,5 +285,42 @@ describe('MobileNav', () => {
     expect(items).toContain('Leads');
     expect(items).toContain('Financeiro');
     expect(items).toContain('Contratos');
+  });
+
+  it('renders the Mensagens unread badge in the more sheet when count > 0', () => {
+    setAuth();
+    setLimits({ features: { feature_mensagens: true } });
+    mockedUseMensagensUnread.mockReturnValue(5);
+
+    renderMobileNav('/dashboard');
+    fireEvent.click(document.getElementById('mobile-more-btn')!);
+
+    const badge = screen.getByTestId('mensagens-nav-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('5');
+  });
+
+  it('hides the Mensagens badge in the more sheet when count is 0', () => {
+    setAuth();
+    setLimits({ features: { feature_mensagens: true } });
+    mockedUseMensagensUnread.mockReturnValue(0);
+
+    renderMobileNav('/dashboard');
+    fireEvent.click(document.getElementById('mobile-more-btn')!);
+
+    expect(screen.queryByTestId('mensagens-nav-badge')).not.toBeInTheDocument();
+  });
+
+  it('shows "99+" in the Mensagens badge in the more sheet when count > 99', () => {
+    setAuth();
+    setLimits({ features: { feature_mensagens: true } });
+    mockedUseMensagensUnread.mockReturnValue(150);
+
+    renderMobileNav('/dashboard');
+    fireEvent.click(document.getElementById('mobile-more-btn')!);
+
+    const badge = screen.getByTestId('mensagens-nav-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('99+');
   });
 });

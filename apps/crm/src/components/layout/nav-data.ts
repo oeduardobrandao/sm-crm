@@ -64,6 +64,13 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         labelKey: 'nav.ideias',
         icon: 'ph-lightbulb',
       },
+      {
+        id: 'mensagens',
+        route: '/mensagens',
+        label: 'Mensagens',
+        labelKey: 'nav.mensagens',
+        icon: 'ph-chat-circle-text',
+      },
     ],
   },
   {
@@ -204,6 +211,7 @@ const NAV_FEATURE: Record<string, string> = {
   financeiro: 'feature_financial',
   contratos: 'feature_contracts',
   ideias: 'feature_ideas',
+  mensagens: 'feature_mensagens',
   analytics: 'feature_analytics_reports',
   'analytics-fluxos': 'feature_analytics_reports',
   'post-express': 'feature_post_scheduling',

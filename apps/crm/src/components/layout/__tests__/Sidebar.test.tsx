@@ -10,14 +10,20 @@ vi.mock('../../../hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: vi.fn(),
 }));
 
+vi.mock('../../../hooks/useMensagensUnread', () => ({
+  useMensagensUnread: vi.fn(() => 0),
+}));
+
 vi.mock('../../../lib/supabase');
 
 import { useAuth } from '../../../context/AuthContext';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
+import { useMensagensUnread } from '../../../hooks/useMensagensUnread';
 import * as supabaseModule from '../../../lib/supabase';
 import Sidebar from '../Sidebar';
 
 const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
+const mockedUseMensagensUnread = vi.mocked(useMensagensUnread);
 
 function setLimits(overrides: Record<string, unknown> = {}) {
   mockedUseWorkspaceLimits.mockReturnValue({
@@ -93,6 +99,7 @@ describe('Sidebar', () => {
     document.documentElement.removeAttribute('data-theme');
     localStorage.clear();
     setLimits();
+    mockedUseMensagensUnread.mockReturnValue(0);
   });
 
   it('filters restricted navigation items for agents and marks the active route', () => {
@@ -244,5 +251,39 @@ describe('Sidebar', () => {
     expect(screen.getByText('Leads')).toBeInTheDocument();
     expect(screen.getByText('Financeiro')).toBeInTheDocument();
     expect(screen.getByText('Contratos')).toBeInTheDocument();
+  });
+
+  it('renders the Mensagens unread badge when count > 0', () => {
+    setAuth();
+    setLimits({ features: { feature_mensagens: true } });
+    mockedUseMensagensUnread.mockReturnValue(5);
+
+    renderSidebar('/dashboard');
+
+    const badge = screen.getByTestId('mensagens-nav-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('5');
+  });
+
+  it('hides the Mensagens badge when count is 0', () => {
+    setAuth();
+    setLimits({ features: { feature_mensagens: true } });
+    mockedUseMensagensUnread.mockReturnValue(0);
+
+    renderSidebar('/dashboard');
+
+    expect(screen.queryByTestId('mensagens-nav-badge')).not.toBeInTheDocument();
+  });
+
+  it('shows "99+" in the Mensagens badge when count > 99', () => {
+    setAuth();
+    setLimits({ features: { feature_mensagens: true } });
+    mockedUseMensagensUnread.mockReturnValue(150);
+
+    renderSidebar('/dashboard');
+
+    const badge = screen.getByTestId('mensagens-nav-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('99+');
   });
 });

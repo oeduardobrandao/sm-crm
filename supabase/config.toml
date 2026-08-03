@@ -49,6 +49,9 @@ verify_jwt = false
 [functions.hub-ideias]
 verify_jwt = false
 
+[functions.hub-mensagens]
+verify_jwt = false
+
 [functions.post-media-upload-url]
 verify_jwt = false
 

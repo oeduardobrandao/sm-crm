@@ -15,7 +15,8 @@ export type NotificationType =
   | 'deadline_approaching'
   | 'invite_accepted'
   | 'member_role_changed'
-  | 'member_removed';
+  | 'member_removed'
+  | 'client_message';
 
 export interface Notification {
   id: string;

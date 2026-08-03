@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
+import { useMensagensUnread } from '../../hooks/useMensagensUnread';
 import { getMoreSheetGroups } from './nav-data';
 import { Search, MessageCircle } from 'lucide-react';
 import { CommandDialog, CommandInput, CommandList, CommandEmpty } from '@/components/ui/command';
@@ -32,6 +33,7 @@ export default function MobileNav() {
   const location = useLocation();
   const { profile, role, signOut, canSeeFinancials, workspaceRole } = useAuth();
   const { features } = useWorkspaceLimits();
+  const mensagensUnread = useMensagensUnread();
   const { t } = useTranslation();
   const [moreOpen, setMoreOpen] = useState(false);
   const [isDark, setIsDark] = useState(
@@ -217,6 +219,14 @@ export default function MobileNav() {
                       <i className={`${isActive ? 'ph-fill' : 'ph'} ${item.icon}`} />
                     </div>
                     <span>{t(item.labelKey, item.label)}</span>
+                    {item.id === 'mensagens' && mensagensUnread > 0 && (
+                      <span
+                        className="nav-badge nav-badge--count"
+                        data-testid="mensagens-nav-badge"
+                      >
+                        {mensagensUnread > 99 ? '99+' : mensagensUnread}
+                      </span>
+                    )}
                   </button>
                 );
               })}

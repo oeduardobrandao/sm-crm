@@ -349,6 +349,20 @@ body {
   white-space: nowrap;
 }
 
+.nav-badge--count {
+  background: var(--primary-color);
+  color: #12151a;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .sidebar-bottom {
   margin-top: auto;
   padding: 1rem 0.75rem;

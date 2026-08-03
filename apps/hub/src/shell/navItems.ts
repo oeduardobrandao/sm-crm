@@ -11,23 +11,39 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
+export type HubBadgeKey = 'aprovacoes' | 'mensagens';
+
 export interface NavItem {
   label: string;
   labelKey: string;
   icon: LucideIcon;
   path: string;
+  /** Which live counter renders as this item's badge pill. */
+  badge?: HubBadgeKey;
 }
 
 const BASE_NAV_ITEMS: NavItem[] = [
   { label: 'Início', labelKey: 'nav.home', icon: Home, path: '' },
-  { label: 'Aprovações', labelKey: 'nav.aprovacoes', icon: CheckSquare, path: '/aprovacoes' },
+  {
+    label: 'Aprovações',
+    labelKey: 'nav.aprovacoes',
+    icon: CheckSquare,
+    path: '/aprovacoes',
+    badge: 'aprovacoes',
+  },
   { label: 'Postagens', labelKey: 'nav.postagens', icon: LayoutList, path: '/postagens' },
   { label: 'Páginas', labelKey: 'nav.paginas', icon: LayoutTemplate, path: '/paginas' },
   { label: 'Briefing', labelKey: 'nav.briefing', icon: FileText, path: '/briefing' },
   { label: 'Marca', labelKey: 'nav.marca', icon: CircleDot, path: '/marca' },
   { label: 'Ideias', labelKey: 'nav.ideias', icon: Lightbulb, path: '/ideias' },
   { label: 'Relatórios', labelKey: 'nav.relatorios', icon: BarChart3, path: '/relatorios' },
-  { label: 'Mensagens', labelKey: 'nav.mensagens', icon: MessageCircle, path: '/mensagens' },
+  {
+    label: 'Mensagens',
+    labelKey: 'nav.mensagens',
+    icon: MessageCircle,
+    path: '/mensagens',
+    badge: 'mensagens',
+  },
 ];
 
 /** Shared between HubSidebar and HubMobileNav so the two nav surfaces can never drift. */

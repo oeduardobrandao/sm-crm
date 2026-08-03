@@ -30,4 +30,11 @@ describe('getVisibleNavItems', () => {
       expect(withoutFlag).toContain(path);
     }
   });
+
+  it('declares badge keys for aprovacoes and mensagens only', () => {
+    const items = getVisibleNavItems(true);
+    expect(items.find((i) => i.path === '/aprovacoes')?.badge).toBe('aprovacoes');
+    expect(items.find((i) => i.path === '/mensagens')?.badge).toBe('mensagens');
+    expect(items.filter((i) => i.badge).length).toBe(2);
+  });
 });

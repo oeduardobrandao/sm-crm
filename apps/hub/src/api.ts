@@ -17,6 +17,8 @@ import type {
   HubPostsResponse,
   HubDashboardResponse,
   PendingEditSuggestion,
+  HubMensagensResponse,
+  MensagensCursor,
 } from './types';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
@@ -259,4 +261,29 @@ export async function fetchReportHtml(token: string, month: string): Promise<str
 
 export function fetchReportPdfUrl(token: string, month: string) {
   return get<{ url: string }>('hub-reports/pdf-url/' + month, { token });
+}
+
+export function fetchMensagens(token: string, cursor?: MensagensCursor) {
+  return get<HubMensagensResponse>('hub-mensagens', {
+    token,
+    ...(cursor
+      ? {
+          before: cursor.before,
+          before_source: cursor.beforeSource,
+          before_item_id: String(cursor.beforeItemId),
+        }
+      : {}),
+  });
+}
+
+export function fetchMensagensUnread(token: string) {
+  return get<{ unread: number }>('hub-mensagens', { token, count: '1' });
+}
+
+export function sendHubMensagem(token: string, content: string) {
+  return post<{ ok: boolean }>('hub-mensagens', { token, content });
+}
+
+export function markMensagensSeen(token: string) {
+  return post<{ ok: boolean }>('hub-mensagens/seen', { token });
 }

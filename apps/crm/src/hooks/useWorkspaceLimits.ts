@@ -42,6 +42,7 @@ export interface FeatureFlags {
   feature_brand_customization: boolean;
   feature_mcp: boolean;
   feature_tiktok: boolean;
+  feature_mensagens: boolean;
 }
 
 interface WorkspaceLimitsResponse {
