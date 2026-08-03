@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { contaIdOf, selectAccountsToSync } from "../instagram-sync-cron/select.ts";
+import { contaIdOf, isEligible, selectAccountsToSync } from "../instagram-sync-cron/select.ts";
 
 const WS_OK = "11111111-1111-1111-1111-111111111111";
 const WS_NO_FEATURE = "22222222-2222-2222-2222-222222222222";
@@ -133,6 +133,47 @@ Deno.test("accounts without feature_auto_sync_cron are counted separately", () =
   assertEquals(selected.map((a) => a.id), ["ok"]);
   assertEquals(skippedNoFeature, 1);
   assertEquals(skippedInternal, 0);
+});
+
+Deno.test("isEligible agrees with the filter selectAccountsToSync applies", () => {
+  const allowed = new Set([WS_OK, WS_INTERNAL]);
+  const internal = new Set([WS_INTERNAL]);
+
+  assertEquals(isEligible(acct("a", WS_OK, null), allowed, internal), true);
+  assertEquals(isEligible(acct("b", WS_INTERNAL, null), allowed, internal), false);
+  assertEquals(isEligible(acct("c", WS_NO_FEATURE, null), allowed, internal), false);
+
+  // The paging loop in index.ts counts eligibility with isEligible and then
+  // hands the accumulated rows to selectAccountsToSync. If the two disagreed,
+  // the loop would stop early on a batch that selection then rejects.
+  const rows = [acct("a", WS_OK, null), acct("b", WS_INTERNAL, null), acct("c", WS_NO_FEATURE, null)];
+  const { selected } = selectAccountsToSync(rows, {
+    allowedWorkspaces: allowed,
+    internalWorkspaces: internal,
+    limit: 25,
+  });
+  assertEquals(
+    selected.map((r) => r.id),
+    rows.filter((r) => isEligible(r, allowed, internal)).map((r) => r.id),
+  );
+});
+
+Deno.test("stale ineligible accounts at the head of the ordering do not starve eligible ones", () => {
+  // The Codex finding, as data. Ineligible accounts never sync, so their
+  // last_synced_at stays null and they sort FIRST. Here 500 of them precede the
+  // only eligible account. Selection must still reach it, which is what the
+  // paging loop in index.ts guarantees by scanning past them.
+  const ineligible = Array.from({ length: 500 }, (_, i) => acct(`free-${i}`, WS_NO_FEATURE, null));
+  const candidates = [...ineligible, acct("paying", WS_OK, "2026-07-01T00:00:00Z")];
+
+  const { selected, skippedNoFeature } = selectAccountsToSync(candidates, {
+    ...defaults,
+    allowedWorkspaces: new Set([WS_OK]),
+    limit: 25,
+  });
+
+  assertEquals(selected.map((a) => a.id), ["paying"]);
+  assertEquals(skippedNoFeature, 500);
 });
 
 Deno.test("empty candidate list is a no-op", () => {

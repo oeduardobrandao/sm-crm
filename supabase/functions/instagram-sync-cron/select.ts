@@ -11,10 +11,14 @@
 // account behind them. Filtering first, then slicing, means the limit only ever
 // bounds work that is actually going to be performed.
 //
-// index.ts still passes a generous CANDIDATE_LIMIT to the query as a memory
-// guard. That degenerates into the same head-of-line problem only if the number
-// of simultaneously-stale ineligible accounts exceeds it, which is far above
-// current volume (67 active accounts total as of 2026-08-03).
+// A single bounded candidate query is NOT enough on its own. Ineligible
+// accounts are systematically concentrated at the head of the ordering, not
+// randomly distributed: an account that never syncs keeps last_synced_at NULL
+// forever, and the query sorts NULLs first. Every free-plan or internal
+// Instagram connection therefore claims a permanent slot at the front of the
+// window. Once they fill one page, filtering yields an empty batch every run
+// and no eligible account is ever reached. index.ts pages through candidates
+// until the batch fills rather than reading one fixed window.
 
 export interface SyncCandidate {
   last_synced_at?: string | null;
@@ -55,6 +59,102 @@ function byStalest(a: SyncCandidate, b: SyncCandidate): number {
   if (Number.isNaN(at)) return -1;
   if (Number.isNaN(bt)) return 1;
   return at - bt;
+}
+
+export interface CollectDeps<T> {
+  /** Reads one page of candidates, already ordered stalest-first with a total order. */
+  fetchPage: (from: number, size: number) => Promise<T[]>;
+  /** Returns the subset of `wsIds` holding feature_auto_sync_cron. Called once per
+   * workspace across the whole run, never once per account or once per page. */
+  resolveAllowedWorkspaces: (wsIds: string[]) => Promise<string[]>;
+  internalWorkspaces: Set<string>;
+}
+
+export interface CollectOptions {
+  pageSize: number;
+  maxPages: number;
+  /** Stop paging once this many eligible accounts have been seen. */
+  targetEligible: number;
+}
+
+export interface CollectResult<T> {
+  candidates: T[];
+  allowedWorkspaces: Set<string>;
+  scanned: number;
+  pages: number;
+  /** Ran out of candidates rather than stopping early. */
+  exhausted: boolean;
+  /** Hit maxPages without filling the batch or exhausting candidates. */
+  cappedByPages: boolean;
+}
+
+/**
+ * Pages through candidates until `targetEligible` eligible accounts have been
+ * seen, candidates run out, or `maxPages` is reached.
+ *
+ * The paging is the whole point: a single fixed window starves eligible
+ * accounts, because ineligible ones cluster at the head of a stalest-first
+ * ordering rather than spreading through it. They never sync, so their
+ * last_synced_at stays NULL, and NULLs sort first.
+ */
+export async function collectSyncCandidates<T extends SyncCandidate>(
+  { fetchPage, resolveAllowedWorkspaces, internalWorkspaces }: CollectDeps<T>,
+  { pageSize, maxPages, targetEligible }: CollectOptions,
+): Promise<CollectResult<T>> {
+  const allowedWorkspaces = new Set<string>();
+  const featureChecked = new Set<string>();
+  const candidates: T[] = [];
+  let eligibleSoFar = 0;
+  let scanned = 0;
+  let pages = 0;
+  let exhausted = false;
+
+  while (pages < maxPages) {
+    const page = await fetchPage(pages * pageSize, pageSize);
+    pages++;
+    if (!page || page.length === 0) {
+      exhausted = true;
+      break;
+    }
+    scanned += page.length;
+
+    const unchecked = [...new Set(page.map(contaIdOf))].filter((ws) => !featureChecked.has(ws));
+    if (unchecked.length > 0) {
+      for (const ws of unchecked) featureChecked.add(ws);
+      for (const ws of await resolveAllowedWorkspaces(unchecked)) allowedWorkspaces.add(ws);
+    }
+
+    candidates.push(...page);
+    eligibleSoFar += page.filter((a) => isEligible(a, allowedWorkspaces, internalWorkspaces)).length;
+
+    if (eligibleSoFar >= targetEligible) break;
+    if (page.length < pageSize) {
+      exhausted = true;
+      break;
+    }
+  }
+
+  return {
+    candidates,
+    allowedWorkspaces,
+    scanned,
+    pages,
+    exhausted,
+    cappedByPages: !exhausted && eligibleSoFar < targetEligible,
+  };
+}
+
+/**
+ * Whether an account may be synced. Shared by selectAccountsToSync and by
+ * collectSyncCandidates, so the two can never disagree about eligibility.
+ */
+export function isEligible(
+  account: SyncCandidate,
+  allowedWorkspaces: Set<string>,
+  internalWorkspaces: Set<string>,
+): boolean {
+  const wsId = contaIdOf(account);
+  return !internalWorkspaces.has(wsId) && allowedWorkspaces.has(wsId);
 }
 
 export function selectAccountsToSync<T extends SyncCandidate>(
