@@ -6,11 +6,25 @@ import { runPool } from "./pool.ts";
 import { buildSnapshotRow } from "./snapshot.ts";
 import { buildMetricFields, fetchPostInsights } from "../_shared/instagram-metrics.ts";
 import { cachePostThumbnail } from "../_shared/instagram-thumbnail-cache.ts";
+import { fetchInternalWorkspaceIds } from "../_shared/internal-workspaces.ts";
+import { contaIdOf, selectAccountsToSync } from "./select.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? (() => { throw new Error('CRON_SECRET is required'); })();
+
+// Accounts synced per invocation. Runtime is bounded by this, not by customer
+// count: SYNC_BATCH_LIMIT / SYNC_CONCURRENCY waves of ~4-8s each. At 25/5 that
+// is ~30s, well inside the edge-function wall clock. The cron runs hourly
+// (migration 20260803000007), so capacity is 24 * SYNC_BATCH_LIMIT per day
+// against a 6h per-account staleness window.
+const SYNC_BATCH_LIMIT = Math.max(1, parseInt(Deno.env.get("SYNC_BATCH_LIMIT") || "25", 10) || 25);
+// Memory guard on the candidate fetch only. Deliberately far above
+// SYNC_BATCH_LIMIT: the real batch cap is applied after the workspace filters,
+// so this must stay large enough that ineligible accounts cannot fill the
+// window and starve eligible ones (see select.ts).
+const CANDIDATE_LIMIT = Math.max(SYNC_BATCH_LIMIT, parseInt(Deno.env.get("SYNC_CANDIDATE_LIMIT") || "500", 10) || 500);
 
 // --- Token Decryption Utility ---
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
@@ -297,35 +311,53 @@ Deno.serve(createInstagramSyncCronHandler({
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     try {
 
-    // Fetch all accounts with auto-sync enabled and active status
-    // (proactive refresh inside syncAccount handles near-expiry tokens)
+    // Fetch candidate accounts, stalest first. The batch limit is applied after
+    // the workspace filters (see select.ts) so ineligible accounts, whose
+    // last_synced_at never advances, cannot camp at the head of the window.
     const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
     const { data: accounts, error } = await supabase
       .from('instagram_accounts')
-      .select('id, instagram_user_id, encrypted_access_token, token_expires_at, follower_count, following_count, media_count, clientes!inner(conta_id)')
+      .select('id, instagram_user_id, encrypted_access_token, token_expires_at, follower_count, following_count, media_count, last_synced_at, clientes!inner(conta_id)')
       .eq('authorization_status', 'active')
       .eq('auto_sync_enabled', true)
-      .or(`last_synced_at.is.null,last_synced_at.lt.${sixHoursAgo}`);
+      .or(`last_synced_at.is.null,last_synced_at.lt.${sixHoursAgo}`)
+      .order('last_synced_at', { ascending: true, nullsFirst: true })
+      .limit(CANDIDATE_LIMIT);
 
     if (error) throw error;
     if (!accounts || accounts.length === 0) {
       return new Response("No accounts to sync", { status: 200 });
     }
 
-    // Keep only accounts whose workspace has feature_auto_sync_cron
-    const wsIds = [...new Set(accounts.map((a: any) => (a.clientes as { conta_id: string }).conta_id))];
+    // Resolve the two workspace-level gates: plan entitlement and the internal
+    // flag. One RPC per distinct workspace, not per account.
+    const wsIds = [...new Set(accounts.map((a: any) => contaIdOf(a)))];
     const allowed = new Set<string>();
-    await Promise.all(wsIds.map(async (ws) => {
-      const { data } = await supabase.rpc("effective_plan_feature",
-        { ws_id: ws, feature_key: "feature_auto_sync_cron" });
-      if (data === true) allowed.add(ws);
-    }));
-    const eligible = accounts.filter((a: any) => allowed.has((a.clientes as { conta_id: string }).conta_id));
+    const [internalWorkspaces] = await Promise.all([
+      fetchInternalWorkspaceIds(supabase),
+      Promise.all(wsIds.map(async (ws) => {
+        const { data } = await supabase.rpc("effective_plan_feature",
+          { ws_id: ws, feature_key: "feature_auto_sync_cron" });
+        if (data === true) allowed.add(ws);
+      })),
+    ]);
+
+    const { selected: eligible, deferred, skippedNoFeature, skippedInternal } =
+      selectAccountsToSync(accounts as any[], {
+        allowedWorkspaces: allowed,
+        internalWorkspaces,
+        limit: SYNC_BATCH_LIMIT,
+      });
+
     if (!eligible.length) {
       return new Response("No eligible accounts", { status: 200 });
     }
 
-    console.log(`[IG-SYNC-CRON] Starting sync for ${eligible.length} eligible account(s) of ${accounts.length} fetched (skipped recently synced or lacking feature)`);
+    console.log(
+      `[IG-SYNC-CRON] Syncing ${eligible.length} of ${accounts.length} candidate(s). ` +
+      `Deferred to next run: ${deferred}. Skipped: ${skippedNoFeature} lacking feature_auto_sync_cron, ` +
+      `${skippedInternal} in internal workspaces.`
+    );
 
     let syncedCount = 0;
     let failedCount = 0;
@@ -360,7 +392,10 @@ Deno.serve(createInstagramSyncCronHandler({
         success: true,
         synced: syncedCount,
         failed: failedCount,
-        total: eligible.length
+        total: eligible.length,
+        deferred,
+        skippedNoFeature,
+        skippedInternal
       }), {
         headers: { 'Content-Type': 'application/json' }
       });
