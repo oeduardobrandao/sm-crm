@@ -1060,10 +1060,15 @@ Deno.test("a create conflict re-reads and updates instead of failing", async () 
     segments: ["vip", "trial"],
     notepad: "ligou em marco",
   };
+  // The mock MUST be stateful. Keying it on `ref === CANDIDATE.email` looks
+  // right and is not: people_id is null, so the FIRST lookup is already
+  // getProfile(email), it returns the profile, and the createProfile branch is
+  // never entered. The test then passes against a handler that throws on a 409
+  // instead of re-reading, which is the exact regression it exists to catch.
+  let gets = 0;
   const { deps, calls } = makeDeps(
     {
-      getProfile: (ref: string) =>
-        Promise.resolve(ref === CANDIDATE.email ? existing : null),
+      getProfile: () => Promise.resolve(gets++ === 0 ? null : existing),
       createProfile: () => Promise.resolve(null),
     },
     { get_crisp_sync_candidates: [CANDIDATE] },
@@ -1071,6 +1076,8 @@ Deno.test("a create conflict re-reads and updates instead of failing", async () 
 
   const result = await runCrispSyncCron(deps);
 
+  // Without this line the branch can silently stop being exercised again.
+  assertEquals(calls.created.length, 1);
   assertEquals(result.failed, 0);
   assertEquals(result.upserted, 1);
   assertEquals(calls.saved[0].peopleId, "p-widget");
