@@ -330,6 +330,50 @@ describe('store workflow posts', () => {
   });
 });
 
+describe('searchPostsForMention', () => {
+  beforeEach(() => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo Souza',
+      role: 'owner',
+      conta_id: 'conta-1',
+    });
+  });
+
+  it('returns [] without querying for a blank term', async () => {
+    const result = await store.searchPostsForMention('   ');
+    expect(result).toEqual([]);
+    expect(getCalls('workflow_posts', 'select')).toHaveLength(0);
+  });
+
+  it('wraps the trimmed term in %...% and caps at 5', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
+      data: [{ id: 1, titulo: 'Post de lançamento', workflow_id: 9 }],
+      error: null,
+    });
+
+    const result = await store.searchPostsForMention('  lançamento  ');
+
+    expect(result).toEqual([{ id: 1, titulo: 'Post de lançamento', workflow_id: 9 }]);
+    const call = getCalls('workflow_posts', 'select').at(-1)!;
+    expect(call.modifiers).toContainEqual({ method: 'ilike', args: ['titulo', '%lançamento%'] });
+    expect(call.modifiers).toContainEqual({ method: 'limit', args: [5] });
+  });
+
+  it('escapes %, _ and \\ in the search term before building the ILIKE pattern', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', { data: [], error: null });
+
+    await store.searchPostsForMention('100%_off\\promo');
+
+    const call = getCalls('workflow_posts', 'select').at(-1)!;
+    expect(call.modifiers).toContainEqual({
+      method: 'ilike',
+      args: ['titulo', '%100\\%\\_off\\\\promo%'],
+    });
+  });
+});
+
 describe('getPostStatusEvents', () => {
   beforeEach(() => {
     mockedSupabase.__resetSupabaseMock();

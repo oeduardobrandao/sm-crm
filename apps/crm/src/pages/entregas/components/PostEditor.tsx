@@ -27,6 +27,8 @@ import { CalloutExtension } from './CalloutExtension';
 import { CommentHighlight } from './CommentHighlight';
 import { MentionNode } from '@/components/mentions/MentionNode';
 import { mentionHref } from '@/components/mentions/mentionHref';
+import { MentionSuggestion } from '@/components/mentions/mentionSuggestion';
+import { useMentionSearch } from '@/components/mentions/useMentionSearch';
 import type { MentionEntityType } from '@/components/mentions/types';
 import { createInlineImageExtension } from './InlineImageExtension';
 import type { InlineImageUploadFn } from './InlineImageExtension';
@@ -114,6 +116,18 @@ export function PostEditor({
   const commentAddWrapperRef = useRef<HTMLDivElement>(null);
   const commentPopoverRef = useRef<HTMLDivElement>(null);
 
+  // Editor extensions are frozen at first render (useEditor is called with no deps
+  // array below), so MentionSuggestion.configure() must receive a STABLE function --
+  // never `search` itself, whose identity changes as membros/clientes/tarefas load.
+  // The ref indirection keeps the dropdown reading live data without recreating the
+  // editor on every query result.
+  const { search: mentionSearch } = useMentionSearch();
+  const mentionSearchRef = useRef(mentionSearch);
+  useEffect(() => {
+    mentionSearchRef.current = mentionSearch;
+  }, [mentionSearch]);
+  const mentionSearchFn = useRef((query: string) => mentionSearchRef.current(query)).current;
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -129,6 +143,7 @@ export function PostEditor({
       CalloutExtension,
       CommentHighlight,
       MentionNode,
+      MentionSuggestion.configure({ search: mentionSearchFn }),
       ...(onUploadInlineImage ? [createInlineImageExtension(onUploadInlineImage)] : []),
     ],
     content: initialContent ?? undefined,

@@ -110,6 +110,35 @@ export async function getPostPreview(postId: number): Promise<PostPreview> {
   };
 }
 
+export interface MentionPostResult {
+  id: number;
+  titulo: string;
+  workflow_id: number;
+}
+
+// Escapes the three characters that are special inside a Postgres ILIKE pattern
+// ('%', '_') plus the escape character itself ('\') so a user's raw search term
+// can't widen or break the wrapping `%term%` pattern below.
+function escapeIlikeTerm(term: string): string {
+  return term.replace(/[\\%_]/g, '\\$&');
+}
+
+/**
+ * Post search backing the @-mention dropdown (Task 4 of the at-mentions spec).
+ * RLS scopes workflow_posts by conta_id -- no explicit conta filter needed.
+ */
+export async function searchPostsForMention(term: string): Promise<MentionPostResult[]> {
+  const trimmed = term.trim();
+  if (!trimmed) return [];
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select('id, titulo, workflow_id')
+    .ilike('titulo', `%${escapeIlikeTerm(trimmed)}%`)
+    .limit(5);
+  if (error) throw error;
+  return data ?? [];
+}
+
 export interface ScheduledPost {
   id: number;
   workflow_id: number;
