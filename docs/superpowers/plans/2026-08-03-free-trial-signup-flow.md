@@ -2264,6 +2264,14 @@ git checkout -- deno.lock
 
 Expected: PASS.
 
+- [ ] **Step 2b: Repair node_modules before any typecheck**
+
+```bash
+npm ci
+```
+
+This is **not optional and not a formality.** `deno` runs install a second copy of shared packages under `node_modules/.deno/`, after which `tsc` reports bogus tiptap version-conflict errors in files nobody touched and Prettier reports bogus drift. Step 2 just ran Deno. Skipping this makes the next two steps fail for reasons that have nothing to do with the branch.
+
 - [ ] **Step 3: Typecheck all four projects the CI checks**
 
 ```bash
