@@ -133,6 +133,10 @@ Monorepo with npm workspaces:
 - `TIKTOK_URL_VERIFY_FILENAME`, `TIKTOK_URL_VERIFY_CONTENT` -- TikTok URL-prefix verification file (optional; 404 until set)
 - `LOOPS_API_KEY` -- Loops REST API key for marketing lifecycle emails. REQUIRED by
   loops-sync-cron, no default -- `_shared/loops.ts` throws if missing
+- `CRISP_WEBSITE_ID`, `CRISP_IDENTIFIER`, `CRISP_KEY` -- Crisp plugin token for the
+  support-chat customer sync (crisp-sync-cron). All three REQUIRED by that function,
+  no defaults -- index.ts throws at module load if any is missing. Plugin scopes are
+  `website:people:profiles` and `website:people:data`
 - `POSTHOG_PROJECT_KEY` -- PostHog **project write key** (same value as the frontend's
   `VITE_POSTHOG_KEY`, NOT a personal API key). Optional: server-side capture is a
   silent no-op when unset

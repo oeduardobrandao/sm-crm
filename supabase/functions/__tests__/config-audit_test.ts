@@ -35,6 +35,7 @@ const REQUIRED_FUNCTIONS = [
   "post-media-cleanup-cron",
   "analytics-report-cron",
   "invite-expire-cron",
+  "crisp-sync-cron",
   // Token/internal auth
   "instagram-integration",
   "hub-bootstrap",
