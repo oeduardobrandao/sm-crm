@@ -1,4 +1,12 @@
 import { supabase, getUserId, getContaId } from './core';
+import { extractMentionsFromText } from '@/components/mentions/mentionTokens';
+import { syncMentions } from './mentions';
+
+function membroMentionIds(text: string): number[] {
+  return extractMentionsFromText(text)
+    .filter((ref) => ref.entityType === 'membro')
+    .map((ref) => ref.id);
+}
 
 export type TarefaStatus = 'pendente' | 'em_andamento' | 'concluida';
 
@@ -91,6 +99,7 @@ export async function addTarefa(
       .insert(tagIds.map((tag_id) => ({ tarefa_id: data.id, tag_id, conta_id })));
     if (linkError) throw linkError;
   }
+  await syncMentions('tarefa', data.id, membroMentionIds(t.descricao ?? ''));
   return data;
 }
 
@@ -105,6 +114,9 @@ export async function updateTarefa(
     .select()
     .single();
   if (error) throw error;
+  if ('descricao' in patch) {
+    await syncMentions('tarefa', id, membroMentionIds(patch.descricao ?? ''));
+  }
   return data;
 }
 

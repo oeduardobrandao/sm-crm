@@ -1,10 +1,30 @@
 import React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { addTarefaMock, toastErrorMock } = vi.hoisted(() => ({
+const {
+  addTarefaMock,
+  toastErrorMock,
+  getMembrosMock,
+  getClientesMock,
+  getTarefasMock,
+  searchPostsForMentionMock,
+} = vi.hoisted(() => ({
   addTarefaMock: vi.fn(),
   toastErrorMock: vi.fn(),
+  // MentionTextarea (the descricao field, since Task 5 of the at-mentions feature)
+  // pulls these in via useMentionSearch -- this file's '../../../store' mock fully
+  // replaces the module (no importOriginal), so they need an explicit stand-in or
+  // useQuery blows up on an undefined queryFn. Named vi.hoisted refs (not inline
+  // vi.fn() literals in the mock factory below) so beforeEach can re-arm their
+  // resolved value every test -- the repo's global afterEach runs
+  // vi.restoreAllMocks(), which strips a bare vi.fn()'s mockResolvedValue back to
+  // "returns undefined" between tests.
+  getMembrosMock: vi.fn(),
+  getClientesMock: vi.fn(),
+  getTarefasMock: vi.fn(),
+  searchPostsForMentionMock: vi.fn(),
 }));
 
 vi.mock('../../../store', () => ({
@@ -12,12 +32,33 @@ vi.mock('../../../store', () => ({
   updateTarefa: vi.fn(),
   setTarefaTags: vi.fn(),
   addTarefaTag: vi.fn(),
+  getMembros: getMembrosMock,
+  getClientes: getClientesMock,
+  getTarefas: getTarefasMock,
+}));
+vi.mock('@/store/posts', () => ({
+  searchPostsForMention: searchPostsForMentionMock,
 }));
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: toastErrorMock },
 }));
 
 import { TarefaFormDialog } from '../components/TarefaFormDialog';
+
+beforeEach(() => {
+  getMembrosMock.mockResolvedValue([]);
+  getClientesMock.mockResolvedValue([]);
+  getTarefasMock.mockResolvedValue([]);
+  searchPostsForMentionMock.mockResolvedValue([]);
+});
+
+// MentionTextarea's useMentionSearch calls useQuery, which needs a QueryClient
+// ancestor -- TarefaFormDialog didn't depend on react-query before wiring in
+// @-mentions (Task 5).
+function renderDialog(ui: React.ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 const CLIENTES = [
   { id: 7, nome: 'Cliente Sete', status: 'ativo' },
@@ -27,7 +68,7 @@ const CLIENTES = [
 describe('TarefaFormDialog convert mode', () => {
   it('prefills initialValues, locks cliente, and submits through onCreate instead of addTarefa', async () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
-    render(
+    renderDialog(
       <TarefaFormDialog
         open
         onClose={() => {}}
@@ -71,7 +112,7 @@ describe('TarefaFormDialog error handling', () => {
     addTarefaMock.mockRejectedValueOnce(
       new Error('duplicate key value violates unique constraint "tarefas_pkey"'),
     );
-    render(
+    renderDialog(
       <TarefaFormDialog
         open
         onClose={() => {}}

@@ -1,4 +1,12 @@
 import { supabase, getCurrentProfile } from './core';
+import { extractMentionsFromText } from '@/components/mentions/mentionTokens';
+import { syncMentions } from './mentions';
+
+function membroMentionIds(text: string): number[] {
+  return extractMentionsFromText(text)
+    .filter((ref) => ref.entityType === 'membro')
+    .map((ref) => ref.id);
+}
 
 export interface CommentThread {
   id: number;
@@ -77,6 +85,8 @@ export async function createCommentThread(
     .single();
   if (commentErr) throw commentErr;
 
+  await syncMentions('post_comment', comment.id, membroMentionIds(firstComment));
+
   return { ...thread, post_comments: [comment] } as CommentThreadWithComments;
 }
 
@@ -89,6 +99,7 @@ export async function addPostComment(threadId: number, content: string): Promise
     .select()
     .single();
   if (error) throw error;
+  await syncMentions('post_comment', data.id, membroMentionIds(content));
   return data as PostComment;
 }
 
@@ -98,6 +109,7 @@ export async function updatePostComment(commentId: number, content: string): Pro
     .update({ content, updated_at: new Date().toISOString() })
     .eq('id', commentId);
   if (error) throw error;
+  await syncMentions('post_comment', commentId, membroMentionIds(content));
 }
 
 export async function deletePostComment(commentId: number): Promise<void> {

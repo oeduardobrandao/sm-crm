@@ -16,7 +16,8 @@ export type NotificationType =
   | 'invite_accepted'
   | 'member_role_changed'
   | 'member_removed'
-  | 'client_message';
+  | 'client_message'
+  | 'mention';
 
 export interface Notification {
   id: string;

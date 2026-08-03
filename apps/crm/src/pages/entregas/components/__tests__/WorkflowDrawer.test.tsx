@@ -91,6 +91,7 @@ vi.mock('@/store', () => ({
   getClientePosts: vi.fn(async () => []),
   createDesign: vi.fn(),
   getDesignForPost: vi.fn(async () => null),
+  syncMentions: vi.fn(),
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
@@ -151,10 +152,19 @@ vi.mock('@/pages/entregas/components/ReadOnlyTipTap', () => ({
 }));
 
 import { WorkflowDrawer } from '../WorkflowDrawer';
-import { getWorkflowPostsWithProperties, updateWorkflowPost } from '@/store';
+import {
+  getWorkflowPostsWithProperties,
+  updateWorkflowPost,
+  getPostEditSuggestions,
+  acceptEditSuggestion,
+  syncMentions,
+} from '@/store';
 
 const mockGetPosts = vi.mocked(getWorkflowPostsWithProperties);
 const mockUpdate = vi.mocked(updateWorkflowPost);
+const mockGetEditSuggestions = vi.mocked(getPostEditSuggestions);
+const mockAcceptEditSuggestion = vi.mocked(acceptEditSuggestion);
+const mockSyncMentions = vi.mocked(syncMentions);
 
 function renderDrawer(qc: QueryClient) {
   const card = {
@@ -248,5 +258,102 @@ describe('WorkflowDrawer refresh() query invalidation', () => {
     await waitFor(() =>
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientePosts', 42] }),
     );
+  });
+});
+
+describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
+  // accept_edit_suggestion writes workflow_posts.conteudo server-side, bypassing
+  // updateWorkflowPost entirely -- this is the one call site where mention sync has to be
+  // wired at the component call site instead of inside store.ts (see task-7 brief).
+  const suggestion = {
+    id: 200,
+    post_id: 1,
+    suggested_conteudo: {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'mention',
+              attrs: { entityType: 'membro', id: 7, label: 'Ana', parentId: null },
+            },
+          ],
+        },
+      ],
+    },
+    suggested_conteudo_plain: '@Ana confere',
+    suggested_ig_caption: null,
+    changed_fields: ['conteudo'],
+    status: 'pending' as const,
+    updated_at: '2026-08-01T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([
+      {
+        id: 1,
+        workflow_id: 10,
+        titulo: 'Post A',
+        conteudo: null,
+        conteudo_plain: '',
+        tipo: 'feed',
+        ordem: 0,
+        status: 'rascunho',
+        responsavel_id: null,
+        scheduled_at: null,
+        ig_caption: null,
+        platform: 'instagram',
+      } as never,
+    ]);
+    mockUpdate.mockResolvedValue({} as never);
+    mockGetEditSuggestions.mockResolvedValue([suggestion] as never);
+    mockAcceptEditSuggestion.mockResolvedValue(undefined as never);
+  });
+
+  it('syncs mentions from suggested_conteudo against the post id after acceptance', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    const acceptButton = await screen.findByRole('button', { name: 'Aceitar' });
+    fireEvent.click(acceptButton);
+
+    await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
+    await waitFor(() => expect(mockSyncMentions).toHaveBeenCalledWith('workflow_post', 1, [7]));
+  });
+
+  it('does not sync mentions when the accepted suggestion did not change conteudo', async () => {
+    mockGetEditSuggestions.mockResolvedValue([
+      { ...suggestion, changed_fields: ['ig_caption'] },
+    ] as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    const acceptButton = await screen.findByRole('button', { name: 'Aceitar' });
+    fireEvent.click(acceptButton);
+
+    await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
+    expect(mockSyncMentions).not.toHaveBeenCalled();
+  });
+
+  it('does not sync mentions when changed_fields includes conteudo but suggested_conteudo is null (caption-only Story suggestion)', async () => {
+    // Repro: hub StoryPostCard submits caption-only suggestions with
+    // suggested_conteudo: null. upsert_edit_suggestion's IS DISTINCT FROM
+    // comparison still puts 'conteudo' in changed_fields for that
+    // null-vs-existing-doc diff, but accept_edit_suggestion COALESCEs and
+    // keeps the stored conteudo untouched -- syncing from the null doc here
+    // would wrongly wipe every mention for a post whose content didn't change.
+    mockGetEditSuggestions.mockResolvedValue([
+      { ...suggestion, suggested_conteudo: null, changed_fields: ['conteudo', 'ig_caption'] },
+    ] as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    const acceptButton = await screen.findByRole('button', { name: 'Aceitar' });
+    fireEvent.click(acceptButton);
+
+    await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
+    expect(mockSyncMentions).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Check, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import type { CommentThreadWithComments, PostComment, Membro } from '@/store';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { MentionText } from '@/components/mentions/MentionText';
+import { MentionTextarea } from '@/components/mentions/MentionTextarea';
 
 interface WorkspaceUser {
   id: string;
@@ -156,11 +158,11 @@ function CommentItem({
 
       {editing ? (
         <>
-          <textarea
+          <MentionTextarea
             ref={editRef}
             className="comment-edit-input"
             value={editContent}
-            onChange={(e) => setEditContent(e.target.value)}
+            onValueChange={setEditContent}
             disabled={saving}
           />
           <div className="comment-edit-actions">
@@ -178,7 +180,9 @@ function CommentItem({
         </>
       ) : (
         <div className="comment-item-body">
-          <p className="comment-item-content">{comment.content}</p>
+          <p className="comment-item-content">
+            <MentionText text={comment.content} />
+          </p>
           {comment.updated_at && <span className="comment-item-edited">(editado)</span>}
         </div>
       )}
@@ -312,11 +316,11 @@ export default function PostCommentPopover({
 
       {!readOnly && (
         <div className="comment-popover-footer">
-          <textarea
+          <MentionTextarea
             className="comment-reply-input"
             placeholder="Responder..."
             value={replyContent}
-            onChange={(e) => setReplyContent(e.target.value)}
+            onValueChange={setReplyContent}
             onKeyDown={handleReplyKeyDown}
             disabled={submitting}
             rows={1}

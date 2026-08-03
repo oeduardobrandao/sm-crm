@@ -111,6 +111,11 @@ class QueryBuilder {
     return this;
   }
 
+  ilike(...args: unknown[]) {
+    this.modifiers.push({ method: 'ilike', args });
+    return this;
+  }
+
   not(...args: unknown[]) {
     this.modifiers.push({ method: 'not', args });
     return this;
@@ -173,11 +178,8 @@ class QueryBuilder {
     const key = `${this.table}:${operation}`;
     const queue = this.state.responses.get(key);
     const next = queue?.length ? queue.shift() : undefined;
-    const resolved = typeof next === 'function'
-      ? await next()
-      : next
-        ? await next
-        : defaultResult(operation);
+    const resolved =
+      typeof next === 'function' ? await next() : next ? await next : defaultResult(operation);
 
     this.state.calls.push({
       table: this.table,
@@ -209,7 +211,7 @@ function createState(): MockState {
     calls: [],
     responses: new Map(),
     rpcResponses: new Map(),
-    authResponse: { data: { user: null }, error: { message: "not configured" } },
+    authResponse: { data: { user: null }, error: { message: 'not configured' } },
   };
 }
 
@@ -228,9 +230,10 @@ export function createSupabaseQueryMock() {
     rpc(name: string, params: Record<string, unknown>) {
       const queue = state.rpcResponses.get(name);
       const next = queue?.length ? queue.shift() : undefined;
-      const resultPromise = typeof next === 'function'
-        ? Promise.resolve(next())
-        : Promise.resolve(next ?? { data: true, error: null, count: null });
+      const resultPromise =
+        typeof next === 'function'
+          ? Promise.resolve(next())
+          : Promise.resolve(next ?? { data: true, error: null, count: null });
 
       state.calls.push({
         table: `rpc:${name}`,
@@ -267,9 +270,12 @@ export function createSupabaseQueryMock() {
       state.calls.length = 0;
       state.responses.clear();
       state.rpcResponses.clear();
-      state.authResponse = { data: { user: null }, error: { message: "not configured" } };
+      state.authResponse = { data: { user: null }, error: { message: 'not configured' } };
     },
-    withAuth(user: { id: string; [key: string]: unknown } | null, error?: { message: string } | null) {
+    withAuth(
+      user: { id: string; [key: string]: unknown } | null,
+      error?: { message: string } | null,
+    ) {
       state.authResponse = {
         data: { user },
         error: error ?? null,

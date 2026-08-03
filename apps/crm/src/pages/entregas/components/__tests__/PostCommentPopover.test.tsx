@@ -1,9 +1,37 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CommentThreadWithComments, Membro } from '@/store';
 
 import PostCommentPopover from '../PostCommentPopover';
+
+// PostCommentPopover's comment/reply textareas render MentionTextarea (Task 5 of the
+// at-mentions feature), which pulls membros/clientes/tarefas through useMentionSearch
+// -> useQuery -- so every render here needs a QueryClient ancestor. Shadowing `render`
+// with a wrapped version (rather than touching each of this file's many call sites)
+// keeps every existing `render(<PostCommentPopover ... />)` call working unchanged.
+function render(ui: React.ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
+
+vi.mock('@/store', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    getMembros: vi.fn(),
+    getClientes: vi.fn(),
+    getTarefas: vi.fn(),
+  };
+});
+vi.mock('@/store/posts', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    searchPostsForMention: vi.fn(),
+  };
+});
 
 const membros: Membro[] = [
   {
@@ -76,6 +104,18 @@ describe('PostCommentPopover', () => {
     defaultProps.onReopen.mockResolvedValue(undefined);
     defaultProps.onEditComment.mockResolvedValue(undefined);
     defaultProps.onDeleteComment.mockResolvedValue(undefined);
+  });
+
+  // Re-arms the mocks MentionTextarea's useMentionSearch depends on -- the
+  // `vi.restoreAllMocks()` above (and the global one in vitest.setup.ts) strips a
+  // bare `vi.fn()`'s resolved value back to "returns undefined" between tests.
+  beforeEach(async () => {
+    const store = await import('@/store');
+    (store.getMembros as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (store.getClientes as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (store.getTarefas as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    const postsModule = await import('@/store/posts');
+    (postsModule.searchPostsForMention as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   });
 
   it('renders author avatar with initials when no avatar_url', () => {

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
@@ -24,6 +25,12 @@ import {
 } from 'lucide-react';
 import { CalloutExtension } from './CalloutExtension';
 import { CommentHighlight } from './CommentHighlight';
+import { MentionNode } from '@/components/mentions/MentionNode';
+import { mentionHref } from '@/components/mentions/mentionHref';
+import { MentionSuggestion } from '@/components/mentions/mentionSuggestion';
+import { useMentionSearch } from '@/components/mentions/useMentionSearch';
+import { MentionTextarea } from '@/components/mentions/MentionTextarea';
+import type { MentionEntityType } from '@/components/mentions/types';
 import { createInlineImageExtension } from './InlineImageExtension';
 import type { InlineImageUploadFn } from './InlineImageExtension';
 import PostCommentPopover from './PostCommentPopover';
@@ -88,6 +95,7 @@ export function PostEditor({
   onDeleteComment,
   onUploadInlineImage,
 }: PostEditorProps) {
+  const navigate = useNavigate();
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [linkInputValue, setLinkInputValue] = useState('');
   const [textColorOpen, setTextColorOpen] = useState(false);
@@ -109,6 +117,18 @@ export function PostEditor({
   const commentAddWrapperRef = useRef<HTMLDivElement>(null);
   const commentPopoverRef = useRef<HTMLDivElement>(null);
 
+  // Editor extensions are frozen at first render (useEditor is called with no deps
+  // array below), so MentionSuggestion.configure() must receive a STABLE function --
+  // never `search` itself, whose identity changes as membros/clientes/tarefas load.
+  // The ref indirection keeps the dropdown reading live data without recreating the
+  // editor on every query result.
+  const { search: mentionSearch } = useMentionSearch();
+  const mentionSearchRef = useRef(mentionSearch);
+  useEffect(() => {
+    mentionSearchRef.current = mentionSearch;
+  }, [mentionSearch]);
+  const mentionSearchFn = useRef((query: string) => mentionSearchRef.current(query)).current;
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -123,6 +143,8 @@ export function PostEditor({
       Placeholder.configure({ placeholder: 'Escreva o conteúdo do post...' }),
       CalloutExtension,
       CommentHighlight,
+      MentionNode,
+      MentionSuggestion.configure({ search: mentionSearchFn }),
       ...(onUploadInlineImage ? [createInlineImageExtension(onUploadInlineImage)] : []),
     ],
     content: initialContent ?? undefined,
@@ -243,12 +265,24 @@ export function PostEditor({
     }
   }, [editor, onCreateComment, commentAddText]);
 
-  // Click handler for comment-highlighted text
+  // Click handler for comment-highlighted text and @-mention chips
   useEffect(() => {
     if (!editor) return;
     const editorDom = editor.view.dom;
     const handleEditorClick = (e: Event) => {
       const target = e.target as HTMLElement;
+      const mentionSpan = target.closest('span[data-mention]') as HTMLElement | null;
+      if (mentionSpan) {
+        const parentIdRaw = mentionSpan.getAttribute('data-parent-id');
+        const href = mentionHref({
+          entityType: mentionSpan.getAttribute('data-entity-type') as MentionEntityType,
+          id: Number(mentionSpan.getAttribute('data-id')),
+          label: mentionSpan.getAttribute('data-label') ?? '',
+          parentId: parentIdRaw === null || parentIdRaw === '' ? null : Number(parentIdRaw),
+        });
+        if (href) navigate(href);
+        return;
+      }
       const commentSpan = target.closest('span.comment-highlight') as HTMLElement | null;
       if (commentSpan) {
         const threadId = Number(commentSpan.getAttribute('data-thread-id'));
@@ -269,7 +303,7 @@ export function PostEditor({
     };
     editorDom.addEventListener('click', handleEditorClick);
     return () => editorDom.removeEventListener('click', handleEditorClick);
-  }, [editor]);
+  }, [editor, navigate]);
 
   const handleResolveThread = useCallback(
     async (threadId: number) => {
@@ -574,11 +608,11 @@ export function PostEditor({
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="comment-add-label">Adicionar comentário</div>
-            <textarea
+            <MentionTextarea
               className="comment-add-input"
               placeholder="Escreva seu comentário..."
               value={commentAddText}
-              onChange={(e) => setCommentAddText(e.target.value)}
+              onValueChange={setCommentAddText}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
