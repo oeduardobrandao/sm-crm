@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../hooks/useEntregasData', () => ({
@@ -325,6 +325,15 @@ function PathProbe() {
   return <div data-testid="current-path">{location.pathname + location.search}</div>;
 }
 
+/** Stands in for the globally-mounted GlobalSearchTrigger, which can fire a
+ * /entregas?drawer= deep link while the user is ALREADY on /entregas. */
+function DeepLinkProbe() {
+  const navigate = useNavigate();
+  return (
+    <button onClick={() => navigate('/entregas?drawer=2&post=5')}>Deep link from search</button>
+  );
+}
+
 function renderPage(initialEntry = '/entregas') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
@@ -335,6 +344,7 @@ function renderPage(initialEntry = '/entregas') {
             <>
               <EntregasPage />
               <PathProbe />
+              <DeepLinkProbe />
             </>
           }
         />
@@ -519,6 +529,36 @@ describe('EntregasPage', () => {
     renderPage('/entregas?drawer=2&post=5');
 
     expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+    });
+  });
+
+  // GlobalSearchTrigger is mounted globally, so a ?drawer= deep link can arrive while the
+  // user is ALREADY on /entregas. `cards` does not change reference on that navigation, so
+  // a resolver keyed only on `cards` never re-runs and the click silently does nothing.
+  it('opens the drawer for a deep link that arrives while already on /entregas', async () => {
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [{ id: 10, nome: 'Clínica Aurora' }],
+      membros: [{ id: 7, nome: 'Ana' }],
+      templates: [],
+      cards: [
+        makeCard({
+          workflow: { id: 2, titulo: 'Fluxo Profundo', cliente_id: 10, status: 'ativo' },
+        }),
+      ],
+      activeWorkflows: [{ id: 2 }],
+      isLoading: false,
+      refresh: vi.fn(),
+    } as never);
+
+    renderPage('/entregas');
+    expect(screen.queryByText('Workflow drawer: Fluxo Profundo')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Deep link from search'));
+
+    expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+    expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
     await waitFor(() => {
       expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
     });

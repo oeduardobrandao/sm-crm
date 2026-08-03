@@ -284,7 +284,7 @@ export function AgentPendingSection() {
               {meusPosts.map((post) => (
                 <Row
                   key={post.id}
-                  to={`/entregas?drawer=${post.workflow_id}`}
+                  to={`/entregas?drawer=${post.workflow_id}&post=${post.id}`}
                   title={post.titulo}
                   context={[post.cliente_nome, POST_STATUS_LABELS[post.status]]
                     .filter(Boolean)

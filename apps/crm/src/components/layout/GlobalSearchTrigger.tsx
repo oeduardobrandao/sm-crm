@@ -220,7 +220,7 @@ export default function GlobalSearchTrigger() {
                     <CommandItem
                       key={`post-${p.id}`}
                       value={`postagem ${p.titulo} ${workflowMap.get(p.workflow_id) ?? ''}`}
-                      onSelect={() => go(`/entregas?drawer=${p.workflow_id}`)}
+                      onSelect={() => go(`/entregas?drawer=${p.workflow_id}&post=${p.id}`)}
                     >
                       <Image className="h-4 w-4 shrink-0" />
                       <span className="truncate">{p.titulo}</span>

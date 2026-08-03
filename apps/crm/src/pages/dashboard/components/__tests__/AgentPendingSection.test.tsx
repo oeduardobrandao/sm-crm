@@ -151,4 +151,25 @@ describe('AgentPendingSection', () => {
     expect(screen.queryByText('Etapa de outro')).not.toBeInTheDocument();
     expect(getPostsMock).toHaveBeenCalledWith(7);
   });
+
+  // A pending POST has to land on that post, not just on the fluxo that contains it.
+  // /entregas takes &post=<id> alongside ?drawer=<workflowId> and expands it in the drawer.
+  it('links a pending post to the post itself, not just to its fluxo', async () => {
+    getMembrosMock.mockResolvedValue([{ id: 7, nome: 'Ana', crm_user_id: 'user-1' }]);
+    getPostsMock.mockResolvedValue([
+      {
+        id: 31,
+        workflow_id: 5,
+        titulo: 'Carrossel amamentação',
+        status: 'rascunho',
+        workflow_titulo: 'Julho',
+        cliente_nome: 'Dra. Marina',
+      },
+    ]);
+
+    renderSection();
+
+    const link = await screen.findByRole('link', { name: /Carrossel amamentação/ });
+    expect(link).toHaveAttribute('href', '/entregas?drawer=5&post=31');
+  });
 });
