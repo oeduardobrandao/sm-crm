@@ -1,5 +1,8 @@
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
   getDashboardStats,
   getClientes,
@@ -17,6 +20,7 @@ import { getPortfolioSummary, type PortfolioSummary } from '../../services/analy
 import { useAuth } from '../../context/AuthContext';
 import { OnboardingBanner } from '../../components/OnboardingBanner';
 import { ImportBanner } from '../../components/import/ImportBanner';
+import { TrialNudgeCard } from '../../components/billing/TrialNudgeCard';
 import { ClientHealthMonitor } from './components/ClientHealthMonitor';
 import { AgentPendingSection } from './components/AgentPendingSection';
 import { TodayCard, type TodayEvent } from './components/TodayCard';
@@ -29,6 +33,31 @@ export default function DashboardPage() {
   // stale across workspace switches (a user can be owner in one workspace and
   // agent in another). Fall back to `role` only while membership resolves.
   const isAgent = (workspaceRole ?? role) === 'agent';
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+
+  // Stripe returns here after an onboarding checkout. The plan lands via webhook,
+  // so re-read a few times rather than trusting the first response — same
+  // treatment CobrancaPage gives its own return.
+  useEffect(() => {
+    const trial = searchParams.get('trial');
+    if (!trial) return;
+    if (trial === 'started') {
+      toast.success('Teste de 30 dias ativado! Atualizando seu plano…');
+      let tries = 0;
+      const id = window.setInterval(() => {
+        tries += 1;
+        queryClient.invalidateQueries({ queryKey: ['billing'] });
+        queryClient.invalidateQueries({ queryKey: ['workspaceLimits'] });
+        if (tries >= 5) window.clearInterval(id);
+      }, 2000);
+      setSearchParams({}, { replace: true });
+      return () => window.clearInterval(id);
+    }
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const results = useQueries({
     queries: [
@@ -151,6 +180,7 @@ export default function DashboardPage() {
 
   return (
     <div>
+      {!isAgent && <TrialNudgeCard />}
       {!isAgent && (
         <OnboardingBanner
           clientes={clientes}

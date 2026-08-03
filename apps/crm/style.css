@@ -10382,3 +10382,40 @@ body.landing-page #root {
   border: 1px dashed var(--border-color);
   color: var(--text-muted);
 }
+
+/* Trial nudge card */
+.trial-nudge {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--primary-color);
+}
+.trial-nudge__icon {
+  color: var(--primary-hover);
+  flex-shrink: 0;
+}
+.trial-nudge__body {
+  flex: 1;
+}
+.trial-nudge__title {
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0 0 0.15rem;
+}
+.trial-nudge__text {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+.trial-nudge__cta {
+  white-space: nowrap;
+  text-decoration: none;
+}
+.trial-nudge__close {
+  background: none;
+  border: none;
+  color: var(--text-light);
+  cursor: pointer;
+  padding: 0;
+}

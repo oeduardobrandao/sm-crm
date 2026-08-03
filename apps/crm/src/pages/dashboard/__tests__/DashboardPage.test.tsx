@@ -3,16 +3,19 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { useAuthMock, useQueriesMock, useQueryMock, onboardingBannerMock } = vi.hoisted(() => ({
-  useAuthMock: vi.fn(),
-  useQueriesMock: vi.fn(),
-  useQueryMock: vi.fn(),
-  onboardingBannerMock: vi.fn(),
-}));
+const { useAuthMock, useQueriesMock, useQueryMock, useQueryClientMock, onboardingBannerMock } =
+  vi.hoisted(() => ({
+    useAuthMock: vi.fn(),
+    useQueriesMock: vi.fn(),
+    useQueryMock: vi.fn(),
+    useQueryClientMock: vi.fn(),
+    onboardingBannerMock: vi.fn(),
+  }));
 
 vi.mock('@tanstack/react-query', () => ({
   useQueries: useQueriesMock,
   useQuery: useQueryMock,
+  useQueryClient: useQueryClientMock,
 }));
 
 vi.mock('../../../context/AuthContext', () => ({
@@ -54,6 +57,7 @@ import DashboardPage from '../DashboardPage';
 const mockedUseAuth = vi.mocked(useAuthMock);
 const mockedUseQueries = vi.mocked(useQueriesMock);
 const mockedUseQuery = vi.mocked(useQueryMock);
+const mockedUseQueryClient = vi.mocked(useQueryClientMock);
 const mockedOnboardingBanner = vi.mocked(onboardingBannerMock);
 
 const frozenNow = new Date('2026-04-18T12:00:00-03:00');
@@ -96,8 +100,10 @@ describe('DashboardPage', () => {
     mockedUseAuth.mockReset();
     mockedUseQueries.mockReset();
     mockedUseQuery.mockReset();
+    mockedUseQueryClient.mockReset();
     mockedOnboardingBanner.mockReset();
 
+    mockedUseQueryClient.mockReturnValue({ invalidateQueries: vi.fn() } as never);
     mockedUseAuth.mockReturnValue({ role: 'admin', canSeeFinancials: true } as never);
     mockedUseQueries.mockReturnValue(makeDefaultUseQueries() as never);
     mockedUseQuery.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
