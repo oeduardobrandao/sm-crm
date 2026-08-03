@@ -8,8 +8,10 @@ confirm by `curl` at the top of implementation (see "Open vendor questions").
 ## Goal
 
 Every CRM user exists as a **person profile in Crisp**, carrying enough context that support
-recognises them the moment they get in touch, **on any channel** — the chat widget, email to
-the support inbox, or WhatsApp — and not only while they happen to be sitting inside the CRM.
+recognises them the moment they get in touch — through the chat widget or by email to the
+support inbox — and not only while they happen to be sitting inside the CRM. A phone number
+is populated in anticipation of WhatsApp matching, which is verified at rollout rather than
+assumed; see "The WhatsApp claim is unproven".
 
 Today `apps/crm/index.html` loads the Crisp widget anonymously and
 `apps/crm/src/context/AuthContext.tsx` pushes `user:email` and `user:nickname` once a session
@@ -34,7 +36,7 @@ server-side on a cron sweep.
 | Mechanism | **Cron sweep only.** No writes inside `stripe-webhook` or the signup trigger. |
 | Erasure | **`crisp_contacts` ledger + deletion sweep**, mirroring `loops_contacts`. |
 | Change detection | **Payload fingerprint** in the ledger, advanced only on confirmed vendor success. The one deliberate departure from the Loops precedent. |
-| Frontend | **Unchanged.** |
+| Frontend | **Changes: Crisp Identity Verification ships with this.** Reversed on review — see below. |
 | Hub / Admin apps | Out of scope. Crisp is not loaded in either. |
 
 ### Why no consent gate
@@ -84,21 +86,63 @@ converges front-to-back and no user can be starved.
 | `20260804000001_crisp_contacts.sql` | Ledger table + RLS. |
 | `20260804000002_crisp_sync_rpcs.sql` | Candidate / deletion / record / confirm RPCs + service-role grants. |
 | `20260804000003_schedule_crisp_sync_cron.sql` | `cron.schedule`. Applied **last**. |
+| `supabase/functions/crisp-identity/index.ts` | Signs the **authenticated caller's own** email with `CRISP_IDENTITY_SECRET`. JWT-verified, so it is not a signing oracle. |
+| `apps/crm/src/context/AuthContext.tsx` | Fetch the signature and pass it as the second element of the `user:email` push. |
 
 > Migration version prefixes are provisional. `main`'s tail at the time of writing is
 > `20260803000008`. Re-verify with `git ls-tree origin/main:supabase/migrations | tail` and
 > renumber above the real tail immediately before opening the PR — a shared prefix is silently
 > skipped by Supabase and the `migration-version-guard` job fails the build.
 
-### The frontend does not change
+### The frontend does change: Identity Verification is a precondition
 
-`AuthContext` already pushes `user:email`. Crisp binds a widget session to the person profile
-carrying that address, so the profile this cron creates is the one the widget session lands
-on — the two halves meet at the email with no extra wiring. Pushing `session:data` from the
-client as well would put two writers on the same fields, with the client winning by recency
-and carrying strictly less information (the existing comment at `AuthContext.tsx:257` records
-that client count is not available from any existing hook, which is exactly why this moved
-server-side).
+The first draft asserted the frontend needed no work. **The review overturned that, and it is
+the most important finding in this document.**
+
+`AuthContext` pushes `user:email` **unsigned**. Crisp binds a widget session to the person
+profile carrying that address, which is what makes the server-created profile and the widget
+session meet. But nothing proves the browser owns the address it claims: any visitor can open
+the chatbox and assert any customer's email.
+
+Today that is close to harmless, because the profile holds a name and an email — roughly what
+the impersonator already had to know to attempt it. **This spec changes that.** After it
+ships, claiming a customer's email shows the agent their plan, their subscription state, their
+workspace names, their client count, and a deep link into the admin portal for their
+workspace. That is a social-engineering aid: the agent sees a rich, confident-looking profile
+and is far more likely to treat the request as authenticated. The enrichment is exactly what
+creates the risk, so the mitigation ships in the same change.
+
+**Crisp Identity Verification** is the vendor's answer: the backend computes an HMAC-SHA256 of
+the user's email under a secret only Crisp and we hold, and the client passes it alongside the
+address:
+
+```ts
+window.$crisp?.push(['set', 'user:email', [user.email, signature]]);
+```
+
+Sessions with a valid signature show as **Verified** in the inbox; unsigned or invalid ones
+show as **Unverified**.
+
+**Be precise about what this buys.** It is a *label on the session*, not an access control:
+Crisp does not reject unsigned identifications, and the profile still exists and is still
+matchable by email. What it delivers is that an agent can tell, at a glance, whether the
+person in front of them proved ownership of the address — which is exactly the judgement the
+enrichment would otherwise quietly erode. Pairing it with a written support rule ("do not act
+on account requests from an Unverified session") is what closes the loop, and that rule is a
+people process, not something this spec can enforce.
+
+Required pieces:
+
+| Piece | Purpose |
+|---|---|
+| `CRISP_IDENTITY_SECRET` | The Crisp-issued signing key. Server-side only, never in `VITE_*`. |
+| A signing endpoint | Returns the HMAC for the **authenticated caller's own** email, taken from the verified JWT — never from a request parameter, or it becomes an oracle that signs any address on demand. |
+| `AuthContext.tsx:271` | Fetch the signature and pass it as the second element of the `user:email` push. |
+
+The rest of the original reasoning stands: pushing `session:data` from the client would put two
+writers on the same fields, with the client winning by recency and carrying strictly less
+information (the comment at `AuthContext.tsx:257` records that client count is not available
+from any existing hook, which is why enrichment moved server-side).
 
 ### Secrets
 
@@ -107,19 +151,43 @@ server-side).
 | `CRISP_WEBSITE_ID` | `bc54b5a7-dc07-46a9-8b6a-1c3ba9923314`, already public in `index.html`. Still an env var, not a literal — staging must be able to point at a different Crisp website. |
 | `CRISP_IDENTIFIER` | Plugin token identifier. |
 | `CRISP_KEY` | Plugin token key. |
+| `CRISP_IDENTITY_SECRET` | Identity-Verification signing key. Used by the signing endpoint, not by the cron. |
 
-All three are **validated at module load in `index.ts` and throw if missing**, following the
-`LOOPS_API_KEY` precedent and for a weaker version of the same reason: failing the whole
+The first three are **validated at module load in `index.ts` and throw if missing**, following
+the `LOOPS_API_KEY` precedent and for a weaker version of the same reason: failing the whole
 invocation before any ledger row is written keeps every candidate retryable once the secret is
 actually set, instead of burning a sweep that records syncs which never reached the vendor.
 
-Auth is `Authorization: Basic base64(identifier:key)` plus `X-Crisp-Tier: plugin`. The plugin
-needs `website:people:manage` (write) and `website:people:read` (the read half of the
-read-modify-write below).
+Auth is `Authorization: Basic base64(identifier:key)` plus `X-Crisp-Tier: plugin`.
 
-**Prerequisite, and the one thing that can block deployment:** a plugin token with those
-scopes must be created in the Crisp Marketplace for the Mesaas website. A development token
-works for staging but carries lower quotas.
+**Scopes — these names are exact and the first draft had them wrong.** The plugin needs:
+
+| Scope | Covers |
+|---|---|
+| `website:people:profiles` | "List and create CRM profiles" — the `GET`/`POST`/`PUT`/`DELETE` profile routes. |
+| `website:people:data` | "List and push data in CRM profiles" — the `/people/data/{id}` routes. |
+
+`website:people:manage` and `website:people:read`, named in the first draft, **do not exist**.
+A production token requested with them would be rejected. Development tokens are not subject to
+scopes at all, which is precisely how a wrong scope list survives staging and fails in prod.
+
+**Prerequisite, and the one thing that can block deployment:** a plugin token with those two
+scopes must be created in the Crisp Marketplace for the Mesaas website.
+
+### Profile and custom data are two different APIs
+
+Stated explicitly because the first draft's single payload table implied otherwise:
+
+- `email`, `person.*` and `segments` live on the **profile** and are written by
+  `POST /people/profile` or `PUT /people/profile/{id}`.
+- Everything under `data.*` is a **separate People Data API**,
+  `PATCH /people/data/{id}`, and cannot ride along on a profile write.
+
+So each changed person costs a `GET` profile, a profile write, and a data `PATCH`.
+
+The data call is `PATCH` (merge), not `PUT` (replace), on purpose: our key set is fixed and
+always sent in full, so a merge can never leave one of our keys stale, while a replace would
+erase any key an operator or another integration added.
 
 ### Error handling
 
@@ -178,9 +246,26 @@ result of a review finding; do not collapse it back.
 ```
 
 **Step 1 records the email and nothing else.** It runs under a per-user
-`pg_advisory_xact_lock` in its own lock namespace and refuses (returns `false`) when a row
-exists for this user with `deleted_at is null` and a `synced_email` different from the one
-being written; the caller then skips that person entirely this sweep.
+`pg_advisory_xact_lock` in its own lock namespace and refuses (returns `false`) in two cases:
+
+1. A row exists for this user with `deleted_at is null` and a `synced_email` different from
+   the one being written — a deletion is owed for the old address.
+2. **The candidate's email no longer matches `auth.users.email`, or the account is no longer
+   confirmed.** This is a send-time re-check against the live row, and it closes a resurrection
+   race the review found: the advisory lock is transaction-scoped, so it releases when this
+   function commits — *before* the vendor call. Between the candidate `SELECT` and the vendor
+   write, the user can change their email and the deletion sweep (in this run or an overlapping
+   one) can delete the old profile. Without the re-check, the upsert then recreates the very
+   profile that was just erased, and the ledger no longer points at it, so nothing can ever
+   erase it again.
+
+In both cases the caller skips that person entirely this sweep.
+
+**A full lease across the external call is deliberately not taken.** With the re-check in
+place, the only remaining consequence of two overlapping runs picking the same candidate is a
+duplicated idempotent `PUT` — the same bytes written twice. Holding a lock, or an advisory
+lease, across a 10-second vendor round trip to prevent a harmless duplicate would trade a real
+availability risk for a cosmetic one.
 
 Recording the email *before* sending is the rule, not an ordering preference. The vendor call
 *creates* the profile; a successful call followed by a failed ledger write leaves a person's
@@ -242,8 +327,8 @@ Segments, by contrast, describe the **person across all their workspaces**. See 
 | Crisp field | Source | Notes |
 |---|---|---|
 | `email` | `auth.users.email` | The join key. `email_confirmed_at is not null` required. |
-| `person.nickname` | `profiles.nome` | |
-| `person.phone` | `coalesce(nullif(trim(profiles.whatsapp),''), nullif(trim(profiles.telefone),''))` | **WhatsApp number preferred** — matching an inbound WhatsApp is the channel gap this spec exists to close, and `profiles.whatsapp` is a distinct column from `telefone` (`20260301_baseline_schema.sql:31`). `trim`/`nullif` are required, not cosmetic: `PerfilTab.tsx` writes the raw input straight to both columns, so a cleared field persists as `''` and would otherwise be sent as an empty phone and hashed as a change. Omitted entirely when both are blank. |
+| `person.nickname` | `coalesce(nullif(btrim(profiles.nome),''), split_part(email,'@',1))` | **`profiles.nome` is nullable** (`20260301_baseline_schema.sql:27`) and Crisp requires a nickname on profile create and replace, so a confirmed user with no name would 4xx forever. The fallback is the same one `handle_new_user_workspace()` already uses at signup, so the two agree. |
+| `person.phone` | `coalesce(nullif(btrim(profiles.whatsapp),''), nullif(btrim(profiles.telefone),''))` | WhatsApp number preferred; `profiles.whatsapp` is a distinct column from `telefone` (`20260301_baseline_schema.sql:31`). `btrim`/`nullif` are required, not cosmetic: `PerfilTab.tsx` writes the raw input straight to both columns, so a cleared field persists as `''` and would otherwise be sent as an empty phone and hashed as a change. Omitted entirely when both are blank. **See the caveat below — do not assume this delivers WhatsApp matching.** |
 | `data.plano` | `plans.name` of `coalesce(ws.plan_id, default_plan_id())` for the primary workspace | Mirrors `resolveEntitlements` exactly — see "Two plan questions" below. |
 | `data.assinatura` | `workspace_subscriptions.status` of the primary workspace, else `nenhuma` | Raw Stripe status, not a derived label. Support should see the actual state. |
 | `data.plan_source` | `workspaces.plan_source` | Surfaces manual grants, which otherwise look like mystery upgrades. |
@@ -254,6 +339,21 @@ Segments, by contrast, describe the **person across all their workspaces**. See 
 | `data.cliente_desde` | `to_char(auth.users.email_confirmed_at, 'YYYY-MM-DD')` | **Not** the Loops trait's `days_since_signup`. A day counter changes every midnight, so hashing it would re-push every user once a day forever, and hashing around it would display a number that is silently wrong. An immutable date is stable in the hash and never goes stale. |
 | `data.admin_url` | `{APP_BASE_URL}/admin/workspaces/{primary workspace id}` | Always present, for members as well as owners — an agent's workspace is exactly as useful to support. Route confirmed at `apps/admin/src/router.tsx:30`. Built in TypeScript, not SQL; if `APP_BASE_URL` is unset the field is omitted and the run continues. |
 | `segments` | managed vocabulary, below | |
+
+### The WhatsApp claim is unproven, and is not counted as delivered
+
+The first draft asserted that writing `person.phone` "is what actually delivers *regardless of
+channel*". The review was right to challenge that: **a phone field being accepted is not the
+same as a documented cross-channel identity-merge contract.** Crisp accepting the value proves
+storage, not that an inbound WhatsApp message from that number resolves to the person profile
+rather than opening an unlinked conversation.
+
+So the honest statement of what this spec delivers is: **email and widget identification, plus
+a phone number populated in anticipation of WhatsApp matching.** WhatsApp coverage is claimed
+only after it is observed end to end — send a real WhatsApp message from a number belonging to
+a synced person and confirm in the inbox that it attaches to their profile. That check is a
+rollout step, not an assumption. If it fails, the phone field is still worth having (an agent
+can eyeball it) but the channel gap stays open and closing it becomes separate work.
 
 ### Two plan questions, two different canonical sources
 
@@ -309,8 +409,14 @@ Applied by **read-modify-write**, not a blind `PATCH`:
 2. Compute the managed set from live state.
 3. Remove only members of the managed vocabulary that no longer apply. Leave every other
    segment — anything an operator tagged by hand — untouched.
-4. Echo `notepad` and `company` back unchanged. `PUT` replaces the profile, so omitting them
-   deletes them. These are operator-owned fields; this sync never authors them.
+4. **Echo back every field the `GET` returned.** `PUT` replaces the whole profile, so the
+   write body is the response object spread wholesale, with only `email`, `person.nickname`,
+   `person.phone` and `segments` overridden. Naming `notepad` and `company` specifically, as
+   the first draft did, silently erases everything it failed to enumerate — avatar, address,
+   description, website, employment, geolocation, and any field Crisp adds later. An
+   allowlist of fields to preserve is unmaintainable against a vendor schema we do not
+   control; preserving by default and overriding by exception is the only version that stays
+   correct.
 5. Write back.
 
 A blind merge-`PATCH` would let `pagante` survive a downgrade and `trial` survive forever,
@@ -418,6 +524,12 @@ through injected deps with no network:
 10. Missing `CRISP_KEY` throws at module load before any candidate is recorded.
 11. `config-audit_test.ts` lists `crisp-sync-cron` (extends the existing test's
     `REQUIRED_FUNCTIONS`).
+12. A profile `PUT` **preserves every field the `GET` returned** — asserted with a stub
+    profile carrying `avatar`, `address` and `description`, none of which the sync knows
+    about, all of which must survive.
+13. `person.nickname` falls back to the email local-part when `nome` is null or blank.
+14. The signing endpoint signs the **JWT's** email and ignores any email in the request body
+    — the oracle test. Plus: a valid signature verifies against a known-answer HMAC vector.
 
 `npm run test:functions` dirties the root `deno.lock`; revert it with
 `git checkout -- deno.lock` before committing.
@@ -447,21 +559,23 @@ vendor; deleting them destroys the only handle for erasing those profiles later.
 
 ## Open vendor questions
 
-Both are one `curl` each against the Mesaas website ID, to be resolved at the top of
-implementation. Neither changes the protocol above — "Identity resolution" is written to be
-correct either way, which is the point — but the first changes how often the fast path is hit.
+**Resolved and removed: "does `{people_id}` accept an email?"** The review established that the
+REST reference states plainly that it does, for the `GET`/`PUT`/`DELETE` profile routes. The
+first draft called the docs silent on the strength of a truncated page fetch, which was a weak
+negative treated as a fact. Email addressing is therefore the expected path, and it is covered
+by a test rather than a probe. The create-conflict-re-read branch in "Identity resolution"
+stays regardless — it exists for the widget-created-profile case, not for this question.
 
-1. **Does `{people_id}` accept an email in place of the Crisp UUID?** The official REST
-   reference is silent; a secondary source says yes. If yes, first contact resolves in one
-   `GET`. If no, the `GET` by email 404s and the flow falls through to create-then-conflict-
-   then-lookup, which is correct but costs an extra round trip on first contact only. Either
-   way `synced_people_id` is captured from the first successful response and used thereafter.
-2. **What is the plugin daily quota?** Not published. The fingerprint design makes steady
+Two open items remain:
+
+1. **What is the plugin daily quota?** Not published. The fingerprint design makes steady
    state cheap regardless, but the *initial backfill* pushes every existing user within the
    first few sweeps, and that burst is the one moment the quota could bind. If the number
    turns out to be tight, throttle by lowering the candidate limit for the first day rather
    than by widening the cron interval — the limit shapes the burst, the interval only delays
    it.
+2. **Does an inbound WhatsApp resolve to a profile by `person.phone`?** See "The WhatsApp
+   claim is unproven". Verified in rollout, not assumed.
 
 ## Review resolutions
 
@@ -490,3 +604,18 @@ accepted; one was already fixed before the review landed.
 - **`profiles.whatsapp_opt_in`.** Not consulted. That flag governs whether *we* may message
   them; using the number to recognise a message *they* sent us is not outbound contact. Noted
   explicitly so the omission reads as a decision rather than an oversight.
+
+## Review resolutions, round 2
+
+External review (gpt-5.6-terra), 2026-08-03, on the revised spec. All seven points accepted;
+two were confirmed against the vendor docs and the schema before folding in.
+
+| # | Point | Resolution |
+|---|---|---|
+| P0 | Scopes are wrong and `data.*` is a separate API | **Accepted; confirmed against the Crisp token-scopes page.** `website:people:manage` / `website:people:read` do not exist. Corrected to `website:people:profiles` + `website:people:data`, with a new section stating that profile and custom data are two different APIs and three calls per changed person. Development tokens ignore scopes, which is how this would have passed staging and failed in prod. |
+| P0 | Unsigned `user:email` lets any visitor claim a customer's identity, and the enrichment makes that dangerous | **Accepted; the strongest finding in the review.** "The frontend does not change" is reversed: Crisp Identity Verification (HMAC-SHA256, server-signed) ships with this. The section is explicit that it labels the session rather than blocking it, and that the paired support rule is a people process. |
+| P1 | `profiles.nome` is nullable but Crisp requires a nickname | **Accepted; confirmed nullable** at `20260301_baseline_schema.sql:27`. Falls back to the email local-part, matching what `handle_new_user_workspace()` already does at signup. |
+| P1 | Preserving only `notepad` and `company` still erases avatar, address, description, etc. | **Accepted.** Inverted to preserve-by-default: spread the entire `GET` response and override only the four owned fields. An allowlist against a vendor schema we do not control is unmaintainable. |
+| P1 | The advisory lock ends before the vendor call; a stale candidate can resurrect a deleted profile | **Accepted for the resurrection race**, which is the real defect: `record_crisp_contact` now re-checks the live `auth.users` email and confirmation. **Rejected for the full lease** — with the re-check, overlapping runs at worst write the same bytes twice, and holding a lock across a 10s vendor round trip trades a real availability risk for a cosmetic one. |
+| P1 | WhatsApp matching is assumed, not vendor-verified | **Accepted.** The claim is withdrawn: the spec now delivers "email and widget identification, plus a phone populated in anticipation", and WhatsApp coverage is claimed only after an observed end-to-end test in rollout. |
+| P2 | The docs are not silent on email as `{people_id}` | **Accepted.** The first draft turned a truncated page fetch into a stated fact. The blocking probe is removed; the behaviour is covered by a test. |
