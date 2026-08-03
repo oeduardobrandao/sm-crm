@@ -304,7 +304,7 @@ Deno.test("RESEND_API_KEY absent: returns skipped without claiming anything", as
   const db = makeFakeDb([row({ id: 1 })], { u1: "ana@x.test" });
   const { deps, sent } = makeDeps(db, { resendEnabled: false });
   const result = await runMentionEmailCron(deps);
-  assertEquals(result, { claimed: 0, emailed: 0, failed: 0, skipped: true });
+  assertEquals(result, { claimed: 0, emailed: 0, failed: 0, released: 0, skipped: true });
   assert(!db.updateWasCalled(), "claim UPDATE must not run when Resend is unconfigured");
   assertEquals(sent.length, 0);
   assertEquals(db.rows[0].emailed_at, null);
@@ -357,10 +357,10 @@ Deno.test("claim honors all five filters: type, read_at, dismissed_at, emailed_a
   assertEquals(claimCall.is, { emailed_at: null, read_at: null, dismissed_at: null });
 });
 
-Deno.test("claim batch is capped: with more than CLAIM_BATCH_SIZE eligible rows, only the oldest 200 are claimed", async () => {
+Deno.test("claim batch is capped: with more than CLAIM_BATCH_SIZE eligible rows, only the oldest 100 are claimed", async () => {
   const rows: FakeNotification[] = [];
-  // 205 eligible rows, oldest first by id, all within the eligibility window.
-  for (let i = 1; i <= 205; i++) {
+  // 105 eligible rows, oldest first by id, all within the eligibility window.
+  for (let i = 1; i <= 105; i++) {
     rows.push(
       row({
         id: i,
@@ -374,16 +374,16 @@ Deno.test("claim batch is capped: with more than CLAIM_BATCH_SIZE eligible rows,
   const { deps } = makeDeps(db);
   const result = await runMentionEmailCron(deps);
 
-  assertEquals(result.claimed, 200, "claim must be capped at CLAIM_BATCH_SIZE");
-  assertEquals(db.eligibleCalls[0].limit, 200);
+  assertEquals(result.claimed, 100, "claim must be capped at CLAIM_BATCH_SIZE");
+  assertEquals(db.eligibleCalls[0].limit, 100);
 
   const claimedRows = db.rows.filter((r) => r.emailed_at === NOW.toISOString());
-  assertEquals(claimedRows.length, 200);
-  // The 200 claimed must be the oldest 200 (ids 1..200), not an arbitrary slice.
+  assertEquals(claimedRows.length, 100);
+  // The 100 claimed must be the oldest 100 (ids 1..100), not an arbitrary slice.
   const claimedIds = claimedRows.map((r) => r.id).sort((a, b) => a - b);
-  assertEquals(claimedIds, Array.from({ length: 200 }, (_, i) => i + 1));
+  assertEquals(claimedIds, Array.from({ length: 100 }, (_, i) => i + 1));
 
-  // The 5 leftover (ids 201..205) stay unclaimed for the next run.
+  // The 5 leftover (ids 101..105) stay unclaimed for the next run.
   const leftover = db.rows.filter((r) => r.emailed_at === null);
   assertEquals(leftover.length, 5);
 });
@@ -512,7 +512,7 @@ Deno.test("claim step re-checks read_at IS NULL: a row read between step 1 and s
           return chain;
         },
         // deno-lint-ignore no-explicit-any
-        update(patch: { emailed_at: string | null }): any {
+        update(_patch: { emailed_at: string | null }): any {
           const filters = { in: [] as number[], is: {} as Record<string, null> };
           const chain: any = {
             in(col: string, vals: number[]) {
@@ -562,6 +562,72 @@ Deno.test("claim step re-checks read_at IS NULL: a row read between step 1 and s
   assertEquals(result.claimed, 0, "a row read in the gap must not be claimed");
   assertEquals(sent.length, 0, "a row read in the gap must not be emailed");
   assertEquals(readAt, "2026-08-03T11:59:00.000Z", "the user's read stands");
+});
+
+/**
+ * Returns a fake `nowMs` clock that replays a fixed sequence of millisecond
+ * readings, one per call (the sequence's last value repeats once exhausted).
+ * Lets a test simulate the send loop running past SEND_DEADLINE_MS without
+ * an actual sleep.
+ */
+function makeClock(times: number[]): () => number {
+  let i = 0;
+  return () => {
+    const t = times[Math.min(i, times.length - 1)];
+    i++;
+    return t;
+  };
+}
+
+Deno.test("send-loop deadline: exceeding SEND_DEADLINE_MS mid-loop releases the remaining users' claims and counts them as released", async () => {
+  const rows = [
+    row({ id: 1, user_id: "u1" }),
+    row({ id: 2, user_id: "u2" }),
+    row({ id: 3, user_id: "u3" }),
+  ];
+  const db = makeFakeDb(rows, { u1: "ana@x.test", u2: "bruno@x.test", u3: "carla@x.test" });
+  // clockNow() is called once for startedAt, then once before each user in
+  // the loop. u1's check reads elapsed 0 (well under the deadline) so u1 is
+  // processed; u2's check reads an elapsed time past SEND_DEADLINE_MS
+  // (60_000ms), so u2 and u3 are released without ever calling
+  // sendMentionEmail or getUserById for them.
+  const nowMs = makeClock([0, 0, 70_000]);
+  const { deps, sent } = makeDeps(db, { nowMs });
+
+  const result = await runMentionEmailCron(deps);
+
+  assertEquals(result.claimed, 3);
+  assertEquals(result.emailed, 1, "only u1 is processed before the deadline hits");
+  assertEquals(result.failed, 0);
+  assertEquals(result.released, 2, "u2's and u3's one row each are released");
+  assertEquals(sent.length, 1);
+  assertEquals(sent[0].to, "ana@x.test");
+
+  // u1 (processed) keeps its claim.
+  assertEquals(db.rows.find((r) => r.id === 1)!.emailed_at, NOW.toISOString());
+  // u2 and u3 (never reached) had their claims released for the next run.
+  assertEquals(db.rows.find((r) => r.id === 2)!.emailed_at, null);
+  assertEquals(db.rows.find((r) => r.id === 3)!.emailed_at, null);
+});
+
+Deno.test("send-loop deadline: a normal fast run never trips the deadline, so released is 0", async () => {
+  const rows = [
+    row({ id: 1, user_id: "u1" }),
+    row({ id: 2, user_id: "u2" }),
+  ];
+  const db = makeFakeDb(rows, { u1: "ana@x.test", u2: "bruno@x.test" });
+  // Default nowMs (real Date.now, via makeDeps -> no override) is fine here:
+  // a fake in-memory run completes in well under a millisecond, let alone
+  // SEND_DEADLINE_MS.
+  const { deps, sent } = makeDeps(db);
+
+  const result = await runMentionEmailCron(deps);
+
+  assertEquals(result.claimed, 2);
+  assertEquals(result.emailed, 2);
+  assertEquals(result.failed, 0);
+  assertEquals(result.released, 0);
+  assertEquals(sent.length, 2);
 });
 
 Deno.test("one email per user: multiple claimed mentions for the same user are batched into a single send", async () => {
@@ -667,6 +733,6 @@ Deno.test("no eligible rows: returns zeroed counts without touching sendMentionE
   const db = makeFakeDb([], {});
   const { deps, sent } = makeDeps(db);
   const result = await runMentionEmailCron(deps);
-  assertEquals(result, { claimed: 0, emailed: 0, failed: 0, skipped: false });
+  assertEquals(result, { claimed: 0, emailed: 0, failed: 0, released: 0, skipped: false });
   assertEquals(sent.length, 0);
 });

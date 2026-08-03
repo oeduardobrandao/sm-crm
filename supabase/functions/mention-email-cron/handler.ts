@@ -25,6 +25,19 @@
  * Email is a courtesy copy of the bell notification (the reliable channel), so
  * a crash between claim and send loses that one email; a per-user SEND
  * failure gets a best-effort reset so the next run retries it.
+ *
+ * Even with CLAIM_BATCH_SIZE bounding claimed ROWS, the send loop is
+ * sequential and keyed by DISTINCT recipient -- a backlog spanning many
+ * distinct users, or a slow Resend/getUserById call, can still run long
+ * enough to outlive the edge runtime mid-loop. Without a deadline, rows
+ * already claimed for users the loop never reached would keep emailed_at set
+ * forever (they're not a per-user SEND failure, so the failure-path reset
+ * never runs), permanently losing that email beyond the single-crash case
+ * this design otherwise accepts. SEND_DEADLINE_MS is a soft wall-clock
+ * budget: the loop checks it before starting each user and, if exceeded,
+ * releases every remaining unprocessed user's claim (emailed_at -> NULL) in
+ * one best-effort UPDATE and stops, counting those rows as `released` so the
+ * next 5-minute run picks them back up.
  */
 
 interface DbError {
@@ -88,6 +101,14 @@ export interface MentionEmailItem {
 export interface MentionEmailCronDeps {
   db: MentionEmailDb;
   now: () => Date;
+  /**
+   * Wall-clock milliseconds, injected separately from `now` (which stamps
+   * `emailed_at` and only needs to be read once) so tests can simulate the
+   * send loop running past SEND_DEADLINE_MS without an actual sleep -- a fake
+   * can advance its return value on each call. Defaults to `Date.now` in
+   * production (see index.ts).
+   */
+  nowMs?: () => number;
   /** Computed once in index.ts from `Deno.env.get("RESEND_API_KEY")` so this module stays env-free. */
   resendEnabled: boolean;
   sendMentionEmail: (
@@ -104,6 +125,9 @@ export interface MentionEmailCronResult {
   claimed: number;
   emailed: number;
   failed: number;
+  /** Notification rows released (emailed_at reset to NULL) because the send
+   * loop hit SEND_DEADLINE_MS before reaching them -- they wait for the next run. */
+  released: number;
   skipped: boolean;
 }
 
@@ -113,9 +137,17 @@ const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 // sequential (one Resend call per distinct recipient), so an unbounded claim
 // could outlive the edge runtime's execution budget when a backlog spans many
 // distinct users or a send is slow -- rows claimed-but-never-sent would lose
-// their email permanently. Leftover eligible rows simply wait for the next
+// their email permanently. Bounded so the worst-case loop (100 distinct
+// recipients, one Resend + one getUserById call each) comfortably fits
+// SEND_DEADLINE_MS below; leftover eligible rows simply wait for the next
 // 5-minute cron run.
-const CLAIM_BATCH_SIZE = 200;
+const CLAIM_BATCH_SIZE = 100;
+// Soft wall-clock budget for the per-user send loop, well under the edge
+// runtime's actual execution ceiling. A run that hits this mid-loop releases
+// the remainder (see SEND_DEADLINE_MS usage below) instead of running until
+// the runtime kills it, which would leave those rows claimed-but-unsent
+// forever.
+const SEND_DEADLINE_MS = 60_000;
 
 function metadataString(metadata: Record<string, unknown> | null, key: string): string | undefined {
   const v = metadata?.[key];
@@ -129,9 +161,11 @@ export async function runMentionEmailCron(
   // stay eligible for a future run once the key is configured, instead of
   // being permanently marked emailed_at with no email ever sent.
   if (!deps.resendEnabled) {
-    return { claimed: 0, emailed: 0, failed: 0, skipped: true };
+    return { claimed: 0, emailed: 0, failed: 0, released: 0, skipped: true };
   }
 
+  const clockNow = deps.nowMs ?? Date.now;
+  const startedAt = clockNow();
   const now = deps.now();
   const claimBeforeIso = new Date(now.getTime() - TEN_MINUTES_MS).toISOString();
   const claimAfterIso = new Date(now.getTime() - TWENTY_FOUR_HOURS_MS).toISOString();
@@ -155,7 +189,7 @@ export async function runMentionEmailCron(
 
   const eligibleIds = (eligible ?? []).map((r) => r.id);
   if (eligibleIds.length === 0) {
-    return { claimed: 0, emailed: 0, failed: 0, skipped: false };
+    return { claimed: 0, emailed: 0, failed: 0, released: 0, skipped: false };
   }
 
   // Step 2: claim exactly those ids. Re-checking emailed_at IS NULL here keeps
@@ -176,7 +210,7 @@ export async function runMentionEmailCron(
 
   const claimed = (data ?? []) as ClaimedNotification[];
   if (claimed.length === 0) {
-    return { claimed: 0, emailed: 0, failed: 0, skipped: false };
+    return { claimed: 0, emailed: 0, failed: 0, released: 0, skipped: false };
   }
 
   const byUser = new Map<string, ClaimedNotification[]>();
@@ -185,12 +219,38 @@ export async function runMentionEmailCron(
     if (list) list.push(row);
     else byUser.set(row.user_id, [row]);
   }
+  const userEntries = Array.from(byUser.entries());
 
   let emailed = 0;
   let failed = 0;
+  let released = 0;
   const errors: Array<{ accountId?: string; error: string }> = [];
 
-  for (const [userId, rows] of byUser) {
+  for (let i = 0; i < userEntries.length; i++) {
+    // Checked BEFORE each user, not just once: the whole point is to stop
+    // partway through the loop, not only before it starts.
+    if (clockNow() - startedAt > SEND_DEADLINE_MS) {
+      const remaining = userEntries.slice(i);
+      const remainingIds = remaining.flatMap(([, rows]) => rows.map((r) => r.id));
+      released += remainingIds.length;
+
+      // Best-effort, same pattern as the per-user failure reset below: release
+      // every unprocessed user's claim in one call so the next run retries
+      // them, instead of leaving emailed_at set with no email ever sent.
+      const { error: releaseErr } = await deps.db
+        .from("notifications")
+        .update({ emailed_at: null })
+        .in("id", remainingIds);
+      if (releaseErr) {
+        console.error(
+          `[mention-email-cron] deadline release failed for ${remainingIds.length} ids:`,
+          releaseErr.message,
+        );
+      }
+      break;
+    }
+
+    const [userId, rows] = userEntries[i];
     try {
       const { data: userData, error: userErr } = await deps.db.auth.admin.getUserById(userId);
       if (userErr) throw new Error(userErr.message);
@@ -232,7 +292,7 @@ export async function runMentionEmailCron(
     await deps.report({ failed: errors.length, errors });
   }
 
-  return { claimed: claimed.length, emailed, failed, skipped: false };
+  return { claimed: claimed.length, emailed, failed, released, skipped: false };
 }
 
 // ─── Auth wrapper (notification-deadline-cron's shape) ──────────────────────
