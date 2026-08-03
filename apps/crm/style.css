@@ -6735,6 +6735,56 @@ body.role-agent input[name='valor_total'] {
   cursor: pointer;
 }
 
+/* @-mention chip. Rendered by MentionNode inside the TipTap editor (span[data-mention])
+   AND by the standalone MentionChip component used outside the editor (comment/task text,
+   see Task 3/5 of the at-mentions spec). Both apps load this file -- the Hub imports the
+   whole CRM stylesheet -- so the base look stays neutral/token-based instead of hardcoding
+   the CRM's yellow accent, which would clash with a client's whitelabelled brand color.
+   Per-type accent is limited to a subtle icon tint using existing semantic hex tokens
+   (--teal/--warning/--success/--pink), never the primary brand token. */
+.mention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  font-weight: 600;
+  font-size: 0.8125em;
+  line-height: 1.5;
+  text-decoration: none;
+  white-space: nowrap;
+  vertical-align: baseline;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+a.mention-chip:hover {
+  background: var(--surface-3);
+  border-color: var(--border-color);
+  text-decoration: none;
+  cursor: pointer;
+}
+.mention-chip__icon {
+  width: 0.85em;
+  height: 0.85em;
+  flex-shrink: 0;
+}
+.mention-chip--membro .mention-chip__icon {
+  color: var(--teal);
+}
+.mention-chip--post .mention-chip__icon {
+  color: var(--warning);
+}
+.mention-chip--cliente .mention-chip__icon {
+  color: var(--success);
+}
+.mention-chip--tarefa .mention-chip__icon {
+  color: var(--pink);
+}
+
 .article-reader-content .ProseMirror {
   font-size: 0.95rem;
   line-height: 1.75;
