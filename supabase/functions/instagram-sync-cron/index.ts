@@ -17,7 +17,7 @@ const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? (() => { throw new Error('CRO
 // Accounts synced per invocation. Runtime is bounded by this, not by customer
 // count: SYNC_BATCH_LIMIT / SYNC_CONCURRENCY waves of ~4-8s each. At 25/5 that
 // is ~30s, well inside the edge-function wall clock. The cron runs hourly
-// (migration 20260803000007), so capacity is 24 * SYNC_BATCH_LIMIT per day
+// (migration 20260803000009), so capacity is 24 * SYNC_BATCH_LIMIT per day
 // against a 6h per-account staleness window.
 const SYNC_BATCH_LIMIT = Math.max(1, parseInt(Deno.env.get("SYNC_BATCH_LIMIT") || "25", 10) || 25);
 // Candidates are read in pages until the batch fills, so ineligible accounts
