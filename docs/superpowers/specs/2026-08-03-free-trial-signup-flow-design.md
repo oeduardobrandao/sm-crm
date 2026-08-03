@@ -90,7 +90,60 @@ door").
   now carries a trial, and returning subscribers should give a card anyway.
 
 `startCheckout` in `apps/crm/src/services/billing.ts:140` drops its third
-`promoCode` parameter and stops sending `promo_code`.
+`promoCode` parameter and stops sending `promo_code`. It gains a
+`source: 'onboarding' | 'billing'` argument (see below).
+
+**Return URLs must depend on where checkout started.** Today both `success_url`
+and `cancel_url` are hardcoded to `/configuracao/cobranca`
+(`index.ts:101-102`). Left alone, a user who cancels the onboarding checkout
+lands on the settings billing page, which is the exact surface this whole spec
+exists to keep new users out of.
+
+The request body gains `source`, and the server maps it through a **fixed
+lookup table**. The client never supplies a URL, so this cannot become an open
+redirect:
+
+```ts
+const RETURN_PATHS = {
+  onboarding: { success: "/dashboard?trial=started", cancel: "/dashboard?trial=skipped" },
+  billing:    { success: "/configuracao/cobranca?status=success",
+                cancel:  "/configuracao/cobranca?status=cancelled" },
+};
+const source = body.source === "onboarding" ? "onboarding" : "billing";
+```
+
+Both are still prefixed with `resolveAllowedOrigin(req)` as today. Defaulting an
+unrecognised value to `billing` preserves current behaviour for any older client.
+
+`DashboardPage` handles the two new params: `trial=started` shows a success
+toast and invalidates the plan/entitlement queries on the same 5×2s poll
+`CobrancaPage` already uses for webhook lag (`CobrancaPage.tsx:86-104`);
+`trial=skipped` shows nothing, since `TrialNudgeCard` renders on its own. Both
+strip the param with `setSearchParams({}, { replace: true })`.
+
+**Duplicate-session race.** The first-time check reads
+`stripe_subscription_id` and then creates a session with no lock and no
+idempotency key. Two tabs, or a refresh of the auto-checkout state, can create
+two sessions that could both be completed, leaving one live subscription the
+`workspace_id`-keyed mirror row does not point at. This race exists today on
+`CobrancaPage`, but auto-starting checkout on page load raises the exposure, so
+it gets fixed here:
+
+- Pass a Stripe idempotency key on session creation:
+  `` `co_${workspaceId}_${planId}_${interval}_${Math.floor(Date.now() / 3_600_000)}` ``.
+  Concurrent callers get the *same* session back rather than two. Stripe retains
+  keys for 24h; the hour bucket keeps a legitimate later retry from being pinned
+  to a stale session.
+- Reject outright when `subRow.status` is `active` or `trialing`, with a 409 and
+  a generic message. Such a user belongs in the billing portal, not a second
+  checkout.
+
+**Explicitly not built:** a durable pending-checkout table with expiry and
+rollback. The residual window it would close is a user completing checkout and
+starting another in a different hour bucket before the webhook lands, typically
+a few seconds. That does not justify a migration in a spec that otherwise needs
+none. If duplicate subscriptions ever show up in practice, that table is the
+next step.
 
 **Client.** Both the `/comecar` guard and the dashboard nudge need to know
 whether the workspace has ever subscribed, and today they cannot:
@@ -125,6 +178,16 @@ and logged-in users keep today's targets.
 
 `LoginPage` reads `plan` and `interval` from the query string and, after a
 successful `signUp`, navigates to `/comecar` preserving them.
+
+**Intent must survive the email-confirmation fallback.** `signUp` hardcodes
+`emailRedirectTo: window.location.origin + '/login'` (`supabase.ts:228`), and a
+login with no `from` target goes to `/dashboard` (`LoginPage.tsx:27`). So if
+confirmation is ever enabled, the user's chosen plan is silently dropped between
+signup and return. `signUp` therefore takes an optional `redirectPath`, and
+`LoginPage` passes `/login?plan=…&interval=…` when an intent exists. On the way
+back in, `LoginPage` re-parses its own search params through `parsePlanIntent`
+and routes to `/comecar` with them. Same validated parse on both legs, so a
+tampered confirmation link is no more dangerous than a tampered landing link.
 
 **Validation happens at both ends.** Client side, a new
 `apps/crm/src/pages/comecar/plan-intent.ts` exports
@@ -169,10 +232,25 @@ become two rows, not a dedupe.
 **State A — no intent.** Header "Comece com 30 dias grátis" plus the subhead
 "Escolha o plano do seu teste. Você só é cobrado depois de 30 dias e pode
 cancelar quando quiser." A `month | year` toggle, then one card per paid plan
-from `listActivePlans`, filtered through the existing
-`isPlanVisible(p.id, 'free')` so internal/comp plans stay hidden, each showing
-"30 dias grátis" above "depois {preço}/mês" and a "Começar teste" CTA. The Free
-plan is not shown as a card; declining is the secondary link below.
+from `listActivePlans`, each showing "30 dias grátis" above "depois {preço}/mês"
+and a "Começar teste" CTA.
+
+**The existing `isPlanVisible` is not the right filter here.** It only excludes
+internal plans (`plan-display.ts:35`), so `free` — which `listActivePlans`
+returns like any other active catalog row — would still render a card, directly
+contradicting "Free is the secondary link, not a card". Add an explicit
+predicate to `plan-display.ts`:
+
+```ts
+export function isSelectableTrialPlan(plan: { id: string; price_brl: number | null }): boolean {
+  return plan.id !== 'free' && !isInternalPlan(plan.id) && (plan.price_brl ?? 0) > 0;
+}
+```
+
+The `price_brl > 0` clause is deliberate belt-and-braces: a future zero-priced
+plan added to the catalog must not silently appear as something you can start a
+trial on. Unit-tested against `free`, `lifetime`, a paid plan, and a
+zero-priced non-free plan.
 
 Below the grid: "Pedimos o cartão agora, mas nada é cobrado nos primeiros 30
 dias." and a secondary link "Prefiro continuar no plano Free por enquanto" →
@@ -185,6 +263,18 @@ Prices come from the `plans` table; no price is hardcoded.
 - `empresa` becomes `required` in the register form (`LoginPage.tsx:226`). It
   already feeds the workspace name through `handle_new_user`, so requiring it
   makes `/workspace-setup` unreachable for new signups.
+- **HTML `required` alone is not enough.** Whitespace satisfies it, and the
+  trigger takes the raw value:
+  `COALESCE(NEW.raw_user_meta_data ->> 'empresa', 'Meu Workspace')`
+  (`20260719000002_signup_marketing_opt_in.sql:91`). A user submitting spaces
+  gets a whitespace-named workspace *and* skips `/workspace-setup`, because
+  `' '` is truthy in the `!profile.empresa` check (`ProtectedRoute.tsx:61`).
+  So `handleRegister` trims `regEmpresa`, rejects an empty result with a toast,
+  and sends the trimmed value. Same treatment for `regNome`.
+- Deliberately **not** hardened at the trigger. `NULLIF(btrim(...), '')` there
+  would be a one-line migration, but every signup goes through this form, and
+  the spec otherwise needs no migration. Worth revisiting only if signups ever
+  arrive through the Auth API directly.
 - The `registerSuccess` "confira seu e-mail" branch is replaced by a direct
   navigation to `/comecar` once the session exists. Keep a fallback: if
   `signUp` returns no session (i.e. confirmation is still enabled server-side),
@@ -255,7 +345,9 @@ production.
 `captureEvent` calls: `trial_step_viewed` (with `has_intent`), `trial_skipped`
 on the Free link, `trial_nudge_clicked`. The existing `checkout_started` event
 in `CobrancaPage.tsx:136` moves into a shared helper so `/comecar` emits it too,
-with `{ plan_id, billing_interval, source: 'onboarding' | 'billing_page' }`.
+with `{ plan_id, billing_interval, source }` reusing the same
+`'onboarding' | 'billing'` values the checkout request sends, so the analytics
+funnel and the return-path contract cannot drift apart.
 
 ## Tests
 
@@ -285,13 +377,30 @@ New tests:
   for non-owners, paid plans, and previously-subscribed workspaces; hidden
   within 7 days of dismissal and visible after; visible when the stored
   dismissal value is malformed.
+- `isSelectableTrialPlan` — rejects `free`, rejects `lifetime`, rejects a
+  zero-priced non-free plan, accepts a paid plan.
+- `LoginPage` — whitespace-only `empresa` is rejected rather than submitted;
+  the value reaching `signUp` is trimmed; plan intent is forwarded to
+  `/comecar` after signup, and forwarded through `emailRedirectTo` when the
+  no-session fallback path is taken.
+- `DashboardPage` — `?trial=started` toasts and invalidates the plan queries
+  then strips the param; `?trial=skipped` strips silently and leaves
+  `TrialNudgeCard` to render.
+- `startCheckout` sends `source`, and omits `promo_code` entirely.
 - `CobrancaPage` CTA copy for first-time versus returning subscribers.
 
 No edge-function test currently covers `billing-checkout`'s promo logic
 (`config-audit_test.ts` only asserts it appears in the `verify_jwt = false`
-list, and is unaffected). Add a unit test for the trial-eligibility decision by
-extracting it as a pure `resolveTrialDays(hasPriorSubscription: boolean)` helper
-in `_shared/`, testable under `deno test` without a live Stripe call.
+list, and is unaffected). Extract the three new decisions as pure helpers in
+`_shared/` so they are testable under `deno test` without a live Stripe call:
+
+- `resolveTrialDays(hasPriorSubscription: boolean)`
+- `resolveReturnPaths(source: unknown)` — asserts the lookup table, and that an
+  unknown/absent/hostile `source` falls back to `billing` rather than producing
+  an attacker-chosen URL.
+- `buildCheckoutIdempotencyKey(workspaceId, planId, interval, now)` — stable
+  within an hour bucket, different across buckets. `now` is injected so the test
+  needs no clock control.
 
 Full suite before pushing: `npm run test`, `npm run test:functions`,
 `npm run lint`, `npm run format:check`, plus the four `tsc` projects the CI runs
@@ -322,3 +431,11 @@ No migration. No schema change.
   steady-state nav question stands on its own.
 - **No in-app trial state.** Trial status continues to come from Stripe via
   `workspace_subscriptions.status === 'trialing'`.
+- **Durable pending-checkout ledger.** The idempotency key and the
+  active-subscription rejection (section 1) close the practical duplicate-session
+  races. The remaining window is completing checkout and starting another in a
+  different hour bucket before the webhook lands. Accepted; a pending-checkout
+  table with expiry and rollback is the fix if it ever bites.
+- **Trigger-level `empresa` hardening.** Trimming happens at the signup form.
+  A caller hitting the Supabase Auth API directly could still create a
+  whitespace-named workspace; no such caller exists today.
