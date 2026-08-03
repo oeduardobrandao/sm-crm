@@ -336,4 +336,24 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
     expect(mockSyncMentions).not.toHaveBeenCalled();
   });
+
+  it('does not sync mentions when changed_fields includes conteudo but suggested_conteudo is null (caption-only Story suggestion)', async () => {
+    // Repro: hub StoryPostCard submits caption-only suggestions with
+    // suggested_conteudo: null. upsert_edit_suggestion's IS DISTINCT FROM
+    // comparison still puts 'conteudo' in changed_fields for that
+    // null-vs-existing-doc diff, but accept_edit_suggestion COALESCEs and
+    // keeps the stored conteudo untouched -- syncing from the null doc here
+    // would wrongly wipe every mention for a post whose content didn't change.
+    mockGetEditSuggestions.mockResolvedValue([
+      { ...suggestion, suggested_conteudo: null, changed_fields: ['conteudo', 'ig_caption'] },
+    ] as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    const acceptButton = await screen.findByRole('button', { name: 'Aceitar' });
+    fireEvent.click(acceptButton);
+
+    await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
+    expect(mockSyncMentions).not.toHaveBeenCalled();
+  });
 });

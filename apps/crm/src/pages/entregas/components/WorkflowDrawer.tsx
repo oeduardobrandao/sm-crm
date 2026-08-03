@@ -541,7 +541,19 @@ export function WorkflowDrawer({
         // accept_edit_suggestion writes workflow_posts.conteudo server-side,
         // bypassing updateWorkflowPost -- sync mentions here so @-mentions in
         // an accepted client suggestion still land in the mencoes ledger.
-        if (suggestion.changed_fields.includes('conteudo')) {
+        // suggested_conteudo != null is required in addition to the
+        // changed_fields check: caption-only Story suggestions (see
+        // StoryPostCard) submit suggested_conteudo: null, and
+        // upsert_edit_suggestion's IS DISTINCT FROM comparison still puts
+        // 'conteudo' in changed_fields for that null-vs-existing-doc diff.
+        // accept_edit_suggestion COALESCEs and keeps the stored conteudo
+        // unchanged in that case, so syncing from the null doc here would
+        // wrongly wipe every mention in the ledger for a post whose content
+        // never actually changed.
+        if (
+          suggestion.changed_fields.includes('conteudo') &&
+          suggestion.suggested_conteudo != null
+        ) {
           const membroIds = extractMentionsFromDoc(suggestion.suggested_conteudo)
             .filter((ref) => ref.entityType === 'membro')
             .map((ref) => ref.id);
