@@ -17,6 +17,10 @@ type MockedSupabaseModule = typeof supabaseModule & {
     operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
     ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
   ) => void;
+  __queueSupabaseRpc: (
+    name: string,
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
 };
@@ -139,5 +143,136 @@ describe('comment thread store', () => {
     await store.deletePostComment(2);
     const call = getCalls('post_comments', 'delete').at(-1)!;
     expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 2] });
+  });
+
+  describe('mention sync', () => {
+    it('addPostComment syncs the created comment id and extracted membro ids', async () => {
+      const comment = {
+        id: 2,
+        thread_id: 5,
+        author_id: 'user-1',
+        content: 'Olha isso @[Ana](membro:5)',
+        created_at: '2026-04-23T00:00:00Z',
+        updated_at: null,
+      };
+      mockedSupabase.__queueSupabaseResult('post_comments', 'insert', {
+        data: comment,
+        error: null,
+      });
+      mockedSupabase.__queueSupabaseRpc('sync_mentions', { data: null, error: null });
+
+      await store.addPostComment(5, 'Olha isso @[Ana](membro:5)');
+
+      const call = getCalls('rpc:sync_mentions', 'rpc').at(-1)!;
+      expect(call.payload).toEqual({
+        p_host_type: 'post_comment',
+        p_host_id: 2,
+        p_membro_ids: [5],
+      });
+    });
+
+    it('addPostComment syncs an empty array when the content has no mention token', async () => {
+      mockedSupabase.__queueSupabaseResult('post_comments', 'insert', {
+        data: { id: 3, thread_id: 5, author_id: 'user-1', content: 'sem mencao', updated_at: null },
+        error: null,
+      });
+      mockedSupabase.__queueSupabaseRpc('sync_mentions', { data: null, error: null });
+
+      await store.addPostComment(5, 'sem mencao');
+
+      const call = getCalls('rpc:sync_mentions', 'rpc').at(-1)!;
+      expect(call.payload).toEqual({ p_host_type: 'post_comment', p_host_id: 3, p_membro_ids: [] });
+    });
+
+    it('addPostComment does not reject when sync_mentions fails', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      mockedSupabase.__queueSupabaseResult('post_comments', 'insert', {
+        data: {
+          id: 4,
+          thread_id: 5,
+          author_id: 'user-1',
+          content: '@[Ana](membro:5)',
+          updated_at: null,
+        },
+        error: null,
+      });
+      mockedSupabase.__queueSupabaseRpc('sync_mentions', {
+        data: null,
+        error: { message: 'boom' },
+      });
+
+      await expect(store.addPostComment(5, '@[Ana](membro:5)')).resolves.toMatchObject({ id: 4 });
+      expect(consoleSpy).toHaveBeenCalled();
+      consoleSpy.mockRestore();
+    });
+
+    it('createCommentThread syncs mentions against the created comment id, not the thread id', async () => {
+      mockedSupabase.__queueSupabaseResult('post_comment_threads', 'insert', {
+        data: {
+          id: 5,
+          post_id: 10,
+          conta_id: 'conta-1',
+          quoted_text: 'highlighted',
+          status: 'active',
+          created_by: 'user-1',
+          resolved_by: null,
+          created_at: '2026-04-23T00:00:00Z',
+          resolved_at: null,
+        },
+        error: null,
+      });
+      mockedSupabase.__queueSupabaseResult('post_comments', 'insert', {
+        data: {
+          id: 99,
+          thread_id: 5,
+          author_id: 'user-1',
+          content: '@[Ana](membro:5)',
+          created_at: '2026-04-23T00:00:00Z',
+          updated_at: null,
+        },
+        error: null,
+      });
+      mockedSupabase.__queueSupabaseRpc('sync_mentions', { data: null, error: null });
+
+      await store.createCommentThread(10, 'highlighted', '@[Ana](membro:5)');
+
+      const call = getCalls('rpc:sync_mentions', 'rpc').at(-1)!;
+      expect(call.payload).toEqual({
+        p_host_type: 'post_comment',
+        p_host_id: 99,
+        p_membro_ids: [5],
+      });
+    });
+
+    it('updatePostComment syncs the updated content mentions against the comment id', async () => {
+      mockedSupabase.__queueSupabaseResult('post_comments', 'update', { data: null, error: null });
+      mockedSupabase.__queueSupabaseRpc('sync_mentions', { data: null, error: null });
+
+      await store.updatePostComment(2, '@[Bia](membro:9) @[Bia](membro:9)');
+
+      const call = getCalls('rpc:sync_mentions', 'rpc').at(-1)!;
+      expect(call.payload).toEqual({
+        p_host_type: 'post_comment',
+        p_host_id: 2,
+        p_membro_ids: [9],
+      });
+    });
+
+    it('ignores non-membro tokens (post/cliente/tarefa) when syncing', async () => {
+      mockedSupabase.__queueSupabaseResult('post_comments', 'insert', {
+        data: { id: 6, thread_id: 5, author_id: 'user-1', content: '', updated_at: null },
+        error: null,
+      });
+      mockedSupabase.__queueSupabaseRpc('sync_mentions', { data: null, error: null });
+
+      await store.addPostComment(5, '@[Post](post:1:2) @[Cliente](cliente:3) @[Membro](membro:8)');
+
+      const call = getCalls('rpc:sync_mentions', 'rpc').at(-1)!;
+      expect(call.payload).toEqual({
+        p_host_type: 'post_comment',
+        p_host_id: 6,
+        p_membro_ids: [8],
+      });
+    });
   });
 });

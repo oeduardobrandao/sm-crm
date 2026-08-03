@@ -179,6 +179,17 @@ async function auditQuietly(...args: Parameters<typeof insertAuditLog>): Promise
  * none: it cannot survive without its thread, so there is no separate entry
  * for it in this list.
  *
+ * mencoes (at-mentions follow-up, 20260803000001_mencoes.sql) is deliberately
+ * NOT in this list either, and for a different reason than post_designs above:
+ * it is a real, undeleted table that CAN hold a row pointing at an imported
+ * post (host_type = 'workflow_post', host_id = the post's id), but host_id is
+ * a polymorphic bigint, not a `REFERENCES workflow_posts(id)` column, so the
+ * re-derivation grep below would never surface it even though it should stay
+ * excluded. It is a derived notification ledger (who got pinged for a
+ * mention), not user-authored content import_commit_row could conflict with,
+ * and trg_cleanup_mencoes already deletes its rows AFTER DELETE on
+ * workflow_posts, so undo needs no guard here.
+ *
  * Verified against the migrations on 2026-07-27:
  *   post_property_values   post_id  (none)      20260403_custom_properties.sql:27
  *   post_media             post_id  conta_id    20260411_post_media.sql:11-12

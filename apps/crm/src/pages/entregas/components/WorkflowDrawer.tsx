@@ -63,6 +63,7 @@ import {
   acceptEditSuggestion,
   rejectEditSuggestion,
   getClientePosts,
+  syncMentions,
   type WorkflowPost,
   type PostApproval,
   type PostStatusEvent,
@@ -72,6 +73,7 @@ import {
   type PostEditSuggestion,
   type ClientePost,
 } from '../../../store';
+import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { shouldAutoCompleteApproval } from './autoComplete';
 import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
@@ -533,10 +535,22 @@ export function WorkflowDrawer({
   // ── Edit suggestion handlers ──────────────────────────────────────────────
 
   const handleAcceptSuggestion = useCallback(
-    async (suggestionId: number, postId: number) => {
+    async (suggestion: PostEditSuggestion) => {
       try {
-        await acceptEditSuggestion(suggestionId);
-        setEditorVersions((prev) => ({ ...prev, [postId]: (prev[postId] ?? 0) + 1 }));
+        await acceptEditSuggestion(suggestion.id);
+        // accept_edit_suggestion writes workflow_posts.conteudo server-side,
+        // bypassing updateWorkflowPost -- sync mentions here so @-mentions in
+        // an accepted client suggestion still land in the mencoes ledger.
+        if (suggestion.changed_fields.includes('conteudo')) {
+          const membroIds = extractMentionsFromDoc(suggestion.suggested_conteudo)
+            .filter((ref) => ref.entityType === 'membro')
+            .map((ref) => ref.id);
+          await syncMentions('workflow_post', suggestion.post_id, membroIds);
+        }
+        setEditorVersions((prev) => ({
+          ...prev,
+          [suggestion.post_id]: (prev[suggestion.post_id] ?? 0) + 1,
+        }));
         toast.success('Sugestão aceita!');
         refresh();
         onRefresh();
@@ -918,7 +932,7 @@ interface SortablePostItemProps {
   onEditComment: (commentId: number, content: string) => Promise<void>;
   onDeleteComment: (commentId: number, threadId: number) => Promise<void>;
   editorVersion: number;
-  onAcceptSuggestion: (suggestionId: number, postId: number) => void;
+  onAcceptSuggestion: (suggestion: PostEditSuggestion) => void;
   onRejectSuggestion: (id: number) => void;
 }
 
@@ -1298,7 +1312,7 @@ function SortablePostItem({
                     Rejeitar
                   </button>
                   <button
-                    onClick={() => onAcceptSuggestion(editSuggestion.id, post.id!)}
+                    onClick={() => onAcceptSuggestion(editSuggestion)}
                     className="px-3 py-1 text-[12px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
                   >
                     Aceitar

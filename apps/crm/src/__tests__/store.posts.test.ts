@@ -17,6 +17,10 @@ type MockedSupabaseModule = typeof supabaseModule & {
     operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
     ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
   ) => void;
+  __queueSupabaseRpc: (
+    name: string,
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
 };
@@ -72,6 +76,89 @@ describe('store workflow posts', () => {
     const call = getCalls('workflow_posts', 'update').at(-1)!;
     expect(call.payload).toEqual({ status: 'revisao_interna' });
     expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 100] });
+  });
+
+  it('updateWorkflowPost does not touch sync_mentions when conteudo is not part of the patch', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', {
+      data: { id: 100, status: 'revisao_interna' },
+      error: null,
+    });
+
+    await store.updateWorkflowPost(100, { status: 'revisao_interna' });
+
+    expect(getCalls('rpc:sync_mentions', 'rpc')).toHaveLength(0);
+  });
+
+  it('updateWorkflowPost syncs mentions extracted from a conteudo doc with mention nodes', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', {
+      data: { id: 100, conteudo: {} },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseRpc('sync_mentions', { data: null, error: null });
+
+    const doc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'mention',
+              attrs: { entityType: 'membro', id: 12, label: 'Ana', parentId: null },
+            },
+            { type: 'text', text: ' confere isso' },
+            {
+              type: 'mention',
+              attrs: { entityType: 'cliente', id: 3, label: 'Acme', parentId: null },
+            },
+          ],
+        },
+      ],
+    };
+
+    await store.updateWorkflowPost(100, { conteudo: doc });
+
+    const call = getCalls('rpc:sync_mentions', 'rpc').at(-1)!;
+    expect(call.payload).toEqual({
+      p_host_type: 'workflow_post',
+      p_host_id: 100,
+      p_membro_ids: [12],
+    });
+  });
+
+  it('updateWorkflowPost syncs an empty array when conteudo is written with no mention nodes', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', {
+      data: { id: 100, conteudo: null },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseRpc('sync_mentions', { data: null, error: null });
+
+    await store.updateWorkflowPost(100, { conteudo: null });
+
+    const call = getCalls('rpc:sync_mentions', 'rpc').at(-1)!;
+    expect(call.payload).toEqual({
+      p_host_type: 'workflow_post',
+      p_host_id: 100,
+      p_membro_ids: [],
+    });
+  });
+
+  it('updateWorkflowPost resolves even when sync_mentions rejects', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', {
+      data: { id: 100, conteudo: null },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseRpc('sync_mentions', {
+      data: null,
+      error: { message: 'boom' },
+    });
+
+    await expect(store.updateWorkflowPost(100, { conteudo: null })).resolves.toMatchObject({
+      id: 100,
+    });
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 
   it('removeWorkflowPost deletes by id', async () => {

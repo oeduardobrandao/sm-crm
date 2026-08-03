@@ -1,4 +1,6 @@
 import { supabase, getContaId, getUserId } from './core';
+import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
+import { syncMentions } from './mentions';
 
 // =============================================
 // WORKFLOW POSTS (Sub-tasks / Content pieces)
@@ -595,6 +597,12 @@ export async function updateWorkflowPost(
     .select()
     .single();
   if (error) throw error;
+  if ('conteudo' in p) {
+    const membroIds = extractMentionsFromDoc(p.conteudo)
+      .filter((ref) => ref.entityType === 'membro')
+      .map((ref) => ref.id);
+    await syncMentions('workflow_post', id, membroIds);
+  }
   return data;
 }
 

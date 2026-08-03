@@ -17,6 +17,10 @@ type MockedSupabaseModule = typeof supabaseModule & {
     operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
     ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
   ) => void;
+  __queueSupabaseRpc: (
+    name: string,
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
 };
@@ -183,6 +187,69 @@ describe('store ideias', () => {
         method: 'eq',
         args: ['id', 'reaction-99'],
       });
+    });
+  });
+
+  describe('convertSolicitacaoEmTarefa mention sync', () => {
+    it('syncs mentions extracted from descricao against the new tarefa id', async () => {
+      mockedSupabase.__queueSupabaseRpc('convert_solicitacao_em_tarefa', {
+        data: 55,
+        error: null,
+      });
+      mockedSupabase.__queueSupabaseRpc('sync_mentions', { data: null, error: null });
+
+      const tarefaId = await store.convertSolicitacaoEmTarefa({
+        ideiaId: 'ideia-1',
+        titulo: 'Revisar site',
+        descricao: '@[Ana](membro:5) por favor revise',
+        responsavelId: null,
+        dataLimite: null,
+      });
+
+      expect(tarefaId).toBe(55);
+      const call = getCalls('rpc:sync_mentions', 'rpc').at(-1)!;
+      expect(call.payload).toEqual({ p_host_type: 'tarefa', p_host_id: 55, p_membro_ids: [5] });
+    });
+
+    it('does not call sync_mentions when descricao is null', async () => {
+      mockedSupabase.__queueSupabaseRpc('convert_solicitacao_em_tarefa', {
+        data: 56,
+        error: null,
+      });
+
+      await store.convertSolicitacaoEmTarefa({
+        ideiaId: 'ideia-1',
+        titulo: 'Revisar site',
+        descricao: null,
+        responsavelId: null,
+        dataLimite: null,
+      });
+
+      expect(getCalls('rpc:sync_mentions', 'rpc')).toHaveLength(0);
+    });
+
+    it('resolves with the tarefa id even when sync_mentions fails', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      mockedSupabase.__queueSupabaseRpc('convert_solicitacao_em_tarefa', {
+        data: 57,
+        error: null,
+      });
+      mockedSupabase.__queueSupabaseRpc('sync_mentions', {
+        data: null,
+        error: { message: 'boom' },
+      });
+
+      await expect(
+        store.convertSolicitacaoEmTarefa({
+          ideiaId: 'ideia-1',
+          titulo: 'Revisar site',
+          descricao: '@[Ana](membro:5)',
+          responsavelId: null,
+          dataLimite: null,
+        }),
+      ).resolves.toBe(57);
+      expect(consoleSpy).toHaveBeenCalled();
+      consoleSpy.mockRestore();
     });
   });
 });
