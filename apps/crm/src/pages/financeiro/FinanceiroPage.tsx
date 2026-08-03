@@ -92,6 +92,7 @@ import {
   type Transacao,
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
+import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { formatFinancialBRL } from '@/lib/financialAccess';
 
 const CATEGORIAS = [
@@ -132,7 +133,7 @@ function dateToIso(date: Date | undefined): string {
 }
 
 export default function FinanceiroPage() {
-  const { canSeeFinancials } = useAuth();
+  const { canSeeFinancials, profile } = useAuth();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<FilterType>('todas');
   const [search, setSearch] = useState('');
@@ -231,8 +232,15 @@ export default function FinanceiroPage() {
       }
       qc.invalidateQueries({ queryKey: ['transacoes'] });
       setModalOpen(false);
-    } catch {
-      toast.error('Erro ao salvar');
+    } catch (e) {
+      // trg_feature_financial gates `transacoes` at the database, on a direct
+      // client write: no edge function in the path, and store.ts is not a
+      // TanStack mutation, so App.tsx's MutationCache.onError never sees it.
+      // This catch is the only observation point for feature_financial.
+      // handleEntitlementMutationError shows the upgrade toast itself; only
+      // fall through to the generic one when it declines.
+      if (!handleEntitlementMutationError(e, profile?.conta_id ?? null))
+        toast.error('Erro ao salvar');
     } finally {
       setSaving(false);
     }

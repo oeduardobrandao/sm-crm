@@ -124,6 +124,9 @@ verify_jwt = false
 [functions.sign-r2-urls]
 verify_jwt = false
 
+[functions.paywall-report]
+verify_jwt = false
+
 [functions.billing-checkout]
 verify_jwt = false
 
@@ -148,6 +151,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.lifecycle-email-cron]
+verify_jwt = false
+
+[functions.loops-sync-cron]
 verify_jwt = false
 
 # Local-dev only: the analytics/vector container can't bind-mount the Docker

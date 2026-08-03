@@ -86,6 +86,7 @@ import {
 } from '../../store';
 import { useEntitlements } from '../../hooks/useEntitlements';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
+import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { useAuth } from '../../context/AuthContext';
 import { stripFinancialFields } from '@/lib/financialAccess';
 import { captureEvent } from '@/lib/analytics';
@@ -152,7 +153,7 @@ function parseInstagram(raw: string): string {
 
 export default function LeadsPage() {
   const qc = useQueryClient();
-  const { canSeeFinancials } = useAuth();
+  const { canSeeFinancials, profile } = useAuth();
   const { t, i18n } = useTranslation('leads');
   const { t: tc } = useTranslation();
   const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
@@ -284,8 +285,14 @@ export default function LeadsPage() {
       }
       qc.invalidateQueries({ queryKey: ['leads'] });
       setModalOpen(false);
-    } catch {
-      toast.error(tc('toast.saveError'));
+    } catch (e) {
+      // trg_feature_leads is a DB trigger on a direct client write, so this
+      // catch is the ONLY place a feature_leads denial is observable — there is
+      // no edge function in the path and store.ts is not a TanStack mutation, so
+      // App.tsx's MutationCache.onError never sees it. handleEntitlementMutationError
+      // shows the upgrade toast itself; only fall through when it declines.
+      if (!handleEntitlementMutationError(e, profile?.conta_id ?? null))
+        toast.error(tc('toast.saveError'));
     } finally {
       setSaving(false);
     }

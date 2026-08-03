@@ -51,7 +51,27 @@ Deno.serve(async (req) => {
       try {
         await assertPlanFeature(svc, contaId, "feature_mcp");
       } catch (e) {
-        if (e instanceof FeatureDisabledError) return json({ error: "feature_disabled", feature: "feature_mcp" }, 403);
+        if (e instanceof FeatureDisabledError) {
+          // Marketing signal; never let it change the response.
+          //
+          // supabase-js resolves with { error } on a PostgREST failure rather
+          // than throwing, so the error must be checked explicitly -- a bare
+          // try/catch alone would silently drop RLS/constraint failures with
+          // no log line.
+          try {
+            const { error: insErr } = await svc.from("paywall_hits").insert({
+              workspace_id: contaId,
+              user_id: user.id,
+              feature: "feature_mcp",
+            });
+            if (insErr) {
+              console.error("[mcp-keys] paywall_hits insert failed:", insErr.message);
+            }
+          } catch (e2) {
+            console.error("[mcp-keys] paywall_hits insert failed:", e2 instanceof Error ? e2.message : String(e2));
+          }
+          return json({ error: "feature_disabled", feature: "feature_mcp" }, 403);
+        }
         throw e;
       }
       const name = typeof body.name === "string" ? body.name.trim() : "";

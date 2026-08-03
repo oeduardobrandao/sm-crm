@@ -103,6 +103,72 @@ Deno.serve(async (req: Request) => {
     });
 
     if (!session.url) throw new Error("Stripe returned no checkout URL");
+
+    // Marketing signal for the checkout_abandoned trigger. Placed AFTER the
+    // session exists so only a reachable checkout page is recorded.
+    //
+    // Log and swallow, never fail the checkout: the Stripe session is already
+    // live at this point, so throwing would 500 a user who is one click from
+    // paying and push them to start another session. Losing one marketing
+    // trigger is by far the cheaper failure. stripe_session_id is UNIQUE, so a
+    // retried request reusing a session is a no-op, not a duplicate.
+    //
+    // supabase-js resolves with { error } on a PostgREST failure rather than
+    // throwing, so the error must be checked explicitly -- a bare try/catch
+    // alone would silently drop RLS/constraint/FK failures with no log line.
+    //
+    // abortSignal(10s) is load-bearing even though this now runs in the
+    // background: it still consumes the isolate's wall clock, and an
+    // unbounded call could stall a later invocation reusing the same warm
+    // instance. The timeout forces a stall to surface as an ordinary
+    // catchable rejection/error instead of an isolate kill.
+    //
+    // This write must run via EdgeRuntime.waitUntil and NEVER be awaited
+    // before the response below. The Stripe checkout session already exists
+    // at this point -- awaiting a slow/unavailable PostgREST insert here
+    // would make a user wait (up to the 10s bound) for a checkout URL that
+    // already exists and cannot be redirected to, risking an abandoned
+    // session and a duplicate Stripe Checkout on retry. Do not "simplify"
+    // this back into a plain await.
+    const recordCheckoutAttempt = async () => {
+      try {
+        const { error } = await svc
+          .from("checkout_attempts")
+          .insert({
+            workspace_id: workspaceId,
+            stripe_session_id: session.id,
+            plan_id: planId,
+          })
+          .abortSignal(AbortSignal.timeout(10_000));
+        if (error) {
+          console.error("[billing-checkout] checkout_attempts insert failed:", error.message);
+        }
+      } catch (e) {
+        console.error(
+          "[billing-checkout] checkout_attempts insert failed:",
+          e instanceof Error ? e.message : String(e),
+        );
+      }
+    };
+
+    // EdgeRuntime is a Supabase Edge Runtime global -- not declared in every
+    // type environment, and not guaranteed present in every runtime this
+    // module might load in (e.g. local tooling). Feature-detect via
+    // globalThis (avoids referencing the bare undeclared identifier, which
+    // `deno check` rejects with TS2304) and fall back to the previous
+    // awaited form so the write still happens somewhere if the global is
+    // ever absent, instead of silently vanishing. The check is deliberately
+    // on the waitUntil METHOD, not just the EdgeRuntime object, because a
+    // present-but-shapeless global would otherwise 500 a live checkout.
+    const edgeRuntime = (
+      globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }
+    ).EdgeRuntime;
+    if (typeof edgeRuntime?.waitUntil === "function") {
+      edgeRuntime.waitUntil(recordCheckoutAttempt());
+    } else {
+      await recordCheckoutAttempt();
+    }
+
     return json({ url: session.url }, 200, headers);
   } catch (err) {
     console.error("[billing-checkout] error:", err);

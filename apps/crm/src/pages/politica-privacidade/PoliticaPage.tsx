@@ -79,6 +79,13 @@ export default function PoliticaPage() {
                     workspace, plano e eventos de uso do produto. Não enviamos conteúdo de clientes,
                     mídias ou dados de pagamento.
                   </li>
+                  <li>
+                    <strong>Loops</strong> · envio de e-mails de marketing e de ciclo de vida. Os
+                    dados são processados nos Estados Unidos, o que constitui uma transferência
+                    internacional de dados pessoais para fora do Brasil, realizada em conformidade
+                    com a LGPD. Coletamos nome e e-mail para o envio dessas comunicações. Não
+                    enviamos conteúdo de clientes, mídias ou dados financeiros.
+                  </li>
                 </ul>
               </>
             ),
