@@ -277,9 +277,22 @@ BEGIN
      AND host_id = p_host_id
      AND mentioned_membro_id <> ALL (COALESCE(p_membro_ids, '{}'::bigint[]));
 
+  -- p_membro_ids comes from parsing @-mention tokens out of free-form text
+  -- (comment bodies, tarefa descricao, post content) -- a hand-typed,
+  -- stale (membro since deleted), or cross-tenant id is just malformed
+  -- user input, not a security event to fail loudly on. Without the JOIN
+  -- below, one bad id in the array would make the whole multi-row INSERT's
+  -- RLS WITH CHECK (mencoes_tenant_all's membros EXISTS guard) fail and
+  -- abort the entire statement -- silently dropping every OTHER, valid
+  -- mention in the same save. Scoping the JOIN to mb.conta_id = v_conta
+  -- filters out invalid/foreign ids before they ever reach the INSERT, so
+  -- a single bad token degrades gracefully instead of poisoning the batch.
+  -- mencoes_tenant_all's WITH CHECK still runs on every row that DOES pass
+  -- this filter -- belt-and-suspenders, not a replacement for the RLS guard.
   INSERT INTO mencoes (conta_id, host_type, host_id, mentioned_membro_id)
-  SELECT v_conta, p_host_type, p_host_id, m
+  SELECT v_conta, p_host_type, p_host_id, s.m
     FROM (SELECT DISTINCT unnest(p_membro_ids) AS m) s
+    JOIN membros mb ON mb.id = s.m AND mb.conta_id = v_conta
   ON CONFLICT ON CONSTRAINT mencoes_uq DO NOTHING;
 END;
 $$;
