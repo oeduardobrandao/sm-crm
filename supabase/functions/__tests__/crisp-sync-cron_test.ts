@@ -36,6 +36,7 @@ function makeDeps(over: Partial<CrispCronDeps> = {}, rpcData: Record<string, unk
     deletedRefs: [] as string[],
     markedDeleted: [] as string[],
     reported: [] as unknown[],
+    gotProfile: [] as string[],
   };
 
   const base: CrispCronDeps = {
@@ -52,7 +53,10 @@ function makeDeps(over: Partial<CrispCronDeps> = {}, rpcData: Record<string, unk
       calls.markedDeleted.push(id);
       return Promise.resolve();
     },
-    getProfile: () => Promise.resolve(null),
+    getProfile: (ref: string) => {
+      calls.gotProfile.push(ref);
+      return Promise.resolve(null);
+    },
     createProfile: (p) => {
       calls.created.push(p);
       return Promise.resolve("p-new");
@@ -158,6 +162,10 @@ Deno.test("recordContact refusal skips the person with no vendor call", async ()
   assertEquals(calls.created.length, 0);
   assertEquals(calls.saved.length, 0);
   assertEquals(calls.confirmed.length, 0);
+  // getProfile is a vendor call too. Without this, the test would still pass
+  // if recordContact were checked AFTER the identity GET -- i.e. after we had
+  // already spoken to Crisp about this person.
+  assertEquals(calls.gotProfile.length, 0);
   assertEquals(result.upserted, 0);
   assertEquals(result.failed, 0);
 });
@@ -176,22 +184,32 @@ Deno.test("a vendor failure never advances the fingerprint", async () => {
 });
 
 Deno.test("a create conflict re-reads and updates instead of failing", async () => {
+  // CANDIDATE.people_id is null, so the FIRST getProfile call is keyed on
+  // email too. The mock must miss on that first call and only hit on the
+  // re-read after the 409, or the conflict branch (handler.ts's createProfile
+  // === null path) is never actually exercised.
   const existing: CrispProfile = {
     people_id: "p-widget",
     segments: ["vip", "trial"],
     notepad: "ligou em marco",
   };
+  let gets = 0;
   const { deps, calls } = makeDeps(
     {
-      getProfile: (ref: string) =>
-        Promise.resolve(ref === CANDIDATE.email ? existing : null),
-      createProfile: () => Promise.resolve(null),
+      getProfile: () => Promise.resolve(gets++ === 0 ? null : existing),
+      createProfile: (p) => {
+        calls.created.push(p);
+        return Promise.resolve(null);
+      },
     },
     { get_crisp_sync_candidates: [CANDIDATE] },
   );
 
   const result = await runCrispSyncCron(deps);
 
+  // Proves the conflict branch was actually taken: createProfile was called
+  // once (and returned null), triggering the re-read.
+  assertEquals(calls.created.length, 1);
   assertEquals(result.failed, 0);
   assertEquals(result.upserted, 1);
   assertEquals(calls.saved[0].peopleId, "p-widget");
@@ -275,6 +293,33 @@ Deno.test("a confirm that matches no row deletes the profile it just wrote", asy
   assertEquals(result.upserted, 0);
   assertEquals(result.failed, 1);
 });
+
+Deno.test(
+  "a confirm that matches no row also deletes an EXISTING profile it just updated",
+  async () => {
+    // Same compensation, the other branch: today the confirm check is shared
+    // by both the create and the existing-profile paths, but a refactor that
+    // hoisted it into each branch separately would only be caught here.
+    const existing: CrispProfile = {
+      people_id: "p-existing",
+      segments: ["vip"],
+      notepad: "cliente antigo",
+    };
+    const { deps, calls } = makeDeps(
+      {
+        getProfile: () => Promise.resolve(existing),
+        confirmSync: () => Promise.resolve(false),
+      },
+      { get_crisp_sync_candidates: [CANDIDATE] },
+    );
+
+    const result = await runCrispSyncCron(deps);
+
+    assertEquals(calls.deletedRefs, ["p-existing"]);
+    assertEquals(result.upserted, 0);
+    assertEquals(result.failed, 1);
+  },
+);
 
 Deno.test("an empty candidate list performs zero vendor calls and succeeds", async () => {
   const { deps, calls } = makeDeps();

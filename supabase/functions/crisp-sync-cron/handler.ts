@@ -233,7 +233,18 @@ export async function runCrispSyncCron(
         // same deleted_at. Unerasable, which is the one outcome this ledger
         // exists to prevent. So delete what we just wrote, then surface it.
         if (!(await deps.confirmSync(c.user_id, peopleId, c.fingerprint))) {
-          await deps.deleteProfile(peopleId);
+          try {
+            await deps.deleteProfile(peopleId);
+          } catch (delErr) {
+            // The compensation ITSELF failed. Say so explicitly: this is the
+            // unerasable-PII case, not a routine delete blip, and the operator
+            // reading cron_failures needs to know which one they are looking at.
+            throw new Error(
+              `ledger row swept mid-sync AND the orphaned profile ${peopleId} could not be deleted: ${
+                delErr instanceof Error ? delErr.message : String(delErr)
+              }`,
+            );
+          }
           throw new Error("ledger row swept mid-sync; deleted the orphaned profile");
         }
         upserted++;
