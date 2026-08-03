@@ -130,17 +130,22 @@ export default function EntregasPage() {
 
   // Auto-open drawer when navigated with ?drawer=<workflowId>, optionally expanding a
   // single post with &post=<postId> (how a linked post in /mensagens is reached).
-  const pendingDrawerId = useRef<number | null>(null);
-  const pendingPostId = useRef<number | null>(null);
+  // State, not a ref: GlobalSearchTrigger is mounted globally and can fire a deep link while
+  // the user is already on /entregas. `cards` keeps its identity across that navigation, so a
+  // resolver keyed only on `cards` would never re-run and the link would silently do nothing.
+  // Storing the pending target in state re-triggers the resolver below on every new link.
+  const [pendingDeepLink, setPendingDeepLink] = useState<{
+    workflowId: number;
+    postId: number | null;
+  } | null>(null);
   const drawerParam = searchParams.get('drawer');
   const postParam = searchParams.get('post');
   useEffect(() => {
     if (!drawerParam) return;
     const parsed = parseInt(drawerParam, 10);
     if (!isNaN(parsed)) {
-      pendingDrawerId.current = parsed;
       const parsedPost = postParam ? parseInt(postParam, 10) : NaN;
-      pendingPostId.current = isNaN(parsedPost) ? null : parsedPost;
+      setPendingDeepLink({ workflowId: parsed, postId: isNaN(parsedPost) ? null : parsedPost });
       // Drop only the transient params — the rest of the query is the shareable view state
       // and must survive. On mount the sync effect below runs in the same commit and wins;
       // this removal is what covers a navigation that leaves `currentQuery` unchanged.
@@ -177,15 +182,16 @@ export default function EntregasPage() {
   }, [currentQuery, setSearchParams]);
 
   useEffect(() => {
-    if (pendingDrawerId.current === null || cards.length === 0) return;
-    const match = cards.find((c) => c.workflow.id === pendingDrawerId.current);
+    if (pendingDeepLink === null || cards.length === 0) return;
+    const match = cards.find((c) => c.workflow.id === pendingDeepLink.workflowId);
+    // An unmatched target is kept, not dropped: `cards` arrives asynchronously, so a link
+    // that lands before the board has loaded resolves on a later pass.
     if (match) {
-      pendingDrawerId.current = null;
-      setDrawerInitialPostId(pendingPostId.current);
-      pendingPostId.current = null;
+      setPendingDeepLink(null);
+      setDrawerInitialPostId(pendingDeepLink.postId);
       setDrawerCard(match);
     }
-  }, [cards]);
+  }, [cards, pendingDeepLink]);
 
   // Derive unique active etapa names for the filter dropdown
   const etapaNames = useMemo(() => {
