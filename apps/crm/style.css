@@ -6792,7 +6792,13 @@ a.mention-chip:hover {
 
 /* @-mention suggestion dropdown (Task 4 of the at-mentions spec). Portal-rendered to
    document.body with position: fixed by MentionList.tsx, so it escapes the entregas
-   drawer's clipped overflow container regardless of ancestor stacking context. */
+   drawer's clipped overflow container regardless of ancestor stacking context.
+   pointer-events: auto is required, not decorative: when the textarea using this
+   dropdown (Task 5's MentionTextarea, e.g. TarefaFormDialog's descricao field) sits
+   inside a shadcn/Radix Dialog, Radix's DismissableLayer sets
+   document.body.style.pointerEvents = 'none' and grants `auto` back only to its own
+   modal layer. This dropdown is a sibling portal outside that layer, so without an
+   explicit override here its rows are unclickable (only keyboard selection works). */
 .mention-suggestion-list {
   display: flex;
   flex-direction: column;
@@ -6802,6 +6808,7 @@ a.mention-chip:hover {
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
   padding: 0.35rem;
+  pointer-events: auto;
 }
 [data-theme='dark'] .mention-suggestion-list {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);

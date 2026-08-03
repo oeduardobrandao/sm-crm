@@ -99,6 +99,11 @@ describe('parseMentionTokens', () => {
   it('handles an empty string', () => {
     expect(parseMentionTokens('')).toEqual([]);
   });
+
+  it('treats an id of "0" as invalid (falls through to plain text, not { id: 0 })', () => {
+    const text = '@[Zero](membro:0)';
+    expect(parseMentionTokens(text)).toEqual([{ kind: 'text', value: text }]);
+  });
 });
 
 describe('extractMentionsFromText', () => {
@@ -202,6 +207,29 @@ describe('extractMentionsFromDoc', () => {
     expect(extractMentionsFromDoc(doc)).toEqual([
       { entityType: 'membro', id: 5, label: 'Good', parentId: null },
     ]);
+  });
+
+  it('skips an explicit null id (MentionNode attrs default `id` to null when parseHTML finds no data-id) rather than coercing it to 0', () => {
+    // Number(null) is 0 -- a finite, truthy-looking number -- so a naive
+    // `Number.isFinite(Number(raw))` guard would let this through as `{ id: 0 }`
+    // instead of skipping it. A pasted/corrupted doc losing a mention's id must not
+    // fabricate a fake id that later gets fed to the sync_mentions RPC.
+    const doc = {
+      type: 'doc',
+      content: [{ type: 'mention', attrs: { entityType: 'membro', id: null, label: 'NullId' } }],
+    };
+    expect(extractMentionsFromDoc(doc)).toEqual([]);
+  });
+
+  it('skips other falsy-but-Number()-coercible-to-0 ids: "", false, 0, [], and NaN', () => {
+    const badIds: unknown[] = ['', false, 0, [], NaN];
+    for (const id of badIds) {
+      const doc = {
+        type: 'doc',
+        content: [{ type: 'mention', attrs: { entityType: 'membro', id, label: 'Bad' } }],
+      };
+      expect(extractMentionsFromDoc(doc)).toEqual([]);
+    }
   });
 
   it('skips nodes with an unrecognized entityType', () => {

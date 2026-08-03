@@ -22,15 +22,31 @@ function isMentionEntityType(value: unknown): value is MentionEntityType {
   return value === 'membro' || value === 'post' || value === 'cliente' || value === 'tarefa';
 }
 
-/** Coerces to a finite number or `null`. The `id`/parentId capture groups in
+/** Coerces to a positive integer id or `null`. The `id`/parentId capture groups in
  * MENTION_TOKEN_RE are digits-only so this only matters in practice for
  * extractMentionsFromDoc, whose input is arbitrary TipTap JSON -- a mention node's
- * attrs can carry a non-numeric or missing id (corrupted doc, hand-edited fixture,
- * future schema change). Both extractors feed ids straight to the sync_mentions RPC,
- * so a non-finite id must be skipped rather than propagated. */
+ * attrs can carry a non-numeric, missing, or null id (corrupted doc, hand-edited
+ * fixture, a paste that lost the id, MentionNode's `id` attr defaulting to `null`
+ * when parseHTML fails to find `data-id`). Both extractors feed ids straight to the
+ * sync_mentions RPC, so an invalid id must be skipped rather than propagated.
+ *
+ * Deliberately does NOT use a bare `Number(raw)` coercion: `Number(null)` is `0`
+ * (finite!), and so are `Number('')`, `Number(false)`, `Number([])` -- every one of
+ * those would silently produce a fabricated `{ id: 0 }` mention instead of being
+ * skipped. Only an actual `number` or a non-empty numeric string is accepted, and
+ * the result must be a positive integer (entity ids are Postgres bigserial columns,
+ * which start at 1 and are never fractional or negative).
+ */
 function toFiniteId(raw: unknown): number | null {
-  const n = typeof raw === 'number' ? raw : Number(raw);
-  return Number.isFinite(n) ? n : null;
+  let n: number;
+  if (typeof raw === 'number') {
+    n = raw;
+  } else if (typeof raw === 'string' && raw.trim() !== '') {
+    n = Number(raw);
+  } else {
+    return null;
+  }
+  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 /**
