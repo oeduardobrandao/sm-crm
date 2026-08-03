@@ -179,7 +179,7 @@ async function auditQuietly(...args: Parameters<typeof insertAuditLog>): Promise
  * none: it cannot survive without its thread, so there is no separate entry
  * for it in this list.
  *
- * mencoes (at-mentions follow-up, 20260803000001_mencoes.sql) is deliberately
+ * mencoes (at-mentions follow-up, 20260803000006_mencoes.sql) is deliberately
  * NOT in this list either, and for a different reason than post_designs above:
  * it is a real, undeleted table that CAN hold a row pointing at an imported
  * post (host_type = 'workflow_post', host_id = the post's id), but host_id is

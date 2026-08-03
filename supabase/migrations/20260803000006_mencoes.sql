@@ -1,4 +1,4 @@
--- supabase/migrations/20260803000001_mencoes.sql
+-- supabase/migrations/20260803000006_mencoes.sql
 -- @-mentions: mencoes table + notify pipeline + sync RPC + emailed_at groundwork.
 -- Spec: docs/superpowers/specs/2026-08-03-at-mentions-implementation-plan.md (Task 1)
 --
@@ -81,7 +81,7 @@ CREATE POLICY mencoes_service_role_bypass ON mencoes
 -- ============ notifications: add 'mention' to the type CHECK ============
 -- Type list copied from the LATEST definition (20260730000006_task_assigned_notification.sql),
 -- not the 20260430000001 original -- re-adding a stale list would break newer
--- inserts. This file (20260803000001) is now the latest definition; the next
+-- inserts. This file (20260803000006) is now the latest definition; the next
 -- migration to touch notifications_type_check must copy from here.
 ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
 ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (

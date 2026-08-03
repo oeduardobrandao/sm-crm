@@ -14,15 +14,14 @@
 --
 -- NOTE ON THE PREFIX: the implementation plan named this file
 -- `20260803000002_schedule_mention_email_cron.sql`, but by the time this task
--- ran, origin/main's migrations tail had already advanced past
--- `20260803000005` (paywall_hits/checkout_attempts/loops_* landed on main
--- after this feature branch diverged). `20260803000001` and `20260803000002`
--- both now collide with already-merged main migrations. This file is
--- renumbered to `20260803000006` (immediately after main's current tail) to
--- avoid that; `20260803000001_mencoes.sql` from Task 1 of this same plan
--- still collides with main's `20260803000001_paywall_hits.sql` and was left
--- alone (out of this task's scope) -- it needs the same renumbering treatment
--- in a follow-up before this branch is rebased onto main / a PR is opened.
+-- ran, origin/main's migrations tail had already advanced to
+-- `20260803000005_schedule_loops_sync_cron.sql` (paywall_hits/checkout_attempts/
+-- loops_* landed on main after this feature branch diverged), so both
+-- `20260803000001` and `20260803000002` collided with already-merged main
+-- migrations. Both of this plan's Task 1/Task 8 migrations were renumbered to
+-- sit immediately after main's tail, preserving their original relative
+-- order: `mencoes.sql` (Task 1) is now `20260803000006`, and this file
+-- (Task 8) is `20260803000007`.
 
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'mention-email-cron') THEN

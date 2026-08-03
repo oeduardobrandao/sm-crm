@@ -6,7 +6,7 @@ export type MentionHostType = 'post_comment' | 'tarefa' | 'workflow_post';
  * Syncs the `mencoes` ledger for one host row (a comment, tarefa, or
  * workflow_post) against the membro ids currently mentioned in its content.
  * Calls `sync_mentions`, which diffs against the existing ledger and fires
- * notifications for newly-added mentions (see 20260803000001_mencoes.sql).
+ * notifications for newly-added mentions (see 20260803000006_mencoes.sql).
  *
  * MUST be called even with an empty array on edit -- that is how a removed
  * `@membro` mention gets cleared from the ledger, since sync_mentions deletes
