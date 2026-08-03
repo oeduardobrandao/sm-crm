@@ -79,7 +79,7 @@ CREATE POLICY mencoes_service_role_bypass ON mencoes
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- ============ notifications: add 'mention' to the type CHECK ============
--- Type list copied from the LATEST definition (20260730000006_task_assigned_notification.sql),
+-- Type list copied from the LATEST definition (20260731000003_mensagens_consolidadas.sql),
 -- not the 20260430000001 original -- re-adding a stale list would break newer
 -- inserts. This file (20260803000006) is now the latest definition; the next
 -- migration to touch notifications_type_check must copy from here.
@@ -91,7 +91,7 @@ ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (
     'step_activated', 'step_completed', 'post_assigned',
     'workflow_completed', 'deadline_approaching',
     'invite_accepted', 'member_role_changed', 'member_removed',
-    'post_edit_suggestion', 'task_assigned',
+    'post_edit_suggestion', 'task_assigned', 'client_message',
     'mention'
   )
 );
