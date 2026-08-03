@@ -221,11 +221,15 @@ export async function signUp(
   email: string,
   password: string,
   meta?: { nome?: string; empresa?: string; telefone?: string; marketing_opt_in?: boolean },
+  redirectPath = '/login',
 ) {
   return supabase.auth.signUp({
     email,
     password,
-    options: { data: meta, emailRedirectTo: window.location.origin + '/login' },
+    // Carries the plan intent across the confirmation email when email
+    // confirmation is enabled; without it the user's plan choice is silently
+    // dropped between signup and their return.
+    options: { data: meta, emailRedirectTo: window.location.origin + redirectPath },
   });
 }
 
