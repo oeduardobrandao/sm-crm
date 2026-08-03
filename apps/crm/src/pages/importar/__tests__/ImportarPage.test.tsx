@@ -210,11 +210,15 @@ describe('ImportarPage', () => {
     expect(previewed.filter((r) => r.kind === 'post')).toHaveLength(POST_COUNT);
   });
 
+  // Heaviest test in the file (full wizard walk + 253-row two-slice commit):
+  // under CI load the completion screen can take well over findByText's 1s
+  // default, which made this the suite's recurring red. The generous waits
+  // change nothing about what is asserted.
   test('commits in slices of 200, chunked by the plan cap the preview returned', async () => {
     await advanceToPreview();
     fireEvent.click(screen.getByRole('button', { name: /Importar/ }));
 
-    await screen.findByText('Importação concluída');
+    await screen.findByText('Importação concluída', undefined, { timeout: 15_000 });
 
     // 250 posts at a cap of 100 -> 3 containers -> 253 rows -> 200 + 53.
     expect(mockedStart).toHaveBeenCalledWith('csv', 253);
@@ -230,7 +234,7 @@ describe('ImportarPage', () => {
     const committed = [...firstRows, ...secondRows];
     expect(committed.filter((r) => r.kind === 'container')).toHaveLength(3);
     expect(committed.filter((r) => r.kind === 'post')).toHaveLength(POST_COUNT);
-  });
+  }, 30_000);
 
   // The global QueryClient staleTime (30s, App.tsx) means ['clientes'] and the
   // other pages this wizard can affect stay "fresh" — i.e. NOT refetched —
