@@ -201,12 +201,15 @@ vi.mock('../components/WorkflowDrawer', () => ({
   WorkflowDrawer: ({
     card,
     onClose,
+    initialPostId,
   }: {
     card: { workflow: { titulo: string } };
     onClose: () => void;
+    initialPostId?: number;
   }) => (
     <div>
       <div>Workflow drawer: {card.workflow.titulo}</div>
+      <div data-testid="drawer-initial-post">{initialPostId ?? 'none'}</div>
       <button onClick={onClose}>Close drawer</button>
     </div>
   ),
@@ -494,6 +497,52 @@ describe('EntregasPage', () => {
       expect(screen.getByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
     });
     expect(screen.queryByText('Edit workflow modal: Fluxo Profundo')).not.toBeInTheDocument();
+  });
+
+  // Regression: the URL-sync effect used to re-add `drawer` from a stale searchParams
+  // snapshot, pinning it in the URL forever so every reload re-opened the drawer.
+  it('strips the consumed drawer param from the URL so a reload does not re-open it', async () => {
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [{ id: 10, nome: 'Clínica Aurora' }],
+      membros: [{ id: 7, nome: 'Ana' }],
+      templates: [],
+      cards: [
+        makeCard({
+          workflow: { id: 2, titulo: 'Fluxo Profundo', cliente_id: 10, status: 'ativo' },
+        }),
+      ],
+      activeWorkflows: [{ id: 2 }],
+      isLoading: false,
+      refresh: vi.fn(),
+    } as never);
+
+    renderPage('/entregas?drawer=2&post=5');
+
+    expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+    });
+  });
+
+  it('opens the linked post inside the drawer when ?post= accompanies ?drawer=', async () => {
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [{ id: 10, nome: 'Clínica Aurora' }],
+      membros: [{ id: 7, nome: 'Ana' }],
+      templates: [],
+      cards: [
+        makeCard({
+          workflow: { id: 2, titulo: 'Fluxo Profundo', cliente_id: 10, status: 'ativo' },
+        }),
+      ],
+      activeWorkflows: [{ id: 2 }],
+      isLoading: false,
+      refresh: vi.fn(),
+    } as never);
+
+    renderPage('/entregas?drawer=2&post=5');
+
+    expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+    expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
   });
 
   it('duplicates recurring workflows and refreshes on success', async () => {
