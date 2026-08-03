@@ -314,14 +314,24 @@ Deno.serve(createInstagramSyncCronHandler({
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     try {
 
-    // Page through candidates, stalest first, until the batch is full.
+    // Page through candidates, least-recently-attempted first, until the batch
+    // is full.
     //
-    // A single fixed window would starve eligible accounts. Ineligible ones are
-    // concentrated at the head of this ordering rather than spread through it:
-    // an account that never syncs keeps last_synced_at NULL forever, and NULLs
-    // sort first. Once enough free-plan or internal connections exist to fill
-    // one window, every run would filter down to an empty batch. Paging skips
-    // past them instead. See select.ts.
+    // Two distinct starvation modes are being defended against here, and they
+    // need different mechanisms.
+    //
+    // 1. Ineligible accounts (no feature_auto_sync_cron, or internal) cluster at
+    //    the head of the ordering rather than spreading through it, because they
+    //    are never attempted at all. A single fixed candidate window would fill
+    //    with them and filter down to an empty batch every run. PAGING skips
+    //    past them.
+    // 2. Eligible accounts that FAIL never reach the success-path write of
+    //    last_synced_at, so ordering on that column pins them at the head
+    //    forever and they re-consume the batch on every run. Ordering on
+    //    last_sync_attempt_at, stamped below for the whole batch before any work
+    //    starts, rotates them to the back after each try.
+    //
+    // See select.ts.
     const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
     const internalWorkspaces = await fetchInternalWorkspaceIds(supabase);
 
@@ -332,12 +342,14 @@ Deno.serve(createInstagramSyncCronHandler({
           fetchPage: async (from, size) => {
             const { data, error } = await supabase
               .from('instagram_accounts')
-              .select('id, instagram_user_id, encrypted_access_token, token_expires_at, follower_count, following_count, media_count, last_synced_at, clientes!inner(conta_id)')
+              .select('id, instagram_user_id, encrypted_access_token, token_expires_at, follower_count, following_count, media_count, last_synced_at, last_sync_attempt_at, clientes!inner(conta_id)')
               .eq('authorization_status', 'active')
               .eq('auto_sync_enabled', true)
+              // Eligibility still keys off the last SUCCESSFUL sync, so the 6h
+              // staleness window keeps its meaning. Only the ORDER changes.
               .or(`last_synced_at.is.null,last_synced_at.lt.${sixHoursAgo}`)
-              .order('last_synced_at', { ascending: true, nullsFirst: true })
-              // Tie-break on id: last_synced_at alone is not unique (NULLs
+              .order('last_sync_attempt_at', { ascending: true, nullsFirst: true })
+              // Tie-break on id: last_sync_attempt_at alone is not unique (NULLs
               // especially), and without a total order .range() can skip or
               // repeat rows across pages.
               .order('id', { ascending: true })
@@ -391,6 +403,25 @@ Deno.serve(createInstagramSyncCronHandler({
       `over ${pages} page(s). Deferred: ${deferred}. Skipped: ${skippedNoFeature} lacking ` +
       `feature_auto_sync_cron, ${skippedInternal} in internal workspaces.`
     );
+
+    // Stamp the attempt for the WHOLE batch before any syncing starts.
+    //
+    // Before, not after, and in one write rather than per account: an account
+    // whose sync kills the invocation (wall clock, OOM) would otherwise never
+    // get stamped, stay pinned at the head of the ordering, and take the batch
+    // down with it on every subsequent run. Stamping up front means the batch
+    // rotates even when the run dies partway.
+    //
+    // A failure here is logged but not fatal. Syncing a batch whose queue
+    // position did not advance is worse than useless only if it repeats, and
+    // the next run re-reads the real ordering either way.
+    const { error: stampError } = await supabase
+      .from('instagram_accounts')
+      .update({ last_sync_attempt_at: new Date().toISOString() })
+      .in('id', eligible.map((a: any) => a.id));
+    if (stampError) {
+      console.error(`[IG-SYNC-CRON] Failed to stamp last_sync_attempt_at: ${stampError.message}`);
+    }
 
     let syncedCount = 0;
     let failedCount = 0;

@@ -5,8 +5,8 @@ const WS_OK = "11111111-1111-1111-1111-111111111111";
 const WS_NO_FEATURE = "22222222-2222-2222-2222-222222222222";
 const WS_INTERNAL = "33333333-3333-3333-3333-333333333333";
 
-function acct(id: string, wsId: string, lastSynced: string | null) {
-  return { id, last_synced_at: lastSynced, clientes: { conta_id: wsId } };
+function acct(id: string, wsId: string, lastAttempt: string | null) {
+  return { id, last_sync_attempt_at: lastAttempt, clientes: { conta_id: wsId } };
 }
 
 const defaults = {
@@ -20,7 +20,7 @@ Deno.test("contaIdOf reads both PostgREST embed shapes", () => {
   assertEquals(contaIdOf({ clientes: [{ conta_id: WS_OK }] }), WS_OK);
 });
 
-Deno.test("selects stalest accounts first", () => {
+Deno.test("selects least-recently-attempted accounts first", () => {
   const { selected } = selectAccountsToSync(
     [
       acct("recent", WS_OK, "2026-08-03T05:00:00Z"),
@@ -32,10 +32,10 @@ Deno.test("selects stalest accounts first", () => {
   assertEquals(selected.map((a) => a.id), ["oldest", "middle", "recent"]);
 });
 
-Deno.test("never-synced accounts sort ahead of every synced account", () => {
+Deno.test("never-attempted accounts sort ahead of every attempted account", () => {
   const { selected } = selectAccountsToSync(
     [
-      acct("synced-long-ago", WS_OK, "2020-01-01T00:00:00Z"),
+      acct("attempted-long-ago", WS_OK, "2020-01-01T00:00:00Z"),
       acct("never", WS_OK, null),
     ],
     { ...defaults, allowedWorkspaces: new Set([WS_OK]) },
@@ -60,8 +60,8 @@ Deno.test("caps the batch at the limit and reports the remainder as deferred", (
 });
 
 Deno.test("a truncated batch rotates instead of starving the tail", () => {
-  // Round 1 takes the two stalest; those two then carry a fresh last_synced_at,
-  // so round 2 must pick up the ones round 1 deferred.
+  // Round 1 takes the two stalest; those two then carry a fresh
+  // last_sync_attempt_at, so round 2 must pick up the ones round 1 deferred.
   const accounts = [
     acct("a", WS_OK, "2026-07-01T00:00:00Z"),
     acct("b", WS_OK, "2026-07-02T00:00:00Z"),
@@ -75,7 +75,7 @@ Deno.test("a truncated batch rotates instead of starving the tail", () => {
 
   const afterRound1 = accounts.map((a) =>
     round1.selected.some((s) => s.id === a.id)
-      ? { ...a, last_synced_at: "2026-08-03T00:00:00Z" }
+      ? { ...a, last_sync_attempt_at: "2026-08-03T00:00:00Z" }
       : a
   );
   const round2 = selectAccountsToSync(afterRound1, opts);
@@ -101,9 +101,9 @@ Deno.test("excludes internal workspaces even when the plan grants the feature", 
 });
 
 Deno.test("internal accounts do not consume batch slots", () => {
-  // The regression this guards: internal accounts are never synced, so their
-  // last_synced_at stays null and they sort first forever. If they were counted
-  // against the limit they would starve every real account behind them.
+  // The regression this guards: internal accounts are never attempted, so their
+  // last_sync_attempt_at stays null and they sort first forever. If they were
+  // counted against the limit they would starve every real account behind them.
   const accounts = [
     acct("internal-1", WS_INTERNAL, null),
     acct("internal-2", WS_INTERNAL, null),
@@ -159,10 +159,10 @@ Deno.test("isEligible agrees with the filter selectAccountsToSync applies", () =
 });
 
 Deno.test("stale ineligible accounts at the head of the ordering do not starve eligible ones", () => {
-  // The Codex finding, as data. Ineligible accounts never sync, so their
-  // last_synced_at stays null and they sort FIRST. Here 500 of them precede the
-  // only eligible account. Selection must still reach it, which is what the
-  // paging loop in index.ts guarantees by scanning past them.
+  // First Codex finding, as data. Ineligible accounts are never attempted, so
+  // their last_sync_attempt_at stays null and they sort FIRST. Here 500 of them
+  // precede the only eligible account. Selection must still reach it, which is
+  // what the paging loop in index.ts guarantees by scanning past them.
   const ineligible = Array.from({ length: 500 }, (_, i) => acct(`free-${i}`, WS_NO_FEATURE, null));
   const candidates = [...ineligible, acct("paying", WS_OK, "2026-07-01T00:00:00Z")];
 
@@ -174,6 +174,41 @@ Deno.test("stale ineligible accounts at the head of the ordering do not starve e
 
   assertEquals(selected.map((a) => a.id), ["paying"]);
   assertEquals(skippedNoFeature, 500);
+});
+
+Deno.test("permanently failing accounts rotate out instead of jamming the batch", () => {
+  // Second Codex finding, as data. These accounts fail every run, so they never
+  // reach the success-path write of last_synced_at. Ordering on THAT column
+  // would pin them at the head forever and they would re-consume all 3 slots on
+  // every run, so `healthy-*` would never sync. Ordering on last_sync_attempt_at,
+  // which the cron stamps for the whole batch before any work starts, sends them
+  // to the back after each try.
+  const failing = ["fail-a", "fail-b", "fail-c"];
+  let accounts = [
+    ...failing.map((id) => acct(id, WS_OK, null)),
+    ...Array.from({ length: 3 }, (_, i) => acct(`healthy-${i}`, WS_OK, "2026-08-01T00:00:00Z")),
+  ];
+  const opts = { ...defaults, allowedWorkspaces: new Set([WS_OK]), limit: 3 };
+
+  // Round 1: the three never-attempted accounts, which all fail.
+  const round1 = selectAccountsToSync(accounts, opts);
+  assertEquals(round1.selected.map((a) => a.id), failing);
+
+  // The cron stamps the attempt regardless of outcome. last_synced_at is
+  // deliberately NOT advanced: they did not succeed.
+  const stamp = (rows: typeof accounts, ids: string[], at: string) =>
+    rows.map((r) => (ids.includes(r.id) ? { ...r, last_sync_attempt_at: at } : r));
+  accounts = stamp(accounts, failing, "2026-08-03T18:00:00Z");
+
+  // Round 2 must now reach the healthy accounts.
+  const round2 = selectAccountsToSync(accounts, opts);
+  assertEquals(round2.selected.map((a) => a.id), ["healthy-0", "healthy-1", "healthy-2"]);
+
+  // Round 3 comes back around to the failing ones. They keep being retried,
+  // they just cannot hold the queue.
+  accounts = stamp(accounts, ["healthy-0", "healthy-1", "healthy-2"], "2026-08-03T19:00:00Z");
+  const round3 = selectAccountsToSync(accounts, opts);
+  assertEquals(round3.selected.map((a) => a.id), failing);
 });
 
 Deno.test("empty candidate list is a no-op", () => {
