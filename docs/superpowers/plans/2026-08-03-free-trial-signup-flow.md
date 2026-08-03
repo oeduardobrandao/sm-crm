@@ -2298,16 +2298,25 @@ Expected: empty. A modified `deno.lock` here means step 2's revert was skipped.
 
 ---
 
-## Deploy steps (after merge, not part of any task)
+## Deploy steps (not part of any task)
+
+**Order matters: the edge function goes out BEFORE the merge, never after.** The frontend
+ships the moment the PR merges, so a function deployed afterwards leaves a window where the
+new client talks to the old function. The new client sends no `promo_code`, the old function
+computes `trialDays = undefined`, and every user who completes `/comecar` in that window is
+charged full price immediately with no trial and is returned to the billing page instead of
+the dashboard. The reverse order is strictly safe: the new function with the old client just
+grants the 30 days without a code, which is the intended end state anyway.
 
 1. **Supabase Auth → disable "Confirm email"** on prod and staging. Until flipped, `signUp` returns no session and Task 8's fallback keeps the check-your-email screen, so the ordering is safe either way.
-2. Deploy the edge function to both projects. Check `supabase/.temp/project-ref` first — link state flips between prod (`skjzpekeqefvlojenfsw`) and staging (`wlyzhyfondykzpsiqsce`):
+2. **Deploy the edge function to prod and staging FIRST, before merging.** Check `supabase/.temp/project-ref` first — link state flips between prod (`skjzpekeqefvlojenfsw`) and staging (`wlyzhyfondykzpsiqsce`):
 
 ```bash
 npx supabase functions deploy billing-checkout --use-api
 ```
 
-3. The frontend ships with the Vercel deploy on merge.
+3. Verify the deployed function on both projects (a checkout started from Plano e Cobrança still opens a Stripe session and, for a never-subscribed workspace, shows the 30-day trial).
+4. Only then merge. The frontend ships with the Vercel deploy on merge.
 
 ## Notes for the implementer
 

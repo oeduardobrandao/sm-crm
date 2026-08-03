@@ -408,13 +408,23 @@ Full suite before pushing: `npm run test`, `npm run test:functions`,
 
 ## Deploy steps (not code)
 
+**The edge function is deployed BEFORE the merge, never after.** Deploying it after the
+merge bills users immediately: the frontend ships at merge, so for that window the new
+client (which sends no `promo_code`) hits the old function, which computes
+`trialDays = undefined` and charges full price on the spot with no trial, returning the
+user to the billing page instead of the dashboard. The reverse order is strictly safe: the
+new function plus the old client simply grants the 30 days without a code, which is the
+intended end state.
+
 1. **Supabase Auth → disable "Confirm email"** on prod and staging. Until this is
    flipped, `signUp` returns no session and the flow correctly falls back to the
    check-your-email screen, so ordering is not critical.
-2. `npx supabase functions deploy billing-checkout --use-api` on both projects.
-   Check `supabase/.temp/project-ref` first: link state flips between prod
-   (`skjzpekeqefvlojenfsw`) and staging (`wlyzhyfondykzpsiqsce`).
-3. Frontend ships with the Vercel deploy on merge.
+2. `npx supabase functions deploy billing-checkout --use-api` on both projects,
+   **first, before the merge**. Check `supabase/.temp/project-ref` first: link
+   state flips between prod (`skjzpekeqefvlojenfsw`) and staging
+   (`wlyzhyfondykzpsiqsce`).
+3. Verify the deployed function on both projects.
+4. Only then merge. The frontend ships with the Vercel deploy on merge.
 
 No migration. No schema change.
 
