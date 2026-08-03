@@ -28,9 +28,13 @@ const { useAuthMock, storeMock } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../../../context/AuthContext', () => ({
-  useAuth: useAuthMock,
-}));
+vi.mock('../../../../context/AuthContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../context/AuthContext')>();
+  return {
+    ...actual,
+    useAuth: useAuthMock,
+  };
+});
 
 vi.mock('../../../../store', () => storeMock);
 
