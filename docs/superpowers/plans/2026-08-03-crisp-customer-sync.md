@@ -488,29 +488,17 @@ create policy "crisp_contacts_service_role" on crisp_contacts
   for all to service_role using (true) with check (true);
 ```
 
-- [ ] **Step 2: Verify it applies against staging**
+- [ ] **Step 2: Confirm the version prefix does not collide**
 
 ```bash
-cat supabase/.temp/project-ref
+git ls-tree origin/main:supabase/migrations | tail -3
 ```
 
-Confirm this is the staging ref (`wlyzhyfondykzpsiqsce`) before continuing. If it is prod (`skjzpekeqefvlojenfsw`), re-link to staging first. Then:
+Expected: `main`'s tail is below `20260804000001`. If not, renumber now — a shared prefix is silently skipped by Supabase and fails the `migration-version-guard` CI job.
 
-```bash
-npx supabase db push --linked
-```
+**Do not run `npx supabase db push` from this worktree.** It is Supabase-unlinked and carries no `.env.staging`; a push from here either fails or, worse, targets the wrong project. Applying this migration and verifying the table shape are Task 8, Step 1a.
 
-Expected: the migration applies with no error.
-
-- [ ] **Step 3: Verify the table shape**
-
-```bash
-npx supabase db query "select column_name, data_type, is_nullable from information_schema.columns where table_name = 'crisp_contacts' order by ordinal_position"
-```
-
-Expected: seven rows, `user_id` nullable, `synced_email` not nullable.
-
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 git add supabase/migrations/20260804000001_crisp_contacts.sql
@@ -849,39 +837,17 @@ begin
 end $$;
 ```
 
-- [ ] **Step 2: Apply to staging**
+- [ ] **Step 2: Desk-check the SQL against the plan's stated invariants**
 
-```bash
-npx supabase db push --linked
-```
+This worktree is Supabase-unlinked, so the RPCs cannot be executed here. Applying them and running the four verification queries is **Task 8, Step 1a**. What you must confirm now, by reading:
 
-Expected: applies with no error.
+1. Every `string_agg` and `array_agg` carries an explicit `ORDER BY`.
+2. Every nullable feeding the `md5()` is wrapped in `coalesce(x, '')`, and the separator is a literal `|`.
+3. The pending-deletion guard is a correlated `not exists`, **not** folded into the `cc` left join.
+4. `record_crisp_contact` performs the live-email re-check **before** the ledger upsert, and does not write `synced_fingerprint` or `synced_people_id`.
+5. The grant loop names all four functions with their exact argument-type signatures.
 
-- [ ] **Step 3: Verify the candidate RPC returns rows and the fingerprint is stable**
-
-```bash
-npx supabase db query "select count(*) as candidates, count(distinct fingerprint) as distinct_fingerprints from get_crisp_sync_candidates()"
-```
-
-Expected: `candidates` > 0 on staging, and `distinct_fingerprints` equal to `candidates` (no two users hashing identically, which is the NULL-concatenation bug).
-
-- [ ] **Step 4: Verify the fingerprint is deterministic across calls**
-
-```bash
-npx supabase db query "select count(*) as drifted from (select user_id, fingerprint from get_crisp_sync_candidates() intersect select user_id, fingerprint from get_crisp_sync_candidates()) s right join (select user_id from get_crisp_sync_candidates()) t using (user_id) where s.fingerprint is null"
-```
-
-Expected: `drifted = 0`. A non-zero result means an aggregate is missing its `ORDER BY`.
-
-- [ ] **Step 5: Verify the grants landed on service_role**
-
-```bash
-npx supabase db query "select proname, proacl from pg_proc where proname in ('record_crisp_contact','confirm_crisp_sync','get_crisp_contact_deletions','get_crisp_sync_candidates')"
-```
-
-Expected: every `proacl` contains `service_role=X`. If one is empty, the `REVOKE` stripped it — re-run the grant loop.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 git add supabase/migrations/20260804000002_crisp_sync_rpcs.sql
@@ -1850,6 +1816,42 @@ npx supabase secrets set --env-file ./crisp-secrets.env
 ```
 
 where `crisp-secrets.env` contains `CRISP_WEBSITE_ID=`, `CRISP_IDENTIFIER=`, `CRISP_KEY=`. Delete the file afterwards with `rm -f ./crisp-secrets.env`. Confirm it is not tracked: it must never be committed.
+
+- [ ] **Step 1a: Apply the migrations and run the deferred DB verification**
+
+Tasks 3 and 4 wrote the migrations but could not execute them: the implementation worktree is Supabase-unlinked and carries no `.env.staging`. All live-DB verification lands here.
+
+```bash
+cat supabase/.temp/project-ref
+```
+
+Confirm staging (`wlyzhyfondykzpsiqsce`), not prod (`skjzpekeqefvlojenfsw`). The link state flips; check it, do not assume. Then:
+
+```bash
+npx supabase db push --linked
+```
+
+Then the four checks deferred from Tasks 3 and 4:
+
+```bash
+npx supabase db query "select column_name, data_type, is_nullable from information_schema.columns where table_name = 'crisp_contacts' order by ordinal_position"
+```
+Expected: seven rows, `user_id` nullable, `synced_email` not nullable.
+
+```bash
+npx supabase db query "select count(*) as candidates, count(distinct fingerprint) as distinct_fingerprints from get_crisp_sync_candidates()"
+```
+Expected: `candidates` > 0, and `distinct_fingerprints` equal to it. Two users sharing a hash is the NULL-concatenation bug.
+
+```bash
+npx supabase db query "select count(*) as drifted from (select user_id, fingerprint from get_crisp_sync_candidates() intersect select user_id, fingerprint from get_crisp_sync_candidates()) s right join (select user_id from get_crisp_sync_candidates()) t using (user_id) where s.fingerprint is null"
+```
+Expected: `drifted = 0`. Non-zero means an aggregate is missing its `ORDER BY`.
+
+```bash
+npx supabase db query "select proname, proacl from pg_proc where proname in ('record_crisp_contact','confirm_crisp_sync','get_crisp_contact_deletions','get_crisp_sync_candidates')"
+```
+Expected: every `proacl` contains `service_role=X`. An empty one means the `REVOKE` stripped it — re-run the grant loop.
 
 - [ ] **Step 2: Deploy the function**
 
