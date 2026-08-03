@@ -1,17 +1,16 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders, resolveAllowedOrigin } from "../_shared/cors.ts";
 import { stripe } from "../_shared/stripe.ts";
+import {
+  buildCheckoutIdempotencyKey,
+  resolveReturnPaths,
+  resolveTrialDays,
+} from "../_shared/trial.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const PAID_PLANS = ["start", "pro", "max"];
-
-// Launch promo: typing this code at checkout gives first-time subscribers a free
-// trial (one free month on monthly OR annual — a trial works uniformly across
-// intervals, unlike a %-off coupon which would zero out a full annual invoice).
-// The code is public (shown in the landing banner), so it's a constant, not a secret.
-const LAUNCH_PROMO = { code: "BEMVINDO", trialDays: 30 };
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
@@ -36,7 +35,6 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const planId = String(body.plan_id || "");
     const interval = body.interval === "year" ? "year" : "month";
-    const promoCode = String(body.promo_code || "").trim().toUpperCase();
     if (!PAID_PLANS.includes(planId)) return json({ error: "Invalid plan" }, 400, headers);
 
     const { data: plan } = await svc
@@ -49,8 +47,15 @@ Deno.serve(async (req: Request) => {
     // find-or-create Stripe customer for this workspace
     const { data: subRow } = await svc
       .from("workspace_subscriptions")
-      .select("stripe_customer_id, stripe_subscription_id")
+      .select("stripe_customer_id, stripe_subscription_id, status")
       .eq("workspace_id", workspaceId).maybeSingle();
+
+    // A workspace mid-subscription belongs in the billing portal, not a second
+    // checkout. Without this, a stale tab could open a duplicate subscription
+    // against the same customer.
+    if (subRow?.status === "active" || subRow?.status === "trialing") {
+      return json({ error: "Este workspace já tem uma assinatura ativa." }, 409, headers);
+    }
 
     let customerId = subRow?.stripe_customer_id as string | undefined;
     if (!customerId) {
@@ -65,23 +70,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Launch promo → a free trial, but only for first-time subscribers. A wrong or
-    // ineligible code fails loudly so the user can fix it before we redirect to Stripe.
-    const isFirstTimeSubscriber = !subRow?.stripe_subscription_id;
-    let trialDays: number | undefined;
-    if (promoCode) {
-      if (promoCode !== LAUNCH_PROMO.code) {
-        return json({ error: "Código promocional inválido." }, 400, headers);
-      }
-      if (!isFirstTimeSubscriber) {
-        return json(
-          { error: "Este código é válido apenas para novos assinantes." },
-          400,
-          headers,
-        );
-      }
-      trialDays = LAUNCH_PROMO.trialDays;
-    }
+    // Every workspace that has never subscribed gets the trial. No code, no gate.
+    const trialDays = resolveTrialDays(Boolean(subRow?.stripe_subscription_id));
+    const returnPaths = resolveReturnPaths(body.source);
 
     const appBaseUrl = resolveAllowedOrigin(req);
     const session = await stripe.checkout.sessions.create({
@@ -93,13 +84,15 @@ Deno.serve(async (req: Request) => {
         metadata: { workspace_id: workspaceId, plan_id: planId },
         ...(trialDays ? { trial_period_days: trialDays } : {}),
       },
-      // Allow promotion codes; skip card collection when a 100%-off coupon leaves
-      // nothing due. With a trial we collect the card upfront so billing succeeds
-      // when the trial ends.
+      // Stripe's own promo box stays open for any real future coupon.
       allow_promotion_codes: true,
-      payment_method_collection: trialDays ? "always" : "if_required",
-      success_url: `${appBaseUrl}/configuracao/cobranca?status=success`,
-      cancel_url: `${appBaseUrl}/configuracao/cobranca?status=cancelled`,
+      // Always collect the card: a trial has to convert on day 30.
+      payment_method_collection: "always",
+      success_url: `${appBaseUrl}${returnPaths.success}`,
+      cancel_url: `${appBaseUrl}${returnPaths.cancel}`,
+    }, {
+      // Two tabs racing inside the hour resolve to one session, not two.
+      idempotencyKey: buildCheckoutIdempotencyKey(workspaceId, planId, interval, Date.now()),
     });
 
     if (!session.url) throw new Error("Stripe returned no checkout URL");
