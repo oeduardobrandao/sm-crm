@@ -85,16 +85,23 @@ export function useMentionSearch() {
     [tarefasQuery.data],
   );
 
-  // Bumped on every search() call; a stale in-flight call (its token no longer the
-  // latest) skips the network fetch instead of racing it. This only debounces the
-  // outbound request -- callers (mentionSuggestion.ts) additionally guard the order
-  // in which results get APPLIED, since an older call can still resolve after a
-  // newer one even with this token check.
+  // Bumped at the START of every search() call (including the empty-query, no-await
+  // path), so a call can tell -- at any point after an await -- whether a newer call
+  // has since started. `@tiptap/suggestion` reuses a single closure-level `props`
+  // object across updates and re-reads it after `items()` resolves (see
+  // mentionSuggestion.ts's header comment), so it CANNOT be trusted to apply results
+  // in call order itself. The ordering guard has to live here, where "newest call"
+  // is unambiguous, and it has to make a superseded call a no-op -- returning ITS
+  // OWN (correctly-computed-for-its-own-query-but-stale) sections would still let an
+  // old query's results render over a newer query, just via a different bug.
   const debounceTokenRef = useRef(0);
+  const lastResultRef = useRef<MentionSection[]>([]);
 
   const search = useCallback(
     async (query: string): Promise<MentionSection[]> => {
       const trimmed = query.trim();
+      const token = ++debounceTokenRef.current;
+
       const membroSection: MentionSection = {
         key: 'membro',
         title: MENTION_SECTION_TITLES.membro,
@@ -102,13 +109,15 @@ export function useMentionSearch() {
       };
 
       if (trimmed.length === 0) {
-        return [membroSection];
+        lastResultRef.current = [membroSection];
+        return lastResultRef.current;
       }
 
-      const token = ++debounceTokenRef.current;
       await new Promise((resolve) => setTimeout(resolve, MENTION_SEARCH_DEBOUNCE_MS));
 
       let postItems: MentionSuggestionItem[] = [];
+      // Skip the network call entirely if a newer search() has already started --
+      // pure debounce optimization, NOT the correctness guard (see below).
       if (debounceTokenRef.current === token) {
         try {
           const rows = await searchPostsForMention(trimmed);
@@ -123,7 +132,15 @@ export function useMentionSearch() {
         }
       }
 
-      return [
+      // Correctness guard: if a newer call has started (or already finished) while
+      // this one was awaiting, THIS result is stale no matter how accurate it is for
+      // `trimmed` -- discard it and hand back whatever the most recently applied
+      // result was, so a late resolution is a render no-op for the caller.
+      if (debounceTokenRef.current !== token) {
+        return lastResultRef.current;
+      }
+
+      lastResultRef.current = [
         membroSection,
         { key: 'post', title: MENTION_SECTION_TITLES.post, items: postItems },
         {
@@ -137,6 +154,7 @@ export function useMentionSearch() {
           items: filterAndCapMentions(tarefaRefs, trimmed),
         },
       ];
+      return lastResultRef.current;
     },
     [membroRefs, clienteRefs, tarefaRefs],
   );

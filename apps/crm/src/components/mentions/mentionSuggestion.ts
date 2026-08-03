@@ -55,21 +55,17 @@ export const MentionSuggestion = Extension.create<MentionSuggestionOptions>({
       render: () => {
         let component: ReactRenderer<MentionListHandle, MentionListProps> | null = null;
 
-        // The plugin's view.update is async (it awaits items()), so overlapping calls
-        // from consecutive keystrokes can resolve out of order -- an older, slower
-        // call can land AFTER a newer one and overwrite the dropdown with stale
-        // results. onBeforeStart/onBeforeUpdate fire synchronously before the await,
-        // so tagging each call there and comparing on the other side of the await
-        // (onStart/onUpdate) lets a genuinely-stale resolution be dropped.
-        let renderSeq = 0;
-        let latestAppliedSeq = 0;
-        const seqByProps = new WeakMap<object, number>();
-
-        const tag = (props: object) => {
-          renderSeq += 1;
-          seqByProps.set(props, renderSeq);
-        };
-
+        // NOTE: `@tiptap/suggestion`'s plugin `view.update` is async (it awaits
+        // items()), but it reuses a SINGLE closure-level `props` object across
+        // updates and re-reads it after the await resolves -- it does not hand each
+        // call its own snapshot. That means a per-call ordering guard here (tagging
+        // `props` and comparing identities) is structurally unable to detect a stale
+        // resolution: by the time onUpdate fires, `props` already IS whatever the
+        // latest call left behind. The out-of-order-results guard instead lives in
+        // useMentionSearch.ts's `search()`, where "which call is newest" is
+        // unambiguous -- a superseded call there returns the last-applied result
+        // rather than its own (possibly stale) one, so `items` below never resolves
+        // with out-of-order data in the first place.
         const buildListProps = (
           props: SuggestionProps<MentionSection, MentionSuggestionItem>,
         ): MentionListProps => ({
@@ -79,11 +75,7 @@ export const MentionSuggestion = Extension.create<MentionSuggestionOptions>({
         });
 
         return {
-          onBeforeStart: tag,
-          onBeforeUpdate: tag,
-
           onStart: (props) => {
-            latestAppliedSeq = seqByProps.get(props) ?? renderSeq;
             component = new ReactRenderer(MentionList, {
               editor: props.editor,
               props: buildListProps(props),
@@ -91,9 +83,6 @@ export const MentionSuggestion = Extension.create<MentionSuggestionOptions>({
           },
 
           onUpdate: (props) => {
-            const seq = seqByProps.get(props) ?? 0;
-            if (seq < latestAppliedSeq) return; // superseded by a newer, already-applied call
-            latestAppliedSeq = seq;
             component?.updateProps(buildListProps(props));
           },
 
