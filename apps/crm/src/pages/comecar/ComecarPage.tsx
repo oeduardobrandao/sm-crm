@@ -5,13 +5,17 @@ import { toast } from 'sonner';
 import { Check, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import {
+  getEffectivePlanId,
   getWorkspaceSubscription,
   listActivePlans,
   startCheckout,
   type BillingInterval,
   type BillingPlan,
 } from '@/services/billing';
-import { isSelectableTrialPlan } from '@/pages/configuracao/cobranca/plan-display';
+import {
+  isSelectableTrialPlan,
+  resolveCurrentPlanId,
+} from '@/pages/configuracao/cobranca/plan-display';
 import { captureEvent } from '@/lib/analytics';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import { parsePlanIntent } from './plan-intent';
@@ -51,7 +55,7 @@ async function startAndRedirect(planId: string, interval: BillingInterval): Prom
 }
 
 export default function ComecarPage() {
-  const { role, loading: authLoading } = useAuth();
+  const { role, workspaceRole, loading: authLoading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [interval, setInterval] = useState<BillingInterval>('month');
@@ -62,7 +66,11 @@ export default function ComecarPage() {
   const autoStarted = useRef(false);
   const viewLogged = useRef(false);
 
-  const isOwner = role === 'owner';
+  // Follow the ACTIVE workspace role, not the stale profile-level role — a user
+  // can be owner in one workspace and agent in another, and switch_workspace
+  // never rewrites profiles.role. This mirrors TrialNudgeCard and what
+  // billing-checkout now enforces server side against workspace_members.
+  const isOwner = (workspaceRole ?? role) === 'owner';
 
   const {
     data: subscription,
@@ -84,16 +92,36 @@ export default function ComecarPage() {
     queryFn: listActivePlans,
     enabled: isOwner,
   });
+  // Same key TrialNudgeCard uses, so the two share one cache entry. Needed
+  // because hasEverSubscribed alone does not catch a comp/internal plan: a
+  // Lifetime workspace, or one an admin granted a paid plan in the platform
+  // admin portal, has no Stripe subscription and would otherwise sail past the
+  // guard and start a paid subscription on top of its comp arrangement.
+  const {
+    data: effectivePlanId,
+    isLoading: planLoading,
+    isError: planError,
+    refetch: refetchEffectivePlan,
+  } = useQuery({
+    queryKey: ['billing', 'effective-plan'],
+    queryFn: getEffectivePlanId,
+    enabled: isOwner,
+  });
 
   // Hooks cannot sit behind the early returns below, so the effects re-check
   // readiness themselves. `ready` is what keeps them from firing against
   // undefined data mid-load.
-  const ready = !authLoading && isOwner && !subLoading && !plansLoading;
-  const hasError = subError || plansError;
+  const ready = !authLoading && isOwner && !subLoading && !plansLoading && !planLoading;
+  const hasError = subError || plansError || planError;
+  // `free` is the only state that may start a trial. A NULL workspaces.plan_id
+  // is a brand-new workspace and resolves to 'free'; anything else (paid, or a
+  // comp/internal plan like Lifetime) is already provisioned.
+  const currentPlanId = resolveCurrentPlanId(effectivePlanId, subscription?.plan_id);
   // A failed subscription query must never read as "never subscribed" - that
   // would let a workspace that already subscribed reopen a trial checkout.
-  // `eligible` stays false while either query has errored.
-  const eligible = ready && !hasError && subscription?.hasEverSubscribed !== true;
+  // `eligible` stays false while any query has errored.
+  const eligible =
+    ready && !hasError && subscription?.hasEverSubscribed !== true && currentPlanId === 'free';
 
   useEffect(() => {
     if (!eligible || viewLogged.current) return;
@@ -110,7 +138,7 @@ export default function ComecarPage() {
     })();
   }, [eligible, intent]);
 
-  if (authLoading || (isOwner && (subLoading || plansLoading))) {
+  if (authLoading || (isOwner && (subLoading || plansLoading || planLoading))) {
     return (
       <div className="comecar-shell comecar-shell--center">
         <Loader2 className="comecar-spin" size={24} aria-hidden="true" />
@@ -134,6 +162,7 @@ export default function ComecarPage() {
             onClick={() => {
               void refetchSubscription();
               void refetchPlans();
+              void refetchEffectivePlan();
             }}
           >
             Tentar novamente
@@ -144,6 +173,11 @@ export default function ComecarPage() {
   }
 
   if (subscription?.hasEverSubscribed) return <Navigate to="/dashboard" replace />;
+  // Already on a paid or comp/internal plan. /comecar is a typeable URL that
+  // WorkspaceSetupPage links to unconditionally, so this has to be enforced
+  // here and not only by hiding the entry point. Mirrors the invariant
+  // canUpgradeTo already holds on Plano e Cobrança.
+  if (currentPlanId !== 'free') return <Navigate to="/dashboard" replace />;
 
   const intentPlan = intent ? plans?.find((p) => p.id === intent.planId) : undefined;
   if (intent) {
@@ -197,8 +231,15 @@ export default function ComecarPage() {
         <div className="comecar-grid">
           {selectable.map((p) => {
             const isYear = interval === 'year';
-            const monthly =
-              isYear && p.price_brl_annual != null ? p.price_brl_annual / 12 : p.price_brl;
+            // No price for the SELECTED interval means no Stripe price id for
+            // it either, so checkout would 400 with "Plan price not
+            // configured". Show the "Sob consulta" card, but never an
+            // actionable CTA behind it. Falling back to the monthly figure
+            // under the Anual toggle would price the card wrong on top of
+            // offering something unbuyable. Matches PricingSection.
+            const amount = isYear ? p.price_brl_annual : p.price_brl;
+            const unpriced = amount == null || amount <= 0;
+            const monthly = unpriced ? null : isYear ? amount / 12 : amount;
             return (
               <div
                 key={p.id}
@@ -224,7 +265,7 @@ export default function ComecarPage() {
                   type="button"
                   className="comecar-cta"
                   onClick={() => handleStart(p.id)}
-                  disabled={busy !== null}
+                  disabled={busy !== null || unpriced}
                 >
                   {busy === p.id ? 'Aguarde…' : 'Começar teste'}
                 </button>

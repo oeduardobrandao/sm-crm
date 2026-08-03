@@ -49,7 +49,13 @@ export default function DashboardPage() {
       const id = window.setInterval(() => {
         tries += 1;
         queryClient.invalidateQueries({ queryKey: ['billing'] });
-        queryClient.invalidateQueries({ queryKey: ['workspaceLimits'] });
+        // The entitlements cache is keyed ['workspace-limits', workspaceId]
+        // (useWorkspaceLimits) with a 5 minute staleTime. The prefix alone
+        // reaches the workspace-scoped entry without needing the id; getting
+        // this key wrong leaves ProtectedRoute gating on the old plan for five
+        // minutes, so a user who just started a trial to unlock relatórios
+        // walks straight into the upgrade paywall.
+        queryClient.invalidateQueries({ queryKey: ['workspace-limits'] });
         if (tries >= 5) window.clearInterval(id);
       }, 2000);
       setSearchParams({}, { replace: true });

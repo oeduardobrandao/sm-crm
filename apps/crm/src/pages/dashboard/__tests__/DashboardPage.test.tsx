@@ -1,16 +1,29 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { act, render, screen } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { useAuthMock, useQueriesMock, useQueryMock, useQueryClientMock, onboardingBannerMock } =
-  vi.hoisted(() => ({
-    useAuthMock: vi.fn(),
-    useQueriesMock: vi.fn(),
-    useQueryMock: vi.fn(),
-    useQueryClientMock: vi.fn(),
-    onboardingBannerMock: vi.fn(),
-  }));
+const {
+  useAuthMock,
+  useQueriesMock,
+  useQueryMock,
+  useQueryClientMock,
+  onboardingBannerMock,
+  toastSuccessMock,
+  toastErrorMock,
+} = vi.hoisted(() => ({
+  useAuthMock: vi.fn(),
+  useQueriesMock: vi.fn(),
+  useQueryMock: vi.fn(),
+  useQueryClientMock: vi.fn(),
+  onboardingBannerMock: vi.fn(),
+  toastSuccessMock: vi.fn(),
+  toastErrorMock: vi.fn(),
+}));
+
+vi.mock('sonner', () => ({
+  toast: { success: toastSuccessMock, error: toastErrorMock },
+}));
 
 vi.mock('@tanstack/react-query', () => ({
   useQueries: useQueriesMock,
@@ -62,10 +75,16 @@ const mockedOnboardingBanner = vi.mocked(onboardingBannerMock);
 
 const frozenNow = new Date('2026-04-18T12:00:00-03:00');
 
-function renderDashboardPage() {
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location-search">{location.search}</div>;
+}
+
+function renderDashboardPage(entry = '/dashboard') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[entry]}>
       <DashboardPage />
+      <LocationProbe />
     </MemoryRouter>,
   );
 }
@@ -102,6 +121,9 @@ describe('DashboardPage', () => {
     mockedUseQuery.mockReset();
     mockedUseQueryClient.mockReset();
     mockedOnboardingBanner.mockReset();
+
+    toastSuccessMock.mockReset();
+    toastErrorMock.mockReset();
 
     mockedUseQueryClient.mockReturnValue({ invalidateQueries: vi.fn() } as never);
     mockedUseAuth.mockReturnValue({ role: 'admin', canSeeFinancials: true } as never);
@@ -299,6 +321,76 @@ describe('DashboardPage', () => {
     expect(screen.getByText('A pagar')).toBeInTheDocument();
     expect(screen.getByText('Saldo')).toBeInTheDocument();
     expect(screen.getByText('Receita mensal')).toBeInTheDocument();
+  });
+
+  // The Stripe checkout return leg. This is the only surface that turns a
+  // completed checkout into a visible plan change, so the exact invalidation
+  // keys are asserted: a key that matches nothing leaves entitlements stale for
+  // the full 5 minute staleTime, and the user who just started a trial to
+  // unlock relatórios walks into the upgrade paywall instead.
+  describe('the ?trial= return handler', () => {
+    it('toasts, invalidates billing and workspace-limits, and strips the param on ?trial=started', () => {
+      const invalidateQueries = vi.fn();
+      mockedUseQueryClient.mockReturnValue({ invalidateQueries } as never);
+
+      renderDashboardPage('/dashboard?trial=started');
+
+      expect(toastSuccessMock).toHaveBeenCalledWith(
+        'Teste de 30 dias ativado! Atualizando seu plano…',
+      );
+      // The re-reads are on an interval, so nothing has been invalidated yet.
+      expect(invalidateQueries).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+
+      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['billing'] });
+      // ['workspace-limits'], NOT ['workspaceLimits'] — useWorkspaceLimits keys
+      // its cache ['workspace-limits', workspaceId] and the prefix is what
+      // reaches it.
+      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['workspace-limits'] });
+
+      expect(screen.getByTestId('location-search')).toHaveTextContent('');
+    });
+
+    it('re-reads five times and then stops', () => {
+      const invalidateQueries = vi.fn();
+      mockedUseQueryClient.mockReturnValue({ invalidateQueries } as never);
+
+      renderDashboardPage('/dashboard?trial=started');
+
+      act(() => {
+        vi.advanceTimersByTime(2000 * 10);
+      });
+
+      // 5 ticks x 2 keys.
+      expect(invalidateQueries).toHaveBeenCalledTimes(10);
+    });
+
+    it('shows no toast and strips the param on ?trial=skipped', () => {
+      const invalidateQueries = vi.fn();
+      mockedUseQueryClient.mockReturnValue({ invalidateQueries } as never);
+
+      renderDashboardPage('/dashboard?trial=skipped');
+
+      expect(toastSuccessMock).not.toHaveBeenCalled();
+      expect(toastErrorMock).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(2000 * 10);
+      });
+
+      expect(invalidateQueries).not.toHaveBeenCalled();
+      expect(screen.getByTestId('location-search')).toHaveTextContent('');
+    });
+
+    it('leaves an unrelated query string alone when there is no trial param', () => {
+      renderDashboardPage('/dashboard?foo=bar');
+
+      expect(toastSuccessMock).not.toHaveBeenCalled();
+      expect(screen.getByTestId('location-search')).toHaveTextContent('?foo=bar');
+    });
   });
 
   it('shows the empty today card when there are no events', () => {

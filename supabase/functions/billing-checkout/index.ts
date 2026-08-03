@@ -3,9 +3,11 @@ import { buildCorsHeaders, resolveAllowedOrigin } from "../_shared/cors.ts";
 import { stripe } from "../_shared/stripe.ts";
 import {
   buildCheckoutIdempotencyKey,
+  resolveCheckoutSource,
   resolveReturnPaths,
   resolveTrialDays,
 } from "../_shared/trial.ts";
+import { isWorkspaceOwner } from "../_shared/workspace-role.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -27,10 +29,26 @@ Deno.serve(async (req: Request) => {
     if (authError || !user) return json({ error: "Unauthorized" }, 401, headers);
 
     const { data: profile } = await svc
-      .from("profiles").select("role, conta_id").eq("id", user.id).single();
+      .from("profiles").select("conta_id").eq("id", user.id).single();
     if (!profile?.conta_id) return json({ error: "No workspace" }, 400, headers);
-    if (profile.role !== "owner") return json({ error: "Forbidden" }, 403, headers);
     const workspaceId = profile.conta_id as string;
+
+    // Owner is checked against workspace_members for THIS workspace, never
+    // against profiles.role. profiles.role is global and switch_workspace
+    // rewrites conta_id/active_workspace_id without touching it, so a user who
+    // owns workspace A and is an agent in workspace B kept role = 'owner' while
+    // working inside B — enough to open a paid subscription charged to a
+    // workspace they do not own. This client is service-role, so RLS does not
+    // hide the membership row.
+    const { data: membership } = await svc
+      .from("workspace_members")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("workspace_id", workspaceId)
+      .maybeSingle();
+    if (!isWorkspaceOwner(membership?.role as string | null | undefined)) {
+      return json({ error: "Forbidden" }, 403, headers);
+    }
 
     const body = await req.json().catch(() => ({}));
     const planId = String(body.plan_id || "");
@@ -72,7 +90,8 @@ Deno.serve(async (req: Request) => {
 
     // Every workspace that has never subscribed gets the trial. No code, no gate.
     const trialDays = resolveTrialDays(Boolean(subRow?.stripe_subscription_id));
-    const returnPaths = resolveReturnPaths(body.source);
+    const source = resolveCheckoutSource(body.source);
+    const returnPaths = resolveReturnPaths(source);
 
     const appBaseUrl = resolveAllowedOrigin(req);
     const session = await stripe.checkout.sessions.create({
@@ -91,8 +110,18 @@ Deno.serve(async (req: Request) => {
       success_url: `${appBaseUrl}${returnPaths.success}`,
       cancel_url: `${appBaseUrl}${returnPaths.cancel}`,
     }, {
-      // Two tabs racing inside the hour resolve to one session, not two.
-      idempotencyKey: buildCheckoutIdempotencyKey(workspaceId, planId, interval, Date.now()),
+      // Two tabs racing inside the hour resolve to one session, not two. The
+      // source is part of the key because it changes success_url/cancel_url:
+      // reusing a key with different parameters is an idempotency_error at
+      // Stripe, which would hard-block a user retrying the same plan from a
+      // different surface within the hour.
+      idempotencyKey: buildCheckoutIdempotencyKey(
+        workspaceId,
+        planId,
+        interval,
+        source,
+        Date.now(),
+      ),
     });
 
     if (!session.url) throw new Error("Stripe returned no checkout URL");

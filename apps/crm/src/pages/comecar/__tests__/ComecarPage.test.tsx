@@ -7,12 +7,18 @@ vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('@/services/billing', () => ({
   listActivePlans: vi.fn(),
   getWorkspaceSubscription: vi.fn(),
+  getEffectivePlanId: vi.fn(),
   startCheckout: vi.fn(),
 }));
 vi.mock('@/lib/analytics', () => ({ captureEvent: vi.fn() }));
 
 import { useAuth } from '@/context/AuthContext';
-import { getWorkspaceSubscription, listActivePlans, startCheckout } from '@/services/billing';
+import {
+  getEffectivePlanId,
+  getWorkspaceSubscription,
+  listActivePlans,
+  startCheckout,
+} from '@/services/billing';
 import ComecarPage from '../ComecarPage';
 
 const assign = vi.fn();
@@ -62,6 +68,8 @@ beforeEach(() => {
   vi.mocked(useAuth).mockReturnValue({ role: 'owner', loading: false } as never);
   vi.mocked(listActivePlans).mockResolvedValue(PLANS as never);
   vi.mocked(getWorkspaceSubscription).mockResolvedValue(NEVER_SUBSCRIBED as never);
+  // A brand-new workspace has workspaces.plan_id = NULL; it resolves to 'free'.
+  vi.mocked(getEffectivePlanId).mockResolvedValue(null);
   vi.mocked(startCheckout).mockResolvedValue('https://checkout.stripe.com/abc');
 });
 
@@ -94,6 +102,68 @@ describe('ComecarPage', () => {
     } as never);
     renderPage();
     expect(await screen.findByText('Painel')).toBeInTheDocument();
+  });
+
+  // A comp/internal plan (Lifetime) has no Stripe subscription, so
+  // hasEverSubscribed is false and the trial guard alone lets it through. The
+  // effective plan id is what catches it — the same invariant canUpgradeTo
+  // enforces on Plano e Cobrança.
+  it('redirects a workspace on a comp/internal plan', async () => {
+    vi.mocked(getEffectivePlanId).mockResolvedValue('lifetime');
+    renderPage();
+    expect(await screen.findByText('Painel')).toBeInTheDocument();
+    expect(startCheckout).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-start checkout for a comp/internal plan carrying an intent', async () => {
+    vi.mocked(getEffectivePlanId).mockResolvedValue('lifetime');
+    renderPage('?plan=pro&interval=month');
+    expect(await screen.findByText('Painel')).toBeInTheDocument();
+    expect(startCheckout).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('redirects a workspace already on a paid plan', async () => {
+    vi.mocked(getEffectivePlanId).mockResolvedValue('pro');
+    renderPage();
+    expect(await screen.findByText('Painel')).toBeInTheDocument();
+    expect(startCheckout).not.toHaveBeenCalled();
+  });
+
+  it('shows the step when workspaceRole is owner despite a stale profile-level agent role', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      role: 'agent',
+      workspaceRole: 'owner',
+      loading: false,
+    } as never);
+    renderPage();
+    expect(await screen.findByText('Comece com 30 dias grátis')).toBeInTheDocument();
+  });
+
+  it('redirects when workspaceRole is agent despite a stale profile-level owner role', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      role: 'owner',
+      workspaceRole: 'agent',
+      loading: false,
+    } as never);
+    renderPage();
+    expect(await screen.findByText('Painel')).toBeInTheDocument();
+  });
+
+  it('disables the CTA for a plan with no price on the selected interval', async () => {
+    vi.mocked(listActivePlans).mockResolvedValue([
+      { ...PLANS[1], price_brl_annual: null },
+    ] as never);
+    renderPage();
+
+    const monthly = await screen.findByRole('button', { name: 'Começar teste' });
+    expect(monthly).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+
+    await waitFor(() => expect(screen.getByText(/Sob consulta/)).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Começar teste' })).toBeDisabled();
+    expect(startCheckout).not.toHaveBeenCalled();
   });
 
   it('stays on the step after an abandoned checkout left a status-less row', async () => {

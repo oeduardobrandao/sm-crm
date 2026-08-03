@@ -32,12 +32,23 @@ export function resolveTrialDays(hasPriorSubscription: boolean): number | undefi
 }
 
 /**
+ * Normalises the request body's `source` to one of the two known values.
+ * Anything unrecognised becomes "billing". Both the return paths and the
+ * idempotency key are derived from THIS value, never from the raw body: keeping
+ * them in lockstep is what stops a hostile body from minting an unbounded number
+ * of distinct idempotency keys and defeating the duplicate-session guard.
+ */
+export function resolveCheckoutSource(source: unknown): CheckoutSource {
+  return source === "onboarding" ? "onboarding" : "billing";
+}
+
+/**
  * Where Stripe returns the user. The caller supplies a SOURCE, never a URL, and
  * anything unrecognised falls back to billing — so a hostile request body cannot
  * turn this into an open redirect.
  */
 export function resolveReturnPaths(source: unknown): ReturnPaths {
-  return source === "onboarding" ? RETURN_PATHS.onboarding : RETURN_PATHS.billing;
+  return RETURN_PATHS[resolveCheckoutSource(source)];
 }
 
 /**
@@ -45,13 +56,20 @@ export function resolveReturnPaths(source: unknown): ReturnPaths {
  * hour get the SAME Stripe session back rather than two separately completable
  * ones. The hour bucket stops a legitimate later retry from being pinned to a
  * stale session (Stripe retains keys for 24h).
+ *
+ * `source` is part of the key because it changes the request parameters: the
+ * success/cancel URLs come from resolveReturnPaths(source). Stripe rejects a
+ * reused key whose parameters differ (idempotency_error), so without this a user
+ * who starts checkout from /comecar, cancels, then retries the same plan from
+ * Plano e Cobrança would be hard-blocked for the rest of the hour.
  */
 export function buildCheckoutIdempotencyKey(
   workspaceId: string,
   planId: string,
   interval: string,
+  source: string,
   nowMs: number,
 ): string {
   const bucket = Math.floor(nowMs / 3_600_000);
-  return `co_${workspaceId}_${planId}_${interval}_${bucket}`;
+  return `co_${workspaceId}_${planId}_${interval}_${source}_${bucket}`;
 }
