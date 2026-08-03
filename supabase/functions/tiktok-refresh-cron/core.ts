@@ -17,6 +17,7 @@
 
 import type { CronFailureDetail } from "../_shared/notify.ts";
 import type { ThumbnailStorage } from "../_shared/tiktok-thumbnail-cache.ts";
+import { fetchInternalWorkspaceIds as realFetchInternalWorkspaceIds } from "../_shared/internal-workspaces.ts";
 
 // deno-lint-ignore no-explicit-any
 type DbClient = any;
@@ -45,6 +46,9 @@ export interface TikTokRefreshCronDeps {
   tiktokFetch?: (path: string, init: RequestInit & { accessToken: string }) => Promise<unknown>;
   fetchImpl?: typeof fetch;
   now?: () => Date;
+  /** Workspaces flagged `is_internal` are skipped entirely. Defaults to the real
+   * _shared/internal-workspaces.ts lookup; overridable so tests need no workspaces table. */
+  fetchInternalWorkspaceIds?: (svc: DbClient) => Promise<Set<string>>;
 }
 
 interface RefreshCandidateRow {
@@ -53,9 +57,16 @@ interface RefreshCandidateRow {
   avatar_url: string | null;
   access_token_expires_at: string | null;
   refresh_token_expires_at: string | null;
+  clientes: { conta_id: string } | Array<{ conta_id: string }>;
 }
 
 const CRON_NAME = "tiktok-refresh-cron";
+
+/** PostgREST returns an embedded to-one relation as an object or a 1-element array. */
+function contaIdOf(account: RefreshCandidateRow): string {
+  const clientes = account.clientes;
+  return Array.isArray(clientes) ? clientes[0]?.conta_id : clientes?.conta_id;
+}
 
 /** Extracts a readable message from an Error, a PostgrestError-shaped object (supabase-js
  * `throw error` on a failed select surfaces `{ message, code, ... }`, not an Error instance),
@@ -119,15 +130,30 @@ export async function runTikTokRefreshCron(deps: TikTokRefreshCronDeps): Promise
 
     const { data: accounts, error } = await svc
       .from("tiktok_accounts")
-      .select("id, client_id, avatar_url, access_token_expires_at, refresh_token_expires_at")
+      .select(
+        "id, client_id, avatar_url, access_token_expires_at, refresh_token_expires_at, clientes!inner(conta_id)",
+      )
       .eq("authorization_status", "active")
       .lte("access_token_expires_at", accessWindowIso);
 
     if (error) throw error;
 
-    const rows = (accounts ?? []) as RefreshCandidateRow[];
-    if (rows.length === 0) {
+    const candidates = (accounts ?? []) as RefreshCandidateRow[];
+    if (candidates.length === 0) {
       return json({ success: true, refreshed: 0, failed: 0 }, 200);
+    }
+
+    // Internal/seed workspaces are skipped: their credentials are placeholders,
+    // so every refresh attempt fails identically and files an alert.
+    const internalLookup = deps.fetchInternalWorkspaceIds ?? realFetchInternalWorkspaceIds;
+    const internal = await internalLookup(svc);
+    const rows = candidates.filter((a) => !internal.has(contaIdOf(a)));
+    const skippedInternal = candidates.length - rows.length;
+    if (skippedInternal > 0) {
+      console.log(`[${CRON_NAME}] Skipped ${skippedInternal} account(s) in internal workspaces`);
+    }
+    if (rows.length === 0) {
+      return json({ success: true, refreshed: 0, failed: 0, skippedInternal }, 200);
     }
 
     let refreshedCount = 0;
