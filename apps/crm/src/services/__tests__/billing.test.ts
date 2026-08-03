@@ -6,13 +6,19 @@ vi.mock('../../lib/supabase', () => ({
   supabase: {
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: 'tok' } } }),
+      getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }),
     },
     from,
   },
 }));
 
 import { supabase } from '../../lib/supabase';
-import { listPublicPricingPlans, startCheckout, openBillingPortal } from '../billing';
+import {
+  listPublicPricingPlans,
+  startCheckout,
+  openBillingPortal,
+  getWorkspaceSubscription,
+} from '../billing';
 
 describe('billing service', () => {
   beforeEach(() => {
@@ -102,21 +108,35 @@ describe('billing service', () => {
     expect(url).toBe('https://checkout.stripe.com/abc');
     const [calledUrl, opts] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(calledUrl).toContain('/functions/v1/billing-checkout');
-    expect(JSON.parse(opts.body)).toEqual({ plan_id: 'pro', interval: 'year' });
+    expect(JSON.parse(opts.body)).toEqual({ plan_id: 'pro', interval: 'year', source: 'billing' });
     expect(opts.headers.Authorization).toBe('Bearer tok');
   });
 
-  it('startCheckout includes promo_code only when provided', async () => {
+  it('startCheckout sends the checkout source and never a promo code', async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       json: async () => ({ url: 'https://checkout.stripe.com/abc' }),
     });
-    await startCheckout('pro', 'month', 'BEMVINDO');
+    await startCheckout('pro', 'month', 'onboarding');
     const [, opts] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(JSON.parse(opts.body)).toEqual({
       plan_id: 'pro',
       interval: 'month',
-      promo_code: 'BEMVINDO',
+      source: 'onboarding',
+    });
+  });
+
+  it('startCheckout defaults the source to billing', async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ url: 'https://checkout.stripe.com/abc' }),
+    });
+    await startCheckout('pro', 'year');
+    const [, opts] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(JSON.parse(opts.body)).toEqual({
+      plan_id: 'pro',
+      interval: 'year',
+      source: 'billing',
     });
   });
 
@@ -135,5 +155,53 @@ describe('billing service', () => {
       json: async () => ({ url: 'https://billing.stripe.com/xyz' }),
     });
     expect(await openBillingPortal()).toBe('https://billing.stripe.com/xyz');
+  });
+
+  function mockSubscriptionRow(row: Record<string, unknown> | null) {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: row, error: null });
+    const subEq = vi.fn().mockReturnValue({ maybeSingle });
+    const subSelect = vi.fn().mockReturnValue({ eq: subEq });
+    const profileSingle = vi.fn().mockResolvedValue({ data: { conta_id: 'ws-1' }, error: null });
+    const profileEq = vi.fn().mockReturnValue({ single: profileSingle });
+    const profileSelect = vi.fn().mockReturnValue({ eq: profileEq });
+    vi.mocked(supabase.auth.getUser).mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+    } as never);
+    from.mockImplementation((table: string) =>
+      table === 'profiles' ? { select: profileSelect } : { select: subSelect },
+    );
+    return { subSelect };
+  }
+
+  it('derives hasEverSubscribed and hides the raw stripe id', async () => {
+    const { subSelect } = mockSubscriptionRow({
+      status: 'active',
+      plan_id: 'pro',
+      current_period_end: null,
+      cancel_at_period_end: false,
+      past_due_since: null,
+      next_payment_attempt: null,
+      stripe_subscription_id: 'sub_123',
+    });
+    const result = await getWorkspaceSubscription();
+    expect(result?.hasEverSubscribed).toBe(true);
+    expect(result).not.toHaveProperty('stripe_subscription_id');
+    expect(subSelect).toHaveBeenCalledWith(
+      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, stripe_subscription_id',
+    );
+  });
+
+  it('treats an abandoned-checkout row as never subscribed', async () => {
+    mockSubscriptionRow({
+      status: null,
+      plan_id: null,
+      current_period_end: null,
+      cancel_at_period_end: false,
+      past_due_since: null,
+      next_payment_attempt: null,
+      stripe_subscription_id: null,
+    });
+    const result = await getWorkspaceSubscription();
+    expect(result?.hasEverSubscribed).toBe(false);
   });
 });

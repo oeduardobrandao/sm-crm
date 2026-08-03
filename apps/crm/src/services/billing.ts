@@ -46,7 +46,15 @@ export interface WorkspaceSubscription {
   cancel_at_period_end: boolean;
   past_due_since: string | null;
   next_payment_attempt: string | null;
+  /**
+   * True once the workspace has ever held a Stripe subscription — the trial
+   * eligibility flag. The raw stripe_subscription_id is deliberately dropped in
+   * the service and never reaches component state.
+   */
+  hasEverSubscribed: boolean;
 }
+
+export type CheckoutSource = 'onboarding' | 'billing';
 
 const FUNCTIONS_BASE = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1';
 
@@ -128,26 +136,29 @@ export async function getWorkspaceSubscription(): Promise<WorkspaceSubscription 
   const { data, error } = await supabase
     .from('workspace_subscriptions')
     .select(
-      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt',
+      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, stripe_subscription_id',
     )
     .eq('workspace_id', profile.conta_id)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return (data as WorkspaceSubscription) ?? null;
+  if (!data) return null;
+  const { stripe_subscription_id: subscriptionId, ...rest } = data as Record<string, unknown>;
+  return {
+    ...(rest as Omit<WorkspaceSubscription, 'hasEverSubscribed'>),
+    hasEverSubscribed: Boolean(subscriptionId),
+  };
 }
 
 /** Starts Stripe Checkout; returns the hosted URL to redirect to. */
 export async function startCheckout(
   planId: string,
   interval: BillingInterval,
-  promoCode?: string,
+  source: CheckoutSource = 'billing',
 ): Promise<string> {
-  const body: Record<string, unknown> = { plan_id: planId, interval };
-  if (promoCode) body.promo_code = promoCode;
   const res = await fetch(`${FUNCTIONS_BASE}/billing-checkout`, {
     method: 'POST',
     headers: await authHeaders(),
-    body: JSON.stringify(body),
+    body: JSON.stringify({ plan_id: planId, interval, source }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);

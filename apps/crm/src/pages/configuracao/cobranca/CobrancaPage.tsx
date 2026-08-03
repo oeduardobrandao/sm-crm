@@ -132,7 +132,7 @@ export default function CobrancaPage() {
   async function handleUpgrade(planId: string) {
     setBusy(planId);
     try {
-      const url = await startCheckout(planId, interval, promo.trim() || undefined);
+      const url = await startCheckout(planId, interval, 'billing');
       captureEvent(
         'checkout_started',
         { plan_id: planId, billing_interval: interval },
