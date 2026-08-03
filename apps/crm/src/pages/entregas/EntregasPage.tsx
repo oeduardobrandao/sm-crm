@@ -128,26 +128,33 @@ export default function EntregasPage() {
     launchTour(); // replay does NOT clear localStorage; completing again just re-sets the flag
   };
 
-  // Auto-open drawer when navigated with ?drawer=<workflowId>
+  // Auto-open drawer when navigated with ?drawer=<workflowId>, optionally expanding a
+  // single post with &post=<postId> (how a linked post in /mensagens is reached).
   const pendingDrawerId = useRef<number | null>(null);
+  const pendingPostId = useRef<number | null>(null);
   const drawerParam = searchParams.get('drawer');
+  const postParam = searchParams.get('post');
   useEffect(() => {
     if (!drawerParam) return;
     const parsed = parseInt(drawerParam, 10);
     if (!isNaN(parsed)) {
       pendingDrawerId.current = parsed;
-      // Drop only the transient param — the rest of the query is the shareable
-      // view state and must survive.
+      const parsedPost = postParam ? parseInt(postParam, 10) : NaN;
+      pendingPostId.current = isNaN(parsedPost) ? null : parsedPost;
+      // Drop only the transient params — the rest of the query is the shareable view state
+      // and must survive. On mount the sync effect below runs in the same commit and wins;
+      // this removal is what covers a navigation that leaves `currentQuery` unchanged.
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
           next.delete('drawer');
+          next.delete('post');
           return next;
         },
         { replace: true },
       );
     }
-  }, [drawerParam, setSearchParams]);
+  }, [drawerParam, postParam, setSearchParams]);
 
   // Keep the URL in sync with the shareable view state (view + mode + filters),
   // so any Entregas screen can be shared or bookmarked as-is.
@@ -161,15 +168,12 @@ export default function EntregasPage() {
           : 'entregas';
   const currentQuery = serializeEntregasQuery({ view: activeView, mode: activeMode, filters });
   useEffect(() => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(currentQuery);
-        const drawer = prev.get('drawer');
-        if (drawer) next.set('drawer', drawer); // let the drawer effect consume it
-        return next;
-      },
-      { replace: true },
-    );
+    // `currentQuery` alone — the transient ?drawer=/?post= params are deliberately dropped.
+    // They were previously carried over from `prev`, but `prev` is the render-time snapshot,
+    // which still holds them even after the drawer effect above ran in the same commit. That
+    // re-added them on every sync and pinned them in the URL, so every reload of a shared or
+    // bookmarked link re-opened the drawer. The refs above already hold what was consumed.
+    setSearchParams(new URLSearchParams(currentQuery), { replace: true });
   }, [currentQuery, setSearchParams]);
 
   useEffect(() => {
@@ -177,6 +181,8 @@ export default function EntregasPage() {
     const match = cards.find((c) => c.workflow.id === pendingDrawerId.current);
     if (match) {
       pendingDrawerId.current = null;
+      setDrawerInitialPostId(pendingPostId.current);
+      pendingPostId.current = null;
       setDrawerCard(match);
     }
   }, [cards]);

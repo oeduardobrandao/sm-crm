@@ -81,7 +81,7 @@ export function PostChip({ postId, workflowId, titulo }: Props) {
       onBlur={cancelOpen}
     >
       <Link
-        to={`/entregas?drawer=${workflowId}`}
+        to={`/entregas?drawer=${workflowId}&post=${postId}`}
         className="flex w-fit items-center gap-2 rounded-md border border-[var(--border-color)] px-3 py-2 font-semibold transition-colors hover:bg-[var(--surface-hover)]"
         style={{ background: 'var(--bg-color)' }}
       >

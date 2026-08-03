@@ -278,4 +278,12 @@ describe('MensagensPage', () => {
     fireEvent.mouseLeave(chip.parentElement!);
     await waitFor(() => expect(screen.queryByTestId('post-hover-preview')).not.toBeInTheDocument());
   });
+
+  // The chip used to link to the fluxo alone, which opened the workflow drawer with no
+  // post expanded — the linked post was the one thing the user could not reach.
+  it('links the post chip to the post inside its fluxo, not just the fluxo', async () => {
+    await abrirConversaAcme();
+    const chip = screen.getByRole('link', { name: 'Post de julho' });
+    expect(chip).toHaveAttribute('href', '/entregas?drawer=3&post=7');
+  });
 });
