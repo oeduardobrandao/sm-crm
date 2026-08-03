@@ -13,7 +13,7 @@ import {
   type BillingPlan,
 } from '@/services/billing';
 import { isInternalPlan, resolveCurrentPlanId, isPlanVisible, canUpgradeTo } from './plan-display';
-import { captureEvent } from '@/lib/analytics';
+import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import './cobranca.css';
 
 const RECOMMENDED_ID = 'pro';
@@ -61,7 +61,6 @@ export default function CobrancaPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [interval, setInterval] = useState<BillingInterval>('month');
   const [busy, setBusy] = useState<string | null>(null);
-  const [promo, setPromo] = useState('');
 
   const isOwner = role === 'owner';
   const { data: plans, isLoading: plansLoading } = useQuery({
@@ -133,11 +132,7 @@ export default function CobrancaPage() {
     setBusy(planId);
     try {
       const url = await startCheckout(planId, interval, 'billing');
-      captureEvent(
-        'checkout_started',
-        { plan_id: planId, billing_interval: interval },
-        { sendInstantly: true },
-      );
+      captureCheckoutStarted(planId, interval, 'billing');
       window.location.assign(url);
     } catch (err) {
       toast.error('Erro ao iniciar checkout: ' + (err as Error).message);
@@ -161,13 +156,14 @@ export default function CobrancaPage() {
       return <span className="plan-cta__static">Plano atual</span>;
     }
     if (canUpgradeTo(p.id, currentPlanId, hasActiveSub)) {
+      const firstTime = !subscription?.hasEverSubscribed;
       return (
         <button
           className="btn-primary"
           onClick={() => handleUpgrade(p.id)}
           disabled={busy === p.id}
         >
-          {busy === p.id ? 'Aguarde…' : 'Fazer upgrade'}
+          {busy === p.id ? 'Aguarde…' : firstTime ? 'Começar teste de 30 dias' : 'Fazer upgrade'}
         </button>
       );
     }
@@ -223,18 +219,12 @@ export default function CobrancaPage() {
             Economize até {annualSavingsPct}% no anual
           </span>
         )}
-        <div className="billing-promo">
-          <label htmlFor="promo-code">Tem um código promocional?</label>
-          <input
-            id="promo-code"
-            type="text"
-            value={promo}
-            onChange={(e) => setPromo(e.target.value)}
-            placeholder="Código"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </div>
+        {!subscription?.hasEverSubscribed && (
+          <span className="billing-save-hint">
+            <i className="ph ph-tag" aria-hidden="true" />
+            Seus primeiros 30 dias são grátis
+          </span>
+        )}
       </div>
 
       <div className="plan-grid">
