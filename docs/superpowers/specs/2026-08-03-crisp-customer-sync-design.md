@@ -267,6 +267,31 @@ duplicated idempotent `PUT` — the same bytes written twice. Holding a lock, or
 lease, across a 10-second vendor round trip to prevent a harmless duplicate would trade a real
 availability risk for a cosmetic one.
 
+**But the re-check alone does not close the window, and step 3 has to finish the job.** A
+second review round found the residual race, which the re-check cannot reach because the
+advisory lock is released the moment step 1 commits:
+
+1. `record_crisp_contact` validates and commits.
+2. The vendor write goes out and is in flight for up to 10 seconds.
+3. The user changes their email. An overlapping run's deletion sweep sees `synced_email` no
+   longer matching, deletes the profile at Crisp, and stamps `deleted_at`.
+4. Our in-flight write lands and **recreates** the profile at the old address.
+5. `confirm_crisp_sync` matches zero rows — its `where` carries `and deleted_at is null`.
+
+Counting step 5 as success would leave a name, an email and a phone at a foreign vendor that
+`get_crisp_contact_deletions` can never select, because it filters on the same `deleted_at`.
+Unerasable: the single outcome this ledger exists to prevent.
+
+So **`confirm_crisp_sync` returns a boolean**, and `false` means "the ledger moved under you".
+The handler's obligation on `false` is to **delete the profile it just wrote** and surface the
+failure. Widening the `where` to make the update match anyway is the wrong repair in the
+obvious direction: it would resurrect a swept row and re-strand the address.
+
+This is why `deleted_at` and `synced_people_id` are cleared in the *same* statement at sweep
+time, and why `record_crisp_contact`'s reactivation branch also clears a cached
+`synced_people_id`: a reactivated row must never hand the handler an id addressing a profile
+that was already erased.
+
 Recording the email *before* sending is the rule, not an ordering preference. The vendor call
 *creates* the profile; a successful call followed by a failed ledger write leaves a person's
 name, email and phone resident at a foreign vendor with nothing in our system able to name,

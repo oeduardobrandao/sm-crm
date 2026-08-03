@@ -925,7 +925,7 @@ function makeDeps(over: Partial<CrispCronDeps> = {}, rpcData: Record<string, unk
     },
     confirmSync: (userId, peopleId, fingerprint) => {
       calls.confirmed.push({ userId, peopleId, fingerprint });
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
     markContactDeleted: (id: string) => {
       calls.markedDeleted.push(id);
@@ -1138,6 +1138,23 @@ Deno.test("admin_url is omitted when APP_BASE_URL is unavailable", async () => {
   assert(!("admin_url" in calls.data[0].data), "admin_url should be absent");
 });
 
+Deno.test("a confirm that matches no row deletes the profile it just wrote", async () => {
+  // The mid-flight sweep race: the deletion sweep swept this person while our
+  // vendor write was in flight, so the profile we just created is an orphan
+  // that get_crisp_contact_deletions can never select. It must be deleted here
+  // or the person's PII is stranded at the vendor permanently.
+  const { deps, calls } = makeDeps(
+    { confirmSync: () => Promise.resolve(false) },
+    { get_crisp_sync_candidates: [CANDIDATE] },
+  );
+
+  const result = await runCrispSyncCron(deps);
+
+  assertEquals(calls.deletedRefs, ["p-new"]);
+  assertEquals(result.upserted, 0);
+  assertEquals(result.failed, 1);
+});
+
 Deno.test("an empty candidate list performs zero vendor calls and succeeds", async () => {
   const { deps, calls } = makeDeps();
 
@@ -1224,11 +1241,16 @@ export interface CrispCronDeps {
   rpc: (name: string) => Promise<DbResult<unknown>>;
   /** False means a deletion is still owed for a different address: skip entirely. */
   recordContact: (userId: string, email: string) => Promise<boolean>;
+  /**
+   * Returns FALSE when it matched no row: the deletion sweep swept this person
+   * while our vendor call was in flight. The caller must then delete the
+   * profile it just wrote. See the call site.
+   */
   confirmSync: (
     userId: string,
     peopleId: string | null,
     fingerprint: string,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   markContactDeleted: (id: string) => Promise<void>;
   getProfile: (ref: string) => Promise<CrispProfile | null>;
   createProfile: (p: CrispProfileWrite) => Promise<string | null>;
@@ -1342,50 +1364,71 @@ export async function runCrispSyncCron(
         const data = buildData(c, deps.adminUrlFor(c.primary_workspace_id));
 
         let profile = await deps.getProfile(c.people_id ?? c.email);
+        let peopleId: string;
 
-        if (!profile) {
+        if (profile) {
+          peopleId = profile.people_id;
+        } else {
           const created = await deps.createProfile({
             email: c.email,
             person,
             segments: c.segments,
           });
-
           if (created !== null) {
-            await deps.saveData(created, data);
-            await deps.confirmSync(c.user_id, created, c.fingerprint);
-            upserted++;
-            continue;
-          }
-
-          // Conflict: a chat-widget session already created this person. This
-          // is expected, not a failure. Re-read once and fall through.
-          profile = await deps.getProfile(c.email);
-          if (!profile) {
-            throw new Error("Crisp create conflicted but the re-read found no profile");
+            peopleId = created;
+          } else {
+            // Conflict: a chat-widget session already created this person. This
+            // is expected, not a failure. Re-read once and fall through.
+            profile = await deps.getProfile(c.email);
+            if (!profile) {
+              throw new Error("Crisp create conflicted but the re-read found no profile");
+            }
+            peopleId = profile.people_id;
           }
         }
 
+        // Only an EXISTING profile needs the preserve-and-override write. One we
+        // just created already carries exactly what we sent.
+        //
         // PUT REPLACES the whole profile, so everything the GET returned is
-        // spread back and only the four fields this sync owns are overridden.
+        // spread back and only the fields this sync owns are overridden.
         // Preserve-by-default, override-by-exception: an allowlist of fields to
-        // keep (the first draft named just notepad and company) silently erases
+        // keep (an earlier draft named just notepad and company) silently erases
         // avatar, address, description, employment, geolocation and anything
         // Crisp adds later.
         //
         // people_id is dropped from the body: it is the route parameter, not a
         // profile field.
-        const { people_id: _peopleId, ...preserved } = profile;
-        await deps.saveProfile(profile.people_id, {
-          ...preserved,
-          email: c.email,
-          // Nested spread for the same reason as the outer one: person carries
-          // operator-owned sub-fields (avatar, geolocation) that a flat
-          // override would drop.
-          person: { ...(profile.person ?? {}), ...person },
-          segments: mergeSegments(profile.segments, c.segments),
-        });
-        await deps.saveData(profile.people_id, data);
-        await deps.confirmSync(c.user_id, profile.people_id, c.fingerprint);
+        if (profile) {
+          const { people_id: _peopleId, ...preserved } = profile;
+          await deps.saveProfile(peopleId, {
+            ...preserved,
+            email: c.email,
+            // Nested spread for the same reason as the outer one: person carries
+            // operator-owned sub-fields (avatar, geolocation) that a flat
+            // override would drop.
+            person: { ...(profile.person ?? {}), ...person },
+            segments: mergeSegments(profile.segments, c.segments),
+          });
+        }
+
+        await deps.saveData(peopleId, data);
+
+        // THE MID-FLIGHT SWEEP RACE. record_crisp_contact's advisory lock is
+        // transaction-scoped and released long before this point, so between it
+        // and here the user can change their email and an overlapping run's
+        // deletion sweep can delete this profile and stamp deleted_at. Our write
+        // above then RECREATED it, and confirm now matches no row.
+        //
+        // If we merely counted that as success, the profile would sit at the
+        // vendor holding a name, an email and a phone, and
+        // get_crisp_contact_deletions could never select it -- it filters on the
+        // same deleted_at. Unerasable, which is the one outcome this ledger
+        // exists to prevent. So delete what we just wrote, then surface it.
+        if (!(await deps.confirmSync(c.user_id, peopleId, c.fingerprint))) {
+          await deps.deleteProfile(peopleId);
+          throw new Error("ledger row swept mid-sync; deleted the orphaned profile");
+        }
         upserted++;
       } catch (e) {
         errors.push({ accountId: c.user_id, error: msg(e) });
@@ -1531,13 +1574,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
         if (error) throw new Error(`contact record failed: ${error.message}`);
         return data === true;
       },
+      // Returns false when the RPC matched no row, i.e. the deletion sweep
+      // swept this person while our vendor call was in flight. The handler
+      // deletes the orphaned profile on false; do NOT collapse this to void.
       confirmSync: async (userId, peopleId, fingerprint) => {
-        const { error } = await svc.rpc("confirm_crisp_sync", {
+        const { data, error } = await svc.rpc("confirm_crisp_sync", {
           p_user_id: userId,
           p_people_id: peopleId,
           p_fingerprint: fingerprint,
         });
         if (error) throw new Error(`sync confirm failed: ${error.message}`);
+        return data === true;
       },
       markContactDeleted: async (id) => {
         // synced_people_id is nulled in the SAME update. On an email change the
@@ -1574,7 +1621,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
 });
 ```
 
-- [ ] **Step 6: Run the full verification set**
+- [ ] **Step 6: Document the three new secrets**
+
+An external review caught this as a real gap: a deployment following the repo's documented secret template would leave these unset and every Crisp call would fail before reaching the network.
+
+In `.env.example`, under the existing `# Edge function secrets — set via 'npx supabase secrets set', NOT loaded from this file.` block — the one that already lists `LOOPS_API_KEY` and `POSTHOG_PROJECT_KEY` — append:
+
+```
+# Crisp support-chat customer sync (crisp-sync-cron)
+# Plugin token from the Crisp Marketplace. Scopes: website:people:profiles + website:people:data
+CRISP_WEBSITE_ID=
+CRISP_IDENTIFIER=
+CRISP_KEY=
+```
+
+In `CLAUDE.md`, in the `### Edge functions (Deno.env)` list, after the `LOOPS_API_KEY` entry, add:
+
+```
+- `CRISP_WEBSITE_ID`, `CRISP_IDENTIFIER`, `CRISP_KEY` -- Crisp plugin token for the
+  support-chat customer sync (crisp-sync-cron). All three REQUIRED by that function,
+  no defaults -- index.ts throws at module load if any is missing. Plugin scopes are
+  `website:people:profiles` and `website:people:data`
+```
+
+- [ ] **Step 7: Run the full verification set**
 
 ```bash
 npm run test:functions
@@ -1588,11 +1658,11 @@ npm run lint && npm run format:check
 
 Expected: both clean. Run `npm run format` if the check fails.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git checkout -- deno.lock
-git add supabase/functions/crisp-sync-cron/index.ts supabase/config.toml supabase/functions/__tests__/config-audit_test.ts
+git add supabase/functions/crisp-sync-cron/index.ts supabase/config.toml supabase/functions/__tests__/config-audit_test.ts .env.example CLAUDE.md
 git commit -m "feat(crisp): entrypoint do cron, config.toml e audit test"
 ```
 
