@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { isInternalPlan, resolveCurrentPlanId, isPlanVisible, canUpgradeTo } from '../plan-display';
+import {
+  isInternalPlan,
+  resolveCurrentPlanId,
+  isPlanVisible,
+  canUpgradeTo,
+  isSelectableTrialPlan,
+} from '../plan-display';
 
 describe('plan-display', () => {
   describe('isInternalPlan', () => {
@@ -61,6 +67,28 @@ describe('plan-display', () => {
     });
     it('offers no upgrades when there is an active subscription (managed via portal)', () => {
       expect(canUpgradeTo('max', 'start', true)).toBe(false);
+    });
+  });
+
+  describe('isSelectableTrialPlan', () => {
+    it('accepts a paid self-serve plan', () => {
+      expect(isSelectableTrialPlan({ id: 'pro', price_brl: 9990 })).toBe(true);
+    });
+
+    it('rejects Free — declining is a link, not a card', () => {
+      expect(isSelectableTrialPlan({ id: 'free', price_brl: 0 })).toBe(false);
+    });
+
+    it('rejects internal comp plans', () => {
+      expect(isSelectableTrialPlan({ id: 'lifetime', price_brl: 0 })).toBe(false);
+    });
+
+    it('rejects a zero-priced plan that is not Free', () => {
+      expect(isSelectableTrialPlan({ id: 'beta', price_brl: 0 })).toBe(false);
+    });
+
+    it('rejects a plan with no price configured', () => {
+      expect(isSelectableTrialPlan({ id: 'beta', price_brl: null })).toBe(false);
     });
   });
 });

@@ -51,3 +51,14 @@ export function canUpgradeTo(
   if (isInternalPlan(currentPlanId)) return false;
   return !hasActiveSub && planId !== 'free';
 }
+
+/**
+ * Plans offered as a trial on the /comecar step. `isPlanVisible` is NOT a
+ * substitute: it only filters internal plans, so Free would still render a card
+ * even though declining is a secondary link there, not a plan choice. The
+ * price check is belt-and-braces — a future zero-priced catalog entry must not
+ * silently become something you can start a trial on.
+ */
+export function isSelectableTrialPlan(plan: { id: string; price_brl: number | null }): boolean {
+  return plan.id !== 'free' && !isInternalPlan(plan.id) && (plan.price_brl ?? 0) > 0;
+}
