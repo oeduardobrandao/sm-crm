@@ -287,10 +287,34 @@ The handler's obligation on `false` is to **delete the profile it just wrote** a
 failure. Widening the `where` to make the update match anyway is the wrong repair in the
 obvious direction: it would resurrect a swept row and re-strand the address.
 
-This is why `deleted_at` and `synced_people_id` are cleared in the *same* statement at sweep
-time, and why `record_crisp_contact`'s reactivation branch also clears a cached
-`synced_people_id`: a reactivated row must never hand the handler an id addressing a profile
-that was already erased.
+This is why `deleted_at`, `synced_people_id` **and `synced_fingerprint`** are all cleared in
+the *same* statement at sweep time, and why `record_crisp_contact`'s reactivation branch also
+clears a cached `synced_people_id`: a reactivated row must never hand the handler an id
+addressing a profile that was already erased.
+
+### A swept row is unsynced, whatever its fingerprint says
+
+`synced_fingerprint` means "the payload of what currently exists at the vendor". Once the
+profile is deleted, nothing exists, so the fingerprint describes nothing — and must never
+suppress a re-sync. A third review round found the case where forgetting this bites:
+
+1. Ledger holds `{synced_email: A, synced_fingerprint: FP_A}` and profile A exists.
+2. The user changes their email to B. The deletion sweep erases profile A and stamps
+   `deleted_at`.
+3. **Before B ever syncs**, the user changes back to A.
+4. The candidate query recomputes their fingerprint as `FP_A` — the payload is byte-identical
+   to step 1 — matches the stale stored hash, and excludes them.
+
+They now have no profile at Crisp and the query will never re-offer them until some unrelated
+payload field happens to change. Silent, indefinite absence from support tooling.
+
+The A → B → A sequence where B *does* sync in between was already safe: the ledger then holds
+`FP_B`, which differs. The bug needs the revert to land before the new address syncs.
+
+Closed on both sides: the deletion sweep nulls `synced_fingerprint`, and the candidate
+predicate is `(cc.deleted_at is not null or cc.synced_fingerprint is distinct from
+f.fingerprint)` so a swept row is offered regardless. The second is redundant on the happy
+path and deliberately kept as the backstop for a partial failure of the first.
 
 Recording the email *before* sending is the rule, not an ordering preference. The vendor call
 *creates* the profile; a successful call followed by a failed ledger write leaves a person's
