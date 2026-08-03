@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  AtSign,
   Bell,
   CheckCircle,
   CheckSquare,
@@ -166,6 +167,13 @@ export function getNotificationDisplay(
       };
     case 'member_removed':
       return { icon: UserMinus, tone: 'danger', title: 'Membro removido', body: userName };
+    case 'mention':
+      return {
+        icon: AtSign,
+        tone: 'primary',
+        title: `${s(m.actor_name, 'Alguém')} mencionou você`,
+        body: s(m.excerpt, s(m.context_title, '')),
+      };
     default:
       // Resilience: a notification type the DB allows but the UI doesn't know yet
       // (e.g. added by a migration ahead of the frontend) must never crash the list.
