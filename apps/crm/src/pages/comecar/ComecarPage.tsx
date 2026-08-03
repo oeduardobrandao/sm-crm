@@ -32,6 +32,24 @@ function planHighlights(p: BillingPlan): string[] {
   return out;
 }
 
+/**
+ * Starts a Stripe Checkout session and redirects to it. Shared by the
+ * auto-checkout effect and the manual "Começar teste" button so the two
+ * paths cannot drift. Returns whether it succeeded; the caller resets its
+ * own local state (the intent or the busy flag) on failure.
+ */
+async function startAndRedirect(planId: string, interval: BillingInterval): Promise<boolean> {
+  try {
+    const url = await startCheckout(planId, interval, 'onboarding');
+    captureCheckoutStarted(planId, interval, 'onboarding');
+    window.location.assign(url);
+    return true;
+  } catch (err) {
+    toast.error('Não foi possível abrir o checkout: ' + (err as Error).message);
+    return false;
+  }
+}
+
 export default function ComecarPage() {
   const { role, loading: authLoading } = useAuth();
   const location = useLocation();
@@ -46,12 +64,22 @@ export default function ComecarPage() {
 
   const isOwner = role === 'owner';
 
-  const { data: subscription, isLoading: subLoading } = useQuery({
+  const {
+    data: subscription,
+    isLoading: subLoading,
+    isError: subError,
+    refetch: refetchSubscription,
+  } = useQuery({
     queryKey: ['billing', 'subscription'],
     queryFn: getWorkspaceSubscription,
     enabled: isOwner,
   });
-  const { data: plans, isLoading: plansLoading } = useQuery({
+  const {
+    data: plans,
+    isLoading: plansLoading,
+    isError: plansError,
+    refetch: refetchPlans,
+  } = useQuery({
     queryKey: ['billing', 'plans'],
     queryFn: listActivePlans,
     enabled: isOwner,
@@ -61,7 +89,11 @@ export default function ComecarPage() {
   // readiness themselves. `ready` is what keeps them from firing against
   // undefined data mid-load.
   const ready = !authLoading && isOwner && !subLoading && !plansLoading;
-  const eligible = ready && subscription?.hasEverSubscribed !== true;
+  const hasError = subError || plansError;
+  // A failed subscription query must never read as "never subscribed" - that
+  // would let a workspace that already subscribed reopen a trial checkout.
+  // `eligible` stays false while either query has errored.
+  const eligible = ready && !hasError && subscription?.hasEverSubscribed !== true;
 
   useEffect(() => {
     if (!eligible || viewLogged.current) return;
@@ -73,14 +105,8 @@ export default function ComecarPage() {
     if (!eligible || !intent || autoStarted.current) return;
     autoStarted.current = true;
     void (async () => {
-      try {
-        const url = await startCheckout(intent.planId, intent.interval, 'onboarding');
-        captureCheckoutStarted(intent.planId, intent.interval, 'onboarding');
-        window.location.assign(url);
-      } catch (err) {
-        toast.error('Não foi possível abrir o checkout: ' + (err as Error).message);
-        setIntent(null);
-      }
+      const ok = await startAndRedirect(intent.planId, intent.interval);
+      if (!ok) setIntent(null);
     })();
   }, [eligible, intent]);
 
@@ -92,6 +118,31 @@ export default function ComecarPage() {
     );
   }
   if (!isOwner) return <Navigate to="/dashboard" replace />;
+
+  if (hasError) {
+    // A transient failure (network, RLS blip) must not silently cost a
+    // legitimate new user their trial, so this fails open to a retry screen
+    // rather than redirecting away.
+    return (
+      <div className="comecar-shell comecar-shell--center">
+        <div className="comecar-standby">
+          <h1>Não foi possível carregar seu plano</h1>
+          <p>Tivemos um problema ao buscar as informações da sua assinatura.</p>
+          <button
+            type="button"
+            className="comecar-cta"
+            onClick={() => {
+              void refetchSubscription();
+              void refetchPlans();
+            }}
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (subscription?.hasEverSubscribed) return <Navigate to="/dashboard" replace />;
 
   const intentPlan = intent ? plans?.find((p) => p.id === intent.planId) : undefined;
@@ -114,14 +165,8 @@ export default function ComecarPage() {
 
   async function handleStart(planId: string) {
     setBusy(planId);
-    try {
-      const url = await startCheckout(planId, interval, 'onboarding');
-      captureCheckoutStarted(planId, interval, 'onboarding');
-      window.location.assign(url);
-    } catch (err) {
-      toast.error('Não foi possível abrir o checkout: ' + (err as Error).message);
-      setBusy(null);
-    }
+    const ok = await startAndRedirect(planId, interval);
+    if (!ok) setBusy(null);
   }
 
   function handleSkip() {
@@ -165,7 +210,7 @@ export default function ComecarPage() {
                 </div>
                 <p className="comecar-card__trial">30 dias grátis</p>
                 <p className="comecar-card__price">
-                  depois {monthly != null ? formatBRL(monthly) : '—'}/mês
+                  depois {monthly != null ? `${formatBRL(monthly)}/mês` : 'Sob consulta'}
                 </p>
                 <ul className="comecar-card__features">
                   {planHighlights(p).map((f) => (
@@ -179,7 +224,7 @@ export default function ComecarPage() {
                   type="button"
                   className="comecar-cta"
                   onClick={() => handleStart(p.id)}
-                  disabled={busy === p.id}
+                  disabled={busy !== null}
                 >
                   {busy === p.id ? 'Aguarde…' : 'Começar teste'}
                 </button>

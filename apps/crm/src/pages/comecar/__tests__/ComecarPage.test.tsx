@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -67,7 +67,7 @@ beforeEach(() => {
 
 function renderPage(search = '') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const result = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[`/comecar${search}`]}>
         <Routes>
@@ -77,6 +77,7 @@ function renderPage(search = '') {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { ...result, client };
 }
 
 describe('ComecarPage', () => {
@@ -113,6 +114,25 @@ describe('ComecarPage', () => {
     expect(startCheckout).toHaveBeenCalledWith('pro', 'year', 'onboarding');
   });
 
+  it('does not start a second checkout when the subscription query re-settles after the first attempt', async () => {
+    // Regression coverage for the `autoStarted` latch: force the subscription
+    // query back through a loading state (as a background reset or refocus
+    // refetch would) with the same eventual data. `eligible` flips
+    // false -> true a second time even though the intent never changed. The
+    // effect's dependency array sees that transition and would re-run the
+    // checkout callback if the ref latch were removed - without it, this
+    // scenario opens a second Stripe Checkout session.
+    const { client } = renderPage('?plan=pro&interval=year');
+    await waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
+    expect(startCheckout).toHaveBeenCalledTimes(1);
+
+    await client.resetQueries({ queryKey: ['billing', 'subscription'] });
+    await waitFor(() => expect(vi.mocked(getWorkspaceSubscription)).toHaveBeenCalledTimes(2));
+
+    expect(startCheckout).toHaveBeenCalledTimes(1);
+    expect(assign).toHaveBeenCalledTimes(1);
+  });
+
   it('falls back to the plan list when the intent checkout fails', async () => {
     vi.mocked(startCheckout).mockRejectedValue(new Error('Stripe indisponível'));
     renderPage('?plan=pro&interval=month');
@@ -124,5 +144,64 @@ describe('ComecarPage', () => {
     renderPage('?plan=lifetime');
     expect(await screen.findByText('Comece com 30 dias grátis')).toBeInTheDocument();
     expect(startCheckout).not.toHaveBeenCalled();
+  });
+
+  it('disables every plan CTA, not just the clicked one, while a checkout is in flight', async () => {
+    // Two selectable paid plans, so clicking one leaves a second live button
+    // to assert against - the bug was that only the clicked card's button
+    // disabled, letting a second card start a concurrent Stripe session.
+    const TWO_PAID_PLANS = [
+      PLANS[1],
+      { ...PLANS[1], id: 'max', name: 'Max', price_brl: 19990, price_brl_annual: 191900 },
+    ];
+    vi.mocked(listActivePlans).mockResolvedValue(TWO_PAID_PLANS as never);
+    let resolveCheckout: (url: string) => void = () => {};
+    vi.mocked(startCheckout).mockReturnValue(
+      new Promise((resolve) => {
+        resolveCheckout = resolve;
+      }),
+    );
+    renderPage();
+
+    const buttons = await screen.findAllByRole('button', { name: 'Começar teste' });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[0]);
+
+    await waitFor(() => {
+      const all = screen.getAllByRole('button', { name: /Começar teste|Aguarde/ });
+      expect(all).toHaveLength(2);
+      for (const btn of all) expect(btn).toBeDisabled();
+    });
+    expect(startCheckout).toHaveBeenCalledTimes(1);
+
+    resolveCheckout('https://checkout.stripe.com/abc');
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://checkout.stripe.com/abc'));
+  });
+
+  it('renders an error state and does not start checkout when the subscription query fails', async () => {
+    vi.mocked(getWorkspaceSubscription).mockRejectedValue(new Error('network error'));
+    renderPage();
+    expect(await screen.findByText('Não foi possível carregar seu plano')).toBeInTheDocument();
+    expect(screen.queryByText('Comece com 30 dias grátis')).not.toBeInTheDocument();
+    expect(startCheckout).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-start checkout when the subscription query fails, even with an intent in the url', async () => {
+    vi.mocked(getWorkspaceSubscription).mockRejectedValue(new Error('network error'));
+    renderPage('?plan=pro&interval=year');
+    expect(await screen.findByText('Não foi possível carregar seu plano')).toBeInTheDocument();
+    expect(startCheckout).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('retries both queries from the error state', async () => {
+    vi.mocked(getWorkspaceSubscription).mockRejectedValueOnce(new Error('network error'));
+    renderPage();
+    const retryButton = await screen.findByRole('button', { name: 'Tentar novamente' });
+
+    vi.mocked(getWorkspaceSubscription).mockResolvedValue(NEVER_SUBSCRIBED as never);
+    fireEvent.click(retryButton);
+
+    expect(await screen.findByText('Comece com 30 dias grátis')).toBeInTheDocument();
   });
 });
