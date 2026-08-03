@@ -39,7 +39,7 @@ export interface LoopsCronDeps {
    * Writes the vendor-identity ledger row for (userId, email). Returns false
    * when a contact deletion is still OWED at Loops for a different address on
    * this user's row -- the caller must then skip them entirely this sweep.
-   * See record_loops_contact in 20260731000004_loops_sync_rpcs.sql.
+   * See record_loops_contact in 20260803000004_loops_sync_rpcs.sql.
    */
   recordContactSync: (userId: string, email: string) => Promise<boolean>;
   markContactDeleted: (id: string) => Promise<void>;

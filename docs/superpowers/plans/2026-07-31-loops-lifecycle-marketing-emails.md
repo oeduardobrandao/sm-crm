@@ -18,7 +18,7 @@
 - **Loops idempotency:** `Idempotency-Key` header, deterministic value `<event_type>/<workspace_id>`. **409 is success.**
 - **Loops contact delete:** `POST /v1/contacts/delete`, exactly one of `email` or `userId`. **404 is success.**
 - **72h frequency cap:** one marketing email per workspace per 72h, enforced by `claim_marketing_email`, not by a predicate alone.
-- **Migration versions:** `20260731000001`–`20260731000005`. Re-verify against `git ls-tree origin/main:supabase/migrations | tail` at PR-open time; a duplicate prefix is silently skipped.
+- **Migration versions:** `20260803000001`–`20260803000005`. Re-verify against `git ls-tree origin/main:supabase/migrations | tail` at PR-open time; a duplicate prefix is silently skipped.
 - **No em-dashes in user-facing copy.** Period, colon, or `·`.
 - **Edge function rules:** never return raw error detail to clients; `buildCorsHeaders(req)` never wildcard; every outbound `fetch` bounded by `AbortSignal.timeout(10_000)`.
 - **CI gates before pushing:** `npm run lint`, `npm run format:check`, `npm run test`, `npm run test:functions`. `git checkout -- deno.lock` after `test:functions` (it always dirties the root lockfile).
@@ -34,11 +34,11 @@
 | `supabase/functions/loops-sync-cron/handler.ts` | Sweep orchestration over injected deps. No `Deno.env`, no `fetch`. |
 | `supabase/functions/loops-sync-cron/index.ts` | Env, cron-secret auth, dependency construction. |
 | `supabase/functions/paywall-report/index.ts` | Authenticated paywall-hit recorder. Membership check is the security boundary. |
-| `supabase/migrations/20260731000001_paywall_hits.sql` | `paywall_hits` table. |
-| `supabase/migrations/20260731000002_checkout_attempts.sql` | `checkout_attempts` table. |
-| `supabase/migrations/20260731000003_loops_contacts.sql` | `loops_contacts` vendor-identity ledger. |
-| `supabase/migrations/20260731000004_loops_sync_rpcs.sql` | `claim_marketing_email`, three candidate RPCs, backfill seed, cron schedule. |
-| `supabase/migrations/20260731000005_schedule_loops_sync_cron.sql` | `cron.schedule`, applied last. |
+| `supabase/migrations/20260803000001_paywall_hits.sql` | `paywall_hits` table. |
+| `supabase/migrations/20260803000002_checkout_attempts.sql` | `checkout_attempts` table. |
+| `supabase/migrations/20260803000003_loops_contacts.sql` | `loops_contacts` vendor-identity ledger. |
+| `supabase/migrations/20260803000004_loops_sync_rpcs.sql` | `claim_marketing_email`, three candidate RPCs, backfill seed, cron schedule. |
+| `supabase/migrations/20260803000005_schedule_loops_sync_cron.sql` | `cron.schedule`, applied last. |
 | `apps/crm/src/lib/paywall-report.ts` | Browser-side reporter with per-session dedupe. |
 | `apps/crm/src/components/paywall/FeatureGate.tsx` | Report on locked render + upgrade click (2 features). |
 | `apps/crm/src/lib/entitlement-toast.tsx` | Report trigger-based denials (7 features). The load-bearing source. |
@@ -264,9 +264,9 @@ git commit -m "feat(loops): add Loops REST client with 409/404 success semantics
 ## Task 2: Schema — paywall_hits, checkout_attempts, loops_contacts
 
 **Files:**
-- Create: `supabase/migrations/20260731000001_paywall_hits.sql`
-- Create: `supabase/migrations/20260731000002_checkout_attempts.sql`
-- Create: `supabase/migrations/20260731000003_loops_contacts.sql`
+- Create: `supabase/migrations/20260803000001_paywall_hits.sql`
+- Create: `supabase/migrations/20260803000002_checkout_attempts.sql`
+- Create: `supabase/migrations/20260803000003_loops_contacts.sql`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -278,9 +278,9 @@ git commit -m "feat(loops): add Loops REST client with 409/404 success semantics
 git ls-tree --name-only origin/main:supabase/migrations | tail -5
 ```
 
-Expected: the tail is `20260730000009_ideias_solicitacoes.sql`. If anything at `20260731*` already exists on main, renumber all four migrations in this plan upward and update every reference.
+**This collision DID occur.** By PR-open time main had taken `20260731000001`-`20260731000007`, colliding with all five of this plan's migrations. They were renumbered to `20260803000001`-`20260803000005`. Always re-check at PR-open time, not just at authoring time.
 
-- [ ] **Step 2: Write `20260731000001_paywall_hits.sql`**
+- [ ] **Step 2: Write `20260803000001_paywall_hits.sql`**
 
 ```sql
 -- Paywall denials, recorded so free workspaces that reached for a gated feature
@@ -310,7 +310,7 @@ create policy "paywall_hits_service_role" on paywall_hits
 -- paywall-report, which authorises against workspace_members first.
 ```
 
-- [ ] **Step 3: Write `20260731000002_checkout_attempts.sql`**
+- [ ] **Step 3: Write `20260803000002_checkout_attempts.sql`**
 
 ```sql
 -- One row per Stripe Checkout session actually created.
@@ -337,7 +337,7 @@ create policy "checkout_attempts_service_role" on checkout_attempts
   for all to service_role using (true) with check (true);
 ```
 
-- [ ] **Step 4: Write `20260731000003_loops_contacts.sql`**
+- [ ] **Step 4: Write `20260803000003_loops_contacts.sql`**
 
 ```sql
 -- Vendor-identity ledger: which email address was actually synced to Loops.
@@ -398,7 +398,7 @@ If Docker is unavailable and `npx supabase start` fails, **report `DONE_WITH_CON
 - [ ] **Step 6: Commit**
 
 ```bash
-git add supabase/migrations/20260731000001_paywall_hits.sql supabase/migrations/20260731000002_checkout_attempts.sql supabase/migrations/20260731000003_loops_contacts.sql
+git add supabase/migrations/20260803000001_paywall_hits.sql supabase/migrations/20260803000002_checkout_attempts.sql supabase/migrations/20260803000003_loops_contacts.sql
 git commit -m "feat(loops): add paywall_hits, checkout_attempts and loops_contacts tables"
 ```
 
@@ -407,7 +407,7 @@ git commit -m "feat(loops): add paywall_hits, checkout_attempts and loops_contac
 ## Task 3: Atomic claim function and candidate RPCs
 
 **Files:**
-- Create: `supabase/migrations/20260731000004_loops_sync_rpcs.sql`
+- Create: `supabase/migrations/20260803000004_loops_sync_rpcs.sql`
 - Test: `supabase/tests/entitlements/58_loops_candidates.sql`
 
 **Interfaces:**
@@ -424,7 +424,7 @@ git commit -m "feat(loops): add paywall_hits, checkout_attempts and loops_contac
 
 > **SUPERSEDED — do not re-execute this block verbatim.** The SQL below is the
 > pre-review draft. Five fix rounds landed on top of it and the SHIPPED version is
-> `supabase/migrations/20260731000004_loops_sync_rpcs.sql` in git. Re-running this
+> `supabase/migrations/20260803000004_loops_sync_rpcs.sql` in git. Re-running this
 > block would silently regress four fixes: the `distinct on (u.id)` per-user dedupe
 > in `get_dormant_signup_candidates` (duplicate emails), the owner-membership
 > re-check in `claim_marketing_email` (tenant disclosure to a removed member),
@@ -432,7 +432,7 @@ git commit -m "feat(loops): add paywall_hits, checkout_attempts and loops_contac
 > violation), and the trialing/active exclusion in `any_free` and two candidate RPCs.
 > Read the committed file, not this block.
 
-Create `supabase/migrations/20260731000004_loops_sync_rpcs.sql`:
+Create `supabase/migrations/20260803000004_loops_sync_rpcs.sql`:
 
 ```sql
 -- Candidate RPCs + atomic claim for the Loops marketing sweep.
@@ -952,7 +952,7 @@ If Docker is unavailable and `npx supabase start` fails, **stop and report `DONE
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20260731000004_loops_sync_rpcs.sql supabase/tests/entitlements/58_loops_candidates.sql
+git add supabase/migrations/20260803000004_loops_sync_rpcs.sql supabase/tests/entitlements/58_loops_candidates.sql
 git commit -m "feat(loops): add claim_marketing_email and candidate RPCs"
 ```
 
@@ -2608,11 +2608,11 @@ git commit -m "docs(privacy): add Loops to the subprocessor list"
 ## Task 12: Schedule the cron
 
 **Files:**
-- Create: `supabase/migrations/20260731000005_schedule_loops_sync_cron.sql`
+- Create: `supabase/migrations/20260803000005_schedule_loops_sync_cron.sql`
 
 **Interfaces:** none.
 
-**Ordering requirement:** this migration must be applied **only after** `loops-sync-cron` is deployed and `20260731000004` is applied, because `cron.schedule` fires immediately. It is a separate migration for exactly that reason.
+**Ordering requirement:** this migration must be applied **only after** `loops-sync-cron` is deployed and `20260803000004` is applied, because `cron.schedule` fires immediately. It is a separate migration for exactly that reason.
 
 - [ ] **Step 1: Write the migration**
 
@@ -2620,7 +2620,7 @@ git commit -m "docs(privacy): add Loops to the subprocessor list"
 -- Schedule loops-sync-cron every 15 minutes.
 -- Spec: docs/superpowers/specs/2026-07-31-loops-lifecycle-marketing-emails-design.md
 --
--- Apply ONLY AFTER the loops-sync-cron function is deployed AND 20260731000004
+-- Apply ONLY AFTER the loops-sync-cron function is deployed AND 20260803000004
 -- (RPCs + claim + backfill seed) is applied: the schedule fires immediately.
 --
 -- Rollback order is the REVERSE: SELECT cron.unschedule('loops-sync-cron')
@@ -2659,7 +2659,7 @@ SELECT cron.schedule(
 - [ ] **Step 2: Commit (do not apply yet)**
 
 ```bash
-git add supabase/migrations/20260731000005_schedule_loops_sync_cron.sql
+git add supabase/migrations/20260803000005_schedule_loops_sync_cron.sql
 git commit -m "feat(loops): schedule loops-sync-cron every 15 minutes"
 ```
 
@@ -2717,7 +2717,7 @@ npx tsc -p tsconfig.scripts.json
 git ls-tree --name-only origin/main:supabase/migrations | tail -5
 ```
 
-If main has moved and now contains any `20260731*` prefix, renumber all five migrations upward. A duplicate prefix is silently skipped by Supabase, which surfaces as a missing table weeks later.
+Main DID move and took the whole `20260731*` range; these migrations were renumbered to `20260803*`. A duplicate prefix is silently skipped by Supabase, which surfaces as a missing table weeks later.
 
 - [ ] **Step 4: Confirm you are linked to STAGING**
 
@@ -2786,7 +2786,7 @@ On staging, pick a workspace on the default plan whose chosen owner has `marketi
 
 - [ ] **Step 9: Schedule the cron on staging**
 
-Apply `20260731000005` and confirm `SELECT jobname, schedule FROM cron.job WHERE jobname = 'loops-sync-cron';` returns one row.
+Apply `20260803000005` and confirm `SELECT jobname, schedule FROM cron.job WHERE jobname = 'loops-sync-cron';` returns one row.
 
 - [ ] **Step 10: Open the PR**
 

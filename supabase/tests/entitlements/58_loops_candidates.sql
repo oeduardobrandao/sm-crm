@@ -27,7 +27,7 @@ begin
   -- so workspaces.created_at (DEFAULT now(), 20260317_multi_workspace.sql:11)
   -- is IDENTICAL on both rows. get_dormant_signup_candidates' dedupe
   -- (distinct on (u.id) order by u.id, ws.created_at asc, ws.id asc,
-  -- 20260731000004) would then fall through the tied created_at straight to
+  -- 20260803000004) would then fall through the tied created_at straight to
   -- ws.id asc -- a coin flip between two independent gen_random_uuid()s.
   -- Roughly half the time the RPC would return the THROWAWAY workspace
   -- instead of v_ws, and every assertion below that filters

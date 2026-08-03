@@ -345,7 +345,7 @@ tab in the same tick loses the report. Accepted for slice 1.
 **Slice 1 records feature gates only.** Limit gates (`max_clients` and friends) surface as a
 different error shape and are deferred to slice 2 alongside `activated_but_capped`.
 
-Migration `20260731000001_paywall_hits.sql` (re-verify the version prefix against
+Migration `20260803000001_paywall_hits.sql` (re-verify the version prefix against
 `git ls-tree origin/main:supabase/migrations | tail` at PR-open time — main's tail is currently
 `20260730000009`, and a duplicate prefix is silently skipped by Supabase):
 
@@ -621,14 +621,14 @@ Order matters — the cron schedule fires immediately on apply.
 
 0. ~~Resolve B1.~~ Done 2026-07-31: `Idempotency-Key` header, 24h window, 409 on reuse.
 1. Set `LOOPS_API_KEY` and `POSTHOG_PROJECT_KEY` in Supabase secrets, staging first.
-2. Apply `20260731000001_paywall_hits.sql`, `20260731000002_checkout_attempts.sql` and
-   `20260731000003_loops_contacts.sql`.
+2. Apply `20260803000001_paywall_hits.sql`, `20260803000002_checkout_attempts.sql` and
+   `20260803000003_loops_contacts.sql`.
 3. Deploy `billing-checkout` (now writing `checkout_attempts`) and `paywall-report`.
    `paywall-report` verifies its own JWT, so deploy it with `--no-verify-jwt --use-api`.
 4. Ship the CRM change that calls `paywall-report`, and let `checkout_attempts` accumulate for
    at least 24h — the abandonment trigger is meaningless against an empty table.
 5. Deploy `loops-sync-cron` with `--no-verify-jwt --use-api`.
-6. Apply `20260731000004_schedule_loops_sync_cron.sql` (candidate RPCs, `claim_marketing_email`,
+6. Apply `20260803000004_schedule_loops_sync_cron.sql` (candidate RPCs, `claim_marketing_email`,
    ledger backfill seed, `cron.schedule`, in that order within the file). It uses the
    `vault.decrypted_secrets`
    subselect form — `vault.decrypted_secret(...)` does not exist on this instance.

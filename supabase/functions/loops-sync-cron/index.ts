@@ -87,7 +87,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // can overwrite synced_email while a deletion for the OLD address is
       // still owed, stranding that address at Loops permanently. Returns false
       // when the caller must skip this person entirely -- see
-      // record_loops_contact in 20260731000004_loops_sync_rpcs.sql.
+      // record_loops_contact in 20260803000004_loops_sync_rpcs.sql.
       recordContactSync: async (userId, email) => {
         const { data, error } = await svc.rpc("record_loops_contact", {
           p_user_id: userId,

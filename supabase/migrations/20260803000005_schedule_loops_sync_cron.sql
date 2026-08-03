@@ -1,7 +1,7 @@
 -- Schedule loops-sync-cron every 15 minutes.
 -- Spec: docs/superpowers/specs/2026-07-31-loops-lifecycle-marketing-emails-design.md
 --
--- Apply ONLY AFTER the loops-sync-cron function is deployed AND 20260731000004
+-- Apply ONLY AFTER the loops-sync-cron function is deployed AND 20260803000004
 -- (RPCs + claim + backfill seed) is applied: the schedule fires immediately.
 --
 -- Rollback order is the REVERSE: SELECT cron.unschedule('loops-sync-cron')
