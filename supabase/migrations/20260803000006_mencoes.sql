@@ -64,9 +64,16 @@ CREATE POLICY mencoes_tenant_all ON mencoes
         )
         WHEN 'post_comment' THEN EXISTS (
           -- post_comments carries no conta_id of its own (20260423) -- the
-          -- tenant lives on its parent thread.
+          -- tenant lives on its parent thread. But post_comment_threads_insert
+          -- (20260423) only WITH CHECKs conta_id, not that post_id belongs to
+          -- that same workspace -- a thread row can legally exist with conta_id
+          -- = A and post_id pointing at workspace B's post. Joining
+          -- workflow_posts here and re-checking wp.conta_id closes that: a
+          -- mention can only be created against a thread whose post is
+          -- actually in the caller's workspace.
           SELECT 1 FROM public.post_comments pc
           JOIN public.post_comment_threads pct ON pct.id = pc.thread_id
+          JOIN public.workflow_posts wp ON wp.id = pct.post_id AND wp.conta_id = pct.conta_id
           WHERE pc.id = mencoes.host_id
             AND pct.conta_id = mencoes.conta_id
         )
@@ -154,11 +161,16 @@ BEGIN
       v_link := '/entregas?drawer=' || v_workflow_id;
 
     ELSIF NEW.host_type = 'post_comment' THEN
+      -- Belt and suspenders: AND wp.conta_id = NEW.conta_id, in addition to
+      -- the mencoes_tenant_all WITH CHECK guard above -- even if a malformed
+      -- cross-workspace thread row somehow exists, this SECURITY DEFINER
+      -- trigger must never read (and copy into a notification) a post title
+      -- from a different workspace.
       SELECT wp.titulo, wp.workflow_id, wp.id, left(pc.content, 140)
         INTO v_context_title, v_workflow_id, v_post_id, v_excerpt
         FROM post_comments pc
         JOIN post_comment_threads pct ON pct.id = pc.thread_id
-        JOIN workflow_posts wp ON wp.id = pct.post_id
+        JOIN workflow_posts wp ON wp.id = pct.post_id AND wp.conta_id = NEW.conta_id
        WHERE pc.id = NEW.host_id;
       IF v_workflow_id IS NULL THEN
         RETURN NEW;
@@ -262,9 +274,15 @@ BEGIN
     WHEN 'workflow_post' THEN
       SELECT conta_id INTO v_conta FROM workflow_posts WHERE id = p_host_id;
     WHEN 'post_comment' THEN
+      -- Same JOIN + conta equality as mencoes_tenant_all's post_comment arm:
+      -- post_comment_threads_insert (20260423) doesn't verify post_id is in
+      -- the thread's own workspace, so resolving conta straight off the
+      -- thread would let a malformed cross-workspace thread masquerade as
+      -- caller A's host while its post actually belongs to workspace B.
       SELECT pct.conta_id INTO v_conta
         FROM post_comments pc
         JOIN post_comment_threads pct ON pct.id = pc.thread_id
+        JOIN workflow_posts wp ON wp.id = pct.post_id AND wp.conta_id = pct.conta_id
        WHERE pc.id = p_host_id;
   END CASE;
 

@@ -349,11 +349,12 @@ Deno.test("claim honors all five filters: type, read_at, dismissed_at, emailed_a
   assertEquals(eligibleCall.gte, { created_at: CLAIM_AFTER });
 
   // Step 2 (claim UPDATE) narrows to exactly the id found by step 1, plus the
-  // emailed_at IS NULL re-check that keeps concurrent runs disjoint.
+  // emailed_at/read_at/dismissed_at IS NULL re-checks that keep concurrent
+  // runs disjoint and stop a just-handled notification from being emailed.
   assertEquals(db.claimCalls.length, 1);
   const claimCall = db.claimCalls[0];
   assertEquals(claimCall.in, [1]);
-  assertEquals(claimCall.is, { emailed_at: null });
+  assertEquals(claimCall.is, { emailed_at: null, read_at: null, dismissed_at: null });
 });
 
 Deno.test("claim batch is capped: with more than CLAIM_BATCH_SIZE eligible rows, only the oldest 200 are claimed", async () => {
@@ -473,6 +474,94 @@ Deno.test("claim step re-checks emailed_at IS NULL: a row claimed by another run
   assertEquals(result.claimed, 0, "the row must not be claimed twice");
   assertEquals(sent.length, 0);
   assertEquals(emailedAt, "2026-08-03T11:59:00.000Z", "the other run's claim stands");
+});
+
+Deno.test("claim step re-checks read_at IS NULL: a row read between step 1 and step 2 is not claimed or emailed", async () => {
+  // Same shape as the emailed_at race test above, but the race is the user
+  // reading the notification (read_at set) in the gap between step 1's
+  // eligibility snapshot and step 2's UPDATE, instead of another cron run
+  // claiming it. Only the read_at IS NULL re-check in step 2 (added for
+  // FIX D) can stop this from emailing something already handled.
+  let readAt: string | null = null;
+  const sent: Array<{ to: string }> = [];
+
+  const db = {
+    from(table: string) {
+      assert(table === "notifications", `unexpected table ${table}`);
+      return {
+        // deno-lint-ignore no-explicit-any
+        select(_cols: string): any {
+          const chain: any = {
+            eq: () => chain,
+            is: () => chain,
+            lte: () => chain,
+            gte: () => chain,
+            order: () => chain,
+            limit: () => chain,
+            then(resolve: (v: unknown) => void, reject?: (e: unknown) => void) {
+              // The eligibility snapshot is taken here; then the user reads
+              // the notification for real, before this handler's own step 2
+              // UPDATE runs.
+              readAt = "2026-08-03T11:59:00.000Z";
+              return Promise.resolve({
+                data: [{ id: 1, created_at: "2026-08-03T11:00:00.000Z" }],
+                error: null,
+              }).then(resolve, reject);
+            },
+          };
+          return chain;
+        },
+        // deno-lint-ignore no-explicit-any
+        update(patch: { emailed_at: string | null }): any {
+          const filters = { in: [] as number[], is: {} as Record<string, null> };
+          const chain: any = {
+            in(col: string, vals: number[]) {
+              assert(col === "id", `unexpected .in() column ${col}`);
+              filters.in = vals;
+              return chain;
+            },
+            is(col: string, val: null) {
+              filters.is[col] = val;
+              return chain;
+            },
+            select(_cols: string) {
+              const eligible = filters.in.includes(1) &&
+                (!("read_at" in filters.is) || readAt === null);
+              return Promise.resolve({
+                data: eligible
+                  ? [{ id: 1, user_id: "u1", metadata: {}, link: "/", created_at: "2026-08-03T11:00:00.000Z" }]
+                  : [],
+                error: null,
+              });
+            },
+          };
+          return chain;
+        },
+      };
+    },
+    auth: {
+      admin: {
+        getUserById: () =>
+          Promise.resolve({ data: { user: { email: "ana@x.test" } }, error: null }),
+      },
+    },
+  };
+
+  const deps: MentionEmailCronDeps = {
+    db: db as unknown as MentionEmailDb,
+    now: () => NOW,
+    resendEnabled: true,
+    sendMentionEmail: (p) => {
+      sent.push(p);
+      return Promise.resolve({ skipped: false });
+    },
+  };
+
+  const result = await runMentionEmailCron(deps);
+
+  assertEquals(result.claimed, 0, "a row read in the gap must not be claimed");
+  assertEquals(sent.length, 0, "a row read in the gap must not be emailed");
+  assertEquals(readAt, "2026-08-03T11:59:00.000Z", "the user's read stands");
 });
 
 Deno.test("one email per user: multiple claimed mentions for the same user are batched into a single send", async () => {

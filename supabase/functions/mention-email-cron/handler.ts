@@ -14,11 +14,14 @@
  *     loop below so a large backlog of distinct recipients (or a slow Resend
  *     call) can't outlive the edge runtime's execution budget. Rows left over
  *     just wait for the next 5-minute run.
- *  2. `UPDATE ... WHERE id IN (ids) AND emailed_at IS NULL RETURNING ...`
- *     claims exactly those ids. Re-checking `emailed_at IS NULL` here (not just
- *     in step 1) is what keeps concurrent runs disjoint -- the step 1 snapshot
- *     is stale by the time step 2 executes, so without this re-check two
- *     overlapping invocations could both claim the same row.
+ *  2. `UPDATE ... WHERE id IN (ids) AND emailed_at IS NULL AND read_at IS NULL
+ *     AND dismissed_at IS NULL RETURNING ...` claims exactly those ids.
+ *     Re-checking all three of `emailed_at`/`read_at`/`dismissed_at` here (not
+ *     just in step 1) matters because the step 1 snapshot is stale by the
+ *     time step 2 executes: `emailed_at IS NULL` is what keeps concurrent
+ *     runs disjoint (without it, two overlapping invocations could both claim
+ *     the same row); `read_at`/`dismissed_at IS NULL` stop a notification the
+ *     user read or dismissed in that same gap from still getting emailed.
  * Email is a courtesy copy of the bell notification (the reliable channel), so
  * a crash between claim and send loses that one email; a per-user SEND
  * failure gets a best-effort reset so the next run retries it.
@@ -156,12 +159,17 @@ export async function runMentionEmailCron(
   }
 
   // Step 2: claim exactly those ids. Re-checking emailed_at IS NULL here keeps
-  // concurrent runs disjoint (see module doc comment).
+  // concurrent runs disjoint (see module doc comment). read_at/dismissed_at
+  // are re-checked too: a user who reads or dismisses the notification in the
+  // gap between step 1's snapshot and this UPDATE must not get emailed for
+  // something they've already handled.
   const { data, error } = await deps.db
     .from("notifications")
     .update({ emailed_at: now.toISOString() })
     .in("id", eligibleIds)
     .is("emailed_at", null)
+    .is("read_at", null)
+    .is("dismissed_at", null)
     .select("id, user_id, metadata, link, created_at");
 
   if (error) throw new Error(`mention claim failed: ${error.message}`);
