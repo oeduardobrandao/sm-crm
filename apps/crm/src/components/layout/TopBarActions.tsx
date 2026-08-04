@@ -2,26 +2,34 @@ import { useState, useEffect, useCallback } from 'react';
 import { MessageCircle } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-
-declare global {
-  interface Window {
-    $crisp?: Array<unknown[]>;
-  }
-}
+import {
+  hideSupportChatBubble,
+  isUnreadMessage,
+  onSupportChatEvent,
+  openSupportChat,
+} from '@/lib/supportChat';
 
 export default function TopBarActions() {
-  const [crispUnread, setCrispUnread] = useState(false);
+  const [unread, setUnread] = useState(false);
 
-  const openCrisp = useCallback(() => {
-    window.$crisp?.push(['do', 'chat:show']);
-    window.$crisp?.push(['do', 'chat:open']);
-    setCrispUnread(false);
+  const handleOpen = useCallback(() => {
+    openSupportChat();
+    setUnread(false);
   }, []);
 
   useEffect(() => {
-    window.$crisp?.push(['on', 'message:received', () => setCrispUnread(true)]);
-    window.$crisp?.push(['on', 'chat:opened', () => setCrispUnread(false)]);
-    window.$crisp?.push(['on', 'chat:closed', () => window.$crisp?.push(['do', 'chat:hide'])]);
+    // Returned unsubscribes are not optional here: these are real window listeners, so without
+    // cleanup a remount stacks duplicates and the unread dot updates once per mount.
+    const unsubscribers = [
+      onSupportChatEvent('chatwoot:on-message', (detail) => {
+        if (isUnreadMessage(detail)) setUnread(true);
+      }),
+      onSupportChatEvent('chatwoot:opened', () => setUnread(false)),
+      // Re-hide on close so the bubble stays out of the way inside the app shell; the topbar
+      // button is the only entry point here.
+      onSupportChatEvent('chatwoot:closed', () => hideSupportChatBubble()),
+    ];
+    return () => unsubscribers.forEach((off) => off());
   }, []);
 
   return (
@@ -30,9 +38,14 @@ export default function TopBarActions() {
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" className="topbar-action-btn" aria-label="Chat" onClick={openCrisp}>
+          <button
+            type="button"
+            className="topbar-action-btn"
+            aria-label="Chat"
+            onClick={handleOpen}
+          >
             <MessageCircle size={18} />
-            {crispUnread && <span className="unread-dot unread-dot--primary" />}
+            {unread && <span className="unread-dot unread-dot--primary" />}
           </button>
         </TooltipTrigger>
         <TooltipContent>Chat de suporte</TooltipContent>

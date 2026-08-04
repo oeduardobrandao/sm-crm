@@ -1,6 +1,7 @@
 import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { identifySupportUser, resetSupportChat } from '@/lib/supportChat';
 
 // vi.hoisted: the vi.mock('../../store/core', ...) factory below runs before
 // this file's own top-level statements, so a plain `const mock... = vi.fn()`
@@ -455,30 +456,30 @@ describe('AuthProvider', () => {
   });
 });
 
-// window.$crisp is a real array in production (Crisp's snippet installs
-// `window.$crisp = []` before its async script loads, and `.push(...)`
-// queues commands onto that same array), which is exactly why the ambient
-// `Window['$crisp']` type declared alongside AppLayout/TopBarActions/
-// MobileNav is `Array<unknown[]>`, not some bespoke SDK object. None of the
-// suites above ever set `window.$crisp`, which is precisely why both the
-// original bleed (identity never reset) and the stale-email gap (identify
-// effect not keyed on email) went unnoticed -- every push silently no-oped
-// on `undefined` in jsdom. This block is scoped with its own
-// beforeEach/afterEach so it never leaks the stub into the tests above or
-// below it.
-describe('AuthProvider Crisp identification', () => {
-  let crispPush: ReturnType<typeof vi.spyOn>;
+// The widget is mocked at the module boundary rather than by stubbing a global. Under Crisp these
+// tests spied on `window.$crisp` -- a plain array in production, which is why every push silently
+// no-oped on `undefined` in jsdom and why both the original bleed (identity never reset) and the
+// stale-email gap (identify effect not keyed on email) went unnoticed for so long. Chatwoot's SDK
+// object only exists after its `chatwoot:ready` event, so a global stub would be even less
+// faithful; `lib/supportChat` owns that readiness buffer and is unit-tested separately.
+vi.mock('@/lib/supportChat', () => ({
+  identifySupportUser: vi.fn(),
+  resetSupportChat: vi.fn(),
+  openSupportChat: vi.fn(),
+  showSupportChatBubble: vi.fn(),
+  hideSupportChatBubble: vi.fn(),
+  onSupportChatEvent: vi.fn(() => () => {}),
+  isUnreadMessage: vi.fn(() => true),
+  initSupportChat: vi.fn(),
+}));
 
+describe('AuthProvider support-chat identification', () => {
   beforeEach(() => {
-    window.$crisp = [];
-    crispPush = vi.spyOn(window.$crisp, 'push');
+    vi.mocked(identifySupportUser).mockClear();
+    vi.mocked(resetSupportChat).mockClear();
   });
 
-  afterEach(() => {
-    delete (window as { $crisp?: unknown }).$crisp;
-  });
-
-  it('identifies user:email and user:nickname once an identity exists', async () => {
+  it('identifies the user once an identity exists', async () => {
     mockedSupabase.__resetSupabaseMock();
     mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
     mockedSupabase.__setCurrentProfile({
@@ -491,21 +492,43 @@ describe('AuthProvider Crisp identification', () => {
     renderWithAuth();
 
     await waitFor(() => {
-      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com']]);
-    });
-    await waitFor(() => {
-      expect(crispPush).toHaveBeenCalledWith(['set', 'user:nickname', ['Eduardo Souza']]);
+      expect(identifySupportUser).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'user-1',
+          email: 'eduardo@example.com',
+          name: 'Eduardo Souza',
+        }),
+      );
     });
   });
 
-  it('re-pushes user:email with the NEW value after an in-session email change (same userId)', async () => {
-    // Regression coverage for the stale-identity finding: a Supabase
-    // USER_UPDATED event (e.g. the user changes their email) updates
-    // `user.email` in state while `userId` stays the same. Before the Crisp
-    // identify push was split into its own effect keyed on
-    // [userId, user?.email, profile?.nome], the profile-hydration effect
-    // (keyed only on [sessionReady, userId]) would not re-run, and Crisp
-    // would stay identified with the OLD email for the rest of the session.
+  it('passes the profile phone through so web chat and WhatsApp merge into one contact', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo Souza',
+      role: 'owner',
+      conta_id: 'conta-1',
+      whatsapp: '+5571988887777',
+    });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(identifySupportUser).toHaveBeenCalledWith(
+        expect.objectContaining({ phone: '+5571988887777' }),
+      );
+    });
+  });
+
+  it('re-identifies with the NEW email after an in-session email change (same userId)', async () => {
+    // Regression coverage for the stale-identity finding: a Supabase USER_UPDATED event (e.g. the
+    // user changes their email) updates `user.email` in state while `userId` stays the same.
+    // Before the identify call was split into its own effect keyed on
+    // [userId, user?.email, profile?.nome], the profile-hydration effect (keyed only on
+    // [sessionReady, userId]) would not re-run, and the widget would stay identified with the OLD
+    // email for the rest of the session.
     mockedSupabase.__resetSupabaseMock();
     mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'old@example.com' });
     mockedSupabase.__setCurrentProfile({
@@ -518,10 +541,12 @@ describe('AuthProvider Crisp identification', () => {
     renderWithAuth();
 
     await waitFor(() => {
-      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['old@example.com']]);
+      expect(identifySupportUser).toHaveBeenCalledWith(
+        expect.objectContaining({ email: 'old@example.com' }),
+      );
     });
 
-    crispPush.mockClear();
+    vi.mocked(identifySupportUser).mockClear();
 
     await act(async () => {
       mockedSupabase.__emitAuthChange('USER_UPDATED', {
@@ -530,13 +555,17 @@ describe('AuthProvider Crisp identification', () => {
     });
 
     await waitFor(() => {
-      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['new@example.com']]);
+      expect(identifySupportUser).toHaveBeenCalledWith(
+        expect.objectContaining({ email: 'new@example.com' }),
+      );
     });
     // The stale value must never resurface after the change settles.
-    expect(crispPush).not.toHaveBeenCalledWith(['set', 'user:email', ['old@example.com']]);
+    expect(identifySupportUser).not.toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'old@example.com' }),
+    );
   });
 
-  it('resets the Crisp session on sign-out, before the next identity could be pushed', async () => {
+  it('resets the support-chat session on sign-out, before the next identity could be set', async () => {
     mockedSupabase.__resetSupabaseMock();
     mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
     mockedSupabase.__setCurrentProfile({
@@ -557,7 +586,7 @@ describe('AuthProvider Crisp identification', () => {
     });
 
     await waitFor(() => {
-      expect(crispPush).toHaveBeenCalledWith(['do', 'session:reset']);
+      expect(resetSupportChat).toHaveBeenCalled();
     });
   });
 });

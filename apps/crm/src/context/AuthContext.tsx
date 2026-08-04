@@ -11,6 +11,7 @@ import {
 import { getMyMembership, type MyMembership } from '../store/workspace';
 import { deriveFinancialAccess, type FinancialAccess } from '../lib/financialAccess';
 import { identifyWorkspaceUser, resetAnalytics } from '../lib/analytics';
+import { identifySupportUser, resetSupportChat } from '../lib/supportChat';
 
 interface Profile {
   id: string;
@@ -18,6 +19,10 @@ interface Profile {
   role: 'owner' | 'admin' | 'agent';
   conta_id: string;
   active_workspace_id?: string;
+  // Present because the profile query is `select('*')`. Declared explicitly so it narrows past
+  // the index signature below -- the support chat passes it as the contact's phone number, which
+  // is what lets the inbox merge a user's web-chat and WhatsApp conversations into one contact.
+  whatsapp?: string | null;
   [key: string]: unknown;
 }
 
@@ -133,16 +138,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // A's PostHog profile -- the same cross-account bleed the resets
         // above exist to close, one layer over. Mirrors `signOut` below.
         resetAnalytics();
-        // Same shared-machine reasoning as resetAnalytics() above, but for
-        // Crisp: without this, B's chat messages land on A's identified
-        // Crisp contact (A's email/nickname), since Crisp persists the
-        // identity in the browser until told otherwise. Guarded because a
-        // support-tooling failure must never break an auth transition.
-        try {
-          window.$crisp?.push(['do', 'session:reset']);
-        } catch {
-          // Never let a support-tooling nicety break auth.
-        }
+        // Same shared-machine reasoning as resetAnalytics() above, but for the
+        // support chat: without this, B's chat messages land on A's identified
+        // contact (A's email/name), since the widget persists the identity in
+        // the browser until told otherwise. The call is internally guarded --
+        // a support-tooling failure must never break an auth transition.
+        resetSupportChat();
         queryClient.clear();
         // A non-null nextUser still has hydration ahead of it (the
         // profile-fetch effect below, keyed on userId, takes over `loading`
@@ -245,23 +246,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [sessionReady, userId]);
 
-  // Crisp identification, split out from the profile-hydration effect above
-  // on purpose: that effect is keyed on [sessionReady, userId] so an email or
-  // name change alone never re-triggers the profile/membership fetch, but
-  // Crisp still needs to learn about exactly those changes. Without its own
-  // effect, a Supabase USER_UPDATED event (e.g. after an email change) would
-  // update `user.email` in state while `userId` stays the same -- the
-  // hydration effect wouldn't re-run, and Crisp would stay identified with
-  // the stale email for the rest of the session.
+  // Support-chat identification, split out from the profile-hydration effect
+  // above on purpose: that effect is keyed on [sessionReady, userId] so an
+  // email or name change alone never re-triggers the profile/membership fetch,
+  // but the widget still needs to learn about exactly those changes. Without
+  // its own effect, a Supabase USER_UPDATED event (e.g. after an email change)
+  // would update `user.email` in state while `userId` stays the same -- the
+  // hydration effect wouldn't re-run, and the widget would stay identified
+  // with the stale email for the rest of the session.
   //
-  // Crisp is loaded anonymously in index.html, so the inbox otherwise shows
-  // no identity. Email + name only: client count is not available from any
-  // existing hook, and the spec explicitly says not to build a data path for
-  // it. Guarded because Crisp's script may not have loaded yet, and each push
-  // gets its own try/catch so one throwing (e.g. Crisp rejecting an
-  // unexpected value) can never suppress the other.
+  // The widget boots anonymously, so the inbox otherwise shows no identity.
+  // `phone` is passed when the profile already carries it (no query is added
+  // for it) because it lets the inbox merge this user's web-chat and WhatsApp
+  // conversations into one contact. identifySupportUser() is internally
+  // guarded and buffers until the widget is ready, so an early call is safe.
   //
-  // Ordering vs. session:reset: reset is pushed synchronously -- inside the
+  // Ordering vs. reset: reset runs synchronously -- inside the
   // onAuthStateChange handler for a user change, and inside signOut() -- when
   // `userId` still holds the OUTGOING identity. This effect only runs after
   // React commits a render with the NEW userId (or null), which happens
@@ -270,21 +270,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ordering race to resolve.
   useEffect(() => {
     if (!userId) return;
-    if (user?.email) {
-      try {
-        window.$crisp?.push(['set', 'user:email', [user.email]]);
-      } catch {
-        // Never let a support-tooling nicety break auth.
-      }
-    }
-    if (profile?.nome) {
-      try {
-        window.$crisp?.push(['set', 'user:nickname', [profile.nome]]);
-      } catch {
-        // Never let a support-tooling nicety break auth.
-      }
-    }
-  }, [userId, user?.email, profile?.nome]);
+    if (!user?.email && !profile?.nome) return;
+    identifySupportUser({
+      id: userId,
+      email: user?.email,
+      name: profile?.nome,
+      phone: profile?.whatsapp,
+    });
+  }, [userId, user?.email, profile?.nome, profile?.whatsapp]);
 
   // Backstop mirror: keeps the ref in sync with every OTHER setCanSeeFinancials
   // call site (the userChanged reset, both branches of the hydration effect,
@@ -508,16 +501,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabaseSignOut();
     // Prevent the next user on a shared machine from being merged into this identity.
     resetAnalytics();
-    // Same shared-machine reasoning as resetAnalytics() above, but for Crisp:
-    // without this, the next person on this browser inherits the outgoing
-    // user's identified Crisp contact (their email/nickname) and their
-    // support messages land on it. Guarded because a support-tooling failure
-    // must never break sign-out, a security-relevant path.
-    try {
-      window.$crisp?.push(['do', 'session:reset']);
-    } catch {
-      // Never let a support-tooling nicety break auth.
-    }
+    // Same shared-machine reasoning as resetAnalytics() above, but for the
+    // support chat: without this, the next person on this browser inherits the
+    // outgoing user's identified contact (their email/name) and their support
+    // messages land on it. The call is internally guarded because a
+    // support-tooling failure must never break sign-out, a security-relevant
+    // path.
+    resetSupportChat();
     clearProfileCache();
     activeUserId.current = null;
     setUser(null);

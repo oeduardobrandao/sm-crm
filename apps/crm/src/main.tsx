@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { installDeployRecovery, watchForNewVersion } from '@mesaas/app-lifecycle';
 import { initSentry } from '@/lib/sentry';
 import { initAnalytics } from './lib/analytics';
+import { initSupportChat } from './lib/supportChat';
 import { showNewVersionToast } from './lib/new-version-toast';
 import { initI18n } from '@mesaas/i18n';
 import ptCommon from '../../../packages/i18n/locales/pt/common.json';
@@ -29,6 +30,7 @@ watchForNewVersion({ onNewVersion: showNewVersionToast });
 
 initSentry();
 initAnalytics();
+initSupportChat();
 
 initI18n({
   pt: {

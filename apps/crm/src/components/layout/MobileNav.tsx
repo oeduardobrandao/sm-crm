@@ -9,12 +9,7 @@ import { Search, MessageCircle } from 'lucide-react';
 import { CommandDialog, CommandInput, CommandList, CommandEmpty } from '@/components/ui/command';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { avatarColorClass } from '@/lib/avatarColor';
-
-declare global {
-  interface Window {
-    $crisp?: Array<unknown[]>;
-  }
-}
+import { openSupportChat } from '@/lib/supportChat';
 
 const PRIMARY_ITEMS = [
   { id: 'dashboard', route: '/dashboard', label: 'Dashboard', icon: 'ph-chart-pie-slice' },
@@ -174,7 +169,7 @@ export default function MobileNav() {
           <button
             className="mobile-more-item"
             onClick={() => {
-              window.$crisp?.push(['do', 'chat:open']);
+              openSupportChat();
               setMoreOpen(false);
             }}
             type="button"

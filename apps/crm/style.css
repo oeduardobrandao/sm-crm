@@ -2809,7 +2809,9 @@ select.form-input option {
     margin-left: 0;
   }
 
-  .crisp-client {
+  /* Lift the support-chat bubble clear of the mobile bottom nav. */
+  .woot-widget-bubble,
+  .woot--bubble-holder {
     transform: translateY(-5.5rem);
   }
 

@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { FinancialAccess } from '../../lib/financialAccess';
 import FinancialRestrictionScreen from './FinancialRestrictionScreen';
 import { Spinner } from '../ui/spinner';
+import { hideSupportChatBubble, showSupportChatBubble } from '@/lib/supportChat';
 
 const GlobalBannerContainer = lazy(() => import('./GlobalBannerContainer'));
 
@@ -91,8 +92,12 @@ export default function AppLayout() {
     if (main) main.scrollTop = 0;
   }, [location.pathname]);
 
+  // Inside the app shell the topbar/mobile-nav buttons are the only entry point, so the floating
+  // bubble stays hidden. Restored on unmount because the public marketing pages -- where a
+  // logged-out visitor has no other way to reach support -- share this same widget instance.
   useEffect(() => {
-    window.$crisp?.push(['do', 'chat:hide']);
+    hideSupportChatBubble();
+    return () => showSupportChatBubble();
   }, []);
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
