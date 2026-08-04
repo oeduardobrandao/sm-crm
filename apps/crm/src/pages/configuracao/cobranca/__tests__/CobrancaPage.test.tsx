@@ -51,7 +51,10 @@ function subscription(overrides: Partial<WorkspaceSubscription>): WorkspaceSubsc
 }
 
 beforeEach(() => {
-  vi.mocked(useAuth).mockReturnValue({ role: 'owner' } as never);
+  // workspaceRole is what the page actually gates on: it falls back to the
+  // profile-level role only while membership is unresolved. Both are set here
+  // so these tests exercise the resolved owner path, not the fallback.
+  vi.mocked(useAuth).mockReturnValue({ role: 'owner', workspaceRole: 'owner' } as never);
   vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN]);
   vi.mocked(getEffectivePlanId).mockResolvedValue('free');
 });

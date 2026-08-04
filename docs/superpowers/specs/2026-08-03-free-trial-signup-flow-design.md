@@ -424,9 +424,26 @@ intended end state.
    state flips between prod (`skjzpekeqefvlojenfsw`) and staging
    (`wlyzhyfondykzpsiqsce`).
 3. Verify the deployed function on both projects.
-4. Only then merge. The frontend ships with the Vercel deploy on merge.
+4. `npx supabase db push --linked` on both projects, for
+   `20260804000001_workspace_subscriptions_membership_read.sql`. Safe in either
+   order relative to step 2: the policy only widens the read for owners whose
+   `profiles.role` had gone stale and narrows it for non-owners, and the
+   function's own membership check is independent of it.
+5. Only then merge. The frontend ships with the Vercel deploy on merge.
 
-No migration. No schema change.
+One migration, no schema change.
+`20260804000001_workspace_subscriptions_membership_read.sql` rewrites the
+`workspace_subscriptions_owner_read` RLS policy to authorize on
+`workspace_members` for the active workspace instead of the global
+`profiles.role`. `switch_workspace` moves `conta_id` and `active_workspace_id`
+together but never `profiles.role`, so the old policy let an agent read the
+active workspace's billing row whenever the stale role said `owner`, and blocked
+a real owner whose stale role said `agent`. The second case is the dangerous one
+for this flow: the blocked read makes `hasEverSubscribed` false, `/comecar`
+offers the trial, and `billing-checkout` (service role, RLS bypassed) sees the
+real subscription and charges immediately. The migration makes RLS agree with
+the `workspace_members` check `billing-checkout` performs. No table, column or
+index changes.
 
 ## Out of scope / known limits
 

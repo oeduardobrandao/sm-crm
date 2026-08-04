@@ -57,12 +57,19 @@ function planFeatures(p: BillingPlan): string[] {
 }
 
 export default function CobrancaPage() {
-  const { role } = useAuth();
+  const { role, workspaceRole } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [interval, setInterval] = useState<BillingInterval>('month');
   const [busy, setBusy] = useState<string | null>(null);
 
-  const isOwner = role === 'owner';
+  // Follow the ACTIVE workspace role, not the stale profile-level role: a user
+  // can be owner in one workspace and agent in another, and switch_workspace
+  // never rewrites profiles.role. All four authorities now agree on
+  // per-workspace membership (this gate, ComecarPage, TrialNudgeCard, the
+  // workspace_subscriptions_owner_read RLS policy and billing-checkout's
+  // workspace_members check), so the UI cannot offer an action the server
+  // will refuse.
+  const isOwner = (workspaceRole ?? role) === 'owner';
   const { data: plans, isLoading: plansLoading } = useQuery({
     queryKey: ['billing', 'plans'],
     queryFn: listActivePlans,

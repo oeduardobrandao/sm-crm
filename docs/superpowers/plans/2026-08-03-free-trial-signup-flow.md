@@ -4,7 +4,7 @@
 
 **Goal:** Make the 30-day trial the default path for every new signup, with no promo code to discover and no settings page to find.
 
-**Architecture:** The trial becomes unconditional server-side for any workspace that has never held a Stripe subscription. A new `/comecar` step sits between signup and the dashboard; landing-page plan CTAs carry their choice through signup straight into Stripe Checkout. Anyone who declines lands on Free with a resurfacing dashboard nudge. No migration, no schema change.
+**Architecture:** The trial becomes unconditional server-side for any workspace that has never held a Stripe subscription. A new `/comecar` step sits between signup and the dashboard; landing-page plan CTAs carry their choice through signup straight into Stripe Checkout. Anyone who declines lands on Free with a resurfacing dashboard nudge. One migration (an RLS policy rewrite), no schema change.
 
 **Tech Stack:** React 19 + React Router v7 + TanStack Query (CRM), Deno edge functions, Stripe Checkout, Vitest + `deno test`.
 
@@ -14,7 +14,7 @@
 
 - **No em dashes in user-facing copy.** Use a period, a colon, or `·`. Applies to every Portuguese string added here.
 - **UI language is Portuguese (pt-BR).** Code, comments, and test names stay in English, matching the codebase.
-- **No migration, no schema change** in this plan.
+- **One migration, no schema change** in this plan: `20260804000001_workspace_subscriptions_membership_read.sql` (Task 13). It rewrites the `workspace_subscriptions_owner_read` RLS policy to authorize on `workspace_members` for the active workspace instead of the global `profiles.role`, which `switch_workspace` never updates. Without it the policy disagrees with the membership check `billing-checkout` now performs: a stale `agent` role blocks the owner's own subscription read, `hasEverSubscribed` reads false, `/comecar` offers the trial, and the service-role checkout charges the card instead. No table, column or index changes.
 - **CORS:** never a wildcard. `billing-checkout` already uses `buildCorsHeaders(req)`; do not change it.
 - **Edge functions never return raw error details** to clients. Generic message out, detail to `console.error`.
 - **Prettier and ESLint are CI gates** over `apps/**` and `packages/**` `.ts`/`.tsx`. Run `npm run format` before committing frontend changes.
@@ -2316,7 +2316,15 @@ npx supabase functions deploy billing-checkout --use-api
 ```
 
 3. Verify the deployed function on both projects (a checkout started from Plano e Cobrança still opens a Stripe session and, for a never-subscribed workspace, shows the 30-day trial).
-4. Only then merge. The frontend ships with the Vercel deploy on merge.
+4. **Push the migration to prod and staging.** Same link-state check as step 2:
+
+```bash
+npx supabase db push --linked
+```
+
+   This applies `20260804000001_workspace_subscriptions_membership_read.sql`. Its order relative to step 2 does not matter: the policy only widens the subscription read for owners whose `profiles.role` had gone stale and narrows it for non-owners, and the function's membership check does not depend on it. Both must land before the merge, since the frontend gate ships at merge.
+
+5. Only then merge. The frontend ships with the Vercel deploy on merge.
 
 ## Notes for the implementer
 
