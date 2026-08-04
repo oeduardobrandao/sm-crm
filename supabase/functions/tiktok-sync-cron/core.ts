@@ -44,6 +44,7 @@ import {
   refreshStoredPostMetrics as realRefreshStoredPostMetrics,
 } from "../tiktok-integration/import.ts";
 import { runPool } from "../instagram-sync-cron/pool.ts";
+import { fetchInternalWorkspaceIds as realFetchInternalWorkspaceIds } from "../_shared/internal-workspaces.ts";
 
 // deno-lint-ignore no-explicit-any
 type DbClient = any;
@@ -77,6 +78,9 @@ export interface TikTokSyncCronDeps {
   /** Authenticated TikTok API fetch wrapper (_shared/tiktok.ts's tiktokFetch). */
   tiktokFetch: (path: string, init: RequestInit & { accessToken: string }) => Promise<unknown>;
   effectivePlanFeature: (svc: DbClient, workspaceId: string, featureKey: string) => Promise<boolean>;
+  /** Workspaces flagged `is_internal` are skipped entirely. Defaults to the real
+   * _shared/internal-workspaces.ts lookup; overridable so tests need no workspaces table. */
+  fetchInternalWorkspaceIds?: (svc: DbClient) => Promise<Set<string>>;
   /** Default to the real tiktok-integration/import.ts helpers — overridable so tests never
    * touch real network/storage calls. */
   importTikTokVideos?: (
@@ -237,13 +241,25 @@ export async function runTikTokSyncCron(deps: TikTokSyncCronDeps): Promise<Respo
 
     if (rows.length > 0) {
       // Keep only accounts whose workspace has feature_auto_sync_cron (same gate as
-      // instagram-sync-cron, one RPC call per distinct workspace, not per account).
+      // instagram-sync-cron, one RPC call per distinct workspace, not per account)
+      // and is not flagged is_internal.
       const wsIds = [...new Set(rows.map(contaIdOf))];
       const allowed = new Set<string>();
-      await Promise.all(wsIds.map(async (wsId) => {
-        if (await deps.effectivePlanFeature(svc, wsId, "feature_auto_sync_cron")) allowed.add(wsId);
-      }));
-      const eligible = rows.filter((a) => allowed.has(contaIdOf(a)));
+      const internalLookup = deps.fetchInternalWorkspaceIds ?? realFetchInternalWorkspaceIds;
+      const [internal] = await Promise.all([
+        internalLookup(svc),
+        Promise.all(wsIds.map(async (wsId) => {
+          if (await deps.effectivePlanFeature(svc, wsId, "feature_auto_sync_cron")) allowed.add(wsId);
+        })),
+      ]);
+      const eligible = rows.filter((a) => {
+        const wsId = contaIdOf(a);
+        return allowed.has(wsId) && !internal.has(wsId);
+      });
+      const skippedInternal = rows.filter((a) => internal.has(contaIdOf(a))).length;
+      if (skippedInternal > 0) {
+        console.log(`[${CRON_NAME}] Skipped ${skippedInternal} account(s) in internal workspaces`);
+      }
 
       const concurrency = Math.max(1, deps.concurrency ?? DEFAULT_CONCURRENCY);
       await runPool(eligible, concurrency, async (account) => {

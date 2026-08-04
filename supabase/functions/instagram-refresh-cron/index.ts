@@ -3,6 +3,8 @@ import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createInstagramRefreshCronHandler } from "./handler.ts";
 import { shouldRevokeOnError } from "./utils.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
+import { fetchInternalWorkspaceIds } from "../_shared/internal-workspaces.ts";
+import { contaIdOf } from "../instagram-sync-cron/select.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -72,16 +74,30 @@ Deno.serve(createInstagramRefreshCronHandler({
 
       const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-      const { data: accounts, error } = await supabase
+      const { data: candidates, error } = await supabase
         .from('instagram_accounts')
-        .select('id, encrypted_access_token')
+        .select('id, encrypted_access_token, clientes!inner(conta_id)')
         .eq('authorization_status', 'active')
         .not('encrypted_access_token', 'is', null)
         .neq('encrypted_access_token', '')
         .lte('token_expires_at', thirtyDaysFromNow);
 
       if (error) throw error;
-      if (!accounts || accounts.length === 0) {
+      if (!candidates || candidates.length === 0) {
+        return new Response("No tokens need refreshing", { status: 200 });
+      }
+
+      // Internal/seed workspaces hold placeholder tokens that can never decrypt;
+      // refreshing them only produces a recurring alert. Fails open (see helper).
+      const internalWorkspaces = await fetchInternalWorkspaceIds(supabase);
+      const accounts = candidates.filter(
+        (a: any) => !internalWorkspaces.has(contaIdOf(a))
+      );
+      const skippedInternal = candidates.length - accounts.length;
+      if (skippedInternal > 0) {
+        console.log(`[IG-REFRESH-CRON] Skipped ${skippedInternal} account(s) in internal workspaces`);
+      }
+      if (accounts.length === 0) {
         return new Response("No tokens need refreshing", { status: 200 });
       }
 
