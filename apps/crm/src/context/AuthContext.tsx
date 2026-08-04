@@ -76,6 +76,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [sessionReady, setSessionReady] = useState(false);
   const authGeneration = useRef(0);
+  /**
+   * Counts CRISP IDENTITY RESETS only — bumped at exactly the two places that
+   * push `['do', 'session:reset']` (the user-change branch of
+   * onAuthStateChange, and signOut) and nowhere else.
+   *
+   * Deliberately NOT `authGeneration`, which the Crisp identify effect used to
+   * compare against. `authGeneration` moves on EVERY onAuthStateChange event —
+   * INITIAL_SESSION, TOKEN_REFRESHED, USER_UPDATED, SIGNED_IN — so a routine
+   * token refresh landing inside the crisp-identity invoke window (likely at
+   * app start, where the invoke can take seconds against a cold edge function)
+   * made the post-await guard reject a perfectly valid push. The effect's deps
+   * are [userId, user?.email], neither of which a refresh changes, so it never
+   * re-ran and the user went UNIDENTIFIED in Crisp for the whole mount —
+   * exactly the "suppress identification entirely, worse than the unsigned
+   * fallback" outcome the invoke timeout exists to prevent. This ref fires
+   * when, and only when, an identity reset actually happened.
+   */
+  const crispResetGeneration = useRef(0);
   const profileRequestId = useRef(0);
   const activeUserId = useRef<string | null>(null);
   const userId = user?.id;
@@ -138,6 +156,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Crisp contact (A's email/nickname), since Crisp persists the
         // identity in the browser until told otherwise. Guarded because a
         // support-tooling failure must never break an auth transition.
+        //
+        // Bumped immediately before the push, synchronously and outside the
+        // try, so an in-flight crisp-identity response for the OUTGOING
+        // identity can never land after this reset (see the identify effect).
+        crispResetGeneration.current += 1;
         try {
           window.$crisp?.push(['do', 'session:reset']);
         } catch {
@@ -262,27 +285,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // unexpected value) can never suppress the other.
   //
   // Ordering vs. session:reset: reset is pushed synchronously -- inside the
-  // onAuthStateChange handler for a user change (authGeneration.current += 1
-  // at line 109, reset at line 142), and inside signOut() (bumped at line 548,
-  // reset at line 559) -- while `userId` still holds the OUTGOING identity.
-  // The identify push below is NOT synchronous: it awaits a network round
-  // trip to crisp-identity, so a sign-out's synchronous reset can fire while
-  // a signing request started by the JUST-reset session is still in flight.
-  // `active` alone does not close that window: it is only cleared later, by
-  // React's passive-effect cleanup once it commits the render for the new
-  // userId, which is strictly after the in-flight response could already
-  // have resolved and pushed the outgoing user's email into the freshly
-  // reset (anonymous, or next-user) session -- a cross-customer attribution
-  // bug on a shared machine, exactly what session:reset exists to prevent.
-  // The ordering IS resolved, by re-checking `authGeneration` (captured at
-  // effect start, in `initialAuthGeneration`) after the await, in addition to
-  // `active`: authGeneration moves synchronously, in the same turn as every
-  // session:reset push, so unlike `active` it can never still read as
-  // "current" once a reset for this identity has already happened.
+  // onAuthStateChange handler for a user change, and inside signOut() --
+  // while `userId` still holds the OUTGOING identity. The identify push below
+  // is NOT synchronous: it awaits a network round trip to crisp-identity, so a
+  // sign-out's synchronous reset can fire while a signing request started by
+  // the JUST-reset session is still in flight. `active` alone does not close
+  // that window: it is only cleared later, by React's passive-effect cleanup
+  // once it commits the render for the new userId, which is strictly after the
+  // in-flight response could already have resolved and pushed the outgoing
+  // user's email into the freshly reset (anonymous, or next-user) session -- a
+  // cross-customer attribution bug on a shared machine, exactly what
+  // session:reset exists to prevent.
+  //
+  // The ordering IS resolved, by re-checking `crispResetGeneration` (captured
+  // at effect start) after the await, in addition to `active`: that ref moves
+  // synchronously, in the same turn as every session:reset push, so unlike
+  // `active` it can never still read as "current" once a reset for this
+  // identity has already happened.
+  //
+  // It is `crispResetGeneration` and NOT `authGeneration` on purpose. See that
+  // ref's declaration: authGeneration counts every auth event, so a
+  // TOKEN_REFRESHED arriving mid-invoke made this guard drop a valid push and,
+  // because the deps below do not change on a refresh, left the user
+  // unidentified in Crisp for the entire mount.
   useEffect(() => {
     if (!userId) return;
     let active = true;
-    const initialAuthGeneration = authGeneration.current;
+    const initialCrispResetGeneration = crispResetGeneration.current;
 
     (async () => {
       if (!user?.email) return;
@@ -303,10 +332,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // strictly better than blocking support access entirely.
       }
       // Both checks matter: `active` closes the ordinary effect-re-run/
-      // unmount race, `authGeneration` closes the session:reset race (see
-      // the comment above this effect) that `active` cannot, because it is
-      // only cleared asynchronously by React's own cleanup.
-      if (!active || authGeneration.current !== initialAuthGeneration) return;
+      // unmount race, `crispResetGeneration` closes the session:reset race
+      // (see the comment above this effect) that `active` cannot, because it
+      // is only cleared asynchronously by React's own cleanup.
+      if (!active || crispResetGeneration.current !== initialCrispResetGeneration) return;
 
       try {
         // Second element is the identity signature. Crisp marks the session
@@ -555,6 +584,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     authGeneration.current += 1;
+    // Paired with the `['do', 'session:reset']` push below, but bumped HERE,
+    // before the first await: an in-flight crisp-identity response for the
+    // outgoing user can resolve during `await supabaseSignOut()`, so the
+    // counter has to have moved already for the identify effect's post-await
+    // guard to see it. Same reasoning as authGeneration on the line above.
+    crispResetGeneration.current += 1;
     profileRequestId.current += 1;
     await supabaseSignOut();
     // Prevent the next user on a shared machine from being merged into this identity.

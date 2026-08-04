@@ -1,7 +1,7 @@
 -- RPCs for crisp-sync-cron.
 -- Spec: docs/superpowers/specs/2026-08-03-crisp-customer-sync-design.md
 --
--- Apply AFTER 20260804000001 (crisp_contacts) and BEFORE deploying the function.
+-- Apply AFTER 20260804000010 (crisp_contacts) and BEFORE deploying the function.
 
 -- ---------------------------------------------------------------------------
 -- Write protocol, in two halves. Do NOT collapse them back into one call.
@@ -41,19 +41,42 @@ begin
     return false;
   end if;
 
-  -- A deletion is still OWED at Crisp for a different address on this user's
-  -- row. Overwriting synced_email now would strand that address at the vendor
-  -- forever, because user_id is UNIQUE and the old value would be gone.
+  -- A deletion is still OWED at Crisp. Two shapes, and the predicate must NOT
+  -- be scoped to this user's own row:
+  --
+  -- (a) SAME user, DIFFERENT address. Overwriting synced_email now would strand
+  --     the old address at the vendor forever, because user_id is UNIQUE and
+  --     the old value would be gone.
+  --
+  -- (b) ANY OTHER row -- including an ORPHAN (user_id nulled by the FK's
+  --     `on delete set null`) -- still owing a deletion for THIS address.
+  --     user_id is unique but synced_email is not, so two live rows can name
+  --     the same address, and a per-user predicate cannot see across them.
+  --     Reachable through invite-user/index.ts, which hard-deletes an
+  --     auth.users row (including on the resend-link path, which covers an
+  --     already-confirmed user who was a sync candidate) after which the same
+  --     address is re-invited as a NEW auth.users row. The interleaving this
+  --     prevents: run A selects the orphan for deletion; run B records and
+  --     syncs the NEW user at the same address; run A's DELETE then erases the
+  --     profile that now belongs to the live customer, while B's ledger row
+  --     reads "synced" and its fingerprint suppresses re-sync indefinitely.
+  --     Within one invocation the deletions-first ordering hides this; across
+  --     overlapping invocations it does not.
   if exists (
     select 1 from crisp_contacts cc
-    where cc.user_id = p_user_id
-      and cc.deleted_at is null
-      and cc.synced_email is distinct from p_email
+    where cc.deleted_at is null
+      and (
+        (cc.user_id = p_user_id and cc.synced_email is distinct from p_email)
+        or (cc.user_id is distinct from p_user_id and cc.synced_email = p_email)
+      )
   ) then
     return false;
   end if;
 
-  -- Deliberately does NOT touch synced_fingerprint or synced_people_id.
+  -- The INSERT branch below deliberately does NOT touch synced_fingerprint or
+  -- synced_people_id: a first sync is unconfirmed until confirm_crisp_sync
+  -- runs. The on-conflict branch is the one exception, and only in one
+  -- direction -- see the reactivation comment inside it.
   insert into crisp_contacts (user_id, synced_email, synced_at, deleted_at)
   values (p_user_id, p_email, now(), null)
   on conflict (user_id) do update
@@ -306,17 +329,32 @@ language sql security definer set search_path = public as $$
     f.primary_workspace_id, f.segments, f.fingerprint, cc.synced_people_id
   from fingerprinted f
   left join crisp_contacts cc on cc.user_id = f.user_id
-  -- A deletion is OWED for this person's previous address. Written as a
-  -- correlated `not exists` rather than folded into the left join above ON
-  -- PURPOSE: `is distinct from` is two-valued and never yields NULL, so for a
-  -- never-synced user the folded form evaluates to `not (TRUE and TRUE)` =
-  -- FALSE and silently drops everyone with no ledger row -- which on first
-  -- deployment is every single user.
+  -- A deletion is OWED, in either of two shapes -- mirroring
+  -- record_crisp_contact's refusal exactly, or the RPC would refuse a candidate
+  -- this query keeps offering every sweep:
+  --
+  -- (a) this person's OWN row still names a previous address;
+  -- (b) ANY OTHER row -- including an ORPHAN whose user_id was nulled by the
+  --     FK when the account was hard-deleted -- still owes a deletion for THIS
+  --     address. synced_email is not unique, so two live rows can name the same
+  --     address and a per-user predicate cannot see across them. The
+  --     interleaving: invite-user hard-deletes a confirmed user and the address
+  --     is re-invited as a new auth.users row; an overlapping run's deletion
+  --     sweep erases the profile at that address while this run reports the new
+  --     user as synced, whose fingerprint then suppresses re-sync indefinitely.
+  --
+  -- Written as a correlated `not exists` rather than folded into the left join
+  -- above ON PURPOSE, and it must STAY that way: `is distinct from` is
+  -- two-valued and never yields NULL, so for a never-synced user the folded
+  -- form evaluates to `not (TRUE and TRUE)` = FALSE and silently drops everyone
+  -- with no ledger row -- which on first deployment is every single user.
   where not exists (
     select 1 from crisp_contacts cc2
-    where cc2.user_id = f.user_id
-      and cc2.deleted_at is null
-      and cc2.synced_email is distinct from f.email
+    where cc2.deleted_at is null
+      and (
+        (cc2.user_id = f.user_id and cc2.synced_email is distinct from f.email)
+        or (cc2.user_id is distinct from f.user_id and cc2.synced_email = f.email)
+      )
   )
     -- A swept row is UNSYNCED, whatever its fingerprint says: the profile it
     -- described was deleted at the vendor. Without this branch a user who

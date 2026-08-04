@@ -439,7 +439,7 @@ git commit -m "feat(crisp): cliente REST com timeout e erros sem PII"
 ### Task 3: Ledger migration
 
 **Files:**
-- Create: `supabase/migrations/20260804000001_crisp_contacts.sql`
+- Create: `supabase/migrations/20260804000010_crisp_contacts.sql`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -494,14 +494,14 @@ create policy "crisp_contacts_service_role" on crisp_contacts
 git ls-tree origin/main:supabase/migrations | tail -3
 ```
 
-Expected: `main`'s tail is below `20260804000001`. If not, renumber now — a shared prefix is silently skipped by Supabase and fails the `migration-version-guard` CI job.
+Expected: `main`'s tail is below `20260804000010`. It already collided once — `main` gained `20260804000001_workspace_subscriptions_membership_read.sql` after this branch started, which is why these three migrations sit at `…000010`/`…000011`/`…000012` rather than `…000001`/`…000002`/`…000003`. If `main` has moved again, renumber now — a shared prefix is silently skipped by Supabase and fails the `migration-version-guard` CI job.
 
 **Do not run `npx supabase db push` from this worktree.** It is Supabase-unlinked and carries no `.env.staging`; a push from here either fails or, worse, targets the wrong project. Applying this migration and verifying the table shape are Task 8, Step 1a.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add supabase/migrations/20260804000001_crisp_contacts.sql
+git add supabase/migrations/20260804000010_crisp_contacts.sql
 git commit -m "feat(crisp): tabela crisp_contacts (ledger de identidade no vendor)"
 ```
 
@@ -510,7 +510,7 @@ git commit -m "feat(crisp): tabela crisp_contacts (ledger de identidade no vendo
 ### Task 4: Candidate, deletion, record and confirm RPCs
 
 **Files:**
-- Create: `supabase/migrations/20260804000002_crisp_sync_rpcs.sql`
+- Create: `supabase/migrations/20260804000011_crisp_sync_rpcs.sql`
 
 **Interfaces:**
 - Consumes: `crisp_contacts` (Task 3), `default_plan_id()` (already exists, `20260803000004_loops_sync_rpcs.sql:19`).
@@ -526,7 +526,7 @@ git commit -m "feat(crisp): tabela crisp_contacts (ledger de identidade no vendo
 -- RPCs for crisp-sync-cron.
 -- Spec: docs/superpowers/specs/2026-08-03-crisp-customer-sync-design.md
 --
--- Apply AFTER 20260804000001 (crisp_contacts) and BEFORE deploying the function.
+-- Apply AFTER 20260804000010 (crisp_contacts) and BEFORE deploying the function.
 
 -- ---------------------------------------------------------------------------
 -- Write protocol, in two halves. Do NOT collapse them back into one call.
@@ -850,7 +850,7 @@ This worktree is Supabase-unlinked, so the RPCs cannot be executed here. Applyin
 - [ ] **Step 3: Commit**
 
 ```bash
-git add supabase/migrations/20260804000002_crisp_sync_rpcs.sql
+git add supabase/migrations/20260804000011_crisp_sync_rpcs.sql
 git commit -m "feat(crisp): RPCs de candidatos, delecao, record e confirm"
 ```
 
@@ -1896,7 +1896,7 @@ git commit -m "feat(crisp): identity verification assinada no chatbox"
 ### Task 8: Deploy, verify against the live vendor, then schedule
 
 **Files:**
-- Create: `supabase/migrations/20260804000003_schedule_crisp_sync_cron.sql`
+- Create: `supabase/migrations/20260804000012_schedule_crisp_sync_cron.sql`
 
 **Interfaces:**
 - Consumes: everything above.
@@ -2007,7 +2007,7 @@ Record the result in the spec under "Open vendor questions", item 2. If it does 
 -- Schedule crisp-sync-cron every 15 minutes.
 -- Spec: docs/superpowers/specs/2026-08-03-crisp-customer-sync-design.md
 --
--- Apply ONLY AFTER the crisp-sync-cron function is deployed AND 20260804000002
+-- Apply ONLY AFTER the crisp-sync-cron function is deployed AND 20260804000011
 -- is applied: the schedule fires immediately.
 --
 -- Rollback order is the REVERSE: SELECT cron.unschedule('crisp-sync-cron')
@@ -2071,7 +2071,7 @@ Expected: no rows.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add supabase/migrations/20260804000003_schedule_crisp_sync_cron.sql
+git add supabase/migrations/20260804000012_schedule_crisp_sync_cron.sql
 git commit -m "feat(crisp): agenda o crisp-sync-cron a cada 15 minutos"
 ```
 
@@ -2081,7 +2081,7 @@ git commit -m "feat(crisp): agenda o crisp-sync-cron a cada 15 minutos"
 git ls-tree origin/main:supabase/migrations | tail -5
 ```
 
-If `main`'s tail is at or above `20260804000001`, renumber all three migrations above it and re-run `npm run test:functions`. This repo has been hit by a version collision twice; the check is cheap and the failure is silent.
+If `main`'s tail is at or above `20260804000010`, renumber all three migrations above it and re-run `npm run test:functions`. This repo has been hit by a version collision three times, including once on this very branch; the check is cheap and the failure is silent.
 
 ```bash
 npm run lint && npm run format:check && npm run test && npm run test:functions

@@ -80,6 +80,9 @@ function makeDeps(over: Partial<CrispCronDeps> = {}, rpcData: Record<string, unk
       calls.reported.push(d);
       return Promise.resolve();
     },
+    // Frozen clock by default: no test may drift into the wall-clock deadline
+    // by accident. The deadline test below injects its own.
+    now: () => 0,
   };
 
   return { deps: { ...base, ...over } as CrispCronDeps, calls };
@@ -104,7 +107,7 @@ Deno.test("buildPerson falls back to the email local-part when nome is blank", (
   assertEquals(buildPerson({ ...CANDIDATE, nome: "  ", phone: null }), { nickname: "ana" });
 });
 
-Deno.test("deletions run before upserts and use people_id when known", async () => {
+Deno.test("deletions run before upserts and address the vendor by EMAIL", async () => {
   const order: string[] = [];
   const { deps, calls } = makeDeps(
     {
@@ -127,7 +130,16 @@ Deno.test("deletions run before upserts and use people_id when known", async () 
 
   const result = await runCrispSyncCron(deps);
 
-  assertEquals(order, ["delete:p-old", "create"]);
+  // EMAIL, not the cached p-old people_id, even though the ledger has one.
+  // synced_people_id is a cache; synced_email is the record of what was pushed.
+  // If an operator deleted or merged the profile in the Crisp dashboard and the
+  // customer's next widget message recreated one at the same address, the
+  // id-addressed DELETE 404s -- which the client counts as success -- so
+  // markContactDeleted stamps deleted_at while the real profile keeps the
+  // person's name, email and phone. The deletion query filters
+  // `deleted_at is null`, so that row can never be selected again: unerasable
+  // PII, the single outcome this ledger exists to prevent.
+  assertEquals(order, ["delete:old@example.com", "create"]);
   assertEquals(calls.markedDeleted, ["cc-1"]);
   assertEquals(result.deleted, 1);
   assertEquals(result.upserted, 1);
@@ -353,7 +365,7 @@ Deno.test(
 
     const result = await runCrispSyncCron(deps);
 
-    assertEquals(calls.deletedRefs, ["p-old"]);
+    assertEquals(calls.deletedRefs, ["old@example.com"]);
     assertEquals(result.deleted, 0);
     assertEquals(result.failed, 0);
     assertEquals(calls.reported.length, 0);
@@ -368,7 +380,70 @@ Deno.test("an empty candidate list performs zero vendor calls and succeeds", asy
   assertEquals(calls.created.length, 0);
   assertEquals(calls.saved.length, 0);
   assertEquals(calls.reported.length, 0);
-  assertEquals(result, { upserted: 0, deleted: 0, failed: 0 });
+  assertEquals(result, { upserted: 0, deleted: 0, failed: 0, timedOut: false });
+});
+
+Deno.test(
+  "the wall-clock deadline stops the upsert loop early and still reports",
+  async () => {
+    // Without a deadline the terminal state of a slow sweep is an isolate
+    // kill, which discards every accumulated error along with the single
+    // deps.report call at the end -- so a chronically failing backfill looks
+    // exactly like a healthy one in cron_failures. The break must therefore
+    // leave the reporting path reachable, and the failure recorded before the
+    // budget ran out must still surface.
+    const candidates = [
+      { ...CANDIDATE, user_id: "u-1", email: "a@example.com" },
+      { ...CANDIDATE, user_id: "u-2", email: "b@example.com" },
+      { ...CANDIDATE, user_id: "u-3", email: "c@example.com" },
+      { ...CANDIDATE, user_id: "u-4", email: "d@example.com" },
+    ];
+    // Injected clock rather than a real sleep: each person consumes 40s of the
+    // 60s budget, so the check before the THIRD candidate is the one that
+    // trips (0 -> 40_000 -> 80_000).
+    let clock = 0;
+    const { deps, calls } = makeDeps(
+      {
+        now: () => clock,
+        recordContact: (userId: string) => {
+          calls.recorded.push(userId);
+          clock += 40_000;
+          return Promise.resolve(true);
+        },
+        createProfile: (p) => {
+          calls.created.push(p);
+          return p.email === "b@example.com"
+            ? Promise.reject(new Error("Crisp POST /people/profile failed: 503"))
+            : Promise.resolve("p-new");
+        },
+      },
+      { get_crisp_sync_candidates: candidates },
+    );
+
+    const result = await runCrispSyncCron(deps);
+
+    // Stopped BETWEEN candidates, never mid-person: u-3 and u-4 were never
+    // even recorded, so they are simply re-offered next sweep (the candidate
+    // query orders synced_at asc nulls first).
+    assertEquals(calls.recorded, ["u-1", "u-2"]);
+    // Partial counts, honestly reported.
+    assertEquals(result.upserted, 1);
+    assertEquals(result.failed, 1);
+    assertEquals(result.deleted, 0);
+    assertEquals(result.timedOut, true);
+    // The whole point: the report still fires, carrying the error that a
+    // mid-sweep isolate kill would have swallowed.
+    assertEquals(calls.reported.length, 1);
+  },
+);
+
+Deno.test("a run that fits inside the budget is not flagged as timed out", async () => {
+  const { deps } = makeDeps({}, { get_crisp_sync_candidates: [CANDIDATE] });
+
+  const result = await runCrispSyncCron(deps);
+
+  assertEquals(result.timedOut, false);
+  assertEquals(result.upserted, 1);
 });
 
 Deno.test("an RPC error is reported and does not throw", async () => {

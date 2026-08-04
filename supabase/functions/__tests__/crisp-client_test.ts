@@ -96,6 +96,36 @@ Deno.test("errors never leak the response body or the interpolated path", async 
   assert(message.includes(":ref"), `expected the static route shape in: ${message}`);
 });
 
+Deno.test("a 2xx with a non-JSON body throws a static message, never the body", async () => {
+  // The one remaining path by which a response body could reach cron_failures:
+  // res.json() on an unparseable 2xx throws a NATIVE SyntaxError, and V8 embeds
+  // a fragment of the offending input in its message.
+  const leaky = '<html>proxy error for secret@customer.com</html>';
+  const stub = () =>
+    Promise.resolve(new Response(leaky, { status: 200, headers: { "Content-Type": "text/html" } }));
+
+  for (
+    const [label, run] of [
+      ["getProfile", () => getProfile("secret@customer.com", stub)],
+      [
+        "createProfile",
+        () => createProfile({ email: "secret@customer.com", person: {}, segments: [] }, stub),
+      ],
+    ] as const
+  ) {
+    let message = "";
+    try {
+      await run();
+    } catch (e) {
+      message = e instanceof Error ? e.message : String(e);
+    }
+    assert(message.includes("200"), `${label}: expected the status in: ${message}`);
+    assert(message.startsWith("Crisp "), `${label}: expected our own message, got: ${message}`);
+    assert(!message.includes("secret@customer.com"), `${label}: email leaked: ${message}`);
+    assert(!message.includes("html"), `${label}: body leaked: ${message}`);
+  }
+});
+
 Deno.test("missing credentials throw before any fetch is attempted", async () => {
   const saved = Deno.env.get("CRISP_KEY")!;
   Deno.env.delete("CRISP_KEY");

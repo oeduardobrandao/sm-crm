@@ -83,16 +83,19 @@ converges front-to-back and no user can be starved.
 | `supabase/functions/crisp-sync-cron/index.ts` | `x-cron-secret` gate, service-role client, deps wiring, cron-failure triage. |
 | `supabase/config.toml` | **`[functions.crisp-sync-cron] verify_jwt = false`.** Required: the caller authenticates with `x-cron-secret`, never a JWT. |
 | `supabase/functions/__tests__/config-audit_test.ts` | Add the function to `REQUIRED_FUNCTIONS` so the omission above can never regress silently. |
-| `20260804000001_crisp_contacts.sql` | Ledger table + RLS. |
-| `20260804000002_crisp_sync_rpcs.sql` | Candidate / deletion / record / confirm RPCs + service-role grants. |
-| `20260804000003_schedule_crisp_sync_cron.sql` | `cron.schedule`. Applied **last**. |
+| `20260804000010_crisp_contacts.sql` | Ledger table + RLS. |
+| `20260804000011_crisp_sync_rpcs.sql` | Candidate / deletion / record / confirm RPCs + service-role grants. |
+| `20260804000012_schedule_crisp_sync_cron.sql` | `cron.schedule`. Applied **last**. |
 | `supabase/functions/crisp-identity/index.ts` | Signs the **authenticated caller's own** email with `CRISP_IDENTITY_SECRET`. JWT-verified, so it is not a signing oracle. |
 | `apps/crm/src/context/AuthContext.tsx` | Fetch the signature and pass it as the second element of the `user:email` push. |
 
-> Migration version prefixes are provisional. `main`'s tail at the time of writing is
-> `20260803000008`. Re-verify with `git ls-tree origin/main:supabase/migrations | tail` and
-> renumber above the real tail immediately before opening the PR — a shared prefix is silently
-> skipped by Supabase and the `migration-version-guard` job fails the build.
+> Migration version prefixes were renumbered once already: `main` gained
+> `20260804000001_workspace_subscriptions_membership_read.sql` after this branch started, which
+> collided with the original `20260804000001_crisp_contacts.sql`. The current prefixes leave
+> headroom above `main`'s tail. Re-verify with
+> `git ls-tree origin/main:supabase/migrations | tail` and renumber above the real tail
+> immediately before opening the PR — a shared prefix is silently skipped by Supabase and the
+> `migration-version-guard` job fails the build.
 
 ### The frontend does change: Identity Verification is a precondition
 
@@ -622,14 +625,14 @@ through injected deps with no network:
 
 1. Create the plugin token in the Crisp Marketplace; set `CRISP_WEBSITE_ID`,
    `CRISP_IDENTIFIER`, `CRISP_KEY` via `supabase secrets`. Confirm `APP_BASE_URL` is set.
-2. Apply `…000001` and `…000002`.
+2. Apply `…000010` and `…000011`.
 3. Deploy: `npx supabase functions deploy crisp-sync-cron --use-api --no-verify-jwt` (the local
    Docker bundler is broken in this repo; the function handles its own auth).
 4. Invoke once by hand with the cron secret and read the response counts. Then **invoke a
    second time and assert the upsert count is zero** — that is the fingerprint working, and it
    is the check the whole quota argument rests on. If the second run re-pushes the same users,
    stop and fix the hash before scheduling.
-5. Apply `…000003` — **the schedule fires immediately**.
+5. Apply `…000012` — **the schedule fires immediately**.
 
 Backfill cost is roughly `2 × user_count` vendor calls (the read-modify-write pair), spread
 over `ceil(user_count / 200)` sweeps, i.e. one hour per 800 users. After that, near zero.

@@ -83,6 +83,26 @@ async function call(
 const PROFILE_SHAPE = "/people/profile/:ref";
 const DATA_SHAPE = "/people/data/:ref";
 
+/**
+ * A 2xx whose body is not JSON (an HTML error page from a proxy, a truncated
+ * response) makes res.json() throw a NATIVE SyntaxError, and V8 embeds a
+ * fragment of the offending input in that message. That is the one remaining
+ * path by which a Crisp response body -- which can echo the person's email --
+ * would reach cron_failures and the alert e-mail. Swallow it and rethrow the
+ * same status + static-route-shape message every other error here carries.
+ */
+async function parseJson(
+  res: Response,
+  method: string,
+  routeShape: string,
+): Promise<{ data?: Record<string, unknown> } | null> {
+  try {
+    return await res.json();
+  } catch {
+    throw new Error(`Crisp ${method} ${routeShape} returned an unparseable body: ${res.status}`);
+  }
+}
+
 /** Resolve a profile by Crisp people_id or by email. null when absent. */
 export async function getProfile(
   ref: string,
@@ -97,7 +117,7 @@ export async function getProfile(
     fetchImpl,
   );
   if (res.status === 404) return null;
-  const body = await res.json();
+  const body = await parseJson(res, "GET", PROFILE_SHAPE);
   return (body?.data ?? null) as CrispProfile | null;
 }
 
@@ -112,8 +132,8 @@ export async function createProfile(
 ): Promise<string | null> {
   const res = await call("POST", "/people/profile", "/people/profile", p, [409], fetchImpl);
   if (res.status === 409) return null;
-  const body = await res.json();
-  return (body?.data?.people_id ?? null) as string | null;
+  const body = await parseJson(res, "POST", "/people/profile");
+  return ((body?.data as { people_id?: string } | undefined)?.people_id ?? null) as string | null;
 }
 
 /**

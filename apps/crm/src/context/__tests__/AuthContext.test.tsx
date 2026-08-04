@@ -614,14 +614,13 @@ describe('AuthProvider Crisp identification', () => {
     // call started by the JUST-reset (outgoing) user is still in flight. If
     // that response is allowed to push user:email afterwards, the next
     // person on a shared machine gets attributed to the outgoing customer --
-    // exactly what session:reset exists to prevent. `authGeneration` is what
-    // closes this window (see the comment above the effect in
-    // AuthContext.tsx): it is bumped synchronously as literally the first
-    // line of signOut(), before any await, so it has already moved by the
-    // time this held invoke promise is resolved below -- even though the
-    // effect's own `active` closure variable has not necessarily been torn
-    // down yet (that only happens once React re-renders with the new,
-    // signed-out userId).
+    // exactly what session:reset exists to prevent. `crispResetGeneration` is
+    // what closes this window (see the comment above the effect in
+    // AuthContext.tsx): it is bumped synchronously at the top of signOut(),
+    // before any await, so it has already moved by the time this held invoke
+    // promise is resolved below -- even though the effect's own `active`
+    // closure variable has not necessarily been torn down yet (that only
+    // happens once React re-renders with the new, signed-out userId).
     mockedSupabase.__resetSupabaseMock();
     mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
     mockedSupabase.__setCurrentProfile({
@@ -672,5 +671,59 @@ describe('AuthProvider Crisp identification', () => {
       (call) => call[0]?.[0] === 'set' && call[0]?.[1] === 'user:email',
     );
     expect(emailPushesAfterReset).toHaveLength(0);
+  });
+
+  it('still identifies when an unrelated auth event (TOKEN_REFRESHED) lands mid-invoke', async () => {
+    // The narrowing half of the guard above, and the reason it counts
+    // session:reset pushes rather than auth events. `authGeneration` moves on
+    // EVERY onAuthStateChange event -- INITIAL_SESSION, TOKEN_REFRESHED,
+    // USER_UPDATED, SIGNED_IN -- none of which reset the Crisp session. A
+    // token refresh inside the crisp-identity invoke window is routine at app
+    // start (the invoke can take seconds against a cold edge function), and
+    // comparing against authGeneration made it reject the push. The effect's
+    // deps are [userId, user?.email], neither of which a refresh changes, so
+    // it never re-ran: the user stayed UNIDENTIFIED in Crisp for the entire
+    // mount -- strictly worse than the unsigned fallback. This test fails
+    // against the old authGeneration guard and passes against
+    // crispResetGeneration.
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo Souza',
+      role: 'owner',
+      conta_id: 'conta-1',
+    });
+
+    let resolveInvoke!: (value: { data: unknown; error?: unknown }) => void;
+    mockedSupabase.__queueFunctionsInvokeResponse(
+      new Promise((resolve) => {
+        resolveInvoke = resolve;
+      }),
+    );
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role')).toHaveTextContent('owner');
+    });
+    // The identify effect is now parked on the held invoke promise.
+
+    // An auth event that does NOT change identity: same user id, same email.
+    // No session:reset is pushed for it, so nothing may suppress the push.
+    await act(async () => {
+      mockedSupabase.__emitAuthChange('TOKEN_REFRESHED', {
+        user: { id: 'user-1', email: 'eduardo@example.com' },
+      });
+    });
+    expect(crispPush).not.toHaveBeenCalledWith(['do', 'session:reset']);
+
+    await act(async () => {
+      resolveInvoke({ data: { signature: 'abc' }, error: null });
+    });
+
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com', 'abc']]);
+    });
   });
 });

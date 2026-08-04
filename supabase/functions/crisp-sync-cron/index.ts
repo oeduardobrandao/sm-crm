@@ -133,6 +133,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
           ? `${APP_BASE_URL.replace(/\/+$/, "")}/admin/workspaces/${workspaceId}`
           : null,
       report: (detail) => reportCronFailure(svc, CRON_NAME, detail),
+      // Injected so the handler's wall-clock deadline is testable without a
+      // real sleep.
+      now: () => Date.now(),
     };
 
     const result = await runCrispSyncCron(deps);

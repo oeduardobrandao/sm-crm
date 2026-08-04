@@ -41,6 +41,12 @@ export interface CandidateRow {
 interface DeletionRow {
   id: string;
   synced_email: string;
+  /**
+   * Returned by get_crisp_contact_deletions and deliberately NOT used to
+   * address the vendor DELETE — see the sweep below for why the cached id must
+   * never be preferred over synced_email on the erasure path. Kept on the type
+   * because it describes the RPC's actual return shape.
+   */
   synced_people_id: string | null;
 }
 
@@ -75,7 +81,28 @@ export interface CrispCronDeps {
   report: (
     detail: { failed: number; errors: Array<{ accountId?: string; error?: string }> },
   ) => Promise<void>;
+  /**
+   * Wall clock, injected so the deadline below is testable without a real
+   * sleep. Production wires Date.now.
+   */
+  now: () => number;
 }
+
+/**
+ * Wall-clock budget for the UPSERT sweep only, measured from the top of the
+ * invocation (so the deletion sweep's own time counts against it).
+ *
+ * A worst-case sweep is 200 candidates at up to four vendor calls each, every
+ * one bounded at 10s -- far past the edge runtime's wall clock. The realistic
+ * terminal state of such a run is an isolate kill, which discards every
+ * accumulated error along with the single deps.report call at the end, so a
+ * chronically failing backfill looks exactly like a healthy one in
+ * cron_failures. Stopping early keeps the reporting path reachable.
+ *
+ * Unprocessed candidates are not lost: the sweep is ordered
+ * `synced_at asc nulls first`, so the next run picks up where this one stopped.
+ */
+export const UPSERT_BUDGET_MS = 60_000;
 
 /**
  * The segments this sync owns. Anything outside this list was added by an
@@ -136,23 +163,40 @@ export function buildData(
 
 export async function runCrispSyncCron(
   deps: CrispCronDeps,
-): Promise<{ upserted: number; deleted: number; failed: number }> {
+): Promise<{ upserted: number; deleted: number; failed: number; timedOut: boolean }> {
   let upserted = 0;
   let deleted = 0;
+  let timedOut = false;
   const errors: Array<{ accountId?: string; error?: string }> = [];
   const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+  const startedAt = deps.now();
 
   // --- Deletions FIRST -------------------------------------------------------
   // These are erasure obligations. If the invocation runs out of wall clock the
   // upsert sweep is the right thing to lose: it self-heals next run, an
-  // unhonoured erasure does not.
+  // unhonoured erasure does not. Hence NO deadline on this loop: erasures are
+  // obligations, not throughput.
   const delRes = await deps.rpc("get_crisp_contact_deletions");
   if (delRes.error) {
     errors.push({ error: `contact deletions: ${delRes.error.message}` });
   } else {
     for (const d of (delRes.data ?? []) as DeletionRow[]) {
       try {
-        await deps.deleteProfile(d.synced_people_id ?? d.synced_email);
+        // DELETE BY EMAIL, UNCONDITIONALLY. synced_people_id is a CACHE;
+        // synced_email is THE RECORD of what was pushed to the vendor (see the
+        // ledger's header comment). Preferring the cached id here can silently
+        // no-op the erasure: an operator deleting or merging the profile in the
+        // Crisp dashboard invalidates the id, and the customer's next widget
+        // message recreates a fresh profile at the same address. The
+        // id-addressed DELETE then 404s, the client counts that as success,
+        // markContactDeleted stamps deleted_at -- and the profile actually
+        // living at synced_email keeps their name, email and phone forever,
+        // because get_crisp_contact_deletions filters on deleted_at is null and
+        // can never select that row again. Unerasable PII: the one outcome this
+        // ledger exists to prevent. A DELETE costs the same either way, and
+        // email addressing is supported on this route, so there is nothing to
+        // trade off. `d.synced_people_id` is deliberately unused here.
+        await deps.deleteProfile(d.synced_email);
         // FALSE here is not a failure: it means an overlapping run already
         // stamped (and likely reactivated) this row, so ours was a stale,
         // redundant deletion. Do not count it and do not report it -- the
@@ -176,7 +220,22 @@ export async function runCrispSyncCron(
   if (candRes.error) {
     errors.push({ error: `sync candidates: ${candRes.error.message}` });
   } else {
-    for (const c of (candRes.data ?? []) as CandidateRow[]) {
+    const candidates = (candRes.data ?? []) as CandidateRow[];
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i];
+      // Checked BEFORE taking a new candidate, never mid-person: a partially
+      // written person (vendor write done, confirm not) is exactly the
+      // orphaned-profile state the confirm compensation exists to clean up.
+      // Break, so the normal reporting path below still runs.
+      if (deps.now() - startedAt > UPSERT_BUDGET_MS) {
+        timedOut = true;
+        console.error(
+          `[crisp-sync-cron] wall-clock budget (${UPSERT_BUDGET_MS}ms) exhausted: ${
+            candidates.length - i
+          } of ${candidates.length} candidate(s) left unprocessed; they are re-offered next run`,
+        );
+        break;
+      }
       try {
         // RECORD BEFORE THE VENDOR CALL. The call CREATES the profile, so a
         // success followed by a failed ledger write leaves a person's name,
@@ -275,5 +334,5 @@ export async function runCrispSyncCron(
     console.error(`[crisp-sync-cron] ${errors.length} failure(s)`, errors);
     await deps.report({ failed: errors.length, errors });
   }
-  return { upserted, deleted, failed: errors.length };
+  return { upserted, deleted, failed: errors.length, timedOut };
 }
