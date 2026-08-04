@@ -292,6 +292,41 @@ the *same* statement at sweep time, and why `record_crisp_contact`'s reactivatio
 clears a cached `synced_people_id`: a reactivated row must never hand the handler an id
 addressing a profile that was already erased.
 
+### Every ledger write asserts the state it observed
+
+Three review rounds found three separate races in this ledger, all with one root cause: **a
+write identified its target row by identity alone and did not assert what it believed that
+row contained.** One `crisp_contacts` row per user is mutable and long-lived, and between any
+read and its matching write the row can be swept, reactivated for a different address, and
+re-synced by an overlapping invocation.
+
+The rule is now uniform: *every* write names the state it expects, and a zero-row result is a
+signal, not a no-op.
+
+| Write | Asserts | On zero rows |
+|---|---|---|
+| `record_crisp_contact` | live `auth.users` email still matches, and no deletion is owed | returns false; skip this person this sweep |
+| `confirm_crisp_sync` | `deleted_at is null` **and `synced_email = p_email`** | returns false; handler deletes the profile it just orphaned |
+| `markContactDeleted` | `deleted_at is null` **and `synced_email` = the value the sweep read** | returns false; stale deletion, another run handled it, do not re-stamp |
+
+The two email-scoped predicates were added last and close these:
+
+- **Stale confirm attaches to a reactivated row.** Run A records `OLD` and its write goes in
+  flight. Run B deletes profile `OLD`, stamps `deleted_at`, reactivates the row for `NEW`,
+  creates profile `NEW`, confirms it. Run A's write lands, recreating `OLD`, and confirms
+  against a row whose `synced_email` is now `NEW` — overwriting the pointer to `NEW` with
+  `OLD`'s id and fingerprint. `OLD` becomes unreferenced and unerasable.
+- **Delayed deletion stamp buries a fresh sync.** Run A deletes profile `OLD` and stalls
+  before its ledger update. Run B sweeps the same row, stamps it, reactivates for `NEW`,
+  creates and confirms profile `NEW`. Run A's delayed update matches by `id` alone, stamps the
+  reactivated row deleted and clears its pointers — leaving `NEW` at the vendor where the
+  deletion query, which filters `deleted_at is null`, can never reach it.
+
+**Overlap is not hypothetical.** The cron fires every 15 minutes, and a worst-case sweep is
+200 candidates at up to four vendor round trips each with a 10s timeout — comfortably longer.
+Making the writes assert their observed state is the correctness fix; bounding the run so
+overlap stops happening at all is a separate, still-open question (see "Known gaps").
+
 ### A swept row is unsynced, whatever its fingerprint says
 
 `synced_fingerprint` means "the payload of what currently exists at the vendor". Once the
@@ -641,6 +676,24 @@ accepted; one was already fixed before the review landed.
 | P2 | Fingerprint over comma-joined names is unstable without explicit ordering and null handling | **Accepted.** New "Canonical serialisation" section: mandatory `ORDER BY` on every aggregate, `coalesce(x,'')` on every nullable, `\|` separator, sorted segments. |
 | P2 | `config.toml` entry and the config-audit test are missing from the file list | **Accepted.** Both added to the architecture table; the audit test is test 11. |
 | P3 | "Omitted when null" is insufficient — the profile UI writes `''` | **Accepted, and it surfaced a better field.** `trim`/`nullif` now mandatory, and `person.phone` prefers `profiles.whatsapp` over `telefone` — a column the first draft missed entirely, and the one that actually matches an inbound WhatsApp. |
+
+## Known gaps
+
+Carried openly rather than closed, because each is a judgement call rather than a defect:
+
+1. **Nothing prevents two invocations from overlapping.** The correctness fixes above make
+   overlap *safe* — every write asserts its observed state, and the losing writer compensates.
+   They do not make it *rare*. A bounded run would: either a deadline in the handler that
+   stops taking new candidates after N seconds, or a lease row claimed atomically at the top
+   of the invocation. A session-level `pg_try_advisory_lock` is **not** an option here, because
+   Supabase's PostgREST pools transactionally and the lock would not survive between calls.
+2. **A truncated run reports nothing at all.** `deps.report` fires once, at the end. If the
+   edge runtime kills the isolate mid-sweep, the failures accumulated so far are lost along
+   with it, so a chronically slow sweep is invisible in `cron_failures`. A deadline would fix
+   this too, by making the terminal report reachable.
+3. **`clientes` counts terminated clients.** `count(clientes)` has no status filter, so a
+   support agent reading "clientes: 12" is seeing `encerrado` rows included. Consistent with
+   the Loops precedent, and nothing in the payload says so.
 
 ## Out of scope
 
