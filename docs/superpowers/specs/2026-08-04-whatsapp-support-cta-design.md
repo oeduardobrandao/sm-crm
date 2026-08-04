@@ -76,9 +76,26 @@ dentro do bundle da function. Não vale por duas linhas de `encodeURIComponent`.
 Formato: número internacional só com dígitos, sem `+`, sem espaços, sem
 pontuação. Exemplo: `5511999999999`.
 
-**Ambas são opcionais e falham fechado.** Com a variável ausente o builder
-retorna `null` e todo consumidor não renderiza nada. Uma variável esquecida
-publica ausência de link, nunca um `wa.me/undefined`.
+**Ambas são opcionais e falham fechado, tanto na ausência quanto no
+malformado.** O builder valida contra `^\d+$` e retorna `null` se a variável
+estiver ausente, vazia **ou** não casar. Só validar ausência deixaria passar um
+`+55 11 99999-9999` copiado do celular, que produz um `href` quebrado no app e
+um link morto no e-mail. Uma variável esquecida ou mal preenchida publica
+ausência de link, nunca um `wa.me/undefined` nem um `wa.me/+55%2011`.
+
+Como o builder é a única fonte de `href` e ele só devolve `null` ou uma URL
+`https://wa.me/<digitos>?text=<encoded>`, o valor que chega ao `escapeHtml` do
+e-mail já é estruturalmente seguro. O escape continua obrigatório mesmo assim,
+por não depender dessa garantia à distância.
+
+**As duas variáveis são independentes e podem divergir.** Nada no build
+verifica que CRM e edge function apontam para o mesmo número, então um deploy
+que atualize só uma deixa as superfícies apontando para números diferentes, ou
+o e-mail sem botão enquanto o app tem. Isso é aceito conscientemente: unificar
+exigiria buscar o número do banco em runtime, o que a seção "Fora de escopo"
+descarta. Ao trocar o número, atualizar as duas e conferir o e-mail de
+boas-vindas, que é a superfície mais fácil de esquecer por não ser visível no
+app.
 
 O número é público por natureza, então expô-lo em bundle `VITE_` não é
 problema de segurança.
@@ -129,12 +146,24 @@ produto pode depender dele para identificar a conta.
 
 ### O botão
 
-`WhatsAppSupportButton` é apresentacional e recebe `context`, `label` e
-`className`. Renderiza `<a href target="_blank" rel="noopener noreferrer">` e
-retorna `null` quando o builder devolve `null`.
+```ts
+<WhatsAppSupportButton context={...} label={...} className={...} />
+```
+
+`WhatsAppSupportButton` **lê `useAuth()` internamente** para obter `nome` e
+`empresa` e chama o builder. Não é um componente puramente apresentacional, e
+isso é deliberado: as duas superfícies do CRM precisariam repassar exatamente os
+mesmos dois campos, e prop-drilling duplicado é o caminho mais curto para as
+duas telas divergirem. Um único componente sabe de onde vem o dado.
+
+Renderiza `<a href target="_blank" rel="noopener noreferrer">` e retorna `null`
+quando o builder devolve `null`.
 
 `target="_blank"` para o usuário não perder o CRM: no desktop o `wa.me`
 redireciona para o `web.whatsapp.com`, no mobile abre o app.
+
+Testabilidade não sofre: o `AuthContext` já é mockado nos testes de componente
+do repo (ver `apps/crm/src/components/layout/__tests__/ProtectedRoute.test.tsx`).
 
 ## Superfícies
 
@@ -148,7 +177,22 @@ Fica no rodapé de propósito. A função primária da página é o CTA de teste
 grátis entregue no #290, e um link de suporte com o mesmo peso visual custaria
 checkouts.
 
-Nome e empresa vêm de `useAuth().profile`.
+Nome e empresa vêm de `useAuth().profile`. `getCurrentProfile()` faz
+`select('*')` em `profiles` (`apps/crm/src/lib/supabase.ts:55`), então
+`profiles.empresa` chega inteiro: é gravado no cadastro pelo `handle_new_user`,
+editável na `PerfilTab`, e já lido pelo `ProtectedRoute.tsx:61` para decidir o
+desvio para `/workspace-setup`.
+
+Duas ressalvas:
+
+- **`cachedProfile` é tipado `any`.** Todo call site existente faz cast
+  (`(profile as any).empresa`, `(profile as unknown as Record<string,string>).empresa`).
+  O builder deve aceitar `string | null | undefined` nos dois campos e tratar
+  valor ausente pela tabela de degradação, em vez de confiar no tipo.
+- **`profiles.empresa` não é o nome do workspace ativo.** Num setup
+  multi-workspace os dois divergem. Para o prefill, `profiles.empresa` é a
+  escolha certa: identifica quem está escrevendo, não qual workspace estava
+  aberto na tela. Não trocar por `getCurrentWorkspace()`.
 
 ### 2. Card do dashboard
 
@@ -159,13 +203,26 @@ nudges existentes. Segue o padrão de
 - Visível só para owner, via `(workspaceRole ?? role) === 'owner'`.
 - Dispensa persistida em `localStorage`, chave
   `whatsapp_support_dismissed_${conta_id}`.
-- Valor corrompido ou ausente falha para **mostrar** o card, nunca para
-  escondê-lo permanentemente.
+
+**Formato e leitura da chave**, para não haver ambiguidade entre "dispensado" e
+"corrompido":
+
+| | |
+|---|---|
+| Escrita | `new Date().toISOString()`, mesmo formato do `TrialNudgeCard` |
+| Leitura | dispensado quando a chave existe **e** `new Date(raw).getTime()` não é `NaN` |
+| Ausente, vazia, ou não parseável como data | **não** dispensado, card aparece |
+
+Ou seja, presença sozinha não basta: o valor precisa ser uma data válida. É a
+mesma função `isDismissalActive` do `TrialNudgeCard`
+(`apps/crm/src/components/billing/TrialNudgeCard.tsx:17`) sem a comparação de
+janela. Um `localStorage` sujo por outra aplicação no mesmo domínio falha para
+mostrar o card, não para escondê-lo para sempre.
 
 Duas diferenças em relação ao `TrialNudgeCard`:
 
-- **A dispensa é permanente**, não uma janela de 7 dias. Presença da chave já
-  significa dispensado.
+- **A dispensa é permanente**, não uma janela de 7 dias. Uma data válida
+  qualquer, de qualquer idade, significa dispensado.
 - **Não há query de billing.** O card renderiza na primeira pintura, sem gate de
   carregamento.
 
@@ -182,11 +239,18 @@ reutilizando o helper `ctaButton` do módulo.
 
 O href passa por `escapeHtml`, já importado ali, porque entra em HTML cru.
 
-**Detalhe a resolver no plano:** `buildWelcomeEmail` hoje recebe só
-`{ firstName, appBaseUrl }`. Se o nome do workspace já estiver disponível na
-linha de candidato que o handler lê, o prefill do e-mail carrega nome e
-empresa. Se não estiver, carrega só o nome. **Não** criar migração em
-`get_welcome_email_candidates()` por causa de uma string de prefill.
+**O prefill do e-mail carrega só o primeiro nome, sem empresa.** Isso está
+fechado, não é uma decisão adiada. A empresa não chega ao handler hoje:
+`get_welcome_email_candidates()` retorna exatamente
+`(user_id, email, nome, attempts)`
+(`supabase/migrations/20260730000001_lifecycle_emails.sql:45`), e nem
+`sendWelcome`, nem `LifecycleCronDeps`, nem `buildWelcomeEmail` recebem
+workspace. Trazê-la exigiria alterar RPC, migração, tipos e testes em cadeia,
+o que não se justifica por uma string de prefill.
+
+Na prática o builder é chamado com `empresa: null`, caindo na linha "só nome"
+da tabela de degradação. Nenhum código novo é necessário para isso, o que é
+justamente o motivo de a degradação estar especificada.
 
 ## Analytics
 
@@ -218,16 +282,23 @@ não muda nenhuma decisão hoje.
 - monta a URL com nome e empresa, com encoding correto de acentos e espaços
 - degrada para as três variantes sem nome, sem empresa, sem os dois
 - reduz `nome` à primeira palavra
+- aceita `null` e `undefined` nos dois campos sem lançar, já que o `profile`
+  vem tipado `any`
 - retorna `null` quando a variável de ambiente não está definida
+- retorna `null` para valor malformado: `+5511999999999`, `55 11 99999-9999`,
+  `(11) 99999-9999`, string vazia
+- aceita um valor válido só de dígitos
 - `context` seleciona o texto certo
 
 **Vitest, card:**
 
 - não renderiza para não-owner
-- não renderiza quando já dispensado
+- não renderiza quando já dispensado, com timestamp ISO válido na chave
 - não renderiza quando a variável não está definida
-- clicar em dispensar grava no `localStorage` e some com o card
-- valor corrompido no `localStorage` mostra o card
+- clicar em dispensar grava um ISO válido no `localStorage` e some com o card
+- valor não parseável como data (`'true'`, `'sim'`, `''`) mostra o card
+- timestamp ISO antigo, de meses atrás, continua contando como dispensado, o
+  que separa este card da janela de 7 dias do `TrialNudgeCard`
 
 **Deno, e-mail:**
 
