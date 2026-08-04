@@ -684,19 +684,26 @@ accepted; one was already fixed before the review landed.
 
 Carried openly rather than closed, because each is a judgement call rather than a defect:
 
-1. **Nothing prevents two invocations from overlapping.** The correctness fixes above make
-   overlap *safe* — every write asserts its observed state, and the losing writer compensates.
-   They do not make it *rare*. A bounded run would: either a deadline in the handler that
-   stops taking new candidates after N seconds, or a lease row claimed atomically at the top
-   of the invocation. A session-level `pg_try_advisory_lock` is **not** an option here, because
-   Supabase's PostgREST pools transactionally and the lock would not survive between calls.
-2. **A truncated run reports nothing at all.** `deps.report` fires once, at the end. If the
-   edge runtime kills the isolate mid-sweep, the failures accumulated so far are lost along
-   with it, so a chronically slow sweep is invisible in `cron_failures`. A deadline would fix
-   this too, by making the terminal report reachable.
+1. **Nothing prevents two invocations from overlapping — but overlap is now both safe and
+   unlikely.** Safe, because every ledger write asserts its observed state and the losing
+   writer compensates. Unlikely, because both sweeps are now wall-clock bounded
+   (`DELETION_BUDGET_MS = 120_000`, `UPSERT_BUDGET_MS = 60_000`, the latter measured from run
+   start so deletions have first claim), which caps a run far below the 15-minute interval. A
+   lease row was considered and rejected: it costs a table, a claim/release protocol and a
+   stale-lease expiry that is its own race, all to prevent a duplicated idempotent `PUT`. A
+   session-level `pg_try_advisory_lock` is **not** an option here regardless — Supabase's
+   PostgREST pools transactionally, so the lock would not survive between calls.
+2. **A run that times out with zero errors is visible only in the function logs.** `deps.report`
+   is gated on `errors.length > 0`, so a budget-bound sweep with no failures files nothing in
+   `cron_failures`. That is deliberate: during the initial backfill this is the *expected*
+   state, and alerting on it would be pure noise. The `timedOut` flag is in the response body
+   for anyone invoking by hand.
 3. **`clientes` counts terminated clients.** `count(clientes)` has no status filter, so a
    support agent reading "clientes: 12" is seeing `encerrado` rows included. Consistent with
    the Loops precedent, and nothing in the payload says so.
+4. **The widget's website id is hardcoded while the sync reads `CRISP_WEBSITE_ID`.**
+   `apps/crm/index.html` carries the id as a literal. On staging the widget and the sync can
+   therefore point at different Crisp websites without anything complaining.
 
 ## Out of scope
 
