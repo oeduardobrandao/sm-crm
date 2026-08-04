@@ -64,11 +64,12 @@ export default function CobrancaPage() {
 
   // Follow the ACTIVE workspace role, not the stale profile-level role: a user
   // can be owner in one workspace and agent in another, and switch_workspace
-  // never rewrites profiles.role. All four authorities now agree on
-  // per-workspace membership (this gate, ComecarPage, TrialNudgeCard, the
-  // workspace_subscriptions_owner_read RLS policy and billing-checkout's
-  // workspace_members check), so the UI cannot offer an action the server
-  // will refuse.
+  // never rewrites profiles.role. Every authority now resolves ownership from
+  // per-workspace membership: this gate, ComecarPage, TrialNudgeCard, the
+  // workspace_subscriptions_owner_read RLS policy, and the workspace_members
+  // checks in billing-checkout and billing-portal. So the two actions this page
+  // offers, upgrade and "Gerenciar assinatura", cannot be shown to someone the
+  // server will refuse.
   const isOwner = (workspaceRole ?? role) === 'owner';
   const { data: plans, isLoading: plansLoading } = useQuery({
     queryKey: ['billing', 'plans'],

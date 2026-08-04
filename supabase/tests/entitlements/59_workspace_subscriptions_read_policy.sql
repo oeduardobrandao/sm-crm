@@ -46,6 +46,20 @@ begin
   if v_qual not like '%conta_id%' then
     raise exception 'policy lost its conta_id active-workspace conjunct: %', v_qual;
   end if;
+
+  -- The heading's actual claim. Without this, a policy that KEPT the
+  -- profiles.role conjunct and merely ANDed membership onto it would satisfy
+  -- both checks above while leaving a stale-'agent' real owner locked out --
+  -- the direction that makes billing-checkout charge instead of trial.
+  --
+  -- Matching 'profiles.role' and not bare 'role' is deliberate: the membership
+  -- conjunct legitimately renders as wm.role = 'owner', so a bare '%role%'
+  -- check could never pass. This is a literal match on how Postgres renders
+  -- the unaliased subquery, so a rewrite that aliased profiles (p.role) would
+  -- slip past it; cases (a) and (b) below are what actually pin the behaviour.
+  if v_qual like '%profiles.role%' then
+    raise exception 'policy still authorizes on the global profiles.role: %', v_qual;
+  end if;
 end $$;
 
 -- =============================================================
@@ -92,15 +106,29 @@ begin
 
   -- The outsider sits consistently in v_other_ws, which it owns.
   --
-  -- A user whose conta_id points at v_ws while holding NO membership there is
-  -- not constructible, and deliberately so: trg_validate_active_workspace
-  -- refuses to set active_workspace_id without a membership row, and
-  -- get_my_conta_id() returns NULL unless a membership row exists for the
-  -- active workspace, which would hide the user's own profile row from the
-  -- policy's conta_id subquery. So case (d) below isolates the conjunct that
-  -- IS reachable here: workspace_id = conta_id, i.e. an owner active in A
-  -- cannot read B's billing row. That is exactly why 20260804000001 keeps that
-  -- conjunct rather than relying on membership alone.
+  -- WHY NOT the sharper case, a user whose conta_id points at v_ws while
+  -- holding no membership row there? That state is perfectly constructible --
+  -- it is ordinary production state, not an edge case. trg_validate_active_
+  -- workspace fires on UPDATE only, and handle_new_user_workspace() INSERTs a
+  -- pending invitee's profile with conta_id AND active_workspace_id already set
+  -- to the invite's workspace, before any workspace_members row exists; the row
+  -- appears only on accept. 20260729000003_backfill_conta_id_drift.sql documents
+  -- this at length, having nearly aborted on it.
+  --
+  -- The reason to skip it is different: in that shape the denial is
+  -- OVER-DETERMINED and so proves nothing about the membership conjunct.
+  -- get_my_conta_id() itself requires a workspace_members row for the active
+  -- workspace, so with none present it returns NULL, profiles_select_same_
+  -- workspace hides the user's own profile row, and the policy's conta_id
+  -- subquery yields NULL -- the read is refused before the EXISTS is ever
+  -- reached. A passing assertion there would not distinguish this migration
+  -- from the policy it replaced.
+  --
+  -- So case (d) takes the conjunct that IS cleanly isolable: workspace_id =
+  -- conta_id, i.e. an owner active in A cannot read B's billing row. That is
+  -- exactly why 20260804000001 keeps that conjunct rather than relying on
+  -- membership alone. The membership conjunct is isolated by case (a), where
+  -- the user IS a member and only wm.role = 'owner' can deny the read.
   insert into workspace_members (user_id, workspace_id, role)
     values (v_outsider, v_other_ws, 'owner');
   update profiles set role = 'owner', conta_id = v_other_ws,

@@ -38,6 +38,8 @@
 | `apps/crm/src/components/billing/__tests__/TrialNudgeCard.test.tsx` | Eligibility and dismissal-window tests. |
 | `apps/crm/src/lib/checkout-analytics.ts` | Single `checkout_started` emitter, shared by both entry points. |
 | `apps/crm/src/lib/__tests__/checkout-analytics.test.ts` | Tests for it. |
+| `supabase/migrations/20260804000001_workspace_subscriptions_membership_read.sql` | Task 13. Rewrites the `workspace_subscriptions_owner_read` RLS policy onto `workspace_members`. |
+| `supabase/tests/entitlements/59_workspace_subscriptions_read_policy.sql` | Task 13. psql suite proving both stale-role directions. Run by `npm run test:db`, not by CI. |
 
 **Modify:**
 | File | Change |
@@ -58,7 +60,8 @@
 | `apps/crm/src/pages/login/LoginPage.tsx` | Trim validation, required company, intent forwarding, auto-login nav. |
 | `apps/crm/src/pages/workspace-setup/WorkspaceSetupPage.tsx` | Post-save navigate to `/comecar`. |
 | `apps/crm/src/pages/dashboard/DashboardPage.tsx` | Mount the nudge, handle `?trial=`. |
-| `apps/crm/src/pages/configuracao/cobranca/CobrancaPage.tsx` | Remove promo input, retitle CTA. |
+| `apps/crm/src/pages/configuracao/cobranca/CobrancaPage.tsx` | Remove promo input, retitle CTA. Task 13: gate on `(workspaceRole ?? role)`, not the stale `role`. |
+| `supabase/functions/billing-portal/index.ts` | Task 13: authorize on `workspace_members`, not `profiles.role`. |
 | `apps/crm/src/pages/configuracao/cobranca/cobranca.css` | Remove `.billing-promo` rules. |
 
 ---
@@ -2313,9 +2316,12 @@ grants the 30 days without a code, which is the intended end state anyway.
 
 ```bash
 npx supabase functions deploy billing-checkout --use-api
+npx supabase functions deploy billing-portal   --use-api
 ```
 
-3. Verify the deployed function on both projects (a checkout started from Plano e Cobrança still opens a Stripe session and, for a never-subscribed workspace, shows the 30-day trial).
+   `billing-portal` carries Task 13's membership check. It has no ordering constraint of its own (it only narrows who may manage a subscription), but deploying it alongside `billing-checkout` keeps the two owner checks identical in every environment.
+
+3. Verify both deployed functions on both projects (a checkout started from Plano e Cobrança still opens a Stripe session and, for a never-subscribed workspace, shows the 30-day trial; "Gerenciar assinatura" still opens the Stripe portal for a real owner).
 4. **Push the migration to prod and staging.** Same link-state check as step 2:
 
 ```bash

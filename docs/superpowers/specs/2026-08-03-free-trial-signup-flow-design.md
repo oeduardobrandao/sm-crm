@@ -141,9 +141,10 @@ it gets fixed here:
 **Explicitly not built:** a durable pending-checkout table with expiry and
 rollback. The residual window it would close is a user completing checkout and
 starting another in a different hour bucket before the webhook lands, typically
-a few seconds. That does not justify a migration in a spec that otherwise needs
-none. If duplicate subscriptions ever show up in practice, that table is the
-next step.
+a few seconds. A new table with expiry and rollback semantics is a far larger
+change than the single RLS policy rewrite this spec does carry, and the window
+does not justify it. If duplicate subscriptions ever show up in practice, that
+table is the next step.
 
 **Client.** Both the `/comecar` guard and the dashboard nudge need to know
 whether the workspace has ever subscribed, and today they cannot:
@@ -272,9 +273,11 @@ Prices come from the `plans` table; no price is hardcoded.
   So `handleRegister` trims `regEmpresa`, rejects an empty result with a toast,
   and sends the trimmed value. Same treatment for `regNome`.
 - Deliberately **not** hardened at the trigger. `NULLIF(btrim(...), '')` there
-  would be a one-line migration, but every signup goes through this form, and
-  the spec otherwise needs no migration. Worth revisiting only if signups ever
-  arrive through the Auth API directly.
+  would be a one-line migration, but every signup goes through this form, so the
+  form is where the fix belongs. Rewriting `handle_new_user_workspace` is a
+  materially riskier change than the RLS policy rewrite this spec does carry:
+  it runs on every signup. Worth revisiting only if signups ever arrive through
+  the Auth API directly.
 - The `registerSuccess` "confira seu e-mail" branch is replaced by a direct
   navigation to `/comecar` once the session exists. Keep a fallback: if
   `signUp` returns no session (i.e. confirmation is still enabled server-side),
@@ -419,11 +422,14 @@ intended end state.
 1. **Supabase Auth → disable "Confirm email"** on prod and staging. Until this is
    flipped, `signUp` returns no session and the flow correctly falls back to the
    check-your-email screen, so ordering is not critical.
-2. `npx supabase functions deploy billing-checkout --use-api` on both projects,
+2. `npx supabase functions deploy billing-checkout --use-api` **and**
+   `npx supabase functions deploy billing-portal --use-api` on both projects,
    **first, before the merge**. Check `supabase/.temp/project-ref` first: link
    state flips between prod (`skjzpekeqefvlojenfsw`) and staging
-   (`wlyzhyfondykzpsiqsce`).
-3. Verify the deployed function on both projects.
+   (`wlyzhyfondykzpsiqsce`). `billing-portal` carries the same
+   `workspace_members` owner check; it has no ordering constraint of its own,
+   but shipping it with `billing-checkout` keeps the two identical.
+3. Verify both deployed functions on both projects.
 4. `npx supabase db push --linked` on both projects, for
    `20260804000001_workspace_subscriptions_membership_read.sql`. Safe in either
    order relative to step 2: the policy only widens the read for owners whose

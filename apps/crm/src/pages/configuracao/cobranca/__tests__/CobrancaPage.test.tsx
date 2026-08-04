@@ -99,4 +99,31 @@ describe('CobrancaPage', () => {
     expect(cta).toBeInTheDocument();
     expect(screen.queryByText(HINT)).not.toBeInTheDocument();
   });
+
+  it('locks the page for an agent in the active workspace whose profile role is still owner', async () => {
+    // The stale-role case: profiles.role is a GLOBAL role that switch_workspace never
+    // rewrites, so an owner of workspace A who is only an agent in the active workspace B
+    // keeps role === 'owner'. The page must follow workspaceRole (workspace_members for the
+    // ACTIVE workspace), which is what the workspace_subscriptions RLS policy and
+    // billing-checkout/billing-portal both authorize on.
+    //
+    // This is the only test in CI that can distinguish the current gate from the bare
+    // `role === 'owner'` it replaced: revert CobrancaPage to `role` and this one fails while
+    // the two above still pass. Do not "fix" it by setting workspaceRole to 'owner'.
+    vi.mocked(useAuth).mockReturnValue({ role: 'owner', workspaceRole: 'agent' } as never);
+    vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+      subscription({ hasEverSubscribed: false }),
+    );
+    renderPage();
+
+    expect(
+      await screen.findByText('Apenas o proprietário da conta pode gerenciar a assinatura.'),
+    ).toBeInTheDocument();
+    // The whole plan grid is gone, not merely the CTA: the notice returns early.
+    expect(
+      screen.queryByRole('button', { name: 'Começar teste de 30 dias' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Fazer upgrade' })).not.toBeInTheDocument();
+    expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+  });
 });
