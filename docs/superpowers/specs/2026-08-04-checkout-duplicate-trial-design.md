@@ -1,6 +1,6 @@
 # Impedir assinaturas de teste duplicadas no checkout
 
-> **Revisão 4.** Três desenhos anteriores foram derrubados por revisão externa.
+> **Revisão 5.** Três desenhos anteriores foram derrubados por revisão externa.
 > O histórico está em "Armadilhas já encontradas": leia antes de propor uma
 > alternativa, porque elas se repetem. O tamanho dessa lista é o próprio recado
 > desta spec: isto não é um ajuste pequeno.
@@ -101,14 +101,25 @@ the two-customer path.
 
 ### 3. Explicit blocking-status set
 
+Expressed as an **allow-list of terminal statuses**, so it fails closed:
+
 ```ts
-const BLOCKING = new Set([
-  "active", "trialing", "past_due", "unpaid", "incomplete", "paused",
-]);
+const TERMINAL = new Set(["canceled", "incomplete_expired"]);
+export function blocksNewSubscription(status: string | null | undefined): boolean {
+  if (status == null) return false;          // no subscription yet
+  if (TERMINAL.has(status)) return false;    // finished, may resubscribe
+  return true;                                // live, recoverable, or UNKNOWN
+}
 ```
 
-`paused` blocks, matching the "live or recoverable" rule. `canceled` and
-`incomplete_expired` are terminal and deliberately absent.
+A block-list of live statuses would fail **open**: if Stripe ever adds or
+returns a status we do not know, an unknown value would sail through and allow a
+second subscription, which is the exact thing this spec exists to prevent. The
+terminal set is small and stable, so allow-listing it is both safer and less
+likely to drift. An unknown status must also be logged, because it means the
+allow-list needs review.
+
+This covers `paused` without naming it, along with anything Stripe adds later.
 
 **The UI change must be specified per status, not delegated.** In
 `CobrancaPage.tsx`, `hasActiveSub` currently gates *two* things: whether a plan
@@ -128,6 +139,11 @@ So: CTA visibility follows the blocking predicate; card visibility follows "has
 a Stripe subscription at all". They are no longer the same boolean and must stop
 sharing one.
 
+"Plan CTA hidden" means the actionable button only. `renderCta()` returns a
+static "Plano atual" marker for the workspace's current plan before it ever
+consults `hasActiveSub`, and that marker **stays** in every blocking status. Two
+implementers would otherwise read the table differently.
+
 ### 4. Lease-based atomic reservation
 
 ```sql
@@ -137,36 +153,88 @@ alter table workspace_subscriptions
   add column if not exists pending_checkout_expires_at timestamptz;
 ```
 
-**Claim**, in one statement, generating a lease token and enforcing the status
-rule, and returning the eligibility input so it cannot go stale:
+**This must be a Postgres RPC, not a PostgREST update.** `billing-checkout`
+talks to the database through supabase-js/PostgREST, which cannot express
+`gen_random_uuid()`, `now()`, a compound `WHERE` like the one below, or
+`RETURNING` of pre-update values. Writing it as `.update()` would silently
+degrade into read-then-write and reopen the very race this closes.
+
+The claim also has to capture the **previous** session id, which a plain
+`RETURNING` cannot do because it yields post-update values. Lock the row and
+read it first in a CTE:
 
 ```sql
-update workspace_subscriptions
-   set pending_checkout_lease = gen_random_uuid(),
-       pending_checkout_expires_at = now() + interval '40 minutes',  -- provisional
-       pending_checkout_session_id = null
- where workspace_id = $1
-   and (pending_checkout_expires_at is null or pending_checkout_expires_at < now())
-   and (status is null or status not in
-        ('active','trialing','past_due','unpaid','incomplete','paused'))
-returning pending_checkout_lease, stripe_subscription_id, stripe_customer_id;
+create or replace function claim_checkout_lease(p_workspace uuid)
+returns table (
+  lease uuid,
+  previous_session_id text,
+  stripe_subscription_id text,
+  stripe_customer_id text
+)
+language sql
+security definer
+set search_path = public
+as $$
+  with locked as (
+    select workspace_id, pending_checkout_session_id, status,
+           pending_checkout_expires_at
+      from workspace_subscriptions
+     where workspace_id = p_workspace
+     for update
+  ), claimed as (
+    update workspace_subscriptions ws
+       set pending_checkout_lease = gen_random_uuid(),
+           pending_checkout_expires_at = now() + interval '40 minutes',
+           pending_checkout_session_id = null
+      from locked l
+     where ws.workspace_id = l.workspace_id
+       and (l.pending_checkout_expires_at is null
+            or l.pending_checkout_expires_at < now())
+       and (l.status is null or l.status in ('canceled','incomplete_expired'))
+    returning ws.pending_checkout_lease, l.pending_checkout_session_id,
+              ws.stripe_subscription_id, ws.stripe_customer_id
+  )
+  select * from claimed;
+$$;
 ```
 
 Zero rows means a checkout is in flight or a blocking subscription exists:
 409, generic message, no Stripe call.
+
+**Privileges are load-bearing.** A new function in `public` is executable by
+`PUBLIC` by default, so as written any authenticated user could pass another
+tenant's `workspace_id` and lock their checkout. Follow the pattern in
+`20260729000001_switch_workspace_rpc.sql`:
+
+```sql
+revoke all on function claim_checkout_lease(uuid) from public, anon, authenticated, service_role;
+grant execute on function claim_checkout_lease(uuid) to service_role;
+```
+
+Enumerate the roles explicitly: `REVOKE ... FROM PUBLIC` alone leaves the
+Supabase default grants to `anon`/`authenticated`/`service_role` intact, and
+revoking from `PUBLIC` also strips `service_role`, which is why it is re-granted
+after. The same treatment applies to the release/write-back RPCs below.
 
 **Trial eligibility must come from this statement's returned
 `stripe_subscription_id`, not the earlier `subRow` read at `index.ts:66`.**
 Otherwise a webhook can establish subscription history between the read and the
 session creation, and the new session still gets a trial.
 
-**Every subsequent write carries the lease**, which is what closes trap 10:
+**Every subsequent write carries the lease**, which is what closes trap 10, and
+each must report whether it actually matched:
 
 ```sql
 update workspace_subscriptions
    set pending_checkout_session_id = $2, pending_checkout_expires_at = $3
  where workspace_id = $1 and pending_checkout_lease = $lease;
 ```
+
+PostgREST's `.update()` does **not** tell the caller how many rows it touched
+unless `.select()` is chained. Since the whole design turns on distinguishing
+"wrote it" from "lease was taken", either chain `.select()` and check the array
+length, or expose these as RPCs returning a boolean. Silence must never be read
+as success.
 
 Ordering:
 
@@ -201,8 +269,14 @@ the session/lease equivalence that makes the design correct.
 
 ## Tests
 
-- `blocksNewSubscription`: every live status blocks, `paused` included;
-  `canceled`, `incomplete_expired`, `null` and unknown strings do not.
+- `blocksNewSubscription`: `null` and the two terminal statuses allow;
+  every live status blocks, `paused` included; **an unknown string blocks**,
+  which is the fail-closed behaviour and the one most likely to be broken by a
+  well-meaning refactor back to a block-list.
+- RPC privileges, in the psql suite: `authenticated` cannot execute
+  `claim_checkout_lease`, `service_role` can. A tenant must not be able to lock
+  another tenant's checkout.
+- The claim returns the **previous** session id, not null, when one was set.
 - Reservation SQL in `supabase/tests/entitlements/` (gated by CI via the
   `entitlement-tests` job): two claims in one transaction, second returns zero
   rows; an expired lease is reclaimable; a blocking status refuses the claim;
