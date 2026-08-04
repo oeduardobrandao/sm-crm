@@ -31,6 +31,16 @@ create table if not exists crisp_contacts (
 create index if not exists crisp_contacts_pending_delete
   on crisp_contacts (deleted_at) where deleted_at is null;
 
+-- get_crisp_sync_candidates and record_crisp_contact both probe "does any LIVE
+-- row already own this email", including rows whose user_id went NULL via the
+-- FK. That predicate is a two-branch disjunction and `is distinct from` is not
+-- indexable, so without this the candidate query scans the ledger once per
+-- confirmed user, before the limit applies -- quadratic in user count. With it
+-- the planner can satisfy the disjunction as a BitmapOr over the unique
+-- user_id index and this one.
+create index if not exists crisp_contacts_synced_email
+  on crisp_contacts (synced_email) where deleted_at is null;
+
 alter table crisp_contacts enable row level security;
 
 drop policy if exists "crisp_contacts_service_role" on crisp_contacts;

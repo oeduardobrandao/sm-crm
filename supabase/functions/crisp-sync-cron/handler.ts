@@ -105,6 +105,23 @@ export interface CrispCronDeps {
 export const UPSERT_BUDGET_MS = 60_000;
 
 /**
+ * Wall clock for the deletion sweep, checked between candidates.
+ *
+ * get_crisp_contact_deletions is limit 50 and every vendor call is bounded at
+ * 10s, so a hanging Crisp gives ~500s here -- past the edge runtime's ceiling,
+ * which kills the isolate before deps.report fires and before a single upsert
+ * runs. Bounding this does NOT drop an erasure: an unswept row keeps
+ * deleted_at is null and is re-selected next tick, so the obligation is
+ * deferred by one 15-minute cycle either way. The difference is that this way
+ * the failures get reported.
+ *
+ * Deletions keep FIRST claim on the clock: this budget is larger than the
+ * upsert one, and UPSERT_BUDGET_MS is measured from run start, so time spent
+ * here is already charged against the upserts.
+ */
+export const DELETION_BUDGET_MS = 120_000;
+
+/**
  * The segments this sync owns. Anything outside this list was added by an
  * operator and must survive every write.
  */
@@ -172,15 +189,30 @@ export async function runCrispSyncCron(
   const startedAt = deps.now();
 
   // --- Deletions FIRST -------------------------------------------------------
-  // These are erasure obligations. If the invocation runs out of wall clock the
-  // upsert sweep is the right thing to lose: it self-heals next run, an
-  // unhonoured erasure does not. Hence NO deadline on this loop: erasures are
-  // obligations, not throughput.
+  // These are erasure obligations, so they get first claim on the clock: this
+  // loop's own budget (DELETION_BUDGET_MS) is larger than the upsert budget,
+  // and both are measured from the same startedAt, so time spent here is
+  // already charged against the upsert sweep too. A budget here does not drop
+  // an erasure -- see DELETION_BUDGET_MS's comment -- it only keeps the
+  // reporting path reachable instead of losing it to an isolate kill.
   const delRes = await deps.rpc("get_crisp_contact_deletions");
   if (delRes.error) {
     errors.push({ error: `contact deletions: ${delRes.error.message}` });
   } else {
-    for (const d of (delRes.data ?? []) as DeletionRow[]) {
+    const deletions = (delRes.data ?? []) as DeletionRow[];
+    for (let i = 0; i < deletions.length; i++) {
+      // Checked BEFORE taking a new candidate, mirroring the upsert loop
+      // below: never break mid-deletion, only between them.
+      if (deps.now() - startedAt > DELETION_BUDGET_MS) {
+        timedOut = true;
+        console.error(
+          `[crisp-sync-cron] deletion wall-clock budget (${DELETION_BUDGET_MS}ms) exhausted: ${
+            deletions.length - i
+          } of ${deletions.length} deletion candidate(s) left unprocessed; deleted_at stays null so they are re-selected next run`,
+        );
+        break;
+      }
+      const d = deletions[i];
       try {
         // DELETE BY EMAIL, UNCONDITIONALLY. synced_people_id is a CACHE;
         // synced_email is THE RECORD of what was pushed to the vendor (see the

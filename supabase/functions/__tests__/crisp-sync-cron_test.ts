@@ -3,6 +3,7 @@ import type { CrispProfile, CrispProfileWrite } from "../_shared/crisp.ts";
 import {
   buildPerson,
   type CrispCronDeps,
+  DELETION_BUDGET_MS,
   mergeSegments,
   runCrispSyncCron,
 } from "../crisp-sync-cron/handler.ts";
@@ -433,6 +434,58 @@ Deno.test(
     assertEquals(result.timedOut, true);
     // The whole point: the report still fires, carrying the error that a
     // mid-sweep isolate kill would have swallowed.
+    assertEquals(calls.reported.length, 1);
+  },
+);
+
+Deno.test(
+  "the wall-clock deadline stops the deletion loop early and still reports",
+  async () => {
+    // Same reasoning as the upsert deadline above, but for the sweep that used
+    // to have NO budget at all: get_crisp_contact_deletions is limit 50 and
+    // every vendor call is bounded at 10s, so a hanging Crisp gives ~500s here
+    // -- long past the edge runtime's ceiling, which kills the isolate before
+    // deps.report ever fires and before a single upsert runs. A budget here
+    // does not drop an erasure: an unswept row keeps deleted_at is null and is
+    // simply re-selected next tick.
+    const deletions = [
+      { id: "cc-1", synced_email: "a@example.com", synced_people_id: null },
+      { id: "cc-2", synced_email: "b@example.com", synced_people_id: null },
+      { id: "cc-3", synced_email: "c@example.com", synced_people_id: null },
+      { id: "cc-4", synced_email: "d@example.com", synced_people_id: null },
+    ];
+    // Injected clock: each deletion consumes 2/3 of the budget, so the check
+    // before the THIRD candidate is the one that trips
+    // (0 -> 80_000 -> 160_000, budget 120_000).
+    const perCandidate = Math.floor((DELETION_BUDGET_MS * 2) / 3);
+    let clock = 0;
+    const { deps, calls } = makeDeps(
+      {
+        now: () => clock,
+        deleteProfile: (ref: string) => {
+          calls.deletedRefs.push(ref);
+          clock += perCandidate;
+          return ref === "b@example.com"
+            ? Promise.reject(new Error("Crisp DELETE /people/profile/:ref failed: 503"))
+            : Promise.resolve();
+        },
+      },
+      { get_crisp_contact_deletions: deletions },
+    );
+
+    const result = await runCrispSyncCron(deps);
+
+    // Stopped BETWEEN deletions, never mid-delete: cc-3 and cc-4 were never
+    // even attempted, so they stay deleted_at is null and are simply
+    // re-selected next sweep.
+    assertEquals(calls.deletedRefs, ["a@example.com", "b@example.com"]);
+    // Partial counts, honestly reported: cc-1 succeeded, cc-2 failed.
+    assertEquals(result.deleted, 1);
+    assertEquals(result.failed, 1);
+    assertEquals(result.upserted, 0);
+    assertEquals(result.timedOut, true);
+    // The whole point: the report still fires, and the run still reaches its
+    // normal end instead of dying with the isolate before deps.report runs.
     assertEquals(calls.reported.length, 1);
   },
 );
