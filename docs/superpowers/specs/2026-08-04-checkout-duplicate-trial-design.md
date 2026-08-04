@@ -1,160 +1,198 @@
 # Impedir assinaturas de teste duplicadas no checkout
 
+> **Revisão 2.** A primeira versão desta spec recomendava consultar o Stripe
+> antes de criar a sessão e classificava o resíduo como uma janela de
+> milissegundos. Isso estava errado, e uma revisão externa derrubou o argumento
+> ponto a ponto. As correções estão em "O que a revisão 1 errou".
+
 ## Context
 
 The trial-first signup flow shipped in #290. `billing-checkout` grants 30 free
 days to any workspace that has never held a Stripe subscription, with no promo
 code.
 
-A post-merge review found a path that bills a workspace twice. It is real,
-verified against merged `main`, and it is not closed by anything currently in
-the function.
+A post-merge review found a path that bills a workspace twice, verified against
+merged `main`.
 
 ### The path
 
-1. A workspace has never subscribed. Its `workspace_subscriptions` row is either
-   absent or carries `status = null` and `stripe_subscription_id = null` (the
-   latter is the normal shape after `billing-checkout` creates the Stripe
-   customer but before any webhook arrives).
+1. A workspace has never subscribed: `workspace_subscriptions` is absent, or
+   carries `status = null` and `stripe_subscription_id = null` (the normal shape
+   after the Stripe customer is created but before any webhook arrives).
 2. The user opens checkout twice with **different** parameters: two plans, two
    intervals, or one from `/comecar` and one from Plano e Cobrança.
-3. Both requests pass the 409 guard at `billing-checkout/index.ts:74`, which
-   only rejects `status` of `active` or `trialing`.
-4. Both compute `resolveTrialDays(false)` at `index.ts:92`, because neither sees
-   a `stripe_subscription_id`.
+3. Both pass the 409 guard at `index.ts:74`, which only rejects `active` and
+   `trialing`.
+4. Both compute `resolveTrialDays(false)` at `index.ts:92`, since neither sees a
+   `stripe_subscription_id`.
 5. The idempotency key at `_shared/trial.ts:74` is
    `co_${workspaceId}_${planId}_${interval}_${source}_${bucket}`. Different
-   plan, interval or source means **different keys**, so Stripe does not collapse
-   them and returns two independently completable sessions.
-6. The user completes both. Stripe creates two subscriptions on one customer,
-   each with `trial_period_days: 30`, and bills both when the trials end.
-7. `stripe-webhook` upserts `workspace_subscriptions` keyed on `workspace_id`,
-   so the mirror keeps only the last one. The other subscription is live and
-   invisible in our data.
+   parameters mean different keys, so Stripe returns two independently
+   completable sessions.
+6. The user completes both. Two subscriptions, each with `trial_period_days: 30`.
+7. `stripe-webhook` upserts on `workspace_id`, so the mirror keeps only the last.
+   The other subscription is live and invisible to us.
 
-### Why the existing guards miss it
+### The second variant: two customers
 
-- **The idempotency key was designed for a narrower case.** It collapses
-  concurrent requests with an *identical* parameter set, which is the two-tabs
-  same-plan scenario. It cannot collapse requests that legitimately differ.
-- **Both the 409 guard and `hasEverSubscribed` read state that only exists after
-  the webhook.** During the propagation window there is nothing local to read.
+`stripe.customers.create` at `index.ts:80` carries **no idempotency key**. Two
+concurrent first-ever requests therefore create two distinct Stripe customers,
+and the later DB upsert simply overwrites the customer id. Each request then
+operates on its own customer, so any per-customer check is blind to the other.
 
-### What is NOT affected
+## O que a revisão 1 errou
 
-- Same plan, interval and source concurrently: the key collapses them. Safe.
-- Two concurrent first-ever checkouts creating two Stripe customers: Stripe
-  rejects one on an idempotency parameter mismatch. The user sees an error, never
-  a duplicate subscription.
+Recorded because the same mistakes are easy to repeat.
 
-An earlier note in `2026-08-03-free-trial-signup-flow-design.md` described the
-whole residual as failing safe into an error. That is accurate for the customer
-race above and **wrong for the case in this document**, where the outcome is a
-duplicate charge. That spec should be corrected when this work lands.
+1. **"Consultar o Stripe antes de criar a sessão resolve."** It does not. A
+   subscription does not exist until Checkout is *completed*. Two sessions
+   created before either completes both see an empty subscription list, however
+   far apart they are. Querying Stripe only helps when one checkout has already
+   completed, which is the webhook-lag window, not the general case.
+2. **"O resíduo é uma janela de milissegundos."** Wrong. The sessions can be
+   created minutes or hours apart and completed later. There is no narrow window.
+3. **"A corrida de dois customers falha para o lado seguro."** Only when the two
+   requests share an idempotency key, i.e. identical plan, interval, source and
+   hour bucket. Otherwise there is no collision to catch and both sessions live.
+4. **"Mesmo plano, intervalo e origem é seguro."** Not across an hour boundary:
+   `Math.floor(now / 3_600_000)` puts those two requests in different buckets and
+   therefore on different keys.
+5. **`status: "all"` como bloqueio.** This would break a working flow. A
+   workspace whose subscription is `canceled` is deliberately allowed to
+   resubscribe: the server only blocks `active`/`trialing` (`index.ts:74`), and
+   `CobrancaPage.test.tsx:89` asserts the CTA still renders for exactly that
+   case, with a comment saying so. Blocking every historical subscription would
+   strand every canceled customer.
 
-## Options
+## Two rules that were conflated
 
-### A. Ask Stripe before creating a session (recommended)
+The bug and the fix both get clearer once these are separated.
 
-Before `checkout.sessions.create`, list the customer's subscriptions:
+- **No second trial, ever.** Permanent, per workspace. Correctly implemented
+  today as `Boolean(stripe_subscription_id)` via `resolveTrialDays`, and durable
+  because the webhook only ever writes that column.
+- **No second *concurrent* subscription.** Temporal. Currently implemented as
+  "status is not `active`/`trialing`", which is both too narrow (it ignores
+  `past_due`, `unpaid`, `incomplete`) and unenforceable during the window before
+  any status exists.
 
-```ts
-const existing = await stripe.subscriptions.list({
-  customer: customerId,
-  status: "all",
-  limit: 1,
-});
-if (existing.data.length > 0) {
-  return json({ error: "Este workspace já tem uma assinatura." }, 409, headers);
-}
-```
-
-Stripe is the source of truth and knows a subscription exists the moment
-checkout completes, without waiting for our webhook. This closes the realistic
-shape of the bug: complete one checkout, then start another seconds later from
-a different surface.
-
-- No migration, no new state to expire or reconcile.
-- Costs one extra Stripe API call per checkout attempt.
-- Does not close a genuinely simultaneous race, where both requests query before
-  either completes. That window is milliseconds rather than the seconds-long
-  webhook window, and the idempotency key still covers the same-parameter case
-  inside it.
-
-### B. Short-lived reservation column
-
-Add `pending_checkout_at timestamptz` to `workspace_subscriptions`, set it
-before creating a session, and reject a new checkout while a reservation is
-younger than N minutes.
-
-- Closes the simultaneous race that A leaves open.
-- Needs a migration, and it is user-hostile in the common case: a user who
-  cancels in Stripe and immediately wants a different plan is blocked for the
-  rest of the window. Clearing the reservation on the cancel return does not
-  help, because that return is client-side and unreliable.
-
-### C. Durable pending-checkout ledger
-
-The option the original spec deferred: a table with session ids, expiry and
-reconciliation. Correct and complete, and disproportionate to a race this
-narrow.
-
-**Recommendation: A.** It removes the seconds-long window that makes this
-reachable in practice, needs no schema change, and keeps the failure mode as a
-clear 409 rather than a silent second subscription. Revisit B only if duplicate
-subscriptions actually appear.
+Only the second rule is broken. Conflating them is what produced the
+`status: "all"` mistake.
 
 ## Design
 
-In `supabase/functions/billing-checkout/index.ts`, after the customer is
-resolved and before the session is created:
+Three parts. The first two are cheap and independent; the third is the actual
+fix.
 
-- Call `stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 })`.
-- If any subscription exists, return 409 with a generic Portuguese message. Do
-  not leak Stripe detail to the client; log internally.
-- Keep the existing `status`-based 409 as a cheap local short-circuit that
-  avoids the API call for the common already-subscribed case.
-- Keep the idempotency key unchanged. It still covers same-parameter
-  concurrency, which the Stripe lookup does not.
-
-`status: "all"` is deliberate. A workspace whose only subscription is `canceled`
-has still subscribed before, so it is not trial-eligible, which matches
-`hasEverSubscribed` semantics elsewhere.
-
-Extract the decision as a pure helper in `_shared/` so it is testable without a
-live Stripe call, mirroring `resolveTrialDays`:
+### 1. Idempotency key on customer creation
 
 ```ts
-export function hasExistingSubscription(count: number): boolean {
-  return count > 0;
+const customer = await stripe.customers.create(
+  { email: user.email ?? undefined, metadata: { workspace_id: workspaceId } },
+  { idempotencyKey: `cus_${workspaceId}` },
+);
+```
+
+No time bucket: a workspace should have exactly one customer, forever. This
+alone removes the two-customer variant and makes every per-customer check
+meaningful.
+
+### 2. An explicit blocking-status set
+
+Replace the inline `active`/`trialing` comparison with a named helper in
+`_shared/`, blocking the statuses that represent a live or recoverable
+subscription and allowing the terminal ones:
+
+```ts
+const BLOCKING = new Set(["active", "trialing", "past_due", "unpaid", "incomplete"]);
+export function blocksNewSubscription(status: string | null | undefined): boolean {
+  return status != null && BLOCKING.has(status);
 }
 ```
 
+`canceled` and `incomplete_expired` are deliberately absent, preserving the
+resubscribe path that `CobrancaPage.test.tsx:89` pins. This is a small
+correctness fix in its own right, independent of the race.
+
+### 3. An atomic checkout reservation
+
+This is what actually prevents two completable sessions. Migration adds one
+column:
+
+```sql
+alter table workspace_subscriptions
+  add column if not exists pending_checkout_at timestamptz;
+```
+
+Before creating a session, claim the reservation with a single conditional
+UPDATE. Concurrent writers serialize on the row, so exactly one wins:
+
+```sql
+update workspace_subscriptions
+   set pending_checkout_at = now()
+ where workspace_id = $1
+   and (pending_checkout_at is null
+        or pending_checkout_at < now() - interval '15 minutes')
+returning workspace_id;
+```
+
+Zero rows returned means a checkout is already in flight: return 409 with a
+generic Portuguese message. The row must exist first, which it already does
+after the customer find-or-create.
+
+**Releasing the reservation**, in order of reliability:
+
+- `stripe-webhook` clears it on `customer.subscription.created` and on
+  `checkout.session.expired`. This is the authoritative path.
+- The 15-minute expiry is the backstop, so a lost webhook cannot wedge a
+  workspace permanently.
+- The `cancel_url` return may clear it best-effort, but must never be relied on:
+  it is client-side and a closed tab never fires it.
+
+**The tradeoff, stated plainly:** a user who abandons Stripe Checkout and
+immediately wants a different plan is blocked for up to 15 minutes. That is the
+cost of the guarantee. Shortening the window trades safety for convenience; the
+webhook-driven release is what keeps the common abandon-then-retry case fast,
+since `checkout.session.expired` fires well before the timeout in practice.
+
+### Rejected: query Stripe before creating the session
+
+Revision 1's recommendation. It closes only the post-completion window and is
+blind to the pre-completion case that is the actual bug. Not worth an API call
+per checkout for that.
+
 ## Tests
 
-- Deno unit tests for the helper: zero subscriptions is eligible, one or more is
-  not.
-- Extend `supabase/functions/__tests__/trial_test.ts`.
-- No frontend change, so the CRM suite is unaffected. `startCheckout` already
-  surfaces a 409's message, so the existing error path renders it.
+The pure helpers are the easy part and are not sufficient on their own.
+
+- `blocksNewSubscription`: blocks each live status, allows `canceled`,
+  `incomplete_expired`, `null` and unknown strings.
+- Reservation SQL, in the psql suite at `supabase/tests/entitlements/`
+  (which **is** gated by CI via the `entitlement-tests` job): two sequential
+  claims inside one transaction, the second returning zero rows; a claim older
+  than the window succeeding; a claim newer than the window failing.
+- Edge-function behaviour that the helpers do not cover, and that revision 1
+  wrongly called adequate: the reservation is claimed **after** customer
+  resolution and **before** session creation; a failed claim returns 409 without
+  calling Stripe; a Stripe error after a successful claim releases it rather
+  than wedging the workspace.
+- **CRM tests are affected**, contrary to revision 1. Any change to blocking
+  statuses must be checked against `CobrancaPage.test.tsx:89`, which asserts a
+  canceled subscriber still gets a checkout CTA.
 
 ## Deploy
 
-Edge function only. No migration.
-
-```bash
-npx supabase functions deploy billing-checkout --use-api --no-verify-jwt
-```
-
-Staging first. Check `supabase/.temp/project-ref` before each push, since the
-link state flips between projects.
+Migration plus edge function, so both go out **before** any frontend merge, and
+staging first. Check `supabase/.temp/project-ref` before each push, since the
+link state flips between projects. Number the migration above `origin/main`'s
+tail at PR-open time, not at authoring time.
 
 ## Out of scope
 
-- Reconciling subscriptions already duplicated before this ships. If any exist,
-  they need finding in Stripe by customer and cancelling by hand; the mirror
-  cannot show them.
-- The webhook overwriting the mirror rather than detecting a conflict. Worth a
-  separate look: a webhook that noticed an incoming `subscription.created` for a
-  workspace that already has a different `stripe_subscription_id` could alert
-  instead of silently overwriting.
+- Reconciling subscriptions already duplicated before this ships. If any exist
+  they must be found in Stripe by customer and cancelled by hand; the mirror
+  cannot show them. Worth checking before this work starts, since #290 is
+  already live.
+- `stripe-webhook` silently overwriting the mirror when a second
+  `stripe_subscription_id` arrives for a workspace. It could alert instead. That
+  is the detection half of this problem and deserves its own change.
