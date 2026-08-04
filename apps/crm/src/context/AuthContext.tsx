@@ -262,22 +262,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // unexpected value) can never suppress the other.
   //
   // Ordering vs. session:reset: reset is pushed synchronously -- inside the
-  // onAuthStateChange handler for a user change, and inside signOut() -- when
-  // `userId` still holds the OUTGOING identity. This effect only runs after
-  // React commits a render with the NEW userId (or null), which happens
-  // strictly after that synchronous reset call returns, so reset for the old
-  // identity always lands before this effect starts for the new one (or for
-  // "no one", after a sign-out). That said, the identify push itself is no
-  // longer synchronous -- it awaits a network round trip to crisp-identity --
-  // so there is a residual window: if a sign-out's synchronous reset fires
-  // while a still-in-flight signing request from the JUST-reset session is
-  // pending, that request's response can land, and its `active` guard is
-  // only reset by THIS effect's own cleanup (userId changing), not by the
-  // reset call itself. The `active` flag closes the ordinary
-  // effect-re-run/unmount race, not this one.
+  // onAuthStateChange handler for a user change (authGeneration.current += 1
+  // at line 109, reset at line 142), and inside signOut() (bumped at line 548,
+  // reset at line 559) -- while `userId` still holds the OUTGOING identity.
+  // The identify push below is NOT synchronous: it awaits a network round
+  // trip to crisp-identity, so a sign-out's synchronous reset can fire while
+  // a signing request started by the JUST-reset session is still in flight.
+  // `active` alone does not close that window: it is only cleared later, by
+  // React's passive-effect cleanup once it commits the render for the new
+  // userId, which is strictly after the in-flight response could already
+  // have resolved and pushed the outgoing user's email into the freshly
+  // reset (anonymous, or next-user) session -- a cross-customer attribution
+  // bug on a shared machine, exactly what session:reset exists to prevent.
+  // The ordering IS resolved, by re-checking `authGeneration` (captured at
+  // effect start, in `initialAuthGeneration`) after the await, in addition to
+  // `active`: authGeneration moves synchronously, in the same turn as every
+  // session:reset push, so unlike `active` it can never still read as
+  // "current" once a reset for this identity has already happened.
   useEffect(() => {
     if (!userId) return;
     let active = true;
+    const initialAuthGeneration = authGeneration.current;
 
     (async () => {
       if (!user?.email) return;
@@ -297,7 +302,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Unverified in the inbox, which is the pre-existing behaviour and is
         // strictly better than blocking support access entirely.
       }
-      if (!active) return;
+      // Both checks matter: `active` closes the ordinary effect-re-run/
+      // unmount race, `authGeneration` closes the session:reset race (see
+      // the comment above this effect) that `active` cannot, because it is
+      // only cleared asynchronously by React's own cleanup.
+      if (!active || authGeneration.current !== initialAuthGeneration) return;
 
       try {
         // Second element is the identity signature. Crisp marks the session

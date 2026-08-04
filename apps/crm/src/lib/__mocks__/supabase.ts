@@ -15,8 +15,13 @@ let profileResponses: Array<Promise<Record<string, unknown> | null>> = [];
 // error: null }` when nothing is queued -- the same shape a real timeout or a
 // genuine function error resolves to, which is exactly what the Crisp
 // identify effect's fallback-to-unsigned-push path needs to exercise by
-// default without every other test having to opt in.
-let functionsInvokeResponses: Array<{ data: unknown; error?: unknown }> = [];
+// default without every other test having to opt in. A queued entry may also
+// be a caller-held Promise (not yet resolved) instead of a plain object, so a
+// test can control exactly when the invoke call settles -- needed to
+// reproduce the sign-out-races-an-in-flight-signing-request window.
+let functionsInvokeResponses: Array<
+  { data: unknown; error?: unknown } | Promise<{ data: unknown; error?: unknown }>
+> = [];
 let currentSession = {
   access_token: 'token-de-teste',
   user: currentUser,
@@ -191,7 +196,9 @@ export function __queueCurrentProfileResponse(response: Promise<Record<string, u
   profileResponses.push(response);
 }
 
-export function __queueFunctionsInvokeResponse(response: { data: unknown; error?: unknown }) {
+export function __queueFunctionsInvokeResponse(
+  response: { data: unknown; error?: unknown } | Promise<{ data: unknown; error?: unknown }>,
+) {
   functionsInvokeResponses.push(response);
 }
 

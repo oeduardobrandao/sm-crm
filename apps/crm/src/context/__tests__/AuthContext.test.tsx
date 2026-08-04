@@ -52,7 +52,9 @@ type MockedSupabaseModule = typeof supabaseModule & {
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
   __queueCurrentProfileResponse: (response: Promise<Record<string, unknown> | null>) => void;
-  __queueFunctionsInvokeResponse: (response: { data: unknown; error?: unknown }) => void;
+  __queueFunctionsInvokeResponse: (
+    response: { data: unknown; error?: unknown } | Promise<{ data: unknown; error?: unknown }>,
+  ) => void;
   __setCurrentUser: (user: { id: string; email?: string } | null) => void;
   __emitAuthChange: (
     event: string,
@@ -603,5 +605,72 @@ describe('AuthProvider Crisp identification', () => {
     await waitFor(() => {
       expect(crispPush).toHaveBeenCalledWith(['do', 'session:reset']);
     });
+  });
+
+  it('never pushes the outgoing user:email after session:reset when sign-out races an in-flight crisp-identity call', async () => {
+    // Regression coverage for the cross-customer attribution race: the
+    // signing round trip added by the timeout fix is NOT synchronous, so a
+    // sign-out's synchronous session:reset can fire while a crisp-identity
+    // call started by the JUST-reset (outgoing) user is still in flight. If
+    // that response is allowed to push user:email afterwards, the next
+    // person on a shared machine gets attributed to the outgoing customer --
+    // exactly what session:reset exists to prevent. `authGeneration` is what
+    // closes this window (see the comment above the effect in
+    // AuthContext.tsx): it is bumped synchronously as literally the first
+    // line of signOut(), before any await, so it has already moved by the
+    // time this held invoke promise is resolved below -- even though the
+    // effect's own `active` closure variable has not necessarily been torn
+    // down yet (that only happens once React re-renders with the new,
+    // signed-out userId).
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo Souza',
+      role: 'owner',
+      conta_id: 'conta-1',
+    });
+
+    let resolveInvoke!: (value: { data: unknown; error?: unknown }) => void;
+    mockedSupabase.__queueFunctionsInvokeResponse(
+      new Promise((resolve) => {
+        resolveInvoke = resolve;
+      }),
+    );
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role')).toHaveTextContent('owner');
+    });
+    // The Crisp email effect has started and is now awaiting the held
+    // invoke promise above -- it has not resolved yet.
+
+    // Trigger sign-out with the SYNC act() overload, not the async one: it
+    // runs only the synchronous portion of the click handler (which starts
+    // `signOut()`, bumping `authGeneration.current` as its very first
+    // statement, before any await) without draining the microtask queue any
+    // further. This is what puts us inside the race window instead of
+    // letting the whole sign-out settle first.
+    act(() => {
+      screen.getByText('sair').click();
+    });
+
+    // Now let the in-flight crisp-identity call for the OUTGOING user
+    // resolve, with a signature -- the worst case (a validly signed push for
+    // the wrong identity).
+    await act(async () => {
+      resolveInvoke({ data: { signature: 'abc' }, error: null });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role')).toHaveTextContent('agent');
+    });
+    expect(crispPush).toHaveBeenCalledWith(['do', 'session:reset']);
+
+    const emailPushesAfterReset = crispPush.mock.calls.filter(
+      (call) => call[0]?.[0] === 'set' && call[0]?.[1] === 'user:email',
+    );
+    expect(emailPushesAfterReset).toHaveLength(0);
   });
 });
