@@ -55,10 +55,17 @@ export interface CrispCronDeps {
    */
   confirmSync: (
     userId: string,
+    email: string,
     peopleId: string | null,
     fingerprint: string,
   ) => Promise<boolean>;
-  markContactDeleted: (id: string) => Promise<void>;
+  /**
+   * Stamps deletion only when the row still matches the caller's observed
+   * state (its synced_email, still not deleted). Returns FALSE when it
+   * matched no row: another run already handled this row's deletion, and this
+   * run's vendor delete was idempotent (the client treats a 404 as success).
+   */
+  markContactDeleted: (id: string, expectedEmail: string) => Promise<boolean>;
   getProfile: (ref: string) => Promise<CrispProfile | null>;
   createProfile: (p: CrispProfileWrite) => Promise<string | null>;
   saveProfile: (peopleId: string, p: CrispProfileWrite) => Promise<void>;
@@ -146,8 +153,18 @@ export async function runCrispSyncCron(
     for (const d of (delRes.data ?? []) as DeletionRow[]) {
       try {
         await deps.deleteProfile(d.synced_people_id ?? d.synced_email);
-        await deps.markContactDeleted(d.id);
-        deleted++;
+        // FALSE here is not a failure: it means an overlapping run already
+        // stamped (and likely reactivated) this row, so ours was a stale,
+        // redundant deletion. Do not count it and do not report it -- the
+        // vendor delete above is idempotent (a 404 there counts as success),
+        // so nothing was lost.
+        if (await deps.markContactDeleted(d.id, d.synced_email)) {
+          deleted++;
+        } else {
+          console.error(
+            `[crisp-sync-cron] stale deletion: ${d.id} was already handled by another run`,
+          );
+        }
       } catch (e) {
         errors.push({ accountId: d.id, error: msg(e) });
       }
@@ -232,7 +249,7 @@ export async function runCrispSyncCron(
         // get_crisp_contact_deletions could never select it -- it filters on the
         // same deleted_at. Unerasable, which is the one outcome this ledger
         // exists to prevent. So delete what we just wrote, then surface it.
-        if (!(await deps.confirmSync(c.user_id, peopleId, c.fingerprint))) {
+        if (!(await deps.confirmSync(c.user_id, c.email, peopleId, c.fingerprint))) {
           try {
             await deps.deleteProfile(peopleId);
           } catch (delErr) {

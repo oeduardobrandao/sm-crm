@@ -74,25 +74,34 @@ end $$;
 
 -- coalesce on people_id so a null argument never wipes a known cached id.
 create or replace function confirm_crisp_sync(
-  p_user_id uuid, p_people_id text, p_fingerprint text
+  p_user_id uuid, p_email text, p_people_id text, p_fingerprint text
 )
 returns boolean
 language plpgsql security definer set search_path = public as $$
 declare v_rows int;
 begin
+  -- synced_email is part of the predicate, not just user_id: without it a
+  -- confirmation for a stale in-flight write can match a row that was swept
+  -- AND reactivated for a different address in between. user_id alone cannot
+  -- tell those two syncs apart -- only the email this call believes it just
+  -- pushed can.
   update crisp_contacts
      set synced_people_id   = coalesce(p_people_id, synced_people_id),
          synced_fingerprint = p_fingerprint,
          synced_at          = now()
    where user_id = p_user_id
+     and synced_email = p_email
      and deleted_at is null;
 
   get diagnostics v_rows = row_count;
-  -- FALSE means the ledger row moved under us while the vendor call was in
-  -- flight: the deletion sweep swept this person between record and confirm.
-  -- The caller MUST delete the profile it just wrote, or it is stranded at the
-  -- vendor with no ledger row able to select it for erasure. Never widen this
-  -- WHERE to "fix" the zero-row case -- that would resurrect a swept row.
+  -- FALSE means either: the ledger row moved under us while the vendor call
+  -- was in flight (the deletion sweep swept this person between record and
+  -- confirm), OR it was swept AND reactivated for a different address before
+  -- this call landed, so the row that matches user_id now describes someone
+  -- else's in-flight sync. Either way the caller MUST delete the profile it
+  -- just wrote, or it is stranded at the vendor with no ledger row able to
+  -- select it for erasure. Never widen this WHERE to "fix" the zero-row case
+  -- -- that would resurrect a swept row or clobber a reactivated one.
   return v_rows > 0;
 end $$;
 
@@ -332,7 +341,7 @@ declare fn text;
 begin
   foreach fn in array array[
     'record_crisp_contact(uuid,text)',
-    'confirm_crisp_sync(uuid,text,text)',
+    'confirm_crisp_sync(uuid,text,text,text)',
     'get_crisp_contact_deletions()',
     'get_crisp_sync_candidates()'
   ] loop

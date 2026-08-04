@@ -75,16 +75,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // Returns false when the RPC matched no row, i.e. the deletion sweep
       // swept this person while our vendor call was in flight. The handler
       // deletes the orphaned profile on false; do NOT collapse this to void.
-      confirmSync: async (userId, peopleId, fingerprint) => {
+      confirmSync: async (userId, email, peopleId, fingerprint) => {
         const { data, error } = await svc.rpc("confirm_crisp_sync", {
           p_user_id: userId,
+          p_email: email,
           p_people_id: peopleId,
           p_fingerprint: fingerprint,
         });
         if (error) throw new Error(`sync confirm failed: ${error.message}`);
         return data === true;
       },
-      markContactDeleted: async (id) => {
+      markContactDeleted: async (id, expectedEmail) => {
         // synced_people_id AND synced_fingerprint are nulled in the SAME update
         // that stamps deleted_at.
         //
@@ -97,15 +98,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
         // reverts to their previous address before the new one syncs match
         // their own stale hash, fail the candidate predicate, and stay silently
         // absent from Crisp indefinitely.
-        const { error } = await svc
+        //
+        // THE DELAYED-STAMP RACE: Run A deletes profile OLD at the vendor, then
+        // stalls before this update lands. Run B's sweep selects the same
+        // still-unstamped row, also deletes at the vendor (a 404 counts as
+        // success there), stamps deleted_at, then the row is reactivated for a
+        // NEW email and re-confirmed. If Run A's update then matched by id
+        // alone, it would stamp that reactivated row deleted and null out the
+        // sync it just confirmed -- and get_crisp_contact_deletions, which only
+        // selects deleted_at is null rows, could never surface profile NEW for
+        // erasure again. Matching on synced_email + deleted_at is null makes
+        // Run A's delayed update a no-op once Run B has moved the row on.
+        const { data, error } = await svc
           .from("crisp_contacts")
           .update({
             deleted_at: new Date().toISOString(),
             synced_people_id: null,
             synced_fingerprint: null,
           })
-          .eq("id", id);
+          .eq("id", id)
+          .eq("synced_email", expectedEmail)
+          .is("deleted_at", null)
+          .select("id");
         if (error) throw new Error(`contact delete record failed: ${error.message}`);
+        return (data ?? []).length > 0;
       },
       getProfile,
       createProfile,

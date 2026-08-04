@@ -29,7 +29,9 @@ const CANDIDATE = {
 function makeDeps(over: Partial<CrispCronDeps> = {}, rpcData: Record<string, unknown[]> = {}) {
   const calls = {
     recorded: [] as string[],
-    confirmed: [] as Array<{ userId: string; peopleId: string | null; fingerprint: string }>,
+    confirmed: [] as Array<
+      { userId: string; email: string; peopleId: string | null; fingerprint: string }
+    >,
     created: [] as CrispProfileWrite[],
     saved: [] as Array<{ peopleId: string; p: CrispProfileWrite }>,
     data: [] as Array<{ peopleId: string; data: Record<string, unknown> }>,
@@ -45,13 +47,13 @@ function makeDeps(over: Partial<CrispCronDeps> = {}, rpcData: Record<string, unk
       calls.recorded.push(userId);
       return Promise.resolve(true);
     },
-    confirmSync: (userId, peopleId, fingerprint) => {
-      calls.confirmed.push({ userId, peopleId, fingerprint });
+    confirmSync: (userId, email, peopleId, fingerprint) => {
+      calls.confirmed.push({ userId, email, peopleId, fingerprint });
       return Promise.resolve(true);
     },
     markContactDeleted: (id: string) => {
       calls.markedDeleted.push(id);
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
     getProfile: (ref: string) => {
       calls.gotProfile.push(ref);
@@ -318,6 +320,43 @@ Deno.test(
     assertEquals(calls.deletedRefs, ["p-existing"]);
     assertEquals(result.upserted, 0);
     assertEquals(result.failed, 1);
+  },
+);
+
+Deno.test("confirmSync is called with the candidate's email", async () => {
+  // confirm_crisp_sync asserts synced_email as part of its predicate (the
+  // stale-confirmation-after-reactivation fix), so the handler must pass the
+  // email it believes it just synced, not just the user id.
+  const { deps, calls } = makeDeps({}, { get_crisp_sync_candidates: [CANDIDATE] });
+
+  await runCrispSyncCron(deps);
+
+  assertEquals(calls.confirmed[0].userId, "u-1");
+  assertEquals(calls.confirmed[0].email, "ana@example.com");
+});
+
+Deno.test(
+  "markContactDeleted returning false is a stale deletion, not a failure",
+  async () => {
+    // Another run already stamped (and possibly reactivated) this row before
+    // ours landed. Our vendor delete already ran and is idempotent (a 404
+    // there counts as success), so this must not count as a deletion and must
+    // not be reported as an error.
+    const { deps, calls } = makeDeps(
+      { markContactDeleted: () => Promise.resolve(false) },
+      {
+        get_crisp_contact_deletions: [
+          { id: "cc-1", synced_email: "old@example.com", synced_people_id: "p-old" },
+        ],
+      },
+    );
+
+    const result = await runCrispSyncCron(deps);
+
+    assertEquals(calls.deletedRefs, ["p-old"]);
+    assertEquals(result.deleted, 0);
+    assertEquals(result.failed, 0);
+    assertEquals(calls.reported.length, 0);
   },
 );
 
