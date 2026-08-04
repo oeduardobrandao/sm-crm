@@ -1765,7 +1765,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // tokens are ES256 and an anon client cannot verify them.
   const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const { data, error } = await svc.auth.getUser(token);
-  if (error || !data.user?.email) return json({ error: "Unauthorized" }, 401);
+  // email_confirmed_at is REQUIRED, not belt-and-braces. Without it, a project
+  // that permits sign-in before confirmation lets an attacker register
+  // victim@company.com, obtain a session, and receive a genuine signature --
+  // the Verified badge would then certify an address nobody proved they own,
+  // which is the exact failure this endpoint exists to prevent. It also matches
+  // the sync's own candidate rule, which already requires a confirmed email.
+  if (error || !data.user?.email || !data.user.email_confirmed_at) {
+    return json({ error: "Unauthorized" }, 401);
+  }
 
   // THE EMAIL COMES FROM THE VERIFIED TOKEN, NEVER FROM THE REQUEST BODY.
   // Signing a caller-supplied address would turn this endpoint into an oracle
@@ -1790,19 +1798,35 @@ In `apps/crm/src/context/AuthContext.tsx`, replace the body of the Crisp identif
   useEffect(() => {
     if (!userId) return;
     let active = true;
+    // Captured, then re-checked after the await. This is the load-bearing half
+    // of the guard: `active` is cleared asynchronously by React's passive-effect
+    // cleanup, whereas authGeneration is bumped SYNCHRONOUSLY in the same turn
+    // as signOut()'s `session:reset` push. Without it, a signing response that
+    // resolves between the reset and React's cleanup pushes the OUTGOING user's
+    // signed email into the freshly anonymous session, and the next person on a
+    // shared machine has their chat attributed to the previous customer. Same
+    // pattern the profile-hydration effect above already uses.
+    const initialAuthGeneration = authGeneration.current;
 
     (async () => {
       if (!user?.email) return;
       let signature: string | undefined;
       try {
-        const { data } = await supabase.functions.invoke('crisp-identity');
+        // The timeout is load-bearing. functions-js RETURNS errors rather than
+        // throwing, so a 401 or a network failure already degrades to the
+        // unsigned push. A hang is not a failure: browser fetch has no default
+        // timeout, so without this a stalled function means user:email is never
+        // pushed at all and the inbox shows an anonymous session -- worse than
+        // the unsigned fallback. This repo has been bitten by unbounded I/O in
+        // state-setting handlers before.
+        const { data } = await supabase.functions.invoke('crisp-identity', { timeout: 5000 });
         signature = (data as { signature?: string } | null)?.signature;
       } catch {
         // Signing is best-effort. A failure means the session shows as
         // Unverified in the inbox, which is the pre-existing behaviour and is
         // strictly better than blocking support access entirely.
       }
-      if (!active) return;
+      if (!active || authGeneration.current !== initialAuthGeneration) return;
 
       try {
         // Second element is the identity signature. Crisp marks the session
