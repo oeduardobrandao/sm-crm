@@ -17,6 +17,7 @@ import { marketingPageBySlug } from '@/content/paginas';
 const LoginPage = lazy(() => import('./pages/login/LoginPage'));
 const ConfigurarSenhaPage = lazy(() => import('./pages/configurar-senha/ConfigurarSenhaPage'));
 const WorkspaceSetupPage = lazy(() => import('./pages/workspace-setup/WorkspaceSetupPage'));
+const ComecarPage = lazy(() => import('./pages/comecar/ComecarPage'));
 const ConsentPage = lazy(() => import('./pages/oauth/ConsentPage'));
 const PoliticaPage = lazy(() => import('./pages/politica-privacidade/PoliticaPage'));
 const TermosPage = lazy(() => import('./pages/termos-de-uso/TermosPage'));
@@ -136,6 +137,14 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <WorkspaceSetupPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/comecar"
+                element={
+                  <ProtectedRoute>
+                    <ComecarPage />
                   </ProtectedRoute>
                 }
               />

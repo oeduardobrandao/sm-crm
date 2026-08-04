@@ -52,6 +52,52 @@ function renderLoginPage(
   );
 }
 
+function SearchProbe() {
+  const location = useLocation();
+  return <div data-testid="probe">{location.pathname + location.search}</div>;
+}
+
+function renderRegister(initialEntry: string) {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            <>
+              <LoginPage />
+              <SearchProbe />
+            </>
+          }
+        />
+        <Route path="/comecar" element={<SearchProbe />} />
+        <Route path="/dashboard" element={<SearchProbe />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+function fillRegisterForm(
+  container: HTMLElement,
+  overrides: { nome?: string; empresa?: string } = {},
+) {
+  const set = (id: string, value: string) =>
+    fireEvent.change(container.querySelector(`#${id}`)!, { target: { value } });
+  set('reg-nome', overrides.nome ?? 'Ana Souza');
+  set('reg-empresa', overrides.empresa ?? 'Studio Ana');
+  set('reg-email', 'ana@example.com');
+  set('reg-telefone', '11999999999');
+  set('reg-password', 'senha12345');
+  set('reg-confirm', 'senha12345');
+}
+
+// jsdom does not run HTML constraint validation on a programmatic submit, so
+// this reaches the handler and exercises the trim guard rather than being
+// blocked by `required`.
+function submitRegister(container: HTMLElement) {
+  fireEvent.submit(container.querySelector('form.auth-form')!);
+}
+
 describe('LoginPage', () => {
   beforeEach(() => {
     mockedSignIn.mockReset();
@@ -168,7 +214,7 @@ describe('LoginPage', () => {
   });
 
   it('shows the verification state after a successful registration and returns to login', async () => {
-    mockedSignUp.mockResolvedValue({ error: null } as never);
+    mockedSignUp.mockResolvedValue({ data: { session: null }, error: null } as never);
 
     renderLoginPage('/login?tab=register');
 
@@ -195,12 +241,17 @@ describe('LoginPage', () => {
     fireEvent.submit(screen.getByLabelText('Nome Completo').closest('form')!);
 
     await waitFor(() => {
-      expect(mockedSignUp).toHaveBeenCalledWith('ana@mesaas.com', 'senha-123', {
-        nome: 'Ana Souza',
-        empresa: 'Mesaas',
-        telefone: '(11) 99999-9999',
-        marketing_opt_in: true,
-      });
+      expect(mockedSignUp).toHaveBeenCalledWith(
+        'ana@mesaas.com',
+        'senha-123',
+        {
+          nome: 'Ana Souza',
+          empresa: 'Mesaas',
+          telefone: '(11) 99999-9999',
+          marketing_opt_in: true,
+        },
+        '/login',
+      );
     });
     expect(screen.getByText('Verifique seu e-mail')).toBeInTheDocument();
 
@@ -248,5 +299,46 @@ describe('LoginPage', () => {
     });
     expect(screen.getByLabelText('Senha')).toBeInTheDocument();
     expect(screen.queryByText(/Informe seu e-mail para receber um link/i)).not.toBeInTheDocument();
+  });
+
+  it('rejects a whitespace-only company name instead of submitting it', () => {
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container, { empresa: '   ' });
+    submitRegister(container);
+    expect(mockedSignUp).not.toHaveBeenCalled();
+  });
+
+  it('trims the name and company before sending them to signUp', async () => {
+    mockedSignUp.mockResolvedValue({
+      data: { session: { access_token: 't' } },
+      error: null,
+    } as never);
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container, { nome: '  Ana  ', empresa: '  Studio  ' });
+    submitRegister(container);
+    await waitFor(() => expect(mockedSignUp).toHaveBeenCalled());
+    expect(mockedSignUp.mock.calls[0][2]).toMatchObject({ nome: 'Ana', empresa: 'Studio' });
+  });
+
+  it('sends a signed-up user to /comecar carrying the plan intent', async () => {
+    mockedSignUp.mockResolvedValue({
+      data: { session: { access_token: 't' } },
+      error: null,
+    } as never);
+    const { container } = renderRegister('/login?tab=register&plan=pro&interval=year');
+    fillRegisterForm(container);
+    submitRegister(container);
+    await waitFor(() =>
+      expect(screen.getByTestId('probe')).toHaveTextContent('/comecar?plan=pro&interval=year'),
+    );
+  });
+
+  it('passes the intent through emailRedirectTo when confirmation is still on', async () => {
+    mockedSignUp.mockResolvedValue({ data: { session: null }, error: null } as never);
+    const { container } = renderRegister('/login?tab=register&plan=pro&interval=month');
+    fillRegisterForm(container);
+    submitRegister(container);
+    await waitFor(() => expect(mockedSignUp).toHaveBeenCalled());
+    expect(mockedSignUp.mock.calls[0][3]).toBe('/login?plan=pro&interval=month');
   });
 });

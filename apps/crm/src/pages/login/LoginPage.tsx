@@ -11,6 +11,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Sparkles, ChevronRight, Images, Film, Camera } from 'lucide-react';
 import { signIn, signUp, resetPassword } from '../../lib/supabase';
 import { captureEvent } from '@/lib/analytics';
+import { parsePlanIntent, buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
 
 type TabKey = 'login' | 'register' | 'forgot';
 
@@ -26,6 +27,10 @@ export default function LoginPage() {
   const from = fromLoc?.pathname
     ? `${fromLoc.pathname}${fromLoc.search ?? ''}${fromLoc.hash ?? ''}`
     : '/dashboard';
+  const planIntent = parsePlanIntent(location.search);
+  const intentQuery = planIntent
+    ? buildPlanIntentQuery(planIntent.planId, planIntent.interval)
+    : '';
   const tabParam = new URLSearchParams(location.search).get('tab');
   const initialTab: TabKey =
     tabParam === 'register' ? 'register' : tabParam === 'forgot' ? 'forgot' : 'login';
@@ -57,7 +62,7 @@ export default function LoginPage() {
       );
     } else {
       toast.success(t('login.success'));
-      navigate(from, { replace: true });
+      navigate(intentQuery ? `/comecar?${intentQuery}` : from, { replace: true });
     }
   };
 
@@ -67,27 +72,43 @@ export default function LoginPage() {
       toast.error(t('register.passwordMismatch'));
       return;
     }
+    // HTML `required` accepts whitespace, and the workspace name comes straight
+    // from this value — a blank-looking company would create a blank-named
+    // workspace AND skip /workspace-setup, because ' ' is truthy.
+    const nome = regNome.trim();
+    const empresa = regEmpresa.trim();
+    if (!nome || !empresa) {
+      toast.error('Preencha seu nome e o nome da empresa.');
+      return;
+    }
     setLoading(true);
-    const { error } = await signUp(regEmail, regPassword, {
-      nome: regNome,
-      empresa: regEmpresa,
-      telefone: regTelefone,
-      marketing_opt_in: regMarketingOptIn,
-    });
+    const { data, error } = await signUp(
+      regEmail,
+      regPassword,
+      { nome, empresa, telefone: regTelefone, marketing_opt_in: regMarketingOptIn },
+      intentQuery ? `/login?${intentQuery}` : '/login',
+    );
     setLoading(false);
     if (error) {
       toast.error(error.message);
-    } else {
-      captureEvent('signup_completed');
-      setRegisterSuccess(true);
-      setRegNome('');
-      setRegEmpresa('');
-      setRegEmail('');
-      setRegTelefone('');
-      setRegPassword('');
-      setRegConfirm('');
-      setRegMarketingOptIn(false);
+      return;
     }
+    captureEvent('signup_completed');
+    // With email confirmation disabled signUp returns a live session, so the
+    // user goes straight to the trial step. When it is enabled there is no
+    // session yet and the check-your-email screen still applies.
+    if (data?.session) {
+      navigate(intentQuery ? `/comecar?${intentQuery}` : '/comecar', { replace: true });
+      return;
+    }
+    setRegisterSuccess(true);
+    setRegNome('');
+    setRegEmpresa('');
+    setRegEmail('');
+    setRegTelefone('');
+    setRegPassword('');
+    setRegConfirm('');
+    setRegMarketingOptIn(false);
   };
 
   const handleForgot = async (e: React.FormEvent) => {
@@ -230,6 +251,7 @@ export default function LoginPage() {
                     placeholder={t('register.companyPlaceholder')}
                     value={regEmpresa}
                     onChange={(e) => setRegEmpresa(e.target.value)}
+                    required
                   />
                 </div>
                 <div className="space-y-1">

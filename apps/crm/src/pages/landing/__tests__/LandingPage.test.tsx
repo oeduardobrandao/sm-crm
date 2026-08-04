@@ -189,7 +189,8 @@ describe('LandingPage', () => {
 
     // Scope to the banner region: the promo code also appears in the pricing callout.
     const banner = screen.getByRole('region', { name: 'Oferta de lançamento' });
-    expect(banner).toHaveTextContent('BEMVINDO');
+    expect(banner).toHaveTextContent('30 dias');
+    expect(banner).not.toHaveTextContent('BEMVINDO');
 
     fireEvent.click(screen.getByRole('button', { name: 'Fechar aviso' }));
 
@@ -221,11 +222,31 @@ describe('LandingPage', () => {
 
     const registerLinks = screen
       .getAllByRole('link')
-      .filter((link) => link.getAttribute('href') === '/login?tab=register');
+      .filter((link) => link.getAttribute('href')?.startsWith('/login?tab=register'));
 
-    // Promo banner + header + hero + agent section + final CTA each link to signup,
-    // plus all 4 pricing CTAs and all 4 comparison actions.
+    // Promo banner + header + hero + agent section + final CTA each link straight
+    // to signup, and so does the free pricing CTA and free comparison action.
+    // The 3 paid pricing CTAs and 3 paid comparison actions carry plan intent.
     expect(registerLinks).toHaveLength(13);
+
+    const plainRegisterLinks = registerLinks.filter(
+      (link) => link.getAttribute('href') === '/login?tab=register',
+    );
+    expect(plainRegisterLinks).toHaveLength(7);
+
+    const planIntentHrefs = registerLinks
+      .map((link) => link.getAttribute('href'))
+      .filter((href): href is string => !!href && href.includes('&plan='))
+      .sort();
+    expect(planIntentHrefs).toEqual([
+      '/login?tab=register&plan=max&interval=month',
+      '/login?tab=register&plan=max&interval=month',
+      '/login?tab=register&plan=pro&interval=month',
+      '/login?tab=register&plan=pro&interval=month',
+      '/login?tab=register&plan=start&interval=month',
+      '/login?tab=register&plan=start&interval=month',
+    ]);
+
     expect(screen.getByRole('link', { name: 'Entrar' })).toHaveAttribute('href', '/login');
   });
 
@@ -245,7 +266,7 @@ describe('LandingPage', () => {
       within(freeCard as HTMLElement).getByRole('link', { name: 'Acessar painel' }),
     ).toHaveAttribute('href', '/dashboard');
     expect(
-      within(startCard as HTMLElement).getByRole('link', { name: 'Assinar Start' }),
+      within(startCard as HTMLElement).getByRole('link', { name: 'Começar teste grátis' }),
     ).toHaveAttribute('href', '/configuracao/cobranca');
 
     const comparison = screen.getByRole('table', { name: 'Comparação detalhada dos planos' });
@@ -253,10 +274,14 @@ describe('LandingPage', () => {
       'href',
       '/dashboard',
     );
-    expect(within(comparison).getByRole('link', { name: 'Assinar Start' })).toHaveAttribute(
-      'href',
-      '/configuracao/cobranca',
-    );
+    // Start, Pro and Max all share the "Começar teste grátis" label for logged-in users.
+    const paidComparisonLinks = within(comparison).getAllByRole('link', {
+      name: 'Começar teste grátis',
+    });
+    expect(paidComparisonLinks).toHaveLength(3);
+    paidComparisonLinks.forEach((link) => {
+      expect(link).toHaveAttribute('href', '/configuracao/cobranca');
+    });
   });
 
   it('defers the plan request until pricing approaches the viewport', async () => {
@@ -343,6 +368,9 @@ describe('LandingPage', () => {
     expect(
       within(startCard as HTMLElement).getByText('cobrado anualmente (R$ 959,00/ano)'),
     ).toBeInTheDocument();
+    expect(
+      within(startCard as HTMLElement).getByRole('link', { name: 'Começar teste grátis' }),
+    ).toHaveAttribute('href', '/login?tab=register&plan=start&interval=year');
   });
 
   it('shows paid plans with a null annual price as unavailable in annual mode', async () => {
@@ -444,7 +472,7 @@ describe('LandingPage', () => {
     ).toBeInTheDocument();
     expect(
       within(card as HTMLElement).getByRole('link', { name: 'Assinar Enterprise' }),
-    ).toHaveAttribute('href', '/login?tab=register');
+    ).toHaveAttribute('href', '/login?tab=register&plan=enterprise&interval=month');
   });
 
   it('shows a retryable error without stale plan values', async () => {
