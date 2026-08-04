@@ -72,23 +72,45 @@ describe('plan-display', () => {
 
   describe('isSelectableTrialPlan', () => {
     it('accepts a paid self-serve plan', () => {
-      expect(isSelectableTrialPlan({ id: 'pro', price_brl: 9990 })).toBe(true);
+      expect(isSelectableTrialPlan({ id: 'pro', price_brl: 9990, price_brl_annual: null })).toBe(
+        true,
+      );
     });
 
     it('rejects Free — declining is a link, not a card', () => {
-      expect(isSelectableTrialPlan({ id: 'free', price_brl: 0 })).toBe(false);
+      expect(isSelectableTrialPlan({ id: 'free', price_brl: 0, price_brl_annual: null })).toBe(
+        false,
+      );
     });
 
     it('rejects internal comp plans', () => {
-      expect(isSelectableTrialPlan({ id: 'lifetime', price_brl: 0 })).toBe(false);
+      expect(isSelectableTrialPlan({ id: 'lifetime', price_brl: 0, price_brl_annual: null })).toBe(
+        false,
+      );
     });
 
     it('rejects a zero-priced plan that is not Free', () => {
-      expect(isSelectableTrialPlan({ id: 'beta', price_brl: 0 })).toBe(false);
+      expect(isSelectableTrialPlan({ id: 'beta', price_brl: 0, price_brl_annual: null })).toBe(
+        false,
+      );
     });
 
     it('rejects a plan with no price configured', () => {
-      expect(isSelectableTrialPlan({ id: 'beta', price_brl: null })).toBe(false);
+      expect(isSelectableTrialPlan({ id: 'beta', price_brl: null, price_brl_annual: null })).toBe(
+        false,
+      );
+    });
+
+    it('accepts an annual-only plan (monthly price is zero)', () => {
+      expect(isSelectableTrialPlan({ id: 'pro', price_brl: 0, price_brl_annual: 95900 })).toBe(
+        true,
+      );
+    });
+
+    it('accepts a plan with a price on either interval', () => {
+      expect(isSelectableTrialPlan({ id: 'max', price_brl: 19990, price_brl_annual: 219890 })).toBe(
+        true,
+      );
     });
   });
 });

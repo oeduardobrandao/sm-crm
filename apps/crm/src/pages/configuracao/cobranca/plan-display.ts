@@ -57,8 +57,18 @@ export function canUpgradeTo(
  * substitute: it only filters internal plans, so Free would still render a card
  * even though declining is a secondary link there, not a plan choice. The
  * price check is belt-and-braces — a future zero-priced catalog entry must not
- * silently become something you can start a trial on.
+ * silently become something you can start a trial on. Accepts a plan priced on
+ * either the monthly or annual interval, so an annual-only plan is not hidden
+ * from the trial step while the landing page offers it.
  */
-export function isSelectableTrialPlan(plan: { id: string; price_brl: number | null }): boolean {
-  return plan.id !== 'free' && !isInternalPlan(plan.id) && (plan.price_brl ?? 0) > 0;
+export function isSelectableTrialPlan(plan: {
+  id: string;
+  price_brl: number | null;
+  price_brl_annual: number | null;
+}): boolean {
+  return (
+    plan.id !== 'free' &&
+    !isInternalPlan(plan.id) &&
+    ((plan.price_brl ?? 0) > 0 || (plan.price_brl_annual ?? 0) > 0)
+  );
 }
