@@ -1,6 +1,6 @@
 # Impedir assinaturas de teste duplicadas no checkout
 
-> **Revisão 5.** Três desenhos anteriores foram derrubados por revisão externa.
+> **Revisão 5.** Quatro desenhos anteriores foram derrubados por revisão externa.
 > O histórico está em "Armadilhas já encontradas": leia antes de propor uma
 > alternativa, porque elas se repetem. O tamanho dessa lista é o próprio recado
 > desta spec: isto não é um ajuste pequeno.
@@ -64,6 +64,21 @@ Each was a proposed design, and each was wrong.
 10. **Escrever o `session.id` sem guarda.** If a stalled request writes its
     session id after another has reclaimed the lease, it silently steals the
     reservation back and both sessions become completable.
+11. **SQL que o cliente não consegue executar.** `billing-checkout` speaks
+    PostgREST, which cannot express `gen_random_uuid()`, `now()`, a compound
+    `WHERE`, or `RETURNING` of pre-update values. Written as `.update()` the
+    "atomic claim" degrades into read-then-write and reopens the race.
+12. **`RETURNING` do valor anterior.** A post-update `RETURNING` yields the new
+    value, so it cannot hand back the previous `session_id` that step 2 needs to
+    expire. Requires a CTE with `FOR UPDATE`.
+13. **RPC sem privilégios.** A new `public` function is executable by `PUBLIC`,
+    so an RPC taking `workspace_id` would let any authenticated user lock another
+    tenant's checkout.
+14. **Ler silêncio como sucesso.** PostgREST's `.update()` does not report rows
+    affected without `.select()`, and the whole design turns on telling "wrote
+    it" from "lease was taken".
+15. **Block-list de status.** Fails open on any status Stripe adds or returns
+    that we do not know. The allow-list of terminal statuses fails closed.
 
 ## Two rules that were conflated
 
