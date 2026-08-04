@@ -137,6 +137,9 @@ Monorepo with npm workspaces:
   support-chat customer sync (crisp-sync-cron). All three REQUIRED by that function,
   no defaults -- index.ts throws at module load if any is missing. Plugin scopes are
   `website:people:profiles` and `website:people:data`
+- `CRISP_IDENTITY_SECRET` -- HMAC secret for Crisp chatbox identity verification
+  (crisp-identity). REQUIRED, no default -- throws at module load if missing. Must match
+  the secret configured in the Crisp dashboard under Settings > Identity Verification
 - `POSTHOG_PROJECT_KEY` -- PostHog **project write key** (same value as the frontend's
   `VITE_POSTHOG_KEY`, NOT a personal API key). Optional: server-side capture is a
   silent no-op when unset

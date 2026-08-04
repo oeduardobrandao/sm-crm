@@ -270,13 +270,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ordering race to resolve.
   useEffect(() => {
     if (!userId) return;
-    if (user?.email) {
+    let active = true;
+
+    (async () => {
+      if (!user?.email) return;
+      let signature: string | undefined;
       try {
-        window.$crisp?.push(['set', 'user:email', [user.email]]);
+        const { data } = await supabase.functions.invoke('crisp-identity');
+        signature = (data as { signature?: string } | null)?.signature;
+      } catch {
+        // Signing is best-effort. A failure means the session shows as
+        // Unverified in the inbox, which is the pre-existing behaviour and is
+        // strictly better than blocking support access entirely.
+      }
+      if (!active) return;
+
+      try {
+        // Second element is the identity signature. Crisp marks the session
+        // Verified only when it validates; unsigned sessions still work.
+        window.$crisp?.push(
+          signature
+            ? ['set', 'user:email', [user.email, signature]]
+            : ['set', 'user:email', [user.email]],
+        );
       } catch {
         // Never let a support-tooling nicety break auth.
       }
-    }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [userId, user?.email]);
+
+  useEffect(() => {
+    if (!userId) return;
     if (profile?.nome) {
       try {
         window.$crisp?.push(['set', 'user:nickname', [profile.nome]]);
@@ -284,7 +312,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Never let a support-tooling nicety break auth.
       }
     }
-  }, [userId, user?.email, profile?.nome]);
+  }, [userId, profile?.nome]);
 
   // Backstop mirror: keeps the ref in sync with every OTHER setCanSeeFinancials
   // call site (the userChanged reset, both branches of the hydration effect,

@@ -37,6 +37,7 @@ const REQUIRED_FUNCTIONS = [
   "invite-expire-cron",
   "crisp-sync-cron",
   // Token/internal auth
+  "crisp-identity",
   "instagram-integration",
   "hub-bootstrap",
   "hub-posts",
