@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -11,12 +11,14 @@ import { Spinner } from '@/components/ui/spinner';
 import { Sparkles, ChevronRight, Images, Film, Camera } from 'lucide-react';
 import { signIn, signUp, resetPassword } from '../../lib/supabase';
 import { captureEvent } from '@/lib/analytics';
+import { useAuth } from '@/context/AuthContext';
 import { parsePlanIntent, buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
 
 type TabKey = 'login' | 'register' | 'forgot';
 
 export default function LoginPage() {
   const { t } = useTranslation('auth');
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   // Preserve the full intended URL (path + query + hash) so deep links survive the login bounce —
@@ -48,6 +50,20 @@ export default function LoginPage() {
   const [regMarketingOptIn, setRegMarketingOptIn] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [registerSuccess, setRegisterSuccess] = useState(false);
+
+  // A visitor can land here already authenticated: Supabase's email-confirmation
+  // link redirects to /login with the session tokens in the URL hash, and
+  // detectSessionInUrl (supabase.ts) establishes the session before this
+  // component ever mounts a form. Without this, they are stuck looking at a
+  // login form with nowhere to go and their plan choice stranded. Latched so
+  // it fires once per mount; gated on `authLoading` so it never fires against
+  // an unresolved auth state.
+  const authRedirected = useRef(false);
+  useEffect(() => {
+    if (authLoading || !user || authRedirected.current) return;
+    authRedirected.current = true;
+    navigate(intentQuery ? `/comecar?${intentQuery}` : from, { replace: true });
+  }, [authLoading, user, intentQuery, from, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

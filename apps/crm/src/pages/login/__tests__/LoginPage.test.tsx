@@ -15,8 +15,13 @@ vi.mock('../../../lib/supabase', () => ({
   resetPassword: vi.fn(),
 }));
 
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: vi.fn(() => ({ user: null, loading: false })),
+}));
+
 import { toast } from 'sonner';
 import { resetPassword, signIn, signUp } from '../../../lib/supabase';
+import { useAuth } from '@/context/AuthContext';
 import LoginPage from '../LoginPage';
 
 const mockedSignIn = vi.mocked(signIn);
@@ -24,6 +29,7 @@ const mockedSignUp = vi.mocked(signUp);
 const mockedResetPassword = vi.mocked(resetPassword);
 const mockedToastSuccess = vi.mocked(toast.success);
 const mockedToastError = vi.mocked(toast.error);
+const mockedUseAuth = vi.mocked(useAuth);
 
 function PathProbe() {
   const location = useLocation();
@@ -105,6 +111,8 @@ describe('LoginPage', () => {
     mockedResetPassword.mockReset();
     mockedToastSuccess.mockReset();
     mockedToastError.mockReset();
+    mockedUseAuth.mockReset();
+    mockedUseAuth.mockReturnValue({ user: null, loading: false } as never);
   });
 
   it('starts on the register tab from the query string and switches between register, forgot, and login flows', () => {
@@ -340,5 +348,52 @@ describe('LoginPage', () => {
     submitRegister(container);
     await waitFor(() => expect(mockedSignUp).toHaveBeenCalled());
     expect(mockedSignUp.mock.calls[0][3]).toBe('/login?plan=pro&interval=month');
+  });
+
+  it('redirects an already-authenticated visitor with a plan intent to /comecar and does not show the login form', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'user-1' },
+      loading: false,
+    } as never);
+
+    renderRegister('/login?plan=pro&interval=year');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('probe')).toHaveTextContent('/comecar?plan=pro&interval=year'),
+    );
+    expect(screen.queryByLabelText('E-mail')).not.toBeInTheDocument();
+  });
+
+  it('redirects an already-authenticated visitor at plain /login to /dashboard', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'user-1' },
+      loading: false,
+    } as never);
+
+    renderRegister('/login');
+
+    await waitFor(() => expect(screen.getByTestId('probe')).toHaveTextContent('/dashboard'));
+    expect(screen.queryByLabelText('E-mail')).not.toBeInTheDocument();
+  });
+
+  it('still shows the login form for an unauthenticated visitor', () => {
+    mockedUseAuth.mockReturnValue({ user: null, loading: false } as never);
+
+    renderRegister('/login');
+
+    expect(screen.getByLabelText('E-mail')).toBeInTheDocument();
+    expect(screen.getByTestId('probe')).toHaveTextContent('/login');
+  });
+
+  it('does not redirect while auth is still loading, even with a user present', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'user-1' },
+      loading: true,
+    } as never);
+
+    renderRegister('/login');
+
+    expect(screen.getByTestId('probe')).toHaveTextContent('/login');
+    expect(screen.getByLabelText('E-mail')).toBeInTheDocument();
   });
 });
