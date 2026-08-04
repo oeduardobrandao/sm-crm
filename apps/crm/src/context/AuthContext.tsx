@@ -265,9 +265,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // onAuthStateChange handler for a user change, and inside signOut() -- when
   // `userId` still holds the OUTGOING identity. This effect only runs after
   // React commits a render with the NEW userId (or null), which happens
-  // strictly after that synchronous reset call returns. So reset for the old
-  // identity always lands before identify for the new one; there is no
-  // ordering race to resolve.
+  // strictly after that synchronous reset call returns, so reset for the old
+  // identity always lands before this effect starts for the new one (or for
+  // "no one", after a sign-out). That said, the identify push itself is no
+  // longer synchronous -- it awaits a network round trip to crisp-identity --
+  // so there is a residual window: if a sign-out's synchronous reset fires
+  // while a still-in-flight signing request from the JUST-reset session is
+  // pending, that request's response can land, and its `active` guard is
+  // only reset by THIS effect's own cleanup (userId changing), not by the
+  // reset call itself. The `active` flag closes the ordinary
+  // effect-re-run/unmount race, not this one.
   useEffect(() => {
     if (!userId) return;
     let active = true;
@@ -276,7 +283,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!user?.email) return;
       let signature: string | undefined;
       try {
-        const { data } = await supabase.functions.invoke('crisp-identity');
+        // Explicit timeout: browser fetch has no default one, and
+        // functions-js resolves rather than throws on genuine errors -- but
+        // a HANG is neither. Without a bound, a stalled edge function would
+        // suppress identification indefinitely (user:email never pushed at
+        // all), which is worse than the unsigned fallback this catch block
+        // exists for. This repo has been bitten before by unbounded I/O in
+        // state-setting handlers (R2 presign) -- same fix here.
+        const { data } = await supabase.functions.invoke('crisp-identity', { timeout: 5000 });
         signature = (data as { signature?: string } | null)?.signature;
       } catch {
         // Signing is best-effort. A failure means the session shows as

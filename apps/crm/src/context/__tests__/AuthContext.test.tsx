@@ -52,6 +52,7 @@ type MockedSupabaseModule = typeof supabaseModule & {
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
   __queueCurrentProfileResponse: (response: Promise<Record<string, unknown> | null>) => void;
+  __queueFunctionsInvokeResponse: (response: { data: unknown; error?: unknown }) => void;
   __setCurrentUser: (user: { id: string; email?: string } | null) => void;
   __emitAuthChange: (
     event: string,
@@ -495,6 +496,49 @@ describe('AuthProvider Crisp identification', () => {
     });
     await waitFor(() => {
       expect(crispPush).toHaveBeenCalledWith(['set', 'user:nickname', ['Eduardo Souza']]);
+    });
+  });
+
+  it('pushes the signed (two-element) form when crisp-identity resolves a signature', async () => {
+    // Guards against the signing call being silently dropped from the push:
+    // this test would fail if `signature` stopped being read from
+    // `supabase.functions.invoke('crisp-identity')`'s response, or if the
+    // two-element ['set', 'user:email', [email, signature]] form regressed
+    // to the unsigned one-element form even when a signature IS available.
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo Souza',
+      role: 'owner',
+      conta_id: 'conta-1',
+    });
+    mockedSupabase.__queueFunctionsInvokeResponse({ data: { signature: 'abc' }, error: null });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com', 'abc']]);
+    });
+    // The unsigned form must never be pushed when a signature was obtained.
+    expect(crispPush).not.toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com']]);
+  });
+
+  it('falls back to the unsigned (one-element) form when crisp-identity returns no signature', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo Souza',
+      role: 'owner',
+      conta_id: 'conta-1',
+    });
+    mockedSupabase.__queueFunctionsInvokeResponse({ data: null, error: { message: 'boom' } });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com']]);
     });
   });
 
