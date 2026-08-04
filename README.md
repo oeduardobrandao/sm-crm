@@ -118,10 +118,20 @@ npm run lint           # eslint apps/ packages/
 npm run format:check   # prettier
 ```
 
-Jobs do CI: `typecheck-and-test`, `edge-function-tests`, `coverage-threshold`,
-`format-check` e `migration-version-guard` — este último falha se duas migrations
-compartilharem o prefixo de versão, porque a segunda seria silenciosamente ignorada
-no banco remoto.
+Jobs do CI (oito, em `.github/workflows/ci.yml`): `typecheck-and-test`,
+`edge-function-tests`, `entitlement-tests`, `coverage-threshold`, `format-check`,
+`migration-version-guard`, `e2e` e `e2e-secrets-guard`.
+
+Três detalhes que costumam enganar:
+
+- `migration-version-guard` falha se duas migrations compartilharem o prefixo de
+  versão, porque a segunda seria silenciosamente ignorada no banco remoto.
+- `entitlement-tests` sobe um Supabase local e roda
+  `supabase/tests/entitlements/*.sql`. Rodar essas suítes na mão exige Docker,
+  mas elas **são** barradas pelo CI de qualquer forma.
+- `e2e` verde nem sempre quer dizer que o e2e rodou: sem os secrets configurados
+  o job pula em silêncio. É para isso que existe o `e2e-secrets-guard`, que
+  avisa quais secrets faltam.
 
 ## 📦 Build & Deploy
 
