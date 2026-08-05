@@ -80,7 +80,11 @@ describe('buildWhatsAppSupportUrl', () => {
 
   it('percent-encodes accents and spaces', async () => {
     const { buildWhatsAppSupportUrl } = await load(NUMBER);
-    const url = buildWhatsAppSupportUrl({ nome: 'João', empresa: 'Açaí & Cia', context: 'dashboard' });
+    const url = buildWhatsAppSupportUrl({
+      nome: 'João',
+      empresa: 'Açaí & Cia',
+      context: 'dashboard',
+    });
     expect(url).toContain('%20');
     expect(url).not.toContain(' ');
     expect(textOf(url!)).toContain('Sou João, da Açaí & Cia.');
