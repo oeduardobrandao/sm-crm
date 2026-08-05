@@ -95,11 +95,18 @@ function renderPage(search = '') {
   return { ...result, client };
 }
 
+/**
+ * `whatsAppNumber: undefined` means the variable is genuinely absent, which is a
+ * distinct code path from `''` in `@/lib/whatsapp` (`(RAW_NUMBER ?? '').trim()`).
+ * Vitest's stubEnv deletes the key when handed undefined, so do NOT coerce to ''
+ * here: that would make the two cases indistinguishable and leave the absent path
+ * uncovered.
+ */
 async function renderPageWithEnv(whatsAppNumber: string | undefined) {
   // The whatsapp module reads import.meta.env at module scope, so we must reset
   // and dynamically import to test different env values.
   vi.resetModules();
-  vi.stubEnv('VITE_WHATSAPP_SUPPORT_NUMBER', whatsAppNumber ?? '');
+  vi.stubEnv('VITE_WHATSAPP_SUPPORT_NUMBER', whatsAppNumber as string);
 
   // Re-mock after module reset
   vi.doMock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
@@ -335,12 +342,15 @@ describe('ComecarPage', () => {
     expect(await screen.findByText('Comece com 30 dias grátis')).toBeInTheDocument();
   });
 
-  it('does not render the WhatsApp support section when support is not configured', async () => {
-    // By default, VITE_WHATSAPP_SUPPORT_NUMBER is unset, so isWhatsAppSupportEnabled() returns false
-    renderPage();
+  it('does not render the WhatsApp support section when VITE_WHATSAPP_SUPPORT_NUMBER is absent', async () => {
+    // Explicitly unset rather than relying on the ambient process env: a developer
+    // with the variable in their local .env would otherwise see this test fail,
+    // since the static import captures the value at module load.
+    await renderPageWithEnv(undefined);
     await screen.findByText('Comece com 30 dias grátis');
     expect(screen.queryByText('Fale com a gente no WhatsApp')).not.toBeInTheDocument();
     expect(screen.queryByText('Prefere falar com uma pessoa?')).not.toBeInTheDocument();
+    vi.unstubAllEnvs();
   });
 
   it('renders the WhatsApp support link when VITE_WHATSAPP_SUPPORT_NUMBER is set to a valid digits-only value', async () => {
