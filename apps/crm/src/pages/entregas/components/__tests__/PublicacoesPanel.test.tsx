@@ -2,6 +2,13 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { ScheduledPost, IgAccountStatus } from '../../../../store';
 
+// Canonical-only registry (what the real hook returns while definitions load),
+// without dragging TanStack Query / the supabase client into this test.
+vi.mock('@/hooks/useStatusRegistry', async () => {
+  const { buildStatusRegistry } = await import('../../statusRegistry');
+  return { useStatusRegistry: () => buildStatusRegistry([]) };
+});
+
 // Mirrors ScheduleButton.test.tsx's mocks: PublicacoesPanel renders ScheduleButton
 // internally, so the platform-service spies live at that boundary.
 vi.mock('../../../../services/instagram', () => ({

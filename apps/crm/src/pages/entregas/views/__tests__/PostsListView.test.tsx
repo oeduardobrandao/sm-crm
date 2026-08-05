@@ -1,6 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+// Canonical-only registry (what the real hook returns while definitions load),
+// without dragging TanStack Query / the supabase client into this test.
+vi.mock('@/hooks/useStatusRegistry', async () => {
+  const { buildStatusRegistry } = await import('../../statusRegistry');
+  return { useStatusRegistry: () => buildStatusRegistry([]) };
+});
+
 import { PostsListView } from '../PostsListView';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../../hooks/useEntregasData';

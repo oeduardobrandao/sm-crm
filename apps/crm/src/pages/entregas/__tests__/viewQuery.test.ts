@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// EntregasFilters (imported for EMPTY_FILTERS) now pulls useStatusRegistry ->
+// store -> the supabase client, which throws without env vars in tests.
+vi.mock('../../../lib/supabase');
+
 import { parseEntregasQuery, serializeEntregasQuery } from '../viewQuery';
 import { EMPTY_FILTERS } from '../components/EntregasFilters';
 
@@ -43,6 +48,25 @@ describe('viewQuery', () => {
     expect(parsed.view).toBe('kanban');
     expect(parsed.mode).toBe('entregas');
     expect(parsed.filters).toEqual(EMPTY_FILTERS);
+  });
+
+  it('round-trips custom status keys in pstatus and drops malformed ones', () => {
+    const customStatusKey = 'custom:11111111-2222-3333-4444-555555555555' as const;
+    const state = {
+      view: 'kanban' as const,
+      mode: 'publicacoes' as const,
+      filters: {
+        ...EMPTY_FILTERS,
+        filterPostStatus: ['revisao_interna' as const, customStatusKey],
+      },
+    };
+    const parsed = parseEntregasQuery(new URLSearchParams(serializeEntregasQuery(state)));
+    expect(parsed.filters.filterPostStatus).toEqual(['revisao_interna', customStatusKey]);
+
+    const malformed = parseEntregasQuery(
+      new URLSearchParams('pstatus=custom:nope&pstatus=custom:&pstatus=publicando'),
+    );
+    expect(malformed.filters.filterPostStatus).toEqual([]);
   });
 
   it('parses a hand-written shareable URL', () => {

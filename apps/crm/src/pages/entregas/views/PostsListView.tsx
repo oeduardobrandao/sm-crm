@@ -6,13 +6,9 @@ import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { formatPostDate } from '@/utils/postDate';
 import { etapaDeadlineDate, formatEtapaDeadlineDay, formatEtapaPrazo } from '../etapaPrazo';
-import {
-  POST_STATUS_ORDER,
-  TIPO_LABELS,
-  getPostPublishState,
-  PUBLISH_STATE_LABELS,
-  PUBLISH_STATE_CLASS,
-} from '../postLabels';
+import { POST_STATUS_ORDER, TIPO_LABELS } from '../postLabels';
+import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { PostStatusChip } from '../components/PostStatusChip';
 
 interface PostsListViewProps {
   posts: ActivePost[];
@@ -70,6 +66,7 @@ export function PostsListView({
     column: 'agendado',
     direction: 'asc',
   });
+  const statusRegistry = useStatusRegistry();
 
   const cardOf = (p: ActivePost) => cardsByWorkflowId.get(p.workflow_id);
   const membroNome = (p: ActivePost) => cardOf(p)?.membro?.nome || '';
@@ -186,7 +183,6 @@ export function PostsListView({
         <tbody>
           {sorted.map((p) => {
             const openable = openableWorkflowIds.has(p.workflow_id);
-            const pubState = getPostPublishState(p);
             const card = cardOf(p);
             const prazo = card ? formatEtapaPrazo(card.deadline) : null;
             const prazoDate = card ? etapaDeadlineDate(card) : null;
@@ -258,9 +254,7 @@ export function PostsListView({
                   <span className="post-tipo-badge">{TIPO_LABELS[p.tipo]}</span>
                 </td>
                 <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>
-                  <span className={`post-status-chip ${PUBLISH_STATE_CLASS[pubState]}`}>
-                    {PUBLISH_STATE_LABELS[pubState]}
-                  </span>
+                  <PostStatusChip post={p} registry={statusRegistry} />
                 </td>
                 <td
                   style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}

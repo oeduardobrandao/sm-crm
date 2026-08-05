@@ -1,7 +1,9 @@
 import type { FilterState, StatusFilter } from './components/EntregasFilters';
 import { EMPTY_FILTERS } from './components/EntregasFilters';
 import type { EntregasMode } from './components/ModeToggle';
-import { TIPO_ORDER, POST_STATUS_ORDER } from './postLabels';
+import { TIPO_ORDER } from './postLabels';
+import { isStatusKeyToken } from './statusRegistry';
+import type { StatusKey } from './statusRegistry';
 import { PRAZO_PRESET_ORDER } from './etapaPrazo';
 
 export type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list' | 'concluded';
@@ -76,7 +78,9 @@ export function parseEntregasQuery(p: URLSearchParams): EntregasViewState {
     filterEtapas: p.getAll('etapas'),
     filterTemplates: nums('templates'),
     filterTipos: oneOf('tipos', TIPO_ORDER),
-    filterPostStatus: oneOf('pstatus', POST_STATUS_ORDER),
+    // Canonical statuses plus 'custom:<uuid>' tokens. Unknown custom ids
+    // simply match no post; the filter UI prunes them on the next change.
+    filterPostStatus: p.getAll('pstatus').filter(isStatusKeyToken) as StatusKey[],
     filterPrazo: oneOf('prazo', PRAZO_PRESET_ORDER),
     filterPrazoFrom: day('de'),
     filterPrazoTo: day('ate'),
