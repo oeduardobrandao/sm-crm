@@ -456,18 +456,35 @@ Deno.test("sendFounderSubscriptionNotice without a Stripe sub id renders value i
 });
 
 Deno.test("welcome email includes the WhatsApp button when configured", () => {
+  const prev = Deno.env.get("WHATSAPP_SUPPORT_NUMBER");
   Deno.env.set("WHATSAPP_SUPPORT_NUMBER", "5511999999999");
-  const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: "https://app.mesaas.com.br" });
-  assertStringIncludes(html, "https://wa.me/5511999999999");
-  assertStringIncludes(html, "Falar no WhatsApp");
+  try {
+    const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: "https://app.mesaas.com.br" });
+    assertStringIncludes(html, "https://wa.me/5511999999999");
+    assertStringIncludes(html, "Falar no WhatsApp");
+    // Both directions of the conditional closing line are covered: this
+    // asserts the WhatsApp clause IS present when a button exists to match it.
+    assertStringIncludes(html, "se preferir WhatsApp");
+  } finally {
+    if (prev !== undefined) Deno.env.set("WHATSAPP_SUPPORT_NUMBER", prev);
+    else Deno.env.delete("WHATSAPP_SUPPORT_NUMBER");
+  }
 });
 
 Deno.test("welcome email stays intact with no WhatsApp number set", () => {
+  const prev = Deno.env.get("WHATSAPP_SUPPORT_NUMBER");
   Deno.env.delete("WHATSAPP_SUPPORT_NUMBER");
-  const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: "https://app.mesaas.com.br" });
-  assertEquals(html.includes("wa.me"), false);
-  assertEquals(html.includes("Falar no WhatsApp"), false);
-  // No orphaned markup left where the button would have been.
-  assertEquals(html.includes('href=""'), false);
-  assertStringIncludes(html, "responder este e-mail");
+  try {
+    const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: "https://app.mesaas.com.br" });
+    assertEquals(html.includes("wa.me"), false);
+    assertEquals(html.includes("Falar no WhatsApp"), false);
+    // No orphaned markup left where the button would have been.
+    assertEquals(html.includes('href=""'), false);
+    // No dangling reference to a button that isn't rendered.
+    assertEquals(html.includes("se preferir WhatsApp"), false);
+    assertEquals(html.includes("clicar no botão abaixo"), false);
+    assertStringIncludes(html, "responder este e-mail");
+  } finally {
+    if (prev !== undefined) Deno.env.set("WHATSAPP_SUPPORT_NUMBER", prev);
+  }
 });

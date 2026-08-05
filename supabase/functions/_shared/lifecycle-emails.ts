@@ -77,6 +77,11 @@ export function buildWelcomeEmail(p: { firstName: string | null; appBaseUrl: str
   const waBlock = waUrl
     ? `<p style="margin:0 0 18px">${ctaButton(escapeHtml(waUrl), "Falar no WhatsApp")}</p>`
     : "";
+  // Gated by the same waUrl as waBlock, so the sentence can never mention a
+  // button that isn't there.
+  const closingLine = waUrl
+    ? `Qualquer dúvida, é só <strong>responder este e-mail</strong>. Eu leio e respondo pessoalmente, e se preferir WhatsApp, é só clicar no botão abaixo.`
+    : `Qualquer dúvida, é só <strong>responder este e-mail</strong>. Eu leio e respondo pessoalmente.`;
   const body = `
 <p style="font-size:16px;font-weight:700;color:#1a3d2b;margin:0 0 12px">${greeting(name)}</p>
 <p style="margin:0 0 8px">Aqui é o Eduardo, do Mesaas. Que bom ter você por aqui. Obrigado por criar sua conta.</p>
@@ -113,7 +118,7 @@ export function buildWelcomeEmail(p: { firstName: string | null; appBaseUrl: str
   </td></tr>
 </table>
 
-<p style="margin:0 0 12px">Qualquer dúvida, é só <strong>responder este e-mail</strong>. Eu leio e respondo pessoalmente, e se preferir WhatsApp, é só clicar aqui.</p>
+<p style="margin:0 0 12px">${closingLine}</p>
 ${waBlock}
 <p style="margin:0">Um abraço,<br><strong>Eduardo</strong> · Mesaas</p>`;
   return layout(body, "Você recebeu este e-mail porque criou uma conta no Mesaas.", base);
