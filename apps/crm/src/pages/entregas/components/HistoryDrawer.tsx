@@ -18,7 +18,9 @@ import { computeDeadlineDate } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
 import PostCommentSummary from './PostCommentSummary';
-import { TIPO_LABELS, STATUS_LABELS, STATUS_CLASS } from '../postLabels';
+import { TIPO_LABELS } from '../postLabels';
+import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { PostStatusChip } from './PostStatusChip';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -107,6 +109,7 @@ export function HistoryDrawer({ workflow, clienteName, onClose }: HistoryDrawerP
   });
 
   const compliance = computeCompliance(etapas, membros);
+  const statusRegistry = useStatusRegistry();
 
   const firstStart = etapas.find((e) => e.iniciado_em)?.iniciado_em;
   const concludedEtapas = etapas.filter((e) => e.concluido_em);
@@ -203,9 +206,7 @@ export function HistoryDrawer({ workflow, clienteName, onClose }: HistoryDrawerP
                         </span>
                       </div>
                       <div className="drawer-post-trigger-right">
-                        <span className={`post-status-chip ${STATUS_CLASS[post.status]}`}>
-                          {STATUS_LABELS[post.status]}
-                        </span>
+                        <PostStatusChip post={post} registry={statusRegistry} />
                       </div>
                     </div>
 
