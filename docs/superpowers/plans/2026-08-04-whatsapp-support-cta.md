@@ -923,8 +923,19 @@ Deno.test("welcome email stays intact with no WhatsApp number set", () => {
   assertEquals(html.includes("Falar no WhatsApp"), false);
   // No orphaned markup left where the button would have been.
   assertEquals(html.includes('href=""'), false);
+  // And no orphaned COPY either: the sentence that points at the button must
+  // disappear with it, or the email promises a link it never renders.
+  assertEquals(html.includes("se preferir WhatsApp"), false);
+  assertEquals(html.includes("clicar no botão abaixo"), false);
   assertStringIncludes(html, "responder este e-mail");
 });
+```
+
+And assert the other direction in the configured test, so the conditional is
+covered both ways:
+
+```ts
+  assertStringIncludes(html, "se preferir WhatsApp");
 ```
 
 - [ ] **Step 6: Run the test to verify it fails**
@@ -952,15 +963,26 @@ Then in `buildWelcomeEmail`, immediately after the `const base = escapeHtml(p.ap
   const waBlock = waUrl
     ? `<p style="margin:0 0 18px">${ctaButton(escapeHtml(waUrl), "Falar no WhatsApp")}</p>`
     : "";
+  // The sentence that points AT the button has to be gated by the same value,
+  // or the unconfigured email promises a WhatsApp link it never renders. Built
+  // as one variable so the copy and the button cannot drift apart.
+  const closingLine = waUrl
+    ? `Qualquer dúvida, é só <strong>responder este e-mail</strong>. Eu leio e respondo pessoalmente, e se preferir WhatsApp, é só clicar no botão abaixo.`
+    : `Qualquer dúvida, é só <strong>responder este e-mail</strong>. Eu leio e respondo pessoalmente.`;
 ```
 
 Then replace the closing two paragraphs of the `body` template (currently lines 109-110) with:
 
 ```
-<p style="margin:0 0 12px">Qualquer dúvida, é só <strong>responder este e-mail</strong>. Eu leio e respondo pessoalmente, e se preferir WhatsApp, é só clicar aqui.</p>
+<p style="margin:0 0 12px">${closingLine}</p>
 ${waBlock}
 <p style="margin:0">Um abraço,<br><strong>Eduardo</strong> · Mesaas</p>`;
 ```
+
+**Do not inline that sentence.** An unconditional "se preferir WhatsApp, é só
+clicar aqui" above a `waBlock` that collapses to `""` is the same defect Task 3
+shipped on `/comecar`, and the unconfigured case is the current production state
+since the secret is not set yet.
 
 Note `escapeHtml` on the URL: it lands inside an `href` in raw HTML. The builder already guarantees a `https://wa.me/<digits>?text=<encoded>` shape, but the escape does not depend on that guarantee holding at a distance.
 
