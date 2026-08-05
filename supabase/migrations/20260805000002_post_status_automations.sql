@@ -176,11 +176,11 @@ begin
     end if;
   end loop;
 
-  -- Phase 2: notify — best-effort (a notification failure must never roll
-  -- back the status change). Runs after phase 1 so target 'responsavel'
-  -- sees a just-assigned responsavel.
-  begin
-    for r in
+  -- Phase 2: notify — best-effort per RULE (a notification failure must
+  -- never roll back the status change, and one malformed rule must not
+  -- suppress the valid rules after it). Runs after phase 1 so target
+  -- 'responsavel' sees a just-assigned responsavel.
+  for r in
       select a.* from post_status_automations a
        where a.conta_id = new.conta_id
          and a.ativo
@@ -191,7 +191,8 @@ begin
                 or (v_custom_changed and new.custom_status_id is not null)))
            or (v_custom_changed and a.trigger_custom_status_id = new.custom_status_id)
          )
-    loop
+  loop
+    begin
       v_targets := case r.config->>'target'
         when 'member' then
           coalesce((
@@ -207,7 +208,9 @@ begin
         when 'roles' then
           resolve_notification_targets(new.conta_id, null, (
             select coalesce(array_agg(x), '{}'::text[])
-              from jsonb_array_elements_text(coalesce(r.config->'roles', '[]'::jsonb)) x
+              from jsonb_array_elements_text(
+                case when jsonb_typeof(r.config->'roles') = 'array'
+                     then r.config->'roles' else '[]'::jsonb end) x
               where x in ('owner', 'admin')
           ))
         else '{}'::uuid[]
@@ -242,10 +245,11 @@ begin
         v_meta,
         auth.uid()
       );
-    end loop;
-  exception when others then
-    raise warning 'run_post_status_automations notify failed for post %: %', new.id, sqlerrm;
-  end;
+    exception when others then
+      raise warning 'run_post_status_automations notify rule % failed for post %: %',
+        r.id, new.id, sqlerrm;
+    end;
+  end loop;
 
   return new;
 end;

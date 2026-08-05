@@ -154,6 +154,21 @@ begin
   select count(*) - v_count into v_count from notifications
     where workspace_id = v_ws and type = 'post_status_automation';
   assert v_count = 0, 'detaching must not re-fire canonical rules';
+  -- 9b. A malformed notify rule (scalar roles) must not suppress the valid
+  --     rules evaluated after it in the same transition
+  insert into post_status_automations (conta_id, trigger_status, action_type, config)
+    values (v_ws, 'aprovado_interno', 'notify', '{"target":"roles","roles":"admin"}');
+  insert into post_status_automations (conta_id, trigger_status, action_type, config)
+    values (v_ws, 'aprovado_interno', 'notify', '{"target":"roles","roles":["admin"]}');
+  select count(*) into v_count from notifications
+    where workspace_id = v_ws and type = 'post_status_automation';
+  update workflow_posts set status = 'aprovado_interno', custom_status_id = null
+    where id = v_post;
+  select count(*) - v_count into v_count from notifications
+    where workspace_id = v_ws and type = 'post_status_automation';
+  assert v_count = 1,
+    format('valid rule must still notify next to a malformed one, got %s', v_count);
+
   delete from post_status_definitions where id = v_temp;
   delete from post_status_automations where conta_id = v_ws;
   -- Re-arm a custom-trigger rule so the cascade test below tests a real row.
