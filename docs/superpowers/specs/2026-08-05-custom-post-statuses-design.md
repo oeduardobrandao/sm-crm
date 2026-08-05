@@ -31,6 +31,11 @@ e ações disparadas quando um post entra em um status, sem quebrar nada disso.
    plano; se um dia for vendido separado, uma migration adiciona
    `feature_custom_statuses` defaultando do valor atual e troca o argumento do
    trigger de gate).
+6. **Pós-downgrade** (padrão do repositório, cf. `06_downgrade_keep_existing`):
+   o gate é só em INSERT. Definições e automações existentes são retidas,
+   continuam legíveis, editáveis, arquiváveis e **continuam executando**;
+   apenas criar novas é bloqueado. A aba de Configurações mostra o upsell no
+   lugar do formulário de criação, nunca esconde nem desativa o que existe.
 
 ## Arquitetura
 
@@ -38,12 +43,24 @@ e ações disparadas quando um post entra em um status, sem quebrar nada disso.
 
 - `post_status_definitions` (uuid pk, `conta_id`, `nome` 1-40, `cor`,
   `behaves_as` CHECK nos 6 valores, `ordem`, `arquivado`, timestamps). Índice
-  único parcial `(conta_id, lower(nome)) WHERE NOT arquivado`.
+  único parcial `(conta_id, lower(nome)) WHERE NOT arquivado`; constraint
+  `UNIQUE (id, conta_id)` para FKs compostas tenant-safe.
 - `workflow_posts.custom_status_id uuid` FK `ON DELETE SET NULL`.
-- `post_status_automations` (`trigger_status` XOR `trigger_custom_status_id`,
-  `action_type` in `('notify','assign_responsavel')`, `config jsonb`, `ativo`).
+- `post_status_automations` (**`conta_id NOT NULL`** — tabela
+  workspace-scoped com RLS própria; `trigger_status` XOR
+  `trigger_custom_status_id` com **FK composta
+  `(trigger_custom_status_id, conta_id) → post_status_definitions (id,
+  conta_id)`** para impedir referência cross-tenant; `action_type` in
+  `('notify','assign_responsavel')`, `config jsonb`, `ativo`). O trigger de
+  execução só busca regras com `conta_id = NEW.conta_id` e valida que
+  qualquer `membro_id` em `config` pertence à mesma conta antes de atribuir
+  ou notificar.
 - `post_status_events` ganha `from/to_custom_status_id` + snapshot
-  `from/to_custom_nome` (o nome sobrevive à exclusão da definição).
+  `from/to_custom_nome`. O trigger de auditoria passa a observar `UPDATE OF
+  status, custom_status_id` (mudança em qualquer um dos dois), então uma
+  transição `rascunho` → personalizado que também se comporta como
+  `rascunho` gera evento; os snapshots são capturados antes de qualquer
+  exclusão (ver detach abaixo).
 
 ### Invariante e reconciliação (trigger BEFORE `z1`)
 
@@ -58,13 +75,30 @@ pelo trigger):
   re-arm, envio em lote) → limpa `custom_status_id`;
 - definição arquivada/inexistente/de outro tenant → limpa `custom_status_id`.
 
+**Contrato de escrita do frontend** (`statusKeyToPatch`): escolher um status
+personalizado envia `{custom_status_id}` (z1 força o canônico); escolher um
+status canônico envia SEMPRE `{status, custom_status_id: null}` — o null
+explícito distingue "remover o personalizado" de uma escrita de status que
+não pensou nele.
+
+**Detach em arquivamento/exclusão**: arquivar/excluir acontece em
+`post_status_definitions`, onde z1 não enxerga. Um trigger na própria tabela
+(`BEFORE DELETE OR UPDATE OF arquivado`) limpa `custom_status_id` dos posts
+apontando para a definição, atomicamente: cada post mantém o canônico e o
+snapshot do nome entra na auditoria enquanto a linha ainda existe (antes do
+`ON DELETE SET NULL` da FK, que resolveria tarde demais).
+
 `claim_posts_for_publishing` e `hub_reorder_post_schedules` só tocam
 `publish_processing_at`/`scheduled_at`, então a lista `OF` evita disparo.
 
 ### Automações (trigger BEFORE `z2`, roda após `z1` por ordem alfabética)
 
-- UPDATE-only (INSERTs de import/Post Express não geram spam); guarda
-  `pg_trigger_depth()`.
+- Observa `UPDATE OF status, custom_status_id` (entrada num personalizado que
+  se comporta como o canônico atual também dispara). UPDATE-only (INSERTs de
+  import/Post Express não geram spam); guarda `pg_trigger_depth()`.
+- Só busca regras com `conta_id = NEW.conta_id`; qualquer `membro_id` em
+  `config` é validado contra `membros.conta_id = NEW.conta_id` antes de
+  atribuir ou notificar (config é dado do usuário, não confiável).
 - Fase 1 `assign_responsavel`: muta `NEW.responsavel_id` — sem UPDATE extra,
   sem recursão; o trigger existente `notify_post_assigned` (sem lista `OF`)
   dispara a notificação de atribuição de graça.
