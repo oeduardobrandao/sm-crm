@@ -1,5 +1,6 @@
 import { escapeHtml } from "./report-template/escape.ts";
 import { fetchStripeAmount } from "./stripe-amount.ts";
+import { whatsAppSupportUrl } from "./whatsapp.ts";
 
 export const WELCOME_SUBJECT = "Bem-vindo ao Mesaas 👋";
 export const THANKYOU_SUBJECT = "Obrigado pela confiança 💚";
@@ -70,6 +71,17 @@ function ctaButton(href: string, label: string): string {
 export function buildWelcomeEmail(p: { firstName: string | null; appBaseUrl: string }): string {
   const name = p.firstName ? escapeHtml(p.firstName) : null;
   const base = escapeHtml(p.appBaseUrl);
+  // Empty string when unconfigured, so the paragraph simply does not exist
+  // rather than rendering an empty button.
+  const waUrl = whatsAppSupportUrl({ firstName: p.firstName });
+  const waBlock = waUrl
+    ? `<p style="margin:0 0 18px">${ctaButton(escapeHtml(waUrl), "Falar no WhatsApp")}</p>`
+    : "";
+  // Gated by the same waUrl as waBlock, so the sentence can never mention a
+  // button that isn't there.
+  const closingLine = waUrl
+    ? `Qualquer dúvida, é só <strong>responder este e-mail</strong>. Eu leio e respondo pessoalmente, e se preferir WhatsApp, é só clicar no botão abaixo.`
+    : `Qualquer dúvida, é só <strong>responder este e-mail</strong>. Eu leio e respondo pessoalmente.`;
   const body = `
 <p style="font-size:16px;font-weight:700;color:#1a3d2b;margin:0 0 12px">${greeting(name)}</p>
 <p style="margin:0 0 8px">Aqui é o Eduardo, do Mesaas. Que bom ter você por aqui. Obrigado por criar sua conta.</p>
@@ -106,7 +118,8 @@ export function buildWelcomeEmail(p: { firstName: string | null; appBaseUrl: str
   </td></tr>
 </table>
 
-<p style="margin:0 0 4px">Qualquer dúvida, é só <strong>responder este e-mail</strong>. Eu leio e respondo pessoalmente.</p>
+<p style="margin:0 0 12px">${closingLine}</p>
+${waBlock}
 <p style="margin:0">Um abraço,<br><strong>Eduardo</strong> · Mesaas</p>`;
   return layout(body, "Você recebeu este e-mail porque criou uma conta no Mesaas.", base);
 }

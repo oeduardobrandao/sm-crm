@@ -1,5 +1,9 @@
 import { assert } from "./assert.ts";
 import {
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
   buildFounderSignupNotice,
   buildFounderSubscriptionNotice,
   buildThankYouEmail,
@@ -49,6 +53,19 @@ Deno.test("both emails carry the logo and never an em-dash", () => {
     assert(html.includes(`src="${BASE}/logo-white-email.png"`), "logo img missing");
     assert(html.includes('alt="Mesaas"'), "logo alt missing");
     assert(!html.includes("—"), "em-dash found in email copy");
+  }
+});
+
+Deno.test("welcome email never has an em-dash with the WhatsApp CTA configured", () => {
+  const prev = Deno.env.get("WHATSAPP_SUPPORT_NUMBER");
+  Deno.env.set("WHATSAPP_SUPPORT_NUMBER", "5511999999999");
+  try {
+    const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: BASE });
+    assert(html.includes("Falar no WhatsApp"), "WhatsApp button missing from configured render");
+    assert(!html.includes("—"), "em-dash found in the configured WhatsApp CTA copy");
+  } finally {
+    if (prev !== undefined) Deno.env.set("WHATSAPP_SUPPORT_NUMBER", prev);
+    else Deno.env.delete("WHATSAPP_SUPPORT_NUMBER");
   }
 });
 
@@ -449,4 +466,38 @@ Deno.test("sendFounderSubscriptionNotice without a Stripe sub id renders value i
   }
   const payload = JSON.parse(capturedBody);
   assert(payload.html.includes("(indisponível)"), "value fallback missing from sent email");
+});
+
+Deno.test("welcome email includes the WhatsApp button when configured", () => {
+  const prev = Deno.env.get("WHATSAPP_SUPPORT_NUMBER");
+  Deno.env.set("WHATSAPP_SUPPORT_NUMBER", "5511999999999");
+  try {
+    const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: "https://app.mesaas.com.br" });
+    assertStringIncludes(html, "https://wa.me/5511999999999");
+    assertStringIncludes(html, "Falar no WhatsApp");
+    // Both directions of the conditional closing line are covered: this
+    // asserts the WhatsApp clause IS present when a button exists to match it.
+    assertStringIncludes(html, "se preferir WhatsApp");
+  } finally {
+    if (prev !== undefined) Deno.env.set("WHATSAPP_SUPPORT_NUMBER", prev);
+    else Deno.env.delete("WHATSAPP_SUPPORT_NUMBER");
+  }
+});
+
+Deno.test("welcome email stays intact with no WhatsApp number set", () => {
+  const prev = Deno.env.get("WHATSAPP_SUPPORT_NUMBER");
+  Deno.env.delete("WHATSAPP_SUPPORT_NUMBER");
+  try {
+    const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: "https://app.mesaas.com.br" });
+    assertEquals(html.includes("wa.me"), false);
+    assertEquals(html.includes("Falar no WhatsApp"), false);
+    // No orphaned markup left where the button would have been.
+    assertEquals(html.includes('href=""'), false);
+    // No dangling reference to a button that isn't rendered.
+    assertEquals(html.includes("se preferir WhatsApp"), false);
+    assertEquals(html.includes("clicar no botão abaixo"), false);
+    assertStringIncludes(html, "responder este e-mail");
+  } finally {
+    if (prev !== undefined) Deno.env.set("WHATSAPP_SUPPORT_NUMBER", prev);
+  }
 });

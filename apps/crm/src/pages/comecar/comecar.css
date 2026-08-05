@@ -167,3 +167,9 @@
   text-decoration: underline;
   cursor: pointer;
 }
+.comecar-foot__help {
+  margin-top: 0.9rem;
+}
+.comecar-link--inline {
+  display: inline;
+}

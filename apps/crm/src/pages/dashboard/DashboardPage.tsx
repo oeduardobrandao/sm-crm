@@ -21,6 +21,7 @@ import { useAuth } from '../../context/AuthContext';
 import { OnboardingBanner } from '../../components/OnboardingBanner';
 import { ImportBanner } from '../../components/import/ImportBanner';
 import { TrialNudgeCard } from '../../components/billing/TrialNudgeCard';
+import { WhatsAppSupportCard } from '@/components/support/WhatsAppSupportCard';
 import { ClientHealthMonitor } from './components/ClientHealthMonitor';
 import { AgentPendingSection } from './components/AgentPendingSection';
 import { TodayCard, type TodayEvent } from './components/TodayCard';
@@ -187,6 +188,7 @@ export default function DashboardPage() {
   return (
     <div>
       {!isAgent && <TrialNudgeCard />}
+      {!isAgent && <WhatsAppSupportCard />}
       {!isAgent && (
         <OnboardingBanner
           clientes={clientes}

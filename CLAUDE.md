@@ -179,6 +179,12 @@ Monorepo with npm workspaces:
 - `POSTHOG_PROJECT_KEY` -- PostHog **project write key** (same value as the frontend's
   `VITE_POSTHOG_KEY`, NOT a personal API key). Optional: server-side capture is a
   silent no-op when unset
+- `WHATSAPP_SUPPORT_NUMBER` -- WhatsApp support number for the welcome-email CTA.
+  Digits only, no `+` or punctuation. Optional: the CTA is omitted when unset or
+  malformed. Must be kept in sync by hand with the CRM's
+  `VITE_WHATSAPP_SUPPORT_NUMBER`; nothing verifies the two agree. The CRM
+  counterpart is inlined at Vite build time and needs a redeploy to pick up a
+  change; this Deno-side one only needs the function itself redeployed
 
 ## Gotchas
 
