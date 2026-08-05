@@ -10456,22 +10456,27 @@ body.landing-page #root {
   cursor: pointer;
   padding: 0;
 }
-/* Below this width the row cannot hold icon + text + CTA + close: the CTA and
-   close keep their width and starve the text column to roughly 100px, breaking
-   the title one word per line. Stack instead. Verified in a real browser at
-   375px; jsdom cannot evaluate media queries, so no test covers this. */
+/* Below this width neither dashboard nudge can hold icon + text + CTA + close on
+   one row: the CTA and close keep their width and starve the text column to
+   roughly 100px, breaking the title one word per line. Stack both instead.
+   The two cards are structurally identical, so they share the rule rather than
+   drifting apart. Verified in a real browser at 375px and 1280px; jsdom cannot
+   evaluate media queries, so no test covers this. */
 @media (max-width: 640px) {
+  .trial-nudge,
   .whatsapp-support {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.75rem;
   }
+  .trial-nudge__cta,
   .whatsapp-support__cta {
     width: 100%;
     text-align: center;
   }
   /* .card is position:relative, so the close button can leave the flow rather
      than claiming a row of its own. */
+  .trial-nudge__close,
   .whatsapp-support__close {
     position: absolute;
     top: 0.9rem;
