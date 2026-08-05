@@ -268,6 +268,7 @@ export default function ClienteDetalhePage() {
   const [dateDeleteId, setDateDeleteId] = useState<number | null>(null);
   const [dateTitulo, setDateTitulo] = useState('');
   const [dateData, setDateData] = useState('');
+  const [igOffMetaOpen, setIgOffMetaOpen] = useState(false);
 
   // Form state
   const [fNome, setFNome] = useState('');
@@ -292,11 +293,22 @@ export default function ClienteDetalhePage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('ig_error') === 'no_business_account') {
+    const igError = params.get('ig_error');
+    if (igError === 'no_business_account') {
       toast.error(t('detail.igNotBusiness'));
+    } else if (igError === 'off_meta_activity') {
+      setIgOffMetaOpen(true);
+    } else if (igError) {
+      toast.error(t('detail.igError'));
     }
     if (params.get('tt_error') === '1') {
       toast.error(t('detail.ttError'));
+    }
+    if (igError || params.get('tt_error')) {
+      params.delete('ig_error');
+      params.delete('tt_error');
+      const qs = params.toString();
+      window.history.replaceState(null, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`);
     }
   }, [t]);
 
@@ -2198,6 +2210,27 @@ export default function ClienteDetalhePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Instagram off-Meta activity setting blocked the OAuth connection */}
+      <AlertDialog open={igOffMetaOpen} onOpenChange={setIgOffMetaOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('detail.igOffMetaTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('detail.igOffMetaIntro')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <ol className="list-decimal space-y-1.5 pl-5 text-sm text-muted-foreground">
+            <li>{t('detail.igOffMetaStep1')}</li>
+            <li>{t('detail.igOffMetaStep2')}</li>
+            <li>{t('detail.igOffMetaStep3')}</li>
+            <li>{t('detail.igOffMetaStep4')}</li>
+          </ol>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setIgOffMetaOpen(false)}>
+              {t('detail.igOffMetaOk')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Address Delete Confirm */}
       <AlertDialog

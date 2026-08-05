@@ -103,7 +103,12 @@ Deno.serve(async (req) => {
 
   try {
     let user;
-    if (path !== '/callback' && !(path === '' && url.searchParams.has('code'))) {
+    // Root-path requests carrying `code` or `error` are OAuth callback redirects from
+    // Meta (META_REDIRECT_URI may point at the function root) and carry no JWT.
+    const isOAuthCallback =
+      path === '/callback' ||
+      (path === '' && (url.searchParams.has('code') || url.searchParams.has('error')));
+    if (!isOAuthCallback) {
        const token = authHeader?.replace(/^Bearer\s+/i, '');
 
        if (!token || token === 'undefined' || token === 'null') {
@@ -148,7 +153,7 @@ Deno.serve(async (req) => {
     }
 
     // 2. GET /callback (also handle callback at root when META_REDIRECT_URI doesn't include /callback)
-    if (req.method === 'GET' && (path === '/callback' || (path === '' && url.searchParams.has('code')))) {
+    if (req.method === 'GET' && isOAuthCallback) {
         const code = url.searchParams.get('code')?.replace(/#_$/, '');
         const state = url.searchParams.get('state');
 
@@ -808,14 +813,31 @@ Deno.serve(async (req) => {
     console.error('[instagram-integration] error:', err?.message ?? 'unknown');
 
     // If this was a callback (browser redirect), send user back to client page instead of showing JSON
-    const isCallback = path === '/callback' || (path === '' && url.searchParams.has('code'));
+    const isCallback =
+      path === '/callback' ||
+      (path === '' && (url.searchParams.has('code') || url.searchParams.has('error')));
     if (isCallback) {
       const stateParam = url.searchParams.get('state');
       let redirectClientId: string | undefined;
       try { redirectClientId = (await verifySignedState(stateParam || '')).clientId; } catch { /* ignore */ }
+      // Classify known Meta OAuth failures into a code the CRM can turn into
+      // actionable guidance. Only the code travels in the URL — never the raw message.
+      // Meta may report the failure either via the token exchange (err.message) or
+      // directly as error_description/error_message params on the callback redirect.
+      const rawMsg = [
+        err?.message,
+        url.searchParams.get('error_description'),
+        url.searchParams.get('error_message'),
+        url.searchParams.get('error_reason'),
+      ]
+        .filter(Boolean)
+        .join(' ');
+      const igErrorCode = /off[-_ ]?meta|fora das tecnologias|atividade futura|future off/i.test(rawMsg)
+        ? 'off_meta_activity'
+        : '1';
       const target = redirectClientId
-        ? `${OAUTH_REDIRECT_BASE}/clientes/${redirectClientId}?ig_error=1`
-        : `${OAUTH_REDIRECT_BASE}?ig_error=1`;
+        ? `${OAUTH_REDIRECT_BASE}/clientes/${redirectClientId}?ig_error=${igErrorCode}`
+        : `${OAUTH_REDIRECT_BASE}?ig_error=${igErrorCode}`;
       return Response.redirect(target, 302);
     }
 
