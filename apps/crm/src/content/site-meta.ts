@@ -19,6 +19,7 @@ export const APP_ROUTE_PREFIXES = [
   'login',
   'configurar-senha',
   'workspace-setup',
+  'comecar',
   'oauth',
   'dashboard',
   'clientes',

@@ -13,7 +13,7 @@ import {
   type BillingPlan,
 } from '@/services/billing';
 import { isInternalPlan, resolveCurrentPlanId, isPlanVisible, canUpgradeTo } from './plan-display';
-import { captureEvent } from '@/lib/analytics';
+import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import './cobranca.css';
 
 const RECOMMENDED_ID = 'pro';
@@ -57,13 +57,20 @@ function planFeatures(p: BillingPlan): string[] {
 }
 
 export default function CobrancaPage() {
-  const { role } = useAuth();
+  const { role, workspaceRole } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [interval, setInterval] = useState<BillingInterval>('month');
   const [busy, setBusy] = useState<string | null>(null);
-  const [promo, setPromo] = useState('');
 
-  const isOwner = role === 'owner';
+  // Follow the ACTIVE workspace role, not the stale profile-level role: a user
+  // can be owner in one workspace and agent in another, and switch_workspace
+  // never rewrites profiles.role. Every authority now resolves ownership from
+  // per-workspace membership: this gate, ComecarPage, TrialNudgeCard, the
+  // workspace_subscriptions_owner_read RLS policy, and the workspace_members
+  // checks in billing-checkout and billing-portal. So the two actions this page
+  // offers, upgrade and "Gerenciar assinatura", cannot be shown to someone the
+  // server will refuse.
+  const isOwner = (workspaceRole ?? role) === 'owner';
   const { data: plans, isLoading: plansLoading } = useQuery({
     queryKey: ['billing', 'plans'],
     queryFn: listActivePlans,
@@ -132,12 +139,8 @@ export default function CobrancaPage() {
   async function handleUpgrade(planId: string) {
     setBusy(planId);
     try {
-      const url = await startCheckout(planId, interval, promo.trim() || undefined);
-      captureEvent(
-        'checkout_started',
-        { plan_id: planId, billing_interval: interval },
-        { sendInstantly: true },
-      );
+      const url = await startCheckout(planId, interval, 'billing');
+      captureCheckoutStarted(planId, interval, 'billing');
       window.location.assign(url);
     } catch (err) {
       toast.error('Erro ao iniciar checkout: ' + (err as Error).message);
@@ -161,13 +164,14 @@ export default function CobrancaPage() {
       return <span className="plan-cta__static">Plano atual</span>;
     }
     if (canUpgradeTo(p.id, currentPlanId, hasActiveSub)) {
+      const firstTime = !subscription?.hasEverSubscribed;
       return (
         <button
           className="btn-primary"
           onClick={() => handleUpgrade(p.id)}
           disabled={busy === p.id}
         >
-          {busy === p.id ? 'Aguarde…' : 'Fazer upgrade'}
+          {busy === p.id ? 'Aguarde…' : firstTime ? 'Começar teste de 30 dias' : 'Fazer upgrade'}
         </button>
       );
     }
@@ -223,18 +227,12 @@ export default function CobrancaPage() {
             Economize até {annualSavingsPct}% no anual
           </span>
         )}
-        <div className="billing-promo">
-          <label htmlFor="promo-code">Tem um código promocional?</label>
-          <input
-            id="promo-code"
-            type="text"
-            value={promo}
-            onChange={(e) => setPromo(e.target.value)}
-            placeholder="Código"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </div>
+        {!subscription?.hasEverSubscribed && (
+          <span className="billing-save-hint">
+            <i className="ph ph-tag" aria-hidden="true" />
+            Seus primeiros 30 dias são grátis
+          </span>
+        )}
       </div>
 
       <div className="plan-grid">

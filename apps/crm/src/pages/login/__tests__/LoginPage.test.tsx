@@ -15,8 +15,13 @@ vi.mock('../../../lib/supabase', () => ({
   resetPassword: vi.fn(),
 }));
 
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: vi.fn(() => ({ user: null, loading: false })),
+}));
+
 import { toast } from 'sonner';
 import { resetPassword, signIn, signUp } from '../../../lib/supabase';
+import { useAuth } from '@/context/AuthContext';
 import LoginPage from '../LoginPage';
 
 const mockedSignIn = vi.mocked(signIn);
@@ -24,6 +29,7 @@ const mockedSignUp = vi.mocked(signUp);
 const mockedResetPassword = vi.mocked(resetPassword);
 const mockedToastSuccess = vi.mocked(toast.success);
 const mockedToastError = vi.mocked(toast.error);
+const mockedUseAuth = vi.mocked(useAuth);
 
 function PathProbe() {
   const location = useLocation();
@@ -52,6 +58,52 @@ function renderLoginPage(
   );
 }
 
+function SearchProbe() {
+  const location = useLocation();
+  return <div data-testid="probe">{location.pathname + location.search}</div>;
+}
+
+function renderRegister(initialEntry: string) {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            <>
+              <LoginPage />
+              <SearchProbe />
+            </>
+          }
+        />
+        <Route path="/comecar" element={<SearchProbe />} />
+        <Route path="/dashboard" element={<SearchProbe />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+function fillRegisterForm(
+  container: HTMLElement,
+  overrides: { nome?: string; empresa?: string } = {},
+) {
+  const set = (id: string, value: string) =>
+    fireEvent.change(container.querySelector(`#${id}`)!, { target: { value } });
+  set('reg-nome', overrides.nome ?? 'Ana Souza');
+  set('reg-empresa', overrides.empresa ?? 'Studio Ana');
+  set('reg-email', 'ana@example.com');
+  set('reg-telefone', '11999999999');
+  set('reg-password', 'senha12345');
+  set('reg-confirm', 'senha12345');
+}
+
+// jsdom does not run HTML constraint validation on a programmatic submit, so
+// this reaches the handler and exercises the trim guard rather than being
+// blocked by `required`.
+function submitRegister(container: HTMLElement) {
+  fireEvent.submit(container.querySelector('form.auth-form')!);
+}
+
 describe('LoginPage', () => {
   beforeEach(() => {
     mockedSignIn.mockReset();
@@ -59,6 +111,8 @@ describe('LoginPage', () => {
     mockedResetPassword.mockReset();
     mockedToastSuccess.mockReset();
     mockedToastError.mockReset();
+    mockedUseAuth.mockReset();
+    mockedUseAuth.mockReturnValue({ user: null, loading: false } as never);
   });
 
   it('starts on the register tab from the query string and switches between register, forgot, and login flows', () => {
@@ -168,7 +222,7 @@ describe('LoginPage', () => {
   });
 
   it('shows the verification state after a successful registration and returns to login', async () => {
-    mockedSignUp.mockResolvedValue({ error: null } as never);
+    mockedSignUp.mockResolvedValue({ data: { session: null }, error: null } as never);
 
     renderLoginPage('/login?tab=register');
 
@@ -195,12 +249,17 @@ describe('LoginPage', () => {
     fireEvent.submit(screen.getByLabelText('Nome Completo').closest('form')!);
 
     await waitFor(() => {
-      expect(mockedSignUp).toHaveBeenCalledWith('ana@mesaas.com', 'senha-123', {
-        nome: 'Ana Souza',
-        empresa: 'Mesaas',
-        telefone: '(11) 99999-9999',
-        marketing_opt_in: true,
-      });
+      expect(mockedSignUp).toHaveBeenCalledWith(
+        'ana@mesaas.com',
+        'senha-123',
+        {
+          nome: 'Ana Souza',
+          empresa: 'Mesaas',
+          telefone: '(11) 99999-9999',
+          marketing_opt_in: true,
+        },
+        '/login',
+      );
     });
     expect(screen.getByText('Verifique seu e-mail')).toBeInTheDocument();
 
@@ -248,5 +307,93 @@ describe('LoginPage', () => {
     });
     expect(screen.getByLabelText('Senha')).toBeInTheDocument();
     expect(screen.queryByText(/Informe seu e-mail para receber um link/i)).not.toBeInTheDocument();
+  });
+
+  it('rejects a whitespace-only company name instead of submitting it', () => {
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container, { empresa: '   ' });
+    submitRegister(container);
+    expect(mockedSignUp).not.toHaveBeenCalled();
+  });
+
+  it('trims the name and company before sending them to signUp', async () => {
+    mockedSignUp.mockResolvedValue({
+      data: { session: { access_token: 't' } },
+      error: null,
+    } as never);
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container, { nome: '  Ana  ', empresa: '  Studio  ' });
+    submitRegister(container);
+    await waitFor(() => expect(mockedSignUp).toHaveBeenCalled());
+    expect(mockedSignUp.mock.calls[0][2]).toMatchObject({ nome: 'Ana', empresa: 'Studio' });
+  });
+
+  it('sends a signed-up user to /comecar carrying the plan intent', async () => {
+    mockedSignUp.mockResolvedValue({
+      data: { session: { access_token: 't' } },
+      error: null,
+    } as never);
+    const { container } = renderRegister('/login?tab=register&plan=pro&interval=year');
+    fillRegisterForm(container);
+    submitRegister(container);
+    await waitFor(() =>
+      expect(screen.getByTestId('probe')).toHaveTextContent('/comecar?plan=pro&interval=year'),
+    );
+  });
+
+  it('passes the intent through emailRedirectTo when confirmation is still on', async () => {
+    mockedSignUp.mockResolvedValue({ data: { session: null }, error: null } as never);
+    const { container } = renderRegister('/login?tab=register&plan=pro&interval=month');
+    fillRegisterForm(container);
+    submitRegister(container);
+    await waitFor(() => expect(mockedSignUp).toHaveBeenCalled());
+    expect(mockedSignUp.mock.calls[0][3]).toBe('/login?plan=pro&interval=month');
+  });
+
+  it('redirects an already-authenticated visitor with a plan intent to /comecar and does not show the login form', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'user-1' },
+      loading: false,
+    } as never);
+
+    renderRegister('/login?plan=pro&interval=year');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('probe')).toHaveTextContent('/comecar?plan=pro&interval=year'),
+    );
+    expect(screen.queryByLabelText('E-mail')).not.toBeInTheDocument();
+  });
+
+  it('redirects an already-authenticated visitor at plain /login to /dashboard', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'user-1' },
+      loading: false,
+    } as never);
+
+    renderRegister('/login');
+
+    await waitFor(() => expect(screen.getByTestId('probe')).toHaveTextContent('/dashboard'));
+    expect(screen.queryByLabelText('E-mail')).not.toBeInTheDocument();
+  });
+
+  it('still shows the login form for an unauthenticated visitor', () => {
+    mockedUseAuth.mockReturnValue({ user: null, loading: false } as never);
+
+    renderRegister('/login');
+
+    expect(screen.getByLabelText('E-mail')).toBeInTheDocument();
+    expect(screen.getByTestId('probe')).toHaveTextContent('/login');
+  });
+
+  it('does not redirect while auth is still loading, even with a user present', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'user-1' },
+      loading: true,
+    } as never);
+
+    renderRegister('/login');
+
+    expect(screen.getByTestId('probe')).toHaveTextContent('/login');
+    expect(screen.getByLabelText('E-mail')).toBeInTheDocument();
   });
 });

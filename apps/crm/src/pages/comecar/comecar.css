@@ -1,0 +1,169 @@
+.comecar-shell {
+  min-height: 100vh;
+  background: var(--bg-color);
+  padding: 3rem 1rem;
+}
+.comecar-shell--center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.comecar-inner {
+  max-width: 60rem;
+  margin: 0 auto;
+}
+.comecar-spin {
+  animation: comecar-rotate 1s linear infinite;
+  color: var(--text-muted);
+}
+@keyframes comecar-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.comecar-standby {
+  max-width: 24rem;
+  text-align: center;
+}
+.comecar-standby h1 {
+  font-size: 1.1rem;
+  margin: 0.75rem 0 0.35rem;
+  color: var(--text-main);
+}
+.comecar-standby p {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  margin: 0 0 1rem;
+}
+.comecar-head {
+  text-align: center;
+  margin-bottom: 1.75rem;
+}
+.comecar-head h1 {
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+  margin: 0 0 0.5rem;
+  color: var(--text-main);
+}
+.comecar-head p {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  max-width: 34rem;
+  margin: 0 auto;
+}
+.comecar-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+  margin-bottom: 1.75rem;
+}
+.comecar-toggle button {
+  border: 1px solid var(--border-color);
+  background: var(--surface-main);
+  color: var(--text-muted);
+  padding: 0.4rem 1.1rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.comecar-toggle button[aria-pressed='true'] {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: var(--dark);
+  font-weight: 600;
+}
+.comecar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+}
+.comecar-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+}
+.comecar-card.is-recommended {
+  border-color: var(--primary-color);
+}
+.comecar-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+.comecar-card__name {
+  font-weight: 600;
+  color: var(--text-main);
+}
+.comecar-tag {
+  background: var(--primary-color);
+  color: var(--dark);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+}
+.comecar-card__trial {
+  color: var(--success);
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin: 0 0 0.15rem;
+}
+.comecar-card__price {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0 0 1rem;
+}
+.comecar-card__features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem;
+  display: grid;
+  gap: 0.4rem;
+}
+.comecar-card__features li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.83rem;
+  color: var(--text-muted);
+}
+.comecar-cta {
+  margin-top: auto;
+  width: 100%;
+  padding: 0.6rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--primary-color);
+  background: var(--primary-color);
+  color: var(--dark);
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.comecar-cta:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.comecar-foot {
+  text-align: center;
+  border-top: 1px solid var(--border-color);
+  padding-top: 1rem;
+}
+.comecar-foot p {
+  color: var(--text-muted);
+  font-size: 0.83rem;
+  margin: 0 0 0.4rem;
+}
+.comecar-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-light);
+  font-size: 0.83rem;
+  text-decoration: underline;
+  cursor: pointer;
+}

@@ -23,7 +23,7 @@ import {
   Users,
 } from './landing-visuals';
 import { LandingHeader, LandingFooter, useLandingChrome, scrollTo } from './LandingChrome';
-import { PricingSection, PROMO_CODE } from './PricingSection';
+import { PricingSection } from './PricingSection';
 import { FaqSection } from './FaqSection';
 
 import './landing.css';
@@ -99,11 +99,10 @@ function PromoBanner() {
   return (
     <div className="promo-banner" role="region" aria-label="Oferta de lançamento">
       <span className="promo-banner-text">
-        🎁 <strong>1º mês grátis</strong> em qualquer plano para novos usuários — use o código{' '}
-        <code className="promo-code">{PROMO_CODE}</code> no checkout.
+        <strong>30 dias grátis</strong> em qualquer plano pago. Sem código, cancele quando quiser.
       </span>
       <a href="/login?tab=register" className="promo-banner-cta">
-        Criar conta grátis
+        Começar teste grátis
       </a>
       <button
         className="promo-banner-close"
@@ -142,7 +141,7 @@ function Hero() {
                   </a>
                 ) : (
                   <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
-                    Criar conta grátis <ArrowRight size={16} />
+                    Começar teste grátis <ArrowRight size={16} />
                   </a>
                 ))}
               <button onClick={() => scrollTo('features')} className="lp-btn lp-btn-outline lg">
@@ -245,7 +244,7 @@ function AgentSection() {
               ))}
             </ul>
             <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
-              Criar conta grátis <ArrowRight size={16} />
+              Começar teste grátis <ArrowRight size={16} />
             </a>
           </div>
           <div className="agent-visual">
@@ -335,7 +334,7 @@ function CtaFinal() {
               </a>
             ) : (
               <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
-                Criar conta grátis <ArrowRight size={16} />
+                Começar teste grátis <ArrowRight size={16} />
               </a>
             ))}
           <div

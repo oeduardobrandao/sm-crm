@@ -44,7 +44,38 @@ npx supabase functions deploy <name>
 npx supabase db push --linked                   # push migrations to staging
 ```
 
-IMPORTANT: Both ESLint and Prettier are enforced in CI. `npm run lint` (`eslint apps/ packages/`) runs in the `typecheck-and-test` job, and `npm run format:check` (`prettier --check`) runs in the `format-check` job. Run `npm run lint` and `npm run format:check` before pushing (`npm run format` auto-fixes formatting), or CI will fail. Typecheck with `npm run build` (runs `tsc` then `vite build`). Always typecheck after making code changes. Run `npm run test` after changes to verify no regressions.
+### What CI actually runs
+
+`.github/workflows/ci.yml` is the source of truth. It fires on pull requests and
+pushes to `main` and `staging`, with **eight** jobs:
+
+| Job | Runs |
+|---|---|
+| `typecheck-and-test` | `npm run lint`, then `tsc` for **all four** projects (crm, hub, admin, `tsconfig.scripts.json`), then `npm run test:coverage` |
+| `edge-function-tests` | `npm run test:functions` (Deno) |
+| `entitlement-tests` | `supabase start` + `bash scripts/test-entitlements.sh` — the psql RLS/entitlement suites |
+| `coverage-threshold` | `npm run coverage:check` |
+| `format-check` | `npm run format:check` |
+| `migration-version-guard` | fails on duplicate migration version prefixes |
+| `e2e` | Playwright |
+| `e2e-secrets-guard` | warns when E2E secrets are absent |
+
+Three things this list is here to prevent:
+
+- **`npm run build` is not the typecheck.** It only covers the CRM. CI
+  typechecks four projects separately, so a Hub, Admin or scripts break passes
+  locally and fails in CI. Run the four `tsc` commands, not `build`.
+- **`supabase/tests/entitlements/*.sql` IS gated by CI.** It is easy to assume
+  otherwise because it needs a local database to run by hand. It does not need
+  one to be enforced.
+- **A green `e2e` does not always mean e2e ran.** Without the E2E secrets the
+  job skips silently, which is exactly why `e2e-secrets-guard` exists: it emits
+  a warning naming the missing secrets. Check that warning before trusting a
+  green e2e.
+
+Before pushing, run `npm run lint`, `npm run format:check` (`npm run format`
+auto-fixes), the four `tsc` commands, `npm run test` and `npm run test:functions`.
+`npm run test:db` needs Docker locally; CI covers it either way.
 
 Migration filenames must use a unique timestamp version prefix (the digits before the first `_`). Two files sharing a prefix collide in Supabase's `schema_migrations` history table — only the first applies and the second is silently skipped. The `migration-version-guard` CI job fails the build on duplicates.
 

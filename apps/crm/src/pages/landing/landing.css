@@ -614,3 +614,10 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
 
 /* icon squares in feature rows */
 [data-theme='dark'] .feat-copy .icon-sq{background:rgba(255,191,48,.1);border-color:rgba(255,191,48,.18)}
+
+.plan-trial-note {
+  color: var(--success);
+  font-weight: 600;
+  font-size: 0.82rem;
+  margin-bottom: 0.35rem;
+}

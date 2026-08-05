@@ -30,7 +30,10 @@ export type AnalyticsEvent =
   | 'lead_created'
   | 'lead_converted'
   | 'task_created'
-  | 'checkout_started';
+  | 'checkout_started'
+  | 'trial_step_viewed'
+  | 'trial_skipped'
+  | 'trial_nudge_clicked';
 
 /**
  * Compile-time guard: `tsc` fails if any of these names is dropped from or misspelled in the union
