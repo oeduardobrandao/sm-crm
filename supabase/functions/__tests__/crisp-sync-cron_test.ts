@@ -231,9 +231,12 @@ Deno.test("a create conflict re-reads and updates instead of failing", async () 
   assertEquals(calls.confirmed[0].peopleId, "p-widget");
 });
 
-Deno.test("a PUT preserves every field the GET returned", async () => {
-  // The regression test for the review finding: naming only notepad/company
-  // erased everything else the vendor holds.
+Deno.test("the update body carries ONLY the fields this sync owns", async () => {
+  // Regression test for a 400 hit against the LIVE Crisp API. An earlier version
+  // spread the whole GET response back through a PUT so nothing would be erased.
+  // Crisp rejects that: its read shape carries fields its write shape does not
+  // accept. saveProfile is now a PATCH, so preservation comes from NOT sending a
+  // field rather than from echoing it -- and echoing one back is the bug.
   const existing: CrispProfile = {
     people_id: "p-1",
     segments: ["vip", "trial", "free"],
@@ -242,7 +245,6 @@ Deno.test("a PUT preserves every field the GET returned", async () => {
     address: "Rua X, 123",
     description: "indicado pelo Joao",
     person: { nickname: "Antigo", avatar: "https://img.example/a.png" },
-    // A field this repo has never heard of. It must survive anyway.
     some_future_crisp_field: { anything: true },
   };
   const { deps, calls } = makeDeps(
@@ -253,18 +255,12 @@ Deno.test("a PUT preserves every field the GET returned", async () => {
   await runCrispSyncCron(deps);
 
   const written = calls.saved[0].p;
-  assertEquals(written.notepad, "cliente antigo");
-  assertEquals(written.company, { name: "Agência A" });
-  assertEquals(written.address, "Rua X, 123");
-  assertEquals(written.description, "indicado pelo Joao");
-  assertEquals(written.some_future_crisp_field, { anything: true });
-  // Nested preservation: the avatar survives, the nickname is overridden.
-  assertEquals(written.person.avatar, "https://img.example/a.png");
-  assertEquals(written.person.nickname, "Ana Silva");
-  // people_id is the route parameter, not a body field.
-  assert(!("people_id" in written), "people_id must not be echoed into the body");
-  // `vip` kept (operator tag), `trial`/`free` dropped (stale managed tags),
-  // `owner`/`pagante` added.
+  // Exactly three keys. Anything else risks a read-only field reaching the API.
+  assertEquals(Object.keys(written).sort(), ["email", "person", "segments"]);
+  assertEquals(written.person, { nickname: "Ana Silva", phone: "+5511999998888" });
+  // Segments are the COMPLETE computed set: `vip` kept (operator tag),
+  // `trial`/`free` dropped (stale managed tags), `owner`/`pagante` added.
+  // A field-level PATCH replaces the array, so a delta would drop `vip`.
   assertEquals(written.segments, ["vip", "owner", "pagante"]);
 });
 

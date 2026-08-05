@@ -510,14 +510,23 @@ Applied by **read-modify-write**, not a blind `PATCH`:
 2. Compute the managed set from live state.
 3. Remove only members of the managed vocabulary that no longer apply. Leave every other
    segment — anything an operator tagged by hand — untouched.
-4. **Echo back every field the `GET` returned.** `PUT` replaces the whole profile, so the
-   write body is the response object spread wholesale, with only `email`, `person.nickname`,
-   `person.phone` and `segments` overridden. Naming `notepad` and `company` specifically, as
-   the first draft did, silently erases everything it failed to enumerate — avatar, address,
-   description, website, employment, geolocation, and any field Crisp adds later. An
-   allowlist of fields to preserve is unmaintainable against a vendor schema we do not
-   control; preserving by default and overriding by exception is the only version that stays
-   correct.
+4. **Send ONLY the four owned fields**, via `PATCH`. Preservation comes from *not sending* a
+   field, not from echoing it: a partial update leaves `notepad`, `company`, `avatar`,
+   `address` and anything Crisp adds later untouched, with nothing to enumerate.
+
+   This is the third position this spec has held on the question, and the live API settled
+   it. The first draft named `notepad` and `company` as the fields to preserve, which
+   silently erased everything it failed to list. Review corrected that to spreading the whole
+   `GET` response back through a `PUT` — preserve-by-default, on the reasoning that an
+   allowlist against a vendor schema we do not control is unmaintainable. **That reasoning
+   was sound and the mechanism was still wrong.** Against staging it returned `400`: Crisp's
+   read shape carries fields its write shape rejects, so "everything the GET returned" is not
+   a legal write body. There *is* an allowlist — the vendor's — and `PATCH` is how you respect
+   it without having to know it.
+
+   `segments` is the exception that must be sent whole: a field-level `PATCH` replaces a
+   scalar array, so the operator's own segments are merged in client-side (`mergeSegments`)
+   and the complete computed set is sent. A delta would drop them.
 5. Write back.
 
 A blind merge-`PATCH` would let `pagante` survive a downgrade and `trial` survive forever,

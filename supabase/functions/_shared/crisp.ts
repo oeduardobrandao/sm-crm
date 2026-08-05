@@ -156,13 +156,27 @@ export async function createProfile(
  * Replace the profile. PUT is a full replace, so the caller MUST echo back any
  * operator-owned field (notepad, company) it read and does not intend to erase.
  */
+/**
+ * Update a profile. PATCH, not PUT, and this was learned the hard way against
+ * the live API: a PUT echoing back the GET response 400s, because Crisp's read
+ * shape carries fields its write shape rejects.
+ *
+ * PATCH is a partial update, which gets preservation for free — anything we do
+ * not send (notepad, company, avatar, address, and any field Crisp adds later)
+ * is simply left alone, with no need to enumerate it. So the caller sends ONLY
+ * the fields this sync owns.
+ *
+ * `segments` is sent as the complete computed set rather than a delta: field-level
+ * PATCH replaces a scalar array, so the caller must merge the existing
+ * operator-added segments in before calling. See mergeSegments in the handler.
+ */
 export async function saveProfile(
   peopleId: string,
   p: CrispProfileWrite,
   fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
   await call(
-    "PUT",
+    "PATCH",
     `/people/profile/${encodeURIComponent(peopleId)}`,
     PROFILE_SHAPE,
     p,

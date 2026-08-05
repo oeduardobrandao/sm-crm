@@ -315,14 +315,26 @@ export async function runCrispSyncCron(
         // people_id is dropped from the body: it is the route parameter, not a
         // profile field.
         if (profile) {
-          const { people_id: _peopleId, ...preserved } = profile;
+          // Send ONLY the fields this sync owns. saveProfile is a PATCH, so
+          // everything omitted -- notepad, company, avatar, address, and any
+          // field Crisp adds later -- is preserved by the vendor without us
+          // having to enumerate it.
+          //
+          // An earlier version spread the whole GET response back through a PUT
+          // to preserve those fields explicitly. Against the live API that 400s:
+          // Crisp's read shape carries fields its write shape rejects, so the
+          // "preserve everything" body is not a legal write body. PATCH gets the
+          // same preservation for free and cannot trip over a read-only field.
+          //
+          // `person` is likewise sent flat rather than merged over the profile's
+          // existing person object, for the same reason: nested read-only
+          // sub-fields would ride along.
           await deps.saveProfile(peopleId, {
-            ...preserved,
             email: c.email,
-            // Nested spread for the same reason as the outer one: person carries
-            // operator-owned sub-fields (avatar, geolocation) that a flat
-            // override would drop.
-            person: { ...(profile.person ?? {}), ...person },
+            person,
+            // The COMPLETE computed set, not a delta: a field-level PATCH
+            // replaces a scalar array, so the operator's own segments have to be
+            // merged in here or they are dropped.
             segments: mergeSegments(profile.segments, c.segments),
           });
         }
