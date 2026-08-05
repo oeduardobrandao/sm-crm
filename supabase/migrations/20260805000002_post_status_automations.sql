@@ -131,6 +131,10 @@ declare
   v_status_changed  boolean := (new.status is distinct from old.status);
   v_custom_changed  boolean := (new.custom_status_id is distinct from old.custom_status_id);
 begin
+  -- config is user-shaped jsonb with no CHECK on its shape: every read of
+  -- membro_id below guards the cast with a digits-only regex so a malformed
+  -- rule degrades to a no-op instead of aborting the status transition that
+  -- fired the trigger.
   if pg_trigger_depth() > 1 then
     return new;
   end if;
@@ -151,7 +155,10 @@ begin
          or (v_custom_changed and a.trigger_custom_status_id = new.custom_status_id))
      order by a.created_at -- deterministic: the newest matching rule wins
   loop
-    v_membro_id := nullif(r.config->>'membro_id', '')::bigint;
+    v_membro_id := case
+      when r.config->>'membro_id' ~ '^\d+$' then (r.config->>'membro_id')::bigint
+      else null
+    end;
     if v_membro_id is not null and exists (
       select 1 from membros m where m.id = v_membro_id and m.conta_id = new.conta_id
     ) then
@@ -177,7 +184,8 @@ begin
             select case when m.crm_user_id is null then '{}'::uuid[]
                         else array[m.crm_user_id] end
               from membros m
-             where m.id = nullif(r.config->>'membro_id', '')::bigint
+             where (r.config->>'membro_id') ~ '^\d+$'
+               and m.id = (r.config->>'membro_id')::bigint
                and m.conta_id = new.conta_id
           ), '{}'::uuid[])
         when 'responsavel' then

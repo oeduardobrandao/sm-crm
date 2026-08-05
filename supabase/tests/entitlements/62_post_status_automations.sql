@@ -16,7 +16,7 @@ declare
   v_foreign_membro bigint;
   v_admin uuid := gen_random_uuid();
   v_auto uuid;
-  v_resp bigint; v_count bigint;
+  v_resp bigint; v_resp_status text; v_count bigint;
   v_notif record;
 begin
   v_ws := et_make_workspace('pro');
@@ -120,7 +120,20 @@ begin
     where workspace_id = v_ws and type = 'post_status_automation';
   assert v_count = 0, 'inactive automation must not fire';
 
-  -- 8. Deleting the definition cascades its automations
+  -- 8. Malformed config must not abort the status transition
+  update post_status_automations set ativo = true, config = '{"membro_id":"abc"}'::jsonb
+   where id = v_auto;
+  update post_status_automations set config = '{"membro_id":"x"}'::jsonb
+   where conta_id = v_ws and action_type = 'assign_responsavel';
+  update workflow_posts set status = 'rascunho', custom_status_id = null,
+                            responsavel_id = null where id = v_post;
+  update workflow_posts set custom_status_id = v_design where id = v_post; -- must not raise
+  select status, responsavel_id into v_resp_status, v_resp
+    from (select status, responsavel_id from workflow_posts where id = v_post) s;
+  assert v_resp_status = 'revisao_interna', 'transition must survive malformed configs';
+  assert v_resp is null, 'malformed membro_id must not assign anyone';
+
+  -- 9. Deleting the definition cascades its automations
   delete from post_status_definitions where id = v_design;
   select count(*) into v_count from post_status_automations
     where conta_id = v_ws and trigger_custom_status_id is not null;
