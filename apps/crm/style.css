@@ -10456,3 +10456,25 @@ body.landing-page #root {
   cursor: pointer;
   padding: 0;
 }
+/* Below this width the row cannot hold icon + text + CTA + close: the CTA and
+   close keep their width and starve the text column to roughly 100px, breaking
+   the title one word per line. Stack instead. Verified in a real browser at
+   375px; jsdom cannot evaluate media queries, so no test covers this. */
+@media (max-width: 640px) {
+  .whatsapp-support {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  .whatsapp-support__cta {
+    width: 100%;
+    text-align: center;
+  }
+  /* .card is position:relative, so the close button can leave the flow rather
+     than claiming a row of its own. */
+  .whatsapp-support__close {
+    position: absolute;
+    top: 0.9rem;
+    right: 0.9rem;
+  }
+}
