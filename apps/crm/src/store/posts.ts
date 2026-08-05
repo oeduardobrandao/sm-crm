@@ -24,6 +24,10 @@ export interface WorkflowPost {
     | 'agendado'
     | 'postado'
     | 'falha_publicacao';
+  /** Workspace-defined custom status (post_status_definitions). When set, the
+   * z1 DB trigger forces `status` to the definition's behaves_as value, and
+   * clears this pointer whenever `status` moves away from it. */
+  custom_status_id?: string | null;
   responsavel_id?: number | null;
   scheduled_at?: string | null;
   ig_caption?: string | null;
@@ -150,6 +154,7 @@ export interface ScheduledPost {
   titulo: string;
   tipo: WorkflowPost['tipo'];
   status: WorkflowPost['status'];
+  custom_status_id: string | null;
   scheduled_at: string; // non-null (range-filtered)
   published_at: string | null;
   ig_caption: string | null;
@@ -176,7 +181,7 @@ export interface ScheduledPost {
  * Instagram for every post (see toWorkflowPost in PublicacoesPanel.tsx).
  */
 const POST_CONTEXT_COLUMNS =
-  'id, workflow_id, titulo, tipo, status, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id';
+  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id';
 
 function mapPostContextRow(row: any): ActivePost {
   return {
@@ -188,6 +193,7 @@ function mapPostContextRow(row: any): ActivePost {
     titulo: row.titulo,
     tipo: row.tipo,
     status: row.status,
+    custom_status_id: row.custom_status_id ?? null,
     scheduled_at: row.scheduled_at ?? null,
     published_at: row.published_at ?? null,
     ig_caption: row.ig_caption ?? null,
@@ -286,6 +292,11 @@ export interface PostStatusEvent {
   actor_user_id: string | null;
   actor_name: string | null;
   post_approval_id: number | null;
+  from_custom_status_id: string | null;
+  to_custom_status_id: string | null;
+  /** Label snapshots taken at event time — survive rename/deletion of the definition. */
+  from_custom_nome: string | null;
+  to_custom_nome: string | null;
   created_at: string;
 }
 
@@ -778,7 +789,7 @@ export async function getPostStatusEvents(postIds: number[]): Promise<PostStatus
   const { data, error } = await supabase
     .from('post_status_events')
     .select(
-      'id, post_id, from_status, to_status, source, actor_user_id, actor_name, post_approval_id, created_at',
+      'id, post_id, from_status, to_status, source, actor_user_id, actor_name, post_approval_id, from_custom_status_id, to_custom_status_id, from_custom_nome, to_custom_nome, created_at',
     )
     .in('post_id', postIds)
     .order('created_at', { ascending: true });
