@@ -17,7 +17,8 @@ export type NotificationType =
   | 'member_role_changed'
   | 'member_removed'
   | 'client_message'
-  | 'mention';
+  | 'mention'
+  | 'post_status_automation';
 
 export interface Notification {
   id: string;
