@@ -54,14 +54,16 @@ create trigger post_status_definitions_updated_at
   before update on post_status_definitions
   for each row execute function set_post_status_definitions_updated_at();
 
--- ---------- Detach posts when a definition is archived or deleted ------
--- Archiving/deleting happens on post_status_definitions, so the z1 trigger
--- on workflow_posts never sees it. This trigger detaches pointing posts
--- atomically: each post keeps its canonical status (the UPDATE mentions
--- only custom_status_id, so z1 early-returns on the null pointer) and the
--- audit trigger snapshots the definition's nome while the row still
--- exists (BEFORE DELETE runs before the row disappears, unlike the FK's
--- ON DELETE SET NULL, which would resolve after it).
+-- ---------- Keep posts consistent with definition-side changes ---------
+-- Archiving, deleting or re-mapping a definition happens on
+-- post_status_definitions, so the z1 trigger on workflow_posts never sees
+-- it. Two triggers close that gap:
+--
+-- BEFORE DELETE: detach pointing posts while the row still exists — each
+-- post keeps its canonical status (the UPDATE mentions only
+-- custom_status_id, so z1 early-returns on the null pointer) and the
+-- audit trigger can still snapshot the definition's nome (the FK's
+-- ON DELETE SET NULL would resolve only after the row is gone).
 create or replace function detach_posts_from_status_definition()
 returns trigger
 language plpgsql
@@ -69,20 +71,42 @@ security definer
 set search_path = public
 as $$
 begin
-  if tg_op = 'DELETE' then
-    update workflow_posts set custom_status_id = null where custom_status_id = old.id;
-    return old;
-  end if;
+  update workflow_posts set custom_status_id = null where custom_status_id = old.id;
+  return old;
+end;
+$$;
+
+create trigger post_status_definitions_detach_posts
+  before delete on post_status_definitions
+  for each row execute function detach_posts_from_status_definition();
+
+-- AFTER UPDATE OF arquivado, behaves_as: must run AFTER so that z1's
+-- lookup on the cascaded workflow_posts writes reads the definition's NEW
+-- values (a BEFORE-trigger write would see the old behaves_as and wrongly
+-- drop the pointer).
+--   * arquivado flipped on  -> detach posts (canonical status kept)
+--   * behaves_as re-mapped  -> move pointing posts to the new canonical;
+--     z1 keeps the pointer (status equals behaves_as) and the audit
+--     trigger records the transition per post.
+create or replace function reconcile_posts_on_status_definition_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
   if new.arquivado and not old.arquivado then
     update workflow_posts set custom_status_id = null where custom_status_id = new.id;
+  elsif new.behaves_as is distinct from old.behaves_as and not new.arquivado then
+    update workflow_posts set status = new.behaves_as where custom_status_id = new.id;
   end if;
   return new;
 end;
 $$;
 
-create trigger post_status_definitions_detach_posts
-  before delete or update of arquivado on post_status_definitions
-  for each row execute function detach_posts_from_status_definition();
+create trigger post_status_definitions_reconcile_posts
+  after update of arquivado, behaves_as on post_status_definitions
+  for each row execute function reconcile_posts_on_status_definition_update();
 
 -- ---------- Plan gate --------------------------------------------------
 -- Custom statuses ship under the same plan feature as custom properties.

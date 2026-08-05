@@ -129,6 +129,20 @@ begin
   assert v_status = 'revisao_interna' and v_custom = v_copy,
     'INSERT with custom status must be normalized';
 
+  -- 11. Re-mapping behaves_as moves pointing posts to the new canonical,
+  --     keeping the pointer (and audits the transition)
+  update post_status_definitions set behaves_as = 'aprovado_interno' where id = v_copy;
+  select status, custom_status_id into v_status, v_custom
+    from workflow_posts where id = v_post;
+  assert v_status = 'aprovado_interno',
+    format('behaves_as re-map must move posts to the new canonical, got %s', v_status);
+  assert v_custom = v_copy, 'behaves_as re-map must keep the pointer';
+  select * into v_ev from post_status_events
+    where post_id = v_post order by id desc limit 1;
+  assert v_ev.from_status = 'revisao_interna' and v_ev.to_status = 'aprovado_interno'
+     and v_ev.to_custom_status_id = v_copy,
+    'behaves_as re-map must audit the canonical transition';
+
   raise notice 'PASS 61 custom status reconcile + audit';
 end $$;
 rollback;
