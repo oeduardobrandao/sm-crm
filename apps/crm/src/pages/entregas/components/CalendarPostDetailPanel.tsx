@@ -17,15 +17,9 @@ import { listPostMedia } from '@/services/postMedia';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { sanitizeUrl } from '@/utils/security';
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
-import {
-  TIPO_LABELS,
-  TIPO_COLORS,
-  getPostPublishState,
-  PUBLISH_STATE_LABELS,
-  PUBLISH_STATE_CLASS,
-  TIPO_LEGEND,
-  type DayMarker,
-} from '../postLabels';
+import { TIPO_LABELS, TIPO_COLORS, TIPO_LEGEND, type DayMarker } from '../postLabels';
+import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { PostStatusChip } from './PostStatusChip';
 
 export interface CalendarPostDetailPanelProps {
   post: ClientePost;
@@ -72,7 +66,7 @@ export function CalendarPostDetailPanel({
       ? (membros.find((m) => m.id === preview.responsavel_id)?.nome ?? null)
       : null;
 
-  const pubState = getPostPublishState(post);
+  const statusRegistry = useStatusRegistry();
   const scheduled = post.scheduled_at ? parseISO(post.scheduled_at) : null;
   const excerpt = (preview?.conteudo_plain ?? '').trim();
   // Rescheduling follows lock status only; removing a date stays own-workflow, because the
@@ -103,9 +97,7 @@ export function CalendarPostDetailPanel({
       </div>
 
       <div className="calendar-detail-body">
-        <span className={`post-status-chip ${PUBLISH_STATE_CLASS[pubState]}`}>
-          {PUBLISH_STATE_LABELS[pubState]}
-        </span>
+        <PostStatusChip post={post} registry={statusRegistry} />
 
         <div className="calendar-detail-meta">
           <div className="calendar-detail-meta-row">

@@ -18,33 +18,9 @@ import { computeDeadlineDate } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
 import PostCommentSummary from './PostCommentSummary';
-import { TIPO_LABELS } from '../postLabels';
+import { TIPO_LABELS, STATUS_LABELS, STATUS_CLASS } from '../postLabels';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-const STATUS_LABELS: Record<WorkflowPost['status'], string> = {
-  rascunho: 'Rascunho',
-  revisao_interna: 'Em revisão',
-  aprovado_interno: 'Aprovado internamente',
-  enviado_cliente: 'Enviado ao cliente',
-  aprovado_cliente: 'Aprovado pelo cliente',
-  correcao_cliente: 'Correção solicitada',
-  agendado: 'Agendado',
-  postado: 'Postado',
-  falha_publicacao: 'Falha na publicação',
-};
-
-const STATUS_CLASS: Record<WorkflowPost['status'], string> = {
-  rascunho: 'post-status--rascunho',
-  revisao_interna: 'post-status--revisao',
-  aprovado_interno: 'post-status--aprovado-interno',
-  enviado_cliente: 'post-status--enviado',
-  aprovado_cliente: 'post-status--aprovado-cliente',
-  correcao_cliente: 'post-status--correcao',
-  agendado: 'post-status--agendado',
-  postado: 'post-status--postado',
-  falha_publicacao: 'status-danger',
-};
 
 function formatDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
