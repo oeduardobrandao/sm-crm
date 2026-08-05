@@ -82,6 +82,7 @@ describe('ConfiguracaoLayout', () => {
       'Workspace',
       'Membros',
       'Relatórios',
+      'Status de posts',
       'Hub',
       'Claude (MCP)',
       'Plano & Cobrança',

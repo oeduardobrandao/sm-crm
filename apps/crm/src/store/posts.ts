@@ -61,6 +61,7 @@ export interface ClientePost {
   titulo: string;
   tipo: WorkflowPost['tipo'];
   status: WorkflowPost['status'];
+  custom_status_id: string | null;
   scheduled_at: string | null;
   ordem: number;
   workflow_titulo: string;
@@ -70,7 +71,7 @@ export async function getClientePosts(clienteId: number): Promise<ClientePost[]>
   const { data, error } = await supabase
     .from('workflow_posts')
     .select(
-      'id, workflow_id, titulo, tipo, status, scheduled_at, ordem, workflows!inner(titulo, status)',
+      'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, workflows!inner(titulo, status)',
     )
     .eq('workflows.cliente_id', clienteId)
     .eq('workflows.status', 'ativo')
@@ -82,6 +83,7 @@ export async function getClientePosts(clienteId: number): Promise<ClientePost[]>
     titulo: row.titulo,
     tipo: row.tipo,
     status: row.status,
+    custom_status_id: row.custom_status_id ?? null,
     scheduled_at: row.scheduled_at,
     ordem: row.ordem,
     workflow_titulo: row.workflows.titulo,

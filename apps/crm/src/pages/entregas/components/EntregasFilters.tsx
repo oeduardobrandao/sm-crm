@@ -18,13 +18,9 @@ import {
 import { Check, ChevronDown, Search, SlidersHorizontal } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { Cliente, Membro, WorkflowPost, WorkflowTemplate } from '../../../store';
-import {
-  TIPO_ORDER,
-  TIPO_LABELS,
-  TIPO_COLORS,
-  POST_STATUS_ORDER,
-  STATUS_LABELS,
-} from '../postLabels';
+import { TIPO_ORDER, TIPO_LABELS, TIPO_COLORS } from '../postLabels';
+import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import type { StatusKey } from '../statusRegistry';
 import { PRAZO_PRESET_LABELS, PRAZO_PRESET_ORDER, type PrazoPreset } from '../etapaPrazo';
 
 export type StatusFilter = 'atrasado' | 'urgente' | 'em_dia';
@@ -39,7 +35,7 @@ export interface FilterState {
   filterEtapas: string[];
   filterTemplates: number[];
   filterTipos: WorkflowPost['tipo'][];
-  filterPostStatus: WorkflowPost['status'][];
+  filterPostStatus: StatusKey[];
   filterPrazo: PrazoPreset[];
   /** Custom etapa-deadline range, 'YYYY-MM-DD' or '' for an open end. */
   filterPrazoFrom: string;
@@ -358,6 +354,7 @@ function FilterControls({
 }) {
   const isStacked = layout === 'stacked';
   const isPosts = mode === 'posts';
+  const statusRegistry = useStatusRegistry();
   const membroOptions = sortedMembros
     .filter((m) => m.id != null)
     .map((m) => ({ value: m.id!, label: m.nome }));
@@ -430,9 +427,10 @@ function FilterControls({
             />
             <MultiSelectFilter
               placeholder="Status do post"
-              options={POST_STATUS_ORDER.map((status) => ({
-                value: status,
-                label: STATUS_LABELS[status],
+              options={statusRegistry.options.map((o) => ({
+                value: o.key,
+                label: o.kind === 'custom' ? `· ${o.label}` : o.label,
+                color: o.color,
               }))}
               selected={filters.filterPostStatus}
               onSelectedChange={(filterPostStatus) => onChange({ ...filters, filterPostStatus })}

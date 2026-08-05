@@ -27,6 +27,7 @@ import { VistasTabs } from './components/VistasTabs';
 import { useActivePosts } from './hooks/useActivePosts';
 import { matchesEtapaPrazo } from './etapaPrazo';
 import { parseEntregasQuery, serializeEntregasQuery, type ActiveView } from './viewQuery';
+import { postMatchesStatusFilter } from './statusRegistry';
 import { duplicateWorkflow } from '../../store';
 import { captureEvent } from '@/lib/analytics';
 
@@ -266,7 +267,7 @@ export default function EntregasPage() {
       });
     if (filters.filterTipos.length) ps = ps.filter((p) => filters.filterTipos.includes(p.tipo));
     if (filters.filterPostStatus.length)
-      ps = ps.filter((p) => filters.filterPostStatus.includes(p.status));
+      ps = ps.filter((p) => postMatchesStatusFilter(p, filters.filterPostStatus));
     ps = ps.filter((p) =>
       matchesEtapaPrazo(
         cardsByWorkflowId.get(p.workflow_id),

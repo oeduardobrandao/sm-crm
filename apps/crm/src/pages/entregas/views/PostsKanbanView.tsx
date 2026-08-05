@@ -1,19 +1,15 @@
 import { useMemo } from 'react';
-import type { ActivePost, WorkflowPost } from '@/store';
+import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { formatPostDate } from '@/utils/postDate';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { formatEtapaPrazo } from '../etapaPrazo';
-import {
-  POST_STATUS_ORDER,
-  STATUS_LABELS,
-  TIPO_LABELS,
-  getPostPublishState,
-  PUBLISH_STATE_LABELS,
-  PUBLISH_STATE_CLASS,
-} from '../postLabels';
+import { TIPO_LABELS } from '../postLabels';
+import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import type { StatusKey } from '../statusRegistry';
+import { PostStatusChip } from '../components/PostStatusChip';
 
 interface PostsKanbanViewProps {
   posts: ActivePost[];
@@ -47,14 +43,15 @@ export function PostsKanbanView({
   onPostClick,
   cardsByWorkflowId,
 }: PostsKanbanViewProps) {
+  const registry = useStatusRegistry();
   const byStatus = useMemo(() => {
-    const map = new Map<WorkflowPost['status'], ActivePost[]>(
-      POST_STATUS_ORDER.map((s) => [s, []]),
-    );
+    const map = new Map<StatusKey, ActivePost[]>(registry.options.map((o) => [o.key, []]));
     // Input arrives ordered scheduled_at asc nulls-last from the query.
-    for (const p of posts) map.get(p.status)?.push(p);
+    // resolve() falls back to the canonical column while defs load, so posts
+    // never vanish from the board.
+    for (const p of posts) map.get(registry.resolve(p).key)?.push(p);
     return map;
-  }, [posts]);
+  }, [posts, registry]);
 
   if (isLoading) {
     return (
@@ -80,12 +77,28 @@ export function PostsKanbanView({
   return (
     <div className="board-rows-wrapper animate-up">
       <div className="board-container">
-        {POST_STATUS_ORDER.map((status) => {
-          const columnPosts = byStatus.get(status) ?? [];
+        {registry.options.map((option) => {
+          const columnPosts = byStatus.get(option.key) ?? [];
           return (
-            <div key={status} className="board-column">
+            <div key={option.key} className="board-column">
               <div className="board-column-header">
-                <span className="board-column-title">{STATUS_LABELS[status]}</span>
+                <span className="board-column-title">
+                  {option.kind === 'custom' && (
+                    <span
+                      aria-hidden
+                      style={{
+                        display: 'inline-block',
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        background: option.color,
+                        marginRight: 6,
+                        verticalAlign: 'middle',
+                      }}
+                    />
+                  )}
+                  {option.label}
+                </span>
                 <span className="board-column-count">{columnPosts.length}</span>
               </div>
               <div className="board-column-body">
@@ -94,7 +107,6 @@ export function PostsKanbanView({
                 ) : (
                   columnPosts.map((p) => {
                     const openable = openableWorkflowIds.has(p.workflow_id);
-                    const pubState = getPostPublishState(p);
                     const card = cardsByWorkflowId.get(p.workflow_id);
                     const membro = card?.membro;
                     const prazo = card ? formatEtapaPrazo(card.deadline) : null;
@@ -107,9 +119,7 @@ export function PostsKanbanView({
                       >
                         <div className="item-top">
                           <span className="post-tipo-badge">{TIPO_LABELS[p.tipo]}</span>
-                          <span className={`post-status-chip ${PUBLISH_STATE_CLASS[pubState]}`}>
-                            {PUBLISH_STATE_LABELS[pubState]}
-                          </span>
+                          <PostStatusChip post={p} registry={registry} />
                         </div>
                         <div className="item-title">{p.titulo || 'Post sem título'}</div>
                         {card && <div className="board-post-etapa">{card.etapa.nome}</div>}
