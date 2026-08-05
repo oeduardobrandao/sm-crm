@@ -754,6 +754,24 @@ body {
   }
 }
 
+/* ===== Etapa row add feedback (Novo Fluxo wizard, TemplatesModal) ===== */
+@keyframes etapa-row-flash {
+  0% {
+    box-shadow: 0 0 0 2px #eab308;
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+.etapa-row-flash {
+  animation: etapa-row-flash 1.1s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .etapa-row-flash {
+    animation: none;
+  }
+}
+
 /* ===== Global Banners ===== */
 .banner-container {
   position: fixed;

@@ -1,4 +1,5 @@
-import { Plus, Trash2, GripVertical } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Plus, Trash2, GripVertical, UserCheck } from 'lucide-react';
 import {
   DndContext,
   PointerSensor,
@@ -18,7 +19,6 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -58,6 +58,23 @@ export function defaultEtapa(overrides?: Partial<EtapaFormData>): EtapaFormData 
   };
 }
 
+export interface EtapaHighlight {
+  id: string;
+  token: number;
+}
+
+// Tokens are globally unique so highlight requests coming from different owners (the wizard's
+// chips/Personalizada vs the list's own "Adicionar Etapa") stay ordered against each other.
+let _highlightTokenCounter = 0;
+export function nextHighlightToken(): number {
+  return ++_highlightTokenCounter;
+}
+
+/** The row a repeated "add custom etapa" click should re-focus instead of appending another. */
+export function findEmptyEtapa(etapas: EtapaFormData[]): EtapaFormData | undefined {
+  return etapas.find((e) => !e.suggestionId && e.nome.trim() === '');
+}
+
 // ---- SortableEtapaRow component ----
 function SortableEtapaRow(props: {
   id: string;
@@ -71,11 +88,14 @@ function SortableEtapaRow(props: {
   modoPrazo: ModoPrazo;
   membros: Membro[];
   error?: string;
+  highlighted: boolean;
+  highlightToken: number;
   onChange: (field: string, val: unknown) => void;
   onRemove: () => void;
 }) {
   const {
     id,
+    index,
     nome,
     prazo,
     tipoPrazo,
@@ -85,76 +105,103 @@ function SortableEtapaRow(props: {
     modoPrazo,
     membros,
     error,
+    highlighted,
+    highlightToken,
     onChange,
     onRemove,
   } = props;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
   });
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const nomeInputRef = useRef<HTMLInputElement | null>(null);
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
 
+  useEffect(() => {
+    if (!highlighted) return;
+    const el = rowRef.current;
+    if (!el) return;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'nearest' });
+    // Remove + reflow + re-add so a second highlight of the same row restarts the flash.
+    el.classList.remove('etapa-row-flash');
+    void el.offsetWidth;
+    el.classList.add('etapa-row-flash');
+    if (nomeInputRef.current && nomeInputRef.current.value.trim() === '') {
+      nomeInputRef.current.focus({ preventScroll: true });
+    }
+  }, [highlighted, highlightToken]);
+
+  const approval = tipo === 'aprovacao_cliente';
+
   return (
     <div
-      ref={setNodeRef}
+      ref={(el) => {
+        setNodeRef(el);
+        rowRef.current = el;
+      }}
+      className="flex flex-wrap items-center gap-1.5"
       style={{
         ...style,
-        display: 'flex',
-        flexDirection: 'column' as const,
-        gap: '0.5rem',
-        marginBottom: '0.75rem',
-        padding: '0.75rem',
-        border:
-          tipo === 'aprovacao_cliente' ? '1px solid #bfdbfe' : '1px solid var(--border-color)',
-        background: tipo === 'aprovacao_cliente' ? 'rgba(59,130,246,0.06)' : undefined,
+        marginBottom: '0.4rem',
+        padding: '0.4rem 0.6rem',
+        border: approval ? '1px solid #bfdbfe' : '1px solid var(--border-color)',
+        background: approval ? 'rgba(59,130,246,0.06)' : undefined,
         borderRadius: '8px',
       }}
       {...attributes}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <div {...listeners} style={{ cursor: 'grab', color: 'var(--text-muted)', flexShrink: 0 }}>
+      <div className="flex min-w-0 flex-1 basis-52 items-center gap-1.5">
+        <span
+          className="w-5 shrink-0 text-right text-xs tabular-nums"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          {index + 1}.
+        </span>
+        <div
+          {...listeners}
+          className="shrink-0"
+          style={{ cursor: 'grab', color: 'var(--text-muted)' }}
+        >
           <GripVertical className="h-4 w-4" />
         </div>
         <Input
+          ref={nomeInputRef}
           placeholder="Nome da etapa"
           value={nome}
           onChange={(e) => onChange('nome', e.target.value)}
-          style={{ flex: 1 }}
+          className="h-8 min-w-0 flex-1 text-sm"
         />
-        <Button
-          size="icon"
-          variant="ghost"
-          className="text-destructive"
-          onClick={onRemove}
-          style={{ flexShrink: 0 }}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
       </div>
-      {modoPrazo === 'data_fixa' ? (
-        <div className="space-y-1">
-          <Label style={{ fontSize: '0.75rem' }}>Data limite</Label>
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        {modoPrazo === 'data_fixa' ? (
           <Input
             type="date"
+            aria-label="Data limite"
             value={dataLimite}
             onChange={(e) => onChange('dataLimite', e.target.value)}
+            className="h-8 w-36 text-sm"
           />
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-          <Input
-            type="number"
-            min={1}
-            value={prazo}
-            onChange={(e) => onChange('prazo', Number(e.target.value))}
-            placeholder="Prazo (dias)"
-          />
-          <div className="flex items-center gap-1">
+        ) : (
+          <>
+            <Input
+              type="number"
+              min={1}
+              aria-label="Prazo em dias"
+              value={prazo}
+              onChange={(e) => onChange('prazo', Number(e.target.value))}
+              className="h-8 w-14 text-center text-sm"
+            />
             <Select value={tipoPrazo} onValueChange={(val) => onChange('tipoPrazo', val)}>
-              <SelectTrigger>
+              <SelectTrigger
+                aria-label="Tipo de prazo"
+                title="Dias corridos ou úteis"
+                className="h-8 w-24 text-xs"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -162,74 +209,86 @@ function SortableEtapaRow(props: {
                 <SelectItem value="uteis">Úteis</SelectItem>
               </SelectContent>
             </Select>
-            <HelpTooltip content="Corridos = todos os dias do calendário, incluindo fins de semana. Úteis = apenas dias úteis (exceto sábados e domingos)." />
-          </div>
+          </>
+        )}
+        {membros.length > 0 && (
+          <Select
+            value={responsavelId != null ? String(responsavelId) : '__none__'}
+            onValueChange={(val) =>
+              onChange('responsavelId', val === '__none__' ? null : Number(val))
+            }
+          >
+            <SelectTrigger aria-label="Responsável" className="h-8 w-40 text-xs">
+              <SelectValue placeholder="Sem responsável" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Sem responsável</SelectItem>
+              {[...membros]
+                .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+                .map((m) => (
+                  <SelectItem key={m.id} value={String(m.id)}>
+                    {m.nome}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        )}
+        <button
+          type="button"
+          aria-pressed={approval}
+          aria-label="Aprovação externa"
+          title={
+            approval
+              ? 'Aprovação externa ativa: o cliente aprova esta etapa no Hub'
+              : 'Marcar como aprovação externa: o cliente aprova esta etapa no Hub'
+          }
+          onClick={() => onChange('tipo', approval ? 'padrao' : 'aprovacao_cliente')}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md"
+          style={{
+            cursor: 'pointer',
+            border: approval ? '1px solid #1d4ed8' : '1px solid var(--border-color)',
+            background: approval ? '#1d4ed8' : 'transparent',
+            color: approval ? '#fff' : 'var(--text-muted)',
+          }}
+        >
+          <UserCheck className="h-4 w-4" />
+        </button>
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label="Remover etapa"
+          className="h-8 w-8 shrink-0 text-destructive"
+          onClick={onRemove}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+      {membros.length === 0 && (
+        <div className="w-full">
+          <EmptyStateGuide
+            icon="👤"
+            title="Nenhum membro cadastrado"
+            description="Para atribuir responsáveis às etapas, adicione membros na página"
+            actionLabel="Equipe"
+            actionHref="/equipe"
+            hint="💡 Membros são pessoas da equipe (designers, redatores, etc). Para dar acesso ao CRM, vincule o membro a um usuário do workspace."
+          />
         </div>
       )}
-      {membros.length === 0 ? (
-        <EmptyStateGuide
-          icon="👤"
-          title="Nenhum membro cadastrado"
-          description="Para atribuir responsáveis às etapas, adicione membros na página"
-          actionLabel="Equipe"
-          actionHref="/equipe"
-          hint="💡 Membros são pessoas da equipe (designers, redatores, etc). Para dar acesso ao CRM, vincule o membro a um usuário do workspace."
-        />
-      ) : (
-        <Select
-          value={responsavelId != null ? String(responsavelId) : '__none__'}
-          onValueChange={(val) =>
-            onChange('responsavelId', val === '__none__' ? null : Number(val))
-          }
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Sem responsável" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Sem responsável</SelectItem>
-            {[...membros]
-              .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
-              .map((m) => (
-                <SelectItem key={m.id} value={String(m.id)}>
-                  {m.nome}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
-      )}
       {error && (
-        <p role="alert" style={{ fontSize: '0.72rem', color: 'var(--danger)', margin: 0 }}>
+        <p
+          role="alert"
+          className="w-full"
+          style={{ fontSize: '0.72rem', color: 'var(--danger-text)', margin: 0 }}
+        >
           {error}
         </p>
       )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-        <button
-          type="button"
-          aria-pressed={tipo === 'aprovacao_cliente'}
-          onClick={() =>
-            onChange('tipo', tipo === 'aprovacao_cliente' ? 'padrao' : 'aprovacao_cliente')
-          }
-          style={{
-            alignSelf: 'flex-start',
-            fontSize: '0.72rem',
-            fontWeight: tipo === 'aprovacao_cliente' ? 600 : 400,
-            borderRadius: 999,
-            padding: '2px 10px',
-            cursor: 'pointer',
-            border:
-              tipo === 'aprovacao_cliente' ? '1px solid #1d4ed8' : '1px solid var(--border-color)',
-            background: tipo === 'aprovacao_cliente' ? '#1d4ed8' : 'transparent',
-            color: tipo === 'aprovacao_cliente' ? '#fff' : 'var(--text-muted)',
-          }}
-        >
-          {tipo === 'aprovacao_cliente' ? '✓ Aprovação externa' : 'Aprovação externa'}
-        </button>
-        {tipo === 'aprovacao_cliente' && (
-          <p style={{ fontSize: '0.7rem', color: '#1d4ed8', margin: 0 }}>
-            Etapa especial: envia os posts para aprovação no portal do cliente (Hub).
-          </p>
-        )}
-      </div>
+      {approval && (
+        <p className="w-full" style={{ fontSize: '0.7rem', color: '#1d4ed8', margin: 0 }}>
+          Etapa especial: envia os posts para aprovação no portal do cliente (Hub).
+        </p>
+      )}
     </div>
   );
 }
@@ -241,13 +300,25 @@ export function SortableEtapaList({
   modoPrazo,
   membros,
   rowErrors,
+  highlight,
 }: {
   etapas: EtapaFormData[];
   setEtapas: (e: EtapaFormData[]) => void;
   modoPrazo: ModoPrazo;
   membros: Membro[];
   rowErrors?: Map<string, string>;
+  highlight?: EtapaHighlight | null;
 }) {
+  // The parent (wizard chips/Personalizada) and the list's own "Adicionar Etapa" button both
+  // request highlights; the freshest token wins.
+  const [internalHighlight, setInternalHighlight] = useState<EtapaHighlight | null>(null);
+  const effectiveHighlight =
+    highlight && internalHighlight
+      ? highlight.token > internalHighlight.token
+        ? highlight
+        : internalHighlight
+      : (highlight ?? internalHighlight);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -261,6 +332,17 @@ export function SortableEtapaList({
     }
   };
 
+  const handleAdd = () => {
+    const empty = findEmptyEtapa(etapas);
+    if (empty) {
+      setInternalHighlight({ id: empty._id, token: nextHighlightToken() });
+      return;
+    }
+    const nova = defaultEtapa();
+    setEtapas([...etapas, nova]);
+    setInternalHighlight({ id: nova._id, token: nextHighlightToken() });
+  };
+
   return (
     <div
       style={{
@@ -269,7 +351,12 @@ export function SortableEtapaList({
         marginTop: '0.5rem',
       }}
     >
-      <h4 style={{ marginBottom: '0.75rem' }}>Etapas</h4>
+      <div className="mb-2 flex items-center gap-1.5">
+        <h4 style={{ margin: 0 }}>{etapas.length > 0 ? `Etapas · ${etapas.length}` : 'Etapas'}</h4>
+        {modoPrazo !== 'data_fixa' && (
+          <HelpTooltip content="Corridos = todos os dias do calendário, incluindo fins de semana. Úteis = apenas dias úteis (exceto sábados e domingos)." />
+        )}
+      </div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={etapas.map((e) => e._id)} strategy={verticalListSortingStrategy}>
           {etapas.map((e, i) => (
@@ -286,6 +373,8 @@ export function SortableEtapaList({
               modoPrazo={modoPrazo}
               membros={membros}
               error={rowErrors?.get(e._id)}
+              highlighted={effectiveHighlight?.id === e._id}
+              highlightToken={effectiveHighlight?.token ?? 0}
               onChange={(field, val) => {
                 const next = [...etapas];
                 (next[i] as unknown as Record<string, unknown>)[field] = val;
@@ -296,7 +385,7 @@ export function SortableEtapaList({
           ))}
         </SortableContext>
       </DndContext>
-      <Button size="sm" variant="outline" onClick={() => setEtapas([...etapas, defaultEtapa()])}>
+      <Button size="sm" variant="outline" onClick={handleAdd}>
         <Plus className="h-3 w-3" /> Adicionar Etapa
       </Button>
     </div>

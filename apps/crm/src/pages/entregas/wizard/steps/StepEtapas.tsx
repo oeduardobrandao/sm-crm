@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -8,7 +9,13 @@ import {
 } from '@/components/ui/select';
 import { PrerequisiteAlert } from '@/components/help/PrerequisiteAlert';
 import type { Membro } from '../../../../store';
-import { SortableEtapaList, defaultEtapa } from '../../components/SortableEtapaList';
+import {
+  SortableEtapaList,
+  defaultEtapa,
+  findEmptyEtapa,
+  nextHighlightToken,
+  type EtapaHighlight,
+} from '../../components/SortableEtapaList';
 import { SUGGESTED_ETAPAS } from '../wizardLogic';
 import type { WizardState } from '../NewWorkflowWizard';
 
@@ -30,6 +37,10 @@ export function StepEtapas({
   rowErrors?: Map<string, string>;
   globalError?: string | null;
 }) {
+  // Scroll-and-flash target inside SortableEtapaList — new rows land at the bottom of a list
+  // that is usually scrolled out of view, so every add must announce itself.
+  const [highlight, setHighlight] = useState<EtapaHighlight | null>(null);
+
   const active = new Set(state.etapas.map((e) => e.suggestionId).filter(Boolean));
   // Client approval is a per-row property (also toggled by each row's "Aprovação externa" pill) and
   // a fluxo may hold several approval etapas under any name, so the single approval chip reflects
@@ -49,19 +60,29 @@ export function StepEtapas({
         patch({ etapas: state.etapas.filter((e) => e.suggestionId !== sug.suggestionId) });
       }
     } else {
-      patch({
-        etapas: [
-          ...state.etapas,
-          defaultEtapa({
-            nome: sug.nome,
-            prazo: sug.prazo,
-            tipoPrazo: sug.tipoPrazo,
-            tipo: sug.tipo,
-            suggestionId: sug.suggestionId,
-          }),
-        ],
+      const nova = defaultEtapa({
+        nome: sug.nome,
+        prazo: sug.prazo,
+        tipoPrazo: sug.tipoPrazo,
+        tipo: sug.tipo,
+        suggestionId: sug.suggestionId,
       });
+      patch({ etapas: [...state.etapas, nova] });
+      setHighlight({ id: nova._id, token: nextHighlightToken() });
     }
+  };
+
+  const addCustom = () => {
+    // A second click while an unnamed custom row exists re-focuses that row instead of stacking
+    // another empty one — the repeated click means "where did it go?", not "one more".
+    const empty = findEmptyEtapa(state.etapas);
+    if (empty) {
+      setHighlight({ id: empty._id, token: nextHighlightToken() });
+      return;
+    }
+    const nova = defaultEtapa();
+    patch({ etapas: [...state.etapas, nova] });
+    setHighlight({ id: nova._id, token: nextHighlightToken() });
   };
 
   const bulkAssign = (id: number | null) =>
@@ -112,7 +133,7 @@ export function StepEtapas({
 
       <button
         type="button"
-        onClick={() => patch({ etapas: [...state.etapas, defaultEtapa()] })}
+        onClick={addCustom}
         style={{
           alignSelf: 'flex-start',
           fontSize: '0.75rem',
@@ -166,6 +187,7 @@ export function StepEtapas({
         modoPrazo={state.modoPrazo}
         membros={membros}
         rowErrors={rowErrors}
+        highlight={highlight}
       />
 
       {globalError && (
