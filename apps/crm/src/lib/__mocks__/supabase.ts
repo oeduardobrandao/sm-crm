@@ -11,6 +11,17 @@ let currentProfile: Record<string, unknown> | null = {
   active_workspace_id: 'conta-1',
 };
 let profileResponses: Array<Promise<Record<string, unknown> | null>> = [];
+// Queued responses for supabase.functions.invoke(). Defaults to `{ data: null,
+// error: null }` when nothing is queued -- the same shape a real timeout or a
+// genuine function error resolves to, which is exactly what the Crisp
+// identify effect's fallback-to-unsigned-push path needs to exercise by
+// default without every other test having to opt in. A queued entry may also
+// be a caller-held Promise (not yet resolved) instead of a plain object, so a
+// test can control exactly when the invoke call settles -- needed to
+// reproduce the sign-out-races-an-in-flight-signing-request window.
+let functionsInvokeResponses: Array<
+  { data: unknown; error?: unknown } | Promise<{ data: unknown; error?: unknown }>
+> = [];
 let currentSession = {
   access_token: 'token-de-teste',
   user: currentUser,
@@ -75,6 +86,13 @@ export const supabase = {
     removedChannelCalls.push(ch);
     return Promise.resolve('ok');
   },
+  functions: {
+    async invoke(_name: string, _options?: Record<string, unknown>) {
+      const queued = functionsInvokeResponses.shift();
+      if (queued) return queued;
+      return { data: null, error: null };
+    },
+  },
   auth: {
     async getSession() {
       return { data: { session: currentSession }, error: null };
@@ -128,6 +146,7 @@ export async function signOut() {
 export function __resetSupabaseMock() {
   queryMock.reset();
   profileResponses = [];
+  functionsInvokeResponses = [];
   workspaceMemberUpdateCallback = null;
   workspaceMemberUpdateFilter = null;
   removedChannelCalls.length = 0;
@@ -175,6 +194,12 @@ export function __setCurrentProfile(profile: Record<string, unknown> | null) {
 
 export function __queueCurrentProfileResponse(response: Promise<Record<string, unknown> | null>) {
   profileResponses.push(response);
+}
+
+export function __queueFunctionsInvokeResponse(
+  response: { data: unknown; error?: unknown } | Promise<{ data: unknown; error?: unknown }>,
+) {
+  functionsInvokeResponses.push(response);
 }
 
 export function __setCurrentSession(

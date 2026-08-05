@@ -52,6 +52,9 @@ type MockedSupabaseModule = typeof supabaseModule & {
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
   __queueCurrentProfileResponse: (response: Promise<Record<string, unknown> | null>) => void;
+  __queueFunctionsInvokeResponse: (
+    response: { data: unknown; error?: unknown } | Promise<{ data: unknown; error?: unknown }>,
+  ) => void;
   __setCurrentUser: (user: { id: string; email?: string } | null) => void;
   __emitAuthChange: (
     event: string,
@@ -498,6 +501,49 @@ describe('AuthProvider Crisp identification', () => {
     });
   });
 
+  it('pushes the signed (two-element) form when crisp-identity resolves a signature', async () => {
+    // Guards against the signing call being silently dropped from the push:
+    // this test would fail if `signature` stopped being read from
+    // `supabase.functions.invoke('crisp-identity')`'s response, or if the
+    // two-element ['set', 'user:email', [email, signature]] form regressed
+    // to the unsigned one-element form even when a signature IS available.
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo Souza',
+      role: 'owner',
+      conta_id: 'conta-1',
+    });
+    mockedSupabase.__queueFunctionsInvokeResponse({ data: { signature: 'abc' }, error: null });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com', 'abc']]);
+    });
+    // The unsigned form must never be pushed when a signature was obtained.
+    expect(crispPush).not.toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com']]);
+  });
+
+  it('falls back to the unsigned (one-element) form when crisp-identity returns no signature', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo Souza',
+      role: 'owner',
+      conta_id: 'conta-1',
+    });
+    mockedSupabase.__queueFunctionsInvokeResponse({ data: null, error: { message: 'boom' } });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com']]);
+    });
+  });
+
   it('re-pushes user:email with the NEW value after an in-session email change (same userId)', async () => {
     // Regression coverage for the stale-identity finding: a Supabase
     // USER_UPDATED event (e.g. the user changes their email) updates
@@ -558,6 +604,126 @@ describe('AuthProvider Crisp identification', () => {
 
     await waitFor(() => {
       expect(crispPush).toHaveBeenCalledWith(['do', 'session:reset']);
+    });
+  });
+
+  it('never pushes the outgoing user:email after session:reset when sign-out races an in-flight crisp-identity call', async () => {
+    // Regression coverage for the cross-customer attribution race: the
+    // signing round trip added by the timeout fix is NOT synchronous, so a
+    // sign-out's synchronous session:reset can fire while a crisp-identity
+    // call started by the JUST-reset (outgoing) user is still in flight. If
+    // that response is allowed to push user:email afterwards, the next
+    // person on a shared machine gets attributed to the outgoing customer --
+    // exactly what session:reset exists to prevent. `crispResetGeneration` is
+    // what closes this window (see the comment above the effect in
+    // AuthContext.tsx): it is bumped synchronously at the top of signOut(),
+    // before any await, so it has already moved by the time this held invoke
+    // promise is resolved below -- even though the effect's own `active`
+    // closure variable has not necessarily been torn down yet (that only
+    // happens once React re-renders with the new, signed-out userId).
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo Souza',
+      role: 'owner',
+      conta_id: 'conta-1',
+    });
+
+    let resolveInvoke!: (value: { data: unknown; error?: unknown }) => void;
+    mockedSupabase.__queueFunctionsInvokeResponse(
+      new Promise((resolve) => {
+        resolveInvoke = resolve;
+      }),
+    );
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role')).toHaveTextContent('owner');
+    });
+    // The Crisp email effect has started and is now awaiting the held
+    // invoke promise above -- it has not resolved yet.
+
+    // Trigger sign-out with the SYNC act() overload, not the async one: it
+    // runs only the synchronous portion of the click handler (which starts
+    // `signOut()`, bumping `authGeneration.current` as its very first
+    // statement, before any await) without draining the microtask queue any
+    // further. This is what puts us inside the race window instead of
+    // letting the whole sign-out settle first.
+    act(() => {
+      screen.getByText('sair').click();
+    });
+
+    // Now let the in-flight crisp-identity call for the OUTGOING user
+    // resolve, with a signature -- the worst case (a validly signed push for
+    // the wrong identity).
+    await act(async () => {
+      resolveInvoke({ data: { signature: 'abc' }, error: null });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role')).toHaveTextContent('agent');
+    });
+    expect(crispPush).toHaveBeenCalledWith(['do', 'session:reset']);
+
+    const emailPushesAfterReset = crispPush.mock.calls.filter(
+      (call) => call[0]?.[0] === 'set' && call[0]?.[1] === 'user:email',
+    );
+    expect(emailPushesAfterReset).toHaveLength(0);
+  });
+
+  it('still identifies when an unrelated auth event (TOKEN_REFRESHED) lands mid-invoke', async () => {
+    // The narrowing half of the guard above, and the reason it counts
+    // session:reset pushes rather than auth events. `authGeneration` moves on
+    // EVERY onAuthStateChange event -- INITIAL_SESSION, TOKEN_REFRESHED,
+    // USER_UPDATED, SIGNED_IN -- none of which reset the Crisp session. A
+    // token refresh inside the crisp-identity invoke window is routine at app
+    // start (the invoke can take seconds against a cold edge function), and
+    // comparing against authGeneration made it reject the push. The effect's
+    // deps are [userId, user?.email], neither of which a refresh changes, so
+    // it never re-ran: the user stayed UNIDENTIFIED in Crisp for the entire
+    // mount -- strictly worse than the unsigned fallback. This test fails
+    // against the old authGeneration guard and passes against
+    // crispResetGeneration.
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo Souza',
+      role: 'owner',
+      conta_id: 'conta-1',
+    });
+
+    let resolveInvoke!: (value: { data: unknown; error?: unknown }) => void;
+    mockedSupabase.__queueFunctionsInvokeResponse(
+      new Promise((resolve) => {
+        resolveInvoke = resolve;
+      }),
+    );
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role')).toHaveTextContent('owner');
+    });
+    // The identify effect is now parked on the held invoke promise.
+
+    // An auth event that does NOT change identity: same user id, same email.
+    // No session:reset is pushed for it, so nothing may suppress the push.
+    await act(async () => {
+      mockedSupabase.__emitAuthChange('TOKEN_REFRESHED', {
+        user: { id: 'user-1', email: 'eduardo@example.com' },
+      });
+    });
+    expect(crispPush).not.toHaveBeenCalledWith(['do', 'session:reset']);
+
+    await act(async () => {
+      resolveInvoke({ data: { signature: 'abc' }, error: null });
+    });
+
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com', 'abc']]);
     });
   });
 });

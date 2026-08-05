@@ -44,6 +44,7 @@
     "npm:@tiptap/extension-youtube@^3.22.0": "3.29.2_@tiptap+core@3.29.2__@tiptap+pm@3.29.2_@tiptap+pm@3.29.2",
     "npm:@tiptap/react@^3.22.0": "3.22.4_@tiptap+core@3.22.4__@tiptap+pm@3.22.4_@tiptap+pm@3.22.4_@types+react@19.2.14_@types+react-dom@19.2.3__@types+react@19.2.14_react@19.2.5_react-dom@19.2.5__react@19.2.5_@floating-ui+dom@1.7.6",
     "npm:@tiptap/starter-kit@^3.22.0": "3.22.4",
+    "npm:@tiptap/suggestion@3.22.4": "3.22.4_@tiptap+core@3.22.4__@tiptap+pm@3.22.4_@tiptap+pm@3.22.4",
     "npm:@types/color@^4.2.1": "4.2.1",
     "npm:@types/diff-match-patch@^1.0.36": "1.0.36",
     "npm:@types/node@^25.5.0": "25.6.0",
@@ -3395,10 +3396,12 @@
         "prosemirror-gapcursor",
         "prosemirror-history",
         "prosemirror-keymap",
+        "prosemirror-model",
         "prosemirror-schema-list",
         "prosemirror-state",
         "prosemirror-tables",
-        "prosemirror-transform"
+        "prosemirror-transform",
+        "prosemirror-view"
       ]
     },
     "@tiptap/pm@3.29.2": {
@@ -3464,6 +3467,13 @@
         "@tiptap/extension-underline",
         "@tiptap/extensions",
         "@tiptap/pm@3.29.2"
+      ]
+    },
+    "@tiptap/suggestion@3.22.4_@tiptap+core@3.22.4__@tiptap+pm@3.22.4_@tiptap+pm@3.22.4": {
+      "integrity": "sha512-1buvLZemITTeKmPf2wGFWvvhRFKjdQ+JgMqc67xBraOKeDd8wQi1e2XlhCYAtlVMm5f6j+qlLC/MvwuHI2jHeQ==",
+      "dependencies": [
+        "@tiptap/core@3.22.4_@tiptap+pm@3.22.4",
+        "@tiptap/pm@3.22.4"
       ]
     },
     "@ts-morph/common@0.27.0": {
@@ -7830,6 +7840,7 @@
         "npm:@tiptap/extension-youtube@^3.22.0",
         "npm:@tiptap/react@^3.22.0",
         "npm:@tiptap/starter-kit@^3.22.0",
+        "npm:@tiptap/suggestion@3.22.4",
         "npm:@types/color@^4.2.1",
         "npm:@types/diff-match-patch@^1.0.36",
         "npm:@types/node@^25.5.0",

@@ -1,0 +1,221 @@
+/**
+ * Crisp REST client. Pure I/O: no candidate selection, no ledger writes.
+ *
+ * Every call is bounded by AbortSignal.timeout — the edge runtime kills isolates
+ * on unbounded I/O in ways that bypass catch entirely (documented repo failure
+ * mode), and a hang must surface as a normal retryable throw instead.
+ *
+ * Errors carry the HTTP status and a STATIC route shape. Not the response body
+ * (Crisp echoes the person's email in error reasons) and not the interpolated
+ * path (the people ref IS often an email). Both would land in cron_failures and
+ * in the alert e-mail.
+ */
+
+const BASE = "https://api.crisp.chat/v1";
+
+/**
+ * Which token family the credentials belong to. Crisp routes on this header and
+ * rejects a token presented under the wrong tier, so it is not cosmetic.
+ *
+ * Defaults to `website`: a Website Token (Crisp app -> Settings -> Workspace
+ * Settings -> Advanced Configuration -> API Token) needs no Marketplace review,
+ * carries no scope list to get wrong, and its quota is 10k requests/day against
+ * a plugin token's 5k base. Set CRISP_TIER=plugin only when moving to a
+ * Marketplace plugin token, which buys multi-workspace access, a configurable
+ * quota and least-privilege scopes at the cost of a review round.
+ */
+function tier(): string {
+  return Deno.env.get("CRISP_TIER") ?? "website";
+}
+
+function credentials(): { authorization: string; websiteId: string; tier: string } {
+  const identifier = Deno.env.get("CRISP_IDENTIFIER");
+  const key = Deno.env.get("CRISP_KEY");
+  const websiteId = Deno.env.get("CRISP_WEBSITE_ID");
+  if (!identifier || !key || !websiteId) {
+    throw new Error("Crisp credentials not configured");
+  }
+  return {
+    authorization: `Basic ${btoa(`${identifier}:${key}`)}`,
+    websiteId,
+    tier: tier(),
+  };
+}
+
+/**
+ * The index signatures are deliberate. PUT replaces the WHOLE profile, so the
+ * caller has to spread back every field the GET returned -- avatar, address,
+ * description, employment, geolocation, and anything Crisp adds after this was
+ * written. A closed type would turn preserving them into a compile error, and an
+ * allowlist of fields to keep is unmaintainable against a vendor schema we do
+ * not control.
+ */
+export interface CrispPerson {
+  nickname?: string;
+  phone?: string;
+  [key: string]: unknown;
+}
+
+export interface CrispProfileWrite {
+  email: string;
+  person: CrispPerson;
+  segments: string[];
+  [key: string]: unknown;
+}
+
+export interface CrispProfile {
+  people_id: string;
+  email?: string;
+  person?: CrispPerson;
+  segments?: string[];
+  [key: string]: unknown;
+}
+
+async function call(
+  method: string,
+  path: string,
+  routeShape: string,
+  body: unknown,
+  okStatuses: number[],
+  fetchImpl: typeof fetch,
+): Promise<Response> {
+  const { authorization, websiteId, tier } = credentials();
+
+  const res = await fetchImpl(`${BASE}/website/${websiteId}${path}`, {
+    method,
+    headers: {
+      Authorization: authorization,
+      "X-Crisp-Tier": tier,
+      "Content-Type": "application/json",
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (res.ok || okStatuses.includes(res.status)) return res;
+  throw new Error(`Crisp ${method} ${routeShape} failed: ${res.status}`);
+}
+
+const PROFILE_SHAPE = "/people/profile/:ref";
+const DATA_SHAPE = "/people/data/:ref";
+
+/**
+ * A 2xx whose body is not JSON (an HTML error page from a proxy, a truncated
+ * response) makes res.json() throw a NATIVE SyntaxError, and V8 embeds a
+ * fragment of the offending input in that message. That is the one remaining
+ * path by which a Crisp response body -- which can echo the person's email --
+ * would reach cron_failures and the alert e-mail. Swallow it and rethrow the
+ * same status + static-route-shape message every other error here carries.
+ */
+async function parseJson(
+  res: Response,
+  method: string,
+  routeShape: string,
+): Promise<{ data?: Record<string, unknown> } | null> {
+  try {
+    return await res.json();
+  } catch {
+    throw new Error(`Crisp ${method} ${routeShape} returned an unparseable body: ${res.status}`);
+  }
+}
+
+/** Resolve a profile by Crisp people_id or by email. null when absent. */
+export async function getProfile(
+  ref: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<CrispProfile | null> {
+  const res = await call(
+    "GET",
+    `/people/profile/${encodeURIComponent(ref)}`,
+    PROFILE_SHAPE,
+    undefined,
+    [404],
+    fetchImpl,
+  );
+  if (res.status === 404) return null;
+  const body = await parseJson(res, "GET", PROFILE_SHAPE);
+  return (body?.data ?? null) as CrispProfile | null;
+}
+
+/**
+ * Create a profile. Returns the new people_id, or null when Crisp reports the
+ * profile already exists — which is expected for anyone who has used the chat
+ * widget, and is a signal to re-read, not a failure.
+ */
+export async function createProfile(
+  p: CrispProfileWrite,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string | null> {
+  const res = await call("POST", "/people/profile", "/people/profile", p, [409], fetchImpl);
+  if (res.status === 409) return null;
+  const body = await parseJson(res, "POST", "/people/profile");
+  return ((body?.data as { people_id?: string } | undefined)?.people_id ?? null) as string | null;
+}
+
+/**
+ * Replace the profile. PUT is a full replace, so the caller MUST echo back any
+ * operator-owned field (notepad, company) it read and does not intend to erase.
+ */
+/**
+ * Update a profile. PATCH, not PUT, and this was learned the hard way against
+ * the live API: a PUT echoing back the GET response 400s, because Crisp's read
+ * shape carries fields its write shape rejects.
+ *
+ * PATCH is a partial update, which gets preservation for free — anything we do
+ * not send (notepad, company, avatar, address, and any field Crisp adds later)
+ * is simply left alone, with no need to enumerate it. So the caller sends ONLY
+ * the fields this sync owns.
+ *
+ * `segments` is sent as the complete computed set rather than a delta: field-level
+ * PATCH replaces a scalar array, so the caller must merge the existing
+ * operator-added segments in before calling. See mergeSegments in the handler.
+ */
+export async function saveProfile(
+  peopleId: string,
+  p: CrispProfileWrite,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  await call(
+    "PATCH",
+    `/people/profile/${encodeURIComponent(peopleId)}`,
+    PROFILE_SHAPE,
+    p,
+    [],
+    fetchImpl,
+  );
+}
+
+/**
+ * Merge custom data keys. PATCH, not PUT: PUT replaces the whole data object and
+ * would erase keys written by an operator or another integration. Our key set is
+ * fixed and always sent in full, so a merge cannot leave one of ours stale.
+ */
+export async function saveData(
+  peopleId: string,
+  data: Record<string, unknown>,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  await call(
+    "PATCH",
+    `/people/data/${encodeURIComponent(peopleId)}`,
+    DATA_SHAPE,
+    { data },
+    [],
+    fetchImpl,
+  );
+}
+
+/** 404 means "already absent", which IS the goal state. */
+export async function deleteProfile(
+  ref: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  await call(
+    "DELETE",
+    `/people/profile/${encodeURIComponent(ref)}`,
+    PROFILE_SHAPE,
+    undefined,
+    [404],
+    fetchImpl,
+  );
+}

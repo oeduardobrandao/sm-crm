@@ -164,6 +164,18 @@ Monorepo with npm workspaces:
 - `TIKTOK_URL_VERIFY_FILENAME`, `TIKTOK_URL_VERIFY_CONTENT` -- TikTok URL-prefix verification file (optional; 404 until set)
 - `LOOPS_API_KEY` -- Loops REST API key for marketing lifecycle emails. REQUIRED by
   loops-sync-cron, no default -- `_shared/loops.ts` throws if missing
+- `CRISP_WEBSITE_ID`, `CRISP_IDENTIFIER`, `CRISP_KEY` -- Crisp API token for the
+  support-chat customer sync (crisp-sync-cron). All three REQUIRED by that function,
+  no defaults -- index.ts throws at module load if any is missing. Default path is a
+  **Website Token** (Crisp app > Settings > Workspace Settings > Advanced Configuration >
+  API Token): no Marketplace review, no scopes, 10k req/day
+- `CRISP_TIER` -- token family sent as the `X-Crisp-Tier` header. Optional, defaults to
+  `website`. Set to `plugin` ONLY for a Marketplace plugin token (multi-workspace,
+  configurable quota, scopes `website:people:profiles` + `website:people:data`, 5k/day
+  base). Crisp rejects a token presented under the wrong tier
+- `CRISP_IDENTITY_SECRET` -- HMAC secret for Crisp chatbox identity verification
+  (crisp-identity). REQUIRED, no default -- throws at module load if missing. Must match
+  the secret configured in the Crisp dashboard under Settings > Identity Verification
 - `POSTHOG_PROJECT_KEY` -- PostHog **project write key** (same value as the frontend's
   `VITE_POSTHOG_KEY`, NOT a personal API key). Optional: server-side capture is a
   silent no-op when unset
