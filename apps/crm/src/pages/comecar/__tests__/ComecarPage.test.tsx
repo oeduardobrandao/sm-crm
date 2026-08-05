@@ -11,6 +11,13 @@ vi.mock('@/services/billing', () => ({
   startCheckout: vi.fn(),
 }));
 vi.mock('@/lib/analytics', () => ({ captureEvent: vi.fn() }));
+vi.mock('@/components/support/WhatsAppSupportButton', () => ({
+  WhatsAppSupportButton: ({ label, className }: { label: string; className?: string }) => (
+    <a href="https://wa.me/" className={className}>
+      {label}
+    </a>
+  ),
+}));
 
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -86,6 +93,59 @@ function renderPage(search = '') {
     </QueryClientProvider>,
   );
   return { ...result, client };
+}
+
+async function renderPageWithEnv(whatsAppNumber: string | undefined) {
+  // The whatsapp module reads import.meta.env at module scope, so we must reset
+  // and dynamically import to test different env values.
+  vi.resetModules();
+  vi.stubEnv('VITE_WHATSAPP_SUPPORT_NUMBER', whatsAppNumber ?? '');
+
+  // Re-mock after module reset
+  vi.doMock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
+  vi.doMock('@/services/billing', () => ({
+    listActivePlans: vi.fn(),
+    getWorkspaceSubscription: vi.fn(),
+    getEffectivePlanId: vi.fn(),
+    startCheckout: vi.fn(),
+  }));
+  vi.doMock('@/lib/analytics', () => ({ captureEvent: vi.fn() }));
+  vi.doMock('@/components/support/WhatsAppSupportButton', () => ({
+    WhatsAppSupportButton: ({ label, className }: { label: string; className?: string }) => (
+      <a href="https://wa.me/" className={className}>
+        {label}
+      </a>
+    ),
+  }));
+
+  // Dynamically import to get fresh module with new env
+  const { useAuth: useAuthDynamic } = await import('@/context/AuthContext');
+  const {
+    listActivePlans: listActivePlansDynamic,
+    getWorkspaceSubscription: getWorkspaceSubscriptionDynamic,
+    getEffectivePlanId: getEffectivePlanIdDynamic,
+    startCheckout: startCheckoutDynamic,
+  } = await import('@/services/billing');
+  const { default: ComecarPageDynamic } = await import('../ComecarPage');
+
+  vi.mocked(useAuthDynamic).mockReturnValue({ role: 'owner', loading: false } as never);
+  vi.mocked(listActivePlansDynamic).mockResolvedValue(PLANS as never);
+  vi.mocked(getWorkspaceSubscriptionDynamic).mockResolvedValue(NEVER_SUBSCRIBED as never);
+  vi.mocked(getEffectivePlanIdDynamic).mockResolvedValue(null);
+  vi.mocked(startCheckoutDynamic).mockResolvedValue('https://checkout.stripe.com/abc');
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const result = render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/comecar']}>
+        <Routes>
+          <Route path="/comecar" element={<ComecarPageDynamic />} />
+          <Route path="/dashboard" element={<div>Painel</div>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  return result;
 }
 
 describe('ComecarPage', () => {
@@ -273,5 +333,28 @@ describe('ComecarPage', () => {
     fireEvent.click(retryButton);
 
     expect(await screen.findByText('Comece com 30 dias grátis')).toBeInTheDocument();
+  });
+
+  it('does not render the WhatsApp support section when support is not configured', async () => {
+    // By default, VITE_WHATSAPP_SUPPORT_NUMBER is unset, so isWhatsAppSupportEnabled() returns false
+    renderPage();
+    await screen.findByText('Comece com 30 dias grátis');
+    expect(screen.queryByText('Fale com a gente no WhatsApp')).not.toBeInTheDocument();
+    expect(screen.queryByText('Prefere falar com uma pessoa?')).not.toBeInTheDocument();
+  });
+
+  it('renders the WhatsApp support link when VITE_WHATSAPP_SUPPORT_NUMBER is set to a valid digits-only value', async () => {
+    await renderPageWithEnv('5511999999999');
+    expect(await screen.findByText('Fale com a gente no WhatsApp')).toBeInTheDocument();
+    expect(screen.getByText('Prefere falar com uma pessoa?')).toBeInTheDocument();
+    vi.unstubAllEnvs();
+  });
+
+  it('does not render the WhatsApp support section when VITE_WHATSAPP_SUPPORT_NUMBER is an empty string', async () => {
+    await renderPageWithEnv('');
+    await screen.findByText('Comece com 30 dias grátis');
+    expect(screen.queryByText('Fale com a gente no WhatsApp')).not.toBeInTheDocument();
+    expect(screen.queryByText('Prefere falar com uma pessoa?')).not.toBeInTheDocument();
+    vi.unstubAllEnvs();
   });
 });

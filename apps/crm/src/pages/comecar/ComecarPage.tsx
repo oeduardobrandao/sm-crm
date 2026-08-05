@@ -18,6 +18,7 @@ import {
 } from '@/pages/configuracao/cobranca/plan-display';
 import { captureEvent } from '@/lib/analytics';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
+import { isWhatsAppSupportEnabled } from '@/lib/whatsapp';
 import { WhatsAppSupportButton } from '@/components/support/WhatsAppSupportButton';
 import { parsePlanIntent } from './plan-intent';
 import './comecar.css';
@@ -280,14 +281,16 @@ export default function ComecarPage() {
           <button type="button" className="comecar-link" onClick={handleSkip}>
             Prefiro continuar no plano Free por enquanto
           </button>
-          <p className="comecar-foot__help">
-            Prefere falar com uma pessoa?{' '}
-            <WhatsAppSupportButton
-              context="onboarding"
-              label="Fale com a gente no WhatsApp"
-              className="comecar-link comecar-link--inline"
-            />
-          </p>
+          {isWhatsAppSupportEnabled() && (
+            <p className="comecar-foot__help">
+              Prefere falar com uma pessoa?{' '}
+              <WhatsAppSupportButton
+                context="onboarding"
+                label="Fale com a gente no WhatsApp"
+                className="comecar-link comecar-link--inline"
+              />
+            </p>
+          )}
         </footer>
       </div>
     </div>
