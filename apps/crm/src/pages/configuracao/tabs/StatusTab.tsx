@@ -71,8 +71,14 @@ export default function StatusTab() {
   };
 
   const createMutation = useMutation({
+    // Ordem after the current MAX, not defs.length: archived rows keep their
+    // ordem, so a count-based value could collide with a live row and land
+    // the new status mid-list.
     mutationFn: (payload: { nome: string; cor: string; behaves_as: CustomStatusBehavesAs }) =>
-      createPostStatusDefinition({ ...payload, ordem: defs.length }),
+      createPostStatusDefinition({
+        ...payload,
+        ordem: defs.reduce((max, d) => Math.max(max, d.ordem), -1) + 1,
+      }),
     onSuccess: () => {
       toast.success('Status criado!');
       invalidate();
@@ -99,18 +105,26 @@ export default function StatusTab() {
     onError: (err) => onMutationError(err, 'Erro ao arquivar status'),
   });
 
-  const move = (index: number, dir: -1 | 1) => {
+  // Serialized: buttons disable while a swap is in flight, so two quick
+  // clicks can't interleave the two ordem writes and duplicate values.
+  const [reordering, setReordering] = useState(false);
+  const move = async (index: number, dir: -1 | 1) => {
     const target = index + dir;
-    if (target < 0 || target >= defs.length) return;
+    if (target < 0 || target >= defs.length || reordering) return;
     const a = defs[index];
     const b = defs[target];
-    // Swap ordem values; two independent updates, both invalidate at the end.
-    Promise.all([
-      updatePostStatusDefinition(a.id, { ordem: b.ordem === a.ordem ? b.ordem + dir : b.ordem }),
-      updatePostStatusDefinition(b.id, { ordem: a.ordem }),
-    ])
-      .then(invalidate)
-      .catch((err) => onMutationError(err, 'Erro ao reordenar'));
+    setReordering(true);
+    try {
+      await updatePostStatusDefinition(a.id, {
+        ordem: b.ordem === a.ordem ? b.ordem + dir : b.ordem,
+      });
+      await updatePostStatusDefinition(b.id, { ordem: a.ordem });
+      await invalidate();
+    } catch (err) {
+      onMutationError(err, 'Erro ao reordenar');
+    } finally {
+      setReordering(false);
+    }
   };
 
   return (
@@ -187,7 +201,7 @@ export default function StatusTab() {
                     variant="outline"
                     size="icon"
                     title="Subir"
-                    disabled={i === 0}
+                    disabled={i === 0 || reordering}
                     onClick={() => move(i, -1)}
                   >
                     <ArrowUp className="h-3.5 w-3.5" />
@@ -196,7 +210,7 @@ export default function StatusTab() {
                     variant="outline"
                     size="icon"
                     title="Descer"
-                    disabled={i === defs.length - 1}
+                    disabled={i === defs.length - 1 || reordering}
                     onClick={() => move(i, 1)}
                   >
                     <ArrowDown className="h-3.5 w-3.5" />
