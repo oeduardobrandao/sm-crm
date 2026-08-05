@@ -103,15 +103,10 @@ import { DiffView } from './DiffView';
 import { ReadOnlyTipTap } from './ReadOnlyTipTap';
 import { computeWordDiff } from '@/utils/textDiff';
 import { computeTipTapDiff } from '@/utils/tiptapDiff';
-import {
-  TIPO_LABELS,
-  STATUS_LABELS,
-  getPostPublishState,
-  PUBLISH_STATE_LABELS,
-  PUBLISH_STATE_CLASS,
-  buildTipoDayMarkers,
-  TIPO_LEGEND,
-} from '../postLabels';
+import { TIPO_LABELS, getPostPublishState, buildTipoDayMarkers, TIPO_LEGEND } from '../postLabels';
+import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { statusKeyToPatch, type StatusKey } from '../statusRegistry';
+import { PostStatusChip } from './PostStatusChip';
 import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -154,10 +149,11 @@ export function WorkflowDrawer({
   const confirmedEditIds = useRef<Set<number>>(new Set());
   const [pendingStatusChange, setPendingStatusChange] = useState<{
     id: number;
-    newStatus: string;
+    newStatusKey: StatusKey;
   } | null>(null);
   const [pendingRejectSuggestionId, setPendingRejectSuggestionId] = useState<number | null>(null);
   const [editorVersions, setEditorVersions] = useState<Record<number, number>>({});
+  const statusRegistry = useStatusRegistry();
   const [showCalendar, setShowCalendar] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(
     () => localStorage.getItem('workflow-drawer-fullscreen') === '1',
@@ -387,14 +383,31 @@ export function WorkflowDrawer({
     }
   };
 
-  const handleFieldChange = async (id: number, field: keyof WorkflowPost, value: unknown) => {
+  const handleFieldChange = async (
+    id: number,
+    field: keyof WorkflowPost | 'status',
+    value: unknown,
+  ) => {
     if (field === 'status') {
+      // The select emits a StatusKey (canonical status or 'custom:<uuid>').
+      const key = value as StatusKey;
       const post = posts.find((p) => p.id === id);
       const isApproved = post?.status === 'aprovado_interno' || post?.status === 'aprovado_cliente';
-      if (isApproved) {
-        setPendingStatusChange({ id, newStatus: value as string });
+      // Only guard when the effective canonical status would change: moving an
+      // approved post into a custom status that behaves as the same canonical
+      // keeps the approval intact, so no confirmation is needed.
+      const nextCanonical = statusRegistry.byKey.get(key)?.canonical ?? post?.status;
+      if (isApproved && post && nextCanonical !== post.status) {
+        setPendingStatusChange({ id, newStatusKey: key });
         return;
       }
+      try {
+        await updateWorkflowPost(id, statusKeyToPatch(key));
+        refresh();
+      } catch {
+        toast.error('Erro ao atualizar post');
+      }
+      return;
     }
     try {
       await updateWorkflowPost(id, { [field]: value } as Partial<WorkflowPost>);
@@ -406,10 +419,10 @@ export function WorkflowDrawer({
 
   const handleConfirmStatusChange = async () => {
     if (!pendingStatusChange) return;
-    const { id, newStatus } = pendingStatusChange;
+    const { id, newStatusKey } = pendingStatusChange;
     setPendingStatusChange(null);
     try {
-      await updateWorkflowPost(id, { status: newStatus as WorkflowPost['status'] });
+      await updateWorkflowPost(id, statusKeyToPatch(newStatusKey));
       refresh();
     } catch {
       toast.error('Erro ao atualizar status');
@@ -1001,6 +1014,7 @@ function SortablePostItem({
   );
 
   const { features } = useWorkspaceLimits();
+  const statusRegistry = useStatusRegistry();
 
   // TikTok settings completeness/test-mode-banner seam (Task C3), held here rather than
   // inside ScheduleButton because TikTokSettingsPanel and ScheduleButton are siblings —
@@ -1174,14 +1188,7 @@ function SortablePostItem({
           ) : (
             <span className="drawer-post-date drawer-post-date--empty">A definir</span>
           )}
-          {(() => {
-            const pubState = getPostPublishState(post);
-            return (
-              <span className={`post-status-chip ${PUBLISH_STATE_CLASS[pubState]}`}>
-                {PUBLISH_STATE_LABELS[pubState]}
-              </span>
-            );
-          })()}
+          <PostStatusChip post={post} registry={statusRegistry} />
           <CopyPostLinkButton hubUrl={hubUrl} postId={post.id!} />
           <button className="drawer-delete-btn" onClick={onDelete} title="Remover post">
             <Trash2 className="h-3.5 w-3.5" />
@@ -1236,12 +1243,12 @@ function SortablePostItem({
               <label>Status</label>
               <select
                 className="drawer-select"
-                value={post.status}
+                value={statusRegistry.resolve(post).key}
                 onChange={(e) => onFieldChange('status', e.target.value)}
               >
-                {(Object.keys(STATUS_LABELS) as WorkflowPost['status'][]).map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_LABELS[s]}
+                {statusRegistry.options.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.kind === 'custom' ? `· ${o.label}` : o.label}
                   </option>
                 ))}
               </select>

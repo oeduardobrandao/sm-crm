@@ -19,32 +19,10 @@ import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
 import PostCommentSummary from './PostCommentSummary';
 import { TIPO_LABELS } from '../postLabels';
+import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { PostStatusChip } from './PostStatusChip';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-const STATUS_LABELS: Record<WorkflowPost['status'], string> = {
-  rascunho: 'Rascunho',
-  revisao_interna: 'Em revisão',
-  aprovado_interno: 'Aprovado internamente',
-  enviado_cliente: 'Enviado ao cliente',
-  aprovado_cliente: 'Aprovado pelo cliente',
-  correcao_cliente: 'Correção solicitada',
-  agendado: 'Agendado',
-  postado: 'Postado',
-  falha_publicacao: 'Falha na publicação',
-};
-
-const STATUS_CLASS: Record<WorkflowPost['status'], string> = {
-  rascunho: 'post-status--rascunho',
-  revisao_interna: 'post-status--revisao',
-  aprovado_interno: 'post-status--aprovado-interno',
-  enviado_cliente: 'post-status--enviado',
-  aprovado_cliente: 'post-status--aprovado-cliente',
-  correcao_cliente: 'post-status--correcao',
-  agendado: 'post-status--agendado',
-  postado: 'post-status--postado',
-  falha_publicacao: 'status-danger',
-};
 
 function formatDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
@@ -131,6 +109,7 @@ export function HistoryDrawer({ workflow, clienteName, onClose }: HistoryDrawerP
   });
 
   const compliance = computeCompliance(etapas, membros);
+  const statusRegistry = useStatusRegistry();
 
   const firstStart = etapas.find((e) => e.iniciado_em)?.iniciado_em;
   const concludedEtapas = etapas.filter((e) => e.concluido_em);
@@ -227,9 +206,7 @@ export function HistoryDrawer({ workflow, clienteName, onClose }: HistoryDrawerP
                         </span>
                       </div>
                       <div className="drawer-post-trigger-right">
-                        <span className={`post-status-chip ${STATUS_CLASS[post.status]}`}>
-                          {STATUS_LABELS[post.status]}
-                        </span>
+                        <PostStatusChip post={post} registry={statusRegistry} />
                       </div>
                     </div>
 

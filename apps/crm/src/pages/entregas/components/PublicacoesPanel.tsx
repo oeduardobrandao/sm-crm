@@ -2,12 +2,9 @@ import { ExternalLink, ChevronRight } from 'lucide-react';
 import type { ScheduledPost, WorkflowPost, IgAccountStatus } from '@/store';
 import { ScheduleButton } from './ScheduleButton';
 import { formatPostDate } from '@/utils/postDate';
-import {
-  TIPO_LABELS,
-  getPostPublishState,
-  PUBLISH_STATE_LABELS,
-  PUBLISH_STATE_CLASS,
-} from '../postLabels';
+import { TIPO_LABELS } from '../postLabels';
+import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { PostStatusChip } from './PostStatusChip';
 import { sanitizeUrl } from '@/router';
 
 interface PublicacoesPanelProps {
@@ -56,6 +53,7 @@ export function PublicacoesPanel({
   onPostClick,
   onStatusChange,
 }: PublicacoesPanelProps) {
+  const statusRegistry = useStatusRegistry();
   return (
     <div className="scheduled-panel">
       <div className="scheduled-header">
@@ -89,14 +87,7 @@ export function PublicacoesPanel({
               >
                 <div className="item-top">
                   <span className="post-tipo-badge">{TIPO_LABELS[p.tipo]}</span>
-                  {(() => {
-                    const pubState = getPostPublishState(p);
-                    return (
-                      <span className={`post-status-chip ${PUBLISH_STATE_CLASS[pubState]}`}>
-                        {PUBLISH_STATE_LABELS[pubState]}
-                      </span>
-                    );
-                  })()}
+                  <PostStatusChip post={p} registry={statusRegistry} />
                 </div>
                 <div className="item-title">{p.cliente_nome || '—'}</div>
                 <div className="item-subtitle">{p.titulo || 'Post sem título'}</div>

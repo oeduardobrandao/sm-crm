@@ -1,4 +1,5 @@
 import type { WorkflowPost, PostApproval, PostStatusEvent } from '../../../store';
+import { STATUS_LABELS } from '../postLabels';
 
 export type TimelineTone = 'neutral' | 'approved' | 'correction' | 'published' | 'failed';
 
@@ -11,18 +12,6 @@ export interface TimelineNode {
   comment: string | null;
   tone: TimelineTone;
 }
-
-const STATUS_LABELS: Record<WorkflowPost['status'], string> = {
-  rascunho: 'Rascunho',
-  revisao_interna: 'Em revisão',
-  aprovado_interno: 'Aprovado internamente',
-  enviado_cliente: 'Enviado ao cliente',
-  aprovado_cliente: 'Aprovado pelo cliente',
-  correcao_cliente: 'Correção solicitada',
-  agendado: 'Agendado',
-  postado: 'Postado',
-  falha_publicacao: 'Falha na publicação',
-};
 
 const TONE_BY_STATUS: Partial<Record<WorkflowPost['status'], TimelineTone>> = {
   aprovado_interno: 'approved',
@@ -67,7 +56,9 @@ export function buildPostTimeline(
     nodes.push({
       key: `event-${ev.id}`,
       kind: 'status',
-      label: STATUS_LABELS[ev.to_status] ?? ev.to_status,
+      // Custom statuses show the nome snapshotted at event time; the tone
+      // still comes from the canonical status underneath.
+      label: ev.to_custom_nome ?? STATUS_LABELS[ev.to_status] ?? ev.to_status,
       at: ev.created_at,
       actorLabel: actorLabelFor(ev),
       comment,
