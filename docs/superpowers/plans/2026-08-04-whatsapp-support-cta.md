@@ -991,7 +991,27 @@ npm run format && npm run lint
 
 Expected: PASS. `format` rewrites files in place, so re-stage anything it touches.
 
-- [ ] **Step 2: Typecheck all four projects**
+- [ ] **Step 2: Repair node_modules before typechecking**
+
+Deno runs install a parallel dependency tree under `node_modules/.deno/`, which
+leaves two copies of TipTap (3.22.4 and 3.28.0) resolvable at once. `tsc` then
+reports ~21 errors in `PostEditor.tsx`, `ReadOnlyTipTap.tsx`,
+`mentionSuggestion.ts`, `color-picker-advanced.tsx` and `ArtigoPage.tsx` about
+two `ExtendedOptions` types that "are unrelated". None of it is caused by this
+branch.
+
+This **must** run after `npm run test:functions` in Step 3 below, not before, or
+the Deno run re-pollutes the tree and the typecheck fails again. So: run the
+tests first, then this, then the typechecks.
+
+```bash
+npm ci
+```
+
+Expected: completes clean. Re-run the offending check afterwards to confirm the
+TipTap errors are gone.
+
+- [ ] **Step 3: Typecheck all four projects**
 
 `npm run build` only covers the CRM. CI checks four projects separately.
 
