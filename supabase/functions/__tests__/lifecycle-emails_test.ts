@@ -56,6 +56,19 @@ Deno.test("both emails carry the logo and never an em-dash", () => {
   }
 });
 
+Deno.test("welcome email never has an em-dash with the WhatsApp CTA configured", () => {
+  const prev = Deno.env.get("WHATSAPP_SUPPORT_NUMBER");
+  Deno.env.set("WHATSAPP_SUPPORT_NUMBER", "5511999999999");
+  try {
+    const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: BASE });
+    assert(html.includes("Falar no WhatsApp"), "WhatsApp button missing from configured render");
+    assert(!html.includes("—"), "em-dash found in the configured WhatsApp CTA copy");
+  } finally {
+    if (prev !== undefined) Deno.env.set("WHATSAPP_SUPPORT_NUMBER", prev);
+    else Deno.env.delete("WHATSAPP_SUPPORT_NUMBER");
+  }
+});
+
 Deno.test("buildWelcomeEmail carries the core content and links", () => {
   const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: BASE });
   // positioning + feature cards

@@ -170,7 +170,9 @@ Monorepo with npm workspaces:
 - `WHATSAPP_SUPPORT_NUMBER` -- WhatsApp support number for the welcome-email CTA.
   Digits only, no `+` or punctuation. Optional: the CTA is omitted when unset or
   malformed. Must be kept in sync by hand with the CRM's
-  `VITE_WHATSAPP_SUPPORT_NUMBER`; nothing verifies the two agree
+  `VITE_WHATSAPP_SUPPORT_NUMBER`; nothing verifies the two agree. The CRM
+  counterpart is inlined at Vite build time and needs a redeploy to pick up a
+  change; this Deno-side one only needs the function itself redeployed
 
 ## Gotchas
 
