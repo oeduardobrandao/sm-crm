@@ -15,7 +15,7 @@ declare
   v_membro bigint; v_membro_user uuid := gen_random_uuid();
   v_foreign_membro bigint;
   v_admin uuid := gen_random_uuid();
-  v_auto uuid;
+  v_auto uuid; v_temp uuid;
   v_resp bigint; v_resp_status text; v_count bigint;
   v_notif record;
 begin
@@ -133,7 +133,34 @@ begin
   assert v_resp_status = 'revisao_interna', 'transition must survive malformed configs';
   assert v_resp is null, 'malformed membro_id must not assign anyone';
 
-  -- 9. Deleting the definition cascades its automations
+  -- 9. Canonical rules fire on a custom-only entry (canonical unchanged),
+  --    but NOT on detaching back to the plain canonical
+  delete from post_status_automations where conta_id = v_ws; -- clean slate
+  insert into post_status_definitions (conta_id, nome, behaves_as)
+    values (v_ws, 'Briefing', 'rascunho') returning id into v_temp;
+  insert into post_status_automations (conta_id, trigger_status, action_type, config)
+    values (v_ws, 'rascunho', 'notify', '{"target":"roles","roles":["admin"]}');
+  update workflow_posts set status = 'rascunho', custom_status_id = null where id = v_post;
+  select count(*) into v_count from notifications
+    where workspace_id = v_ws and type = 'post_status_automation';
+  update workflow_posts set custom_status_id = v_temp where id = v_post; -- rascunho -> Briefing
+  select count(*) - v_count into v_count from notifications
+    where workspace_id = v_ws and type = 'post_status_automation';
+  assert v_count = 1,
+    format('canonical rule must fire on custom-only entry, fired %s times', v_count);
+  select count(*) into v_count from notifications
+    where workspace_id = v_ws and type = 'post_status_automation';
+  update workflow_posts set custom_status_id = null where id = v_post; -- detach
+  select count(*) - v_count into v_count from notifications
+    where workspace_id = v_ws and type = 'post_status_automation';
+  assert v_count = 0, 'detaching must not re-fire canonical rules';
+  delete from post_status_definitions where id = v_temp;
+  delete from post_status_automations where conta_id = v_ws;
+  -- Re-arm a custom-trigger rule so the cascade test below tests a real row.
+  insert into post_status_automations (conta_id, trigger_custom_status_id, action_type, config)
+    values (v_ws, v_design, 'notify', '{"target":"responsavel"}');
+
+  -- 10. Deleting the definition cascades its automations
   delete from post_status_definitions where id = v_design;
   select count(*) into v_count from post_status_automations
     where conta_id = v_ws and trigger_custom_status_id is not null;

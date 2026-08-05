@@ -151,8 +151,18 @@ begin
      where a.conta_id = new.conta_id
        and a.ativo
        and a.action_type = 'assign_responsavel'
-       and ((v_status_changed and a.trigger_status = new.status)
-         or (v_custom_changed and a.trigger_custom_status_id = new.custom_status_id))
+       and (
+         -- Canonical rule: fires when the canonical column changed, and
+         -- also when the post entered a custom status behaving as it
+         -- (custom-only move, canonical unchanged) -- the UI promises the
+         -- equivalent standard-status rules fire too. Detaching back to
+         -- the plain canonical (pointer -> null, e.g. archive mass-detach)
+         -- is NOT an entry and must not re-fire.
+         (a.trigger_status = new.status
+            and (v_status_changed
+              or (v_custom_changed and new.custom_status_id is not null)))
+         or (v_custom_changed and a.trigger_custom_status_id = new.custom_status_id)
+       )
      order by a.created_at -- deterministic: the newest matching rule wins
   loop
     v_membro_id := case
@@ -175,8 +185,12 @@ begin
        where a.conta_id = new.conta_id
          and a.ativo
          and a.action_type = 'notify'
-         and ((v_status_changed and a.trigger_status = new.status)
-           or (v_custom_changed and a.trigger_custom_status_id = new.custom_status_id))
+         and (
+           (a.trigger_status = new.status
+              and (v_status_changed
+                or (v_custom_changed and new.custom_status_id is not null)))
+           or (v_custom_changed and a.trigger_custom_status_id = new.custom_status_id)
+         )
     loop
       v_targets := case r.config->>'target'
         when 'member' then
