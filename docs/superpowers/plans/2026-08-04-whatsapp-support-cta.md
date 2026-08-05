@@ -395,12 +395,13 @@ git commit -m "feat(whatsapp): botao compartilhado de suporte"
 
 The link goes in the footer on purpose. The page's primary job is the trial CTA shipped in #290, and a support link at equal visual weight would cost checkouts.
 
-- [ ] **Step 1: Add the import**
+- [ ] **Step 1: Add the imports**
 
 In `apps/crm/src/pages/comecar/ComecarPage.tsx`, after the `captureCheckoutStarted` import (line 20), add:
 
 ```tsx
 import { WhatsAppSupportButton } from '@/components/support/WhatsAppSupportButton';
+import { isWhatsAppSupportEnabled } from '@/lib/whatsapp';
 ```
 
 - [ ] **Step 2: Add the link to the footer**
@@ -413,16 +414,26 @@ Replace the `<footer className="comecar-foot">` block (lines 277-282) with:
           <button type="button" className="comecar-link" onClick={handleSkip}>
             Prefiro continuar no plano Free por enquanto
           </button>
-          <p className="comecar-foot__help">
-            Prefere falar com uma pessoa?{' '}
-            <WhatsAppSupportButton
-              context="onboarding"
-              label="Fale com a gente no WhatsApp"
-              className="comecar-link comecar-link--inline"
-            />
-          </p>
+          {isWhatsAppSupportEnabled() && (
+            <p className="comecar-foot__help">
+              Prefere falar com uma pessoa?{' '}
+              <WhatsAppSupportButton
+                context="onboarding"
+                label="Fale com a gente no WhatsApp"
+                className="comecar-link comecar-link--inline"
+              />
+            </p>
+          )}
         </footer>
 ```
+
+**The whole `<p>` is gated, not just the anchor.** `WhatsAppSupportButton`
+returns `null` on its own when the number is unset, but that alone would leave
+the lead-in sentence "Prefere falar com uma pessoa?" rendered above nothing, a
+dangling question pointing at no link. Gating on `isWhatsAppSupportEnabled()`
+removes the whole line, which is what Step 5 below actually checks for. Use the
+predicate rather than re-reading the env var here, so this page and the Task 4
+card agree on what "configured" means.
 
 - [ ] **Step 3: Add the CSS**
 
@@ -437,13 +448,30 @@ In `apps/crm/src/pages/comecar/comecar.css`, after the `.comecar-link` block (wh
 }
 ```
 
-- [ ] **Step 4: Verify it compiles and the suite still passes**
+- [ ] **Step 4: Add the regression test and verify**
+
+Add to the existing comecar test file, following the conventions already in it:
+
+- with `VITE_WHATSAPP_SUPPORT_NUMBER` set to a valid digits-only value, the help
+  line renders and the link is present
+- with it set to `''`, neither the link **nor** the text
+  "Prefere falar com uma pessoa" appears anywhere in the output
+
+The second case is the one that matters. Without it, nothing catches a
+regression that reintroduces the dangling sentence.
+
+Because the page reads the env var transitively through `@/lib/whatsapp` at
+module scope, the test needs `vi.resetModules()` plus a dynamic import, the same
+pattern as `apps/crm/src/lib/__tests__/whatsapp.test.ts`.
 
 ```bash
 npx tsc -p apps/crm/tsconfig.json --noEmit && npx vitest run apps/crm/src/pages/comecar
 ```
 
-Expected: PASS both.
+Expected: PASS both. Note the repo carries 21 pre-existing TipTap typecheck
+errors, repaired in Task 6; treat the typecheck as passing if nothing outside
+`PostEditor.tsx`, `ReadOnlyTipTap.tsx`, `mentionSuggestion.ts`,
+`color-picker-advanced.tsx` and `ArtigoPage.tsx` errors.
 
 - [ ] **Step 5: Verify in the browser**
 
