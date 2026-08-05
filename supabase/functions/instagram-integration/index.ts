@@ -103,7 +103,12 @@ Deno.serve(async (req) => {
 
   try {
     let user;
-    if (path !== '/callback' && !(path === '' && url.searchParams.has('code'))) {
+    // Root-path requests carrying `code` or `error` are OAuth callback redirects from
+    // Meta (META_REDIRECT_URI may point at the function root) and carry no JWT.
+    const isOAuthCallback =
+      path === '/callback' ||
+      (path === '' && (url.searchParams.has('code') || url.searchParams.has('error')));
+    if (!isOAuthCallback) {
        const token = authHeader?.replace(/^Bearer\s+/i, '');
 
        if (!token || token === 'undefined' || token === 'null') {
@@ -148,7 +153,7 @@ Deno.serve(async (req) => {
     }
 
     // 2. GET /callback (also handle callback at root when META_REDIRECT_URI doesn't include /callback)
-    if (req.method === 'GET' && (path === '/callback' || (path === '' && url.searchParams.has('code')))) {
+    if (req.method === 'GET' && isOAuthCallback) {
         const code = url.searchParams.get('code')?.replace(/#_$/, '');
         const state = url.searchParams.get('state');
 
@@ -808,7 +813,9 @@ Deno.serve(async (req) => {
     console.error('[instagram-integration] error:', err?.message ?? 'unknown');
 
     // If this was a callback (browser redirect), send user back to client page instead of showing JSON
-    const isCallback = path === '/callback' || (path === '' && url.searchParams.has('code'));
+    const isCallback =
+      path === '/callback' ||
+      (path === '' && (url.searchParams.has('code') || url.searchParams.has('error')));
     if (isCallback) {
       const stateParam = url.searchParams.get('state');
       let redirectClientId: string | undefined;
