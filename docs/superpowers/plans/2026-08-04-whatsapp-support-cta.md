@@ -1109,6 +1109,38 @@ git add -A && git commit -m "chore(whatsapp): format" || echo "nothing to commit
 
 ---
 
+## Outstanding manual verification
+
+**Required before merge. No automated check covers this**, and no agent could
+run it: it needs an authenticated owner session on a free workspace against real
+Supabase.
+
+Run the CRM with a valid number and sign in as an owner:
+
+```bash
+VITE_WHATSAPP_SUPPORT_NUMBER=5511999999999 npm run dev
+```
+
+Check, in this order:
+
+1. `/comecar` renders the help line under the "plano Free" button, and the link
+   opens WhatsApp in a new tab with the prefill reading
+   `Oi! Sou <nome>, da <empresa>. Acabei de criar minha conta no Mesaas...`
+2. `/dashboard` renders the support card, its CTA opens WhatsApp, and the X
+   dismisses it. Reload and confirm it stays dismissed.
+3. **The dashboard card at 375px width.** `.whatsapp-support` is a flex row with
+   an icon, body, CTA and close button. jsdom cannot evaluate media queries, so
+   crowding at narrow widths is invisible to the test suite. Check 1280px too.
+4. **How the card looks stacked above `TrialNudgeCard`.** The two are visually
+   near-identical by construction: same flex layout and the same
+   `__icon/__body/__title/__text/__cta/__close` structure, differing only in
+   accent colour and icon. A brand-new free owner sees both, plus
+   `OnboardingBanner` beneath them. Decide in the browser whether that stack is
+   acceptable or whether the WhatsApp card should be suppressed while the trial
+   nudge is showing.
+5. Restart without the env var and confirm both surfaces vanish completely, with
+   no leftover text.
+
 ## Deployment notes
 
 Not part of the plan's tasks, but required for the feature to work in production:
