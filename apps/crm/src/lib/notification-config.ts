@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { NotificationType } from '../store';
+import { STATUS_LABELS } from '../pages/entregas/postLabels';
 
 type Tone = 'success' | 'warning' | 'danger' | 'teal' | 'primary';
 
@@ -127,6 +128,20 @@ export function getNotificationDisplay(
         title: 'Post atribuído a você',
         body: `${client} — ${post}`,
       };
+    case 'post_status_automation': {
+      // status_label carries the custom status nome, or the raw canonical
+      // key when the rule targeted a built-in status — map the latter to
+      // its PT label before display.
+      const rawLabel = s(m.status_label, '');
+      const statusLabel =
+        (STATUS_LABELS as Record<string, string>)[rawLabel] ?? (rawLabel || 'novo status');
+      return {
+        icon: Bell,
+        tone: 'teal',
+        title: `Post entrou em ${statusLabel}`,
+        body: m.client_name ? `${client} · ${post}` : post,
+      };
+    }
     case 'task_assigned':
       return {
         icon: CheckSquare,
