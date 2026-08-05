@@ -1041,27 +1041,45 @@ npm run format && npm run lint
 
 Expected: PASS. `format` rewrites files in place, so re-stage anything it touches.
 
-- [ ] **Step 2: Repair node_modules before typechecking**
+**The order below is load-bearing.** Deno runs install a parallel dependency
+tree under `node_modules/.deno/`, leaving two copies of TipTap (3.22.4 and
+3.28.0) resolvable at once. `tsc` then reports ~21 errors in `PostEditor.tsx`,
+`ReadOnlyTipTap.tsx`, `mentionSuggestion.ts`, `color-picker-advanced.tsx` and
+`ArtigoPage.tsx` about two `ExtendedOptions` types that "are unrelated". None of
+that is caused by this branch. `npm ci` repairs it, so it must run **after** the
+Deno tests and **before** the typechecks. Running it earlier accomplishes
+nothing, because `npm run test:functions` re-pollutes the tree.
 
-Deno runs install a parallel dependency tree under `node_modules/.deno/`, which
-leaves two copies of TipTap (3.22.4 and 3.28.0) resolvable at once. `tsc` then
-reports ~21 errors in `PostEditor.tsx`, `ReadOnlyTipTap.tsx`,
-`mentionSuggestion.ts`, `color-picker-advanced.tsx` and `ArtigoPage.tsx` about
-two `ExtendedOptions` types that "are unrelated". None of it is caused by this
-branch.
+- [ ] **Step 2: Full test suites**
 
-This **must** run after `npm run test:functions` in Step 3 below, not before, or
-the Deno run re-pollutes the tree and the typecheck fails again. So: run the
-tests first, then this, then the typechecks.
+```bash
+npm run test
+```
+
+Expected: PASS.
+
+```bash
+npm run test:functions
+```
+
+Expected: PASS. This is what dirties `deno.lock` and `node_modules`.
+
+- [ ] **Step 3: Revert the lock file**
+
+```bash
+git checkout -- deno.lock
+```
+
+- [ ] **Step 4: Repair node_modules**
 
 ```bash
 npm ci
 ```
 
-Expected: completes clean. Re-run the offending check afterwards to confirm the
-TipTap errors are gone.
+Expected: completes clean. This is slow, several minutes. Do not skip it: the
+typechecks in Step 5 cannot pass until it runs.
 
-- [ ] **Step 3: Typecheck all four projects**
+- [ ] **Step 5: Typecheck all four projects**
 
 `npm run build` only covers the CRM. CI checks four projects separately.
 
@@ -1072,25 +1090,18 @@ npx tsc -p apps/admin/tsconfig.json --noEmit && \
 npx tsc -p tsconfig.scripts.json
 ```
 
-Expected: PASS, all four.
+Expected: PASS, all four, with zero errors. If the TipTap errors are still
+present, `npm ci` did not take effect. If a NEW error appears in a file this
+branch touched, that one is real: fix it.
 
-- [ ] **Step 3: Full test suites**
-
-```bash
-npm run test && npm run test:functions
-```
-
-Expected: PASS both.
-
-- [ ] **Step 4: Revert the lock file**
+- [ ] **Step 6: Confirm the tree is clean and commit any formatting fallout**
 
 ```bash
-git checkout -- deno.lock && git status --short
+git status --short
 ```
 
-Expected: clean tree, or only intended changes.
-
-- [ ] **Step 5: Commit any formatting fallout**
+Expected: clean, or only files `npm run format` rewrote. `deno.lock` must NOT
+appear.
 
 ```bash
 git add -A && git commit -m "chore(whatsapp): format" || echo "nothing to commit"
