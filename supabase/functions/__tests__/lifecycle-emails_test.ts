@@ -1,5 +1,9 @@
 import { assert } from "./assert.ts";
 import {
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
   buildFounderSignupNotice,
   buildFounderSubscriptionNotice,
   buildThankYouEmail,
@@ -449,4 +453,21 @@ Deno.test("sendFounderSubscriptionNotice without a Stripe sub id renders value i
   }
   const payload = JSON.parse(capturedBody);
   assert(payload.html.includes("(indisponível)"), "value fallback missing from sent email");
+});
+
+Deno.test("welcome email includes the WhatsApp button when configured", () => {
+  Deno.env.set("WHATSAPP_SUPPORT_NUMBER", "5511999999999");
+  const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: "https://app.mesaas.com.br" });
+  assertStringIncludes(html, "https://wa.me/5511999999999");
+  assertStringIncludes(html, "Falar no WhatsApp");
+});
+
+Deno.test("welcome email stays intact with no WhatsApp number set", () => {
+  Deno.env.delete("WHATSAPP_SUPPORT_NUMBER");
+  const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: "https://app.mesaas.com.br" });
+  assertEquals(html.includes("wa.me"), false);
+  assertEquals(html.includes("Falar no WhatsApp"), false);
+  // No orphaned markup left where the button would have been.
+  assertEquals(html.includes('href=""'), false);
+  assertStringIncludes(html, "responder este e-mail");
 });
