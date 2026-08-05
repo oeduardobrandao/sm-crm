@@ -13,7 +13,22 @@
 
 const BASE = "https://api.crisp.chat/v1";
 
-function credentials(): { authorization: string; websiteId: string } {
+/**
+ * Which token family the credentials belong to. Crisp routes on this header and
+ * rejects a token presented under the wrong tier, so it is not cosmetic.
+ *
+ * Defaults to `website`: a Website Token (Crisp app -> Settings -> Workspace
+ * Settings -> Advanced Configuration -> API Token) needs no Marketplace review,
+ * carries no scope list to get wrong, and its quota is 10k requests/day against
+ * a plugin token's 5k base. Set CRISP_TIER=plugin only when moving to a
+ * Marketplace plugin token, which buys multi-workspace access, a configurable
+ * quota and least-privilege scopes at the cost of a review round.
+ */
+function tier(): string {
+  return Deno.env.get("CRISP_TIER") ?? "website";
+}
+
+function credentials(): { authorization: string; websiteId: string; tier: string } {
   const identifier = Deno.env.get("CRISP_IDENTIFIER");
   const key = Deno.env.get("CRISP_KEY");
   const websiteId = Deno.env.get("CRISP_WEBSITE_ID");
@@ -23,6 +38,7 @@ function credentials(): { authorization: string; websiteId: string } {
   return {
     authorization: `Basic ${btoa(`${identifier}:${key}`)}`,
     websiteId,
+    tier: tier(),
   };
 }
 
@@ -63,13 +79,13 @@ async function call(
   okStatuses: number[],
   fetchImpl: typeof fetch,
 ): Promise<Response> {
-  const { authorization, websiteId } = credentials();
+  const { authorization, websiteId, tier } = credentials();
 
   const res = await fetchImpl(`${BASE}/website/${websiteId}${path}`, {
     method,
     headers: {
       Authorization: authorization,
-      "X-Crisp-Tier": "plugin",
+      "X-Crisp-Tier": tier,
       "Content-Type": "application/json",
     },
     body: body === undefined ? undefined : JSON.stringify(body),

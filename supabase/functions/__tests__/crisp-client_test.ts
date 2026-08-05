@@ -36,12 +36,25 @@ Deno.test("getProfile sends plugin auth headers and returns data", async () => {
 
   assertEquals(profile!.people_id, "p-1");
   assertEquals(profile!.segments, ["vip"]);
-  assertEquals(cap.req!.headers.get("X-Crisp-Tier"), "plugin");
+  // Defaults to the Website Token tier. Crisp rejects a token presented under
+  // the wrong tier, so this header is load-bearing, not decoration.
+  assertEquals(cap.req!.headers.get("X-Crisp-Tier"), "website");
   assertEquals(cap.req!.headers.get("Authorization"), `Basic ${btoa("test-id:test-key")}`);
   assert(
     cap.req!.url.includes("/website/ws-abc/people/profile/"),
     `unexpected url: ${cap.req!.url}`,
   );
+});
+
+Deno.test("CRISP_TIER overrides the tier header for a plugin token", async () => {
+  Deno.env.set("CRISP_TIER", "plugin");
+  const cap: { req?: Request } = {};
+  try {
+    await getProfile("ana@example.com", stubFetch(200, { error: false, data: {} }, cap));
+  } finally {
+    Deno.env.delete("CRISP_TIER");
+  }
+  assertEquals(cap.req!.headers.get("X-Crisp-Tier"), "plugin");
 });
 
 Deno.test("getProfile returns null on 404 instead of throwing", async () => {

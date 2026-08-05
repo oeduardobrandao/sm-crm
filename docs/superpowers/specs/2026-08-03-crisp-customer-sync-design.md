@@ -163,19 +163,33 @@ actually set, instead of burning a sweep that records syncs which never reached 
 
 Auth is `Authorization: Basic base64(identifier:key)` plus `X-Crisp-Tier: plugin`.
 
-**Scopes — these names are exact and the first draft had them wrong.** The plugin needs:
+### Website Token, not a Marketplace plugin
 
-| Scope | Covers |
-|---|---|
-| `website:people:profiles` | "List and create CRM profiles" — the `GET`/`POST`/`PUT`/`DELETE` profile routes. |
-| `website:people:data` | "List and push data in CRM profiles" — the `/people/data/{id}` routes. |
+Crisp offers two token families, and the header must name which one is in use — a token
+presented under the wrong tier is rejected. `CRISP_TIER` carries it, defaulting to `website`.
 
-`website:people:manage` and `website:people:read`, named in the first draft, **do not exist**.
-A production token requested with them would be rejected. Development tokens are not subject to
-scopes at all, which is precisely how a wrong scope list survives staging and fails in prod.
+| | Website Token | Plugin Token |
+|---|---|---|
+| Created in | Crisp app: Settings → Workspace Settings → Advanced Configuration → API Token | Crisp Marketplace |
+| Review | None | Manual review for a production token |
+| Scopes | None. Full access to the one workspace | Fine-grained: `website:people:profiles`, `website:people:data` |
+| Quota | **10,000 req/day** | 5,000 req/day base, configurable |
+| Reach | One workspace | Multi-workspace |
 
-**Prerequisite, and the one thing that can block deployment:** a plugin token with those two
-scopes must be created in the Crisp Marketplace for the Mesaas website.
+**The Website Token is the chosen path.** It ships today with no review gate, its quota is
+*double* the plugin base, and it removes an entire class of error: the first draft of this spec
+named two scopes (`website:people:manage`, `website:people:read`) that do not exist, and
+because development tokens ignore scopes, that mistake would have passed staging and failed
+only when a production token was issued. A token with no scope list cannot have the wrong one.
+
+The cost is honest and worth stating: a Website Token is **not least-privilege**. It grants
+full access to the workspace — reading conversations included — where a scoped plugin token
+would be confined to people profiles. The judgement is that this is acceptable because the
+token lives in Supabase secrets beside `SUPABASE_SERVICE_ROLE_KEY`, which is strictly more
+powerful, so the token is not the weakest link in that store. If that ever stops being true,
+`CRISP_TIER=plugin` plus the two scopes above is the migration, and it needs no code change.
+
+**Prerequisite:** a Website Token created for the Mesaas workspace.
 
 ### Profile and custom data are two different APIs
 
@@ -655,12 +669,17 @@ stays regardless — it exists for the widget-created-profile case, not for this
 
 Two open items remain:
 
-1. **What is the plugin daily quota?** Not published. The fingerprint design makes steady
-   state cheap regardless, but the *initial backfill* pushes every existing user within the
-   first few sweeps, and that burst is the one moment the quota could bind. If the number
-   turns out to be tight, throttle by lowering the candidate limit for the first day rather
-   than by widening the cron interval — the limit shapes the burst, the interval only delays
-   it.
+1. **~~What is the plugin daily quota?~~ RESOLVED: 10,000 requests/day** on a Website Token
+   (5,000 base on a plugin token). The first draft called this unpublished; it is published,
+   on the authentication guide rather than the rate-limit page, which is where I looked.
+
+   The number is comfortable. A changed user costs three calls (`GET` profile, profile write,
+   data `PATCH`), so the daily ceiling is ~3,300 user-syncs, and steady state is near zero by
+   design. Only the initial backfill approaches it: `3 × user_count`, so a backfill larger
+   than ~3,300 users simply spreads across more than one day — which is harmless, because the
+   candidate ordering is least-recently-synced-first and converges. If it ever does bind,
+   throttle by lowering the candidate limit for the first day rather than widening the cron
+   interval: the limit shapes the burst, the interval only delays it.
 2. **Does an inbound WhatsApp resolve to a profile by `person.phone`?** See "The WhatsApp
    claim is unproven". Verified in rollout, not assumed.
 
