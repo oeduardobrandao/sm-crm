@@ -4,6 +4,9 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Cliente, Membro, WorkflowTemplate } from '../../../../store';
 
+// jsdom has no scrollIntoView; adding an etapa scrolls the new row into view.
+(Element.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = () => {};
+
 // sonner 2.x really does expose `toast.warning`, so the template-failure path asserts against it
 // rather than falling back to `toast.error`.
 vi.mock('sonner', () => ({
@@ -367,12 +370,40 @@ describe('NewWorkflowWizard — step 3 (etapas)', () => {
     );
   });
 
-  it('＋ Personalizada appends an empty row', () => {
+  it('＋ Personalizada appends an empty row and focuses its name input', () => {
     renderWizardAtStep3();
     fireEvent.click(screen.getByText('＋ Personalizada'));
     const inputs = screen.getAllByPlaceholderText('Nome da etapa') as HTMLInputElement[];
     expect(inputs).toHaveLength(6);
     expect(inputs[5].value).toBe('');
+    expect(document.activeElement).toBe(inputs[5]);
+  });
+
+  it('a second ＋ Personalizada click re-focuses the empty row instead of adding another', () => {
+    renderWizardAtStep3();
+    fireEvent.click(screen.getByText('＋ Personalizada'));
+    fireEvent.click(screen.getByText('＋ Personalizada'));
+    const inputs = screen.getAllByPlaceholderText('Nome da etapa') as HTMLInputElement[];
+    expect(inputs).toHaveLength(6); // still one custom row, not two
+    expect(document.activeElement).toBe(inputs[5]);
+    // Naming the row disarms the guard: the next click adds a fresh empty row.
+    fireEvent.change(inputs[5], { target: { value: 'Minha etapa' } });
+    fireEvent.click(screen.getByText('＋ Personalizada'));
+    expect(screen.getAllByPlaceholderText('Nome da etapa')).toHaveLength(7);
+  });
+
+  it('shows the etapa count in the list heading', () => {
+    renderWizardAtStep3();
+    expect(screen.getByText('Etapas · 5')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Briefing$/ }));
+    expect(screen.getByText('Etapas · 6')).toBeTruthy();
+  });
+
+  it('numbers the rows so the order is readable at a glance', () => {
+    renderWizardAtStep3();
+    expect(screen.getByText('1.')).toBeTruthy();
+    expect(screen.getByText('5.')).toBeTruthy();
+    expect(screen.queryByText('6.')).toBeNull();
   });
 
   it('bulk assign sets responsável on every etapa', () => {
@@ -412,7 +443,8 @@ describe('NewWorkflowWizard — step 3 (etapas)', () => {
   it('an empty etapa list blocks with a global error', () => {
     renderWizardAtStep3();
     // Toggle every chip the preset pressed back off, emptying the list. (Queried one at a time
-    // and by exact name: the approval ROW also carries a '✓ Aprovação externa' pill.)
+    // and by exact name: the approval ROW also carries an icon toggle whose accessible name is
+    // 'Aprovação externa'.)
     for (const nome of [
       'Criação',
       'Revisão interna',
