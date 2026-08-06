@@ -96,6 +96,7 @@ import { PlatformSelector } from './PlatformSelector';
 import { TikTokSettingsPanel } from './TikTokSettingsPanel';
 import { ScheduleButton } from './ScheduleButton';
 import { PublishErrorBlock } from './PublishErrorBlock';
+import { shouldShowPublishErrorBlock } from './publishErrorBlockVisibility';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { supabase } from '@/lib/supabase';
 import { WorkflowCalendarView } from './WorkflowCalendarView';
@@ -1297,7 +1298,7 @@ function SortablePostItem({
             </div>
           </div>
 
-          {post.status === 'falha_publicacao' && post.platform !== 'tiktok' && (
+          {shouldShowPublishErrorBlock(post) && (
             <PublishErrorBlock post={post} clienteId={clienteId} onStatusChange={onRefresh} />
           )}
 

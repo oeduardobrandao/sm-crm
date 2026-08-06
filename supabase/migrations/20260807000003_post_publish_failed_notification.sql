@@ -30,7 +30,13 @@ ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (
 --       não vai resolver; a fase retry pula esses códigos, então a transição
 --       ocorre uma única vez por ciclo);
 --   (b) contador cruzando 3 -> auto-retries esgotados (cruza uma única vez;
---       o "Tentar novamente" manual zera o contador e permite novo ciclo).
+--       o "Tentar novamente" manual zera o contador e permite novo ciclo);
+--   (c) publish_error_code reclassificado para não-retryable enquanto o post
+--       já está em falha (ex.: 1ª tentativa IG_TRANSIENT, retry seguinte
+--       MEDIA_UNSUPPORTED) -> sem essa condição o status não muda, o contador
+--       fica < 3, nenhuma notificação dispara e o claim do retry (20260807000002)
+--       passa a pular o post para sempre, deixando a ação humana necessária
+--       invisível.
 -- Padrão trg_notify_*: SECURITY DEFINER + EXCEPTION WHEN OTHERS para nunca
 -- reverter a operação de negócio.
 CREATE OR REPLACE FUNCTION trg_notify_post_publish_failed()
@@ -51,6 +57,10 @@ BEGIN
       v_notify := true;
     ELSIF COALESCE(OLD.publish_retry_count, 0) < 3
        AND COALESCE(NEW.publish_retry_count, 0) >= 3 THEN
+      v_notify := true;
+    ELSIF OLD.publish_error_code IS DISTINCT FROM NEW.publish_error_code
+       AND NEW.publish_error_code IN
+         ('TOKEN_EXPIRED','MEDIA_TOO_LARGE','CAROUSEL_LIMIT','NO_MEDIA','MEDIA_UNSUPPORTED') THEN
       v_notify := true;
     END IF;
 
@@ -86,7 +96,7 @@ $$;
 
 DROP TRIGGER IF EXISTS notify_post_publish_failed ON workflow_posts;
 CREATE TRIGGER notify_post_publish_failed
-  AFTER UPDATE OF status, publish_retry_count ON workflow_posts
+  AFTER UPDATE OF status, publish_retry_count, publish_error_code ON workflow_posts
   FOR EACH ROW
   WHEN (NEW.status = 'falha_publicacao')
   EXECUTE FUNCTION trg_notify_post_publish_failed();
