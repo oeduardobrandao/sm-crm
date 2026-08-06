@@ -87,6 +87,7 @@ const POSTS = [
     ig_caption:
       'Sua pele pede cuidado redobrado no verão. Salve este post e comece pelo básico: limpeza, hidratação e protetor solar todos os dias.',
     scheduledInDays: 45,
+    secao7: true,
   },
   // Shots 31 and 32: the Agendado chip and the Cancelar button.
   //
@@ -117,6 +118,7 @@ const POSTS = [
       'Hidratação não é só creme. Água, alimentação e sono entram na conta. Comente aqui a sua maior dúvida sobre pele.',
     scheduledInDays: TEARDOWN_DEADLINE_DAYS,
     unclaimable: true,
+    secao7: true,
   },
 ];
 
@@ -241,7 +243,16 @@ async function preflight(supabase, { requirePublishable }) {
   return { conta, cliente, flows };
 }
 
-async function up() {
+/**
+ * @param skipSecao7
+ *   Seed only the fixtures that do not depend on a publish-capable Instagram
+ *   account. The section 7 pair (the enabled Agendar button and the Agendado
+ *   chip) is the only part that needs one, so this lets sections 1 to 6 and 8
+ *   be captured while the account's token is expired. Explicit rather than
+ *   automatic: silently seeding a subset would look like a full seed and send
+ *   someone hunting for screenshots that were never going to appear.
+ */
+async function up({ skipSecao7 }) {
   const supabase = client();
 
   if (existsSync(MANIFEST)) {
@@ -250,10 +261,16 @@ async function up() {
     );
   }
 
-  const { flows } = await preflight(supabase, { requirePublishable: true });
-  console.log('Preflight OK: DK TESTE, Studio Bem-Estar, fluxos 48 e 53, Instagram ativo.\n');
+  const selected = skipSecao7 ? POSTS.filter((p) => !p.secao7) : POSTS;
 
-  const rows = POSTS.map((p) => ({
+  const { flows } = await preflight(supabase, { requirePublishable: !skipSecao7 });
+  console.log(
+    skipSecao7
+      ? `Preflight OK (modo parcial). Semeando ${selected.length} post(s), sem a seção 7.\n`
+      : 'Preflight OK: DK TESTE, Studio Bem-Estar, fluxos 48 e 53, Instagram apto a publicar.\n',
+  );
+
+  const rows = selected.map((p) => ({
     workflow_id: p.workflow_id,
     conta_id: CONTA_ID,
     titulo: p.titulo,
@@ -350,12 +367,21 @@ async function up() {
     console.log(`Fluxo ${TITLE_FIX.id} renomeado: "${originalTitle}" -> "${TITLE_FIX.to}"`);
   }
 
-  const deadline = new Date(Date.now() + TEARDOWN_DEADLINE_DAYS * DAY);
-  console.log(
-    `\n⚠️  Um post ficou com status 'agendado'. Ele é uma publicação real agendada.\n` +
-      `    O cron só o reivindica quando a data chega, então rode --down antes de\n` +
-      `    ${deadline.toISOString().slice(0, 10)}. O ideal é rodar assim que as capturas terminarem.`,
-  );
+  if (skipSecao7) {
+    console.log(
+      '\nModo parcial: os dois posts da seção 7 (Agendar habilitado e chip Agendado)\n' +
+        'NÃO foram criados, porque exigem uma conta de Instagram apta a publicar.\n' +
+        'As capturas 29 a 32 ficam de fora desta rodada.',
+    );
+  } else {
+    console.log(
+      `\nUm post ficou com status 'agendado'. Ele NÃO pode ser reivindicado pelo cron:\n` +
+        `publish_processing_at está 10 anos à frente, o que reprova o predicado do\n` +
+        `claim_posts_for_publishing em qualquer data. Ainda assim, rode --down quando as\n` +
+        `capturas terminarem: linhas de fixture não devem sobreviver ao seu propósito.`,
+    );
+  }
+  console.log('\nPara remover tudo: --down');
 }
 
 async function down() {
@@ -427,19 +453,24 @@ async function check() {
 }
 
 const mode = process.argv[2];
+const skipSecao7 = process.argv.includes('--sem-secao-7');
 if (!['--up', '--down', '--check'].includes(mode)) {
   console.error(
     'Uso: node --env-file=.env.kb-upload.local scripts/seed-kb-capture-fixtures.mjs --check|--up|--down\n' +
       '  --check  roda as validações e não escreve nada. Comece por aqui.\n' +
       '  --up     cria os posts de fixture no DK TESTE.\n' +
-      '  --down   remove exatamente o que o --up criou.',
+      '  --down   remove exatamente o que o --up criou.\n' +
+      '\n' +
+      '  --sem-secao-7  (com --up) pula os dois posts que exigem uma conta de\n' +
+      '                 Instagram apta a publicar. Use quando o token estiver\n' +
+      '                 vencido: libera as capturas das seções 1 a 6 e 8.',
   );
   process.exit(1);
 }
 
 try {
   if (mode === '--check') await check();
-  else if (mode === '--up') await up();
+  else if (mode === '--up') await up({ skipSecao7 });
   else await down();
 } catch (err) {
   console.error(`\nFalhou: ${err.message}`);
