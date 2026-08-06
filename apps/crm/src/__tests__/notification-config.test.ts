@@ -48,7 +48,7 @@ describe('getNotificationDisplay', () => {
       workflow_id: 2,
       post_title: 'Carrossel de lançamento',
       client_name: 'Clínica Vitalis',
-      publish_error_code: 'token_expired',
+      publish_error_code: 'TOKEN_EXPIRED',
     });
 
     expect(display.title).toBe('Falha na publicação');

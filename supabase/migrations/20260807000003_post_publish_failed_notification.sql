@@ -76,7 +76,7 @@ BEGIN
         NEW.conta_id,
         v_targets,
         'post_publish_failed',
-        '/entregas?drawer=' || NEW.workflow_id,
+        '/entregas?drawer=' || NEW.workflow_id || '&post=' || NEW.id,
         jsonb_build_object(
           'post_id',            NEW.id,
           'workflow_id',        NEW.workflow_id,

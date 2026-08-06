@@ -7,17 +7,9 @@
 -- (WHEN 'retry'). Este arquivo passa a ser a definição canônica.
 -- =====================================================================
 
--- ── Guard the IG claim against double-publish on `both` retries.
--- Re-created (full body copied) from supabase/migrations/20260625000001_instagram_story_segments.sql
--- with exactly THREE edits vs that text:
---   1. top-level WHERE gains: AND wp.platform IN ('instagram','both')
---   2. 'container' and 'publish' phases each gain: AND wp.instagram_media_id IS NULL
---   3. 'retry' phase gains: AND wp.instagram_media_id IS NULL
--- DROP first: mirrors the DROP-then-CREATE pattern 20260625000001 established for
--- this function (there, changing the RETURNS TABLE shape required it; here the
--- shape is unchanged, but we keep the same DROP+CREATE form for consistency with
--- that migration's text, which is what we are copying almost verbatim). Safe —
--- only the cron calls this via RPC; no view/trigger depends on it.
+-- DROP first: the shape is unchanged, but this mirrors the DROP-then-CREATE form
+-- the function already used in 20260720000005. Safe — only the cron calls this
+-- via RPC; no view/trigger depends on it.
 DROP FUNCTION IF EXISTS claim_posts_for_publishing(text, integer);
 CREATE OR REPLACE FUNCTION claim_posts_for_publishing(
   p_phase text,
