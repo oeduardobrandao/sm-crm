@@ -203,20 +203,16 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
           const state = await deps.createSignedState(
             String(link.cliente_id), link.created_by, link.conta_id, db, token,
           );
-          // Host é api.instagram.com, não www.instagram.com -- de propósito.
-          // iOS dispara Universal Links no toque inicial, não em redirect 3xx do
-          // servidor. Como o app do Instagram reivindica `/*` em www.instagram.com
-          // (apple-app-site-association), mandar o cliente direto para lá sempre
-          // abre o app instalado, que não sabe renderizar a tela de consentimento
-          // OAuth e trava numa tela quebrada. api.instagram.com não é reivindicado
-          // pelo app, então o 302 que ele devolve para www.instagram.com acontece
-          // dentro do navegador e tende a não acionar o handoff para o app.
-          // redirect_uri não muda, então a troca de código não é afetada.
-          // Isso não é garantido em todo navegador/versão de iOS -- por isso a
-          // página pública também traz uma orientação para o caso de o app abrir
-          // mesmo assim (ver ConectarPage).
+          // EXPERIMENTO FALHO, não repita: o app do Instagram reivindica `/*` em
+          // www.instagram.com no AASA, então em celular com o app instalado a URL
+          // de autorização abre o app, que não renderiza a tela de consentimento.
+          // Já tentamos passar por api.instagram.com, que o app não reivindica e
+          // que faz 302 para www, apostando que o iOS não dispara Universal Link
+          // em redirect de servidor. Testado em iPhone com Chrome: NÃO funciona,
+          // o app intercepta do mesmo jeito. A mitigação real hoje é a orientação
+          // na página pública (ConectarPage).
           const authorizeUrl =
-            `https://api.instagram.com/oauth/authorize?client_id=${deps.metaAppId()}` +
+            `https://www.instagram.com/oauth/authorize?client_id=${deps.metaAppId()}` +
             `&redirect_uri=${encodeURIComponent(deps.metaRedirectUri())}` +
             `&response_type=code&scope=${IG_SCOPES}&state=${state}`;
           return json({ url: authorizeUrl });

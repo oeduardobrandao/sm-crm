@@ -162,7 +162,7 @@ describe('ConectarPage', () => {
     await waitFor(() => expect(screen.getByText('detail.igLinkRevoked')).toBeInTheDocument());
   });
 
-  test('mobile user-agent in the live state shows the handoff hint and copy-link button', async () => {
+  test('mobile user-agent in the live state shows the handoff notice and copy-link button', async () => {
     // vi.stubGlobal, not Object.defineProperty: the repo's global afterEach
     // calls vi.unstubAllGlobals(), which only undoes stubGlobal -- a raw
     // defineProperty here would leak navigator into other suites.
@@ -179,14 +179,16 @@ describe('ConectarPage', () => {
       connected_username: null,
     });
     renderAt();
-    await waitFor(() => expect(screen.getByText('connect.mobileHint')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('connect.mobileNoticeIntro')).toBeInTheDocument());
+    expect(screen.getByText('connect.mobileNoticeRecovery')).toBeInTheDocument();
+    expect(screen.getByText('connect.mobileNoticeDesktop')).toBeInTheDocument();
     const copyButton = screen.getByText('connect.mobileCopyLink');
     fireEvent.click(copyButton);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(window.location.href));
     await waitFor(() => expect(screen.getByText('connect.mobileLinkCopied')).toBeInTheDocument());
   });
 
-  test('desktop user-agent in the live state does not show the handoff hint', async () => {
+  test('desktop user-agent in the live state does not show the handoff notice', async () => {
     vi.stubGlobal('navigator', {
       ...navigator,
       userAgent:
@@ -200,11 +202,11 @@ describe('ConectarPage', () => {
     });
     renderAt();
     await waitFor(() => expect(screen.getByRole('button')).toBeInTheDocument());
-    expect(screen.queryByText('connect.mobileHint')).not.toBeInTheDocument();
+    expect(screen.queryByText('connect.mobileNoticeIntro')).not.toBeInTheDocument();
     expect(screen.queryByText('connect.mobileCopyLink')).not.toBeInTheDocument();
   });
 
-  test('mobile user-agent in a non-live state does not show the handoff hint', async () => {
+  test('mobile user-agent in a non-live state does not show the handoff notice', async () => {
     vi.stubGlobal('navigator', {
       ...navigator,
       userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
@@ -217,7 +219,7 @@ describe('ConectarPage', () => {
     });
     renderAt();
     await waitFor(() => expect(screen.getByText('connect.revokedTitle')).toBeInTheDocument());
-    expect(screen.queryByText('connect.mobileHint')).not.toBeInTheDocument();
+    expect(screen.queryByText('connect.mobileNoticeIntro')).not.toBeInTheDocument();
     expect(screen.queryByText('connect.mobileCopyLink')).not.toBeInTheDocument();
   });
 });

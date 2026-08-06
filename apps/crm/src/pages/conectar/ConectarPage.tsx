@@ -166,18 +166,20 @@ export default function ConectarPage() {
         <p className="mb-4 text-sm text-[var(--danger-text)]">{t('connect.startError')}</p>
       )}
 
-      <Button className="w-full" onClick={handleConnect} disabled={starting}>
-        {starting ? t('connect.connecting') : t('connect.cta')}
-      </Button>
-
       {isMobile && (
-        <div className="mt-4 text-sm text-muted-foreground">
-          <p className="mb-2">{t('connect.mobileHint')}</p>
+        <div className="mb-4 rounded-md border border-border bg-muted/40 p-3 text-left text-sm text-muted-foreground">
+          <p className="mb-1">{t('connect.mobileNoticeIntro')}</p>
+          <p className="mb-1">{t('connect.mobileNoticeRecovery')}</p>
+          <p className="mb-2">{t('connect.mobileNoticeDesktop')}</p>
           <Button variant="outline" size="sm" onClick={handleCopyPageLink}>
             {linkCopied ? t('connect.mobileLinkCopied') : t('connect.mobileCopyLink')}
           </Button>
         </div>
       )}
+
+      <Button className="w-full" onClick={handleConnect} disabled={starting}>
+        {starting ? t('connect.connecting') : t('connect.cta')}
+      </Button>
     </>,
   );
 }

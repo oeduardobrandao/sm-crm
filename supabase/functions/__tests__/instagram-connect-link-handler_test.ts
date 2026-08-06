@@ -578,10 +578,13 @@ Deno.test("public start: returns the Instagram authorize url with the signed sta
   const res = await h(publicReq("POST", "/public/t/start"));
   assertEquals(res.status, 200);
   const { url } = await res.json();
-  // Host is load-bearing for the mobile app-handoff bug (iOS Universal Links
-  // claim www.instagram.com/* and hijack the redirect before our callback is
-  // ever reached) -- do NOT "fix" this back to www.instagram.com.
-  assertEquals(url.startsWith("https://api.instagram.com/oauth/authorize?"), true);
+  // Host is www.instagram.com, the real OAuth authorize endpoint. A prior
+  // attempt routed this through api.instagram.com hoping iOS would not fire a
+  // Universal Link on a server-side 302 -- tested on a real iPhone with
+  // Chrome, it did not work, the Instagram app still hijacked the flow. Do
+  // NOT reintroduce that host change; the actual mitigation is the mobile
+  // guidance in ConectarPage.
+  assertEquals(url.startsWith("https://www.instagram.com/oauth/authorize?"), true);
   assertEquals(url.includes("state=signed.state"), true);
   assertEquals(url.includes("client_id=app-id"), true);
   assertEquals(
