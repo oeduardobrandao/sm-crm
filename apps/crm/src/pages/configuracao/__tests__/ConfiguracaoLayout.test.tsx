@@ -84,7 +84,7 @@ describe('ConfiguracaoLayout', () => {
       'Relatórios',
       'Status de posts',
       'Hub',
-      'Claude (MCP)',
+      'Agentes (MCP)',
       'Plano & Cobrança',
     ]);
   });

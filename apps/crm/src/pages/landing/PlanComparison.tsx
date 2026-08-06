@@ -40,7 +40,7 @@ const FEATURE_ROWS: ReadonlyArray<{ key: FeatureKey; label: string }> = [
   { key: 'feature_financial', label: 'Financeiro' },
   { key: 'feature_contracts', label: 'Contratos' },
   { key: 'feature_brand_customization', label: 'Personalização de marca' },
-  { key: 'feature_mcp', label: 'Integração com Claude (MCP)' },
+  { key: 'feature_mcp', label: 'Integração com agentes (MCP)' },
 ];
 
 function cellClass(plan: PublicPricingPlan): string {

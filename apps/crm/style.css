@@ -10501,3 +10501,185 @@ body.landing-page #root {
     right: 0.9rem;
   }
 }
+
+/* ===== Configurações shell =====
+   /configuracao/* lives inside one enclosed grey panel (title bar + secondary
+   nav + content) to set settings apart from the rest of the app. One nav serves
+   both layouts: a grouped vertical sidebar ≥1101px (the breakpoint where the
+   main sidebar is static), a scrollable pill strip below it — same DOM either
+   way, so jsdom tests see a single set of links. */
+.config-page {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.config-shell {
+  /* Active-item bg must contrast with the panel's --surface-1 in BOTH modes:
+     white works in light but dark's --surface-main equals the panel colour,
+     so dark steps up to --surface-3 instead. */
+  --config-nav-active-bg: var(--surface-main);
+  background: var(--surface-1);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+[data-theme='dark'] .config-shell {
+  --config-nav-active-bg: var(--surface-3);
+}
+
+.config-shell-header {
+  padding: 1.1rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.config-shell-header h1 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: clamp(1.2rem, 3vw, 1.5rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-main);
+}
+
+.config-shell-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+.config-shell-body--single {
+  display: block;
+}
+
+.config-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 1rem 0.75rem 1.5rem;
+  border-right: 1px solid var(--border-color);
+}
+
+.config-nav-label {
+  padding: 0.85rem 0.625rem 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-light);
+}
+
+.config-nav > .config-nav-label:first-child {
+  padding-top: 0.25rem;
+}
+
+.config-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.625rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.config-nav-item:hover {
+  background: var(--surface-2);
+  color: var(--text-main);
+}
+
+.config-nav-item.active {
+  background: var(--config-nav-active-bg);
+  border-color: var(--border-color);
+  color: var(--text-main);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.config-nav-item svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.config-shell-content {
+  padding: 1.5rem;
+  min-width: 0;
+}
+
+@media (max-width: 1100px) {
+  .config-shell-body {
+    display: block;
+  }
+
+  .config-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0.6rem 0.75rem;
+  }
+
+  .config-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .config-nav-label {
+    display: none;
+  }
+
+  .config-nav-item {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    border-radius: 999px;
+    padding: 0.35rem 0.85rem;
+    font-size: 0.8rem;
+  }
+
+  .config-nav-item svg {
+    display: none;
+  }
+
+  .config-shell-content {
+    padding: 1rem;
+  }
+}
+
+/* Numbered connection steps on the MCP settings page. */
+.mcp-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  counter-reset: mcp-step;
+}
+
+.mcp-steps li {
+  display: flex;
+  gap: 0.65rem;
+  counter-increment: mcp-step;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.mcp-steps li::before {
+  content: counter(mcp-step);
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  font-size: 0.7rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}

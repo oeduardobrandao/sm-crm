@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { Fragment, useEffect } from 'react';
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { UserX, AlertTriangle } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -87,27 +87,40 @@ export default function ConfiguracaoLayout() {
   }
 
   return (
-    <div className="page-content" style={{ maxWidth: 1040, margin: '0 auto' }}>
-      <div className="header-title" style={{ marginBottom: '1.25rem' }}>
-        <h1>Configurações</h1>
+    <div className="page-content config-page">
+      <div className="config-shell">
+        <header className="config-shell-header">
+          <h1>Configurações</h1>
+        </header>
+
+        <div className={`config-shell-body${tabs.length > 1 ? '' : ' config-shell-body--single'}`}>
+          {/* A single visible tab is not a choice — don't render a nav for it. */}
+          {tabs.length > 1 && (
+            <nav className="config-nav" aria-label="Seções de configurações">
+              {tabs.map((tab, i) => {
+                const Icon = tab.icon;
+                const startsGroup = i === 0 || tabs[i - 1].group !== tab.group;
+                return (
+                  <Fragment key={tab.path}>
+                    {startsGroup && <span className="config-nav-label">{tab.group}</span>}
+                    <NavLink
+                      to={tab.path}
+                      className={({ isActive }) => `config-nav-item${isActive ? ' active' : ''}`}
+                    >
+                      <Icon aria-hidden="true" />
+                      {tab.label}
+                    </NavLink>
+                  </Fragment>
+                );
+              })}
+            </nav>
+          )}
+
+          <div className="config-shell-content">
+            <Outlet />
+          </div>
+        </div>
       </div>
-
-      {/* A single visible tab is not a choice — don't render a strip for it. */}
-      {tabs.length > 1 && (
-        <nav className="page-tabs" aria-label="Seções de configurações">
-          {tabs.map((tab) => (
-            <NavLink
-              key={tab.path}
-              to={tab.path}
-              className={({ isActive }) => `page-tab${isActive ? ' active' : ''}`}
-            >
-              {tab.label}
-            </NavLink>
-          ))}
-        </nav>
-      )}
-
-      <Outlet />
     </div>
   );
 }
