@@ -1,4 +1,9 @@
 import { signGetUrl } from "./r2.ts";
+import { CAROUSEL_MAX_ITEMS, validateMedia } from "./instagram-limits.ts";
+import type { MediaFile, ValidationError } from "./instagram-limits.ts";
+
+export { CAROUSEL_MAX_ITEMS, validateMedia };
+export type { MediaFile, ValidationError };
 
 // --- Token Decryption (duplicated across functions; centralized here) ---
 
@@ -43,92 +48,6 @@ export async function decryptToken(encryptedBase64: string): Promise<string> {
       await crypto.subtle.decrypt({ name: "AES-GCM", iv }, legacyKey, data)
     );
   }
-}
-
-// --- Media Validation ---
-
-interface MediaFile {
-  id: number;
-  kind: string;
-  mime_type: string;
-  size_bytes: number;
-  width: number | null;
-  height: number | null;
-  duration_seconds: number | null;
-  r2_key: string;
-  sort_order: number;
-}
-
-interface ValidationError {
-  file_id: number;
-  message: string;
-}
-
-const ALLOWED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const ALLOWED_VIDEO_MIMES = new Set(["video/mp4", "video/quicktime"]);
-const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
-const VIDEO_MAX_BYTES = 250 * 1024 * 1024;
-const IMAGE_MIN_DIM = 320;
-const IMAGE_AR_MIN = 3 / 4;
-const STORY_IMAGE_AR_MIN = 9 / 16;
-const IMAGE_AR_MAX = 1.91;
-const VIDEO_AR_MIN = 9 / 16;
-const VIDEO_AR_MAX = 1.25;
-const VIDEO_MIN_DURATION = 3;
-const VIDEO_MAX_DURATION = 90;
-const STORY_VIDEO_MAX_DURATION = 60;
-
-/** Instagram Content Publishing API caps carousels at 10 items.
- *  (The native app allows 20, but the Graph API does not.) Stories are exempt
- *  — they publish as sequential segments, not a single carousel container. */
-export const CAROUSEL_MAX_ITEMS = 10;
-
-export function validateMedia(files: MediaFile[], opts?: { forStories?: boolean }): ValidationError[] {
-  const errors: ValidationError[] = [];
-  const imageArMin = opts?.forStories ? STORY_IMAGE_AR_MIN : IMAGE_AR_MIN;
-  const imageArLabel = opts?.forStories ? "9:16 a 1.91:1" : "3:4 a 1.91:1";
-  const videoMaxDuration = opts?.forStories ? STORY_VIDEO_MAX_DURATION : VIDEO_MAX_DURATION;
-  const videoDurationLabel = opts?.forStories ? "3–60 segundos" : "3–90 segundos";
-  for (const f of files) {
-    if (f.kind === "image") {
-      if (!ALLOWED_IMAGE_MIMES.has(f.mime_type)) {
-        errors.push({ file_id: f.id, message: "Imagens devem estar em formato JPEG" });
-        continue;
-      }
-      if (f.size_bytes > IMAGE_MAX_BYTES) {
-        errors.push({ file_id: f.id, message: "Imagem excede 8 MB (limite do Instagram)" });
-      }
-      if (f.width && f.height) {
-        if (f.width < IMAGE_MIN_DIM || f.height < IMAGE_MIN_DIM) {
-          errors.push({ file_id: f.id, message: "Imagem muito pequena (mínimo 320×320)" });
-        }
-        const ar = f.width / f.height;
-        if (ar < imageArMin || ar > IMAGE_AR_MAX) {
-          errors.push({ file_id: f.id, message: `Proporção da imagem fora do permitido (${imageArLabel})` });
-        }
-      }
-    } else if (f.kind === "video") {
-      if (!ALLOWED_VIDEO_MIMES.has(f.mime_type)) {
-        errors.push({ file_id: f.id, message: "Vídeos devem estar em formato MP4 ou MOV" });
-        continue;
-      }
-      if (f.size_bytes > VIDEO_MAX_BYTES) {
-        errors.push({ file_id: f.id, message: "Vídeo excede 250 MB (limite do Instagram)" });
-      }
-      if (f.duration_seconds != null) {
-        if (f.duration_seconds < VIDEO_MIN_DURATION || f.duration_seconds > videoMaxDuration) {
-          errors.push({ file_id: f.id, message: `Duração do vídeo fora do permitido (${videoDurationLabel})` });
-        }
-      }
-      if (f.width && f.height) {
-        const ar = f.width / f.height;
-        if (ar < VIDEO_AR_MIN || ar > VIDEO_AR_MAX) {
-          errors.push({ file_id: f.id, message: "Proporção do vídeo fora do permitido" });
-        }
-      }
-    }
-  }
-  return errors;
 }
 
 // --- Schedule Validation ---
