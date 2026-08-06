@@ -197,9 +197,15 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
         });
 
         if (error) {
-          // O fallback abaixo existe SÓ para duas abas clicando em "Gerar" ao mesmo
-          // tempo: a segunda colide no índice único parcial (Postgres SQLSTATE
-          // 23505) e isso não é erro para a agência, é o link que ela já queria.
+          // A RPC agora serializa duas abas concorrentes com um advisory lock por
+          // cliente (create_instagram_connect_link, na migration) e a segunda
+          // encontra e devolve o link que a primeira acabou de criar, sem tentar
+          // inserir de novo. Então este fallback de 23505 não é mais o caminho
+          // esperado para "duas abas clicando em Gerar ao mesmo tempo" — é defesa
+          // em profundidade para o caso residual de uma colisão no índice único
+          // parcial acontecer por outra via (ex.: chamada direta à função fora do
+          // lock, um outro caller). Se cair aqui, devolve o link vivo em vez de
+          // 500, mas não é mais o fluxo normal.
           // Qualquer outro código (params inválidos, permissão, falha transitória)
           // tem que virar 500 de verdade — devolver 200 com um link stale esconderia
           // o erro do monitoramento de taxa de erro.

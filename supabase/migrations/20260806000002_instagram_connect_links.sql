@@ -58,9 +58,20 @@ CREATE POLICY "instagram_connect_links_workspace_all" ON instagram_connect_links
 CREATE POLICY "instagram_connect_links_service_role" ON instagram_connect_links
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
--- Revogar-e-inserir em uma transação. Corpo de função é transação, então dois
--- POST simultâneos serializam: um vence, o outro colide no índice único e o
--- handler relê o link vivo.
+-- Lock consultivo transacional por cliente + "já existe link vivo? devolve ele"
+-- em vez de contar com a colisão no índice único. Um UPDATE-revoga seguido de
+-- INSERT sem lock deixava o resultado de dois POSTs concorrentes para o mesmo
+-- cliente não determinístico: a ordem física de scan e o snapshot de cada
+-- statement decidiam se o segundo UPDATE também revogava a linha que o
+-- primeiro acabara de inserir. Quando revogava, a resposta HTTP do primeiro
+-- POST carregava um token já morto -- a primeira aba podia mostrar e mandar
+-- um link natimorto ao cliente. Com o lock, o segundo `pg_advisory_xact_lock`
+-- espera o primeiro liberar (commit/rollback da transação) antes de agir, e
+-- aí encontra o link recém-criado pela verificação de liveness abaixo e o
+-- devolve em vez de revogar. A UI só mostra "Gerar" quando não há link vivo
+-- (ConnectLinkDialog), então duas abas que concordam nisso devem convergir
+-- no MESMO token -- não existe fluxo de produto que peça para rotacionar um
+-- link vivo por engano. Rotação continua disponível via Revogar + Gerar.
 CREATE OR REPLACE FUNCTION create_instagram_connect_link(
   p_cliente_id bigint,
   p_conta_id   uuid,
@@ -72,6 +83,8 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_existing RECORD;
 BEGIN
   -- Defesa em profundidade: o handler já checa, mas a RPC não confia nele.
   IF NOT EXISTS (
@@ -80,6 +93,36 @@ BEGIN
     RAISE EXCEPTION 'client % does not belong to workspace %', p_cliente_id, p_conta_id;
   END IF;
 
+  -- Namespace = hash de um literal fixo ('instagram_connect_links'), chave =
+  -- hash do cliente_id como texto. bigint não cabe no segundo argumento int4
+  -- de pg_advisory_xact_lock(int, int); hashear a representação em texto (em
+  -- vez de truncar/moduloar o bigint) evita qualquer cuidado extra com
+  -- overflow ou sinal. O par (namespace, chave) fica isolado de qualquer
+  -- outro uso de advisory lock neste banco -- não colide por construção com
+  -- um lock de duas chaves aleatórias de outro subsistema. Escopo XACT: solto
+  -- automaticamente no commit ou rollback, sem UNLOCK explícito. Não se usa
+  -- `SELECT ... FOR UPDATE` em `clientes` aqui: seria um lock de linha numa
+  -- tabela com escrita pesada, arriscando deadlock contra transações que
+  -- tocam `clientes` em outra ordem.
+  PERFORM pg_advisory_xact_lock(hashtext('instagram_connect_links'), hashtext(p_cliente_id::text));
+
+  -- Com o lock em mãos (serializa concorrentes para este cliente_id), procura
+  -- um link já vivo -- não revogado e ainda dentro do prazo. Se existir,
+  -- devolve sem tocar em nada.
+  SELECT icl.token, icl.expires_at INTO v_existing
+    FROM instagram_connect_links icl
+   WHERE icl.cliente_id = p_cliente_id
+     AND icl.revoked_at IS NULL
+     AND icl.expires_at > now()
+   LIMIT 1;
+
+  IF FOUND THEN
+    RETURN QUERY SELECT v_existing.token, v_existing.expires_at;
+    RETURN;
+  END IF;
+
+  -- Nenhum link vivo: revoga qualquer linha não revogada mas EXPIRADA (que
+  -- ainda ocupa o slot do índice único parcial) e insere o novo.
   UPDATE instagram_connect_links l
      SET revoked_at = now()
    WHERE l.cliente_id = p_cliente_id AND l.revoked_at IS NULL;
