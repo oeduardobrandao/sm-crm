@@ -26,9 +26,24 @@ export function fromUrlSafeBase64(b64: string): string {
 }
 
 // deno-lint-ignore no-explicit-any
-export async function createSignedState(clientId: string, userId: string, contaId: string, serviceClient: any): Promise<string> {
+export async function createSignedState(
+  clientId: string,
+  userId: string,
+  contaId: string,
+  serviceClient: any,
+  linkToken?: string,
+): Promise<string> {
   await serviceClient.from('oauth_states').delete().lt('expires_at', new Date(Date.now() - 60 * 60 * 1000).toISOString());
-  const payload = JSON.stringify({ clientId, userId, contaId, nonce: crypto.randomUUID(), iat: Date.now() });
+  // linkToken só entra no payload quando existe: um state do fluxo da agência
+  // continua byte-a-byte no formato antigo.
+  const payload = JSON.stringify({
+    clientId,
+    userId,
+    contaId,
+    nonce: crypto.randomUUID(),
+    iat: Date.now(),
+    ...(linkToken ? { linkToken } : {}),
+  });
   const key = await getHmacKey();
   const enc = new TextEncoder();
   const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(payload));
@@ -45,7 +60,9 @@ export async function createSignedState(clientId: string, userId: string, contaI
   return payloadB64 + '.' + sigB64;
 }
 
-export async function verifySignedState(state: string): Promise<{ clientId: string; userId: string; contaId: string; nonce: string }> {
+export async function verifySignedState(
+  state: string,
+): Promise<{ clientId: string; userId: string; contaId: string; nonce: string; linkToken?: string }> {
   const s = decodeURIComponent(state);
   const dotIdx = s.indexOf('.');
   if (dotIdx === -1) throw new Error('Invalid state format');
@@ -59,5 +76,11 @@ export async function verifySignedState(state: string): Promise<{ clientId: stri
   if (!valid) throw new Error('State signature invalid');
   const parsed = JSON.parse(payload);
   if (Date.now() - parsed.iat > 10 * 60 * 1000) throw new Error('State expired');
-  return { clientId: parsed.clientId, userId: parsed.userId, contaId: parsed.contaId, nonce: parsed.nonce };
+  return {
+    clientId: parsed.clientId,
+    userId: parsed.userId,
+    contaId: parsed.contaId,
+    nonce: parsed.nonce,
+    linkToken: parsed.linkToken,
+  };
 }
