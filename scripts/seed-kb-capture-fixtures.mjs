@@ -125,23 +125,27 @@ const POSTS = [
 // Workflow 53's stored title uses an em-dash, which the house style bans in
 // user-facing copy. It would be legible in several screenshots, so --up
 // rewrites it and --down restores whatever was there before.
-// `from` is the title observed in production on 2026-08-06, kept so teardown can
-// undo the rename even when the manifest is gone. Row cleanup already survives a
-// lost manifest via findFixtureRows; without this the title restore would not,
-// and the cosmetic rename would stick to a real workflow forever with no record
-// anywhere of what it used to be. Only ever applied when the current title is
-// exactly `to`, so a legitimate rename made in the meantime is never clobbered.
+// `from` is the title observed in production on 2026-08-06. It guards BOTH
+// directions: --up renames only a title that still equals `from`, and --down's
+// manifest-less fallback restores only a title that still equals `to`. Either
+// way a rename someone made on purpose is left alone. Without the guard on --up,
+// this script would create the very situation the --down fallback exists to
+// survive, by overwriting a legitimate rename in the first place.
 const TITLE_FIX = {
   id: WORKFLOW_AGENDAMENTO,
   from: 'Post Semana 4 — BE',
   to: 'Post Semana 4 · BE',
 };
 
-// The titles are the fixture marker. workflow_posts has no free-form provenance
-// column that would take a custom value (created_via is CHECK-constrained to
-// 'human'/'agent'), so identity comes from the exact title inside the exact two
-// fixture workflows of the exact fixture workspace. Nothing else in DK TESTE
-// carries these strings.
+// Fixture identity is a title from this list, inside one of the two fixture
+// workflows, in the fixture workspace, AND carrying the publish_processing_at
+// marker below. workflow_posts has no free-form provenance column that would
+// take a custom value (created_via is CHECK-constrained to 'human'/'agent'),
+// so the marker rides on a column the CRM never reads.
+//
+// Title alone was the first design and it was not safe: workflows 48 and 53 are
+// real, shared workflows, so a genuine post reusing one of these titles would
+// have been deleted by --down as though it were ours.
 //
 // This makes the rows discoverable in the DATABASE rather than only through the
 // local manifest, which closes two gaps the manifest alone cannot:
@@ -153,14 +157,30 @@ const TITLE_FIX = {
 const FIXTURE_TITLES = POSTS.map((p) => p.titulo);
 const FIXTURE_WORKFLOWS = [WORKFLOW_APROVACAO, WORKFLOW_AGENDAMENTO];
 
-/** Every fixture row currently in production, found without the manifest. */
+// Provenance marker, written to publish_processing_at on every seeded row. Ten
+// years out, so it is unmistakably synthetic. See the note at the insert.
+const FIXTURE_MARKER_AT = new Date(Date.now() + 3650 * DAY).toISOString();
+// Anything beyond this is ours. Generous lower bound so a marker written by an
+// earlier run, with a slightly different "now", still matches.
+const FIXTURE_MARKER_FLOOR = new Date(Date.now() + 3000 * DAY).toISOString();
+
+/**
+ * Every fixture row currently in production, found without the manifest.
+ *
+ * Title alone is not enough to claim ownership of a row: workflows 48 and 53 are
+ * real, shared workflows in DK TESTE, and a genuine post that happened to reuse
+ * one of these titles would be deleted by --down as though it were ours. The
+ * publish_processing_at floor is the discriminator, and the application never
+ * writes a future value there.
+ */
 async function findFixtureRows(supabase) {
   const { data, error } = await supabase
     .from('workflow_posts')
-    .select('id, titulo, status, workflow_id')
+    .select('id, titulo, status, workflow_id, publish_processing_at')
     .eq('conta_id', CONTA_ID)
     .in('workflow_id', FIXTURE_WORKFLOWS)
-    .in('titulo', FIXTURE_TITLES);
+    .in('titulo', FIXTURE_TITLES)
+    .gt('publish_processing_at', FIXTURE_MARKER_FLOOR);
   if (error) throw error;
   return data ?? [];
 }
@@ -362,12 +382,29 @@ async function up({ skipSecao7 }) {
       p.scheduledInDays != null
         ? new Date(Date.now() + p.scheduledInDays * DAY).toISOString()
         : null,
-    // See the 'unclaimable' note on the agendado fixture above. A far-future
-    // value makes claim_posts_for_publishing skip the row permanently.
-    publish_processing_at: p.unclaimable ? new Date(Date.now() + 3650 * DAY).toISOString() : null,
+    // Two jobs, one column.
+    //
+    // 1. On the agendado fixture it is the unclaimable lock: a far-future value
+    //    fails both branches of claim_posts_for_publishing's
+    //    "IS NULL OR < now() - 10 minutes" predicate, permanently.
+    // 2. On EVERY fixture it is the provenance marker. Identifying fixtures by
+    //    title alone means a real post that happens to share one of these
+    //    titles, inside these shared workflows, would be deleted by --down as if
+    //    it were ours: silent data loss on a real row. A future
+    //    publish_processing_at is something the application never writes (the
+    //    publish path only ever sets it to now()), and nothing in the CRM reads
+    //    this column at all, so it is both distinctive and invisible.
+    //
+    // Inert on the non-agendado rows: the claim predicate is gated on
+    // status = 'agendado' before it ever looks at this field.
+    publish_processing_at: FIXTURE_MARKER_AT,
   }));
 
   const originalTitle = flows.find((f) => f.id === TITLE_FIX.id)?.titulo ?? null;
+  // Decided before the manifest is written, because the manifest must not record
+  // a rename that is not going to happen: --down would then "restore" a title
+  // this run never touched.
+  const willRename = !skipSecao7 && originalTitle === TITLE_FIX.from;
 
   const { data: inserted, error } = await supabase
     .from('workflow_posts')
@@ -405,7 +442,7 @@ async function up({ skipSecao7 }) {
           postIds,
           // null when partial mode left the title alone, so --down knows there
           // is nothing to restore and cannot clobber a later legitimate rename.
-          workflowTitle: skipSecao7 ? null : { id: TITLE_FIX.id, original: originalTitle },
+          workflowTitle: willRename ? { id: TITLE_FIX.id, original: originalTitle } : null,
         },
         null,
         2,
@@ -436,7 +473,19 @@ async function up({ skipSecao7 }) {
   // mutate an unrelated workflow for no reason. Worse, --down would later
   // "restore" the title recorded at seed time and silently overwrite any
   // legitimate rename made in between.
-  if (!skipSecao7) {
+  // Only rename a title we still recognise. down()'s fallback already refuses to
+  // clobber a rename made in the meantime; without the same check here, up()
+  // would create exactly the situation that fallback exists to survive, by
+  // overwriting a legitimate rename in the first place. Skipping is safe: the
+  // rename is cosmetic, and a title someone chose on purpose is more valuable
+  // than removing an em-dash from a screenshot.
+  if (!skipSecao7 && !willRename) {
+    console.log(
+      `\nFluxo ${TITLE_FIX.id} está com o título "${originalTitle}", e não com\n` +
+        `"${TITLE_FIX.from}", que é o que este script sabe renomear. Não vou mexer.\n` +
+        'Se ele contiver um travessão, ele aparecerá nas capturas da seção 7.',
+    );
+  } else if (willRename) {
     const { error: titleErr } = await supabase
       .from('workflows')
       .update({ titulo: TITLE_FIX.to })
