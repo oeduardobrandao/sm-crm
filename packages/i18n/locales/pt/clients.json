@@ -150,6 +150,7 @@
   "detail": {
     "igNotBusiness": "A conta Instagram não é uma conta Business. Reconecte com uma conta Business ou Creator.",
     "igError": "Ocorreu um erro ao conectar a conta Instagram. Tente novamente.",
+    "igLinkRevoked": "Este link de conexão foi revogado ou expirou. Peça um novo link para a agência.",
     "igCancelled": "A conexão foi cancelada antes de concluir. Clique em Conectar novamente e aceite as permissões solicitadas.",
     "igMissingPermissions": "Algumas permissões necessárias não foram concedidas. Reconecte a conta mantendo todas as permissões marcadas.",
     "igStateExpired": "A sessão de conexão expirou. Clique em Conectar novamente para recomeçar.",
