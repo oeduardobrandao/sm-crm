@@ -4,6 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createPublishCronHandler } from "./handler.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
+import { classifyPublishError } from "../_shared/publish-error-codes.ts";
 import {
   decryptToken,
   createContainerForPost,
@@ -65,18 +66,24 @@ async function markFailed(
   db: any,
   postId: number,
   retryCount: number,
-  errorMessage: string,
+  err: unknown,
   clientId?: number,
-  errorCode?: string,
 ) {
-  await db.from("workflow_posts").update({
+  const errorCode = classifyPublishError(err);
+  const message = err instanceof Error ? err.message : String(err);
+  const fields: Record<string, unknown> = {
     status: "falha_publicacao",
     publish_retry_count: retryCount + 1,
-    publish_error: errorMessage.slice(0, 500),
+    publish_error: message.slice(0, 500),
+    publish_error_code: errorCode,
     publish_processing_at: null,
-  }).eq("id", postId);
+  };
+  // Um container expirado nunca volta a funcionar; sem limpar, o retry
+  // automático (processRetry) reusaria o mesmo id e falharia 3x igual.
+  if (errorCode === "CONTAINER_EXPIRED") fields.instagram_container_id = null;
+  await db.from("workflow_posts").update(fields).eq("id", postId);
 
-  if (errorCode === 'TOKEN_EXPIRED' && clientId) {
+  if (errorCode === "TOKEN_EXPIRED" && clientId) {
     await db.from("instagram_accounts").update({ authorization_status: "expired" }).eq("client_id", clientId);
   }
 }
@@ -157,6 +164,7 @@ async function processPublish(
         published_at: new Date().toISOString(),
         publish_processing_at: null,
         publish_error: null,
+        publish_error_code: null,
         publish_retry_count: 0,
       }).eq("id", post.post_id);
       if (fallbackErr) {
@@ -261,6 +269,7 @@ async function processRetry(
           published_at: new Date().toISOString(),
           publish_processing_at: null,
           publish_error: null,
+          publish_error_code: null,
           publish_retry_count: 0,
         }).eq("id", post.post_id);
         if (fallbackErr) {
@@ -313,7 +322,7 @@ Deno.serve(createPublishCronHandler({
           try {
             await processContainerCreation(db, post);
           } catch (err: any) {
-            await markFailed(db, post.post_id, post.publish_retry_count, err.message, post.client_id, err.code);
+            await markFailed(db, post.post_id, post.publish_retry_count, err, post.client_id);
             throw err;
           }
         });
@@ -328,7 +337,7 @@ Deno.serve(createPublishCronHandler({
           try {
             await processPublish(db, post);
           } catch (err: any) {
-            await markFailed(db, post.post_id, post.publish_retry_count, err.message, post.client_id, err.code);
+            await markFailed(db, post.post_id, post.publish_retry_count, err, post.client_id);
             throw err;
           }
         });
@@ -343,7 +352,7 @@ Deno.serve(createPublishCronHandler({
           try {
             await processRetry(db, post);
           } catch (err: any) {
-            await markFailed(db, post.post_id, post.publish_retry_count, err.message, post.client_id, err.code);
+            await markFailed(db, post.post_id, post.publish_retry_count, err, post.client_id);
             throw err;
           }
         });
