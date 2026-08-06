@@ -501,6 +501,7 @@ Deno.test("tiktok-publish cancel: `both` clears BOTH platforms' handles", async 
     instagram_container_id: null,
     publish_processing_at: null,
     publish_error: null,
+    publish_error_code: null,
   });
 });
 
