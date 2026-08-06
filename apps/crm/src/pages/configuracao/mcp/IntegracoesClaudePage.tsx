@@ -33,6 +33,17 @@ import { SCOPE_OPTIONS, AGENT_PRESET } from '@/lib/mcp-scopes';
 const MCP_URL = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1/mcp';
 const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
 
+const codexCmd = (token: string) =>
+  `codex mcp add mesaas -- npx -y mcp-remote ${MCP_URL} --header "Authorization: Bearer ${token}"`;
+
+type McpClient = 'claude' | 'chatgpt' | 'codex';
+
+const CLIENT_TABS: { id: McpClient; label: string }[] = [
+  { id: 'claude', label: 'Claude' },
+  { id: 'chatgpt', label: 'ChatGPT' },
+  { id: 'codex', label: 'Codex' },
+];
+
 /** Copy-paste connection snippets for a given token (real at creation, or a placeholder/pasted). */
 function ConnectSnippets({
   token,
@@ -120,7 +131,56 @@ function ConnectSnippets({
           </Button>
         </div>
       </div>
+
+      <div className="space-y-1 min-w-0">
+        <Label>Codex CLI</Label>
+        <p className="text-xs text-muted-foreground">Rode este comando no terminal.</p>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', minWidth: 0 }}>
+          <Input
+            readOnly
+            value={codexCmd(token)}
+            style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', flex: 1, minWidth: 0 }}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => copy(codexCmd(token), `${idPrefix}-codex`)}
+          >
+            {copiedKey === `${idPrefix}-codex` ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      </div>
     </>
+  );
+}
+
+/** Read-only copy field for a URL or command, shared by the connection guides. */
+function CopyField({
+  value,
+  copyKey,
+  copy,
+  copiedKey,
+}: {
+  value: string;
+  copyKey: string;
+  copy: (text: string, key: string) => void;
+  copiedKey: string | null;
+}) {
+  return (
+    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', minWidth: 0 }}>
+      <Input
+        readOnly
+        value={value}
+        style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', flex: 1, minWidth: 0 }}
+      />
+      <Button variant="outline" size="sm" onClick={() => copy(value, copyKey)}>
+        {copiedKey === copyKey ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+      </Button>
+    </div>
   );
 }
 
@@ -129,6 +189,7 @@ export default function IntegracoesClaudePage() {
   const isOwnerOrAdmin = role === 'owner' || role === 'admin';
   const queryClient = useQueryClient();
 
+  const [client, setClient] = useState<McpClient>('claude');
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState('');
   const [scopes, setScopes] = useState<string[]>(AGENT_PRESET);
@@ -221,90 +282,162 @@ export default function IntegracoesClaudePage() {
   return (
     <>
       <p className="text-sm text-muted-foreground" style={{ marginBottom: '1.5rem' }}>
-        Conecte seus agentes Claude para ler clientes, posts e pautas deste workspace.
+        Conecte Claude, ChatGPT ou Codex para ler clientes, posts e pautas deste workspace.
       </p>
 
-      <FeatureGate flag="feature_mcp" label="Integração com Claude (MCP)">
+      <FeatureGate flag="feature_mcp" label="Integração com agentes (MCP)">
         <div className="card animate-up" style={{ marginBottom: '1rem' }}>
           <h3 className="config-title" style={{ margin: 0, marginBottom: '0.75rem' }}>
             Como conectar
           </h3>
 
-          <p className="text-sm" style={{ fontWeight: 600, margin: 0, marginBottom: '0.4rem' }}>
-            Recomendado — claude.ai e Claude Desktop (sem chave)
-          </p>
-          <ol
-            className="text-sm text-muted-foreground"
-            style={{
-              margin: 0,
-              paddingLeft: '1.1rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.4rem',
-            }}
-          >
-            <li>
-              No Claude, abra{' '}
-              <strong>Configurações → Conectores → Adicionar conector personalizado</strong>.
-            </li>
-            <li>
-              Cole a URL abaixo, deixe os campos de OAuth em branco e clique em{' '}
-              <strong>Adicionar</strong>.
-            </li>
-            <li>
-              Faça login no Mesaas, escolha o workspace e as permissões e clique em{' '}
-              <strong>Autorizar</strong>.
-            </li>
-          </ol>
           <div
-            style={{
-              display: 'flex',
-              gap: '0.5rem',
-              alignItems: 'center',
-              minWidth: 0,
-              marginTop: '0.5rem',
-            }}
+            className="page-tabs page-tabs--inline"
+            role="tablist"
+            aria-label="Escolha o assistente"
+            style={{ marginBottom: '1rem' }}
           >
-            <Input
-              readOnly
-              value={MCP_URL}
-              style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', flex: 1, minWidth: 0 }}
-            />
-            <Button variant="outline" size="sm" onClick={() => copy(MCP_URL, 'mcp-url')}>
-              {copiedKey === 'mcp-url' ? (
-                <Check className="h-4 w-4" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-            </Button>
+            {CLIENT_TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={client === t.id}
+                className={`page-tab${client === t.id ? ' active' : ''}`}
+                onClick={() => setClient(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
 
-          <p
-            className="text-sm"
-            style={{ fontWeight: 600, margin: 0, marginTop: '1rem', marginBottom: '0.4rem' }}
-          >
-            Claude Code, API ou agentes headless (com chave)
-          </p>
-          <p className="text-sm text-muted-foreground" style={{ margin: 0 }}>
-            Crie uma chave abaixo e copie o comando (Claude Code) ou o bloco de configuração (Claude
-            Desktop sem conector). Já tem uma chave? Use <strong>Conectar</strong> ao lado dela.
-          </p>
+          {client === 'claude' && (
+            <div className="space-y-3 min-w-0">
+              <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
+                Sem chave: a conexão usa OAuth e pode ser revogada aqui a qualquer momento.
+              </p>
+              <ol className="mcp-steps">
+                <li>
+                  <span>
+                    No claude.ai ou no Claude Desktop, abra{' '}
+                    <strong>Configurações → Conectores → Adicionar conector personalizado</strong>.
+                  </span>
+                </li>
+                <li>
+                  <span>
+                    Cole a URL abaixo, deixe os campos de OAuth em branco e clique em{' '}
+                    <strong>Adicionar</strong>.
+                  </span>
+                </li>
+                <li>
+                  <span>
+                    Faça login no Mesaas, escolha o workspace e as permissões e clique em{' '}
+                    <strong>Autorizar</strong>.
+                  </span>
+                </li>
+              </ol>
+              <CopyField value={MCP_URL} copyKey="mcp-url" copy={copy} copiedKey={copiedKey} />
+              <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
+                Claude Code, API ou agentes headless usam uma chave: crie uma em{' '}
+                <strong>Chaves de API</strong> abaixo e copie o comando pronto.
+              </p>
+            </div>
+          )}
 
-          <p className="text-xs text-muted-foreground" style={{ marginTop: '0.75rem' }}>
-            Depois, peça ao agente: <em>"liste meus clientes ativos"</em> ou{' '}
+          {client === 'chatgpt' && (
+            <div className="space-y-3 min-w-0">
+              <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
+                Sem chave: a conexão usa OAuth. Requer o modo de desenvolvedor, disponível nos
+                planos pagos do ChatGPT.
+              </p>
+              <ol className="mcp-steps">
+                <li>
+                  <span>
+                    No ChatGPT, abra{' '}
+                    <strong>
+                      Configurações → Aplicativos e conectores → Configurações avançadas
+                    </strong>{' '}
+                    e ative o <strong>Modo de desenvolvedor</strong>.
+                  </span>
+                </li>
+                <li>
+                  <span>
+                    De volta em <strong>Aplicativos e conectores</strong>, clique em{' '}
+                    <strong>Criar</strong>, dê o nome "Mesaas", cole a URL abaixo em{' '}
+                    <strong>MCP server URL</strong> e escolha <strong>OAuth</strong> como
+                    autenticação.
+                  </span>
+                </li>
+                <li>
+                  <span>
+                    Faça login no Mesaas, escolha o workspace e as permissões e clique em{' '}
+                    <strong>Autorizar</strong>.
+                  </span>
+                </li>
+                <li>
+                  <span>
+                    Na conversa, ative o conector Mesaas em{' '}
+                    <strong>Ferramentas → Modo de desenvolvedor</strong>.
+                  </span>
+                </li>
+              </ol>
+              <CopyField value={MCP_URL} copyKey="mcp-url" copy={copy} copiedKey={copiedKey} />
+            </div>
+          )}
+
+          {client === 'codex' && (
+            <div className="space-y-3 min-w-0">
+              <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
+                O Codex CLI conecta com uma chave de API deste workspace.
+              </p>
+              <ol className="mcp-steps">
+                <li>
+                  <span>
+                    Crie uma chave em <strong>Chaves de API</strong> abaixo e copie o valor (ele
+                    aparece uma única vez).
+                  </span>
+                </li>
+                <li>
+                  <span>
+                    Rode o comando abaixo no terminal, trocando <code>SUA_CHAVE</code> pela chave
+                    copiada.
+                  </span>
+                </li>
+                <li>
+                  <span>
+                    Abra o Codex e confirme com <code>/mcp</code> que o servidor{' '}
+                    <strong>mesaas</strong> aparece na lista.
+                  </span>
+                </li>
+              </ol>
+              <CopyField
+                value={codexCmd('SUA_CHAVE')}
+                copyKey="codex-cmd"
+                copy={copy}
+                copiedKey={copiedKey}
+              />
+            </div>
+          )}
+
+          <p
+            className="text-xs text-muted-foreground"
+            style={{ marginTop: '1rem', marginBottom: 0 }}
+          >
+            Depois, peça ao assistente: <em>"liste meus clientes ativos"</em> ou{' '}
             <em>"mostre o post X com métricas"</em>.
           </p>
         </div>
 
         <div className="card animate-up" style={{ marginBottom: '1rem' }}>
           <h3 className="config-title" style={{ margin: 0, marginBottom: '0.25rem' }}>
-            Conexões Claude
+            Conexões via conector
           </h3>
           <p
             className="text-xs text-muted-foreground"
             style={{ margin: 0, marginBottom: '0.75rem' }}
           >
-            Conexões via conector (claude.ai/Desktop). Desconecte para revogar o acesso na hora.
+            Conexões OAuth (claude.ai, Claude Desktop, ChatGPT). Desconecte para revogar o acesso na
+            hora.
           </p>
           {activeGrants.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhuma conexão ativa.</p>
@@ -323,7 +456,9 @@ export default function IntegracoesClaudePage() {
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 600 }}>{g.connected_by ?? 'Conexão Claude'}</div>
+                    <div style={{ fontWeight: 600 }}>
+                      {g.connected_by ?? 'Conexão via conector'}
+                    </div>
                     <div className="text-muted-foreground" style={{ fontSize: '0.75rem' }}>
                       {g.scopes.join(', ')} · conectada {fmtDate(g.created_at)}
                     </div>
@@ -427,7 +562,7 @@ export default function IntegracoesClaudePage() {
           <DialogHeader>
             <DialogTitle>Criar chave de API</DialogTitle>
             <DialogDescription>
-              Gere uma chave para conectar um agente Claude a este workspace.
+              Gere uma chave para conectar um agente a este workspace.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 min-w-0">
@@ -538,8 +673,8 @@ export default function IntegracoesClaudePage() {
             />
 
             <p className="text-xs text-muted-foreground">
-              Esta chave é para Claude Code, API ou agentes headless. Em claude.ai ou Desktop,
-              conecte pelo conector (sem chave) — veja “Como conectar”.
+              Esta chave é para Claude Code, Codex, API ou agentes headless. No claude.ai, Claude
+              Desktop ou ChatGPT, conecte pelo conector (sem chave): veja "Como conectar".
             </p>
           </div>
           <DialogFooter>
@@ -575,8 +710,8 @@ export default function IntegracoesClaudePage() {
               idPrefix="connect"
             />
             <p className="text-xs text-muted-foreground">
-              Esta chave é para Claude Code, API ou agentes headless. Em claude.ai ou Desktop,
-              conecte pelo conector (sem chave) — veja “Como conectar”.
+              Esta chave é para Claude Code, Codex, API ou agentes headless. No claude.ai, Claude
+              Desktop ou ChatGPT, conecte pelo conector (sem chave): veja "Como conectar".
             </p>
           </div>
           <DialogFooter>
@@ -617,7 +752,7 @@ export default function IntegracoesClaudePage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Desconectar Claude?</AlertDialogTitle>
+            <AlertDialogTitle>Desconectar?</AlertDialogTitle>
             <AlertDialogDescription>
               A conexão{' '}
               {revokeGrantTarget?.connected_by ? (
@@ -625,7 +760,7 @@ export default function IntegracoesClaudePage() {
                   de <strong>{revokeGrantTarget.connected_by}</strong>
                 </>
               ) : (
-                'do Claude'
+                'via conector'
               )}{' '}
               perderá o acesso imediatamente. Para reconectar, será necessário autorizar novamente.
             </AlertDialogDescription>

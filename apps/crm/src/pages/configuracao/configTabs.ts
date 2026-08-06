@@ -1,3 +1,6 @@
+import type { LucideIcon } from 'lucide-react';
+import { BarChart3, Building2, CreditCard, Globe, Plug, Tags, User, Users } from 'lucide-react';
+
 export type ConfigRole = 'owner' | 'admin' | 'agent';
 
 export interface ConfigTab {
@@ -6,6 +9,12 @@ export interface ConfigTab {
   label: string;
   /** Roles allowed to see the tab and open its URL directly. */
   roles: ConfigRole[];
+  /**
+   * Section heading in the settings nav. Consecutive tabs sharing a group
+   * render under one label, so tabs of the same group must stay adjacent.
+   */
+  group: string;
+  icon: LucideIcon;
 }
 
 const ALL: ConfigRole[] = ['owner', 'admin', 'agent'];
@@ -22,14 +31,20 @@ const STAFF: ConfigRole[] = ['owner', 'admin'];
  * tab that would render a "no access" screen.
  */
 export const CONFIG_TABS: ConfigTab[] = [
-  { path: 'perfil', label: 'Perfil', roles: ALL },
-  { path: 'workspace', label: 'Workspace', roles: STAFF },
-  { path: 'membros', label: 'Membros', roles: STAFF },
-  { path: 'relatorios', label: 'Relatórios', roles: STAFF },
-  { path: 'status', label: 'Status de posts', roles: STAFF },
-  { path: 'hub', label: 'Hub', roles: STAFF },
-  { path: 'mcp', label: 'Claude (MCP)', roles: STAFF },
-  { path: 'cobranca', label: 'Plano & Cobrança', roles: ['owner'] },
+  { path: 'perfil', label: 'Perfil', roles: ALL, group: 'Conta', icon: User },
+  { path: 'workspace', label: 'Workspace', roles: STAFF, group: 'Workspace', icon: Building2 },
+  { path: 'membros', label: 'Membros', roles: STAFF, group: 'Workspace', icon: Users },
+  { path: 'relatorios', label: 'Relatórios', roles: STAFF, group: 'Workspace', icon: BarChart3 },
+  { path: 'status', label: 'Status de posts', roles: STAFF, group: 'Workspace', icon: Tags },
+  { path: 'hub', label: 'Hub', roles: STAFF, group: 'Workspace', icon: Globe },
+  { path: 'mcp', label: 'Agentes (MCP)', roles: STAFF, group: 'Avançado', icon: Plug },
+  {
+    path: 'cobranca',
+    label: 'Plano & Cobrança',
+    roles: ['owner'],
+    group: 'Avançado',
+    icon: CreditCard,
+  },
 ];
 
 export function visibleConfigTabs(workspaceRole: string | null | undefined): ConfigTab[] {

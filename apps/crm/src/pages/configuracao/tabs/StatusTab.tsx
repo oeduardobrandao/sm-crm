@@ -136,10 +136,10 @@ export default function StatusTab() {
   };
 
   return (
-    <div style={{ display: 'grid', gap: '1.5rem', maxWidth: 720 }}>
-      <section className="card" style={{ padding: '1.25rem' }}>
-        <h3 style={{ margin: 0, fontSize: '1rem' }}>Status personalizados</h3>
-        <p style={{ margin: '0.35rem 0 1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+    <div>
+      <section className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+        <h3 className="config-title">Status personalizados</h3>
+        <p style={{ margin: '0 0 1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
           Crie etapas próprias para os posts. Cada status se comporta como um status padrão: é isso
           que define visibilidade no Hub do cliente, publicação e contagens. O nome personalizado
           aparece só para a equipe.
@@ -452,9 +452,9 @@ function AutomationsSection({
   };
 
   return (
-    <section className="card" style={{ padding: '1.25rem' }}>
-      <h3 style={{ margin: 0, fontSize: '1rem' }}>Automações por status</h3>
-      <p style={{ margin: '0.35rem 0 1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+    <section className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+      <h3 className="config-title">Automações por status</h3>
+      <p style={{ margin: '0 0 1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
         Quando um post entrar em um status (padrão ou personalizado), rode uma ação. Se um post
         entrar em um personalizado, regras do status padrão equivalente também disparam. Ao agendar
         ou publicar, o sistema move o post sozinho e as regras desses status disparam normalmente.
