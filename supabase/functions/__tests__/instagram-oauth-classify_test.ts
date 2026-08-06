@@ -54,3 +54,7 @@ Deno.test("isAppConfigError: dev-mode and inactive app", () => {
 Deno.test("classifyOAuthError: signed-state lifetime expiry", () => {
   assertEquals(classifyOAuthError("State expired", noParams), "state_expired");
 });
+
+Deno.test("classifyOAuthError: connect link revoked during the flow", () => {
+  assertEquals(classifyOAuthError("CONNECT_LINK_REVOKED", noParams), "link_revoked");
+});

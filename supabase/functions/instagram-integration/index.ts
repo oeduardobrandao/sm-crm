@@ -8,6 +8,9 @@ import { buildMetricFields, fetchPostInsights } from "../_shared/instagram-metri
 import { cachePostThumbnail } from "../_shared/instagram-thumbnail-cache.ts";
 import { sendCronFailureEmail } from "../_shared/notify.ts";
 import { classifyOAuthError, isAppConfigError } from "./oauth-error.ts";
+import { consumeConnectLink } from "../instagram-connect-link/gate.ts";
+import { sendConnectedNoticeEmail } from "../_shared/instagram-connect-email.ts";
+import { appBaseUrl } from "../_shared/app-url.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
@@ -165,7 +168,7 @@ Deno.serve(async (req) => {
 
         if (!code) throw new Error("Missing auth code");
 
-        const { clientId, nonce, contaId, userId } = await verifySignedState(state || '');
+        const { clientId, nonce, contaId, userId, linkToken } = await verifySignedState(state || '');
         if (!clientId || !/^\d+$/.test(String(clientId))) throw new Error("Invalid client ID in state parameter");
 
         const nonceServiceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
@@ -313,6 +316,25 @@ Deno.serve(async (req) => {
             }
         } catch { /* insights are best-effort */ }
 
+        // Portão do link de conexão. Precisa vir ANTES do upsert: uma revogação
+        // que caia entre uma releitura e a escrita passaria batido.
+        if (linkToken) {
+            const consumed = await consumeConnectLink(serviceClient, linkToken, new Date().toISOString());
+            if (!consumed) throw new Error('CONNECT_LINK_REVOKED');
+            if (String(consumed.cliente_id) !== String(clientId)) {
+                // O state é assinado, então isto não deveria acontecer. Se acontecer,
+                // algo está muito errado e não escrevemos nada.
+                console.error('[IG-CALLBACK] link/state client mismatch', consumed.cliente_id, clientId);
+                throw new Error('CONNECT_LINK_REVOKED');
+            }
+            // Reconferir a entitlement aqui, e não só no /start: o state vive 10
+            // minutos, e um downgrade dentro dessa janela não pode resultar numa
+            // conta ativa gravada para um workspace que perdeu o feature.
+            if (!(await effectivePlanFeature(serviceClient, consumed.conta_id, 'feature_instagram'))) {
+                throw new Error('CONNECT_LINK_REVOKED');
+            }
+        }
+
         // Read before the upsert: afterwards the row exists either way, and the reconnect flow
         // (expired or revoked token, `btn-ig-reconnect`) comes through this same callback. Without
         // this, every re-authorisation would count as a fresh activation.
@@ -358,7 +380,11 @@ Deno.serve(async (req) => {
           action: 'instagram-link',
           resource_type: 'instagram_account',
           resource_id: String(clientId),
-          metadata: { ig_username: igProfile.username || '', ig_business_id: igBusinessId },
+          metadata: {
+            ig_username: igProfile.username || '',
+            ig_business_id: igBusinessId,
+            ...(linkToken ? { via: 'connect_link' } : {}),
+          },
         });
 
         // Save follower history snapshot + fetch posts
@@ -431,11 +457,67 @@ Deno.serve(async (req) => {
             }
         } catch { /* posts/history fetch is best-effort */ }
 
+        // Aviso à agência. Melhor-esforço: a conexão já está persistida e uma falha
+        // aqui não pode desfazê-la nem bloquear o redirect do cliente.
+        if (linkToken) {
+            // Buscado uma vez e usado pelos dois avisos. client_name é o nome do
+            // CLIENTE, não o @ do Instagram: notification-config renderiza
+            // `${client_name} · @${ig_username}`, e passar o username nos dois
+            // campos imprime "clinicax · @clinicax".
+            let clienteNome = '';
+            try {
+                const { data: cliente } = await serviceClient
+                    .from('clientes').select('nome').eq('id', clientId).maybeSingle();
+                clienteNome = cliente?.nome ?? '';
+            } catch (e) {
+                console.error('[IG-CALLBACK] cliente lookup for notice failed (non-fatal):', e);
+            }
+            try {
+                await serviceClient.from('notifications').insert({
+                    workspace_id: contaId,
+                    user_id: userId,
+                    type: 'instagram_connected_by_client',
+                    metadata: { client_name: clienteNome, ig_username: igProfile.username || '' },
+                    link: `/clientes/${clientId}`,
+                });
+            } catch (e) {
+                // created_by pode ter sido removido entre gerar o link e o callback:
+                // notifications.user_id tem FK com ON DELETE CASCADE, então o insert falha.
+                console.error('[IG-CALLBACK] notification insert failed (non-fatal):', e);
+            }
+            try {
+                const { data: profile } = await serviceClient
+                    .from('profiles').select('email').eq('id', userId).maybeSingle();
+                if (profile?.email) {
+                    const base = appBaseUrl();
+                    await sendConnectedNoticeEmail({
+                        to: profile.email,
+                        clienteName: clienteNome,
+                        igUsername: igProfile.username || '',
+                        clienteUrl: `${base.replace(/\/+$/, '')}/clientes/${clientId}`,
+                        appBaseUrl: base,
+                        idempotencyKey: `ig-connected-notice:${linkToken}:${igBusinessId}`,
+                    });
+                }
+            } catch (e) {
+                console.error('[IG-CALLBACK] connected notice email failed (non-fatal):', e);
+            }
+        }
+
         // The CRM's activation signal: the only point in the flow where a connection is known to
         // exist. Carries new-vs-reconnect because both reach this line, and only the first is an
         // activation. The page fires `instagram_connected` on it and strips it from the URL
         // (useInstagramActivationEvent).
         const connectedMarker = isFirstConnection ? 'new' : 'reconnect';
+        // O cliente final não tem login no CRM: mandá-lo para /clientes/:id o joga
+        // na tela de login. OAUTH_REDIRECT_BASE (e não APP_BASE_URL) porque este é
+        // o redirect do callback OAuth, não um link enviado por e-mail.
+        if (linkToken) {
+            return Response.redirect(
+                `${OAUTH_REDIRECT_BASE}/conectar/${linkToken}?ig_connected=${connectedMarker}`,
+                302,
+            );
+        }
         return Response.redirect(
             `${OAUTH_REDIRECT_BASE}/clientes/${clientId}?ig_connected=${connectedMarker}`,
             302,
@@ -838,10 +920,12 @@ Deno.serve(async (req) => {
       const stateParam = url.searchParams.get('state');
       let redirectClientId: string | undefined;
       let stateNonce: string | undefined;
+      let redirectLinkToken: string | undefined;
       try {
         const parsedState = await verifySignedState(stateParam || '');
         redirectClientId = parsedState.clientId;
         stateNonce = parsedState.nonce;
+        redirectLinkToken = parsedState.linkToken;
       } catch { /* ignore */ }
       // Classify known Meta OAuth failures into a code the CRM can turn into
       // actionable guidance. Only the code travels in the URL — never the raw message.
@@ -894,9 +978,11 @@ Deno.serve(async (req) => {
           }
         } catch { /* never block the redirect on the alert */ }
       }
-      const target = redirectClientId
-        ? `${OAUTH_REDIRECT_BASE}/clientes/${redirectClientId}?ig_error=${igErrorCode}`
-        : `${OAUTH_REDIRECT_BASE}?ig_error=${igErrorCode}`;
+      const target = redirectLinkToken
+        ? `${OAUTH_REDIRECT_BASE}/conectar/${redirectLinkToken}?ig_error=${igErrorCode}`
+        : redirectClientId
+          ? `${OAUTH_REDIRECT_BASE}/clientes/${redirectClientId}?ig_error=${igErrorCode}`
+          : `${OAUTH_REDIRECT_BASE}?ig_error=${igErrorCode}`;
       return Response.redirect(target, 302);
     }
 
