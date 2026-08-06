@@ -203,8 +203,20 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
           const state = await deps.createSignedState(
             String(link.cliente_id), link.created_by, link.conta_id, db, token,
           );
+          // Host é api.instagram.com, não www.instagram.com -- de propósito.
+          // iOS dispara Universal Links no toque inicial, não em redirect 3xx do
+          // servidor. Como o app do Instagram reivindica `/*` em www.instagram.com
+          // (apple-app-site-association), mandar o cliente direto para lá sempre
+          // abre o app instalado, que não sabe renderizar a tela de consentimento
+          // OAuth e trava numa tela quebrada. api.instagram.com não é reivindicado
+          // pelo app, então o 302 que ele devolve para www.instagram.com acontece
+          // dentro do navegador e tende a não acionar o handoff para o app.
+          // redirect_uri não muda, então a troca de código não é afetada.
+          // Isso não é garantido em todo navegador/versão de iOS -- por isso a
+          // página pública também traz uma orientação para o caso de o app abrir
+          // mesmo assim (ver ConectarPage).
           const authorizeUrl =
-            `https://www.instagram.com/oauth/authorize?client_id=${deps.metaAppId()}` +
+            `https://api.instagram.com/oauth/authorize?client_id=${deps.metaAppId()}` +
             `&redirect_uri=${encodeURIComponent(deps.metaRedirectUri())}` +
             `&response_type=code&scope=${IG_SCOPES}&state=${state}`;
           return json({ url: authorizeUrl });
