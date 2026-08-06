@@ -1,11 +1,13 @@
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
-import { buildConnectUrl, connectLinkLive, isValidEmail } from "../_shared/instagram-connect-link.ts";
+import { buildConnectUrl, connectLinkLive, connectLinkStatus, isValidEmail } from "../_shared/instagram-connect-link.ts";
 
 // deno-lint-ignore no-explicit-any
 type DbClient = { from: (table: string) => any; rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> };
 
 const TTL_DAYS = 30;
 const EMAIL_MAX_PER_HOUR = 5;
+const START_MAX_PER_HOUR = 10;
+const IG_SCOPES = "instagram_business_basic,instagram_business_manage_insights,instagram_business_content_publish";
 
 export interface ConnectLinkHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
@@ -91,6 +93,79 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
     const db = deps.createDb();
 
     try {
+      // =====================================================================
+      // ROTAS PÚBLICAS. Sem JWT, por desenho. Tudo abaixo é alcançável por
+      // qualquer pessoa que tenha a URL. Não acrescente nada aqui que leia
+      // dados do workspace além do nome da agência e do nome do cliente.
+      // =====================================================================
+
+      if (path.startsWith("/public/")) {
+        const rest = path.slice("/public/".length);
+        const [rawToken, action] = rest.split("/");
+        const token = decodeURIComponent(rawToken ?? "");
+        if (!token) return json({ error: "Not found" }, 404);
+
+        const { data: link } = await db
+          .from("instagram_connect_links")
+          .select("token, cliente_id, conta_id, created_by, expires_at, revoked_at")
+          .eq("token", token)
+          .maybeSingle();
+        if (!link) return json({ error: "Not found" }, 404);
+
+        const status = connectLinkStatus(link, deps.now());
+
+        if (req.method === "GET" && !action) {
+          if (status !== "live") return json({ status });
+          if (!(await deps.planFeature(db, link.conta_id, "feature_instagram"))) {
+            return json({ status: "unavailable" });
+          }
+          const { data: cliente } = await db
+            .from("clientes").select("nome").eq("id", link.cliente_id).maybeSingle();
+          const { data: workspace } = await db
+            .from("workspaces").select("name").eq("id", link.conta_id).maybeSingle();
+          const { data: account } = await db
+            .from("instagram_accounts")
+            .select("username, authorization_status")
+            .eq("client_id", link.cliente_id)
+            .maybeSingle();
+          return json({
+            status: "live",
+            cliente_name: (cliente?.nome as string | undefined) ?? "",
+            workspace_name: (workspace?.name as string | undefined) ?? "",
+            connected_username:
+              account && account.authorization_status === "active"
+                ? ((account.username as string | undefined) ?? null)
+                : null,
+          });
+        }
+
+        if (req.method === "POST" && action === "start") {
+          if (status !== "live") return json({ error: "Not found" }, 404);
+          if (!(await deps.planFeature(db, link.conta_id, "feature_instagram"))) {
+            return json({ error: "Not found" }, 404);
+          }
+          // Cada start insere uma linha em oauth_states. Sem limite, um endpoint
+          // público vira amplificador de escrita.
+          const allowed = await deps.rateLimit(
+            db, `ig-connect-link-start:${token}`, START_MAX_PER_HOUR, 3600,
+          );
+          if (!allowed) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+
+          // userId do state é o membro que gerou o link: é ele que a auditoria
+          // e a notificação vão referenciar.
+          const state = await deps.createSignedState(
+            String(link.cliente_id), link.created_by, link.conta_id, db, token,
+          );
+          const authorizeUrl =
+            `https://www.instagram.com/oauth/authorize?client_id=${deps.metaAppId()}` +
+            `&redirect_uri=${encodeURIComponent(deps.metaRedirectUri())}` +
+            `&response_type=code&scope=${IG_SCOPES}&state=${state}`;
+          return json({ url: authorizeUrl });
+        }
+
+        return json({ error: "Not found" }, 404);
+      }
+
       // ---- Agency: read the current live link -------------------------------
       if (req.method === "GET" && path === "") {
         const clienteId = parseClienteId(url.searchParams.get("cliente_id"));

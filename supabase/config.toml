@@ -1,3 +1,6 @@
+[functions.instagram-connect-link]
+verify_jwt = false
+
 [functions.instagram-integration]
 verify_jwt = false
 

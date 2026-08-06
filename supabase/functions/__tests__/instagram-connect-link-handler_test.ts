@@ -259,3 +259,111 @@ Deno.test("agency POST /email: 429 when rate limited, and nothing is sent", asyn
   assertEquals(res.status, 429);
   assertEquals(sent, 0);
 });
+
+function publicReq(method: string, path: string) {
+  return new Request(`https://x/instagram-connect-link${path}`, { method });
+}
+
+Deno.test("public GET: 404 for an unknown token", async () => {
+  const h = createConnectLinkHandler(makeDeps({ createDb: () => makeDb({ links: null }) }));
+  const res = await h(publicReq("GET", "/public/nope"));
+  assertEquals(res.status, 404);
+});
+
+Deno.test("public GET: reports revoked without exposing anything else", async () => {
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      links: { token: "t", cliente_id: 42, conta_id: CONTA, created_by: USER,
+               expires_at: FUTURE, revoked_at: "2026-08-05T00:00:00.000Z" },
+    }),
+  }));
+  const res = await h(publicReq("GET", "/public/t"));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { status: "revoked" });
+});
+
+Deno.test("public GET: reports expired", async () => {
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      links: { token: "t", cliente_id: 42, conta_id: CONTA, created_by: USER,
+               expires_at: "2026-08-01T00:00:00.000Z", revoked_at: null },
+    }),
+  }));
+  assertEquals(await (await h(publicReq("GET", "/public/t"))).json(), { status: "expired" });
+});
+
+Deno.test("public GET: live link exposes exactly two names and nothing more", async () => {
+  const db = makeDb({
+    links: { token: "t", cliente_id: 42, conta_id: CONTA, created_by: USER,
+             expires_at: FUTURE, revoked_at: null },
+    clientes: { nome: "Clínica X" },
+  });
+  // workspaces and instagram_accounts resolve through the same stub; the stub returns
+  // the `clientes` fixture for `clientes` only, so the others come back null.
+  const h = createConnectLinkHandler(makeDeps({ createDb: () => db }));
+  const body = await (await h(publicReq("GET", "/public/t"))).json();
+  assertEquals(body.status, "live");
+  assertEquals(body.cliente_name, "Clínica X");
+  assertEquals(Object.keys(body).sort(), ["cliente_name", "connected_username", "status", "workspace_name"]);
+});
+
+Deno.test("public GET: feature_instagram off is reported as unavailable", async () => {
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      links: { token: "t", cliente_id: 42, conta_id: CONTA, created_by: USER,
+               expires_at: FUTURE, revoked_at: null },
+    }),
+    planFeature: () => Promise.resolve(false),
+  }));
+  assertEquals(await (await h(publicReq("GET", "/public/t"))).json(), { status: "unavailable" });
+});
+
+Deno.test("public start: returns the Instagram authorize url with the signed state", async () => {
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      links: { token: "t", cliente_id: 42, conta_id: CONTA, created_by: USER,
+               expires_at: FUTURE, revoked_at: null },
+    }),
+  }));
+  const res = await h(publicReq("POST", "/public/t/start"));
+  assertEquals(res.status, 200);
+  const { url } = await res.json();
+  assertEquals(url.startsWith("https://www.instagram.com/oauth/authorize?"), true);
+  assertEquals(url.includes("state=signed.state"), true);
+  assertEquals(url.includes("client_id=app-id"), true);
+});
+
+Deno.test("public start: a revoked link cannot start a flow", async () => {
+  let minted = 0;
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      links: { token: "t", cliente_id: 42, conta_id: CONTA, created_by: USER,
+               expires_at: FUTURE, revoked_at: "2026-08-05T00:00:00.000Z" },
+    }),
+    createSignedState: () => { minted++; return Promise.resolve("signed.state"); },
+  }));
+  assertEquals((await h(publicReq("POST", "/public/t/start"))).status, 404);
+  assertEquals(minted, 0);
+});
+
+Deno.test("public start: rate limited, and no state is minted", async () => {
+  let minted = 0;
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      links: { token: "t", cliente_id: 42, conta_id: CONTA, created_by: USER,
+               expires_at: FUTURE, revoked_at: null },
+    }),
+    rateLimit: () => Promise.resolve(false),
+    createSignedState: () => { minted++; return Promise.resolve("signed.state"); },
+  }));
+  assertEquals((await h(publicReq("POST", "/public/t/start"))).status, 429);
+  assertEquals(minted, 0);
+});
+
+Deno.test("public routes never require an Authorization header", async () => {
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({ links: null }),
+    verifyUser: () => Promise.reject(new Error("verifyUser must not be called on public routes")),
+  }));
+  assertEquals((await h(publicReq("GET", "/public/whatever"))).status, 404);
+});
