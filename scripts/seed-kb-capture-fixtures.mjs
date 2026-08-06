@@ -28,7 +28,7 @@
 // 60 days out. Run --down when the captures are done. The script prints the
 // date by which teardown must happen.
 import { createClient } from '@supabase/supabase-js';
-import { writeFileSync, readFileSync, existsSync, unlinkSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, unlinkSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 // Everything this script may touch, pinned by id. Nothing is discovered at
@@ -121,8 +121,16 @@ function client() {
  * The service role bypasses RLS, so nothing else stops this script from writing
  * into a paying customer's workspace if an id were wrong. Prod holds many real
  * agencies alongside DK TESTE.
+ *
+ * @param requirePublishable
+ *   Whether to also demand that Instagram can actually publish. True for --up
+ *   and --check, where a non-publishable account makes the capture worthless.
+ *   MUST be false for --down: teardown has to work in every state, and an
+ *   expired token is no reason to refuse to delete a scheduled fixture post.
+ *   Blocking cleanup on it would strand exactly the row that most needs
+ *   removing.
  */
-async function preflight(supabase) {
+async function preflight(supabase, { requirePublishable }) {
   const { data: conta, error: contaErr } = await supabase
     .from('contas')
     .select('id, nome')
@@ -164,19 +172,50 @@ async function preflight(supabase) {
     }
   }
 
-  // canSchedule also requires no account warning. If Instagram is not active for
-  // this client, the Agendar button renders disabled and shot 30 is worthless,
-  // so fail here rather than after a full capture run.
+  // canSchedule also requires no account warning, and "no account warning" is a
+  // stricter test than authorization_status = 'active'. The UI derives it in
+  // WorkflowDrawer.tsx:266-274 and this MUST mirror it exactly:
+  //
+  //   revoked    = authorization_status === 'revoked'
+  //   expired    = authorization_status === 'expired'
+  //                OR token_expires_at < now        <-- the one that bites
+  //   canPublish = permissions includes 'instagram_business_content_publish'
+  //
+  // An earlier version of this preflight checked only authorization_status and
+  // passed on an account whose token had expired two months earlier. It seeded
+  // the rows, and the "enabled Agendar" screenshot would have come out disabled
+  // behind a red warning banner: the exact thing this script exists to enable.
   const { data: ig, error: igErr } = await supabase
     .from('instagram_accounts')
-    .select('client_id, authorization_status')
+    .select('client_id, authorization_status, token_expires_at, permissions')
     .eq('client_id', CLIENTE_ID)
     .maybeSingle();
   if (igErr) throw igErr;
-  if (!ig || ig.authorization_status !== 'active') {
+
+  if (!requirePublishable) return { conta, cliente, flows, ig };
+
+  if (!ig) {
+    throw new Error(`Cliente ${CLIENTE_ID} não tem conta de Instagram. Abortando.`);
+  }
+
+  const revoked = ig.authorization_status === 'revoked';
+  const expired =
+    ig.authorization_status === 'expired' ||
+    (ig.token_expires_at ? new Date(ig.token_expires_at) < new Date() : false);
+  const canPublish =
+    Array.isArray(ig.permissions) && ig.permissions.includes('instagram_business_content_publish');
+
+  if (revoked || expired || !canPublish) {
+    const motivo = revoked
+      ? 'o token foi revogado'
+      : expired
+        ? `o token expirou em ${String(ig.token_expires_at).slice(0, 10)}`
+        : 'falta a permissão instagram_business_content_publish';
     throw new Error(
-      `Instagram do cliente ${CLIENTE_ID} está "${ig?.authorization_status ?? 'ausente'}", esperado "active". ` +
-        'Sem isso o botão Agendar aparece desabilitado. Reconecte a conta antes de semear.',
+      `Instagram do cliente ${CLIENTE_ID} não está apto a publicar: ${motivo}.\n` +
+        'Com isso o botão Agendar renderiza DESABILITADO, atrás de um aviso vermelho, e as\n' +
+        'capturas da seção 7 não servem. Reconecte a conta do cliente pelo CRM (OAuth do\n' +
+        'Facebook) e rode de novo. Aproveite para capturar as telas externas ext-13 a ext-15.',
     );
   }
 
@@ -192,7 +231,7 @@ async function up() {
     );
   }
 
-  const { flows } = await preflight(supabase);
+  const { flows } = await preflight(supabase, { requirePublishable: true });
   console.log('Preflight OK: DK TESTE, Studio Bem-Estar, fluxos 48 e 53, Instagram ativo.\n');
 
   const rows = POSTS.map((p) => ({
@@ -236,6 +275,10 @@ async function up() {
   const postIds = inserted.map((r) => r.id);
 
   try {
+    // .superpowers/ is gitignored, so on a fresh clone or a new worktree it does
+    // not exist and writeFileSync cannot create it. Without this the rollback
+    // above fires on every first run and --up can never succeed.
+    mkdirSync(path.dirname(MANIFEST), { recursive: true });
     writeFileSync(
       MANIFEST,
       JSON.stringify(
@@ -306,7 +349,7 @@ async function down() {
     );
   }
 
-  await preflight(supabase);
+  await preflight(supabase, { requirePublishable: false });
 
   // Delete by id AND by conta, so a tampered manifest still cannot reach
   // another workspace's rows.
@@ -350,7 +393,7 @@ async function down() {
  */
 async function check() {
   const supabase = client();
-  const { conta, cliente, flows } = await preflight(supabase);
+  const { conta, cliente, flows } = await preflight(supabase, { requirePublishable: true });
   console.log('Preflight OK. Nada foi escrito.\n');
   console.log(`  workspace  ${conta.nome} (${conta.id})`);
   console.log(`  cliente    ${cliente.nome} (${cliente.id})`);
