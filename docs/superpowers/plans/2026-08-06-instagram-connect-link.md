@@ -388,6 +388,19 @@ Deno.test("CONNECT_LINK_SUBJECT: leads with the agency name, not with Mesaas", (
   assertEquals(subject.startsWith("Agência Y"), true);
 });
 
+Deno.test("CONNECT_LINK_SUBJECT: strips control characters from the workspace name", () => {
+  // O nome do workspace é controlado pelo usuário. Um caractere de controle no
+  // assunto faz a Resend recusar o envio inteiro.
+  const subject = CONNECT_LINK_SUBJECT("Agência\r\nBcc: alguem@exemplo.com");
+  assertEquals(subject.includes("\r"), false);
+  assertEquals(subject.includes("\n"), false);
+});
+
+Deno.test("CONNECT_LINK_SUBJECT: bounds an absurdly long workspace name", () => {
+  const subject = CONNECT_LINK_SUBJECT("N".repeat(500));
+  assertEquals(subject.length < 130, true);
+});
+
 Deno.test("buildConnectLinkEmail: contains both names and the link", () => {
   const html = buildConnectLinkEmail({
     agencyName: "Agência Y",
@@ -449,6 +462,8 @@ In `supabase/functions/_shared/lifecycle-emails.ts`:
 
 Change the `layout` declaration from `function layout(` to `export function layout(`.
 
+Change the `sanitizeSubjectValue` declaration (around line 168) from `function sanitizeSubjectValue(` to `export function sanitizeSubjectValue(`. Do not change its body: it already strips control characters and bounds the length at 80, which is exactly what the new subject needs.
+
 Change the `sendViaResend` declaration from `async function sendViaResend(` to `export async function sendViaResend(`, add a sixth optional parameter, and pass it through:
 
 ```ts
@@ -482,16 +497,21 @@ Create `supabase/functions/_shared/instagram-connect-email.ts`:
 
 ```ts
 import { escapeHtml } from "./report-template/escape.ts";
-import { layout, LIFECYCLE_FROM, sendViaResend } from "./lifecycle-emails.ts";
+import { layout, LIFECYCLE_FROM, sanitizeSubjectValue, sendViaResend } from "./lifecycle-emails.ts";
 
 /**
  * O cliente final recebe este e-mail de um domínio com o qual não tem relação.
  * Isso tem formato de phishing, então: o assunto e a primeira linha abrem com o
  * nome da agência e com o nome do próprio cliente, e o reply-to aponta para o
  * membro que gerou o link, não para o vazio.
+ *
+ * agencyName vem do nome do workspace, que o usuário controla. escapeHtml
+ * protege só o corpo: um caractere de controle no assunto faz a Resend recusar
+ * o envio. sanitizeSubjectValue é o mesmo tratamento que
+ * buildFounderSubscriptionNotice já aplica a este mesmo campo.
  */
 export const CONNECT_LINK_SUBJECT = (agencyName: string): string =>
-  `${agencyName} precisa conectar seu Instagram`;
+  `${sanitizeSubjectValue(agencyName)} precisa conectar seu Instagram`;
 
 export const CONNECTED_NOTICE_SUBJECT = "Instagram conectado pelo cliente";
 
@@ -1699,6 +1719,12 @@ Immediately **before** the `const { data: priorAccount } = await serviceClient` 
                 // O state é assinado, então isto não deveria acontecer. Se acontecer,
                 // algo está muito errado e não escrevemos nada.
                 console.error('[IG-CALLBACK] link/state client mismatch', consumed.cliente_id, clientId);
+                throw new Error('CONNECT_LINK_REVOKED');
+            }
+            // Reconferir a entitlement aqui, e não só no /start: o state vive 10
+            // minutos, e um downgrade dentro dessa janela não pode resultar numa
+            // conta ativa gravada para um workspace que perdeu o feature.
+            if (!(await effectivePlanFeature(serviceClient, consumed.conta_id, 'feature_instagram'))) {
                 throw new Error('CONNECT_LINK_REVOKED');
             }
         }

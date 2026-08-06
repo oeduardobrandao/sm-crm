@@ -349,6 +349,10 @@ se mostrar ruim, o link copiado continua sendo o caminho principal e nada quebra
   sustenta a afirmação "revogação é real"
 - link expirado mas não revogado é rejeitado, cobrindo a metade da liveness que o
   índice único não enforça
+- **`feature_instagram` perdido entre o `/start` e o callback**: a entitlement é
+  reconferida no callback, contra o `conta_id` do link consumido, e não só ao iniciar.
+  O state vive 10 minutos, e um downgrade dentro dessa janela não pode terminar em
+  conta ativa gravada para um workspace sem o feature
 - `POST /` concorrente: o segundo colide no índice único e o handler devolve o link
   vivo em vez de propagar erro
 - geração quando já existe link vivo revoga o anterior (o token antigo para de valer)
