@@ -272,7 +272,13 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
           clienteName: (cliente?.nome as string | undefined) ?? "seu perfil",
           connectUrl: buildConnectUrl(deps.appBaseUrl(), link.token),
           appBaseUrl: deps.appBaseUrl(),
-          idempotencyKey: `ig-connect-link:${link.token}:${to}`,
+          // Chave por envio, não determinística: ao contrário do e-mail de boas-vindas
+          // (que deve sair exatamente uma vez na vida), este link é reenviável de
+          // propósito -- a agência pode mandar de novo como lembrete. Uma chave estável
+          // faria o Resend deduplicar o reenvio (janela de 24h) e o endpoint responderia
+          // 200 sem nada chegar ao cliente. O rate limit acima é o que limita abuso, não
+          // esta chave.
+          idempotencyKey: `ig-connect-link:${link.token}:${crypto.randomUUID()}`,
         });
         return json({ ok: true });
       }

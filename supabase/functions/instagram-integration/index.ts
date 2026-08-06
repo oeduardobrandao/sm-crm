@@ -316,9 +316,37 @@ Deno.serve(async (req) => {
             }
         } catch { /* insights are best-effort */ }
 
-        // Portão do link de conexão. Precisa vir ANTES do upsert: uma revogação
-        // que caia entre uma releitura e a escrita passaria batido.
+        // Read before the upsert: afterwards the row exists either way, and the reconnect flow
+        // (expired or revoked token, `btn-ig-reconnect`) comes through this same callback. Without
+        // this, every re-authorisation would count as a fresh activation. Only needs clientId, which
+        // comes from the signed state, so it can run ahead of the link gate below without changing
+        // the non-link agency flow (it already ran unconditionally, exactly once, here).
+        const { data: priorAccount } = await serviceClient
+            .from('instagram_accounts')
+            .select('id')
+            .eq('client_id', clientId)
+            .maybeSingle();
+        const isFirstConnection = !priorAccount;
+
+        // Portão do link de conexão. Precisa vir o mais perto possível do upsert: o UPDATE
+        // condicional abaixo é atômico só para a SUA PRÓPRIA instrução -- checar revoked_at/
+        // expires_at e marcar used_at acontece numa única operação no banco. Mas o lock da
+        // linha é liberado assim que essa instrução comita, e o upsert em instagram_accounts
+        // é uma chamada HTTP separada ao PostgREST (outra transação). Entre as duas ainda
+        // existe uma janela estreita em que uma revogação não seria pega -- não dá pra fechar
+        // sem colocar o upsert na mesma transação do portão, o que é um escopo maior. O que dá
+        // pra fazer, e este bloco faz, é encolher a janela: tudo que não precisa do retorno do
+        // portão (entitlement, priorAccount) já rodou acima, então depois do portão só falta a
+        // checagem de mismatch (sem round-trip) antes do upsert.
         if (linkToken) {
+            // Reconferir a entitlement aqui, e não só no /start: o state vive 10
+            // minutos, e um downgrade dentro dessa janela não pode resultar numa
+            // conta ativa gravada para um workspace que perdeu o feature. contaId vem do
+            // state assinado (HMAC) -- é o mesmo workspace que o portão devolveria em
+            // consumed.conta_id, mas ainda não passamos pelo portão neste ponto.
+            if (!(await effectivePlanFeature(serviceClient, contaId, 'feature_instagram'))) {
+                throw new Error('CONNECT_LINK_REVOKED');
+            }
             const consumed = await consumeConnectLink(serviceClient, linkToken, new Date().toISOString());
             if (!consumed) throw new Error('CONNECT_LINK_REVOKED');
             if (String(consumed.cliente_id) !== String(clientId)) {
@@ -327,23 +355,7 @@ Deno.serve(async (req) => {
                 console.error('[IG-CALLBACK] link/state client mismatch', consumed.cliente_id, clientId);
                 throw new Error('CONNECT_LINK_REVOKED');
             }
-            // Reconferir a entitlement aqui, e não só no /start: o state vive 10
-            // minutos, e um downgrade dentro dessa janela não pode resultar numa
-            // conta ativa gravada para um workspace que perdeu o feature.
-            if (!(await effectivePlanFeature(serviceClient, consumed.conta_id, 'feature_instagram'))) {
-                throw new Error('CONNECT_LINK_REVOKED');
-            }
         }
-
-        // Read before the upsert: afterwards the row exists either way, and the reconnect flow
-        // (expired or revoked token, `btn-ig-reconnect`) comes through this same callback. Without
-        // this, every re-authorisation would count as a fresh activation.
-        const { data: priorAccount } = await serviceClient
-            .from('instagram_accounts')
-            .select('id')
-            .eq('client_id', clientId)
-            .maybeSingle();
-        const isFirstConnection = !priorAccount;
 
         // Upsert into DB (with insights + last_synced_at)
         const { data: upsertedAccount, error: dbError } = await serviceClient

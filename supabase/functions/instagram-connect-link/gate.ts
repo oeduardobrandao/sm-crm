@@ -8,12 +8,21 @@ export interface ConsumedLink {
 }
 
 /**
- * Portão atômico do callback.
+ * Portão do callback. Atômico apenas para a SUA PRÓPRIA instrução.
  *
  * Uma releitura de revoked_at seguida do upsert em instagram_accounts NÃO basta:
  * a revogação pode cair entre as duas. Este UPDATE condicional com RETURNING é
  * uma única operação no banco, exatamente o padrão que o callback já usa para
- * consumir o nonce do oauth_states.
+ * consumir o nonce do oauth_states -- checar revoked_at/expires_at e marcar
+ * used_at é atômico entre si.
+ *
+ * O que isto NÃO garante: o lock da linha é liberado assim que este UPDATE
+ * comita. O upsert em instagram_accounts é uma chamada HTTP separada ao
+ * PostgREST, ou seja, outra transação. Uma revogação que caia depois deste
+ * portão e antes daquele upsert ainda passa. O chamador deve minimizar o que
+ * roda entre os dois -- hoje só a checagem de mismatch client_id/state, sem
+ * round-trip -- mas fechar essa janela por completo exigiria colocar o upsert
+ * na mesma transação do portão, o que este módulo não faz.
  *
  * Zero linhas devolvidas significa revogado, expirado, ou token inexistente, e o
  * chamador precisa abortar ANTES de escrever em instagram_accounts.

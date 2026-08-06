@@ -260,6 +260,30 @@ Deno.test("agency POST /email: 429 when rate limited, and nothing is sent", asyn
   assertEquals(sent, 0);
 });
 
+Deno.test("agency POST /email: two sends to the same address for the same link get different idempotency keys", async () => {
+  const keys: string[] = [];
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { conta_id: CONTA },
+      clientes: { conta_id: CONTA, nome: "Clínica X" },
+      links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
+    }),
+    sendClientEmail: (p: { idempotencyKey: string }) => { keys.push(p.idempotencyKey); return Promise.resolve(); },
+  }));
+
+  const res1 = await h(req("POST", "/email", { cliente_id: 42, email: "c@x.com" }));
+  const res2 = await h(req("POST", "/email", { cliente_id: 42, email: "c@x.com" }));
+  assertEquals(res1.status, 200);
+  assertEquals(res2.status, 200);
+  assertEquals(keys.length, 2);
+  // A deterministic key (token + address only) would dedupe in Resend and the
+  // second "nudge" send would silently vanish. Each deliberate send needs its own key.
+  assertEquals(keys[0] === keys[1], false);
+  // Still diagnosable in logs: both keys carry the link token.
+  assertEquals(keys[0].includes("tok-9"), true);
+  assertEquals(keys[1].includes("tok-9"), true);
+});
+
 function publicReq(method: string, path: string) {
   return new Request(`https://x/instagram-connect-link${path}`, { method });
 }
