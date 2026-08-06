@@ -81,7 +81,12 @@ Sem CHECK constraint: código novo no futuro não pode quebrar o insert do cron.
 Escritores atualizados para gravar `publish_error_code` junto de
 `publish_error`:
 
-- `markFailed()` em `instagram-publish-cron/index.ts`
+- `markFailed()` em `instagram-publish-cron/index.ts`. Além do código, quando a
+  classificação é `CONTAINER_EXPIRED` o update também zera
+  `instagram_container_id`: o retry automático (`processRetry`) reusa o
+  container persistido, e um container expirado nunca volta a funcionar; sem a
+  limpeza, as 3 tentativas seriam idênticas e inúteis. Com ela, o retry cai no
+  caminho de recriação de container.
 - catch do `publish-now` em `instagram-publish/handler.ts`
 
 Todo ponto que hoje limpa `publish_error` (ações `cancel` e `retry` do handler,
@@ -112,40 +117,47 @@ qualquer código, pois zera `publish_error_code` junto com `publish_error`.
 
 ## Parte 2: Preflight de mídia
 
-### Regras (módulo `supabase/functions/_shared/instagram-limits.ts`)
+**Correção de rota (revisão externa):** o servidor JÁ valida mídia no
+agendamento. `validateForScheduling` chama `validateMedia`
+(`_shared/instagram-publish-utils.ts:86`), que hoje impõe: imagem JPEG/PNG/WebP
+≤ 8 MB, mínimo 320 px, proporção 3:4 a 1.91:1 (story 9:16); vídeo MP4/MOV
+≤ 250 MB, 3 a 90 s (story 60 s), proporção 9:16 a 1.25; carrossel ≤ 10 itens;
+≥ 1 mídia. Stories já validam por arquivo com `forStories: true` (cada mídia é
+um segmento).
 
-Módulo puro, sem APIs Deno, com constantes e uma função
-`validateInstagramMedia(tipo, media[]): Violation[]` onde `media` usa os
-metadados já persistidos (`files.size_bytes`, `kind`, `duration_seconds`).
+Portanto esta entrega NÃO cria regras novas nem altera limites. Subir os
+limites de vídeo para os atuais da Meta (300 MB / 15 min para reels) é uma
+decisão de produto separada, registrada em fora de escopo. O gap real é o
+front: nada roda essas regras antes do clique, então o usuário só descobre no
+422 (ou pior, o post falha depois se a mídia mudou após o agendamento).
 
-| Regra | Limite |
-|---|---|
-| Imagem (feed/carrossel/story) | ≤ 8 MB |
-| Vídeo feed/reels | ≤ 300 MB, duração 3 s a 15 min |
-| Vídeo de story | ≤ 100 MB, duração 3 a 60 s |
-| Carrossel | 2 a 10 itens |
-| Story | regras por segmento: cada mídia é um segmento e valida individualmente (vídeo ≤ 100 MB / 60 s, imagem ≤ 8 MB); sem limite de quantidade de segmentos |
-| Post sem mídia | inválido |
+### Extração (fonte única)
 
-Cada `Violation` já carrega a mensagem em PT pronta (ex.: "A imagem 2 tem
-12 MB. O Instagram aceita imagens de até 8 MB."). Sem validação de proporção /
-codec / bitrate nesta entrega (metadados não confiáveis o suficiente; ficam
-para uma iteração futura, cobertos em runtime por `MEDIA_UNSUPPORTED`).
-
-### Servidor (fonte da verdade)
-
-`validateForScheduling` (usado por `schedule` e `publish-now`) incorpora
-`validateInstagramMedia`. Violação retorna o 422 existente com `details`
-contendo as mensagens em PT.
+Mover de `instagram-publish-utils.ts` para um módulo puro novo
+`supabase/functions/_shared/instagram-limits.ts` (sem imports Deno): as
+constantes de limite, `MediaFile`, `ValidationError`, `validateMedia` e
+`CAROUSEL_MAX_ITEMS`. `instagram-publish-utils.ts` importa e re-exporta, para
+os consumidores atuais não mudarem. `validateForScheduling` continua como
+está (fonte da verdade no servidor, 422 com `details` em PT).
 
 ### Front (bloqueio com explicação)
 
-`ScheduleButton` roda as mesmas regras sobre a mídia carregada do post e, em
-caso de violação, desabilita agendar/publicar e mostra as mensagens. O front
-usa um espelho leve das constantes em
-`apps/crm/src/pages/entregas/instagramLimits.ts`; um teste Vitest importa o
-arquivo do front E o de `_shared/` e falha se as constantes divergirem (guarda
-de drift sem acoplar o build do Vite ao diretório das functions).
+- `apps/crm/src/pages/entregas/instagramLimits.ts`: espelho do módulo
+  `_shared` (constantes + `validateMedia` operando sobre `PostMedia[]`). Um
+  teste Vitest importa o arquivo do front E
+  `supabase/functions/_shared/instagram-limits.ts` e compara constantes e
+  resultados de casos-limite, falhando em drift (guarda sem acoplar o build do
+  Vite ao diretório das functions; o módulo `_shared` é TS puro e importável
+  pelo Vitest).
+- `ScheduleButton` ganha prop opcional `media?: PostMedia[]`. Quando presente
+  e há violações, desabilita "Agendar" e "Publicar agora" e lista as
+  mensagens (mesmo padrão da lista "Falta: ..." existente).
+- `WorkflowDrawer` fornece a prop a partir de
+  `useQuery({ queryKey: ['post-media', post.id], queryFn: () => listPostMedia(post.id) })`,
+  a MESMA queryKey da `PostMediaGallery`, então o cache é compartilhado e não
+  há request extra.
+- Call sites sem mídia carregada (ex.: `PublicacoesPanel` no calendário) não
+  passam a prop e não bloqueiam no cliente; o servidor continua sendo o gate.
 
 ## Parte 3: UI no CRM
 
@@ -168,7 +180,10 @@ explicação de 1 a 2 frases dizendo o que houve e o que fazer.
 - **WorkflowDrawer:** post com status `falha_publicacao` ganha bloco destacado
   no topo (tokens de erro do design system: `--danger` como borda/fundo,
   `--danger-text` para texto) com título, explicação, botão de ação e um
-  colapsável "Detalhes técnicos" exibindo o `publish_error` cru.
+  colapsável "Detalhes técnicos" exibindo o `publish_error` cru. Exceção: para
+  o código `INTERNAL` o texto cru NÃO é exibido (mensagens de decrypt/RPC não
+  ajudam o usuário e expõem detalhe interno); o bloco mostra apenas a
+  orientação de contatar o suporte informando o post.
 - **Popover do ScheduleButton:** substitui o texto cru atual
   (`ScheduleButton.tsx:485`) por título + ação curta.
 - O tipo `Post` do front (`store/posts.ts` e selects correspondentes) ganha
@@ -180,17 +195,28 @@ Trigger de banco no padrão existente (`trg_notify_*` de `20260430000001`:
 SECURITY DEFINER, corpo inteiro em `EXCEPTION WHEN OTHERS` para nunca
 reverter a operação de negócio):
 
-- `AFTER UPDATE OF status ON workflow_posts`, disparando quando
-  `NEW.status = 'falha_publicacao' AND OLD.status IS DISTINCT FROM NEW.status`.
-  Cobre os três escritores (cron via UPDATE direto, publish-now via RPC, e
-  qualquer caminho futuro) sem tocar em cada um.
-- **Anti-spam:** dentro da função, notifica apenas se
-  `NEW.publish_error_code` é não-retryable **ou** `publish_retry_count >= 3`
-  (auto-retries esgotados). Falha transiente que o cron vai resolver sozinho
-  não notifica.
+- `AFTER UPDATE OF status, publish_retry_count ON workflow_posts`. Motivo de
+  observar as duas colunas: nas falhas repetidas do auto-retry o status NÃO
+  transiciona (permanece `falha_publicacao`; só o contador sobe), então um
+  trigger apenas de transição de status jamais dispararia no esgotamento dos
+  retries.
+- **Condição de disparo (anti-spam), dentro da função:** notifica quando
+  `NEW.status = 'falha_publicacao'` E uma das duas:
+  1. transição de status (`OLD.status IS DISTINCT FROM NEW.status`) com
+     `NEW.publish_error_code` não-retryable (falha que o cron não vai
+     resolver sozinho; como a fase retry passa a pular esses códigos, a
+     transição acontece uma única vez); ou
+  2. o contador cruzou o teto: `OLD.publish_retry_count < 3 AND
+     NEW.publish_retry_count >= 3` (auto-retries esgotados; o cruzamento só
+     ocorre uma vez por ciclo, e um "Tentar novamente" manual zera o contador
+     e permite notificar de novo num ciclo futuro, o que é o comportamento
+     desejado).
+  Falha transiente que o cron resolve sozinho não notifica.
 - Tipo novo `post_publish_failed` adicionado ao `notifications_type_check`
-  copiando a lista da definição mais recente (`20260803000006_mencoes.sql`) e
-  atualizando o comentário de "latest definition" para o arquivo novo.
+  copiando a lista da definição mais recente
+  (`20260805000002_post_status_automations.sql`, 18 tipos, inclui
+  `post_status_automation`) e atualizando o comentário de "latest definition"
+  para o arquivo novo.
 - Destinatários via `resolve_notification_targets` existente; `metadata` leva
   `post_id`, `workflow_id`, `publish_error_code` e título do post; `link`
   aponta para o post no CRM.
@@ -214,7 +240,9 @@ agendar/publicar
   - `classifyPublishError`: um caso por código, incluindo os 6 erros reais de
     prod da tabela acima; caso de precedência (mensagem "reduce the amount of
     data" com graphCode 1 vira `MEDIA_TOO_LARGE`, não `IG_TRANSIENT`).
-  - `validateInstagramMedia`: limites, tipos e mensagens.
+  - `validateMedia` (movido para `_shared/instagram-limits.ts`): limites,
+    tipos e mensagens; os testes existentes que o cobrem via
+    `validateForScheduling` continuam passando sem mudança (re-export).
   - Testes existentes de `instagram-publish-gate` e do cron atualizados para o
     novo campo gravado.
 - **Vitest (`apps/crm/`):**
@@ -240,7 +268,13 @@ agendar/publicar
 ## Fora de escopo (registrado para o futuro)
 
 - Caminho TikTok (`tiktok_publish_error`) usando o mesmo enum.
-- Validação de proporção, codec e bitrate no preflight.
+- Subir limites de vídeo para os atuais da Meta (reels: 300 MB / 15 min vs os
+  250 MB / 90 s do `validateMedia` de hoje). Decisão de produto separada;
+  exige confirmar na doc da Meta e testar com vídeo real.
+- Backoff para `RATE_LIMIT` / `IG_TRANSIENT` (ex.: coluna `next_attempt_at`
+  no claim). Hoje o custo é limitado: no máximo 3 tentativas por post,
+  espaçadas por ciclos de cron de ~1 min. Aceito nesta entrega.
+- Validação de codec e bitrate no preflight.
 - Notificação por e-mail.
 - Mensagem suavizada no Hub.
 - Parser retroativo para falhas antigas com código NULL.
