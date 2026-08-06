@@ -75,6 +75,19 @@ export function initAnalytics(): void {
   enabled = true;
 }
 
+/**
+ * Stitch signup to a real person. Under `person_profiles: 'identified_only'`, events captured
+ * while anonymous are personless and are NEVER retroactively attached to the person created by a
+ * later identify — so `signup_completed` fired before this call leaves every signup as an orphan
+ * whose history ends at the form, and the signup→activation funnel cannot be measured. Must run
+ * before the `signup_completed` capture. Only the Supabase uuid goes out (no email/name), which
+ * keeps the fewer-profiles LGPD posture that motivated `identified_only`.
+ */
+export function identifySignup(userId: string): void {
+  if (!enabled) return;
+  posthog.identify(userId);
+}
+
 export function identifyWorkspaceUser(userId: string, props: WorkspaceUserProps): void {
   if (!enabled) return;
   posthog.identify(userId, { ...props });
