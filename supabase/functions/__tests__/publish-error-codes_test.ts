@@ -49,6 +49,12 @@ Deno.test("classify: container falhou no processamento", () => {
   assertEquals(classifyPublishError(new Error("Story segment 2 falhou no processamento do Instagram")), "MEDIA_UNSUPPORTED");
 });
 
+Deno.test("classify: formato de vídeo não suportado via graphSubcode 2207026", () => {
+  const e = new Error("Media type not supported") as Error & { graphSubcode?: number };
+  e.graphSubcode = 2207026;
+  assertEquals(classifyPublishError(e), "MEDIA_UNSUPPORTED");
+});
+
 Deno.test("classify: container expirado (objeto não existe)", () => {
   assertEquals(
     classifyPublishError(graphErr("Unsupported post request. Object with ID '26843423545300150' does not exist, cannot be loaded due to missing permissions, or does not support this operation", 100)),

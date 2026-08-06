@@ -24,6 +24,8 @@ export const NON_RETRYABLE_CODES: readonly PublishErrorCode[] = [
 ] as const;
 
 const RATE_LIMIT_GRAPH_CODES = new Set([4, 9, 17, 32, 613]);
+// 2207026 = formato de vídeo não suportado pela Meta.
+const MEDIA_UNSUPPORTED_SUBCODES = new Set([2207026]);
 
 interface ClassifiableError {
   message?: string;
@@ -49,7 +51,8 @@ export function classifyPublishError(err: unknown): PublishErrorCode {
   ) return "NO_MEDIA";
   if (
     msg.includes("container failed processing") ||
-    msg.includes("falhou no processamento do instagram")
+    msg.includes("falhou no processamento do instagram") ||
+    (typeof e.graphSubcode === "number" && MEDIA_UNSUPPORTED_SUBCODES.has(e.graphSubcode))
   ) return "MEDIA_UNSUPPORTED";
   if (msg.includes("does not exist, cannot be loaded due to missing permissions")) {
     return "CONTAINER_EXPIRED";
