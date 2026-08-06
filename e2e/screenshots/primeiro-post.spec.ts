@@ -47,8 +47,18 @@ test('primeiro post walkthrough', async ({ page }) => {
   // criado por esta spec: DialogContent aqui não recebe `confirmClose`
   // (ClientesPage.tsx:579), então Escape fecha direto, sem prompt de descarte --
   // verificado lendo components/ui/dialog.tsx (isDirty = confirmClose === true).
+  // ClientesPage.tsx:442-447 renders a full-page Spinner while `isLoading` is
+  // true, and the "Novo Cliente" button is unconditional page chrome above
+  // that -- it is present even while the spinner is showing. Waiting on the
+  // button alone can capture the spinner instead of the populated list.
+  // `.team-card` (ClientesPage.tsx:452) only renders once `filtered` has been
+  // computed from loaded data, and this page has no separate empty-state
+  // branch, so its presence means real rows are on screen. Verified live
+  // against prod on 2026-08-06 (CRM_BASE_URL=http://localhost:5174, DK TESTE):
+  // the grid renders multiple real client cards under this class.
   await page.goto('/clientes');
   await page.getByRole('button', { name: /novo cliente/i }).waitFor();
+  await page.locator('.team-card').first().waitFor();
   await shoot(page, SLUG, 1, 'abrir-clientes');
 
   await page.getByRole('button', { name: /novo cliente/i }).click();
@@ -83,11 +93,19 @@ test('primeiro post walkthrough', async ({ page }) => {
   // ── Seção 2: monte sua equipe ──────────────────────────────────────────────
   // Mesmo padrão: EquipePage.tsx:550 também não passa `confirmClose`, Escape
   // fecha direto.
+  // Same recurring failure mode as shot 1: EquipePage.tsx:454-459 renders a
+  // full-page Spinner while `isLoading` is true, above which "Adicionar
+  // Membro" already sits as unconditional chrome. `.team-card`
+  // (EquipePage.tsx:465) is the same shared-class row element used by
+  // Clientes and only renders from loaded, non-empty `filtered` data.
+  // Verified live against prod on 2026-08-06: the grid renders multiple real
+  // team-member cards under this class.
   await page.goto('/equipe');
   await page
     .getByRole('button', { name: /adicionar membro/i })
     .first()
     .waitFor();
+  await page.locator('.team-card').first().waitFor();
   await shoot(page, SLUG, 5, 'abrir-equipe');
 
   await page
@@ -144,8 +162,11 @@ test('primeiro post walkthrough', async ({ page }) => {
   // Capture o botão e siga. Nunca clique.
   // Selector verificado ao vivo: o texto real do botão é "Conectar com o
   // Instagram" (id="btn-ig-connect", InstagramOverviewCard.ts:39), não
-  // "Conectar Instagram" -- esse texto existe apenas no aria-label de um ícone
-  // de atalho na nav lateral (ClienteDetalheNav), um elemento diferente.
+  // "Conectar Instagram" -- esse texto exato aparece como texto VISÍVEL de um
+  // atalho na nav lateral (ClienteDetalheNav.tsx:145-149, <span
+  // className="cliente-detalhe-nav__label">), um elemento diferente. O
+  // seletor abaixo mira #btn-ig-connect diretamente e nunca clica em nenhum
+  // dos dois.
   await page.goto(`/clientes/${CLIENT_WITHOUT_IG}`);
   const conectar = page.locator('#btn-ig-connect');
   await conectar.waitFor();
@@ -247,7 +268,12 @@ test('primeiro post walkthrough', async ({ page }) => {
   await captionField.scrollIntoViewIfNeeded();
   await shoot(page, SLUG, 25, 'escrever-legenda');
 
-  await page.locator('.drawer-close-btn').first().click();
+  // `.drawer-close-btn` is ambiguous: WorkflowDrawer.tsx:708 (fullscreen
+  // toggle) carries both "drawer-close-btn drawer-fullscreen-btn" and is
+  // first in the DOM, while the real close control at :714 carries only
+  // "drawer-close-btn". `:not()` excludes the fullscreen button so this
+  // targets the actual close control.
+  await page.locator('.drawer-close-btn:not(.drawer-fullscreen-btn)').click();
 
   // ── Seção 6: aprove o post ─────────────────────────────────────────────────
   // O quadro Kanban agrupa fluxos por template em ABAS quando há mais de um
@@ -256,8 +282,13 @@ test('primeiro post walkthrough', async ({ page }) => {
   // vivo: a aba padrão só mostra 1 card de um template diferente.
   await page.goto('/entregas');
   await page.locator('.board-card').first().waitFor();
+  // Tab switching is a synchronous `setActiveRowKey` over boards already
+  // fetched into memory (KanbanView.tsx:531-533) -- no new network request
+  // fires, so the real signal to wait for is the target card itself
+  // appearing under the newly active tab, not a fixed delay.
+  const campanhaCard = page.locator('.board-card', { hasText: 'Campanha Antes/Depois' });
   await page.getByRole('tab', { name: /produ[cç][aã]o de conte[uú]do/i }).click();
-  await page.waitForTimeout(500);
+  await campanhaCard.waitFor();
 
   // O card tem um botão "Concluir etapa e avançar" (título, sem texto visível --
   // WorkflowCard.tsx:707-709) que dispara o MESMO handler que o drag-and-drop
@@ -266,7 +297,6 @@ test('primeiro post walkthrough', async ({ page }) => {
   // aprovacao_cliente), confirmar "Avançar" no diálogo abaixo chama
   // advanceEtapa() diretamente -- uma escrita de verdade. Por isso paramos no
   // diálogo de confirmação e NUNCA clicamos em "Avançar" para este card.
-  const campanhaCard = page.locator('.board-card', { hasText: 'Campanha Antes/Depois' });
   await campanhaCard.getByRole('button', { name: 'Concluir etapa e avançar' }).click();
   const forwardDialog = page.getByRole('alertdialog').filter({ hasText: 'Avançar etapa?' });
   await forwardDialog.waitFor();
