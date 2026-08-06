@@ -25,7 +25,7 @@ function greeting(firstNameEscaped: string | null): string {
  * its alt text is styled white/bold so blocked-image clients still show the
  * brand on the green header.
  */
-function layout(bodyHtml: string, footerLine: string, baseEscaped: string): string {
+export function layout(bodyHtml: string, footerLine: string, baseEscaped: string): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR"><body style="margin:0;background:#f5f3ee;font-family:Arial,Helvetica,sans-serif;color:#1a3d2b">
   <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
@@ -165,7 +165,7 @@ export const FOUNDER_NOTICE_FROM = "Mesaas Alerts <alertas@mesaas.com.br>";
  * Resend reject the send, stranding the claim and re-retrying the already-sent
  * user-facing email. Strip controls, collapse whitespace, bound the length.
  */
-function sanitizeSubjectValue(value: string): string {
+export function sanitizeSubjectValue(value: string): string {
   // deno-lint-ignore no-control-regex
   const cleaned = value.replace(/[\x00-\x1f\x7f]+/g, " ").replace(/\s+/g, " ").trim();
   return cleaned.length > 80 ? `${cleaned.slice(0, 79)}…` : cleaned;
@@ -294,12 +294,13 @@ export function buildFounderSubscriptionNotice(p: {
  * ways that bypass catch entirely (repo-documented failure mode) — a timeout
  * must surface as a normal retryable throw instead.
  */
-async function sendViaResend(
+export async function sendViaResend(
   to: string,
   subject: string,
   html: string,
   idempotencyKey: string,
   from: string = LIFECYCLE_FROM,
+  replyTo?: string,
 ): Promise<void> {
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
   if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY not configured");
@@ -310,7 +311,13 @@ async function sendViaResend(
       "Content-Type": "application/json",
       "Idempotency-Key": idempotencyKey,
     },
-    body: JSON.stringify({ from, to: [to], subject, html }),
+    body: JSON.stringify({
+      from,
+      to: [to],
+      subject,
+      html,
+      ...(replyTo ? { reply_to: [replyTo] } : {}),
+    }),
     signal: AbortSignal.timeout(10_000),
   });
   // 409 invalid_idempotent_request: this key was already accepted with a
