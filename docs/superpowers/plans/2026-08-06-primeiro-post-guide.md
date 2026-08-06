@@ -320,19 +320,28 @@ Esperado: `skjzpekeqefvlojenfsw` (produção). Se vier `wlyzhyfondykzpsiqsce`, �
 
 - [ ] **Step 3: Rodar a consulta somente leitura**
 
+> **`supabase db query --linked` abre conexão direta ao Postgres e ignora RLS.** Produção
+> hospeda dezenas de agências reais além do DK TESTE. Sem o filtro de `conta_id` desta
+> consulta, ela devolve posts de clientes reais, e os passos seguintes gravam esses ids e
+> nomes num arquivo de spec versionado e em capturas que vão para um bucket público. O
+> filtro **não é opcional**.
+
 ```bash
 npx supabase db query --linked "
-SELECT wp.id AS post_id, wp.workflow_id, wp.titulo, wp.tipo, wp.scheduled_at,
-       wp.plataforma, ia.authorization_status, c.nome AS cliente
+SELECT wp.id AS post_id, wp.workflow_id, wp.tipo, wp.scheduled_at,
+       coalesce(wp.platform, 'instagram') AS platform
 FROM workflow_posts wp
 JOIN workflows w ON w.id = wp.workflow_id
 JOIN clientes c ON c.id = w.cliente_id
 JOIN instagram_accounts ia ON ia.client_id = c.id
-WHERE wp.status = 'aprovado_cliente'
+WHERE c.conta_id = 'e68bdbc3-baf0-4807-b905-0807ac4e0253'
+  AND wp.status = 'aprovado_cliente'
   AND wp.scheduled_at IS NOT NULL
   AND (wp.tipo = 'stories' OR coalesce(btrim(wp.ig_caption), '') <> '')
-  AND ia.authorization_status = 'active'
-  AND coalesce(wp.plataforma, 'instagram') = 'instagram'
+  AND ia.authorization_status NOT IN ('revoked', 'expired')
+  AND (ia.token_expires_at IS NULL OR ia.token_expires_at >= now())
+  AND coalesce(ia.permissions, '{}') @> ARRAY['instagram_business_content_publish']
+  AND coalesce(wp.platform, 'instagram') = 'instagram'
 ORDER BY wp.scheduled_at DESC
 LIMIT 5;
 "
@@ -340,13 +349,29 @@ LIMIT 5;
 
 Cada condição espelha uma parte de `canSchedule`:
 
-| Condição da consulta | Origem em `ScheduleButton.tsx` |
+| Condição da consulta | Origem |
 |---|---|
-| `status = 'aprovado_cliente'` | `:495`, senão o bloco de agendamento nem renderiza |
-| `scheduled_at IS NOT NULL` | `:504` |
+| `c.conta_id = '<DK TESTE>'` | **não** vem da UI. É o escopo de tenant, ver o aviso acima |
+| `status = 'aprovado_cliente'` | `ScheduleButton.tsx:495`, senão o bloco nem renderiza |
+| `scheduled_at IS NOT NULL` | `ScheduleButton.tsx:504` |
 | legenda preenchida ou tipo `stories` | `hasRequiredCaption`, `:498` |
-| `authorization_status = 'active'` | `accountBlocked` dentro de `accountWarning`, `:213` |
-| `plataforma = 'instagram'` | evita o ramo `tiktokReady`, `:231` |
+| `authorization_status NOT IN (revoked, expired)` | `revoked`/`expired`, `WorkflowDrawer.tsx:266-274` |
+| `token_expires_at IS NULL OR >= now()` | a outra metade de `expired`, mesma origem |
+| `permissions @> {instagram_business_content_publish}` | `canPublish`, mesma origem |
+| `platform = 'instagram'` | evita o ramo `tiktokReady`, `ScheduleButton.tsx:231` |
+
+Três armadilhas, todas encontradas na execução real deste plano:
+
+1. **A coluna é `platform`, não `plataforma`.** `coalesce(wp.plataforma, ...)` estoura com
+   `column wp.plataforma does not exist` antes de devolver qualquer coisa.
+2. **`authorization_status = 'active'` não basta.** A UI deriva `expired` também de
+   `token_expires_at`, e exige `canPublish` do array `permissions`. As quatro contas do DK
+   TESTE estão `active` com o token vencido em 2026-06-12: uma consulta que olha só o
+   status devolve um `post_id` cujo botão Agendar renderiza **desabilitado**.
+   `scripts/seed-kb-capture-fixtures.mjs` documenta esse mesmo erro sendo corrigido no
+   próprio preflight.
+3. **Sem `conta_id`, a consulta atravessa tenants.** Rodada sem o filtro, ela devolveu
+   posts de três clientes reais da agência. Nenhum deles é do DK TESTE.
 
 - [ ] **Step 4: Registrar o resultado e decidir**
 
@@ -367,9 +392,13 @@ npx supabase db query --linked "
 SELECT c.id, c.nome, ia.authorization_status, ia.instagram_user_id IS NOT NULL AS tem_conta
 FROM clientes c
 LEFT JOIN instagram_accounts ia ON ia.client_id = c.id
+WHERE c.conta_id = 'e68bdbc3-baf0-4807-b905-0807ac4e0253'
 ORDER BY c.id;
 "
 ```
+
+O `WHERE conta_id` vale aqui pelo mesmo motivo do Step 3: sem ele a consulta lista os
+clientes de todas as agências reais da produção.
 
 Anote qual cliente tem `authorization_status = 'active'`. As capturas `11-secao-instagram.png` e `12-conectar-instagram.png` precisam de estados diferentes: uma conta conectada mostra o painel de conta, uma não conectada mostra o botão `Conectar Instagram`. Escolha um cliente para cada.
 

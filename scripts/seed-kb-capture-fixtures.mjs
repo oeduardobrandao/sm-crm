@@ -125,7 +125,17 @@ const POSTS = [
 // Workflow 53's stored title uses an em-dash, which the house style bans in
 // user-facing copy. It would be legible in several screenshots, so --up
 // rewrites it and --down restores whatever was there before.
-const TITLE_FIX = { id: WORKFLOW_AGENDAMENTO, to: 'Post Semana 4 · BE' };
+// `from` is the title observed in production on 2026-08-06, kept so teardown can
+// undo the rename even when the manifest is gone. Row cleanup already survives a
+// lost manifest via findFixtureRows; without this the title restore would not,
+// and the cosmetic rename would stick to a real workflow forever with no record
+// anywhere of what it used to be. Only ever applied when the current title is
+// exactly `to`, so a legitimate rename made in the meantime is never clobbered.
+const TITLE_FIX = {
+  id: WORKFLOW_AGENDAMENTO,
+  from: 'Post Semana 4 — BE',
+  to: 'Post Semana 4 · BE',
+};
 
 // The titles are the fixture marker. workflow_posts has no free-form provenance
 // column that would take a custom value (created_via is CHECK-constrained to
@@ -460,37 +470,63 @@ async function down() {
   const ids = [...new Set([...(manifest?.postIds ?? []), ...discovered.map((r) => r.id)])];
 
   if (ids.length === 0) {
-    console.log('Nenhum post de fixture encontrado em produção. Nada a remover.');
-    if (manifest) unlinkSync(MANIFEST);
-    return;
-  }
-  if (!manifest) {
+    console.log('Nenhum post de fixture encontrado em produção.');
+  } else if (!manifest) {
     console.log(
       `Sem manifesto local. Encontrei ${discovered.length} post(s) de fixture pelo título\n` +
         'dentro dos fluxos de fixture do DK TESTE, e vou remover essas linhas.\n',
     );
   }
 
-  // Delete by id AND by conta, so a tampered manifest still cannot reach
-  // another workspace's rows.
-  const { data: deleted, error } = await supabase
-    .from('workflow_posts')
-    .delete()
-    .in('id', ids)
-    .eq('conta_id', CONTA_ID)
-    .select('id, titulo');
-  if (error) throw error;
+  // Deliberately NOT an early return when ids is empty. The posts and the title
+  // rename are two independent leftovers: a run can leave the rename behind with
+  // no posts (partial mode plus a lost manifest, or a --down that removed rows
+  // and then died). Returning here would make the title restore unreachable in
+  // exactly the case it exists for.
+  let deleted = [];
+  if (ids.length > 0) {
+    // Delete by id AND by conta, so a tampered manifest still cannot reach
+    // another workspace's rows.
+    const { data, error } = await supabase
+      .from('workflow_posts')
+      .delete()
+      .in('id', ids)
+      .eq('conta_id', CONTA_ID)
+      .select('id, titulo');
+    if (error) throw error;
+    deleted = data ?? [];
+  }
 
   // Test against null, not truthiness: an empty original title is a real value
   // that must be restored, and this database does contain empty name strings.
   // A truthiness check would silently leave the fixture title in place forever.
-  const originalTitle = manifest?.workflowTitle?.original;
+  let originalTitle = manifest?.workflowTitle?.original;
+  let fromFallback = false;
+
+  // No manifest, or a manifest that recorded no rename (partial mode). The rename
+  // may still be in place from another worktree's run, so check the database the
+  // same way row cleanup does. Restoring only when the current title is exactly
+  // TITLE_FIX.to means a legitimate rename since the seed is left alone.
+  if (originalTitle == null) {
+    const { data: flow, error: flowErr } = await supabase
+      .from('workflows')
+      .select('id, titulo')
+      .eq('id', TITLE_FIX.id)
+      .eq('conta_id', CONTA_ID)
+      .maybeSingle();
+    if (flowErr) throw flowErr;
+    if (flow?.titulo === TITLE_FIX.to) {
+      originalTitle = TITLE_FIX.from;
+      fromFallback = true;
+    }
+  }
+
   let restored = false;
   if (originalTitle != null) {
     const { error: titleErr } = await supabase
       .from('workflows')
       .update({ titulo: originalTitle })
-      .eq('id', manifest.workflowTitle.id)
+      .eq('id', TITLE_FIX.id)
       .eq('conta_id', CONTA_ID);
     if (titleErr) throw titleErr;
     restored = true;
@@ -498,19 +534,27 @@ async function down() {
 
   if (existsSync(MANIFEST)) unlinkSync(MANIFEST);
 
-  console.log(`Removidos ${deleted.length} post(s):`);
-  for (const r of deleted) console.log(`  ${r.id}  ${r.titulo}`);
+  if (deleted.length > 0) {
+    console.log(`Removidos ${deleted.length} post(s):`);
+    for (const r of deleted) console.log(`  ${r.id}  ${r.titulo}`);
+  }
   if (ids.length !== deleted.length) {
     console.log(
       `\n⚠️  Esperava remover ${ids.length} post(s) e ${deleted.length} foram removidos.\n` +
         '    Confira manualmente se sobrou algum post de fixture no DK TESTE.',
     );
   }
-  console.log(
-    restored
-      ? '\nFluxo renomeado de volta. Manifesto apagado.'
-      : '\nNenhum título a restaurar. Manifesto apagado.',
-  );
+  if (restored && fromFallback) {
+    console.log(
+      `\nFluxo ${TITLE_FIX.id} estava com o título de fixture e não havia manifesto.\n` +
+        `Restaurado para "${TITLE_FIX.from}", o valor observado em produção em 2026-08-06.\n` +
+        'Confira se era mesmo esse o título.',
+    );
+  } else if (restored) {
+    console.log('\nFluxo renomeado de volta. Manifesto apagado.');
+  } else {
+    console.log('\nNenhum título a restaurar. Manifesto apagado.');
+  }
 }
 
 /**
