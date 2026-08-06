@@ -469,7 +469,14 @@ Deno.serve(async (req) => {
         } catch { /* posts/history fetch is best-effort */ }
 
         // Aviso à agência. Melhor-esforço: a conexão já está persistida e uma falha
-        // aqui não pode desfazê-la nem bloquear o redirect do cliente.
+        // aqui não pode desfazê-la nem bloquear o redirect do cliente. Os dois avisos
+        // abaixo (notificação + e-mail) são pulados, em silêncio, se o criador do
+        // link foi deletado (FK ON DELETE CASCADE) OU se ele simplesmente não é mais
+        // membro deste workspace -- o link fica vivo por até 30 dias, tempo de sobra
+        // para alguém sair do workspace A permanecendo como auth user (por pertencer
+        // ao workspace B). Sem essa checagem, esse ex-membro receberia o nome do
+        // cliente e o @ do Instagram conectado: vazamento de dado do workspace A para
+        // quem já foi offboarded dele.
         if (linkToken) {
             // Buscado uma vez e usado pelos dois avisos. client_name é o nome do
             // CLIENTE, não o @ do Instagram: notification-config renderiza
@@ -483,38 +490,62 @@ Deno.serve(async (req) => {
             } catch (e) {
                 console.error('[IG-CALLBACK] cliente lookup for notice failed (non-fatal):', e);
             }
+
+            // Uma única consulta, cujo resultado serve para os dois avisos abaixo.
+            // Falha-fechado: se não dá para confirmar a associação, os dois avisos
+            // são pulados -- o custo de uma notificação perdida é bem menor que o de
+            // vazar dado de cliente para um ex-membro do workspace.
+            let isStillMember = false;
             try {
-                await serviceClient.from('notifications').insert({
-                    workspace_id: contaId,
-                    user_id: userId,
-                    type: 'instagram_connected_by_client',
-                    metadata: { client_name: clienteNome, ig_username: igProfile.username || '' },
-                    link: `/clientes/${clientId}`,
-                });
+                const { data: membership } = await serviceClient
+                    .from('workspace_members')
+                    .select('workspace_id')
+                    .eq('user_id', userId)
+                    .eq('workspace_id', contaId)
+                    .maybeSingle();
+                isStillMember = !!membership;
             } catch (e) {
-                // created_by pode ter sido removido entre gerar o link e o callback:
-                // notifications.user_id tem FK com ON DELETE CASCADE, então o insert falha.
-                console.error('[IG-CALLBACK] notification insert failed (non-fatal):', e);
+                console.error('[IG-CALLBACK] membership check for notice failed, skipping notices (non-fatal):', e);
             }
-            try {
-                // auth.users.email via the Auth admin API -- profiles has no email
-                // column. Best-effort: the member may have been deleted between
-                // generating the link and the callback, in which case skip silently.
-                const { data: userData } = await serviceClient.auth.admin.getUserById(userId);
-                const memberEmail = userData?.user?.email;
-                if (memberEmail) {
-                    const base = appBaseUrl();
-                    await sendConnectedNoticeEmail({
-                        to: memberEmail,
-                        clienteName: clienteNome,
-                        igUsername: igProfile.username || '',
-                        clienteUrl: `${base.replace(/\/+$/, '')}/clientes/${clientId}`,
-                        appBaseUrl: base,
-                        idempotencyKey: `ig-connected-notice:${linkToken}:${igBusinessId}`,
+
+            if (isStillMember) {
+                try {
+                    await serviceClient.from('notifications').insert({
+                        workspace_id: contaId,
+                        user_id: userId,
+                        type: 'instagram_connected_by_client',
+                        metadata: { client_name: clienteNome, ig_username: igProfile.username || '' },
+                        link: `/clientes/${clientId}`,
                     });
+                } catch (e) {
+                    // created_by pode ter sido removido entre a checagem de membership
+                    // acima e este insert: notifications.user_id tem FK com ON DELETE
+                    // CASCADE, então o insert falha.
+                    console.error('[IG-CALLBACK] notification insert failed (non-fatal):', e);
                 }
-            } catch (e) {
-                console.error('[IG-CALLBACK] connected notice email failed (non-fatal):', e);
+                try {
+                    // auth.users.email via the Auth admin API -- profiles has no email
+                    // column. Best-effort: the member may have been deleted between
+                    // the membership check above and this call, in which case skip
+                    // silently.
+                    const { data: userData } = await serviceClient.auth.admin.getUserById(userId);
+                    const memberEmail = userData?.user?.email;
+                    if (memberEmail) {
+                        const base = appBaseUrl();
+                        await sendConnectedNoticeEmail({
+                            to: memberEmail,
+                            clienteName: clienteNome,
+                            igUsername: igProfile.username || '',
+                            clienteUrl: `${base.replace(/\/+$/, '')}/clientes/${clientId}`,
+                            appBaseUrl: base,
+                            idempotencyKey: `ig-connected-notice:${linkToken}:${igBusinessId}`,
+                        });
+                    }
+                } catch (e) {
+                    console.error('[IG-CALLBACK] connected notice email failed (non-fatal):', e);
+                }
+            } else {
+                console.error('[IG-CALLBACK] connected notice skipped: creator is no longer a member of this workspace');
             }
         }
 
