@@ -38,6 +38,7 @@ describe('analytics', () => {
       expect.objectContaining({
         api_host: 'https://eu.i.posthog.com',
         person_profiles: 'identified_only',
+        capture_exceptions: true,
       }),
     );
   });
