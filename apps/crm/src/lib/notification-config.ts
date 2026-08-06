@@ -7,6 +7,7 @@ import {
   ClipboardCheck,
   Clock,
   FilePen,
+  Instagram,
   Lightbulb,
   MessageSquare,
   Play,
@@ -140,6 +141,15 @@ export function getNotificationDisplay(
         tone: 'teal',
         title: `Post entrou em ${statusLabel}`,
         body: m.client_name ? `${client} · ${post}` : post,
+      };
+    }
+    case 'instagram_connected_by_client': {
+      const igUser = s(m.ig_username, '');
+      return {
+        icon: Instagram,
+        tone: 'success',
+        title: 'Instagram conectado pelo cliente',
+        body: igUser ? `${client} · @${igUser}` : client,
       };
     }
     case 'task_assigned':
