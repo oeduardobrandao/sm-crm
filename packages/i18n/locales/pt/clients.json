@@ -150,6 +150,7 @@
   "detail": {
     "igNotBusiness": "A conta Instagram não é uma conta Business. Reconecte com uma conta Business ou Creator.",
     "igError": "Ocorreu um erro ao conectar a conta Instagram. Tente novamente.",
+    "igLinkRevoked": "Este link de conexão foi revogado ou expirou. Peça um novo link para a agência.",
     "igCancelled": "A conexão foi cancelada antes de concluir. Clique em Conectar novamente e aceite as permissões solicitadas.",
     "igMissingPermissions": "Algumas permissões necessárias não foram concedidas. Reconecte a conta mantendo todas as permissões marcadas.",
     "igStateExpired": "A sessão de conexão expirou. Clique em Conectar novamente para recomeçar.",
@@ -330,5 +331,40 @@
       "enviado_cliente": "Enviado",
       "correcao_cliente": "Correção"
     }
+  },
+  "connect": {
+    "title": "Conectar Instagram",
+    "intro": "{{agency}} pediu para conectar o Instagram de {{client}} ao Mesaas.",
+    "explain": "Ao continuar você entra com a conta do Instagram e autoriza o acesso. Sua senha não é vista nem armazenada pelo Mesaas nem pela agência.",
+    "cta": "Conectar Instagram",
+    "connecting": "Abrindo o Instagram...",
+    "successTitle": "Tudo certo",
+    "successBody": "A conta @{{username}} foi conectada. Você já pode fechar esta página.",
+    "alreadyTitle": "Já está conectado",
+    "alreadyBody": "A conta @{{username}} já está conectada. Nada a fazer aqui.",
+    "invalidTitle": "Link inválido",
+    "invalidBody": "Este link não existe. Confira o endereço ou peça um novo para a agência.",
+    "revokedTitle": "Link revogado",
+    "revokedBody": "A agência revogou este link. Peça um novo para continuar.",
+    "expiredTitle": "Link expirado",
+    "expiredBody": "Este link passou da validade. Peça um novo para a agência.",
+    "unavailableTitle": "Indisponível no momento",
+    "unavailableBody": "A conexão com o Instagram não está disponível para esta agência agora. Fale com quem enviou o link.",
+    "startError": "Não foi possível abrir o Instagram. Tente novamente em alguns instantes.",
+    "generate": "Gerar link para o cliente",
+    "dialogTitle": "Link de conexão do Instagram",
+    "dialogIntro": "Envie este link para o cliente. Ele autoriza o Instagram sem precisar de login no Mesaas.",
+    "copy": "Copiar link",
+    "copied": "Link copiado",
+    "emailLabel": "Enviar por e-mail",
+    "emailPlaceholder": "email@cliente.com.br",
+    "send": "Enviar",
+    "sent": "E-mail enviado",
+    "sendError": "Não foi possível enviar o e-mail. Tente novamente.",
+    "revoke": "Revogar",
+    "revoked": "Link revogado",
+    "revokeConfirm": "Revogar este link? Quem já o recebeu não vai mais conseguir usá-lo.",
+    "activeUntil": "Link de conexão ativo até {{date}}",
+    "generateError": "Não foi possível gerar o link. Tente novamente."
   }
 }

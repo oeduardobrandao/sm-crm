@@ -23,6 +23,7 @@ export function classifyOAuthError(msg: string, params: URLSearchParams): string
   if (/request limit|rate limit|too many (calls|requests)|\(#4\)|\(#17\)|\(#613\)/i.test(msg)) {
     return 'rate_limited';
   }
+  if (/^CONNECT_LINK_REVOKED/.test(msg)) return 'link_revoked';
   return '1';
 }
 

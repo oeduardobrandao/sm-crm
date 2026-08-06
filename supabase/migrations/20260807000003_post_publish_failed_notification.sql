@@ -4,7 +4,9 @@
 -- =====================================================================
 
 -- ---------- notifications: add 'post_publish_failed' ao type CHECK ----
--- Lista copiada da definição MAIS RECENTE (20260805000002_post_status_automations.sql).
+-- Lista copiada da definição MAIS RECENTE (20260806000002_instagram_connect_links.sql,
+-- que entrou no main via PR #308 depois do corte deste branch; inclui
+-- 'instagram_connected_by_client').
 -- Este arquivo passa a ser a definição mais recente; a próxima migration a
 -- tocar notifications_type_check deve copiar daqui.
 ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
@@ -17,6 +19,7 @@ ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (
     'invite_accepted', 'member_role_changed', 'member_removed',
     'post_edit_suggestion', 'task_assigned', 'client_message',
     'mention', 'post_status_automation',
+    'instagram_connected_by_client',
     'post_publish_failed'
   )
 );

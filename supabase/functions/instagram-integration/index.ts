@@ -8,6 +8,9 @@ import { buildMetricFields, fetchPostInsights } from "../_shared/instagram-metri
 import { cachePostThumbnail } from "../_shared/instagram-thumbnail-cache.ts";
 import { sendCronFailureEmail } from "../_shared/notify.ts";
 import { classifyOAuthError, isAppConfigError } from "./oauth-error.ts";
+import { gateConnectLinkOrigin } from "../instagram-connect-link/gate.ts";
+import { sendConnectedNoticeEmail } from "../_shared/instagram-connect-email.ts";
+import { appBaseUrl } from "../_shared/app-url.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
@@ -165,7 +168,7 @@ Deno.serve(async (req) => {
 
         if (!code) throw new Error("Missing auth code");
 
-        const { clientId, nonce, contaId, userId } = await verifySignedState(state || '');
+        const { clientId, nonce, contaId, userId, linkToken } = await verifySignedState(state || '');
         if (!clientId || !/^\d+$/.test(String(clientId))) throw new Error("Invalid client ID in state parameter");
 
         const nonceServiceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
@@ -315,13 +318,43 @@ Deno.serve(async (req) => {
 
         // Read before the upsert: afterwards the row exists either way, and the reconnect flow
         // (expired or revoked token, `btn-ig-reconnect`) comes through this same callback. Without
-        // this, every re-authorisation would count as a fresh activation.
+        // this, every re-authorisation would count as a fresh activation. Only needs clientId, which
+        // comes from the signed state, so it can run ahead of the link gate below without changing
+        // the non-link agency flow (it already ran unconditionally, exactly once, here).
         const { data: priorAccount } = await serviceClient
             .from('instagram_accounts')
             .select('id')
             .eq('client_id', clientId)
             .maybeSingle();
         const isFirstConnection = !priorAccount;
+
+        // Portão do link de conexão. Precisa vir o mais perto possível do upsert: o UPDATE
+        // condicional abaixo é atômico só para a SUA PRÓPRIA instrução -- checar revoked_at/
+        // expires_at e marcar used_at acontece numa única operação no banco. Mas o lock da
+        // linha é liberado assim que essa instrução comita, e o upsert em instagram_accounts
+        // é uma chamada HTTP separada ao PostgREST (outra transação). Entre as duas ainda
+        // existe uma janela estreita em que uma revogação não seria pega -- não dá pra fechar
+        // sem colocar o upsert na mesma transação do portão, o que é um escopo maior. O que dá
+        // pra fazer, e este bloco faz, é encolher a janela: tudo que não precisa do retorno do
+        // portão (entitlement, priorAccount) já rodou acima, então depois do portão só falta a
+        // checagem de mismatch (sem round-trip) antes do upsert.
+        if (linkToken) {
+            // Reconferir a entitlement aqui, e não só no /start: o state vive 10
+            // minutos, e um downgrade dentro dessa janela não pode resultar numa
+            // conta ativa gravada para um workspace que perdeu o feature. contaId vem do
+            // state assinado (HMAC) -- é o mesmo workspace que o portão devolveria em
+            // consumed.conta_id, mas ainda não passamos pelo portão neste ponto.
+            const originGate = await gateConnectLinkOrigin(
+                // deno-lint-ignore no-explicit-any
+                { planFeature: (db, c, k) => effectivePlanFeature(db as any, c, k) },
+                serviceClient,
+                linkToken,
+                clientId,
+                contaId,
+                new Date().toISOString(),
+            );
+            if (!originGate.proceed) throw new Error(originGate.reason);
+        }
 
         // Upsert into DB (with insights + last_synced_at)
         const { data: upsertedAccount, error: dbError } = await serviceClient
@@ -358,7 +391,11 @@ Deno.serve(async (req) => {
           action: 'instagram-link',
           resource_type: 'instagram_account',
           resource_id: String(clientId),
-          metadata: { ig_username: igProfile.username || '', ig_business_id: igBusinessId },
+          metadata: {
+            ig_username: igProfile.username || '',
+            ig_business_id: igBusinessId,
+            ...(linkToken ? { via: 'connect_link' } : {}),
+          },
         });
 
         // Save follower history snapshot + fetch posts
@@ -431,11 +468,101 @@ Deno.serve(async (req) => {
             }
         } catch { /* posts/history fetch is best-effort */ }
 
+        // Aviso à agência. Melhor-esforço: a conexão já está persistida e uma falha
+        // aqui não pode desfazê-la nem bloquear o redirect do cliente. Os dois avisos
+        // abaixo (notificação + e-mail) são pulados, em silêncio, se o criador do
+        // link foi deletado (FK ON DELETE CASCADE) OU se ele simplesmente não é mais
+        // membro deste workspace -- o link fica vivo por até 30 dias, tempo de sobra
+        // para alguém sair do workspace A permanecendo como auth user (por pertencer
+        // ao workspace B). Sem essa checagem, esse ex-membro receberia o nome do
+        // cliente e o @ do Instagram conectado: vazamento de dado do workspace A para
+        // quem já foi offboarded dele.
+        if (linkToken) {
+            // Buscado uma vez e usado pelos dois avisos. client_name é o nome do
+            // CLIENTE, não o @ do Instagram: notification-config renderiza
+            // `${client_name} · @${ig_username}`, e passar o username nos dois
+            // campos imprime "clinicax · @clinicax".
+            let clienteNome = '';
+            try {
+                const { data: cliente } = await serviceClient
+                    .from('clientes').select('nome').eq('id', clientId).maybeSingle();
+                clienteNome = cliente?.nome ?? '';
+            } catch (e) {
+                console.error('[IG-CALLBACK] cliente lookup for notice failed (non-fatal):', e);
+            }
+
+            // Uma única consulta, cujo resultado serve para os dois avisos abaixo.
+            // Falha-fechado: se não dá para confirmar a associação, os dois avisos
+            // são pulados -- o custo de uma notificação perdida é bem menor que o de
+            // vazar dado de cliente para um ex-membro do workspace.
+            let isStillMember = false;
+            try {
+                const { data: membership } = await serviceClient
+                    .from('workspace_members')
+                    .select('workspace_id')
+                    .eq('user_id', userId)
+                    .eq('workspace_id', contaId)
+                    .maybeSingle();
+                isStillMember = !!membership;
+            } catch (e) {
+                console.error('[IG-CALLBACK] membership check for notice failed, skipping notices (non-fatal):', e);
+            }
+
+            if (isStillMember) {
+                try {
+                    await serviceClient.from('notifications').insert({
+                        workspace_id: contaId,
+                        user_id: userId,
+                        type: 'instagram_connected_by_client',
+                        metadata: { client_name: clienteNome, ig_username: igProfile.username || '' },
+                        link: `/clientes/${clientId}`,
+                    });
+                } catch (e) {
+                    // created_by pode ter sido removido entre a checagem de membership
+                    // acima e este insert: notifications.user_id tem FK com ON DELETE
+                    // CASCADE, então o insert falha.
+                    console.error('[IG-CALLBACK] notification insert failed (non-fatal):', e);
+                }
+                try {
+                    // auth.users.email via the Auth admin API -- profiles has no email
+                    // column. Best-effort: the member may have been deleted between
+                    // the membership check above and this call, in which case skip
+                    // silently.
+                    const { data: userData } = await serviceClient.auth.admin.getUserById(userId);
+                    const memberEmail = userData?.user?.email;
+                    if (memberEmail) {
+                        const base = appBaseUrl();
+                        await sendConnectedNoticeEmail({
+                            to: memberEmail,
+                            clienteName: clienteNome,
+                            igUsername: igProfile.username || '',
+                            clienteUrl: `${base.replace(/\/+$/, '')}/clientes/${clientId}`,
+                            appBaseUrl: base,
+                            idempotencyKey: `ig-connected-notice:${linkToken}:${igBusinessId}`,
+                        });
+                    }
+                } catch (e) {
+                    console.error('[IG-CALLBACK] connected notice email failed (non-fatal):', e);
+                }
+            } else {
+                console.error('[IG-CALLBACK] connected notice skipped: creator is no longer a member of this workspace');
+            }
+        }
+
         // The CRM's activation signal: the only point in the flow where a connection is known to
         // exist. Carries new-vs-reconnect because both reach this line, and only the first is an
         // activation. The page fires `instagram_connected` on it and strips it from the URL
         // (useInstagramActivationEvent).
         const connectedMarker = isFirstConnection ? 'new' : 'reconnect';
+        // O cliente final não tem login no CRM: mandá-lo para /clientes/:id o joga
+        // na tela de login. OAUTH_REDIRECT_BASE (e não APP_BASE_URL) porque este é
+        // o redirect do callback OAuth, não um link enviado por e-mail.
+        if (linkToken) {
+            return Response.redirect(
+                `${OAUTH_REDIRECT_BASE}/conectar/${linkToken}?ig_connected=${connectedMarker}`,
+                302,
+            );
+        }
         return Response.redirect(
             `${OAUTH_REDIRECT_BASE}/clientes/${clientId}?ig_connected=${connectedMarker}`,
             302,
@@ -838,10 +965,12 @@ Deno.serve(async (req) => {
       const stateParam = url.searchParams.get('state');
       let redirectClientId: string | undefined;
       let stateNonce: string | undefined;
+      let redirectLinkToken: string | undefined;
       try {
         const parsedState = await verifySignedState(stateParam || '');
         redirectClientId = parsedState.clientId;
         stateNonce = parsedState.nonce;
+        redirectLinkToken = parsedState.linkToken;
       } catch { /* ignore */ }
       // Classify known Meta OAuth failures into a code the CRM can turn into
       // actionable guidance. Only the code travels in the URL — never the raw message.
@@ -894,9 +1023,11 @@ Deno.serve(async (req) => {
           }
         } catch { /* never block the redirect on the alert */ }
       }
-      const target = redirectClientId
-        ? `${OAUTH_REDIRECT_BASE}/clientes/${redirectClientId}?ig_error=${igErrorCode}`
-        : `${OAUTH_REDIRECT_BASE}?ig_error=${igErrorCode}`;
+      const target = redirectLinkToken
+        ? `${OAUTH_REDIRECT_BASE}/conectar/${redirectLinkToken}?ig_error=${igErrorCode}`
+        : redirectClientId
+          ? `${OAUTH_REDIRECT_BASE}/clientes/${redirectClientId}?ig_error=${igErrorCode}`
+          : `${OAUTH_REDIRECT_BASE}?ig_error=${igErrorCode}`;
       return Response.redirect(target, 302);
     }
 
