@@ -68,7 +68,13 @@ async function liveLink(deps: ConnectLinkHandlerDeps, db: DbClient, clienteId: n
   return connectLinkLive(data, deps.now()) ? data : null;
 }
 
-function parseClienteId(raw: string | null | undefined): number | null {
+/**
+ * Only a string or a number is a legitimate cliente_id. Untyped JSON bodies can hand
+ * this an array or object; String([42]) === "42" would slip an array straight past a
+ * naive regex check, so those types are rejected before the regex ever runs.
+ */
+function parseClienteId(raw: unknown): number | null {
+  if (typeof raw !== "string" && typeof raw !== "number") return null;
   if (!raw || !/^\d+$/.test(String(raw))) return null;
   const n = parseInt(String(raw), 10);
   return isNaN(n) ? null : n;
@@ -116,14 +122,25 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
         });
 
         if (error) {
-          // Duas abas clicando em "Gerar" ao mesmo tempo: a segunda colide no índice
-          // único. Isso não é erro para a agência, é o link que ela já queria.
-          console.error("[connect-link] RPC failed, re-reading live link:", error);
-          const existing = await liveLink(deps, db, clienteId);
-          if (!existing) return json({ error: "Erro interno" }, 500);
-          return json({
-            link: { url: buildConnectUrl(deps.appBaseUrl(), existing.token), expires_at: existing.expires_at },
-          });
+          // O fallback abaixo existe SÓ para duas abas clicando em "Gerar" ao mesmo
+          // tempo: a segunda colide no índice único parcial (Postgres SQLSTATE
+          // 23505) e isso não é erro para a agência, é o link que ela já queria.
+          // Qualquer outro código (params inválidos, permissão, falha transitória)
+          // tem que virar 500 de verdade — devolver 200 com um link stale esconderia
+          // o erro do monitoramento de taxa de erro.
+          const code = (error as { code?: string } | null)?.code;
+          if (code === "23505") {
+            const existing = await liveLink(deps, db, clienteId);
+            if (existing) {
+              return json({
+                link: { url: buildConnectUrl(deps.appBaseUrl(), existing.token), expires_at: existing.expires_at },
+              });
+            }
+            // Violação de unicidade sem link ativo é incoerente — não é o caso de
+            // "duas abas colidindo", então não deve ser reportado como sucesso.
+          }
+          console.error("[connect-link] RPC failed:", error);
+          return json({ error: "Erro interno" }, 500);
         }
 
         const row = Array.isArray(data) ? data[0] : data;

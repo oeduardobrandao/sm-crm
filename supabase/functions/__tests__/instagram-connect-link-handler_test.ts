@@ -14,6 +14,8 @@ function makeDb(fixture: {
   clientes?: unknown;
   links?: unknown;
   rpc?: Record<string, unknown>;
+  /** Per-RPC-name error to return instead of { data, error: null }. */
+  rpcError?: Record<string, { code?: string; message?: string }>;
   onRpc?: (fn: string, params: Record<string, unknown>) => void;
   onUpdate?: (table: string, values: Record<string, unknown>) => void;
 }) {
@@ -39,6 +41,8 @@ function makeDb(fixture: {
     from: (table: string) => build(table),
     rpc: (fn: string, params: Record<string, unknown>) => {
       fixture.onRpc?.(fn, params);
+      const err = fixture.rpcError?.[fn];
+      if (err) return Promise.resolve({ data: null, error: err });
       return Promise.resolve({ data: fixture.rpc?.[fn] ?? null, error: null });
     },
   };
@@ -146,6 +150,56 @@ Deno.test("agency POST: calls the RPC and returns the new link", async () => {
   assertEquals(seen, { p_cliente_id: 42, p_conta_id: CONTA, p_created_by: USER, p_ttl_days: 30 });
 });
 
+Deno.test("agency POST: RPC fails with 23505 (unique violation) and a live link exists -> 200, returns the existing link", async () => {
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { conta_id: CONTA },
+      clientes: { conta_id: CONTA },
+      links: { token: "existing-tok", expires_at: FUTURE, revoked_at: null, created_by: USER },
+      rpcError: { create_instagram_connect_link: { code: "23505", message: "duplicate key" } },
+    }),
+  }));
+  const res = await h(req("POST", "", { cliente_id: 42 }));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { link: { url: `${BASE}/conectar/existing-tok`, expires_at: FUTURE } });
+});
+
+Deno.test("agency POST: RPC fails with 23505 and no live link exists -> 500", async () => {
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { conta_id: CONTA },
+      clientes: { conta_id: CONTA },
+      links: null,
+      rpcError: { create_instagram_connect_link: { code: "23505", message: "duplicate key" } },
+    }),
+  }));
+  const res = await h(req("POST", "", { cliente_id: 42 }));
+  assertEquals(res.status, 500);
+});
+
+Deno.test("agency POST: RPC fails with a non-unique-violation code -> 500, no link in the body", async () => {
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { conta_id: CONTA },
+      clientes: { conta_id: CONTA },
+      // A live link exists, but must NOT be surfaced: this isn't the "two tabs
+      // collided" case, it's a genuine RPC failure (permission denied, here).
+      links: { token: "existing-tok", expires_at: FUTURE, revoked_at: null, created_by: USER },
+      rpcError: { create_instagram_connect_link: { code: "42501", message: "permission denied" } },
+    }),
+  }));
+  const res = await h(req("POST", "", { cliente_id: 42 }));
+  assertEquals(res.status, 500);
+  const body = await res.json();
+  assertEquals("link" in body, false);
+});
+
+Deno.test("agency POST: cliente_id as an array is rejected with 400", async () => {
+  const h = createConnectLinkHandler(makeDeps());
+  const res = await h(req("POST", "", { cliente_id: [42] }));
+  assertEquals(res.status, 400);
+});
+
 Deno.test("agency DELETE: revokes and returns ok", async () => {
   let updated: Record<string, unknown> | null = null;
   const h = createConnectLinkHandler(makeDeps({
@@ -173,6 +227,20 @@ Deno.test("agency POST /email: rejects a malformed address before sending", asyn
   }));
   const res = await h(req("POST", "/email", { cliente_id: 42, email: "sem-arroba" }));
   assertEquals(res.status, 400);
+  assertEquals(sent, 0);
+});
+
+Deno.test("agency POST /email: 403 when the client belongs to another workspace, and nothing is sent", async () => {
+  let sent = 0;
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { conta_id: CONTA },
+      clientes: { conta_id: OTHER_CONTA, nome: "Clínica X" },
+    }),
+    sendClientEmail: () => { sent++; return Promise.resolve(); },
+  }));
+  const res = await h(req("POST", "/email", { cliente_id: 42, email: "c@x.com" }));
+  assertEquals(res.status, 403);
   assertEquals(sent, 0);
 });
 
