@@ -21,19 +21,27 @@ describe('resolveIgError', () => {
 
   test('known codes map to their own copy', () => {
     expect(resolveIgError('no_business_account')).toEqual({
-      kind: 'toast', level: 'error', i18nKey: 'detail.igNotBusiness',
+      kind: 'toast',
+      level: 'error',
+      i18nKey: 'detail.igNotBusiness',
     });
     expect(resolveIgError('link_revoked')).toEqual({
-      kind: 'toast', level: 'error', i18nKey: 'detail.igLinkRevoked',
+      kind: 'toast',
+      level: 'error',
+      i18nKey: 'detail.igLinkRevoked',
     });
   });
 
   test('unknown codes fall back to the generic message', () => {
     expect(resolveIgError('1')).toEqual({
-      kind: 'toast', level: 'error', i18nKey: 'detail.igError',
+      kind: 'toast',
+      level: 'error',
+      i18nKey: 'detail.igError',
     });
     expect(resolveIgError('something-new')).toEqual({
-      kind: 'toast', level: 'error', i18nKey: 'detail.igError',
+      kind: 'toast',
+      level: 'error',
+      i18nKey: 'detail.igError',
     });
   });
 });

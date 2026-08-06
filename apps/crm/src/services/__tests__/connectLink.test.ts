@@ -58,13 +58,17 @@ describe('connectLink service', () => {
 
   test('createConnectLink throws on a non-ok response', async () => {
     fetchMock.mockResolvedValue({
-      ok: false, status: 403, json: async () => ({ error: 'feature_disabled' }),
+      ok: false,
+      status: 403,
+      json: async () => ({ error: 'feature_disabled' }),
     } as unknown as Response);
     await expect(createConnectLink(42)).rejects.toThrow('feature_disabled');
   });
 
   test('getPublicConnectInfo sends no Authorization header', async () => {
-    fetchMock.mockResolvedValue(ok({ status: 'live', cliente_name: 'X', workspace_name: 'Y', connected_username: null }));
+    fetchMock.mockResolvedValue(
+      ok({ status: 'live', cliente_name: 'X', workspace_name: 'Y', connected_username: null }),
+    );
     const info = await getPublicConnectInfo('tok');
     expect(info.status).toBe('live');
     const [, init] = fetchMock.mock.calls[0];
@@ -72,7 +76,11 @@ describe('connectLink service', () => {
   });
 
   test('getPublicConnectInfo maps a 404 to not_found instead of throwing', async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 404, json: async () => ({}) } as unknown as Response);
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({}),
+    } as unknown as Response);
     expect((await getPublicConnectInfo('tok')).status).toBe('not_found');
   });
 

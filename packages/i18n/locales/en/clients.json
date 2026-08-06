@@ -350,6 +350,21 @@
     "expiredBody": "This link is past its expiry date. Ask your agency for a new one.",
     "unavailableTitle": "Not available right now",
     "unavailableBody": "Instagram connection is not available for this agency at the moment. Contact whoever sent you the link.",
-    "startError": "Could not open Instagram. Please try again in a moment."
+    "startError": "Could not open Instagram. Please try again in a moment.",
+    "generate": "Generate a link for the client",
+    "dialogTitle": "Instagram connection link",
+    "dialogIntro": "Send this link to the client. They authorize Instagram without needing a Mesaas login.",
+    "copy": "Copy link",
+    "copied": "Link copied",
+    "emailLabel": "Send by email",
+    "emailPlaceholder": "email@client.com",
+    "send": "Send",
+    "sent": "Email sent",
+    "sendError": "Could not send the email. Please try again.",
+    "revoke": "Revoke",
+    "revoked": "Link revoked",
+    "revokeConfirm": "Revoke this link? Anyone who already has it will no longer be able to use it.",
+    "activeUntil": "Connection link active until {{date}}",
+    "generateError": "Could not generate the link. Please try again."
   }
 }

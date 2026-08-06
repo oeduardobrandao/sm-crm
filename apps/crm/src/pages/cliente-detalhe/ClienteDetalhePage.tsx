@@ -143,6 +143,7 @@ import { TikTokSection } from './TikTokSection';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { useInstagramActivationEvent } from '../../hooks/useInstagramActivationEvent';
 import { LatestInstagramPosts } from '../../components/instagram/LatestInstagramPosts';
+import { ConnectLinkRow } from '../../components/instagram/ConnectLinkDialog';
 import { resolveIgError } from '../../lib/instagram-oauth-errors';
 import { supabase } from '@/lib/supabase';
 
@@ -1512,6 +1513,7 @@ export default function ClienteDetalhePage() {
       <InstagramSection
         key={`ig-${clienteId}`}
         clienteId={clienteId}
+        clienteEmail={cliente?.email ?? null}
         loadingIg={loadingIg}
         igSummary={igSummary}
         refetchIg={refetchIg}
@@ -2506,12 +2508,14 @@ function ClienteArquivosSection({ clienteId }: { clienteId: number }) {
 // Never conditionally mounts/unmounts its ref divs — React never touches their children.
 export function InstagramSection({
   clienteId,
+  clienteEmail,
   loadingIg,
   igSummary,
   refetchIg,
   onNavigateAnalytics,
 }: {
   clienteId: number;
+  clienteEmail: string | null;
   loadingIg: boolean;
   igSummary: any;
   refetchIg: () => void;
@@ -2619,6 +2623,9 @@ export function InstagramSection({
         </div>
       )}
       <div ref={igConnectRef} />
+      {!loadingIg && !isNaN(clienteId) && (
+        <ConnectLinkRow clienteId={clienteId} clienteEmail={clienteEmail} />
+      )}
     </div>
   );
 }
