@@ -1,5 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -64,7 +63,7 @@ describe('ConectarPage', () => {
     });
     renderAt();
     await waitFor(() => expect(screen.getByRole('button')).toBeInTheDocument());
-    await userEvent.click(screen.getByRole('button'));
+    fireEvent.click(screen.getByRole('button'));
     await waitFor(() =>
       expect(assign).toHaveBeenCalledWith('https://www.instagram.com/oauth/authorize?x=1'),
     );
@@ -79,6 +78,18 @@ describe('ConectarPage', () => {
     });
     renderAt();
     await waitFor(() => expect(screen.getByText('connect.revokedTitle')).toBeInTheDocument());
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  test('unavailable link shows the unavailable state and no button', async () => {
+    getPublicConnectInfo.mockResolvedValue({
+      status: 'unavailable',
+      cliente_name: '',
+      workspace_name: '',
+      connected_username: null,
+    });
+    renderAt();
+    await waitFor(() => expect(screen.getByText('connect.unavailableTitle')).toBeInTheDocument());
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
