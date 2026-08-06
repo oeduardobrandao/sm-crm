@@ -73,6 +73,14 @@ describe('ConnectLinkRow', () => {
     getConnectLink.mockResolvedValue(null);
     fireEvent.click(screen.getByText('connect.revoke'));
     await waitFor(() => expect(revokeConnectLink).toHaveBeenCalledWith(42));
+    // A revoked link must actually disappear from the row, not just trigger the call:
+    // this row is the safety mechanism, so it may never keep showing a stale
+    // expiry/Revogar for a link that no longer exists.
+    await waitFor(() => {
+      expect(screen.queryByText(/connect\.activeUntil/)).not.toBeInTheDocument();
+      expect(screen.queryByText('connect.revoke')).not.toBeInTheDocument();
+      expect(screen.getByText('connect.generate')).toBeInTheDocument();
+    });
   });
 
   test('declining the confirm does not revoke', async () => {
