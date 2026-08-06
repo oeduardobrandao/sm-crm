@@ -55,12 +55,23 @@ nunca dispare capturas contra produção. Roda a 1440×900, `deviceScaleFactor: 
 claro forçado. `capture.ts` grava em `e2e/.shots/<slug>/NN-nome.png`, gitignorado.
 `scripts/upload-kb-images.mjs` sobe e devolve os URLs públicos.
 
-### 4. A rede de segurança bloqueia agendamento, e isso é deliberado
+### 4. Agendar tem dois caminhos, e a rede de segurança cobre um e meio
 
-`e2e/screenshots/safety.ts` intercepta chamadas a edge functions que agem para fora
-(`instagram-publish`, `invite-user`, `billing-*`) **e** writes PostgREST que agendam:
+Agendar um post não é uma operação só. São duas, por rotas diferentes:
+
+| Caminho | O que dispara | Coberto? |
+|---|---|---|
+| Botão `Agendar` na gaveta, post de Instagram | `POST /functions/v1/instagram-publish/schedule/:id` (`instagram.ts:181`) | Sim, `instagram-publish` está em `BLOCKED_FUNCTIONS` |
+| Botão `Agendar` na gaveta, post de TikTok ou `both` | `POST /functions/v1/tiktok-publish/schedule/:id` (`tiktok.ts:14,261`) | **Não. Lacuna real** |
+| Arrastar no calendário | write PostgREST em `workflow_posts` (`posts.ts:458-470`) | Sim, `isSchedulingWrite()` |
+
 `isSchedulingWrite()` barra um POST/PATCH/PUT em `workflow_posts` que sete
-`status = 'agendado'` **ou** `scheduled_at` não nulo.
+`status = 'agendado'` **ou** `scheduled_at` não nulo. Isso cobre o caminho do calendário,
+não os das edge functions, que são cobertos pela blocklist de nomes de função.
+
+**`tiktok-publish` não está na blocklist.** Para um post que mire TikTok, um clique
+acidental em `Agendar` durante uma execução de captura agenda uma publicação real. Ver
+Peça 2.
 
 O bloqueio de `scheduled_at` é mais amplo do que precisa ser. As três fases de
 `claim_posts_for_publishing` (`20260429000001_authorization_status_disconnected.sql:22-33`)
@@ -102,13 +113,42 @@ o cluster de acesso já ativo do cliente 41. O precedente é claro e este design
 | "Membro da equipe" | Ambos: membro de Equipe (roster) e convite de usuário |
 | Caminho de aprovação | Aprovação interna. O portal vira callout com link |
 | Escrita em produção durante a captura | Zero. Formulários capturados preenchidos, antes de salvar |
-| Formato | Um artigo único, com oito seções `h2` para o índice lateral |
+| Formato | Um artigo único, com nove seções `h2` para o índice lateral |
 
 ### Por que rebaixar e não substituir
 
 `primeiros-30-minutos-no-mesaas` continua útil como mapa em prosa para quem quer entender
 o produto antes de operá-lo, e o slug pode já estar linkado de e-mails de ciclo de vida.
-Ele cai para `display_order: 4` e cede o link de contexto de `/dashboard`.
+Ele desce uma posição e cede o topo do link de contexto de `/dashboard`.
+
+### Ordenação final
+
+`getPublishedArticles()` ordena **somente** por `display_order` (`store/kb.ts:34`), sem
+critério de desempate. Empate significa ordem não determinística, então inserir o guia
+exige renumerar a categoria inteira, não só empurrar um artigo.
+
+A categoria `primeiros-passos` hoje tem cinco artigos em 1 a 5. Estado final:
+
+| Ordem | Slug | Mudança |
+|---|---|---|
+| 1 | `bem-vindo-ao-mesaas` | inalterado |
+| 2 | `como-configurar-seu-workspace` | inalterado |
+| 3 | `como-agendar-seu-primeiro-post` | **novo** |
+| 4 | `primeiros-30-minutos-no-mesaas` | era 3 |
+| 5 | `permissoes-e-papeis-no-workspace` | era 4 |
+| 6 | `importacoes-via-csv-no-mesaas` | era 5 |
+
+Links de contexto de `/dashboard`, que hoje são dois (ordens 0 e 1). Estado final:
+
+| Ordem | Slug | Label | Mudança |
+|---|---|---|---|
+| 0 | `como-agendar-seu-primeiro-post` | `Agendar o primeiro post` | **novo** |
+| 1 | `bem-vindo-ao-mesaas` | `NULL` | era 0 |
+| 2 | `primeiros-30-minutos-no-mesaas` | `Primeiros passos` | era 1 |
+
+`_kb_expand_link` faz `ON CONFLICT (route_pattern, article_id) DO UPDATE` do `label` e do
+`display_order` (`20260520000001:...`), então a migration reemite as três chamadas com as
+ordens explícitas acima e não precisa de `DELETE`.
 
 ### Por que aprovação interna
 
@@ -120,7 +160,7 @@ utilização. O caminho do portal ganha um callout apontando para
 
 ## Arquitetura
 
-Quatro peças. Três novas, uma reaproveitada.
+Seis peças. Cinco novas, uma reaproveitada.
 
 ### Peça 1: a spec de captura
 
@@ -137,11 +177,46 @@ Quatro peças. Três novas, uma reaproveitada.
   e já foram liberadas para publicação nas specs anteriores (Studio Bem-Estar,
   Dr. Rafael Nunes e as outras duas).
 
-Três passos são obrigatoriamente pré-clique, e a rede de segurança é quem garante isso,
-não a boa vontade da spec: `Convidar` (dispara e-mail real via `invite-user`), `Agendar`
-(arma o cron de publicação) e as telas de OAuth do Facebook (externas).
+Três passos são obrigatoriamente pré-clique. O que os protege **não é o mesmo em cada
+caso**, e a diferença importa:
 
-### Peça 2: o artigo
+| Passo | Protegido por |
+|---|---|
+| `Convidar` | Rede de segurança. `invite-user` está na blocklist |
+| `Agendar` | Rede de segurança, **depois da Peça 2**. Hoje só o caminho de Instagram está coberto |
+| OAuth do Facebook | **Nada, no nível de rede.** Só a disciplina da spec |
+
+A rede opera sobre `**/functions/v1/**` e `**/rest/v1/**` (`installSafetyNet`). Ela não
+vê, e estruturalmente não pode ver, uma navegação para `facebook.com`. Um clique acidental
+em `Conectar Instagram` que atravesse o consentimento altera uma integração real e a rede
+segue verde.
+
+O próprio `safety.ts` já diz isso no seu docstring: é um backstop para erros, não uma
+garantia contra toda consequência de clicar no controle errado. A spec de captura para no
+botão `Conectar Instagram` e nunca o clica. Esse passo depende da spec estar certa, e o
+plano deve tratá-lo como o passo de maior risco da execução, não como mais um pré-clique.
+
+### Peça 2: fechar a lacuna do TikTok na rede de segurança
+
+**Precede qualquer execução de captura.** Adicionar `tiktok-publish` a
+`BLOCKED_FUNCTIONS` em `e2e/screenshots/safety.ts`.
+
+A lacuna é a da descoberta 4: agendar um post de TikTok chama
+`tiktok-publish/schedule/:id`, um nome de função que a blocklist não contém, então nem o
+interceptador de `functions/v1` nem `isSchedulingWrite()` o pegam. A rede foi escrita
+quando o agendamento por PostgREST era o caminho conhecido, e a superfície do TikTok
+chegou depois.
+
+`tiktok-publish` serve também leituras que specs de captura poderiam querer
+(`creator-info/:clientId`, `tiktok.ts:248`). Se alguma spec futura precisar delas, a
+correção é bloquear o sub-caminho `schedule` via `BLOCKED_FUNCTION_SUBPATHS`, mecanismo
+que já existe para exatamente esse formato. Nenhuma spec atual precisa, então bloquear a
+função inteira é mais seguro e mais simples.
+
+Isso vale independentemente deste artigo: a lacuna existe hoje para qualquer execução de
+captura.
+
+### Peça 3: o artigo
 
 Migration `20260806000002_kb_primeiro_post_guide.sql`. Declara os helpers `_kb_*`, faz o
 upsert do artigo, rebaixa o artigo antigo, reescreve os links de contexto de `/dashboard`,
@@ -152,10 +227,10 @@ e derruba os helpers no fim. Mesmo formato de `20260717000002`.
 | Título | `Como agendar seu primeiro post` |
 | Slug | `como-agendar-seu-primeiro-post` |
 | Categoria | `primeiros-passos` |
-| `display_order` | 3 |
-| Link de contexto | `/dashboard`, ordem 0 |
+| `display_order` | 3, com renumeração da categoria (ver Ordenação final) |
+| Link de contexto | `/dashboard`, ordem 0, com renumeração dos dois existentes |
 
-**Estrutura**, oito seções `h2` para que `TableOfContents` dê um menu de salto em vez de
+**Estrutura**, nove seções `h2` para que `TableOfContents` dê um menu de salto em vez de
 uma rolagem única:
 
 | # | Seção | Telas | Capturas |
@@ -179,7 +254,7 @@ mostra o diálogo com a escolha `Aprovar internamente`.
 As seções 2, 3 e 8 levam um link de saída cada para o artigo que já é dono daquele tema,
 para que este guia continue sendo uma espinha e não vire um manual.
 
-### Peça 3: o teste de guarda
+### Peça 4: o teste de guarda
 
 Em `apps/crm/src/pages/ajuda/__tests__/`, lendo o arquivo da migration:
 
@@ -188,27 +263,84 @@ Em `apps/crm/src/pages/ajuda/__tests__/`, lendo o arquivo da migration:
    descoberta 2 descreve.
 2. Nenhum travessão (`—`) no texto do artigo.
 
-### Peça 4: a lista de capturas externas
+O segundo item foi contestado numa revisão externa como "escopo de teste sem valor de
+implementação". Fica. Ausência de travessão é regra de estilo da casa para toda copy
+voltada ao usuário, e este artigo é a copy mais voltada ao usuário do repositório: vai
+para a Central de Ajuda de todos os clientes. A regra não tem hoje nenhum guardião
+automatizado, e este é o texto que menos pode parecer gerado por máquina.
+
+### Peça 5: filtro de slug no script de upload
+
+`scripts/upload-kb-images.mjs` hoje itera **todo** `e2e/.shots` e sobe cada slug que
+encontrar (`for (const slug of readdirSync(SHOT_DIR))`). O diretório é gitignorado e
+persiste entre execuções, então ele carrega capturas de esforços anteriores, mais
+qualquer PNG parcial de uma execução que quebrou no meio.
+
+Isso fura a barreira de revisão humana: a revisão cobre as capturas deste artigo, e o
+script publicaria tudo o que estivesse no diretório, revisado ou não, num bucket público.
+
+Mudança mínima: aceitar um slug como argumento e subir apenas aquele subdiretório.
+Sem argumento, o script recusa a execução em vez de assumir "tudo", para que o
+comportamento perigoso deixe de ser o padrão. O script é ferramenta de desenvolvimento,
+fora de qualquer caminho de CI ou de produção.
+
+### Peça 6: a lista de capturas externas
 
 Um documento novo em `docs/superpowers/plans/`, no formato do de 2026-07-16: arquivo a
 criar, tela, estado exigido e o que redigir. Três entradas, todas do fluxo do Facebook.
 
 ## Dependência em aberto
 
-A captura final precisa do botão `Agendar` **habilitado**, o que exige um post com
-`status = 'aprovado_cliente'`, `scheduled_at` preenchido e legenda. A rede de segurança
-impede a spec de fabricar esse estado.
+A captura final precisa do botão `Agendar` **habilitado**. A condição real é mais estrita
+do que só ter data e legenda (`ScheduleButton.tsx:504`):
+
+```ts
+const canSchedule = !!post.scheduled_at && hasRequiredCaption && !accountWarning && tiktokReady;
+```
+
+Desdobrando `accountWarning` (`ScheduleButton.tsx:213`) e `tiktokReady` (`:231`), o post
+alvo precisa satisfazer **todas** estas condições:
+
+| Requisito | Origem |
+|---|---|
+| `status = 'aprovado_cliente'` | `:495`, senão o bloco nem renderiza |
+| `scheduled_at` não nulo | `:504` |
+| Legenda de Instagram preenchida, ou tipo `stories` | `hasRequiredCaption`, `:498` |
+| Instagram conectado, token não expirado, sem revogação | `accountBlocked` |
+| Permissão de publicação presente | `missingPublishPermission` |
+| Não mirar TikTok, ou ter configurações de TikTok completas | `tiktokReady` |
+
+A consulta da primeira tarefa precisa filtrar por tudo isso e fixar a plataforma em
+`instagram`, senão devolve um post cujo botão aparece **desabilitado** e a captura final
+não serve.
+
+> A revisão externa afirmou que as quatro personas do DK TESTE estão com token de
+> Instagram expirado. Isso não foi verificado e não é assumido aqui: é exatamente o que a
+> consulta abaixo existe para descobrir.
 
 **Primeira tarefa do plano:** consulta somente leitura em produção procurando um post do
-DK TESTE nessas condições.
+DK TESTE que satisfaça a tabela acima.
 
-- **Se existir:** a spec mira nele e nada mais muda.
-- **Se não existir:** estreitar `isSchedulingWrite()` para barrar apenas
-  `status: 'agendado'`, liberando `scheduled_at`. A justificativa está na descoberta 4 e é
-  uma prova, não uma estimativa: o predicado de `claim_posts_for_publishing` exige
-  `status = 'agendado'` nas três fases. Afrouxar um controle de segurança que uma sessão
-  anterior escreveu com cuidado exige aviso explícito antes, e o bloqueio de
-  `status: 'agendado'` permanece absoluto de qualquer forma.
+- **Se existir:** a spec mira nele, e a política de zero escrita permanece intacta.
+- **Se não existir:** **parar e perguntar.** Nenhum dos caminhos de contorno é decisão de
+  implementação.
+
+Os dois contornos, para quando essa conversa acontecer:
+
+1. **Provisionar o estado uma vez, fora da execução de captura.** Um post preparado à mão
+   no DK TESTE, com data bem no futuro, tratado como fixture permanente e referenciado por
+   id na spec. É o que preserva melhor a política de zero escrita: a spec continua só
+   lendo, e a escrita é um ato humano único e auditável, não um efeito colateral de um
+   comando de captura.
+2. **Estreitar `isSchedulingWrite()`** para barrar apenas `status: 'agendado'`, liberando
+   `scheduled_at`. A inércia do campo é prova, não estimativa (descoberta 4). Mas isto
+   **contradiz a política de zero escrita** declarada nas Decisões: a captura passaria a
+   gravar uma data num post real de produção. Se for escolhido, deixa de ser "zero
+   escrita" e vira uma exceção nomeada, que exige alvo exato, responsável e reversão
+   explícita (`scheduled_at: null` ao fim da execução, que a própria rede de segurança já
+   permite por não ser agendamento).
+
+A opção 1 é a recomendada, justamente por não exigir que a política seja reescrita.
 
 ## Ordem de execução
 
@@ -216,15 +348,17 @@ A migration não pode ser finalizada antes das capturas, porque depende dos URLs
 
 1. Copiar `.env.e2e.local` e `.env.kb-upload.local` do checkout principal para a worktree.
    Worktrees não herdam esses arquivos
-2. Consulta somente leitura em produção pelo post agendável
-3. Escrever a spec e rodar `npm run screenshots:capture`
-4. **Revisão humana das 30 PNGs** antes de qualquer upload
-5. `node --env-file=.env.kb-upload.local scripts/upload-kb-images.mjs`
-6. Escrever a migration com os URLs retornados
-7. Documento de capturas externas, preenchido quando os PNGs chegarem
-8. Verificação (abaixo)
+2. Adicionar `tiktok-publish` a `BLOCKED_FUNCTIONS` (Peça 2). **Antes de qualquer
+   execução de captura**, não depois
+3. Consulta somente leitura em produção pelo post agendável
+4. Escrever a spec e rodar `npm run screenshots:capture`
+5. **Revisão humana das 30 PNGs** antes de qualquer upload
+6. `node --env-file=.env.kb-upload.local scripts/upload-kb-images.mjs como-agendar-seu-primeiro-post`
+7. Escrever a migration com os URLs retornados
+8. Documento de capturas externas, preenchido quando os PNGs chegarem
+9. Verificação (abaixo)
 
-O passo 4 é uma barreira dura, não uma sugestão.
+O passo 5 é uma barreira dura, não uma sugestão.
 
 ## Verificação
 
@@ -232,7 +366,7 @@ O passo 4 é uma barreira dura, não uma sugestão.
 - Os quatro `tsc` que o CI roda (crm, hub, admin, scripts). `npm run build` cobre só o CRM
 - `npm run test`, incluindo o teste de guarda novo
 - Ler o artigo no browser e confirmar que as imagens renderizam
-- Confirmar que o índice lateral lista as oito seções
+- Confirmar que o índice lateral lista as nove seções
 - Confirmar que `primeiros-30-minutos-no-mesaas` continua acessível, agora abaixo do guia
 - Verificar o prefixo de versão da migration contra `origin/main` **na hora de abrir o PR**,
   não na hora de criar o arquivo. Colisão de versão já atingiu este repositório duas vezes
@@ -241,7 +375,7 @@ O passo 4 é uma barreira dura, não uma sugestão.
 
 **Vazamento de dados reais.** DK TESTE convive com a agência real em produção. O switcher
 de workspace, listas de clientes e a sidebar podem expor nomes reais. Mitigação: a revisão
-humana do passo 4, e a preferência por personas já auditadas pelas specs anteriores.
+humana do passo 5, e a preferência por personas já auditadas pelas specs anteriores.
 Publicado é permanente.
 
 **Deriva entre passo e imagem.** 30 imagens viram passivo assim que a UI muda. Se alguém
@@ -249,7 +383,7 @@ reordenar os passos sem reordenar as imagens, o artigo fica ativamente enganoso,
 que sem imagem. Mitigação: `alt` descritivo em pt-BR em toda imagem, e a spec versionada
 que permite recapturar tudo com um comando.
 
-**O artigo é longo.** Trinta capturas numa página só. Mitigação: as oito seções `h2` e o
+**O artigo é longo.** Trinta capturas numa página só. Mitigação: as nove seções `h2` e o
 índice lateral que `ArtigoPage` já renderiza.
 
 ## Fora de escopo
