@@ -138,6 +138,50 @@ $$;
 REVOKE ALL ON FUNCTION create_instagram_connect_link(bigint, uuid, uuid, int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION create_instagram_connect_link(bigint, uuid, uuid, int) TO service_role;
 
+-- Revoga o(s) link(s) vivo(s) de um cliente sob o MESMO lock consultivo
+-- namespaced que create_instagram_connect_link (mesmo hashtext do namespace e
+-- da chave), para que as duas RPCs disputem a mesma seção crítica por
+-- cliente_id de verdade. Sem isso, um DELETE (revogação) podia rodar entre o
+-- "revoga o que existe" e o "insere o novo" da RPC de criação: o DELETE
+-- revogava a linha antiga, devolvia { ok: true } para a agência, e a criação
+-- então commitava um token novo e vivo por baixo -- a agência via "revogado"
+-- enquanto uma credencial usável continuava no ar.
+CREATE OR REPLACE FUNCTION revoke_instagram_connect_link(
+  p_cliente_id bigint,
+  p_conta_id   uuid
+)
+RETURNS int
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count int;
+BEGIN
+  -- Defesa em profundidade: o handler já checa a posse do cliente, a RPC não
+  -- confia nele.
+  IF NOT EXISTS (
+    SELECT 1 FROM clientes c WHERE c.id = p_cliente_id AND c.conta_id = p_conta_id
+  ) THEN
+    RAISE EXCEPTION 'client % does not belong to workspace %', p_cliente_id, p_conta_id;
+  END IF;
+
+  -- Mesmo par (namespace, chave) que create_instagram_connect_link: só assim
+  -- as duas RPCs contendem pelo mesmo lock para o mesmo cliente_id.
+  PERFORM pg_advisory_xact_lock(hashtext('instagram_connect_links'), hashtext(p_cliente_id::text));
+
+  UPDATE instagram_connect_links l
+     SET revoked_at = now()
+   WHERE l.cliente_id = p_cliente_id AND l.revoked_at IS NULL;
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION revoke_instagram_connect_link(bigint, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION revoke_instagram_connect_link(bigint, uuid) TO service_role;
+
 -- ---------- notifications_type_check ---------------------------------
 -- Lista copiada da definição MAIS RECENTE (20260805000002_post_status_automations.sql,
 -- 18 valores). Este arquivo passa a ser a definição mais recente: a próxima migration

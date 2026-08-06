@@ -57,9 +57,36 @@ async function authorize(
   const user = await deps.verifyUser(bearer);
   if (!user) return { status: 401, error: "Não autorizado" };
 
-  const { data: profile } = await db.from("profiles").select("conta_id").eq("id", user.id).single();
-  const contaId = profile?.conta_id as string | undefined;
-  if (!contaId) return { status: 403, error: "Não autorizado" };
+  // Tenant scope MUST come from active_workspace_id, not the legacy conta_id
+  // column. Every RLS policy in this schema resolves the caller's tenant
+  // through get_my_conta_id() (20260317_multi_workspace.sql:60,
+  // 20260720000004_reconcile_prod_missing_functions.sql:32), which returns
+  // profiles.active_workspace_id -- NOT profiles.conta_id. The two diverge
+  // permanently the moment a member of more than one workspace switches
+  // workspaces: conta_id keeps pointing at wherever they were originally
+  // provisioned, while everything the CRM reads and writes -- and every RLS
+  // policy -- follows the active one. Scoping this handler by conta_id would
+  // authorize a caller against a workspace they are not currently acting in.
+  // Mirrors data-import/handler.ts and manage-workspace-user/index.ts, which
+  // already do this correctly.
+  const { data: profile } = await db
+    .from("profiles").select("active_workspace_id").eq("id", user.id).maybeSingle();
+  const activeWorkspaceId = profile?.active_workspace_id as string | undefined;
+  if (!activeWorkspaceId) return { status: 403, error: "Não autorizado" };
+
+  // A stale active_workspace_id pointing at a workspace the caller has since
+  // been removed from must resolve to no tenant at all -- this mirrors the
+  // EXISTS clause inside get_my_conta_id(). Without this, a member removed
+  // from a workspace could retain a live-looking active_workspace_id and stay
+  // authorized against it.
+  const { data: membership } = await db
+    .from("workspace_members")
+    .select("workspace_id")
+    .eq("user_id", user.id)
+    .eq("workspace_id", activeWorkspaceId)
+    .maybeSingle();
+  if (!membership) return { status: 403, error: "Não autorizado" };
+  const contaId = activeWorkspaceId;
 
   const { data: cliente } = await db.from("clientes").select("conta_id").eq("id", clienteId).single();
   if (!cliente || cliente.conta_id !== contaId) return { status: 403, error: "Não autorizado" };
@@ -262,11 +289,23 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
         const auth = await authorize(deps, db, req, clienteId, { requireFeature: false });
         if ("status" in auth) return json({ error: auth.error }, auth.status);
 
-        await db
-          .from("instagram_connect_links")
-          .update({ revoked_at: deps.now() })
-          .eq("cliente_id", clienteId)
-          .is("revoked_at", null);
+        // Same per-cliente advisory lock as create_instagram_connect_link (see the
+        // migration), so a revoke and a concurrent generate serialize instead of
+        // racing. A bare UPDATE here could run between the RPC's revoke and its
+        // insert: the DELETE would revoke what existed, report { ok: true }, and
+        // the RPC would then commit a brand-new live token underneath it -- the
+        // agency told the link is dead while a usable credential is still live.
+        const { error } = await db.rpc("revoke_instagram_connect_link", {
+          p_cliente_id: clienteId,
+          p_conta_id: auth.contaId,
+        });
+        if (error) {
+          // Never report ok: true unless the write actually happened -- telling
+          // the agency a credential was revoked when it might still be live is
+          // the worst possible lie for this control.
+          console.error("[connect-link] revoke RPC failed:", error);
+          return json({ error: "Erro interno" }, 500);
+        }
         return json({ ok: true });
       }
 

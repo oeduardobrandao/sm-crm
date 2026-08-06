@@ -13,16 +13,27 @@ function makeDb(fixture: {
   profiles?: unknown;
   clientes?: unknown;
   links?: unknown;
+  /**
+   * workspace_members row for the caller. Defaults to a live membership in the
+   * profile's active_workspace_id (matching most tests, which are not about this
+   * check). Pass `null` explicitly to simulate a removed/absent member.
+   */
+  membership?: unknown;
   rpc?: Record<string, unknown>;
   /** Per-RPC-name error to return instead of { data, error: null }. */
   rpcError?: Record<string, { code?: string; message?: string }>;
   onRpc?: (fn: string, params: Record<string, unknown>) => void;
   onUpdate?: (table: string, values: Record<string, unknown>) => void;
 }) {
+  const activeWorkspaceId = (fixture.profiles as { active_workspace_id?: string } | null | undefined)
+    ?.active_workspace_id;
   const rows: Record<string, unknown> = {
     profiles: fixture.profiles ?? null,
     clientes: fixture.clientes ?? null,
     instagram_connect_links: fixture.links ?? null,
+    workspace_members: fixture.membership !== undefined
+      ? fixture.membership
+      : (activeWorkspaceId ? { workspace_id: activeWorkspaceId } : null),
   };
   const build = (table: string) => {
     const chain: Record<string, unknown> = {};
@@ -82,10 +93,54 @@ Deno.test("agency GET: 401 without a bearer token", async () => {
 
 Deno.test("agency GET: 403 when the client belongs to another workspace", async () => {
   const h = createConnectLinkHandler(makeDeps({
-    createDb: () => makeDb({ profiles: { conta_id: CONTA }, clientes: { conta_id: OTHER_CONTA } }),
+    createDb: () => makeDb({ profiles: { active_workspace_id: CONTA }, clientes: { conta_id: OTHER_CONTA } }),
   }));
   const res = await h(req("GET", "?cliente_id=42"));
   assertEquals(res.status, 403);
+});
+
+// FIX 1: authorize() must resolve the caller's tenant from
+// profiles.active_workspace_id (with a live workspace_members row), not the
+// legacy profiles.conta_id -- that is what every RLS policy in this schema
+// actually uses (get_my_conta_id()), and the two columns can point at
+// different workspaces for a multi-workspace member.
+
+Deno.test("agency GET: 403 when active_workspace_id is NULL", async () => {
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({ profiles: { active_workspace_id: null }, clientes: { conta_id: CONTA } }),
+  }));
+  const res = await h(req("GET", "?cliente_id=42"));
+  assertEquals(res.status, 403);
+});
+
+Deno.test("agency GET: 403 when active_workspace_id is set but there is no live membership row", async () => {
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { active_workspace_id: CONTA },
+      clientes: { conta_id: CONTA },
+      membership: null,
+    }),
+  }));
+  const res = await h(req("GET", "?cliente_id=42"));
+  assertEquals(res.status, 403);
+});
+
+Deno.test("agency GET: authorizes against active_workspace_id even when a stale conta_id points elsewhere", async () => {
+  // profiles.conta_id is the legacy column -- present here pointing at a
+  // DIFFERENT workspace than active_workspace_id, simulating a member who
+  // switched workspaces (nothing rewrites conta_id on switch). The client
+  // belongs to the ACTIVE workspace, not the stale one: authorization must
+  // succeed, proving the ownership comparison runs against active_workspace_id.
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { conta_id: OTHER_CONTA, active_workspace_id: CONTA },
+      clientes: { conta_id: CONTA },
+      links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
+    }),
+  }));
+  const res = await h(req("GET", "?cliente_id=42"));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { link: { url: `${BASE}/conectar/tok-9`, expires_at: FUTURE } });
 });
 
 // Downgrade must not hide an already-issued link nor block revoking it -- that
@@ -95,7 +150,7 @@ Deno.test("agency GET: 403 when the client belongs to another workspace", async 
 Deno.test("agency GET: still succeeds when feature_instagram is off (seeing a link survives a downgrade)", async () => {
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA },
       links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
     }),
@@ -108,7 +163,7 @@ Deno.test("agency GET: still succeeds when feature_instagram is off (seeing a li
 
 Deno.test("agency GET: a caller from the wrong workspace is still rejected even when feature_instagram is off", async () => {
   const h = createConnectLinkHandler(makeDeps({
-    createDb: () => makeDb({ profiles: { conta_id: CONTA }, clientes: { conta_id: OTHER_CONTA } }),
+    createDb: () => makeDb({ profiles: { active_workspace_id: CONTA }, clientes: { conta_id: OTHER_CONTA } }),
     planFeature: () => Promise.resolve(false),
   }));
   const res = await h(req("GET", "?cliente_id=42"));
@@ -116,39 +171,39 @@ Deno.test("agency GET: a caller from the wrong workspace is still rejected even 
 });
 
 Deno.test("agency DELETE: still succeeds when feature_instagram is off (revoking survives a downgrade)", async () => {
-  let updated: Record<string, unknown> | null = null;
+  let seenRpc: string | null = null;
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA },
-      onUpdate: (_t, values) => { updated = values; },
+      onRpc: (fn) => { seenRpc = fn; },
     }),
     planFeature: () => Promise.resolve(false),
   }));
   const res = await h(req("DELETE", "?cliente_id=42"));
   assertEquals(res.status, 200);
   assertEquals(await res.json(), { ok: true });
-  assertEquals(updated, { revoked_at: NOW });
+  assertEquals(seenRpc, "revoke_instagram_connect_link");
 });
 
 Deno.test("agency DELETE: a caller from the wrong workspace is still rejected even when feature_instagram is off", async () => {
-  let updated = 0;
+  let rpcCalls = 0;
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: OTHER_CONTA },
-      onUpdate: () => { updated++; },
+      onRpc: () => { rpcCalls++; },
     }),
     planFeature: () => Promise.resolve(false),
   }));
   const res = await h(req("DELETE", "?cliente_id=42"));
   assertEquals(res.status, 403);
-  assertEquals(updated, 0);
+  assertEquals(rpcCalls, 0);
 });
 
 Deno.test("agency POST: still 403 when feature_instagram is off (creating a link stays gated)", async () => {
   const h = createConnectLinkHandler(makeDeps({
-    createDb: () => makeDb({ profiles: { conta_id: CONTA }, clientes: { conta_id: CONTA } }),
+    createDb: () => makeDb({ profiles: { active_workspace_id: CONTA }, clientes: { conta_id: CONTA } }),
     planFeature: () => Promise.resolve(false),
   }));
   const res = await h(req("POST", "", { cliente_id: 42 }));
@@ -160,7 +215,7 @@ Deno.test("agency POST /email: still 403 when feature_instagram is off (sending 
   let sent = 0;
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA, nome: "Clínica X" },
       links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
     }),
@@ -175,7 +230,7 @@ Deno.test("agency POST /email: still 403 when feature_instagram is off (sending 
 
 Deno.test("agency GET: returns null when there is no live link", async () => {
   const h = createConnectLinkHandler(makeDeps({
-    createDb: () => makeDb({ profiles: { conta_id: CONTA }, clientes: { conta_id: CONTA }, links: null }),
+    createDb: () => makeDb({ profiles: { active_workspace_id: CONTA }, clientes: { conta_id: CONTA }, links: null }),
   }));
   const res = await h(req("GET", "?cliente_id=42"));
   assertEquals(res.status, 200);
@@ -187,7 +242,7 @@ Deno.test("agency GET: an expired-but-unrevoked row is not reported as a live li
   // continua ocupando o slot. A metade "não expirado" é checada aqui.
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA },
       links: { token: "t", expires_at: "2026-08-01T00:00:00.000Z", revoked_at: null, created_by: USER },
     }),
@@ -199,7 +254,7 @@ Deno.test("agency GET: an expired-but-unrevoked row is not reported as a live li
 Deno.test("agency GET: returns url and expiry for a live link", async () => {
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA },
       links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
     }),
@@ -214,7 +269,7 @@ Deno.test("agency POST: calls the RPC and returns the new link", async () => {
   let seen: Record<string, unknown> | null = null;
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA },
       rpc: { create_instagram_connect_link: [{ token: "new-tok", expires_at: FUTURE }] },
       onRpc: (_fn, params) => { seen = params; },
@@ -229,7 +284,7 @@ Deno.test("agency POST: calls the RPC and returns the new link", async () => {
 Deno.test("agency POST: RPC fails with 23505 (unique violation) and a live link exists -> 200, returns the existing link", async () => {
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA },
       links: { token: "existing-tok", expires_at: FUTURE, revoked_at: null, created_by: USER },
       rpcError: { create_instagram_connect_link: { code: "23505", message: "duplicate key" } },
@@ -243,7 +298,7 @@ Deno.test("agency POST: RPC fails with 23505 (unique violation) and a live link 
 Deno.test("agency POST: RPC fails with 23505 and no live link exists -> 500", async () => {
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA },
       links: null,
       rpcError: { create_instagram_connect_link: { code: "23505", message: "duplicate key" } },
@@ -256,7 +311,7 @@ Deno.test("agency POST: RPC fails with 23505 and no live link exists -> 500", as
 Deno.test("agency POST: RPC fails with a non-unique-violation code -> 500, no link in the body", async () => {
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA },
       // A live link exists, but must NOT be surfaced: this isn't the "two tabs
       // collided" case, it's a genuine RPC failure (permission denied, here).
@@ -276,26 +331,51 @@ Deno.test("agency POST: cliente_id as an array is rejected with 400", async () =
   assertEquals(res.status, 400);
 });
 
-Deno.test("agency DELETE: revokes and returns ok", async () => {
-  let updated: Record<string, unknown> | null = null;
+// FIX 3: revocation must go through the SAME advisory-locked RPC that
+// creation uses (revoke_instagram_connect_link), not a bare table UPDATE --
+// otherwise a DELETE can run between the create RPC's revoke and its insert
+// and race a brand-new live token into existence right after reporting the
+// old one revoked.
+Deno.test("agency DELETE: calls revoke_instagram_connect_link with cliente_id and the resolved workspace, not a bare update", async () => {
+  let seenFn: string | null = null;
+  let seenParams: Record<string, unknown> | null = null;
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA },
-      onUpdate: (_t, values) => { updated = values; },
+      onRpc: (fn, params) => { seenFn = fn; seenParams = params; },
+      onUpdate: () => { throw new Error("DELETE must not fall back to a bare table update"); },
     }),
   }));
   const res = await h(req("DELETE", "?cliente_id=42"));
   assertEquals(res.status, 200);
   assertEquals(await res.json(), { ok: true });
-  assertEquals(updated, { revoked_at: NOW });
+  assertEquals(seenFn, "revoke_instagram_connect_link");
+  assertEquals(seenParams, { p_cliente_id: 42, p_conta_id: CONTA });
+});
+
+// FIX 2: the DELETE route must never report success when the write actually
+// failed -- an agency told a long-lived credential was revoked while it might
+// still be live is the worst possible lie for this control.
+Deno.test("agency DELETE: 500 (not { ok: true }) when the revoke RPC errors", async () => {
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { active_workspace_id: CONTA },
+      clientes: { conta_id: CONTA },
+      rpcError: { revoke_instagram_connect_link: { code: "40001", message: "serialization failure" } },
+    }),
+  }));
+  const res = await h(req("DELETE", "?cliente_id=42"));
+  assertEquals(res.status, 500);
+  const body = await res.json();
+  assertEquals("ok" in body, false);
 });
 
 Deno.test("agency POST /email: rejects a malformed address before sending", async () => {
   let sent = 0;
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA, nome: "Clínica X" },
       links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
     }),
@@ -310,7 +390,7 @@ Deno.test("agency POST /email: 403 when the client belongs to another workspace,
   let sent = 0;
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: OTHER_CONTA, nome: "Clínica X" },
     }),
     sendClientEmail: () => { sent++; return Promise.resolve(); },
@@ -328,7 +408,7 @@ Deno.test("agency POST /email: 404 when there is no live link, and the rate limi
   let rateLimitCalls = 0;
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA, nome: "Clínica X" },
       links: null,
     }),
@@ -345,7 +425,7 @@ Deno.test("agency POST /email: 429 when rate limited, and nothing is sent", asyn
   let sent = 0;
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA, nome: "Clínica X" },
       links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
     }),
@@ -361,7 +441,7 @@ Deno.test("agency POST /email: two sends to the same address for the same link g
   const keys: string[] = [];
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA, nome: "Clínica X" },
       links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
     }),
@@ -385,7 +465,7 @@ Deno.test("agency POST /email: passes the resolved auth.users email as replyTo",
   let seenReplyTo: string | null | undefined;
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA, nome: "Clínica X" },
       links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
     }),
@@ -405,7 +485,7 @@ Deno.test("agency POST /email: still sends with replyTo null when getUserEmail r
   let seenReplyTo: string | null | undefined = "unset";
   const h = createConnectLinkHandler(makeDeps({
     createDb: () => makeDb({
-      profiles: { conta_id: CONTA },
+      profiles: { active_workspace_id: CONTA },
       clientes: { conta_id: CONTA, nome: "Clínica X" },
       links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
     }),
