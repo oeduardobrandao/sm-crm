@@ -12,6 +12,15 @@ import {
 } from '../../services/connectLink';
 
 /**
+ * Detecção conservadora de navegador mobile, via user-agent. Suficiente para
+ * decidir se mostramos a orientação de handoff do app do Instagram: não
+ * precisa ser perfeita, só não pode disparar em desktop.
+ */
+export function isMobileBrowser(): boolean {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+/**
  * Página pública do link de conexão. Sem login, alcançável por qualquer pessoa
  * que tenha a URL. Não mostre aqui nada além do nome da agência e do nome do
  * cliente: é tudo o que o endpoint público devolve, de propósito.
@@ -24,6 +33,8 @@ export default function ConectarPage() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [isMobile] = useState(isMobileBrowser);
 
   const [searchParams] = useSearchParams();
   const igConnected = searchParams.get('ig_connected');
@@ -69,6 +80,16 @@ export default function ConectarPage() {
       setStarting(false);
     }
   }, [token]);
+
+  const handleCopyPageLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopied(true);
+    } catch {
+      // Sem clipboard disponível (permissão negada, navegador antigo): não há
+      // muito o que fazer além de deixar o botão como estava.
+    }
+  }, []);
 
   const shell = (children: React.ReactNode) => (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
@@ -148,6 +169,15 @@ export default function ConectarPage() {
       <Button className="w-full" onClick={handleConnect} disabled={starting}>
         {starting ? t('connect.connecting') : t('connect.cta')}
       </Button>
+
+      {isMobile && (
+        <div className="mt-4 text-sm text-muted-foreground">
+          <p className="mb-2">{t('connect.mobileHint')}</p>
+          <Button variant="outline" size="sm" onClick={handleCopyPageLink}>
+            {linkCopied ? t('connect.mobileLinkCopied') : t('connect.mobileCopyLink')}
+          </Button>
+        </div>
+      )}
     </>,
   );
 }

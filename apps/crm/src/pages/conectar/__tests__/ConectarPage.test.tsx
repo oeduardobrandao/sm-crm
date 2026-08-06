@@ -161,4 +161,63 @@ describe('ConectarPage', () => {
     renderAt('?ig_error=link_revoked');
     await waitFor(() => expect(screen.getByText('detail.igLinkRevoked')).toBeInTheDocument());
   });
+
+  test('mobile user-agent in the live state shows the handoff hint and copy-link button', async () => {
+    // vi.stubGlobal, not Object.defineProperty: the repo's global afterEach
+    // calls vi.unstubAllGlobals(), which only undoes stubGlobal -- a raw
+    // defineProperty here would leak navigator into other suites.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+      clipboard: { writeText },
+    });
+    getPublicConnectInfo.mockResolvedValue({
+      status: 'live',
+      cliente_name: 'Clínica X',
+      workspace_name: 'Agência Y',
+      connected_username: null,
+    });
+    renderAt();
+    await waitFor(() => expect(screen.getByText('connect.mobileHint')).toBeInTheDocument());
+    const copyButton = screen.getByText('connect.mobileCopyLink');
+    fireEvent.click(copyButton);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(window.location.href));
+    await waitFor(() => expect(screen.getByText('connect.mobileLinkCopied')).toBeInTheDocument());
+  });
+
+  test('desktop user-agent in the live state does not show the handoff hint', async () => {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      userAgent:
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+    });
+    getPublicConnectInfo.mockResolvedValue({
+      status: 'live',
+      cliente_name: 'Clínica X',
+      workspace_name: 'Agência Y',
+      connected_username: null,
+    });
+    renderAt();
+    await waitFor(() => expect(screen.getByRole('button')).toBeInTheDocument());
+    expect(screen.queryByText('connect.mobileHint')).not.toBeInTheDocument();
+    expect(screen.queryByText('connect.mobileCopyLink')).not.toBeInTheDocument();
+  });
+
+  test('mobile user-agent in a non-live state does not show the handoff hint', async () => {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+    });
+    getPublicConnectInfo.mockResolvedValue({
+      status: 'revoked',
+      cliente_name: '',
+      workspace_name: '',
+      connected_username: null,
+    });
+    renderAt();
+    await waitFor(() => expect(screen.getByText('connect.revokedTitle')).toBeInTheDocument());
+    expect(screen.queryByText('connect.mobileHint')).not.toBeInTheDocument();
+    expect(screen.queryByText('connect.mobileCopyLink')).not.toBeInTheDocument();
+  });
 });
