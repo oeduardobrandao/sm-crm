@@ -578,9 +578,19 @@ Deno.test("public start: returns the Instagram authorize url with the signed sta
   const res = await h(publicReq("POST", "/public/t/start"));
   assertEquals(res.status, 200);
   const { url } = await res.json();
+  // Host is www.instagram.com, the real OAuth authorize endpoint. A prior
+  // attempt routed this through api.instagram.com hoping iOS would not fire a
+  // Universal Link on a server-side 302 -- tested on a real iPhone with
+  // Chrome, it did not work, the Instagram app still hijacked the flow. Do
+  // NOT reintroduce that host change; the actual mitigation is the mobile
+  // guidance in ConectarPage.
   assertEquals(url.startsWith("https://www.instagram.com/oauth/authorize?"), true);
   assertEquals(url.includes("state=signed.state"), true);
   assertEquals(url.includes("client_id=app-id"), true);
+  assertEquals(
+    url.includes(`redirect_uri=${encodeURIComponent("https://x/functions/v1/instagram-integration")}`),
+    true,
+  );
 });
 
 Deno.test("public start: a revoked link cannot start a flow", async () => {

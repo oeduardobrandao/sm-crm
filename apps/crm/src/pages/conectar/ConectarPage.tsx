@@ -12,6 +12,15 @@ import {
 } from '../../services/connectLink';
 
 /**
+ * Detecção conservadora de navegador mobile, via user-agent. Suficiente para
+ * decidir se mostramos a orientação de handoff do app do Instagram: não
+ * precisa ser perfeita, só não pode disparar em desktop.
+ */
+export function isMobileBrowser(): boolean {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+/**
  * Página pública do link de conexão. Sem login, alcançável por qualquer pessoa
  * que tenha a URL. Não mostre aqui nada além do nome da agência e do nome do
  * cliente: é tudo o que o endpoint público devolve, de propósito.
@@ -24,6 +33,8 @@ export default function ConectarPage() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [isMobile] = useState(isMobileBrowser);
 
   const [searchParams] = useSearchParams();
   const igConnected = searchParams.get('ig_connected');
@@ -57,6 +68,32 @@ export default function ConectarPage() {
     };
   }, [token]);
 
+  // No iOS, o app do Instagram sequestra a navegação para a URL de autorização
+  // e o cliente fica preso dentro do app. A recuperação documentada é voltar
+  // pelo breadcrumb "◀ Chrome"/"◀ Safari" -- mas isso restaura a página em vez
+  // de recarregá-la, então `starting` continuava `true`. Sem este reset, o
+  // cliente que volta pelo breadcrumb encontra o botão travado em "Abrindo o
+  // Instagram..." e não consegue tentar de novo, que é exatamente a
+  // recuperação que a página instrui. Confirmado em iPhone real.
+  useEffect(() => {
+    const reset = () => {
+      setStarting(false);
+      setStartError(false);
+    };
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) reset();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') reset();
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   const handleConnect = useCallback(async () => {
     if (!token) return;
     setStarting(true);
@@ -69,6 +106,16 @@ export default function ConectarPage() {
       setStarting(false);
     }
   }, [token]);
+
+  const handleCopyPageLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopied(true);
+    } catch {
+      // Sem clipboard disponível (permissão negada, navegador antigo): não há
+      // muito o que fazer além de deixar o botão como estava.
+    }
+  }, []);
 
   const shell = (children: React.ReactNode) => (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
@@ -143,6 +190,17 @@ export default function ConectarPage() {
       )}
       {startError && (
         <p className="mb-4 text-sm text-[var(--danger-text)]">{t('connect.startError')}</p>
+      )}
+
+      {isMobile && (
+        <div className="mb-4 rounded-md border border-border bg-muted/40 p-3 text-left text-sm text-muted-foreground">
+          <p className="mb-1">{t('connect.mobileNoticeIntro')}</p>
+          <p className="mb-1">{t('connect.mobileNoticeRecovery')}</p>
+          <p className="mb-2">{t('connect.mobileNoticeDesktop')}</p>
+          <Button variant="outline" size="sm" onClick={handleCopyPageLink}>
+            {linkCopied ? t('connect.mobileLinkCopied') : t('connect.mobileCopyLink')}
+          </Button>
+        </div>
       )}
 
       <Button className="w-full" onClick={handleConnect} disabled={starting}>

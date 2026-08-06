@@ -203,6 +203,14 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
           const state = await deps.createSignedState(
             String(link.cliente_id), link.created_by, link.conta_id, db, token,
           );
+          // EXPERIMENTO FALHO, não repita: o app do Instagram reivindica `/*` em
+          // www.instagram.com no AASA, então em celular com o app instalado a URL
+          // de autorização abre o app, que não renderiza a tela de consentimento.
+          // Já tentamos passar por api.instagram.com, que o app não reivindica e
+          // que faz 302 para www, apostando que o iOS não dispara Universal Link
+          // em redirect de servidor. Testado em iPhone com Chrome: NÃO funciona,
+          // o app intercepta do mesmo jeito. A mitigação real hoje é a orientação
+          // na página pública (ConectarPage).
           const authorizeUrl =
             `https://www.instagram.com/oauth/authorize?client_id=${deps.metaAppId()}` +
             `&redirect_uri=${encodeURIComponent(deps.metaRedirectUri())}` +
