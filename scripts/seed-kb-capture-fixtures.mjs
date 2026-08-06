@@ -211,40 +211,79 @@ async function up() {
         : null,
   }));
 
+  const originalTitle = flows.find((f) => f.id === TITLE_FIX.id)?.titulo ?? null;
+
   const { data: inserted, error } = await supabase
     .from('workflow_posts')
     .insert(rows)
     .select('id, titulo, status, scheduled_at');
   if (error) throw error;
 
-  const originalTitle = flows.find((f) => f.id === TITLE_FIX.id)?.titulo ?? null;
+  // From this line on, production holds fixture rows, one of them a real
+  // scheduled publication. --down is the only safe way to remove them and it
+  // can only find them through the manifest, so the manifest is written FIRST,
+  // before the cosmetic title change, and a failure to write it rolls the
+  // insert back rather than stranding the rows.
+  //
+  // The ids are printed before anything else can fail, so that even a SIGKILL
+  // in the next few milliseconds leaves the operator able to clean up by hand.
+  console.log('Posts criados:');
+  for (const r of inserted) {
+    console.log(`  ${r.id}  ${r.status.padEnd(17)} ${r.titulo}`);
+  }
+  console.log('');
+
+  const postIds = inserted.map((r) => r.id);
+
+  try {
+    writeFileSync(
+      MANIFEST,
+      JSON.stringify(
+        {
+          seededAt: new Date().toISOString(),
+          contaId: CONTA_ID,
+          postIds,
+          workflowTitle: { id: TITLE_FIX.id, original: originalTitle },
+        },
+        null,
+        2,
+      ),
+    );
+  } catch (err) {
+    const { error: rollbackErr } = await supabase
+      .from('workflow_posts')
+      .delete()
+      .in('id', postIds)
+      .eq('conta_id', CONTA_ID);
+    if (rollbackErr) {
+      throw new Error(
+        `Não consegui gravar o manifesto (${err.message}) E a remoção automática também falhou ` +
+          `(${rollbackErr.message}). APAGUE ESTES POSTS À MÃO, um deles está agendado: ${postIds.join(', ')}`,
+      );
+    }
+    throw new Error(
+      `Não consegui gravar o manifesto (${err.message}). Os posts inseridos foram removidos, ` +
+        'nada ficou em produção.',
+    );
+  }
+  console.log(`Manifesto: ${MANIFEST}`);
+
+  // Past this point the manifest exists, so --down can always clean up. A
+  // failure here is cosmetic and must not roll back the posts.
   const { error: titleErr } = await supabase
     .from('workflows')
     .update({ titulo: TITLE_FIX.to })
     .eq('id', TITLE_FIX.id)
     .eq('conta_id', CONTA_ID);
-  if (titleErr) throw titleErr;
-
-  writeFileSync(
-    MANIFEST,
-    JSON.stringify(
-      {
-        seededAt: new Date().toISOString(),
-        contaId: CONTA_ID,
-        postIds: inserted.map((r) => r.id),
-        workflowTitle: { id: TITLE_FIX.id, original: originalTitle },
-      },
-      null,
-      2,
-    ),
-  );
-
-  console.log('Posts criados:');
-  for (const r of inserted) {
-    console.log(`  ${r.id}  ${r.status.padEnd(17)} ${r.titulo}`);
+  if (titleErr) {
+    console.log(
+      `\n⚠️  Não consegui renomear o fluxo ${TITLE_FIX.id} (${titleErr.message}).\n` +
+        `    O título ainda contém um travessão e vai aparecer nas capturas. Renomeie à mão\n` +
+        `    para "${TITLE_FIX.to}" antes de capturar. Os posts foram criados normalmente.`,
+    );
+  } else {
+    console.log(`Fluxo ${TITLE_FIX.id} renomeado: "${originalTitle}" -> "${TITLE_FIX.to}"`);
   }
-  console.log(`\nFluxo ${TITLE_FIX.id} renomeado: "${originalTitle}" -> "${TITLE_FIX.to}"`);
-  console.log(`Manifesto: ${MANIFEST}`);
 
   const deadline = new Date(Date.now() + TEARDOWN_DEADLINE_DAYS * DAY);
   console.log(
@@ -279,10 +318,14 @@ async function down() {
     .select('id, titulo');
   if (error) throw error;
 
-  if (manifest.workflowTitle?.original) {
+  // Test against null, not truthiness: an empty original title is a real value
+  // that must be restored, and this database does contain empty name strings.
+  // A truthiness check would silently leave the fixture title in place forever.
+  const originalTitle = manifest.workflowTitle?.original;
+  if (originalTitle != null) {
     const { error: titleErr } = await supabase
       .from('workflows')
-      .update({ titulo: manifest.workflowTitle.original })
+      .update({ titulo: originalTitle })
       .eq('id', manifest.workflowTitle.id)
       .eq('conta_id', CONTA_ID);
     if (titleErr) throw titleErr;
