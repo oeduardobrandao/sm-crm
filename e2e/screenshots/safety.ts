@@ -11,6 +11,13 @@ import type { Page } from '@playwright/test';
  */
 export const BLOCKED_FUNCTIONS = [
   'instagram-publish', // publishes to a real IG account
+  'tiktok-publish', // schedules/publishes to a real TikTok account. The
+  // schedule path (tiktok-publish/schedule/:id, services/tiktok.ts:261) is an
+  // edge function, so isSchedulingWrite() -- which only inspects PostgREST
+  // writes to workflow_posts -- structurally cannot see it. This function also
+  // serves reads (creator-info/:clientId, tiktok.ts:248); no current capture
+  // spec needs them, so the whole function is blocked. If a future spec does,
+  // narrow this to BLOCKED_FUNCTION_SUBPATHS with prefix 'schedule' instead.
   'invite-user', // sends a real invite email (Resend)
   'report-worker', // sends report emails (Resend). Defense-in-depth only:
   // this function is also reached server-to-server (edge-to-edge, an
