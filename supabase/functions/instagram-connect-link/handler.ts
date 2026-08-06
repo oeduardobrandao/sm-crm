@@ -16,6 +16,9 @@ export interface ConnectLinkHandlerDeps {
   /** APP_BASE_URL. Never OAUTH_REDIRECT_BASE: this URL goes into client emails. */
   appBaseUrl: () => string;
   verifyUser: (bearerToken: string) => Promise<{ id: string } | null>;
+  /** auth.users.email for the member, via the Auth admin API. Null on any failure
+   *  (deleted user, lookup error) -- the client send must not be blocked by it. */
+  getUserEmail: (userId: string) => Promise<string | null>;
   planFeature: (db: DbClient, contaId: string, featureKey: string) => Promise<boolean>;
   rateLimit: (db: DbClient, key: string, max: number, windowSeconds: number) => Promise<boolean>;
   sendClientEmail: (p: {
@@ -269,11 +272,13 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
 
         const { data: cliente } = await db.from("clientes").select("nome").eq("id", clienteId).single();
         const { data: workspace } = await db.from("workspaces").select("name").eq("id", auth.contaId).single();
-        const { data: profile } = await db.from("profiles").select("email").eq("id", auth.userId).single();
+        // auth.users.email, not profiles (profiles has no email column). Best-effort:
+        // the client send must go through even if the address can't be resolved.
+        const replyTo = await deps.getUserEmail(auth.userId);
 
         await deps.sendClientEmail({
           to,
-          replyTo: (profile?.email as string | undefined) ?? null,
+          replyTo,
           agencyName: (workspace?.name as string | undefined) ?? "Sua agência",
           clienteName: (cliente?.nome as string | undefined) ?? "seu perfil",
           connectUrl: buildConnectUrl(deps.appBaseUrl(), link.token),

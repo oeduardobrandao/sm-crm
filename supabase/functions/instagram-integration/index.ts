@@ -498,12 +498,15 @@ Deno.serve(async (req) => {
                 console.error('[IG-CALLBACK] notification insert failed (non-fatal):', e);
             }
             try {
-                const { data: profile } = await serviceClient
-                    .from('profiles').select('email').eq('id', userId).maybeSingle();
-                if (profile?.email) {
+                // auth.users.email via the Auth admin API -- profiles has no email
+                // column. Best-effort: the member may have been deleted between
+                // generating the link and the callback, in which case skip silently.
+                const { data: userData } = await serviceClient.auth.admin.getUserById(userId);
+                const memberEmail = userData?.user?.email;
+                if (memberEmail) {
                     const base = appBaseUrl();
                     await sendConnectedNoticeEmail({
-                        to: profile.email,
+                        to: memberEmail,
                         clienteName: clienteNome,
                         igUsername: igProfile.username || '',
                         clienteUrl: `${base.replace(/\/+$/, '')}/clientes/${clientId}`,

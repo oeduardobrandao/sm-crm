@@ -55,6 +55,7 @@ function makeDeps(over: Record<string, unknown> = {}) {
     now: () => NOW,
     appBaseUrl: () => BASE,
     verifyUser: (_t: string) => Promise.resolve({ id: USER }),
+    getUserEmail: (_userId: string) => Promise.resolve("member@agencia.com"),
     planFeature: (_db: unknown, _c: string, _f: string) => Promise.resolve(true),
     rateLimit: (_db: unknown, _k: string, _m: number, _w: number) => Promise.resolve(true),
     sendClientEmail: (_p: unknown) => Promise.resolve(),
@@ -282,6 +283,47 @@ Deno.test("agency POST /email: two sends to the same address for the same link g
   // Still diagnosable in logs: both keys carry the link token.
   assertEquals(keys[0].includes("tok-9"), true);
   assertEquals(keys[1].includes("tok-9"), true);
+});
+
+Deno.test("agency POST /email: passes the resolved auth.users email as replyTo", async () => {
+  let seenReplyTo: string | null | undefined;
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { conta_id: CONTA },
+      clientes: { conta_id: CONTA, nome: "Clínica X" },
+      links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
+    }),
+    getUserEmail: (_userId: string) => Promise.resolve("dono@agencia.com"),
+    sendClientEmail: (p: { replyTo: string | null }) => {
+      seenReplyTo = p.replyTo;
+      return Promise.resolve();
+    },
+  }));
+  const res = await h(req("POST", "/email", { cliente_id: 42, email: "c@x.com" }));
+  assertEquals(res.status, 200);
+  assertEquals(seenReplyTo, "dono@agencia.com");
+});
+
+Deno.test("agency POST /email: still sends with replyTo null when getUserEmail resolves null", async () => {
+  let sent = 0;
+  let seenReplyTo: string | null | undefined = "unset";
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { conta_id: CONTA },
+      clientes: { conta_id: CONTA, nome: "Clínica X" },
+      links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
+    }),
+    getUserEmail: (_userId: string) => Promise.resolve(null),
+    sendClientEmail: (p: { replyTo: string | null }) => {
+      sent++;
+      seenReplyTo = p.replyTo;
+      return Promise.resolve();
+    },
+  }));
+  const res = await h(req("POST", "/email", { cliente_id: 42, email: "c@x.com" }));
+  assertEquals(res.status, 200);
+  assertEquals(sent, 1);
+  assertEquals(seenReplyTo, null);
 });
 
 function publicReq(method: string, path: string) {

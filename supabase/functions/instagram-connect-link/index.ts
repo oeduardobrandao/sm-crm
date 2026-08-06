@@ -29,6 +29,18 @@ Deno.serve(
       if (error || !data.user) return null;
       return { id: data.user.id };
     },
+    // auth.users.email via the Auth admin API -- profiles has no email column.
+    // Null on any failure (deleted user, lookup error): the reply-to is best-effort,
+    // never a reason to block the client email.
+    getUserEmail: async (userId) => {
+      try {
+        const { data, error } = await svc().auth.admin.getUserById(userId);
+        if (error) return null;
+        return data?.user?.email ?? null;
+      } catch {
+        return null;
+      }
+    },
     // deno-lint-ignore no-explicit-any
     planFeature: (db, contaId, key) => effectivePlanFeature(db as any, contaId, key),
     // deno-lint-ignore no-explicit-any

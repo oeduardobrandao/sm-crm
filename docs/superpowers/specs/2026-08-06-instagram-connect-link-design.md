@@ -321,7 +321,9 @@ interface nem nos dois e-mails. Usar ponto, dois-pontos ou "·".
 ## E-mails
 
 **Ao cliente.** Enviado pelo Mesaas via Resend, com `reply-to` no endereço do membro
-que gerou o link, para que um cliente confuso responda à agência e não ao vazio.
+que gerou o link, para que um cliente confuso responda à agência e não ao vazio. O
+endereço vem de `auth.users` via a Auth admin API (`getUserById`), não de `profiles`:
+a tabela `profiles` não tem coluna de e-mail.
 
 Vale nomear o risco: o cliente recebe e-mail de um domínio com o qual não tem relação
 nenhuma, exatamente no momento em que está sendo convidado a autorizar uma conta. Isso
