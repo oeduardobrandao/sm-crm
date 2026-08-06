@@ -6,9 +6,16 @@ import {
 } from '../publishErrorCopy';
 
 const ALL_CODES: PublishErrorCode[] = [
-  'TOKEN_EXPIRED', 'MEDIA_TOO_LARGE', 'CAROUSEL_LIMIT', 'NO_MEDIA',
-  'MEDIA_UNSUPPORTED', 'CONTAINER_EXPIRED', 'RATE_LIMIT', 'IG_TRANSIENT',
-  'INTERNAL', 'UNKNOWN',
+  'TOKEN_EXPIRED',
+  'MEDIA_TOO_LARGE',
+  'CAROUSEL_LIMIT',
+  'NO_MEDIA',
+  'MEDIA_UNSUPPORTED',
+  'CONTAINER_EXPIRED',
+  'RATE_LIMIT',
+  'IG_TRANSIENT',
+  'INTERNAL',
+  'UNKNOWN',
 ];
 
 describe('publishErrorCopy', () => {

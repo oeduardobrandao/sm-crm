@@ -1,11 +1,11 @@
-import { describe, it, expect } from "vitest";
-import * as front from "../instagramLimits";
+import { describe, it, expect } from 'vitest';
+import * as front from '../instagramLimits';
 // Import via alias: o módulo _shared é TS puro (sem APIs Deno), então o Vitest
 // o transforma normalmente. O alias '@shared' está configurado em vitest.config.ts.
-import * as shared from "@shared/instagram-limits";
+import * as shared from '@shared/instagram-limits';
 
-describe("instagramLimits: paridade front vs _shared", () => {
-  it("constantes idênticas", () => {
+describe('instagramLimits: paridade front vs _shared', () => {
+  it('constantes idênticas', () => {
     expect(front.IMAGE_MAX_BYTES).toBe(shared.IMAGE_MAX_BYTES);
     expect(front.VIDEO_MAX_BYTES).toBe(shared.VIDEO_MAX_BYTES);
     expect(front.IMAGE_MIN_DIM).toBe(shared.IMAGE_MIN_DIM);
@@ -22,12 +22,12 @@ describe("instagramLimits: paridade front vs _shared", () => {
     expect([...front.ALLOWED_VIDEO_MIMES].sort()).toEqual([...shared.ALLOWED_VIDEO_MIMES].sort());
   });
 
-  it("mesmo veredito para os mesmos arquivos", () => {
+  it('mesmo veredito para os mesmos arquivos', () => {
     const fixtures = [
       {
         id: 1,
-        kind: "image" as const,
-        mime_type: "image/jpeg",
+        kind: 'image' as const,
+        mime_type: 'image/jpeg',
         size_bytes: 9 * 1024 * 1024,
         width: 1080,
         height: 1350,
@@ -35,8 +35,8 @@ describe("instagramLimits: paridade front vs _shared", () => {
       },
       {
         id: 2,
-        kind: "video" as const,
-        mime_type: "video/mp4",
+        kind: 'video' as const,
+        mime_type: 'video/mp4',
         size_bytes: 260 * 1024 * 1024,
         width: 1080,
         height: 1920,
@@ -44,8 +44,8 @@ describe("instagramLimits: paridade front vs _shared", () => {
       },
       {
         id: 3,
-        kind: "video" as const,
-        mime_type: "video/mp4",
+        kind: 'video' as const,
+        mime_type: 'video/mp4',
         size_bytes: 1024,
         width: 1080,
         height: 1920,
@@ -53,8 +53,8 @@ describe("instagramLimits: paridade front vs _shared", () => {
       },
       {
         id: 4,
-        kind: "image" as const,
-        mime_type: "image/gif",
+        kind: 'image' as const,
+        mime_type: 'image/gif',
         size_bytes: 1024,
         width: 500,
         height: 500,
@@ -62,15 +62,15 @@ describe("instagramLimits: paridade front vs _shared", () => {
       },
       {
         id: 5,
-        kind: "image" as const,
-        mime_type: "image/jpeg",
+        kind: 'image' as const,
+        mime_type: 'image/jpeg',
         size_bytes: 1024,
         width: 1080,
         height: 1350,
         duration_seconds: null,
       },
     ];
-    const sharedFixtures = fixtures.map((f) => ({ ...f, r2_key: "k", sort_order: 0 }));
+    const sharedFixtures = fixtures.map((f) => ({ ...f, r2_key: 'k', sort_order: 0 }));
     for (const forStories of [false, true]) {
       expect(front.validateMedia(fixtures, { forStories }).map((e) => e.message)).toEqual(
         shared.validateMedia(sharedFixtures, { forStories }).map((e) => e.message),

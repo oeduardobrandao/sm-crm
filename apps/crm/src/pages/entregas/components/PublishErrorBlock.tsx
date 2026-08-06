@@ -42,7 +42,10 @@ export function PublishErrorBlock({ post, clienteId, onStatusChange }: PublishEr
         background: 'color-mix(in srgb, var(--danger) 8%, transparent)',
       }}
     >
-      <p className="flex items-center gap-1.5 font-semibold" style={{ color: 'var(--danger-text)' }}>
+      <p
+        className="flex items-center gap-1.5 font-semibold"
+        style={{ color: 'var(--danger-text)' }}
+      >
         <AlertCircle className="h-4 w-4" /> {d.titulo}
       </p>
       <p className="mt-1" style={{ color: 'var(--danger-text)' }}>
@@ -78,7 +81,10 @@ export function PublishErrorBlock({ post, clienteId, onStatusChange }: PublishEr
             Detalhes técnicos
           </button>
           {showDetails && (
-            <p className="mt-1 text-xs font-mono opacity-75" style={{ color: 'var(--danger-text)' }}>
+            <p
+              className="mt-1 text-xs font-mono opacity-75"
+              style={{ color: 'var(--danger-text)' }}
+            >
               {post.publish_error}
             </p>
           )}
