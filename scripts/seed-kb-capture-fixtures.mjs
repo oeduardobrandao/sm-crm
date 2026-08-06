@@ -189,18 +189,43 @@ function client() {
  *   Blocking cleanup on it would strand exactly the row that most needs
  *   removing.
  */
-async function preflight(supabase, { requirePublishable }) {
+async function preflight(supabase, { requirePublishable, forTeardown = false }) {
   const { data: conta, error: contaErr } = await supabase
     .from('contas')
     .select('id, nome')
     .eq('id', CONTA_ID)
     .maybeSingle();
   if (contaErr) throw contaErr;
+  // The workspace id must resolve in every mode. If it does not, we are pointed
+  // at the wrong database and must not delete anything.
   if (!conta) throw new Error(`Workspace ${CONTA_ID} não existe neste ambiente.`);
   if (conta.nome !== 'DK TESTE') {
-    throw new Error(
-      `Workspace ${CONTA_ID} se chama "${conta.nome}", esperado "DK TESTE". Abortando.`,
+    // The id is the identity; the name is a human sanity check. Renaming a
+    // workspace must not be able to strand fixture rows, so teardown warns
+    // where seeding refuses.
+    if (!forTeardown) {
+      throw new Error(
+        `Workspace ${CONTA_ID} se chama "${conta.nome}", esperado "DK TESTE". Abortando.`,
+      );
+    }
+    console.log(
+      `Aviso: o workspace ${CONTA_ID} se chama "${conta.nome}", não "DK TESTE".\n` +
+        'O id confere, então a limpeza segue.',
     );
+  }
+
+  // Teardown stops here. Everything below answers "is this a safe place to
+  // WRITE fixtures", which is not a question cleanup needs to ask: findFixtureRows
+  // and the delete are both scoped by conta_id on their own.
+  //
+  // This is the same hazard the requirePublishable flag was added for, and the
+  // first fix only relaxed that one check. If workflow 48 or 53 were deleted, or
+  // client 42 reassigned, the checks below would throw before the delete ran and
+  // strand the fixture rows, including the agendado one, with no recovery path
+  // through this script. Cleanup must never be blocked by the state of things it
+  // does not touch.
+  if (forTeardown) {
+    return { conta, cliente: null, flows: [], ig: null };
   }
 
   const { data: cliente, error: cliErr } = await supabase
@@ -462,7 +487,7 @@ async function down() {
     }
   }
 
-  await preflight(supabase, { requirePublishable: false });
+  await preflight(supabase, { requirePublishable: false, forTeardown: true });
 
   const discovered = await findFixtureRows(supabase);
   // Union of what this worktree recorded and what is actually there, so a

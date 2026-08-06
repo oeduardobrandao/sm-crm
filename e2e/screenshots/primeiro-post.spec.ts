@@ -1,4 +1,4 @@
-import { test } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { installSafetyNet, assertNoViolations } from './safety';
 import { shoot } from './capture';
 
@@ -6,10 +6,23 @@ import { shoot } from './capture';
 // Runs against the PRODUCTION DK TESTE workspace (conta_id
 // e68bdbc3-baf0-4807-b905-0807ac4e0253), logged in as its owner.
 //
-// Seção 7 (agende a publicação -- shots 29-32) foi OMITIDA DE PROPÓSITO: exige uma
-// conta do Instagram apta a publicar, e os quatro tokens do DK TESTE expiraram em
-// 2026-06-12 (ver MEMORY.md / project_tiktok... não, ver o registro de tokens do
-// workspace). Este arquivo cobre apenas as seções 1-6 e 8 (26 capturas).
+// Seção 7 (agende a publicação, shots 29-32) foi OMITIDA DE PROPÓSITO: exige uma
+// conta do Instagram apta a publicar, e as quatro contas do DK TESTE estão com
+// authorization_status 'active' mas token_expires_at em 2026-06-12, o que faz a UI
+// derivar `expired` e renderizar o botão Agendar desabilitado
+// (WorkflowDrawer.tsx:266-274). Este arquivo cobre as seções 1-6 e 8: 26 capturas.
+//
+// PRÉ-REQUISITO, sem ele esta spec falha:
+//
+//   node --env-file=.env.kb-upload.local scripts/seed-kb-capture-fixtures.mjs --up --sem-secao-7
+//
+// As seções 5 e 6 fotografam posts que NÃO existem no DK TESTE por padrão. O
+// workspace tem 2 posts no total e nenhum aprovado, então sem o seed a gaveta
+// renderiza o estado vazio e os locators por título estouram em timeout. Rode o
+// --down quando terminar: linhas de fixture não devem sobreviver ao seu propósito.
+//
+// Os ids dos posts mudam a cada seed, então nada aqui os referencia. A spec acha
+// os posts pelo título, que é estável porque é definido no próprio script.
 
 const SLUG = 'como-agendar-seu-primeiro-post';
 
@@ -25,8 +38,8 @@ const CLIENT_WITH_IG = 42;
 // texto real do botão.
 const CLIENT_WITHOUT_IG = 59;
 
-// Campanha Antes/Depois (Studio Bem-Estar) -- fluxo parado em "Revisão Interna",
-// com os posts fixture 1960/1961/1962 já semeados. Usado para as seções 5 e 6.
+// Campanha Antes/Depois (Studio Bem-Estar) -- fluxo parado em "Revisão Interna".
+// Recebe os posts de fixture do seed e é usado nas seções 5 e 6.
 // Verificado ao vivo: a gaveta abre via /entregas?drawer=48 independente da aba de
 // template selecionada no board (a gaveta lê o id diretamente, sem depender do
 // board estar filtrado nela).
@@ -40,7 +53,23 @@ test('primeiro post walkthrough', async ({ page }) => {
   // flows), so the default 30s Playwright test timeout is too tight.
   test.setTimeout(180_000);
 
+  // A rede de segurança entra antes de QUALQUER navegação. Nada nesta spec pode
+  // alcançar a rede sem ser observado.
   const violations = await installSafetyNet(page);
+
+  // NÃO existe aqui uma checagem de pré-requisito em runtime, e isso é uma
+  // decisão, não um esquecimento. Uma sonda no início falhou de três formas
+  // seguidas, cada uma custando uma execução real contra produção: a gaveta não
+  // é role=dialog; um waitFor sem timeout herda o timeout de 180s do teste e
+  // reproduz exatamente o erro opaco que a sonda queria substituir; e nem o deep
+  // link `?drawer=` nem `.board-card` resolvem na PRIMEIRA navegação da execução,
+  // porque os dois dependem de estado que a spec só acumula adiante. Replicar
+  // isso no topo significa replicar a navegação inteira da spec, que é o que a
+  // spec já faz.
+  //
+  // O aviso ficou onde tem custo zero e não pode quebrar: o cabeçalho deste
+  // arquivo, com o comando exato. Sem o seed a falha aparece na seção 5, num
+  // locator por título, e a explicação está a uma rolagem de distância.
 
   // ── Seção 1: cadastre o cliente ────────────────────────────────────────────
   // Capturas 2 a 4 são o FORMULÁRIO PREENCHIDO, nunca submetido. Nenhum cliente é
@@ -309,17 +338,30 @@ test('primeiro post walkthrough', async ({ page }) => {
   // aprovacao_cliente -- "Campanha Antes/Depois" está em "Revisão Interna", uma
   // etapa ANTERIOR a essa, então avançá-la não abre esse diálogo (ver
   // executeForward em KanbanView.tsx:388-405). Usamos "Post Semana 3" (Dr.
-  // Rafael Nunes), um fluxo já parado em "Aprovação Cliente" e SEM
-  // nenhum post (verificado ao vivo) -- o que faz `allCleared` ser false e o
-  // fluxo cair no ramo do diálogo em vez de avançar direto. Verificado também
-  // que a sequência inteira (botão de avançar + confirmar "Avançar" no diálogo
-  // interino) não dispara nenhuma escrita: `setApprovalChoiceCard` é só estado
-  // local (KanbanView.tsx:414-425) até que um dos três botões do diálogo seja
-  // clicado -- o que esta spec nunca faz.
+  // Rafael Nunes), um fluxo já parado em "Aprovação Cliente" e SEM nenhum
+  // post, o que faz `allCleared` ser false e o fluxo cair no ramo do diálogo
+  // em vez de avançar direto (a escrita real via advanceEtapa()). Verificado
+  // também que a sequência inteira (botão de avançar + confirmar "Avançar" no
+  // diálogo interino) não dispara nenhuma escrita: `setApprovalChoiceCard` é
+  // só estado local (KanbanView.tsx:414-425) até que um dos três botões do
+  // diálogo seja clicado, o que esta spec nunca faz.
+  //
+  // A ramificação em si depende do estado do workflow em produção, que pode
+  // ter mudado desde a última verificação. Em vez de confiar num comentário,
+  // as duas asserções abaixo checam no DOM, imediatamente antes do clique em
+  // "Avançar", as mesmas duas condições que executeForward usa
+  // (card.etapa.tipo === 'aprovacao_cliente' e !allCleared), na mesma fonte
+  // de verdade que o componente: `.board-card-approval`
+  // (WorkflowCard.tsx:452) só renderiza quando etapa.tipo === 'aprovacao_cliente',
+  // e a AUSÊNCIA de `.board-card-posts-badge` (WorkflowCard.tsx:701) prova
+  // postsCount === 0, o que força total === 0 e allCleared === false. Se o
+  // estado real mudar (drift), o teste falha aqui em vez de gravar em produção.
   const aprovacaoCard = page.locator('.board-card', { hasText: 'Post Semana 3' });
   await aprovacaoCard.getByRole('button', { name: 'Concluir etapa e avançar' }).click();
   const forwardDialog2 = page.getByRole('alertdialog').filter({ hasText: 'Avançar etapa?' });
   await forwardDialog2.waitFor();
+  await expect(aprovacaoCard.locator('.board-card-approval')).toBeVisible();
+  await expect(aprovacaoCard.locator('.board-card-posts-badge')).toHaveCount(0);
   await forwardDialog2.getByRole('button', { name: 'Avançar' }).click();
   const approvalDialog = page.getByRole('dialog').filter({ hasText: 'Como deseja prosseguir' });
   await approvalDialog.waitFor();
