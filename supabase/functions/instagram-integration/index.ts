@@ -880,6 +880,13 @@ Deno.serve(async (req) => {
               .single();
             shouldAlert = Boolean(consumed);
           }
+          // Nonce consumption stops replay of ONE state, but /auth mints fresh
+          // states on demand, so a member (or a buggy client) could still emit
+          // one email per request. The alert is app-global — cap it at 1/hour.
+          if (shouldAlert) {
+            const rlClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+            shouldAlert = await checkRateLimit(rlClient, 'ig-oauth-app-config-alert', 1, 3600);
+          }
           if (shouldAlert) {
             await sendCronFailureEmail('instagram-oauth-callback (app config)', {
               errors: [{ error: rawMsg.slice(0, 500) }],
