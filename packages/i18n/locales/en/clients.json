@@ -331,5 +331,25 @@
       "enviado_cliente": "Sent",
       "correcao_cliente": "Correction"
     }
+  },
+  "connect": {
+    "title": "Connect Instagram",
+    "intro": "{{agency}} asked to connect {{client}}'s Instagram to Mesaas.",
+    "explain": "Continuing takes you to Instagram to sign in and authorize access. Neither Mesaas nor the agency sees or stores your password.",
+    "cta": "Connect Instagram",
+    "connecting": "Opening Instagram...",
+    "successTitle": "All set",
+    "successBody": "The account @{{username}} is connected. You can close this page.",
+    "alreadyTitle": "Already connected",
+    "alreadyBody": "The account @{{username}} is already connected. Nothing to do here.",
+    "invalidTitle": "Invalid link",
+    "invalidBody": "This link does not exist. Check the address or ask your agency for a new one.",
+    "revokedTitle": "Link revoked",
+    "revokedBody": "The agency revoked this link. Ask for a new one to continue.",
+    "expiredTitle": "Link expired",
+    "expiredBody": "This link is past its expiry date. Ask your agency for a new one.",
+    "unavailableTitle": "Not available right now",
+    "unavailableBody": "Instagram connection is not available for this agency at the moment. Contact whoever sent you the link.",
+    "startError": "Could not open Instagram. Please try again in a moment."
   }
 }
