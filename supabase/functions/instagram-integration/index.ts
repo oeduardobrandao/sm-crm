@@ -103,6 +103,10 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  // Whether the callback flow already consumed the oauth_states nonce in THIS
+  // request; the catch block's alert gate must not try to consume it again.
+  let callbackNonceConsumed = false;
+
   try {
     let user;
     // Root-path requests carrying `code` or `error` are OAuth callback redirects from
@@ -176,6 +180,7 @@ Deno.serve(async (req) => {
         if (nonceErr || !oauthState) {
           throw new Error('OAuth state expired or already used');
         }
+        callbackNonceConsumed = true;
 
         // Exchange code for short-lived token (Instagram Business Login)
         const exchangeRes = await fetch('https://api.instagram.com/oauth/access_token', {
@@ -859,16 +864,23 @@ Deno.serve(async (req) => {
       // lifetime) yields at most one email — no spamming the alert channel.
       if (stateNonce && isAppConfigError(rawMsg)) {
         try {
-          const alertClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-          const { data: consumed } = await alertClient
-            .from('oauth_states')
-            .update({ consumed_at: new Date().toISOString() })
-            .eq('nonce', stateNonce)
-            .is('consumed_at', null)
-            .gt('expires_at', new Date().toISOString())
-            .select()
-            .single();
-          if (consumed) {
+          // If this request already consumed the nonce in the main callback
+          // flow (error after a valid `code`), the replay protection is done —
+          // consuming again would find no row and swallow the alert.
+          let shouldAlert = callbackNonceConsumed;
+          if (!shouldAlert) {
+            const alertClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+            const { data: consumed } = await alertClient
+              .from('oauth_states')
+              .update({ consumed_at: new Date().toISOString() })
+              .eq('nonce', stateNonce)
+              .is('consumed_at', null)
+              .gt('expires_at', new Date().toISOString())
+              .select()
+              .single();
+            shouldAlert = Boolean(consumed);
+          }
+          if (shouldAlert) {
             await sendCronFailureEmail('instagram-oauth-callback (app config)', {
               errors: [{ error: rawMsg.slice(0, 500) }],
             });
