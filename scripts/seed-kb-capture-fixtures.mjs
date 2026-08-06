@@ -21,12 +21,13 @@
 // The service role bypasses RLS, which is why every guard below is explicit.
 //
 // ⚠️ READ BEFORE RUNNING --up
-// One seeded post has status 'agendado'. That is the status
-// instagram-publish-cron claims on, so this row is a real scheduled publication,
-// not a mock. It is safe ONLY because of its date: claim_posts_for_publishing's
-// 'container' phase requires scheduled_at <= now() + 1 hour, and this row is set
-// 60 days out. Run --down when the captures are done. The script prints the
-// date by which teardown must happen.
+// One seeded post carries status 'agendado', the status instagram-publish-cron
+// claims on. It is made structurally unclaimable via a far-future
+// publish_processing_at (see the note on that fixture below), so a missed
+// teardown does not eventually publish anything or raise a cron failure.
+// Run --down anyway when the captures are done: the belt is the unclaimable
+// flag, the braces are the teardown, and fixture rows should not outlive
+// their purpose in a production workspace.
 import { createClient } from '@supabase/supabase-js';
 import { writeFileSync, readFileSync, existsSync, unlinkSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -87,8 +88,25 @@ const POSTS = [
       'Sua pele pede cuidado redobrado no verão. Salve este post e comece pelo básico: limpeza, hidratação e protetor solar todos os dias.',
     scheduledInDays: 45,
   },
-  // Shots 31 and 32: the Agendado chip and the Cancelar button. See the warning
-  // at the top of this file: this row is a real scheduled publication.
+  // Shots 31 and 32: the Agendado chip and the Cancelar button.
+  //
+  // This row carries status 'agendado', which is what instagram-publish-cron
+  // claims on, so it is made structurally unclaimable rather than merely
+  // far-dated. claim_posts_for_publishing requires
+  //   publish_processing_at IS NULL OR publish_processing_at < now() - 10 min
+  // so a far-FUTURE publish_processing_at fails both branches and the row is
+  // never claimed, in any phase, at any date.
+  //
+  // The UI is unaffected: getPostPublishState (postLabels.ts:86-102) derives the
+  // Agendado vs Publicando chip from status and scheduled_at only and never
+  // reads publish_processing_at, so the screenshot still shows what it must.
+  //
+  // NOT doing what a review suggested here, deliberately: attaching fixture
+  // media to stop the cron erroring with "No media files found"
+  // (_shared/instagram-publish-utils.ts:565). That fixes the symptom by making
+  // the post genuinely publishable, so a later token refresh would post real
+  // content to a real Instagram account. The missing media is a safety net, not
+  // a bug. Blocking the claim removes the error AND the publication risk.
   {
     workflow_id: WORKFLOW_AGENDAMENTO,
     titulo: 'Dicas de hidratação facial',
@@ -98,6 +116,7 @@ const POSTS = [
     ig_caption:
       'Hidratação não é só creme. Água, alimentação e sono entram na conta. Comente aqui a sua maior dúvida sobre pele.',
     scheduledInDays: TEARDOWN_DEADLINE_DAYS,
+    unclaimable: true,
   },
 ];
 
@@ -248,6 +267,9 @@ async function up() {
       p.scheduledInDays != null
         ? new Date(Date.now() + p.scheduledInDays * DAY).toISOString()
         : null,
+    // See the 'unclaimable' note on the agendado fixture above. A far-future
+    // value makes claim_posts_for_publishing skip the row permanently.
+    publish_processing_at: p.unclaimable ? new Date(Date.now() + 3650 * DAY).toISOString() : null,
   }));
 
   const originalTitle = flows.find((f) => f.id === TITLE_FIX.id)?.titulo ?? null;
