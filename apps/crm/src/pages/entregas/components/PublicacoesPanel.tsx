@@ -36,6 +36,7 @@ function toWorkflowPost(p: ScheduledPost): WorkflowPost {
     instagram_permalink: p.instagram_permalink,
     published_at: p.published_at,
     publish_error: p.publish_error,
+    publish_error_code: p.publish_error_code,
     platform: p.platform,
     tiktok_publish_status: p.tiktok_publish_status,
     tiktok_publish_error: p.tiktok_publish_error,
