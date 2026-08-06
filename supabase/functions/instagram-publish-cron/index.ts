@@ -83,6 +83,31 @@ async function markFailed(
   if (errorCode === "CONTAINER_EXPIRED") fields.instagram_container_id = null;
   await db.from("workflow_posts").update(fields).eq("id", postId);
 
+  if (errorCode === "CONTAINER_EXPIRED") {
+    // Stories keep their containers per-segment in story_segments, not in the
+    // top-level instagram_container_id cleared above. Without this, a segment
+    // whose container expired keeps its dead container_id forever:
+    // createMissingStorySegmentContainers skips any segment that already has
+    // one, so the retry would hammer the same expired container indefinitely.
+    const { data: storyPost } = await db
+      .from("workflow_posts")
+      .select("tipo, story_segments")
+      .eq("id", postId)
+      .single();
+    if (
+      storyPost?.tipo === "stories" &&
+      Array.isArray(storyPost.story_segments) &&
+      storyPost.story_segments.length > 0
+    ) {
+      const segments = (
+        storyPost.story_segments as Array<
+          { file_id: number; container_id: string | null; media_id: string | null }
+        >
+      ).map((seg) => (seg.media_id ? seg : { ...seg, container_id: null }));
+      await db.from("workflow_posts").update({ story_segments: segments }).eq("id", postId);
+    }
+  }
+
   if (errorCode === "TOKEN_EXPIRED" && clientId) {
     await db.from("instagram_accounts").update({ authorization_status: "expired" }).eq("client_id", clientId);
   }

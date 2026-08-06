@@ -349,6 +349,28 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           },
         });
 
+        if (errorCode === "CONTAINER_EXPIRED" && post.tipo === "stories") {
+          // Stories keep their containers per-segment in story_segments, not in the
+          // top-level instagram_container_id cleared above. Without this, a segment
+          // whose container expired keeps its dead container_id forever: the next
+          // publish-now/cron attempt would skip it (already has a container_id) and
+          // hammer the same expired container indefinitely.
+          try {
+            const { data: storyPost } = await svcDb
+              .from("workflow_posts")
+              .select("story_segments")
+              .eq("id", postId)
+              .single();
+            const segments = (storyPost?.story_segments ?? []) as Array<
+              { file_id: number; container_id: string | null; media_id: string | null }
+            >;
+            if (segments.length > 0) {
+              const cleared = segments.map((seg) => (seg.media_id ? seg : { ...seg, container_id: null }));
+              await svcDb.from("workflow_posts").update({ story_segments: cleared }).eq("id", postId);
+            }
+          } catch (_) { /* best-effort */ }
+        }
+
         if (errorCode === 'TOKEN_EXPIRED') {
           try {
             const { data: wf } = await svcDb.from("workflows").select("cliente_id").eq("id", post.workflow_id).single();
