@@ -55,5 +55,10 @@ Notes:
 ## After you drop the files
 
 Tell me they're in place. I'll:
-1. Run `node --env-file=.env.kb-upload.local scripts/upload-kb-images.mjs` to upload them to the public bucket.
+1. Run `node --env-file=.env.kb-upload.local scripts/upload-kb-images.mjs como-conectar-o-claude-mcp como-conectar-o-instagram` to upload them to the public bucket.
+
+   The slug arguments are required. The script used to upload every directory under
+   `e2e/.shots/`, which meant it would publish leftover and unreviewed captures from
+   earlier runs to a public bucket; it now refuses to run without an explicit slug.
+   Pass only the slug you actually reviewed.
 2. Fill the corresponding `NULL` image slots in the article migration (the in-app steps are already imaged; these external steps carry `NULL` until your PNGs land — the `_kb_shot*_ol_shots` helper renders a step with no image gracefully, so the articles are already usable and only get better when these arrive).
