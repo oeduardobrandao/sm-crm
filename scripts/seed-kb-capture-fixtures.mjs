@@ -507,6 +507,18 @@ async function down() {
   // may still be in place from another worktree's run, so check the database the
   // same way row cleanup does. Restoring only when the current title is exactly
   // TITLE_FIX.to means a legitimate rename since the seed is left alone.
+  //
+  // KNOWN LIMITATION, accepted rather than fixed. This fallback restores
+  // TITLE_FIX.from, the title observed on 2026-08-06, NOT the title that was
+  // actually there when --up ran. Those differ only if someone renamed workflow
+  // 53 after that date AND the manifest was then lost, since with a manifest the
+  // real prior value is used. In that narrow case this writes a stale title.
+  // Left as is deliberately: without the manifest the true prior value is simply
+  // not knowable, the blast radius is one cosmetic field on one fixture workflow
+  // in the test workspace, it is fixable by hand in seconds, and the alternative
+  // (an interactive confirmation) would break non-interactive use for a problem
+  // smaller than the one it introduces. The console output below says plainly
+  // which value was used and asks the operator to check it.
   if (originalTitle == null) {
     const { data: flow, error: flowErr } = await supabase
       .from('workflows')
