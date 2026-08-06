@@ -6,6 +6,8 @@ import { createSignedState, verifySignedState } from "./oauth-state.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { buildMetricFields, fetchPostInsights } from "../_shared/instagram-metrics.ts";
 import { cachePostThumbnail } from "../_shared/instagram-thumbnail-cache.ts";
+import { sendCronFailureEmail } from "../_shared/notify.ts";
+import { classifyOAuthError, isAppConfigError } from "./oauth-error.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
@@ -101,6 +103,10 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  // Whether the callback flow already consumed the oauth_states nonce in THIS
+  // request; the catch block's alert gate must not try to consume it again.
+  let callbackNonceConsumed = false;
+
   try {
     let user;
     // Root-path requests carrying `code` or `error` are OAuth callback redirects from
@@ -174,6 +180,7 @@ Deno.serve(async (req) => {
         if (nonceErr || !oauthState) {
           throw new Error('OAuth state expired or already used');
         }
+        callbackNonceConsumed = true;
 
         // Exchange code for short-lived token (Instagram Business Login)
         const exchangeRes = await fetch('https://api.instagram.com/oauth/access_token', {
@@ -256,6 +263,17 @@ Deno.serve(async (req) => {
             ? slTokenData.permissions
             : REQUESTED_SCOPES;
         console.error('[IG-CALLBACK] Permissions:', JSON.stringify(grantedPermissions), Array.isArray(slTokenData.permissions) ? '(from token response)' : '(from requested scopes)');
+
+        // If Meta reported the actually granted scopes and the user unchecked a
+        // required one, refuse the half-working connection and tell them to
+        // reconnect keeping every permission checked. Only enforceable when the
+        // token response carries a real permissions array.
+        if (Array.isArray(slTokenData.permissions) && slTokenData.permissions.length > 0) {
+            const missing = REQUESTED_SCOPES.filter(s => !slTokenData.permissions.includes(s));
+            if (missing.length > 0) {
+                throw new Error(`MISSING_PERMISSIONS: ${missing.join(',')}`);
+            }
+        }
 
         // Encrypt Long Lived Token
         const encryptedToken = await encryptToken(longLivedToken!);
@@ -819,11 +837,16 @@ Deno.serve(async (req) => {
     if (isCallback) {
       const stateParam = url.searchParams.get('state');
       let redirectClientId: string | undefined;
-      try { redirectClientId = (await verifySignedState(stateParam || '')).clientId; } catch { /* ignore */ }
+      let stateNonce: string | undefined;
+      try {
+        const parsedState = await verifySignedState(stateParam || '');
+        redirectClientId = parsedState.clientId;
+        stateNonce = parsedState.nonce;
+      } catch { /* ignore */ }
       // Classify known Meta OAuth failures into a code the CRM can turn into
       // actionable guidance. Only the code travels in the URL — never the raw message.
       // Meta may report the failure either via the token exchange (err.message) or
-      // directly as error_description/error_message params on the callback redirect.
+      // directly as error/error_description/error_message params on the callback redirect.
       const rawMsg = [
         err?.message,
         url.searchParams.get('error_description'),
@@ -832,9 +855,38 @@ Deno.serve(async (req) => {
       ]
         .filter(Boolean)
         .join(' ');
-      const igErrorCode = /off[-_ ]?meta|fora das tecnologias|atividade futura|future off/i.test(rawMsg)
-        ? 'off_meta_activity'
-        : '1';
+      const igErrorCode = classifyOAuthError(rawMsg, url.searchParams);
+
+      // App misconfiguration (development mode, inactive app) is on us, not the
+      // user: alert internally, keep the generic code outward. The alert only
+      // fires after consuming the state nonce, so a signed state (obtainable by
+      // any authenticated member and replayable for its 10-minute signature
+      // lifetime) yields at most one email — no spamming the alert channel.
+      if (stateNonce && isAppConfigError(rawMsg)) {
+        try {
+          // If this request already consumed the nonce in the main callback
+          // flow (error after a valid `code`), the replay protection is done —
+          // consuming again would find no row and swallow the alert.
+          let shouldAlert = callbackNonceConsumed;
+          if (!shouldAlert) {
+            const alertClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+            const { data: consumed } = await alertClient
+              .from('oauth_states')
+              .update({ consumed_at: new Date().toISOString() })
+              .eq('nonce', stateNonce)
+              .is('consumed_at', null)
+              .gt('expires_at', new Date().toISOString())
+              .select()
+              .single();
+            shouldAlert = Boolean(consumed);
+          }
+          if (shouldAlert) {
+            await sendCronFailureEmail('instagram-oauth-callback (app config)', {
+              errors: [{ error: rawMsg.slice(0, 500) }],
+            });
+          }
+        } catch { /* never block the redirect on the alert */ }
+      }
       const target = redirectClientId
         ? `${OAUTH_REDIRECT_BASE}/clientes/${redirectClientId}?ig_error=${igErrorCode}`
         : `${OAUTH_REDIRECT_BASE}?ig_error=${igErrorCode}`;

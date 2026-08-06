@@ -294,10 +294,19 @@ export default function ClienteDetalhePage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const igError = params.get('ig_error');
-    if (igError === 'no_business_account') {
-      toast.error(t('detail.igNotBusiness'));
-    } else if (igError === 'off_meta_activity') {
+    const igErrorToastKeys: Record<string, string> = {
+      no_business_account: 'detail.igNotBusiness',
+      missing_permissions: 'detail.igMissingPermissions',
+      state_expired: 'detail.igStateExpired',
+      account_restricted: 'detail.igRestricted',
+      rate_limited: 'detail.igRateLimited',
+    };
+    if (igError === 'off_meta_activity') {
       setIgOffMetaOpen(true);
+    } else if (igError === 'cancelled') {
+      toast.info(t('detail.igCancelled'));
+    } else if (igError && igErrorToastKeys[igError]) {
+      toast.error(t(igErrorToastKeys[igError]));
     } else if (igError) {
       toast.error(t('detail.igError'));
     }
