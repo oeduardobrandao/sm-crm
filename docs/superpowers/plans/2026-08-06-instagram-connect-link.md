@@ -1726,12 +1726,24 @@ Immediately **before** the `const connectedMarker = ...` line, insert the notifi
         // Aviso à agência. Melhor-esforço: a conexão já está persistida e uma falha
         // aqui não pode desfazê-la nem bloquear o redirect do cliente.
         if (linkToken) {
+            // Buscado uma vez e usado pelos dois avisos. client_name é o nome do
+            // CLIENTE, não o @ do Instagram: notification-config renderiza
+            // `${client_name} · @${ig_username}`, e passar o username nos dois
+            // campos imprime "clinicax · @clinicax".
+            let clienteNome = '';
+            try {
+                const { data: cliente } = await serviceClient
+                    .from('clientes').select('nome').eq('id', clientId).maybeSingle();
+                clienteNome = cliente?.nome ?? '';
+            } catch (e) {
+                console.error('[IG-CALLBACK] cliente lookup for notice failed (non-fatal):', e);
+            }
             try {
                 await serviceClient.from('notifications').insert({
                     workspace_id: contaId,
                     user_id: userId,
                     type: 'instagram_connected_by_client',
-                    metadata: { client_name: igProfile.username || '', ig_username: igProfile.username || '' },
+                    metadata: { client_name: clienteNome, ig_username: igProfile.username || '' },
                     link: `/clientes/${clientId}`,
                 });
             } catch (e) {
@@ -1740,15 +1752,13 @@ Immediately **before** the `const connectedMarker = ...` line, insert the notifi
                 console.error('[IG-CALLBACK] notification insert failed (non-fatal):', e);
             }
             try {
-                const { data: cliente } = await serviceClient
-                    .from('clientes').select('nome').eq('id', clientId).maybeSingle();
                 const { data: profile } = await serviceClient
                     .from('profiles').select('email').eq('id', userId).maybeSingle();
                 if (profile?.email) {
                     const base = appBaseUrl();
                     await sendConnectedNoticeEmail({
                         to: profile.email,
-                        clienteName: cliente?.nome ?? '',
+                        clienteName: clienteNome,
                         igUsername: igProfile.username || '',
                         clienteUrl: `${base.replace(/\/+$/, '')}/clientes/${clientId}`,
                         appBaseUrl: base,
@@ -2510,7 +2520,7 @@ describe('ConectarPage', () => {
     await waitFor(() => expect(screen.getByText('connect.alreadyTitle')).toBeInTheDocument());
   });
 
-  test('ig_connected in the url shows success without calling the api again', async () => {
+  test('ig_connected in the url shows the success state', async () => {
     getPublicConnectInfo.mockResolvedValue({
       status: 'live', cliente_name: 'Clínica X', workspace_name: 'Agência Y', connected_username: 'clinicax',
     });
