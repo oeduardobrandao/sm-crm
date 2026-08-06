@@ -127,6 +127,34 @@ const POSTS = [
 // rewrites it and --down restores whatever was there before.
 const TITLE_FIX = { id: WORKFLOW_AGENDAMENTO, to: 'Post Semana 4 · BE' };
 
+// The titles are the fixture marker. workflow_posts has no free-form provenance
+// column that would take a custom value (created_via is CHECK-constrained to
+// 'human'/'agent'), so identity comes from the exact title inside the exact two
+// fixture workflows of the exact fixture workspace. Nothing else in DK TESTE
+// carries these strings.
+//
+// This makes the rows discoverable in the DATABASE rather than only through the
+// local manifest, which closes two gaps the manifest alone cannot:
+//   1. A crash between the insert and the manifest write. The manifest is the
+//      only record, so --down would refuse and the rows would be stranded.
+//   2. A second worktree or clone. .superpowers/ is per-worktree, so its
+//      manifest check passes while rows from another run already exist, and
+//      whichever operator never runs --down leaves theirs behind.
+const FIXTURE_TITLES = POSTS.map((p) => p.titulo);
+const FIXTURE_WORKFLOWS = [WORKFLOW_APROVACAO, WORKFLOW_AGENDAMENTO];
+
+/** Every fixture row currently in production, found without the manifest. */
+async function findFixtureRows(supabase) {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select('id, titulo, status, workflow_id')
+    .eq('conta_id', CONTA_ID)
+    .in('workflow_id', FIXTURE_WORKFLOWS)
+    .in('titulo', FIXTURE_TITLES);
+  if (error) throw error;
+  return data ?? [];
+}
+
 function client() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -264,6 +292,21 @@ async function up({ skipSecao7 }) {
   const selected = skipSecao7 ? POSTS.filter((p) => !p.secao7) : POSTS;
 
   const { flows } = await preflight(supabase, { requirePublishable: !skipSecao7 });
+
+  // Ask the database, not just the local manifest. Another worktree may have
+  // seeded, or a previous run may have crashed between the insert and the
+  // manifest write. Either way, inserting again would duplicate rows that
+  // nobody's --down would then fully remove.
+  const alreadyThere = await findFixtureRows(supabase);
+  if (alreadyThere.length > 0) {
+    throw new Error(
+      `Já existem ${alreadyThere.length} post(s) de fixture em produção: ` +
+        `${alreadyThere.map((r) => r.id).join(', ')}.\n` +
+        'Isso acontece quando outra worktree semeou, ou quando um --up anterior morreu\n' +
+        'antes de gravar o manifesto. Rode --down (ele encontra essas linhas mesmo sem\n' +
+        'manifesto) e semeie de novo.',
+    );
+  }
   console.log(
     skipSecao7
       ? `Preflight OK (modo parcial). Semeando ${selected.length} post(s), sem a seção 7.\n`
@@ -325,7 +368,9 @@ async function up({ skipSecao7 }) {
           seededAt: new Date().toISOString(),
           contaId: CONTA_ID,
           postIds,
-          workflowTitle: { id: TITLE_FIX.id, original: originalTitle },
+          // null when partial mode left the title alone, so --down knows there
+          // is nothing to restore and cannot clobber a later legitimate rename.
+          workflowTitle: skipSecao7 ? null : { id: TITLE_FIX.id, original: originalTitle },
         },
         null,
         2,
@@ -350,21 +395,27 @@ async function up({ skipSecao7 }) {
   }
   console.log(`Manifesto: ${MANIFEST}`);
 
-  // Past this point the manifest exists, so --down can always clean up. A
-  // failure here is cosmetic and must not roll back the posts.
-  const { error: titleErr } = await supabase
-    .from('workflows')
-    .update({ titulo: TITLE_FIX.to })
-    .eq('id', TITLE_FIX.id)
-    .eq('conta_id', CONTA_ID);
-  if (titleErr) {
-    console.log(
-      `\n⚠️  Não consegui renomear o fluxo ${TITLE_FIX.id} (${titleErr.message}).\n` +
-        `    O título ainda contém um travessão e vai aparecer nas capturas. Renomeie à mão\n` +
-        `    para "${TITLE_FIX.to}" antes de capturar. Os posts foram criados normalmente.`,
-    );
-  } else {
-    console.log(`Fluxo ${TITLE_FIX.id} renomeado: "${originalTitle}" -> "${TITLE_FIX.to}"`);
+  // Only rename when section 7 is actually being seeded. The rename exists so
+  // the em-dash in workflow 53's title does not show up in the section 7
+  // screenshots; in partial mode nothing is captured there, so renaming would
+  // mutate an unrelated workflow for no reason. Worse, --down would later
+  // "restore" the title recorded at seed time and silently overwrite any
+  // legitimate rename made in between.
+  if (!skipSecao7) {
+    const { error: titleErr } = await supabase
+      .from('workflows')
+      .update({ titulo: TITLE_FIX.to })
+      .eq('id', TITLE_FIX.id)
+      .eq('conta_id', CONTA_ID);
+    if (titleErr) {
+      console.log(
+        `\n⚠️  Não consegui renomear o fluxo ${TITLE_FIX.id} (${titleErr.message}).\n` +
+          `    O título ainda contém um travessão e vai aparecer nas capturas. Renomeie à mão\n` +
+          `    para "${TITLE_FIX.to}" antes de capturar. Os posts foram criados normalmente.`,
+      );
+    } else {
+      console.log(`Fluxo ${TITLE_FIX.id} renomeado: "${originalTitle}" -> "${TITLE_FIX.to}"`);
+    }
   }
 
   if (skipSecao7) {
@@ -387,24 +438,45 @@ async function up({ skipSecao7 }) {
 async function down() {
   const supabase = client();
 
-  if (!existsSync(MANIFEST)) {
-    throw new Error(`Não encontrei ${MANIFEST}. Nada a remover, ou o manifesto foi perdido.`);
-  }
-  const manifest = JSON.parse(readFileSync(MANIFEST, 'utf-8'));
-  if (manifest.contaId !== CONTA_ID) {
-    throw new Error(
-      `Manifesto aponta para o workspace ${manifest.contaId}, não o DK TESTE. Abortando.`,
-    );
+  // The manifest is a convenience, not a precondition. Teardown must work when
+  // it is missing: a run that died before writing it, or a seed done from a
+  // different worktree, would otherwise leave rows nobody can remove with this
+  // script. Fixture rows are identifiable in the database on their own.
+  let manifest = null;
+  if (existsSync(MANIFEST)) {
+    manifest = JSON.parse(readFileSync(MANIFEST, 'utf-8'));
+    if (manifest.contaId !== CONTA_ID) {
+      throw new Error(
+        `Manifesto aponta para o workspace ${manifest.contaId}, não o DK TESTE. Abortando.`,
+      );
+    }
   }
 
   await preflight(supabase, { requirePublishable: false });
+
+  const discovered = await findFixtureRows(supabase);
+  // Union of what this worktree recorded and what is actually there, so a
+  // partially recorded run still gets fully cleaned.
+  const ids = [...new Set([...(manifest?.postIds ?? []), ...discovered.map((r) => r.id)])];
+
+  if (ids.length === 0) {
+    console.log('Nenhum post de fixture encontrado em produção. Nada a remover.');
+    if (manifest) unlinkSync(MANIFEST);
+    return;
+  }
+  if (!manifest) {
+    console.log(
+      `Sem manifesto local. Encontrei ${discovered.length} post(s) de fixture pelo título\n` +
+        'dentro dos fluxos de fixture do DK TESTE, e vou remover essas linhas.\n',
+    );
+  }
 
   // Delete by id AND by conta, so a tampered manifest still cannot reach
   // another workspace's rows.
   const { data: deleted, error } = await supabase
     .from('workflow_posts')
     .delete()
-    .in('id', manifest.postIds)
+    .in('id', ids)
     .eq('conta_id', CONTA_ID)
     .select('id, titulo');
   if (error) throw error;
@@ -412,7 +484,8 @@ async function down() {
   // Test against null, not truthiness: an empty original title is a real value
   // that must be restored, and this database does contain empty name strings.
   // A truthiness check would silently leave the fixture title in place forever.
-  const originalTitle = manifest.workflowTitle?.original;
+  const originalTitle = manifest?.workflowTitle?.original;
+  let restored = false;
   if (originalTitle != null) {
     const { error: titleErr } = await supabase
       .from('workflows')
@@ -420,36 +493,51 @@ async function down() {
       .eq('id', manifest.workflowTitle.id)
       .eq('conta_id', CONTA_ID);
     if (titleErr) throw titleErr;
+    restored = true;
   }
 
-  unlinkSync(MANIFEST);
+  if (existsSync(MANIFEST)) unlinkSync(MANIFEST);
 
   console.log(`Removidos ${deleted.length} post(s):`);
   for (const r of deleted) console.log(`  ${r.id}  ${r.titulo}`);
-  if (manifest.postIds.length !== deleted.length) {
+  if (ids.length !== deleted.length) {
     console.log(
-      `\n⚠️  O manifesto listava ${manifest.postIds.length} post(s) e ${deleted.length} foram removidos.\n` +
-        '    Confira manualmente se sobrou algum post agendado no DK TESTE.',
+      `\n⚠️  Esperava remover ${ids.length} post(s) e ${deleted.length} foram removidos.\n` +
+        '    Confira manualmente se sobrou algum post de fixture no DK TESTE.',
     );
   }
-  console.log('\nFluxo renomeado de volta. Manifesto apagado.');
+  console.log(
+    restored
+      ? '\nFluxo renomeado de volta. Manifesto apagado.'
+      : '\nNenhum título a restaurar. Manifesto apagado.',
+  );
 }
 
 /**
  * Runs every guard and writes nothing. Use this first: it proves the ids still
  * point where this script thinks they do before you authorise any write.
  */
-async function check() {
+async function check({ skipSecao7 }) {
   const supabase = client();
-  const { conta, cliente, flows } = await preflight(supabase, { requirePublishable: true });
+  const { conta, cliente, flows } = await preflight(supabase, {
+    requirePublishable: !skipSecao7,
+  });
+  const existing = await findFixtureRows(supabase);
+  const selected = skipSecao7 ? POSTS.filter((p) => !p.secao7) : POSTS;
+
   console.log('Preflight OK. Nada foi escrito.\n');
   console.log(`  workspace  ${conta.nome} (${conta.id})`);
   console.log(`  cliente    ${cliente.nome} (${cliente.id})`);
   for (const f of flows) console.log(`  fluxo      ${f.id}  ${f.titulo}`);
+  console.log(`\n  manifesto  ${existsSync(MANIFEST) ? 'JÁ EXISTE, --up vai recusar' : 'ausente'}`);
   console.log(
-    `\n  manifesto  ${existsSync(MANIFEST) ? 'JÁ EXISTE, --up vai recusar' : 'ausente, --up pode rodar'}`,
+    `  em prod    ${existing.length} post(s) de fixture` +
+      (existing.length > 0 ? ` (${existing.map((r) => r.id).join(', ')}), --up vai recusar` : ''),
   );
-  console.log(`  a semear   ${POSTS.length} post(s), sendo 1 com status 'agendado'`);
+  console.log(
+    `  a semear   ${selected.length} post(s)` +
+      (skipSecao7 ? ', modo parcial, sem a seção 7' : ", sendo 1 com status 'agendado'"),
+  );
 }
 
 const mode = process.argv[2];
@@ -469,7 +557,7 @@ if (!['--up', '--down', '--check'].includes(mode)) {
 }
 
 try {
-  if (mode === '--check') await check();
+  if (mode === '--check') await check({ skipSecao7 });
   else if (mode === '--up') await up({ skipSecao7 });
   else await down();
 } catch (err) {
