@@ -91,10 +91,10 @@ CREATE TABLE instagram_connect_links (
   cliente_id  bigint NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
   conta_id    uuid NOT NULL,
   token       uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
-  created_by  uuid NOT NULL,          -- membro; alimenta auditoria e notificação
+  created_by  uuid NOT NULL,          -- auth.users.id, NÃO membros.id
   expires_at  timestamptz NOT NULL,   -- now() + 30 dias
   revoked_at  timestamptz,
-  used_at     timestamptz,            -- última conexão bem-sucedida; não queima o link
+  used_at     timestamptz,            -- última tentativa que passou o portão; não queima o link
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 ```
@@ -102,14 +102,65 @@ CREATE TABLE instagram_connect_links (
 RLS espelhando `client_hub_tokens`: política de workspace sobre `conta_id` mais uma
 política `service_role`.
 
-Índice único parcial em `(cliente_id) WHERE revoked_at IS NULL AND expires_at > now()`
-para que cada cliente tenha no máximo um link vivo, e "gerar" substitua em vez de
-acumular linhas mortas.
+`created_by` é o `auth.users.id` de quem gerou o link, e não o `membros.id`
+(`membros.id` é `bigserial`; `membros.user_id` é que é o uuid). É esse identificador
+que `oauth_states.initiated_by`, `audit_logs.actor_user_id` e `notifications.user_id`
+esperam. **Sem FK para `auth.users`**: `notifications.user_id` tem
+`ON DELETE CASCADE`, e não queremos que remover um membro apague links de conexão
+pendentes de clientes. Se esse usuário tiver sido removido entre a geração e o
+callback, a conexão é concluída normalmente e a notificação e o e-mail são pulados,
+com um log. O upsert do `instagram_accounts` nunca depende de quem gerou o link.
+
+### Unicidade do link vivo
+
+Índice único parcial em `(cliente_id) WHERE revoked_at IS NULL`.
+
+O predicado **não pode** incluir `expires_at > now()`: predicado de índice parcial no
+PostgreSQL exige funções `IMMUTABLE`, e `now()` é `STABLE`, então a criação do índice
+falha. Além disso um índice não reavalia o predicado com a passagem do tempo, de modo
+que "expirado" nunca sairia dele sozinho.
+
+Logo, "vivo" tem duas metades e cada uma é enforçada num lugar:
+
+- **Persistido:** `revoked_at IS NULL`, garantido pelo índice único.
+- **Em tempo de leitura:** `expires_at > now()`, avaliado por `connectLinkLive(row, now)`
+  em toda leitura e no portão do callback.
+
+Uma linha expirada mas não revogada continua ocupando o slot único. Por isso o caminho
+de criação revoga antes de inserir.
+
+### Geração concorrente
+
+`POST /` faz revogar-e-inserir em uma **RPC `SECURITY DEFINER`** em vez de duas
+chamadas do edge function, seguindo o padrão de operações atômicas já usado no
+repositório (`hub_atomic_post_schedule_reorder`, migration `20260701000001`):
+
+```sql
+-- create_instagram_connect_link(p_cliente_id, p_conta_id, p_created_by, p_ttl_days)
+UPDATE instagram_connect_links
+   SET revoked_at = now()
+ WHERE cliente_id = p_cliente_id AND revoked_at IS NULL;
+
+INSERT INTO instagram_connect_links (cliente_id, conta_id, created_by, expires_at)
+VALUES (p_cliente_id, p_conta_id, p_created_by, now() + (p_ttl_days || ' days')::interval)
+RETURNING token, expires_at;
+```
+
+Como corpo de função é uma transação, dois `POST /` simultâneos serializam: um vence e
+o outro ou vê o link do primeiro já revogado e insere o seu, ou colide no índice
+único. Na colisão, o handler relê o link vivo e o devolve, em vez de propagar o erro:
+duas abas da agência clicando em "Gerar" não é condição de erro.
+
+A RPC valida `p_conta_id` contra o `conta_id` do cliente internamente, para não
+depender só do handler.
 
 Segunda mudança na mesma migration: estender `notifications_type_check` com
-`instagram_connected_by_client`, copiando adiante a lista de 18 valores da definição
-mais recente (`20260805000002_post_status_automations.sql`). Copiar uma lista antiga
-quebra inserts mais novos.
+`instagram_connected_by_client`, copiando adiante a lista da definição mais recente,
+`20260805000002_post_status_automations.sql`, que tem **18** valores (conferido:
+`sed -n '104,118p' ... | grep -o "'[a-z_]*'" | wc -l` → 18, e o
+`NotificationType` em `apps/crm/src/store/notifications.ts` tem os mesmos 18). O total
+passa a 19. Copiar uma lista antiga quebra inserts dos tipos mais novos, então
+recontar no momento de escrever a migration em vez de confiar neste número.
 
 **Versão da migration:** `20260806000002`. `20260806000001_atomic_rate_limit.sql` já
 existe em `origin/main`. Reverificar o prefixo contra
@@ -129,8 +180,28 @@ o estrago.
 - **`feature_instagram` é verificado no endpoint público** contra o `conta_id` do
   cliente, como `/auth/:clientId` já faz hoje. Workspace que faz downgrade para de
   emitir links que funcionam.
-- **Revogação é real:** `revoked_at` é conferido em toda requisição pública e de novo
-  no callback do OAuth, de modo que um link revogado no meio do fluxo não conclui.
+- **Revogação é real, e o portão é atômico.** Uma simples releitura de `revoked_at`
+  antes do upsert não basta: a revogação pode cair entre a leitura e o
+  `upsert(instagram_accounts)`, que substitui a conta por `client_id`. O portão é um
+  UPDATE condicional com `RETURNING`, exatamente o padrão que o próprio callback já usa
+  para consumir o nonce do `oauth_states` ([index.ts:171](supabase/functions/instagram-integration/index.ts#L171)):
+
+  ```sql
+  UPDATE instagram_connect_links
+     SET used_at = now()
+   WHERE token = $1 AND revoked_at IS NULL AND expires_at > now()
+  RETURNING cliente_id, conta_id, created_by;
+  ```
+
+  Zero linhas retornadas aborta antes de tocar `instagram_accounts`. Isso é uma única
+  operação atômica no banco, não uma leitura seguida de escrita. A janela restante
+  ("revogação commitada depois deste UPDATE") é inevitável em qualquer desenho que não
+  segure um lock durante o ida-e-volta com a Meta, e nesse ponto a conexão é
+  genuinamente concorrente com a revogação, não um bypass.
+
+  Consequência de semântica: `used_at` passa a significar "última tentativa que passou
+  o portão", não "última conexão bem-sucedida". Se o upsert seguinte falhar, `used_at`
+  fica marcado mesmo assim. É a troca certa: o portão precisa vir antes da escrita.
 - **Rate limit** no endpoint público de início, com chave por token, via o
   `checkRateLimit` existente. Cada início insere uma linha em `oauth_states`; sem
   limite o endpoint público vira amplificador de escrita.
@@ -191,11 +262,14 @@ As partes puras, testáveis com `deno test` sem rede nem banco:
 - `instagram-integration/oauth-state.ts`: `createSignedState` recebe um `linkToken`
   opcional; `verifySignedState` passa a devolvê-lo. Ausente significa o fluxo da
   agência, então states antigos em voo seguem verificando.
-- `instagram-integration/index.ts`, no callback: reconferir que a linha do link segue
-  viva antes do upsert, marcar `used_at`, gravar a notificação, enviar o e-mail ao
-  membro, e redirecionar para `/conectar/:token?ig_connected=1` em vez de
-  `/clientes/:id`. O ramo de erro redireciona para `/conectar/:token?ig_error=CODE`.
-  `metadata.via = 'connect_link'` na auditoria.
+- `instagram-integration/index.ts`, no callback: rodar o UPDATE condicional do portão
+  (ver Segurança) imediatamente **antes** do `upsert(instagram_accounts)`, abortando se
+  não retornar linha; gravar a notificação, enviar o e-mail ao membro, e redirecionar
+  para `/conectar/:token?ig_connected=1` em vez de `/clientes/:id`. O ramo de erro
+  redireciona para `/conectar/:token?ig_error=CODE`, incluindo o caso "link revogado
+  durante o fluxo", que ganha seu próprio código. `metadata.via = 'connect_link'` na
+  auditoria. Notificação e e-mail são melhor-esforço: falha neles não pode desfazer
+  nem bloquear uma conexão já persistida.
 
 ## Frontend
 
@@ -229,8 +303,16 @@ Sem os três a rota funciona em dev e dá 404 em produção.
   revogar.
 - `services/instagram.ts`: `getConnectLink`, `createConnectLink`, `revokeConnectLink`,
   `emailConnectLink`.
+- `store/notifications.ts`: `NotificationType` é uma união fechada de 18 literais.
+  Acrescentar o valor **ali primeiro**, senão a entrada nova em `notification-config.ts`
+  não compila e o dado que vem do backend fica fora do contrato tipado.
 - `lib/notification-config.ts`: cópia, ícone e link de destino para
   `instagram_connected_by_client`.
+
+Os três lugares que precisam concordar sobre o tipo novo, e falham de formas
+diferentes se não concordarem: o `notifications_type_check` no banco (insert falha), o
+`NotificationType` no store (não compila), e o `notification-config.ts` (renderiza em
+branco).
 - Strings de i18n para tudo acima.
 
 **Convenção de cópia:** nada de travessão (—) em texto visível ao usuário, nem na
@@ -262,7 +344,16 @@ se mostrar ruim, o link copiado continua sendo o caminho principal e nada quebra
 - workspace errado é rejeitado
 - `feature_instagram` desligado é rejeitado
 - link revogado é rejeitado no `/start`
-- rate limit dispara
+- **link revogado entre o `/start` e a persistência do callback**: o UPDATE condicional
+  não retorna linha e o `upsert(instagram_accounts)` não acontece. É o teste que
+  sustenta a afirmação "revogação é real"
+- link expirado mas não revogado é rejeitado, cobrindo a metade da liveness que o
+  índice único não enforça
+- `POST /` concorrente: o segundo colide no índice único e o handler devolve o link
+  vivo em vez de propagar erro
+- geração quando já existe link vivo revoga o anterior (o token antigo para de valer)
+- callback cujo `created_by` não existe mais conclui a conexão e pula a notificação
+- rate limit dispara, no `/start` e no `/email`
 - `GET /public/:token` não devolve nada além dos dois nomes
 
 **Deno, round-trip do state**
@@ -283,11 +374,34 @@ se mostrar ruim, o link copiado continua sendo o caminho principal e nada quebra
 
 ## Deploy
 
+- Acrescentar `[functions.instagram-connect-link] verify_jwt = false` em
+  `supabase/config.toml`. É ali que o repositório versiona esse padrão para as 20+
+  functions equivalentes; a flag no comando de deploy sozinha não fica registrada.
 - `npx supabase db push --linked` (staging e prod), conferindo antes o prefixo da
   migration
 - `npx supabase functions deploy instagram-connect-link --no-verify-jwt --use-api`
 - `npx supabase functions deploy instagram-integration --no-verify-jwt --use-api`
 - CRM via merge (Vercel)
 
-Sem variáveis de ambiente novas. O envio de e-mail usa a infraestrutura Resend já
-existente; a base da URL vem de `OAUTH_REDIRECT_BASE` / `appBaseUrl()`.
+### Qual base de URL usar
+
+Duas variáveis, e trocá-las tem consequência real:
+
+| Uso | Variável |
+|---|---|
+| Link gerado (copiar, e-mail ao cliente) | `appBaseUrl()`, isto é `APP_BASE_URL` |
+| Redirect do callback OAuth de volta ao `/conectar/:token` | `OAUTH_REDIRECT_BASE` |
+
+`appBaseUrl()` existe exatamente para isso e o comentário dela é explícito:
+`OAUTH_REDIRECT_BASE` significa "para onde a Meta manda o callback", e acoplar as duas
+faria uma mudança de OAuth reescrever em silêncio links já enviados a clientes. O link
+público é conteúdo de e-mail para cliente final, então é `APP_BASE_URL`.
+
+Nenhuma variável nova, mas **`APP_BASE_URL` passa a ser obrigatória de fato** para esta
+feature em ambos os ambientes. Ela já é usada por `resolveHubUrl` e por
+`notifyOwnerOfFailure`, ambos embrulhados em try/catch que degradam em silêncio. Aqui
+não: se faltar, a geração de link falha alto, com erro visível à agência, em vez de
+produzir uma URL de localhost e mandá-la ao cliente. Conferir que as duas apontam para
+a mesma origem em produção, senão o cliente sai de um host e volta em outro.
+
+O envio de e-mail usa a infraestrutura Resend já existente.
