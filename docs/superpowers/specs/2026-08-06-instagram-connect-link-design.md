@@ -135,21 +135,36 @@ de criação revoga antes de inserir.
 chamadas do edge function, seguindo o padrão de operações atômicas já usado no
 repositório (`hub_atomic_post_schedule_reorder`, migration `20260701000001`):
 
-```sql
--- create_instagram_connect_link(p_cliente_id, p_conta_id, p_created_by, p_ttl_days)
-UPDATE instagram_connect_links
-   SET revoked_at = now()
- WHERE cliente_id = p_cliente_id AND revoked_at IS NULL;
+A RPC faz, nesta ordem: valida a posse do cliente, toma um **advisory lock de
+transação** com namespace, chaveado no `cliente_id`, e só então decide o que fazer.
 
-INSERT INTO instagram_connect_links (cliente_id, conta_id, created_by, expires_at)
-VALUES (p_cliente_id, p_conta_id, p_created_by, now() + (p_ttl_days || ' days')::interval)
-RETURNING token, expires_at;
-```
+Confiar apenas no índice único não bastava. Duas abas clicando em "Gerar" ao mesmo
+tempo produziam um resultado **não determinístico**: a segunda transação espera o
+UPDATE da primeira, e se ela enxerga ou não a linha recém-inserida depende do snapshot
+do statement e da ordem física da varredura. Às vezes colide em `23505` e o handler
+relê o link vivo, o que é correto. Às vezes revoga a linha nova da primeira e insere a
+sua, e aí a resposta da PRIMEIRA aba carrega um token já revogado: a agência copia e
+envia um link morto.
 
-Como corpo de função é uma transação, dois `POST /` simultâneos serializam: um vence e
-o outro ou vê o link do primeiro já revogado e insere o seu, ou colide no índice
-único. Na colisão, o handler relê o link vivo e o devolve, em vez de propagar o erro:
-duas abas da agência clicando em "Gerar" não é condição de erro.
+Com o lock, as chamadas concorrentes para o mesmo cliente serializam de verdade. E,
+já com o lock na mão, a RPC **devolve o link vivo existente** em vez de rodá-lo:
+
+- existe link vivo (`revoked_at IS NULL AND expires_at > now()`) → devolve esse mesmo,
+  sem revogar e sem inserir;
+- não existe → revoga as linhas não revogadas mas expiradas, que ainda ocupam o slot
+  do índice único, e insere uma nova.
+
+Convergir num único token é o comportamento certo para esta interface, não uma
+mudança de semântica: o botão "Gerar" só aparece quando NÃO há link vivo
+(`ConnectLinkDialog.tsx`), então nenhum caminho de produto pede para rodar um link
+que está vivo. Rodar continua disponível como "Revogar" seguido de "Gerar".
+
+Não se usa `SELECT ... FOR UPDATE` em `clientes`: é uma tabela muito escrita e travar
+linha nela arrisca deadlock contra transações que tocam `clientes` em outra ordem. O
+advisory lock não interage com o grafo de locks de ninguém.
+
+O tratamento de `23505` no handler continua no lugar, agora como defesa em
+profundidade, não como o caminho concorrente esperado.
 
 A RPC valida `p_conta_id` contra o `conta_id` do cliente internamente, para não
 depender só do handler.
