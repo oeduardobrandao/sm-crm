@@ -1,6 +1,145 @@
 {
-  "lastMergedAt": "2026-07-07T21:42:36Z",
+  "lastMergedAt": "2026-07-25T11:00:03Z",
   "releases": [
+    {
+      "date": "2026-07-25",
+      "summary": "Melhorias e correções em várias áreas do produto",
+      "items": [
+        {
+          "type": "feature",
+          "area": "SEO",
+          "title": "Fundação de SEO/GEO",
+          "description": "Melhorias na estrutura de SEO/GEO para melhorar a visibilidade do site",
+          "pr": 246
+        },
+        {
+          "type": "feature",
+          "area": "Admin",
+          "title": "Painel de convites para administradores",
+          "description": "Adição de um painel de convites para administradores, permitindo que eles gerenciem convites de forma mais eficaz",
+          "pr": 245
+        },
+        {
+          "type": "improvement",
+          "area": "Entregas",
+          "title": "Melhoria da experiência de usuário no WorkflowDrawer",
+          "description": "Melhorias na experiência de usuário do WorkflowDrawer para dispositivos móveis",
+          "pr": 244
+        },
+        {
+          "type": "feature",
+          "area": "Analytics",
+          "title": "Redesenho das cartões de análise",
+          "description": "Redesenho das cartões de análise para uma melhor visualização dos dados",
+          "pr": 242
+        },
+        {
+          "type": "fix",
+          "area": "Estúdio",
+          "title": "Correção de um problema de migração",
+          "description": "Correção de um problema de migração que estava impedindo a atualização do banco de dados",
+          "pr": 240
+        },
+        {
+          "type": "feature",
+          "area": "Relatórios",
+          "title": "Redesenho do relatório de análise",
+          "description": "Redesenho do relatório de análise para uma melhor visualização dos dados",
+          "pr": 239
+        },
+        {
+          "type": "feature",
+          "area": "Interface",
+          "title": "Adição de recursos de interface",
+          "description": "Adição de recursos de interface, como tabs e badges, para uma melhor experiência de usuário",
+          "pr": 237
+        },
+        {
+          "type": "fix",
+          "area": "Migrações",
+          "title": "Correção de um problema de migração",
+          "description": "Correção de um problema de migração que estava impedindo a atualização do banco de dados",
+          "pr": 234
+        },
+        {
+          "type": "feature",
+          "area": "Hub",
+          "title": "Redesenho do portal do cliente",
+          "description": "Redesenho do portal do cliente para uma melhor experiência de usuário",
+          "pr": 233
+        },
+        {
+          "type": "fix",
+          "area": "Convites",
+          "title": "Correção de um problema de convites",
+          "description": "Correção de um problema de convites que estava impedindo a adição de novos usuários",
+          "pr": 232
+        },
+        {
+          "type": "feature",
+          "area": "Mensagens",
+          "title": "Adição da funcionalidade de mensagens",
+          "description": "Adição da funcionalidade de mensagens para uma melhor comunicação entre os usuários",
+          "pr": 231
+        },
+        {
+          "type": "feature",
+          "area": "TikTok",
+          "title": "Integração com o TikTok",
+          "description": "Integração com o TikTok para uma melhor experiência de usuário",
+          "pr": 219
+        },
+        {
+          "type": "feature",
+          "area": "Entregas",
+          "title": "Adição de um assistente de criação de fluxos",
+          "description": "Adição de um assistente de criação de fluxos para uma melhor experiência de usuário",
+          "pr": 224
+        },
+        {
+          "type": "fix",
+          "area": "TikTok",
+          "title": "Correção de um problema de publicação no TikTok",
+          "description": "Correção de um problema de publicação no TikTok que estava impedindo a publicação de conteúdo",
+          "pr": 223
+        },
+        {
+          "type": "feature",
+          "area": "Interface",
+          "title": "Adição de recursos de interface",
+          "description": "Adição de recursos de interface, como um seletor de plataforma, para uma melhor experiência de usuário",
+          "pr": 211
+        },
+        {
+          "type": "fix",
+          "area": "Clientes",
+          "title": "Correção de um problema de navegação",
+          "description": "Correção de um problema de navegação que estava impedindo a navegação entre seções",
+          "pr": 207
+        },
+        {
+          "type": "fix",
+          "area": "Hub",
+          "title": "Correção de um problema de expiração de links",
+          "description": "Correção de um problema de expiração de links que estava impedindo o acesso ao portal do cliente",
+          "pr": 204
+        },
+        {
+          "type": "feature",
+          "area": "Entregas",
+          "title": "Adição de um toggle de tela cheia",
+          "description": "Adição de um toggle de tela cheia para uma melhor experiência de usuário",
+          "pr": 201
+        },
+        {
+          "type": "fix",
+          "area": "Hub",
+          "title": "Correção de um problema de cache de imagens",
+          "description": "Correção de um problema de cache de imagens que estava impedindo a visualização de imagens",
+          "pr": 200
+        }
+      ]
+    },
     {
       "date": "2026-07-11",
       "summary": "Melhorias na criação e gerenciamento de mídias e imagens",
