@@ -18,7 +18,8 @@ export type NotificationType =
   | 'member_removed'
   | 'client_message'
   | 'mention'
-  | 'post_status_automation';
+  | 'post_status_automation'
+  | 'post_publish_failed';
 
 export interface Notification {
   id: string;
