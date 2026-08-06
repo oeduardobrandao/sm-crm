@@ -8,7 +8,6 @@ import posthog from 'posthog-js';
  */
 export type AnalyticsEvent =
   | 'signup_completed'
-  | 'workspace_setup_completed'
   | 'client_created'
   // Two distinct steps, deliberately not collapsed: `_started` fires when the user leaves for
   // Meta's consent screen, `instagram_connected` is the activation milestone and may only be
@@ -71,6 +70,10 @@ export function initAnalytics(): void {
     // fewer profiles is the easier LGPD posture to defend.
     person_profiles: 'identified_only',
     capture_pageview: true,
+    // Unhandled errors and rejections land in PostHog error tracking. Without this a production
+    // JS error is invisible unless a user reports it, and a click that dies on an exception is
+    // indistinguishable from a dead button in the rageclick data.
+    capture_exceptions: true,
   });
   enabled = true;
 }
