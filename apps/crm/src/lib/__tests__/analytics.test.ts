@@ -67,6 +67,23 @@ describe('analytics', () => {
     );
   });
 
+  it('identifies a signup with the bare uuid so signup_completed attaches to a person', async () => {
+    // Under identified_only, an anonymous capture is personless forever. identifySignup must
+    // create the person (uuid only, no email/name) before signup_completed fires.
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
+    const { initAnalytics, identifySignup } = await import('../analytics');
+    initAnalytics();
+    identifySignup('user-1');
+    expect(posthogMock.identify).toHaveBeenCalledWith('user-1');
+  });
+
+  it('identifySignup no-ops when analytics is not configured', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', '');
+    const { identifySignup } = await import('../analytics');
+    identifySignup('user-1');
+    expect(posthogMock.identify).not.toHaveBeenCalled();
+  });
+
   it('groups the user by workspace, because retention is a workspace property', async () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
     const { initAnalytics, identifyWorkspaceUser } = await import('../analytics');

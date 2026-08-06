@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { Sparkles, ChevronRight, Images, Film, Camera } from 'lucide-react';
 import { signIn, signUp, resetPassword } from '../../lib/supabase';
-import { captureEvent } from '@/lib/analytics';
+import { captureEvent, identifySignup } from '@/lib/analytics';
 import { useAuth } from '@/context/AuthContext';
 import { parsePlanIntent, buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
 
@@ -109,6 +109,10 @@ export default function LoginPage() {
       toast.error(error.message);
       return;
     }
+    // Identify BEFORE capturing: under `identified_only` an anonymous `signup_completed` is
+    // personless forever, orphaning every signup from its later activity. signUp returns the
+    // user's uuid even while email confirmation is pending, and the uuid is all identify needs.
+    if (data?.user?.id) identifySignup(data.user.id);
     captureEvent('signup_completed');
     // With email confirmation disabled signUp returns a live session, so the
     // user goes straight to the trial step. When it is enabled there is no

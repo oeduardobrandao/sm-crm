@@ -19,9 +19,15 @@ vi.mock('@/context/AuthContext', () => ({
   useAuth: vi.fn(() => ({ user: null, loading: false })),
 }));
 
+vi.mock('@/lib/analytics', () => ({
+  captureEvent: vi.fn(),
+  identifySignup: vi.fn(),
+}));
+
 import { toast } from 'sonner';
 import { resetPassword, signIn, signUp } from '../../../lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { captureEvent, identifySignup } from '@/lib/analytics';
 import LoginPage from '../LoginPage';
 
 const mockedSignIn = vi.mocked(signIn);
@@ -30,6 +36,8 @@ const mockedResetPassword = vi.mocked(resetPassword);
 const mockedToastSuccess = vi.mocked(toast.success);
 const mockedToastError = vi.mocked(toast.error);
 const mockedUseAuth = vi.mocked(useAuth);
+const mockedCaptureEvent = vi.mocked(captureEvent);
+const mockedIdentifySignup = vi.mocked(identifySignup);
 
 function PathProbe() {
   const location = useLocation();
@@ -113,6 +121,8 @@ describe('LoginPage', () => {
     mockedToastError.mockReset();
     mockedUseAuth.mockReset();
     mockedUseAuth.mockReturnValue({ user: null, loading: false } as never);
+    mockedCaptureEvent.mockReset();
+    mockedIdentifySignup.mockReset();
   });
 
   it('starts on the register tab from the query string and switches between register, forgot, and login flows', () => {
@@ -326,6 +336,32 @@ describe('LoginPage', () => {
     submitRegister(container);
     await waitFor(() => expect(mockedSignUp).toHaveBeenCalled());
     expect(mockedSignUp.mock.calls[0][2]).toMatchObject({ nome: 'Ana', empresa: 'Studio' });
+  });
+
+  it('identifies the new user BEFORE capturing signup_completed, so the event attaches to a person', async () => {
+    // Under PostHog's identified_only mode, a capture fired while anonymous is personless
+    // forever — the order of these two calls is the whole fix for the orphaned-signup funnel.
+    mockedSignUp.mockResolvedValue({
+      data: { session: null, user: { id: 'uuid-1' } },
+      error: null,
+    } as never);
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container);
+    submitRegister(container);
+    await waitFor(() => expect(mockedCaptureEvent).toHaveBeenCalledWith('signup_completed'));
+    expect(mockedIdentifySignup).toHaveBeenCalledWith('uuid-1');
+    expect(mockedIdentifySignup.mock.invocationCallOrder[0]).toBeLessThan(
+      mockedCaptureEvent.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('still captures signup_completed without identifying when signUp returns no user id', async () => {
+    mockedSignUp.mockResolvedValue({ data: { session: null, user: null }, error: null } as never);
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container);
+    submitRegister(container);
+    await waitFor(() => expect(mockedCaptureEvent).toHaveBeenCalledWith('signup_completed'));
+    expect(mockedIdentifySignup).not.toHaveBeenCalled();
   });
 
   it('sends a signed-up user to /comecar carrying the plan intent', async () => {
