@@ -72,7 +72,12 @@ Instagram de *Clínica X*, a pedido de *Agência Y*"), para que o cliente reconh
 legitimidade do pedido, e traz um botão. O clique leva à tela normal de autorização do
 Instagram. Na volta, uma tela de sucesso nomeando o `@username` conectado.
 
-A página não expõe nenhum outro dado do Mesaas além desses dois nomes.
+A página não expõe nenhum outro dado do Mesaas além desses dois nomes, mais o
+`@username` já conectado quando existe um. Esse terceiro campo é necessário para a tela
+"já está conectado" e para a tela de sucesso, ambas descritas acima. Consequência a
+registrar: quem tiver um link vazado descobre o handle do Instagram conectado. O handle
+é público no próprio perfil do Instagram, então a exposição é baixa, mas é mais do que
+"apenas os dois nomes".
 
 ### Aviso de volta
 
@@ -372,7 +377,9 @@ se mostrar ruim, o link copiado continua sendo o caminho principal e nada quebra
   conta ativa gravada para um workspace sem o feature
 - `POST /` concorrente: o segundo colide no índice único e o handler devolve o link
   vivo em vez de propagar erro
-- geração quando já existe link vivo revoga o anterior (o token antigo para de valer)
+- geração quando já existe link vivo DEVOLVE o mesmo link, sem rodá-lo (ver "Geração
+  concorrente"). Só revoga quando a linha existente está expirada. Duas abas clicando
+  em "Gerar" convergem num único token, em vez de uma delas ficar com um token morto
 - callback cujo `created_by` não existe mais conclui a conexão e pula a notificação
 - rate limit dispara, no `/start` e no `/email`
 - `GET /public/:token` não devolve nada além dos dois nomes
