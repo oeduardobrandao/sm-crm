@@ -57,16 +57,30 @@ describe('ConectarPage', () => {
     });
     startPublicConnect.mockResolvedValue('https://www.instagram.com/oauth/authorize?x=1');
     const assign = vi.fn();
+    // window.location has no configurable setter for `assign` alone (jsdom
+    // marks it non-configurable), so the whole object has to be swapped.
+    // Scoped to just this test via try/finally -- must not leak into other
+    // suites sharing a worker/environment.
+    const originalLocation = window.location;
     Object.defineProperty(window, 'location', {
-      value: { ...window.location, assign, search: '' },
+      value: { ...originalLocation, assign, search: '' },
+      configurable: true,
       writable: true,
     });
-    renderAt();
-    await waitFor(() => expect(screen.getByRole('button')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button'));
-    await waitFor(() =>
-      expect(assign).toHaveBeenCalledWith('https://www.instagram.com/oauth/authorize?x=1'),
-    );
+    try {
+      renderAt();
+      await waitFor(() => expect(screen.getByRole('button')).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button'));
+      await waitFor(() =>
+        expect(assign).toHaveBeenCalledWith('https://www.instagram.com/oauth/authorize?x=1'),
+      );
+    } finally {
+      Object.defineProperty(window, 'location', {
+        value: originalLocation,
+        configurable: true,
+        writable: true,
+      });
+    }
   });
 
   test('revoked link shows the revoked state and no button', async () => {
