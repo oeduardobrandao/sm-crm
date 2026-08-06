@@ -37,9 +37,18 @@ export interface ConnectLinkHandlerDeps {
   metaRedirectUri: () => string;
 }
 
-/** Resolves the caller and asserts their workspace owns the client. */
+/**
+ * Resolves the caller and asserts their workspace owns the client.
+ *
+ * `requireFeature` gates CREATING and SENDING links (POST / and POST /email), not
+ * SEEING and REVOKING them (GET / and DELETE /). A plan downgrade must not hide an
+ * already-issued link from the agency, nor block revoking it -- that is precisely
+ * when revoking matters most. Workspace ownership is checked unconditionally either
+ * way; that part is not optional.
+ */
 async function authorize(
   deps: ConnectLinkHandlerDeps, db: DbClient, req: Request, clienteId: number,
+  opts: { requireFeature?: boolean } = {},
 ): Promise<{ userId: string; contaId: string } | { status: number; error: string }> {
   const bearer = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
   if (!bearer || bearer === "undefined" || bearer === "null") {
@@ -55,7 +64,7 @@ async function authorize(
   const { data: cliente } = await db.from("clientes").select("conta_id").eq("id", clienteId).single();
   if (!cliente || cliente.conta_id !== contaId) return { status: 403, error: "Não autorizado" };
 
-  if (!(await deps.planFeature(db, contaId, "feature_instagram"))) {
+  if (opts.requireFeature !== false && !(await deps.planFeature(db, contaId, "feature_instagram"))) {
     return { status: 403, error: "feature_disabled" };
   }
   return { userId: user.id, contaId };
@@ -105,7 +114,15 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
       if (path.startsWith("/public/")) {
         const rest = path.slice("/public/".length);
         const [rawToken, action] = rest.split("/");
-        const token = decodeURIComponent(rawToken ?? "");
+        // A malformed percent-escape (e.g. "%E0%A4%A") throws URIError. A bad token
+        // in a public URL is an ordinary client error, not a server failure -- it
+        // must 404 like an unknown token, not fall through to the generic 500.
+        let token: string;
+        try {
+          token = decodeURIComponent(rawToken ?? "");
+        } catch {
+          return json({ error: "Not found" }, 404);
+        }
         if (!token) return json({ error: "Not found" }, 404);
 
         const { data: link } = await db
@@ -170,10 +187,12 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
       }
 
       // ---- Agency: read the current live link -------------------------------
+      // No entitlement gate: an agency that downgraded off feature_instagram must
+      // still be able to SEE that a link is outstanding (see authorize() above).
       if (req.method === "GET" && path === "") {
         const clienteId = parseClienteId(url.searchParams.get("cliente_id"));
         if (clienteId === null) return json({ error: "cliente_id inválido" }, 400);
-        const auth = await authorize(deps, db, req, clienteId);
+        const auth = await authorize(deps, db, req, clienteId, { requireFeature: false });
         if ("status" in auth) return json({ error: auth.error }, auth.status);
 
         const link = await liveLink(deps, db, clienteId);
@@ -235,10 +254,12 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
       }
 
       // ---- Agency: revoke ---------------------------------------------------
+      // No entitlement gate: revoking must keep working after a downgrade -- that
+      // is exactly when an agency most needs to kill an outstanding link.
       if (req.method === "DELETE" && path === "") {
         const clienteId = parseClienteId(url.searchParams.get("cliente_id"));
         if (clienteId === null) return json({ error: "cliente_id inválido" }, 400);
-        const auth = await authorize(deps, db, req, clienteId);
+        const auth = await authorize(deps, db, req, clienteId, { requireFeature: false });
         if ("status" in auth) return json({ error: auth.error }, auth.status);
 
         await db
@@ -260,15 +281,18 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
         const auth = await authorize(deps, db, req, clienteId);
         if ("status" in auth) return json({ error: auth.error }, auth.status);
 
+        // Checked before the rate limit: a client with no live link can never send
+        // anything, so a request against one must not spend the agency's 5/hour
+        // budget -- that budget exists to bound actual sends, not empty-handed clicks.
+        const link = await liveLink(deps, db, clienteId);
+        if (!link) return json({ error: "Nenhum link ativo" }, 404);
+
         // Sem isto o endpoint é um relay de e-mail apontável para qualquer
         // destinatário por qualquer membro autenticado.
         const allowed = await deps.rateLimit(
           db, `ig-connect-link-email:${clienteId}`, EMAIL_MAX_PER_HOUR, 3600,
         );
         if (!allowed) return json({ error: "Muitos envios. Tente novamente mais tarde." }, 429);
-
-        const link = await liveLink(deps, db, clienteId);
-        if (!link) return json({ error: "Nenhum link ativo" }, 404);
 
         const { data: cliente } = await db.from("clientes").select("nome").eq("id", clienteId).single();
         const { data: workspace } = await db.from("workspaces").select("name").eq("id", auth.contaId).single();

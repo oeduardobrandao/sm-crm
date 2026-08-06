@@ -88,14 +88,89 @@ Deno.test("agency GET: 403 when the client belongs to another workspace", async 
   assertEquals(res.status, 403);
 });
 
-Deno.test("agency GET: 403 when feature_instagram is off", async () => {
+// Downgrade must not hide an already-issued link nor block revoking it -- that
+// is precisely when the agency most needs to see and kill it. The entitlement
+// gates CREATING and SENDING (POST / and POST /email) only.
+
+Deno.test("agency GET: still succeeds when feature_instagram is off (seeing a link survives a downgrade)", async () => {
   const h = createConnectLinkHandler(makeDeps({
-    createDb: () => makeDb({ profiles: { conta_id: CONTA }, clientes: { conta_id: CONTA } }),
+    createDb: () => makeDb({
+      profiles: { conta_id: CONTA },
+      clientes: { conta_id: CONTA },
+      links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
+    }),
+    planFeature: () => Promise.resolve(false),
+  }));
+  const res = await h(req("GET", "?cliente_id=42"));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { link: { url: `${BASE}/conectar/tok-9`, expires_at: FUTURE } });
+});
+
+Deno.test("agency GET: a caller from the wrong workspace is still rejected even when feature_instagram is off", async () => {
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({ profiles: { conta_id: CONTA }, clientes: { conta_id: OTHER_CONTA } }),
     planFeature: () => Promise.resolve(false),
   }));
   const res = await h(req("GET", "?cliente_id=42"));
   assertEquals(res.status, 403);
+});
+
+Deno.test("agency DELETE: still succeeds when feature_instagram is off (revoking survives a downgrade)", async () => {
+  let updated: Record<string, unknown> | null = null;
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { conta_id: CONTA },
+      clientes: { conta_id: CONTA },
+      onUpdate: (_t, values) => { updated = values; },
+    }),
+    planFeature: () => Promise.resolve(false),
+  }));
+  const res = await h(req("DELETE", "?cliente_id=42"));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { ok: true });
+  assertEquals(updated, { revoked_at: NOW });
+});
+
+Deno.test("agency DELETE: a caller from the wrong workspace is still rejected even when feature_instagram is off", async () => {
+  let updated = 0;
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { conta_id: CONTA },
+      clientes: { conta_id: OTHER_CONTA },
+      onUpdate: () => { updated++; },
+    }),
+    planFeature: () => Promise.resolve(false),
+  }));
+  const res = await h(req("DELETE", "?cliente_id=42"));
+  assertEquals(res.status, 403);
+  assertEquals(updated, 0);
+});
+
+Deno.test("agency POST: still 403 when feature_instagram is off (creating a link stays gated)", async () => {
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({ profiles: { conta_id: CONTA }, clientes: { conta_id: CONTA } }),
+    planFeature: () => Promise.resolve(false),
+  }));
+  const res = await h(req("POST", "", { cliente_id: 42 }));
+  assertEquals(res.status, 403);
   assertEquals((await res.json()).error, "feature_disabled");
+});
+
+Deno.test("agency POST /email: still 403 when feature_instagram is off (sending stays gated)", async () => {
+  let sent = 0;
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { conta_id: CONTA },
+      clientes: { conta_id: CONTA, nome: "Clínica X" },
+      links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
+    }),
+    planFeature: () => Promise.resolve(false),
+    sendClientEmail: () => { sent++; return Promise.resolve(); },
+  }));
+  const res = await h(req("POST", "/email", { cliente_id: 42, email: "c@x.com" }));
+  assertEquals(res.status, 403);
+  assertEquals((await res.json()).error, "feature_disabled");
+  assertEquals(sent, 0);
 });
 
 Deno.test("agency GET: returns null when there is no live link", async () => {
@@ -245,6 +320,27 @@ Deno.test("agency POST /email: 403 when the client belongs to another workspace,
   assertEquals(sent, 0);
 });
 
+Deno.test("agency POST /email: 404 when there is no live link, and the rate limiter is never consulted", async () => {
+  // The live-link lookup must run BEFORE the rate limit call: a client with no
+  // live link can never send anything, so hitting this endpoint must not spend
+  // the agency's 5/hour budget on a request that could never have sent.
+  let sent = 0;
+  let rateLimitCalls = 0;
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { conta_id: CONTA },
+      clientes: { conta_id: CONTA, nome: "Clínica X" },
+      links: null,
+    }),
+    rateLimit: () => { rateLimitCalls++; return Promise.resolve(true); },
+    sendClientEmail: () => { sent++; return Promise.resolve(); },
+  }));
+  const res = await h(req("POST", "/email", { cliente_id: 42, email: "c@x.com" }));
+  assertEquals(res.status, 404);
+  assertEquals(rateLimitCalls, 0);
+  assertEquals(sent, 0);
+});
+
 Deno.test("agency POST /email: 429 when rate limited, and nothing is sent", async () => {
   let sent = 0;
   const h = createConnectLinkHandler(makeDeps({
@@ -333,6 +429,14 @@ function publicReq(method: string, path: string) {
 Deno.test("public GET: 404 for an unknown token", async () => {
   const h = createConnectLinkHandler(makeDeps({ createDb: () => makeDb({ links: null }) }));
   const res = await h(publicReq("GET", "/public/nope"));
+  assertEquals(res.status, 404);
+});
+
+Deno.test("public GET: a malformed percent-escape 404s instead of 500", async () => {
+  // decodeURIComponent throws URIError on a truncated escape sequence. A bad
+  // token in a public URL is an ordinary client error, same as an unknown token.
+  const h = createConnectLinkHandler(makeDeps({ createDb: () => makeDb({ links: null }) }));
+  const res = await h(publicReq("GET", "/public/%E0%A4%A"));
   assertEquals(res.status, 404);
 });
 

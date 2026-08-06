@@ -8,7 +8,7 @@ import { buildMetricFields, fetchPostInsights } from "../_shared/instagram-metri
 import { cachePostThumbnail } from "../_shared/instagram-thumbnail-cache.ts";
 import { sendCronFailureEmail } from "../_shared/notify.ts";
 import { classifyOAuthError, isAppConfigError } from "./oauth-error.ts";
-import { consumeConnectLink } from "../instagram-connect-link/gate.ts";
+import { gateConnectLinkOrigin } from "../instagram-connect-link/gate.ts";
 import { sendConnectedNoticeEmail } from "../_shared/instagram-connect-email.ts";
 import { appBaseUrl } from "../_shared/app-url.ts";
 
@@ -344,17 +344,16 @@ Deno.serve(async (req) => {
             // conta ativa gravada para um workspace que perdeu o feature. contaId vem do
             // state assinado (HMAC) -- é o mesmo workspace que o portão devolveria em
             // consumed.conta_id, mas ainda não passamos pelo portão neste ponto.
-            if (!(await effectivePlanFeature(serviceClient, contaId, 'feature_instagram'))) {
-                throw new Error('CONNECT_LINK_REVOKED');
-            }
-            const consumed = await consumeConnectLink(serviceClient, linkToken, new Date().toISOString());
-            if (!consumed) throw new Error('CONNECT_LINK_REVOKED');
-            if (String(consumed.cliente_id) !== String(clientId)) {
-                // O state é assinado, então isto não deveria acontecer. Se acontecer,
-                // algo está muito errado e não escrevemos nada.
-                console.error('[IG-CALLBACK] link/state client mismatch', consumed.cliente_id, clientId);
-                throw new Error('CONNECT_LINK_REVOKED');
-            }
+            const originGate = await gateConnectLinkOrigin(
+                // deno-lint-ignore no-explicit-any
+                { planFeature: (db, c, k) => effectivePlanFeature(db as any, c, k) },
+                serviceClient,
+                linkToken,
+                clientId,
+                contaId,
+                new Date().toISOString(),
+            );
+            if (!originGate.proceed) throw new Error(originGate.reason);
         }
 
         // Upsert into DB (with insights + last_synced_at)

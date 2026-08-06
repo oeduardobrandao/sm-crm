@@ -46,3 +46,54 @@ export async function consumeConnectLink(
     .maybeSingle();
   return (data as ConsumedLink | null) ?? null;
 }
+
+export interface ConnectLinkOriginDeps {
+  planFeature: (db: DbClient, contaId: string, featureKey: string) => Promise<boolean>;
+}
+
+export type ConnectLinkOriginResult =
+  | { proceed: true; consumed: ConsumedLink }
+  | { proceed: false; reason: string };
+
+/**
+ * Portão completo do fluxo originado por link, chamado pelo callback do OAuth
+ * logo antes do upsert em instagram_accounts. Encapsula as três checagens que
+ * têm que passar para que a escrita seja legítima:
+ *
+ *  1. reconferir a entitlement -- o state assinado vive 10 minutos, e um
+ *     downgrade dentro dessa janela não pode resultar numa conta ativa gravada
+ *     para um workspace que perdeu o feature;
+ *  2. o portão atômico (consumeConnectLink) -- ver o comentário lá para o porquê
+ *     de ser um UPDATE condicional e não um select seguido de update;
+ *  3. a checagem de mismatch client_id/state -- o state é assinado, então isto
+ *     não deveria acontecer, mas se acontecer nada é escrito.
+ *
+ * Devolve `proceed: false` em qualquer uma das três falhas, sempre com o mesmo
+ * `reason` ("CONNECT_LINK_REVOKED") que o callback já usava como mensagem do
+ * Error lançado -- classifyOAuthError depende exatamente desse texto.
+ *
+ * Este módulo não faz nem o upsert nem a notificação nem o e-mail: só decide se
+ * o chamador pode prosseguir. Mover essas partes para cá ampliaria o escopo do
+ * que está sendo mudado no callback OAuth ao vivo sem necessidade.
+ */
+export async function gateConnectLinkOrigin(
+  deps: ConnectLinkOriginDeps,
+  db: DbClient,
+  linkToken: string,
+  clientId: string | number,
+  contaId: string,
+  nowIso: string,
+): Promise<ConnectLinkOriginResult> {
+  if (!(await deps.planFeature(db, contaId, "feature_instagram"))) {
+    return { proceed: false, reason: "CONNECT_LINK_REVOKED" };
+  }
+  const consumed = await consumeConnectLink(db, linkToken, nowIso);
+  if (!consumed) return { proceed: false, reason: "CONNECT_LINK_REVOKED" };
+  if (String(consumed.cliente_id) !== String(clientId)) {
+    // O state é assinado, então isto não deveria acontecer. Se acontecer,
+    // algo está muito errado e não escrevemos nada.
+    console.error("[IG-CALLBACK] link/state client mismatch", consumed.cliente_id, clientId);
+    return { proceed: false, reason: "CONNECT_LINK_REVOKED" };
+  }
+  return { proceed: true, consumed };
+}
