@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mesaas CRM — Architecture & Flows</title>
+<!-- NOTE: Card data and flows must match architecture.json. If updating, keep both in sync. -->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
+
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',system-ui,sans-serif;background:#0d1117;color:#e6edf3;overflow:hidden;height:100vh}
+
+.header{padding:20px 28px 14px;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0}
+.header h1{font-family:'DM Mono',monospace;font-size:1.2rem;font-weight:500;color:#e6edf3;margin-bottom:4px}
+.header p{font-size:.78rem;color:#8b949e;line-height:1.5;max-width:750px}
+.header p strong{color:#e6edf3}
+
+.legend{display:flex;gap:14px;margin-top:10px;flex-wrap:wrap}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:.7rem;color:#8b949e}
+.legend-dot{width:9px;height:9px;border-radius:2px;flex-shrink:0;display:inline-block}
+
+.app{display:flex;flex-direction:column;height:100vh}
+.main{display:flex;flex:1;overflow:hidden}
+
+.diagram{flex:1;overflow:auto;position:relative}
+.diagram-inner{position:relative;padding:20px 24px 40px}
+
+svg.arrows{position:absolute;top:0;left:0;pointer-events:none;z-index:5}
+svg.arrows path{fill:none;stroke:#eab308;stroke-width:2;stroke-opacity:.55}
+svg.arrows circle.step-dot{fill:#eab308}
+svg.arrows text.step-num{fill:#0d1117;font-family:'DM Mono',monospace;font-size:10px;font-weight:700;dominant-baseline:central;text-anchor:middle}
+
+.columns{display:grid;grid-template-columns:repeat(7,minmax(155px,1fr));gap:12px;position:relative;z-index:2}
+
+.column{display:flex;flex-direction:column;gap:8px}
+.col-header{font-family:'DM Mono',monospace;font-size:.62rem;font-weight:500;color:#484f58;text-transform:uppercase;letter-spacing:1.4px;padding:0 2px 6px;border-bottom:1px solid rgba(255,255,255,.04);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.card{background:#161b22;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 12px;border-left:3px solid transparent;transition:background .2s,border-color .25s,box-shadow .25s;cursor:default}
+.card:hover{background:#1c2129}
+.card.highlighted{border-color:#eab308 !important;background:rgba(234,179,8,.07);box-shadow:0 0 16px rgba(234,179,8,.1)}
+.card-title{font-family:'DM Mono',monospace;font-size:.76rem;font-weight:500;color:#e6edf3;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-subtitle{font-size:.65rem;color:#484f58;line-height:1.35}
+.card.highlighted .card-title{color:#eab308}
+
+.cat-actor{border-left-color:#f55a42}
+.cat-surface{border-left-color:#42c8f5}
+.cat-page{border-left-color:#a855f7}
+.cat-service{border-left-color:#3ecf8e}
+.cat-edge-fn{border-left-color:#818cf8}
+.cat-storage{border-left-color:#f5a342}
+.cat-external{border-left-color:#6b7280}
+
+.sidebar{width:360px;border-left:1px solid rgba(255,255,255,.06);overflow-y:auto;padding:18px;flex-shrink:0}
+
+.sb-title{font-family:'DM Mono',monospace;font-size:.68rem;font-weight:500;color:#484f58;text-transform:uppercase;letter-spacing:1.4px;margin-bottom:6px;margin-top:10px}
+.sb-title:first-child{margin-top:0}
+
+.flow-item{background:#161b22;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:9px 12px;cursor:pointer;transition:all .2s;margin-bottom:6px}
+.flow-item:hover{background:#1c2129;border-color:rgba(255,255,255,.1)}
+.flow-item.selected{border-color:#eab308;background:rgba(234,179,8,.08)}
+.flow-title{font-family:'DM Mono',monospace;font-size:.74rem;font-weight:500;color:#e6edf3}
+.flow-item.selected .flow-title{color:#eab308}
+.flow-desc{font-size:.65rem;color:#8b949e;margin-top:1px}
+
+.clear-btn{font-family:'DM Mono',monospace;font-size:.68rem;color:#8b949e;background:#161b22;border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:5px 12px;cursor:pointer;transition:all .2s;margin-top:6px;display:none}
+.clear-btn:hover{color:#e6edf3;border-color:rgba(255,255,255,.2)}
+
+.steps-section{margin-top:6px;display:none}
+.step{display:flex;gap:10px;margin-bottom:14px}
+.step-number{width:22px;height:22px;border-radius:50%;background:#eab308;color:#0d1117;font-family:'DM Mono',monospace;font-size:.68rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.step-content{flex:1;min-width:0}
+.step-route{font-family:'DM Mono',monospace;font-size:.7rem;font-weight:500;color:#8b949e;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step-action{font-family:'DM Mono',monospace;font-size:.72rem;font-weight:500;color:#e6edf3}
+.step-desc{font-size:.65rem;color:#6e7681;line-height:1.35;margin-top:2px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1>Mesaas CRM — Architecture & Flows</h1>
+    <p>Every package, service, and external integration that powers <strong>Mesaas CRM</strong>, <strong>Hub</strong>, and <strong>Admin</strong>. Pick a flow on the right to highlight the path through the system and see what gets passed at each step.</p>
+    <div class="legend">
+      <span class="legend-item"><span class="legend-dot" style="background:#f55a42"></span>Actor</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#42c8f5"></span>Client Surface</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#a855f7"></span>CRM Page</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#3ecf8e"></span>State & Service</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#818cf8"></span>Edge Function (Deno)</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#f5a342"></span>Storage / Data</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#6b7280"></span>External Service</span>
+    </div>
+  </div>
+  <div class="main">
+    <div class="diagram" id="diagram">
+      <div class="diagram-inner" id="diagram-inner">
+        <svg class="arrows" id="arrows" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="columns" id="columns">
+
+          <!-- ACTORS -->
+          <div class="column">
+            <div class="col-header">ACTORS</div>
+            <div class="card cat-actor" id="end-user"><div class="card-title">End User (Client)</div><div class="card-subtitle">Hub portal · post approvals</div></div>
+            <div class="card cat-actor" id="agency-owner"><div class="card-title">Agency Owner</div><div class="card-subtitle">owner role · full CRM access</div></div>
+            <div class="card cat-actor" id="agency-admin"><div class="card-title">Agency Admin</div><div class="card-subtitle">admin role · full CRM access</div></div>
+            <div class="card cat-actor" id="agency-agent"><div class="card-title">Agency Agent</div><div class="card-subtitle">agent role · limited views</div></div>
+            <div class="card cat-actor" id="platform-admin"><div class="card-title">Platform Admin</div><div class="card-subtitle">super-admin · workspace ops</div></div>
+          </div>
+
+          <!-- CLIENT SURFACES -->
+          <div class="column">
+            <div class="col-header">CLIENT SURFACES</div>
+            <div class="card cat-surface" id="crm-app"><div class="card-title">CRM App</div><div class="card-subtitle">apps/crm/ · 26 routes · React 19</div></div>
+            <div class="card cat-surface" id="hub-app"><div class="card-title">Hub App</div><div class="card-subtitle">apps/hub/ · 8 pages · token auth</div></div>
+            <div class="card cat-surface" id="admin-app"><div class="card-title">Admin App</div><div class="card-subtitle">apps/admin/ · 7 routes · platform ops</div></div>
+            <div class="card cat-surface" id="legacy-portal"><div class="card-title">Legacy Portal</div><div class="card-subtitle">/portal/:token · per-workflow</div></div>
+            <div class="card cat-surface" id="packages-ui"><div class="card-title">packages/ui</div><div class="card-subtitle">shared primitives · 10 exports</div></div>
+          </div>
+
+          <!-- CRM PAGES -->
+          <div class="column">
+            <div class="col-header">CRM PAGES</div>
+            <div class="card cat-page" id="dashboard-page"><div class="card-title">Dashboard</div><div class="card-subtitle">KPIs · revenue · charts</div></div>
+            <div class="card cat-page" id="clientes-page"><div class="card-title">Clientes</div><div class="card-subtitle">client CRUD · filters · CSV</div></div>
+            <div class="card cat-page" id="cliente-detalhe"><div class="card-title">Cliente Detalhe</div><div class="card-subtitle">tabs: workflows · IG · Hub · files</div></div>
+            <div class="card cat-page" id="entregas-page"><div class="card-title">Entregas</div><div class="card-subtitle">kanban · posts · deadlines</div></div>
+            <div class="card cat-page" id="analytics-page"><div class="card-title">Analytics</div><div class="card-subtitle">portfolio overview · ranked posts</div></div>
+            <div class="card cat-page" id="analytics-conta"><div class="card-title">Analytics Conta</div><div class="card-subtitle">per-account · demographics · AI</div></div>
+            <div class="card cat-page" id="financeiro-page"><div class="card-title">Financeiro</div><div class="card-subtitle">transactions · contracts</div></div>
+            <div class="card cat-page" id="configuracao-page"><div class="card-title">Configuracao</div><div class="card-subtitle">settings · team · invites</div></div>
+          </div>
+
+          <!-- STATE & SERVICES -->
+          <div class="column">
+            <div class="col-header">STATE & SERVICES</div>
+            <div class="card cat-service" id="auth-context"><div class="card-title">AuthContext</div><div class="card-subtitle">session · role · profile cache</div></div>
+            <div class="card cat-service" id="store-layer"><div class="card-title">store/</div><div class="card-subtitle">14 modules · Supabase CRUD</div></div>
+            <div class="card cat-service" id="svc-instagram"><div class="card-title">services/instagram</div><div class="card-subtitle">OAuth · sync · schedule</div></div>
+            <div class="card cat-service" id="svc-analytics"><div class="card-title">services/analytics</div><div class="card-subtitle">portfolio · per-account queries</div></div>
+            <div class="card cat-service" id="svc-post-media"><div class="card-title">services/postMedia</div><div class="card-subtitle">upload pipeline · thumbnails</div></div>
+          </div>
+
+          <!-- EDGE FUNCTIONS -->
+          <div class="column">
+            <div class="col-header">EDGE FUNCTIONS</div>
+            <div class="card cat-edge-fn" id="fn-ig-integration"><div class="card-title">instagram-integration</div><div class="card-subtitle">OAuth · sync · 704 lines</div></div>
+            <div class="card cat-edge-fn" id="fn-ig-analytics"><div class="card-title">instagram-analytics</div><div class="card-subtitle">insights · AI · 1262 lines</div></div>
+            <div class="card cat-edge-fn" id="fn-ig-publish"><div class="card-title">instagram-publish</div><div class="card-subtitle">schedule · cancel · retry · publish-now</div></div>
+            <div class="card cat-edge-fn" id="fn-hub-group"><div class="card-title">Hub functions (9)</div><div class="card-subtitle">bootstrap · posts · approve · brand · briefing · ideias</div></div>
+            <div class="card cat-edge-fn" id="fn-file-group"><div class="card-title">File & media fns (11)</div><div class="card-subtitle">upload · manage · media · zip · sign</div></div>
+            <div class="card cat-edge-fn" id="fn-platform-admin"><div class="card-title">platform-admin</div><div class="card-subtitle">workspace · plan · banner CRUD</div></div>
+            <div class="card cat-edge-fn" id="fn-workspace-limits"><div class="card-title">workspace-limits</div><div class="card-subtitle">plan caps · 18 feature flags</div></div>
+            <div class="card cat-edge-fn" id="fn-invite-user"><div class="card-title">invite-user</div><div class="card-subtitle">team invites · role assignment</div></div>
+            <div class="card cat-edge-fn" id="fn-cron-jobs"><div class="card-title">Cron jobs (9)</div><div class="card-subtitle">publish · refresh · sync · deadlines · reports</div></div>
+          </div>
+
+          <!-- STORAGE / DATA -->
+          <div class="column">
+            <div class="col-header">STORAGE / DATA</div>
+            <div class="card cat-storage" id="supabase-postgres"><div class="card-title">Supabase Postgres</div><div class="card-subtitle">30+ tables · RLS · pg_cron</div></div>
+            <div class="card cat-storage" id="supabase-auth"><div class="card-title">Supabase Auth</div><div class="card-subtitle">JWT sessions · user accounts</div></div>
+            <div class="card cat-storage" id="cloudflare-r2"><div class="card-title">Cloudflare R2</div><div class="card-subtitle">media · files · report PDFs</div></div>
+            <div class="card cat-storage" id="analytics-cache"><div class="card-title">Analytics Cache</div><div class="card-subtitle">instagram_analytics_cache · 6-24h</div></div>
+          </div>
+
+          <!-- EXTERNAL SERVICES -->
+          <div class="column">
+            <div class="col-header">EXTERNAL SERVICES</div>
+            <div class="card cat-external" id="meta-graph-api"><div class="card-title">Meta Graph API</div><div class="card-subtitle">Instagram OAuth · insights · publish</div></div>
+            <div class="card cat-external" id="google-gemini"><div class="card-title">Google Gemini</div><div class="card-subtitle">AI analysis · 2.5 Flash</div></div>
+            <div class="card cat-external" id="vercel-hosting"><div class="card-title">Vercel</div><div class="card-subtitle">SPA hosting · rewrites · analytics</div></div>
+            <div class="card cat-external" id="sentry"><div class="card-title">Sentry</div><div class="card-subtitle">error tracking · optional</div></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar" id="sidebar">
+      <div class="sb-title">FLOWS</div>
+      <div class="flow-item" data-flow="auth"><div class="flow-title">User Authentication</div><div class="flow-desc">Agency user signs in to the CRM dashboard</div></div>
+      <div class="flow-item" data-flow="instagram-oauth"><div class="flow-title">Instagram OAuth Connection</div><div class="flow-desc">Connect a client's Instagram account</div></div>
+      <div class="flow-item" data-flow="post-lifecycle"><div class="flow-title">Post Lifecycle & Publish</div><div class="flow-desc">Draft → review → approval → schedule → publish</div></div>
+      <div class="flow-item" data-flow="hub-access"><div class="flow-title">Hub Client Portal Access</div><div class="flow-desc">Client views posts, brand, and analytics</div></div>
+      <div class="flow-item" data-flow="hub-content"><div class="flow-title">Hub Content Experience</div><div class="flow-desc">Brand kit, pages, briefing, ideias</div></div>
+      <div class="flow-item" data-flow="analytics-ai"><div class="flow-title">Analytics & AI Analysis</div><div class="flow-desc">Portfolio insights and Gemini-powered analysis</div></div>
+      <div class="flow-item" data-flow="media-upload"><div class="flow-title">Media Upload Pipeline</div><div class="flow-desc">Upload via presigned R2 → files + post_file_links</div></div>
+      <div class="flow-item" data-flow="team-invite"><div class="flow-title">Team Invite & Onboarding</div><div class="flow-desc">Owner invites a new team member</div></div>
+      <div class="flow-item" data-flow="admin-portal"><div class="flow-title">Admin Portal Management</div><div class="flow-desc">Super-admin: workspaces, plans, banners</div></div>
+      <div class="flow-item" data-flow="ig-token-lifecycle"><div class="flow-title">Instagram Token Lifecycle</div><div class="flow-desc">Automated token refresh and account sync</div></div>
+      <button class="clear-btn" id="clear-btn">Clear selection</button>
+      <div class="steps-section" id="steps-section">
+        <div class="sb-title">STEPS</div>
+        <div id="steps-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var FLOWS = {
+  'auth': {
+    cards: ['agency-owner','crm-app','auth-context','supabase-auth','supabase-postgres'],
+    steps: [
+      { n:1, from:'agency-owner', to:'crm-app',          route:'Agency Owner → CRM App',        action:'Opens /login page',             desc:'User navigates to the CRM login page.' },
+      { n:2, from:'crm-app',      to:'auth-context',     route:'CRM App → AuthContext',         action:'signInWithPassword()',           desc:'Calls Supabase Auth via the AuthContext provider.' },
+      { n:3, from:'auth-context', to:'supabase-auth',    route:'AuthContext → Supabase Auth',   action:'JWT session token',             desc:'Authenticates credentials, returns JWT session.' },
+      { n:4, from:'auth-context', to:'supabase-postgres',route:'AuthContext → Postgres',        action:'getCurrentProfile()',            desc:'Fetches role (owner/admin/agent) from profiles table.' },
+      { n:5, from:'auth-context', to:'crm-app',          route:'AuthContext → CRM App',         action:'Sets role, renders /dashboard',  desc:'AuthProvider populates context, app renders protected routes.' }
+    ]
+  },
+  'instagram-oauth': {
+    cards: ['agency-owner','cliente-detalhe','svc-instagram','fn-ig-integration','supabase-postgres','meta-graph-api','crm-app'],
+    steps: [
+      { n:1, from:'agency-owner',     to:'cliente-detalhe',   route:'Agency Owner → Cliente Detalhe',              action:'Clicks "Conectar Instagram"',         desc:'Opens Instagram tab on client detail page.' },
+      { n:2, from:'svc-instagram',    to:'fn-ig-integration', route:'services/instagram → instagram-integration',  action:'GET /auth/:clientId',                  desc:'Requests OAuth URL from edge function with JWT.' },
+      { n:3, from:'fn-ig-integration',to:'supabase-postgres', route:'instagram-integration → Postgres',            action:'Create oauth_states nonce',             desc:'HMAC-SHA256 signed one-time nonce for CSRF protection.' },
+      { n:4, from:'fn-ig-integration',to:'meta-graph-api',    route:'instagram-integration → Meta API',            action:'Redirect to Instagram OAuth',           desc:'Builds Business Login URL with signed state parameter.' },
+      { n:5, from:'meta-graph-api',   to:'fn-ig-integration', route:'Meta API → instagram-integration',            action:'Callback with auth code',               desc:'Instagram redirects back with authorization code.' },
+      { n:6, from:'fn-ig-integration',to:'meta-graph-api',    route:'instagram-integration → Meta API',            action:'Exchange code → long-lived token', desc:'Gets 60-day token via graph.instagram.com/access_token.' },
+      { n:7, from:'fn-ig-integration',to:'supabase-postgres', route:'instagram-integration → Postgres',            action:'Store encrypted token + seed data',     desc:'AES-GCM encrypts token, upserts instagram_accounts, seeds posts.' },
+      { n:8, from:'fn-ig-integration',to:'crm-app',           route:'instagram-integration → CRM App',             action:'302 redirect → /clientes/:id',     desc:'Returns user to client detail page with connected account.' }
+    ]
+  },
+  'post-lifecycle': {
+    cards: ['agency-agent','entregas-page','supabase-postgres','svc-post-media','fn-file-group','cloudflare-r2','agency-owner','end-user','hub-app','fn-hub-group','svc-instagram','fn-ig-publish','fn-cron-jobs','meta-graph-api'],
+    steps: [
+      { n:1,  from:'agency-agent',  to:'entregas-page',     route:'Agent → Entregas',                     action:'Creates post (rascunho)',             desc:'Adds workflow_posts row with status "rascunho" (draft).' },
+      { n:2,  from:'svc-post-media',to:'fn-file-group',     route:'postMedia → File functions',            action:'Upload media',                       desc:'file-upload-url → R2 PUT → file-upload-finalize. Inserts files + post_file_links.' },
+      { n:3,  from:'svc-post-media',to:'cloudflare-r2',     route:'postMedia → R2',                       action:'PUT media file + thumbnail',         desc:'Direct XHR upload with progress. Client-side thumbnail and blur hash.' },
+      { n:4,  from:'agency-agent',  to:'entregas-page',     route:'Agent → Entregas',                     action:'Submit for review (revisao_interna)', desc:'Moves post through internal review. Alt: skip to enviado_cliente.' },
+      { n:5,  from:'agency-owner',  to:'entregas-page',     route:'Owner → Entregas',                     action:'Approve + send to client',           desc:'Internal approval (aprovado_interno), then sent to client (enviado_cliente).' },
+      { n:6,  from:'end-user',      to:'hub-app',           route:'Client → Hub App',                     action:'Reviews and approves post',          desc:'Client approves (aprovado_cliente) or requests correction (correcao_cliente).' },
+      { n:7,  from:'hub-app',       to:'fn-hub-group',      route:'Hub App → hub-approve',                action:'Record approval + auto-publish check',desc:'Inserts post_approvals. If auto_publish_on_approval: sets agendado.' },
+      { n:8,  from:'svc-instagram', to:'fn-ig-publish',     route:'services/instagram → instagram-publish',action:'Schedule post (if not auto)',        desc:'Manual schedule. Also supports cancel, retry, publish-now.' },
+      { n:9,  from:'fn-ig-publish', to:'meta-graph-api',    route:'instagram-publish → Meta API',          action:'Create media container',             desc:'Creates single/carousel/video container via Graph API.' },
+      { n:10, from:'fn-cron-jobs',  to:'meta-graph-api',    route:'Cron → Meta API',                      action:'Publish at scheduled time',          desc:'instagram-publish-cron claims due posts. On failure: falha_publicacao.' },
+      { n:11, from:'fn-cron-jobs',  to:'supabase-postgres', route:'Cron → Postgres',                      action:'Status → postado',              desc:'Stores instagram_media_id and permalink. 9 states total in lifecycle.' }
+    ]
+  },
+  'hub-access': {
+    cards: ['end-user','hub-app','fn-hub-group','supabase-postgres','cloudflare-r2','meta-graph-api'],
+    steps: [
+      { n:1, from:'end-user',    to:'hub-app',           route:'End User → Hub App',           action:'Opens /:workspace/hub/:token', desc:'Client accesses their unique portal URL.' },
+      { n:2, from:'hub-app',     to:'fn-hub-group',      route:'Hub App → Hub functions',      action:'hub-bootstrap',                desc:'Validates token, returns workspace config and feature flags.' },
+      { n:3, from:'fn-hub-group',to:'supabase-postgres',  route:'Hub functions → Postgres',    action:'Check client_hub_tokens',      desc:'Verifies token is active and not expired.' },
+      { n:4, from:'hub-app',     to:'fn-hub-group',      route:'Hub App → Hub functions',      action:'hub-posts',                    desc:'Fetches posts pending client approval.' },
+      { n:5, from:'fn-hub-group',to:'cloudflare-r2',     route:'Hub functions → R2',           action:'Sign media URLs',              desc:'Generates presigned GET URLs for post media display.' },
+      { n:6, from:'hub-app',     to:'fn-hub-group',      route:'Hub App → Hub functions',      action:'hub-brand',                    desc:'Fetches brand kit (logo, colors, fonts, files).' },
+      { n:7, from:'hub-app',     to:'fn-hub-group',      route:'Hub App → Hub functions',      action:'hub-dashboard',                desc:'Fetches analytics data for Hub homepage.' },
+      { n:8, from:'fn-hub-group',to:'meta-graph-api',    route:'Hub functions → Meta API',     action:'Live IG data',                 desc:'Decrypts token, fetches follower/reach data from Graph API.' }
+    ]
+  },
+  'hub-content': {
+    cards: ['end-user','hub-app','fn-hub-group','supabase-postgres','cloudflare-r2'],
+    steps: [
+      { n:1,  from:'end-user',    to:'hub-app',       route:'Client → Hub App',            action:'Navigate to Marca',           desc:'Client views brand kit page with logo, colors, fonts.' },
+      { n:2,  from:'hub-app',     to:'fn-hub-group',  route:'Hub App → hub-brand',         action:'Fetch brand kit',             desc:'Returns hub_brand + hub_brand_files with signed R2 URLs.' },
+      { n:3,  from:'fn-hub-group',to:'cloudflare-r2', route:'hub-brand → R2',              action:'Sign brand file URLs',        desc:'Generates presigned GET URLs for brand file downloads.' },
+      { n:4,  from:'end-user',    to:'hub-app',       route:'Client → Hub App',            action:'Navigate to Paginas',         desc:'Client views custom rich-text pages created by agency.' },
+      { n:5,  from:'hub-app',     to:'fn-hub-group',  route:'Hub App → hub-pages',         action:'Fetch TipTap content',        desc:'Returns hub_pages with rich-text content per page.' },
+      { n:6,  from:'end-user',    to:'hub-app',       route:'Client → Hub App',            action:'Navigate to Briefing',        desc:'Client answers briefing questions from agency.' },
+      { n:7,  from:'hub-app',     to:'fn-hub-group',  route:'Hub App → hub-briefing',      action:'GET questions / POST answers', desc:'Reads questions by section, submits answers to hub_briefing_questions.' },
+      { n:8,  from:'end-user',    to:'hub-app',       route:'Client → Hub App',            action:'Navigate to Ideias',          desc:'Client submits content ideas for the agency to review.' },
+      { n:9,  from:'hub-app',     to:'fn-hub-group',  route:'Hub App → hub-ideias',        action:'POST new idea',               desc:'Creates ideia row with status "nova" in ideias table.' },
+      { n:10, from:'fn-hub-group',to:'supabase-postgres',route:'Hub functions → Postgres', action:'Upsert content data',         desc:'Writes to hub_briefing_questions and ideias tables.' }
+    ]
+  },
+  'analytics-ai': {
+    cards: ['agency-owner','analytics-page','analytics-conta','svc-analytics','fn-ig-analytics','supabase-postgres','analytics-cache','meta-graph-api','google-gemini'],
+    steps: [
+      { n:1, from:'agency-owner',    to:'analytics-page',    route:'Agency Owner → Analytics',                    action:'Views portfolio overview',    desc:'Portfolio-level overview of all connected Instagram accounts.' },
+      { n:2, from:'svc-analytics',   to:'supabase-postgres', route:'services/analytics → Postgres',               action:'Direct RLS queries',          desc:'Queries posts, accounts, follower history via Supabase client.' },
+      { n:3, from:'agency-owner',    to:'analytics-conta',   route:'Agency Owner → Analytics Conta',              action:'Per-account view',            desc:'Opens detailed analytics for a single Instagram account.' },
+      { n:4, from:'svc-analytics',   to:'fn-ig-analytics',   route:'services/analytics → instagram-analytics',    action:'GET /demographics',           desc:'Requests audience insights via edge function.' },
+      { n:5, from:'fn-ig-analytics', to:'meta-graph-api',    route:'instagram-analytics → Meta API',              action:'Fetch audience data',         desc:'Graph API call for demographics, best posting times.' },
+      { n:6, from:'fn-ig-analytics', to:'analytics-cache',   route:'instagram-analytics → Cache',                 action:'Cache results (6-24h)',       desc:'Stores in instagram_analytics_cache to reduce API calls.' },
+      { n:7, from:'agency-owner',    to:'analytics-conta',   route:'Agency Owner → Analytics Conta',              action:'Request AI analysis',         desc:'Clicks AI analysis button on the per-account page.' },
+      { n:8, from:'fn-ig-analytics', to:'google-gemini',     route:'instagram-analytics → Gemini',                action:'Gemini 2.5 Flash',            desc:'Sends post data for structured performance analysis.' },
+      { n:9, from:'fn-ig-analytics', to:'analytics-conta',   route:'instagram-analytics → Analytics Conta',       action:'Returns structured analysis', desc:'JSON with insights, recommendations, and metrics.' }
+    ]
+  },
+  'media-upload': {
+    cards: ['agency-agent','entregas-page','svc-post-media','fn-file-group','cloudflare-r2','supabase-postgres'],
+    steps: [
+      { n:1, from:'agency-agent',  to:'entregas-page',     route:'Agency Agent → Entregas',              action:'Selects files for post',     desc:'Drag or pick image/video files for a workflow post.' },
+      { n:2, from:'svc-post-media',to:'fn-file-group',     route:'postMedia → file-upload-url',          action:'Request presigned URL',      desc:'Edge function generates R2 PUT URL and creates file_upload_slots record.' },
+      { n:3, from:'fn-file-group', to:'cloudflare-r2',     route:'file-upload-url → R2',                action:'Generate PUT URL',           desc:'Creates presigned URL with content-type and size limit.' },
+      { n:4, from:'svc-post-media',to:'cloudflare-r2',     route:'postMedia → R2',                      action:'XHR PUT file + thumbnail',   desc:'Direct upload with progress; thumbnail and blur hash generated client-side.' },
+      { n:5, from:'svc-post-media',to:'fn-file-group',     route:'postMedia → file-upload-finalize',    action:'Confirm upload',             desc:'Confirms R2 object exists via file-upload-finalize.' },
+      { n:6, from:'fn-file-group', to:'supabase-postgres', route:'file-upload-finalize → Postgres',     action:'file_insert_with_quota RPC', desc:'Inserts into files table via RPC, checks workspace quota.' },
+      { n:7, from:'fn-file-group', to:'supabase-postgres', route:'file-upload-finalize → Postgres',     action:'Insert post_file_links row', desc:'Links the file to the post. Note: orphaned post-media-upload-url/finalize write to post_media instead.' }
+    ]
+  },
+  'team-invite': {
+    cards: ['agency-owner','configuracao-page','fn-invite-user','supabase-auth','supabase-postgres','crm-app','auth-context'],
+    steps: [
+      { n:1, from:'agency-owner',     to:'configuracao-page',route:'Agency Owner → Configuracao',   action:'Enter invite details',       desc:'Specifies email and role (admin or agent).' },
+      { n:2, from:'configuracao-page',to:'fn-invite-user',   route:'Configuracao → invite-user',    action:'POST invite',                desc:'Calls invite-user edge function with JWT auth.' },
+      { n:3, from:'fn-invite-user',   to:'supabase-auth',    route:'invite-user → Supabase Auth',   action:'Create user account',        desc:'Creates invited user in auth.users with random password.' },
+      { n:4, from:'fn-invite-user',   to:'supabase-postgres',route:'invite-user → Postgres',        action:'Insert invite + send email',  desc:'Stores invite row with TTL; sends invitation email.' },
+      { n:5, from:'crm-app',          to:'auth-context',     route:'CRM App → AuthContext',         action:'New user signs in',           desc:'Invited user opens CRM and logs in for the first time.' },
+      { n:6, from:'auth-context',     to:'supabase-postgres',route:'AuthContext → Postgres',        action:'healPendingInvite()',         desc:'Auto-accepts workspace membership on first login.' }
+    ]
+  },
+  'admin-portal': {
+    cards: ['platform-admin','admin-app','fn-platform-admin','supabase-auth','supabase-postgres'],
+    steps: [
+      { n:1, from:'platform-admin',   to:'admin-app',          route:'Platform Admin → Admin App',        action:'Opens /admin dashboard',        desc:'Super-admin navigates to the platform admin interface.' },
+      { n:2, from:'admin-app',        to:'fn-platform-admin',  route:'Admin App → platform-admin',        action:'verify-admin',                  desc:'Checks admin role via JWT against platform_admins table.' },
+      { n:3, from:'fn-platform-admin',to:'supabase-auth',      route:'platform-admin → Supabase Auth',    action:'Verify JWT',                    desc:'Confirms user has a valid session and platform_admins entry.' },
+      { n:4, from:'admin-app',        to:'fn-platform-admin',  route:'Admin App → platform-admin',        action:'list-workspaces',               desc:'Fetches all workspaces with plans, members, and usage.' },
+      { n:5, from:'fn-platform-admin',to:'supabase-postgres',  route:'platform-admin → Postgres',         action:'Query workspaces + plans',      desc:'Joins workspaces, plans, workspace_members with usage data.' },
+      { n:6, from:'platform-admin',   to:'admin-app',          route:'Platform Admin → Admin App',        action:'Manage plans, banners, admins', desc:'17 actions: CRUD plans, set-workspace-plan, banners, invite-admin.' },
+      { n:7, from:'admin-app',        to:'fn-platform-admin',  route:'Admin App → platform-admin',        action:'create-plan / update-banner',   desc:'Modifies plans (11 resource caps, 18 feature flags) or global_banners.' },
+      { n:8, from:'fn-platform-admin',to:'supabase-postgres',  route:'platform-admin → Postgres',         action:'Write changes',                 desc:'Updates plans, global_banners, or platform_admins tables.' }
+    ]
+  },
+  'ig-token-lifecycle': {
+    cards: ['fn-cron-jobs','supabase-postgres','meta-graph-api'],
+    steps: [
+      { n:1, from:'fn-cron-jobs',to:'supabase-postgres',route:'instagram-refresh-cron → Postgres', action:'Query expiring tokens',      desc:'Finds instagram_accounts with tokens expiring within 7 days.' },
+      { n:2, from:'fn-cron-jobs',to:'meta-graph-api',   route:'instagram-refresh-cron → Meta API', action:'Refresh long-lived token',   desc:'Exchanges expiring token for new 60-day token.' },
+      { n:3, from:'fn-cron-jobs',to:'supabase-postgres',route:'instagram-refresh-cron → Postgres', action:'Store refreshed token',      desc:'AES-GCM encrypts and updates. Stale tokens marked revoked.' },
+      { n:4, from:'fn-cron-jobs',to:'supabase-postgres',route:'instagram-sync-cron → Postgres',    action:'Query auto-sync accounts',   desc:'Finds accounts with auto_sync_enabled = true.' },
+      { n:5, from:'fn-cron-jobs',to:'meta-graph-api',   route:'instagram-sync-cron → Meta API',    action:'Fetch latest metrics + posts',desc:'Calls Graph API for account insights and recent posts.' },
+      { n:6, from:'fn-cron-jobs',to:'supabase-postgres',route:'instagram-sync-cron → Postgres',    action:'Update account data',        desc:'Upserts instagram_posts, instagram_follower_history.' }
+    ]
+  }
+};
+
+// ---- Interactivity (safe DOM methods only) ----
+
+var activeFlow = null;
+var NS = 'http://www.w3.org/2000/svg';
+
+function getPos(el) {
+  var inner = document.getElementById('diagram-inner');
+  var x = 0, y = 0, cur = el;
+  while (cur && cur !== inner) {
+    x += cur.offsetLeft;
+    y += cur.offsetTop;
+    cur = cur.offsetParent;
+  }
+  return { x: x, y: y, w: el.offsetWidth, h: el.offsetHeight };
+}
+
+function clearArrows() {
+  var svg = document.getElementById('arrows');
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+}
+
+function drawArrows(steps) {
+  var svg = document.getElementById('arrows');
+  var inner = document.getElementById('diagram-inner');
+  svg.setAttribute('width', inner.scrollWidth);
+  svg.setAttribute('height', inner.scrollHeight);
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  for (var i = 0; i < steps.length; i++) {
+    var s = steps[i];
+    var fromEl = document.getElementById(s.from);
+    var toEl = document.getElementById(s.to);
+    if (!fromEl || !toEl) continue;
+
+    var fp = getPos(fromEl);
+    var tp = getPos(toEl);
+    var fcx = fp.x + fp.w / 2;
+    var fcy = fp.y + fp.h / 2;
+    var tcx = tp.x + tp.w / 2;
+    var tcy = tp.y + tp.h / 2;
+
+    var x1, y1, x2, y2, d, dx, cpOff;
+
+    if (tcx > fcx + 20) {
+      x1 = fp.x + fp.w; y1 = fcy;
+      x2 = tp.x;        y2 = tcy;
+      dx = Math.abs(x2 - x1);
+      cpOff = Math.max(dx * 0.45, 35);
+      d = 'M' + x1 + ',' + y1 + ' C' + (x1+cpOff) + ',' + y1 + ' ' + (x2-cpOff) + ',' + y2 + ' ' + x2 + ',' + y2;
+    } else if (tcx < fcx - 20) {
+      x1 = fp.x;         y1 = fcy;
+      x2 = tp.x + tp.w;  y2 = tcy;
+      dx = Math.abs(x2 - x1);
+      cpOff = Math.max(dx * 0.45, 35);
+      d = 'M' + x1 + ',' + y1 + ' C' + (x1-cpOff) + ',' + y1 + ' ' + (x2+cpOff) + ',' + y2 + ' ' + x2 + ',' + y2;
+    } else {
+      x1 = fp.x + fp.w; y1 = fcy;
+      x2 = tp.x + tp.w; y2 = tcy;
+      var loopX = Math.max(x1, x2) + 45;
+      d = 'M' + x1 + ',' + y1 + ' C' + loopX + ',' + y1 + ' ' + loopX + ',' + y2 + ' ' + x2 + ',' + y2;
+    }
+
+    var path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', d);
+    svg.appendChild(path);
+
+    var circle = document.createElementNS(NS, 'circle');
+    circle.setAttribute('cx', x2);
+    circle.setAttribute('cy', y2);
+    circle.setAttribute('r', '9');
+    circle.setAttribute('class', 'step-dot');
+    svg.appendChild(circle);
+
+    var text = document.createElementNS(NS, 'text');
+    text.setAttribute('x', x2);
+    text.setAttribute('y', y2);
+    text.setAttribute('class', 'step-num');
+    text.appendChild(document.createTextNode(s.n));
+    svg.appendChild(text);
+  }
+}
+
+function renderSteps(steps) {
+  var container = document.getElementById('steps-list');
+  while (container.firstChild) container.removeChild(container.firstChild);
+
+  for (var i = 0; i < steps.length; i++) {
+    var s = steps[i];
+    var stepDiv = document.createElement('div');
+    stepDiv.className = 'step';
+
+    var numDiv = document.createElement('div');
+    numDiv.className = 'step-number';
+    numDiv.appendChild(document.createTextNode(s.n));
+
+    var contentDiv = document.createElement('div');
+    contentDiv.className = 'step-content';
+
+    var routeDiv = document.createElement('div');
+    routeDiv.className = 'step-route';
+    routeDiv.appendChild(document.createTextNode(s.route));
+
+    var actionDiv = document.createElement('div');
+    actionDiv.className = 'step-action';
+    actionDiv.appendChild(document.createTextNode(s.action));
+
+    var descDiv = document.createElement('div');
+    descDiv.className = 'step-desc';
+    descDiv.appendChild(document.createTextNode(s.desc));
+
+    contentDiv.appendChild(routeDiv);
+    contentDiv.appendChild(actionDiv);
+    contentDiv.appendChild(descDiv);
+    stepDiv.appendChild(numDiv);
+    stepDiv.appendChild(contentDiv);
+    container.appendChild(stepDiv);
+  }
+}
+
+function selectFlow(flowId) {
+  if (activeFlow === flowId) { clearSelection(); return; }
+  activeFlow = flowId;
+  var flow = FLOWS[flowId];
+  if (!flow) return;
+
+  var cards = document.querySelectorAll('.card');
+  for (var i = 0; i < cards.length; i++) cards[i].classList.remove('highlighted');
+  for (var j = 0; j < flow.cards.length; j++) {
+    var c = document.getElementById(flow.cards[j]);
+    if (c) c.classList.add('highlighted');
+  }
+
+  var items = document.querySelectorAll('.flow-item');
+  for (var k = 0; k < items.length; k++) {
+    if (items[k].getAttribute('data-flow') === flowId) items[k].classList.add('selected');
+    else items[k].classList.remove('selected');
+  }
+
+  document.getElementById('steps-section').style.display = '';
+  document.getElementById('clear-btn').style.display = '';
+  renderSteps(flow.steps);
+  drawArrows(flow.steps);
+
+  var first = document.getElementById(flow.cards[0]);
+  if (first) first.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+}
+
+function clearSelection() {
+  activeFlow = null;
+  var cards = document.querySelectorAll('.card');
+  for (var i = 0; i < cards.length; i++) cards[i].classList.remove('highlighted');
+  var items = document.querySelectorAll('.flow-item');
+  for (var j = 0; j < items.length; j++) items[j].classList.remove('selected');
+  document.getElementById('steps-section').style.display = 'none';
+  document.getElementById('clear-btn').style.display = 'none';
+  clearArrows();
+}
+
+document.getElementById('sidebar').addEventListener('click', function(e) {
+  var item = e.target.closest('.flow-item');
+  if (item) selectFlow(item.getAttribute('data-flow'));
+  if (e.target.closest('#clear-btn')) clearSelection();
+});
+
+var resizeTimer;
+window.addEventListener('resize', function() {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function() {
+    if (activeFlow && FLOWS[activeFlow]) drawArrows(FLOWS[activeFlow].steps);
+  }, 150);
+});
+</script>
+</body>
+</html>
