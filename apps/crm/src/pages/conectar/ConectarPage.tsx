@@ -68,6 +68,32 @@ export default function ConectarPage() {
     };
   }, [token]);
 
+  // No iOS, o app do Instagram sequestra a navegação para a URL de autorização
+  // e o cliente fica preso dentro do app. A recuperação documentada é voltar
+  // pelo breadcrumb "◀ Chrome"/"◀ Safari" -- mas isso restaura a página em vez
+  // de recarregá-la, então `starting` continuava `true`. Sem este reset, o
+  // cliente que volta pelo breadcrumb encontra o botão travado em "Abrindo o
+  // Instagram..." e não consegue tentar de novo, que é exatamente a
+  // recuperação que a página instrui. Confirmado em iPhone real.
+  useEffect(() => {
+    const reset = () => {
+      setStarting(false);
+      setStartError(false);
+    };
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) reset();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') reset();
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   const handleConnect = useCallback(async () => {
     if (!token) return;
     setStarting(true);

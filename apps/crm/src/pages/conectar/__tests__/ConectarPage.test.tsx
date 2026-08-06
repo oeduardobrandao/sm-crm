@@ -83,6 +83,86 @@ describe('ConectarPage', () => {
     }
   });
 
+  test('a pageshow with persisted=true re-enables the button after clicking connect', async () => {
+    getPublicConnectInfo.mockResolvedValue({
+      status: 'live',
+      cliente_name: 'Clínica X',
+      workspace_name: 'Agência Y',
+      connected_username: null,
+    });
+    // startPublicConnect never resolves, mimicking the iOS handoff: the tap
+    // hands off to the Instagram app and the promise is left hanging when the
+    // client returns via the breadcrumb instead of completing navigation.
+    startPublicConnect.mockReturnValue(new Promise(() => {}));
+    renderAt();
+    await waitFor(() => expect(screen.getByRole('button')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button'));
+    await waitFor(() => expect(screen.getByRole('button')).toBeDisabled());
+    expect(screen.getByText('connect.connecting')).toBeInTheDocument();
+
+    const event = new Event('pageshow') as PageTransitionEvent & { persisted: boolean };
+    Object.defineProperty(event, 'persisted', { value: true, configurable: true });
+    fireEvent(window, event);
+
+    await waitFor(() => expect(screen.getByRole('button')).not.toBeDisabled());
+    expect(screen.getByText('connect.cta')).toBeInTheDocument();
+  });
+
+  test('a visibilitychange back to visible re-enables the button after clicking connect', async () => {
+    getPublicConnectInfo.mockResolvedValue({
+      status: 'live',
+      cliente_name: 'Clínica X',
+      workspace_name: 'Agência Y',
+      connected_username: null,
+    });
+    startPublicConnect.mockReturnValue(new Promise(() => {}));
+    renderAt();
+    await waitFor(() => expect(screen.getByRole('button')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button'));
+    await waitFor(() => expect(screen.getByRole('button')).toBeDisabled());
+
+    // document.visibilityState has no setter in jsdom, so the property must
+    // be redefined -- scoped to just this test via try/finally, restoring the
+    // original descriptor afterward so nothing leaks into other suites.
+    const originalDescriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+    try {
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        configurable: true,
+      });
+      fireEvent(document, new Event('visibilitychange'));
+
+      await waitFor(() => expect(screen.getByRole('button')).not.toBeDisabled());
+      expect(screen.getByText('connect.cta')).toBeInTheDocument();
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(document, 'visibilityState', originalDescriptor);
+      } else {
+        delete (document as { visibilityState?: string }).visibilityState;
+      }
+    }
+  });
+
+  test('the pageshow reset also clears a stale startError', async () => {
+    getPublicConnectInfo.mockResolvedValue({
+      status: 'live',
+      cliente_name: 'Clínica X',
+      workspace_name: 'Agência Y',
+      connected_username: null,
+    });
+    startPublicConnect.mockRejectedValue(new Error('boom'));
+    renderAt();
+    await waitFor(() => expect(screen.getByRole('button')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button'));
+    await waitFor(() => expect(screen.getByText('connect.startError')).toBeInTheDocument());
+
+    const event = new Event('pageshow') as PageTransitionEvent & { persisted: boolean };
+    Object.defineProperty(event, 'persisted', { value: true, configurable: true });
+    fireEvent(window, event);
+
+    await waitFor(() => expect(screen.queryByText('connect.startError')).not.toBeInTheDocument());
+  });
+
   test('revoked link shows the revoked state and no button', async () => {
     getPublicConnectInfo.mockResolvedValue({
       status: 'revoked',
