@@ -26,9 +26,34 @@ CREATE UNIQUE INDEX IF NOT EXISTS instagram_connect_links_one_live
 
 ALTER TABLE instagram_connect_links ENABLE ROW LEVEL SECURITY;
 
+-- USING e WITH CHECK também amarram cliente_id ao conta_id da própria linha
+-- (padrão 20260730000005 / tarefas_tenant_all): um FK simples deixaria um
+-- membro do workspace A apontar cliente_id para um cliente do workspace B
+-- enquanto declara conta_id = A, roubando o slot único de B em
+-- instagram_connect_links_one_live e, no fluxo público, anexando a conta do
+-- Instagram autorizada a um cliente de outro workspace. A subquery qualifica
+-- a linha externa (instagram_connect_links.cliente_id / .conta_id): clientes
+-- carrega seu próprio conta_id, e um `conta_id` sem qualificação resolveria
+-- para o escopo da subquery, colapsando a comparação numa tautologia que
+-- libera tudo. cliente_id é NOT NULL aqui, então (diferente de tarefas) não
+-- precisa do braço `IS NULL OR`.
 CREATE POLICY "instagram_connect_links_workspace_all" ON instagram_connect_links
-  FOR ALL USING (conta_id IN (SELECT public.get_my_conta_id()))
-  WITH CHECK (conta_id IN (SELECT public.get_my_conta_id()));
+  FOR ALL USING (
+    conta_id IN (SELECT public.get_my_conta_id())
+    AND EXISTS (
+      SELECT 1 FROM public.clientes c
+      WHERE c.id = instagram_connect_links.cliente_id
+        AND c.conta_id = instagram_connect_links.conta_id
+    )
+  )
+  WITH CHECK (
+    conta_id IN (SELECT public.get_my_conta_id())
+    AND EXISTS (
+      SELECT 1 FROM public.clientes c
+      WHERE c.id = instagram_connect_links.cliente_id
+        AND c.conta_id = instagram_connect_links.conta_id
+    )
+  );
 
 CREATE POLICY "instagram_connect_links_service_role" ON instagram_connect_links
   FOR ALL TO service_role USING (true) WITH CHECK (true);
