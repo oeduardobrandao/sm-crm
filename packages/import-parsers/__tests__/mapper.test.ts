@@ -78,6 +78,47 @@ describe('proposeMapping', () => {
   });
 });
 
+describe('client column density', () => {
+  // The Trello shape: 'Etiquetas' matches the client role, but an unlabeled
+  // board leaves it blank on every card. Binding to it would resolve every
+  // row to a blank client and commit nothing.
+  const trelloish = (etiquetas: (string | undefined)[]): ImportCollection =>
+    col({
+      id: 't',
+      name: 'OLIV DIGITAL',
+      source: 'trello',
+      columns: ['Nome', 'Etiquetas'],
+      listNames: ['Em criação', 'Concluído'],
+      rows: etiquetas.map((v, n) => ({
+        key: `t:${n}`,
+        cells: { Nome: `Card ${n}`, ...(v !== undefined && { Etiquetas: v }) },
+        listName: 'Em criação',
+        dueDate: null,
+      })),
+    });
+
+  test('all-blank client column falls back to the fixed picker', () => {
+    const p = proposeMapping(bundle(trelloish(['', '', undefined, '   '])));
+    expect(p.collections[0].columnRoles.client).toBe('Etiquetas');
+    expect(p.collections[0].clientAssignment).toEqual({ mode: 'fixed', clienteNome: '' });
+  });
+
+  test('client column filled on at least half the rows stays column mode', () => {
+    const p = proposeMapping(bundle(trelloish(['Dra. Ana', 'Dr. Beto', '', ''])));
+    expect(p.collections[0].clientAssignment).toEqual({ mode: 'column', column: 'Etiquetas' });
+  });
+
+  test('sparse client column (under half) falls back to the fixed picker', () => {
+    const p = proposeMapping(bundle(trelloish(['Dra. Ana', '', '', ''])));
+    expect(p.collections[0].clientAssignment).toEqual({ mode: 'fixed', clienteNome: '' });
+  });
+
+  test('a rowless collection proposes the fixed picker, never an unproven column', () => {
+    const p = proposeMapping(bundle(trelloish([])));
+    expect(p.collections[0].clientAssignment).toEqual({ mode: 'fixed', clienteNome: '' });
+  });
+});
+
 describe('mapStatus clamp', () => {
   test('never returns agendado', () => {
     expect(mapStatus('Agendado')).toBe('aprovado_cliente');
