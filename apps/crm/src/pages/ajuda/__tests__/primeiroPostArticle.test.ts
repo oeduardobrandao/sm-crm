@@ -41,6 +41,24 @@ describe('artigo "Como agendar seu primeiro post"', () => {
     }
   });
 
+  it('sempre converte o array de imagens para jsonb[]', () => {
+    // Postgres infere o tipo de um ARRAY[...] pelos elementos. Um array de
+    // imagens onde TODOS os passos são NULL, como o da seção 7 enquanto as
+    // capturas não existem, não tem de onde inferir e vira text[]. A chamada
+    // então não casa com _kb_pp_ol(text[], jsonb[]) e a migration morre com
+    //   42883: function _kb_pp_ol(text[], text[]) does not exist
+    // Isso aconteceu de verdade, ao rodar a migration pela primeira vez, e os
+    // outros testes deste arquivo não pegaram: eles leem o SQL como texto e
+    // nunca o executam. O cast explícito remove a inferência da equação, então
+    // a composição de NULLs do array deixa de importar.
+    const src = migrationSource();
+    const imageArrays = [...src.matchAll(/\n\s*\]\s*(::jsonb\[\])?\s*\n\s*\)/g)];
+    expect(imageArrays.length).toBeGreaterThan(0);
+    for (const match of imageArrays) {
+      expect(match[1]).toBe('::jsonb[]');
+    }
+  });
+
   it('não usa travessão na copy do artigo', () => {
     // Regra de estilo da casa para texto voltado ao usuário. Este artigo é o
     // texto mais visível do repositório: vai para a Central de Ajuda de todos

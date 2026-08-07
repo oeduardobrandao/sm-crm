@@ -149,7 +149,7 @@ SELECT _kb_pp_upsert(
         _kb_pp_shot('02-novo-cliente.png', 'Formulário de novo cliente recém-aberto, ainda vazio.'),
         _kb_pp_shot('03-preencher-dados.png', 'Formulário com nome, e-mail e telefone preenchidos.'),
         _kb_pp_shot('04-plano-e-valores.png', 'Bloco de plano e valores do formulário, com valor mensal preenchido.')
-      ]
+      ]::jsonb[]
     ),
 
     _kb_pp_h(2, '2. Monte sua equipe'),
@@ -168,7 +168,7 @@ SELECT _kb_pp_upsert(
         _kb_pp_shot('07-dados-do-membro.png', 'Formulário com nome e cargo preenchidos.'),
         _kb_pp_shot('08-tipo-de-vinculo.png', 'Campo de tipo de vínculo do formulário de membro.'),
         _kb_pp_shot('09-convidar-usuario.png', 'Bloco Convidar para o workspace, com campo de e-mail e seletor de papel.')
-      ]
+      ]::jsonb[]
     ),
     _kb_pp_callout('💡', 'blue', 'O convite vira acesso só depois que a pessoa aceita o e-mail. Enquanto isso, ela não aparece como responsável em etapas nem em posts. Para poder atribuir tarefas agora, cadastre o membro de Equipe, que é independente do convite.'),
     _kb_pp_p('Papéis e o que cada um enxerga estão detalhados no artigo Permissões e papéis no workspace.'),
@@ -191,7 +191,7 @@ SELECT _kb_pp_upsert(
         NULL,
         NULL,
         NULL
-      ]
+      ]::jsonb[]
     ),
     _kb_pp_callout('⚠️', 'orange', 'Confirme a permissão de publicação nessa tela. Sem ela a conta conecta, os analytics funcionam, e o agendamento falha depois. É a causa mais comum de falha de publicação.'),
     _kb_pp_p('Se a conta não aparecer na lista de páginas, ou se a autorização falhar, o artigo Como conectar o Instagram cobre cada erro em detalhe.'),
@@ -212,7 +212,7 @@ SELECT _kb_pp_upsert(
         _kb_pp_shot('18-escolher-template.png', 'Seleção de template do fluxo.'),
         _kb_pp_shot('19-etapas-do-fluxo.png', 'Lista de etapas do fluxo sendo montada.'),
         _kb_pp_shot('20-responsavel-e-prazo.png', 'Campos de responsável e prazo de uma etapa.')
-      ]
+      ]::jsonb[]
     ),
     _kb_pp_callout('💡', 'blue', 'Inclua uma etapa de aprovação do cliente. É ela que destrava o agendamento, como você vai ver na etapa 6.'),
 
@@ -232,7 +232,7 @@ SELECT _kb_pp_upsert(
         _kb_pp_shot('23-tipo-e-titulo.png', 'Campos de tipo e título do post preenchidos.'),
         _kb_pp_shot('24-enviar-midia.png', 'Área de mídia do post, com um arquivo enviado.'),
         _kb_pp_shot('25-escrever-legenda.png', 'Campo de legenda do Instagram preenchido, com o contador de caracteres.')
-      ]
+      ]::jsonb[]
     ),
     _kb_pp_callout('⚠️', 'orange', 'Reels e vídeos podem exigir thumbnail antes de publicar. Se o campo aparecer, preencha agora, porque a falta dele só reaparece como erro na hora de agendar.'),
 
@@ -249,7 +249,7 @@ SELECT _kb_pp_upsert(
         _kb_pp_shot('26-avancar-etapa.png', 'Card do fluxo no kanban, na etapa de aprovação.'),
         _kb_pp_shot('27-dialogo-de-aprovacao.png', 'Diálogo de aprovação, com as opções de aprovar internamente e enviar ao portal.'),
         _kb_pp_shot('28-post-aprovado.png', 'Post com o status Aprovado pelo cliente.')
-      ]
+      ]::jsonb[]
     ),
     _kb_pp_callout('💡', 'blue', 'Aprovar internamente serve para o primeiro post, para testes e para clientes que aprovam por fora do sistema. Quando quiser que o cliente aprove pelo portal, veja o artigo Como o cliente aprova posts pelo Hub.'),
 
@@ -267,7 +267,7 @@ SELECT _kb_pp_upsert(
         NULL,
         NULL,
         NULL
-      ]
+      ]::jsonb[]
     ),
     _kb_pp_callout('⚠️', 'orange', 'Depois de agendado, a data e a legenda do Instagram ficam travadas. Para editar, cancele o agendamento primeiro.'),
     _kb_pp_p('Se o botão Agendar aparecer desabilitado, falta algo: data, legenda do Instagram, ou permissão de publicação na conta conectada. A própria tela indica o que está faltando.'),
@@ -276,7 +276,7 @@ SELECT _kb_pp_upsert(
     _kb_pp_p('O post agendado aparece no calendário do cliente e no fluxo. Na hora marcada, o Mesaas publica sozinho e o status muda para Postado.'),
     _kb_pp_ol(
       ARRAY['Acompanhe pelo Calendário, pelas Entregas ou pelo Hub do cliente'],
-      ARRAY[_kb_pp_shot('33-acompanhar-no-calendario.png', 'Calendário com o post agendado marcado na data.')]
+      ARRAY[_kb_pp_shot('33-acompanhar-no-calendario.png', 'Calendário com o post agendado marcado na data.')]::jsonb[]
     ),
     _kb_pp_p('Se a publicação falhar, o post mostra o motivo e um botão de tentar novamente. O artigo Agendar, publicar agora e resolver falhas no Instagram cobre cada erro possível.')
   ),
