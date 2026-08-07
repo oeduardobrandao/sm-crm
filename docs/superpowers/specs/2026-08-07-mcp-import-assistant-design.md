@@ -52,6 +52,12 @@ Deno/Vite boundary):
   (mcp-scopes.ts): it is a read, like the existing five.
 - The write scopes stay **out** of the presets: explicit opt-in, same treatment as
   `posts:write`.
+- **The create tools require the matching read scope too** (`create_client` demands
+  `clientes:write` AND `clientes:read`; `create_member` demands `membros:write` AND
+  `membros:read`). The find-or-create match branch echoes the existing row's public
+  fields, so a write-only grant would otherwise work as a probe-read: call the tool
+  with a guessed exact name and read back fields the read scope is supposed to gate
+  (found in PR #313 review). `register()` accepts an array of scopes, all required.
 - Existing API keys and OAuth grants never gain new scopes. Users mint a new key or
   re-consent. The scope checkboxes in Configurações render from `SCOPE_OPTIONS`, so
   the UI picks the new scopes up with no further UI work.
