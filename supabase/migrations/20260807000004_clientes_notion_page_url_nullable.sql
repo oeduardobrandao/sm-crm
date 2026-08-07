@@ -1,0 +1,25 @@
+-- Incidente 2026-08-07: em PROD, toda linha 'cliente' de uma importação do Trello
+-- falhou com 23502 (null value in column "notion_page_url" violates not-null
+-- constraint), e as 81 entregas do job caíram em cascata ("cliente … not
+-- committed yet"), porque todas resolvem o clienteRef através da linha do
+-- cliente que falhou.
+--
+-- A causa é drift de ambiente, não código: o baseline declara
+-- clientes.notion_page_url como `text` puro (20260301_baseline_schema.sql:51) e
+-- o staging confere, mas em prod a coluna foi endurecida à mão em algum momento
+-- fora do histórico de migrations, para NOT NULL DEFAULT ''. import_commit_row
+-- insere o valor cru do payload (`p_payload->>'notionPageUrl'` — SQL NULL para
+-- clientes auto-criados, que só carregam nome), e nomear a coluna na lista do
+-- INSERT derrota o DEFAULT.
+--
+-- Este ALTER restaura o contrato do baseline em qualquer ambiente que driftou;
+-- onde a coluna já é anulável (staging, local) é um no-op. O DEFAULT '' de prod
+-- fica deliberadamente como está: é drift benigno (o CRM trata '' e NULL como o
+-- mesmo estado vazio — ver o nullif(notion_page_url, '') no merge do próprio
+-- import_commit_row), e derrubá-lo mudaria o valor gravado por INSERTs do CRM
+-- que omitem a coluna, um risco que este incidente não pede.
+--
+-- O lado repo do contrato ("toda coluna que import_commit_row escreve cru e
+-- possivelmente NULL precisa ser anulável") fica pinado na suíte
+-- supabase/tests/import_commit_row.sql, seção (8).
+alter table public.clientes alter column notion_page_url drop not null;

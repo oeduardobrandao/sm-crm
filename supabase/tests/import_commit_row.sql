@@ -633,6 +633,31 @@ begin
     '7: nonexistent job not rejected: ' || coalesce(v_err, '<no raise>');
 
   -- ==================================================================
+  -- (8) SCHEMA CONTRACT: every column import_commit_row inserts a raw,
+  -- possibly-NULL payload value into must stay nullable.
+  --
+  -- Incident 2026-08-07 (prod): clientes.notion_page_url had been hand-set
+  -- NOT NULL directly on prod, outside migration history. The auto-cliente
+  -- payload is just {nome}, the RPC inserts p_payload->>'notionPageUrl' raw,
+  -- and naming the column in the INSERT defeats its default — so every
+  -- cliente row died with 23502 and every entrega of the job cascaded with
+  -- it. This assertion cannot see another environment's drift, but it pins
+  -- the repo side of the contract: a migration that adds NOT NULL to one of
+  -- these columns must either coalesce the value inside import_commit_row
+  -- or leave the column unconstrained. (Fixed by 20260807000004.)
+  -- ==================================================================
+  assert not exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public'
+       and (table_name, column_name) in
+           (('clientes', 'especialidade'), ('clientes', 'notion_page_url'),
+            ('workflow_posts', 'conteudo'), ('workflow_posts', 'scheduled_at'),
+            ('workflow_posts', 'published_at'), ('workflow_etapas', 'data_limite'))
+       and is_nullable = 'NO'),
+    '8: a column import_commit_row writes raw payload NULLs into is NOT NULL '
+    || '— coalesce it in the RPC or keep the column nullable';
+
+  -- ==================================================================
   -- FINAL SWEEP: re-assert the table-wide invariants after every write above.
   -- ==================================================================
   assert (select count(*) from workflow_posts
