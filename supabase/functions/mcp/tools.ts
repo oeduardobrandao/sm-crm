@@ -3,10 +3,13 @@ import { z } from "npm:zod@3";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { McpInputError, McpScopeError, requireScope } from "../_shared/mcp-token.ts";
 import {
+  createClient,
+  createMember,
   createPost,
   createTask,
   createWorkflow,
   createWorkflowTemplate,
+  listMembers,
   setPostProperty,
   updatePost,
   updateTask,
@@ -49,7 +52,9 @@ async function audit(deps: Deps, name: string, args: Record<string, unknown>) {
     actor_user_id: deps.ctx.created_by,
     action: `mcp.${name}`,
     resource_type: "mcp",
-    resource_id: String((args.post_id ?? args.client_id ?? args.workflow_id ?? "") || ""),
+    resource_id: String(
+      (args.post_id ?? args.client_id ?? args.workflow_id ?? args.member_id ?? args.template_id ?? "") || "",
+    ),
     metadata: { key_id: deps.ctx.key_id, tool: name, args }, // args = ids/filters only, no payload
   });
 }
@@ -89,6 +94,7 @@ const PROPERTY_TYPE = z.enum([
   "text", "url", "email", "phone", "number", "date", "checkbox", "select", "status", "multiselect",
 ]);
 const TASK_STATUS = z.enum(["pendente", "em_andamento", "concluida"]);
+const TIPO_MEMBRO = z.enum(["clt", "freelancer_mensal", "freelancer_demanda"]);
 const DATE_ONLY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato YYYY-MM-DD");
 
 export function registerTools(server: any, deps: Deps): void {
@@ -250,7 +256,12 @@ export function registerTools(server: any, deps: Deps): void {
       })).max(50).optional(),
     },
     (a) => createWorkflowTemplate(deps, a),
-    (a) => ({ nome: a.nome, etapa_count: a.etapas?.length ?? 0, property_count: a.properties?.length ?? 0 }));
+    (a, r) => ({
+      template_id: (r as { id?: number })?.id,
+      nome: a.nome,
+      etapa_count: a.etapas?.length ?? 0,
+      property_count: a.properties?.length ?? 0,
+    }));
 
   register(server, deps, "create_media_upload", "posts:write",
     "Gera URL(s) de upload presigned (PUT) para subir imagens JPG/PNG prontas ao workspace (cota checada antes de assinar). Depois use set_post_media com os r2_key retornados para colocá-las como mídia de um post. Máx 10 arquivos, ≤ 8MB cada.",
@@ -322,5 +333,48 @@ export function registerTools(server: any, deps: Deps): void {
       has_titulo: Object.hasOwn(a, "titulo"),
       has_descricao: Object.hasOwn(a, "descricao"),
       has_data_limite: Object.hasOwn(a, "data_limite"),
+    }));
+
+  register(server, deps, "create_client", "clientes:write",
+    "Cria um cliente no workspace. Se já existir um cliente com o mesmo nome, retorna o existente e preenche apenas os campos vazios (already_existed: true, filled_fields). Pensado para importação de outras plataformas.",
+    {
+      nome: z.string().trim().min(1).max(120),
+      email: z.string().trim().max(200).optional(),
+      telefone: z.string().trim().max(40).optional(),
+      especialidade: z.string().trim().max(200).optional(),
+      valor_mensal: z.number().min(0).optional(),
+      status: STATUS_CLIENTE.optional(),
+    },
+    (a) => createClient(deps, a),
+    (a, r) => ({
+      client_id: (r as { id?: number })?.id,
+      already_existed: (r as { already_existed?: boolean })?.already_existed,
+      filled_fields: (r as { filled_fields?: string[] })?.filled_fields,
+      has_email: !!a.email,
+      has_telefone: !!a.telefone,
+      has_valor_mensal: a.valor_mensal != null,
+    }));
+
+  register(server, deps, "list_members", "membros:read",
+    "Lista os membros da equipe (roster interno, campos não sensíveis).",
+    {},
+    () => listMembers(deps));
+
+  register(server, deps, "create_member", "membros:write",
+    "Cria um membro da equipe (roster interno). Não envia convite de login nem e-mail. Se já existir um membro com o mesmo nome, retorna o existente e preenche apenas os campos vazios.",
+    {
+      nome: z.string().trim().min(1).max(120),
+      cargo: z.string().trim().max(120).optional(),
+      tipo: TIPO_MEMBRO.optional(),
+      custo_mensal: z.number().min(0).optional(),
+      data_pagamento: z.number().int().min(1).max(31).optional(),
+    },
+    (a) => createMember(deps, a),
+    (a, r) => ({
+      member_id: (r as { id?: number })?.id,
+      already_existed: (r as { already_existed?: boolean })?.already_existed,
+      filled_fields: (r as { filled_fields?: string[] })?.filled_fields,
+      has_cargo: !!a.cargo,
+      has_custo_mensal: a.custo_mensal != null,
     }));
 }

@@ -638,7 +638,7 @@ Deno.test("create_workflow_template tool redacts etapa/option detail from the au
   const meta = JSON.stringify(auditInsert!.args[0]);
   assert(!meta.includes("ETAPA_SECRETA"), "etapa detail must not be logged");
   assert(meta.includes("etapa_count"), "logs etapa_count instead");
-  assertEquals((auditInsert!.args[0] as Record<string, unknown>).resource_id, "");
+  assertEquals((auditInsert!.args[0] as Record<string, unknown>).resource_id, "50");
 });
 
 Deno.test("createWorkflowTemplate: non-cap DB error on template insert is re-thrown raw (not McpInputError)", async () => {

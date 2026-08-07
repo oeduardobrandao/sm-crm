@@ -2,6 +2,7 @@ import { assert, assertEquals } from "./assert.ts";
 import { createClient, createMember, listMembers } from "../mcp/queries.ts";
 import type { Deps } from "../mcp/queries.ts";
 import { McpInputError, type McpKeyContext } from "../_shared/mcp-token.ts";
+import { registerTools } from "../mcp/tools.ts";
 
 type Resp = { data: unknown; error: unknown };
 type Call = { table: string; method: string; args: unknown[] };
@@ -249,4 +250,64 @@ Deno.test("mcp-import: listMembers projects public fields, scoped and ordered", 
   assertEquals(out.length, 1);
   assert(!("custo_mensal" in out[0]), "custo_mensal stripped even if selected by accident");
   assertEquals(out[0].nome, "Ana");
+});
+
+function makeFakeServer() {
+  return {
+    handlers: {} as Record<string, (a: unknown) => Promise<{ content: { type: string; text: string }[]; isError?: boolean }>>,
+    // deno-lint-ignore no-explicit-any
+    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+  };
+}
+
+Deno.test("mcp-import: create_client denies a ctx missing clientes:write", async () => {
+  const { db } = makeFakeDb({});
+  const deniedCtx: McpKeyContext = { conta_id: "workspace-A", scopes: ["clientes:read"], key_id: "k1", created_by: "user-1" };
+  const server = makeFakeServer();
+  registerTools(server as any, { db, ctx: deniedCtx } as unknown as Deps);
+  const result = await server.handlers["create_client"]({ nome: "X" });
+  assert(result.isError === true, "denied");
+  assert(result.content[0].text.includes("clientes:write"), "names the missing scope");
+});
+
+Deno.test("mcp-import: create_member and list_members deny ctxs missing membros scopes", async () => {
+  const { db } = makeFakeDb({});
+  const deniedCtx: McpKeyContext = { conta_id: "workspace-A", scopes: ["clientes:read"], key_id: "k1", created_by: "user-1" };
+  const server = makeFakeServer();
+  registerTools(server as any, { db, ctx: deniedCtx } as unknown as Deps);
+  const created = await server.handlers["create_member"]({ nome: "X" });
+  assert(created.isError === true && created.content[0].text.includes("membros:write"), "create_member denied");
+  const listed = await server.handlers["list_members"]({});
+  assert(listed.isError === true && listed.content[0].text.includes("membros:read"), "list_members denied");
+});
+
+Deno.test("mcp-import: create_client audit row carries client_id, no nome/email in metadata", async () => {
+  const { db, calls } = makeFakeDb({
+    clientes: [
+      { data: [], error: null },
+      { data: { id: 7, nome: "Dra. Ana", sigla: "DR", especialidade: null, cor: "#eab308", status: "ativo" }, error: null },
+    ],
+  });
+  const server = makeFakeServer();
+  registerTools(server as any, { db, ctx: CTX } as unknown as Deps);
+  await server.handlers["create_client"]({ nome: "Dra. Ana", email: "ana@x.com" });
+  const auditRow = insertPayload(calls, "audit_log")! as Record<string, any>;
+  assertEquals(auditRow.resource_id, "7", "resource_id from client_id");
+  const meta = JSON.stringify(auditRow.metadata);
+  assert(!meta.includes("Dra. Ana"), "no nome in audit metadata");
+  assert(!meta.includes("ana@x.com"), "no email in audit metadata");
+});
+
+Deno.test("mcp-import: create_member audit row carries member_id via the extended extraction", async () => {
+  const { db, calls } = makeFakeDb({
+    membros: [
+      { data: [], error: null },
+      { data: { id: 5, nome: "João", cargo: "", tipo: "clt", data_pagamento: null, crm_user_id: null, created_at: "2026-08-07" }, error: null },
+    ],
+  });
+  const server = makeFakeServer();
+  registerTools(server as any, { db, ctx: CTX } as unknown as Deps);
+  await server.handlers["create_member"]({ nome: "João" });
+  const auditRow = insertPayload(calls, "audit_log")! as Record<string, any>;
+  assertEquals(auditRow.resource_id, "5", "resource_id from member_id");
 });
