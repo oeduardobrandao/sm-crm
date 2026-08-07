@@ -132,6 +132,100 @@ export async function getBrandProfile(d: Deps, args: { client_id: number }): Pro
   };
 }
 
+// ---- import assistant (create/find clients & members) ------------------------
+
+/** True for null/undefined and blank/whitespace-only strings. */
+export function isBlank(v: unknown): boolean {
+  return v == null || (typeof v === "string" && v.trim() === "");
+}
+
+/**
+ * Sigla rule from the CSV import (migration 20260729000004): strip non-ASCII
+ * letters, pad with 'XX', take two chars, uppercase. A fully non-alphabetic nome
+ * (e.g. "123") still yields a valid 'XX' instead of an empty sigla.
+ */
+export function deriveSigla(nome: string): string {
+  return (nome.replace(/[^a-zA-Z]/g, "") + "XX").slice(0, 2).toUpperCase();
+}
+
+const CLIENT_MERGE_FIELDS = "id, nome, sigla, especialidade, cor, status, email, telefone, valor_mensal";
+
+export async function createClient(
+  d: Deps,
+  args: {
+    nome: string;
+    email?: string;
+    telefone?: string;
+    especialidade?: string;
+    valor_mensal?: number;
+    status?: string;
+  },
+): Promise<any> {
+  const nome = args.nome.trim();
+  // Find-or-create: clientes.nome has no unique constraint, so scan the workspace's
+  // rows ordered by id and match lower(trim()) in code. The FIRST match of the
+  // id-ascending scan is the canonical row, deterministically, on every retry.
+  const { data: rows, error: selErr } = await d.db
+    .from("clientes")
+    .select(CLIENT_MERGE_FIELDS)
+    .eq("conta_id", d.ctx.conta_id)
+    .order("id", { ascending: true });
+  if (selErr) throw selErr;
+  const match = ((rows ?? []) as any[]).find(
+    (r) => typeof r.nome === "string" && r.nome.trim().toLowerCase() === nome.toLowerCase(),
+  );
+
+  if (match) {
+    // Fill-empty merge: never overwrite. Text fields fill when blank; valor_mensal
+    // fills only when SQL NULL (an explicit 0 is real data, mirroring the CSV wizard).
+    const patch: Record<string, unknown> = {};
+    for (const f of ["email", "telefone", "especialidade"] as const) {
+      const v = args[f];
+      if (!isBlank(v) && isBlank(match[f])) patch[f] = (v as string).trim();
+    }
+    if (args.valor_mensal != null && match.valor_mensal == null) patch.valor_mensal = args.valor_mensal;
+    if (Object.keys(patch).length > 0) {
+      // WITH CHECK da RLS nao protege writes service-role: conta_id explicito aqui.
+      const { error: updErr } = await d.db
+        .from("clientes")
+        .update(patch)
+        .eq("id", match.id)
+        .eq("conta_id", d.ctx.conta_id);
+      if (updErr) throw updErr;
+    }
+    return {
+      ...allowlistClient({ ...match, ...patch }),
+      already_existed: true,
+      filled_fields: Object.keys(patch),
+    };
+  }
+
+  const { data: created, error: insErr } = await d.db
+    .from("clientes")
+    .insert({
+      conta_id: d.ctx.conta_id,
+      user_id: d.ctx.created_by,
+      nome,
+      sigla: deriveSigla(nome),
+      cor: "#eab308",
+      plano: "",
+      email: args.email?.trim() ?? "",
+      telefone: args.telefone?.trim() ?? "",
+      status: args.status ?? "ativo",
+      especialidade: isBlank(args.especialidade) ? null : args.especialidade!.trim(),
+      valor_mensal: args.valor_mensal ?? null,
+    })
+    .select(CLIENT_PUBLIC_FIELDS.join(","))
+    .single();
+  if (insErr) {
+    if (isPlanLimitExceeded(insErr, "max_clients")) {
+      throw new McpInputError("Limite de clientes do plano foi atingido.");
+    }
+    throw insErr;
+  }
+  return { ...allowlistClient(created as any), already_existed: false, filled_fields: [] };
+}
+
 // ---- post enrichment helpers -------------------------------------------------
 
 /** modo + anotacao for a set of posts, read from the seeded custom properties. */
