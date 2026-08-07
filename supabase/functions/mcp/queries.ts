@@ -5,6 +5,7 @@ import { McpKeyContext, McpInputError } from "../_shared/mcp-token.ts";
 import { MCP_PROP_MODO, MCP_PROP_ANOTACAO } from "./seed.ts";
 import {
   allowlistClient,
+  allowlistMember,
   buildPostFeedback,
   buildPropertyDefinitions,
   buildTiptapDoc,
@@ -18,6 +19,7 @@ import {
   IG_RATE_WEIGHTS,
   instantiateTemplateEtapas,
   isPlanLimitExceeded,
+  MEMBER_PUBLIC_FIELDS,
   MIN_SAMPLE,
   normalizeTemplateEtapas,
   pageContentToMarkdown,
@@ -240,6 +242,67 @@ export async function createClient(
     throw insErr;
   }
   return { ...allowlistClient(created as any), already_existed: false, filled_fields: [] };
+}
+
+const MEMBER_MERGE_FIELDS = "id, nome, cargo, tipo, custo_mensal, data_pagamento, crm_user_id, created_at";
+
+export async function createMember(
+  d: Deps,
+  args: { nome: string; cargo?: string; tipo?: string; custo_mensal?: number; data_pagamento?: number },
+): Promise<any> {
+  const nome = args.nome.trim();
+  // Same find-or-create contract as createClient: paginated id-ordered scan via
+  // findByNome (Task 2's helper), oldest match wins, immune to the 1000-row
+  // PostgREST page cap.
+  const match = await findByNome(d, "membros", MEMBER_MERGE_FIELDS, nome);
+
+  if (match) {
+    const patch: Record<string, unknown> = {};
+    if (!isBlank(args.cargo) && isBlank(match.cargo)) patch.cargo = args.cargo!.trim();
+    // 0 is real data: only SQL NULL counts as empty.
+    if (args.custo_mensal != null && match.custo_mensal == null) patch.custo_mensal = args.custo_mensal;
+    if (Object.keys(patch).length > 0) {
+      // WITH CHECK da RLS nao protege writes service-role: conta_id explicito aqui.
+      const { error: updErr } = await d.db
+        .from("membros")
+        .update(patch)
+        .eq("id", match.id)
+        .eq("conta_id", d.ctx.conta_id);
+      if (updErr) throw updErr;
+    }
+    return {
+      ...allowlistMember({ ...match, ...patch }),
+      already_existed: true,
+      filled_fields: Object.keys(patch),
+    };
+  }
+
+  const { data: created, error: insErr } = await d.db
+    .from("membros")
+    .insert({
+      conta_id: d.ctx.conta_id,
+      user_id: d.ctx.created_by,
+      nome,
+      cargo: args.cargo?.trim() ?? "",
+      tipo: args.tipo ?? "clt",
+      avatar_url: "",
+      custo_mensal: args.custo_mensal ?? null,
+      data_pagamento: args.data_pagamento ?? null,
+    })
+    .select(MEMBER_PUBLIC_FIELDS.join(","))
+    .single();
+  if (insErr) throw insErr;
+  return { ...allowlistMember(created as any), already_existed: false, filled_fields: [] };
+}
+
+export async function listMembers(d: Deps): Promise<any[]> {
+  const { data, error } = await d.db
+    .from("membros")
+    .select(MEMBER_PUBLIC_FIELDS.join(","))
+    .eq("conta_id", d.ctx.conta_id)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as any[]).map(allowlistMember);
 }
 
 // ---- post enrichment helpers -------------------------------------------------

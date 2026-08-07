@@ -176,6 +176,19 @@ export function allowlistClient(row: Record<string, unknown>): Record<string, un
   return out;
 }
 
+/** Roster fields safe for agent consumption. custo_mensal is deliberately absent. */
+export const MEMBER_PUBLIC_FIELDS = [
+  "id", "nome", "cargo", "tipo", "data_pagamento", "crm_user_id", "created_at",
+] as const;
+
+export function allowlistMember(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const f of MEMBER_PUBLIC_FIELDS) {
+    if (f in row) out[f] = row[f];
+  }
+  return out;
+}
+
 /**
  * Flatten the JSONB `hub_pages.content` block array into a single markdown string
  * for agent consumption. Boundary-safe: `content` is JSONB (`unknown`), so this

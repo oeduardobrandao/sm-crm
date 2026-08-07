@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "./assert.ts";
-import { createClient } from "../mcp/queries.ts";
+import { createClient, createMember, listMembers } from "../mcp/queries.ts";
 import type { Deps } from "../mcp/queries.ts";
 import { McpInputError, type McpKeyContext } from "../_shared/mcp-token.ts";
 
@@ -177,4 +177,76 @@ Deno.test("mcp-import: createClient scan paginates past the 1000-row PostgREST p
   assertEquals(out.id, 1001);
   assert(has(calls, "clientes", "range", [0, 999]), "first page requested");
   assert(has(calls, "clientes", "range", [1000, 1999]), "second page requested");
+});
+
+Deno.test("mcp-import: createMember inserts with defaults and ctx stamps, no custo echo", async () => {
+  const { db, calls } = makeFakeDb({
+    membros: [
+      { data: [], error: null },
+      { data: { id: 5, nome: "João", cargo: "", tipo: "clt", data_pagamento: null, crm_user_id: null, created_at: "2026-08-07" }, error: null },
+    ],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  const out = await createMember(deps, { nome: "João", custo_mensal: 3000 });
+  const row = insertPayload(calls, "membros")!;
+  assertEquals(row.conta_id, "workspace-A");
+  assertEquals(row.user_id, "user-1");
+  assertEquals(row.tipo, "clt");
+  assertEquals(row.cargo, "");
+  assertEquals(row.avatar_url, "");
+  assertEquals(row.custo_mensal, 3000);
+  assertEquals(out.already_existed, false);
+  assert(!("custo_mensal" in out), "custo_mensal never echoed");
+});
+
+Deno.test("mcp-import: createMember matches nome, fills empty cargo and NULL custo only", async () => {
+  const existing = { id: 2, nome: "Maria", cargo: "", tipo: "freelancer_mensal", custo_mensal: 0, data_pagamento: 5, crm_user_id: null, created_at: "2026-01-01" };
+  const { db, calls } = makeFakeDb({
+    membros: [
+      { data: [existing], error: null },
+      { data: null, error: null },
+    ],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  const out = await createMember(deps, { nome: "MARIA", cargo: "Designer", tipo: "clt", custo_mensal: 4000 });
+  const patch = updatePayload(calls, "membros")!;
+  assertEquals(patch.cargo, "Designer", "empty cargo filled");
+  assert(!Object.hasOwn(patch, "custo_mensal"), "custo 0 is real data, not filled");
+  assert(!Object.hasOwn(patch, "tipo"), "tipo never modified on match");
+  assert(has(calls, "membros", "eq", ["conta_id", "workspace-A"]), "scan scoped");
+  assert(has(calls, "membros", "eq", ["id", 2]), "update targets matched id");
+  assertEquals(out.already_existed, true);
+  assertEquals(out.filled_fields, ["cargo"]);
+  assertEquals(out.tipo, "freelancer_mensal", "existing tipo reported");
+});
+
+Deno.test("mcp-import: createMember same nome in another workspace still inserts (scan is conta-scoped)", async () => {
+  // The fake db returns what the scan query would: an empty list, BECAUSE the real
+  // query filters conta_id. The assertion that matters is the eq('conta_id', ...) call.
+  const { db, calls } = makeFakeDb({
+    membros: [
+      { data: [], error: null },
+      { data: { id: 6, nome: "João", cargo: "", tipo: "clt", data_pagamento: null, crm_user_id: null, created_at: "2026-08-07" }, error: null },
+    ],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  const out = await createMember(deps, { nome: "João" });
+  assert(has(calls, "membros", "eq", ["conta_id", "workspace-A"]), "scan carries conta_id");
+  assertEquals(out.already_existed, false);
+});
+
+Deno.test("mcp-import: listMembers projects public fields, scoped and ordered", async () => {
+  const { db, calls } = makeFakeDb({
+    membros: [{
+      data: [{ id: 1, nome: "Ana", cargo: "Social media", tipo: "clt", data_pagamento: 5, crm_user_id: null, created_at: "2026-08-01", custo_mensal: 9999 }],
+      error: null,
+    }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  const out = await listMembers(deps);
+  assert(has(calls, "membros", "eq", ["conta_id", "workspace-A"]), "scoped");
+  assert(has(calls, "membros", "order", ["created_at", { ascending: false }]), "newest first");
+  assertEquals(out.length, 1);
+  assert(!("custo_mensal" in out[0]), "custo_mensal stripped even if selected by accident");
+  assertEquals(out[0].nome, "Ana");
 });
