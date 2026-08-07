@@ -9,7 +9,7 @@ Deno.test("validateScopes accepts non-empty allowlisted scopes", () => {
 
 Deno.test("validateScopes rejects empty / unknown / non-array", () => {
   assertEquals(validateScopes([]), false);
-  assertEquals(validateScopes(["clientes:write"]), false); // clientes:write is not a granted scope
+  assertEquals(validateScopes(["designs:write"]), false); // retired scope, deliberately not allowlisted
   assertEquals(validateScopes(["bogus"]), false);
   assertEquals(validateScopes("posts:read"), false);
   assertEquals(validateScopes(null), false);
