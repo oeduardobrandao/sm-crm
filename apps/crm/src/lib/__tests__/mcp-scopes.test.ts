@@ -33,3 +33,16 @@ describe('tarefas scopes', () => {
     expect(AGENT_PRESET).not.toContain('tarefas:write');
   });
 });
+
+describe('import assistant scopes (clientes/membros)', () => {
+  it('offers clientes:write, membros:read and membros:write as selectable scopes', () => {
+    expect(SCOPE_OPTIONS.some((s) => s.value === 'clientes:write')).toBe(true);
+    expect(SCOPE_OPTIONS.some((s) => s.value === 'membros:read')).toBe(true);
+    expect(SCOPE_OPTIONS.some((s) => s.value === 'membros:write')).toBe(true);
+  });
+  it('adds membros:read to the preset but keeps the new writes out', () => {
+    expect(AGENT_PRESET).toContain('membros:read');
+    expect(AGENT_PRESET).not.toContain('clientes:write');
+    expect(AGENT_PRESET).not.toContain('membros:write');
+  });
+});

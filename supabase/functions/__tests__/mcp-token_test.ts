@@ -59,3 +59,16 @@ Deno.test("retired estudio scopes: out of the allowlist, rejected by validateSco
     assert(!validateScopes([s]), `${s} rejected by validateScopes`);
   }
 });
+
+Deno.test("mcp-token: import-assistant scopes are allowlisted", () => {
+  for (const s of ["clientes:write", "membros:read", "membros:write"]) {
+    assert((MCP_ALLOWED_SCOPES as readonly string[]).includes(s), `${s} in allowlist`);
+  }
+  assert(validateScopes(["clientes:write", "membros:read", "membros:write"]), "validateScopes accepts them");
+});
+
+Deno.test("mcp-token: membros:read joins the agent preset, writes stay out", () => {
+  assert((MCP_AGENT_PRESET as readonly string[]).includes("membros:read"), "membros:read in preset");
+  assert(!(MCP_AGENT_PRESET as readonly string[]).includes("clientes:write"), "clientes:write NOT in preset");
+  assert(!(MCP_AGENT_PRESET as readonly string[]).includes("membros:write"), "membros:write NOT in preset");
+});
