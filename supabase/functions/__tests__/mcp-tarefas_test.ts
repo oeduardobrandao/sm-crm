@@ -155,3 +155,22 @@ Deno.test("mcp-tarefas: list_tasks tool denies a ctx missing tarefas:read", asyn
   assert(result.isError === true, "scope-denied result is flagged isError");
   assert(result.content[0].text.includes("tarefas:read"), "error mentions the missing scope");
 });
+
+Deno.test("mcp-tarefas: create_task audit row carries task_id via the extended extraction", async () => {
+  const { db, calls } = makeFakeDb({
+    membros: [{ data: { id: 3 }, error: null }],
+    tarefas: [{ data: { id: 8, titulo: "Nova tarefa", status: "pendente" }, error: null }],
+    audit_log: [{ data: null, error: null }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  const server = {
+    handlers: {} as Record<string, (a: unknown) => Promise<unknown>>,
+    // deno-lint-ignore no-explicit-any
+    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+  };
+  // deno-lint-ignore no-explicit-any
+  registerTools(server as any, deps);
+  await server.handlers["create_task"]({ titulo: "Nova tarefa", responsavel_id: 3 });
+  const auditRow = insertPayload(calls, "audit_log")! as Record<string, any>;
+  assertEquals(auditRow.resource_id, "8", "resource_id from task_id");
+});

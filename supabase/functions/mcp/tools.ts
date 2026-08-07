@@ -53,7 +53,7 @@ async function audit(deps: Deps, name: string, args: Record<string, unknown>) {
     action: `mcp.${name}`,
     resource_type: "mcp",
     resource_id: String(
-      (args.post_id ?? args.client_id ?? args.workflow_id ?? args.member_id ?? args.template_id ?? "") || "",
+      (args.post_id ?? args.client_id ?? args.workflow_id ?? args.task_id ?? args.member_id ?? args.template_id ?? "") || "",
     ),
     metadata: { key_id: deps.ctx.key_id, tool: name, args }, // args = ids/filters only, no payload
   });
