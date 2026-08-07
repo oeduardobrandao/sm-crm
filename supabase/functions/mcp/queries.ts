@@ -150,6 +150,30 @@ export function deriveSigla(nome: string): string {
 
 const CLIENT_MERGE_FIELDS = "id, nome, sigla, especialidade, cor, status, email, telefone, valor_mensal";
 
+/**
+ * Pages through a conta-scoped table ordered by id asc and returns the first row
+ * whose trimmed, lowercased `nome` equals `nome` (the oldest match, deterministically).
+ * PostgREST caps un-ranged selects at 1000 rows, so an unpaged scan goes blind past
+ * the first page and a matching row there would be re-created as a duplicate.
+ */
+const NOME_SCAN_PAGE = 1000;
+export async function findByNome(d: Deps, table: string, fields: string, nome: string): Promise<any | null> {
+  const target = nome.trim().toLowerCase();
+  for (let from = 0; ; from += NOME_SCAN_PAGE) {
+    const { data, error } = await d.db
+      .from(table)
+      .select(fields)
+      .eq("conta_id", d.ctx.conta_id)
+      .order("id", { ascending: true })
+      .range(from, from + NOME_SCAN_PAGE - 1);
+    if (error) throw error;
+    const rows = (data ?? []) as any[];
+    const match = rows.find((r) => typeof r.nome === "string" && r.nome.trim().toLowerCase() === target);
+    if (match) return match;
+    if (rows.length < NOME_SCAN_PAGE) return null;
+  }
+}
+
 export async function createClient(
   d: Deps,
   args: {
@@ -165,15 +189,7 @@ export async function createClient(
   // Find-or-create: clientes.nome has no unique constraint, so scan the workspace's
   // rows ordered by id and match lower(trim()) in code. The FIRST match of the
   // id-ascending scan is the canonical row, deterministically, on every retry.
-  const { data: rows, error: selErr } = await d.db
-    .from("clientes")
-    .select(CLIENT_MERGE_FIELDS)
-    .eq("conta_id", d.ctx.conta_id)
-    .order("id", { ascending: true });
-  if (selErr) throw selErr;
-  const match = ((rows ?? []) as any[]).find(
-    (r) => typeof r.nome === "string" && r.nome.trim().toLowerCase() === nome.toLowerCase(),
-  );
+  const match = await findByNome(d, "clientes", CLIENT_MERGE_FIELDS, nome);
 
   if (match) {
     // Fill-empty merge: never overwrite. Text fields fill when blank; valor_mensal

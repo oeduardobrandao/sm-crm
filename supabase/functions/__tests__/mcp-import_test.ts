@@ -16,7 +16,7 @@ function makeFakeDb(responses: Record<string, Resp[]>) {
     // deno-lint-ignore no-explicit-any
     const rec: any = {};
     const next = (): Resp => (queues[table] ?? []).shift() ?? { data: null, error: null };
-    for (const m of ["select", "eq", "in", "gte", "order", "limit", "insert", "update", "upsert", "delete"]) {
+    for (const m of ["select", "eq", "in", "gte", "order", "limit", "range", "insert", "update", "upsert", "delete"]) {
       rec[m] = (...args: unknown[]) => { calls.push({ table, method: m, args }); return rec; };
     }
     rec.single = () => { calls.push({ table, method: "single", args: [] }); return Promise.resolve(next()); };
@@ -156,4 +156,25 @@ Deno.test("mcp-import: createClient plan limit -> McpInputError with pt-BR messa
     if (e instanceof McpInputError) msg = e.message;
   }
   assertEquals(msg, "Limite de clientes do plano foi atingido.");
+});
+
+Deno.test("mcp-import: createClient scan paginates past the 1000-row PostgREST page", async () => {
+  const page1 = Array.from({ length: 1000 }, (_, i) => ({
+    id: i + 1, nome: `Cliente ${i + 1}`, sigla: "CL", especialidade: null, cor: "#1",
+    status: "ativo", email: "", telefone: "", valor_mensal: null,
+  }));
+  const target = { id: 1001, nome: "Alvo", sigla: "AL", especialidade: null, cor: "#1", status: "ativo", email: "", telefone: "", valor_mensal: null };
+  const { db, calls } = makeFakeDb({
+    clientes: [
+      { data: page1, error: null },        // page 1: full, no match
+      { data: [target], error: null },     // page 2: short page containing the match
+      { data: null, error: null },         // update result (fill email)
+    ],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  const out = await createClient(deps, { nome: "alvo", email: "a@b.c" });
+  assertEquals(out.already_existed, true);
+  assertEquals(out.id, 1001);
+  assert(has(calls, "clientes", "range", [0, 999]), "first page requested");
+  assert(has(calls, "clientes", "range", [1000, 1999]), "second page requested");
 });
