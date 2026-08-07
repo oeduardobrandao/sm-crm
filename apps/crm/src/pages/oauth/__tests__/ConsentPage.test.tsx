@@ -91,6 +91,33 @@ describe('ConsentPage', () => {
     await waitFor(() => expect(approve).toHaveBeenCalledWith('auth-1'));
   });
 
+  it('checking "Clientes (escrita)" also includes clientes:read in the approval payload', async () => {
+    renderPage();
+    await screen.findByText(/Conectar Claude/);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Clientes (escrita)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Autorizar' }));
+
+    await waitFor(() => expect(recordGrant).toHaveBeenCalledTimes(1));
+    const payload = recordGrant.mock.calls[0][0];
+    expect(payload.scopes).toContain('clientes:write');
+    expect(payload.scopes).toContain('clientes:read');
+  });
+
+  it('unchecking "Clientes (leitura)" while the write is checked also drops clientes:write', async () => {
+    renderPage();
+    await screen.findByText(/Conectar Claude/);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Clientes (escrita)' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Clientes (leitura)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Autorizar' }));
+
+    await waitFor(() => expect(recordGrant).toHaveBeenCalledTimes(1));
+    const payload = recordGrant.mock.calls[0][0];
+    expect(payload.scopes).not.toContain('clientes:write');
+    expect(payload.scopes).not.toContain('clientes:read');
+  });
+
   it('denies without recording a grant', async () => {
     renderPage();
     await screen.findByText(/Conectar Claude/);

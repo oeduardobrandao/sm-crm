@@ -28,7 +28,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { listMcpKeys, createMcpKey, revokeMcpKey, type McpKey } from '@/services/mcp-keys';
 import { listOAuthGrants, revokeOAuthGrant, type OAuthGrant } from '@/services/mcp-oauth';
-import { SCOPE_OPTIONS, AGENT_PRESET } from '@/lib/mcp-scopes';
+import { SCOPE_OPTIONS, AGENT_PRESET, SCOPE_IMPLIES } from '@/lib/mcp-scopes';
 
 const MCP_URL = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1/mcp';
 const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
@@ -259,9 +259,17 @@ export default function IntegracoesClaudePage() {
   });
 
   const toggleScope = (value: string) =>
-    setScopes((prev) =>
-      prev.includes(value) ? prev.filter((s) => s !== value) : [...prev, value],
-    );
+    setScopes((prev) => {
+      // Checking a write scope also grants the read scope its tools require (mcp/tools.ts
+      // enforces the pair server-side); unchecking a read scope drops any checked write
+      // scope that depends on it, so the pair never splits in the UI.
+      if (prev.includes(value)) {
+        const impliedBy = Object.entries(SCOPE_IMPLIES).find(([, read]) => read === value)?.[0];
+        return prev.filter((s) => s !== value && s !== impliedBy);
+      }
+      const implied = SCOPE_IMPLIES[value];
+      return [...new Set([...prev, value, ...(implied ? [implied] : [])])];
+    });
 
   const copy = async (text: string, key: string) => {
     await navigator.clipboard.writeText(text);

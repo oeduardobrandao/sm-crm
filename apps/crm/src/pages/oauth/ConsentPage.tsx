@@ -7,7 +7,7 @@ import {
   recordOAuthGrant,
   type EligibleWorkspace,
 } from '@/services/mcp-oauth';
-import { SCOPE_OPTIONS, AGENT_PRESET } from '@/lib/mcp-scopes';
+import { SCOPE_OPTIONS, AGENT_PRESET, SCOPE_IMPLIES } from '@/lib/mcp-scopes';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Spinner } from '@/components/ui/spinner';
@@ -72,7 +72,10 @@ export default function ConsentPage() {
       const requested = ((data as AuthDetails).scope || '')
         .split(/\s+/)
         .filter((s) => allowed.includes(s));
-      setScopes(requested.length ? requested : AGENT_PRESET);
+      // A client that requested only a write scope still needs the read scope its tools
+      // require server-side (SCOPE_IMPLIES) — expand the seed so the pair starts consistent.
+      const expanded = requested.flatMap((s) => (SCOPE_IMPLIES[s] ? [s, SCOPE_IMPLIES[s]] : [s]));
+      setScopes(requested.length ? [...new Set(expanded)] : AGENT_PRESET);
 
       try {
         const ws = await listEligibleWorkspaces();
@@ -92,9 +95,17 @@ export default function ConsentPage() {
   }, [authorizationId]);
 
   const toggleScope = (value: string, checked: boolean) =>
-    setScopes((prev) =>
-      checked ? [...new Set([...prev, value])] : prev.filter((s) => s !== value),
-    );
+    setScopes((prev) => {
+      // Checking a write scope also grants the read scope its tools require (mcp/tools.ts
+      // enforces the pair server-side); unchecking a read scope drops any checked write
+      // scope that depends on it, so the pair never splits in the UI.
+      if (checked) {
+        const implied = SCOPE_IMPLIES[value];
+        return [...new Set([...prev, value, ...(implied ? [implied] : [])])];
+      }
+      const impliedBy = Object.entries(SCOPE_IMPLIES).find(([, read]) => read === value)?.[0];
+      return prev.filter((s) => s !== value && s !== impliedBy);
+    });
 
   const selectedWs = workspaces.find((w) => w.id === selected) ?? null;
   const canApprove =

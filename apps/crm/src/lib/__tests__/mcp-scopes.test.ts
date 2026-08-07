@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SCOPE_OPTIONS, AGENT_PRESET } from '../mcp-scopes';
+import { SCOPE_OPTIONS, AGENT_PRESET, SCOPE_IMPLIES } from '../mcp-scopes';
 
 describe('mcp-scopes', () => {
   it('offers templates:write as a selectable scope', () => {
@@ -44,5 +44,23 @@ describe('import assistant scopes (clientes/membros)', () => {
     expect(AGENT_PRESET).toContain('membros:read');
     expect(AGENT_PRESET).not.toContain('clientes:write');
     expect(AGENT_PRESET).not.toContain('membros:write');
+  });
+});
+
+describe('SCOPE_IMPLIES', () => {
+  // create_client/create_member return the row they just wrote, so mcp/tools.ts requires the
+  // matching read scope alongside the write scope. The scope pickers must keep that pair
+  // consistent instead of letting a user mint a write-only key/grant that fails at call time.
+  it('maps clientes:write to clientes:read and membros:write to membros:read', () => {
+    expect(SCOPE_IMPLIES['clientes:write']).toBe('clientes:read');
+    expect(SCOPE_IMPLIES['membros:write']).toBe('membros:read');
+  });
+
+  it('keeps every key and value inside SCOPE_OPTIONS', () => {
+    const values = SCOPE_OPTIONS.map((s) => s.value);
+    for (const [write, read] of Object.entries(SCOPE_IMPLIES)) {
+      expect(values).toContain(write);
+      expect(values).toContain(read);
+    }
   });
 });

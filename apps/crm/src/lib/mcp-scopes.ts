@@ -24,3 +24,13 @@ export const AGENT_PRESET: string[] = [
   'tarefas:read',
   'membros:read',
 ];
+
+/**
+ * Escopos de escrita cujas ferramentas devolvem o estado da linha e por isso
+ * exigem também o escopo de leitura (imposto no register() de mcp/tools.ts).
+ * Os seletores de escopo mantêm o par consistente automaticamente.
+ */
+export const SCOPE_IMPLIES: Record<string, string> = {
+  'clientes:write': 'clientes:read',
+  'membros:write': 'membros:read',
+};
