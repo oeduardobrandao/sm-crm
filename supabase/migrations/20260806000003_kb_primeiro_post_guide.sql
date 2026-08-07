@@ -202,14 +202,14 @@ SELECT _kb_pp_upsert(
       ARRAY[
         'Abra Entregas no menu lateral',
         'Clique em Novo Fluxo',
-        'Escolha um template ou comece do zero',
+        'Escolha um template, depois confirme o cliente e o nome do fluxo',
         'Revise as etapas: produção, revisão, aprovação e publicação',
         'Defina responsável e prazo de cada etapa, e salve'
       ],
       ARRAY[
         _kb_pp_shot('16-abrir-entregas.png', 'Página de Entregas no modo kanban, com o botão Novo Fluxo.'),
         _kb_pp_shot('17-novo-fluxo.png', 'Diálogo de novo fluxo recém-aberto.'),
-        _kb_pp_shot('18-escolher-template.png', 'Seleção de template do fluxo.'),
+        _kb_pp_shot('18-escolher-template.png', 'Etapa O básico do assistente de novo fluxo, com o cliente escolhido e o nome do fluxo sugerido.'),
         _kb_pp_shot('19-etapas-do-fluxo.png', 'Lista de etapas do fluxo sendo montada.'),
         _kb_pp_shot('20-responsavel-e-prazo.png', 'Campos de responsável e prazo de uma etapa.')
       ]::jsonb[]
@@ -228,10 +228,10 @@ SELECT _kb_pp_upsert(
       ],
       ARRAY[
         _kb_pp_shot('21-abrir-gaveta.png', 'Gaveta da entrega aberta, mostrando etapas e posts.'),
-        _kb_pp_shot('22-novo-post.png', 'Área de posts da gaveta, com a opção de adicionar um post.'),
-        _kb_pp_shot('23-tipo-e-titulo.png', 'Campos de tipo e título do post preenchidos.'),
-        _kb_pp_shot('24-enviar-midia.png', 'Área de mídia do post, com um arquivo enviado.'),
-        _kb_pp_shot('25-escrever-legenda.png', 'Campo de legenda do Instagram preenchido, com o contador de caracteres.')
+        _kb_pp_shot('22-novo-post.png', 'Área de posts da gaveta, com o botão Novo Post e um post recém-criado, ainda vazio.'),
+        _kb_pp_shot('23-tipo-e-titulo.png', 'Campos de tipo, título, status e responsável do post abertos na gaveta.'),
+        _kb_pp_shot('24-enviar-midia.png', 'Área de mídia do post, ainda vazia, com as opções de adicionar um arquivo ou escolher um já salvo em Arquivos.'),
+        _kb_pp_shot('25-escrever-legenda.png', 'Campo de legenda do post, ainda vazio, com o contador de caracteres em 0 de 2200.')
       ]::jsonb[]
     ),
     _kb_pp_callout('⚠️', 'orange', 'Reels e vídeos podem exigir thumbnail antes de publicar. Se o campo aparecer, preencha agora, porque a falta dele só reaparece como erro na hora de agendar.'),
