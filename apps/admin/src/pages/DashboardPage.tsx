@@ -41,6 +41,12 @@ export default function DashboardPage() {
   const totalMrrCents = (mrrData?.mrr_cents ?? 0) + (trialsData?.trial_mrr_cents ?? 0);
   const currency = mrrData?.currency ?? trialsData?.currency;
 
+  // Intl glues "R$" to the amount with a non-breaking space, so a long value can't wrap inside
+  // a half-width mobile card and overflows instead. Swap it for a normal space in the KPI cards
+  // only, so break-words wraps after "R$" rather than mid-number.
+  const kpiMoney = (cents: number | null | undefined) =>
+    formatMoney(cents, currency).replace(/[\u00A0\u202F]/g, ' ');
+
   // Each card gates on its own query only: the Stripe-backed MRR/Trials queries
   // must not hold the instant workspace/plan counts hostage.
   const kpis: { label: string; value: string | number; sub?: string; loading: boolean }[] = [
@@ -50,19 +56,19 @@ export default function DashboardPage() {
     { label: 'With Overrides', value: withOverrides, loading: wsLoading },
     {
       label: 'MRR',
-      value: formatMoney(mrrData?.mrr_cents ?? null, currency),
+      value: kpiMoney(mrrData?.mrr_cents ?? null),
       sub: mrrData ? `${mrrData.paying_count} pagantes` : undefined,
       loading: mrrLoading,
     },
     {
       label: 'Trials',
-      value: formatMoney(trialMrrCents, currency),
+      value: kpiMoney(trialMrrCents),
       sub: trialsData ? `${trialsData.trial_count} em teste` : undefined,
       loading: trialsLoading,
     },
     {
       label: 'Total MRR',
-      value: formatMoney(totalMrrCents, currency),
+      value: kpiMoney(totalMrrCents),
       sub: 'MRR + trials',
       loading: mrrLoading || trialsLoading,
     },
@@ -77,12 +83,14 @@ export default function DashboardPage() {
         {kpis.map((kpi) => (
           <div
             key={kpi.label}
-            className="glass-surface bg-card border border-border rounded-2xl p-5"
+            className="glass-surface bg-card border border-border rounded-2xl p-5 min-w-0"
           >
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
               {kpi.label}
             </p>
-            <p className="text-3xl font-bold font-sf">{kpi.loading ? '—' : kpi.value}</p>
+            <p className="text-2xl sm:text-3xl font-bold font-sf break-words">
+              {kpi.loading ? '—' : kpi.value}
+            </p>
             {!kpi.loading && kpi.sub ? (
               <p className="text-xs text-muted-foreground mt-1">{kpi.sub}</p>
             ) : null}
