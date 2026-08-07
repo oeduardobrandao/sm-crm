@@ -351,11 +351,26 @@ test('primeiro post walkthrough', async ({ page }) => {
   // as duas asserções abaixo checam no DOM, imediatamente antes do clique em
   // "Avançar", as mesmas duas condições que executeForward usa
   // (card.etapa.tipo === 'aprovacao_cliente' e !allCleared), na mesma fonte
-  // de verdade que o componente: `.board-card-approval`
-  // (WorkflowCard.tsx:452) só renderiza quando etapa.tipo === 'aprovacao_cliente',
-  // e a AUSÊNCIA de `.board-card-posts-badge` (WorkflowCard.tsx:701) prova
-  // postsCount === 0, o que força total === 0 e allCleared === false. Se o
-  // estado real mudar (drift), o teste falha aqui em vez de gravar em produção.
+  // de verdade que o componente.
+  //
+  // AS DUAS ASSERÇÕES SÓ FUNCIONAM JUNTAS. Não remova uma achando que a outra
+  // basta: `.board-card-approval` tem TRÊS pontos de render em WorkflowCard.tsx,
+  // não um. O 453 exige etapa.tipo === 'aprovacao_cliente'; o 488 exige
+  // revisaoInternaCount > 0; o 513 exige awaitingClienteCount > 0. Sozinha, a
+  // primeira asserção não prova o tipo da etapa.
+  //
+  // Quem fecha isso é a segunda. Os três contadores saem da MESMA tabela e do
+  // MESMO workflow, mudando só o filtro de status (store/posts.ts): total,
+  // status='revisao_interna' e status='enviado_cliente'. Os dois últimos são
+  // subconjuntos estritos do primeiro, e KanbanView.tsx:516 passa
+  // `postsCounts.get(id) ?? 0`, nunca undefined. Então a ausência do badge é
+  // exatamente postsCount === 0, o que zera os outros dois e torna os renders
+  // 488 e 513 impossíveis. Sobra o 453, cuja única condição é o tipo da etapa,
+  // que é o mesmo input que executeForward lê.
+  //
+  // Também força allCleared === false (total > 0 && ...), o segundo input do
+  // ramo. Se o estado real mudar, o teste falha aqui em vez de gravar em
+  // produção.
   const aprovacaoCard = page.locator('.board-card', { hasText: 'Post Semana 3' });
   await aprovacaoCard.getByRole('button', { name: 'Concluir etapa e avançar' }).click();
   const forwardDialog2 = page.getByRole('alertdialog').filter({ hasText: 'Avançar etapa?' });
