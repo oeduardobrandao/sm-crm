@@ -83,9 +83,13 @@ coalesces an absent nome to `''`; unnecessary here because `nome` is zod-require
 but the non-alphabetic fallback must be kept.) Also on insert: `cor` default
 `#eab308`; `plano: ''`; `user_id: ctx.created_by`; `conta_id: ctx.conta_id`.
 
-Returns: `{ id, nome, sigla, status, email, telefone, especialidade, already_existed,
-filled_fields }`. No financial fields in any response, keeping parity with
-`list_clients`/`get_client` ("campos não sensíveis").
+Returns: the `CLIENT_PUBLIC_FIELDS` projection (`id, nome, sigla, especialidade,
+cor, status` via the existing `allowlistClient` helper) + `already_existed` +
+`filled_fields`. Note `email`/`telefone` are accepted as *input* but never echoed
+back: the codebase already classifies them in `CLIENT_SENSITIVE_FIELDS`
+(`mcp/content.ts:167`) and no MCP read returns them, so the create tool follows the
+same allowlist. `filled_fields` names which fields were written (e.g. `["email"]`)
+without carrying values.
 
 ### create_member (scope `membros:write`)
 
@@ -113,10 +117,12 @@ Returns the roster minus `custo_mensal`:
 - Match: `lower(trim(nome))` equality within `ctx.conta_id`. The conta_id scoping is
   the security boundary; the service role sees every workspace.
 - Tie-break: there is no unique constraint on `clientes.nome` or `membros.nome`, so
-  multiple rows can match (hand-created duplicates exist in prod). The match query
-  must use `order by id asc limit 1`: the oldest row is the canonical match, and the
-  same input always resolves to the same row. Without the explicit ordering, Postgres
-  row order is unspecified and retries could update different rows.
+  multiple rows can match (hand-created duplicates exist in prod). The match must
+  resolve deterministically to the **oldest row (lowest id)**: since
+  `lower(trim(nome))` equality cannot be expressed as a single supabase-js filter,
+  the implementation scans the workspace's rows `order by id asc` and takes the
+  first in-code match, which is equivalent. Without the explicit id ordering,
+  Postgres row order is unspecified and retries could update different rows.
 - The fill-empty UPDATE must carry `conta_id = ctx.conta_id` in addition to the
   matched id. RLS `WITH CHECK` does not protect service-role writes; every write
   scopes tenant explicitly by hand (standing lesson recorded at
