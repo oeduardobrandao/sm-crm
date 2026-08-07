@@ -670,9 +670,18 @@ async function check({ skipSecao7 }) {
   );
 }
 
+// Guarda de importação, igual à do scripts/upload-kb-images.mjs. Sem ela, um
+// `import` deste módulo (num teste, por exemplo) executaria o dispatch abaixo
+// com o argv do vitest, não bateria nenhum modo e chamaria process.exit(1) na
+// hora do import, derrubando o worker inteiro. Vale ainda mais aqui do que no
+// irmão: este script escreve em produção com a service role, ignorando RLS.
+const isDirectRun = process.argv[1] && process.argv[1].endsWith('seed-kb-capture-fixtures.mjs');
+
 const mode = process.argv[2];
 const skipSecao7 = process.argv.includes('--sem-secao-7');
-if (!['--up', '--down', '--check'].includes(mode)) {
+if (!isDirectRun) {
+  // Importado, não executado: nada roda.
+} else if (!['--up', '--down', '--check'].includes(mode)) {
   console.error(
     'Uso: node --env-file=.env.kb-upload.local scripts/seed-kb-capture-fixtures.mjs --check|--up|--down\n' +
       '  --check  roda as validações e não escreve nada. Comece por aqui.\n' +
@@ -684,13 +693,13 @@ if (!['--up', '--down', '--check'].includes(mode)) {
       '                 vencido: libera as capturas das seções 1 a 6 e 8.',
   );
   process.exit(1);
-}
-
-try {
-  if (mode === '--check') await check({ skipSecao7 });
-  else if (mode === '--up') await up({ skipSecao7 });
-  else await down();
-} catch (err) {
-  console.error(`\nFalhou: ${err.message}`);
-  process.exit(1);
+} else {
+  try {
+    if (mode === '--check') await check({ skipSecao7 });
+    else if (mode === '--up') await up({ skipSecao7 });
+    else await down();
+  } catch (err) {
+    console.error(`\nFalhou: ${err.message}`);
+    process.exit(1);
+  }
 }
