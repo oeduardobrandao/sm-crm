@@ -129,10 +129,10 @@ SELECT _kb_pp_upsert(
   'aaaaaaaa-001a-4000-a000-00000000001a',
   'Como agendar seu primeiro post',
   'como-agendar-seu-primeiro-post',
-  'Do workspace vazio ao primeiro post agendado, com uma imagem em cada passo.',
+  'Do workspace vazio ao primeiro post agendado, passo a passo, com telas reais do sistema.',
   _kb_pp_doc(
     _kb_pp_h(2, 'O que você vai precisar'),
-    _kb_pp_p('Este guia vai do workspace recém-criado até um post agendado no Instagram. São sete etapas e cada uma tem imagem. Se você já cumpriu alguma delas, use o índice ao lado para pular direto.'),
+    _kb_pp_p('Este guia vai do workspace recém-criado até um post agendado no Instagram, em sete etapas, ilustradas com telas reais do sistema. Se você já cumpriu alguma delas, use o índice ao lado para pular direto.'),
     _kb_pp_callout('⏱️', 'blue', 'Separe cerca de 20 minutos. A parte mais demorada é conectar o Instagram, porque depende da autorização pelo Facebook.'),
 
     _kb_pp_h(2, '1. Cadastre o cliente'),
