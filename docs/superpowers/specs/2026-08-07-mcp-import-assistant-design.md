@@ -123,6 +123,10 @@ Returns the roster minus `custo_mensal`:
   the implementation scans the workspace's rows `order by id asc` and takes the
   first in-code match, which is equivalent. Without the explicit id ordering,
   Postgres row order is unspecified and retries could update different rows.
+  The scan is **paginated** (`.range()` in 1000-row pages via a shared
+  `findByNome` helper): hosted PostgREST caps un-ranged selects at 1000 rows, so
+  an unpaged scan would go blind past the first page in a >1000-client workspace
+  and deterministically re-create duplicates, breaking the idempotency guarantee.
 - The fill-empty UPDATE must carry `conta_id = ctx.conta_id` in addition to the
   matched id. RLS `WITH CHECK` does not protect service-role writes; every write
   scopes tenant explicitly by hand (standing lesson recorded at
@@ -173,9 +177,12 @@ Two precisions the wrapper forces:
   (`mcp/tools.ts:52`) derives `resource_id` from a hardcoded key list
   (`post_id ?? client_id ?? workflow_id`). `create_client`'s `auditArgs` returns
   `client_id: result.id` (recognized as-is); for `create_member`, extend the
-  extraction list with `member_id` and return `member_id: result.id`. While touching
-  that line, also add `template_id`: `create_workflow_template`'s audit rows land
-  with an empty `resource_id` today for the same reason.
+  extraction list with `member_id` and return `member_id: result.id`. While there,
+  also add `template_id` to the extraction AND extend `create_workflow_template`'s
+  existing `auditArgs` to return `template_id: result.id` — its audit rows land
+  with an empty `resource_id` today, and the extraction fallback alone cannot fix
+  that because `audit()` reads keys from what `auditArgs` returns, which for that
+  tool contains no id.
 - **Omitting names is a deliberate choice, not the existing pattern.** The majority
   of current write tools log their title field in cleartext (`create_post` and
   `create_workflow` log `titulo`, `create_workflow_template` logs `nome`); only long

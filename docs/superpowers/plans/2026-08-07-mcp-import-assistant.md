@@ -435,7 +435,7 @@ git commit -m "feat(mcp): createClient com find-or-create por nome e merge de ca
 - Test: `supabase/functions/__tests__/mcp-import_test.ts` (append)
 
 **Interfaces:**
-- Consumes: `Deps`, `isBlank` (Task 2), fake-db harness already in the test file.
+- Consumes: `Deps`, `isBlank`, `findByNome(d, table, fields, nome)` (Task 2), fake-db harness already in the test file (its recorder supports `range` since Task 2's fix round).
 - Produces:
   - `content.ts`: `MEMBER_PUBLIC_FIELDS = ["id", "nome", "cargo", "tipo", "data_pagamento", "crm_user_id", "created_at"] as const` and `allowlistMember(row: Record<string, unknown>): Record<string, unknown>`.
   - `queries.ts`: `createMember(d: Deps, args: { nome: string; cargo?: string; tipo?: string; custo_mensal?: number; data_pagamento?: number }): Promise<any>` and `listMembers(d: Deps): Promise<any[]>`. Both return `MEMBER_PUBLIC_FIELDS` projections; `createMember` adds `already_existed` + `filled_fields`. Task 4 registers them as `create_member` / `list_members`.
@@ -549,16 +549,10 @@ export async function createMember(
   args: { nome: string; cargo?: string; tipo?: string; custo_mensal?: number; data_pagamento?: number },
 ): Promise<any> {
   const nome = args.nome.trim();
-  // Same find-or-create contract as createClient: id-ordered scan, oldest match wins.
-  const { data: rows, error: selErr } = await d.db
-    .from("membros")
-    .select(MEMBER_MERGE_FIELDS)
-    .eq("conta_id", d.ctx.conta_id)
-    .order("id", { ascending: true });
-  if (selErr) throw selErr;
-  const match = ((rows ?? []) as any[]).find(
-    (r) => typeof r.nome === "string" && r.nome.trim().toLowerCase() === nome.toLowerCase(),
-  );
+  // Same find-or-create contract as createClient: paginated id-ordered scan via
+  // findByNome (Task 2's helper), oldest match wins, immune to the 1000-row
+  // PostgREST page cap.
+  const match = await findByNome(d, "membros", MEMBER_MERGE_FIELDS, nome);
 
   if (match) {
     const patch: Record<string, unknown> = {};
@@ -712,7 +706,16 @@ Deno.test("mcp-import: create_member audit row carries member_id via the extende
     ),
 ```
 
-(`template_id` fixes the pre-existing hole where `create_workflow_template` audit rows had an empty resource_id.)
+(c') `template_id` alone does NOT fix `create_workflow_template`'s empty resource_id: `audit()` reads keys from what `auditArgs` RETURNS, and that tool's callback (~line 253) returns `{ nome, etapa_count, property_count }` with no id. Make the fix real by extending that existing callback to include the created template's id from the result:
+
+```ts
+    (a, r) => ({
+      template_id: (r as { id?: number })?.id,
+      nome: a.nome,
+      etapa_count: a.etapas?.length ?? 0,
+      property_count: a.properties?.length ?? 0,
+    }));
+```
 
 (c) Add near the other enums (~line 91): `const TIPO_MEMBRO = z.enum(["clt", "freelancer_mensal", "freelancer_demanda"]);`
 
