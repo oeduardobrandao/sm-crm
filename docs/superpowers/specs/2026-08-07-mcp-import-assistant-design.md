@@ -75,8 +75,12 @@ Input (zod shape):
 | `valor_mensal` | number ≥ 0, optional | accepted, never echoed back |
 | `status` | enum `ativo\|pausado\|encerrado`, optional | default `ativo`, used on insert only |
 
-Derived on insert: `sigla` via the CSV-import rule
-`upper(left(regexp_replace(nome,'[^a-zA-Z]','','g') || 'XX', 2))`; `cor` default
+Derived on insert: `sigla` reproducing the CSV-import rule in TypeScript: strip
+non-ASCII-letters from `nome`, append `'XX'`, take the first two chars, uppercase —
+so a fully non-alphabetic nome (e.g. "123") still yields `'XX'` instead of an
+invalid empty sigla. (The SQL original at `20260729000004:305-321` additionally
+coalesces an absent nome to `''`; unnecessary here because `nome` is zod-required,
+but the non-alphabetic fallback must be kept.) Also on insert: `cor` default
 `#eab308`; `plano: ''`; `user_id: ctx.created_by`; `conta_id: ctx.conta_id`.
 
 Returns: `{ id, nome, sigla, status, email, telefone, especialidade, already_existed,
@@ -108,6 +112,16 @@ Returns the roster minus `custo_mensal`:
 
 - Match: `lower(trim(nome))` equality within `ctx.conta_id`. The conta_id scoping is
   the security boundary; the service role sees every workspace.
+- Tie-break: there is no unique constraint on `clientes.nome` or `membros.nome`, so
+  multiple rows can match (hand-created duplicates exist in prod). The match query
+  must use `order by id asc limit 1`: the oldest row is the canonical match, and the
+  same input always resolves to the same row. Without the explicit ordering, Postgres
+  row order is unspecified and retries could update different rows.
+- The fill-empty UPDATE must carry `conta_id = ctx.conta_id` in addition to the
+  matched id. RLS `WITH CHECK` does not protect service-role writes; every write
+  scopes tenant explicitly by hand (standing lesson recorded at
+  `mcp/queries.ts:666`). Low-risk here since the id comes from the just-scoped
+  SELECT, but the double filter is the codebase's rule, not an optimization.
 - Miss: insert, return `already_existed: false`, `filled_fields: []`.
 - Hit: update only empty fields from the payload, return the (possibly updated) row
   with `already_existed: true` and `filled_fields` naming exactly what was written.
@@ -131,8 +145,9 @@ sequential, and there is no unique index on `clientes.nome` to lean on. Not addi
 ## Errors and limits
 
 - `clientes` insert trips `trg_limit_clientes` when the plan is full. Catch with the
-  existing `isPlanLimitExceeded(err, "max_clients")` helper (`mcp/queries.ts`) and
-  rethrow as `McpInputError("Limite de clientes do plano foi atingido.")`.
+  existing `isPlanLimitExceeded(err, "max_clients")` helper (defined in
+  `mcp/content.ts:517`, already imported by `queries.ts`) and rethrow as
+  `McpInputError("Limite de clientes do plano foi atingido.")`.
 - `membros` has no count trigger (roster is unlimited, consistent with the UI;
   `max_team_members` applies to `workspace_members` seats, which this feature never
   touches).
@@ -143,8 +158,24 @@ sequential, and there is no unique index on `clientes.nome` to lean on. Not addi
 ## Audit
 
 The `register()` wrapper audits every call as `mcp.<tool>`. `auditArgs` callbacks
-record result ids and the `already_existed` / `filled_fields` outcome. Never payload
-contents (no names, emails, values), per the established rule in `mcp/tools.ts`.
+record result ids and the `already_existed` / `filled_fields` outcome, and omit
+`nome`, `email`, and financial values.
+
+Two precisions the wrapper forces:
+
+- **`resource_id` extraction must be extended.** The `audit()` helper
+  (`mcp/tools.ts:52`) derives `resource_id` from a hardcoded key list
+  (`post_id ?? client_id ?? workflow_id`). `create_client`'s `auditArgs` returns
+  `client_id: result.id` (recognized as-is); for `create_member`, extend the
+  extraction list with `member_id` and return `member_id: result.id`. While touching
+  that line, also add `template_id`: `create_workflow_template`'s audit rows land
+  with an empty `resource_id` today for the same reason.
+- **Omitting names is a deliberate choice, not the existing pattern.** The majority
+  of current write tools log their title field in cleartext (`create_post` and
+  `create_workflow` log `titulo`, `create_workflow_template` logs `nome`); only long
+  bodies are redacted, and only `create_task` omits its title. Client and member
+  `nome`/`email` are personal data about real people rather than content titles, so
+  these tools follow the conservative minority pattern: ids and outcome flags only.
 
 ## Testing
 
@@ -160,6 +191,10 @@ Deno tests in `supabase/functions/__tests__/` mirroring the existing MCP suites:
 5. No financial fields in any response (create_client, create_member, list_members).
 6. Scope gating: tools reject a ctx missing the scope (covered by the register
    wrapper; one test per new scope).
+7. Tie-break determinism: two same-nome rows in the workspace; the older id is
+   matched and updated on every retry.
+8. Audit resource_id: `create_client` and `create_member` audit rows carry the
+   created/matched row id (via `client_id` / the new `member_id` extraction).
 
 Contract-change pass (per repo convention): grep both test suites
 (`apps/**/__tests__`, `supabase/functions/__tests__`) for assertions on
