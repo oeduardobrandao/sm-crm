@@ -61,12 +61,13 @@ async function audit(deps: Deps, name: string, args: Record<string, unknown>) {
 
 /** Register one tool with scope-gating + audit. `auditArgs` also receives the RESULT, so write
  * audits can carry result metadata (ids, counts) without ever carrying payloads; existing
- * single-param callbacks are unaffected. */
+ * single-param callbacks are unaffected. If scope is an array, ALL scopes are required (write tools
+ * that echo row state also demand the read scope). */
 function register(
   server: any,
   deps: Deps,
   name: string,
-  scope: string,
+  scope: string | string[],
   description: string,
   shape: z.ZodRawShape,
   run: (args: any) => Promise<unknown>,
@@ -74,7 +75,7 @@ function register(
 ) {
   server.tool(name, description, shape, async (args: any) => {
     try {
-      requireScope(deps.ctx, scope);
+      for (const s of Array.isArray(scope) ? scope : [scope]) requireScope(deps.ctx, s);
       const data = await run(args ?? {});
       await audit(deps, name, (auditArgs ?? ((a: any) => a))(args ?? {}, data));
       return jsonResult(data);
@@ -335,7 +336,7 @@ export function registerTools(server: any, deps: Deps): void {
       has_data_limite: Object.hasOwn(a, "data_limite"),
     }));
 
-  register(server, deps, "create_client", "clientes:write",
+  register(server, deps, "create_client", ["clientes:write", "clientes:read"],
     "Cria um cliente no workspace. Se já existir um cliente com o mesmo nome, retorna o existente e preenche apenas os campos vazios (already_existed: true, filled_fields). Pensado para importação de outras plataformas.",
     {
       nome: z.string().trim().min(1).max(120),
@@ -360,7 +361,7 @@ export function registerTools(server: any, deps: Deps): void {
     {},
     () => listMembers(deps));
 
-  register(server, deps, "create_member", "membros:write",
+  register(server, deps, "create_member", ["membros:write", "membros:read"],
     "Cria um membro da equipe (roster interno). Não envia convite de login nem e-mail. Se já existir um membro com o mesmo nome, retorna o existente e preenche apenas os campos vazios.",
     {
       nome: z.string().trim().min(1).max(120),

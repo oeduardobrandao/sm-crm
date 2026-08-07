@@ -44,7 +44,7 @@ function has(calls: Call[], table: string, method: string, args: unknown[]): boo
 
 const CTX: McpKeyContext = {
   conta_id: "workspace-A",
-  scopes: ["clientes:write", "membros:read", "membros:write"],
+  scopes: ["clientes:read", "clientes:write", "membros:read", "membros:write"],
   key_id: "k1",
   created_by: "user-1",
 };
@@ -310,4 +310,24 @@ Deno.test("mcp-import: create_member audit row carries member_id via the extende
   await server.handlers["create_member"]({ nome: "João" });
   const auditRow = insertPayload(calls, "audit_log")! as Record<string, any>;
   assertEquals(auditRow.resource_id, "5", "resource_id from member_id");
+});
+
+Deno.test("mcp-import: create_client denies a write-only ctx (needs clientes:read too)", async () => {
+  const { db } = makeFakeDb({});
+  const writeOnly: McpKeyContext = { conta_id: "workspace-A", scopes: ["clientes:write"], key_id: "k1", created_by: "user-1" };
+  const server = makeFakeServer();
+  registerTools(server as any, { db, ctx: writeOnly } as unknown as Deps);
+  const result = await server.handlers["create_client"]({ nome: "X" });
+  assert(result.isError === true, "denied");
+  assert(result.content[0].text.includes("clientes:read"), "names the missing read scope");
+});
+
+Deno.test("mcp-import: create_member denies a write-only ctx (needs membros:read too)", async () => {
+  const { db } = makeFakeDb({});
+  const writeOnly: McpKeyContext = { conta_id: "workspace-A", scopes: ["membros:write"], key_id: "k1", created_by: "user-1" };
+  const server = makeFakeServer();
+  registerTools(server as any, { db, ctx: writeOnly } as unknown as Deps);
+  const result = await server.handlers["create_member"]({ nome: "X" });
+  assert(result.isError === true, "denied");
+  assert(result.content[0].text.includes("membros:read"), "names the missing read scope");
 });
