@@ -32,6 +32,24 @@ export function mapStatus(source: string): PostStatusTarget {
   return 'rascunho';
 }
 
+/**
+ * A detected client column only becomes the proposal when it actually carries
+ * data. Trello exports match 'Etiquetas' as the client column, but a board
+ * that never labels its cards yields an all-blank column — and binding the
+ * client to it makes every row resolve to a blank client, so the whole import
+ * commits nothing. Requiring a client name on at least half the rows keeps
+ * the real cases (roster CSVs, label-per-client boards) on column mode and
+ * sends sparse or empty columns to the fixed picker, which blocks the wizard
+ * until the user names the client.
+ */
+const CLIENT_COLUMN_MIN_DENSITY = 0.5;
+
+function clientColumnDense(col: ImportCollection, column: string): boolean {
+  if (col.rows.length === 0) return false;
+  const filled = col.rows.filter((r) => (r.cells[column] ?? '').trim()).length;
+  return filled / col.rows.length >= CLIENT_COLUMN_MIN_DENSITY;
+}
+
 function columnRoles(col: ImportCollection): ColumnRoles {
   const roles: ColumnRoles = {};
   for (const header of col.columns) {
@@ -62,6 +80,7 @@ export function proposeMapping(bundle: ImportBundle): MappingProposal {
   const collections = bundle.collections.map((col): CollectionMapping => {
     const roles = columnRoles(col);
     const destination = classify(col, roles);
+    const clientColumn = roles.client && clientColumnDense(col, roles.client) ? roles.client : null;
     const statusValues =
       col.listNames.length > 0
         ? col.listNames
@@ -76,8 +95,8 @@ export function proposeMapping(bundle: ImportBundle): MappingProposal {
         destination === 'posts'
           ? Object.fromEntries(statusValues.map((v) => [v, mapStatus(v)]))
           : {},
-      clientAssignment: roles.client
-        ? { mode: 'column', column: roles.client }
+      clientAssignment: clientColumn
+        ? { mode: 'column', column: clientColumn }
         : { mode: 'fixed', clienteNome: '' },
     };
   });

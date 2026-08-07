@@ -445,6 +445,11 @@ describe('ImportarPage', () => {
     await screen.findByText('1 coleção · 5 linhas');
     fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
     await screen.findByText('calendario');
+    // The heuristic no longer binds an all-blank client column (it proposes the
+    // fixed picker, which blocks the step) — so the only route left into
+    // "every row drops during the build" is the user explicitly choosing that
+    // column, which the mapping step allows. Drive exactly that.
+    fireEvent.click(screen.getByRole('button', { name: 'Coluna “Cliente”' }));
     fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
     await screen.findByText('Prévia da importação');
 
