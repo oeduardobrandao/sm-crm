@@ -309,7 +309,7 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         p_source: "workspace_user",
         p_actor: actorId,
         p_fields: post.platform === "both"
-          ? { instagram_container_id: null, publish_processing_at: null, publish_error: null }
+          ? { instagram_container_id: null, publish_processing_at: null, publish_error: null, publish_error_code: null }
           : {},
       });
       if (rpcErr) return internalServerError(json, "tiktok-publish:cancel", rpcErr);

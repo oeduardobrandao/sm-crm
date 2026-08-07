@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   AlertTriangle,
   AtSign,
   Bell,
@@ -198,6 +199,13 @@ export function getNotificationDisplay(
         tone: 'primary',
         title: `${s(m.actor_name, 'Alguém')} mencionou você`,
         body: s(m.excerpt, s(m.context_title, '')),
+      };
+    case 'post_publish_failed':
+      return {
+        icon: AlertCircle,
+        tone: 'danger',
+        title: 'Falha na publicação',
+        body: m.client_name ? `${client} · ${post}` : post,
       };
     default:
       // Resilience: a notification type the DB allows but the UI doesn't know yet

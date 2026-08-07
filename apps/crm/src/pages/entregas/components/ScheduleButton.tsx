@@ -13,7 +13,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { sanitizeUrl } from '@/utils/security';
 import type { WorkflowPost } from '../../../store';
+import type { PostMedia } from '../../../store/posts';
 import { getPostPublishState, PLATFORM_LABELS } from '../postLabels';
+import { validatePostMedia } from '../instagramLimits';
+import { getPublishErrorDisplay } from '../publishErrorCopy';
 import type { Platform } from './PlatformSelector';
 import {
   scheduleInstagramPost,
@@ -146,6 +149,10 @@ function scheduleSuccessMessage(platform: Platform): string {
 
 interface ScheduleButtonProps {
   post: WorkflowPost;
+  /** Post media, used for a client-side preflight against Instagram's publishing
+   * limits (size, format, aspect ratio, duration). Optional: when omitted, the
+   * preflight is skipped entirely and the gate stays server-side only. */
+  media?: PostMedia[];
   hasInstagramAccount: boolean;
   igAccountStatus?: { revoked: boolean; expired: boolean; canPublish: boolean } | null;
   /** TikTok analogue of `igAccountStatus`, derived from `tiktok_accounts.authorization_status`
@@ -172,6 +179,7 @@ interface ScheduleButtonProps {
 
 export function ScheduleButton({
   post,
+  media,
   hasInstagramAccount,
   igAccountStatus,
   ttAccountStatus,
@@ -482,11 +490,22 @@ export function ScheduleButton({
         >
           <RefreshCw className="h-3 w-3 mr-1" /> Tentar novamente
         </Button>
-        {targetsInstagram && post.publish_error && (
-          <p className="text-xs mt-1 flex items-center gap-1" style={{ color: '#f55a42' }}>
-            <AlertCircle className="h-3 w-3" /> {post.publish_error}
-          </p>
-        )}
+        {targetsInstagram &&
+          (post.publish_error || post.publish_error_code) &&
+          (() => {
+            const d = getPublishErrorDisplay(post.publish_error_code);
+            return (
+              <div className="text-xs mt-1" style={{ color: 'var(--danger-text)' }}>
+                <p className="flex items-center gap-1 font-semibold">
+                  <AlertCircle className="h-3 w-3" /> {d.titulo}
+                </p>
+                <p className="mt-0.5">{d.explicacao}</p>
+                {d.mostrarDetalhes && post.publish_error && (
+                  <p className="mt-0.5 opacity-75">{post.publish_error}</p>
+                )}
+              </div>
+            );
+          })()}
         {targetsTikTok && post.tiktok_publish_error && (
           <p className="text-xs mt-1 flex items-center gap-1" style={{ color: '#f55a42' }}>
             <AlertCircle className="h-3 w-3" /> {post.tiktok_publish_error}
@@ -501,8 +520,16 @@ export function ScheduleButton({
     const isStoryPost = post.tipo === 'stories';
     const hasRequiredCaption =
       isStoryPost || !!post.ig_caption?.trim() || (targetsTikTok && !!post.tiktok_caption?.trim());
-    const canSchedule = !!post.scheduled_at && hasRequiredCaption && !accountWarning && tiktokReady;
-    const canPublishNow = hasRequiredCaption && !accountWarning && tiktokReady;
+    const mediaViolations =
+      targetsInstagram && media ? validatePostMedia(media, { forStories: isStoryPost }) : [];
+    const canSchedule =
+      !!post.scheduled_at &&
+      hasRequiredCaption &&
+      !accountWarning &&
+      tiktokReady &&
+      mediaViolations.length === 0;
+    const canPublishNow =
+      hasRequiredCaption && !accountWarning && tiktokReady && mediaViolations.length === 0;
     const missingItems: string[] = [];
     if (!post.scheduled_at) missingItems.push('data de publicação');
     if (!isStoryPost && !hasRequiredCaption) missingItems.push('legenda do Instagram');
@@ -548,6 +575,15 @@ export function ScheduleButton({
           <p className="text-xs mt-1 flex items-center gap-1" style={{ color: '#f5a342' }}>
             <AlertCircle className="h-3 w-3" /> Falta: {missingItems.join(', ')}
           </p>
+        )}
+        {mediaViolations.length > 0 && (
+          <ul className="text-xs mt-1" style={{ color: 'var(--danger-text)' }}>
+            {mediaViolations.map((v) => (
+              <li key={v} className="flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" /> {v}
+              </li>
+            ))}
+          </ul>
         )}
         <AlertDialog
           open={confirmOpen}

@@ -2,6 +2,7 @@
 
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { classifyPublishError } from "../_shared/publish-error-codes.ts";
 import {
   validateForScheduling,
   decryptToken,
@@ -142,6 +143,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           instagram_container_id: null,
           publish_processing_at: null,
           publish_error: null,
+          publish_error_code: null,
         },
       });
       return json({ ok: true, status: "aprovado_cliente" });
@@ -159,6 +161,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         p_fields: {
           publish_retry_count: 0,
           publish_error: null,
+          publish_error_code: null,
           instagram_container_id: null,
           publish_processing_at: null,
         },
@@ -227,6 +230,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
                 published_at: new Date().toISOString(),
                 publish_processing_at: null,
                 publish_error: null,
+                publish_error_code: null,
                 publish_retry_count: 0,
               },
             });
@@ -331,6 +335,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         return json({ ok: true, status: "postado", instagram_permalink: permalink });
       } catch (err: any) {
         console.error(`[IG-PUBLISH-NOW] Failed for post ${postId}:`, err.message);
+        const errorCode = classifyPublishError(err);
         await svcDb.rpc("record_post_status_change", {
           p_post_id: postId,
           p_new_status: "falha_publicacao",
@@ -338,11 +343,35 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           p_actor: actorId,
           p_fields: {
             publish_error: (err.message ?? "Unknown error").slice(0, 500),
+            publish_error_code: errorCode,
             publish_processing_at: null,
+            ...(errorCode === "CONTAINER_EXPIRED" ? { instagram_container_id: null } : {}),
           },
         });
 
-        if (err.code === 'TOKEN_EXPIRED') {
+        if (errorCode === "CONTAINER_EXPIRED" && post.tipo === "stories") {
+          // Stories keep their containers per-segment in story_segments, not in the
+          // top-level instagram_container_id cleared above. Without this, a segment
+          // whose container expired keeps its dead container_id forever: the next
+          // publish-now/cron attempt would skip it (already has a container_id) and
+          // hammer the same expired container indefinitely.
+          try {
+            const { data: storyPost } = await svcDb
+              .from("workflow_posts")
+              .select("story_segments")
+              .eq("id", postId)
+              .single();
+            const segments = (storyPost?.story_segments ?? []) as Array<
+              { file_id: number; container_id: string | null; media_id: string | null }
+            >;
+            if (segments.length > 0) {
+              const cleared = segments.map((seg) => (seg.media_id ? seg : { ...seg, container_id: null }));
+              await svcDb.from("workflow_posts").update({ story_segments: cleared }).eq("id", postId);
+            }
+          } catch (_) { /* best-effort */ }
+        }
+
+        if (errorCode === 'TOKEN_EXPIRED') {
           try {
             const { data: wf } = await svcDb.from("workflows").select("cliente_id").eq("id", post.workflow_id).single();
             if (wf?.cliente_id) {

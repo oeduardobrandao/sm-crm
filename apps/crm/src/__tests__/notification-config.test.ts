@@ -42,6 +42,29 @@ describe('getNotificationDisplay', () => {
     expect(display.body).toBe('Um comentário interessante');
   });
 
+  it('renders post_publish_failed notification with client_name and post_title', () => {
+    const display = getNotificationDisplay('post_publish_failed', {
+      post_id: 1,
+      workflow_id: 2,
+      post_title: 'Carrossel de lançamento',
+      client_name: 'Clínica Vitalis',
+      publish_error_code: 'TOKEN_EXPIRED',
+    });
+
+    expect(display.title).toBe('Falha na publicação');
+    expect(display.body).toBe('Clínica Vitalis · Carrossel de lançamento');
+    expect(display.tone).toBe('danger');
+    expect(display.icon).toBeDefined();
+  });
+
+  it('post_publish_failed falls back to post title only when client_name is missing', () => {
+    const display = getNotificationDisplay('post_publish_failed', {
+      post_title: 'Story de aniversário',
+    });
+
+    expect(display.body).toBe('Story de aniversário');
+  });
+
   it('still falls back to default for unknown types', () => {
     const display = getNotificationDisplay('future_unknown_type' as any, {});
 

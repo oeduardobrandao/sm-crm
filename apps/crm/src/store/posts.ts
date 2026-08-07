@@ -34,6 +34,7 @@ export interface WorkflowPost {
   instagram_permalink?: string | null;
   published_at?: string | null;
   publish_error?: string | null;
+  publish_error_code?: string | null;
   publish_retry_count?: number;
   instagram_container_id?: string | null;
   instagram_media_id?: string | null;
@@ -162,6 +163,7 @@ export interface ScheduledPost {
   ig_caption: string | null;
   instagram_permalink: string | null;
   publish_error: string | null;
+  publish_error_code: string | null;
   ordem: number;
   responsavel_id: number | null;
   /** Which platform(s) this post targets; DB defaults to 'instagram' (see WorkflowPost). */
@@ -183,7 +185,7 @@ export interface ScheduledPost {
  * Instagram for every post (see toWorkflowPost in PublicacoesPanel.tsx).
  */
 const POST_CONTEXT_COLUMNS =
-  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id';
+  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id';
 
 function mapPostContextRow(row: any): ActivePost {
   return {
@@ -201,6 +203,7 @@ function mapPostContextRow(row: any): ActivePost {
     ig_caption: row.ig_caption ?? null,
     instagram_permalink: row.instagram_permalink ?? null,
     publish_error: row.publish_error ?? null,
+    publish_error_code: row.publish_error_code ?? null,
     ordem: row.ordem,
     responsavel_id: row.responsavel_id ?? null,
     platform: row.platform ?? 'instagram',

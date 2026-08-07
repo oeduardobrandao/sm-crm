@@ -11,6 +11,7 @@ export default defineConfig({
       '@mesaas/ui': path.resolve(__dirname, 'packages/ui'),
       '@mesaas/import-parsers': path.resolve(__dirname, 'packages/import-parsers/index.ts'),
       '@mesaas/app-lifecycle': path.resolve(__dirname, 'packages/app-lifecycle/index.ts'),
+      '@shared': path.resolve(__dirname, 'supabase/functions/_shared'),
     },
   },
   define: {

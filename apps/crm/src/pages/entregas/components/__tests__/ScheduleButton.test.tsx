@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowPost } from '../../../../store';
+import type { PostMedia } from '../../../../store/posts';
 
 vi.mock('../../../../services/instagram', () => ({
   scheduleInstagramPost: vi.fn(),
@@ -61,6 +62,28 @@ const defaultProps = {
   hasInstagramAccount: true,
   onStatusChange: vi.fn(),
 };
+
+function makeMedia(overrides?: Partial<PostMedia>): PostMedia {
+  return {
+    id: 1,
+    post_id: 1,
+    conta_id: 'w',
+    r2_key: 'k',
+    thumbnail_r2_key: null,
+    kind: 'image',
+    mime_type: 'image/jpeg',
+    size_bytes: 1024,
+    original_filename: 'a.jpg',
+    width: 1080,
+    height: 1350,
+    duration_seconds: null,
+    is_cover: false,
+    sort_order: 0,
+    uploaded_by: null,
+    created_at: '2026-01-01T00:00:00Z',
+    ...overrides,
+  } as PostMedia;
+}
 
 describe('ScheduleButton', () => {
   beforeEach(() => {
@@ -1259,6 +1282,64 @@ describe('ScheduleButton', () => {
         />,
       );
       expect(screen.getByText('Agendado')).toBeTruthy();
+    });
+  });
+
+  // ─── Media preflight (aprovado_cliente) ─────────────────────────────────────
+
+  describe('preflight de mídia', () => {
+    it('bloqueia agendar quando uma imagem excede 8 MB', () => {
+      render(
+        <ScheduleButton
+          post={makePost()}
+          media={[makeMedia({ size_bytes: 9 * 1024 * 1024 })]}
+          {...defaultProps}
+        />,
+      );
+      const agendar = screen.getByRole('button', { name: /agendar/i });
+      expect(agendar).toHaveProperty('disabled', true);
+      expect(screen.getByText(/Imagem excede 8 MB/)).toBeTruthy();
+    });
+
+    it('não bloqueia quando a mídia é válida', () => {
+      render(<ScheduleButton post={makePost()} media={[makeMedia()]} {...defaultProps} />);
+      expect(screen.getByRole('button', { name: /agendar/i })).toHaveProperty('disabled', false);
+    });
+
+    it('sem a prop media, não bloqueia no cliente (gate fica no servidor)', () => {
+      render(<ScheduleButton post={makePost()} {...defaultProps} />);
+      expect(screen.getByRole('button', { name: /agendar/i })).toHaveProperty('disabled', false);
+    });
+  });
+
+  // ─── Erro classificado (falha_publicacao) ───────────────────────────────────
+
+  describe('erro classificado', () => {
+    it('mostra copy de token expirado', () => {
+      render(
+        <ScheduleButton
+          post={makePost({
+            status: 'falha_publicacao',
+            publish_error: 'Error validating access token',
+            publish_error_code: 'TOKEN_EXPIRED',
+          })}
+          {...defaultProps}
+        />,
+      );
+      expect(screen.getByText('Conexão com o Instagram expirou')).toBeTruthy();
+      // TOKEN_EXPIRED não expõe o texto cru
+      expect(screen.queryByText('Error validating access token')).toBeNull();
+    });
+
+    it('código nulo cai em UNKNOWN e mantém o texto cru visível', () => {
+      render(
+        <ScheduleButton
+          post={makePost({ status: 'falha_publicacao', publish_error: 'Token expirado' })}
+          {...defaultProps}
+        />,
+      );
+      expect(screen.getByText('Falha na publicação')).toBeTruthy();
+      expect(screen.getByText('Token expirado')).toBeTruthy();
     });
   });
 });

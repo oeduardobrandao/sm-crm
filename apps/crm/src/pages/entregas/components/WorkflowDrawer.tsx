@@ -95,6 +95,8 @@ import { InstagramCaptionField } from './InstagramCaptionField';
 import { PlatformSelector } from './PlatformSelector';
 import { TikTokSettingsPanel } from './TikTokSettingsPanel';
 import { ScheduleButton } from './ScheduleButton';
+import { PublishErrorBlock } from './PublishErrorBlock';
+import { shouldShowPublishErrorBlock } from './publishErrorBlockVisibility';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { supabase } from '@/lib/supabase';
 import { WorkflowCalendarView } from './WorkflowCalendarView';
@@ -1016,6 +1018,16 @@ function SortablePostItem({
   const { features } = useWorkspaceLimits();
   const statusRegistry = useStatusRegistry();
 
+  // Shares the ['post-media', post.id] cache key with PostMediaGallery below, so this is a
+  // cache hit whenever the gallery already loaded it. Feeds ScheduleButton's client-side
+  // media preflight (size/format/aspect-ratio) once the post is expanded.
+  const { data: postMedia } = useQuery({
+    queryKey: ['post-media', post.id],
+    queryFn: () => listPostMedia(post.id!),
+    staleTime: 5 * 60 * 1000,
+    enabled: isExpanded && !!post.id,
+  });
+
   // TikTok settings completeness/test-mode-banner seam (Task C3), held here rather than
   // inside ScheduleButton because TikTokSettingsPanel and ScheduleButton are siblings —
   // this component instance is scoped to a single post row, so per-post-id keying is
@@ -1286,6 +1298,10 @@ function SortablePostItem({
             </div>
           </div>
 
+          {shouldShowPublishErrorBlock(post) && (
+            <PublishErrorBlock post={post} clienteId={clienteId} onStatusChange={onRefresh} />
+          )}
+
           {isExternallyVisible && (
             <div className="drawer-external-warning">
               {isScheduleLocked
@@ -1428,6 +1444,7 @@ function SortablePostItem({
 
           <ScheduleButton
             post={post}
+            media={postMedia}
             hasInstagramAccount={hasInstagramAccount}
             igAccountStatus={igAccountStatus}
             ttAccountStatus={ttAccountStatus}
