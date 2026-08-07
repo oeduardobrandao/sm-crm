@@ -5,6 +5,7 @@ import { McpKeyContext, McpInputError } from "../_shared/mcp-token.ts";
 import { MCP_PROP_MODO, MCP_PROP_ANOTACAO } from "./seed.ts";
 import {
   allowlistClient,
+  allowlistMember,
   buildPostFeedback,
   buildPropertyDefinitions,
   buildTiptapDoc,
@@ -18,6 +19,7 @@ import {
   IG_RATE_WEIGHTS,
   instantiateTemplateEtapas,
   isPlanLimitExceeded,
+  MEMBER_PUBLIC_FIELDS,
   MIN_SAMPLE,
   normalizeTemplateEtapas,
   pageContentToMarkdown,
@@ -130,6 +132,177 @@ export async function getBrandProfile(d: Deps, args: { client_id: number }): Pro
         answer: qn.answer,
       })),
   };
+}
+
+// ---- import assistant (create/find clients & members) ------------------------
+
+/** True for null/undefined and blank/whitespace-only strings. */
+export function isBlank(v: unknown): boolean {
+  return v == null || (typeof v === "string" && v.trim() === "");
+}
+
+/**
+ * Sigla rule from the CSV import (migration 20260729000004): strip non-ASCII
+ * letters, pad with 'XX', take two chars, uppercase. A fully non-alphabetic nome
+ * (e.g. "123") still yields a valid 'XX' instead of an empty sigla.
+ */
+export function deriveSigla(nome: string): string {
+  return (nome.replace(/[^a-zA-Z]/g, "") + "XX").slice(0, 2).toUpperCase();
+}
+
+const CLIENT_MERGE_FIELDS = "id, nome, sigla, especialidade, cor, status, email, telefone, valor_mensal";
+
+/**
+ * Pages through a conta-scoped table ordered by id asc and returns the first row
+ * whose trimmed, lowercased `nome` equals `nome` (the oldest match, deterministically).
+ * PostgREST caps un-ranged selects at 1000 rows, so an unpaged scan goes blind past
+ * the first page and a matching row there would be re-created as a duplicate.
+ */
+const NOME_SCAN_PAGE = 1000;
+export async function findByNome(d: Deps, table: string, fields: string, nome: string): Promise<any | null> {
+  const target = nome.trim().toLowerCase();
+  for (let from = 0; ; from += NOME_SCAN_PAGE) {
+    const { data, error } = await d.db
+      .from(table)
+      .select(fields)
+      .eq("conta_id", d.ctx.conta_id)
+      .order("id", { ascending: true })
+      .range(from, from + NOME_SCAN_PAGE - 1);
+    if (error) throw error;
+    const rows = (data ?? []) as any[];
+    const match = rows.find((r) => typeof r.nome === "string" && r.nome.trim().toLowerCase() === target);
+    if (match) return match;
+    if (rows.length < NOME_SCAN_PAGE) return null;
+  }
+}
+
+export async function createClient(
+  d: Deps,
+  args: {
+    nome: string;
+    email?: string;
+    telefone?: string;
+    especialidade?: string;
+    valor_mensal?: number;
+    status?: string;
+  },
+): Promise<any> {
+  const nome = args.nome.trim();
+  // Find-or-create: clientes.nome has no unique constraint, so scan the workspace's
+  // rows ordered by id and match lower(trim()) in code. The FIRST match of the
+  // id-ascending scan is the canonical row, deterministically, on every retry.
+  const match = await findByNome(d, "clientes", CLIENT_MERGE_FIELDS, nome);
+
+  if (match) {
+    // Fill-empty merge: never overwrite. Text fields fill when blank; valor_mensal
+    // fills only when SQL NULL (an explicit 0 is real data, mirroring the CSV wizard).
+    const patch: Record<string, unknown> = {};
+    for (const f of ["email", "telefone", "especialidade"] as const) {
+      const v = args[f];
+      if (!isBlank(v) && isBlank(match[f])) patch[f] = (v as string).trim();
+    }
+    if (args.valor_mensal != null && match.valor_mensal == null) patch.valor_mensal = args.valor_mensal;
+    if (Object.keys(patch).length > 0) {
+      // WITH CHECK da RLS nao protege writes service-role: conta_id explicito aqui.
+      const { error: updErr } = await d.db
+        .from("clientes")
+        .update(patch)
+        .eq("id", match.id)
+        .eq("conta_id", d.ctx.conta_id);
+      if (updErr) throw updErr;
+    }
+    return {
+      ...allowlistClient({ ...match, ...patch }),
+      already_existed: true,
+      filled_fields: Object.keys(patch),
+    };
+  }
+
+  const { data: created, error: insErr } = await d.db
+    .from("clientes")
+    .insert({
+      conta_id: d.ctx.conta_id,
+      user_id: d.ctx.created_by,
+      nome,
+      sigla: deriveSigla(nome),
+      cor: "#eab308",
+      plano: "",
+      email: args.email?.trim() ?? "",
+      telefone: args.telefone?.trim() ?? "",
+      status: args.status ?? "ativo",
+      especialidade: isBlank(args.especialidade) ? null : args.especialidade!.trim(),
+      valor_mensal: args.valor_mensal ?? null,
+    })
+    .select(CLIENT_PUBLIC_FIELDS.join(","))
+    .single();
+  if (insErr) {
+    if (isPlanLimitExceeded(insErr, "max_clients")) {
+      throw new McpInputError("Limite de clientes do plano foi atingido.");
+    }
+    throw insErr;
+  }
+  return { ...allowlistClient(created as any), already_existed: false, filled_fields: [] };
+}
+
+const MEMBER_MERGE_FIELDS = "id, nome, cargo, tipo, custo_mensal, data_pagamento, crm_user_id, created_at";
+
+export async function createMember(
+  d: Deps,
+  args: { nome: string; cargo?: string; tipo?: string; custo_mensal?: number; data_pagamento?: number },
+): Promise<any> {
+  const nome = args.nome.trim();
+  // Same find-or-create contract as createClient: paginated id-ordered scan via
+  // findByNome (Task 2's helper), oldest match wins, immune to the 1000-row
+  // PostgREST page cap.
+  const match = await findByNome(d, "membros", MEMBER_MERGE_FIELDS, nome);
+
+  if (match) {
+    const patch: Record<string, unknown> = {};
+    if (!isBlank(args.cargo) && isBlank(match.cargo)) patch.cargo = args.cargo!.trim();
+    // 0 is real data: only SQL NULL counts as empty.
+    if (args.custo_mensal != null && match.custo_mensal == null) patch.custo_mensal = args.custo_mensal;
+    if (Object.keys(patch).length > 0) {
+      // WITH CHECK da RLS nao protege writes service-role: conta_id explicito aqui.
+      const { error: updErr } = await d.db
+        .from("membros")
+        .update(patch)
+        .eq("id", match.id)
+        .eq("conta_id", d.ctx.conta_id);
+      if (updErr) throw updErr;
+    }
+    return {
+      ...allowlistMember({ ...match, ...patch }),
+      already_existed: true,
+      filled_fields: Object.keys(patch),
+    };
+  }
+
+  const { data: created, error: insErr } = await d.db
+    .from("membros")
+    .insert({
+      conta_id: d.ctx.conta_id,
+      user_id: d.ctx.created_by,
+      nome,
+      cargo: args.cargo?.trim() ?? "",
+      tipo: args.tipo ?? "clt",
+      avatar_url: "",
+      custo_mensal: args.custo_mensal ?? null,
+      data_pagamento: args.data_pagamento ?? null,
+    })
+    .select(MEMBER_PUBLIC_FIELDS.join(","))
+    .single();
+  if (insErr) throw insErr;
+  return { ...allowlistMember(created as any), already_existed: false, filled_fields: [] };
+}
+
+export async function listMembers(d: Deps): Promise<any[]> {
+  const { data, error } = await d.db
+    .from("membros")
+    .select(MEMBER_PUBLIC_FIELDS.join(","))
+    .eq("conta_id", d.ctx.conta_id)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as any[]).map(allowlistMember);
 }
 
 // ---- post enrichment helpers -------------------------------------------------
