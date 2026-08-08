@@ -24,6 +24,15 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -114,12 +123,27 @@ async function fetchAvatars(clientIds: number[]): Promise<Record<number, string>
   return map;
 }
 
+function NotionIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="currentColor"
+    >
+      <path d="M4.459 4.208c.745-.303 1.25-.333 2.162-.333h13.26c.925 0 1.542.13 2.122.333l-2.003-2.189H4.153L2.164 4.208zm11.233 1.89-6.903.015L3.305 24h10.96l5.77-5.908-.008-5.32c-.006-2.133-1.077-4.137-3.08-5.419-1.258-.806-2.92-1.229-4.707-1.397L15.692 6.1zm-3.02 5.068-1.503 1.564v9.066H9.155v-8.87l-.022-1.63L12.67 11.168zm2.75-.15.42 2.973L13.88 15.645l.951-1.31-2.163.023.23-1.428-1.748-1.71h4.272z" />
+    </svg>
+  );
+}
+
 export default function ClientesPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { canSeeFinancials } = useAuth();
   const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
+  const isDesktop = useIsDesktop();
   const [filter, setFilter] = useState<FilterStatus>('todos');
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'nome' | 'valor_mensal' | 'data_pagamento'>('nome');
@@ -443,6 +467,160 @@ export default function ClientesPage() {
         <div className="flex justify-center p-8">
           <Spinner size="lg" />
         </div>
+      ) : isDesktop ? (
+        <div className="card animate-up" style={{ padding: '0.25rem 0', overflowX: 'auto' }}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead style={{ paddingLeft: '1rem' }}>
+                  {t('table.client', 'Cliente')}
+                </TableHead>
+                <TableHead>{t('table.contact', 'Contato')}</TableHead>
+                <TableHead>{t('form.plan')}</TableHead>
+                <TableHead>{t('table.status', 'Status')}</TableHead>
+                <TableHead style={{ width: 56 }} />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((c) => {
+                const avatarUrl = c.id ? avatarMap[c.id] : undefined;
+                const initials = getInitials(c.nome);
+                const notionUrl = c.notion_page_url ? sanitizeUrl(c.notion_page_url) : '';
+                return (
+                  <TableRow
+                    key={c.id ?? c.nome}
+                    onClick={() => c.id && navigate(`/clientes/${c.id}`)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <TableCell style={{ paddingLeft: '1rem' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.6rem',
+                          minWidth: 0,
+                        }}
+                      >
+                        {avatarUrl ? (
+                          <img
+                            src={avatarUrl}
+                            alt={initials}
+                            className="avatar"
+                            style={{ width: 28, height: 28, objectFit: 'cover', flexShrink: 0 }}
+                          />
+                        ) : (
+                          <div
+                            className="avatar"
+                            style={{
+                              width: 28,
+                              height: 28,
+                              fontSize: '0.7rem',
+                              background: c.cor,
+                              color: '#fff',
+                              fontWeight: 700,
+                              flexShrink: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            {initials}
+                          </div>
+                        )}
+                        <button
+                          className="client-link"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/clientes/${c.id}`);
+                          }}
+                          style={{ fontWeight: 600, textAlign: 'left' }}
+                        >
+                          {c.nome}
+                        </button>
+                        {notionUrl && (
+                          <a
+                            href={notionUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              color: 'var(--text-muted)',
+                            }}
+                            title={t('openNotion')}
+                          >
+                            <NotionIcon />
+                          </a>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="contato-item">{c.email || '—'}</span>
+                      {c.telefone && <span className="contato-phone">{c.telefone}</span>}
+                    </TableCell>
+                    <TableCell>{c.plano || '—'}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          c.status === 'ativo'
+                            ? 'success'
+                            : c.status === 'pausado'
+                              ? 'warning'
+                              : 'neutral'
+                        }
+                        size="sm"
+                        style={{ pointerEvents: 'none' }}
+                      >
+                        {tc(`status.${c.status}`)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ paddingRight: '0.75rem', textAlign: 'right' }}
+                    >
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0">
+                            <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(c)}>
+                            <Edit2 className="h-4 w-4 mr-2" />
+                            {tc('actions.edit')}
+                          </DropdownMenuItem>
+                          {c.id && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => setDeleteId(c.id!)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                {tc('actions.delete')}
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {filtered.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}
+                  >
+                    {t('emptyList', 'Nenhum cliente encontrado.')}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
       ) : (
         <div className="team-grid">
           {filtered.map((c) => {
@@ -523,15 +701,7 @@ export default function ClientesPage() {
                           }}
                           title={t('openNotion')}
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            width="14"
-                            height="14"
-                            fill="currentColor"
-                          >
-                            <path d="M4.459 4.208c.745-.303 1.25-.333 2.162-.333h13.26c.925 0 1.542.13 2.122.333l-2.003-2.189H4.153L2.164 4.208zm11.233 1.89-6.903.015L3.305 24h10.96l5.77-5.908-.008-5.32c-.006-2.133-1.077-4.137-3.08-5.419-1.258-.806-2.92-1.229-4.707-1.397L15.692 6.1zm-3.02 5.068-1.503 1.564v9.066H9.155v-8.87l-.022-1.63L12.67 11.168zm2.75-.15.42 2.973L13.88 15.645l.951-1.31-2.163.023.23-1.428-1.748-1.71h4.272z" />
-                          </svg>
+                          <NotionIcon />
                         </a>
                       )}
                     </div>

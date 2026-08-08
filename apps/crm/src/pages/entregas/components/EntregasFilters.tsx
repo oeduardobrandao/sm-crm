@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -466,18 +467,7 @@ export function EntregasFilters({
 }: EntregasFiltersProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   // Sheet slides from the right on desktop, from the bottom on touch widths.
-  // Guarded: jsdom's matchMedia stub lacks event listeners.
-  const [isDesktop, setIsDesktop] = useState(
-    () =>
-      typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 901px)').matches,
-  );
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return;
-    const mq = window.matchMedia('(min-width: 901px)');
-    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
-    mq.addEventListener?.('change', onChange);
-    return () => mq.removeEventListener?.('change', onChange);
-  }, []);
+  const isDesktop = useIsDesktop(901);
   const activeClientes = clientes
     .filter((c) => c.status === 'ativo')
     .sort((a, b) => a.nome.localeCompare(b.nome));

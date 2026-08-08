@@ -25,6 +25,15 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -101,6 +110,7 @@ const TIPO_LABEL: Record<string, string> = {
 
 export default function EquipePage() {
   const qc = useQueryClient();
+  const isDesktop = useIsDesktop();
   const navigate = useNavigate();
   const { role, canSeeFinancials, workspaceRole, membershipResolved, profile } = useAuth();
   const isAgent = role === 'agent';
@@ -454,6 +464,109 @@ export default function EquipePage() {
       {isLoading ? (
         <div className="flex justify-center p-8">
           <Spinner size="lg" />
+        </div>
+      ) : isDesktop ? (
+        <div className="card animate-up" style={{ padding: '0.25rem 0', overflowX: 'auto' }}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead style={{ paddingLeft: '1rem' }}>Membro</TableHead>
+                <TableHead>Cargo</TableHead>
+                <TableHead>Tipo</TableHead>
+                <TableHead>Vínculo</TableHead>
+                {!isAgent && <TableHead style={{ width: 88 }} />}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((m) => {
+                const avatarClass = avatarColorClass(m.id ?? m.nome);
+                return (
+                  <TableRow
+                    key={m.id}
+                    onClick={() => m.id && navigate(`/equipe/${m.id}`)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <TableCell style={{ paddingLeft: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <div
+                          className={`avatar ${avatarClass}`}
+                          style={{ width: 28, height: 28, fontSize: '0.7rem', fontWeight: 700 }}
+                        >
+                          {getInitials(m.nome)}
+                        </div>
+                        <button
+                          className="client-link"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/equipe/${m.id}`);
+                          }}
+                          style={{ fontWeight: 600, textAlign: 'left' }}
+                        >
+                          {m.nome}
+                        </button>
+                      </div>
+                    </TableCell>
+                    <TableCell>{m.cargo || '—'}</TableCell>
+                    <TableCell>
+                      <Badge variant="neutral" size="sm" style={{ pointerEvents: 'none' }}>
+                        {TIPO_LABEL[m.tipo]}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {m.crm_user_id || isAgent ? (
+                        <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      ) : pendingByMembroId.has(m.id!) ? (
+                        <Badge variant="warning" size="sm">
+                          convite pendente
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" size="sm">
+                          sem conta vinculada
+                        </Badge>
+                      )}
+                    </TableCell>
+                    {!isAgent && (
+                      <TableCell
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ paddingRight: '0.75rem', textAlign: 'right' }}
+                      >
+                        <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            onClick={() => openEdit(m)}
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </Button>
+                          {m.id && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-destructive"
+                              onClick={() => setDeleteId(m.id!)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
+              {filtered.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={isAgent ? 4 : 5}
+                    style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}
+                  >
+                    Nenhum membro encontrado.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
         </div>
       ) : (
         <div className="team-grid">
