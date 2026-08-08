@@ -7,6 +7,7 @@ import {
   useSensors,
   useDroppable,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
 import {
@@ -211,6 +212,10 @@ export function KanbanView({
   const [pendingEtapas, setPendingEtapas] = useState<Map<number, WorkflowEtapa>>(new Map());
   const [pendingPositions, setPendingPositions] = useState<Map<number, number>>(new Map());
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
+  // Valid adjacent column currently hovered during a drag ("rowKey::colName"),
+  // plus the dragged card's height so the slot opens exactly its size.
+  const [dropColKey, setDropColKey] = useState<string | null>(null);
+  const [dragHeight, setDragHeight] = useState(120);
   const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(
     null,
   );
@@ -285,13 +290,60 @@ export function KanbanView({
     (event: DragStartEvent) => {
       const card = findCard(String(event.active.id));
       setActiveCard(card || null);
+      setDragHeight(event.active.rect.current?.initial?.height ?? 120);
     },
     [localCards],
+  );
+
+  // Opens a slot in the hovered column when the drop would be accepted there:
+  // same template row, adjacent etapa (forward or backward).
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      const { active, over } = event;
+      const draggedCard = findCard(String(active.id));
+      if (!over || !draggedCard) {
+        setDropColKey(null);
+        return;
+      }
+      const overId = String(over.id);
+      const rows = buildBoardRows(localCards, templates);
+      const activeLocation = findCardColumn(String(active.id), rows);
+
+      let targetRow: BoardRow | undefined;
+      let targetColName: string | undefined;
+      if (overId.startsWith(COL_PREFIX)) {
+        const colId = overId.slice(COL_PREFIX.length);
+        const [rowKey, ...colNameParts] = colId.split('::');
+        targetRow = rows.find((r) => r.key === rowKey);
+        targetColName = colNameParts.join('::');
+      } else {
+        const overLocation = findCardColumn(overId, rows);
+        targetRow = overLocation?.row;
+        targetColName = overLocation?.colName;
+      }
+
+      if (
+        !targetRow ||
+        !targetColName ||
+        !activeLocation ||
+        targetRow.key !== activeLocation.row.key ||
+        targetColName === activeLocation.colName
+      ) {
+        setDropColKey(null);
+        return;
+      }
+      const targetOrdem = draggedCard.allEtapas.find((e) => e.nome === targetColName)?.ordem;
+      const valid =
+        targetOrdem !== undefined && Math.abs(targetOrdem - draggedCard.etapa.ordem) === 1;
+      setDropColKey(valid ? `${targetRow.key}::${targetColName}` : null);
+    },
+    [localCards, templates],
   );
 
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       setActiveCard(null);
+      setDropColKey(null);
       const { active, over } = event;
       if (!over || active.id === over.id) return;
 
@@ -541,7 +593,7 @@ export function KanbanView({
               items={stepCards.map((c) => String(c.workflow.id))}
               strategy={verticalListSortingStrategy}
             >
-              {stepCards.length === 0 ? (
+              {stepCards.length === 0 && `${row.key}::${stepName}` !== dropColKey ? (
                 <div className="board-empty">Nenhuma entrega</div>
               ) : (
                 stepCards.map((card) => (
@@ -568,6 +620,13 @@ export function KanbanView({
                   />
                 ))
               )}
+              {`${row.key}::${stepName}` === dropColKey && (
+                <div
+                  className="board-drop-slot"
+                  style={{ height: dragHeight }}
+                  aria-hidden="true"
+                />
+              )}
             </SortableContext>
           </DroppableColumnBody>
         </div>
@@ -581,7 +640,16 @@ export function KanbanView({
 
   return (
     <>
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragCancel={() => {
+          setActiveCard(null);
+          setDropColKey(null);
+        }}
+        onDragEnd={handleDragEnd}
+      >
         <div className="board-rows-wrapper animate-up">
           {useTabs && activeRow ? (
             <div>

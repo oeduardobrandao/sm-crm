@@ -10791,3 +10791,25 @@ body.landing-page #root {
     animation-duration: 0.01ms;
   }
 }
+
+/* Kanban drop slot: the target column opens a card-sized space while a valid
+   drag hovers it. Height is set inline to match the dragged card. */
+.board-drop-slot {
+  flex-shrink: 0;
+  border: 2px dashed color-mix(in srgb, var(--cta-bg) 30%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--cta-bg) 5%, transparent);
+  animation: board-drop-slot-in 0.16s cubic-bezier(0.32, 0.72, 0, 1);
+  overflow: hidden;
+}
+@keyframes board-drop-slot-in {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-drop-slot {
+    animation-duration: 0.01ms;
+  }
+}
