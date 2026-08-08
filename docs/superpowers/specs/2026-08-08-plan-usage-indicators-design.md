@@ -27,18 +27,26 @@ advisory at-limit UX with usage counts; it was never built.
 2. **Coverage: all in panel, core in-context.** The panel shows every workspace-wide
    countable limit + storage. In-context meters on Clientes, Equipe, Arquivos, and Leads
    (Leads already has the identical disabled-button pattern).
-3. **Visibility: all roles see meters; upgrade CTA is owner-only.** Non-owners see the
-   meters without a CTA (the billing page is owner-only). Matches the
-   `UpgradeLockedScreen` owner/non-owner split.
+3. **Visibility: all roles see the in-context meters; upgrade CTA is owner-only.**
+   The central panel lives on the billing page, which is and stays owner-only
+   (`configTabs.ts` hides the tab, `CobrancaPage` renders an access-denied card) —
+   non-owners get the in-context meters only. "Owner" is resolved for the **active
+   workspace**: `(workspaceRole ?? role) === 'owner'`, the same test `CobrancaPage.tsx:73`
+   uses; while `membershipResolved` is false, render no CTA.
 4. **Usage source: new Postgres RPC for the panel; page-local data in context.**
-   In-context meters keep using each page's already-loaded list (zero extra requests,
-   always in sync with what's on screen). Arquivos keeps its `file-manage` storage payload.
+   In-context meters use each page's already-loaded list where that count is exact
+   (Clientes, Equipe); Leads needs an exact head-count query instead (see §5). Arquivos
+   keeps its `file-manage` storage payload.
 
 ## Architecture
 
 ### 1. `workspace_usage()` RPC (new migration)
 
-`SECURITY DEFINER`, `set search_path = public`, `GRANT EXECUTE TO authenticated`.
+`SECURITY DEFINER`, `set search_path = public`. Grants follow the hardened pattern of
+`20260730000008_admin_list_workspaces_rpc.sql:106-108`: `REVOKE ALL ... FROM PUBLIC`,
+`FROM anon`, then `GRANT EXECUTE TO authenticated` **and re-grant `service_role`
+explicitly** (default privileges grant new public-schema functions to anon/authenticated,
+and revoking from PUBLIC strips service_role). A psql test asserts `anon` cannot execute.
 Scoped to `public.get_my_conta_id()`; when that resolves NULL (no active workspace),
 return an empty/zeroed jsonb rather than erroring — fail-safe, mirrors the RLS posture.
 
@@ -49,7 +57,7 @@ exactly** (`20260611130003_count_triggers.sql`, `20260622120001_mcp_api_keys.sql
 |---|---|
 | `clients` | `count(*) from clientes where conta_id = ws` |
 | `team_members` | `count(*) from workspace_members where workspace_id = ws` |
-| `pending_invites` | `count(*) from invites where conta_id = ws and status = 'pending'` (separate field; seats display = members + pending, same as `_shared/invite-actions.ts`) |
+| `pending_invites` | `count(*) from invites where conta_id = ws and status = 'pending'` (separate field; seats display = members + pending, same as `_shared/invite-actions.ts`) — **raw pending, no expiry filter**, because that is exactly what the server seat pre-check counts: an expired-but-unprocessed invite still consumes a seat until revoked/replaced. Rule: usage displays mirror enforcement. |
 | `leads` | `count(*) from leads where conta_id = ws` |
 | `hub_tokens` | `count(*) from client_hub_tokens where conta_id = ws` (no predicate — the trigger counts all rows) |
 | `workflow_templates` | `count(*) from workflow_templates where conta_id = ws` |
@@ -83,14 +91,23 @@ An exported pure helper owns the threshold logic (single source for all meters):
 - `warning` when `remaining <= 1` **or** `used/limit >= 0.8` → `--warning`
   (the `<= 1` arm covers tiny limits like 2 clients where 80% never triggers)
 - `danger` when `used >= limit` → `--danger`
+- `limit === 0` (fail-closed "blocked" sentinel, e.g. free plan's `max_hub_tokens`) →
+  distinct **blocked** state: no bar, no division, "Não incluído no plano" text, owner
+  CTA. Never renders as "0 de 0" danger.
 - `limit === null` → no bar; count + "Ilimitado" badge
 
-States: loading renders a subtle skeleton; if `useWorkspaceLimits().isUnlimited`
-(server resolved **no plan** — not "unlimited plan"), meters don't render at all, the
-same skip `ProtectedRoute` does.
+`UsageMeter` is purely presentational: it renders only when the caller hands it a
+**resolved** limit. Unknown/unavailable limits are the caller's job — Equipe keeps its
+`computeSeatState` wrapper (whose `unavailable` state disables inviting and must not be
+conflated with unlimited), and Clientes/Leads/panel render nothing while
+`limits === null`. Loading renders a subtle skeleton at the call sites that expect a
+meter; if `useWorkspaceLimits().isUnlimited` (server resolved **no plan** — not
+"unlimited plan"), meters don't render at all, the same skip `ProtectedRoute` does.
 
-Owner-only CTA: when state is `warning`/`danger` and `role === 'owner'`, render a
-"Fazer upgrade" link to `/configuracao/cobranca`. Non-owners get no CTA.
+Owner-only CTA: when state is `warning`/`danger`/`blocked` and the **active-workspace**
+role is owner (`(workspaceRole ?? role) === 'owner'`, as `CobrancaPage.tsx:73`; no CTA
+while `membershipResolved` is false), render a "Fazer upgrade" link to
+`/configuracao/cobranca`. Non-owners get no CTA.
 
 ### 4. Central panel — "Uso do plano" (CobrancaPage)
 
@@ -108,11 +125,19 @@ Ilimitado with the current count. Labels reuse the PT wording from
   clientes" + bar) fed by the loaded list length and `useWorkspaceLimits()` — replacing
   the invisible tooltip-only affordance. Button stays disabled at the limit (unchanged);
   the meter adds the visible explanation and the owner-only CTA.
-- **Leads** (`LeadsPage.tsx`): same treatment, same data pattern.
+- **Leads** (`LeadsPage.tsx`): same visual treatment, **different count source**:
+  `getLeads()` is a single unpaged select subject to the server max-rows cap, so list
+  length can understate usage. The meter (and the existing `leadsAtLimit` check) uses a
+  dedicated exact head-count query (`{ count: 'exact', head: true }`) instead. The list
+  truncation itself is a pre-existing issue, out of scope. (Clientes is fine:
+  `getClientes()` pages exhaustively, so its length is exact.)
 - **Equipe** (`InviteSection.tsx`): `SeatMeter` refactored onto `UsageMeter`, preserving
-  its behaviors — pending invites in the count, the live "vagas após este convite"
-  preview, and `computeSeatState`'s `loading | unavailable | unlimited | ok | full`
-  handling. Existing tests keep passing.
+  its behaviors — the live "vagas após este convite" preview and `computeSeatState`'s
+  `loading | unavailable | unlimited | ok | full` handling. One deliberate alignment:
+  the pending count fed to the seat meter becomes the **raw** `status='pending'` count
+  (matching the server pre-check), while the invite *list* keeps hiding locally-expired
+  invites via `computeEffectiveInviteStatus`. Today the meter can claim a free seat that
+  the server will refuse because an expired invite still counts — that gap closes.
 - **Arquivos** (`ArquivosPage.tsx` sidebar + `MobileArquivosView.tsx` `StorageCard`):
   refactored onto `UsageMeter` with the bytes formatter. Data source stays the
   `file-manage` `storage: { used_bytes, quota_bytes }` payload. **Keep the documented
@@ -146,7 +171,8 @@ PT-BR, no em-dashes. Patterns: "{used} de {limit} {noun}", "Ilimitado",
 - **psql (entitlements suite, `supabase/tests/entitlements/`):** `workspace_usage()`
   returns counts matching the trigger expressions (revoked MCP key freed, Instagram
   counted via clientes join, pending invite counted separately, NULL conta returns
-  empty), and is executable by `authenticated` but scoped to the caller's workspace.
+  empty), is executable by `authenticated` but **not** by `anon`, keeps `service_role`
+  execute, and is scoped to the caller's workspace.
 
 ## Out of scope (YAGNI)
 
