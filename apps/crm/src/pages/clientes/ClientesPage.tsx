@@ -32,6 +32,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { UsageMeter } from '@/components/usage/UsageMeter';
+import { useIsWorkspaceOwner } from '@/hooks/useIsWorkspaceOwner';
 import {
   Select,
   SelectContent,
@@ -174,7 +176,8 @@ export default function ClientesPage() {
     },
   });
 
-  const { isAtLimit } = useEntitlements();
+  const { isAtLimit, limits } = useEntitlements();
+  const isOwner = useIsWorkspaceOwner();
 
   const { data: clientes = [], isLoading } = useQuery({
     queryKey: ['clientes'],
@@ -354,6 +357,17 @@ export default function ClientesPage() {
             <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
           </span>
         </div>
+        {limits && limits.max_clients !== null && (
+          <div style={{ marginTop: 6 }}>
+            <UsageMeter
+              size="compact"
+              label="clientes"
+              used={clientes.length}
+              limit={limits.max_clients}
+              showUpgradeCta={isOwner}
+            />
+          </div>
+        )}
         <div className="header-actions">
           <span
             data-tooltip={t('csvTooltip')}

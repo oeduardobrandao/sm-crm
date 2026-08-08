@@ -2,9 +2,11 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 
-const { isAtLimitMock } = vi.hoisted(() => ({
+const { isAtLimitMock, limitsRef } = vi.hoisted(() => ({
   isAtLimitMock: vi.fn(),
+  limitsRef: { current: null as null | Record<string, number | null> },
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -33,7 +35,11 @@ vi.mock('../../../store', async () => {
 
 // Control the at-limit decision directly.
 vi.mock('../../../hooks/useEntitlements', () => ({
-  useEntitlements: () => ({ isAtLimit: isAtLimitMock }),
+  useEntitlements: () => ({ isAtLimit: isAtLimitMock, limits: limitsRef.current }),
+}));
+
+vi.mock('../../../hooks/useIsWorkspaceOwner', () => ({
+  useIsWorkspaceOwner: () => true,
 }));
 
 vi.mock('../../../context/AuthContext', () => ({
@@ -130,9 +136,11 @@ function renderPage() {
     defaultOptions: { queries: { retry: false } },
   });
   render(
-    <QueryClientProvider client={queryClient}>
-      <ClientesPage />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <ClientesPage />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -140,6 +148,7 @@ beforeEach(() => {
   isAtLimitMock.mockReset();
   mockedGetClientes.mockReset();
   mockedGetClientes.mockResolvedValue([]);
+  limitsRef.current = null;
 });
 
 describe('ClientesPage at-limit create button', () => {
@@ -180,5 +189,39 @@ describe('ClientesPage at-limit create button', () => {
     await waitFor(() => {
       expect(isAtLimitMock).toHaveBeenCalledWith('max_clients', 2);
     });
+  });
+});
+
+describe('ClientesPage header meter', () => {
+  it('shows the header meter when max_clients is limited', async () => {
+    isAtLimitMock.mockReturnValue(false);
+    limitsRef.current = { max_clients: 15 };
+    mockedGetClientes.mockResolvedValue([
+      { id: 1, nome: 'A', sigla: 'A', cor: '#000', status: 'ativo' } as store.Cliente,
+      { id: 2, nome: 'B', sigla: 'B', cor: '#000', status: 'ativo' } as store.Cliente,
+    ]);
+    renderPage();
+    expect(await screen.findByText('2 de 15 clientes')).toBeInTheDocument();
+  });
+
+  it('shows the owner upgrade CTA above 75% usage', async () => {
+    isAtLimitMock.mockReturnValue(false);
+    limitsRef.current = { max_clients: 15 };
+    mockedGetClientes.mockResolvedValue(
+      Array.from({ length: 12 }, (_, i) => ({
+        id: i + 1, nome: `C${i}`, sigla: 'C', cor: '#000', status: 'ativo',
+      })) as store.Cliente[],
+    );
+    renderPage();
+    expect(await screen.findByText('12 de 15 clientes')).toBeInTheDocument();
+    expect(screen.getByText('Fazer upgrade')).toBeInTheDocument();
+  });
+
+  it('hides the meter entirely when limits are unresolved', async () => {
+    isAtLimitMock.mockReturnValue(false);
+    limitsRef.current = null;
+    renderPage();
+    await waitFor(() => expect(mockedGetClientes).toHaveBeenCalled());
+    expect(screen.queryByText(/de .* clientes/)).not.toBeInTheDocument();
   });
 });
