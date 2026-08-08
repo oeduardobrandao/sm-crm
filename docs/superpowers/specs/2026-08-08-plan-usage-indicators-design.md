@@ -49,6 +49,10 @@ explicitly** (default privileges grant new public-schema functions to anon/authe
 and revoking from PUBLIC strips service_role). A psql test asserts `anon` cannot execute.
 Scoped to `public.get_my_conta_id()`; when that resolves NULL (no active workspace),
 return an empty/zeroed jsonb rather than erroring — fail-safe, mirrors the RLS posture.
+Additionally requires a live `workspace_members` row for the caller (Codex finding,
+accepted 2026-08-08 as defense-in-depth): a stale `active_workspace_id` pointer left
+by a removal-flow race must not let a removed user read aggregate counts through this
+SECURITY DEFINER function. No membership → `{}`.
 
 Returns one jsonb object whose count expressions **mirror the enforcement triggers
 exactly** (`20260611130003_count_triggers.sql`, `20260622120001_mcp_api_keys.sql`):
