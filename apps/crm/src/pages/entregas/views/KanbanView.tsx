@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { Fragment, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -214,8 +214,17 @@ export function KanbanView({
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
   // Valid adjacent column currently hovered during a drag ("rowKey::colName"),
   // plus the dragged card's height so the slot opens exactly its size.
-  const [dropColKey, setDropColKey] = useState<string | null>(null);
+  const [dropSlot, setDropSlot] = useState<{ colKey: string; index: number } | null>(null);
   const [dragHeight, setDragHeight] = useState(120);
+  // Cross-column drop position, captured at drag end and applied after the
+  // (possibly dialog-gated) advance/revert persists. Keyed by workflow id so a
+  // cancelled drag can never leak its position into a button-initiated move.
+  const pendingInsertRef = useRef<{
+    wfId: number;
+    ids: number[];
+    index: number;
+    optimisticPos: number;
+  } | null>(null);
   const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(
     null,
   );
@@ -302,7 +311,7 @@ export function KanbanView({
       const { active, over } = event;
       const draggedCard = findCard(String(active.id));
       if (!over || !draggedCard) {
-        setDropColKey(null);
+        setDropSlot(null);
         return;
       }
       const overId = String(over.id);
@@ -329,13 +338,33 @@ export function KanbanView({
         targetRow.key !== activeLocation.row.key ||
         targetColName === activeLocation.colName
       ) {
-        setDropColKey(null);
+        setDropSlot(null);
         return;
       }
       const targetOrdem = draggedCard.allEtapas.find((e) => e.nome === targetColName)?.ordem;
       const valid =
         targetOrdem !== undefined && Math.abs(targetOrdem - draggedCard.etapa.ordem) === 1;
-      setDropColKey(valid ? `${targetRow.key}::${targetColName}` : null);
+      if (!valid) {
+        setDropSlot(null);
+        return;
+      }
+
+      // Slot index: over a card, before or after it by vertical midpoint;
+      // over the column body, at the end.
+      const targetCards = targetRow.columns.get(targetColName) || [];
+      let index = targetCards.length;
+      if (!overId.startsWith(COL_PREFIX)) {
+        const overIdx = targetCards.findIndex((c) => String(c.workflow.id) === overId);
+        if (overIdx !== -1) {
+          const activeRect = active.rect.current?.translated;
+          const after = activeRect && activeRect.top > over.rect.top + over.rect.height / 2;
+          index = after ? overIdx + 1 : overIdx;
+        }
+      }
+      const colKey = `${targetRow.key}::${targetColName}`;
+      setDropSlot((prev) =>
+        prev && prev.colKey === colKey && prev.index === index ? prev : { colKey, index },
+      );
     },
     [localCards, templates],
   );
@@ -343,7 +372,7 @@ export function KanbanView({
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       setActiveCard(null);
-      setDropColKey(null);
+      setDropSlot(null);
       const { active, over } = event;
       if (!over || active.id === over.id) return;
 
@@ -425,6 +454,31 @@ export function KanbanView({
           return;
         }
 
+        // Capture where in the target column the card was dropped, so the
+        // advance/revert (possibly behind a confirm dialog) can land it there
+        // instead of at the bottom.
+        const colKey = `${targetRow.key}::${targetColName}`;
+        const slotIndex =
+          dropSlot && dropSlot.colKey === colKey
+            ? Math.min(dropSlot.index, targetColCards.length)
+            : targetColCards.length;
+        const beforePos = targetColCards[slotIndex - 1]?.workflow.position;
+        const afterPos = targetColCards[slotIndex]?.workflow.position;
+        const optimisticPos =
+          beforePos != null && afterPos != null
+            ? (beforePos + afterPos) / 2
+            : afterPos != null
+              ? afterPos - 1
+              : beforePos != null
+                ? beforePos + 1
+                : 0;
+        pendingInsertRef.current = {
+          wfId: draggedCard.workflow.id!,
+          ids: targetColCards.map((c) => c.workflow.id!),
+          index: slotIndex,
+          optimisticPos,
+        };
+
         if (diff === 1) {
           handleForwardCard(draggedCard);
         } else {
@@ -436,7 +490,7 @@ export function KanbanView({
         }
       }
     },
-    [localCards, onRefresh, onRecurring, templates],
+    [localCards, dropSlot, onRefresh, onRecurring, templates],
   );
 
   const handleForwardCard = useCallback((card: BoardCard) => {
@@ -453,6 +507,9 @@ export function KanbanView({
       // card leaves the board when the refetch lands.
       const nextEtapa = card.allEtapas.find((e) => e.ordem === card.etapa.ordem + 1);
       if (nextEtapa) setPendingEtapas((prev) => new Map(prev).set(wfId, nextEtapa));
+      const insert = pendingInsertRef.current?.wfId === wfId ? pendingInsertRef.current : null;
+      if (insert && nextEtapa)
+        setPendingPositions((prev) => new Map(prev).set(wfId, insert.optimisticPos));
       try {
         const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!, opts);
         if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
@@ -461,8 +518,19 @@ export function KanbanView({
           toast.success(successMessage);
         }
         notifyRearmOutcome(result);
+        if (insert) {
+          pendingInsertRef.current = null;
+          const order = [...insert.ids];
+          order.splice(insert.index, 0, wfId);
+          try {
+            await updateWorkflowPositions(order.map((id, i) => ({ id, position: i })));
+          } catch {
+            // Position is best-effort: the etapa advance itself already stuck.
+          }
+        }
         onRefresh();
       } catch (err: unknown) {
+        pendingInsertRef.current = null;
         if (nextEtapa)
           setPendingEtapas((prev) => {
             const next = new Map(prev);
@@ -540,11 +608,28 @@ export function KanbanView({
     const prevEtapa = card?.allEtapas.find((e) => e.ordem === card.etapa.ordem - 1);
     if (card && prevEtapa)
       setPendingEtapas((prev) => new Map(prev).set(revertTarget.workflowId, prevEtapa));
+    const insert =
+      pendingInsertRef.current?.wfId === revertTarget.workflowId ? pendingInsertRef.current : null;
+    if (insert && card && prevEtapa)
+      setPendingPositions((prev) =>
+        new Map(prev).set(revertTarget.workflowId, insert.optimisticPos),
+      );
     try {
       await revertEtapa(revertTarget.workflowId);
       toast.success('Etapa revertida!');
+      if (insert) {
+        pendingInsertRef.current = null;
+        const order = [...insert.ids];
+        order.splice(insert.index, 0, revertTarget.workflowId);
+        try {
+          await updateWorkflowPositions(order.map((id, i) => ({ id, position: i })));
+        } catch {
+          // Position is best-effort: the revert itself already stuck.
+        }
+      }
       onRefresh();
     } catch (err: unknown) {
+      pendingInsertRef.current = null;
       setPendingEtapas((prev) => {
         const next = new Map(prev);
         next.delete(revertTarget.workflowId);
@@ -593,40 +678,50 @@ export function KanbanView({
               items={stepCards.map((c) => String(c.workflow.id))}
               strategy={verticalListSortingStrategy}
             >
-              {stepCards.length === 0 && `${row.key}::${stepName}` !== dropColKey ? (
+              {stepCards.length === 0 && `${row.key}::${stepName}` !== dropSlot?.colKey ? (
                 <div className="board-empty">Nenhuma entrega</div>
               ) : (
-                stepCards.map((card) => (
-                  <SortableCard
-                    key={card.workflow.id}
-                    card={card}
-                    onCardClick={onCardClick}
-                    onEditClick={onEditClick}
-                    onPostsClick={onPostsClick}
-                    membros={membros}
-                    onRefresh={onRefresh}
-                    onRevertClick={() =>
-                      setRevertTarget({
-                        workflowId: card.workflow.id!,
-                        title: card.workflow.titulo,
-                      })
-                    }
-                    onForwardClick={() => handleForwardCard(card)}
-                    postsCount={postsCounts.get(card.workflow.id!) ?? 0}
-                    approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
-                    clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}
-                    revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
-                    awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
-                  />
+                stepCards.map((card, cardIdx) => (
+                  <Fragment key={card.workflow.id}>
+                    {`${row.key}::${stepName}` === dropSlot?.colKey &&
+                      dropSlot.index === cardIdx && (
+                        <div
+                          className="board-drop-slot"
+                          style={{ height: dragHeight }}
+                          aria-hidden="true"
+                        />
+                      )}
+                    <SortableCard
+                      card={card}
+                      onCardClick={onCardClick}
+                      onEditClick={onEditClick}
+                      onPostsClick={onPostsClick}
+                      membros={membros}
+                      onRefresh={onRefresh}
+                      onRevertClick={() =>
+                        setRevertTarget({
+                          workflowId: card.workflow.id!,
+                          title: card.workflow.titulo,
+                        })
+                      }
+                      onForwardClick={() => handleForwardCard(card)}
+                      postsCount={postsCounts.get(card.workflow.id!) ?? 0}
+                      approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
+                      clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}
+                      revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
+                      awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
+                    />
+                  </Fragment>
                 ))
               )}
-              {`${row.key}::${stepName}` === dropColKey && (
-                <div
-                  className="board-drop-slot"
-                  style={{ height: dragHeight }}
-                  aria-hidden="true"
-                />
-              )}
+              {`${row.key}::${stepName}` === dropSlot?.colKey &&
+                dropSlot.index >= stepCards.length && (
+                  <div
+                    className="board-drop-slot"
+                    style={{ height: dragHeight }}
+                    aria-hidden="true"
+                  />
+                )}
             </SortableContext>
           </DroppableColumnBody>
         </div>
@@ -646,7 +741,8 @@ export function KanbanView({
         onDragOver={handleDragOver}
         onDragCancel={() => {
           setActiveCard(null);
-          setDropColKey(null);
+          setDropSlot(null);
+          pendingInsertRef.current = null;
         }}
         onDragEnd={handleDragEnd}
       >
@@ -700,13 +796,19 @@ export function KanbanView({
             : ''
         }
         onConfirm={handleForwardConfirm}
-        onCancel={() => setForwardTarget(null)}
+        onCancel={() => {
+          pendingInsertRef.current = null;
+          setForwardTarget(null);
+        }}
       />
       <RevertConfirmDialog
         open={!!revertTarget}
         workflowTitle={revertTarget?.title || ''}
         onConfirm={handleRevertConfirm}
-        onCancel={() => setRevertTarget(null)}
+        onCancel={() => {
+          pendingInsertRef.current = null;
+          setRevertTarget(null);
+        }}
       />
       <ClientApprovalChoiceDialog
         open={!!approvalChoiceCard}
@@ -719,7 +821,10 @@ export function KanbanView({
         onApproveInternally={handleApproveInternally}
         onSendToPortal={handleSendToPortal}
         onAdvanceWithoutChanges={handleAdvanceWithoutApproval}
-        onCancel={() => setApprovalChoiceCard(null)}
+        onCancel={() => {
+          pendingInsertRef.current = null;
+          setApprovalChoiceCard(null);
+        }}
       />
     </>
   );
