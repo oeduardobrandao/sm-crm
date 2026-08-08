@@ -15,7 +15,7 @@
 - UI copy is PT-BR. **Never use em-dashes in user-facing copy** — separate with "·", periods, or colons.
 - Colors only via CSS vars: `var(--success)` `var(--warning)` `var(--danger)` `var(--danger-text)` `var(--surface-2)` `var(--text-muted)` `var(--text-light)` `var(--text-main)` `var(--border-color)`.
 - Threshold semantics (single source, spec §3): `ok` → `warning` when `remaining <= 1` OR `used/limit >= 0.8` → `danger` when `used >= limit`; `limit === 0` → `blocked` ("Não incluído no plano"); `limit === null` → unlimited. Upgrade CTA when `used/limit > 0.75` OR state is not `ok`.
-- CTA is owner-only, resolved for the ACTIVE workspace: `(workspaceRole ?? role) === 'owner'` and `membershipResolved !== false` (CobrancaPage.tsx:73 convention). Never `role === 'owner'` alone.
+- CTA is owner-only, from the RESOLVED active-workspace role only: `workspaceRole === 'owner'` (with `membershipResolved !== false`). NO fallback to the profile-level `role` — it is stale across workspace switches (Codex finding, human-ruled 2026-08-08).
 - Path alias `@/` → `apps/crm/src/` works in CRM imports; tests use relative paths for `vi.mock` (match each test file's existing style).
 - Migration version prefix must be unique repo-wide AND above `origin/main`'s tail (currently `20260807000004`). This plan uses `20260808000001`. **Re-verify with `git ls-tree origin/main:supabase/migrations --name-only | tail` immediately before opening the PR** and renumber if main moved.
 - `npm run test:functions` dirties the root `deno.lock`: run `git checkout -- deno.lock` afterwards.
@@ -453,16 +453,18 @@ import { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 
 /**
- * Ownership of the ACTIVE workspace, for upgrade CTAs. Follows the
- * CobrancaPage.tsx:73 convention ((workspaceRole ?? role) === 'owner') and
- * stays false until membership resolution has actually run, so a CTA never
- * flashes for someone the billing page will refuse. Safe outside an
- * AuthProvider (returns false), matching useWorkspaceLimits' context pattern.
+ * Ownership of the ACTIVE workspace, for upgrade CTAs. Requires the RESOLVED
+ * workspace-membership role — deliberately stricter than CobrancaPage's
+ * (workspaceRole ?? role): profiles.role is stale across workspace switches,
+ * so falling back to it could nudge a removed member or a foreign-workspace
+ * owner toward a billing page that will refuse them. An errored lookup just
+ * hides the nudge (fail-quiet). Safe outside an AuthProvider (returns false),
+ * matching useWorkspaceLimits' context pattern.
  */
 export function useIsWorkspaceOwner(): boolean {
   const auth = useContext(AuthContext);
   if (!auth || auth.membershipResolved === false) return false;
-  return (auth.workspaceRole ?? auth.role) === 'owner';
+  return auth.workspaceRole === 'owner';
 }
 ```
 

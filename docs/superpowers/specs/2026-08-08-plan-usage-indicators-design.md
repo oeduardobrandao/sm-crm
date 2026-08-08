@@ -108,9 +108,12 @@ Owner-only CTA: render a "Fazer upgrade" link to `/configuracao/cobranca` when
 `used / limit > 0.75`, **or** when state is `warning`/`danger`/`blocked` (the state arm
 covers small limits, where `remaining <= 1` warns below 75%, and the no-bar blocked
 case). Between 75% and 80% the bar is still `--success` — the CTA appears one step
-before the color turns, a deliberate soft nudge. Ownership is the **active-workspace**
-role (`(workspaceRole ?? role) === 'owner'`, as `CobrancaPage.tsx:73`; no CTA while
-`membershipResolved` is false). Non-owners get no CTA.
+before the color turns, a deliberate soft nudge. Ownership is the **resolved
+active-workspace role only**: `workspaceRole === 'owner'` with `membershipResolved`
+having actually run. No fallback to the stale profile-level `role` (Codex finding,
+ruled 2026-08-08): a removed member or an errored membership lookup gets no CTA, and
+a genuine owner whose lookup errors merely misses a nudge (fail-quiet). Non-owners
+get no CTA.
 
 ### 4. Central panel — "Uso do plano" (CobrancaPage)
 
