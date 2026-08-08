@@ -104,10 +104,13 @@ conflated with unlimited), and Clientes/Leads/panel render nothing while
 meter; if `useWorkspaceLimits().isUnlimited` (server resolved **no plan** — not
 "unlimited plan"), meters don't render at all, the same skip `ProtectedRoute` does.
 
-Owner-only CTA: when state is `warning`/`danger`/`blocked` and the **active-workspace**
-role is owner (`(workspaceRole ?? role) === 'owner'`, as `CobrancaPage.tsx:73`; no CTA
-while `membershipResolved` is false), render a "Fazer upgrade" link to
-`/configuracao/cobranca`. Non-owners get no CTA.
+Owner-only CTA: render a "Fazer upgrade" link to `/configuracao/cobranca` when
+`used / limit > 0.75`, **or** when state is `warning`/`danger`/`blocked` (the state arm
+covers small limits, where `remaining <= 1` warns below 75%, and the no-bar blocked
+case). Between 75% and 80% the bar is still `--success` — the CTA appears one step
+before the color turns, a deliberate soft nudge. Ownership is the **active-workspace**
+role (`(workspaceRole ?? role) === 'owner'`, as `CobrancaPage.tsx:73`; no CTA while
+`membershipResolved` is false). Non-owners get no CTA.
 
 ### 4. Central panel — "Uso do plano" (CobrancaPage)
 
@@ -165,7 +168,8 @@ PT-BR, no em-dashes. Patterns: "{used} de {limit} {noun}", "Ilimitado",
 ## Testing
 
 - **Vitest:** threshold helper (ok/warning at ≤1 remaining/warning at 80%/danger/
-  unlimited/zero-limit); `UsageMeter` render states incl. owner vs non-owner CTA;
+  unlimited/zero-limit); `UsageMeter` render states incl. owner vs non-owner CTA and
+  the CTA-at->75%-while-still-green band (76% shows CTA, 74% does not);
   ClientesPage header meter (extend `ClientesPage.atlimit.test.tsx`); Equipe seat-meter
   behavior preserved (existing `inviteSupport`/InviteSection tests keep passing).
 - **psql (entitlements suite, `supabase/tests/entitlements/`):** `workspace_usage()`
