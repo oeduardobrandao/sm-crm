@@ -33,6 +33,34 @@ describe('UsageMeter', () => {
     expect(screen.getByText('Fazer upgrade')).toBeInTheDocument();
   });
 
+  it('blocked state wins over a caller valueText override', () => {
+    renderMeter(
+      <UsageMeter
+        label="Vagas de equipe"
+        used={0}
+        limit={0}
+        valueText="0 de 0 vagas do plano usadas"
+        showUpgradeCta
+      />,
+    );
+    expect(screen.getByText('Não incluído no plano')).toBeInTheDocument();
+    expect(screen.queryByText('0 de 0 vagas do plano usadas')).not.toBeInTheDocument();
+  });
+
+  it('blocked state wins over a caller subText override', () => {
+    renderMeter(
+      <UsageMeter
+        label="Vagas de equipe"
+        used={0}
+        limit={0}
+        subText="0 restantes"
+        showUpgradeCta
+      />,
+    );
+    expect(screen.getByText('Não incluído no plano')).toBeInTheDocument();
+    expect(screen.queryByText('0 restantes')).not.toBeInTheDocument();
+  });
+
   it('renders count + Ilimitado badge for null limit in full size', () => {
     renderMeter(<UsageMeter label="Chaves MCP" used={2} limit={null} />);
     expect(screen.getByText('2')).toBeInTheDocument();

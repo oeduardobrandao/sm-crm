@@ -151,6 +151,10 @@ export function UsageMeter({
                 </span>
               )}
             </>
+          ) : meter.state === 'blocked' ? (
+            // Blocked wins over a caller's valueText override -- "0 de 0 vagas do
+            // plano usadas" would contradict the "Não incluído no plano" sub row.
+            format(used)
           ) : (
             (valueText ?? (limit! > 0 ? `${format(used)} de ${format(limit!)}` : format(used)))
           )}
@@ -171,7 +175,9 @@ export function UsageMeter({
           }}
         >
           {meter.state === 'blocked' ? <span>Não incluído no plano</span> : null}
-          {subText ? <span>{subText}</span> : null}
+          {/* Blocked wins over a caller's subText override too -- otherwise "Não
+              incluído no plano" would run alongside a stale "N restantes" string. */}
+          {meter.state !== 'blocked' && subText ? <span>{subText}</span> : null}
           {/* unlimited never shows the CTA -- meter.showCta is always false for it,
               so cta is already null here, but the intent is spelled out explicitly. */}
           {meter.state !== 'unlimited' ? cta : null}
