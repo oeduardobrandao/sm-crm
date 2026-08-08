@@ -25,7 +25,8 @@
           "link": {
             "href": "/clientes",
             "label": "Abrir Clientes"
-          }
+          },
+          "image": "/novidades/pr-308.png"
         },
         {
           "type": "feature",
@@ -41,8 +42,8 @@
         {
           "type": "fix",
           "area": "Importar",
-          "title": "Correção de drift de prod em clientes",
-          "description": "Correção do erro de importação de clientes devido a drift de prod",
+          "title": "Correção na importação de clientes",
+          "description": "Corrigimos um erro que impedia a importação de clientes de outras ferramentas em alguns casos.",
           "pr": 312,
           "link": {
             "href": "/importar",
@@ -58,7 +59,8 @@
           "link": {
             "href": "/importar",
             "label": "Importar dados"
-          }
+          },
+          "image": "/novidades/pr-311.png"
         },
         {
           "type": "fix",
@@ -74,31 +76,10 @@
         {
           "type": "feature",
           "area": "Configuração",
-          "title": "Shell com sidebar secundária e guia MCP",
-          "description": "Nova interface de configuração com sidebar secundária e guia MCP",
-          "pr": 307
-        },
-        {
-          "type": "fix",
-          "area": "Analytics",
-          "title": "Captura de exceções no PostHog e remoção de evento morto",
-          "description": "Melhoria na captura de exceções e remoção de evento morto no PostHog",
-          "pr": 304,
-          "link": {
-            "href": "/analytics",
-            "label": "Abrir Analytics"
-          }
-        },
-        {
-          "type": "fix",
-          "area": "Analytics",
-          "title": "Identifica o usuário no signup para consertar o funil signup→ativação",
-          "description": "Correção do problema de identificação do usuário no signup",
-          "pr": 303,
-          "link": {
-            "href": "/analytics",
-            "label": "Abrir Analytics"
-          }
+          "title": "Configurações reorganizadas com guia de agentes de IA",
+          "description": "A área de Configuração ganhou navegação própria e um guia para conectar agentes de IA como Claude e ChatGPT ao seu workspace.",
+          "pr": 307,
+          "image": "/novidades/pr-307.png"
         },
         {
           "type": "feature",
@@ -109,7 +90,8 @@
           "link": {
             "href": "/entregas",
             "label": "Abrir Entregas"
-          }
+          },
+          "image": "/novidades/pr-299.png"
         },
         {
           "type": "feature",
@@ -132,46 +114,6 @@
             "href": "/entregas",
             "label": "Abrir Entregas"
           }
-        },
-        {
-          "type": "feature",
-          "area": "Suporte",
-          "title": "CTA de suporte no WhatsApp",
-          "description": "Adiciona um link para o suporte no WhatsApp em três superfícies",
-          "pr": 294,
-          "link": {
-            "href": "/ajuda",
-            "label": "Central de Ajuda"
-          }
-        },
-        {
-          "type": "fix",
-          "area": "Crisp",
-          "title": "Sincronização de usuários do CRM com o Crisp",
-          "description": "Correção para sincronizar usuários do CRM como contatos no Crisp",
-          "pr": 293,
-          "link": {
-            "href": "/equipe",
-            "label": "Abrir Equipe"
-          }
-        },
-        {
-          "type": "fix",
-          "area": "Instagram",
-          "title": "Ordenação da fila de sincronização do Instagram",
-          "description": "Correção para ordenar a fila de sincronização do Instagram por tentativa, não por sucesso",
-          "pr": 289,
-          "link": {
-            "href": "/entregas",
-            "label": "Abrir Entregas"
-          }
-        },
-        {
-          "type": "feature",
-          "area": "Teste Grátis",
-          "title": "Teste grátis de 30 dias",
-          "description": "Teste grátis de 30 dias como porta de entrada do cadastro",
-          "pr": 290
         },
         {
           "type": "feature",
@@ -205,17 +147,6 @@
             "href": "/mensagens",
             "label": "Abrir Mensagens"
           }
-        },
-        {
-          "type": "fix",
-          "area": "Instagram",
-          "title": "Limitar e ordenar o instagram-sync-cron",
-          "description": "Correção para limitar e ordenar o instagram-sync-cron",
-          "pr": 283,
-          "link": {
-            "href": "/entregas",
-            "label": "Abrir Entregas"
-          }
         }
       ]
     },
@@ -244,20 +175,9 @@
         {
           "type": "fix",
           "area": "Entregas",
-          "title": "Recuperação de chunk obsoleto",
-          "description": "Corrigimos um problema que causava a tela 'Algo deu errado' após deploy",
+          "title": "Menos telas de erro após atualizações",
+          "description": "O app agora se recupera sozinho depois de uma atualização, em vez de mostrar a tela 'Algo deu errado'.",
           "pr": 278
-        },
-        {
-          "type": "feature",
-          "area": "Analytics",
-          "title": "Evento de conexão do Instagram",
-          "description": "Agora é possível medir a conexão do Instagram com o Mesaas",
-          "pr": 277,
-          "link": {
-            "href": "/analytics",
-            "label": "Abrir Analytics"
-          }
         },
         {
           "type": "feature",
@@ -286,24 +206,6 @@
           "link": {
             "href": "/importar",
             "label": "Importar dados"
-          }
-        },
-        {
-          "type": "feature",
-          "area": "Admin",
-          "title": "Trials e MRR",
-          "description": "Agora é possível visualizar trials e MRR no painel de administração",
-          "pr": 263
-        },
-        {
-          "type": "feature",
-          "area": "Blog",
-          "title": "Blog do Mesaas",
-          "description": "Agora é possível acessar o blog do Mesaas com artigos sobre marketing digital",
-          "pr": 250,
-          "link": {
-            "href": "/blog",
-            "label": "Ler no blog"
           }
         }
       ]
@@ -354,17 +256,6 @@
           "link": {
             "href": "/arquivos",
             "label": "Abrir Arquivos"
-          }
-        },
-        {
-          "type": "feature",
-          "area": "TikTok",
-          "title": "Integração com o TikTok",
-          "description": "Nova integração com o TikTok para publicação de conteúdo",
-          "pr": 219,
-          "link": {
-            "href": "/entregas",
-            "label": "Abrir Entregas"
           }
         }
       ]
@@ -498,20 +389,6 @@
           "title": "Redesenho da página de login",
           "description": "Nova página de login com uma área de destaque para o conector MCP 'Agente de Conteúdo'",
           "pr": 181
-        },
-        {
-          "type": "feature",
-          "area": "Planos",
-          "title": "Edição de preço e ordem de planos",
-          "description": "Agora é possível editar o preço e a ordem dos planos na área de administração",
-          "pr": 179
-        },
-        {
-          "type": "fix",
-          "area": "Planos",
-          "title": "Persistência de recursos MCP nos planos",
-          "description": "Correção para garantir que os recursos MCP sejam persistidos corretamente nos planos",
-          "pr": 178
         },
         {
           "type": "fix",

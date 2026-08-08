@@ -31,6 +31,10 @@ You are generating the public changelog for Mesaas. Work on a fresh branch off `
      keep only the customer-facing half and drop the admin half entirely.
    - Drop fixes a customer would not notice. If you drop ALL of them, still proceed to step 5
      with `releases` omitted so the watermark advances.
+   - The reader is an EXISTING customer. Drop acquisition/signup-funnel work (free trial,
+     signup flow, SEO, blog, landing pages) and features not yet enabled for customers
+     (behind a feature flag or shown as "em breve") — announcing something readers cannot
+     see or use only erodes trust in the page.
 
 4. Self-review every entry: accurate to the PR? plain language? not a duplicate of an entry
    already in `apps/crm/src/content/changelog.json`?

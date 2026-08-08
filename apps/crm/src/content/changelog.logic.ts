@@ -13,6 +13,15 @@ const INCLUDED_PREFIXES = ['feat', 'fix', 'perf'];
 const OPT_IN_LABEL = 'changelog';
 const OPT_OUT_LABEL = 'no-changelog';
 
+// Platform-admin work (apps/admin) is never customer-visible; the runbook bans
+// it editorially and this drops the conventionally scoped part deterministically.
+// Matches "admin" plus hyphenated variants ("admin-perf", "platform-admin") but
+// not scopes that merely contain the letters ("administracao"), so a customer-
+// facing workspace-role change is not silently dropped.
+function isExcludedScope(scope: string): boolean {
+  return scope === 'admin' || scope.startsWith('admin-') || scope.endsWith('-admin');
+}
+
 /** Lower bound (YYYY-MM-DD) for the gh merged-PR search. */
 export function cutoffDate(changelog: Changelog, fallbackDate: string): string {
   return changelog.lastMergedAt ? changelog.lastMergedAt.slice(0, 10) : fallbackDate;
@@ -20,6 +29,11 @@ export function cutoffDate(changelog: Changelog, fallbackDate: string): string {
 
 function titlePrefix(title: string): string {
   const m = title.match(/^(\w+)(\([^)]*\))?!?:/);
+  return m ? m[1].toLowerCase() : '';
+}
+
+function titleScope(title: string): string {
+  const m = title.match(/^\w+\(([^)]*)\)!?:/);
   return m ? m[1].toLowerCase() : '';
 }
 
@@ -34,6 +48,7 @@ export function selectPRs(
     if (opts.lastMergedAt && p.mergedAt <= opts.lastMergedAt) return false;
     if (p.labels.includes(OPT_OUT_LABEL)) return false;
     if (p.labels.includes(OPT_IN_LABEL)) return true;
+    if (isExcludedScope(titleScope(p.title))) return false;
     return INCLUDED_PREFIXES.includes(titlePrefix(p.title));
   });
 }

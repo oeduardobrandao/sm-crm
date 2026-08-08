@@ -154,6 +154,29 @@ describe('selectPRs', () => {
       selectPRs([pr({ number: 7, title: 'feat: a', labels: ['no-changelog'] })], base),
     ).toEqual([]);
   });
+  it('drops admin-scoped titles (platform-admin work is never customer-visible)', () => {
+    for (const title of [
+      'feat(admin): trials KPI',
+      'fix(admin)!: comp control',
+      'perf(admin-perf): faster list',
+      'feat(platform-admin): comp toggle',
+    ]) {
+      expect(selectPRs([pr({ number: 8, title })], base), title).toEqual([]);
+    }
+    // Scopes merely containing the letters are NOT admin work.
+    expect(
+      selectPRs([pr({ number: 9, title: 'feat(administracao): perfil' })], base).map(
+        (p) => p.number,
+      ),
+    ).toEqual([9]);
+  });
+  it('keeps an admin-scoped PR when explicitly opted in via label', () => {
+    expect(
+      selectPRs([pr({ number: 10, title: 'feat(admin): x', labels: ['changelog'] })], base).map(
+        (p) => p.number,
+      ),
+    ).toEqual([10]);
+  });
 });
 
 describe('prependRelease', () => {
