@@ -155,8 +155,20 @@ describe('selectPRs', () => {
     ).toEqual([]);
   });
   it('drops admin-scoped titles (platform-admin work is never customer-visible)', () => {
-    expect(selectPRs([pr({ number: 8, title: 'feat(admin): trials KPI' })], base)).toEqual([]);
-    expect(selectPRs([pr({ number: 9, title: 'fix(admin)!: comp control' })], base)).toEqual([]);
+    for (const title of [
+      'feat(admin): trials KPI',
+      'fix(admin)!: comp control',
+      'perf(admin-perf): faster list',
+      'feat(platform-admin): comp toggle',
+    ]) {
+      expect(selectPRs([pr({ number: 8, title })], base), title).toEqual([]);
+    }
+    // Scopes merely containing the letters are NOT admin work.
+    expect(
+      selectPRs([pr({ number: 9, title: 'feat(administracao): perfil' })], base).map(
+        (p) => p.number,
+      ),
+    ).toEqual([9]);
   });
   it('keeps an admin-scoped PR when explicitly opted in via label', () => {
     expect(
