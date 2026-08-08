@@ -1,6 +1,438 @@
 {
-  "lastMergedAt": "2026-07-07T21:42:36Z",
+  "lastMergedAt": "2026-08-08T19:15:36Z",
   "releases": [
+    {
+      "date": "2026-08-08",
+      "summary": "Melhorias no Instagram, importação e analytics",
+      "items": [
+        {
+          "type": "feature",
+          "area": "Ajuda",
+          "title": "Guia visual para agendar o primeiro post",
+          "description": "Um novo guia passo a passo para ajudar a agendar o primeiro post",
+          "pr": 315,
+          "link": {
+            "href": "/ajuda",
+            "label": "Central de Ajuda"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Instagram",
+          "title": "Link de conexão para autorizar o Instagram",
+          "description": "Um link para que os clientes possam autorizar o próprio Instagram",
+          "pr": 308,
+          "link": {
+            "href": "/clientes",
+            "label": "Abrir Clientes"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Instagram",
+          "title": "Causas acionáveis para falha na publicação",
+          "description": "Visibilidade e ação para as causas reais de falha na publicação",
+          "pr": 310,
+          "link": {
+            "href": "/entregas",
+            "label": "Abrir Entregas"
+          }
+        },
+        {
+          "type": "fix",
+          "area": "Importar",
+          "title": "Correção de drift de prod em clientes",
+          "description": "Correção do erro de importação de clientes devido a drift de prod",
+          "pr": 312,
+          "link": {
+            "href": "/importar",
+            "label": "Importar dados"
+          }
+        },
+        {
+          "type": "fix",
+          "area": "Importar",
+          "title": "Não propor coluna de cliente vazia no mapeamento",
+          "description": "Melhoria na proposta de mapeamento para evitar colunas vazias",
+          "pr": 311,
+          "link": {
+            "href": "/importar",
+            "label": "Importar dados"
+          }
+        },
+        {
+          "type": "fix",
+          "area": "Instagram",
+          "title": "Orientação no celular quando o app do Instagram intercepta o link de conexão",
+          "description": "Correção do problema de orientação no celular durante a conexão do Instagram",
+          "pr": 309,
+          "link": {
+            "href": "/clientes",
+            "label": "Abrir Clientes"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Configuração",
+          "title": "Shell com sidebar secundária e guia MCP",
+          "description": "Nova interface de configuração com sidebar secundária e guia MCP",
+          "pr": 307
+        },
+        {
+          "type": "fix",
+          "area": "Analytics",
+          "title": "Captura de exceções no PostHog e remoção de evento morto",
+          "description": "Melhoria na captura de exceções e remoção de evento morto no PostHog",
+          "pr": 304,
+          "link": {
+            "href": "/analytics",
+            "label": "Abrir Analytics"
+          }
+        },
+        {
+          "type": "fix",
+          "area": "Analytics",
+          "title": "Identifica o usuário no signup para consertar o funil signup→ativação",
+          "description": "Correção do problema de identificação do usuário no signup",
+          "pr": 303,
+          "link": {
+            "href": "/analytics",
+            "label": "Abrir Analytics"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Entregas",
+          "title": "Feedback visual e linhas compactas na seleção de etapas do wizard",
+          "description": "Melhoria na interface do wizard de entregas com feedback visual e linhas compactas",
+          "pr": 299,
+          "link": {
+            "href": "/entregas",
+            "label": "Abrir Entregas"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Mensagens",
+          "title": "Mensagens consolidadas",
+          "description": "Feed unificado de comunicação cliente/agência no Hub e CRM",
+          "pr": 281,
+          "link": {
+            "href": "/mensagens",
+            "label": "Abrir Mensagens"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Instagram",
+          "title": "Passo a passo para conectar o Instagram",
+          "description": "Ajuda ao conectar o Instagram quando a Meta bloqueia a conexão por atividade fora da Meta",
+          "pr": 297,
+          "link": {
+            "href": "/entregas",
+            "label": "Abrir Entregas"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Suporte",
+          "title": "CTA de suporte no WhatsApp",
+          "description": "Adiciona um link para o suporte no WhatsApp em três superfícies",
+          "pr": 294,
+          "link": {
+            "href": "/ajuda",
+            "label": "Central de Ajuda"
+          }
+        },
+        {
+          "type": "fix",
+          "area": "Crisp",
+          "title": "Sincronização de usuários do CRM com o Crisp",
+          "description": "Correção para sincronizar usuários do CRM como contatos no Crisp",
+          "pr": 293,
+          "link": {
+            "href": "/equipe",
+            "label": "Abrir Equipe"
+          }
+        },
+        {
+          "type": "fix",
+          "area": "Instagram",
+          "title": "Ordenação da fila de sincronização do Instagram",
+          "description": "Correção para ordenar a fila de sincronização do Instagram por tentativa, não por sucesso",
+          "pr": 289,
+          "link": {
+            "href": "/entregas",
+            "label": "Abrir Entregas"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Teste Grátis",
+          "title": "Teste grátis de 30 dias",
+          "description": "Teste grátis de 30 dias como porta de entrada do cadastro",
+          "pr": 290
+        },
+        {
+          "type": "feature",
+          "area": "Menções",
+          "title": "Menções com @",
+          "description": "Menções com @ no estilo Google Docs, em todo o CRM",
+          "pr": 287,
+          "link": {
+            "href": "/entregas",
+            "label": "Abrir Entregas"
+          }
+        },
+        {
+          "type": "fix",
+          "area": "Busca Global",
+          "title": "Busca global e pendências",
+          "description": "Correção para abrir o post ao clicar na busca global e pendências",
+          "pr": 286,
+          "link": {
+            "href": "/entregas",
+            "label": "Abrir Entregas"
+          }
+        },
+        {
+          "type": "fix",
+          "area": "Mensagens",
+          "title": "Clicar no post em /mensagens",
+          "description": "Correção para abrir o post ao clicar no chip do post em /mensagens",
+          "pr": 284,
+          "link": {
+            "href": "/mensagens",
+            "label": "Abrir Mensagens"
+          }
+        },
+        {
+          "type": "fix",
+          "area": "Instagram",
+          "title": "Limitar e ordenar o instagram-sync-cron",
+          "description": "Correção para limitar e ordenar o instagram-sync-cron",
+          "pr": 283,
+          "link": {
+            "href": "/entregas",
+            "label": "Abrir Entregas"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-07-31",
+      "summary": "Melhorias e novos recursos para o Mesaas",
+      "items": [
+        {
+          "type": "feature",
+          "area": "Equipe",
+          "title": "Convite de membros da equipe",
+          "description": "Agora é possível convidar membros da equipe diretamente do formulário de edição de membro",
+          "pr": 280,
+          "link": {
+            "href": "/equipe",
+            "label": "Abrir Equipe"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Hub",
+          "title": "Personalização do Hub",
+          "description": "Agora é possível personalizar o Hub com cores, fontes, logotipo e componentes personalizados",
+          "pr": 279
+        },
+        {
+          "type": "fix",
+          "area": "Entregas",
+          "title": "Recuperação de chunk obsoleto",
+          "description": "Corrigimos um problema que causava a tela 'Algo deu errado' após deploy",
+          "pr": 278
+        },
+        {
+          "type": "feature",
+          "area": "Analytics",
+          "title": "Evento de conexão do Instagram",
+          "description": "Agora é possível medir a conexão do Instagram com o Mesaas",
+          "pr": 277,
+          "link": {
+            "href": "/analytics",
+            "label": "Abrir Analytics"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Solicitações",
+          "title": "Solicitações no Hub",
+          "description": "Agora é possível criar solicitações no Hub e convertê-las em tarefas",
+          "pr": 276
+        },
+        {
+          "type": "feature",
+          "area": "Tarefas",
+          "title": "Tarefas da equipe",
+          "description": "Agora é possível criar e gerenciar tarefas da equipe",
+          "pr": 270,
+          "link": {
+            "href": "/tarefas",
+            "label": "Abrir Tarefas"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Importação",
+          "title": "Wizard de importação",
+          "description": "Agora é possível importar dados de outras ferramentas com um wizard de importação",
+          "pr": 266,
+          "link": {
+            "href": "/importar",
+            "label": "Importar dados"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Admin",
+          "title": "Trials e MRR",
+          "description": "Agora é possível visualizar trials e MRR no painel de administração",
+          "pr": 263
+        },
+        {
+          "type": "feature",
+          "area": "Blog",
+          "title": "Blog do Mesaas",
+          "description": "Agora é possível acessar o blog do Mesaas com artigos sobre marketing digital",
+          "pr": 250,
+          "link": {
+            "href": "/blog",
+            "label": "Ler no blog"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-07-26",
+      "summary": "Melhorias e novos recursos para Entregas, Analytics e Hub",
+      "items": [
+        {
+          "type": "feature",
+          "area": "Entregas",
+          "title": "Fluxo de criação de entregas",
+          "description": "Nova interface de criação de fluxos de entregas com um assistente de 5 etapas",
+          "pr": 224,
+          "link": {
+            "href": "/entregas",
+            "label": "Abrir Entregas"
+          }
+        },
+        {
+          "type": "improvement",
+          "area": "Analytics",
+          "title": "Redesenho das cartões de análise",
+          "description": "Cartões de análise agora lideram com insights computados",
+          "pr": 242,
+          "link": {
+            "href": "/analytics",
+            "label": "Abrir Analytics"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Hub",
+          "title": "Redesenho visual do Client Hub",
+          "description": "Nova interface do Client Hub com sistema de tokens de cor e navegação lateral",
+          "pr": 230,
+          "link": {
+            "href": "/clientes",
+            "label": "Abrir Clientes"
+          }
+        },
+        {
+          "type": "fix",
+          "area": "Media",
+          "title": "Download de arquivos",
+          "description": "Agora é possível baixar arquivos diretamente sem precisar criar um zip",
+          "pr": 229,
+          "link": {
+            "href": "/arquivos",
+            "label": "Abrir Arquivos"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "TikTok",
+          "title": "Integração com o TikTok",
+          "description": "Nova integração com o TikTok para publicação de conteúdo",
+          "pr": 219,
+          "link": {
+            "href": "/entregas",
+            "label": "Abrir Entregas"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-07-18",
+      "summary": "Melhorias no CRM para social media managers",
+      "items": [
+        {
+          "type": "feature",
+          "area": "Entregas",
+          "title": "Tela de entrega em tela cheia",
+          "description": "Agora é possível abrir a tela de entrega em tela cheia, melhorando a experiência do usuário",
+          "pr": 201,
+          "link": {
+            "href": "/entregas",
+            "label": "Abrir Entregas"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Clientes",
+          "title": "Navegação flutuante na página de detalhe do cliente",
+          "description": "Uma navegação flutuante foi adicionada à página de detalhe do cliente, permitindo que os usuários acessem facilmente as diferentes seções",
+          "pr": 207,
+          "link": {
+            "href": "/clientes",
+            "label": "Abrir Clientes"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Ajuda",
+          "title": "Imagens nos artigos de ajuda",
+          "description": "Foram adicionadas imagens aos artigos de ajuda, tornando mais fácil para os usuários entenderem os conceitos",
+          "pr": 208,
+          "link": {
+            "href": "/ajuda",
+            "label": "Central de Ajuda"
+          }
+        },
+        {
+          "type": "improvement",
+          "area": "Responsividade",
+          "title": "Melhorias na responsividade do CRM",
+          "description": "Foram feitas melhorias na responsividade do CRM, garantindo uma experiência mais agradável em dispositivos móveis",
+          "pr": 212,
+          "link": {
+            "href": "/clientes",
+            "label": "Abrir Clientes"
+          }
+        },
+        {
+          "type": "fix",
+          "area": "Hub",
+          "title": "Correção do problema de expiração de links",
+          "description": "Foi corrigido o problema de expiração de links no Hub, garantindo que os usuários possam acessar os links sem problemas",
+          "pr": 204
+        },
+        {
+          "type": "fix",
+          "area": "Hub",
+          "title": "Correção do problema de miniaturas de posts",
+          "description": "Foi corrigido o problema de miniaturas de posts no Hub, garantindo que as miniaturas sejam exibidas corretamente",
+          "pr": 200
+        }
+      ]
+    },
     {
       "date": "2026-07-11",
       "summary": "Melhorias na criação e gerenciamento de mídias e imagens",
