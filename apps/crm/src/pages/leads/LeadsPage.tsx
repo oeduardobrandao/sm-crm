@@ -76,6 +76,7 @@ import {
 } from '@/components/ui/form';
 import {
   getLeads,
+  getLeadsCount,
   addLead,
   updateLead,
   removeLead,
@@ -85,6 +86,8 @@ import {
   type Cliente,
 } from '../../store';
 import { useEntitlements } from '../../hooks/useEntitlements';
+import { useIsWorkspaceOwner } from '../../hooks/useIsWorkspaceOwner';
+import { UsageMeter } from '@/components/usage/UsageMeter';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
 import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { useAuth } from '../../context/AuthContext';
@@ -192,11 +195,12 @@ export default function LeadsPage() {
     defaultValues: { nome: '', email: '', telefone: '', plano: '', valor: '', diaPag: '' },
   });
 
-  const { isAtLimit } = useEntitlements();
-
+  const { isAtLimit, limits } = useEntitlements();
+  const isOwner = useIsWorkspaceOwner();
   const { data: leads = [], isLoading } = useQuery({ queryKey: ['leads'], queryFn: getLeads });
-
-  const leadsAtLimit = isAtLimit('max_leads', leads.length);
+  const { data: leadsCount } = useQuery({ queryKey: ['leads', 'count'], queryFn: getLeadsCount });
+  const usedLeads = leadsCount ?? leads.length;
+  const leadsAtLimit = isAtLimit('max_leads', usedLeads);
 
   const handleSort = (col: string) => {
     if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -412,14 +416,27 @@ export default function LeadsPage() {
   return (
     <div className="page-content">
       <div className="header">
-        <div
-          className="header-title"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <h1>{t('title')}</h1>
-          <span data-tooltip={t('tooltip')} data-tooltip-dir="right" style={{ display: 'flex' }}>
-            <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-          </span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+          <div
+            className="header-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <h1>{t('title')}</h1>
+            <span data-tooltip={t('tooltip')} data-tooltip-dir="right" style={{ display: 'flex' }}>
+              <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+            </span>
+          </div>
+          {limits && limits.max_leads !== null && (
+            <div style={{ marginTop: 6 }}>
+              <UsageMeter
+                size="compact"
+                label="leads"
+                used={usedLeads}
+                limit={limits.max_leads}
+                showUpgradeCta={isOwner}
+              />
+            </div>
+          )}
         </div>
         <div className="header-actions">
           <span

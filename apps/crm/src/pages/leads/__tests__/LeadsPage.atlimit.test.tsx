@@ -3,8 +3,9 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { isAtLimitMock } = vi.hoisted(() => ({
+const { isAtLimitMock, limitsRef } = vi.hoisted(() => ({
   isAtLimitMock: vi.fn(),
+  limitsRef: { current: null as unknown as Record<string, number | null> },
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -25,6 +26,7 @@ vi.mock('../../../store', async () => {
   return {
     ...actual,
     getLeads: vi.fn(),
+    getLeadsCount: vi.fn(),
     addLead: vi.fn(),
     updateLead: vi.fn(),
     removeLead: vi.fn(),
@@ -33,7 +35,17 @@ vi.mock('../../../store', async () => {
 });
 
 vi.mock('../../../hooks/useEntitlements', () => ({
-  useEntitlements: () => ({ isAtLimit: isAtLimitMock }),
+  useEntitlements: () => ({ isAtLimit: isAtLimitMock, limits: limitsRef.current }),
+}));
+
+vi.mock('../../../hooks/useIsWorkspaceOwner', () => ({
+  useIsWorkspaceOwner: () => true,
+}));
+
+vi.mock('@/components/usage/UsageMeter', () => ({
+  UsageMeter: ({ label, used, limit }: { label: string; used: number; limit: number }) => (
+    <div>{`${used} de ${limit} ${label}`}</div>
+  ),
 }));
 
 vi.mock('../../../context/AuthContext', () => ({
@@ -136,6 +148,7 @@ import * as store from '../../../store';
 import LeadsPage from '../LeadsPage';
 
 const mockedGetLeads = vi.mocked(store.getLeads);
+const mockedGetLeadsCount = vi.mocked(store.getLeadsCount);
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -150,8 +163,11 @@ function renderPage() {
 
 beforeEach(() => {
   isAtLimitMock.mockReset();
+  limitsRef.current = null;
   mockedGetLeads.mockReset();
   mockedGetLeads.mockResolvedValue([]);
+  mockedGetLeadsCount.mockReset();
+  mockedGetLeadsCount.mockResolvedValue(0);
 });
 
 describe('LeadsPage at-limit create button', () => {
@@ -181,17 +197,35 @@ describe('LeadsPage at-limit create button', () => {
     expect(createBtn).not.toHaveAttribute('title');
   });
 
-  it('calls isAtLimit with the max_leads key and the current lead count', async () => {
+  it('calls isAtLimit with the max_leads key and the exact server count', async () => {
     isAtLimitMock.mockReturnValue(false);
     mockedGetLeads.mockResolvedValue([
       { id: 1, nome: 'A', status: 'novo' } as store.Lead,
       { id: 2, nome: 'B', status: 'novo' } as store.Lead,
       { id: 3, nome: 'C', status: 'novo' } as store.Lead,
     ]);
+    mockedGetLeadsCount.mockResolvedValue(3);
     renderPage();
 
     await waitFor(() => {
       expect(isAtLimitMock).toHaveBeenCalledWith('max_leads', 3);
     });
+  });
+
+  it('feeds isAtLimit the exact server count, not the list length', async () => {
+    isAtLimitMock.mockReturnValue(false);
+    mockedGetLeads.mockResolvedValue([{ id: 1 } as never, { id: 2 } as never]);
+    mockedGetLeadsCount.mockResolvedValue(1205); // truncated list scenario
+    renderPage();
+    await waitFor(() => expect(isAtLimitMock).toHaveBeenCalledWith('max_leads', 1205));
+  });
+
+  it('shows the header meter from the exact count', async () => {
+    isAtLimitMock.mockReturnValue(false);
+    limitsRef.current = { max_leads: 200 };
+    mockedGetLeads.mockResolvedValue([]);
+    mockedGetLeadsCount.mockResolvedValue(37);
+    renderPage();
+    expect(await screen.findByText('37 de 200 leads')).toBeInTheDocument();
   });
 });
