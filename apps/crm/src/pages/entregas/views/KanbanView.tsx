@@ -235,15 +235,22 @@ export function KanbanView({
   const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
   const [activeRowKey, setActiveRowKey] = useState<string | null>(null);
 
-  // Drop overlay entries the server already reflects.
+  // Drop overlay entries the server already reflects. A cross-column insert
+  // stores a FRACTIONAL position (e.g. 0.5) that the persisted integer will
+  // never equal, so those are released together with the workflow's etapa
+  // overlay: the refetch that reflects the move also carries the renumbered
+  // positions.
   useEffect(() => {
+    if (pendingEtapas.size === 0 && pendingPositions.size === 0) return;
+    const movedCaughtUp = new Set<number>();
+    for (const c of cards) {
+      const pe = pendingEtapas.get(c.workflow.id!);
+      if (pe && pe.id === c.etapa.id) movedCaughtUp.add(c.workflow.id!);
+    }
     setPendingEtapas((prev) => {
       if (prev.size === 0) return prev;
       const next = new Map(prev);
-      for (const c of cards) {
-        const pe = next.get(c.workflow.id!);
-        if (pe && pe.id === c.etapa.id) next.delete(c.workflow.id!);
-      }
+      for (const id of movedCaughtUp) next.delete(id);
       return next.size === prev.size ? prev : next;
     });
     setPendingPositions((prev) => {
@@ -251,11 +258,12 @@ export function KanbanView({
       const next = new Map(prev);
       for (const c of cards) {
         const pp = next.get(c.workflow.id!);
-        if (pp !== undefined && c.workflow.position === pp) next.delete(c.workflow.id!);
+        if (pp !== undefined && (c.workflow.position === pp || movedCaughtUp.has(c.workflow.id!)))
+          next.delete(c.workflow.id!);
       }
       return next.size === prev.size ? prev : next;
     });
-  }, [cards]);
+  }, [cards, pendingEtapas, pendingPositions]);
 
   const localCards = useMemo(() => {
     if (pendingEtapas.size === 0 && pendingPositions.size === 0) return cards;
