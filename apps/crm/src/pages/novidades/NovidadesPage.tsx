@@ -1,6 +1,7 @@
 import { usePageMeta } from '@/lib/usePageMeta';
 import changelogData from '@/content/changelog.json';
 import { parseReleases, type ChangelogRelease } from '@/content/changelog.schema';
+import { sanitizeUrl } from '@/utils/security';
 
 const TYPE_BADGE: Record<
   ChangelogRelease['items'][number]['type'],
@@ -47,8 +48,12 @@ export default function NovidadesPage({ releases }: { releases?: ChangelogReleas
           Em breve, novidades por aqui.
         </p>
       ) : (
-        data.map((release) => (
-          <div key={release.date} className="card" style={{ marginBottom: '1.5rem' }}>
+        data.map((release, releaseIndex) => (
+          <div
+            key={`${release.date}-${releaseIndex}`}
+            className="card"
+            style={{ marginBottom: '1.5rem' }}
+          >
             <div
               style={{
                 marginBottom: '1rem',
@@ -125,6 +130,35 @@ export default function NovidadesPage({ releases }: { releases?: ChangelogReleas
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: 1.6 }}>
                     {item.description}
                   </p>
+                  {item.image && (
+                    <img
+                      src={item.image}
+                      alt={item.title}
+                      loading="lazy"
+                      style={{
+                        display: 'block',
+                        maxWidth: '100%',
+                        marginTop: '0.75rem',
+                        borderRadius: 12,
+                        border: '1px solid var(--border-color)',
+                      }}
+                    />
+                  )}
+                  {item.link && (
+                    <a
+                      href={sanitizeUrl(item.link.href)}
+                      style={{
+                        display: 'inline-block',
+                        marginTop: '0.5rem',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                        color: 'var(--primary-hover)',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      {item.link.label} →
+                    </a>
+                  )}
                 </div>
               );
             })}

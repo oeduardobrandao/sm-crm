@@ -28,4 +28,30 @@ describe('NovidadesPage', () => {
     render(<NovidadesPage releases={[]} />);
     expect(screen.getByText(/Em breve/)).toBeInTheDocument();
   });
+
+  it('renders an item image and link when present, and omits them otherwise', () => {
+    const withExtras: ChangelogRelease[] = [
+      {
+        date: '2026-08-08',
+        items: [
+          {
+            type: 'feature',
+            area: 'Entregas',
+            title: 'Com imagem',
+            description: 'D.',
+            pr: 3,
+            image: '/novidades/pr-3.png',
+            link: { href: '/entregas', label: 'Abrir Entregas' },
+          },
+          { type: 'fix', area: 'Hub', title: 'Sem extras', description: 'D.', pr: 4 },
+        ],
+      },
+    ];
+    render(<NovidadesPage releases={withExtras} />);
+    const img = screen.getByRole('img', { name: 'Com imagem' });
+    expect(img).toHaveAttribute('src', '/novidades/pr-3.png');
+    const link = screen.getByRole('link', { name: /Abrir Entregas/ });
+    expect(link).toHaveAttribute('href', '/entregas');
+    expect(screen.queryAllByRole('img')).toHaveLength(1);
+  });
 });

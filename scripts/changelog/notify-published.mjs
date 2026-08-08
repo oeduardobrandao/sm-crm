@@ -32,7 +32,7 @@ if (!newItems.length) {
   process.exit(0);
 }
 
-const list = newItems.map((i) => `<li><strong>${esc(i.title)}</strong> — ${esc(i.description)}</li>`).join('');
+const list = newItems.map((i) => `<li><strong>${esc(i.title)}</strong>: ${esc(i.description)}</li>`).join('');
 const html = `Novas entradas publicadas no changelog:<br><ul>${list}</ul><br>` +
   `<a href="${SITE_URL}/novidades">Ver Novidades</a>`;
 
