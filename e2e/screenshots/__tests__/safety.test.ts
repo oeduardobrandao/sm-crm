@@ -82,9 +82,9 @@ describe('capture safety net', () => {
     });
 
     it('blocks scheduling even via an insert (POST)', () => {
-      expect(
-        isSchedulingWrite(`${REST}/workflow_posts`, 'POST', { status: 'agendado' }),
-      ).toBe(true);
+      expect(isSchedulingWrite(`${REST}/workflow_posts`, 'POST', { status: 'agendado' })).toBe(
+        true,
+      );
     });
 
     it('allows unscheduling a post (scheduled_at: null)', () => {
@@ -111,15 +111,11 @@ describe('capture safety net', () => {
     });
 
     it('allows writes to other tables -- creating a client/transacao/fluxo is permitted', () => {
-      expect(isSchedulingWrite(`${REST}/clientes`, 'POST', { nome: 'Cliente Teste' })).toBe(
-        false,
-      );
+      expect(isSchedulingWrite(`${REST}/clientes`, 'POST', { nome: 'Cliente Teste' })).toBe(false);
       expect(
         isSchedulingWrite(`${REST}/transacoes`, 'POST', { valor: 100, status: 'agendado' }),
       ).toBe(false);
-      expect(isSchedulingWrite(`${REST}/workflows`, 'POST', { titulo: 'Fluxo Teste' })).toBe(
-        false,
-      );
+      expect(isSchedulingWrite(`${REST}/workflows`, 'POST', { titulo: 'Fluxo Teste' })).toBe(false);
     });
 
     it('ignores GET reads regardless of query shape', () => {
@@ -133,6 +129,15 @@ describe('capture safety net', () => {
         isSchedulingWrite(`${REST}/workflow_posts?id=eq.5`, 'patch', { status: 'agendado' }),
       ).toBe(true);
     });
+  });
+
+  it('blocks TikTok scheduling, which is an edge function and not a PostgREST write', () => {
+    // ScheduleButton's handleSchedule calls scheduleTikTokPost for a post
+    // whose platform is 'tiktok' or 'both' (ScheduleButton.tsx:319), and that
+    // hits tiktok-publish/schedule/:id (services/tiktok.ts:14,261) -- an edge
+    // function, so isSchedulingWrite() never sees it.
+    expect(isBlockedUrl(`${FN}/tiktok-publish/schedule/42`)).toBe(true);
+    expect(isBlockedUrl(`${FN}/tiktok-publish`)).toBe(true);
   });
 });
 
