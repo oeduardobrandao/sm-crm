@@ -414,7 +414,7 @@ export default function ExpressPostPage() {
                     className="py-2 text-sm font-semibold rounded-md transition-colors"
                     style={
                       active
-                        ? { background: '#E1306C', color: '#fff' }
+                        ? { background: 'var(--cta-bg)', color: 'var(--cta-fg)' }
                         : { background: 'transparent', color: 'var(--text-muted)' }
                     }
                   >
@@ -747,11 +747,7 @@ export default function ExpressPostPage() {
             onClick={() => setConfirmOpen(true)}
             disabled={!canPublish}
             className="w-full text-sm font-bold py-3"
-            style={
-              canPublish
-                ? { background: '#E1306C', color: 'white', borderRadius: '8px' }
-                : { borderRadius: '8px' }
-            }
+            style={{ borderRadius: '8px' }}
           >
             <Send className="h-4 w-4 mr-2" />{' '}
             {t(isStory ? 'publish.buttonStories' : 'publish.button')}

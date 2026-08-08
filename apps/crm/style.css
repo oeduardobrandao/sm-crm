@@ -42,8 +42,10 @@ body,
     --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-    --primary: 47.9 95.8% 53.1%;
-    --primary-foreground: 26 83.3% 14.1%;
+    /* CTA ink: black actions in light mode, white in dark. Brand yellow lives in
+       --primary-color (accents: dots, badges, active nav) and --ring (focus). */
+    --primary: 218 18% 9%;
+    --primary-foreground: 0 0% 100%;
     --secondary: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
     --muted: 240 4.8% 95.9%;
@@ -65,8 +67,8 @@ body,
     --card-foreground: 0 0% 98%;
     --popover: 240 10% 3.9%;
     --popover-foreground: 0 0% 98%;
-    --primary: 47.9 95.8% 53.1%;
-    --primary-foreground: 26 83.3% 14.1%;
+    --primary: 225 21% 93%;
+    --primary-foreground: 218 18% 9%;
     --secondary: 240 3.7% 15.9%;
     --secondary-foreground: 0 0% 98%;
     --muted: 240 3.7% 15.9%;
@@ -102,8 +104,14 @@ body,
   --surface-darker: #f1f5f9;
 
   /* Brand Colors */
-  --primary-color: #ffbf30; /* Yellow Accent */
+  --primary-color: #ffbf30; /* Yellow Accent — small indicators only (dots, badges, active nav, focus) */
   --primary-hover: #ca8a04;
+  --primary-rgb: 255, 191, 48;
+
+  /* CTA ink: solid action buttons are black on light, white on dark */
+  --cta-bg: #12151a;
+  --cta-fg: #ffffff;
+  --cta-hover: #272d39;
   --success: #3ecf8e;
   --warning: #f5a342;
   --danger: #f55a42;
@@ -142,6 +150,10 @@ body,
   --bg-color: #0a0c0f;
   --sidebar-bg: #12151a;
   --card-bg: #12151a;
+
+  --cta-bg: #e8eaf0;
+  --cta-fg: #12151a;
+  --cta-hover: #ffffff;
 
   /* On the dark card --danger already clears AA (5.60:1), so it doubles as the
      text colour and error copy keeps the brand red. */
@@ -559,8 +571,8 @@ body {
 }
 
 .btn-upgrade {
-  background: var(--primary-color);
-  color: #12151a;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   border: none;
   padding: 0.6rem;
   border-radius: 8px;
@@ -571,7 +583,7 @@ body {
   transition: background var(--transition);
 }
 .btn-upgrade:hover {
-  background: var(--primary-hover);
+  background: var(--cta-hover);
 }
 
 /* ===== Top Bar ===== */
@@ -863,24 +875,25 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2.5rem;
+  margin-bottom: 1.25rem;
 }
 
+/* Operate surface: titles orient, they don't sell. Working data outranks chrome. */
 .header-title h1,
 .header-title h2 {
   font-family: var(--font-heading);
-  font-size: clamp(2rem, 4vw, 3.2rem);
-  font-weight: 900;
+  font-size: clamp(1.375rem, 1.8vw, 1.75rem);
+  font-weight: 700;
   color: var(--text-main);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .header-title p {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
-  margin-top: 0.5rem;
-  letter-spacing: 0.12em;
+  font-size: 0.78rem;
+  margin-top: 0.375rem;
+  letter-spacing: 0.06em;
 }
 
 /*
@@ -1718,15 +1731,14 @@ body {
 
 /* ===== Buttons ===== */
 .btn-primary {
-  background: var(--primary-color);
-  color: #12151a;
-  border: 1px solid var(--primary-color);
-  padding: 0.6rem 1.25rem;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
+  border: 1px solid var(--cta-bg);
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  font-family: var(--font-main);
+  font-size: 0.8rem;
   font-weight: 500;
-  letter-spacing: 0.1em;
   cursor: pointer;
   transition:
     background var(--transition),
@@ -1736,20 +1748,20 @@ body {
   gap: 0.5rem;
 }
 .btn-primary:hover {
-  background: transparent;
-  color: var(--primary-color);
+  background: var(--cta-hover);
+  border-color: var(--cta-hover);
+  color: var(--cta-fg);
 }
 
 .btn-danger {
   background: transparent;
   color: var(--danger);
   border: 1px solid var(--danger);
-  padding: 0.6rem 1.25rem;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  font-family: var(--font-main);
+  font-size: 0.8rem;
   font-weight: 500;
-  letter-spacing: 0.1em;
   cursor: pointer;
   transition:
     background var(--transition),
@@ -1767,12 +1779,11 @@ body {
   background: transparent;
   color: var(--text-muted);
   border: 1px solid var(--border-color);
-  padding: 0.6rem 1.25rem;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  font-family: var(--font-main);
+  font-size: 0.8rem;
   font-weight: 500;
-  letter-spacing: 0.1em;
   cursor: pointer;
   transition: all var(--transition);
   display: inline-flex;
@@ -1780,9 +1791,9 @@ body {
   gap: 0.5rem;
 }
 .btn-secondary:hover {
-  background: var(--primary-color);
-  border-color: var(--primary-color);
-  color: #12151a;
+  background: var(--surface-hover);
+  border-color: var(--text-light);
+  color: var(--text-main);
 }
 
 .btn-icon {
@@ -1795,6 +1806,10 @@ body {
   color: var(--text-muted);
 }
 .btn-icon:hover {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+.btn-icon--danger:hover {
   background: #fee2e2;
   color: var(--danger);
 }
@@ -2910,10 +2925,6 @@ select.form-input option {
     margin-bottom: 0;
   }
 
-  .header-title h1 {
-    font-size: 2.5rem;
-  }
-
   .header-title p {
     font-size: 0.68rem;
   }
@@ -3350,14 +3361,6 @@ select.form-input option {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
 
-  .header {
-    margin-bottom: 1.75rem;
-  }
-
-  .header-title h1 {
-    font-size: clamp(1.6rem, 3vw, 2.4rem);
-  }
-
   .data-table th {
     padding: 0.75rem 0.6rem;
     font-size: 0.65rem;
@@ -3516,7 +3519,7 @@ select.form-input option {
 }
 
 .calendar-tab.active {
-  color: var(--primary-color);
+  color: var(--text-main);
   font-weight: 600;
   background: rgba(234, 179, 8, 0.05);
 }
@@ -3954,15 +3957,14 @@ select.form-input option {
 }
 
 .btn-confirmar {
-  background: #eab308;
-  color: #1c1917;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   border: none;
   padding: 0.45rem 0.85rem;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
+  border-radius: 10px;
+  font-family: var(--font-main);
+  font-size: 0.75rem;
   font-weight: 600;
-  letter-spacing: 0.05em;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -6005,8 +6007,8 @@ body.role-agent input[name='valor_total'] {
   align-items: center;
   gap: 0.35rem;
   padding: 0.4rem 0.85rem;
-  background: var(--primary-color, #000);
-  color: #fff;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   border: none;
   border-radius: 6px;
   font-size: 0.78rem;
@@ -6424,8 +6426,8 @@ body.role-agent input[name='valor_total'] {
   align-items: center;
   justify-content: center;
   padding: 0.4rem 0.6rem;
-  background: var(--primary-color, #000);
-  color: #fff;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -6696,8 +6698,8 @@ body.role-agent input[name='valor_total'] {
   color: var(--text-color);
 }
 .post-editor-btn.active {
-  background: var(--primary-color);
-  color: #fff;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
 }
 
 .post-editor-divider {
@@ -6941,8 +6943,8 @@ a.mention-chip:hover {
   padding: 0.2rem 0.5rem;
   border-radius: 4px;
   border: none;
-  background: var(--primary-color);
-  color: #fff;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   cursor: pointer;
 }
 .post-editor-link-remove {
@@ -7381,8 +7383,8 @@ a.mention-chip:hover {
   border-color: var(--primary-color);
 }
 .comment-reply-submit {
-  background: var(--primary-color);
-  color: #12151a;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   border: none;
   border-radius: 6px;
   padding: 0 0.7rem;
@@ -7483,8 +7485,8 @@ a.mention-chip:hover {
 }
 .comment-add-submit {
   align-self: flex-end;
-  background: var(--primary-color);
-  color: #12151a;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   border: none;
   border-radius: 6px;
   padding: 0.35rem 0.8rem;
@@ -8884,11 +8886,11 @@ a.mention-chip:hover {
   text-decoration: none;
 }
 .calendar-detail-btn--primary {
-  background: var(--primary-color);
-  color: #1a1505;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
 }
 .calendar-detail-btn--primary:hover {
-  background: var(--primary-hover);
+  background: var(--cta-hover);
 }
 .calendar-detail-btn--danger {
   background: var(--surface-light);
@@ -9317,8 +9319,8 @@ a.mention-chip:hover {
   padding: 6px 14px;
   border-radius: 8px;
   border: none;
-  background: var(--primary-color);
-  color: var(--dark);
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
@@ -9326,7 +9328,7 @@ a.mention-chip:hover {
 }
 
 .time-picker-confirm:hover {
-  background: var(--primary-hover);
+  background: var(--cta-hover);
 }
 
 /* ── Calendar header button ───────────────────────────────────── */
@@ -10682,4 +10684,158 @@ body.landing-page #root {
   align-items: center;
   justify-content: center;
   margin-top: 1px;
+}
+
+/* ── shadcn Sheet motion ─────────────────────────────────────────────
+   tailwindcss-animate is not registered, so the component's stock
+   animate-in/slide-in-from-* utilities are inert. These keyframes are
+   the real thing: panel slides from its edge, overlay fades. Radix
+   waits for the [data-state='closed'] animation before unmounting. */
+@keyframes sheet-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sheet-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes sheet-slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes sheet-slide-out-right {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes sheet-slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+}
+@keyframes sheet-slide-out-left {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes sheet-slide-in-bottom {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes sheet-slide-out-bottom {
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes sheet-slide-in-top {
+  from {
+    transform: translateY(-100%);
+  }
+}
+@keyframes sheet-slide-out-top {
+  to {
+    transform: translateY(-100%);
+  }
+}
+
+.sheet-overlay[data-state='open'] {
+  animation: sheet-fade-in 0.3s ease-out;
+}
+.sheet-overlay[data-state='closed'] {
+  animation: sheet-fade-out 0.25s ease-in forwards;
+}
+
+[class*='sheet-pane--'][data-state='open'] {
+  animation-duration: 0.38s;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+[class*='sheet-pane--'][data-state='closed'] {
+  animation-duration: 0.28s;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  animation-fill-mode: forwards;
+}
+.sheet-pane--right[data-state='open'] {
+  animation-name: sheet-slide-in-right;
+}
+.sheet-pane--right[data-state='closed'] {
+  animation-name: sheet-slide-out-right;
+}
+.sheet-pane--left[data-state='open'] {
+  animation-name: sheet-slide-in-left;
+}
+.sheet-pane--left[data-state='closed'] {
+  animation-name: sheet-slide-out-left;
+}
+.sheet-pane--bottom[data-state='open'] {
+  animation-name: sheet-slide-in-bottom;
+}
+.sheet-pane--bottom[data-state='closed'] {
+  animation-name: sheet-slide-out-bottom;
+}
+.sheet-pane--top[data-state='open'] {
+  animation-name: sheet-slide-in-top;
+}
+.sheet-pane--top[data-state='closed'] {
+  animation-name: sheet-slide-out-top;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-overlay[data-state='open'],
+  .sheet-overlay[data-state='closed'],
+  [class*='sheet-pane--'][data-state='open'],
+  [class*='sheet-pane--'][data-state='closed'] {
+    animation-duration: 0.01ms;
+  }
+}
+
+/* Kanban drop slot: the target column opens a card-sized space while a valid
+   drag hovers it. Height is set inline to match the dragged card. */
+.board-drop-slot {
+  flex-shrink: 0;
+  border: 2px dashed color-mix(in srgb, var(--cta-bg) 30%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--cta-bg) 5%, transparent);
+  animation: board-drop-slot-in 0.16s cubic-bezier(0.32, 0.72, 0, 1);
+  overflow: hidden;
+}
+@keyframes board-drop-slot-in {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-drop-slot {
+    animation-duration: 0.01ms;
+  }
+}
+
+/* Quick-add button at the top of each board row's first column. */
+.board-add-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0.45rem;
+  border-radius: 12px;
+  border: 1px dashed var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+.board-add-card:hover {
+  color: var(--text-main);
+  border-color: var(--text-light);
+  background: var(--surface-main);
 }

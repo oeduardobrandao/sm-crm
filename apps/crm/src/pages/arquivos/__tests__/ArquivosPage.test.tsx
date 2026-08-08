@@ -103,7 +103,7 @@ describe('ArquivosPage', () => {
 
     render(<ArquivosPage />, { wrapper: createWrapper() });
 
-    expect(screen.getByText('Upload')).toBeInTheDocument();
+    expect(screen.getByText('Enviar arquivo')).toBeInTheDocument();
     // There may be multiple "Nova pasta" (one in tree, one in toolbar)
     const novaPastaButtons = screen.getAllByText('Nova pasta');
     expect(novaPastaButtons.length).toBeGreaterThanOrEqual(1);

@@ -25,6 +25,7 @@ import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { HelpTooltip } from '@/components/help/HelpTooltip';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -132,6 +133,11 @@ function dateToIso(date: Date | undefined): string {
   return `${y}-${m}-${d}`;
 }
 
+// Projected occurrences get a NEW random id on every render (computed.ts), so
+// selection must key on referencia_agendamento — the only stable identity.
+const rowKey = (t: Transacao) =>
+  t.referencia_agendamento ? `proj-${t.referencia_agendamento}` : `id-${t.id}`;
+
 export default function FinanceiroPage() {
   const { canSeeFinancials, profile } = useAuth();
   const qc = useQueryClient();
@@ -145,6 +151,8 @@ export default function FinanceiroPage() {
   const [modalTipo, setModalTipo] = useState<'entrada' | 'saida'>('entrada');
   const [editing, setEditing] = useState<Transacao | null>(null);
   const [confirmT, setConfirmT] = useState<Transacao | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -191,6 +199,23 @@ export default function FinanceiroPage() {
         t.descricao.toLowerCase().includes(search.toLowerCase()) ||
         t.categoria?.toLowerCase().includes(search.toLowerCase()),
     );
+
+  const agendadas = filtered.filter((t) => t.status === 'agendado');
+  const selecionadas = agendadas.filter((t) => selectedKeys.has(rowKey(t)));
+  const allSelected = agendadas.length > 0 && selecionadas.length === agendadas.length;
+
+  const toggleAll = () => {
+    setSelectedKeys(allSelected ? new Set() : new Set(agendadas.map(rowKey)));
+  };
+  const toggleOne = (t: Transacao) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      const k = rowKey(t);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  };
 
   const openAdd = (tipo: 'entrada' | 'saida') => {
     setEditing(null);
@@ -246,21 +271,51 @@ export default function FinanceiroPage() {
     }
   };
 
+  // Scheduled rows with an id are updated in place; projected occurrences
+  // (referencia_agendamento) are materialized as a new paid row.
+  const confirmOne = async (t: Transacao) => {
+    if (t.id && !t.referencia_agendamento) {
+      await updateTransacao(t.id, { status: 'pago' });
+    } else {
+      const { id, user_id, conta_id, ...rest } = t;
+      await addTransacao({ ...rest, status: 'pago' });
+    }
+  };
+
   const handleConfirmPago = async () => {
     if (!confirmT) return;
     try {
-      if (confirmT.id && !confirmT.referencia_agendamento) {
-        await updateTransacao(confirmT.id, { status: 'pago' });
-      } else {
-        const { id, user_id, conta_id, ...rest } = confirmT;
-        await addTransacao({ ...rest, status: 'pago' });
-      }
+      await confirmOne(confirmT);
       toast.success('Pagamento confirmado');
       qc.invalidateQueries({ queryKey: ['transacoes'] });
     } catch {
       toast.error('Erro ao confirmar pagamento');
     }
     setConfirmT(null);
+  };
+
+  const handleBulkConfirm = async () => {
+    const pendentes = filtered.filter(
+      (t) => t.status === 'agendado' && selectedKeys.has(rowKey(t)),
+    );
+    let ok = 0;
+    let fail = 0;
+    for (const t of pendentes) {
+      try {
+        await confirmOne(t);
+        ok++;
+      } catch {
+        fail++;
+      }
+    }
+    if (ok > 0) toast.success(ok === 1 ? '1 pagamento confirmado' : `${ok} pagamentos confirmados`);
+    if (fail > 0)
+      toast.error(
+        `${fail} não ${fail === 1 ? 'pôde' : 'puderam'} ser confirmado${fail === 1 ? '' : 's'}`,
+      );
+    qc.invalidateQueries({ queryKey: ['transacoes'] });
+    setSelectedKeys(new Set());
+    setBulkConfirmOpen(false);
   };
 
   const handleDelete = async () => {
@@ -481,10 +536,28 @@ export default function FinanceiroPage() {
       ) : (
         <>
           {/* Desktop table */}
+          {selecionadas.length > 0 && (
+            <div
+              className="financeiro-desktop-table"
+              style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}
+            >
+              <Button onClick={() => setBulkConfirmOpen(true)}>
+                <Check className="h-3 w-3" /> Confirmar selecionadas ({selecionadas.length})
+              </Button>
+            </div>
+          )}
           <div className="card financeiro-desktop-table">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead style={{ width: 36, paddingLeft: '0.75rem' }}>
+                    <Checkbox
+                      checked={allSelected}
+                      onCheckedChange={toggleAll}
+                      disabled={agendadas.length === 0}
+                      aria-label="Selecionar todas as agendadas"
+                    />
+                  </TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead>Categoria</TableHead>
@@ -496,6 +569,15 @@ export default function FinanceiroPage() {
               <TableBody>
                 {filtered.map((t, i) => (
                   <TableRow key={t.id ?? `proj-${i}`}>
+                    <TableCell style={{ paddingLeft: '0.75rem' }}>
+                      {t.status === 'agendado' && (
+                        <Checkbox
+                          checked={selectedKeys.has(rowKey(t))}
+                          onCheckedChange={() => toggleOne(t)}
+                          aria-label="Selecionar transação"
+                        />
+                      )}
+                    </TableCell>
                     <TableCell data-label="Data">{formatDate(t.data)}</TableCell>
                     <TableCell data-label="Descrição">
                       <div>{t.descricao}</div>
@@ -521,7 +603,7 @@ export default function FinanceiroPage() {
                     <TableCell>
                       <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
                         {t.status === 'agendado' ? (
-                          <Button size="sm" onClick={() => setConfirmT(t)}>
+                          <Button size="sm" variant="outline" onClick={() => setConfirmT(t)}>
                             <Check className="h-3 w-3" /> Confirmar
                           </Button>
                         ) : (
@@ -755,6 +837,28 @@ export default function FinanceiroPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Não</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmPago}>Sim</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmar pagamentos em lote */}
+      <AlertDialog
+        open={bulkConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) setBulkConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {selecionadas.length === 1
+                ? 'Confirmar 1 pagamento?'
+                : `Confirmar ${selecionadas.length} pagamentos?`}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Não</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkConfirm}>Sim</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

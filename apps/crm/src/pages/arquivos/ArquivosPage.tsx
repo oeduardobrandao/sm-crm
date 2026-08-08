@@ -625,7 +625,7 @@ export default function ArquivosPage() {
               onClick={() => uploaderRef.current?.openFilePicker()}
             >
               <Upload className="h-4 w-4" />
-              Upload
+              Enviar arquivo
             </button>
 
             {/* New folder for current location */}

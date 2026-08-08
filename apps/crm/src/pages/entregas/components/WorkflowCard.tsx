@@ -117,7 +117,6 @@ export function WorkflowCard({
         zIndex: assignDropdownOpen ? 50 : 1,
         padding: '0.9rem',
         gap: '0.6rem',
-        borderLeft: `3px solid ${accent}`,
         borderRadius: '10px',
       }}
       onClick={assignDropdownOpen ? () => setAssignDropdownOpen(false) : onClick}
@@ -530,7 +529,12 @@ export function WorkflowCard({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span
-            style={{ fontSize: '0.68rem', fontWeight: 600, color: accent, letterSpacing: '0.02em' }}
+            style={{
+              fontSize: '0.68rem',
+              fontWeight: 600,
+              color: 'var(--text-main)',
+              letterSpacing: '0.02em',
+            }}
           >
             {card.etapa.nome}
           </span>
