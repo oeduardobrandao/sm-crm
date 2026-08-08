@@ -42,8 +42,10 @@ body,
     --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-    --primary: 47.9 95.8% 53.1%;
-    --primary-foreground: 26 83.3% 14.1%;
+    /* CTA ink: black actions in light mode, white in dark. Brand yellow lives in
+       --primary-color (accents: dots, badges, active nav) and --ring (focus). */
+    --primary: 218 18% 9%;
+    --primary-foreground: 0 0% 100%;
     --secondary: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
     --muted: 240 4.8% 95.9%;
@@ -65,8 +67,8 @@ body,
     --card-foreground: 0 0% 98%;
     --popover: 240 10% 3.9%;
     --popover-foreground: 0 0% 98%;
-    --primary: 47.9 95.8% 53.1%;
-    --primary-foreground: 26 83.3% 14.1%;
+    --primary: 225 21% 93%;
+    --primary-foreground: 218 18% 9%;
     --secondary: 240 3.7% 15.9%;
     --secondary-foreground: 0 0% 98%;
     --muted: 240 3.7% 15.9%;
@@ -102,8 +104,14 @@ body,
   --surface-darker: #f1f5f9;
 
   /* Brand Colors */
-  --primary-color: #ffbf30; /* Yellow Accent */
+  --primary-color: #ffbf30; /* Yellow Accent — small indicators only (dots, badges, active nav, focus) */
   --primary-hover: #ca8a04;
+  --primary-rgb: 255, 191, 48;
+
+  /* CTA ink: solid action buttons are black on light, white on dark */
+  --cta-bg: #12151a;
+  --cta-fg: #ffffff;
+  --cta-hover: #272d39;
   --success: #3ecf8e;
   --warning: #f5a342;
   --danger: #f55a42;
@@ -142,6 +150,10 @@ body,
   --bg-color: #0a0c0f;
   --sidebar-bg: #12151a;
   --card-bg: #12151a;
+
+  --cta-bg: #e8eaf0;
+  --cta-fg: #12151a;
+  --cta-hover: #ffffff;
 
   /* On the dark card --danger already clears AA (5.60:1), so it doubles as the
      text colour and error copy keeps the brand red. */
@@ -559,8 +571,8 @@ body {
 }
 
 .btn-upgrade {
-  background: var(--primary-color);
-  color: #12151a;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   border: none;
   padding: 0.6rem;
   border-radius: 8px;
@@ -571,7 +583,7 @@ body {
   transition: background var(--transition);
 }
 .btn-upgrade:hover {
-  background: var(--primary-hover);
+  background: var(--cta-hover);
 }
 
 /* ===== Top Bar ===== */
@@ -1718,9 +1730,9 @@ body {
 
 /* ===== Buttons ===== */
 .btn-primary {
-  background: var(--primary-color);
-  color: #12151a;
-  border: 1px solid var(--primary-color);
+  background: var(--cta-bg);
+  color: var(--cta-fg);
+  border: 1px solid var(--cta-bg);
   padding: 0.6rem 1.25rem;
   border-radius: 4px;
   font-family: var(--font-mono);
@@ -1736,8 +1748,9 @@ body {
   gap: 0.5rem;
 }
 .btn-primary:hover {
-  background: transparent;
-  color: var(--primary-color);
+  background: var(--cta-hover);
+  border-color: var(--cta-hover);
+  color: var(--cta-fg);
 }
 
 .btn-danger {
@@ -1780,9 +1793,9 @@ body {
   gap: 0.5rem;
 }
 .btn-secondary:hover {
-  background: var(--primary-color);
-  border-color: var(--primary-color);
-  color: #12151a;
+  background: var(--surface-hover);
+  border-color: var(--text-light);
+  color: var(--text-main);
 }
 
 .btn-icon {
@@ -3516,7 +3529,7 @@ select.form-input option {
 }
 
 .calendar-tab.active {
-  color: var(--primary-color);
+  color: var(--text-main);
   font-weight: 600;
   background: rgba(234, 179, 8, 0.05);
 }
@@ -3954,8 +3967,8 @@ select.form-input option {
 }
 
 .btn-confirmar {
-  background: #eab308;
-  color: #1c1917;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   border: none;
   padding: 0.45rem 0.85rem;
   border-radius: 4px;
@@ -6005,8 +6018,8 @@ body.role-agent input[name='valor_total'] {
   align-items: center;
   gap: 0.35rem;
   padding: 0.4rem 0.85rem;
-  background: var(--primary-color, #000);
-  color: #fff;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   border: none;
   border-radius: 6px;
   font-size: 0.78rem;
@@ -6424,8 +6437,8 @@ body.role-agent input[name='valor_total'] {
   align-items: center;
   justify-content: center;
   padding: 0.4rem 0.6rem;
-  background: var(--primary-color, #000);
-  color: #fff;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -6696,8 +6709,8 @@ body.role-agent input[name='valor_total'] {
   color: var(--text-color);
 }
 .post-editor-btn.active {
-  background: var(--primary-color);
-  color: #fff;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
 }
 
 .post-editor-divider {
@@ -6941,8 +6954,8 @@ a.mention-chip:hover {
   padding: 0.2rem 0.5rem;
   border-radius: 4px;
   border: none;
-  background: var(--primary-color);
-  color: #fff;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   cursor: pointer;
 }
 .post-editor-link-remove {
@@ -7381,8 +7394,8 @@ a.mention-chip:hover {
   border-color: var(--primary-color);
 }
 .comment-reply-submit {
-  background: var(--primary-color);
-  color: #12151a;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   border: none;
   border-radius: 6px;
   padding: 0 0.7rem;
@@ -7483,8 +7496,8 @@ a.mention-chip:hover {
 }
 .comment-add-submit {
   align-self: flex-end;
-  background: var(--primary-color);
-  color: #12151a;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   border: none;
   border-radius: 6px;
   padding: 0.35rem 0.8rem;
@@ -8884,11 +8897,11 @@ a.mention-chip:hover {
   text-decoration: none;
 }
 .calendar-detail-btn--primary {
-  background: var(--primary-color);
-  color: #1a1505;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
 }
 .calendar-detail-btn--primary:hover {
-  background: var(--primary-hover);
+  background: var(--cta-hover);
 }
 .calendar-detail-btn--danger {
   background: var(--surface-light);
@@ -9317,8 +9330,8 @@ a.mention-chip:hover {
   padding: 6px 14px;
   border-radius: 8px;
   border: none;
-  background: var(--primary-color);
-  color: var(--dark);
+  background: var(--cta-bg);
+  color: var(--cta-fg);
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
@@ -9326,7 +9339,7 @@ a.mention-chip:hover {
 }
 
 .time-picker-confirm:hover {
-  background: var(--primary-hover);
+  background: var(--cta-hover);
 }
 
 /* ── Calendar header button ───────────────────────────────────── */

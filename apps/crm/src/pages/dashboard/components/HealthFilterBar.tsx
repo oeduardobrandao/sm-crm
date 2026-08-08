@@ -58,9 +58,9 @@ export function HealthFilterBar({
                 fontWeight: 600,
                 padding: '5px 11px',
                 borderRadius: 20,
-                border: active ? '1px solid var(--primary-color)' : '1px solid transparent',
-                background: active ? 'var(--primary-color)' : 'var(--surface-hover)',
-                color: active ? '#1a1a1a' : 'var(--text-muted)',
+                border: active ? '1px solid var(--cta-bg)' : '1px solid transparent',
+                background: active ? 'var(--cta-bg)' : 'var(--surface-hover)',
+                color: active ? 'var(--cta-fg)' : 'var(--text-muted)',
                 cursor: 'pointer',
               }}
             >

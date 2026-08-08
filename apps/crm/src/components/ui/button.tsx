@@ -9,7 +9,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: 'bg-primary text-primary-foreground shadow hover:bg-primary/90',
-        /** Solid ink button: secondary-solid actions when yellow is reserved for the page's one primary CTA. */
+        /** Alias of default since --primary became ink (black/white). Kept for existing call sites. */
         ink: 'bg-foreground text-background shadow hover:bg-foreground/85',
         destructive: 'bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90',
         outline:

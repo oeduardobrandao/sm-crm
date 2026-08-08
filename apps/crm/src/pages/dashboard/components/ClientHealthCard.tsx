@@ -162,7 +162,7 @@ export function ClientHealthCard({ client: c }: { client: ClientHealth }) {
             {t('health.cta.sincronizar')}
           </button>
         )}
-        <Link to={`/analytics/${c.client_id}`} className="btn-primary" style={btnStyle}>
+        <Link to={`/analytics/${c.client_id}`} className="btn-secondary" style={btnStyle}>
           {t('health.cta.analytics')}
         </Link>
         <Link to={`/clientes/${c.client_id}`} className="btn-secondary" style={btnStyle}>
