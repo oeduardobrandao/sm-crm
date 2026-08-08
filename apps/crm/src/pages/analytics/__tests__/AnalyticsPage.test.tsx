@@ -470,14 +470,14 @@ describe('AnalyticsPage', () => {
     expect(screen.getByText('Contas conectadas')).toBeInTheDocument();
     expect(getKpiCard('Contas conectadas')).toHaveTextContent('3 / 3');
     expect(screen.getByText('24.000')).toBeInTheDocument();
-    expect(screen.getByText('2.60%')).toBeInTheDocument();
+    expect(screen.getByText('2,60%')).toBeInTheDocument();
     expect(screen.getByText(/Contas silenciosas/)).toBeInTheDocument();
     expect(screen.getByText('1 conta sem postar no período')).toBeInTheDocument();
     expect(screen.getByText('9d sem postar')).toBeInTheDocument();
 
     const rows = screen.getAllByRole('row');
     expect(within(rows[1]).getByText('Bravo Health')).toBeInTheDocument();
-    expect(within(rows[1]).getByText('4.50%')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('4,50%')).toBeInTheDocument();
     expect(within(rows[2]).getByText('Zeta Labs')).toBeInTheDocument();
     expect(within(rows[3]).getByText('Alpha Studio')).toBeInTheDocument();
   });
@@ -504,7 +504,7 @@ describe('AnalyticsPage', () => {
     const bestSection = screen.getByText('Melhores Posts').closest('.card') as HTMLElement;
     expect(within(bestSection).getAllByText(/Reach Client/)[0]).toHaveTextContent('Reach Client 6');
     expect(within(bestSection).getByText('1.500')).toBeInTheDocument();
-    expect(within(bestSection).getByText('1.00%')).toBeInTheDocument();
+    expect(within(bestSection).getByText('1,00%')).toBeInTheDocument();
 
     const attentionSection = screen
       .getByText('Precisam de Atenção')
@@ -513,7 +513,7 @@ describe('AnalyticsPage', () => {
       'Reach Client 1',
     );
     expect(within(attentionSection).getByText('1.000')).toBeInTheDocument();
-    expect(within(attentionSection).getByText('6.00%')).toBeInTheDocument();
+    expect(within(attentionSection).getByText('6,00%')).toBeInTheDocument();
 
     fireEvent.click(within(bestSection).getByText('Ver mais'));
 
@@ -596,7 +596,7 @@ describe('AnalyticsPage', () => {
 
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sync' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sincronizar' }));
     expect(screen.getByRole('button', { name: 'Sincronizando...' })).toBeDisabled();
 
     await act(async () => {

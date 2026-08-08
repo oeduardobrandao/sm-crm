@@ -47,9 +47,11 @@ export function MonthPicker({
     if (open && parsed) setYear(parsed.year);
   }, [open, parsed]);
 
-  const label = parsed
+  const rawLabel = parsed
     ? format(new Date(parsed.year, parsed.month, 1), "MMMM 'de' yyyy", { locale: ptBR })
     : null;
+  // Sentence case only: "Agosto de 2026", never "Agosto De 2026".
+  const label = rawLabel ? rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1) : null;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -59,7 +61,7 @@ export function MonthPicker({
           variant="outline"
           disabled={disabled}
           className={cn(
-            'h-9 justify-start text-left font-normal capitalize',
+            'h-9 justify-start text-left font-normal',
             !parsed && 'text-muted-foreground',
             className,
           )}

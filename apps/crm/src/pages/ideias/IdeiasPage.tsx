@@ -19,7 +19,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDown, Info, Search } from 'lucide-react';
+import { ChevronDown, Info, Lightbulb, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import {
@@ -203,7 +203,15 @@ export default function IdeiasPage() {
           <Spinner size="lg" />
         </div>
       ) : filtered.length === 0 ? (
-        <p className="text-sm py-8 text-center text-muted-foreground">Nenhuma ideia encontrada.</p>
+        <div className="card" style={{ padding: '2.5rem', textAlign: 'center' }}>
+          <Lightbulb
+            className="h-6 w-6"
+            style={{ margin: '0 auto 0.5rem', color: 'var(--text-light)' }}
+          />
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            Nenhuma ideia encontrada.
+          </p>
+        </div>
       ) : (
         <div className="border rounded-xl bg-card overflow-hidden">
           <Table>

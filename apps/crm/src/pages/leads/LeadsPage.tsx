@@ -591,9 +591,11 @@ export default function LeadsPage() {
                         <div style={{ fontSize: 12, color: '#888' }}>{l.instagram}</div>
                       )}
                     </TableCell>
-                    <TableCell data-label={t('table.email')}>{l.email}</TableCell>
-                    <TableCell data-label={t('table.channel')}>{l.canal}</TableCell>
-                    <TableCell data-label={t('table.specialty')}>{l.especialidade}</TableCell>
+                    <TableCell data-label={t('table.email')}>{l.email || '—'}</TableCell>
+                    <TableCell data-label={t('table.channel')}>{l.canal || '—'}</TableCell>
+                    <TableCell data-label={t('table.specialty')}>
+                      {l.especialidade || '—'}
+                    </TableCell>
                     <TableCell data-label={t('table.status')}>
                       <Select
                         value={l.status}

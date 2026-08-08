@@ -142,7 +142,7 @@ function BenchmarkChart({ accounts }: { accounts: PortfolioAccount[] }) {
           legend: { display: false },
           tooltip: {
             callbacks: {
-              label: (ctx: any) => `${ctx.parsed.x.toFixed(2)}%`,
+              label: (ctx: any) => `${ctx.parsed.x.toFixed(2).replace('.', ',')}%`,
             },
           },
         },
@@ -396,6 +396,8 @@ type SortCol =
   | 'posts_last_30d'
   | 'website_clicks_28d'
   | 'last_post_at';
+
+const formatPct = (v: number) => (v === 0 ? '—' : `${v.toFixed(2).replace('.', ',')}%`);
 
 export default function AnalyticsPage() {
   const [syncing, setSyncing] = useState(false);
@@ -674,7 +676,7 @@ export default function AnalyticsPage() {
             variant="outline"
           >
             <RefreshCw className={`h-4 w-4${syncing ? ' animate-spin' : ''}`} />
-            {syncing ? 'Sincronizando...' : 'Sync'}
+            {syncing ? 'Sincronizando...' : 'Sincronizar'}
           </Button>
         </div>
       </header>
@@ -785,7 +787,7 @@ export default function AnalyticsPage() {
           label="Engajamento médio"
           icon={Heart}
           tone="amber"
-          value={`${avgEngagement.toFixed(2)}%`}
+          value={formatPct(avgEngagement)}
           sub="Média de todas as contas"
         />
         <StatCard
@@ -802,7 +804,7 @@ export default function AnalyticsPage() {
             tone="green"
             compactValue
             value={summary.bestByEngagement.client_name}
-            sub={`${summary.bestByEngagement.engagement_rate_avg.toFixed(2)}%`}
+            sub={formatPct(summary.bestByEngagement.engagement_rate_avg)}
           />
         )}
         {filteredAccounts.length > 0 &&
@@ -988,7 +990,7 @@ export default function AnalyticsPage() {
                         fontFamily: 'var(--font-mono)',
                       }}
                     >
-                      {post.engagement_rate.toFixed(2)}%
+                      {formatPct(post.engagement_rate)}
                     </span>
                   </div>
                   <div
@@ -1192,7 +1194,7 @@ export default function AnalyticsPage() {
                           fontFamily: 'var(--font-mono)',
                         }}
                       >
-                        {post.engagement_rate.toFixed(2)}%
+                        {formatPct(post.engagement_rate)}
                       </span>
                     </div>
                     <div
@@ -1357,7 +1359,7 @@ export default function AnalyticsPage() {
                                 : 'neutral'
                           }
                         >
-                          {a.engagement_rate_avg.toFixed(2)}%
+                          {formatPct(a.engagement_rate_avg)}
                         </Badge>
                       </TableCell>
                       <TableCell data-label="Alcance (28d)">{formatNumber(a.reach_28d)}</TableCell>
@@ -1502,7 +1504,7 @@ export default function AnalyticsPage() {
                         }
                         style={{ fontSize: '0.6rem', padding: '0 0.4rem' }}
                       >
-                        {a.engagement_rate_avg.toFixed(2)}%
+                        {formatPct(a.engagement_rate_avg)}
                       </Badge>
                     </div>
                     <div
@@ -1591,7 +1593,7 @@ export default function AnalyticsPage() {
                               : 'neutral'
                         }
                       >
-                        {s.avgEngagement.toFixed(2)}%
+                        {formatPct(s.avgEngagement)}
                       </Badge>
                       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
                         {formatNumber(s.avgFollowers)} seg. médio
@@ -1863,7 +1865,7 @@ export default function AnalyticsPage() {
                                 : 'var(--text-main)',
                         }}
                       >
-                        {post.engagement_rate.toFixed(2)}%
+                        {formatPct(post.engagement_rate)}
                       </strong>
                     </span>
                     {['share_rate', 'like_rate', 'save_rate', 'comment_rate'].includes(
