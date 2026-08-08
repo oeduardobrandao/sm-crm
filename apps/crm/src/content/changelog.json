@@ -25,7 +25,8 @@
           "link": {
             "href": "/clientes",
             "label": "Abrir Clientes"
-          }
+          },
+          "image": "/novidades/pr-308.png"
         },
         {
           "type": "feature",
@@ -58,7 +59,8 @@
           "link": {
             "href": "/importar",
             "label": "Importar dados"
-          }
+          },
+          "image": "/novidades/pr-311.png"
         },
         {
           "type": "fix",
@@ -76,7 +78,8 @@
           "area": "Configuração",
           "title": "Configurações reorganizadas com guia de agentes de IA",
           "description": "A área de Configuração ganhou navegação própria e um guia para conectar agentes de IA como Claude e ChatGPT ao seu workspace.",
-          "pr": 307
+          "pr": 307,
+          "image": "/novidades/pr-307.png"
         },
         {
           "type": "feature",
@@ -87,7 +90,8 @@
           "link": {
             "href": "/entregas",
             "label": "Abrir Entregas"
-          }
+          },
+          "image": "/novidades/pr-299.png"
         },
         {
           "type": "feature",
@@ -110,24 +114,6 @@
             "href": "/entregas",
             "label": "Abrir Entregas"
           }
-        },
-        {
-          "type": "feature",
-          "area": "Suporte",
-          "title": "CTA de suporte no WhatsApp",
-          "description": "Adiciona um link para o suporte no WhatsApp em três superfícies",
-          "pr": 294,
-          "link": {
-            "href": "/ajuda",
-            "label": "Central de Ajuda"
-          }
-        },
-        {
-          "type": "feature",
-          "area": "Teste Grátis",
-          "title": "Teste grátis de 30 dias",
-          "description": "Teste grátis de 30 dias como porta de entrada do cadastro",
-          "pr": 290
         },
         {
           "type": "feature",
@@ -221,17 +207,6 @@
             "href": "/importar",
             "label": "Importar dados"
           }
-        },
-        {
-          "type": "feature",
-          "area": "Blog",
-          "title": "Blog do Mesaas",
-          "description": "Agora é possível acessar o blog do Mesaas com artigos sobre marketing digital",
-          "pr": 250,
-          "link": {
-            "href": "/blog",
-            "label": "Ler no blog"
-          }
         }
       ]
     },
@@ -281,17 +256,6 @@
           "link": {
             "href": "/arquivos",
             "label": "Abrir Arquivos"
-          }
-        },
-        {
-          "type": "feature",
-          "area": "TikTok",
-          "title": "Integração com o TikTok",
-          "description": "Nova integração com o TikTok para publicação de conteúdo",
-          "pr": 219,
-          "link": {
-            "href": "/entregas",
-            "label": "Abrir Entregas"
           }
         }
       ]
@@ -425,20 +389,6 @@
           "title": "Redesenho da página de login",
           "description": "Nova página de login com uma área de destaque para o conector MCP 'Agente de Conteúdo'",
           "pr": 181
-        },
-        {
-          "type": "feature",
-          "area": "Planos",
-          "title": "Edição de preço e ordem de planos",
-          "description": "Agora é possível editar o preço e a ordem dos planos na área de administração",
-          "pr": 179
-        },
-        {
-          "type": "fix",
-          "area": "Planos",
-          "title": "Persistência de recursos MCP nos planos",
-          "description": "Correção para garantir que os recursos MCP sejam persistidos corretamente nos planos",
-          "pr": 178
         },
         {
           "type": "fix",
