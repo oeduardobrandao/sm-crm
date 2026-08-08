@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -465,6 +465,19 @@ export function EntregasFilters({
   mode = 'entregas',
 }: EntregasFiltersProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Sheet slides from the right on desktop, from the bottom on touch widths.
+  // Guarded: jsdom's matchMedia stub lacks event listeners.
+  const [isDesktop, setIsDesktop] = useState(
+    () =>
+      typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 901px)').matches,
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(min-width: 901px)');
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
   const activeClientes = clientes
     .filter((c) => c.status === 'ativo')
     .sort((a, b) => a.nome.localeCompare(b.nome));
@@ -486,33 +499,10 @@ export function EntregasFilters({
 
   return (
     <>
-      {/* Desktop: inline filters */}
-      <div className="hidden min-[901px]:flex flex-wrap items-center gap-3 mb-0 animate-up">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
-          <Input
-            placeholder={searchPlaceholder}
-            value={filters.filterSearch}
-            onChange={(e) => onChange({ ...filters, filterSearch: e.target.value })}
-            className="!rounded-full !text-xs h-9 pl-8 pr-4 mb-0 w-[180px]"
-          />
-        </div>
-        <div className="w-px h-6 bg-border shrink-0" />
-        <FilterControls layout="inline" {...sharedProps} />
-        {activeCount > 0 && (
-          <Button
-            variant="ghost"
-            className="h-9 px-3 text-xs font-normal mb-0"
-            onClick={() => onChange({ ...EMPTY_FILTERS, filterSearch: filters.filterSearch })}
-          >
-            Limpar filtros
-          </Button>
-        )}
-      </div>
-
-      {/* Mobile: search + filter button that opens sheet */}
-      <div className="flex min-[901px]:hidden items-center gap-2 mb-0 animate-up">
-        <div className="relative flex-1">
+      {/* Search + "Filtros" button opening a sheet, at every breakpoint: keeps
+          the toolbar one row instead of a wrapping strip of six dropdowns. */}
+      <div className="flex items-center gap-2 mb-0 animate-up flex-1 min-w-[240px] min-[901px]:justify-end">
+        <div className="relative flex-1 min-[901px]:max-w-[260px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
           <Input
             placeholder={searchPlaceholder}
@@ -521,6 +511,15 @@ export function EntregasFilters({
             className="!rounded-full !text-xs h-9 pl-8 pr-4 mb-0 w-full"
           />
         </div>
+        {activeCount > 0 && (
+          <Button
+            variant="ghost"
+            className="hidden min-[901px]:inline-flex h-9 px-3 text-xs font-normal mb-0 shrink-0"
+            onClick={() => onChange({ ...EMPTY_FILTERS, filterSearch: filters.filterSearch })}
+          >
+            Limpar filtros
+          </Button>
+        )}
         <Button
           variant="outline"
           className="h-9 rounded-full px-3 text-xs gap-1.5 font-normal shadow-sm shrink-0"
@@ -545,7 +544,14 @@ export function EntregasFilters({
       </div>
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent side="bottom" className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24">
+        <SheetContent
+          side={isDesktop ? 'right' : 'bottom'}
+          className={
+            isDesktop
+              ? 'w-[360px] sm:max-w-[380px] overflow-y-auto'
+              : 'rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24'
+          }
+        >
           <SheetHeader className="mb-4">
             <SheetTitle className="text-base">Filtros</SheetTitle>
             <SheetDescription className="sr-only">Filtre as entregas</SheetDescription>

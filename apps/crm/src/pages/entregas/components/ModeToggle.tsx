@@ -34,8 +34,8 @@ export function ModeToggle({ mode, onModeChange }: ModeToggleProps) {
             border: 'none',
             cursor: 'pointer',
             fontSize: '0.8rem',
-            background: mode === id ? '#000' : 'transparent',
-            color: mode === id ? '#fff' : 'var(--text-secondary)',
+            background: mode === id ? 'var(--cta-bg)' : 'transparent',
+            color: mode === id ? 'var(--cta-fg)' : 'var(--text-secondary)',
             fontWeight: mode === id ? 600 : 400,
           }}
         >

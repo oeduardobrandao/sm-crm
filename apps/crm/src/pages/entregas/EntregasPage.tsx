@@ -418,57 +418,74 @@ export default function EntregasPage() {
 
       <VistasTabs contaId={contaId} currentQuery={currentQuery} onApply={applySavedView} />
 
+      {/* One toolbar row: orientation (view + mode) on the left, filters on the
+          right. Wraps on narrow viewports instead of stacking five control rows. */}
       <div
         style={{
           display: 'flex',
-          gap: '0.25rem',
-          background: 'var(--surface-2)',
-          padding: '0.25rem',
-          borderRadius: '8px',
-          overflowX: 'auto',
-          width: 'fit-content',
-          maxWidth: '100%',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: '0.75rem',
         }}
-        className="animate-up no-scrollbar"
       >
-        {VIEW_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveView(tab.id)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              padding: '0.4rem 0.9rem',
-              borderRadius: '6px',
-              border: 'none',
-              background: activeView === tab.id ? '#000' : 'transparent',
-              color: activeView === tab.id ? '#fff' : 'var(--text-secondary)',
-              fontSize: '0.8rem',
-              fontWeight: activeView === tab.id ? 600 : 400,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {tab.icon} {tab.label}
-          </button>
-        ))}
-      </div>
+        <div
+          style={{
+            display: 'flex',
+            gap: '0.25rem',
+            background: 'var(--surface-2)',
+            padding: '0.25rem',
+            borderRadius: '8px',
+            overflowX: 'auto',
+            width: 'fit-content',
+            maxWidth: '100%',
+          }}
+          className="animate-up no-scrollbar"
+        >
+          {VIEW_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveView(tab.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.4rem 0.9rem',
+                borderRadius: '6px',
+                border: 'none',
+                background: activeView === tab.id ? 'var(--cta-bg)' : 'transparent',
+                color: activeView === tab.id ? 'var(--cta-fg)' : 'var(--text-secondary)',
+                fontSize: '0.8rem',
+                fontWeight: activeView === tab.id ? 600 : 400,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
 
-      {activeView !== 'concluded' &&
-        !(activeView === 'calendar' && calendarMode === 'publicacoes') && (
-          <EntregasFilters
-            filters={filters}
-            onChange={setFilters}
-            clientes={clientes}
-            membros={membros}
-            templates={templates}
-            etapaNames={etapaNames}
-            mode={postsMode ? 'posts' : 'entregas'}
+        {(activeView === 'kanban' || activeView === 'list') && (
+          <ModeToggle
+            mode={activeView === 'kanban' ? kanbanMode : listMode}
+            onModeChange={activeView === 'kanban' ? setKanbanMode : setListMode}
           />
         )}
 
-      {activeView === 'kanban' && <ModeToggle mode={kanbanMode} onModeChange={setKanbanMode} />}
+        {activeView !== 'concluded' &&
+          !(activeView === 'calendar' && calendarMode === 'publicacoes') && (
+            <EntregasFilters
+              filters={filters}
+              onChange={setFilters}
+              clientes={clientes}
+              membros={membros}
+              templates={templates}
+              etapaNames={etapaNames}
+              mode={postsMode ? 'posts' : 'entregas'}
+            />
+          )}
+      </div>
+
       {activeView === 'kanban' &&
         (kanbanMode === 'entregas' ? (
           <KanbanView
@@ -511,7 +528,6 @@ export default function EntregasPage() {
           onPostClick={handlePostClick}
         />
       )}
-      {activeView === 'list' && <ModeToggle mode={listMode} onModeChange={setListMode} />}
       {activeView === 'list' &&
         (listMode === 'entregas' ? (
           <ListView
