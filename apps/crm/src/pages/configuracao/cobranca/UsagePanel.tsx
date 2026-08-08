@@ -14,6 +14,12 @@ export function UsagePanel() {
   const { usage, isLoading: usageLoading, isError } = useWorkspaceUsage();
   const isOwner = useIsWorkspaceOwner();
 
+  // Self-defending: useIsWorkspaceOwner() is false until membership resolves,
+  // so this also hides the panel during the resolution window where
+  // CobrancaPage's soft (workspaceRole ?? role) gate can briefly let a stale
+  // profile-level owner (actually an agent in the active workspace) through.
+  // Do not loosen this to the page's gate -- it must stay the strict rule.
+  if (!isOwner) return null;
   if (isUnlimited) return null; // no plan resolved: same skip as ProtectedRoute
   if (limitsLoading || usageLoading) {
     return (

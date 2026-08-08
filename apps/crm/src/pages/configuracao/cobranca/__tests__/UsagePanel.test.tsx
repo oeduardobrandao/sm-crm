@@ -2,13 +2,14 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { limitsMock, usageMock } = vi.hoisted(() => ({
+const { limitsMock, usageMock, isOwnerMock } = vi.hoisted(() => ({
   limitsMock: vi.fn(),
   usageMock: vi.fn(),
+  isOwnerMock: vi.fn(),
 }));
 vi.mock('@/hooks/useWorkspaceLimits', () => ({ useWorkspaceLimits: limitsMock }));
 vi.mock('@/hooks/useWorkspaceUsage', () => ({ useWorkspaceUsage: usageMock }));
-vi.mock('@/hooks/useIsWorkspaceOwner', () => ({ useIsWorkspaceOwner: () => true }));
+vi.mock('@/hooks/useIsWorkspaceOwner', () => ({ useIsWorkspaceOwner: isOwnerMock }));
 
 import { UsagePanel } from '../UsagePanel';
 
@@ -42,7 +43,7 @@ const USAGE = {
 };
 
 function renderPanel() {
-  render(
+  return render(
     <MemoryRouter>
       <UsagePanel />
     </MemoryRouter>,
@@ -57,6 +58,7 @@ beforeEach(() => {
     isUnlimited: false,
   });
   usageMock.mockReturnValue({ usage: USAGE, isLoading: false, isError: false });
+  isOwnerMock.mockReturnValue(true);
 });
 
 describe('UsagePanel', () => {
@@ -89,6 +91,12 @@ describe('UsagePanel', () => {
     renderPanel();
     expect(screen.getByText('Não foi possível carregar o uso do plano.')).toBeInTheDocument();
     expect(screen.queryByText('0 de 15')).not.toBeInTheDocument();
+  });
+
+  it('renders nothing for a non-owner (also covers the membership-resolution window)', () => {
+    isOwnerMock.mockReturnValue(false);
+    const { container } = renderPanel();
+    expect(container.firstChild).toBeNull();
   });
 
   it('renders nothing when no plan resolved (isUnlimited)', () => {
