@@ -17,6 +17,16 @@ begin
   if v_ws is null then
     return '{}'::jsonb;
   end if;
+
+  -- Defense-in-depth: a stale active_workspace_id pointer (membership deleted,
+  -- pointer not yet cleared) must not leak aggregate counts to a removed user.
+  if not exists (
+    select 1 from workspace_members
+     where workspace_id = v_ws and user_id = auth.uid()
+  ) then
+    return '{}'::jsonb;
+  end if;
+
   return jsonb_build_object(
     'clients',            (select count(*) from clientes where conta_id = v_ws),
     'team_members',       (select count(*) from workspace_members where workspace_id = v_ws),

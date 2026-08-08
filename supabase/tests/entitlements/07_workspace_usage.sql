@@ -8,6 +8,7 @@ declare
   v_owner uuid := gen_random_uuid();
   v_other uuid := gen_random_uuid();
   v_nullu uuid := gen_random_uuid();
+  v_removed uuid := gen_random_uuid();
   v_cli bigint;
   v_usage jsonb;
 begin
@@ -70,6 +71,21 @@ begin
   -- NULL active workspace: fail-safe empty object, no error
   perform set_config('request.jwt.claims', json_build_object('sub', v_nullu)::text, true);
   assert workspace_usage() = '{}'::jsonb, 'null conta must return {}';
+
+  -- Stale active_workspace_id pointer: membership deleted, pointer not yet cleared
+  -- (the removal-flow race window). Deleting workspace_members does not fire the
+  -- profile-validation trigger, so this reproduces the race without extra hoops.
+  -- Placed after the owner/other/nullu assertions above so team_members = 1 stays
+  -- true at the point those assertions run.
+  insert into auth.users (id) values (v_removed);
+  insert into workspace_members (user_id, workspace_id, role)
+    values (v_removed, v_ws, 'agent');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_removed;
+  delete from workspace_members where user_id = v_removed and workspace_id = v_ws;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_removed)::text, true);
+  assert workspace_usage() = '{}'::jsonb,
+    'stale active_workspace_id pointer must not leak counts';
 
   raise notice 'PASS 07_workspace_usage counts + scoping';
 end $$;
