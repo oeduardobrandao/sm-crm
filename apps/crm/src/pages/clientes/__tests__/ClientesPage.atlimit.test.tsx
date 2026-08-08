@@ -209,7 +209,11 @@ describe('ClientesPage header meter', () => {
     limitsRef.current = { max_clients: 15 };
     mockedGetClientes.mockResolvedValue(
       Array.from({ length: 12 }, (_, i) => ({
-        id: i + 1, nome: `C${i}`, sigla: 'C', cor: '#000', status: 'ativo',
+        id: i + 1,
+        nome: `C${i}`,
+        sigla: 'C',
+        cor: '#000',
+        status: 'ativo',
       })) as store.Cliente[],
     );
     renderPage();

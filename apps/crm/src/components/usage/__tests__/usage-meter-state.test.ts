@@ -3,7 +3,12 @@ import { computeMeterState, formatStorageBytes } from '../usage-meter-state';
 
 describe('computeMeterState', () => {
   it('is ok with no CTA well below the limit', () => {
-    expect(computeMeterState(3, 10)).toEqual({ state: 'ok', pct: 30, remaining: 7, showCta: false });
+    expect(computeMeterState(3, 10)).toEqual({
+      state: 'ok',
+      pct: 30,
+      remaining: 7,
+      showCta: false,
+    });
   });
   it('shows the CTA above 75% while still ok (green band)', () => {
     const m = computeMeterState(76, 100);
@@ -26,14 +31,29 @@ describe('computeMeterState', () => {
     expect(m.showCta).toBe(true);
   });
   it('is danger at the limit and clamps pct at 100 when over', () => {
-    expect(computeMeterState(10, 10)).toEqual({ state: 'danger', pct: 100, remaining: 0, showCta: true });
+    expect(computeMeterState(10, 10)).toEqual({
+      state: 'danger',
+      pct: 100,
+      remaining: 0,
+      showCta: true,
+    });
     expect(computeMeterState(12, 10).pct).toBe(100);
   });
   it('treats limit 0 as blocked (fail-closed), never 0-de-0 danger', () => {
-    expect(computeMeterState(0, 0)).toEqual({ state: 'blocked', pct: 0, remaining: 0, showCta: true });
+    expect(computeMeterState(0, 0)).toEqual({
+      state: 'blocked',
+      pct: 0,
+      remaining: 0,
+      showCta: true,
+    });
   });
   it('treats null limit as unlimited with no CTA', () => {
-    expect(computeMeterState(42, null)).toEqual({ state: 'unlimited', pct: 0, remaining: null, showCta: false });
+    expect(computeMeterState(42, null)).toEqual({
+      state: 'unlimited',
+      pct: 0,
+      remaining: null,
+      showCta: false,
+    });
   });
 });
 

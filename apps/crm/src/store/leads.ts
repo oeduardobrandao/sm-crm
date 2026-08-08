@@ -34,9 +34,7 @@ export async function getLeads(): Promise<Lead[]> {
  * a large workspace; head+count asks Postgres for the real number.
  */
 export async function getLeadsCount(): Promise<number> {
-  const { count, error } = await supabase
-    .from('leads')
-    .select('*', { count: 'exact', head: true });
+  const { count, error } = await supabase.from('leads').select('*', { count: 'exact', head: true });
   if (error) throw error;
   return count ?? 0;
 }
