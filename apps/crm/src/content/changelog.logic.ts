@@ -10,6 +10,9 @@ export interface PullRequest {
 }
 
 const INCLUDED_PREFIXES = ['feat', 'fix', 'perf'];
+// Platform-admin work (apps/admin) is never customer-visible; the runbook bans
+// it editorially and this drops the conventionally scoped part deterministically.
+const EXCLUDED_SCOPES = ['admin'];
 const OPT_IN_LABEL = 'changelog';
 const OPT_OUT_LABEL = 'no-changelog';
 
@@ -20,6 +23,11 @@ export function cutoffDate(changelog: Changelog, fallbackDate: string): string {
 
 function titlePrefix(title: string): string {
   const m = title.match(/^(\w+)(\([^)]*\))?!?:/);
+  return m ? m[1].toLowerCase() : '';
+}
+
+function titleScope(title: string): string {
+  const m = title.match(/^\w+\(([^)]*)\)!?:/);
   return m ? m[1].toLowerCase() : '';
 }
 
@@ -34,6 +42,7 @@ export function selectPRs(
     if (opts.lastMergedAt && p.mergedAt <= opts.lastMergedAt) return false;
     if (p.labels.includes(OPT_OUT_LABEL)) return false;
     if (p.labels.includes(OPT_IN_LABEL)) return true;
+    if (EXCLUDED_SCOPES.includes(titleScope(p.title))) return false;
     return INCLUDED_PREFIXES.includes(titlePrefix(p.title));
   });
 }

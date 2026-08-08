@@ -41,8 +41,8 @@
         {
           "type": "fix",
           "area": "Importar",
-          "title": "Correção de drift de prod em clientes",
-          "description": "Correção do erro de importação de clientes devido a drift de prod",
+          "title": "Correção na importação de clientes",
+          "description": "Corrigimos um erro que impedia a importação de clientes de outras ferramentas em alguns casos.",
           "pr": 312,
           "link": {
             "href": "/importar",
@@ -74,31 +74,9 @@
         {
           "type": "feature",
           "area": "Configuração",
-          "title": "Shell com sidebar secundária e guia MCP",
-          "description": "Nova interface de configuração com sidebar secundária e guia MCP",
+          "title": "Configurações reorganizadas com guia de agentes de IA",
+          "description": "A área de Configuração ganhou navegação própria e um guia para conectar agentes de IA como Claude e ChatGPT ao seu workspace.",
           "pr": 307
-        },
-        {
-          "type": "fix",
-          "area": "Analytics",
-          "title": "Captura de exceções no PostHog e remoção de evento morto",
-          "description": "Melhoria na captura de exceções e remoção de evento morto no PostHog",
-          "pr": 304,
-          "link": {
-            "href": "/analytics",
-            "label": "Abrir Analytics"
-          }
-        },
-        {
-          "type": "fix",
-          "area": "Analytics",
-          "title": "Identifica o usuário no signup para consertar o funil signup→ativação",
-          "description": "Correção do problema de identificação do usuário no signup",
-          "pr": 303,
-          "link": {
-            "href": "/analytics",
-            "label": "Abrir Analytics"
-          }
         },
         {
           "type": "feature",
@@ -145,28 +123,6 @@
           }
         },
         {
-          "type": "fix",
-          "area": "Crisp",
-          "title": "Sincronização de usuários do CRM com o Crisp",
-          "description": "Correção para sincronizar usuários do CRM como contatos no Crisp",
-          "pr": 293,
-          "link": {
-            "href": "/equipe",
-            "label": "Abrir Equipe"
-          }
-        },
-        {
-          "type": "fix",
-          "area": "Instagram",
-          "title": "Ordenação da fila de sincronização do Instagram",
-          "description": "Correção para ordenar a fila de sincronização do Instagram por tentativa, não por sucesso",
-          "pr": 289,
-          "link": {
-            "href": "/entregas",
-            "label": "Abrir Entregas"
-          }
-        },
-        {
           "type": "feature",
           "area": "Teste Grátis",
           "title": "Teste grátis de 30 dias",
@@ -205,17 +161,6 @@
             "href": "/mensagens",
             "label": "Abrir Mensagens"
           }
-        },
-        {
-          "type": "fix",
-          "area": "Instagram",
-          "title": "Limitar e ordenar o instagram-sync-cron",
-          "description": "Correção para limitar e ordenar o instagram-sync-cron",
-          "pr": 283,
-          "link": {
-            "href": "/entregas",
-            "label": "Abrir Entregas"
-          }
         }
       ]
     },
@@ -244,20 +189,9 @@
         {
           "type": "fix",
           "area": "Entregas",
-          "title": "Recuperação de chunk obsoleto",
-          "description": "Corrigimos um problema que causava a tela 'Algo deu errado' após deploy",
+          "title": "Menos telas de erro após atualizações",
+          "description": "O app agora se recupera sozinho depois de uma atualização, em vez de mostrar a tela 'Algo deu errado'.",
           "pr": 278
-        },
-        {
-          "type": "feature",
-          "area": "Analytics",
-          "title": "Evento de conexão do Instagram",
-          "description": "Agora é possível medir a conexão do Instagram com o Mesaas",
-          "pr": 277,
-          "link": {
-            "href": "/analytics",
-            "label": "Abrir Analytics"
-          }
         },
         {
           "type": "feature",
@@ -287,13 +221,6 @@
             "href": "/importar",
             "label": "Importar dados"
           }
-        },
-        {
-          "type": "feature",
-          "area": "Admin",
-          "title": "Trials e MRR",
-          "description": "Agora é possível visualizar trials e MRR no painel de administração",
-          "pr": 263
         },
         {
           "type": "feature",

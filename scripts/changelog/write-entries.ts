@@ -80,7 +80,7 @@ function buildUserPrompt(prs: PullRequest[]): string {
     '- NUNCA use travessão (—) nem meia-risca (–); prefira dois-pontos, vírgula ou ponto.',
     '- pr: o número do PR (inteiro). Use SOMENTE números de PR listados abaixo.',
     `- NÃO inclua PRs cujo número já esteja nesta lista: [${existingPrs.join(', ')}].`,
-    '- DESCARTE PRs que um cliente não perceberia (refactors internos, chores, testes, CI).',
+    '- DESCARTE PRs que um cliente não perceberia (refactors internos, chores, testes, CI, instrumentação/telemetria como PostHog ou Crisp, ajustes internos de crons e filas de sincronização).',
     '- DESCARTE trabalho do painel administrativo interno da plataforma (admin: convites de admin, planos/preços internos, Stripe interno). Em PRs mistos, mantenha só a parte visível ao cliente.',
     '- Se nenhum PR merecer entrada, items = [].',
     `- link (opcional): quando indicar onde usar o recurso ajudar de verdade, escolha UMA rota desta lista: ${LINK_CATALOG.map((l) => l.href).join(', ')}. Não invente rotas; omita na dúvida.`,
