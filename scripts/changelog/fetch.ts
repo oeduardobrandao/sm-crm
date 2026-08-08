@@ -13,7 +13,7 @@ const cutoff = cutoffDate(changelog, daysAgo(7));
 
 const raw = execFileSync(
   'gh',
-  ['pr', 'list', '--state', 'merged', '--base', 'main', '--search', `merged:>=${cutoff}`, '--limit', '100',
+  ['pr', 'list', '--state', 'merged', '--base', 'main', '--search', `merged:>=${cutoff}`, '--limit', '200',
    '--json', 'number,title,body,labels,mergedAt'],
   { encoding: 'utf8' },
 );

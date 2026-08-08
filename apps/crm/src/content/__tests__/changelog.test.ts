@@ -36,6 +36,30 @@ describe('changelogSchema', () => {
     bad.releases[0].items = [];
     expect(changelogSchema.safeParse(bad).success).toBe(false);
   });
+
+  it('accepts optional image and link on an item', () => {
+    const doc = structuredClone(VALID) as any;
+    doc.releases[0].items[0].image = '/novidades/pr-93.png';
+    doc.releases[0].items[0].link = { href: '/entregas', label: 'Abrir Entregas' };
+    expect(changelogSchema.safeParse(doc).success).toBe(true);
+  });
+
+  it('rejects images outside /novidades/ and non-internal link hrefs', () => {
+    const badImage = structuredClone(VALID) as any;
+    badImage.releases[0].items[0].image = '/logo-black.svg';
+    expect(changelogSchema.safeParse(badImage).success).toBe(false);
+
+    for (const href of [
+      'https://evil.example',
+      'javascript:alert(1)',
+      '//evil.example',
+      '/a?q=1',
+    ]) {
+      const badLink = structuredClone(VALID) as any;
+      badLink.releases[0].items[0].link = { href, label: 'x' };
+      expect(changelogSchema.safeParse(badLink).success, href).toBe(false);
+    }
+  });
 });
 
 describe('parseReleases', () => {
@@ -48,7 +72,17 @@ describe('parseReleases', () => {
   });
 });
 
-import { cutoffDate, selectPRs, prependRelease, type PullRequest } from '../changelog.logic';
+import {
+  cutoffDate,
+  selectPRs,
+  prependRelease,
+  prependReleases,
+  groupByWeek,
+  sanitizeItems,
+  scrubDashes,
+  LINK_CATALOG,
+  type PullRequest,
+} from '../changelog.logic';
 import type { Changelog } from '../changelog.schema';
 
 function pr(over: Partial<PullRequest> = {}): PullRequest {
@@ -149,6 +183,181 @@ describe('prependRelease', () => {
   });
 });
 
+describe('groupByWeek', () => {
+  it('groups by ISO week (Mon-Sun), oldest first, dating each group by its last merge', () => {
+    const groups = groupByWeek([
+      pr({ number: 1, mergedAt: '2026-07-20T10:00:00Z' }), // Mon, week of 07-20
+      pr({ number: 2, mergedAt: '2026-07-12T10:00:00Z' }), // Sun, week of 07-06
+      pr({ number: 3, mergedAt: '2026-07-08T10:00:00Z' }), // Wed, week of 07-06
+      pr({ number: 4, mergedAt: '2026-07-26T10:00:00Z' }), // Sun, week of 07-20
+    ]);
+    expect(groups.map((g) => g.prs.map((p) => p.number))).toEqual([
+      [2, 3],
+      [1, 4],
+    ]);
+    expect(groups.map((g) => g.date)).toEqual(['2026-07-12', '2026-07-26']);
+  });
+
+  it('returns [] for no PRs', () => {
+    expect(groupByWeek([])).toEqual([]);
+  });
+});
+
+describe('scrubDashes', () => {
+  it('turns spaced em/en dashes into a colon (or comma mid-sentence)', () => {
+    expect(scrubDashes('Entregas — novo quadro')).toBe('Entregas: novo quadro');
+    expect(scrubDashes('Agora é possível — sem etapas', true)).toBe('Agora é possível, sem etapas');
+    expect(scrubDashes('intervalo 10–20')).toBe('intervalo 10-20');
+  });
+});
+
+describe('sanitizeItems', () => {
+  const opts = { allowedPrNumbers: [10, 11, 12], existingPrNumbers: [99] };
+
+  it('coerces type synonyms and defaults unknown types to improvement', () => {
+    const out = sanitizeItems(
+      [
+        { type: 'FEAT', area: 'A', title: 't', description: 'd', pr: 10 },
+        { type: 'bugfix', area: 'A', title: 't', description: 'd', pr: 11 },
+        { type: 'breaking', area: 'A', title: 't', description: 'd', pr: 12 },
+      ],
+      opts,
+    );
+    expect(out.map((i) => i.type)).toEqual(['feature', 'fix', 'improvement']);
+  });
+
+  it('drops hallucinated and already-published PR numbers, and malformed items', () => {
+    const out = sanitizeItems(
+      [
+        { type: 'feature', area: 'A', title: 't', description: 'd', pr: 555 }, // not offered
+        { type: 'feature', area: 'A', title: 't', description: 'd', pr: 99 }, // published
+        { type: 'feature', area: '', title: 't', description: 'd', pr: 10 }, // empty area
+        'garbage',
+        { type: 'feature', area: 'A', title: 't', description: 'd', pr: 11 },
+        { type: 'fix', area: 'A', title: 'dup', description: 'd', pr: 11 }, // dup in batch
+      ],
+      opts,
+    );
+    expect(out.map((i) => i.pr)).toEqual([11]);
+  });
+
+  it('resolves links against the catalog (href only, our label) and drops unknown routes', () => {
+    const out = sanitizeItems(
+      [
+        { type: 'feature', area: 'A', title: 't', description: 'd', pr: 10, link: '/entregas' },
+        { type: 'feature', area: 'A', title: 't', description: 'd', pr: 11, link: '/evil' },
+        {
+          type: 'feature',
+          area: 'A',
+          title: 't',
+          description: 'd',
+          pr: 12,
+          link: { href: '/precos', label: 'Label do modelo' },
+        },
+      ],
+      opts,
+    );
+    expect(out[0].link).toEqual({ href: '/entregas', label: 'Abrir Entregas' });
+    expect(out[1].link).toBeUndefined();
+    expect(out[2].link).toEqual({ href: '/precos', label: 'Ver planos' });
+  });
+
+  it('scrubs em dashes out of the copy', () => {
+    const out = sanitizeItems(
+      [
+        {
+          type: 'fix',
+          area: 'A',
+          title: 'Quadro — melhor',
+          description: 'Mais rápido — sem recarregar',
+          pr: 10,
+        },
+      ],
+      opts,
+    );
+    expect(out[0].title).toBe('Quadro: melhor');
+    expect(out[0].description).toBe('Mais rápido, sem recarregar');
+  });
+
+  it('returns [] for non-array input', () => {
+    expect(sanitizeItems({ items: [] }, opts)).toEqual([]);
+  });
+});
+
+describe('prependReleases', () => {
+  it('prepends multiple releases newest-first and advances the watermark once', () => {
+    const out = prependReleases(
+      EMPTY,
+      [
+        {
+          date: '2026-07-26',
+          items: [{ type: 'fix' as const, area: 'A', title: 'b', description: 'd', pr: 2 }],
+        },
+        {
+          date: '2026-07-12',
+          items: [{ type: 'feature' as const, area: 'A', title: 'a', description: 'd', pr: 1 }],
+        },
+      ],
+      '2026-07-26T10:00:00Z',
+    );
+    expect(out.releases.map((r) => r.date)).toEqual(['2026-07-26', '2026-07-12']);
+    expect(out.lastMergedAt).toBe('2026-07-26T10:00:00Z');
+  });
+
+  it('advances the watermark even when every release dedups away', () => {
+    const seeded = prependReleases(
+      EMPTY,
+      [
+        {
+          date: '2026-07-12',
+          items: [{ type: 'fix' as const, area: 'A', title: 'a', description: 'd', pr: 1 }],
+        },
+      ],
+      '2026-07-12T00:00:00Z',
+    );
+    const out = prependReleases(
+      seeded,
+      [
+        {
+          date: '2026-07-26',
+          items: [{ type: 'fix' as const, area: 'A', title: 'a', description: 'd', pr: 1 }],
+        },
+      ],
+      '2026-07-26T00:00:00Z',
+    );
+    expect(out.releases).toHaveLength(1);
+    expect(out.lastMergedAt).toBe('2026-07-26T00:00:00Z');
+  });
+});
+
+describe('LINK_CATALOG', () => {
+  it('only contains hrefs the schema accepts', () => {
+    for (const { href, label } of LINK_CATALOG) {
+      expect(
+        changelogSchema.safeParse({
+          lastMergedAt: '',
+          releases: [
+            {
+              date: '2026-01-01',
+              items: [
+                {
+                  type: 'feature',
+                  area: 'A',
+                  title: 't',
+                  description: 'd',
+                  pr: 1,
+                  link: { href, label },
+                },
+              ],
+            },
+          ],
+        }).success,
+        href,
+      ).toBe(true);
+    }
+  });
+});
+
 import changelogData from '../changelog.json';
 
 describe('changelog.json (committed data)', () => {
@@ -156,6 +365,10 @@ describe('changelog.json (committed data)', () => {
     const result = changelogSchema.safeParse(changelogData);
     if (!result.success) console.error(result.error.format());
     expect(result.success).toBe(true);
+  });
+
+  it('contains no em/en dashes in user-facing copy', () => {
+    expect(JSON.stringify(changelogData)).not.toMatch(/[—–]/);
   });
 });
 
@@ -201,5 +414,26 @@ describe('renderChangelogHtml', () => {
   });
   it('renders an empty-state message when there are no releases', () => {
     expect(renderChangelogHtml([])).toContain('Em breve');
+  });
+
+  it('renders item images and links, escaped', () => {
+    const html = renderChangelogHtml([
+      {
+        date: '2026-08-08',
+        items: [
+          {
+            type: 'feature',
+            area: 'A',
+            title: 'Com "extras"',
+            description: 'd',
+            pr: 3,
+            image: '/novidades/pr-3.png',
+            link: { href: '/entregas', label: 'Abrir Entregas' },
+          },
+        ],
+      },
+    ]);
+    expect(html).toContain('<img src="/novidades/pr-3.png" alt="Com &quot;extras&quot;"');
+    expect(html).toContain('<a href="/entregas">Abrir Entregas</a>');
   });
 });

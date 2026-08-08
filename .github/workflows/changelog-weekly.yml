@@ -26,6 +26,7 @@ permissions:
 jobs:
   generate:
     runs-on: ubuntu-latest
+    timeout-minutes: 90 # generation + two 30-min check watches, with slack
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,17 +50,23 @@ jobs:
           echo "count=$count" >> "$GITHUB_OUTPUT"
           echo "Selected $count PR(s) since the last watermark."
 
-      # 2. One Groq call turns the selected PRs into entries (RUNNER_TEMP/entries.json).
-      #    Free tier; no repo token in this step.
+      # 2. Groq turns the selected PRs into entries (RUNNER_TEMP/entries.json) —
+      #    one call per week of merged PRs, so a multi-week backlog stays under
+      #    the free tier's 12k tokens-per-minute cap. No repo token in this step.
       - name: Write entries (Groq)
         if: steps.fetch.outputs.count != '0'
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-        run: node scripts/changelog/write-entries.mjs "$RUNNER_TEMP/fetch.json" "$RUNNER_TEMP/entries.json"
+        run: npx tsx scripts/changelog/write-entries.ts "$RUNNER_TEMP/fetch.json" "$RUNNER_TEMP/entries.json"
 
-      # 3. Deterministic: apply (schema-validated) + test-gate + open auto-merging PR.
-      #    This is the ONLY place the PAT is exposed.
-      - name: Apply and open auto-merging PR
+      # 3. Deterministic: apply (schema-validated) + test-gate + open a PR, wait
+      #    for its CI, merge. This is the ONLY place the PAT is exposed.
+      #
+      #    NOT `gh pr merge --auto`: GitHub auto-merge requires branch protection
+      #    rules on main, which this repo doesn't have — the mutation fails with
+      #    "Protected branch rules not configured for this branch". We gate on CI
+      #    ourselves instead: watch the PR's checks, merge only if they pass.
+      - name: Apply, open PR, wait for CI, merge
         if: steps.fetch.outputs.count != '0'
         env:
           GH_TOKEN: ${{ secrets.CHANGELOG_PAT }}
@@ -83,4 +90,30 @@ jobs:
           gh pr create --base main --head "$branch" \
             --title "chore(changelog): weekly update" \
             --body "Automated weekly changelog."
-          gh pr merge --auto --squash "$branch"
+          sleep 60 # let CI register its check runs on the new PR
+          if ! timeout 1800 gh pr checks "$branch" --watch --fail-fast; then
+            echo "First watch attempt failed; retrying once (checks may have registered late)."
+            sleep 60
+            timeout 1800 gh pr checks "$branch" --watch --fail-fast || {
+              echo "::error::CI failed on $branch — PR left open for review."
+              exit 1
+            }
+          fi
+          gh pr merge --squash --delete-branch "$branch"
+
+      # Failures here went unnoticed for a month once — email on any red run.
+      - name: Alert on failure
+        if: failure()
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$RESEND_API_KEY" ] || [ -z "$ALERT_EMAIL" ]; then
+            echo "Missing RESEND_API_KEY/ALERT_EMAIL; skipping alert."
+            exit 0
+          fi
+          curl -sS -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer $RESEND_API_KEY" \
+            -H 'Content-Type: application/json' \
+            -d "{\"from\":\"Mesaas Alerts <alertas@mesaas.com.br>\",\"to\":[\"$ALERT_EMAIL\"],\"subject\":\"[Mesaas] Weekly Changelog falhou\",\"html\":\"O workflow semanal do changelog falhou. <a href=\\\"$RUN_URL\\\">Ver execucao</a>\"}"

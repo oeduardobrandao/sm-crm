@@ -1,11 +1,26 @@
 import { z } from 'zod';
 
+/** Internal route only ("/entregas", "/precos"): no protocol, no host, no query. */
+export const changelogLinkSchema = z.object({
+  href: z.string().regex(/^\/[a-z0-9-]+(\/[a-z0-9-]+)*$/, 'href must be an internal path'),
+  label: z.string().min(1),
+});
+
 export const changelogItemSchema = z.object({
   type: z.enum(['feature', 'improvement', 'fix']),
   area: z.string().min(1),
   title: z.string().min(1),
   description: z.string().min(1),
   pr: z.number().int().positive(),
+  // Screenshot committed at public/novidades/ (attached by apply.ts, never by the LLM).
+  image: z
+    .string()
+    .regex(
+      /^\/novidades\/[a-z0-9][a-z0-9._-]*\.(png|jpe?g|webp)$/,
+      'image must live in /novidades/',
+    )
+    .optional(),
+  link: changelogLinkSchema.optional(),
 });
 
 export const changelogReleaseSchema = z.object({

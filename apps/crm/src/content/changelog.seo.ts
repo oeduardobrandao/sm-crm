@@ -11,7 +11,13 @@ export function renderChangelogHtml(releases: ChangelogRelease[]): string {
   const sections = releases
     .map((r) => {
       const items = r.items
-        .map((i) => `<article><h3>${esc(i.title)}</h3><p>${esc(i.description)}</p></article>`)
+        .map((i) => {
+          const img = i.image
+            ? `<img src="${esc(i.image)}" alt="${esc(i.title)}" loading="lazy">`
+            : '';
+          const link = i.link ? `<a href="${esc(i.link.href)}">${esc(i.link.label)}</a>` : '';
+          return `<article><h3>${esc(i.title)}</h3><p>${esc(i.description)}</p>${img}${link}</article>`;
+        })
         .join('');
       const summary = r.summary ? `<p>${esc(r.summary)}</p>` : '';
       return `<section><h2>${esc(r.date)}</h2>${summary}${items}</section>`;
