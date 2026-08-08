@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeSeatState, membroInviteErrorMessage } from '../inviteSupport';
+import { computeSeatState, derivePendingInvites, membroInviteErrorMessage } from '../inviteSupport';
 
 describe('computeSeatState', () => {
   it('is loading while limits load, regardless of counts', () => {
@@ -101,5 +101,26 @@ describe('membroInviteErrorMessage', () => {
     expect(membroInviteErrorMessage('boom')).toBe(
       'Membro salvo, mas o convite falhou: erro desconhecido',
     );
+  });
+});
+
+describe('derivePendingInvites', () => {
+  const past = new Date(Date.now() - 86400000).toISOString();
+  const future = new Date(Date.now() + 86400000).toISOString();
+
+  it('hides locally-expired invites from display but counts them as seats', () => {
+    const rows = [
+      { id: '1', status: 'pending', expires_at: past, email: 'old@x.com' },
+      { id: '2', status: 'pending', expires_at: future, email: 'new@x.com' },
+    ];
+    const { display, seatCount } = derivePendingInvites(rows);
+    // Display mirrors computeEffectiveInviteStatus: the expired one drops out...
+    expect(display.map((i) => i.id)).toEqual(['2']);
+    // ...but the server pre-check counts RAW pending rows, so both hold a seat.
+    expect(seatCount).toBe(2);
+  });
+
+  it('returns empty display and zero seats for no rows', () => {
+    expect(derivePendingInvites([])).toEqual({ display: [], seatCount: 0 });
   });
 });
