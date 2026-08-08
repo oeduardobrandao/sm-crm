@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -27,7 +27,7 @@ import {
 } from '../../../store';
 import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
 import type { BoardCard } from '../hooks/useEntregasData';
-import type { Membro, WorkflowTemplate } from '../../../store';
+import type { Membro, WorkflowEtapa, WorkflowTemplate } from '../../../store';
 import { WorkflowCard } from '../components/WorkflowCard';
 import { ExampleBoard } from '../components/ExampleBoard';
 import {
@@ -203,7 +203,13 @@ export function KanbanView({
   showExample,
   onDismissExample,
 }: KanbanViewProps) {
-  const [localCards, setLocalCards] = useState<BoardCard[]>(cards);
+  // Server data is canonical: the board always re-derives from the cards prop,
+  // so any edit (título, responsável, prazo…) shows as soon as the refetch
+  // lands — no reload needed. Optimistic changes (dnd moves and reorders) live
+  // in overlay maps applied on top, and self-clean once the server reflects
+  // them, so drags feel instant while persistence runs in the background.
+  const [pendingEtapas, setPendingEtapas] = useState<Map<number, WorkflowEtapa>>(new Map());
+  const [pendingPositions, setPendingPositions] = useState<Map<number, number>>(new Map());
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
   const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(
     null,
@@ -212,22 +218,40 @@ export function KanbanView({
   const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
   const [activeRowKey, setActiveRowKey] = useState<string | null>(null);
 
-  // Sync local state when prop cards change (after refresh — detects workflow list, etapa, and cover changes)
-  const cardsFingerprint = cards
-    .map(
-      (c) =>
-        `${c.workflow.id}:${c.etapa.id}:${c.postCovers?.length ?? 0}:${c.clienteAvatarUrl ? 1 : 0}`,
-    )
-    .join(',');
-  const localFingerprint = localCards
-    .map(
-      (c) =>
-        `${c.workflow.id}:${c.etapa.id}:${c.postCovers?.length ?? 0}:${c.clienteAvatarUrl ? 1 : 0}`,
-    )
-    .join(',');
-  if (cardsFingerprint !== localFingerprint) {
-    setLocalCards(cards);
-  }
+  // Drop overlay entries the server already reflects.
+  useEffect(() => {
+    setPendingEtapas((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Map(prev);
+      for (const c of cards) {
+        const pe = next.get(c.workflow.id!);
+        if (pe && pe.id === c.etapa.id) next.delete(c.workflow.id!);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+    setPendingPositions((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Map(prev);
+      for (const c of cards) {
+        const pp = next.get(c.workflow.id!);
+        if (pp !== undefined && c.workflow.position === pp) next.delete(c.workflow.id!);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [cards]);
+
+  const localCards = useMemo(() => {
+    if (pendingEtapas.size === 0 && pendingPositions.size === 0) return cards;
+    return cards.map((c) => {
+      let out = c;
+      const pe = pendingEtapas.get(c.workflow.id!);
+      if (pe && pe.id !== c.etapa.id) out = { ...out, etapa: pe, etapaIdx: pe.ordem };
+      const pp = pendingPositions.get(c.workflow.id!);
+      if (pp !== undefined && pp !== c.workflow.position)
+        out = { ...out, workflow: { ...out.workflow, position: pp } };
+      return out;
+    });
+  }, [cards, pendingEtapas, pendingPositions]);
 
   const boardRows = buildBoardRows(localCards, templates);
 
@@ -310,15 +334,13 @@ export function KanbanView({
         if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return;
 
         const reordered = arrayMove(col, oldIdx, newIdx);
-        const prevCards = [...localCards];
 
-        // Optimistic update
-        const updatedCards = localCards.map((c) => {
-          const idx = reordered.findIndex((r) => r.workflow.id === c.workflow.id);
-          if (idx !== -1) return { ...c, workflow: { ...c.workflow, position: idx } };
-          return c;
+        // Optimistic reorder overlay; rolled back if persistence fails.
+        setPendingPositions((prev) => {
+          const next = new Map(prev);
+          reordered.forEach((c, i) => next.set(c.workflow.id!, i));
+          return next;
         });
-        setLocalCards(updatedCards);
 
         try {
           await updateWorkflowPositions(
@@ -326,7 +348,11 @@ export function KanbanView({
           );
           onRefresh();
         } catch {
-          setLocalCards(prevCards);
+          setPendingPositions((prev) => {
+            const next = new Map(prev);
+            reordered.forEach((c) => next.delete(c.workflow.id!));
+            return next;
+          });
           toast.error('Erro ao salvar ordem dos cartões');
         }
       } else {
@@ -369,6 +395,12 @@ export function KanbanView({
   // "Avançar etapa sem alterar posts", whose literal contract is to leave posts alone.
   const advanceEtapa = useCallback(
     async (card: BoardCard, successMessage: string, opts?: { rearm?: boolean }) => {
+      const wfId = card.workflow.id!;
+      // Slide the card into the next column immediately; the backend persists
+      // in the background. On the last etapa there is no next column — the
+      // card leaves the board when the refetch lands.
+      const nextEtapa = card.allEtapas.find((e) => e.ordem === card.etapa.ordem + 1);
+      if (nextEtapa) setPendingEtapas((prev) => new Map(prev).set(wfId, nextEtapa));
       try {
         const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!, opts);
         if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
@@ -379,6 +411,12 @@ export function KanbanView({
         notifyRearmOutcome(result);
         onRefresh();
       } catch (err: unknown) {
+        if (nextEtapa)
+          setPendingEtapas((prev) => {
+            const next = new Map(prev);
+            next.delete(wfId);
+            return next;
+          });
         toast.error((err as Error).message || 'Erro ao avançar etapa');
       }
     },
@@ -446,11 +484,20 @@ export function KanbanView({
 
   const handleRevertConfirm = async () => {
     if (!revertTarget) return;
+    const card = localCards.find((c) => c.workflow.id === revertTarget.workflowId);
+    const prevEtapa = card?.allEtapas.find((e) => e.ordem === card.etapa.ordem - 1);
+    if (card && prevEtapa)
+      setPendingEtapas((prev) => new Map(prev).set(revertTarget.workflowId, prevEtapa));
     try {
       await revertEtapa(revertTarget.workflowId);
       toast.success('Etapa revertida!');
       onRefresh();
     } catch (err: unknown) {
+      setPendingEtapas((prev) => {
+        const next = new Map(prev);
+        next.delete(revertTarget.workflowId);
+        return next;
+      });
       toast.error((err as Error).message || 'Erro ao reverter etapa');
     }
     setRevertTarget(null);
