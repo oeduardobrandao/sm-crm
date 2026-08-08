@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   CONFIRM_CLOSE_DISCARD,
@@ -83,8 +83,10 @@ export function NewWorkflowWizard(props: {
   membros: Membro[];
   templates: WorkflowTemplate[];
   onCreated: () => void;
+  /** Quick-add from a board row: preselects this template and opens on step 2. */
+  initialTemplateId?: number;
 }) {
-  const { open, onClose, clientes, membros, templates, onCreated } = props;
+  const { open, onClose, clientes, membros, templates, onCreated, initialTemplateId } = props;
   const [s, setS] = useState<WizardState>(INITIAL);
   const [cancelConfirm, setCancelConfirm] = useState(false);
   // Step 3's errors surface only after a blocked Continuar, then track edits live so a row
@@ -97,6 +99,18 @@ export function NewWorkflowWizard(props: {
   const patch = (p: Partial<WizardState>) => setS((prev) => ({ ...prev, ...p }));
 
   const isDirty = s.source !== null || s.clienteId !== '' || s.nome !== '';
+
+  // Quick-add path: apply the board row's template once, as if the user had
+  // picked it on step 1. Ref-guarded because selectSource is a fresh closure
+  // every render.
+  const appliedInitialTemplate = useRef(false);
+  useEffect(() => {
+    if (appliedInitialTemplate.current || initialTemplateId == null) return;
+    const tpl = templates.find((t) => t.id === initialTemplateId);
+    if (!tpl) return;
+    appliedInitialTemplate.current = true;
+    selectSource({ kind: 'template', templateId: tpl.id!, templateNome: tpl.nome }, undefined, tpl);
+  });
 
   const requestClose = () => {
     setS(INITIAL);

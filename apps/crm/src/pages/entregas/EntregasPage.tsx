@@ -52,6 +52,8 @@ export default function EntregasPage() {
     direction: 'asc',
   });
   const [newWorkflowOpen, setNewWorkflowOpen] = useState(false);
+  // Template preselected by the board's quick-add button; null = normal wizard.
+  const [quickAddTemplateId, setQuickAddTemplateId] = useState<number | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [editCard, setEditCard] = useState<BoardCard | null>(null);
   const [drawerCard, setDrawerCard] = useState<BoardCard | null>(null);
@@ -495,6 +497,10 @@ export default function EntregasPage() {
             onPostsClick={handleCardClick}
             onRefresh={refresh}
             onRecurring={setRecurringWfId}
+            onAddWorkflow={(templateId) => {
+              setQuickAddTemplateId(templateId);
+              setNewWorkflowOpen(true);
+            }}
             membros={membros}
             templates={templates}
             postsCounts={postsCounts}
@@ -551,7 +557,11 @@ export default function EntregasPage() {
       {newWorkflowOpen && (
         <NewWorkflowWizard
           open={newWorkflowOpen}
-          onClose={() => setNewWorkflowOpen(false)}
+          onClose={() => {
+            setNewWorkflowOpen(false);
+            setQuickAddTemplateId(null);
+          }}
+          initialTemplateId={quickAddTemplateId ?? undefined}
           clientes={clientes}
           membros={membros}
           templates={templates}

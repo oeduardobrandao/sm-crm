@@ -10813,3 +10813,29 @@ body.landing-page #root {
     animation-duration: 0.01ms;
   }
 }
+
+/* Quick-add button at the top of each board row's first column. */
+.board-add-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0.45rem;
+  border-radius: 12px;
+  border: 1px dashed var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+.board-add-card:hover {
+  color: var(--text-main);
+  border-color: var(--text-light);
+  background: var(--surface-main);
+}

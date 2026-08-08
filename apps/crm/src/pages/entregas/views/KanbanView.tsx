@@ -17,7 +17,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   hasLaterApprovalEtapa,
@@ -44,6 +44,8 @@ interface KanbanViewBaseProps {
   onPostsClick: (card: BoardCard) => void;
   onRefresh: () => void;
   onRecurring: (workflowId: number) => void;
+  /** Quick-add: opens the new-workflow wizard preloaded with the row's template. */
+  onAddWorkflow?: (templateId: number | null) => void;
   membros: Membro[];
   templates: WorkflowTemplate[];
   postsCounts: Map<number, number>;
@@ -194,6 +196,7 @@ export function KanbanView({
   onPostsClick,
   onRefresh,
   onRecurring,
+  onAddWorkflow,
   membros,
   templates,
   postsCounts,
@@ -664,7 +667,7 @@ export function KanbanView({
 
   const renderRowBoard = (row: BoardRow) => (
     <div className="board-container">
-      {[...row.columns.entries()].map(([stepName, stepCards]) => (
+      {[...row.columns.entries()].map(([stepName, stepCards], colIdx) => (
         <div key={stepName} className="board-column">
           <div
             className="board-column-header"
@@ -674,6 +677,21 @@ export function KanbanView({
             <span className="board-column-count">{stepCards.length}</span>
           </div>
           <DroppableColumnBody id={`${COL_PREFIX}${row.key}::${stepName}`}>
+            {colIdx === 0 && onAddWorkflow && (
+              <button
+                type="button"
+                className="board-add-card"
+                onClick={() =>
+                  onAddWorkflow(
+                    row.key.startsWith('template:')
+                      ? Number(row.key.slice('template:'.length))
+                      : null,
+                  )
+                }
+              >
+                <Plus className="h-3.5 w-3.5" /> Novo fluxo
+              </button>
+            )}
             <SortableContext
               items={stepCards.map((c) => String(c.workflow.id))}
               strategy={verticalListSortingStrategy}
