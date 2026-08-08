@@ -8,11 +8,19 @@
 -- imagem de corpo nao e nenhum dos dois, entao a assinatura falharia em
 -- silencio e o src pre-assinado da autoria daria 403 uma hora depois.
 --
--- Nem todo passo tem captura ainda. Os passos 4-6 da secao 3 (telas do
--- Facebook, captura manual) e os 4 passos da secao 7 (bloqueados por token
--- do Instagram) usam imagem NULL: o helper _kb_pp_ol renderiza o passo so
--- com texto, e o artigo publica assim mesmo, melhorando quando as capturas
--- chegarem.
+-- Nem todo passo tem captura ainda. Usam imagem NULL: os passos 4-6 da secao
+-- 3 (telas do Facebook, captura manual), os 4 passos da secao 7 e o passo da
+-- secao 8, os cinco ultimos bloqueados pelo mesmo motivo, um token de
+-- Instagram vencido no DK TESTE que impede existir um post agendado para
+-- fotografar. O helper _kb_pp_ol renderiza o passo so com texto, e o artigo
+-- publica assim mesmo, melhorando quando as capturas chegarem.
+--
+-- A captura 33 existe e foi DESCARTADA de proposito: ela apontava para
+-- /calendario, que e o calendario financeiro (transacoes, prazos,
+-- aniversarios) e nunca consulta workflow_posts. A imagem saiu com o mes
+-- vazio e o painel dizendo "Nenhuma movimentacao neste dia", ou seja,
+-- demonstrando o oposto do que o passo afirmava. Quando houver um post
+-- agendado, recapture a visao de calendario DENTRO de Entregas, nao essa.
 --
 -- Este arquivo tambem renumera a categoria primeiros-passos inteira. O
 -- leitor ordena so por display_order (store/kb.ts:34), sem desempate, entao
@@ -273,11 +281,12 @@ SELECT _kb_pp_upsert(
     _kb_pp_p('Se o botão Agendar aparecer desabilitado, falta algo: data, legenda do Instagram, ou permissão de publicação na conta conectada. A própria tela indica o que está faltando.'),
 
     _kb_pp_h(2, 'E agora?'),
-    _kb_pp_p('O post agendado aparece no calendário do cliente e no fluxo. Na hora marcada, o Mesaas publica sozinho e o status muda para Postado.'),
+    _kb_pp_p('Na hora marcada, o Mesaas publica sozinho e o status do post muda para Postado.'),
     _kb_pp_ol(
-      ARRAY['Acompanhe pelo Calendário, pelas Entregas ou pelo Hub do cliente'],
-      ARRAY[_kb_pp_shot('33-acompanhar-no-calendario.png', 'Calendário com o post agendado marcado na data.')]::jsonb[]
+      ARRAY['Acompanhe pelo calendário de publicações dentro de Entregas, pelo próprio fluxo, ou pelo Hub do cliente'],
+      ARRAY[NULL]::jsonb[]
     ),
+    _kb_pp_callout('💡', 'blue', 'O Calendário do menu lateral é outra coisa: ele mostra dinheiro, prazos e datas importantes, não as publicações. Para ver os posts numa grade de datas, use a visão de calendário dentro de Entregas.'),
     _kb_pp_p('Se a publicação falhar, o post mostra o motivo e um botão de tentar novamente. O artigo Agendar, publicar agora e resolver falhas no Instagram cobre cada erro possível.')
   ),
   'primeiros-passos',
