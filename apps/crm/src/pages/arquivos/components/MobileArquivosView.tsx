@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
+import { MeterBar } from '@/components/usage/UsageMeter';
 import { formatBytes } from './FileGrid';
 import { FileContextMenu } from './FileContextMenu';
 import type { FileRecord, Folder as FolderType } from '../types';
@@ -262,20 +263,7 @@ function StorageCard({ storage }: { storage: { used_bytes: number; quota_bytes: 
           </span>
         </div>
         {storage.quota_bytes > 0 && (
-          <div className="h-1.5 rounded-full bg-[var(--surface-hover)] overflow-hidden">
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${Math.min(pct, 100)}%`,
-                backgroundColor:
-                  pct >= 100
-                    ? 'var(--danger)'
-                    : pct >= 90
-                      ? 'var(--warning)'
-                      : 'var(--primary-color)',
-              }}
-            />
-          </div>
+          <MeterBar used={storage.used_bytes} limit={storage.quota_bytes} height={6} />
         )}
         <p className="text-xs text-[var(--text-muted)] mt-1.5">
           {totalFiles} arquivos no total{storage.quota_bytes > 0 ? ` · ${pct}% usado` : ''}
