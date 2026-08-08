@@ -358,7 +358,7 @@ export default function ClientesPage() {
               <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
             </span>
           </div>
-          {limits && limits.max_clients !== null && (
+          {!isLoading && limits && limits.max_clients !== null && (
             <div style={{ marginTop: 6 }}>
               <UsageMeter
                 size="compact"

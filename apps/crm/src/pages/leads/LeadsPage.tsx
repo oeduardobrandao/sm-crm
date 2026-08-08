@@ -426,7 +426,7 @@ export default function LeadsPage() {
               <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
             </span>
           </div>
-          {limits && limits.max_leads !== null && (
+          {leadsCount !== undefined && limits && limits.max_leads !== null && (
             <div style={{ marginTop: 6 }}>
               <UsageMeter
                 size="compact"

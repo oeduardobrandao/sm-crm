@@ -228,4 +228,34 @@ describe('LeadsPage at-limit create button', () => {
     renderPage();
     expect(await screen.findByText('37 de 200 leads')).toBeInTheDocument();
   });
+
+  it('hides the header meter while getLeadsCount is still pending, even with limits set', async () => {
+    isAtLimitMock.mockReturnValue(false);
+    limitsRef.current = { max_leads: 200 };
+    mockedGetLeads.mockResolvedValue([{ id: 1 } as never, { id: 2 } as never]);
+    // Never resolves -- leadsCount stays undefined for the life of the test.
+    mockedGetLeadsCount.mockReturnValue(new Promise(() => {}));
+    renderPage();
+
+    // Wait for the leads list itself to finish loading (its query resolves),
+    // so any state update triggered by that settles before we assert.
+    await waitFor(() => expect(screen.queryByTestId('spinner')).not.toBeInTheDocument());
+    expect(screen.queryByText(/de 200 leads/)).not.toBeInTheDocument();
+  });
+
+  it('hides the header meter when getLeadsCount rejects, but the create button still follows the list-length fallback', async () => {
+    isAtLimitMock.mockReturnValue(false);
+    limitsRef.current = { max_leads: 200 };
+    mockedGetLeads.mockResolvedValue([{ id: 1 } as never, { id: 2 } as never, { id: 3 } as never]);
+    mockedGetLeadsCount.mockRejectedValue(new Error('rpc failed'));
+    renderPage();
+
+    await waitFor(() => {
+      // leadsCount rejected -> usedLeads falls back to leads.length (3).
+      expect(isAtLimitMock).toHaveBeenCalledWith('max_leads', 3);
+    });
+    expect(screen.queryByText(/de 200 leads/)).not.toBeInTheDocument();
+    const createBtn = screen.getByRole('button', { name: /Novo Lead/ });
+    expect(createBtn).not.toBeDisabled();
+  });
 });

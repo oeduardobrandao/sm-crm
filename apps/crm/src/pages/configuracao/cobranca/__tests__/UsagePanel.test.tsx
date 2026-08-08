@@ -70,10 +70,25 @@ describe('UsagePanel', () => {
     expect(screen.getByText('Ilimitado')).toBeInTheDocument(); // chaves MCP (null limit)
   });
 
+  it('renders the labels matching the entitlement-error vocabulary', () => {
+    renderPanel();
+    expect(screen.getByText('Portais do Hub')).toBeInTheDocument();
+    expect(screen.getByText('Modelos de fluxo')).toBeInTheDocument();
+    expect(screen.queryByText('Tokens do Hub')).not.toBeInTheDocument();
+    expect(screen.queryByText('Templates de workflow')).not.toBeInTheDocument();
+  });
+
   it('renders the quiet fallback when the usage RPC fails', () => {
     usageMock.mockReturnValue({ usage: null, isLoading: false, isError: true });
     renderPanel();
     expect(screen.getByText('Não foi possível carregar o uso do plano.')).toBeInTheDocument();
+  });
+
+  it('renders the quiet fallback when usage is an empty object (no active workspace / stale pointer)', () => {
+    usageMock.mockReturnValue({ usage: {}, isLoading: false, isError: false });
+    renderPanel();
+    expect(screen.getByText('Não foi possível carregar o uso do plano.')).toBeInTheDocument();
+    expect(screen.queryByText('0 de 15')).not.toBeInTheDocument();
   });
 
   it('renders nothing when no plan resolved (isUnlimited)', () => {

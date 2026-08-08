@@ -228,4 +228,17 @@ describe('ClientesPage header meter', () => {
     await waitFor(() => expect(mockedGetClientes).toHaveBeenCalled());
     expect(screen.queryByText(/de .* clientes/)).not.toBeInTheDocument();
   });
+
+  it('hides the meter while the clientes query is still pending, even with limits set', async () => {
+    isAtLimitMock.mockReturnValue(false);
+    limitsRef.current = { max_clients: 15 };
+    // Never resolves -- the query stays isLoading for the life of the test.
+    mockedGetClientes.mockReturnValue(new Promise(() => {}));
+    renderPage();
+
+    await waitFor(() => expect(mockedGetClientes).toHaveBeenCalled());
+    // Give React a tick to settle without ever resolving the query.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByText(/de .* clientes/)).not.toBeInTheDocument();
+  });
 });

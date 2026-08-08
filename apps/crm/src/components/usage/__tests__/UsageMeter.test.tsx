@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
-import { UsageMeter } from '../UsageMeter';
+import { MeterBar, UsageMeter } from '../UsageMeter';
 
 function renderMeter(ui: React.ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
@@ -68,5 +68,40 @@ describe('UsageMeter', () => {
     );
     expect(screen.getByText('3 de 5 vagas do plano usadas')).toBeInTheDocument();
     expect(screen.getByText('2 restantes')).toBeInTheDocument();
+  });
+
+  it('renders the subText sub row for an unlimited meter without a CTA', () => {
+    renderMeter(
+      <UsageMeter
+        label="Vagas de equipe"
+        used={4}
+        limit={null}
+        subText="4 membros e 1 convite pendente"
+        showUpgradeCta
+      />,
+    );
+    expect(screen.getByText('4 membros e 1 convite pendente')).toBeInTheDocument();
+    expect(screen.queryByText('Fazer upgrade')).not.toBeInTheDocument();
+  });
+
+  it('renders no sub row for an unlimited meter without subText', () => {
+    const { container } = renderMeter(<UsageMeter label="Chaves MCP" used={2} limit={null} />);
+    // Root wrapper + the label/value header row -- no trailing sub row, no bar.
+    expect(container.querySelectorAll('div')).toHaveLength(2);
+  });
+
+  describe('MeterBar accessibility', () => {
+    it('exposes progressbar semantics with min/max/current values', () => {
+      render(<MeterBar used={13} limit={15} />);
+      const bar = screen.getByRole('progressbar');
+      expect(bar).toHaveAttribute('aria-valuemin', '0');
+      expect(bar).toHaveAttribute('aria-valuemax', '15');
+      expect(bar).toHaveAttribute('aria-valuenow', '13');
+    });
+
+    it('clamps aria-valuenow to the limit when used exceeds it', () => {
+      render(<MeterBar used={20} limit={15} />);
+      expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '15');
+    });
   });
 });

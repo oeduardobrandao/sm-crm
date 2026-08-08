@@ -23,7 +23,10 @@ export function UsagePanel() {
       </div>
     );
   }
-  if (isError || limits === null || usage === null) {
+  if (isError || limits === null || usage === null || Object.keys(usage).length === 0) {
+    // Empty object is the RPC's fail-safe for no active workspace / a stale
+    // pointer -- rendering it would paint every meter as "0 de N" instead of
+    // surfacing the real "we don't know" state.
     return (
       <div className="card usage-panel">
         <h3 className="usage-panel-title">Uso do plano</h3>
@@ -63,7 +66,7 @@ export function UsagePanel() {
     },
     { label: 'Leads', used: usage.leads ?? 0, limit: limits.max_leads },
     {
-      label: 'Templates de workflow',
+      label: 'Modelos de fluxo',
       used: usage.workflow_templates ?? 0,
       limit: limits.max_workflow_templates,
     },
@@ -72,7 +75,7 @@ export function UsagePanel() {
       used: usage.instagram_accounts ?? 0,
       limit: limits.max_instagram_accounts,
     },
-    { label: 'Tokens do Hub', used: usage.hub_tokens ?? 0, limit: limits.max_hub_tokens },
+    { label: 'Portais do Hub', used: usage.hub_tokens ?? 0, limit: limits.max_hub_tokens },
     { label: 'Chaves MCP', used: usage.mcp_keys ?? 0, limit: limits.max_mcp_keys },
   ];
 

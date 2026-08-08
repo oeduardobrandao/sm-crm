@@ -14,6 +14,10 @@ export function MeterBar({
   const meter = computeMeterState(used, limit);
   return (
     <div
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={limit}
+      aria-valuenow={Math.min(used, limit)}
       style={{
         height,
         borderRadius: 999,
@@ -155,7 +159,7 @@ export function UsageMeter({
       {meter.state !== 'unlimited' && meter.state !== 'blocked' && limit !== null && (
         <MeterBar used={used} limit={limit} />
       )}
-      {(meter.state === 'blocked' || subText || cta) && meter.state !== 'unlimited' && (
+      {(meter.state === 'blocked' || subText || cta) && (
         <div
           style={{
             marginTop: 5,
@@ -168,7 +172,9 @@ export function UsageMeter({
         >
           {meter.state === 'blocked' ? <span>Não incluído no plano</span> : null}
           {subText ? <span>{subText}</span> : null}
-          {cta}
+          {/* unlimited never shows the CTA -- meter.showCta is always false for it,
+              so cta is already null here, but the intent is spelled out explicitly. */}
+          {meter.state !== 'unlimited' ? cta : null}
         </div>
       )}
     </div>
