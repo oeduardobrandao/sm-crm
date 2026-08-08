@@ -587,6 +587,9 @@ export function KanbanView({
     try {
       await approvePostsInternally(card.workflow.id!);
     } catch (err: unknown) {
+      // The advance never runs, so the drag's captured drop position must not
+      // survive to reorder a later, unrelated advance of this workflow.
+      pendingInsertRef.current = null;
       toast.error((err as Error).message || 'Erro ao aprovar internamente');
       return;
     }
@@ -597,6 +600,9 @@ export function KanbanView({
     if (!approvalChoiceCard) return;
     const card = approvalChoiceCard;
     setApprovalChoiceCard(null);
+    // Send-only: the workflow does not move, so the drag's captured drop
+    // position is dead the moment this choice is made.
+    pendingInsertRef.current = null;
     try {
       await sendPostsToCliente(card.workflow.id!);
       toast.success('Posts enviados ao portal do cliente!');
