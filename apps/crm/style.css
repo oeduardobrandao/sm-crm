@@ -10685,3 +10685,109 @@ body.landing-page #root {
   justify-content: center;
   margin-top: 1px;
 }
+
+/* ── shadcn Sheet motion ─────────────────────────────────────────────
+   tailwindcss-animate is not registered, so the component's stock
+   animate-in/slide-in-from-* utilities are inert. These keyframes are
+   the real thing: panel slides from its edge, overlay fades. Radix
+   waits for the [data-state='closed'] animation before unmounting. */
+@keyframes sheet-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sheet-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes sheet-slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes sheet-slide-out-right {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes sheet-slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+}
+@keyframes sheet-slide-out-left {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes sheet-slide-in-bottom {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes sheet-slide-out-bottom {
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes sheet-slide-in-top {
+  from {
+    transform: translateY(-100%);
+  }
+}
+@keyframes sheet-slide-out-top {
+  to {
+    transform: translateY(-100%);
+  }
+}
+
+.sheet-overlay[data-state='open'] {
+  animation: sheet-fade-in 0.3s ease-out;
+}
+.sheet-overlay[data-state='closed'] {
+  animation: sheet-fade-out 0.25s ease-in forwards;
+}
+
+[class*='sheet-pane--'][data-state='open'] {
+  animation-duration: 0.38s;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+[class*='sheet-pane--'][data-state='closed'] {
+  animation-duration: 0.28s;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  animation-fill-mode: forwards;
+}
+.sheet-pane--right[data-state='open'] {
+  animation-name: sheet-slide-in-right;
+}
+.sheet-pane--right[data-state='closed'] {
+  animation-name: sheet-slide-out-right;
+}
+.sheet-pane--left[data-state='open'] {
+  animation-name: sheet-slide-in-left;
+}
+.sheet-pane--left[data-state='closed'] {
+  animation-name: sheet-slide-out-left;
+}
+.sheet-pane--bottom[data-state='open'] {
+  animation-name: sheet-slide-in-bottom;
+}
+.sheet-pane--bottom[data-state='closed'] {
+  animation-name: sheet-slide-out-bottom;
+}
+.sheet-pane--top[data-state='open'] {
+  animation-name: sheet-slide-in-top;
+}
+.sheet-pane--top[data-state='closed'] {
+  animation-name: sheet-slide-out-top;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-overlay[data-state='open'],
+  .sheet-overlay[data-state='closed'],
+  [class*='sheet-pane--'][data-state='open'],
+  [class*='sheet-pane--'][data-state='closed'] {
+    animation-duration: 0.01ms;
+  }
+}
