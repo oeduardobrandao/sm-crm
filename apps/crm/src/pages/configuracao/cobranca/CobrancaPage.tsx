@@ -14,6 +14,7 @@ import {
 } from '@/services/billing';
 import { isInternalPlan, resolveCurrentPlanId, isPlanVisible, canUpgradeTo } from './plan-display';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
+import { UsagePanel } from './UsagePanel';
 import './cobranca.css';
 
 const RECOMMENDED_ID = 'pro';
@@ -211,6 +212,8 @@ export default function CobrancaPage() {
           </div>
         </div>
       )}
+
+      <UsagePanel />
 
       <div className="billing-toolbar">
         <div className="billing-toggle" role="group" aria-label="Período de cobrança">
