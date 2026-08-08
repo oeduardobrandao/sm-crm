@@ -1734,12 +1734,11 @@ body {
   background: var(--cta-bg);
   color: var(--cta-fg);
   border: 1px solid var(--cta-bg);
-  padding: 0.6rem 1.25rem;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  font-family: var(--font-main);
+  font-size: 0.8rem;
   font-weight: 500;
-  letter-spacing: 0.1em;
   cursor: pointer;
   transition:
     background var(--transition),
@@ -1758,12 +1757,11 @@ body {
   background: transparent;
   color: var(--danger);
   border: 1px solid var(--danger);
-  padding: 0.6rem 1.25rem;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  font-family: var(--font-main);
+  font-size: 0.8rem;
   font-weight: 500;
-  letter-spacing: 0.1em;
   cursor: pointer;
   transition:
     background var(--transition),
@@ -1781,12 +1779,11 @@ body {
   background: transparent;
   color: var(--text-muted);
   border: 1px solid var(--border-color);
-  padding: 0.6rem 1.25rem;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  font-family: var(--font-main);
+  font-size: 0.8rem;
   font-weight: 500;
-  letter-spacing: 0.1em;
   cursor: pointer;
   transition: all var(--transition);
   display: inline-flex;
@@ -1809,6 +1806,10 @@ body {
   color: var(--text-muted);
 }
 .btn-icon:hover {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+.btn-icon--danger:hover {
   background: #fee2e2;
   color: var(--danger);
 }
@@ -3960,11 +3961,10 @@ select.form-input option {
   color: var(--cta-fg);
   border: none;
   padding: 0.45rem 0.85rem;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
+  border-radius: 10px;
+  font-family: var(--font-main);
+  font-size: 0.75rem;
   font-weight: 600;
-  letter-spacing: 0.05em;
   display: flex;
   align-items: center;
   gap: 6px;
