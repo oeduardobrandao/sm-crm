@@ -104,10 +104,10 @@ function Badge({
 }) {
   const palette: Record<string, { bg: string; fg: string }> = {
     neutral: { bg: '#f1f5f9', fg: '#374151' },
-    success: { bg: 'rgba(62,207,142,.15)', fg: '#1e9e66' },
-    warning: { bg: 'rgba(245,163,66,.15)', fg: '#b47011' },
+    success: { bg: 'rgba(62,207,142,.15)', fg: '#15803d' },
+    warning: { bg: 'rgba(245,163,66,.15)', fg: '#92590b' },
     danger: { bg: 'rgba(245,90,66,.12)', fg: '#c23b22' },
-    yellow: { bg: 'rgba(255,191,48,.18)', fg: '#a16207' },
+    yellow: { bg: 'rgba(255,191,48,.18)', fg: '#8a5a06' },
     teal: { bg: 'rgba(66,200,245,.15)', fg: '#0e7a9b' },
     dark: { bg: '#12151a', fg: '#fff' },
   };
@@ -262,7 +262,7 @@ export function HeroDemo() {
                 padding: '5px 9px',
                 borderRadius: 9999,
                 background: 'rgba(62,207,142,.12)',
-                color: '#1e9e66',
+                color: '#15803d',
                 fontSize: 10,
                 fontWeight: 600,
                 fontFamily: MONO,
@@ -365,7 +365,7 @@ export function HeroDemo() {
               >
                 7
               </div>
-              <div style={{ fontSize: 10, color: BRAND.green, marginTop: 2, fontWeight: 600 }}>
+              <div style={{ fontSize: 10, color: '#15803d', marginTop: 2, fontWeight: 600 }}>
                 +1 novo
               </div>
             </div>
@@ -400,7 +400,7 @@ export function HeroDemo() {
               >
                 42
               </div>
-              <div style={{ fontSize: 10, color: BRAND.teal, marginTop: 2, fontWeight: 600 }}>
+              <div style={{ fontSize: 10, color: '#0e7a9b', marginTop: 2, fontWeight: 600 }}>
                 12 aprovados
               </div>
             </div>
@@ -499,7 +499,7 @@ export function HeroDemo() {
                   <span
                     style={{
                       fontSize: 8,
-                      color: '#9ca3af',
+                      color: '#6b7280',
                       fontFamily: MONO,
                       letterSpacing: '.08em',
                     }}
@@ -605,7 +605,7 @@ export function HeroDemo() {
           <div
             style={{
               fontSize: 9,
-              color: '#9ca3af',
+              color: '#6b7280',
               fontFamily: MONO,
               marginTop: 4,
               letterSpacing: '.06em',
@@ -1217,7 +1217,13 @@ export function HubVisual() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <img src="/logo-white.svg" style={{ height: 14 }} alt="" />
+          <img
+            src="/logo-white.svg"
+            width={1468}
+            height={186}
+            style={{ height: 14, width: 'auto' }}
+            alt=""
+          />
           <span
             style={{
               padding: '2px 7px',

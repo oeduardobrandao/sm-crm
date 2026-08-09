@@ -46,12 +46,14 @@ export function renderLandingHtml(): string {
     .map(([href, label]) => `<a href="${href}">${label}</a>`)
     .join(' · ');
   return [
+    '<main>',
     `<h1>${h1}</h1>`,
     `<p>${esc(hero.sub)}</p>`,
     `<section><h2>${esc(featuresTitle)}</h2><p>${esc(featuresSub)}</p>${featureBlocks}</section>`,
     `<section><h2>${esc(agente.title)}</h2>${agente.paragraphs.map((p) => `<p>${emph(p)}</p>`).join('')}${bullets(agente.bullets)}</section>`,
     `<section><h2>${esc(how.title)}</h2>${steps}</section>`,
     `<section><h2>Perguntas frequentes</h2>${faqBlocks}</section>`,
+    '</main>',
     `<nav>${nav}</nav>`,
   ].join('');
 }

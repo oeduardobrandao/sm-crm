@@ -44,8 +44,20 @@ export function LandingHeader({ variant }: { variant: 'landing' | 'subpage' }) {
           aria-label="Mesaas"
           style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}
         >
-          <img src="/logo-black.svg" className="hdr-logo logo-light" alt="" />
-          <img src="/logo-white.svg" className="hdr-logo logo-dark" alt="" />
+          <img
+            src="/logo-black.svg"
+            width={1468}
+            height={186}
+            className="hdr-logo logo-light"
+            alt=""
+          />
+          <img
+            src="/logo-white.svg"
+            width={1468}
+            height={186}
+            className="hdr-logo logo-dark"
+            alt=""
+          />
         </a>
         <nav className="hdr-nav">
           {variant === 'landing'
@@ -92,8 +104,22 @@ export function LandingFooter() {
       <div className="lp-container">
         <div className="footer-grid">
           <div className="footer-col">
-            <img src="/logo-black.svg" style={{ height: 22 }} className="logo-light" alt="Mesaas" />
-            <img src="/logo-white.svg" style={{ height: 22 }} className="logo-dark" alt="Mesaas" />
+            <img
+              src="/logo-black.svg"
+              width={1468}
+              height={186}
+              style={{ height: 22, width: 'auto' }}
+              className="logo-light"
+              alt="Mesaas"
+            />
+            <img
+              src="/logo-white.svg"
+              width={1468}
+              height={186}
+              style={{ height: 22, width: 'auto' }}
+              className="logo-dark"
+              alt="Mesaas"
+            />
             <p className="footer-tag">
               Gestão inteligente para social media managers. Feito no Brasil, pensado para quem
               entrega conteúdo todo dia.
@@ -158,13 +184,13 @@ export function LandingFooter() {
           © 2025 Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS
         </span>
         <div className="footer-socials">
-          <a href="https://www.instagram.com/mesaas.com.br/">
+          <a href="https://www.instagram.com/mesaas.com.br/" aria-label="Instagram do Mesaas">
             <Instagram size={18} />
           </a>
-          <a href="#">
+          <a href="#" aria-label="LinkedIn do Mesaas">
             <Linkedin size={18} />
           </a>
-          <a href="#">
+          <a href="#" aria-label="YouTube do Mesaas">
             <Youtube size={18} />
           </a>
         </div>

@@ -1,4 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
+/* Plus Jakarta Sans (incl. the 900 the hero title uses) is loaded once from the
+   document head — do not re-import it here, the duplicate @import chained an extra
+   render-blocking request (PageSpeed: network dependency tree). Fraunces/Instrument
+   Sans are only used below the fold (testimonial + Hub mockup), so lazy-loading them
+   with this chunk is fine. */
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600;700&display=swap');
 
 /* ---- animations ---- */
@@ -98,7 +102,7 @@ color:#374151;
   max-width:1200px;margin:0 auto;padding:16px 28px;
   display:flex;align-items:center;justify-content:space-between;gap:24px;
 }
-.hdr-logo{height:24px;display:block}
+.hdr-logo{height:24px;width:auto;display:block}
 .hdr-nav{display:flex;gap:4px}
 .hdr-nav button{
   color:#4b5563;font-size:.88rem;font-weight:500;
@@ -317,7 +321,11 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
 }
 .plan-card-skeleton{min-height:360px;pointer-events:none;gap:14px}
 .pricing-loading-status{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.pricing-sk{display:block;border-radius:7px;background:linear-gradient(90deg,#eef0f3 25%,#f7f8fa 50%,#eef0f3 75%);background-size:200% 100%;animation:pricing-shimmer 1.3s ease-in-out infinite}
+/* Shimmer sweeps a translated pseudo-element instead of animating background-position:
+   transform animations run on the compositor, background-position ones do not
+   (PageSpeed: avoid non-composited animations). */
+.pricing-sk{display:block;position:relative;overflow:hidden;border-radius:7px;background:#eef0f3}
+.pricing-sk::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,#f7f8fa 50%,transparent);transform:translateX(-100%);animation:pricing-shimmer 1.3s ease-in-out infinite}
 .pricing-sk--name{width:38%;height:22px}
 .pricing-sk--price{width:66%;height:34px;margin-top:6px}
 .pricing-sk--description{width:88%;height:32px;margin-top:8px}
@@ -325,8 +333,8 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
 .pricing-sk--button{width:100%;height:44px;margin-top:auto}
 .pricing-state{grid-column:1/-1;min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;color:#4b5563;border:1px solid rgba(30,36,48,.08);border-radius:16px;background:#fff;padding:32px}
 .pricing-state .lp-btn{width:auto}
-@keyframes pricing-shimmer{to{background-position:-200% 0}}
-@media(prefers-reduced-motion:reduce){.pricing-sk{animation:none}}
+@keyframes pricing-shimmer{to{transform:translateX(100%)}}
+@media(prefers-reduced-motion:reduce){.pricing-sk::after{animation:none}}
 .plan-card:hover{transform:translateY(-3px);box-shadow:0 16px 40px -12px rgba(0,0,0,.1)}
 .plan-card.highlight{
   border-color:#FFBF30;box-shadow:0 16px 40px -12px rgba(255,191,48,.3),inset 0 0 0 1px #FFBF30;
@@ -548,7 +556,8 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
 
 /* pricing */
 [data-theme='dark'] .plan-card{background:#12151a;border-color:rgba(255,255,255,.08);box-shadow:0 1px 2px rgba(0,0,0,.2)}
-[data-theme='dark'] .pricing-sk{background:linear-gradient(90deg,#1a1e26 25%,#242a34 50%,#1a1e26 75%);background-size:200% 100%}
+[data-theme='dark'] .pricing-sk{background:#1a1e26}
+[data-theme='dark'] .pricing-sk::after{background:linear-gradient(90deg,transparent,#242a34 50%,transparent)}
 [data-theme='dark'] .pricing-state{color:#94a3b8;background:#12151a;border-color:rgba(255,255,255,.08)}
 [data-theme='dark'] .plan-card:hover{box-shadow:0 16px 40px -12px rgba(0,0,0,.4)}
 [data-theme='dark'] .plan-card.highlight{
