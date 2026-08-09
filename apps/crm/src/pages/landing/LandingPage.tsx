@@ -77,15 +77,17 @@ export default function LandingPage() {
     <div ref={rootRef} className="lp-root">
       <PromoBanner />
       <LandingHeader variant="landing" />
-      <Hero />
-      <Ticker />
-      <Features />
-      <AgentSection />
-      <HowItWorks />
-      <Testimonial />
-      <PricingSection />
-      <FaqSection items={[...LANDING.faq]} />
-      <CtaFinal />
+      <main>
+        <Hero />
+        <Ticker />
+        <Features />
+        <AgentSection />
+        <HowItWorks />
+        <Testimonial />
+        <PricingSection />
+        <FaqSection items={[...LANDING.faq]} />
+        <CtaFinal />
+      </main>
       <LandingFooter />
     </div>
   );
@@ -310,7 +312,9 @@ function CtaFinal() {
         <div className="cta-final-card reveal">
           <img
             src="/icon.svg"
-            style={{ height: 44, margin: '0 auto 22px', display: 'block' }}
+            width={250}
+            height={170}
+            style={{ height: 44, width: 'auto', margin: '0 auto 22px', display: 'block' }}
             alt=""
           />
           {user ? (

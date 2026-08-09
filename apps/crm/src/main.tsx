@@ -28,7 +28,16 @@ installDeployRecovery();
 watchForNewVersion({ onNewVersion: showNewVersionToast });
 
 initSentry();
-initAnalytics();
+
+// PostHog pulls in ~108 KiB of lazy extensions (recorder, surveys, web-vitals) as soon as it
+// boots. Initializing on idle keeps all of that off the landing page's critical path without
+// losing any feature: `capture_pageview` still fires on init with the current URL, and every
+// capture/identify helper no-ops safely until then (PageSpeed: third-party payload).
+if ('requestIdleCallback' in window) {
+  requestIdleCallback(() => initAnalytics(), { timeout: 3000 });
+} else {
+  setTimeout(() => initAnalytics(), 1500);
+}
 
 initI18n({
   pt: {
