@@ -211,6 +211,13 @@ begin
   assert v_res->>'skipped' = 'below_threshold',
     format('expected skipped=below_threshold, got %s', v_res);
 
+  -- Exactly AT the threshold: still skip. The UI promises "somente quando o
+  -- uso PASSAR DE X%", so equality is not "passar de" (75% of 104857600).
+  update workspaces set storage_used_bytes = 78643200 where id = v_ws;
+  v_res := storage_autoclean_run(v_ws);
+  assert v_res->>'skipped' = 'below_threshold',
+    format('usage exactly at the threshold must skip, got %s', v_res);
+
   -- Unlimited quota + threshold: percentage undefined, fail-safe skip.
   update workspaces
      set storage_autoclean_enabled = true, storage_autoclean_threshold_pct = 50

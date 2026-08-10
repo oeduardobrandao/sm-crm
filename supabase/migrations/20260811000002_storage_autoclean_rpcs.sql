@@ -168,7 +168,9 @@ BEGIN
     IF v_quota IS NULL THEN
       -- Cota ilimitada: percentual indefinido. Fail-safe: nunca apagar.
       RETURN jsonb_build_object('skipped', 'no_quota');
-    ELSIF v_quota > 0 AND v_used * 100 < v_threshold::bigint * v_quota THEN
+    -- Não-estrito de propósito: a UI promete "somente quando o uso PASSAR DE
+    -- X%", então uso exatamente igual ao limiar ainda pula.
+    ELSIF v_quota > 0 AND v_used * 100 <= v_threshold::bigint * v_quota THEN
       RETURN jsonb_build_object('skipped', 'below_threshold');
     END IF;
     -- v_quota = 0 (bloqueado): qualquer uso excede o limiar; segue.
