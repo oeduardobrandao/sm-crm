@@ -271,10 +271,14 @@ export function listWorkspaces(params?: {
   offset?: number;
   limit?: number;
 }) {
-  return adminApi<{ workspaces: WorkspaceSummary[]; total: number }>(
-    'list-workspaces',
-    params || {},
-  );
+  return adminApi<{
+    workspaces: WorkspaceSummary[];
+    total: number;
+    /** Membership count across the whole filtered set, not just the returned page. */
+    total_members: number;
+    /** Workspaces with plan overrides across the whole filtered set, not just the page. */
+    total_with_overrides: number;
+  }>('list-workspaces', params || {});
 }
 
 export function getWorkspace(workspace_id: string) {

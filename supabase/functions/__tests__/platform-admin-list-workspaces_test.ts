@@ -16,7 +16,12 @@ function makeFakeRpcDb(result: unknown) {
 const HEADERS = { "Content-Type": "application/json" };
 
 Deno.test("list-workspaces delegates to admin_list_workspaces and passes filters through", async () => {
-  const payload = { total: 42, workspaces: [{ id: "ws-1", name: "Alpha" }] };
+  const payload = {
+    total: 42,
+    total_members: 99,
+    total_with_overrides: 7,
+    workspaces: [{ id: "ws-1", name: "Alpha" }],
+  };
   const { db, rpcCalls } = makeFakeRpcDb(payload);
 
   const res = await handleListWorkspaces(
@@ -28,6 +33,8 @@ Deno.test("list-workspaces delegates to admin_list_workspaces and passes filters
   assertEquals(res.status, 200);
   const body = await res.json();
   assertEquals(body.total, 42);
+  assertEquals(body.total_members, 99);
+  assertEquals(body.total_with_overrides, 7);
   assertEquals(body.workspaces.length, 1);
   assertEquals(rpcCalls.length, 1);
   assertEquals(rpcCalls[0].fn, "admin_list_workspaces");
@@ -44,7 +51,7 @@ Deno.test("list-workspaces defaults offset 0 / limit 20 and null filters", async
   const res = await handleListWorkspaces(db as unknown as SupabaseClient, {}, HEADERS);
   assertEquals(res.status, 200);
   const body = await res.json();
-  assertEquals(body, { workspaces: [], total: 0 });
+  assertEquals(body, { workspaces: [], total: 0, total_members: 0, total_with_overrides: 0 });
   assertEquals(rpcCalls[0].params, { p_search: null, p_plan_id: null, p_offset: 0, p_limit: 20 });
 });
 
@@ -53,5 +60,5 @@ Deno.test("list-workspaces tolerates a null RPC payload", async () => {
   const res = await handleListWorkspaces(db as unknown as SupabaseClient, {}, HEADERS);
   assertEquals(res.status, 200);
   const body = await res.json();
-  assertEquals(body, { workspaces: [], total: 0 });
+  assertEquals(body, { workspaces: [], total: 0, total_members: 0, total_with_overrides: 0 });
 });

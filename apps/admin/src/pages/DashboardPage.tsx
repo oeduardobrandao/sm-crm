@@ -33,8 +33,10 @@ export default function DashboardPage() {
 
   const totalWorkspaces = workspacesData?.total ?? 0;
   const activePlans = plansData?.plans?.length ?? 0;
-  const withOverrides = workspacesData?.workspaces?.filter((w) => w.has_overrides).length ?? 0;
-  const totalMembers = workspacesData?.workspaces?.reduce((sum, w) => sum + w.member_count, 0) ?? 0;
+  // Platform-wide counts from the RPC — deriving them from the fetched page would
+  // under-count once there are more workspaces than the page size.
+  const withOverrides = workspacesData?.total_with_overrides ?? 0;
+  const totalMembers = workspacesData?.total_members ?? 0;
 
   // Trials carry an *expected* MRR (what they convert to); the Total card sums realized + expected.
   const trialMrrCents = trialsData?.trial_mrr_cents ?? null;
