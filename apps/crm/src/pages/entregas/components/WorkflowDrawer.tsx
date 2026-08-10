@@ -1320,7 +1320,12 @@ function SortablePostItem({
             />
           )}
 
-          <PostMediaGallery postId={post.id!} />
+          <PostMediaGallery
+            postId={post.id!}
+            mediaAutocleanedAt={post.media_autocleaned_at}
+            instagramPermalink={post.instagram_permalink}
+            tiktokPostUrl={post.tiktok_post_url}
+          />
 
           {editSuggestion ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">

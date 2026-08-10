@@ -54,6 +54,10 @@ export interface WorkflowPost {
   created_at?: string;
   updated_at?: string;
   created_via?: 'human' | 'agent';
+  /** Set by the storage auto-clean when the post's media was deleted after
+   * publication (spec 2026-08-10). Distinguishes "cleaned" from "never had
+   * media" so the gallery can render the removal placeholder. */
+  media_autocleaned_at?: string | null;
 }
 
 export interface ClientePost {

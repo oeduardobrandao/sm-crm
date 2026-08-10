@@ -65,6 +65,30 @@ describe('getNotificationDisplay', () => {
     expect(display.body).toBe('Story de aniversário');
   });
 
+  it('storage_autoclean_report shows files count and bytes freed', () => {
+    const display = getNotificationDisplay('storage_autoclean_report', {
+      files_count: 37,
+      bytes_freed: 1.4 * 1024 ** 3,
+    });
+
+    expect(display.title).toBe('Limpeza de armazenamento');
+    expect(display.body).toBe('37 arquivos removidos · 1,4 GB liberados');
+    expect(display.tone).toBe('primary');
+    expect(display.icon).toBeDefined();
+  });
+
+  it('storage_autoclean_report singularizes one file and survives missing metadata', () => {
+    expect(
+      getNotificationDisplay('storage_autoclean_report', {
+        files_count: 1,
+        bytes_freed: 500 * 1024 ** 2,
+      }).body,
+    ).toBe('1 arquivo removido · 500 MB liberados');
+    expect(getNotificationDisplay('storage_autoclean_report', null).body).toBe(
+      '0 arquivos removidos · 0 MB liberados',
+    );
+  });
+
   it('still falls back to default for unknown types', () => {
     const display = getNotificationDisplay('future_unknown_type' as any, {});
 

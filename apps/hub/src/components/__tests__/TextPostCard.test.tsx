@@ -120,3 +120,75 @@ describe('TextPostCard', () => {
     expect(screen.getByText('Instagram')).toBeInTheDocument();
   });
 });
+
+// Storage auto-clean placeholder (spec 2026-08-10): a published post whose
+// media was deleted routes to the text card; the banner must say why and keep
+// a path to the live publication.
+describe('TextPostCard auto-clean banner', () => {
+  it('shows the removal banner with the Instagram link', () => {
+    render(
+      <TextPostCard
+        post={makePost({
+          status: 'postado',
+          media_autocleaned_at: '2026-08-05T05:30:00Z',
+          instagram_permalink: 'https://www.instagram.com/p/abc/',
+        })}
+        token="token-publico"
+        approvals={[]}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Mídia removida para liberar espaço')).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: /Ver no Instagram/ });
+    expect(link).toHaveAttribute('href', 'https://www.instagram.com/p/abc/');
+  });
+
+  it('falls back to the TikTok link and hides the CTA when no URL exists', () => {
+    const { rerender } = render(
+      <TextPostCard
+        post={makePost({
+          status: 'postado',
+          media_autocleaned_at: '2026-08-05T05:30:00Z',
+          instagram_permalink: null,
+          tiktok_post_url: 'https://www.tiktok.com/@x/video/1',
+        })}
+        token="token-publico"
+        approvals={[]}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('link', { name: /Ver no TikTok/ })).toHaveAttribute(
+      'href',
+      'https://www.tiktok.com/@x/video/1',
+    );
+
+    rerender(
+      <TextPostCard
+        post={makePost({
+          status: 'postado',
+          media_autocleaned_at: '2026-08-05T05:30:00Z',
+          instagram_permalink: null,
+          tiktok_post_url: null,
+        })}
+        token="token-publico"
+        approvals={[]}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Mídia removida para liberar espaço')).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('never shows the banner on a post that was not cleaned', () => {
+    render(
+      <TextPostCard
+        post={makePost()}
+        token="token-publico"
+        approvals={[]}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText('Mídia removida para liberar espaço')).not.toBeInTheDocument();
+  });
+});

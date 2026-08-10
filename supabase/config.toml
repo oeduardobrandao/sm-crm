@@ -173,3 +173,6 @@ verify_jwt = false
 # working; does not affect the hosted project.
 [analytics]
 enabled = false
+
+[functions.storage-autoclean-cron]
+verify_jwt = false

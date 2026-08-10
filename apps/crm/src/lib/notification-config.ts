@@ -8,6 +8,7 @@ import {
   ClipboardCheck,
   Clock,
   FilePen,
+  HardDrive,
   Instagram,
   Lightbulb,
   MessageSquare,
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react';
 import type { NotificationType } from '../store';
 import { STATUS_LABELS } from '../pages/entregas/postLabels';
+import { formatStorageBytes } from '../components/usage/usage-meter-state';
 
 type Tone = 'success' | 'warning' | 'danger' | 'teal' | 'primary';
 
@@ -207,6 +209,16 @@ export function getNotificationDisplay(
         title: 'Falha na publicação',
         body: m.client_name ? `${client} · ${post}` : post,
       };
+    case 'storage_autoclean_report': {
+      const filesCount = typeof m.files_count === 'number' ? m.files_count : 0;
+      const bytesFreed = typeof m.bytes_freed === 'number' ? m.bytes_freed : 0;
+      return {
+        icon: HardDrive,
+        tone: 'primary',
+        title: 'Limpeza de armazenamento',
+        body: `${filesCount} ${filesCount === 1 ? 'arquivo removido' : 'arquivos removidos'} · ${formatStorageBytes(bytesFreed)} liberados`,
+      };
+    }
     default:
       // Resilience: a notification type the DB allows but the UI doesn't know yet
       // (e.g. added by a migration ahead of the frontend) must never crash the list.

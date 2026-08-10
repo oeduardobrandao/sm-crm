@@ -57,12 +57,19 @@ Uma função SQL compartilhada `storage_autoclean_candidates(p_workspace, p_cuto
 usada pela preview E pelo executor (zero deriva). Um arquivo qualifica sse:
 
 - pertence ao workspace;
-- tem ≥1 `post_file_links` (arquivos só do Arquivos, documentos e logos de marca
-  ficam estruturalmente de fora);
-- NENHUM link desqualifica: post de outro tenant, `status <> 'postado'`, ou
-  `COALESCE(published_at, scheduled_at)` NULL ou depois do cutoff (o data-import
-  pode criar `postado` com `published_at` NULL e `scheduled_at` futuro);
-- não é referenciado por `ideia_files`.
+- tem ≥1 `post_file_links` (arquivos só do Arquivos e documentos ficam
+  estruturalmente de fora);
+- NENHUM link desqualifica: link OU post de outro tenant (`post_file_links` não
+  tem FK composta de tenant; link malformado ⇒ arquivo inelegível, fail-safe),
+  `status <> 'postado'`, ou `published_at` NULL ou depois do cutoff;
+- não é referenciado por `ideia_files` nem por `hub_brand.logo_file_id` (SET
+  NULL: o delete não falharia, o logo do Hub sumiria em silêncio).
+
+`published_at` sem fallback: `postado` garante `published_at` não-nulo por todos
+os caminhos de escrita (trigger 20260601000001 em INSERT+UPDATE; o clamp do
+data-import degrada `postado` sem data para `rascunho` e com data futura para
+`aprovado_cliente` — invariante em 20260729000004). O `IS NULL` fica só como
+cinto-e-suspensórios.
 
 Nunca usar `reference_count` como gate (inflado em linhas antigas do Estúdio);
 contar linhas de link reais.
@@ -70,15 +77,20 @@ contar linhas de link reais.
 ### Executor
 
 RPC `storage_autoclean_run(p_workspace, p_max_files DEFAULT 500)` — SECURITY
-DEFINER, service-role-only, uma transação: lock do workspace (`FOR UPDATE`),
-checagem de política + limiar (`effective_plan_limit`), candidatos com
-`ORDER BY file_id LIMIT p_max_files` (batch determinístico; sobras na próxima
-noite), carimbo de `media_autocleaned_at`, DELETE dos links (FK RESTRICT) e depois
-dos files (triggers cuidam de R2 + contabilidade), atualização de
-`storage_autoclean_last_*`, audit_log (`action='storage_autoclean'`) e
-`insert_notification_batch` (tipo `storage_autoclean_report`, owners+admins).
-NUNCA criar um RPC `decrement_storage` (o file-manage chama um inexistente com
-`.catch(()=>{})`; criar causaria decremento duplo).
+DEFINER, service-role-only (REVOKE de PUBLIC/anon/authenticated + GRANT
+service_role explícitos, como no `workspace_usage`), uma transação: lock do
+workspace (`FOR UPDATE`), checagem de política + limiar
+(`effective_plan_limit`), candidatos com `ORDER BY file_id LIMIT p_max_files`
+(batch determinístico; sobras na próxima noite), carimbo de
+`media_autocleaned_at`, DELETE dos links escopado ao tenant (FK RESTRICT) e
+depois dos files com recheck anti-corrida (`NOT EXISTS` link ⇒ um link criado
+entre a seleção e o delete faz o arquivo ser PULADO em vez de estourar a FK e
+abortar a noite; contabiliza só o apagado de fato via `RETURNING`), atualização
+de `storage_autoclean_last_*`, audit_log (`action='storage_autoclean'`) e
+`insert_notification_batch` (tipo `storage_autoclean_report`, owners+admins —
+o CHECK de `notifications.type` ganha o valor novo em migration própria, antes
+da primeira execução). NUNCA criar um RPC `decrement_storage` (o file-manage
+chama um inexistente com `.catch(()=>{})`; criar causaria decremento duplo).
 
 Preview: `storage_autoclean_preview(p_delay_days DEFAULT NULL)` — espelho de
 segurança do `workspace_usage` (definer + `get_my_conta_id()` + recheck de
@@ -100,10 +112,16 @@ continua após erro por workspace, agrega e reporta uma vez.
   oculto em plano ilimitado), caixa de estimativa ao vivo, linha de última
   execução, botão salvar. Guard interno `useIsWorkspaceOwner()`.
 - CRM (drawer de Entregas): card tracejado "Mídia removida para liberar espaço" +
-  data + botão "Ver publicação no Instagram" quando `media_autocleaned_at` está
-  setado e o post não tem mídia.
-- Hub: área de capa do card vira o placeholder com pill "Ver no Instagram" na cor
+  data + botão de link externo quando `media_autocleaned_at` está setado e o post
+  não tem mídia. O CTA é agnóstico de plataforma: `instagram_permalink` ⇒ "Ver
+  publicação no Instagram"; senão `tiktok_post_url` ⇒ "Ver publicação no TikTok";
+  sem nenhum ⇒ sem botão (post TikTok-only pode ser `postado` sem permalink IG).
+- Hub: área de capa do card vira o placeholder com a mesma regra de CTA na cor
   da marca.
+- Contrato de leitura ponta a ponta: `media_autocleaned_at` (e `tiktok_post_url`
+  onde faltar) entra nas projeções explícitas do CRM (`store/posts.ts`,
+  `useEntregasData`) e do Hub (`hub-posts/handler.ts` + tipo `HubPost`) — sem
+  isso os placeholders renderizariam contra dados que nunca chegam.
 - Notificação no sino: "Limpeza de armazenamento · N arquivos removidos · X
   liberados".
 
