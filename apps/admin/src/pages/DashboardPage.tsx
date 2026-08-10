@@ -37,6 +37,7 @@ export default function DashboardPage() {
   // under-count once there are more workspaces than the page size.
   const withOverrides = workspacesData?.total_with_overrides ?? 0;
   const totalMembers = workspacesData?.total_members ?? 0;
+  const totalClients = workspacesData?.total_clients ?? 0;
 
   // Trials carry an *expected* MRR (what they convert to); the Total card sums realized + expected.
   const trialMrrCents = trialsData?.trial_mrr_cents ?? null;
@@ -54,6 +55,7 @@ export default function DashboardPage() {
   const kpis: { label: string; value: string | number; sub?: string; loading: boolean }[] = [
     { label: 'Workspaces', value: totalWorkspaces, loading: wsLoading },
     { label: 'Total Users', value: totalMembers, loading: wsLoading },
+    { label: 'Total Clients', value: totalClients, loading: wsLoading },
     { label: 'Active Plans', value: activePlans, loading: plansLoading },
     { label: 'With Overrides', value: withOverrides, loading: wsLoading },
     {
