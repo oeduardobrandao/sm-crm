@@ -276,6 +276,8 @@ export function listWorkspaces(params?: {
     total: number;
     /** Membership count across the whole filtered set, not just the returned page. */
     total_members: number;
+    /** Client count across the whole filtered set, not just the returned page. */
+    total_clients: number;
     /** Workspaces with plan overrides across the whole filtered set, not just the page. */
     total_with_overrides: number;
   }>('list-workspaces', params || {});
