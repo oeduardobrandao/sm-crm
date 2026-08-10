@@ -78,7 +78,11 @@
     "thumbnailFallback": "Não foi possível gerar a miniatura automaticamente. Selecione uma imagem de capa para",
     "remainingVideos": "{{count}} vídeo(s) aguardando miniatura",
     "carouselLimit": "Carrossel acima do limite do Instagram",
-    "carouselLimitDesc": "Carrosséis publicados via Instagram aceitam no máximo {{max}} itens (este post tem {{count}}). O app permite 20, mas a publicação automática é limitada a {{max}}."
+    "carouselLimitDesc": "Carrosséis publicados via Instagram aceitam no máximo {{max}} itens (este post tem {{count}}). O app permite 20, mas a publicação automática é limitada a {{max}}.",
+    "autocleanedTitle": "Mídia removida para liberar espaço",
+    "autocleanedDesc": "Removida automaticamente em {{date}}, conforme a política de armazenamento do workspace.",
+    "autocleanedViewInstagram": "Ver publicação no Instagram",
+    "autocleanedViewTiktok": "Ver publicação no TikTok"
   },
   "thumbnailEditor": {
     "title": "Miniatura do vídeo",

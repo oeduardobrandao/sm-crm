@@ -129,6 +129,47 @@ export async function updateHubBranding(fields: Partial<HubBranding>): Promise<v
   if (error) throw error;
 }
 
+// Auto-limpeza de armazenamento (Configurações → Armazenamento). Owner-only:
+// the RLS row policy lets admins update workspaces, but a BEFORE UPDATE guard
+// trigger (20260811000001) raises P0001 for the three policy columns when the
+// actor is not an owner. The last_* columns are written only by the executor
+// RPC; this surface is their ONE reader, and updateStorageAutoclean is the ONE
+// writer of the policy columns (one-writer-per-column, see updateHubBranding).
+// Throws on failure rather than returning defaults: same discipline as
+// getWorkspaceBranding above, for the same reason.
+export interface StorageAutocleanSettings {
+  storage_autoclean_enabled: boolean;
+  storage_autoclean_delay_days: number;
+  storage_autoclean_threshold_pct: number | null;
+  storage_autoclean_last_run_at: string | null;
+  storage_autoclean_last_files: number | null;
+  storage_autoclean_last_bytes: number | null;
+}
+
+export async function getStorageAutoclean(): Promise<StorageAutocleanSettings> {
+  const contaId = await getContaId();
+  const { data, error } = await supabase
+    .from('workspaces')
+    .select(
+      'storage_autoclean_enabled, storage_autoclean_delay_days, storage_autoclean_threshold_pct, storage_autoclean_last_run_at, storage_autoclean_last_files, storage_autoclean_last_bytes',
+    )
+    .eq('id', contaId)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateStorageAutoclean(
+  fields: Pick<
+    StorageAutocleanSettings,
+    'storage_autoclean_enabled' | 'storage_autoclean_delay_days' | 'storage_autoclean_threshold_pct'
+  >,
+): Promise<void> {
+  const contaId = await getContaId();
+  const { error } = await supabase.from('workspaces').update(fields).eq('id', contaId);
+  if (error) throw error;
+}
+
 export async function switchWorkspace(workspaceId: string): Promise<void> {
   // Goes through the RPC, not a direct UPDATE: profiles.active_workspace_id and
   // profiles.conta_id are not writable by the client, because conta_id is the

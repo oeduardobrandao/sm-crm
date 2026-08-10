@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
-import { CheckCircle, AlertCircle, ChevronDown } from 'lucide-react';
+import { CheckCircle, AlertCircle, ChevronDown, ExternalLink, ImageOff } from 'lucide-react';
 import { submitApproval } from '../api';
+import { sanitizeExternalUrl } from '../lib/security';
 import { TIPO_LABEL, STATUS_LABEL, formatDate, PlatformBadge } from './PostCard';
 import { RichTextContent } from './RichTextContent';
 import type { HubPost, PostApproval } from '../types';
@@ -69,10 +70,41 @@ export function TextPostCard({
     }
   }
 
+  // Storage auto-clean: the media was deleted after publication, so this post
+  // landed on the text card. Say so, and keep a path to the live publication.
+  const autocleanedLink = post.media_autocleaned_at
+    ? post.instagram_permalink
+      ? { href: post.instagram_permalink, label: 'Ver no Instagram' }
+      : post.tiktok_post_url
+        ? { href: post.tiktok_post_url, label: 'Ver no TikTok' }
+        : null
+    : null;
+
   return (
     <div
       className={`hub-bg-card rounded-[10px] border transition-all ${expanded ? 'hub-border-strong shadow-sm' : 'hub-border hover:shadow-sm'}`}
     >
+      {post.media_autocleaned_at && (
+        <div className="hub-bg-soft rounded-t-[10px] border-b hub-border px-5 py-6 flex flex-col items-center justify-center gap-2 text-center">
+          <ImageOff size={20} className="hub-tx3 opacity-60" aria-hidden="true" />
+          <span className="text-[12.5px] font-medium hub-tx2">
+            Mídia removida para liberar espaço
+          </span>
+          {autocleanedLink && (
+            <a
+              href={sanitizeExternalUrl(autocleanedLink.href)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors hub-bg-card"
+              style={{ color: 'var(--hub-acc)', borderColor: 'var(--hub-acc)' }}
+            >
+              {autocleanedLink.label}
+              <ExternalLink size={11} aria-hidden="true" />
+            </a>
+          )}
+        </div>
+      )}
       <button
         className="w-full text-left px-5 py-4 flex items-start justify-between gap-3"
         onClick={() => setExpanded((e) => !e)}

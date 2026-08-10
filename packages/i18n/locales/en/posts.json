@@ -78,7 +78,11 @@
     "thumbnailFallback": "Could not generate a thumbnail automatically. Select a cover image for",
     "remainingVideos": "{{count}} video(s) awaiting a thumbnail",
     "carouselLimit": "Carousel exceeds Instagram's limit",
-    "carouselLimitDesc": "Carousels published via Instagram allow at most {{max}} items (this post has {{count}}). The app allows 20, but automatic publishing is limited to {{max}}."
+    "carouselLimitDesc": "Carousels published via Instagram allow at most {{max}} items (this post has {{count}}). The app allows 20, but automatic publishing is limited to {{max}}.",
+    "autocleanedTitle": "Media removed to free up storage",
+    "autocleanedDesc": "Removed automatically on {{date}}, per the workspace storage policy.",
+    "autocleanedViewInstagram": "View post on Instagram",
+    "autocleanedViewTiktok": "View post on TikTok"
   },
   "thumbnailEditor": {
     "title": "Video thumbnail",

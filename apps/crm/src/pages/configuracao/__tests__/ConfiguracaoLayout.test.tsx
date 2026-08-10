@@ -84,6 +84,7 @@ describe('ConfiguracaoLayout', () => {
       'Relatórios',
       'Status de posts',
       'Hub',
+      'Armazenamento',
       'Agentes (MCP)',
       'Plano & Cobrança',
     ]);
@@ -93,6 +94,7 @@ describe('ConfiguracaoLayout', () => {
     setAuth('admin');
     renderAt('/configuracao/perfil');
     expect(tabLabels()).not.toContain('Plano & Cobrança');
+    expect(tabLabels()).not.toContain('Armazenamento');
     expect(tabLabels()).toContain('Membros');
   });
 

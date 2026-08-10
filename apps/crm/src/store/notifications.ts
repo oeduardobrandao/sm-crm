@@ -20,7 +20,8 @@ export type NotificationType =
   | 'mention'
   | 'post_status_automation'
   | 'instagram_connected_by_client'
-  | 'post_publish_failed';
+  | 'post_publish_failed'
+  | 'storage_autoclean_report';
 
 export interface Notification {
   id: string;

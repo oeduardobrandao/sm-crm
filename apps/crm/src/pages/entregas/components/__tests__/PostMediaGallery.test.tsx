@@ -353,3 +353,76 @@ describe('PostMediaGallery design decoupling regression guard', () => {
     expect(screen.queryByTestId('design-ownership-banner')).toBeNull();
   });
 });
+
+// ============================================================
+
+// Storage auto-clean placeholder (spec 2026-08-10): an empty gallery on a post
+// stamped media_autocleaned_at means "removed to free storage", not "add some".
+describe('PostMediaGallery auto-clean placeholder', () => {
+  function renderStamped(extra?: {
+    instagramPermalink?: string | null;
+    tiktokPostUrl?: string | null;
+  }) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery
+          postId={7}
+          mediaAutocleanedAt="2026-08-05T05:30:00Z"
+          instagramPermalink={extra?.instagramPermalink ?? null}
+          tiktokPostUrl={extra?.tiktokPostUrl ?? null}
+        />
+      </QueryClientProvider>,
+    );
+  }
+
+  it('renders the placeholder with the Instagram link instead of the dropzone', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce([]);
+    renderStamped({ instagramPermalink: 'https://www.instagram.com/p/abc/' });
+
+    expect(await screen.findByText('Mídia removida para liberar espaço')).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: /Ver publicação no Instagram/ });
+    expect(link).toHaveAttribute('href', 'https://www.instagram.com/p/abc/');
+    expect(screen.queryByText('Adicionar')).toBeNull();
+  });
+
+  it('falls back to the TikTok link when there is no Instagram permalink', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce([]);
+    renderStamped({ tiktokPostUrl: 'https://www.tiktok.com/@x/video/1' });
+
+    expect(await screen.findByText('Mídia removida para liberar espaço')).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: /Ver publicação no TikTok/ });
+    expect(link).toHaveAttribute('href', 'https://www.tiktok.com/@x/video/1');
+  });
+
+  it('renders no publication link when the post has neither URL', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce([]);
+    renderStamped();
+
+    expect(await screen.findByText('Mídia removida para liberar espaço')).toBeInTheDocument();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
+  it('keeps the normal gallery when the post still has media', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce([
+      { id: 10, kind: 'image', origin: 'manual', url: 'https://x/y.jpg' } as never,
+    ]);
+    renderStamped({ instagramPermalink: 'https://www.instagram.com/p/abc/' });
+
+    await screen.findByText('Adicionar');
+    expect(screen.queryByText('Mídia removida para liberar espaço')).toBeNull();
+  });
+
+  it('keeps the dropzone when the post was never cleaned', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce([]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={7} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Adicionar')).toBeInTheDocument();
+    expect(screen.queryByText('Mídia removida para liberar espaço')).toBeNull();
+  });
+});

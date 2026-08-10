@@ -67,8 +67,12 @@ export interface HubPost {
   scheduled_at: string | null;
   ig_caption: string | null;
   instagram_permalink: string | null;
+  tiktok_post_url?: string | null;
   published_at: string | null;
   publish_error: string | null;
+  /** Set when the storage auto-clean removed this post's media after
+   * publication — an empty media list then means "removed", not "none yet". */
+  media_autocleaned_at?: string | null;
   workflow_id: number;
   workflow_titulo: string;
   workflow_created_at: string;

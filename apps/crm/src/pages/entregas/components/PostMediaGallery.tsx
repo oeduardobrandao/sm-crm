@@ -8,9 +8,12 @@ import {
   Trash2,
   AlertTriangle,
   Download,
+  ExternalLink,
   FolderOpen,
   Image as ImageIcon,
+  ImageOff,
 } from 'lucide-react';
+import { sanitizeUrl } from '@/utils/security';
 import { fetchWithRetry } from '@/utils/fetchWithRetry';
 import { downloadMedia } from '@/utils/downloadMedia';
 import { UploadHint } from '@/components/help/UploadHint';
@@ -48,6 +51,14 @@ interface PostMediaGalleryProps {
   disabled?: boolean;
   maxFiles?: number;
   onChange?: (media: PostMedia[]) => void;
+  /** workflow_posts.media_autocleaned_at: when set and the gallery is empty,
+   * the media was deleted by the storage auto-clean — render the removal
+   * placeholder instead of the upload dropzone. */
+  mediaAutocleanedAt?: string | null;
+  /** Publication link for the placeholder CTA. Platform-agnostic: Instagram
+   * wins when both exist; a TikTok-only post has no permalink. */
+  instagramPermalink?: string | null;
+  tiktokPostUrl?: string | null;
 }
 
 // Mirror of CAROUSEL_MAX_ITEMS in
@@ -55,7 +66,15 @@ interface PostMediaGalleryProps {
 // Instagram's Content Publishing API caps carousels at 10 (the native app allows 20).
 const CAROUSEL_MAX_ITEMS = 10;
 
-export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostMediaGalleryProps) {
+export function PostMediaGallery({
+  postId,
+  disabled,
+  maxFiles,
+  onChange,
+  mediaAutocleanedAt,
+  instagramPermalink,
+  tiktokPostUrl,
+}: PostMediaGalleryProps) {
   const { t } = useTranslation('posts');
   const { t: tc } = useTranslation();
   const qc = useQueryClient();
@@ -397,6 +416,40 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
             style={{ opacity }}
           />
         ))}
+      </div>
+    );
+  }
+
+  // Auto-clean placeholder: the media was deliberately deleted after
+  // publication, so an empty grid here means "removed", not "add some".
+  if (media.length === 0 && mediaAutocleanedAt) {
+    const publication = instagramPermalink
+      ? { href: instagramPermalink, label: t('mediaGallery.autocleanedViewInstagram') }
+      : tiktokPostUrl
+        ? { href: tiktokPostUrl, label: t('mediaGallery.autocleanedViewTiktok') }
+        : null;
+    return (
+      <div className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-stone-300 bg-stone-50 px-4 py-8 text-center dark:border-stone-600 dark:bg-stone-800">
+        <ImageOff className="h-5 w-5 text-stone-400 dark:text-stone-500" aria-hidden="true" />
+        <span className="text-[13px] font-semibold text-stone-700 dark:text-stone-200">
+          {t('mediaGallery.autocleanedTitle')}
+        </span>
+        <span className="text-[12px] text-stone-500 dark:text-stone-400">
+          {t('mediaGallery.autocleanedDesc', {
+            date: new Date(mediaAutocleanedAt).toLocaleDateString('pt-BR'),
+          })}
+        </span>
+        {publication && (
+          <a
+            href={sanitizeUrl(publication.href)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-[12px] font-medium text-stone-700 transition-colors hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-700"
+          >
+            {publication.label}
+            <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          </a>
+        )}
       </div>
     );
   }
