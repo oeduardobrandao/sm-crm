@@ -18,6 +18,9 @@ import DashboardPage from '../DashboardPage';
 beforeEach(() => {
   vi.mocked(listWorkspaces).mockResolvedValue({
     total: 7,
+    // Platform-wide, deliberately larger than the page's member_count sum (5):
+    // the Total Users card must read this, not sum the fetched page.
+    total_members: 12,
     workspaces: [
       { id: 'a', member_count: 3, has_overrides: false },
       { id: 'b', member_count: 2, has_overrides: true },
@@ -50,7 +53,7 @@ describe('DashboardPage per-card loading', () => {
   it('shows workspace and plan KPIs while the Stripe-backed queries are still loading', async () => {
     renderPage();
     await waitFor(() => expect(kpiCard('Workspaces').textContent).toContain('7'));
-    expect(kpiCard('Total Users').textContent).toContain('5'); // 3 + 2 members
+    expect(kpiCard('Total Users').textContent).toContain('12'); // platform-wide total_members
     expect(kpiCard('Active Plans').textContent).toContain('2');
     expect(kpiCard('With Overrides').textContent).toContain('1');
   });
