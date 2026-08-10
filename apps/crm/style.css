@@ -856,12 +856,14 @@ body {
 }
 
 .page-full-bleed {
-  /* 100% of .main-content, which already subtracts the topbar and banner.
-     100dvh here overflows the clipped container by --topbar-height, cutting
-     off the bottom strip of the page (the Arquivos storage meter lived there,
-     invisible on every viewport). */
-  height: 100%;
-  flex: 1;
+  /* Sized by flex (see the :has rule below), NOT by height. Any fixed height
+     (100dvh, then 100%) overflows the clipped .main-content by whatever the
+     shell renders ABOVE the page in flow (the context-help "Artigos
+     relacionados" bar, ~48px), cutting off the bottom strip of the page —
+     the Arquivos storage meter lived there, invisible on every viewport. */
+  height: auto;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .main-content:has(> .page-full-bleed) {
@@ -869,6 +871,11 @@ body {
   padding: 0 !important;
   overflow: hidden;
   border-radius: 0 16px 0 0;
+  /* Column flex so the full-bleed page takes exactly the space remaining
+     below in-flow shell elements (context-help bar), instead of a fixed
+     height that ignores them. */
+  display: flex;
+  flex-direction: column;
 }
 
 .main-content:has(> .page-full-bleed) > .app-logo-bar {
