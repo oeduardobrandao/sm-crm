@@ -26,6 +26,7 @@ import {
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { FolderTree } from './components/FolderTree';
 import { FileGrid, formatBytes } from './components/FileGrid';
+import { formatStorageBytes } from '@/components/usage/usage-meter-state';
 import { FilterPopover, EMPTY_FILTER, isFilterActive } from './components/FilterPopover';
 import type { FilterState } from './components/FilterPopover';
 import { FileUploader } from './components/FileUploader';
@@ -587,7 +588,7 @@ export default function ArquivosPage() {
               label="Armazenamento"
               used={storage.used_bytes}
               limit={storage.quota_bytes > 0 ? storage.quota_bytes : null}
-              format={formatBytes}
+              format={formatStorageBytes}
               unlimitedBadge={false}
               showUpgradeCta={isOwner}
               subText={
