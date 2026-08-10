@@ -856,7 +856,11 @@ body {
 }
 
 .page-full-bleed {
-  height: 100dvh;
+  /* 100% of .main-content, which already subtracts the topbar and banner.
+     100dvh here overflows the clipped container by --topbar-height, cutting
+     off the bottom strip of the page (the Arquivos storage meter lived there,
+     invisible on every viewport). */
+  height: 100%;
   flex: 1;
 }
 
