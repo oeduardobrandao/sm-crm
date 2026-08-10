@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -6,6 +6,11 @@ import { Form } from '@/components/ui/form';
 import { InviteSection } from '../InviteSection';
 import { membroSchema, MEMBRO_FORM_DEFAULTS, type MembroFormValues } from '../membroForm';
 import type { SeatState } from '../inviteSupport';
+
+// The seat meter's showUpgradeCta gates the "Fazer upgrade" Link on
+// useIsWorkspaceOwner. Mocked false so no CTA (and no react-router Link,
+// which would otherwise need a Router context) disturbs the copy assertions.
+vi.mock('@/hooks/useIsWorkspaceOwner', () => ({ useIsWorkspaceOwner: () => false }));
 
 function Harness({
   seat,

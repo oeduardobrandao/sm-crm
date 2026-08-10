@@ -35,6 +35,8 @@ import { MobileArquivosView } from './components/MobileArquivosView';
 import { PostMediaLightbox } from '../entregas/components/PostMediaLightbox';
 import { BulkActionBar } from './components/BulkActionBar';
 import { useSelection } from './hooks/useSelection';
+import { UsageMeter } from '@/components/usage/UsageMeter';
+import { useIsWorkspaceOwner } from '@/hooks/useIsWorkspaceOwner';
 import type { SortBy } from './components/FileGrid';
 import type { FileRecord, FolderContents } from './types';
 import type { PostMedia } from '../../store';
@@ -59,6 +61,7 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
 
 export default function ArquivosPage() {
   const isMobile = useIsMobile();
+  const isOwner = useIsWorkspaceOwner();
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<SortBy>('name');
@@ -580,30 +583,19 @@ export default function ArquivosPage() {
         {/* Storage usage bar */}
         {storage && (
           <div className="px-4 py-3 border-t border-[var(--border-color)]">
-            <div className="flex items-center justify-between text-xs text-[var(--text-muted)] mb-1.5">
-              <span>Armazenamento</span>
-              <span>
-                {storage.quota_bytes
-                  ? `${formatBytes(storage.used_bytes)} de ${formatBytes(storage.quota_bytes)}`
-                  : formatBytes(storage.used_bytes)}
-              </span>
-            </div>
-            {storage.quota_bytes > 0 && (
-              <div className="h-1.5 rounded-full bg-[var(--surface-hover)] overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{
-                    width: `${Math.min((storage.used_bytes / storage.quota_bytes) * 100, 100)}%`,
-                    backgroundColor:
-                      storage.used_bytes / storage.quota_bytes >= 1
-                        ? 'var(--danger)'
-                        : storage.used_bytes / storage.quota_bytes >= 0.9
-                          ? 'var(--warning)'
-                          : 'var(--primary-color)',
-                  }}
-                />
-              </div>
-            )}
+            <UsageMeter
+              label="Armazenamento"
+              used={storage.used_bytes}
+              limit={storage.quota_bytes > 0 ? storage.quota_bytes : null}
+              format={formatBytes}
+              unlimitedBadge={false}
+              showUpgradeCta={isOwner}
+              subText={
+                storage.quota_bytes > 0
+                  ? `${Math.min(100, Math.round((storage.used_bytes / storage.quota_bytes) * 100))}% usado`
+                  : undefined
+              }
+            />
           </div>
         )}
       </aside>

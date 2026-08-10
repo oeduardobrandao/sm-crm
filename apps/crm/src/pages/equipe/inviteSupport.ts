@@ -1,4 +1,5 @@
 import { entitlementMessage, mapEntitlementError } from '../../lib/entitlement-errors';
+import { computeEffectiveInviteStatus } from '../configuracao/inviteHelpers';
 
 export type SeatStatus = 'loading' | 'unavailable' | 'unlimited' | 'ok' | 'full';
 
@@ -37,6 +38,23 @@ export function computeSeatState(args: {
     used,
     limit: args.maxTeamMembers,
     remaining,
+  };
+}
+
+/**
+ * Pending-invite rows split for the Equipe page. `display` hides invites whose
+ * expires_at already passed (they must not RENDER as pending); `seatCount` is
+ * the RAW row count, because the server seat pre-check (_shared/
+ * invite-actions.ts) counts every status='pending' row regardless of expiry:
+ * an expired-but-unprocessed invite still consumes a seat until revoked or
+ * replaced. Counting filtered here would show capacity the server refuses.
+ */
+export function derivePendingInvites<T extends { status: string; expires_at?: string | null }>(
+  rows: T[],
+): { display: T[]; seatCount: number } {
+  return {
+    display: computeEffectiveInviteStatus(rows).filter((i) => i.status === 'pending'),
+    seatCount: rows.length,
   };
 }
 

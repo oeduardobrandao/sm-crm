@@ -11,12 +11,15 @@ import {
 } from '@/components/ui/select';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { InviteTimeLeft } from '../configuracao/inviteHelpers';
+import { UsageMeter } from '@/components/usage/UsageMeter';
+import { useIsWorkspaceOwner } from '@/hooks/useIsWorkspaceOwner';
 import type { MembroFormValues } from './membroForm';
 import type { SeatState } from './inviteSupport';
 
 const ROLE_PT: Record<string, string> = { owner: 'dono', admin: 'admin', agent: 'agente' };
 
 function SeatMeter({ seat, previewing }: { seat: SeatState; previewing: boolean }) {
+  const isOwner = useIsWorkspaceOwner();
   if (seat.status === 'unlimited') return null;
   if (seat.status === 'loading' || seat.status === 'unavailable') {
     return (
@@ -27,43 +30,21 @@ function SeatMeter({ seat, previewing }: { seat: SeatState; previewing: boolean 
   }
   const doPreview = previewing && seat.status === 'ok';
   const displayUsed = doPreview ? seat.used + 1 : seat.used;
-  const displayRemaining = doPreview ? Math.max(0, (seat.remaining ?? 0) - 1) : seat.remaining;
-  const pct = seat.limit ? Math.min(100, Math.round((displayUsed / seat.limit) * 100)) : 0;
-  const fill =
-    seat.status === 'full'
-      ? 'var(--danger)'
-      : displayRemaining !== null && displayRemaining <= 1
-        ? 'var(--warning)'
-        : 'var(--success)';
+  const displayRemaining = doPreview
+    ? Math.max(0, (seat.remaining ?? 0) - 1)
+    : (seat.remaining ?? 0);
   return (
     <div style={{ marginTop: 10 }}>
-      <div
-        style={{
-          height: 5,
-          borderRadius: 999,
-          background: 'var(--surface-2)',
-          overflow: 'hidden',
-          marginBottom: 5,
-        }}
-      >
-        <div style={{ height: '100%', borderRadius: 999, width: `${pct}%`, background: fill }} />
-      </div>
-      <div
-        style={{
-          fontSize: '0.72rem',
-          color: 'var(--text-light)',
-          display: 'flex',
-          justifyContent: 'space-between',
-        }}
-      >
-        <span>
-          {displayUsed} de {seat.limit}{' '}
-          {doPreview ? 'vagas após este convite' : 'vagas do plano usadas'}
-        </span>
-        <span>
-          {displayRemaining} restante{displayRemaining === 1 ? '' : 's'}
-        </span>
-      </div>
+      <UsageMeter
+        label=""
+        used={displayUsed}
+        limit={seat.limit}
+        showUpgradeCta={isOwner}
+        valueText={`${displayUsed} de ${seat.limit} ${
+          doPreview ? 'vagas após este convite' : 'vagas do plano usadas'
+        }`}
+        subText={`${displayRemaining} restante${displayRemaining === 1 ? '' : 's'}`}
+      />
     </div>
   );
 }

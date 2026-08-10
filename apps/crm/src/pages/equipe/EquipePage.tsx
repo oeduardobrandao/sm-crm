@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -92,10 +92,10 @@ import {
 } from '@/lib/financialAccess';
 import { membroSchema, MEMBRO_FORM_DEFAULTS, type MembroFormValues } from './membroForm';
 import { InviteSection } from './InviteSection';
-import { computeSeatState, membroInviteErrorMessage } from './inviteSupport';
+import { computeSeatState, derivePendingInvites, membroInviteErrorMessage } from './inviteSupport';
 import { inviteUser } from '../../services/invite';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
-import { computeEffectiveInviteStatus, inviteSuccessMessage } from '../configuracao/inviteHelpers';
+import { inviteSuccessMessage } from '../configuracao/inviteHelpers';
 import { supabase } from '../../lib/supabase';
 import { captureEvent } from '@/lib/analytics';
 
@@ -140,7 +140,7 @@ export default function EquipePage() {
     enabled: !isAgent,
   });
   const { limits, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
-  const { data: pendingInvites = [] } = useQuery({
+  const { data: pendingInviteRows = [] } = useQuery({
     queryKey: ['invites', 'equipe-pending', profile?.conta_id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -149,11 +149,14 @@ export default function EquipePage() {
         .eq('conta_id', profile!.conta_id)
         .eq('status', 'pending');
       if (error) throw error;
-      // Locally-expired invites must not render as pending.
-      return computeEffectiveInviteStatus(data ?? []).filter((i) => i.status === 'pending');
+      return data ?? [];
     },
     enabled: canManageWorkspace && !!profile?.conta_id,
   });
+  const { display: pendingInvites, seatCount: pendingSeatCount } = useMemo(
+    () => derivePendingInvites(pendingInviteRows),
+    [pendingInviteRows],
+  );
   const pendingByMembroId = new Map(
     pendingInvites.filter((i) => i.membro_id != null).map((i) => [i.membro_id as number, i]),
   );
@@ -162,7 +165,7 @@ export default function EquipePage() {
     isUnlimited,
     maxTeamMembers: limits === null ? undefined : limits.max_team_members,
     membersCount: workspaceUsers.length,
-    pendingCount: pendingInvites.length,
+    pendingCount: pendingSeatCount,
   });
   const totalCost = membros.reduce((s, m) => s + (m.custo_mensal ?? 0), 0);
 

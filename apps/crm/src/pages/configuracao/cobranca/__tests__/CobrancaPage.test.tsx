@@ -12,8 +12,17 @@ vi.mock('@/services/billing', () => ({
   openBillingPortal: vi.fn(),
 }));
 vi.mock('@/lib/checkout-analytics', () => ({ captureCheckoutStarted: vi.fn() }));
+// UsagePanel (rendered by CobrancaPage) reaches AuthContext via useContext directly, which the
+// bare useAuth mock above doesn't provide. Mock its hooks the same way ProtectedRoute.test.tsx
+// mocks useWorkspaceLimits, and keep it a no-op (isUnlimited) since these tests aren't about it.
+vi.mock('@/hooks/useWorkspaceLimits', () => ({ useWorkspaceLimits: vi.fn() }));
+vi.mock('@/hooks/useWorkspaceUsage', () => ({ useWorkspaceUsage: vi.fn() }));
+vi.mock('@/hooks/useIsWorkspaceOwner', () => ({ useIsWorkspaceOwner: vi.fn() }));
 
 import { useAuth } from '@/context/AuthContext';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { useWorkspaceUsage } from '@/hooks/useWorkspaceUsage';
+import { useIsWorkspaceOwner } from '@/hooks/useIsWorkspaceOwner';
 import {
   listActivePlans,
   getWorkspaceSubscription,
@@ -57,6 +66,15 @@ beforeEach(() => {
   vi.mocked(useAuth).mockReturnValue({ role: 'owner', workspaceRole: 'owner' } as never);
   vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN]);
   vi.mocked(getEffectivePlanId).mockResolvedValue('free');
+  // UsagePanel is covered by its own test suite; keep it a no-op here (isUnlimited: true).
+  vi.mocked(useWorkspaceLimits).mockReturnValue({
+    limits: null,
+    planName: null,
+    isLoading: false,
+    isUnlimited: true,
+  } as never);
+  vi.mocked(useWorkspaceUsage).mockReturnValue({ usage: null, isLoading: false, isError: false });
+  vi.mocked(useIsWorkspaceOwner).mockReturnValue(true);
 });
 
 function renderPage() {

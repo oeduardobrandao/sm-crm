@@ -28,6 +28,17 @@ export async function getLeads(): Promise<Lead[]> {
   return data || [];
 }
 
+/**
+ * Exact lead count for plan-usage display. getLeads() is a single unpaged
+ * select capped by the server max-rows setting, so its length can understate
+ * a large workspace; head+count asks Postgres for the real number.
+ */
+export async function getLeadsCount(): Promise<number> {
+  const { count, error } = await supabase.from('leads').select('*', { count: 'exact', head: true });
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function addLead(
   l: Omit<Lead, 'id' | 'user_id' | 'conta_id' | 'created_at'>,
 ): Promise<Lead> {

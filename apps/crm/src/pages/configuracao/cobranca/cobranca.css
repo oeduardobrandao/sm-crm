@@ -421,3 +421,23 @@
     animation: none;
   }
 }
+
+/* Uso do plano panel */
+.usage-panel {
+  margin-bottom: 1.25rem;
+}
+.usage-panel-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0 0 2px;
+}
+.usage-panel-sub {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin: 0 0 1rem;
+}
+.usage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 18px 32px;
+}

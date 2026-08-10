@@ -32,6 +32,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { UsageMeter } from '@/components/usage/UsageMeter';
+import { useIsWorkspaceOwner } from '@/hooks/useIsWorkspaceOwner';
 import {
   Select,
   SelectContent,
@@ -174,7 +176,8 @@ export default function ClientesPage() {
     },
   });
 
-  const { isAtLimit } = useEntitlements();
+  const { isAtLimit, limits } = useEntitlements();
+  const isOwner = useIsWorkspaceOwner();
 
   const { data: clientes = [], isLoading } = useQuery({
     queryKey: ['clientes'],
@@ -345,14 +348,27 @@ export default function ClientesPage() {
   return (
     <div className="page-content">
       <div className="header">
-        <div
-          className="header-title"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <h1>{t('title')}</h1>
-          <span data-tooltip={t('tooltip')} data-tooltip-dir="right" style={{ display: 'flex' }}>
-            <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-          </span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+          <div
+            className="header-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <h1>{t('title')}</h1>
+            <span data-tooltip={t('tooltip')} data-tooltip-dir="right" style={{ display: 'flex' }}>
+              <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+            </span>
+          </div>
+          {!isLoading && limits && limits.max_clients !== null && (
+            <div style={{ marginTop: 6 }}>
+              <UsageMeter
+                size="compact"
+                label="clientes"
+                used={clientes.length}
+                limit={limits.max_clients}
+                showUpgradeCta={isOwner}
+              />
+            </div>
+          )}
         </div>
         <div className="header-actions">
           <span
