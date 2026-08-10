@@ -271,7 +271,10 @@ describe('LoginPage', () => {
         '/login',
       );
     });
-    expect(screen.getByText('Verifique seu e-mail')).toBeInTheDocument();
+    // signUp having been called does not mean the verification state has
+    // committed — on a loaded CI runner the render lands after this line,
+    // so the text must be awaited, not asserted synchronously.
+    await screen.findByText('Verifique seu e-mail');
 
     fireEvent.click(screen.getByRole('button', { name: 'Ir para o login' }));
 
@@ -315,7 +318,10 @@ describe('LoginPage', () => {
         'Link de redefinição enviado para ana@mesaas.com. Verifique sua caixa de entrada.',
       );
     });
-    expect(screen.getByLabelText('Senha')).toBeInTheDocument();
+    // The toast fires in the same continuation that switches the tab, but the
+    // render that brings the login form back can commit after this line under
+    // CI load — and the forgot flow has no "Senha" field to find.
+    await screen.findByLabelText('Senha');
     expect(screen.queryByText(/Informe seu e-mail para receber um link/i)).not.toBeInTheDocument();
   });
 
