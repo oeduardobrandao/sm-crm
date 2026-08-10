@@ -453,8 +453,11 @@ describe('ImportarPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
     await screen.findByText('Prévia da importação');
 
-    // Every one of the 5 rows dropped, so there is nothing to commit.
-    expect(screen.getByText(/5 linhas serão ignoradas/)).toBeInTheDocument();
+    // Every one of the 5 rows dropped, so there is nothing to commit. Like the
+    // Importar button in advanceToPreview, this line renders only after the
+    // preview settles — the heading above appears on the step switch, so it must
+    // be awaited, not asserted synchronously.
+    await screen.findByText(/5 linhas serão ignoradas/);
 
     // Layer 1 — the button the user sees is disabled...
     const importar = screen.getByRole('button', { name: /Importar/ });
