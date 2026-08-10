@@ -2,9 +2,10 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 /**
  * Admin workspaces list. One round trip: the admin_list_workspaces RPC
- * (migrations 20260730000008 + 20260810000001) does the joins, counts,
- * owner lookup (auth.users), the filtered-set total_members count and
- * reads subscription amounts from the mirror columns. No Stripe calls here.
+ * (migrations 20260730000008, 20260810000001-2) does the joins, counts,
+ * owner lookup (auth.users), the filtered-set total_members and
+ * total_with_overrides counts and reads subscription amounts from the
+ * mirror columns. No Stripe calls here.
  */
 export async function handleListWorkspaces(
   svc: SupabaseClient,
@@ -23,12 +24,14 @@ export async function handleListWorkspaces(
     workspaces?: unknown[];
     total?: number;
     total_members?: number;
+    total_with_overrides?: number;
   };
   return new Response(
     JSON.stringify({
       workspaces: payload.workspaces ?? [],
       total: payload.total ?? 0,
       total_members: payload.total_members ?? 0,
+      total_with_overrides: payload.total_with_overrides ?? 0,
     }),
     { status: 200, headers },
   );
