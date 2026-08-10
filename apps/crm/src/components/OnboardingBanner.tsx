@@ -1,6 +1,7 @@
 // src/components/OnboardingBanner.tsx
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { Target, Check, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useEntitlements } from '../hooks/useEntitlements';
 import type { Cliente, Lead, Membro, Workflow } from '../store';
@@ -77,46 +78,27 @@ export function OnboardingBanner({
 
   const firstIncompleteIndex = steps.findIndex((s) => !s.done);
 
-  const titles: Record<number, { text: string; emoji: string }> = {
-    0: { text: 'Bem-vindo ao Mesaas!', emoji: '👋' },
-    1: { text: 'Bem-vindo ao Mesaas!', emoji: '👋' },
-    2: { text: 'Você está indo bem!', emoji: '🎯' },
-    3: { text: 'Você está indo bem!', emoji: '🎯' },
-    4: { text: 'Quase lá!', emoji: '🎯' },
-    5: { text: 'Quase lá!', emoji: '🎯' },
+  const titles: Record<number, string> = {
+    0: 'Bem-vindo ao Mesaas!',
+    1: 'Bem-vindo ao Mesaas!',
+    2: 'Você está indo bem!',
+    3: 'Você está indo bem!',
+    4: 'Quase lá!',
+    5: 'Quase lá!',
   };
-  const { text: titleText, emoji } = titles[completedCount] ?? { text: 'Bem-vindo!', emoji: '👋' };
+  const titleText = titles[completedCount] ?? 'Bem-vindo!';
   const progressPct = (completedCount / steps.length) * 100;
 
   return (
     <div
       style={{
-        background: 'linear-gradient(135deg, #1e1e3f 0%, #2d1b69 100%)',
-        borderBottom: '1px solid var(--accent, #6366f1)',
+        background: 'var(--card-bg)',
+        border: '1px solid var(--border-color)',
         padding: '20px 24px',
-        position: 'relative',
         marginBottom: '1.5rem',
-        borderRadius: 'var(--radius, 8px)',
+        borderRadius: 'var(--radius, 12px)',
       }}
     >
-      <button
-        onClick={handleDismiss}
-        aria-label="Fechar"
-        style={{
-          position: 'absolute',
-          top: 12,
-          right: 12,
-          background: 'transparent',
-          border: 'none',
-          color: 'var(--text-muted)',
-          fontSize: '1.1rem',
-          cursor: 'pointer',
-          lineHeight: 1,
-        }}
-      >
-        ✕
-      </button>
-
       <div
         style={{
           display: 'flex',
@@ -125,96 +107,152 @@ export function OnboardingBanner({
           gap: 16,
         }}
       >
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: 4 }}>
-            <span aria-hidden="true">{emoji}</span> {titleText}
+        <div style={{ flex: 1, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <div
+            className="badge-primary"
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: '50%',
+              background: 'var(--badge-bg)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Target size={16} color="var(--badge-fg)" aria-hidden="true" />
           </div>
-          <div style={{ color: '#a5b4fc', fontSize: '0.82rem', marginBottom: 14 }}>
-            Complete estes passos para configurar sua conta
-          </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-            {steps.map((step, i) => {
-              const isNext = i === firstIncompleteIndex;
-              const content = (
-                <>
-                  <span
-                    style={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: '50%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '0.65rem',
-                      flexShrink: 0,
-                      background: step.done ? 'var(--success, #22c55e)' : 'transparent',
-                      border: step.done
-                        ? 'none'
-                        : `2px solid ${isNext ? 'var(--accent, #6366f1)' : '#555'}`,
-                      color: step.done ? '#000' : isNext ? 'var(--accent, #6366f1)' : '#555',
-                    }}
-                  >
-                    {step.done ? '✓' : i + 1}
-                  </span>
-                  <span style={{ fontSize: '0.8rem' }}>{step.label}</span>
-                </>
-              );
+          <div style={{ flex: 1 }}>
+            <div
+              style={{
+                fontSize: '0.9375rem',
+                fontWeight: 600,
+                color: 'var(--text-main)',
+                marginBottom: 2,
+              }}
+            >
+              {titleText}
+            </div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', marginBottom: 14 }}>
+              Complete estes passos para configurar sua conta
+            </div>
 
-              const pillStyle: React.CSSProperties = {
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 8px',
-                borderRadius: 6,
-                textDecoration: 'none',
-                color: step.done ? 'var(--success, #22c55e)' : isNext ? '#fff' : '#888',
-                background: step.done
-                  ? 'rgba(34,197,94,0.1)'
-                  : isNext
-                    ? 'rgba(99,102,241,0.2)'
-                    : 'transparent',
-                border: step.done
-                  ? '1px solid rgba(34,197,94,0.2)'
-                  : isNext
-                    ? '1px solid rgba(99,102,241,0.5)'
-                    : '1px solid transparent',
-              };
-
-              if (step.to) {
-                return (
-                  <Link key={step.label} to={step.to} style={pillStyle}>
-                    {content}
-                  </Link>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {steps.map((step, i) => {
+                const isNext = i === firstIncompleteIndex;
+                const content = (
+                  <>
+                    {step.done ? (
+                      <span
+                        className="badge-success"
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: '50%',
+                          background: 'var(--badge-solid-bg)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Check size={12} color="#fff" aria-hidden="true" />
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.625rem',
+                          fontWeight: 600,
+                          flexShrink: 0,
+                          background: isNext ? 'transparent' : 'var(--surface-2)',
+                          border: isNext ? '2px solid var(--badge-fg)' : 'none',
+                          color: isNext ? 'var(--badge-fg)' : 'var(--text-light)',
+                        }}
+                      >
+                        {i + 1}
+                      </span>
+                    )}
+                    <span style={{ fontSize: '0.8125rem' }}>{step.label}</span>
+                  </>
                 );
-              }
-              return (
-                <div key={step.label} style={pillStyle}>
-                  {content}
-                </div>
-              );
-            })}
+
+                const pillStyle: React.CSSProperties = {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '7px 9px',
+                  borderRadius: 8,
+                  textDecoration: 'none',
+                  color: step.done
+                    ? 'var(--badge-fg)'
+                    : isNext
+                      ? 'var(--text-main)'
+                      : 'var(--text-muted)',
+                  fontWeight: isNext ? 600 : 400,
+                  background: step.done || isNext ? 'var(--badge-bg)' : 'var(--surface-1)',
+                  border:
+                    step.done || isNext ? '1px solid var(--badge-border)' : '1px solid transparent',
+                };
+
+                const stepClassName = step.done
+                  ? 'badge-success'
+                  : isNext
+                    ? 'badge-primary'
+                    : undefined;
+
+                if (step.to) {
+                  return (
+                    <Link key={step.label} to={step.to} className={stepClassName} style={pillStyle}>
+                      {content}
+                    </Link>
+                  );
+                }
+                return (
+                  <div key={step.label} className={stepClassName} style={pillStyle}>
+                    {content}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        <div style={{ textAlign: 'center', flexShrink: 0 }}>
-          <div aria-hidden="true" style={{ fontSize: '2rem', lineHeight: 1 }}>
-            {emoji}
-          </div>
-          <div style={{ color: '#a5b4fc', fontSize: '0.75rem', marginTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexShrink: 0 }}>
+          <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text-main)' }}>
             {completedCount} de {steps.length}
           </div>
+          <button
+            onClick={handleDismiss}
+            aria-label="Fechar"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              lineHeight: 1,
+              padding: 0,
+              display: 'flex',
+            }}
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
         </div>
       </div>
 
-      <div
-        style={{ marginTop: 14, height: 3, background: 'rgba(255,255,255,0.1)', borderRadius: 2 }}
-      >
+      <div style={{ marginTop: 14, height: 4, background: 'var(--surface-2)', borderRadius: 2 }}>
         <div
           style={{
-            height: 3,
+            height: 4,
             width: `${progressPct}%`,
-            background: 'linear-gradient(90deg, #6366f1, #a5b4fc)',
+            background: 'var(--primary-color)',
             borderRadius: 2,
             transition: 'width 0.4s ease',
           }}
