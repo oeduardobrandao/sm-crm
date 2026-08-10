@@ -185,10 +185,41 @@ BEGIN
            LIMIT p_max_files) t;
 
   IF v_file_ids IS NOT NULL THEN
+    -- Anti-corrida em DUAS camadas. Um vínculo criado entre a seleção acima e
+    -- os DELETEs abaixo (usuário anexando um arquivo antigo a um rascunho
+    -- durante a janela do cron) NÃO pode ser varrido junto.
+    --
+    -- 1) Lock dos candidatos. Todo INSERT em post_file_links/ideia_files toma
+    --    FOR KEY SHARE na linha de files referenciada (RI da FK), que conflita
+    --    com FOR UPDATE: com os locks abaixo, qualquer novo vínculo BLOQUEIA
+    --    até esta transação terminar (e então falha na FK, pois o arquivo já
+    --    saiu -- erro visível para o usuário, nunca perda silenciosa).
+    --    ORDER BY id: mesma ordem em execuções concorrentes, minimiza deadlock.
+    PERFORM 1 FROM (
+      SELECT f.id
+        FROM files f
+       WHERE f.id = ANY (v_file_ids)
+         AND f.conta_id = p_workspace
+       ORDER BY f.id
+         FOR UPDATE
+    ) locked;
+
+    -- 2) Reavaliação SOB os locks, com o mesmo predicado compartilhado: um
+    --    vínculo que commitou enquanto esperávamos o lock aparece agora e tira
+    --    o arquivo do lote. Sem isso, o DELETE de links (snapshot novo em READ
+    --    COMMITTED) apagaria também o vínculo recém-criado e o arquivo sairia
+    --    "legitimamente" -- a perda silenciosa exata que se quer impedir.
+    SELECT array_agg(t.file_id), COALESCE(sum(t.size_bytes), 0)
+      INTO v_file_ids, v_bytes
+      FROM (SELECT c.file_id, c.size_bytes
+              FROM storage_autoclean_candidates(
+                     p_workspace, now() - make_interval(days => v_delay)) c
+             WHERE c.file_id = ANY (v_file_ids)) t;
+  END IF;
+
+  IF v_file_ids IS NOT NULL THEN
     -- Carimbo ANTES de apagar os links (depois deles não dá mais para saber
-    -- quais posts perderam mídia). Se um arquivo escapar do DELETE pela
-    -- recheck de corrida abaixo, o post carimbado ainda tem mídia e o
-    -- placeholder não renderiza (ele só aparece com a galeria vazia).
+    -- quais posts perderam mídia).
     UPDATE workflow_posts wp
        SET media_autocleaned_at = now()
      WHERE wp.conta_id = p_workspace
@@ -198,18 +229,16 @@ BEGIN
     GET DIAGNOSTICS v_posts = ROW_COUNT;
 
     -- Ordem obrigatória: a FK post_file_links.file_id é ON DELETE RESTRICT.
-    -- Escopado ao tenant: o predicado já garantiu que todo link dos
-    -- candidatos é in-tenant; o filtro protege contra um link malformado ou
-    -- inserido entre a seleção e este DELETE. O trigger de reatribuição de
-    -- capa dispara por link apagado; inofensivo quando todos saem.
+    -- Escopo de tenant é cinto-e-suspensórios (o predicado já desqualifica
+    -- links malformados). O trigger de reatribuição de capa dispara por link
+    -- apagado; inofensivo quando todos saem.
     DELETE FROM post_file_links
      WHERE file_id = ANY (v_file_ids)
        AND conta_id = p_workspace;
 
-    -- Recheck anti-corrida: um link criado (e commitado) entre a seleção e
-    -- este ponto significa que o arquivo NÃO deve mais sair -- pular o
-    -- arquivo em vez de estourar a FK RESTRICT e abortar a noite inteira.
-    -- Contabiliza só o que foi apagado de fato.
+    -- Com os locks da etapa 1, nenhum vínculo novo pode ter aparecido; o
+    -- NOT EXISTS é a última rede de segurança (pular o arquivo em vez de
+    -- estourar a FK e abortar a noite inteira). Contabiliza só o apagado.
     WITH deleted AS (
       DELETE FROM files f
        WHERE f.id = ANY (v_file_ids)

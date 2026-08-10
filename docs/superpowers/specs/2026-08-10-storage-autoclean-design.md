@@ -83,9 +83,14 @@ workspace (`FOR UPDATE`), checagem de política + limiar
 (`effective_plan_limit`), candidatos com `ORDER BY file_id LIMIT p_max_files`
 (batch determinístico; sobras na próxima noite), carimbo de
 `media_autocleaned_at`, DELETE dos links escopado ao tenant (FK RESTRICT) e
-depois dos files com recheck anti-corrida (`NOT EXISTS` link ⇒ um link criado
-entre a seleção e o delete faz o arquivo ser PULADO em vez de estourar a FK e
-abortar a noite; contabiliza só o apagado de fato via `RETURNING`), atualização
+depois dos files. Anti-corrida em duas camadas: (1) `FOR UPDATE` nos arquivos
+candidatos antes de apagar — todo INSERT de vínculo toma `FOR KEY SHARE` na
+linha de `files` via RI, então novos vínculos bloqueiam até o fim da transação;
+(2) reavaliação do lote sob os locks com o mesmo predicado compartilhado, para
+que um vínculo commitado durante a espera tire o arquivo do lote (sem isso o
+DELETE de links varreria o vínculo recém-criado — perda silenciosa). O
+`NOT EXISTS` no DELETE de files fica como última rede (pular em vez de estourar
+a FK); contabiliza só o apagado de fato via `RETURNING`. Atualização
 de `storage_autoclean_last_*`, audit_log (`action='storage_autoclean'`) e
 `insert_notification_batch` (tipo `storage_autoclean_report`, owners+admins —
 o CHECK de `notifications.type` ganha o valor novo em migration própria, antes
