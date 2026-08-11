@@ -13,7 +13,6 @@ import {
   Info,
   HelpCircle,
   Search,
-  SlidersHorizontal,
   MoreVertical,
   CheckCircle2,
   ArrowDownCircle,
@@ -65,9 +64,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -465,8 +461,16 @@ export default function FinanceiroPage() {
         ))}
       </StatCardGrid>
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: 1 }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.75rem',
+          marginBottom: '1rem',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ position: 'relative', width: '100%', maxWidth: '260px' }}>
           <Search
             className="h-4 w-4"
             style={{
@@ -491,42 +495,16 @@ export default function FinanceiroPage() {
           onChange={setMonthFilter}
           className="rounded-full text-xs px-4 mb-0 shrink-0"
         />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0 mb-0"
-              style={{ position: 'relative' }}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              {filter !== 'todas' && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: -2,
-                    right: -2,
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    background: 'var(--primary-color)',
-                  }}
-                />
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuLabel>Tipo</DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              value={filter}
-              onValueChange={(v) => setFilter(v as FilterType)}
-            >
-              <DropdownMenuRadioItem value="todas">Todas</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="entradas">Entradas</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="saidas">Saídas</DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Select value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
+          <SelectTrigger className="h-9 w-auto min-w-[130px] rounded-full text-xs px-4 mb-0 shrink-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todas">Todas</SelectItem>
+            <SelectItem value="entradas">Entradas</SelectItem>
+            <SelectItem value="saidas">Saídas</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {isLoading ? (
