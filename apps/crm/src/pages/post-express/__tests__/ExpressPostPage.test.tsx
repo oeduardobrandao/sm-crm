@@ -17,10 +17,15 @@ vi.mock('../../../store', () => ({
   updateWorkflowPost: vi.fn(),
   updateWorkflow: vi.fn(),
   removeWorkflow: vi.fn(),
+  getHubToken: vi.fn(),
 }));
 
 vi.mock('../../../services/instagram', () => ({
   publishInstagramPostNow: vi.fn(),
+}));
+
+vi.mock('../../../hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: vi.fn(),
 }));
 
 vi.mock('../../../lib/supabase', () => ({
@@ -63,8 +68,11 @@ import {
   updateWorkflowPost,
   updateWorkflow,
   removeWorkflow,
+  getHubToken,
 } from '../../../store';
 import { publishInstagramPostNow } from '../../../services/instagram';
+import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
+import { toast } from 'sonner';
 
 function renderWithProviders(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -100,10 +108,28 @@ const mockClientes = [
   },
 ];
 
+const workspaceLimitsValue = (feature_hub_portal: boolean | null) => ({
+  limits: null,
+  features: feature_hub_portal === null ? null : ({ feature_hub_portal } as any),
+  planName: 'pro',
+  isLoading: false,
+  isUnlimited: feature_hub_portal === null,
+});
+
+const FUTURE = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+const PAST = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
 describe('ExpressPostPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getClientes).mockResolvedValue(mockClientes);
+    vi.mocked(useWorkspaceLimits).mockReturnValue(workspaceLimitsValue(true));
+    vi.mocked(getHubToken).mockResolvedValue({
+      id: 't1',
+      token: 'tok-1',
+      is_active: true,
+      expires_at: FUTURE,
+    });
     vi.mocked(addWorkflow).mockResolvedValue({
       id: 10,
       cliente_id: 1,
@@ -158,7 +184,7 @@ describe('ExpressPostPage', () => {
 
   it('publish button is disabled when no client is selected', async () => {
     renderWithProviders(<ExpressPostPage />);
-    const publishBtn = screen.getByText('Publicar agora').closest('button')!;
+    const publishBtn = screen.getByTestId('express-submit');
     expect(publishBtn.hasAttribute('disabled')).toBe(true);
   });
 
@@ -175,7 +201,7 @@ describe('ExpressPostPage', () => {
       expect(addWorkflow).toHaveBeenCalled();
     });
 
-    const publishBtn = screen.getByText('Publicar agora').closest('button')!;
+    const publishBtn = screen.getByTestId('express-submit');
     expect(publishBtn.hasAttribute('disabled')).toBe(true);
   });
 
@@ -191,6 +217,12 @@ describe('ExpressPostPage', () => {
     // Draft creation makes the media gallery (and its upload simulator) appear.
     await waitFor(() => expect(screen.getByText('Simulate Upload')).toBeTruthy());
   }
+
+  it('creates the express draft with the is_express marker', async () => {
+    renderWithProviders(<ExpressPostPage />);
+    await selectClientAndAwaitDraft();
+    expect(addWorkflowPost).toHaveBeenCalledWith(expect.objectContaining({ is_express: true }));
+  });
 
   it('Stories mode hides the caption field and enables publishing without a caption', async () => {
     renderWithProviders(<ExpressPostPage />);
@@ -209,7 +241,7 @@ describe('ExpressPostPage', () => {
     fireEvent.click(screen.getByText('Simulate Upload'));
 
     // Publish is enabled despite the empty caption.
-    const publishBtn = screen.getByText('Publicar Stories').closest('button')!;
+    const publishBtn = screen.getByTestId('express-submit');
     expect(publishBtn.hasAttribute('disabled')).toBe(false);
   });
 
@@ -241,7 +273,7 @@ describe('ExpressPostPage', () => {
     fireEvent.click(screen.getByText('Simulate Upload'));
 
     // Open the confirm dialog and confirm.
-    fireEvent.click(screen.getByText('Publicar Stories').closest('button')!);
+    fireEvent.click(screen.getByTestId('express-submit'));
     fireEvent.click(screen.getByRole('button', { name: 'Publicar' }));
 
     await waitFor(() =>
@@ -251,5 +283,173 @@ describe('ExpressPostPage', () => {
       ),
     );
     await waitFor(() => expect(publishInstagramPostNow).toHaveBeenCalledWith(30));
+  });
+
+  describe('client approval mode', () => {
+    it('hides the mode toggle when the plan lacks the hub portal feature', async () => {
+      vi.mocked(useWorkspaceLimits).mockReturnValue(workspaceLimitsValue(false));
+      renderWithProviders(<ExpressPostPage />);
+      await waitFor(() => expect(screen.getByText('Post Express')).toBeTruthy());
+      expect(screen.queryByRole('button', { name: 'Aprovação do cliente' })).toBeNull();
+    });
+
+    it('shows the mode toggle on an unlimited plan (features null)', async () => {
+      vi.mocked(useWorkspaceLimits).mockReturnValue(workspaceLimitsValue(null));
+      renderWithProviders(<ExpressPostPage />);
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Aprovação do cliente' })).toBeTruthy(),
+      );
+    });
+
+    it('sends the post to the client without publishing', async () => {
+      vi.mocked(updateWorkflowPost).mockResolvedValue({
+        id: 30,
+        workflow_id: 10,
+        titulo: 'Post Express',
+        conteudo: null,
+        conteudo_plain: '',
+        tipo: 'feed',
+        ordem: 0,
+        status: 'enviado_cliente',
+      });
+
+      renderWithProviders(<ExpressPostPage />);
+      await selectClientAndAwaitDraft();
+
+      fireEvent.click(screen.getByText('Simulate Upload'));
+      fireEvent.change(screen.getByPlaceholderText('Escreva a legenda do post aqui...'), {
+        target: { value: 'legenda' },
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Aprovação do cliente' }));
+
+      const submitBtn = screen.getByTestId('express-submit');
+      await waitFor(() => expect(submitBtn.hasAttribute('disabled')).toBe(false));
+      expect(submitBtn.textContent).toContain('Enviar para aprovação');
+
+      fireEvent.click(submitBtn);
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+
+      await waitFor(() =>
+        expect(updateWorkflowPost).toHaveBeenCalledWith(
+          30,
+          expect.objectContaining({
+            status: 'enviado_cliente',
+            ig_caption: 'legenda',
+            tipo: 'feed',
+          }),
+        ),
+      );
+      expect(publishInstagramPostNow).not.toHaveBeenCalled();
+      expect(updateWorkflow).not.toHaveBeenCalled();
+      expect(toast.success).toHaveBeenCalled();
+
+      // The page resets back to the empty client selection.
+      await waitFor(() => expect(screen.getByDisplayValue('Selecionar cliente...')).toBeTruthy());
+    });
+
+    it('sends a Story for approval with tipo "stories" and empty caption', async () => {
+      vi.mocked(updateWorkflowPost).mockResolvedValue({
+        id: 30,
+        workflow_id: 10,
+        titulo: 'Post Express',
+        conteudo: null,
+        conteudo_plain: '',
+        tipo: 'stories',
+        ordem: 0,
+        status: 'enviado_cliente',
+      });
+
+      renderWithProviders(<ExpressPostPage />);
+      await selectClientAndAwaitDraft();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Stories' }));
+      fireEvent.click(screen.getByText('Simulate Upload'));
+      fireEvent.click(screen.getByRole('button', { name: 'Aprovação do cliente' }));
+
+      const submitBtn = screen.getByTestId('express-submit');
+      await waitFor(() => expect(submitBtn.hasAttribute('disabled')).toBe(false));
+
+      fireEvent.click(submitBtn);
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+
+      await waitFor(() =>
+        expect(updateWorkflowPost).toHaveBeenCalledWith(
+          30,
+          expect.objectContaining({
+            status: 'enviado_cliente',
+            ig_caption: '',
+            tipo: 'stories',
+          }),
+        ),
+      );
+      expect(publishInstagramPostNow).not.toHaveBeenCalled();
+    });
+
+    it('refuses to send when the hub link went stale after the page loaded', async () => {
+      // First call feeds the gating query (valid); the submit-time re-check
+      // then sees the link gone and must abort before any status write.
+      vi.mocked(getHubToken)
+        .mockResolvedValueOnce({ id: 't1', token: 'tok-1', is_active: true, expires_at: FUTURE })
+        .mockResolvedValueOnce(null);
+
+      renderWithProviders(<ExpressPostPage />);
+      await selectClientAndAwaitDraft();
+
+      fireEvent.click(screen.getByText('Simulate Upload'));
+      fireEvent.change(screen.getByPlaceholderText('Escreva a legenda do post aqui...'), {
+        target: { value: 'legenda' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Aprovação do cliente' }));
+
+      const submitBtn = screen.getByTestId('express-submit');
+      await waitFor(() => expect(submitBtn.hasAttribute('disabled')).toBe(false));
+
+      fireEvent.click(submitBtn);
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalled());
+      expect(updateWorkflowPost).not.toHaveBeenCalled();
+      expect(publishInstagramPostNow).not.toHaveBeenCalled();
+    });
+
+    it('blocks sending and warns when the client has no hub link', async () => {
+      vi.mocked(getHubToken).mockResolvedValue(null);
+
+      renderWithProviders(<ExpressPostPage />);
+      await selectClientAndAwaitDraft();
+
+      fireEvent.click(screen.getByText('Simulate Upload'));
+      fireEvent.change(screen.getByPlaceholderText('Escreva a legenda do post aqui...'), {
+        target: { value: 'legenda' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Aprovação do cliente' }));
+
+      await waitFor(() => expect(screen.getByText(/não tem um link ativo do portal/)).toBeTruthy());
+      const link = screen.getByText(/Configurar portal/).closest('a')!;
+      expect(link.getAttribute('href')).toBe('/clientes/1');
+      expect(screen.getByTestId('express-submit').hasAttribute('disabled')).toBe(true);
+    });
+
+    it('blocks sending when the hub link is expired', async () => {
+      vi.mocked(getHubToken).mockResolvedValue({
+        id: 't1',
+        token: 'tok-1',
+        is_active: true,
+        expires_at: PAST,
+      });
+
+      renderWithProviders(<ExpressPostPage />);
+      await selectClientAndAwaitDraft();
+
+      fireEvent.click(screen.getByText('Simulate Upload'));
+      fireEvent.change(screen.getByPlaceholderText('Escreva a legenda do post aqui...'), {
+        target: { value: 'legenda' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Aprovação do cliente' }));
+
+      await waitFor(() => expect(screen.getByText(/não tem um link ativo do portal/)).toBeTruthy());
+      expect(screen.getByTestId('express-submit').hasAttribute('disabled')).toBe(true);
+    });
   });
 });

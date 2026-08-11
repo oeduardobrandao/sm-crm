@@ -47,6 +47,27 @@
     "post": "Publicação",
     "stories": "Stories"
   },
+  "steps": {
+    "step": "Etapa {{n}}",
+    "send": "Envio",
+    "needClient": "Selecione um cliente para adicionar mídia."
+  },
+  "mode": {
+    "label": "Modo de envio",
+    "publishNow": "Publicar agora",
+    "approval": "Aprovação do cliente"
+  },
+  "approval": {
+    "button": "Enviar para aprovação",
+    "note": "O post será enviado para o cliente aprovar no portal. Nada será publicado no Instagram agora.",
+    "confirmTitle": "Enviar para aprovação?",
+    "confirmDescription": "O post ficará disponível para o cliente aprovar no portal. Nada será publicado no Instagram agora.",
+    "sendAction": "Enviar",
+    "toastSent": "Post enviado para aprovação do cliente!",
+    "hubLinkActive": "Link do portal ativo para este cliente",
+    "noHubLink": "Este cliente não tem um link ativo do portal. Crie ou reative o link na página do cliente para usar a aprovação.",
+    "noHubLinkAction": "Configurar portal"
+  },
   "story": {
     "captionHidden": "Stories não usam legenda.",
     "segments": "{{count}} segmentos"

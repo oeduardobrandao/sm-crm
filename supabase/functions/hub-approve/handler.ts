@@ -32,7 +32,7 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
 
     const { data: post } = await db
       .from("workflow_posts")
-      .select("id, workflow_id, status")
+      .select("id, workflow_id, status, is_express")
       .eq("id", post_id)
       .maybeSingle();
     if (!post) return json({ error: "Post não encontrado." }, 404);
@@ -80,12 +80,20 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
         .single();
 
       if (client?.auto_publish_on_approval) {
-        const validation = await validateForScheduling(db, post_id);
+        // Express posts have no scheduled_at: approval IS the publish moment, so the
+        // min-future date check is skipped and the post is stamped to publish now.
+        const isExpress = post.is_express === true;
+        const validation = await validateForScheduling(
+          db,
+          post_id,
+          isExpress ? { skipDateCheck: true } : undefined,
+        );
         if (validation.ok) {
           await db.rpc("record_post_status_change", {
             p_post_id: post_id,
             p_new_status: "agendado",
             p_source: "system",
+            ...(isExpress ? { p_fields: { scheduled_at: deps.now() } } : {}),
           });
           scheduled = true;
         }

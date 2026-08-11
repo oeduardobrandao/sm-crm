@@ -346,6 +346,146 @@ Deno.test("hub-approve rejects invalid approval actions", async () => {
   assertEquals(response.status, 400);
 });
 
+// validateForScheduling internals (fed through the same queue, in call order):
+// workflow_posts → post_file_links → workflows → instagram_accounts. An empty
+// encrypted_access_token skips the decrypt step, so no crypto env is needed.
+function queueValidateForScheduling(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  post: Record<string, unknown>,
+) {
+  db.queue("workflow_posts", "select", { data: post, error: null });
+  db.queue("post_file_links", "select", {
+    data: [{
+      sort_order: 0,
+      files: {
+        id: 2,
+        kind: "image",
+        mime_type: "image/jpeg",
+        size_bytes: 1000,
+        width: 1080,
+        height: 1080,
+        duration_seconds: null,
+        r2_key: "img/2.jpg",
+      },
+    }],
+    error: null,
+  });
+  db.queue("workflows", "select", { data: { cliente_id: 14 }, error: null });
+  db.queue("instagram_accounts", "select", {
+    data: {
+      encrypted_access_token: "",
+      instagram_user_id: "ig-1",
+      token_expires_at: null,
+      authorization_status: "connected",
+    },
+    error: null,
+  });
+}
+
+Deno.test("hub-approve auto-schedules an approved express post despite the missing date", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", is_express: true },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: { cliente_id: 14 }, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  // The queued scheduled_at: null passing validation proves skipDateCheck was applied.
+  queueValidateForScheduling(db, {
+    id: 99,
+    scheduled_at: null,
+    ig_caption: "legenda",
+    workflow_id: 7,
+    tipo: "feed",
+  });
+
+  const handler = createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals((await readJson(response)).scheduled, true);
+
+  const rpcCall = db.calls.find((c: { table: string }) => c.table === "rpc:record_post_status_change");
+  assert(rpcCall, "status change RPC should be called");
+  assertEquals(rpcCall.payload, {
+    p_post_id: 99,
+    p_new_status: "agendado",
+    p_source: "system",
+    p_fields: { scheduled_at: now() },
+  });
+});
+
+Deno.test("hub-approve does not schedule an approved express post when auto-publish is off", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", is_express: true },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: { cliente_id: 14 }, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
+
+  const handler = createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals((await readJson(response)).scheduled, false);
+  const rpcCall = db.calls.find((c: { table: string }) => c.table === "rpc:record_post_status_change");
+  assertEquals(rpcCall, undefined);
+});
+
+Deno.test("hub-approve still skips auto-publish for a non-express post without a date", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", is_express: false },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: { cliente_id: 14 }, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  // Non-express keeps the date check: a null scheduled_at fails validation.
+  queueValidateForScheduling(db, {
+    id: 99,
+    scheduled_at: null,
+    ig_caption: "legenda",
+    workflow_id: 7,
+    tipo: "feed",
+  });
+
+  const handler = createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals((await readJson(response)).scheduled, false);
+  const rpcCall = db.calls.find((c: { table: string }) => c.table === "rpc:record_post_status_change");
+  assertEquals(rpcCall, undefined);
+});
+
 Deno.test("hub-brand returns client brand assets from the same workspace", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", {

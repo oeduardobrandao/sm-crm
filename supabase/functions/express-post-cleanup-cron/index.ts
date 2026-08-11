@@ -16,6 +16,64 @@ Deno.serve(createExpressPostCleanupCronHandler({
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
+      // Conclusion pass: an approval-mode express post publishes only after the
+      // client approves, with nobody left on the page to conclude the workflow
+      // (publish-now mode concludes it client-side). Close any express workflow
+      // whose posts were all published so it doesn't linger on the board.
+      // Candidates come from the posts' is_express marker, never from the
+      // workflow title: the title is user-editable in the drawer, so it can
+      // both falsely match a renamed regular workflow and miss a renamed
+      // express one.
+      let concluded = 0;
+      const { data: expressPostRows, error: expressErr } = await supabase
+        .from("workflow_posts")
+        .select("workflow_id")
+        .eq("is_express", true)
+        .eq("status", "postado");
+
+      if (expressErr) throw expressErr;
+
+      const candidateIds = [
+        ...new Set((expressPostRows ?? []).map((r: { workflow_id: number }) => r.workflow_id)),
+      ];
+
+      if (candidateIds.length > 0) {
+        const { data: activeExpress, error: activeErr } = await supabase
+          .from("workflows")
+          .select("id")
+          .in("id", candidateIds)
+          .eq("status", "ativo");
+
+        if (activeErr) throw activeErr;
+
+        for (const wf of activeExpress ?? []) {
+          const { data: posts } = await supabase
+            .from("workflow_posts")
+            .select("id, status, is_express")
+            .eq("workflow_id", wf.id);
+
+          // Conclude only when every post is a published express post; a mixed
+          // workflow (someone added a regular post to it) is left alone.
+          const allExpressPostado = (posts ?? []).length > 0 &&
+            (posts ?? []).every(
+              (p: { status: string; is_express: boolean }) =>
+                p.status === "postado" && p.is_express === true,
+            );
+          if (!allExpressPostado) continue;
+
+          const { error: concludeErr } = await supabase
+            .from("workflows")
+            .update({ status: "concluido" })
+            .eq("id", wf.id);
+
+          if (concludeErr) {
+            console.error(`Failed to conclude workflow ${wf.id}:`, concludeErr.message);
+            continue;
+          }
+          concluded++;
+        }
+      }
+
       const { data: orphanWorkflows, error: fetchErr } = await supabase
         .from("workflows")
         .select("id")
@@ -25,7 +83,7 @@ Deno.serve(createExpressPostCleanupCronHandler({
 
       if (fetchErr) throw fetchErr;
       if (!orphanWorkflows || orphanWorkflows.length === 0) {
-        return json({ success: true, deleted: 0 });
+        return json({ success: true, deleted: 0, concluded });
       }
 
       let deleted = 0;
@@ -84,7 +142,7 @@ Deno.serve(createExpressPostCleanupCronHandler({
         deleted++;
       }
 
-      return json({ success: true, deleted, skipped, failed });
+      return json({ success: true, deleted, skipped, failed, concluded });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error("Express post cleanup failed:", message);

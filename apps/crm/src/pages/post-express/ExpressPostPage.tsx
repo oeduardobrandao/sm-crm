@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { Send, AlertCircle, Image, Film, Images, Layers } from 'lucide-react';
+import { Send, AlertCircle, Image, Film, Images, Layers, Check, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PrerequisiteAlert } from '@/components/help/PrerequisiteAlert';
 import { EmptyStateGuide } from '@/components/help/EmptyStateGuide';
@@ -25,8 +25,10 @@ import {
   updateWorkflowPost,
   updateWorkflow,
   removeWorkflow,
+  getHubToken,
   type PostMedia,
 } from '../../store';
+import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { publishInstagramPostNow } from '../../services/instagram';
 import { PostMediaGallery } from '../entregas/components/PostMediaGallery';
 
@@ -89,12 +91,67 @@ function getTypeLabel(
 
 const MAX_CAPTION = 2200;
 
+const STEP_CARD_STYLE: CSSProperties = {
+  background: 'var(--card-bg)',
+  borderRadius: '8px',
+  padding: '1.25rem',
+  border: '1px solid var(--border-color)',
+  marginBottom: '14px',
+  minWidth: 0,
+};
+
+function StepIndicator({
+  state,
+  number,
+  isLast,
+}: {
+  state: 'done' | 'active' | 'todo';
+  number: number;
+  isLast?: boolean;
+}) {
+  const circleStyle: CSSProperties =
+    state === 'done'
+      ? { background: 'rgba(62,207,142,0.15)', color: '#3ecf8e' }
+      : state === 'active'
+        ? { background: 'var(--cta-bg)', color: 'var(--cta-fg)' }
+        : {
+            background: 'var(--card-bg)',
+            border: '1px solid var(--border-color)',
+            color: 'var(--text-muted)',
+          };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: '50%',
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '0.8rem',
+          fontWeight: 700,
+          ...circleStyle,
+        }}
+      >
+        {state === 'done' ? <Check className="h-4 w-4" /> : number}
+      </div>
+      {!isLast && (
+        <div style={{ flex: 1, width: 1, background: 'var(--border-color)', margin: '4px 0' }} />
+      )}
+    </div>
+  );
+}
+
 export default function ExpressPostPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { t } = useTranslation('posts');
   const { t: tc } = useTranslation();
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
   const [isStory, setIsStory] = useState(false);
+  const [mode, setMode] = useState<'now' | 'approval'>('now');
   const [caption, setCaption] = useState('');
   const [mediaList, setMediaList] = useState<PostMedia[]>([]);
   const [draft, setDraft] = useState<DraftState | null>(null);
@@ -155,6 +212,23 @@ export default function ExpressPostPage() {
     },
   });
 
+  // features === null means unlimited plan (everything enabled), so the gate
+  // must be "hide only when explicitly false".
+  const { features } = useWorkspaceLimits();
+  const approvalAllowed = features?.feature_hub_portal !== false;
+
+  useEffect(() => {
+    if (!approvalAllowed && mode === 'approval') setMode('now');
+  }, [approvalAllowed, mode]);
+
+  const { data: hubToken, isLoading: hubTokenLoading } = useQuery({
+    queryKey: ['hub-token-express', selectedClientId],
+    queryFn: () => getHubToken(selectedClientId!),
+    enabled: !!selectedClientId && mode === 'approval' && approvalAllowed,
+  });
+  const hubTokenUsable =
+    !!hubToken && hubToken.is_active && new Date(hubToken.expires_at).getTime() > Date.now();
+
   const eligibleClients = clientes
     .filter((c) => clientsWithIg.includes(c.id!))
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
@@ -190,7 +264,23 @@ export default function ExpressPostPage() {
     ? 'stories'
     : detectedType;
   const canPublish =
-    !!draft && (isStory || !!caption.trim()) && mediaList.length > 0 && !accountWarning && !loading;
+    !!draft &&
+    (isStory || !!caption.trim()) &&
+    mediaList.length > 0 &&
+    !accountWarning &&
+    !loading &&
+    (mode === 'now' || hubTokenUsable);
+
+  // Step completion is derived affordance only; steps never block interaction.
+  const step2Done = !!draft;
+  const step3Done = mediaList.length > 0;
+  const step4Done = isStory || !!caption.trim();
+  const currentStep = !step2Done ? 2 : !step3Done ? 3 : !step4Done ? 4 : 5;
+  const stepState = (n: 2 | 3 | 4): 'done' | 'active' | 'todo' => {
+    const done = n === 2 ? step2Done : n === 3 ? step3Done : step4Done;
+    if (done) return 'done';
+    return currentStep === n ? 'active' : 'todo';
+  };
 
   async function createDraft(clientId: number, clientName: string) {
     setCreatingDraft(true);
@@ -227,6 +317,7 @@ export default function ExpressPostPage() {
         conteudo: null,
         conteudo_plain: '',
         ordem: 0,
+        is_express: true,
       });
 
       setDraft({ workflowId: workflow.id!, postId: post.id! });
@@ -271,6 +362,14 @@ export default function ExpressPostPage() {
     };
   }, []);
 
+  function resetPage() {
+    setDraft(null);
+    setSelectedClientId(null);
+    setCaption('');
+    setMediaList([]);
+    setIsStory(false);
+  }
+
   const handlePublishNow = async () => {
     if (!draft || !effectiveType) return;
 
@@ -310,11 +409,7 @@ export default function ExpressPostPage() {
         });
       }
 
-      setDraft(null);
-      setSelectedClientId(null);
-      setCaption('');
-      setMediaList([]);
-      setIsStory(false);
+      resetPage();
     } catch (err: unknown) {
       stopProgressTimer();
       setConfirmOpen(false);
@@ -326,82 +421,102 @@ export default function ExpressPostPage() {
     }
   };
 
+  // Approval mode: the post goes to the client's Hub instead of publishing.
+  // The workflow stays "ativo" so the approval notification's drawer link and
+  // the manual-publish path keep working.
+  const handleSendForApproval = async () => {
+    if (!draft || !effectiveType || !selectedClientId) return;
+
+    setLoading(true);
+    try {
+      // The gating query may be stale: a link deactivated or expired after the
+      // page loaded would strand the post in enviado_cliente where the client
+      // can't see it. Re-check at submit time and refuse to send.
+      const freshToken = await getHubToken(selectedClientId);
+      const freshUsable =
+        !!freshToken &&
+        freshToken.is_active &&
+        new Date(freshToken.expires_at).getTime() > Date.now();
+      if (!freshUsable) {
+        setConfirmOpen(false);
+        toast.error(t('approval.noHubLink'));
+        queryClient.invalidateQueries({ queryKey: ['hub-token-express', selectedClientId] });
+        return;
+      }
+
+      await updateWorkflowPost(draft.postId, {
+        status: 'enviado_cliente',
+        ig_caption: isStory ? '' : caption.trim(),
+        tipo: effectiveType,
+      });
+
+      setConfirmOpen(false);
+      toast.success(t('approval.toastSent'), {
+        action: { label: t('toast.viewDeliveries'), onClick: () => navigate('/entregas') },
+      });
+      resetPage();
+    } catch (err: unknown) {
+      setConfirmOpen(false);
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleMediaChange = useCallback((media: PostMedia[]) => {
     setMediaList(media);
   }, []);
 
+  const stepLabel = (n: number, name: string) => (
+    <label
+      className="block text-xs font-semibold uppercase tracking-wider mb-3"
+      style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}
+    >
+      {t('steps.step', { n })} · {name}
+    </label>
+  );
+
   return (
     <div className="animate-up" style={{ padding: 'clamp(1.25rem, 3vw, 2.5rem)' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1
-          style={{
-            fontFamily: 'var(--font-heading)',
-            fontSize: 'clamp(2rem, 4vw, 3.2rem)',
-            fontWeight: 900,
-          }}
-        >
-          {t('title')}
-        </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-          {t('subtitle')}
-        </p>
-      </div>
-
-      {eligibleClients.length === 0 && (
-        <div className="mb-4">
-          <PrerequisiteAlert
-            title="Nenhum cliente com Instagram configurado"
-            description="Para usar o Post Express, conecte uma conta Instagram em pelo menos um cliente."
-            actionLabel="Ir para Clientes →"
-            actionHref="/clientes"
-          />
-        </div>
-      )}
-
-      {/* Warning banner */}
-      {warningMessage && selectedClientId && (
-        <div
-          className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs mb-4"
-          style={{ color: '#f55a42', background: 'rgba(245, 90, 66, 0.08)' }}
-        >
-          <AlertCircle className="h-4 w-4 flex-shrink-0" />
-          <span>{warningMessage}</span>
-          <a
-            href={`/clientes/${selectedClientId}`}
-            className="ml-auto underline font-medium whitespace-nowrap"
-            style={{ color: '#f55a42' }}
-          >
-            Reconectar →
-          </a>
-        </div>
-      )}
-
-      {/* Two-column grid */}
-      <div
-        className="grid gap-6"
-        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 400px), 1fr))' }}
-      >
-        {/* LEFT COLUMN */}
-        <div className="flex flex-col gap-4">
-          {/* Format toggle: Publicação vs Stories */}
-          <div
+      <div style={{ maxWidth: '720px', margin: '0 auto' }}>
+        {/* Header */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h1
             style={{
-              background: 'var(--card-bg)',
-              borderRadius: '8px',
-              padding: '1.25rem',
-              border: '1px solid var(--border-color)',
+              fontFamily: 'var(--font-heading)',
+              fontSize: 'clamp(2rem, 4vw, 3.2rem)',
+              fontWeight: 900,
             }}
           >
-            <label
-              className="block text-xs font-semibold uppercase tracking-wider mb-2"
-              style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}
-            >
-              {t('format.label')}
-            </label>
+            {t('title')}
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+            {t('subtitle')}
+          </p>
+        </div>
+
+        {eligibleClients.length === 0 && (
+          <div className="mb-4">
+            <PrerequisiteAlert
+              title="Nenhum cliente com Instagram configurado"
+              description="Para usar o Post Express, conecte uma conta Instagram em pelo menos um cliente."
+              actionLabel="Ir para Clientes →"
+              actionHref="/clientes"
+            />
+          </div>
+        )}
+
+        {/* Vertical stepper: all steps on one page, top to bottom */}
+        <div
+          style={{ display: 'grid', gridTemplateColumns: '32px minmax(0, 1fr)', columnGap: '14px' }}
+        >
+          {/* Step 1: Formato */}
+          <StepIndicator state="done" number={1} />
+          <div style={STEP_CARD_STYLE}>
+            {stepLabel(1, t('format.label'))}
             <div
               className="grid grid-cols-2 gap-1 p-1 rounded-lg"
-              style={{ background: 'var(--surface-darker)' }}
+              style={{ background: 'var(--surface-darker)', maxWidth: '360px' }}
             >
               {([false, true] as const).map((story) => {
                 const active = isStory === story;
@@ -425,21 +540,10 @@ export default function ExpressPostPage() {
             </div>
           </div>
 
-          {/* Client Picker */}
-          <div
-            style={{
-              background: 'var(--card-bg)',
-              borderRadius: '8px',
-              padding: '1.25rem',
-              border: '1px solid var(--border-color)',
-            }}
-          >
-            <label
-              className="block text-xs font-semibold uppercase tracking-wider mb-2"
-              style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}
-            >
-              {t('labels.client')}
-            </label>
+          {/* Step 2: Cliente */}
+          <StepIndicator state={stepState(2)} number={2} />
+          <div style={STEP_CARD_STYLE}>
+            {stepLabel(2, t('labels.client'))}
             <select
               value={selectedClientId ?? ''}
               onChange={(e) =>
@@ -449,6 +553,7 @@ export default function ExpressPostPage() {
               className="w-full pl-3 pr-10 py-2 text-sm border"
               style={{
                 fontFamily: 'var(--font-main)',
+                maxWidth: '360px',
                 background: 'var(--surface-main)',
                 borderColor: 'var(--border-color)',
                 color: 'var(--text-main)',
@@ -493,274 +598,306 @@ export default function ExpressPostPage() {
                 </span>
               </div>
             )}
+            {warningMessage && selectedClientId && (
+              <div
+                className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs mt-3"
+                style={{ color: '#f55a42', background: 'rgba(245, 90, 66, 0.08)' }}
+              >
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                <span>{warningMessage}</span>
+                <a
+                  href={`/clientes/${selectedClientId}`}
+                  className="ml-auto underline font-medium whitespace-nowrap"
+                  style={{ color: '#f55a42' }}
+                >
+                  Reconectar →
+                </a>
+              </div>
+            )}
           </div>
 
-          {/* Media Upload */}
-          {draft && (
-            <div
-              style={{
-                background: 'var(--card-bg)',
-                borderRadius: '8px',
-                padding: '1.25rem',
-                border: '1px solid var(--border-color)',
-              }}
-            >
-              <label
-                className="block text-xs font-semibold uppercase tracking-wider mb-3"
-                style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}
-              >
-                {t('labels.media')}
-              </label>
-              <PostMediaGallery
-                postId={draft.postId}
-                maxFiles={
-                  isStory || detectedType === 'carrossel' || mediaList.length > 1 ? undefined : 1
-                }
-                onChange={handleMediaChange}
-              />
-
-              {/* Detected type badge */}
-              {effectiveType && (
-                <div className="mt-3">
-                  {(() => {
-                    const typeInfo = getTypeLabel(effectiveType, t);
-                    const Icon = typeInfo.icon;
-                    const label =
-                      isStory && mediaList.length > 1
-                        ? `${typeInfo.label} · ${t('story.segments', { count: mediaList.length })}`
-                        : typeInfo.label;
-                    return (
-                      <span
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
-                        style={{ color: typeInfo.color, background: typeInfo.bg }}
-                      >
-                        <Icon className="h-3.5 w-3.5" /> {label}
-                      </span>
-                    );
-                  })()}
-                </div>
-              )}
-            </div>
-          )}
-
-          {creatingDraft && (
-            <div
-              style={{
-                background: 'var(--card-bg)',
-                borderRadius: '8px',
-                padding: '2rem',
-                border: '1px solid var(--border-color)',
-                textAlign: 'center',
-              }}
-            >
+          {/* Step 3: Mídia */}
+          <StepIndicator state={stepState(3)} number={3} />
+          <div style={STEP_CARD_STYLE}>
+            {stepLabel(3, t('labels.media'))}
+            {draft ? (
+              <>
+                <PostMediaGallery
+                  postId={draft.postId}
+                  maxFiles={
+                    isStory || detectedType === 'carrossel' || mediaList.length > 1 ? undefined : 1
+                  }
+                  onChange={handleMediaChange}
+                />
+                {effectiveType && (
+                  <div className="mt-3">
+                    {(() => {
+                      const typeInfo = getTypeLabel(effectiveType, t);
+                      const Icon = typeInfo.icon;
+                      const label =
+                        isStory && mediaList.length > 1
+                          ? `${typeInfo.label} · ${t('story.segments', { count: mediaList.length })}`
+                          : typeInfo.label;
+                      return (
+                        <span
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
+                          style={{ color: typeInfo.color, background: typeInfo.bg }}
+                        >
+                          <Icon className="h-3.5 w-3.5" /> {label}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                )}
+              </>
+            ) : (
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {t('empty.preparingDraft')}
+                {creatingDraft ? t('empty.preparingDraft') : t('steps.needClient')}
               </p>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        {/* RIGHT COLUMN */}
-        <div className="flex flex-col gap-4">
-          {/* Caption — hidden for stories, which carry no caption */}
-          {isStory ? (
-            <div
-              className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs"
-              style={{
-                color: 'var(--text-muted)',
-                background: 'var(--surface-hover)',
-                border: '1px dashed var(--border-color)',
-              }}
-            >
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              <span>{t('story.captionHidden')}</span>
-            </div>
-          ) : (
-            <div
-              style={{
-                background: 'var(--card-bg)',
-                borderRadius: '8px',
-                padding: '1.25rem',
-                border: '1px solid var(--border-color)',
-              }}
-            >
-              <label
-                className="block text-xs font-semibold uppercase tracking-wider mb-2"
-                style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}
-              >
-                {t('labels.caption')}
-              </label>
-              <textarea
-                value={caption}
-                onChange={(e) => setCaption(e.target.value.slice(0, MAX_CAPTION))}
-                placeholder={t('captionPlaceholder')}
-                disabled={!draft || loading}
-                rows={8}
-                className="w-full rounded px-3 py-2.5 text-sm resize-none border"
-                style={{
-                  fontFamily: 'var(--font-main)',
-                  background: 'var(--surface-main)',
-                  borderColor: 'var(--border-color)',
-                  color: 'var(--text-main)',
-                }}
-              />
-              <div className="flex justify-end mt-1">
-                <span className="text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>
-                  {caption.length} / {MAX_CAPTION}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Instagram Preview */}
-          {draft && igAccount && (
-            <div
-              style={{
-                background: 'var(--card-bg)',
-                borderRadius: '8px',
-                padding: '1.25rem',
-                border: '1px solid var(--border-color)',
-              }}
-            >
-              <label
-                className="block text-xs font-semibold uppercase tracking-wider mb-3"
-                style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}
-              >
-                {t('labels.preview')}
-              </label>
+          {/* Step 4: Legenda */}
+          <StepIndicator state={stepState(4)} number={4} />
+          <div style={STEP_CARD_STYLE}>
+            {stepLabel(4, t('labels.caption'))}
+            {isStory ? (
               <div
-                className="rounded-lg overflow-hidden"
+                className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs"
                 style={{
-                  background: '#000',
-                  padding: '0.75rem',
-                  maxWidth: '300px',
-                  margin: '0 auto',
+                  color: 'var(--text-muted)',
+                  background: 'var(--surface-hover)',
+                  border: '1px dashed var(--border-color)',
                 }}
               >
-                <div className="flex items-center gap-2 mb-2">
-                  {igAccount.profile_picture_url ? (
-                    <img
-                      src={igAccount.profile_picture_url}
-                      alt=""
-                      className="w-6 h-6 rounded-full"
-                      style={{ border: '1.5px solid #E1306C' }}
-                    />
-                  ) : (
-                    <div
-                      className="w-6 h-6 rounded-full"
-                      style={{ background: 'linear-gradient(45deg, #f09433, #dc2743, #bc1888)' }}
-                    />
-                  )}
-                  <span className="text-xs font-semibold" style={{ color: '#e8eaf0' }}>
-                    @{igAccount.username ?? 'conta'}
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                <span>{t('story.captionHidden')}</span>
+              </div>
+            ) : (
+              <>
+                <textarea
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value.slice(0, MAX_CAPTION))}
+                  placeholder={t('captionPlaceholder')}
+                  disabled={!draft || loading}
+                  rows={6}
+                  className="w-full rounded px-3 py-2.5 text-sm resize-none border"
+                  style={{
+                    fontFamily: 'var(--font-main)',
+                    background: 'var(--surface-main)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--text-main)',
+                  }}
+                />
+                <div className="flex justify-end mt-1">
+                  <span className="text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                    {caption.length} / {MAX_CAPTION}
                   </span>
                 </div>
-                <div
-                  className="rounded-lg overflow-hidden"
-                  style={{
-                    background: '#1a1e26',
-                    aspectRatio: isStory ? '9 / 16' : '1',
-                    maxWidth: isStory ? '180px' : undefined,
-                    margin: isStory ? '0 auto' : undefined,
-                    position: 'relative',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {/* Story segment progress bars + counter */}
-                  {isStory && mediaList.length > 1 && (
-                    <>
-                      <div
-                        style={{
-                          position: 'absolute',
-                          top: 6,
-                          left: 6,
-                          right: 6,
-                          display: 'flex',
-                          gap: 3,
-                          zIndex: 2,
-                        }}
-                      >
-                        {mediaList.map((m, i) => (
-                          <span
-                            key={m.id}
-                            style={{
-                              flex: 1,
-                              height: 2.5,
-                              borderRadius: 2,
-                              background: i === 0 ? '#fff' : 'rgba(255,255,255,0.35)',
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <span
-                        style={{
-                          position: 'absolute',
-                          top: 12,
-                          right: 8,
-                          zIndex: 2,
-                          color: '#fff',
-                          fontSize: '0.6rem',
-                          background: 'rgba(0,0,0,0.5)',
-                          padding: '1px 6px',
-                          borderRadius: 8,
-                        }}
-                      >
-                        1/{mediaList.length}
-                      </span>
-                    </>
-                  )}
-                  {mediaList.length > 0 && mediaList[0].url ? (
-                    mediaList[0].kind === 'video' ? (
-                      <video
-                        src={mediaList[0].url}
-                        poster={mediaList[0].thumbnail_url ?? undefined}
-                        muted
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <img
-                        src={mediaList[0].thumbnail_url ?? mediaList[0].url}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
-                    )
-                  ) : (
-                    <span className="text-xs" style={{ color: '#4b5563' }}>
-                      {t('empty.mediaPlaceholder')}
-                    </span>
-                  )}
-                </div>
-                {!isStory && caption && (
-                  <p className="mt-2 text-xs leading-relaxed" style={{ color: '#9ca3af' }}>
-                    <strong style={{ color: '#e8eaf0' }}>@{igAccount.username ?? 'conta'}</strong>{' '}
-                    {caption.length > 100 ? caption.slice(0, 100) + '...' : caption}
-                  </p>
+              </>
+            )}
+          </div>
+
+          {/* Step 5: Envio */}
+          <StepIndicator state={currentStep === 5 ? 'active' : 'todo'} number={5} isLast />
+          <div style={{ ...STEP_CARD_STYLE, marginBottom: 0 }}>
+            {stepLabel(5, t('steps.send'))}
+
+            {approvalAllowed && (
+              <div
+                className="grid grid-cols-2 gap-1 p-1 rounded-lg"
+                style={{ background: 'var(--surface-darker)', maxWidth: '360px' }}
+              >
+                {(['now', 'approval'] as const).map((m) => {
+                  const active = mode === m;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setMode(m)}
+                      disabled={loading}
+                      className="py-2 text-sm font-semibold rounded-md transition-colors"
+                      style={
+                        active
+                          ? { background: 'var(--cta-bg)', color: 'var(--cta-fg)' }
+                          : { background: 'transparent', color: 'var(--text-muted)' }
+                      }
+                    >
+                      {m === 'now' ? t('mode.publishNow') : t('mode.approval')}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {mode === 'approval' && selectedClientId && !hubTokenLoading && (
+              <div className="mt-3">
+                {hubTokenUsable ? (
+                  <div
+                    className="flex items-center gap-2 text-xs"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    <Link2 className="h-4 w-4 flex-shrink-0" style={{ color: '#3ecf8e' }} />
+                    <span>{t('approval.hubLinkActive')}</span>
+                  </div>
+                ) : (
+                  <div
+                    className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs"
+                    style={{ color: '#f55a42', background: 'rgba(245, 90, 66, 0.08)' }}
+                  >
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    <span>{t('approval.noHubLink')}</span>
+                    <a
+                      href={`/clientes/${selectedClientId}`}
+                      className="ml-auto underline font-medium whitespace-nowrap"
+                      style={{ color: '#f55a42' }}
+                    >
+                      {t('approval.noHubLinkAction')} →
+                    </a>
+                  </div>
                 )}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Publish Button */}
-          <Button
-            onClick={() => setConfirmOpen(true)}
-            disabled={!canPublish}
-            className="w-full text-sm font-bold py-3"
-            style={{ borderRadius: '8px' }}
-          >
-            <Send className="h-4 w-4 mr-2" />{' '}
-            {t(isStory ? 'publish.buttonStories' : 'publish.button')}
-          </Button>
-          {draft && (
-            <p className="text-center text-xs" style={{ color: 'var(--text-muted)' }}>
-              {t('publish.note')}
-            </p>
-          )}
+            {/* Compact Instagram preview */}
+            {draft && igAccount && (
+              <div className="mt-4">
+                <label
+                  className="block text-xs font-semibold uppercase tracking-wider mb-2"
+                  style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}
+                >
+                  {t('labels.preview')}
+                </label>
+                <div
+                  className="rounded-lg overflow-hidden"
+                  style={{ background: '#000', padding: '0.75rem', maxWidth: '240px' }}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    {igAccount.profile_picture_url ? (
+                      <img
+                        src={igAccount.profile_picture_url}
+                        alt=""
+                        className="w-6 h-6 rounded-full"
+                        style={{ border: '1.5px solid #E1306C' }}
+                      />
+                    ) : (
+                      <div
+                        className="w-6 h-6 rounded-full"
+                        style={{ background: 'linear-gradient(45deg, #f09433, #dc2743, #bc1888)' }}
+                      />
+                    )}
+                    <span className="text-xs font-semibold" style={{ color: '#e8eaf0' }}>
+                      @{igAccount.username ?? 'conta'}
+                    </span>
+                  </div>
+                  <div
+                    className="rounded-lg overflow-hidden"
+                    style={{
+                      background: '#1a1e26',
+                      aspectRatio: isStory ? '9 / 16' : '1',
+                      maxWidth: isStory ? '150px' : undefined,
+                      margin: isStory ? '0 auto' : undefined,
+                      position: 'relative',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {isStory && mediaList.length > 1 && (
+                      <>
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: 6,
+                            left: 6,
+                            right: 6,
+                            display: 'flex',
+                            gap: 3,
+                            zIndex: 2,
+                          }}
+                        >
+                          {mediaList.map((m, i) => (
+                            <span
+                              key={m.id}
+                              style={{
+                                flex: 1,
+                                height: 2.5,
+                                borderRadius: 2,
+                                background: i === 0 ? '#fff' : 'rgba(255,255,255,0.35)',
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: 12,
+                            right: 8,
+                            zIndex: 2,
+                            color: '#fff',
+                            fontSize: '0.6rem',
+                            background: 'rgba(0,0,0,0.5)',
+                            padding: '1px 6px',
+                            borderRadius: 8,
+                          }}
+                        >
+                          1/{mediaList.length}
+                        </span>
+                      </>
+                    )}
+                    {mediaList.length > 0 && mediaList[0].url ? (
+                      mediaList[0].kind === 'video' ? (
+                        <video
+                          src={mediaList[0].url}
+                          poster={mediaList[0].thumbnail_url ?? undefined}
+                          muted
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <img
+                          src={mediaList[0].thumbnail_url ?? mediaList[0].url}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      )
+                    ) : (
+                      <span className="text-xs" style={{ color: '#4b5563' }}>
+                        {t('empty.mediaPlaceholder')}
+                      </span>
+                    )}
+                  </div>
+                  {!isStory && caption && (
+                    <p className="mt-2 text-xs leading-relaxed" style={{ color: '#9ca3af' }}>
+                      <strong style={{ color: '#e8eaf0' }}>@{igAccount.username ?? 'conta'}</strong>{' '}
+                      {caption.length > 100 ? caption.slice(0, 100) + '...' : caption}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <Button
+              data-testid="express-submit"
+              onClick={() => setConfirmOpen(true)}
+              disabled={!canPublish}
+              className="w-full text-sm font-bold py-3 mt-4"
+              style={{ borderRadius: '8px' }}
+            >
+              <Send className="h-4 w-4 mr-2" />{' '}
+              {mode === 'approval'
+                ? t('approval.button')
+                : t(isStory ? 'publish.buttonStories' : 'publish.button')}
+            </Button>
+            {draft && (
+              <p className="text-center text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                {t(mode === 'approval' ? 'approval.note' : 'publish.note')}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Publish Confirmation Dialog */}
+      {/* Confirmation Dialog */}
       <AlertDialog
         open={confirmOpen}
         onOpenChange={(o) => {
@@ -770,10 +907,18 @@ export default function ExpressPostPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {publishing ? t('publish.publishingTitle') : t('publish.confirmTitle')}
+              {publishing
+                ? t('publish.publishingTitle')
+                : mode === 'approval'
+                  ? t('approval.confirmTitle')
+                  : t('publish.confirmTitle')}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {publishing ? t('publish.publishingDescription') : t('publish.confirmDescription')}
+              {publishing
+                ? t('publish.publishingDescription')
+                : mode === 'approval'
+                  ? t('approval.confirmDescription')
+                  : t('publish.confirmDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {publishing && (
@@ -795,10 +940,19 @@ export default function ExpressPostPage() {
           )}
           {!publishing && (
             <AlertDialogFooter>
-              <AlertDialogCancel>{tc('actions.cancel')}</AlertDialogCancel>
-              <Button onClick={handlePublishNow} style={{ background: '#E1306C', color: 'white' }}>
-                {t('publish_action')}
-              </Button>
+              <AlertDialogCancel disabled={loading}>{tc('actions.cancel')}</AlertDialogCancel>
+              {mode === 'approval' ? (
+                <Button onClick={handleSendForApproval} disabled={loading}>
+                  {t('approval.sendAction')}
+                </Button>
+              ) : (
+                <Button
+                  onClick={handlePublishNow}
+                  style={{ background: '#E1306C', color: 'white' }}
+                >
+                  {t('publish_action')}
+                </Button>
+              )}
             </AlertDialogFooter>
           )}
         </AlertDialogContent>
