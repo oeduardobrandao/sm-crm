@@ -740,7 +740,7 @@ async function handleUnsetWorkspacePlan(
 
   const { data: sub } = await svc
     .from("workspace_subscriptions")
-    .select("status, plan_id")
+    .select("status, plan_id, provider, cancel_at_period_end, current_period_end")
     .eq("workspace_id", workspace_id)
     .maybeSingle();
 
@@ -751,8 +751,15 @@ async function handleUnsetWorkspacePlan(
     .maybeSingle();
 
   const target = revertPlanTarget(
-    sub as { status?: string; plan_id?: string } | null,
+    sub as {
+      status?: string;
+      plan_id?: string;
+      provider?: string;
+      cancel_at_period_end?: boolean;
+      current_period_end?: string;
+    } | null,
     (def?.id as string) ?? "free",
+    new Date(),
   );
 
   const { error: wErr } = await svc
