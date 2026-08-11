@@ -161,13 +161,22 @@ export async function priceSubscriptionRows<T extends PriceableSub>(
         amount_source: "stripe",
         needsLiveFetch: false,
       };
-      // Write back so the next load reads the mirror instead of Stripe.
-      const { error } = await svc
+      // Write back so the next load reads the mirror instead of Stripe. CAS on provider: if a
+      // concurrent Pagar.me bind took the row while the Stripe fetch was in flight, zero rows
+      // match — this is an opportunistic cache refresh, so we just skip and log (the in-memory
+      // result for THIS response still shows the read-time snapshot, which is acceptable).
+      const { data: written, error } = await svc
         .from("workspace_subscriptions")
         .update(buildAmountColumns(amt))
-        .eq("workspace_id", r.row.workspace_id);
+        .eq("workspace_id", r.row.workspace_id)
+        .eq("provider", "stripe")
+        .select("workspace_id");
       if (error) {
         console.error("[platform-admin] amount write-back failed:", error.message);
+      } else if (!written?.length) {
+        console.warn(
+          `[platform-admin] amount write-back skipped for workspace ${r.row.workspace_id}: provider changed mid-fetch`,
+        );
       }
     } catch (err) {
       console.error("[platform-admin] price stripe fetch failed:", (err as Error).message);

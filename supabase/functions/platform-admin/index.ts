@@ -465,13 +465,21 @@ async function buildSubscriptionDetail(
         row.stripe_subscription_id,
       );
       // Opportunistic refresh: viewing a workspace updates its cached amount, so
-      // the list/MRR pages keep reading a mirror that tracks live Stripe.
-      const { error: writeBackError } = await svc
+      // the list/MRR pages keep reading a mirror that tracks live Stripe. CAS on provider:
+      // if a concurrent Pagar.me bind took the row while the Stripe fetch was in flight,
+      // zero rows match — skip and log rather than clobbering the fresh Pagar.me mirror.
+      const { data: writtenBack, error: writeBackError } = await svc
         .from("workspace_subscriptions")
         .update(buildAmountColumns(amt))
-        .eq("workspace_id", workspaceId);
+        .eq("workspace_id", workspaceId)
+        .eq("provider", "stripe")
+        .select("workspace_id");
       if (writeBackError) {
         console.error("[platform-admin] amount write-back failed:", writeBackError.message);
+      } else if (!writtenBack?.length) {
+        console.warn(
+          `[platform-admin] amount write-back skipped for workspace ${workspaceId}: provider changed mid-fetch`,
+        );
       }
       return info;
     } catch (err) {
