@@ -14,6 +14,7 @@ const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || '';
 const INTERNAL_FUNCTION_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? (() => { throw new Error('INTERNAL_FUNCTION_SECRET is required'); })();
 const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? '';
 import { UUID_RE } from "./utils.ts";
+import { parseViewsRange, sumViewsRange } from "./views.ts";
 
 // --- Token Decryption ---
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
@@ -62,19 +63,22 @@ async function getCachedOrFetch<T>(
   accountId: number,
   cacheKey: string,
   fetchFn: () => Promise<T>,
-  maxAgeHours = 6
+  maxAgeHours = 6,
+  skipCacheRead = false
 ): Promise<{ data: T; fromCache: boolean; fetchedAt: string }> {
-  const { data: cached } = await serviceClient
-    .from('instagram_analytics_cache')
-    .select('data, fetched_at')
-    .eq('instagram_account_id', accountId)
-    .eq('cache_key', cacheKey)
-    .single();
+  if (!skipCacheRead) {
+    const { data: cached } = await serviceClient
+      .from('instagram_analytics_cache')
+      .select('data, fetched_at')
+      .eq('instagram_account_id', accountId)
+      .eq('cache_key', cacheKey)
+      .single();
 
-  if (cached && cached.data) {
-    const age = Date.now() - new Date(cached.fetched_at).getTime();
-    if (age < maxAgeHours * 60 * 60 * 1000) {
-      return { data: cached.data as T, fromCache: true, fetchedAt: cached.fetched_at };
+    if (cached && cached.data) {
+      const age = Date.now() - new Date(cached.fetched_at).getTime();
+      if (age < maxAgeHours * 60 * 60 * 1000) {
+        return { data: cached.data as T, fromCache: true, fetchedAt: cached.fetched_at };
+      }
     }
   }
 
@@ -322,6 +326,41 @@ Deno.serve(async (req) => {
           followerCount: account.follower_count,
         };
       });
+
+      return json(result);
+    }
+
+    // ==========================================
+    // GET /views/:clientId?days=N | ?start&end (optional refresh=1)
+    // Account-level IG "views" total for the period. Ranges are clamped to
+    // Instagram's 90-day insights retention; see views.ts.
+    // ==========================================
+    if (req.method === 'GET' && path.match(/^\/views\/\d+$/)) {
+      const clientId = path.split('/')[2];
+      await verifyClientOwnership(serviceClient, clientId, contaId);
+
+      const parsed = parseViewsRange(url.searchParams, Math.floor(Date.now() / 1000));
+      if (!parsed.ok) {
+        console.error('[views] invalid params:', parsed.error, url.search);
+        return json({ error: true, message: 'Parâmetros de período inválidos' }, 400);
+      }
+      const { range } = parsed;
+
+      const { account, accessToken } = await getAccountWithToken(serviceClient, clientId);
+
+      const daysParam = url.searchParams.get('days');
+      const cacheKey = daysParam
+        ? `views_${daysParam}`
+        : `views_${url.searchParams.get('start')}_${url.searchParams.get('end')}`;
+      const skipCacheRead = url.searchParams.get('refresh') === '1';
+
+      const result = await getCachedOrFetch(serviceClient, account.id, cacheKey, async () => {
+        const current = await sumViewsRange(fetch, accessToken, range.since, range.until);
+        const previous = range.prev
+          ? await sumViewsRange(fetch, accessToken, range.prev.since, range.prev.until)
+          : null;
+        return { current, previous, partial: range.partial };
+      }, 6, skipCacheRead);
 
       return json(result);
     }
