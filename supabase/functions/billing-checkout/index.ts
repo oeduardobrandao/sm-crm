@@ -8,6 +8,7 @@ import {
   resolveTrialDays,
 } from "../_shared/trial.ts";
 import { isWorkspaceOwner } from "../_shared/workspace-role.ts";
+import { hasEverSubscribed } from "../_shared/billing-logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -65,7 +66,9 @@ Deno.serve(async (req: Request) => {
     // find-or-create Stripe customer for this workspace
     const { data: subRow } = await svc
       .from("workspace_subscriptions")
-      .select("stripe_customer_id, stripe_subscription_id, status")
+      .select(
+        "stripe_customer_id, stripe_subscription_id, status, ever_subscribed_at, pagarme_subscription_id",
+      )
       .eq("workspace_id", workspaceId).maybeSingle();
 
     // A workspace mid-subscription belongs in the billing portal, not a second
@@ -89,7 +92,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Every workspace that has never subscribed gets the trial. No code, no gate.
-    const trialDays = resolveTrialDays(Boolean(subRow?.stripe_subscription_id));
+    const trialDays = resolveTrialDays(hasEverSubscribed(subRow));
     const source = resolveCheckoutSource(body.source);
     const returnPaths = resolveReturnPaths(source);
 
