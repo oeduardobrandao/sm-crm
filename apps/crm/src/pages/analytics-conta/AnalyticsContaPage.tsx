@@ -1565,8 +1565,9 @@ function AnalyticsContent({
       </div>
 
       {/* KPI Cards */}
-      {/* maxCols 8 keeps all eight metrics on a single row */}
-      <StatCardGrid className="animate-up" maxCols={8}>
+      {/* 8 metrics as two clean rows of 4: eight-up squeezes the cards until
+          labels wrap into the icon bubbles */}
+      <StatCardGrid className="animate-up" maxCols={4}>
         <KpiCard
           label="Visualizações"
           icon={Play}

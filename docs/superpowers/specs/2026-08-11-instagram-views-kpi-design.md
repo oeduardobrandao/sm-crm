@@ -133,7 +133,9 @@ Consequences:
   in `handleSync` before invalidating a new `['analytics-views', clientId]`
   key; the queryFn passes `refresh=1` when the ref is set and clears it after
   use. Period switches keep using the server cache (no `refresh`).
-- New **first** card in the `StatCardGrid` (before Seguidores), `maxCols` 7 → 8:
+- New **first** card in the `StatCardGrid` (before Seguidores), `maxCols` 7 → 4
+  (two rows of four: after seeing it live, eight-up squeezed the cards until
+  labels wrapped into the icon bubbles):
   - Label `Visualizações`, lucide `Play` icon, tone `violet` (StatCard tones
     allow repeats; positions 1 and 4 are not adjacent).
   - Value: `current.toLocaleString('pt-BR')`. While the query loads: `…`. On
