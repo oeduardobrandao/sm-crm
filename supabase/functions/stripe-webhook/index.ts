@@ -2,10 +2,13 @@ import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { stripe, cryptoProvider } from "../_shared/stripe.ts";
 import {
+  extractInvoiceSubscriptionId,
   resolvePlanFromPriceId,
   statusToPlanId,
+  type InvoiceSubscriptionSource,
   type PlanPriceRow,
 } from "../_shared/billing-logic.ts";
+import { canWebhookWrite } from "../_shared/pagarme-logic.ts";
 import {
   buildFailureEpisode,
   buildRecoveryEpisode,
@@ -96,6 +99,31 @@ async function syncSubscription(
   const workspaceId = await resolveWorkspaceId(svc, sub, session);
   if (!workspaceId) throw new Error(`Could not resolve workspace for subscription ${sub.id}`);
 
+  // Ownership guard: a Stripe webhook may only write a row Stripe owns, and only for the
+  // subscription id registered on it. (Re)binding a new id is allowed only when the event came
+  // from checkout.session.completed (`session` non-null) — the sole event authorized by the
+  // workspace itself via client_reference_id. Everything else (late events from an old
+  // subscription, rows owned by Pagar.me) is an intentional no-op: retrying cannot change
+  // ownership, so we ack instead of erroring.
+  const { data: existingRow } = await svc
+    .from("workspace_subscriptions")
+    .select(
+      "provider, stripe_subscription_id, pagarme_subscription_id, status, cancel_at_period_end, current_period_end",
+    )
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+  const allowed = canWebhookWrite(
+    existingRow ?? null,
+    { provider: "stripe", subscriptionId: sub.id, isAuthorizedBind: session != null },
+    new Date(),
+  );
+  if (!allowed) {
+    console.warn(
+      `[stripe-webhook] write denied for subscription ${sub.id} on workspace ${workspaceId}: row not owned by this stripe subscription`,
+    );
+    return;
+  }
+
   const priceId = sub.items?.data?.[0]?.price?.id ?? null;
   const plans = await loadPlanPriceRows(svc);
   const resolved = priceId ? resolvePlanFromPriceId(priceId, plans) : null;
@@ -159,11 +187,33 @@ async function handlePaymentFailed(svc: SupabaseClient, invoice: Stripe.Invoice)
     ? invoice.customer : invoice.customer?.id;
   if (!customerId) return;
 
+  // A failed invoice with no subscription (one-off invoice) has no dunning to run.
+  const invoiceSubId = extractInvoiceSubscriptionId(invoice as InvoiceSubscriptionSource);
+  if (!invoiceSubId) return;
+
   // past_due_since is selected so buildFailureEpisode can coalesce against its own prior value.
+  // The ownership columns are selected so canWebhookWrite can refuse a failure event that does
+  // not belong to the registered subscription (old sub after a rebind, or a Pagar.me-owned row).
   const { data: row } = await svc
-    .from("workspace_subscriptions").select("workspace_id, past_due_since")
+    .from("workspace_subscriptions")
+    .select(
+      "workspace_id, past_due_since, provider, stripe_subscription_id, pagarme_subscription_id, status, cancel_at_period_end, current_period_end",
+    )
     .eq("stripe_customer_id", customerId).maybeSingle();
   if (!row?.workspace_id) throw new Error(`No workspace for failed-invoice customer ${customerId}`);
+
+  // payment_failed never binds: an unbound row or a mismatched id is a deliberate no-op.
+  const allowed = canWebhookWrite(
+    row,
+    { provider: "stripe", subscriptionId: invoiceSubId, isAuthorizedBind: false },
+    new Date(),
+  );
+  if (!allowed) {
+    console.warn(
+      `[stripe-webhook] payment_failed ignored for subscription ${invoiceSubId} on workspace ${row.workspace_id}: not the registered subscription`,
+    );
+    return;
+  }
 
   const nextAttempt = invoice.next_payment_attempt ?? null;
   const episode = buildFailureEpisode(

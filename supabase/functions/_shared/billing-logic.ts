@@ -120,3 +120,25 @@ export function aggregateMrr<T extends MrrRow>(
   }
   return { mrr_cents, paying_count: priced.length, priced };
 }
+
+// ─── Invoice → subscription id ─────────────────────────────────────────────
+
+export interface InvoiceSubscriptionSource {
+  subscription?: string | { id?: string | null } | null;
+  parent?: {
+    subscription_details?: { subscription?: string | { id?: string | null } | null } | null;
+  } | null;
+}
+
+/**
+ * Extracts the subscription id from a Stripe invoice payload. Webhook payloads use the
+ * ACCOUNT's API version regardless of the SDK pin: older versions (acacia) carry
+ * `invoice.subscription` at the root, basil (2025-03-31+) moved it to
+ * `invoice.parent.subscription_details.subscription`, and either shape may be an expanded
+ * object instead of a string. Null means the invoice is not tied to a subscription.
+ */
+export function extractInvoiceSubscriptionId(invoice: InvoiceSubscriptionSource): string | null {
+  const raw = invoice.subscription ?? invoice.parent?.subscription_details?.subscription ?? null;
+  if (raw == null) return null;
+  return typeof raw === "string" ? raw : (raw.id ?? null);
+}
