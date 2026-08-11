@@ -145,6 +145,7 @@ Consequences:
   - Period chip: the shared `periodTag`. When `partial` is true, the chip reads
     `máx. 90d` and the footnote explains: `O Instagram fornece visualizações
     de no máximo 90 dias.` (No em-dashes in any user-facing copy.)
+
 ### Explicitly out of scope
 
 - No migration, no cron change, no renaming of the legacy `impressions*` /
