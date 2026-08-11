@@ -72,7 +72,7 @@ async function getAccountByClientId(clientId: number) {
   return data;
 }
 
-function makeDelta(current: number, previous: number): KpiDelta {
+export function makeDelta(current: number, previous: number): KpiDelta {
   return {
     current,
     previous,
@@ -106,6 +106,13 @@ export interface AnalyticsOverview {
     followerCount: number;
   };
   fromCache: boolean;
+  fetchedAt: string;
+}
+
+export interface AccountViews {
+  current: number;
+  previous: number | null;
+  partial: boolean;
   fetchedAt: string;
 }
 
@@ -601,6 +608,31 @@ export async function getAnalyticsOverview(
     fromCache: false,
     fetchedAt: new Date().toISOString(),
   };
+}
+
+// Account-level IG "views" for the period, via the edge function (the only
+// KPI that needs a live Graph call; see the 2026-08-11 views KPI spec).
+export async function getAccountViews(
+  clientId: number,
+  days: number,
+  dateRange?: { start: string; end: string },
+  refresh = false,
+): Promise<AccountViews | null> {
+  const params = new URLSearchParams();
+  if (dateRange) {
+    params.set('start', dateRange.start);
+    params.set('end', dateRange.end);
+  } else {
+    params.set('days', String(days));
+  }
+  if (refresh) params.set('refresh', '1');
+
+  const res = await fetchEdge<{
+    data: { current: number; previous: number | null; partial: boolean };
+    fetchedAt: string;
+  }>(`${EDGE_URL}/views/${clientId}?${params}`);
+  if (!res?.data) return null;
+  return { ...res.data, fetchedAt: res.fetchedAt };
 }
 
 export async function getPostsAnalytics(
