@@ -293,6 +293,21 @@ describe('ExpressPostPage', () => {
       expect(screen.queryByRole('button', { name: 'Aprovação do cliente' })).toBeNull();
     });
 
+    it('hides the mode toggle while entitlements are still loading', async () => {
+      // Unresolved entitlements must not read as "allowed": sending to a
+      // feature-disabled workspace strands the post where the client can't see it.
+      vi.mocked(useWorkspaceLimits).mockReturnValue({
+        limits: null,
+        features: null,
+        planName: null,
+        isLoading: true,
+        isUnlimited: false,
+      });
+      renderWithProviders(<ExpressPostPage />);
+      await waitFor(() => expect(screen.getByText('Post Express')).toBeTruthy());
+      expect(screen.queryByRole('button', { name: 'Aprovação do cliente' })).toBeNull();
+    });
+
     it('shows the mode toggle on an unlimited plan (features null)', async () => {
       vi.mocked(useWorkspaceLimits).mockReturnValue(workspaceLimitsValue(null));
       renderWithProviders(<ExpressPostPage />);

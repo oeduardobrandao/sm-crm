@@ -212,10 +212,12 @@ export default function ExpressPostPage() {
     },
   });
 
-  // features === null means unlimited plan (everything enabled), so the gate
-  // must be "hide only when explicitly false".
-  const { features } = useWorkspaceLimits();
-  const approvalAllowed = features?.feature_hub_portal !== false;
+  // Fail closed until entitlements RESOLVE: a post sent to a workspace whose
+  // hub portal is disabled becomes invisible to the client (resolveHubToken
+  // rejects the entitlement), so "loading/error" must not read as "allowed".
+  // isUnlimited is only true after a successful load of an unlimited plan.
+  const { features, isUnlimited } = useWorkspaceLimits();
+  const approvalAllowed = isUnlimited || features?.feature_hub_portal === true;
 
   useEffect(() => {
     if (!approvalAllowed && mode === 'approval') setMode('now');
