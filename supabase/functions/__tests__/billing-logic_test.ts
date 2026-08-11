@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import {
   aggregateMrr,
+  annualCheckoutBlocked,
   extractInvoiceSubscriptionId,
   hasEverSubscribed,
   isMrrStatus,
@@ -186,4 +187,14 @@ Deno.test("extractInvoiceSubscriptionId returns null for a non-subscription invo
   assertEquals(extractInvoiceSubscriptionId({}), null);
   assertEquals(extractInvoiceSubscriptionId({ subscription: null }), null);
   assertEquals(extractInvoiceSubscriptionId({ subscription: {} }), null);
+});
+
+// ─── annualCheckoutBlocked ────────────────────────────────────────────────────────
+
+Deno.test("annualCheckoutBlocked blocks year only when the plan is on pagarme 12x", () => {
+  assertEquals(annualCheckoutBlocked("year", { pagarme_12x_enabled: true }), true);
+  assertEquals(annualCheckoutBlocked("year", { pagarme_12x_enabled: false }), false);
+  assertEquals(annualCheckoutBlocked("month", { pagarme_12x_enabled: true }), false);
+  assertEquals(annualCheckoutBlocked("year", { pagarme_12x_enabled: null }), false);
+  assertEquals(annualCheckoutBlocked("year", null), false);
 });

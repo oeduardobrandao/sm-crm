@@ -47,6 +47,19 @@ export function hasEverSubscribed(
   );
 }
 
+/**
+ * Once a plan's annual price is sold as 12x via Pagar.me (pagarme_12x_enabled), the Stripe
+ * annual checkout must refuse: a tab loaded before the cutover could otherwise still open a
+ * one-shot annual Stripe subscription. Monthly plans stay on Stripe and are never blocked.
+ * Fail-open on a missing plan/flag: the gate defaulting to off is the rollout switch.
+ */
+export function annualCheckoutBlocked(
+  interval: "month" | "year",
+  plan: { pagarme_12x_enabled?: boolean | null } | null | undefined,
+): boolean {
+  return interval === "year" && plan?.pagarme_12x_enabled === true;
+}
+
 export interface PlanPriceRow {
   id: string;
   stripe_price_id: string | null;
