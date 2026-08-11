@@ -1,6 +1,12 @@
 import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { ClientHealthSummary } from '../../../services/clientHealth';
 import type { HealthFilterKey, HealthSort } from '../../../lib/health/filter';
 
@@ -79,7 +85,10 @@ export function HealthFilterBar({
           className="h-9 w-auto min-w-[180px] text-xs"
         />
         <Select value={sort} onValueChange={(v) => onSort(v as HealthSort)}>
-          <SelectTrigger aria-label={t('health.sortLabel')} className="h-9 w-auto min-w-[150px] text-xs">
+          <SelectTrigger
+            aria-label={t('health.sortLabel')}
+            className="h-9 w-auto min-w-[150px] text-xs"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
