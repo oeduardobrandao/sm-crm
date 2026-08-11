@@ -398,7 +398,7 @@ async function buildSubscriptionDetail(
   const { data: row } = await svc
     .from("workspace_subscriptions")
     .select(
-      "status, plan_id, billing_interval, current_period_end, cancel_at_period_end, failed_payment_count, stripe_customer_id, stripe_subscription_id",
+      "status, plan_id, billing_interval, current_period_end, cancel_at_period_end, failed_payment_count, stripe_customer_id, stripe_subscription_id, provider, pagarme_subscription_id, installments, amount_cents, gross_cents, currency, amount_interval, discount_label",
     )
     .eq("workspace_id", workspaceId)
     .maybeSingle();
@@ -410,7 +410,9 @@ async function buildSubscriptionDetail(
     planName = plan?.name ?? null;
   }
 
+  const provider: "stripe" | "pagarme" = row.provider === "pagarme" ? "pagarme" : "stripe";
   const info = {
+    provider,
     status: row.status ?? null,
     plan_id: row.plan_id ?? null,
     plan_name: planName,
@@ -420,14 +422,32 @@ async function buildSubscriptionDetail(
     failed_payment_count: row.failed_payment_count ?? 0,
     stripe_customer_id: row.stripe_customer_id ?? null,
     stripe_subscription_id: row.stripe_subscription_id ?? null,
+    pagarme_subscription_id: row.pagarme_subscription_id ?? null,
+    installments: (row.installments as number | null) ?? null,
     amount_cents: null as number | null,
     gross_cents: null as number | null,
     currency: null as string | null,
     interval: row.billing_interval ?? null,
     discount_label: null as string | null,
-    amount_source: null as "stripe" | "catalog" | null,
+    amount_source: null as "stripe" | "pagarme" | "catalog" | null,
     stripe_dashboard_url: null as string | null,
   };
+
+  // A Pagar.me-owned row reads ONLY the mirror (written synchronously at checkout). Never a
+  // Stripe live-fetch (its stripe_subscription_id, if present, is a dead pre-switch leftover
+  // whose price would clobber the mirror on write-back) and no dashboard URL in v1.
+  if (provider === "pagarme") {
+    if (row.amount_cents != null) {
+      info.amount_cents = row.amount_cents as number;
+      info.gross_cents = (row.gross_cents as number | null) ?? null;
+      info.currency = (row.currency as string | null) ?? null;
+      info.interval = (row.amount_interval as string | null) ?? row.billing_interval ?? null;
+      info.discount_label = (row.discount_label as string | null) ?? null;
+      info.amount_source = "pagarme";
+      return info;
+    }
+    return applyCatalogFallback(svc, info, row.plan_id ?? null, row.billing_interval ?? null);
+  }
 
   if (row.stripe_subscription_id) {
     try {
@@ -459,19 +479,33 @@ async function buildSubscriptionDetail(
     }
   }
 
-  // Catalog fallback: list price from the plan row × billing interval.
-  if (row.plan_id) {
-    const { data: plan } = await svc
-      .from("plans")
-      .select("price_brl, price_brl_annual")
-      .eq("id", row.plan_id)
-      .single();
-    const cents = row.billing_interval === "year" ? plan?.price_brl_annual : plan?.price_brl;
-    if (cents != null) {
-      info.amount_cents = cents as number;
-      info.currency = "brl";
-      info.amount_source = "catalog";
-    }
+  return applyCatalogFallback(svc, info, row.plan_id ?? null, row.billing_interval ?? null);
+}
+
+/** Fills amount from the plan's list price when neither mirror nor live fetch produced one. */
+async function applyCatalogFallback<
+  T extends {
+    amount_cents: number | null;
+    currency: string | null;
+    amount_source: "stripe" | "pagarme" | "catalog" | null;
+  },
+>(
+  svc: ReturnType<typeof createClient>,
+  info: T,
+  planId: string | null,
+  billingInterval: string | null,
+): Promise<T> {
+  if (!planId) return info;
+  const { data: plan } = await svc
+    .from("plans")
+    .select("price_brl, price_brl_annual")
+    .eq("id", planId)
+    .single();
+  const cents = billingInterval === "year" ? plan?.price_brl_annual : plan?.price_brl;
+  if (cents != null) {
+    info.amount_cents = cents as number;
+    info.currency = "brl";
+    info.amount_source = "catalog";
   }
   return info;
 }
@@ -516,7 +550,7 @@ async function handleGetMrr(
   const { data: subs, error: subsError } = await svc
     .from("workspace_subscriptions")
     .select(
-      "workspace_id, status, plan_id, billing_interval, stripe_subscription_id, amount_cents, currency, amount_interval, discount_label",
+      "workspace_id, provider, status, plan_id, billing_interval, stripe_subscription_id, amount_cents, currency, amount_interval, discount_label",
     )
     .in("status", ["active", "past_due"]);
   if (subsError) throw subsError;
@@ -588,7 +622,7 @@ async function handleGetTrials(
   const { data: subs, error } = await svc
     .from("workspace_subscriptions")
     .select(
-      "workspace_id, plan_id, billing_interval, stripe_subscription_id, current_period_end, amount_cents, currency, amount_interval, discount_label",
+      "workspace_id, provider, plan_id, billing_interval, stripe_subscription_id, current_period_end, amount_cents, currency, amount_interval, discount_label",
     )
     .eq("status", "trialing");
   if (error) throw error;
