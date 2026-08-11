@@ -170,6 +170,10 @@ export async function priceSubscriptionRows<T extends PriceableSub>(
         .update(buildAmountColumns(amt))
         .eq("workspace_id", r.row.workspace_id)
         .eq("provider", "stripe")
+        // Same-provider pin: a webhook rebind to a NEW Stripe subscription mid-fetch keeps
+        // provider = 'stripe', so the id observed at read time must also still match — or this
+        // write-back would stamp the OLD subscription's amount into the new one's mirror.
+        .eq("stripe_subscription_id", r.row.stripe_subscription_id)
         .select("workspace_id");
       if (error) {
         console.error("[platform-admin] amount write-back failed:", error.message);

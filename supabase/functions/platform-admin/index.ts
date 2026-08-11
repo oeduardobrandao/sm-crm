@@ -473,6 +473,9 @@ async function buildSubscriptionDetail(
         .update(buildAmountColumns(amt))
         .eq("workspace_id", workspaceId)
         .eq("provider", "stripe")
+        // Same-provider pin (see pricing.ts liveFetch): the id observed at read time must
+        // still match, or a mid-fetch rebind would get the old subscription's amount.
+        .eq("stripe_subscription_id", row.stripe_subscription_id)
         .select("workspace_id");
       if (writeBackError) {
         console.error("[platform-admin] amount write-back failed:", writeBackError.message);
