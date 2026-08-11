@@ -1,4 +1,6 @@
 import { useTranslation } from 'react-i18next';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { ClientHealthSummary } from '../../../services/clientHealth';
 import type { HealthFilterKey, HealthSort } from '../../../lib/health/filter';
 
@@ -70,26 +72,24 @@ export function HealthFilterBar({
         })}
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
-        <input
-          className="form-input"
+        <Input
           placeholder={t('health.search')}
           value={search}
           onChange={(e) => onSearch(e.target.value)}
-          style={{ fontSize: '0.72rem' }}
+          className="h-9 w-auto min-w-[180px] text-xs"
         />
-        <select
-          aria-label={t('health.sortLabel')}
-          value={sort}
-          onChange={(e) => onSort(e.target.value as HealthSort)}
-          className="form-input"
-          style={{ fontSize: '0.72rem' }}
-        >
-          {SORTS.map((s) => (
-            <option key={s} value={s}>
-              {t(`health.sort.${s}`)}
-            </option>
-          ))}
-        </select>
+        <Select value={sort} onValueChange={(v) => onSort(v as HealthSort)}>
+          <SelectTrigger aria-label={t('health.sortLabel')} className="h-9 w-auto min-w-[150px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SORTS.map((s) => (
+              <SelectItem key={s} value={s}>
+                {t(`health.sort.${s}`)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );
