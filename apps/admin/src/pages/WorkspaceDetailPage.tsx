@@ -246,11 +246,13 @@ export default function WorkspaceDetailPage() {
         </div>
       </div>
 
-      {/* Stripe subscription — the customer's real billing, even when an admin has
+      {/* Provider subscription — the customer's real billing, even when an admin has
           manually comped the effective plan above. */}
       <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mb-6">
         <div className="flex items-center justify-between gap-3 mb-4">
-          <h2 className="font-semibold">Assinatura Stripe</h2>
+          <h2 className="font-semibold">
+            {data.subscription?.provider === 'pagarme' ? 'Assinatura Pagar.me' : 'Assinatura Stripe'}
+          </h2>
           {data.subscription?.stripe_dashboard_url && (
             <a
               href={sanitizeExternalUrl(data.subscription.stripe_dashboard_url)}
@@ -285,6 +287,9 @@ export default function WorkspaceDetailPage() {
                 <span className="font-sf text-sm">
                   {formatMoney(data.subscription.amount_cents, data.subscription.currency)}
                   {intervalSuffix(data.subscription.interval)}
+                  {data.subscription.installments != null &&
+                    data.subscription.installments > 1 &&
+                    ` · ${data.subscription.installments}x`}
                 </span>
                 {data.subscription.gross_cents != null && (
                   <span className="ml-2 text-xs text-muted-foreground line-through">
