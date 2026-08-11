@@ -79,6 +79,17 @@ Deno.test("views: reversed range, future start, malformed dates are rejected", (
   assertEquals(parseViewsRange(params({ start: "07/01/2026", end: "2026-07-31" }), NOW).ok, false);
 });
 
+Deno.test("views: impossible calendar dates are rejected, valid leap day accepted", () => {
+  // Date.parse silently normalizes these to a different day; the route must 400.
+  assertEquals(parseViewsRange(params({ start: "2026-02-30", end: "2026-03-05" }), NOW).ok, false);
+  assertEquals(parseViewsRange(params({ start: "2026-06-01", end: "2026-06-31" }), NOW).ok, false);
+  assertEquals(parseViewsRange(params({ start: "2026-02-29", end: "2026-03-05" }), NOW).ok, false);
+  // 2028 is a leap year; NOW is 2026-08-11, so test the PAST leap day 2024-02-29
+  // via a NOW inside its 90-day window.
+  const NOW_2024 = Date.parse("2024-03-10T00:00:00Z") / 1000;
+  assert(parseViewsRange(params({ start: "2024-02-29", end: "2024-03-05" }), NOW_2024).ok);
+});
+
 Deno.test("views: range entirely older than 90 days is rejected", () => {
   assertEquals(parseViewsRange(params({ start: "2026-01-01", end: "2026-02-01" }), NOW).ok, false);
 });

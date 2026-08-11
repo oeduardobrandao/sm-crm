@@ -10,6 +10,14 @@ export const VIEWS_CHUNK_DAYS = 30;
 const DAY = 86400;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+// Date.parse normalizes impossible days ("2026-02-30" becomes Mar 2), so a
+// parsed date only counts as valid when it round-trips to the supplied string.
+function parseUtcDayStrict(day: string): number | null {
+  const ms = Date.parse(`${day}T00:00:00Z`);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toISOString().slice(0, 10) === day ? ms : null;
+}
+
 export interface ViewsRange {
   since: number;
   until: number;
@@ -41,9 +49,9 @@ export function parseViewsRange(
     if (!start || !end || !DATE_RE.test(start) || !DATE_RE.test(end)) {
       return { ok: false, error: 'start/end must be YYYY-MM-DD' };
     }
-    const startMs = Date.parse(`${start}T00:00:00Z`);
-    const endMs = Date.parse(`${end}T00:00:00Z`);
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return { ok: false, error: 'invalid dates' };
+    const startMs = parseUtcDayStrict(start);
+    const endMs = parseUtcDayStrict(end);
+    if (startMs === null || endMs === null) return { ok: false, error: 'invalid dates' };
     if (startMs > endMs) return { ok: false, error: 'start after end' };
     since = startMs / 1000;
     if (since > nowSec) return { ok: false, error: 'start in the future' };
