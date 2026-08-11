@@ -16,7 +16,6 @@ import {
   Search,
   ArrowUpDown,
   MoreVertical,
-  SlidersHorizontal,
 } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
@@ -61,9 +60,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -397,8 +393,16 @@ export default function ClientesPage() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: 1 }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.75rem',
+          marginBottom: '1rem',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ position: 'relative', width: '100%', maxWidth: '260px' }}>
           <Search
             className="h-4 w-4"
             style={{
@@ -418,65 +422,51 @@ export default function ClientesPage() {
             style={{ paddingLeft: '2rem' }}
           />
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0 mb-0"
-              style={{ position: 'relative' }}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              {(filter !== 'todos' || sortBy !== 'nome' || sortDir !== 'asc') && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: -2,
-                    right: -2,
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    background: 'var(--primary-color)',
-                  }}
-                />
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel>{tc('filter.status')}</DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              value={filter}
-              onValueChange={(v) => setFilter(v as FilterStatus)}
-            >
+
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {tc('filter.status')}
+          </span>
+          <Select value={filter} onValueChange={(v) => setFilter(v as FilterStatus)}>
+            <SelectTrigger className="h-9 w-auto min-w-[120px] text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
               {(['todos', 'ativo', 'pausado', 'encerrado'] as FilterStatus[]).map((f) => (
-                <DropdownMenuRadioItem key={f} value={f}>
+                <SelectItem key={f} value={f}>
                   {tc(`status.${f}`)}
-                </DropdownMenuRadioItem>
+                </SelectItem>
               ))}
-            </DropdownMenuRadioGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>{tc('filter.sortBy')}</DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              value={sortBy}
-              onValueChange={(v) => setSortBy(v as typeof sortBy)}
-            >
-              <DropdownMenuRadioItem value="nome">{tc('sort.name')}</DropdownMenuRadioItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {tc('filter.sortBy')}
+          </span>
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+            <SelectTrigger className="h-9 w-auto min-w-[140px] text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="nome">{tc('sort.name')}</SelectItem>
               {canSeeFinancials === true && (
-                <DropdownMenuRadioItem value="valor_mensal">
-                  {t('sort.monthlyValue')}
-                </DropdownMenuRadioItem>
+                <SelectItem value="valor_mensal">{t('sort.monthlyValue')}</SelectItem>
               )}
-              <DropdownMenuRadioItem value="data_pagamento">
-                {t('sort.paymentDay')}
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}>
-              <ArrowUpDown className="h-4 w-4 mr-2" />
-              {sortDir === 'asc' ? tc('sort.descending') : tc('sort.ascending')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <SelectItem value="data_pagamento">{t('sort.paymentDay')}</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 shrink-0 mb-0"
+            onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+            title={sortDir === 'asc' ? tc('sort.descending') : tc('sort.ascending')}
+          >
+            <ArrowUpDown className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
