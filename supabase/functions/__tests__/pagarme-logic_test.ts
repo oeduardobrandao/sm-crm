@@ -230,6 +230,23 @@ Deno.test("canWebhookWrite: same provider, different id, authorized rebind write
   assertEquals(canWebhookWrite(existing, incoming, NOW), true);
 });
 
+Deno.test("pagarme authorized bind never reclaims a churned row via webhook", () => {
+  // only a Stripe checkout event may reclaim a churned row; Pagar.me binds happen synchronously in checkout, never via webhook
+  const existing = {
+    provider: "stripe",
+    stripe_subscription_id: "sub_old",
+    status: "canceled",
+    cancel_at_period_end: false,
+    current_period_end: "2026-01-01T00:00:00Z",
+  };
+  const incoming = {
+    provider: "pagarme" as const,
+    subscriptionId: "sub_pg_new",
+    isAuthorizedBind: true,
+  };
+  assertEquals(canWebhookWrite(existing, incoming, NOW), false);
+});
+
 // ─── resolvePagarmePlanTarget ────────────────────────────────────────────────
 
 Deno.test("resolvePagarmePlanTarget: trialing and active grant the subscribed plan", () => {

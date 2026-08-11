@@ -122,6 +122,7 @@ export function resolvePagarmePlanTarget(
  * for a `future` subscription is `start_at` — the boundary of our trial is its first charge.
  * Sandbox observation: a `future` subscription carries neither `next_billing_at` nor
  * `current_cycle`, so `active` is the only status that reads them.
+ * Callers must never overwrite a stored current_period_end with this null on cancellation: paid-through detection (isPaidThrough) depends on the retained value.
  */
 export function mapPagarmeTemporalFields(sub: {
   status: string;
