@@ -67,3 +67,11 @@ Deno.test("PagarmeApiError with null body", () => {
   assertEquals(error.body, null);
   assert(error.message.includes("500"), "Message should include the status code");
 });
+
+Deno.test("buildPagarmeAuthHeader edge case: empty secret", () => {
+  // Edge case: empty string secret (not a real scenario, but tests the encoding)
+  const header = buildPagarmeAuthHeader("");
+  const expected = "Basic " + btoa(":");
+  assertEquals(header, expected);
+  assert(header.startsWith("Basic "), "Header must start with 'Basic '");
+});

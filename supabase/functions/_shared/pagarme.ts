@@ -87,5 +87,10 @@ export async function pagarmeFetch<T>(
     throw new PagarmeApiError(res.status, parsedBody);
   }
 
-  return res.json() as Promise<T>;
+  try {
+    return await res.json() as T;
+  } catch (e) {
+    // 2xx response with non-JSON body (e.g. 204 No Content) — return null as parsed result
+    return null as T;
+  }
 }
