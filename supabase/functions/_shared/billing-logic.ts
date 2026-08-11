@@ -27,6 +27,26 @@ export function statusToPlanId(
   }
 }
 
+/**
+ * Permanent trial-eligibility flag, provider-agnostic: a workspace that has ever had a paid
+ * subscription with EITHER provider (or carries the explicit `ever_subscribed_at` marker) never
+ * gets a second trial, regardless of which provider it is checking out with now.
+ */
+export function hasEverSubscribed(
+  row:
+    | {
+      ever_subscribed_at?: string | null;
+      stripe_subscription_id?: string | null;
+      pagarme_subscription_id?: string | null;
+    }
+    | null
+    | undefined,
+): boolean {
+  return Boolean(
+    row?.ever_subscribed_at || row?.stripe_subscription_id || row?.pagarme_subscription_id,
+  );
+}
+
 export interface PlanPriceRow {
   id: string;
   stripe_price_id: string | null;

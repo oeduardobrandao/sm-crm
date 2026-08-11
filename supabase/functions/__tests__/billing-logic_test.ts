@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import {
   aggregateMrr,
+  hasEverSubscribed,
   isMrrStatus,
   resolvePlanFromPriceId,
   statusToPlanId,
@@ -35,6 +36,57 @@ Deno.test("resolvePlanFromPriceId: matches monthly and annual prices", () => {
   assertEquals(resolvePlanFromPriceId("price_p_m", plans), { plan_id: "pro", interval: "month" });
   assertEquals(resolvePlanFromPriceId("price_s_y", plans), { plan_id: "starter", interval: "year" });
   assert(resolvePlanFromPriceId("price_unknown", plans) === null);
+});
+
+// ─── hasEverSubscribed ────────────────────────────────────────────────────────
+
+Deno.test("hasEverSubscribed: null/undefined row is false", () => {
+  assertEquals(hasEverSubscribed(null), false);
+  assertEquals(hasEverSubscribed(undefined), false);
+});
+
+Deno.test("hasEverSubscribed: only stripe_subscription_id set is true", () => {
+  assertEquals(
+    hasEverSubscribed({
+      ever_subscribed_at: null,
+      stripe_subscription_id: "sub_123",
+      pagarme_subscription_id: null,
+    }),
+    true,
+  );
+});
+
+Deno.test("hasEverSubscribed: only pagarme_subscription_id set is true", () => {
+  assertEquals(
+    hasEverSubscribed({
+      ever_subscribed_at: null,
+      stripe_subscription_id: null,
+      pagarme_subscription_id: "sub_pg_123",
+    }),
+    true,
+  );
+});
+
+Deno.test("hasEverSubscribed: only ever_subscribed_at set is true", () => {
+  assertEquals(
+    hasEverSubscribed({
+      ever_subscribed_at: "2026-01-01T00:00:00.000Z",
+      stripe_subscription_id: null,
+      pagarme_subscription_id: null,
+    }),
+    true,
+  );
+});
+
+Deno.test("hasEverSubscribed: none set is false", () => {
+  assertEquals(
+    hasEverSubscribed({
+      ever_subscribed_at: null,
+      stripe_subscription_id: null,
+      pagarme_subscription_id: null,
+    }),
+    false,
+  );
 });
 
 // ─── MRR helpers ─────────────────────────────────────────────────────────────

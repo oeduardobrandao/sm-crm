@@ -5,7 +5,7 @@
  * Deliberately NOT OAUTH_REDIRECT_BASE: that variable means "where Meta sends the OAuth callback"
  * and coupling the two would make an OAuth change silently rewrite customer email links.
  *
- * REQUIRED with no fallback: both callers (notifyOwnerOfFailure in stripe-webhook, resolveHubUrl)
+ * REQUIRED with no fallback: both callers (notifyOwnerOfFailure in _shared/dunning-notify.ts, resolveHubUrl)
  * are wrapped in try/catch and degrade safely on the throw, so a missing env becomes a logged
  * omission instead of a localhost link shipped to a paying customer.
  */

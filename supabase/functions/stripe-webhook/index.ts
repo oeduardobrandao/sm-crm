@@ -10,16 +10,14 @@ import {
   buildFailureEpisode,
   buildRecoveryEpisode,
   isRecoveredStatus,
-  selectDunningStage,
-  type DunningEpisode,
 } from "../_shared/dunning-logic.ts";
-import { sendDunningEmail } from "../_shared/dunning-email.ts";
 import {
   buildAmountColumns,
   clearedAmountColumns,
   fetchStripeAmount,
 } from "../_shared/stripe-amount.ts";
-import { appBaseUrl } from "../_shared/app-url.ts";
+import { writeWorkspacePlan } from "../_shared/plan-writer.ts";
+import { notifyOwnerOfFailure } from "../_shared/dunning-notify.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -152,7 +150,7 @@ async function syncSubscription(
 
   const targetPlanId = statusToPlanId(sub.status, subscribedPlanId, defaultPlanId);
   if (targetPlanId !== null) {
-    await writeWorkspacePlan(svc, workspaceId, targetPlanId);
+    await writeWorkspacePlan(svc, workspaceId, targetPlanId, "stripe");
   }
 }
 
@@ -181,68 +179,12 @@ async function handlePaymentFailed(svc: SupabaseClient, invoice: Stripe.Invoice)
     updated_at: new Date().toISOString(),
   }).eq("workspace_id", row.workspace_id);
 
-  await notifyOwnerOfFailure(svc, row.workspace_id as string, invoice, nextAttempt, episode);
-}
-
-/**
- * Tell the owner their payment failed. Swallows everything: a throw here would 500 the handler,
- * Stripe would redeliver, and the customer would get the same mail again.
- *
- * The owner is the only role that can act — billing-checkout and billing-portal are owner-gated.
- */
-async function notifyOwnerOfFailure(
-  svc: SupabaseClient,
-  workspaceId: string,
-  invoice: Stripe.Invoice,
-  nextAttempt: number | null,
-  episode: DunningEpisode,
-) {
-  try {
-    const { data: ws } = await svc
-      .from("workspaces").select("name").eq("id", workspaceId).maybeSingle();
-
-    // workspace_members, not profiles.conta_id: profiles has no email column, and conta_id is the
-    // legacy single-workspace field. This is the path platform-admin already uses.
-    const { data: ownerMember } = await svc
-      .from("workspace_members").select("user_id")
-      .eq("workspace_id", workspaceId).eq("role", "owner").limit(1).maybeSingle();
-    if (!ownerMember?.user_id) return;
-
-    const { data: ownerUser } = await svc.auth.admin.getUserById(ownerMember.user_id as string);
-    const to = ownerUser?.user?.email;
-    if (!to) return;
-
-    await sendDunningEmail({
-      to,
-      stage: selectDunningStage(invoice.attempt_count ?? 0, nextAttempt),
-      workspaceName: (ws?.name as string | undefined) ?? "seu workspace",
-      nextAttemptLabel: formatAttemptLabel(episode.next_payment_attempt),
-      billingUrl: `${appBaseUrl()}/configuracao/cobranca`,
-    });
-  } catch (e) {
-    // Internal log only — CLAUDE.md's "generic message" rule governs client responses, not
-    // server logs. Without the workspace id and reason, a dead Resend key looks exactly like a
-    // one-off blip, and nobody can tell which owner was never warned before losing access.
-    console.error(
-      `[stripe-webhook] dunning notification failed for workspace ${workspaceId}:`,
-      e instanceof Error ? e.message : String(e),
-    );
-  }
-}
-
-/** "2026-07-24T10:00:00.000Z" -> "24 de julho". Null when Stripe will not retry again. */
-function formatAttemptLabel(iso: string | null): string | null {
-  if (!iso) return null;
-  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" });
-}
-
-/** Effective-plan write, guarded so admin comps (plan_source='manual') are never overridden. */
-async function writeWorkspacePlan(svc: SupabaseClient, workspaceId: string, planId: string) {
-  const { data: ws } = await svc
-    .from("workspaces").select("plan_source").eq("id", workspaceId).single();
-  if (ws?.plan_source === "manual") return;
-  await svc.from("workspaces")
-    .update({ plan_id: planId, plan_source: "stripe" }).eq("id", workspaceId);
+  await notifyOwnerOfFailure(
+    svc,
+    row.workspace_id as string,
+    { attemptCount: invoice.attempt_count ?? 0, nextPaymentAttempt: nextAttempt },
+    episode,
+  );
 }
 
 async function resolveWorkspaceId(
