@@ -89,13 +89,20 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
           isExpress ? { skipDateCheck: true } : undefined,
         );
         if (validation.ok) {
-          await db.rpc("record_post_status_change", {
+          const { error: scheduleErr } = await db.rpc("record_post_status_change", {
             p_post_id: post_id,
             p_new_status: "agendado",
             p_source: "system",
             ...(isExpress ? { p_fields: { scheduled_at: deps.now() } } : {}),
           });
-          scheduled = true;
+          if (scheduleErr) {
+            // The approval stands; only the auto-publish failed. Reporting
+            // scheduled: true here would tell the client the post is on its
+            // way while it sits in aprovado_cliente with no date forever.
+            console.error("[hub-approve] auto-publish scheduling failed:", scheduleErr);
+          } else {
+            scheduled = true;
+          }
         }
         // Validation failed → the approval itself still succeeded; the auto-publish is
         // silently skipped (accepted behavior) and the agency schedules manually.

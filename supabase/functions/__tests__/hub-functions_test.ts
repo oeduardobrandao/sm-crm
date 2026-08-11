@@ -424,6 +424,43 @@ Deno.test("hub-approve auto-schedules an approved express post despite the missi
   });
 });
 
+Deno.test("hub-approve reports scheduled: false when the status RPC fails", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", is_express: true },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: { cliente_id: 14 }, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  queueValidateForScheduling(db, {
+    id: 99,
+    scheduled_at: null,
+    ig_caption: "legenda",
+    workflow_id: 7,
+    tipo: "feed",
+  });
+  db.queueRpc("record_post_status_change", { data: null, error: { message: "db offline" } });
+
+  const handler = createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+
+  // The approval itself still succeeds; only the auto-publish must not be
+  // reported as scheduled when the transition never happened.
+  assertEquals(response.status, 200);
+  const body = await readJson(response);
+  assertEquals(body.ok, true);
+  assertEquals(body.scheduled, false);
+});
+
 Deno.test("hub-approve does not schedule an approved express post when auto-publish is off", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });
