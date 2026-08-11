@@ -491,7 +491,9 @@ export default function ExpressPostPage() {
         )}
 
         {/* Vertical stepper: all steps on one page, top to bottom */}
-        <div style={{ display: 'grid', gridTemplateColumns: '32px minmax(0, 1fr)', columnGap: '14px' }}>
+        <div
+          style={{ display: 'grid', gridTemplateColumns: '32px minmax(0, 1fr)', columnGap: '14px' }}
+        >
           {/* Step 1: Formato */}
           <StepIndicator state="done" number={1} />
           <div style={STEP_CARD_STYLE}>

@@ -110,8 +110,7 @@ const mockClientes = [
 
 const workspaceLimitsValue = (feature_hub_portal: boolean | null) => ({
   limits: null,
-  features:
-    feature_hub_portal === null ? null : ({ feature_hub_portal } as any),
+  features: feature_hub_portal === null ? null : ({ feature_hub_portal } as any),
   planName: 'pro',
   isLoading: false,
   isUnlimited: feature_hub_portal === null,
@@ -399,9 +398,7 @@ describe('ExpressPostPage', () => {
       });
       fireEvent.click(screen.getByRole('button', { name: 'Aprovação do cliente' }));
 
-      await waitFor(() =>
-        expect(screen.getByText(/não tem um link ativo do portal/)).toBeTruthy(),
-      );
+      await waitFor(() => expect(screen.getByText(/não tem um link ativo do portal/)).toBeTruthy());
       const link = screen.getByText(/Configurar portal/).closest('a')!;
       expect(link.getAttribute('href')).toBe('/clientes/1');
       expect(screen.getByTestId('express-submit').hasAttribute('disabled')).toBe(true);
@@ -424,9 +421,7 @@ describe('ExpressPostPage', () => {
       });
       fireEvent.click(screen.getByRole('button', { name: 'Aprovação do cliente' }));
 
-      await waitFor(() =>
-        expect(screen.getByText(/não tem um link ativo do portal/)).toBeTruthy(),
-      );
+      await waitFor(() => expect(screen.getByText(/não tem um link ativo do portal/)).toBeTruthy());
       expect(screen.getByTestId('express-submit').hasAttribute('disabled')).toBe(true);
     });
   });

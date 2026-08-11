@@ -32,12 +32,18 @@ Deno.serve(createExpressPostCleanupCronHandler({
       for (const wf of activeExpress ?? []) {
         const { data: posts } = await supabase
           .from("workflow_posts")
-          .select("id, status")
+          .select("id, status, is_express")
           .eq("workflow_id", wf.id);
 
-        const allPostado = (posts ?? []).length > 0 &&
-          (posts ?? []).every((p: { status: string }) => p.status === "postado");
-        if (!allPostado) continue;
+        // The title prefix is user-editable, so a renamed regular workflow could
+        // match the query above; only conclude when every post carries the
+        // is_express marker (real express workflows have exactly one such post).
+        const allExpressPostado = (posts ?? []).length > 0 &&
+          (posts ?? []).every(
+            (p: { status: string; is_express: boolean }) =>
+              p.status === "postado" && p.is_express === true,
+          );
+        if (!allExpressPostado) continue;
 
         const { error: concludeErr } = await supabase
           .from("workflows")
