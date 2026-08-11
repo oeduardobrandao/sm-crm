@@ -80,6 +80,15 @@ vi.mock('../../../services/instagram', () => ({
 
 vi.mock('../../../services/analytics', () => ({
   getAnalyticsOverview: vi.fn(),
+  getAccountViews: vi.fn(),
+  makeDelta: (current: number, previous: number) => ({
+    current,
+    previous,
+    delta: current - previous,
+    deltaPercent:
+      previous !== 0 ? ((current - previous) / Math.abs(previous)) * 100 : current > 0 ? 100 : 0,
+    direction: current > previous ? 'up' : current < previous ? 'down' : ('stable' as const),
+  }),
   getPostsAnalytics: vi.fn(),
   getFollowerHistory: vi.fn(),
   getAudienceDemographics: vi.fn(),
@@ -266,6 +275,10 @@ function seedCommonAnalyticsData() {
   queryState.clientes = { data: [client] };
   queryState['client-rate-baseline'] = { data: undefined };
   queryState['ig-summary'] = { data: { account } };
+  queryState['analytics-views'] = {
+    data: { current: 45678, previous: 40000, partial: false, fetchedAt: '2026-04-18T12:00:00Z' },
+    isLoading: false,
+  };
   queryState['analytics-overview'] = {
     data: {
       fromCache: false,
@@ -445,6 +458,33 @@ describe('AnalyticsContaPage', () => {
     render(<AnalyticsContaPage />);
 
     expect(screen.getByTestId('spinner-lg')).toBeTruthy();
+  });
+
+  it('renders the Visualizações card first, before Seguidores', () => {
+    seedCommonAnalyticsData();
+
+    const { container } = render(<AnalyticsContaPage />);
+
+    const labels = Array.from(container.querySelectorAll('.kpi-label')).map((el) => el.textContent);
+    expect(labels[0]).toBe('Visualizações');
+    expect(labels[1]).toBe('Seguidores');
+    const card = screen.getByText('Visualizações').closest('.kpi-card');
+    expect(card?.textContent).toContain((45678).toLocaleString('pt-BR'));
+    expect(card?.textContent).toContain('vs período anterior');
+  });
+
+  it('omits the views delta when there is no previous period', () => {
+    seedCommonAnalyticsData();
+    queryState['analytics-views'] = {
+      data: { current: 999999, previous: null, partial: false, fetchedAt: '2026-04-18T12:00:00Z' },
+      isLoading: false,
+    };
+
+    render(<AnalyticsContaPage />);
+
+    const card = screen.getByText('Visualizações').closest('.kpi-card');
+    expect(card?.textContent).toContain((999999).toLocaleString('pt-BR'));
+    expect(card?.textContent).not.toContain('vs período anterior');
   });
 
   it('shows the Instagram token recovery state when the summary query fails with TOKEN_EXPIRED', () => {

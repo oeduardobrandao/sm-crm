@@ -11,6 +11,7 @@ import {
   FileText,
   Heart,
   MessageCircle,
+  Play,
   Plus,
   RefreshCw,
   Trophy,
@@ -56,6 +57,8 @@ import { Chart, registerables } from 'chart.js';
 import { getClientes, getCurrentWorkspace } from '../../store';
 import {
   getAnalyticsOverview,
+  getAccountViews,
+  makeDelta,
   getPostsAnalytics,
   getFollowerHistory,
   getAudienceDemographics,
@@ -405,14 +408,16 @@ function KpiCard({
   prevFormatted,
   icon,
   tone,
+  sub,
 }: {
   label: string;
   value: string;
-  delta: KpiDelta;
+  delta?: KpiDelta;
   period?: string;
   prevFormatted?: string;
   icon?: LucideIcon;
   tone?: StatTone;
+  sub?: ReactNode;
 }) {
   return (
     <StatCard
@@ -420,11 +425,16 @@ function KpiCard({
       value={value}
       icon={icon}
       tone={tone}
-      delta={{
-        direction: delta.direction,
-        percent: delta.deltaPercent,
-        caption: 'vs período anterior',
-      }}
+      delta={
+        delta
+          ? {
+              direction: delta.direction,
+              percent: delta.deltaPercent,
+              caption: 'vs período anterior',
+            }
+          : undefined
+      }
+      sub={sub}
       footNote={
         <>
           {prevFormatted != null && <span>Anterior: {prevFormatted}</span>}
@@ -1011,6 +1021,16 @@ function AnalyticsContent({
     queryKey: ['analytics-overview', clientId, overviewDays, periodStart, periodEnd],
     queryFn: () => getAnalyticsOverview(clientId, overviewDays, dateRange),
   });
+  // Manual sync must bypass the 6h server-side views cache exactly once.
+  const viewsForceRefresh = useRef(false);
+  const { data: viewsRes, isLoading: loadingViews } = useQuery({
+    queryKey: ['analytics-views', clientId, overviewDays, periodStart, periodEnd],
+    queryFn: () => {
+      const refresh = viewsForceRefresh.current;
+      viewsForceRefresh.current = false;
+      return getAccountViews(clientId, overviewDays, dateRange, refresh);
+    },
+  });
   const baselineQuery = useQuery({
     queryKey: ['client-rate-baseline', clientId],
     queryFn: () => getClientRateBaseline(clientId),
@@ -1217,6 +1237,8 @@ function AnalyticsContent({
     try {
       await syncInstagramData(clientId);
       toast.success('Dados sincronizados com sucesso!');
+      viewsForceRefresh.current = true;
+      qc.invalidateQueries({ queryKey: ['analytics-views', clientId] });
       qc.invalidateQueries({ queryKey: ['analytics-overview', clientId] });
       qc.invalidateQueries({ queryKey: ['analytics-posts', clientId] });
       qc.invalidateQueries({ queryKey: ['analytics-history', clientId] });
@@ -1423,6 +1445,18 @@ function AnalyticsContent({
   const periodTag = periodLabel || `${overviewDays}d`;
   const visiblePosts = showAllPosts ? posts : posts.slice(0, 5);
 
+  const viewsDelta =
+    viewsRes && viewsRes.previous != null
+      ? makeDelta(viewsRes.current, viewsRes.previous)
+      : undefined;
+  const viewsValue = loadingViews ? '…' : viewsRes ? viewsRes.current.toLocaleString('pt-BR') : '—';
+  const viewsSub =
+    !loadingViews && !viewsRes
+      ? 'Indisponível no momento'
+      : viewsRes?.partial
+        ? 'O Instagram fornece visualizações de no máximo 90 dias.'
+        : undefined;
+
   if (isLoading)
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
@@ -1531,8 +1565,22 @@ function AnalyticsContent({
       </div>
 
       {/* KPI Cards */}
-      {/* maxCols 7 keeps all seven metrics on a single row, as they were */}
-      <StatCardGrid className="animate-up" maxCols={7}>
+      {/* maxCols 8 keeps all eight metrics on a single row */}
+      <StatCardGrid className="animate-up" maxCols={8}>
+        <KpiCard
+          label="Visualizações"
+          icon={Play}
+          tone="violet"
+          value={viewsValue}
+          delta={viewsDelta}
+          period={viewsRes?.partial ? 'máx. 90d' : periodTag}
+          prevFormatted={
+            viewsRes && viewsRes.previous != null
+              ? viewsRes.previous.toLocaleString('pt-BR')
+              : undefined
+          }
+          sub={viewsSub}
+        />
         <KpiCard
           label="Seguidores"
           icon={Users}
