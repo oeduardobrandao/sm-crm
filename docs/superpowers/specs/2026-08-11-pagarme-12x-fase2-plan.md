@@ -189,13 +189,18 @@ Em `syncSubscription`, logo DEPOIS do resolve do workspace
   // workspace itself via client_reference_id. Everything else (late events from an old
   // subscription, rows owned by Pagar.me) is an intentional no-op: retrying cannot change
   // ownership, so we ack instead of erroring.
-  const { data: existingRow } = await svc
+  const { data: existingRow, error: existingErr } = await svc
     .from("workspace_subscriptions")
     .select(
       "provider, stripe_subscription_id, pagarme_subscription_id, status, cancel_at_period_end, current_period_end",
     )
     .eq("workspace_id", workspaceId)
     .maybeSingle();
+  if (existingErr) {
+    // A failed read must NOT masquerade as "no row": canWebhookWrite(null, ...) authorizes a
+    // bind, which could write over a row another provider owns. Throw → 5xx → redelivery.
+    throw new Error(`ownership read failed for workspace ${workspaceId}: ${existingErr.message}`);
+  }
   const allowed = canWebhookWrite(
     existingRow ?? null,
     { provider: "stripe", subscriptionId: sub.id, isAuthorizedBind: session != null },
@@ -209,7 +214,62 @@ Em `syncSubscription`, logo DEPOIS do resolve do workspace
   }
 ```
 
-O resto da função permanece byte-idêntico.
+E SUBSTITUIR o bloco de escrita (o `await svc.from("workspace_subscriptions").upsert({...})`
+das linhas ~136-149) por um write com CAS (compare-and-set) no provider:
+
+```ts
+  const columns = {
+    stripe_customer_id: customerId,
+    stripe_subscription_id: sub.id,
+    // The guard above authorized this write, so stamping ownership is both safe and REQUIRED:
+    // an authorized reclaim of a churned Pagar.me row must flip the row back to Stripe, or
+    // every later Stripe event for it would be denied by the guard and the admin would keep
+    // labeling a live Stripe subscription as Pagar.me. Stripe subscriptions have no card
+    // installments, so a leftover from a Pagar.me era is cleared in the same write.
+    provider: "stripe",
+    installments: null,
+    status: sub.status,
+    plan_id: resolved?.plan_id ?? null,
+    billing_interval: resolved?.interval ?? null,
+    current_period_end: periodEndUnix
+      ? new Date(periodEndUnix * 1000).toISOString() : null,
+    cancel_at_period_end: sub.cancel_at_period_end ?? false,
+    ...amountCols,
+    ...recovery,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (existingRow) {
+    // Compare-and-set on the provider observed at guard time: if a concurrent writer (e.g. a
+    // pagarme-checkout binding this row in Fase 3+) switched ownership between our read and
+    // this write, zero rows match. Throwing turns that into a 5xx → Stripe redelivers → the
+    // next attempt re-reads fresh state and re-decides. Errors are propagated for the same
+    // reason: a silently failed write must not ack the event.
+    const { data: updated, error: updateErr } = await svc
+      .from("workspace_subscriptions")
+      .update(columns)
+      .eq("workspace_id", workspaceId)
+      .eq("provider", existingRow.provider ?? "stripe")
+      .select("workspace_id");
+    if (updateErr) {
+      throw new Error(`subscription write failed for workspace ${workspaceId}: ${updateErr.message}`);
+    }
+    if (!updated?.length) {
+      throw new Error(`concurrent ownership change on workspace ${workspaceId}, retrying via redelivery`);
+    }
+  } else {
+    const { error: insertErr } = await svc
+      .from("workspace_subscriptions")
+      .upsert({ workspace_id: workspaceId, ...columns }, { onConflict: "workspace_id" });
+    if (insertErr) {
+      throw new Error(`subscription insert failed for workspace ${workspaceId}: ${insertErr.message}`);
+    }
+  }
+```
+
+O `statusToPlanId`/`writeWorkspacePlan` no fim da função permanece byte-idêntico.
+(Nota: o upsert original nem checava `error` — uma escrita falhada ackava o evento e a Stripe
+nunca reentregava. A propagação acima corrige isso de carona, deliberadamente.)
 
 - [ ] **Step 6: Fiar o guard em `handlePaymentFailed`**
 
@@ -257,11 +317,20 @@ async function handlePaymentFailed(svc: SupabaseClient, invoice: Stripe.Invoice)
     new Date(),
   );
 
-  await svc.from("workspace_subscriptions").update({
+  // CAS on provider (same rationale as syncSubscription): if ownership changed between the
+  // guard read and this write, zero rows match → throw → redelivery re-decides. The dunning
+  // e-mail below only fires after a successful write.
+  const { data: updated, error: updateErr } = await svc.from("workspace_subscriptions").update({
     status: "past_due",
     ...episode,
     updated_at: new Date().toISOString(),
-  }).eq("workspace_id", row.workspace_id);
+  }).eq("workspace_id", row.workspace_id).eq("provider", "stripe").select("workspace_id");
+  if (updateErr) {
+    throw new Error(`past_due write failed for workspace ${row.workspace_id}: ${updateErr.message}`);
+  }
+  if (!updated?.length) {
+    throw new Error(`concurrent ownership change on workspace ${row.workspace_id}, retrying via redelivery`);
+  }
 
   await notifyOwnerOfFailure(
     svc,
@@ -271,6 +340,10 @@ async function handlePaymentFailed(svc: SupabaseClient, invoice: Stripe.Invoice)
   );
 }
 ```
+
+Nota: o `.eq("provider", "stripe")` é seguro porque o guard só deixa chegar aqui quando a
+linha era stripe com id registrado batendo; o CAS apenas afirma que isso continua verdade no
+instante da escrita.
 
 Adicionar `InvoiceSubscriptionSource` ao import de `billing-logic.ts` (import de tipo). O cast
 `invoice as InvoiceSubscriptionSource` é necessário porque o tipo `Stripe.Invoice` do SDK v17
