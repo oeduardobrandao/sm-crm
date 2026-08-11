@@ -386,6 +386,33 @@ describe('ExpressPostPage', () => {
       expect(publishInstagramPostNow).not.toHaveBeenCalled();
     });
 
+    it('refuses to send when the hub link went stale after the page loaded', async () => {
+      // First call feeds the gating query (valid); the submit-time re-check
+      // then sees the link gone and must abort before any status write.
+      vi.mocked(getHubToken)
+        .mockResolvedValueOnce({ id: 't1', token: 'tok-1', is_active: true, expires_at: FUTURE })
+        .mockResolvedValueOnce(null);
+
+      renderWithProviders(<ExpressPostPage />);
+      await selectClientAndAwaitDraft();
+
+      fireEvent.click(screen.getByText('Simulate Upload'));
+      fireEvent.change(screen.getByPlaceholderText('Escreva a legenda do post aqui...'), {
+        target: { value: 'legenda' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Aprovação do cliente' }));
+
+      const submitBtn = screen.getByTestId('express-submit');
+      await waitFor(() => expect(submitBtn.hasAttribute('disabled')).toBe(false));
+
+      fireEvent.click(submitBtn);
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalled());
+      expect(updateWorkflowPost).not.toHaveBeenCalled();
+      expect(publishInstagramPostNow).not.toHaveBeenCalled();
+    });
+
     it('blocks sending and warns when the client has no hub link', async () => {
       vi.mocked(getHubToken).mockResolvedValue(null);
 

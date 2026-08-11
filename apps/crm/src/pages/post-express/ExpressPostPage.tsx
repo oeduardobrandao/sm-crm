@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { Send, AlertCircle, Image, Film, Images, Layers, Check, Link2 } from 'lucide-react';
@@ -146,6 +146,7 @@ function StepIndicator({
 
 export default function ExpressPostPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { t } = useTranslation('posts');
   const { t: tc } = useTranslation();
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
@@ -424,10 +425,25 @@ export default function ExpressPostPage() {
   // The workflow stays "ativo" so the approval notification's drawer link and
   // the manual-publish path keep working.
   const handleSendForApproval = async () => {
-    if (!draft || !effectiveType) return;
+    if (!draft || !effectiveType || !selectedClientId) return;
 
     setLoading(true);
     try {
+      // The gating query may be stale: a link deactivated or expired after the
+      // page loaded would strand the post in enviado_cliente where the client
+      // can't see it. Re-check at submit time and refuse to send.
+      const freshToken = await getHubToken(selectedClientId);
+      const freshUsable =
+        !!freshToken &&
+        freshToken.is_active &&
+        new Date(freshToken.expires_at).getTime() > Date.now();
+      if (!freshUsable) {
+        setConfirmOpen(false);
+        toast.error(t('approval.noHubLink'));
+        queryClient.invalidateQueries({ queryKey: ['hub-token-express', selectedClientId] });
+        return;
+      }
+
       await updateWorkflowPost(draft.postId, {
         status: 'enviado_cliente',
         ig_caption: isStory ? '' : caption.trim(),

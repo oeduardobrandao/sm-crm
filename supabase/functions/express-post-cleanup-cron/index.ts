@@ -20,41 +20,58 @@ Deno.serve(createExpressPostCleanupCronHandler({
       // client approves, with nobody left on the page to conclude the workflow
       // (publish-now mode concludes it client-side). Close any express workflow
       // whose posts were all published so it doesn't linger on the board.
+      // Candidates come from the posts' is_express marker, never from the
+      // workflow title: the title is user-editable in the drawer, so it can
+      // both falsely match a renamed regular workflow and miss a renamed
+      // express one.
       let concluded = 0;
-      const { data: activeExpress, error: activeErr } = await supabase
-        .from("workflows")
-        .select("id")
-        .like("titulo", "Post Express -%")
-        .eq("status", "ativo");
+      const { data: expressPostRows, error: expressErr } = await supabase
+        .from("workflow_posts")
+        .select("workflow_id")
+        .eq("is_express", true)
+        .eq("status", "postado");
 
-      if (activeErr) throw activeErr;
+      if (expressErr) throw expressErr;
 
-      for (const wf of activeExpress ?? []) {
-        const { data: posts } = await supabase
-          .from("workflow_posts")
-          .select("id, status, is_express")
-          .eq("workflow_id", wf.id);
+      const candidateIds = [
+        ...new Set((expressPostRows ?? []).map((r: { workflow_id: number }) => r.workflow_id)),
+      ];
 
-        // The title prefix is user-editable, so a renamed regular workflow could
-        // match the query above; only conclude when every post carries the
-        // is_express marker (real express workflows have exactly one such post).
-        const allExpressPostado = (posts ?? []).length > 0 &&
-          (posts ?? []).every(
-            (p: { status: string; is_express: boolean }) =>
-              p.status === "postado" && p.is_express === true,
-          );
-        if (!allExpressPostado) continue;
-
-        const { error: concludeErr } = await supabase
+      if (candidateIds.length > 0) {
+        const { data: activeExpress, error: activeErr } = await supabase
           .from("workflows")
-          .update({ status: "concluido" })
-          .eq("id", wf.id);
+          .select("id")
+          .in("id", candidateIds)
+          .eq("status", "ativo");
 
-        if (concludeErr) {
-          console.error(`Failed to conclude workflow ${wf.id}:`, concludeErr.message);
-          continue;
+        if (activeErr) throw activeErr;
+
+        for (const wf of activeExpress ?? []) {
+          const { data: posts } = await supabase
+            .from("workflow_posts")
+            .select("id, status, is_express")
+            .eq("workflow_id", wf.id);
+
+          // Conclude only when every post is a published express post; a mixed
+          // workflow (someone added a regular post to it) is left alone.
+          const allExpressPostado = (posts ?? []).length > 0 &&
+            (posts ?? []).every(
+              (p: { status: string; is_express: boolean }) =>
+                p.status === "postado" && p.is_express === true,
+            );
+          if (!allExpressPostado) continue;
+
+          const { error: concludeErr } = await supabase
+            .from("workflows")
+            .update({ status: "concluido" })
+            .eq("id", wf.id);
+
+          if (concludeErr) {
+            console.error(`Failed to conclude workflow ${wf.id}:`, concludeErr.message);
+            continue;
+          }
+          concluded++;
         }
-        concluded++;
       }
 
       const { data: orphanWorkflows, error: fetchErr } = await supabase
