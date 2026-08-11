@@ -512,7 +512,7 @@ export function EntregasFilters({
         )}
         <Button
           variant="outline"
-          className="h-9 rounded-full px-3 text-xs gap-1.5 font-normal shadow-sm shrink-0"
+          className="h-9 rounded-full px-3 text-xs gap-1.5 font-normal shadow-sm mb-0 shrink-0"
           onClick={() => setSheetOpen(true)}
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
