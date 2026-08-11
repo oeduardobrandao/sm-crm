@@ -258,9 +258,14 @@ das linhas ~136-149) por um write com CAS (compare-and-set) no provider:
       throw new Error(`concurrent ownership change on workspace ${workspaceId}, retrying via redelivery`);
     }
   } else {
+    // Plain INSERT, deliberately NOT an upsert: if a concurrent writer created the row between
+    // our "no row" read and this statement (e.g. a pagarme-checkout bind in Fase 3+), an upsert
+    // with onConflict would resolve by UPDATING that fresh row with Stripe columns — bypassing
+    // the ownership decision in exactly the race the CAS exists for. The unique violation
+    // throws instead: 5xx → Stripe redelivers → the next attempt reads the row and re-decides.
     const { error: insertErr } = await svc
       .from("workspace_subscriptions")
-      .upsert({ workspace_id: workspaceId, ...columns }, { onConflict: "workspace_id" });
+      .insert({ workspace_id: workspaceId, ...columns });
     if (insertErr) {
       throw new Error(`subscription insert failed for workspace ${workspaceId}: ${insertErr.message}`);
     }
