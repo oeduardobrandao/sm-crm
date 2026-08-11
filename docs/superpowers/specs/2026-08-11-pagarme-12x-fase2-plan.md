@@ -240,17 +240,23 @@ das linhas ~136-149) por um write com CAS (compare-and-set) no provider:
   };
 
   if (existingRow) {
-    // Compare-and-set on the provider observed at guard time: if a concurrent writer (e.g. a
-    // pagarme-checkout binding this row in Fase 3+) switched ownership between our read and
-    // this write, zero rows match. Throwing turns that into a 5xx → Stripe redelivers → the
-    // next attempt re-reads fresh state and re-decides. Errors are propagated for the same
-    // reason: a silently failed write must not ack the event.
-    const { data: updated, error: updateErr } = await svc
+    // Compare-and-set on BOTH ownership coordinates observed at guard time: the provider AND
+    // the registered stripe_subscription_id. Provider alone closes the cross-provider race
+    // (pagarme bind mid-flight) but not the same-provider one: a delayed event for the OLD
+    // Stripe subscription and an authorized checkout rebind to a NEW one can both pass the
+    // guard on the same read snapshot — whichever writes second must lose. Zero rows matched
+    // → throw → 5xx → Stripe redelivers → the next attempt re-reads fresh state and the guard
+    // re-decides (the delayed old-subscription event is then denied on the id mismatch).
+    // Errors are propagated for the same reason: a silently failed write must not ack.
+    let update = svc
       .from("workspace_subscriptions")
       .update(columns)
       .eq("workspace_id", workspaceId)
-      .eq("provider", existingRow.provider ?? "stripe")
-      .select("workspace_id");
+      .eq("provider", existingRow.provider ?? "stripe");
+    update = existingRow.stripe_subscription_id == null
+      ? update.is("stripe_subscription_id", null)
+      : update.eq("stripe_subscription_id", existingRow.stripe_subscription_id);
+    const { data: updated, error: updateErr } = await update.select("workspace_id");
     if (updateErr) {
       throw new Error(`subscription write failed for workspace ${workspaceId}: ${updateErr.message}`);
     }
@@ -322,14 +328,18 @@ async function handlePaymentFailed(svc: SupabaseClient, invoice: Stripe.Invoice)
     new Date(),
   );
 
-  // CAS on provider (same rationale as syncSubscription): if ownership changed between the
-  // guard read and this write, zero rows match → throw → redelivery re-decides. The dunning
-  // e-mail below only fires after a successful write.
+  // CAS on provider AND the registered subscription id (same rationale as syncSubscription):
+  // provider alone would let a payment_failed for the OLD subscription mark a freshly rebound
+  // NEW Stripe subscription past_due and fire dunning for an obsolete failure. The guard
+  // guaranteed row.stripe_subscription_id === invoiceSubId at read time; the CAS asserts it is
+  // still true at write time. Zero rows → throw → redelivery re-decides. The dunning e-mail
+  // below only fires after a successful write.
   const { data: updated, error: updateErr } = await svc.from("workspace_subscriptions").update({
     status: "past_due",
     ...episode,
     updated_at: new Date().toISOString(),
-  }).eq("workspace_id", row.workspace_id).eq("provider", "stripe").select("workspace_id");
+  }).eq("workspace_id", row.workspace_id).eq("provider", "stripe")
+    .eq("stripe_subscription_id", invoiceSubId).select("workspace_id");
   if (updateErr) {
     throw new Error(`past_due write failed for workspace ${row.workspace_id}: ${updateErr.message}`);
   }
