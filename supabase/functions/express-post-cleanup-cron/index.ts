@@ -16,6 +16,41 @@ Deno.serve(createExpressPostCleanupCronHandler({
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
+      // Conclusion pass: an approval-mode express post publishes only after the
+      // client approves, with nobody left on the page to conclude the workflow
+      // (publish-now mode concludes it client-side). Close any express workflow
+      // whose posts were all published so it doesn't linger on the board.
+      let concluded = 0;
+      const { data: activeExpress, error: activeErr } = await supabase
+        .from("workflows")
+        .select("id")
+        .like("titulo", "Post Express -%")
+        .eq("status", "ativo");
+
+      if (activeErr) throw activeErr;
+
+      for (const wf of activeExpress ?? []) {
+        const { data: posts } = await supabase
+          .from("workflow_posts")
+          .select("id, status")
+          .eq("workflow_id", wf.id);
+
+        const allPostado = (posts ?? []).length > 0 &&
+          (posts ?? []).every((p: { status: string }) => p.status === "postado");
+        if (!allPostado) continue;
+
+        const { error: concludeErr } = await supabase
+          .from("workflows")
+          .update({ status: "concluido" })
+          .eq("id", wf.id);
+
+        if (concludeErr) {
+          console.error(`Failed to conclude workflow ${wf.id}:`, concludeErr.message);
+          continue;
+        }
+        concluded++;
+      }
+
       const { data: orphanWorkflows, error: fetchErr } = await supabase
         .from("workflows")
         .select("id")
@@ -25,7 +60,7 @@ Deno.serve(createExpressPostCleanupCronHandler({
 
       if (fetchErr) throw fetchErr;
       if (!orphanWorkflows || orphanWorkflows.length === 0) {
-        return json({ success: true, deleted: 0 });
+        return json({ success: true, deleted: 0, concluded });
       }
 
       let deleted = 0;
@@ -84,7 +119,7 @@ Deno.serve(createExpressPostCleanupCronHandler({
         deleted++;
       }
 
-      return json({ success: true, deleted, skipped, failed });
+      return json({ success: true, deleted, skipped, failed, concluded });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error("Express post cleanup failed:", message);

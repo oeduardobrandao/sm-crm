@@ -58,6 +58,9 @@ export interface WorkflowPost {
    * publication (spec 2026-08-10). Distinguishes "cleaned" from "never had
    * media" so the gallery can render the removal placeholder. */
   media_autocleaned_at?: string | null;
+  /** Post Express marker. hub-approve skips the min-future date check and
+   * self-schedules on approval when the client's auto-publish is on. */
+  is_express?: boolean;
 }
 
 export interface ClientePost {
