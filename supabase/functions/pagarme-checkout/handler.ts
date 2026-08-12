@@ -7,6 +7,7 @@ import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { hasEverSubscribed } from "../_shared/billing-logic.ts";
 import { resolveTrialDays } from "../_shared/trial.ts";
 import { mapPagarmeTemporalFields, normalizePagarmeStatus } from "../_shared/pagarme-logic.ts";
+import { PagarmeApiError } from "../_shared/pagarme.ts";
 import { writeWorkspacePlan } from "../_shared/plan-writer.ts";
 import {
   buildAttemptIdempotencyKey,
@@ -17,7 +18,7 @@ import {
   pagarmeCheckoutBlocked,
   resolveStartAt,
 } from "./logic.ts";
-import { PagarmeGateway } from "./gateway.ts";
+import { PagarmeGateway, PagarmeSubscriptionResponse } from "./gateway.ts";
 
 const STALE_ATTEMPT_MINUTES = 15;
 
@@ -169,17 +170,36 @@ export function createPagarmeCheckoutHandler(deps: {
       // (7) Subscription with the attempt-derived Idempotency-Key: a retry of the same
       // reservation converges on the same remote subscription instead of a duplicate.
       stage = "subscription";
-      const sub = await gateway.createSubscription(
-        {
-          plan_id: plan.pagarme_plan_id_annual as string,
-          customer_id: customer.id,
-          card_id: card.id,
-          installments: 12,
-          ...(startAt ? { start_at: startAt } : {}),
-          metadata: { workspace_id: ctx.workspaceId, plan_id: reqData.planId },
-        },
-        buildAttemptIdempotencyKey(attemptId),
-      );
+      const subInput = {
+        plan_id: plan.pagarme_plan_id_annual as string,
+        customer_id: customer.id,
+        card_id: card.id,
+        installments: 12 as const,
+        ...(startAt ? { start_at: startAt } : {}),
+        metadata: { workspace_id: ctx.workspaceId, plan_id: reqData.planId },
+      };
+      const idemKey = buildAttemptIdempotencyKey(attemptId);
+      let sub: PagarmeSubscriptionResponse;
+      try {
+        sub = await gateway.createSubscription(subInput, idemKey);
+      } catch (err) {
+        const definitiveRejection = err instanceof PagarmeApiError &&
+          err.status >= 400 && err.status < 500;
+        if (definitiveRejection) throw err; // nothing was created; outer catch maps the decline
+        // Ambiguous outcome (timeout / network error / gateway 5xx): the create may have
+        // COMMITTED remotely without handing us the id. Marking the attempt failed here would
+        // let a retry (new attempt = new Idempotency-Key) mint a second live subscription.
+        // Re-POST once with the SAME key: the gateway honors Idempotency-Key (spike criterion
+        // 5), so a committed first request returns the same subscription instead of a
+        // duplicate, and a lost first request makes this an ordinary create. A second
+        // consecutive ambiguous failure falls to the outer catch; that residual window is
+        // what the Fase 5 remote-side reconciliation sweep exists for.
+        console.error(
+          "[pagarme-checkout] ambiguous subscription outcome, retrying with the same key:",
+          err instanceof Error ? err.message : String(err),
+        );
+        sub = await gateway.createSubscription(subInput, idemKey);
+      }
 
       // ── Commit phase. The remote subscription now EXISTS. Every failure path below,
       // up to a committed bind, resolves by CANCELING it (compensation): leaving it alive

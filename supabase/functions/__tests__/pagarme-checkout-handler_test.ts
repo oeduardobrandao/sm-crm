@@ -135,11 +135,15 @@ function makeGateway(fx: {
   nextBillingAt?: string | null;
   failAt?: "customer" | "card" | "subscription";
   failWith?: unknown;
+  /** Number of leading createSubscription calls that should fail when failAt === "subscription".
+   * Defaults to Infinity (fail on every call), preserving prior tests' "always fails" behavior. */
+  failSubscriptionTimes?: number;
 }): PagarmeGateway {
   const record = (method: string, args: unknown[]) => fx.calls.push({ method, args });
   const maybeFail = (stage: string) => {
     if (fx.failAt === stage) throw fx.failWith ?? new Error("gateway boom");
   };
+  let subscriptionCalls = 0;
   return {
     upsertCustomer: (input) => {
       record("upsertCustomer", [input]);
@@ -153,7 +157,12 @@ function makeGateway(fx: {
     },
     createSubscription: (input, idempotencyKey) => {
       record("createSubscription", [input, idempotencyKey]);
-      maybeFail("subscription");
+      if (fx.failAt === "subscription") {
+        subscriptionCalls++;
+        if (subscriptionCalls <= (fx.failSubscriptionTimes ?? Infinity)) {
+          throw fx.failWith ?? new Error("gateway boom");
+        }
+      }
       return Promise.resolve({
         id: "sub_1",
         status: fx.subStatus ?? "active",
@@ -394,6 +403,36 @@ Deno.test("card-stage 4xx: 400 invalid_card, no subscription create, attempt fai
     e.table === "pagarme_checkout_attempts" && e.op === "update" && e.values?.state === "failed"
   );
   assert(failed !== undefined, "attempt not marked failed");
+});
+
+Deno.test("ambiguous create failure retries ONCE with the SAME idempotency key and completes", async () => {
+  const { calls, result } = run(
+    { plan: PLAN, subRow: null },
+    {
+      subStatus: "future",
+      subStartAt: "2026-09-11T00:00:00Z",
+      failAt: "subscription",
+      failSubscriptionTimes: 1,
+      failWith: new Error("timeout"),
+    },
+  );
+  const r = await result;
+  assertEquals(r.status, 200);
+  const createCalls = calls.filter((c) => c.method === "createSubscription");
+  assertEquals(createCalls.length, 2);
+  assertEquals(createCalls[0].args[1], "pagarme-co-at-1");
+  assertEquals(createCalls[1].args[1], "pagarme-co-at-1"); // SAME key, never a new one
+});
+
+Deno.test("definitive 4xx rejection at the subscription stage never retries", async () => {
+  const { calls, result } = run(
+    { plan: PLAN, subRow: null },
+    { failAt: "subscription", failWith: new PagarmeApiError(400, { any: "detail" }) },
+  );
+  const r = await result;
+  assertEquals(r.status, 400);
+  assertEquals((r.body as { code: string }).code, "plan_not_configured");
+  assertEquals(calls.filter((c) => c.method === "createSubscription").length, 1);
 });
 
 Deno.test("bind DB error after subscription create: compensating cancel, attempt failed with sub id, 500", async () => {
