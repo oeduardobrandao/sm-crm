@@ -1,0 +1,322 @@
+// Orchestration of the 12x checkout. Deps are injected ({db, gateway, now}) so the whole
+// flow is unit-testable without network or env — the serve shell in index.ts provides the
+// real ones. Auth/CORS/rate-limit live in index.ts; everything after "the caller is the
+// owner of workspaceId and the body parsed" lives here.
+
+import { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { hasEverSubscribed } from "../_shared/billing-logic.ts";
+import { resolveTrialDays } from "../_shared/trial.ts";
+import { mapPagarmeTemporalFields, normalizePagarmeStatus } from "../_shared/pagarme-logic.ts";
+import { writeWorkspacePlan } from "../_shared/plan-writer.ts";
+import {
+  buildAttemptIdempotencyKey,
+  buildPagarmeSubscriptionColumns,
+  installmentAmountCents,
+  mapGatewayFailure,
+  PagarmeCheckoutRequest,
+  pagarmeCheckoutBlocked,
+  resolveStartAt,
+} from "./logic.ts";
+import { PagarmeGateway } from "./gateway.ts";
+
+const STALE_ATTEMPT_MINUTES = 15;
+
+export interface CheckoutContext {
+  workspaceId: string;
+  userEmail: string;
+  userName: string | null;
+}
+
+export interface CheckoutResult {
+  status: number;
+  body: unknown;
+}
+
+export function createPagarmeCheckoutHandler(deps: {
+  db: SupabaseClient;
+  gateway: PagarmeGateway;
+  now: () => Date;
+}) {
+  return async function handle(
+    ctx: CheckoutContext,
+    reqData: PagarmeCheckoutRequest,
+  ): Promise<CheckoutResult> {
+    const { db, gateway } = deps;
+    const now = deps.now();
+    const nowIso = now.toISOString();
+
+    // (1) Plan + server-side gate re-check: the column is the rollout switch, and the
+    // frontend gate is advisory. Off means a generic 403 with no detail.
+    const { data: plan, error: planErr } = await db
+      .from("plans")
+      .select("id, price_brl_annual, pagarme_12x_enabled, pagarme_plan_id_annual")
+      .eq("id", reqData.planId)
+      .single();
+    if (planErr) throw new Error(`plan read failed: ${planErr.message}`);
+    if (!plan?.pagarme_12x_enabled) {
+      return { status: 403, body: { error: "Indisponível." } };
+    }
+    if (!plan.pagarme_plan_id_annual || plan.price_brl_annual == null) {
+      return {
+        status: 400,
+        body: {
+          error: "Plano não configurado para parcelamento. Fale com o suporte.",
+          code: "plan_not_configured",
+        },
+      };
+    }
+
+    // (2) Existing row. A read ERROR must deny, not fall through as "no row": that would
+    // skip the 409 and duplicate a live subscription.
+    const { data: row, error: rowErr } = await db
+      .from("workspace_subscriptions")
+      .select(
+        "provider, stripe_subscription_id, pagarme_customer_id, pagarme_subscription_id, status, cancel_at_period_end, current_period_end, ever_subscribed_at",
+      )
+      .eq("workspace_id", ctx.workspaceId)
+      .maybeSingle();
+    if (rowErr) throw new Error(`subscription read failed: ${rowErr.message}`);
+    if (pagarmeCheckoutBlocked(row, now)) {
+      return { status: 409, body: { error: "Este workspace já tem uma assinatura vigente." } };
+    }
+
+    // (3) Self-heal stale reservations, then reserve atomically. A crash between reserving
+    // and finishing must not lock the workspace out until the cron (Fase 5): any pending
+    // attempt older than 15 minutes is expired inline first. The partial unique index
+    // one_pending_attempt_per_workspace makes the insert the serialization point — NO remote
+    // call happens before it, so a concurrent tab costs nothing at the gateway.
+    const staleBefore = new Date(now.getTime() - STALE_ATTEMPT_MINUTES * 60_000).toISOString();
+    const { error: expireErr } = await db
+      .from("pagarme_checkout_attempts")
+      .update({ state: "expired", updated_at: nowIso })
+      .eq("workspace_id", ctx.workspaceId)
+      .eq("state", "pending")
+      .lt("created_at", staleBefore);
+    if (expireErr) throw new Error(`attempt expiry failed: ${expireErr.message}`);
+
+    const { data: attempt, error: reserveErr } = await db
+      .from("pagarme_checkout_attempts")
+      .insert({ workspace_id: ctx.workspaceId })
+      .select("id")
+      .single();
+    if (reserveErr) {
+      if (reserveErr.code === "23505") {
+        return {
+          status: 409,
+          body: {
+            error: "Outra tentativa de pagamento está em andamento. Aguarde alguns instantes e tente de novo.",
+          },
+        };
+      }
+      throw new Error(`attempt reservation failed: ${reserveErr.message}`);
+    }
+    const attemptId = (attempt as { id: string }).id;
+
+    // Best-effort terminal state for the attempt: a failure to record it only costs an
+    // earlier-than-necessary 409 for 15 minutes (the expiry sweep clears it), never money.
+    const finishAttempt = async (
+      state: "succeeded" | "failed",
+      pagarmeSubscriptionId?: string,
+    ) => {
+      const { error } = await db
+        .from("pagarme_checkout_attempts")
+        .update({
+          state,
+          updated_at: new Date().toISOString(),
+          ...(pagarmeSubscriptionId ? { pagarme_subscription_id: pagarmeSubscriptionId } : {}),
+        })
+        .eq("id", attemptId);
+      if (error) console.error("[pagarme-checkout] attempt update failed:", error.message);
+    };
+
+    const GENERIC_500 = {
+      error: "Erro ao processar o pagamento. Tente novamente.",
+      code: "gateway_error",
+    };
+    const ROW_CONFLICT_409 = { error: "Este workspace já tem uma assinatura vigente." };
+
+    let stage: "customer" | "card" | "subscription" = "customer";
+    try {
+      // (4) Trial: permanent per-workspace eligibility, provider-agnostic. start_at in the
+      // future means the card is NOT authorized at creation (spike): a bad card surfaces on
+      // day 30 and dunning covers it.
+      const trialDays = resolveTrialDays(hasEverSubscribed(row));
+      const startAt = resolveStartAt(trialDays, now);
+
+      // (5) Customer upsert: email is unique at Pagar.me, so this is find-or-create. The
+      // customer may be shared across this owner's workspaces (1:N by design, never a
+      // tenant authority); last-write-wins on the shared profile is accepted.
+      const customer = await gateway.upsertCustomer({
+        name: ctx.userName?.trim() || ctx.userEmail,
+        email: ctx.userEmail,
+        document: reqData.document,
+        document_type: reqData.documentType,
+        type: reqData.customerType,
+        phones: {
+          mobile_phone: {
+            country_code: "55",
+            area_code: reqData.phone.ddd,
+            number: reqData.phone.number,
+          },
+        },
+      });
+
+      // (6) Card attach WITH billing_address; always use the card id from THIS response,
+      // never list/reuse the customer's saved cards (no card crosses workspaces).
+      stage = "card";
+      const card = await gateway.attachCard(customer.id, reqData.cardToken, reqData.billingAddress);
+
+      // (7) Subscription with the attempt-derived Idempotency-Key: a retry of the same
+      // reservation converges on the same remote subscription instead of a duplicate.
+      stage = "subscription";
+      const sub = await gateway.createSubscription(
+        {
+          plan_id: plan.pagarme_plan_id_annual as string,
+          customer_id: customer.id,
+          card_id: card.id,
+          installments: 12,
+          ...(startAt ? { start_at: startAt } : {}),
+          metadata: { workspace_id: ctx.workspaceId, plan_id: reqData.planId },
+        },
+        buildAttemptIdempotencyKey(attemptId),
+      );
+
+      // ── Commit phase. The remote subscription now EXISTS. Every failure path below,
+      // up to a committed bind, resolves by CANCELING it (compensation): leaving it alive
+      // would let a user retry mint a SECOND subscription, because the idempotency key is
+      // per attempt. With the 30-day trial nothing was charged; without it, one charge may
+      // need a manual refund — still strictly better than a paid subscription bound to
+      // nothing. After a committed bind, failures never cancel. DB failures here RETURN
+      // (after compensating) instead of throwing, so the outer catch stays a pure
+      // gateway-stage mapper. ──
+      const failCompensating = async (status: number, body: unknown): Promise<CheckoutResult> => {
+        try {
+          await gateway.cancelSubscription(sub.id);
+        } catch (e) {
+          console.error(
+            "[pagarme-checkout] compensating cancel failed:",
+            e instanceof Error ? e.message : String(e),
+          );
+        }
+        await finishAttempt("failed", sub.id);
+        return { status, body };
+      };
+
+      // (8) Orphan pointer — MANDATORY: it is what reconciliation depends on. If it cannot
+      // be committed, the only safe outcome is to cancel the remote sub and fail.
+      const { error: ptrErr } = await db
+        .from("pagarme_checkout_attempts")
+        .update({ pagarme_subscription_id: sub.id, updated_at: new Date().toISOString() })
+        .eq("id", attemptId);
+      if (ptrErr) {
+        console.error("[pagarme-checkout] attempt sub-id write failed:", ptrErr.message);
+        return await failCompensating(500, GENERIC_500);
+      }
+
+      // (9) "failed" is the undocumented fourth status: the first charge was refused, no
+      // plan was ever granted, so there is nothing to preserve. Any other non-live status
+      // at creation (canceled / unknown) gets the same treatment: nothing was granted.
+      const normalized = normalizePagarmeStatus(sub.status);
+      if (normalized !== "trialing" && normalized !== "active") {
+        console.error(`[pagarme-checkout] subscription born non-live (status=${sub.status})`);
+        return await failCompensating(400, {
+          error: "Cartão recusado. Confira os dados ou tente outro cartão.",
+          code: "invalid_card",
+        });
+      }
+
+      // (10) CAS bind, single statement: provider flip + full amount mirror together
+      // (master-plan INVARIANTE; the admin reads the mirror for pagarme rows and never
+      // live-fetches). The write is pinned to the ownership coordinates observed at
+      // gate-read time — provider plus that provider's registered subscription id —
+      // mirroring the Fase 2 stripe-webhook CAS. If a concurrent writer (e.g. a Stripe
+      // checkout.session.completed bind) changed the row in between, zero rows match: we
+      // compensate and 409 instead of silently clobbering a freshly bound subscription.
+      // With no row observed, a plain INSERT (never upsert) makes the concurrent-create
+      // case surface as a 23505 instead of an overwrite.
+      const temporal = mapPagarmeTemporalFields(sub);
+      const columns = buildPagarmeSubscriptionColumns({
+        customerId: customer.id,
+        subscriptionId: sub.id,
+        status: normalized,
+        planId: reqData.planId,
+        annualPriceCents: Number(plan.price_brl_annual),
+        currentPeriodEnd: temporal.current_period_end,
+        everSubscribedAt: (row?.ever_subscribed_at as string | null) ?? nowIso,
+        nowIso,
+      });
+      if (row) {
+        const observedProvider = (row.provider as string | null) ?? "stripe";
+        const observedIdColumn = observedProvider === "pagarme"
+          ? "pagarme_subscription_id"
+          : "stripe_subscription_id";
+        const observedId = (row as Record<string, unknown>)[observedIdColumn] ?? null;
+        let bind = db
+          .from("workspace_subscriptions")
+          .update(columns)
+          .eq("workspace_id", ctx.workspaceId)
+          .eq("provider", observedProvider);
+        bind = observedId == null
+          ? bind.is(observedIdColumn, null)
+          : bind.eq(observedIdColumn, observedId);
+        const { data: bound, error: bindErr } = await bind.select("workspace_id");
+        if (bindErr) {
+          console.error("[pagarme-checkout] bind update failed:", bindErr.message);
+          return await failCompensating(500, GENERIC_500);
+        }
+        if (!bound?.length) {
+          console.error(
+            `[pagarme-checkout] ownership changed under checkout for workspace ${ctx.workspaceId}`,
+          );
+          return await failCompensating(409, ROW_CONFLICT_409);
+        }
+      } else {
+        const { error: insErr } = await db
+          .from("workspace_subscriptions")
+          .insert({ workspace_id: ctx.workspaceId, ...columns });
+        if (insErr) {
+          if (insErr.code === "23505") {
+            console.error(
+              `[pagarme-checkout] concurrent row create under checkout for workspace ${ctx.workspaceId}`,
+            );
+            return await failCompensating(409, ROW_CONFLICT_409);
+          }
+          console.error("[pagarme-checkout] bind insert failed:", insErr.message);
+          return await failCompensating(500, GENERIC_500);
+        }
+      }
+
+      // (11) Effective plan (respects admin comps via plan_source='manual'). POST-BIND: the
+      // subscription is live and bound, so a failure here must NOT cancel it, and failing
+      // the request would tell the user to retry a checkout that can only 409 now. Log
+      // CRITICAL and answer 200; recovery is support/admin (and the Fase 4 webhook).
+      try {
+        await writeWorkspacePlan(db, ctx.workspaceId, reqData.planId, "pagarme");
+      } catch (e) {
+        console.error(
+          `[pagarme-checkout] CRITICAL: plan grant failed for workspace ${ctx.workspaceId}:`,
+          e instanceof Error ? e.message : String(e),
+        );
+      }
+      await finishAttempt("succeeded", sub.id);
+
+      return {
+        status: 200,
+        body: {
+          status: normalized,
+          trial_ends_at: normalized === "trialing" ? temporal.current_period_end : null,
+          next_charge_at: temporal.current_period_end,
+          installment_amount_cents: installmentAmountCents(Number(plan.price_brl_annual)),
+        },
+      };
+    } catch (err) {
+      await finishAttempt("failed");
+      // Stage name + message only — NEVER the request body (card/document/address).
+      console.error(
+        `[pagarme-checkout] ${stage} stage failed:`,
+        err instanceof Error ? err.message : String(err),
+      );
+      return mapGatewayFailure(stage, err);
+    }
+  };
+}
