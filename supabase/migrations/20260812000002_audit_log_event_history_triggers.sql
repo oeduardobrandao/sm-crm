@@ -32,7 +32,7 @@ CREATE OR REPLACE FUNCTION trg_audit_post_status()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   BEGIN
-    IF NEW.to_status IN ('published', 'scheduled', 'publish_failed') THEN
+    IF NEW.to_status IN ('postado', 'agendado', 'falha_publicacao') THEN
       INSERT INTO audit_log (conta_id, actor_user_id, action, resource_type, resource_id, metadata)
       VALUES (
         NEW.conta_id,

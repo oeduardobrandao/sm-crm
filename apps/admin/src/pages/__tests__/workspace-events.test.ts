@@ -21,8 +21,8 @@ describe('eventMeta', () => {
     expect(eventMeta('client-create').label).toBe('Cliente criado');
   });
 
-  it('returns known label for post-published', () => {
-    expect(eventMeta('post-published').label).toBe('Post publicado');
+  it('returns known label for post-postado', () => {
+    expect(eventMeta('post-postado').label).toBe('Post publicado');
   });
 
   it('returns known label for instagram-link', () => {
@@ -33,8 +33,8 @@ describe('eventMeta', () => {
     expect(eventMeta('accept-invite').label).toBe('Convite aceito');
   });
 
-  it('returns known label for post-scheduled', () => {
-    expect(eventMeta('post-scheduled').label).toBe('Post agendado');
+  it('returns known label for post-agendado', () => {
+    expect(eventMeta('post-agendado').label).toBe('Post agendado');
   });
 
   it('falls back to cleaned action string for unknown actions', () => {
@@ -49,8 +49,8 @@ describe('eventMeta', () => {
       'accept-invite',
       'admin-create-invite',
       'instagram-link',
-      'post-published',
-      'post-scheduled',
+      'post-postado',
+      'post-agendado',
       'update-role',
       'remove-user',
     ];
@@ -68,10 +68,10 @@ describe('eventDescription', () => {
     expect(desc).toBe('Acme Corp');
   });
 
-  it('returns actor_name for post-published', () => {
+  it('returns actor_name for post-postado', () => {
     const desc = eventDescription(
       makeEvent({
-        action: 'post-published',
+        action: 'post-postado',
         metadata: { actor_name: 'Ana', source: 'workspace_user' },
       }),
     );
@@ -92,7 +92,7 @@ describe('FILTERABLE_TYPES', () => {
     const values = FILTERABLE_TYPES.map((t) => t.value);
     expect(values).toContain('client-create');
     expect(values).toContain('instagram-link');
-    expect(values).toContain('post-published');
+    expect(values).toContain('post-postado');
     expect(values).toContain('accept-invite');
   });
 

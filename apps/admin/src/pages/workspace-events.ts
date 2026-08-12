@@ -13,9 +13,9 @@ const ACTION_MAP: Record<string, EventMeta> = {
   'admin-cancel-invite': { label: 'Convite cancelado', icon: 'MailX' },
   'instagram-link': { label: 'Instagram conectado', icon: 'Link' },
   'tiktok-link': { label: 'TikTok conectado', icon: 'Link' },
-  'post-published': { label: 'Post publicado', icon: 'Send' },
-  'post-scheduled': { label: 'Post agendado', icon: 'Clock' },
-  'post-publish_failed': { label: 'Publicacao falhou', icon: 'AlertTriangle' },
+  'post-postado': { label: 'Post publicado', icon: 'Send' },
+  'post-agendado': { label: 'Post agendado', icon: 'Clock' },
+  'post-falha_publicacao': { label: 'Publicacao falhou', icon: 'AlertTriangle' },
   'update-role': { label: 'Cargo alterado', icon: 'Shield' },
   'remove-user': { label: 'Membro removido', icon: 'UserMinus' },
   'mcp.key.create': { label: 'API key criada', icon: 'Key' },
@@ -38,9 +38,9 @@ export function eventDescription(event: WorkspaceEvent): string {
   switch (event.action) {
     case 'client-create':
       return (meta.nome as string) ?? '';
-    case 'post-published':
-    case 'post-scheduled':
-    case 'post-publish_failed':
+    case 'post-postado':
+    case 'post-agendado':
+    case 'post-falha_publicacao':
       return meta.actor_name ? `por ${meta.actor_name}` : '';
     case 'update-role':
     case 'remove-user':
@@ -56,8 +56,8 @@ export const FILTERABLE_TYPES = [
   { value: 'admin-create-invite', label: 'Convite enviado' },
   { value: 'instagram-link', label: 'Instagram conectado' },
   { value: 'tiktok-link', label: 'TikTok conectado' },
-  { value: 'post-published', label: 'Post publicado' },
-  { value: 'post-scheduled', label: 'Post agendado' },
+  { value: 'post-postado', label: 'Post publicado' },
+  { value: 'post-agendado', label: 'Post agendado' },
   { value: 'update-role', label: 'Cargo alterado' },
   { value: 'remove-user', label: 'Membro removido' },
 ] as const;
