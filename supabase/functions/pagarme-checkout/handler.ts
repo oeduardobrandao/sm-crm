@@ -22,6 +22,11 @@ import { PagarmeGateway, PagarmeSubscriptionResponse } from "./gateway.ts";
 
 const STALE_ATTEMPT_MINUTES = 15;
 
+// Every DB call is bounded so a PostgREST hang surfaces as a catchable error inside the
+// compensation paths instead of running the isolate into an Edge kill mid-flow (house rule;
+// billing-checkout's checkout_attempts insert set the precedent).
+const DB_TIMEOUT_MS = 10_000;
+
 export interface CheckoutContext {
   workspaceId: string;
   userEmail: string;
@@ -52,6 +57,7 @@ export function createPagarmeCheckoutHandler(deps: {
       .from("plans")
       .select("id, price_brl_annual, pagarme_12x_enabled, pagarme_plan_id_annual")
       .eq("id", reqData.planId)
+      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
       .single();
     if (planErr) throw new Error(`plan read failed: ${planErr.message}`);
     if (!plan?.pagarme_12x_enabled) {
@@ -75,6 +81,7 @@ export function createPagarmeCheckoutHandler(deps: {
         "provider, stripe_subscription_id, pagarme_customer_id, pagarme_subscription_id, status, cancel_at_period_end, current_period_end, ever_subscribed_at",
       )
       .eq("workspace_id", ctx.workspaceId)
+      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
       .maybeSingle();
     if (rowErr) throw new Error(`subscription read failed: ${rowErr.message}`);
     if (pagarmeCheckoutBlocked(row, now)) {
@@ -97,7 +104,8 @@ export function createPagarmeCheckoutHandler(deps: {
       .select("id, pagarme_subscription_id")
       .eq("workspace_id", ctx.workspaceId)
       .eq("state", "pending")
-      .lt("created_at", staleBefore);
+      .lt("created_at", staleBefore)
+      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
     if (staleReadErr) throw new Error(`stale attempt read failed: ${staleReadErr.message}`);
     for (
       const stale of (stalePending ?? []) as Array<
@@ -136,7 +144,8 @@ export function createPagarmeCheckoutHandler(deps: {
         .from("pagarme_checkout_attempts")
         .update({ state: "expired", updated_at: nowIso })
         .eq("id", stale.id)
-        .eq("state", "pending");
+        .eq("state", "pending")
+        .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
       if (expireErr) throw new Error(`attempt expiry failed: ${expireErr.message}`);
     }
 
@@ -144,6 +153,7 @@ export function createPagarmeCheckoutHandler(deps: {
       .from("pagarme_checkout_attempts")
       .insert({ workspace_id: ctx.workspaceId })
       .select("id")
+      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
       .single();
     if (reserveErr) {
       if (reserveErr.code === "23505") {
@@ -171,7 +181,8 @@ export function createPagarmeCheckoutHandler(deps: {
           updated_at: new Date().toISOString(),
           ...(pagarmeSubscriptionId ? { pagarme_subscription_id: pagarmeSubscriptionId } : {}),
         })
-        .eq("id", attemptId);
+        .eq("id", attemptId)
+        .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
       if (error) console.error("[pagarme-checkout] attempt update failed:", error.message);
     };
 
@@ -294,7 +305,8 @@ export function createPagarmeCheckoutHandler(deps: {
         const { error: ptrErr } = await db
           .from("pagarme_checkout_attempts")
           .update({ pagarme_subscription_id: sub.id, updated_at: new Date().toISOString() })
-          .eq("id", attemptId);
+          .eq("id", attemptId)
+          .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
         if (ptrErr) {
           console.error("[pagarme-checkout] attempt sub-id write failed:", ptrErr.message);
           return await failCompensating(500, GENERIC_500);
@@ -346,7 +358,9 @@ export function createPagarmeCheckoutHandler(deps: {
           bind = observedId == null
             ? bind.is(observedIdColumn, null)
             : bind.eq(observedIdColumn, observedId);
-          const { data: bound, error: bindErr } = await bind.select("workspace_id");
+          const { data: bound, error: bindErr } = await bind
+            .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
+            .select("workspace_id");
           if (bindErr) {
             console.error("[pagarme-checkout] bind update failed:", bindErr.message);
             return await failCompensating(500, GENERIC_500);
@@ -360,7 +374,8 @@ export function createPagarmeCheckoutHandler(deps: {
         } else {
           const { error: insErr } = await db
             .from("workspace_subscriptions")
-            .insert({ workspace_id: ctx.workspaceId, ...columns });
+            .insert({ workspace_id: ctx.workspaceId, ...columns })
+            .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
           if (insErr) {
             if (insErr.code === "23505") {
               console.error(
