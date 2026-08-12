@@ -160,6 +160,11 @@ Monorepo with npm workspaces:
 - `STRIPE_SECRET_KEY` -- Stripe API secret key. REQUIRED by billing functions, no default -- throw if missing
 - `STRIPE_WEBHOOK_SECRET` -- Stripe webhook signing secret. REQUIRED by stripe-webhook, no default -- throw if missing
 - `PAGARME_SECRET_KEY` -- Pagar.me v5 API secret for 12x installment billing (pagarme-client). No default; shared client throws on first call when missing
+- `PAGARME_WEBHOOK_TOKEN` -- secret path segment of the Pagar.me webhook URL
+  (`/pagarme-webhook/{token}`). REQUIRED by pagarme-webhook, no default -- throws at module load
+- `PAGARME_WEBHOOK_BASIC` -- `user:password` pair configured in the Pagar.me dashboard webhook
+  "Habilitar autenticação" toggle, verified timing-safe on every delivery. REQUIRED by
+  pagarme-webhook, no default -- throws at module load
 - `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` -- TikTok Login Kit OAuth (tiktok-integration)
 - `TIKTOK_APP_AUDITED` -- unset until TikTok's Content Posting audit passes; while unset, scheduling enforces SELF_ONLY privacy
 - `TIKTOK_URL_VERIFY_FILENAME`, `TIKTOK_URL_VERIFY_CONTENT` -- TikTok URL-prefix verification file (optional; 404 until set)
