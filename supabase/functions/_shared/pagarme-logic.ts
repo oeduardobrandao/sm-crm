@@ -207,12 +207,18 @@ export function shouldAdvanceDunning(
  * true) only returns false on the cross-provider in-force/paid-through branch — meaning the
  * customer just PAID for a brand-new Stripe subscription that will never be bound (a Stripe
  * Checkout Session lives 24h, so serializing checkout STARTS cannot prevent this completion).
- * The just-created subscription must be canceled, not acked. `remoteStatus === "canceled"`
- * means a redelivery after a successful cancel: nothing left to do, ack.
+ * The just-created subscription must be canceled, not acked. A terminal remote status like
+ * `canceled` or `incomplete_expired` means there is nothing left to cancel: ack instead.
  */
+// Stripe statuses a subscription can no longer be canceled FROM — it is already terminal.
+// A denied checkout redelivered after Stripe expired the unpaid sub (incomplete -> ~23h ->
+// incomplete_expired) or after our own earlier cancel (canceled) has nothing left to cancel;
+// calling subscriptions.cancel on it throws and would 5xx-loop the webhook forever. Ack instead.
+const RESOLVED_STRIPE_STATUSES = new Set(["canceled", "incomplete_expired"]);
+
 export function shouldCancelDeniedCheckoutSub(
   hasSession: boolean,
   remoteStatus: string,
 ): boolean {
-  return hasSession && remoteStatus !== "canceled";
+  return hasSession && !RESOLVED_STRIPE_STATUSES.has(remoteStatus);
 }

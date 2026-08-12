@@ -446,6 +446,7 @@ Deno.test("shouldCancelDeniedCheckoutSub: non-checkout denial never cancels", ()
   assertEquals(shouldCancelDeniedCheckoutSub(false, "active"), false);
 });
 
-Deno.test("shouldCancelDeniedCheckoutSub: already-canceled remote status is a redelivery, acks", () => {
+Deno.test("shouldCancelDeniedCheckoutSub: terminal remote status is already resolved, acks", () => {
   assertEquals(shouldCancelDeniedCheckoutSub(true, "canceled"), false);
+  assertEquals(shouldCancelDeniedCheckoutSub(true, "incomplete_expired"), false);
 });
