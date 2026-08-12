@@ -653,3 +653,19 @@ Deno.test("stale orphan cancel 4xx (already canceled or gone): treated as settle
   const r = await result;
   assertEquals(r.status, 200);
 });
+
+Deno.test("stale orphan cancel 401/403/429: reservation kept (says nothing about the subscription)", async () => {
+  for (const status of [401, 403, 429]) {
+    const { events, result } = run(
+      { plan: PLAN, subRow: null, stalePending: [{ id: "stale-1", pagarme_subscription_id: "sub_orphan" }] },
+      { failCancel: true, failCancelWith: new PagarmeApiError(status, null) },
+    );
+    const r = await result;
+    assertEquals(r.status, 409, `status ${status}`);
+    assertEquals(
+      events.filter((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert").length,
+      0,
+      `no new reservation for ${status}`,
+    );
+  }
+});

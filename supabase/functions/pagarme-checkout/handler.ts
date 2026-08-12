@@ -109,9 +109,13 @@ export function createPagarmeCheckoutHandler(deps: {
           await gateway.cancelSubscription(stale.pagarme_subscription_id);
         } catch (e) {
           // 4xx from the DELETE means the subscription is not in a cancellable state
-          // (already canceled or gone) — safe to release. Anything else (network, 5xx)
-          // means it MAY still be live: keep the reservation blocking instead of expiring.
-          const settled = e instanceof PagarmeApiError && e.status >= 400 && e.status < 500;
+          // (already canceled or gone) — safe to release — EXCEPT 401/403 (our credentials)
+          // and 429 (throttled), which say nothing about the subscription's state. Same
+          // split as mapGatewayFailure. Anything else (network, 5xx) means it MAY still be
+          // live: keep the reservation blocking instead of expiring.
+          const settled = e instanceof PagarmeApiError &&
+            e.status >= 400 && e.status < 500 &&
+            e.status !== 401 && e.status !== 403 && e.status !== 429;
           if (!settled) {
             console.error(
               `[pagarme-checkout] stale attempt ${stale.id} holds subscription ${stale.pagarme_subscription_id} and cancel failed; keeping the reservation:`,
