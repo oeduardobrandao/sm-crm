@@ -4,6 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createPublishCronHandler } from "./handler.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
+import type { CronFailureError } from "../_shared/notify.ts";
 import { classifyPublishError } from "../_shared/publish-error-codes.ts";
 import {
   decryptToken,
@@ -337,6 +338,20 @@ Deno.serve(createPublishCronHandler({
   run: async () => {
     const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const summary = { phase1: { succeeded: 0, failed: 0 }, phase2: { succeeded: 0, failed: 0 }, phase3: { succeeded: 0, failed: 0 } };
+    const failedPosts: CronFailureError[] = [];
+
+    function collectFailure(post: ClaimedPost, err: unknown) {
+      const errorCode = classifyPublishError(err);
+      const message = err instanceof Error ? err.message : String(err);
+      failedPosts.push({
+        postId: post.post_id,
+        clientId: post.client_id,
+        postCaption: post.ig_caption,
+        accountId: post.instagram_user_id,
+        errorCode,
+        error: message.slice(0, 500),
+      });
+    }
 
     try {
       // Phase 1: Container Creation
@@ -348,6 +363,7 @@ Deno.serve(createPublishCronHandler({
             await processContainerCreation(db, post);
           } catch (err: any) {
             await markFailed(db, post.post_id, post.publish_retry_count, err, post.client_id);
+            collectFailure(post, err);
             throw err;
           }
         });
@@ -363,6 +379,7 @@ Deno.serve(createPublishCronHandler({
             await processPublish(db, post);
           } catch (err: any) {
             await markFailed(db, post.post_id, post.publish_retry_count, err, post.client_id);
+            collectFailure(post, err);
             throw err;
           }
         });
@@ -378,6 +395,7 @@ Deno.serve(createPublishCronHandler({
             await processRetry(db, post);
           } catch (err: any) {
             await markFailed(db, post.post_id, post.publish_retry_count, err, post.client_id);
+            collectFailure(post, err);
             throw err;
           }
         });
@@ -391,7 +409,7 @@ Deno.serve(createPublishCronHandler({
         await reportCronFailure(db, 'instagram-publish-cron', {
           total: summary.phase1.succeeded + summary.phase1.failed + summary.phase2.succeeded + summary.phase2.failed + summary.phase3.succeeded + summary.phase3.failed,
           failed: totalFailed,
-          errors: [{ error: `Phase1: ${summary.phase1.failed}, Phase2: ${summary.phase2.failed}, Phase3: ${summary.phase3.failed}` }],
+          errors: failedPosts,
         });
       }
 
