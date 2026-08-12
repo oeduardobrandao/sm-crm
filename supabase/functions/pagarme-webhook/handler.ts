@@ -252,12 +252,15 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
       null,
       now(),
     );
+    // Pin the observed status too, so a failure write that fetched an active sub cannot commit
+    // stale after a concurrent charge.paid recovery or terminal cancel changed the row (delayed
+    // delivery misses the CAS -> 5xx -> redelivery re-reads current state).
     await casWrite(row, subId, {
       status: "past_due",
       ...episode,
       pagarme_dunning_key: key,
       updated_at: now().toISOString(),
-    }, { observedDunningKey: row.pagarme_dunning_key });
+    }, { observedStatus: row.status, observedDunningKey: row.pagarme_dunning_key });
     // past_due keeps the plan (grace, like statusToPlanId) — no plan write here.
     const stage = selectPagarmeDunningStage(episode.failed_payment_count);
     await deps.notify(row.workspace_id, stage);

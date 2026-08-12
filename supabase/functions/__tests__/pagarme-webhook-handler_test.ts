@@ -421,12 +421,20 @@ Deno.test("12. charge.payment_failed, first failure (remote still active): past_
   const cas = findCasUpdate(events);
   assert(cas);
   assertCasCoordinates(cas.filters);
-  assertEquals(cas.filters.length, 4, "must carry the observedDunningKey pin on top of the 3 CAS coordinates");
+  assertEquals(
+    cas.filters.length,
+    5,
+    "must carry the observedStatus and observedDunningKey pins on top of the 3 CAS coordinates",
+  );
   assert(cas.abortSignal, "CAS write must be bounded by abortSignal");
   assertEquals(cas.values?.status, "past_due");
   assertEquals(cas.values?.failed_payment_count, 1);
   assertEquals(cas.values?.pagarme_dunning_key, "ch_1:1");
   assertEquals(cas.values?.past_due_since, NOW.toISOString());
+  assert(
+    filterHas(cas.filters, "eq", "status", "active"),
+    "must pin the observed status so a stale-fetched write can't clobber a concurrent recovery/cancel",
+  );
   assert(
     filterHas(cas.filters, "is", "pagarme_dunning_key", null),
     "must pin the observed (null) dunning key with .is(), not .eq()",
@@ -476,6 +484,10 @@ Deno.test("14. charge.payment_failed, second real failure: count/key advance, pa
   assertEquals(cas.values?.failed_payment_count, 2);
   assertEquals(cas.values?.pagarme_dunning_key, "ch_1:2");
   assertEquals(cas.values?.past_due_since, "2026-08-11T00:00:00Z", "existing episode start must be preserved");
+  assert(
+    filterHas(cas.filters, "eq", "status", "past_due"),
+    "must pin the observed status so a stale-fetched write can't clobber a concurrent recovery/cancel",
+  );
   assert(
     filterHas(cas.filters, "eq", "pagarme_dunning_key", "ch_1:1"),
     "must pin the previously observed key",
