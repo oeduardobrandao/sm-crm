@@ -343,6 +343,11 @@ import { appBaseUrl } from "./app-url.ts";
  * The caller picks the stage: Stripe derives it from attempt_count/next_payment_attempt,
  * Pagar.me from its own failed-count rule (selectPagarmeDunningStage).
  */
+// Review de spec (Codex): este arquivo é reescrito nesta fase, então as queries PostgREST
+// entram na regra da casa de DB bounded. auth.admin.getUserById é GoTrue (sem API de abort);
+// o try/catch envolvente já engole um hang eventual sem derrubar o handler.
+const DB_TIMEOUT_MS = 10_000;
+
 export async function notifyOwnerOfFailure(
   svc: SupabaseClient,
   workspaceId: string,
@@ -352,13 +357,15 @@ export async function notifyOwnerOfFailure(
   const logPrefix = opts?.logPrefix ?? "[dunning-notify]";
   try {
     const { data: ws } = await svc
-      .from("workspaces").select("name").eq("id", workspaceId).maybeSingle();
+      .from("workspaces").select("name").eq("id", workspaceId)
+      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)).maybeSingle();
 
     // workspace_members, not profiles.conta_id: profiles has no email column, and conta_id is the
     // legacy single-workspace field. This is the path platform-admin already uses.
     const { data: ownerMember } = await svc
       .from("workspace_members").select("user_id")
-      .eq("workspace_id", workspaceId).eq("role", "owner").limit(1).maybeSingle();
+      .eq("workspace_id", workspaceId).eq("role", "owner").limit(1)
+      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)).maybeSingle();
     if (!ownerMember?.user_id) return;
 
     const { data: ownerUser } = await svc.auth.admin.getUserById(ownerMember.user_id as string);
@@ -452,14 +459,49 @@ if (!allowed) {
 
 `shouldCancelDeniedCheckoutSub` entra no import de `_shared/pagarme-logic.ts` já existente.
 
-- [ ] **Step 5: Testes** em `pagarme-logic_test.ts` (append, siga o estilo do arquivo):
+- [ ] **Step 5: `shouldAdvanceDunning` monotônico** (review de spec, P1): em
+  `_shared/pagarme-logic.ts`, substitua o corpo de `shouldAdvanceDunning` (assinatura idêntica):
+
+```ts
+/**
+ * True only when the incoming charge+attempt key should advance the dunning stage. A repeated
+ * key is a redelivery and never advances. When both keys carry the SAME charge id and numeric
+ * attempts, only a HIGHER attempt advances: an out-of-order delivery of attempt 1 arriving
+ * after attempt 2 must not regress the stored key (a later redelivery of attempt 2 would then
+ * advance and e-mail again). Different charge ids or non-numeric attempts ("na") cannot be
+ * ordered and keep the plain inequality rule.
+ */
+export function shouldAdvanceDunning(
+  lastKey: string | null | undefined,
+  incomingKey: string,
+): boolean {
+  if (lastKey === incomingKey) return false;
+  if (!lastKey) return true;
+  const lastSep = lastKey.lastIndexOf(":");
+  const inSep = incomingKey.lastIndexOf(":");
+  if (lastSep === -1 || inSep === -1) return true;
+  if (lastKey.slice(0, lastSep) !== incomingKey.slice(0, inSep)) return true;
+  const lastAttempt = Number(lastKey.slice(lastSep + 1));
+  const inAttempt = Number(incomingKey.slice(inSep + 1));
+  if (!Number.isFinite(lastAttempt) || !Number.isFinite(inAttempt)) return true;
+  return inAttempt > lastAttempt;
+}
+```
+
+  Antes de commitar, grep os testes existentes de `shouldAdvanceDunning` em
+  `pagarme-logic_test.ts` e ajuste os que assumirem a regra antiga de desigualdade pura.
+
+- [ ] **Step 6: Testes** em `pagarme-logic_test.ts` (append, siga o estilo do arquivo):
   - `shouldCancelDeniedCheckoutSub(true, "active")` → true; `(true, "trialing")` → true;
     `(true, "incomplete")` → true.
   - `(false, "active")` → false (evento não-checkout nunca cancela).
   - `(true, "canceled")` → false (redelivery pós-cancel dá ack).
-- [ ] **Step 6: Rode** `deno test` em `pagarme-logic_test.ts` (o typecheck das functions é o
+  - `shouldAdvanceDunning`: `("ch_1:1","ch_1:2")` → true; `("ch_1:2","ch_1:1")` → false
+    (regressão bloqueada); `("ch_1:1","ch_1:1")` → false; `(null,"ch_1:1")` → true;
+    `("ch_1:na","ch_1:1")` → true; `("ch_1:1","ch_1:na")` → true; `("ch_1:2","ch_2:1")` → true.
+- [ ] **Step 7: Rode** `deno test` em `pagarme-logic_test.ts` (o typecheck das functions é o
   próprio deno); depois `git checkout -- deno.lock`.
-- [ ] **Step 7: Commit** `feat(billing): denied checkout cancels stripe sub; dunning-notify caller-driven stage`
+- [ ] **Step 8: Commit** `feat(billing): denied checkout cancels stripe sub; dunning-notify caller-driven stage`
 
 ---
 
@@ -468,7 +510,9 @@ if (!allowed) {
 **Files:**
 - Create: `supabase/functions/pagarme-webhook/gateway.ts`
 - Create: `supabase/functions/pagarme-webhook/handler.ts`
+- Modify: `supabase/functions/pagarme-webhook/logic.ts` (append `shouldSendTerminalDunningEmail`)
 - Test: `supabase/functions/__tests__/pagarme-webhook-handler_test.ts`
+- Test: `supabase/functions/__tests__/pagarme-webhook-logic_test.ts` (append)
 
 **Interfaces:**
 - Consumes: tudo de `pagarme-webhook/logic.ts` (Task 1); `canWebhookWrite`,
@@ -527,6 +571,7 @@ import {
   extractChargeSubscriptionId,
   isTerminalRemoteStatus,
   selectPagarmeDunningStage,
+  shouldSendTerminalDunningEmail,
   type ReconcileSource,
   type WebhookEnvelope,
 } from "./logic.ts";
@@ -608,17 +653,35 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
     return { row, remote };
   }
 
+  /**
+   * Optional pins (spec-review P1): pinning the observed status serializes concurrent duplicate
+   * deliveries on the terminal path (exactly one transitions the row and e-mails); pinning the
+   * observed dunning key does the same for stage advances. `.eq(col, null)` matches nothing in
+   * PostgREST — null pins MUST use `.is()` (same trap as the Fase 3 CAS).
+   */
   async function casWrite(
     row: SubscriptionRow,
     subId: string,
     columns: Record<string, unknown>,
+    pins?: { observedStatus?: string | null; observedDunningKey?: string | null },
   ): Promise<void> {
-    const { data: updated, error } = await deps.db
+    let update = deps.db
       .from("workspace_subscriptions")
       .update(columns)
       .eq("workspace_id", row.workspace_id)
       .eq("provider", "pagarme")
-      .eq("pagarme_subscription_id", subId)
+      .eq("pagarme_subscription_id", subId);
+    if (pins && "observedStatus" in pins) {
+      update = pins.observedStatus == null
+        ? update.is("status", null)
+        : update.eq("status", pins.observedStatus);
+    }
+    if (pins && "observedDunningKey" in pins) {
+      update = pins.observedDunningKey == null
+        ? update.is("pagarme_dunning_key", null)
+        : update.eq("pagarme_dunning_key", pins.observedDunningKey);
+    }
+    const { data: updated, error } = await update
       .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
       .select("workspace_id");
     if (error) {
@@ -630,9 +693,15 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
   }
 
   async function getDefaultPlanId(): Promise<string> {
-    const { data } = await deps.db
+    const { data, error } = await deps.db
       .from("plans").select("id").eq("is_default", true)
       .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)).maybeSingle();
+    if (error) {
+      // "free" on a FAILED read would be a stealth downgrade to a possibly wrong plan while
+      // still acking the event (spec-review P1). Throw → 5xx → redelivery. The fallback below
+      // is only for the proven absence of a default plan row.
+      throw new Error(`default plan read failed: ${error.message}`);
+    }
     return (data?.id as string) ?? "free";
   }
 
@@ -698,8 +767,11 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
     const { row, remote } = auth;
 
     if (isTerminalRemoteStatus(remote.status)) {
-      // Terminal failure confirmed on the re-fetched object: the ONLY path that sends "final"
-      // (a voluntary subscription.canceled never emails). Write first, e-mail last.
+      // Terminal outcome confirmed on the re-fetched object: the ONLY path that may send
+      // "final". Write first (status-pinned: of two concurrent duplicates exactly one
+      // transitions the row), e-mail last, and only when the gate says the cancellation
+      // really closed a failing episode (a voluntary cancel racing a late failure event
+      // must not e-mail — spec-review P1).
       const result = buildReconcileColumns(
         remote,
         { status: row.status, current_period_end: row.current_period_end },
@@ -707,10 +779,13 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
         now(),
       );
       if (result === null) return "ignored:unknown-status";
-      await casWrite(row, subId, result.columns);
+      await casWrite(row, subId, result.columns, { observedStatus: row.status });
       await grantPlan(row, result.status, result.columns);
-      await deps.notify(row.workspace_id, "final");
-      return "dunning:final";
+      if (shouldSendTerminalDunningEmail(remote.status, row)) {
+        await deps.notify(row.workspace_id, "final");
+        return "dunning:final";
+      }
+      return "reconciled:terminal";
     }
 
     const chargeId = typeof data.id === "string" && data.id.length > 0 ? data.id : null;
@@ -730,7 +805,7 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
       ...episode,
       pagarme_dunning_key: key,
       updated_at: now().toISOString(),
-    });
+    }, { observedDunningKey: row.pagarme_dunning_key });
     // past_due keeps the plan (grace, like statusToPlanId) — no plan write here.
     const stage = selectPagarmeDunningStage(episode.failed_payment_count);
     await deps.notify(row.workspace_id, stage);
@@ -775,7 +850,39 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
 }
 ```
 
-- [ ] **Step 3: Testes do handler** — leia `pagarme-checkout-handler_test.ts` primeiro e reuse o
+- [ ] **Step 3: `shouldSendTerminalDunningEmail` em `pagarme-webhook/logic.ts`** (append; review
+  de spec, P1 — cancel voluntário em corrida com falha atrasada não pode receber e-mail final):
+
+```ts
+/**
+ * Whether a terminal outcome inside charge.payment_failed should send the "final" dunning
+ * e-mail. Three rules:
+ * - A row already canceled was either already notified or voluntarily canceled: never send
+ *   (with the status-pinned terminal CAS this also makes concurrent duplicates safe — only
+ *   the delivery that transitioned the row e-mails).
+ * - Remote status "failed" only ever means payment failure (spike achado 3): always genuine.
+ * - Remote "canceled" seen from inside the failure handler may be a voluntary cancellation
+ *   racing a late failure event: only an OPEN local episode (past_due status or a
+ *   past_due_since stamp) proves the cancellation closed a failing episode.
+ */
+export function shouldSendTerminalDunningEmail(
+  remoteStatus: string,
+  row: { status: string | null; past_due_since: string | null },
+): boolean {
+  if (row.status === "canceled") return false;
+  if (remoteStatus === "failed") return true;
+  return row.status === "past_due" || row.past_due_since !== null;
+}
+```
+
+  Testes (append em `pagarme-webhook-logic_test.ts`):
+  - `("failed", {status:"trialing", past_due_since:null})` → true (falha terminal da 1ª cobrança).
+  - `("canceled", {status:"past_due", past_due_since:"2026-08-11T00:00:00Z"})` → true.
+  - `("canceled", {status:"active", past_due_since:null})` → false (cancel voluntário em corrida).
+  - `("canceled", {status:"active", past_due_since:"2026-08-11T00:00:00Z"})` → true (episódio aberto).
+  - `("failed", {status:"canceled", past_due_since:"2026-08-11T00:00:00Z"})` → false (já processado).
+
+- [ ] **Step 4: Testes do handler** — leia `pagarme-checkout-handler_test.ts` primeiro e reuse o
   padrão de fake db (thenable chain que grava `{table, op, filters, values}` e devolve fixtures
   por tabela/op). Fake gateway: `{ fetchSubscription: (id) => Promise.resolve(fixtures.remote) }`
   com override por teste; fake notify: array `notified: Array<{ws, stage}>`. `now` fixo
@@ -809,10 +916,14 @@ const baseRow = {
   9. Status remoto desconhecido ("paused") → "ignored:unknown-status", zero updates.
   10. `charge.paid` com `{invoice:{subscription_id:"sub_1"}}`, row past_due com episódio → update contém recovery (`past_due_since:null`, `failed_payment_count:0`, `pagarme_dunning_key:null`) e `status:"active"`; "reconciled:recovered".
   11. `subscription.updated` remote active com row past_due → update SEM campo status, SEM recovery; NENHUM plan write; "reconciled:dunning-held".
-  12. `charge.payment_failed` remote ainda active, primeira falha (`data:{id:"ch_1", last_transaction:{attempt_count:1}}`) → update `status:"past_due"`, `failed_payment_count:1`, `pagarme_dunning_key:"ch_1:1"`, `past_due_since` = now ISO; notify chamado com ("ws-1","first"); "dunning:first".
+  12. `charge.payment_failed` remote ainda active, primeira falha (`data:{id:"ch_1", last_transaction:{attempt_count:1}}`) → update `status:"past_due"`, `failed_payment_count:1`, `pagarme_dunning_key:"ch_1:1"`, `past_due_since` = now ISO; o CAS carrega o pin `.is("pagarme_dunning_key", null)` (chave observada era null); notify chamado com ("ws-1","first"); "dunning:first".
   13. Mesma chave repetida (row com `pagarme_dunning_key:"ch_1:1"`, mesmo payload) → "ignored:duplicate-failure", zero updates, zero notify.
-  14. Segunda falha real (row `failed_payment_count:1`, `pagarme_dunning_key:"ch_1:1"`, `past_due_since:"2026-08-11T00:00:00Z"`, payload `{id:"ch_1", last_transaction:{attempt_count:2}}`) → `failed_payment_count:2`, key "ch_1:2", `past_due_since` PRESERVADO "2026-08-11T00:00:00Z", notify ("ws-1","retry"); "dunning:retry".
-  15. Falha terminal: remote `status:"failed"`, row past_due, período no passado → update canceled, plan write DEFAULT, notify ("ws-1","final"); "dunning:final". Ordem: update ANTES do notify (asserte pela ordem dos eventos gravados).
+  14. Segunda falha real (row `failed_payment_count:1`, `pagarme_dunning_key:"ch_1:1"`, `past_due_since:"2026-08-11T00:00:00Z"`, payload `{id:"ch_1", last_transaction:{attempt_count:2}}`) → `failed_payment_count:2`, key "ch_1:2", `past_due_since` PRESERVADO "2026-08-11T00:00:00Z", CAS com pin `.eq("pagarme_dunning_key","ch_1:1")`, notify ("ws-1","retry"); "dunning:retry".
+  14b. Entrega fora de ordem: row `pagarme_dunning_key:"ch_1:2"`, payload attempt 1 → "ignored:duplicate-failure" (regra monotônica), zero updates, zero notify.
+  15. Falha terminal: remote `status:"failed"`, row past_due (`past_due_since` não-nulo), período no passado → update canceled com pin `.eq("status","past_due")`, plan write DEFAULT, notify ("ws-1","final"); "dunning:final". Ordem: update ANTES do notify (asserte pela ordem dos eventos gravados).
+  15b. Terminal SEM e-mail (cancel voluntário em corrida): remote `status:"canceled"` com `current_cycle:{status:"billed", end_at:"2027-08-10T23:59:59Z"}`, row `{status:"active", past_due_since:null}` → update canceled acontece (pin `.eq("status","active")`), ZERO notify; "reconciled:terminal".
+  15c. Terminal idempotente: row `{status:"canceled", past_due_since:"2026-08-11T00:00:00Z"}`, remote failed → CAS pina `.eq("status","canceled")`, write ok, ZERO notify; "reconciled:terminal".
+  15d. Default plan read com `error` → handler LANÇA (mensagem contém "default plan read failed").
   16. `charge.payment_failed` sem sub id resolvível (`data:{id:"ch_9"}`) → "ignored:no-subscription-id", zero DB.
   17. `charge.payment_failed` sem charge id (`data:{invoice:{subscription_id:"sub_1"}}`, remote active) → "ignored:no-charge-id", zero updates (mas authorize rodou).
   18. `charge.refunded` → reconcile normal ("reconciled") e zero notify.
@@ -820,9 +931,9 @@ const baseRow = {
   20. Gateway lança (timeout) → handler lança (propaga para 5xx).
   21. Plan-writer: workspaces com `plan_source:"manual"` → nenhuma escrita de plan_id (comp preservada), retorno ainda "reconciled".
   22. Row com `plan_id:null` → CRITICAL logado (spy em console.error opcional; no mínimo: nenhuma escrita em workspaces) e reconcile completa.
-- [ ] **Step 4: Rode** o teste novo + `pagarme-webhook-logic_test.ts` + `pagarme-logic_test.ts`;
+- [ ] **Step 5: Rode** o teste novo + `pagarme-webhook-logic_test.ts` + `pagarme-logic_test.ts`;
   `git checkout -- deno.lock`.
-- [ ] **Step 5: Commit** `feat(billing): pagarme-webhook gateway + handler`
+- [ ] **Step 6: Commit** `feat(billing): pagarme-webhook gateway + handler`
 
 ---
 
@@ -952,7 +1063,15 @@ verify_jwt = false
 
 - [ ] **Step 3: `config-audit_test.ts`** — adicionar `"pagarme-webhook"` a `REQUIRED_FUNCTIONS`
   (ordem alfabética se a lista seguir uma).
-- [ ] **Step 4: CLAUDE.md** — na seção "Edge functions (Deno.env)", adicionar:
+- [ ] **Step 4: CLAUDE.md + .env.example** — no `.env.example`, logo abaixo de
+  `PAGARME_SECRET_KEY=sk_test_xxx` (linha 62), adicionar:
+
+```
+PAGARME_WEBHOOK_TOKEN=um-token-aleatorio-longo
+PAGARME_WEBHOOK_BASIC=usuario:senha-do-toggle-do-dashboard
+```
+
+  E no CLAUDE.md, na seção "Edge functions (Deno.env)", adicionar:
 
 ```markdown
 - `PAGARME_WEBHOOK_TOKEN` -- secret path segment of the Pagar.me webhook URL
@@ -991,6 +1110,34 @@ npm run test:functions && git checkout -- deno.lock
   máximo de tentativas 3. Secrets via file-redirection, nunca argumento de CLI.
 - Bounding dos DB calls PRÓPRIOS do stripe-webhook (fora plan-writer) — dívida separada, não
   expandir aqui.
+
+## Adjudicação do review externo de spec (Codex gpt-5.6-terra, 2026-08-12, pré-implementação)
+
+Aceitos e incorporados acima:
+
+1. **P1 dunning fora de ordem/concorrente** → `shouldAdvanceDunning` monotônico por
+   charge+attempt (Task 2 Step 5) + CAS do avanço pinado na chave observada
+   (`observedDunningKey`, `.is()` para null — Task 3).
+2. **P1 e-mail final duplicado** → CAS terminal pinado no status observado: só a entrega que
+   TRANSICIONA a linha envia e-mail; redelivery encontra `canceled` e o gate recusa (Task 3).
+3. **P1 cancel voluntário em corrida com falha atrasada** → `shouldSendTerminalDunningEmail`
+   (remote `failed` = sempre genuíno; remote `canceled` exige episódio local aberto; linha já
+   `canceled` nunca re-envia) (Task 3 Step 3).
+4. **P1 `getDefaultPlanId` engolia erro** → lança em erro de leitura; fallback "free" só para
+   ausência comprovada de default (Task 3).
+5. **P2 dunning-notify sem abortSignal** → as duas queries PostgREST bounded;
+   `auth.admin.getUserById` não tem API de abort (GoTrue) e o try/catch envolvente cobre (Task 2).
+6. **P2 .env.example** → placeholders de `PAGARME_WEBHOOK_TOKEN`/`PAGARME_WEBHOOK_BASIC`
+   (Task 4 Step 4).
+
+Rejeitado com evidência:
+
+7. **P3 separar o hardening do stripe-webhook em PR próprio** — o rollback operacional de edge
+   functions é POR FUNÇÃO deployada (`supabase functions deploy <nome>`), não por merge commit:
+   `stripe-webhook` e `pagarme-webhook` já são implantáveis/reversíveis independentemente mesmo
+   saindo do mesmo PR (precedente: hotfixes de função única em todas as fases). O hardening fica
+   em commit próprio (Task 2), cherry-pickável/revertável isoladamente, e o master plan
+   agendou-o explicitamente na Fase 4 para fechar a corrida de double-checkout na camada certa.
 
 ## Post-PR hardening
 
