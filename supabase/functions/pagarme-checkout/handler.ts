@@ -202,88 +202,111 @@ export function createPagarmeCheckoutHandler(deps: {
         return { status, body };
       };
 
-      // (8) Orphan pointer — MANDATORY: it is what reconciliation depends on. If it cannot
-      // be committed, the only safe outcome is to cancel the remote sub and fail.
-      const { error: ptrErr } = await db
-        .from("pagarme_checkout_attempts")
-        .update({ pagarme_subscription_id: sub.id, updated_at: new Date().toISOString() })
-        .eq("id", attemptId);
-      if (ptrErr) {
-        console.error("[pagarme-checkout] attempt sub-id write failed:", ptrErr.message);
-        return await failCompensating(500, GENERIC_500);
-      }
-
-      // (9) "failed" is the undocumented fourth status: the first charge was refused, no
-      // plan was ever granted, so there is nothing to preserve. Any other non-live status
-      // at creation (canceled / unknown) gets the same treatment: nothing was granted.
-      const normalized = normalizePagarmeStatus(sub.status);
-      if (normalized !== "trialing" && normalized !== "active") {
-        console.error(`[pagarme-checkout] subscription born non-live (status=${sub.status})`);
-        return await failCompensating(400, {
-          error: "Cartão recusado. Confira os dados ou tente outro cartão.",
-          code: "invalid_card",
-        });
-      }
-
-      // (10) CAS bind, single statement: provider flip + full amount mirror together
-      // (master-plan INVARIANTE; the admin reads the mirror for pagarme rows and never
-      // live-fetches). The write is pinned to the ownership coordinates observed at
-      // gate-read time — provider plus that provider's registered subscription id —
-      // mirroring the Fase 2 stripe-webhook CAS. If a concurrent writer (e.g. a Stripe
-      // checkout.session.completed bind) changed the row in between, zero rows match: we
-      // compensate and 409 instead of silently clobbering a freshly bound subscription.
-      // With no row observed, a plain INSERT (never upsert) makes the concurrent-create
-      // case surface as a 23505 instead of an overwrite.
-      const temporal = mapPagarmeTemporalFields(sub);
-      const columns = buildPagarmeSubscriptionColumns({
-        customerId: customer.id,
-        subscriptionId: sub.id,
-        status: normalized,
-        planId: reqData.planId,
-        annualPriceCents: Number(plan.price_brl_annual),
-        currentPeriodEnd: temporal.current_period_end,
-        everSubscribedAt: (row?.ever_subscribed_at as string | null) ?? nowIso,
-        nowIso,
-      });
-      if (row) {
-        const observedProvider = (row.provider as string | null) ?? "stripe";
-        const observedIdColumn = observedProvider === "pagarme"
-          ? "pagarme_subscription_id"
-          : "stripe_subscription_id";
-        const observedId = (row as Record<string, unknown>)[observedIdColumn] ?? null;
-        let bind = db
-          .from("workspace_subscriptions")
-          .update(columns)
-          .eq("workspace_id", ctx.workspaceId)
-          .eq("provider", observedProvider);
-        bind = observedId == null
-          ? bind.is(observedIdColumn, null)
-          : bind.eq(observedIdColumn, observedId);
-        const { data: bound, error: bindErr } = await bind.select("workspace_id");
-        if (bindErr) {
-          console.error("[pagarme-checkout] bind update failed:", bindErr.message);
+      // (8)-(10) Commit window: orphan pointer write, non-live-status check, and the CAS
+      // bind. The remote subscription already exists at this point, so EVERY failure in
+      // here — checked error or thrown exception — must compensate. postgrest-js currently
+      // resolves DB failures as { data, error } instead of rejecting, so the inner catch is
+      // a structural guarantee (against .throwOnError(), a client swap, or a library
+      // upgrade) rather than a live path today.
+      let liveStatus: "trialing" | "active";
+      let currentPeriodEnd: string | null;
+      try {
+        // (8) Orphan pointer — MANDATORY: it is what reconciliation depends on. If it cannot
+        // be committed, the only safe outcome is to cancel the remote sub and fail.
+        const { error: ptrErr } = await db
+          .from("pagarme_checkout_attempts")
+          .update({ pagarme_subscription_id: sub.id, updated_at: new Date().toISOString() })
+          .eq("id", attemptId);
+        if (ptrErr) {
+          console.error("[pagarme-checkout] attempt sub-id write failed:", ptrErr.message);
           return await failCompensating(500, GENERIC_500);
         }
-        if (!bound?.length) {
-          console.error(
-            `[pagarme-checkout] ownership changed under checkout for workspace ${ctx.workspaceId}`,
-          );
-          return await failCompensating(409, ROW_CONFLICT_409);
+
+        // (9) "failed" is the undocumented fourth status: the first charge was refused, no
+        // plan was ever granted, so there is nothing to preserve. Any other non-live status
+        // at creation (canceled / unknown) gets the same treatment: nothing was granted.
+        const normalized = normalizePagarmeStatus(sub.status);
+        if (normalized !== "trialing" && normalized !== "active") {
+          console.error(`[pagarme-checkout] subscription born non-live (status=${sub.status})`);
+          return await failCompensating(400, {
+            error: "Cartão recusado. Confira os dados ou tente outro cartão.",
+            code: "invalid_card",
+          });
         }
-      } else {
-        const { error: insErr } = await db
-          .from("workspace_subscriptions")
-          .insert({ workspace_id: ctx.workspaceId, ...columns });
-        if (insErr) {
-          if (insErr.code === "23505") {
+
+        // (10) CAS bind, single statement: provider flip + full amount mirror together
+        // (master-plan INVARIANTE; the admin reads the mirror for pagarme rows and never
+        // live-fetches). The write is pinned to the ownership coordinates observed at
+        // gate-read time — provider plus that provider's registered subscription id —
+        // mirroring the Fase 2 stripe-webhook CAS. If a concurrent writer (e.g. a Stripe
+        // checkout.session.completed bind) changed the row in between, zero rows match: we
+        // compensate and 409 instead of silently clobbering a freshly bound subscription.
+        // With no row observed, a plain INSERT (never upsert) makes the concurrent-create
+        // case surface as a 23505 instead of an overwrite.
+        const temporal = mapPagarmeTemporalFields(sub);
+        const columns = buildPagarmeSubscriptionColumns({
+          customerId: customer.id,
+          subscriptionId: sub.id,
+          status: normalized,
+          planId: reqData.planId,
+          annualPriceCents: Number(plan.price_brl_annual),
+          currentPeriodEnd: temporal.current_period_end,
+          everSubscribedAt: (row?.ever_subscribed_at as string | null) ?? nowIso,
+          nowIso,
+        });
+        if (row) {
+          const observedProvider = (row.provider as string | null) ?? "stripe";
+          const observedIdColumn = observedProvider === "pagarme"
+            ? "pagarme_subscription_id"
+            : "stripe_subscription_id";
+          const observedId = (row as Record<string, unknown>)[observedIdColumn] ?? null;
+          let bind = db
+            .from("workspace_subscriptions")
+            .update(columns)
+            .eq("workspace_id", ctx.workspaceId)
+            .eq("provider", observedProvider);
+          bind = observedId == null
+            ? bind.is(observedIdColumn, null)
+            : bind.eq(observedIdColumn, observedId);
+          const { data: bound, error: bindErr } = await bind.select("workspace_id");
+          if (bindErr) {
+            console.error("[pagarme-checkout] bind update failed:", bindErr.message);
+            return await failCompensating(500, GENERIC_500);
+          }
+          if (!bound?.length) {
             console.error(
-              `[pagarme-checkout] concurrent row create under checkout for workspace ${ctx.workspaceId}`,
+              `[pagarme-checkout] ownership changed under checkout for workspace ${ctx.workspaceId}`,
             );
             return await failCompensating(409, ROW_CONFLICT_409);
           }
-          console.error("[pagarme-checkout] bind insert failed:", insErr.message);
-          return await failCompensating(500, GENERIC_500);
+        } else {
+          const { error: insErr } = await db
+            .from("workspace_subscriptions")
+            .insert({ workspace_id: ctx.workspaceId, ...columns });
+          if (insErr) {
+            if (insErr.code === "23505") {
+              console.error(
+                `[pagarme-checkout] concurrent row create under checkout for workspace ${ctx.workspaceId}`,
+              );
+              return await failCompensating(409, ROW_CONFLICT_409);
+            }
+            console.error("[pagarme-checkout] bind insert failed:", insErr.message);
+            return await failCompensating(500, GENERIC_500);
+          }
         }
+
+        liveStatus = normalized;
+        currentPeriodEnd = temporal.current_period_end;
+      } catch (err) {
+        // A THROWN exception inside the commit window must compensate exactly like a checked
+        // error: the remote subscription already exists. postgrest-js currently resolves DB
+        // failures as { error } instead of throwing, so this catch is a structural guarantee
+        // (against .throwOnError(), a client swap, or a library upgrade), not a live path.
+        console.error(
+          "[pagarme-checkout] commit window threw:",
+          err instanceof Error ? err.message : String(err),
+        );
+        return await failCompensating(500, GENERIC_500);
       }
 
       // (11) Effective plan (respects admin comps via plan_source='manual'). POST-BIND: the
@@ -303,9 +326,9 @@ export function createPagarmeCheckoutHandler(deps: {
       return {
         status: 200,
         body: {
-          status: normalized,
-          trial_ends_at: normalized === "trialing" ? temporal.current_period_end : null,
-          next_charge_at: temporal.current_period_end,
+          status: liveStatus,
+          trial_ends_at: liveStatus === "trialing" ? currentPeriodEnd : null,
+          next_charge_at: currentPeriodEnd,
           installment_amount_cents: installmentAmountCents(Number(plan.price_brl_annual)),
         },
       };

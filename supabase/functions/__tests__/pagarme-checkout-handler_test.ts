@@ -300,6 +300,35 @@ Deno.test("happy path, no trial: order, idempotency key, single-statement bind, 
   assert(succeeded !== undefined, "attempt not marked succeeded");
 });
 
+Deno.test("churned pagarme row retrying checkout: CAS pins provider=pagarme and the old pagarme_subscription_id", async () => {
+  const { events, result } = run(
+    {
+      plan: PLAN,
+      subRow: {
+        provider: "pagarme",
+        status: "canceled",
+        cancel_at_period_end: true,
+        current_period_end: "2026-01-01T00:00:00Z",
+        pagarme_subscription_id: "sub_old",
+        ever_subscribed_at: "2025-08-12T00:00:00Z",
+      },
+    },
+    { subStatus: "active", nextBillingAt: "2027-08-12T00:00:00Z" },
+  );
+  const r = await result;
+  assertEquals(r.status, 200);
+  const rowBind = events.find((e) => e.table === "workspace_subscriptions" && e.op === "update");
+  assert(rowBind !== undefined, "update bind missing");
+  assert(
+    rowBind.filters.some(([m, c, v]) => m === "eq" && c === "provider" && v === "pagarme"),
+    "CAS must pin the observed pagarme provider",
+  );
+  assert(
+    rowBind.filters.some(([m, c, v]) => m === "eq" && c === "pagarme_subscription_id" && v === "sub_old"),
+    "CAS must pin the observed pagarme subscription id",
+  );
+});
+
 Deno.test("trial path: fresh workspace gets start_at now+30d, status future maps to trialing, bind is an INSERT", async () => {
   const { events, calls, result } = run(
     { plan: PLAN, subRow: null },
