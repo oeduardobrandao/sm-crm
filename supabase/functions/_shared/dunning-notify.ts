@@ -11,9 +11,11 @@ import { appBaseUrl } from "./app-url.ts";
  * The caller picks the stage: Stripe derives it from attempt_count/next_payment_attempt,
  * Pagar.me from its own failed-count rule (selectPagarmeDunningStage).
  */
-// Review de spec (Codex): este arquivo é reescrito nesta fase, então as queries PostgREST
-// entram na regra da casa de DB bounded. auth.admin.getUserById é GoTrue (sem API de abort);
-// o try/catch envolvente já engole um hang eventual sem derrubar o handler.
+// As queries PostgREST abaixo usam abortSignal. Já o getUserById (GoTrue, sem API de abort) e o
+// fetch do Resend (limitado dentro de sendDunningEmail) são limitados por timeout explícito:
+// uma promise travada nunca rejeita sozinha, então sem o timeout o catch best-effort logo
+// abaixo nunca roda, e um travamento aqui prenderia o isolate depois do commit do estado
+// durável — suprimindo a notificação quando a redelivery encontrar o dedup gate já marcado.
 const DB_TIMEOUT_MS = 10_000;
 
 export async function notifyOwnerOfFailure(
@@ -36,7 +38,11 @@ export async function notifyOwnerOfFailure(
       .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)).maybeSingle();
     if (!ownerMember?.user_id) return;
 
-    const { data: ownerUser } = await svc.auth.admin.getUserById(ownerMember.user_id as string);
+    const { data: ownerUser } = await withTimeout(
+      svc.auth.admin.getUserById(ownerMember.user_id as string),
+      DB_TIMEOUT_MS,
+      "getUserById",
+    );
     const to = ownerUser?.user?.email;
     if (!to) return;
 
@@ -62,4 +68,20 @@ export async function notifyOwnerOfFailure(
 function formatAttemptLabel(iso: string | null): string | null {
   if (!iso) return null;
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" });
+}
+
+/** Bounds a promise that has no native abort (GoTrue getUserById): a hung promise never rejects,
+ * so without this the best-effort catch below never runs and the isolate hangs post-commit. */
+async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }

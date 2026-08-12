@@ -98,6 +98,8 @@ export function buildDunningEmail(params: {
  * returns 500 on a handler throw and Stripe redelivers the event, so a throwing send would re-send
  * the mail on every redelivery. Returns silently when Resend is not configured.
  */
+const RESEND_TIMEOUT_MS = 10_000;
+
 export async function sendDunningEmail(params: {
   to: string;
   stage: DunningStage;
@@ -128,6 +130,7 @@ export async function sendDunningEmail(params: {
           billingUrl: params.billingUrl,
         }),
       }),
+      signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),
     });
     if (!res.ok) console.error(`[dunning-email] Resend error: ${res.status}`);
   } catch (_e) {
