@@ -602,6 +602,11 @@ Deno.test("stale pending attempts are expired before reserving", async () => {
   assert(expire !== -1, "expiry sweep missing");
   assert(reserve !== -1, "reservation missing");
   assert(expire < reserve, "expiry must run before the reservation");
+  const expireEv = events[expire];
+  assert(
+    expireEv.filters.some(([m, c, v]) => m === "eq" && c === "state" && v === "pending"),
+    "expire update must be pinned to state='pending'",
+  );
 });
 
 Deno.test("stale attempt WITH a recorded sub id: cancel the orphan, then expire, then proceed", async () => {

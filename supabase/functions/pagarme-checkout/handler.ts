@@ -127,10 +127,12 @@ export function createPagarmeCheckoutHandler(deps: {
           }
         }
       }
+      // Pinned to state='pending': the row is only expired if untouched since the SELECT (TOCTOU guard).
       const { error: expireErr } = await db
         .from("pagarme_checkout_attempts")
         .update({ state: "expired", updated_at: nowIso })
-        .eq("id", stale.id);
+        .eq("id", stale.id)
+        .eq("state", "pending");
       if (expireErr) throw new Error(`attempt expiry failed: ${expireErr.message}`);
     }
 
