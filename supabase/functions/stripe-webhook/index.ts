@@ -8,11 +8,12 @@ import {
   type InvoiceSubscriptionSource,
   type PlanPriceRow,
 } from "../_shared/billing-logic.ts";
-import { canWebhookWrite } from "../_shared/pagarme-logic.ts";
+import { canWebhookWrite, shouldCancelDeniedCheckoutSub } from "../_shared/pagarme-logic.ts";
 import {
   buildFailureEpisode,
   buildRecoveryEpisode,
   isRecoveredStatus,
+  selectDunningStage,
 } from "../_shared/dunning-logic.ts";
 import {
   buildAmountColumns,
@@ -123,6 +124,17 @@ async function syncSubscription(
     new Date(),
   );
   if (!allowed) {
+    if (shouldCancelDeniedCheckoutSub(session != null, sub.status)) {
+      // Fase 3 review hardening: a denied checkout.session.completed strands a PAID Stripe
+      // subscription (the deny is the cross-provider guard). Cancel it so it never invoices
+      // again; a cancel failure throws → 5xx → Stripe redelivers and retries the cancel
+      // (the redelivered event re-retrieves the sub; once canceled this branch acks).
+      await stripe.subscriptions.cancel(sub.id);
+      console.error(
+        `[stripe-webhook] CRITICAL: canceled stripe subscription ${sub.id} from denied checkout on workspace ${workspaceId} (cross-provider conflict); check for a first payment to refund manually`,
+      );
+      return;
+    }
     console.warn(
       `[stripe-webhook] write denied for subscription ${sub.id} on workspace ${workspaceId}: row not owned by this stripe subscription`,
     );
@@ -294,8 +306,11 @@ async function handlePaymentFailed(svc: SupabaseClient, invoice: Stripe.Invoice)
   await notifyOwnerOfFailure(
     svc,
     row.workspace_id as string,
-    { attemptCount: invoice.attempt_count ?? 0, nextPaymentAttempt: nextAttempt },
-    episode,
+    {
+      stage: selectDunningStage(invoice.attempt_count ?? 0, nextAttempt),
+      nextPaymentAttemptIso: episode.next_payment_attempt,
+    },
+    { logPrefix: "[stripe-webhook]" },
   );
 }
 

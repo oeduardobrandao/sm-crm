@@ -9,6 +9,7 @@ import {
   normalizePagarmeStatus,
   resolvePagarmePlanTarget,
   shouldAdvanceDunning,
+  shouldCancelDeniedCheckoutSub,
 } from "../_shared/pagarme-logic.ts";
 
 const NOW = new Date("2026-08-11T00:00:00Z");
@@ -401,4 +402,50 @@ Deno.test("crossProviderCheckoutBlocked: other provider fully churned does not b
     }, CO_NOW),
     false,
   );
+});
+
+// ─── shouldAdvanceDunning: monotonic rule ───────────────────────────────────
+
+Deno.test("shouldAdvanceDunning: same charge, higher attempt advances", () => {
+  assertEquals(shouldAdvanceDunning("ch_1:1", "ch_1:2"), true);
+});
+
+Deno.test("shouldAdvanceDunning: same charge, lower attempt is a blocked regression", () => {
+  assertEquals(shouldAdvanceDunning("ch_1:2", "ch_1:1"), false);
+});
+
+Deno.test("shouldAdvanceDunning: identical key never advances", () => {
+  assertEquals(shouldAdvanceDunning("ch_1:1", "ch_1:1"), false);
+});
+
+Deno.test("shouldAdvanceDunning: no prior key always advances", () => {
+  assertEquals(shouldAdvanceDunning(null, "ch_1:1"), true);
+});
+
+Deno.test("shouldAdvanceDunning: non-numeric last attempt cannot be ordered, advances", () => {
+  assertEquals(shouldAdvanceDunning("ch_1:na", "ch_1:1"), true);
+});
+
+Deno.test("shouldAdvanceDunning: non-numeric incoming attempt cannot be ordered, advances", () => {
+  assertEquals(shouldAdvanceDunning("ch_1:1", "ch_1:na"), true);
+});
+
+Deno.test("shouldAdvanceDunning: different charge ids cannot be ordered, advances", () => {
+  assertEquals(shouldAdvanceDunning("ch_1:2", "ch_2:1"), true);
+});
+
+// ─── shouldCancelDeniedCheckoutSub ──────────────────────────────────────────
+
+Deno.test("shouldCancelDeniedCheckoutSub: denied checkout bind cancels regardless of remote status", () => {
+  assertEquals(shouldCancelDeniedCheckoutSub(true, "active"), true);
+  assertEquals(shouldCancelDeniedCheckoutSub(true, "trialing"), true);
+  assertEquals(shouldCancelDeniedCheckoutSub(true, "incomplete"), true);
+});
+
+Deno.test("shouldCancelDeniedCheckoutSub: non-checkout denial never cancels", () => {
+  assertEquals(shouldCancelDeniedCheckoutSub(false, "active"), false);
+});
+
+Deno.test("shouldCancelDeniedCheckoutSub: already-canceled remote status is a redelivery, acks", () => {
+  assertEquals(shouldCancelDeniedCheckoutSub(true, "canceled"), false);
 });
