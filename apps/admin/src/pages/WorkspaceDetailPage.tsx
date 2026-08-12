@@ -34,6 +34,7 @@ import {
 import { sanitizeExternalUrl } from '../lib/security';
 import { computeOverridesPayload } from './workspace-overrides';
 import WorkspaceInvitesCard from './WorkspaceInvitesCard';
+import WorkspaceEventsCard from './WorkspaceEventsCard';
 
 export default function WorkspaceDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -585,6 +586,7 @@ export default function WorkspaceDetailPage() {
       </div>
 
       <WorkspaceInvitesCard workspaceId={id!} />
+      <WorkspaceEventsCard workspaceId={id!} />
     </div>
   );
 }
