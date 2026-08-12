@@ -1,9 +1,19 @@
 import { escapeHtml } from "./report-template/escape.ts";
+import { getPublishErrorDisplay } from "./publish-error-codes.ts";
+
+export interface CronFailureError {
+  accountId?: string;
+  error?: string;
+  errorCode?: string;
+  postId?: number;
+  postCaption?: string;
+  clientId?: number;
+}
 
 export interface CronFailureDetail {
   total?: number;
   failed?: number;
-  errors?: Array<{ accountId?: string; error?: string }>;
+  errors?: CronFailureError[];
   stack?: string;
   context?: Record<string, unknown>;
 }
@@ -21,22 +31,81 @@ export async function sendCronFailureEmail(
   const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL");
   if (!RESEND_API_KEY || !ALERT_EMAIL) return;
 
-  const rows = (detail.errors ?? [])
-    .map(
-      (e) =>
-        `<tr><td>${escapeHtml(e.accountId ?? "?")}</td><td>${escapeHtml(e.error ?? "unknown")}</td></tr>`,
-    )
-    .join("");
+  const errors = detail.errors ?? [];
+  const hasEnrichedErrors = errors.some((e) => e.errorCode);
+
+  let tableHtml: string;
+  if (hasEnrichedErrors) {
+    const rows = errors
+      .map((e) => {
+        const display = getPublishErrorDisplay(e.errorCode);
+        const caption = e.postCaption
+          ? escapeHtml(e.postCaption.length > 60 ? e.postCaption.slice(0, 57) + "..." : e.postCaption)
+          : "";
+        const postLabel = e.postId ? `#${e.postId}` : "?";
+        const clientLabel = e.clientId ? `#${e.clientId}` : "";
+        const codeLabel = e.errorCode ? escapeHtml(e.errorCode) : "";
+
+        return [
+          "<tr>",
+          `<td style="padding:8px;border:1px solid #ddd;vertical-align:top;">`,
+          `<strong>Post ${escapeHtml(postLabel)}</strong>`,
+          clientLabel ? `<br><span style="color:#666;font-size:12px;">Cliente ${escapeHtml(clientLabel)}</span>` : "",
+          caption ? `<br><span style="color:#888;font-size:12px;">${caption}</span>` : "",
+          "</td>",
+          `<td style="padding:8px;border:1px solid #ddd;vertical-align:top;">`,
+          `<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#fee2e2;color:#991b1b;font-size:12px;font-weight:600;">${escapeHtml(display.titulo)}</span>`,
+          codeLabel ? `<br><span style="color:#999;font-size:11px;font-family:monospace;">${codeLabel}</span>` : "",
+          "</td>",
+          `<td style="padding:8px;border:1px solid #ddd;vertical-align:top;">`,
+          `<span style="color:#374151;font-size:13px;">${escapeHtml(display.explicacao)}</span>`,
+          "</td>",
+          `<td style="padding:8px;border:1px solid #ddd;vertical-align:top;font-size:12px;color:#666;">`,
+          escapeHtml(e.error ?? ""),
+          "</td>",
+          "</tr>",
+        ].join("");
+      })
+      .join("");
+
+    tableHtml = [
+      `<table style="border-collapse:collapse;width:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin-top:16px;">`,
+      `<tr style="background:#f9fafb;">`,
+      `<th style="padding:8px;border:1px solid #ddd;text-align:left;font-size:13px;">Post</th>`,
+      `<th style="padding:8px;border:1px solid #ddd;text-align:left;font-size:13px;">Causa</th>`,
+      `<th style="padding:8px;border:1px solid #ddd;text-align:left;font-size:13px;">Solução</th>`,
+      `<th style="padding:8px;border:1px solid #ddd;text-align:left;font-size:13px;">Erro técnico</th>`,
+      "</tr>",
+      rows,
+      "</table>",
+    ].join("");
+  } else {
+    const rows = errors
+      .map(
+        (e) =>
+          `<tr><td style="padding:8px;border:1px solid #ddd;">${escapeHtml(e.accountId ?? "?")}</td><td style="padding:8px;border:1px solid #ddd;">${escapeHtml(e.error ?? "unknown")}</td></tr>`,
+      )
+      .join("");
+
+    tableHtml = rows
+      ? [
+          `<table style="border-collapse:collapse;width:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin-top:16px;">`,
+          `<tr style="background:#f9fafb;"><th style="padding:8px;border:1px solid #ddd;text-align:left;">Account</th><th style="padding:8px;border:1px solid #ddd;text-align:left;">Error</th></tr>`,
+          rows,
+          "</table>",
+        ].join("")
+      : "";
+  }
 
   const html = [
+    `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:800px;">`,
     `<p>Cron <strong>${escapeHtml(cronName)}</strong> finished with failures.</p>`,
     `<p><strong>Total:</strong> ${escapeHtml(String(detail.total ?? "?"))} &nbsp; `,
     `<strong>Failed:</strong> ${escapeHtml(String(detail.failed ?? "?"))}<br>`,
     `<strong>Occurred:</strong> ${escapeHtml(new Date().toISOString())}</p>`,
-    rows
-      ? `<table border="1" cellpadding="4"><tr><th>Account</th><th>Error</th></tr>${rows}</table>`
-      : "",
-    detail.stack ? `<p><strong>Stack:</strong></p><pre>${escapeHtml(detail.stack)}</pre>` : "",
+    tableHtml,
+    detail.stack ? `<p style="margin-top:16px;"><strong>Stack:</strong></p><pre style="background:#f3f4f6;padding:12px;border-radius:6px;overflow-x:auto;font-size:12px;">${escapeHtml(detail.stack)}</pre>` : "",
+    "</div>",
   ].join("");
 
   try {
