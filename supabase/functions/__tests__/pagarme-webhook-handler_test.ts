@@ -242,7 +242,11 @@ Deno.test("1. subscription.updated: active row + active remote -> CAS'd update, 
   const cas = findCasUpdate(events);
   assert(cas, "CAS update missing");
   assertCasCoordinates(cas.filters);
-  assertEquals(cas.filters.length, 3, "reconcile() must not add extra observed-value pins");
+  assertEquals(cas.filters.length, 4, "reconcile() must pin the observed status on top of the 3 CAS coordinates");
+  assert(
+    filterHas(cas.filters, "eq", "status", "active"),
+    "must pin the observed status with .eq(), not .is()",
+  );
   assert(cas.abortSignal, "CAS write must be bounded by abortSignal");
   assertEquals(cas.values?.status, "active");
 
@@ -311,6 +315,7 @@ Deno.test("6. subscription.canceled: paid-through cancel retains current_period_
   const cas = findCasUpdate(events);
   assert(cas);
   assertCasCoordinates(cas.filters);
+  assert(filterHas(cas.filters, "eq", "status", "active"), "must pin the observed status");
   assertEquals(cas.values?.status, "canceled");
   assertEquals(cas.values?.cancel_at_period_end, true);
   assertEquals(cas.values?.current_period_end, "2027-08-10T23:59:59Z");
@@ -328,6 +333,7 @@ Deno.test("7. subscription.canceled from trial (no cycle, cape stays false): pla
   const cas = findCasUpdate(events);
   assert(cas);
   assertCasCoordinates(cas.filters);
+  assert(filterHas(cas.filters, "eq", "status", "trialing"), "must pin the observed status");
   assertEquals(cas.values?.cancel_at_period_end, false);
   assertEquals(cas.values?.current_period_end, "2026-09-11T00:00:00Z", "retained even though FUTURE");
   const planWrite = findPlanWrite(events);
@@ -368,6 +374,7 @@ Deno.test("10. charge.paid recovers a past_due row: recovery columns + status ac
   const cas = findCasUpdate(events);
   assert(cas);
   assertCasCoordinates(cas.filters);
+  assert(filterHas(cas.filters, "eq", "status", "past_due"), "must pin the observed status");
   assertEquals(cas.values?.status, "active");
   assertEquals(cas.values?.past_due_since, null);
   assertEquals(cas.values?.failed_payment_count, 0);
@@ -392,6 +399,10 @@ Deno.test("11. subscription.updated observing active while row is past_due holds
   const cas = findCasUpdate(events);
   assert(cas);
   assertCasCoordinates(cas.filters);
+  assert(
+    filterHas(cas.filters, "eq", "status", "past_due"),
+    "must pin the observed status even though the write itself does not touch the status column",
+  );
   const values = cas.values ?? {};
   assert(!("status" in values), "hold-dunning write must not touch status");
   assert(!("past_due_since" in values), "hold-dunning write must not touch the episode");
@@ -586,6 +597,9 @@ Deno.test("15d. default plan read errors -> handler throws 'default plan read fa
     { subRow: baseRow, defaultPlanError: { message: "boom" } },
   );
   await assertThrows(result, "default plan read failed");
+  const cas = findCasUpdate(events);
+  assert(cas, "CAS update missing");
+  assert(filterHas(cas.filters, "eq", "status", "active"), "must pin the observed status");
   assertEquals(
     events.filter((e) => e.table === "workspace_subscriptions" && e.op === "update").length,
     1,
@@ -614,13 +628,16 @@ Deno.test("17. charge.payment_failed with no charge id -> ignored:no-charge-id, 
 });
 
 Deno.test("18. charge.refunded reconciles the real status and never notifies", async () => {
-  const { notified, result } = run(
+  const { events, notified, result } = run(
     "charge.refunded",
     { invoice: { subscription_id: SUB } },
     { subRow: baseRow },
   );
   assertEquals(await result, "reconciled");
   assertEquals(notified.length, 0);
+  const cas = findCasUpdate(events);
+  assert(cas, "CAS update missing");
+  assert(filterHas(cas.filters, "eq", "status", "active"), "must pin the observed status");
 });
 
 Deno.test("19. invoice.paid and charge.created are unhandled types -> ignored:unhandled-type, ZERO DB calls", async () => {
@@ -655,6 +672,7 @@ Deno.test("21. plan-writer: workspaces.plan_source 'manual' preserves the comp, 
   const cas = findCasUpdate(events);
   assert(cas);
   assertCasCoordinates(cas.filters);
+  assert(filterHas(cas.filters, "eq", "status", "active"), "must pin the observed status");
   assertEquals(findPlanWrite(events), undefined, "manual comp must never be overridden");
   const wsRead = events.find((e) => e.table === "workspaces" && e.op === "read");
   assert(wsRead, "writeWorkspacePlan must still read plan_source to check the comp");
@@ -671,6 +689,7 @@ Deno.test("22. row with plan_id null: CRITICAL logged, no plans/workspaces write
   const cas = findCasUpdate(events);
   assert(cas);
   assertCasCoordinates(cas.filters);
+  assert(filterHas(cas.filters, "eq", "status", "active"), "must pin the observed status");
   assertEquals(events.filter((e) => e.table === "workspaces").length, 0, "no plan_id -> grantPlan must not even read the default plan's workspace");
   assertEquals(events.filter((e) => e.table === "plans").length, 0, "no plan_id -> getDefaultPlanId must never run");
   assert(messages.some((m) => m.includes("CRITICAL")), "expected a CRITICAL log for the missing plan_id");

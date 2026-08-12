@@ -196,7 +196,13 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
       );
       return "ignored:unknown-status";
     }
-    await casWrite(row, subId, result.columns);
+    // Pin the observed status (spec-review Important): subscription.* is NOT authoritative for
+    // payment state — charge.* is. Without this pin, a subscription.updated that sampled the row
+    // before a concurrent charge.payment_failed committed would overwrite the just-established
+    // past_due episode with a stale "active" (buildReconcileColumns' holdDunning guard reads the
+    // same stale snapshot). The pin makes the racing write miss the CAS -> 5xx -> redelivery
+    // re-reads fresh state and holdDunning then applies. Mirrors the terminal/dunning-advance pins.
+    await casWrite(row, subId, result.columns, { observedStatus: row.status });
     if (result.planEligible) {
       await grantPlan(row, result.status, result.columns);
       return source === "charge_paid" ? "reconciled:recovered" : "reconciled";
