@@ -1179,3 +1179,27 @@ Recusados sem fix (documentados):
 - **[Task-3 reviewer, Minor] `getDefaultPlanId` lido mesmo quando o target é descartado**
   (cancels paid-through) — um round-trip desperdiçado, sem impacto de correção;
   `resolvePagarmePlanTarget` exige o default upfront. Não vale reestruturar.
+
+### Fix round 2 (review final whole-branch fable/opus + Codex externo, 2026-08-12)
+
+Review final: **READY TO MERGE (dark)**. Dois achados convergentes (opus Important == Codex P1
+#2; + Codex P1 #1 separado), ambos na idempotência de dunning sob redelivery/burst. Aceitos:
+
+- **[Codex P1 #1] recovery zera o marcador de dedup** (`logic.ts:151`). O branch in-force de
+  `buildReconcileColumns` gravava `pagarme_dunning_key: null` no recovery. Se o
+  `charge.payment_failed` anterior for redelivered DEPOIS do `charge.paid` (o ledger de
+  envelope-id é best-effort), `shouldAdvanceDunning(null, oldKey)` trata como novo → volta a
+  `past_due` + segundo e-mail. Fix: o recovery reseta o EPISÓDIO (past_due_since,
+  next_payment_attempt, failed_payment_count) mas RETÉM `pagarme_dunning_key` — uma redelivery
+  do mesmo charge vira `shouldAdvanceDunning(oldKey, oldKey) == false` (ignorada); falha
+  genuína do próximo ciclo tem charge id novo → avança normalmente.
+- **[opus Important / Codex P1 #2] write de falha não-terminal sem pin de status observado**
+  (`handler.ts:255`). Pinava só `observedDunningKey`; um handler de falha que buscou a sub
+  ainda `active` pode commitar depois de um `charge.paid`/cancel concorrente quando a chave não
+  mudou (ex.: ambas null), ressuscitando a linha para `past_due` com aviso obsoleto. Fix:
+  incluir `observedStatus: row.status` nos pins desse write — a entrega atrasada falha o CAS →
+  5xx → redelivery re-lê o estado atual (mesmo padrão do reconcile e do terminal).
+
+Nada mais bloqueia. Os itens diferidos (varredura remota de órfãs Fase 5, pagarme-subscription,
+downgrade-cron, frontend, registro do webhook + secrets, semântica Q5 de falha de renovação)
+foram explicitamente confirmados como pós-merge seguros para um ship dark.
