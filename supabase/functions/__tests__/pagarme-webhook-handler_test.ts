@@ -378,7 +378,7 @@ Deno.test("10. charge.paid recovers a past_due row: recovery columns + status ac
   assertEquals(cas.values?.status, "active");
   assertEquals(cas.values?.past_due_since, null);
   assertEquals(cas.values?.failed_payment_count, 0);
-  assertEquals(cas.values?.pagarme_dunning_key, null);
+  assertEquals("pagarme_dunning_key" in (cas.values ?? {}), false, "recovery write must retain the stored key, not clear it");
 });
 
 Deno.test("11. subscription.updated observing active while row is past_due holds the episode: no status field, no recovery fields, no plan write, reconciled:dunning-held", async () => {

@@ -108,7 +108,13 @@ export interface ReconcileResult {
  * 2. Payment truth lives in charge.*: a subscription.* event observing remote "active" while the
  *    row is in a dunning episode (status past_due) must NOT reset the episode nor the status —
  *    only charge.paid (source "charge_paid") or a terminal outcome closes an episode.
- * 3. An in-force write resets the dunning episode AND pagarme_dunning_key in the same statement.
+ * 3. An in-force write resets the dunning episode fields (past_due_since, next_payment_attempt,
+ *    failed_payment_count) but RETAINS the stored pagarme_dunning_key untouched. The envelope-id
+ *    dedup ledger is best-effort, so the charge.payment_failed that opened the episode can be
+ *    redelivered after recovery; keeping the key means shouldAdvanceDunning(oldKey, oldKey) is
+ *    false and the redelivery is deduped as a no-op instead of re-opening the episode and sending
+ *    a second dunning e-mail. A genuine next-cycle failure carries a new charge id (or attempt),
+ *    so shouldAdvanceDunning still advances normally off the retained key.
  */
 export function buildReconcileColumns(
   remote: RemoteSubscriptionFields,
@@ -148,7 +154,7 @@ export function buildReconcileColumns(
       status: normalized,
       current_period_end,
       cancel_at_period_end,
-      ...(inForce ? { ...buildRecoveryEpisode(), pagarme_dunning_key: null } : {}),
+      ...(inForce ? buildRecoveryEpisode() : {}),
       updated_at: now.toISOString(),
     },
   };

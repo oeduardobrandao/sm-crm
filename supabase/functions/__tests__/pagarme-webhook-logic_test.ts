@@ -117,7 +117,7 @@ Deno.test("selectPagarmeDunningStage: 0/1 is first, 2+ is retry, never final", (
 
 // ─── buildReconcileColumns ───────────────────────────────────────────────────
 
-Deno.test("buildReconcileColumns: full active resets the dunning episode and the dunning key", () => {
+Deno.test("buildReconcileColumns: full active resets the dunning episode but retains the dunning key", () => {
   const result = buildReconcileColumns(
     {
       status: "active",
@@ -138,10 +138,10 @@ Deno.test("buildReconcileColumns: full active resets the dunning episode and the
       past_due_since: null,
       next_payment_attempt: null,
       failed_payment_count: 0,
-      pagarme_dunning_key: null,
       updated_at: "2026-08-12T12:00:00.000Z",
     },
   });
+  assertEquals("pagarme_dunning_key" in (result?.columns ?? {}), false);
 });
 
 Deno.test("buildReconcileColumns: future subscription maps to trialing with start_at as current_period_end", () => {
@@ -161,10 +161,10 @@ Deno.test("buildReconcileColumns: future subscription maps to trialing with star
       past_due_since: null,
       next_payment_attempt: null,
       failed_payment_count: 0,
-      pagarme_dunning_key: null,
       updated_at: "2026-08-12T12:00:00.000Z",
     },
   });
+  assertEquals("pagarme_dunning_key" in (result?.columns ?? {}), false);
 });
 
 Deno.test("buildReconcileColumns: canceled-but-paid-through retains current_period_end, sets cancel_at_period_end, writes no recovery fields", () => {
@@ -239,10 +239,10 @@ Deno.test("buildReconcileColumns: charge.paid closes a dunning episode even whil
       past_due_since: null,
       next_payment_attempt: null,
       failed_payment_count: 0,
-      pagarme_dunning_key: null,
       updated_at: "2026-08-12T12:00:00.000Z",
     },
   });
+  assertEquals("pagarme_dunning_key" in (result?.columns ?? {}), false);
 });
 
 Deno.test("buildReconcileColumns: an unrecognized remote status returns null", () => {
