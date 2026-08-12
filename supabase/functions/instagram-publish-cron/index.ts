@@ -406,6 +406,33 @@ Deno.serve(createPublishCronHandler({
 
       const totalFailed = summary.phase1.failed + summary.phase2.failed + summary.phase3.failed;
       if (totalFailed > 0) {
+        const clientIds = [...new Set(failedPosts.map((f) => f.clientId).filter(Boolean))];
+        if (clientIds.length > 0) {
+          try {
+            const { data: clients } = await db
+              .from("clientes")
+              .select("id, nome, contas(nome)")
+              .in("id", clientIds);
+            if (clients) {
+              const lookup = new Map(
+                clients.map((c: { id: number; nome: string; contas: { nome: string } | null }) => [
+                  c.id,
+                  { clientName: c.nome, workspaceName: c.contas?.nome },
+                ]),
+              );
+              for (const fp of failedPosts) {
+                const info = fp.clientId ? lookup.get(fp.clientId) : undefined;
+                if (info) {
+                  fp.clientName = info.clientName;
+                  fp.workspaceName = info.workspaceName;
+                }
+              }
+            }
+          } catch (_e) {
+            console.error("[IG-PUBLISH] Failed to enrich failure details with client/workspace names");
+          }
+        }
+
         await reportCronFailure(db, 'instagram-publish-cron', {
           total: summary.phase1.succeeded + summary.phase1.failed + summary.phase2.succeeded + summary.phase2.failed + summary.phase3.succeeded + summary.phase3.failed,
           failed: totalFailed,
