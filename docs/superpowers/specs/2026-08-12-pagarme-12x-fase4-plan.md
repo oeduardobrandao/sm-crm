@@ -1203,3 +1203,20 @@ Review final: **READY TO MERGE (dark)**. Dois achados convergentes (opus Importa
 Nada mais bloqueia. Os itens diferidos (varredura remota de órfãs Fase 5, pagarme-subscription,
 downgrade-cron, frontend, registro do webhook + secrets, semântica Q5 de falha de renovação)
 foram explicitamente confirmados como pós-merge seguros para um ship dark.
+
+### Fix round 3 (Codex externo pós-review-final, 2026-08-12)
+
+Aceito (corrige inclusive um comentário meu ERRADO do review de spec):
+
+- **[Codex P2] I/O de notificação sem timeout** (`dunning-notify.ts:39`, `dunning-email.ts:114`).
+  `svc.auth.admin.getUserById` (GoTrue, sem API de abort) e o `fetch` do Resend não são
+  bounded. Se qualquer um travar, o `await` NUNCA chega no catch (uma promise pendurada nunca
+  rejeita) — o comentário que escrevi em `dunning-notify.ts:14-16` ("o try/catch envolvente já
+  engole um hang eventual") está ERRADO. Consequência: o estado durável já commitou
+  (past_due + dunning key, ou canceled), o isolate pendura até o Edge kill, o ledger não é
+  gravado, a redelivery cai no gate `ignored:duplicate-failure` e o dono PERDE o e-mail de
+  dunning permanentemente. Viola a regra da casa (AGENTS.md: timeout em todo I/O de handler com
+  estado). Fix: `AbortSignal.timeout` no fetch do Resend + wrapper `withTimeout` (Promise.race)
+  no `getUserById`; o timeout é engolido pelo catch best-effort existente (log, sem throw ao
+  handler), mesma semântica de uma falha do Resend, mas sem o hang. Afeta também o
+  stripe-webhook (helper compartilhado) — melhoria estrita.
