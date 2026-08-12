@@ -138,6 +138,9 @@ function makeGateway(fx: {
   /** Number of leading createSubscription calls that should fail when failAt === "subscription".
    * Defaults to Infinity (fail on every call), preserving prior tests' "always fails" behavior. */
   failSubscriptionTimes?: number;
+  /** When true, cancelSubscription records the call but throws (gateway outage during
+   * compensation). Defaults to false (cancel always succeeds). */
+  failCancel?: boolean;
 }): PagarmeGateway {
   const record = (method: string, args: unknown[]) => fx.calls.push({ method, args });
   const maybeFail = (stage: string) => {
@@ -173,6 +176,7 @@ function makeGateway(fx: {
     },
     cancelSubscription: (id) => {
       record("cancelSubscription", [id]);
+      if (fx.failCancel) throw new Error("cancel boom");
       return Promise.resolve();
     },
   };
@@ -425,7 +429,7 @@ Deno.test("ambiguous create failure retries ONCE with the SAME idempotency key a
 });
 
 Deno.test("definitive 4xx rejection at the subscription stage never retries", async () => {
-  const { calls, result } = run(
+  const { events, calls, result } = run(
     { plan: PLAN, subRow: null },
     { failAt: "subscription", failWith: new PagarmeApiError(400, { any: "detail" }) },
   );
@@ -433,6 +437,64 @@ Deno.test("definitive 4xx rejection at the subscription stage never retries", as
   assertEquals(r.status, 400);
   assertEquals((r.body as { code: string }).code, "plan_not_configured");
   assertEquals(calls.filter((c) => c.method === "createSubscription").length, 1);
+  const failed = events.find((e) =>
+    e.table === "pagarme_checkout_attempts" && e.op === "update" && e.values?.state === "failed"
+  );
+  assert(failed !== undefined, "definitive rejection releases the reservation");
+});
+
+Deno.test("double ambiguous create failure leaves the reservation PENDING", async () => {
+  const { events, result } = run(
+    { plan: PLAN, subRow: null },
+    { failAt: "subscription", failWith: new Error("timeout") },
+  );
+  const r = await result;
+  assertEquals(r.status, 500);
+  // Excludes the unconditional stale-attempt expiry sweep (step 3), which writes
+  // state: "expired" on every request regardless of outcome and is unrelated to this
+  // attempt's own disposition. Only a terminal failed/succeeded write on THIS attempt would
+  // release the reservation.
+  const stateWrites = events.filter((e) =>
+    e.table === "pagarme_checkout_attempts" && e.op === "update" &&
+    (e.values?.state === "failed" || e.values?.state === "succeeded")
+  );
+  assertEquals(stateWrites.length, 0, "no state transition: the reservation must stay pending");
+});
+
+Deno.test("compensating cancel failure leaves the reservation PENDING with the orphan pointer intact", async () => {
+  const { events, calls, result } = run(
+    { plan: PLAN, subRow: null, bindInsertError: { message: "db down" } },
+    { subStatus: "active", failCancel: true },
+  );
+  const r = await result;
+  assertEquals(r.status, 500);
+  assert(calls.some((c) => c.method === "cancelSubscription"), "cancel must be attempted");
+  const pointer = events.find((e) =>
+    e.table === "pagarme_checkout_attempts" && e.op === "update" &&
+    e.values?.pagarme_subscription_id === "sub_1" && e.values?.state === undefined
+  );
+  assert(pointer !== undefined, "orphan pointer must be recorded");
+  // Excludes the unconditional stale-attempt expiry sweep (step 3), which writes
+  // state: "expired" on every request regardless of outcome and is unrelated to this
+  // attempt's own disposition. Only a terminal failed/succeeded write on THIS attempt would
+  // release the reservation.
+  const stateWrites = events.filter((e) =>
+    e.table === "pagarme_checkout_attempts" && e.op === "update" &&
+    (e.values?.state === "failed" || e.values?.state === "succeeded")
+  );
+  assertEquals(stateWrites.length, 0, "no state transition: the reservation must stay pending");
+});
+
+Deno.test("successful compensating cancel still releases the reservation as failed", async () => {
+  const { events, result } = run(
+    { plan: PLAN, subRow: null, bindInsertError: { message: "db down" } },
+    { subStatus: "active" },
+  );
+  await result;
+  const failed = events.find((e) =>
+    e.table === "pagarme_checkout_attempts" && e.op === "update" && e.values?.state === "failed"
+  );
+  assert(failed !== undefined, "cancel succeeded: attempt must be released as failed");
 });
 
 Deno.test("bind DB error after subscription create: compensating cancel, attempt failed with sub id, 500", async () => {

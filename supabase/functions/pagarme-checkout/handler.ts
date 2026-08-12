@@ -210,15 +210,28 @@ export function createPagarmeCheckoutHandler(deps: {
       // (after compensating) instead of throwing, so the outer catch stays a pure
       // gateway-stage mapper. ──
       const failCompensating = async (status: number, body: unknown): Promise<CheckoutResult> => {
+        let cancelled = false;
         try {
           await gateway.cancelSubscription(sub.id);
+          cancelled = true;
         } catch (e) {
           console.error(
             "[pagarme-checkout] compensating cancel failed:",
             e instanceof Error ? e.message : String(e),
           );
         }
-        await finishAttempt("failed", sub.id);
+        if (cancelled) {
+          await finishAttempt("failed", sub.id);
+        } else {
+          // The remote subscription may still be live and we could not kill it. Keep the
+          // reservation PENDING: releasing it would allow an immediate retry with a new
+          // idempotency key against a possibly-live subscription. The 15-minute expiry
+          // re-opens checkout; the recorded orphan pointer (and the Fase 5 remote sweep)
+          // resolves the remote side.
+          console.error(
+            `[pagarme-checkout] attempt ${attemptId} left pending: remote subscription ${sub.id} may be live and uncancelled`,
+          );
+        }
         return { status, body };
       };
 
@@ -353,7 +366,16 @@ export function createPagarmeCheckoutHandler(deps: {
         },
       };
     } catch (err) {
-      await finishAttempt("failed");
+      // Ambiguous subscription-stage outcomes (timeout/network/5xx even after the same-key
+      // retry) may have a live remote subscription with no recorded id. Releasing the
+      // reservation would let an immediate retry (new attempt = new idempotency key) mint a
+      // duplicate: leave the attempt PENDING so the partial unique index keeps blocking
+      // checkouts (409) until the 15-minute self-heal expiry. The Fase 5 remote-side sweep
+      // is the durable resolver. Customer/card-stage failures and definitive 4xx rejections
+      // created nothing remotely and release normally.
+      const ambiguousCreate = stage === "subscription" &&
+        !(err instanceof PagarmeApiError && err.status >= 400 && err.status < 500);
+      if (!ambiguousCreate) await finishAttempt("failed");
       // Stage name + message only — NEVER the request body (card/document/address).
       console.error(
         `[pagarme-checkout] ${stage} stage failed:`,
