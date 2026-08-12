@@ -6,6 +6,7 @@ import {
   isTerminalRemoteStatus,
   parseWebhookEnvelope,
   selectPagarmeDunningStage,
+  shouldSendTerminalDunningEmail,
 } from "../pagarme-webhook/logic.ts";
 
 const NOW = new Date("2026-08-12T12:00:00Z");
@@ -264,4 +265,50 @@ Deno.test("buildReconcileColumns: remote failed normalizes to canceled and retai
   assertEquals(result?.status, "canceled");
   assertEquals(result?.columns.cancel_at_period_end, false);
   assertEquals(result?.columns.current_period_end, "2026-08-10T00:00:00Z");
+});
+
+// ─── shouldSendTerminalDunningEmail ─────────────────────────────────────────
+
+Deno.test("shouldSendTerminalDunningEmail: remote failed on a trialing row (first charge ever) is genuine", () => {
+  assertEquals(
+    shouldSendTerminalDunningEmail("failed", { status: "trialing", past_due_since: null }),
+    true,
+  );
+});
+
+Deno.test("shouldSendTerminalDunningEmail: remote canceled with an open past_due episode is genuine", () => {
+  assertEquals(
+    shouldSendTerminalDunningEmail("canceled", {
+      status: "past_due",
+      past_due_since: "2026-08-11T00:00:00Z",
+    }),
+    true,
+  );
+});
+
+Deno.test("shouldSendTerminalDunningEmail: remote canceled on a healthy active row is a voluntary cancel racing a late failure — never sends", () => {
+  assertEquals(
+    shouldSendTerminalDunningEmail("canceled", { status: "active", past_due_since: null }),
+    false,
+  );
+});
+
+Deno.test("shouldSendTerminalDunningEmail: remote canceled with a stamped past_due_since (even off past_due status) proves an open episode", () => {
+  assertEquals(
+    shouldSendTerminalDunningEmail("canceled", {
+      status: "active",
+      past_due_since: "2026-08-11T00:00:00Z",
+    }),
+    true,
+  );
+});
+
+Deno.test("shouldSendTerminalDunningEmail: a row already canceled was already notified or voluntarily canceled — never resends", () => {
+  assertEquals(
+    shouldSendTerminalDunningEmail("failed", {
+      status: "canceled",
+      past_due_since: "2026-08-11T00:00:00Z",
+    }),
+    false,
+  );
 });

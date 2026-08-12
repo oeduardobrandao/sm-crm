@@ -153,3 +153,23 @@ export function buildReconcileColumns(
     },
   };
 }
+
+/**
+ * Whether a terminal outcome inside charge.payment_failed should send the "final" dunning
+ * e-mail. Three rules:
+ * - A row already canceled was either already notified or voluntarily canceled: never send
+ *   (with the status-pinned terminal CAS this also makes concurrent duplicates safe — only
+ *   the delivery that transitioned the row e-mails).
+ * - Remote status "failed" only ever means payment failure (spike achado 3): always genuine.
+ * - Remote "canceled" seen from inside the failure handler may be a voluntary cancellation
+ *   racing a late failure event: only an OPEN local episode (past_due status or a
+ *   past_due_since stamp) proves the cancellation closed a failing episode.
+ */
+export function shouldSendTerminalDunningEmail(
+  remoteStatus: string,
+  row: { status: string | null; past_due_since: string | null },
+): boolean {
+  if (row.status === "canceled") return false;
+  if (remoteStatus === "failed") return true;
+  return row.status === "past_due" || row.past_due_since !== null;
+}
