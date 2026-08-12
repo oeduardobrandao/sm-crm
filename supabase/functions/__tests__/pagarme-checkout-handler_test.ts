@@ -67,6 +67,7 @@ function makeDb(fx: {
     const chain: any = {};
     chain.select = () => chain;
     chain.lt = () => chain;
+    chain.abortSignal = () => chain;
     chain.eq = (col: string, val: unknown) => {
       filters.push(["eq", col, val]);
       return chain;
