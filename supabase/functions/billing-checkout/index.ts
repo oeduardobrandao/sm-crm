@@ -76,12 +76,20 @@ Deno.serve(async (req: Request) => {
     if (!priceId) return json({ error: "Plan price not configured" }, 400, headers);
 
     // find-or-create Stripe customer for this workspace
-    const { data: subRow } = await svc
+    const { data: subRow, error: subRowErr } = await svc
       .from("workspace_subscriptions")
       .select(
         "stripe_customer_id, stripe_subscription_id, status, ever_subscribed_at, pagarme_subscription_id, provider, cancel_at_period_end, current_period_end",
       )
       .eq("workspace_id", workspaceId).maybeSingle();
+
+    // A failed read must DENY, not default to "no row": with the row unknown, both 409
+    // guards below would silently pass and a duplicate or cross-provider checkout could
+    // open against a live subscription. Fail closed with a generic 500.
+    if (subRowErr) {
+      console.error("[billing-checkout] subscription read failed:", subRowErr.message);
+      return json({ error: "Internal server error" }, 500, headers);
+    }
 
     // A workspace mid-subscription belongs in the billing portal, not a second
     // checkout. Without this, a stale tab could open a duplicate subscription
