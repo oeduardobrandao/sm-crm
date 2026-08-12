@@ -402,8 +402,14 @@ Deno.test("pagarmeCheckoutBlocked: fully churned row does not block", () => {
 
 // ─── small helpers ─────────────────────────────────────────────────────────
 
-Deno.test("resolveStartAt: 30 trial days from NOW is a date-only string", () => {
-  assertEquals(resolveStartAt(30, NOW), "2026-09-11");
+Deno.test("resolveStartAt: 30 trial days round UP to the next UTC midnight (never a short trial)", () => {
+  // NOW is 12:00 UTC; +30d lands at 2026-09-11T12:00Z — the gateway reads a date as
+  // midnight UTC, so releasing on 09-11 would grant only 29.5 days. Ceil to 09-12.
+  assertEquals(resolveStartAt(30, NOW), "2026-09-12");
+});
+
+Deno.test("resolveStartAt: an exact-midnight now needs no rounding", () => {
+  assertEquals(resolveStartAt(30, new Date("2026-08-12T00:00:00.000Z")), "2026-09-11");
 });
 
 Deno.test("resolveStartAt: no trial means no start_at", () => {
@@ -632,11 +638,21 @@ export function pagarmeCheckoutBlocked(
 /**
  * `start_at` for the trial: date-only string (the spike sent YYYY-MM-DD and the gateway
  * echoed it as midnight UTC). Undefined when there is no trial — the subscription then
- * charges its first installment at creation.
+ * charges its first installment at creation. Because the gateway reads the date as
+ * MIDNIGHT UTC, a plain truncation would shorten the advertised trial (a checkout at noon
+ * would grant 29.5 days): the boundary is rounded UP to the next UTC midnight, so the
+ * trial is never shorter than advertised (30.0 to 30.99 days).
  */
 export function resolveStartAt(trialDays: number | undefined, now: Date): string | undefined {
   if (!trialDays) return undefined;
-  return new Date(now.getTime() + trialDays * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const end = new Date(now.getTime() + trialDays * 24 * 3600 * 1000);
+  if (
+    end.getUTCHours() !== 0 || end.getUTCMinutes() !== 0 ||
+    end.getUTCSeconds() !== 0 || end.getUTCMilliseconds() !== 0
+  ) {
+    end.setUTCHours(24, 0, 0, 0); // ceil to the next UTC midnight
+  }
+  return end.toISOString().slice(0, 10);
 }
 
 /**
@@ -1090,21 +1106,21 @@ Deno.test("happy path, no trial: order, idempotency key, single-statement bind, 
   assert(succeeded !== undefined, "attempt not marked succeeded");
 });
 
-Deno.test("trial path: fresh workspace gets start_at now+30d, status future maps to trialing, bind is an INSERT", async () => {
+Deno.test("trial path: fresh workspace gets start_at ceiled to the next UTC midnight, status future maps to trialing, bind is an INSERT", async () => {
   const { events, calls, result } = run(
     { plan: PLAN, subRow: null },
-    { subStatus: "future", subStartAt: "2026-09-11T00:00:00Z" },
+    { subStatus: "future", subStartAt: "2026-09-12T00:00:00Z" },
   );
   const r = await result;
   assertEquals(r.status, 200);
   assertEquals(r.body, {
     status: "trialing",
-    trial_ends_at: "2026-09-11T00:00:00Z",
-    next_charge_at: "2026-09-11T00:00:00Z",
+    trial_ends_at: "2026-09-12T00:00:00Z",
+    next_charge_at: "2026-09-12T00:00:00Z",
     installment_amount_cents: 7992,
   });
   const subInput = calls[2].args[0] as Record<string, unknown>;
-  assertEquals(subInput.start_at, "2026-09-11");
+  assertEquals(subInput.start_at, "2026-09-12"); // NOW is 12:00Z: +30d rounds UP, never a short trial
   // No row observed at gate time → plain INSERT (a concurrent create surfaces as 23505,
   // never as a silent overwrite), carrying provider + mirror in the same payload.
   const ins = events.find((e) => e.table === "workspace_subscriptions" && e.op === "insert");

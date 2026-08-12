@@ -141,8 +141,14 @@ Deno.test("pagarmeCheckoutBlocked: fully churned row does not block", () => {
 
 // ─── small helpers ─────────────────────────────────────────────────────────
 
-Deno.test("resolveStartAt: 30 trial days from NOW is a date-only string", () => {
-  assertEquals(resolveStartAt(30, NOW), "2026-09-11");
+Deno.test("resolveStartAt: 30 trial days round UP to the next UTC midnight (never a short trial)", () => {
+  // NOW is 12:00 UTC; +30d lands at 2026-09-11T12:00Z — the gateway reads a date as
+  // midnight UTC, so releasing on 09-11 would grant only 29.5 days. Ceil to 09-12.
+  assertEquals(resolveStartAt(30, NOW), "2026-09-12");
+});
+
+Deno.test("resolveStartAt: an exact-midnight now needs no rounding", () => {
+  assertEquals(resolveStartAt(30, new Date("2026-08-12T00:00:00.000Z")), "2026-09-11");
 });
 
 Deno.test("resolveStartAt: no trial means no start_at", () => {

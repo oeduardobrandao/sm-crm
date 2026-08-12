@@ -349,21 +349,22 @@ Deno.test("churned pagarme row retrying checkout: CAS pins provider=pagarme and 
   );
 });
 
-Deno.test("trial path: fresh workspace gets start_at now+30d, status future maps to trialing, bind is an INSERT", async () => {
+Deno.test("trial path: fresh workspace gets start_at ceiled to the next UTC midnight, status future maps to trialing, bind is an INSERT", async () => {
   const { events, calls, result } = run(
     { plan: PLAN, subRow: null },
-    { subStatus: "future", subStartAt: "2026-09-11T00:00:00Z" },
+    { subStatus: "future", subStartAt: "2026-09-12T00:00:00Z" },
   );
   const r = await result;
   assertEquals(r.status, 200);
   assertEquals(r.body, {
     status: "trialing",
-    trial_ends_at: "2026-09-11T00:00:00Z",
-    next_charge_at: "2026-09-11T00:00:00Z",
+    trial_ends_at: "2026-09-12T00:00:00Z",
+    next_charge_at: "2026-09-12T00:00:00Z",
     installment_amount_cents: 7992,
   });
   const subInput = calls[2].args[0] as Record<string, unknown>;
-  assertEquals(subInput.start_at, "2026-09-11");
+  // NOW is 12:00Z: +30d rounds UP, never a short trial
+  assertEquals(subInput.start_at, "2026-09-12");
   // No row observed at gate time → plain INSERT (a concurrent create surfaces as 23505,
   // never as a silent overwrite), carrying provider + mirror in the same payload.
   const ins = events.find((e) => e.table === "workspace_subscriptions" && e.op === "insert");

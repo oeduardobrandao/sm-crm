@@ -121,11 +121,21 @@ export function pagarmeCheckoutBlocked(
 /**
  * `start_at` for the trial: date-only string (the spike sent YYYY-MM-DD and the gateway
  * echoed it as midnight UTC). Undefined when there is no trial — the subscription then
- * charges its first installment at creation.
+ * charges its first installment at creation. Because the gateway reads the date as
+ * MIDNIGHT UTC, a plain truncation would shorten the advertised trial (a checkout at noon
+ * would grant 29.5 days): the boundary is rounded UP to the next UTC midnight, so the
+ * trial is never shorter than advertised (30.0 to 30.99 days).
  */
 export function resolveStartAt(trialDays: number | undefined, now: Date): string | undefined {
   if (!trialDays) return undefined;
-  return new Date(now.getTime() + trialDays * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const end = new Date(now.getTime() + trialDays * 24 * 3600 * 1000);
+  if (
+    end.getUTCHours() !== 0 || end.getUTCMinutes() !== 0 ||
+    end.getUTCSeconds() !== 0 || end.getUTCMilliseconds() !== 0
+  ) {
+    end.setUTCHours(24, 0, 0, 0); // ceil to the next UTC midnight
+  }
+  return end.toISOString().slice(0, 10);
 }
 
 /**
