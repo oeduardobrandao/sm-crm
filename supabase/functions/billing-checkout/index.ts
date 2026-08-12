@@ -9,6 +9,7 @@ import {
 } from "../_shared/trial.ts";
 import { isWorkspaceOwner } from "../_shared/workspace-role.ts";
 import { annualCheckoutBlocked, hasEverSubscribed } from "../_shared/billing-logic.ts";
+import { crossProviderCheckoutBlocked } from "../_shared/pagarme-logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -78,7 +79,7 @@ Deno.serve(async (req: Request) => {
     const { data: subRow } = await svc
       .from("workspace_subscriptions")
       .select(
-        "stripe_customer_id, stripe_subscription_id, status, ever_subscribed_at, pagarme_subscription_id",
+        "stripe_customer_id, stripe_subscription_id, status, ever_subscribed_at, pagarme_subscription_id, provider, cancel_at_period_end, current_period_end",
       )
       .eq("workspace_id", workspaceId).maybeSingle();
 
@@ -87,6 +88,19 @@ Deno.serve(async (req: Request) => {
     // against the same customer.
     if (subRow?.status === "active" || subRow?.status === "trialing") {
       return json({ error: "Este workspace já tem uma assinatura ativa." }, 409, headers);
+    }
+
+    // A row owned by Pagar.me that is still in force (past_due) or canceled but paid through
+    // must not open a Stripe checkout: the resulting checkout.session.completed bind would be
+    // DENIED by canWebhookWrite (cross-provider in-force/paid-through beats isAuthorizedBind),
+    // leaving a paid Stripe subscription bound to nothing. Refuse up front. active/trialing of
+    // ANY provider is already refused above; this only adds the cross-provider cases.
+    if (crossProviderCheckoutBlocked("stripe", subRow, new Date())) {
+      return json(
+        { error: "Este workspace tem uma assinatura parcelada vigente. Gerencie o plano atual em Plano e Cobrança." },
+        409,
+        headers,
+      );
     }
 
     let customerId = subRow?.stripe_customer_id as string | undefined;
