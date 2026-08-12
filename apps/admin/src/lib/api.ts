@@ -515,6 +515,28 @@ export function deleteBanner(banner_id: string) {
   return adminApi<{ message: string }>('delete-banner', { banner_id });
 }
 
+// ─── Workspace Events ───────────────────────────────────────
+
+export interface WorkspaceEvent {
+  id: number;
+  created_at: string;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  actor_name: string | null;
+  actor_email: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export function listWorkspaceEvents(params: {
+  workspace_id: string;
+  offset?: number;
+  limit?: number;
+  event_types?: string[];
+}) {
+  return adminApi<{ events: WorkspaceEvent[]; total: number }>('list-workspace-events', params);
+}
+
 // ─── KB Articles ─────────────────────────────────────────────
 
 export interface KbArticle {

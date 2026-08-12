@@ -4,6 +4,7 @@ import { revertPlanTarget } from "./revert-target.ts";
 import { handleCreatePlan, handleUpdatePlan } from "./plan-mutations.ts";
 import { handleGetWorkspaceInvites, handleAdminCancelInvite, handleAdminResendInvite, handleAdminCreateInvite } from "./invite-handlers.ts";
 import { handleListWorkspaces } from "./list-workspaces.ts";
+import { handleListWorkspaceEvents } from "./event-history.ts";
 // Single source of truth for plan columns (includes max_mcp_keys / feature_mcp).
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
 import { aggregateMrr, toMonthlyCents } from "../_shared/billing-logic.ts";
@@ -74,6 +75,8 @@ Deno.serve(async (req: Request) => {
     switch (action) {
       case "list-workspaces":
         return await handleListWorkspaces(svc, body, headers);
+      case "list-workspace-events":
+        return await handleListWorkspaceEvents(svc, body, headers);
       case "get-workspace":
         return await handleGetWorkspace(svc, body, headers);
       case "get-workspace-invites":
