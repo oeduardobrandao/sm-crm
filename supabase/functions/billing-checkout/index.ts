@@ -94,15 +94,19 @@ Deno.serve(async (req: Request) => {
     // A workspace mid-subscription belongs in the billing portal, not a second
     // checkout. Without this, a stale tab could open a duplicate subscription
     // against the same customer.
-    if (subRow?.status === "active" || subRow?.status === "trialing") {
+    if (
+      subRow?.status === "active" || subRow?.status === "trialing" ||
+      subRow?.status === "past_due"
+    ) {
       return json({ error: "Este workspace já tem uma assinatura ativa." }, 409, headers);
     }
 
     // A row owned by Pagar.me that is still in force (past_due) or canceled but paid through
     // must not open a Stripe checkout: the resulting checkout.session.completed bind would be
     // DENIED by canWebhookWrite (cross-provider in-force/paid-through beats isAuthorizedBind),
-    // leaving a paid Stripe subscription bound to nothing. Refuse up front. active/trialing of
-    // ANY provider is already refused above; this only adds the cross-provider cases.
+    // leaving a paid Stripe subscription bound to nothing. Refuse up front. active/trialing/
+    // past_due of ANY provider is already refused above; this only adds the cross-provider
+    // paid-through case.
     if (crossProviderCheckoutBlocked("stripe", subRow, new Date())) {
       return json(
         { error: "Este workspace tem uma assinatura parcelada vigente. Gerencie o plano atual em Plano e Cobrança." },
