@@ -171,7 +171,11 @@ export function buildPagarmeSubscriptionColumns(args: {
     current_period_end: args.currentPeriodEnd,
     cancel_at_period_end: false,
     ever_subscribed_at: args.everSubscribedAt,
+    // Fresh takeover clears ALL dunning state (mirroring buildRecoveryEpisode): a Stripe row
+    // that churned mid-dunning must not leak its past_due_since into the first pagarme episode.
     failed_payment_count: 0,
+    past_due_since: null,
+    next_payment_attempt: null,
     amount_cents: args.annualPriceCents,
     gross_cents: null,
     currency: "brl",

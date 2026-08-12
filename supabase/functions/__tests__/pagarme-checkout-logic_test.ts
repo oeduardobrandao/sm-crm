@@ -183,6 +183,8 @@ Deno.test("buildPagarmeSubscriptionColumns: provider flip and amount mirror in O
     cancel_at_period_end: false,
     ever_subscribed_at: "2026-01-01T00:00:00Z",
     failed_payment_count: 0,
+    past_due_since: null,
+    next_payment_attempt: null,
     amount_cents: 95900,
     gross_cents: null,
     currency: "brl",

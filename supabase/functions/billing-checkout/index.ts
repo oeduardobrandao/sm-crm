@@ -105,7 +105,7 @@ Deno.serve(async (req: Request) => {
     // must not open a Stripe checkout: the resulting checkout.session.completed bind would be
     // DENIED by canWebhookWrite (cross-provider in-force/paid-through beats isAuthorizedBind),
     // leaving a paid Stripe subscription bound to nothing. Refuse up front. active/trialing/
-    // past_due of ANY provider is already refused above; this only adds the cross-provider
+    // past_due/unpaid of ANY provider is already refused above; this only adds the cross-provider
     // paid-through case.
     if (crossProviderCheckoutBlocked("stripe", subRow, new Date())) {
       return json(
