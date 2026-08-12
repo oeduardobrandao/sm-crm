@@ -1220,3 +1220,16 @@ Aceito (corrige inclusive um comentário meu ERRADO do review de spec):
   no `getUserById`; o timeout é engolido pelo catch best-effort existente (log, sem throw ao
   handler), mesma semântica de uma falha do Resend, mas sem o hang. Afeta também o
   stripe-webhook (helper compartilhado) — melhoria estrita.
+
+### Fix round 4 (Codex do PR #341, 2026-08-12)
+
+Aceito:
+
+- **[Codex P1] cancel do checkout negado sem timeout** (`stripe-webhook/index.ts:132`). O
+  `stripe.subscriptions.cancel(sub.id)` novo (hardening da Task 2) era I/O de rede sem bound —
+  o default do SDK e 80s, muito alem do wall-clock do Edge, entao um stall vira Edge kill (sem
+  5xx limpo, sem o log CRITICAL) em vez do throw -> 5xx -> redelivery que o proprio comentario do
+  path ja assume. Mesma regra da casa aplicada no round 3. Fix: `RequestOptions.timeout` por
+  request (`{ timeout: STRIPE_CANCEL_TIMEOUT_MS = 10_000 }`) — stall vira throw deterministico.
+  Escopo: so o cancel novo desta branch; os `stripe.*.retrieve` pre-existentes ficam como divida
+  separada (mesma decisao do plano para os DB calls proprios do stripe-webhook).
