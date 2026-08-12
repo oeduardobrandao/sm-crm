@@ -65,6 +65,7 @@ const REQUIRED_FUNCTIONS = [
   "sign-r2-urls",
   // Billing (manual auth: user-JWT or Stripe signature)
   "billing-checkout",
+  "pagarme-checkout",
   "billing-portal",
   "stripe-webhook",
 ];

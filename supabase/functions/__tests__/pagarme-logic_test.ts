@@ -2,6 +2,7 @@ import { assertEquals } from "./assert.ts";
 import {
   buildChargeDunningKey,
   canWebhookWrite,
+  crossProviderCheckoutBlocked,
   isInForce,
   isPaidThrough,
   mapPagarmeTemporalFields,
@@ -323,4 +324,81 @@ Deno.test("shouldAdvanceDunning: a redelivered charge+attempt key does not advan
 Deno.test("shouldAdvanceDunning: no prior key always advances (first failure)", () => {
   assertEquals(shouldAdvanceDunning(null, "ch_1:1"), true);
   assertEquals(shouldAdvanceDunning(undefined, "ch_1:1"), true);
+});
+
+// ─── crossProviderCheckoutBlocked ──────────────────────────────────────────
+
+const CO_NOW = new Date("2026-08-12T12:00:00Z");
+const FUTURE_END = "2026-12-31T00:00:00Z";
+const PAST_END = "2026-01-01T00:00:00Z";
+
+Deno.test("crossProviderCheckoutBlocked: no row never blocks", () => {
+  assertEquals(crossProviderCheckoutBlocked("stripe", null, CO_NOW), false);
+  assertEquals(crossProviderCheckoutBlocked("pagarme", undefined, CO_NOW), false);
+});
+
+Deno.test("crossProviderCheckoutBlocked: same provider never blocks here (own-status 409 is the caller's job)", () => {
+  assertEquals(
+    crossProviderCheckoutBlocked("stripe", { provider: "stripe", status: "active" }, CO_NOW),
+    false,
+  );
+  assertEquals(
+    crossProviderCheckoutBlocked("pagarme", { provider: "pagarme", status: "past_due" }, CO_NOW),
+    false,
+  );
+});
+
+Deno.test("crossProviderCheckoutBlocked: null provider counts as stripe", () => {
+  // Legacy rows predate the provider column; they are stripe's.
+  assertEquals(
+    crossProviderCheckoutBlocked("stripe", { provider: null, status: "past_due" }, CO_NOW),
+    false,
+  );
+  assertEquals(
+    crossProviderCheckoutBlocked("pagarme", { provider: null, status: "past_due" }, CO_NOW),
+    true,
+  );
+});
+
+Deno.test("crossProviderCheckoutBlocked: other provider in force blocks (active, trialing, past_due)", () => {
+  for (const status of ["active", "trialing", "past_due"]) {
+    assertEquals(
+      crossProviderCheckoutBlocked("stripe", { provider: "pagarme", status }, CO_NOW),
+      true,
+      `status=${status}`,
+    );
+  }
+});
+
+Deno.test("crossProviderCheckoutBlocked: other provider canceled but paid through blocks", () => {
+  assertEquals(
+    crossProviderCheckoutBlocked("stripe", {
+      provider: "pagarme",
+      status: "canceled",
+      cancel_at_period_end: true,
+      current_period_end: FUTURE_END,
+    }, CO_NOW),
+    true,
+  );
+});
+
+Deno.test("crossProviderCheckoutBlocked: other provider fully churned does not block", () => {
+  assertEquals(
+    crossProviderCheckoutBlocked("stripe", {
+      provider: "pagarme",
+      status: "canceled",
+      cancel_at_period_end: true,
+      current_period_end: PAST_END,
+    }, CO_NOW),
+    false,
+  );
+  assertEquals(
+    crossProviderCheckoutBlocked("pagarme", {
+      provider: "stripe",
+      status: "canceled",
+      cancel_at_period_end: false,
+      current_period_end: null,
+    }, CO_NOW),
+    false,
+  );
 });

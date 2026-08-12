@@ -96,6 +96,35 @@ export function canWebhookWrite(
 }
 
 /**
+ * Whether an existing subscription row owned by the OTHER provider blocks opening a new
+ * checkout with `requestingProvider`. Symmetric guard used by billing-checkout (stripe) and
+ * pagarme-checkout (pagarme): while the row's owner is in force (active/trialing/past_due)
+ * or canceled-but-paid-through, completing a checkout with the other provider would create a
+ * subscription whose webhook bind canWebhookWrite must then DENY (cross-provider in-force or
+ * paid-through beats isAuthorizedBind), stranding a paid subscription with no plan granted.
+ * Refusing up front is the only safe answer. Rows without a provider predate the column and
+ * belong to Stripe. The caller keeps its own same-provider status rules; this function only
+ * answers the cross-provider question.
+ */
+export function crossProviderCheckoutBlocked(
+  requestingProvider: "stripe" | "pagarme",
+  row:
+    | {
+      provider?: string | null;
+      status?: string | null;
+      cancel_at_period_end?: boolean | null;
+      current_period_end?: string | null;
+    }
+    | null
+    | undefined,
+  now: Date,
+): boolean {
+  if (!row) return false;
+  if ((row.provider ?? "stripe") === requestingProvider) return false;
+  return isInForce(row.status) || isPaidThrough(row, now);
+}
+
+/**
  * Resolves the effective plan for a normalized Pagar.me status, mirroring the semantics of
  * `statusToPlanId` in billing-logic.ts. Returns null to mean "leave plan_id unchanged".
  */
