@@ -82,18 +82,57 @@ export function createPagarmeCheckoutHandler(deps: {
     }
 
     // (3) Self-heal stale reservations, then reserve atomically. A crash between reserving
-    // and finishing must not lock the workspace out until the cron (Fase 5): any pending
-    // attempt older than 15 minutes is expired inline first. The partial unique index
-    // one_pending_attempt_per_workspace makes the insert the serialization point — NO remote
-    // call happens before it, so a concurrent tab costs nothing at the gateway.
+    // and finishing must not lock the workspace out forever: any pending attempt older than
+    // 15 minutes is resolved inline. Resolution is NOT a blind release — an attempt that
+    // RECORDED a remote subscription id (create succeeded, bind or compensating cancel
+    // failed) is canceled at the gateway FIRST; we never knowingly release a reservation
+    // while a known remote subscription may be live. This is a deliberate exception to the
+    // "no remote call before the reservation" rule: the stale pending row blocks the
+    // reservation insert (partial unique index), it fires only on this rare recovery path,
+    // and it involves no card data. Attempts with NO recorded id have nothing to check
+    // locally; the Fase 5 remote-side sweep owns that residual.
     const staleBefore = new Date(now.getTime() - STALE_ATTEMPT_MINUTES * 60_000).toISOString();
-    const { error: expireErr } = await db
+    const { data: stalePending, error: staleReadErr } = await db
       .from("pagarme_checkout_attempts")
-      .update({ state: "expired", updated_at: nowIso })
+      .select("id, pagarme_subscription_id")
       .eq("workspace_id", ctx.workspaceId)
       .eq("state", "pending")
       .lt("created_at", staleBefore);
-    if (expireErr) throw new Error(`attempt expiry failed: ${expireErr.message}`);
+    if (staleReadErr) throw new Error(`stale attempt read failed: ${staleReadErr.message}`);
+    for (
+      const stale of (stalePending ?? []) as Array<
+        { id: string; pagarme_subscription_id: string | null }
+      >
+    ) {
+      if (stale.pagarme_subscription_id) {
+        try {
+          await gateway.cancelSubscription(stale.pagarme_subscription_id);
+        } catch (e) {
+          // 4xx from the DELETE means the subscription is not in a cancellable state
+          // (already canceled or gone) — safe to release. Anything else (network, 5xx)
+          // means it MAY still be live: keep the reservation blocking instead of expiring.
+          const settled = e instanceof PagarmeApiError && e.status >= 400 && e.status < 500;
+          if (!settled) {
+            console.error(
+              `[pagarme-checkout] stale attempt ${stale.id} holds subscription ${stale.pagarme_subscription_id} and cancel failed; keeping the reservation:`,
+              e instanceof Error ? e.message : String(e),
+            );
+            return {
+              status: 409,
+              body: {
+                error:
+                  "Outra tentativa de pagamento está em andamento. Aguarde alguns instantes e tente de novo.",
+              },
+            };
+          }
+        }
+      }
+      const { error: expireErr } = await db
+        .from("pagarme_checkout_attempts")
+        .update({ state: "expired", updated_at: nowIso })
+        .eq("id", stale.id);
+      if (expireErr) throw new Error(`attempt expiry failed: ${expireErr.message}`);
+    }
 
     const { data: attempt, error: reserveErr } = await db
       .from("pagarme_checkout_attempts")

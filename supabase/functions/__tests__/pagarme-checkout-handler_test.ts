@@ -55,6 +55,8 @@ function makeDb(fx: {
   attemptPointerError?: { message: string } | null;
   /** Error injected on the workspaces plan-grant update (plan-writer). */
   planWriteError?: { message: string } | null;
+  /** Rows returned by the stale-pending-attempt read (step 3). Defaults to none. */
+  stalePending?: Array<{ id: string; pagarme_subscription_id: string | null }>;
   events: Ev[];
 }): SupabaseClient {
   const from = (table: string) => {
@@ -99,6 +101,9 @@ function makeDb(fx: {
       if (table === "workspace_subscriptions" && op === "insert") {
         return { data: null, error: fx.bindInsertError ?? null };
       }
+      if (table === "pagarme_checkout_attempts" && op === "read") {
+        return { data: fx.stalePending ?? [], error: null };
+      }
       if (table === "pagarme_checkout_attempts" && op === "insert") {
         if (fx.reserveError) return { data: null, error: fx.reserveError };
         return { data: { id: ATTEMPT_ID }, error: null };
@@ -141,6 +146,8 @@ function makeGateway(fx: {
   /** When true, cancelSubscription records the call but throws (gateway outage during
    * compensation). Defaults to false (cancel always succeeds). */
   failCancel?: boolean;
+  /** Error thrown by cancelSubscription when failCancel is true. Defaults to a generic Error. */
+  failCancelWith?: unknown;
 }): PagarmeGateway {
   const record = (method: string, args: unknown[]) => fx.calls.push({ method, args });
   const maybeFail = (stage: string) => {
@@ -176,7 +183,7 @@ function makeGateway(fx: {
     },
     cancelSubscription: (id) => {
       record("cancelSubscription", [id]);
-      if (fx.failCancel) throw new Error("cancel boom");
+      if (fx.failCancel) throw fx.failCancelWith ?? new Error("cancel boom");
       return Promise.resolve();
     },
   };
@@ -583,7 +590,10 @@ Deno.test("plan-grant failure AFTER a committed bind: no cancel, attempt succeed
 });
 
 Deno.test("stale pending attempts are expired before reserving", async () => {
-  const { events, result } = run({ plan: PLAN, subRow: null }, { subStatus: "active" });
+  const { events, result } = run(
+    { plan: PLAN, subRow: null, stalePending: [{ id: "stale-1", pagarme_subscription_id: null }] },
+    { subStatus: "active" },
+  );
   await result;
   const expire = events.findIndex((e) =>
     e.table === "pagarme_checkout_attempts" && e.op === "update" && e.values?.state === "expired"
@@ -592,4 +602,49 @@ Deno.test("stale pending attempts are expired before reserving", async () => {
   assert(expire !== -1, "expiry sweep missing");
   assert(reserve !== -1, "reservation missing");
   assert(expire < reserve, "expiry must run before the reservation");
+});
+
+Deno.test("stale attempt WITH a recorded sub id: cancel the orphan, then expire, then proceed", async () => {
+  const { events, calls, result } = run(
+    { plan: PLAN, subRow: null, stalePending: [{ id: "stale-1", pagarme_subscription_id: "sub_orphan" }] },
+    { subStatus: "active" },
+  );
+  const r = await result;
+  assertEquals(r.status, 200);
+  assertEquals(calls[0].method, "cancelSubscription");
+  assertEquals(calls[0].args[0], "sub_orphan");
+  const expire = events.findIndex((e) =>
+    e.table === "pagarme_checkout_attempts" && e.op === "update" && e.values?.state === "expired"
+  );
+  const reserve = events.findIndex((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert");
+  assert(expire !== -1 && reserve !== -1 && expire < reserve);
+});
+
+Deno.test("stale orphan cancel fails with network error: 409, reservation kept, nothing else runs", async () => {
+  const { events, calls, result } = run(
+    {
+      plan: PLAN,
+      subRow: null,
+      stalePending: [{ id: "stale-1", pagarme_subscription_id: "sub_orphan" }],
+    },
+    { failCancel: true, failCancelWith: new Error("timeout") },
+  );
+  const r = await result;
+  assertEquals(r.status, 409);
+  assertEquals(calls.filter((c) => c.method !== "cancelSubscription").length, 0, "no create-side gateway calls");
+  assertEquals(events.filter((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert").length, 0, "no new reservation");
+  assertEquals(
+    events.filter((e) => e.table === "pagarme_checkout_attempts" && e.op === "update" && e.values?.state === "expired").length,
+    0,
+    "stale attempt must remain pending",
+  );
+});
+
+Deno.test("stale orphan cancel 4xx (already canceled or gone): treated as settled, expire and proceed", async () => {
+  const { result } = run(
+    { plan: PLAN, subRow: null, stalePending: [{ id: "stale-1", pagarme_subscription_id: "sub_orphan" }] },
+    { failCancel: true, failCancelWith: new PagarmeApiError(404, null), subStatus: "active" },
+  );
+  const r = await result;
+  assertEquals(r.status, 200);
 });
