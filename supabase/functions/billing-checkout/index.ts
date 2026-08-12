@@ -96,7 +96,7 @@ Deno.serve(async (req: Request) => {
     // against the same customer.
     if (
       subRow?.status === "active" || subRow?.status === "trialing" ||
-      subRow?.status === "past_due"
+      subRow?.status === "past_due" || subRow?.status === "unpaid"
     ) {
       return json({ error: "Este workspace já tem uma assinatura ativa." }, 409, headers);
     }
