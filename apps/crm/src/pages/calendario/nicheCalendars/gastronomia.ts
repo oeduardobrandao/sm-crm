@@ -54,13 +54,14 @@ export const gastronomiaDef: NicheCalendarDef = {
           type: 'world',
           tags: ['world', 'bebidas'],
         },
-        { date: 'Carnaval', name: 'Semana de Carnaval', type: 'week', tags: ['br', 'bebidas'] }, // data móvel — cai em fevereiro ou março conforme o ano
+        { date: 'Carnaval', name: 'Semana de Carnaval', type: 'week', tags: ['br', 'bebidas'] }, // data móvel — cai em fevereiro ou março conforme o ano; também listado em Março
       ],
     },
     {
       month: 'Março',
       num: '03',
       events: [
+        { date: 'Carnaval', name: 'Semana de Carnaval', type: 'week', tags: ['br', 'bebidas'] }, // mesmo evento móvel listado em Fevereiro — Carnaval cai em fev. ou mar. conforme o ano
         { date: '11/03', name: 'Dia da Pipoca', type: 'world', tags: ['world'] }, // fonte: data distinta do National Popcorn Day americano (19/01)
         { date: '17/03', name: 'Dia de São Patrício', type: 'world', tags: ['world', 'bebidas'] },
         {
@@ -73,6 +74,7 @@ export const gastronomiaDef: NicheCalendarDef = {
         { date: '21/03', name: 'Dia do Tiramisù', type: 'world', tags: ['world', 'doces'] }, // fonte: criado em 2017 pelos jornalistas italianos Clara e Gigi Padovani
         { date: '25/03', name: 'Dia do Waffle', type: 'world', tags: ['world', 'doces'] },
         { date: '31/03', name: 'Dia Nacional da Saúde e Nutrição', type: 'br', tags: ['br'] },
+        { date: 'Páscoa', name: 'Semana da Páscoa', type: 'week', tags: ['br', 'world', 'doces'] }, // data móvel — cai em março ou abril conforme o ano; também listado em Abril
       ],
     },
     {
@@ -91,7 +93,7 @@ export const gastronomiaDef: NicheCalendarDef = {
         },
         { date: '24/04', name: 'Dia Internacional do Milho', type: 'world', tags: ['world'] },
         { date: '26/04', name: 'Dia do Pretzel', type: 'world', tags: ['world', 'doces'] }, // fonte: National Pretzel Day (EUA)
-        { date: 'Páscoa', name: 'Semana da Páscoa', type: 'week', tags: ['br', 'world', 'doces'] }, // data móvel — chocolate, colomba pascal e pratos de peixe entram no cardápio
+        { date: 'Páscoa', name: 'Semana da Páscoa', type: 'week', tags: ['br', 'world', 'doces'] }, // mesmo evento móvel listado em Março — chocolate, colomba pascal e pratos de peixe entram no cardápio
       ],
     },
     {

@@ -20,9 +20,17 @@ editoriais por mês/categoria, conforme já documentado no artigo da KB
   manualmente qual calendário de nicho ver. Não usa `Cliente.especialidade`
   (texto livre, sem padronização confiável), não propõe nicho automaticamente.
 - **5 nichos no v1**: Médico (já existe, conteúdo inalterado), Jurídico, Varejo,
-  Beleza & Estética, Gastronomia. Mesma densidade do médico — ~150+ datas/ano por
-  nicho novo (datas nacionais, mundiais, profissões do setor, semanas/meses
-  temáticos), não uma lista enxuta só com as datas óbvias.
+  Beleza & Estética, Gastronomia. Alvo original era mesma densidade do médico
+  (~150+ datas/ano); densidade real ficou abaixo disso — Jurídico 77, Varejo 62,
+  Beleza & Estética 45, Gastronomia 94 — e esse número final é o aceito, não uma
+  lacuna a fechar. Médico chega a ~163 por ter uma camada de campanhas oficiais
+  de conscientização (OMS/Ministério da Saúde) sem equivalente nos outros
+  setores; o resto do que existe em listas públicas de "datas comemorativas"
+  para jurídico/varejo/beleza/gastronomia é ruído de agregador SEO sem fonte
+  verificável ou com datas conflitantes entre sites. A regra de rastreabilidade
+  abaixo (confirmar via pesquisa ou descartar) tem prioridade sobre bater o
+  número — cada nicho novo teve suas datas checadas e o que não foi possível
+  confirmar como real ficou de fora, mesmo custando densidade.
 - **Sem banco de dados.** Continua hardcoded no frontend, mesmo padrão de hoje —
   ninguém pediu edição em runtime nem admin UI; criar tabela+RLS+CRUD pra uma
   lista que muda uma vez por ano seria over-engineering.
@@ -143,12 +151,13 @@ Rename mecânico, sem mudança visual — find/replace no CSS e no componente.
 
 ### Curadoria de conteúdo
 
-As ~150+ datas de cada nicho novo (Jurídico, Varejo, Beleza & Estética,
-Gastronomia) são redigidas como parte da implementação, seguindo o padrão do
-médico: datas nacionais e mundiais do setor, profissões correlatas, semanas/
-meses temáticos. Datas menos óbvias (nomenclatura oficial, se é "dia" nacional
-vs. internacional, etc.) são checadas via pesquisa web em vez de só memória,
-por serem específicas do calendário brasileiro.
+As datas de cada nicho novo (Jurídico, Varejo, Beleza & Estética, Gastronomia)
+são redigidas como parte da implementação, seguindo o padrão do médico: datas
+nacionais e mundiais do setor, profissões correlatas, semanas/meses temáticos —
+mirando ~150+ por nicho, mas sem inflar a lista além do que dá pra confirmar
+(ver "Resultado real" nas Decisões de produto). Datas menos óbvias (nomenclatura
+oficial, se é "dia" nacional vs. internacional, etc.) são checadas via pesquisa
+web em vez de só memória, por serem específicas do calendário brasileiro.
 
 **Datas móveis** (Black Friday, período de Carnaval/Páscoa, "semana do
 consumidor", etc.) não entram como data fixa de um ano específico — `date` é
@@ -193,6 +202,7 @@ essas 600 datas existem e estão certas".
 
   Roda contra os 5 datasets automaticamente — pega erros de curadoria (~750
   entradas ao todo) sem precisar revisar cada linha manualmente.
+
 - **Componente**: teste leve de `NicheCalendar`/`CalendarioPage` cobrindo troca
   de nicho no `Select` (conteúdo do nicho anterior some, do novo aparece,
   filtro/busca resetam) e persistência em localStorage entre remounts.

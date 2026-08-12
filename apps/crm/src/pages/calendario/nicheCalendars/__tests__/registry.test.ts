@@ -92,6 +92,25 @@ describe('NICHE_CALENDARS data integrity', () => {
   );
 });
 
+describe('cross-month movable holidays', () => {
+  // Carnaval, Páscoa and Corpus Christi don't have a fixed month — Carnaval can fall in
+  // fevereiro or março, Páscoa in março or abril, Corpus Christi (Páscoa+60d) in maio or junho.
+  // A niche that only lists one of these under a single NicheMonth card silently hides it from
+  // users browsing the *other* possible month in years it lands there (caught by Codex review on
+  // apps/crm/src/pages/calendario/nicheCalendars/gastronomia.ts — Páscoa was Abril-only).
+  const MOVABLE_HOLIDAY_PATTERNS = [/carnaval/i, /páscoa|pascoa/i, /corpus christi/i];
+
+  it.each(NICHE_CALENDARS)('$label: every movable-holiday event spans 2+ months', (niche) => {
+    for (const pattern of MOVABLE_HOLIDAY_PATTERNS) {
+      const monthsWithMatch = niche.data
+        .filter((month) => month.events.some((e) => pattern.test(e.name)))
+        .map((month) => month.month);
+      if (monthsWithMatch.length === 0) continue; // this niche doesn't reference this holiday
+      expect(monthsWithMatch.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+});
+
 describe('niche persistence helpers', () => {
   const KEY = 'mesaas:calendario:ultimoNicho';
 

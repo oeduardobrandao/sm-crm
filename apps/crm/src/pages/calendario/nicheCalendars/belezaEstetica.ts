@@ -58,7 +58,8 @@ export const belezaEsteticaDef: NicheCalendarDef = {
         },
         {
           // data móvel (pode cair em fevereiro ou março, conforme a Páscoa) — maior pico
-          // sazonal do setor de beleza no Brasil: glitter, penteados, maquiagem à prova d'água
+          // sazonal do setor de beleza no Brasil: glitter, penteados, maquiagem à prova d'água.
+          // Também listado em Março.
           date: 'Carnaval',
           name: "Carnaval — alta temporada de glitter e maquiagem à prova d'água",
           type: 'br',
@@ -70,6 +71,13 @@ export const belezaEsteticaDef: NicheCalendarDef = {
       month: 'Março',
       num: '03',
       events: [
+        {
+          // mesmo evento móvel listado em Fevereiro — Carnaval cai em fev. ou mar. conforme o ano
+          date: 'Carnaval',
+          name: "Carnaval — alta temporada de glitter e maquiagem à prova d'água",
+          type: 'br',
+          tags: ['br'],
+        },
         { date: '08/03', name: 'Dia Internacional da Mulher', type: 'world', tags: ['world'] },
         // fonte: Resolução da Assembleia Geral da ONU 66/281 (2012), proposta pelo Butão
         {

@@ -55,7 +55,7 @@ export const varejoDef: NicheCalendarDef = {
           name: 'Carnaval — fantasias, moda e beleza (data móvel, confira o ano)',
           type: 'month',
           tags: ['br', 'month', 'moda'],
-        },
+        }, // também listado em Março
         {
           date: 'Fevereiro',
           name: 'Volta às Aulas — reta final da temporada',
@@ -82,11 +82,17 @@ export const varejoDef: NicheCalendarDef = {
       badge: 'Consumidor · E-commerce',
       events: [
         {
+          date: 'Fev/Mar (móvel)',
+          name: 'Carnaval — fantasias, moda e beleza (data móvel, confira o ano)',
+          type: 'month',
+          tags: ['br', 'month', 'moda'],
+        }, // mesmo evento móvel listado em Fevereiro
+        {
           date: 'Mar/Abr (móvel)',
           name: 'Páscoa — data móvel, confira o ano corrente',
           type: 'month',
           tags: ['br', 'month'],
-        },
+        }, // também listado em Abril
         {
           date: '08/03',
           name: 'Dia Internacional da Mulher',
@@ -124,6 +130,12 @@ export const varejoDef: NicheCalendarDef = {
       num: '04',
       badge: 'Design · Livro',
       events: [
+        {
+          date: 'Mar/Abr (móvel)',
+          name: 'Páscoa — data móvel, confira o ano corrente',
+          type: 'month',
+          tags: ['br', 'month'],
+        }, // mesmo evento móvel listado em Março
         {
           date: '22/04',
           name: 'Dia da Terra — consumo consciente e sustentabilidade',
@@ -180,6 +192,12 @@ export const varejoDef: NicheCalendarDef = {
           type: 'world',
           tags: ['world', 'consumidor'],
         }, // fonte: data ligada a iniciativa da UNESCO
+        {
+          date: '+60d da Páscoa (móvel)',
+          name: 'Corpus Christi — feriado prolongado, pico de viagens e lazer',
+          type: 'month',
+          tags: ['br', 'month'],
+        }, // Páscoa + 60 dias cai entre 21/mai e 24/jun conforme o ano; também listado em Junho
       ],
     },
     {
@@ -205,7 +223,7 @@ export const varejoDef: NicheCalendarDef = {
           name: 'Corpus Christi — feriado prolongado, pico de viagens e lazer',
           type: 'month',
           tags: ['br', 'month'],
-        },
+        }, // mesmo evento móvel listado em Maio
         { date: '24/06', name: 'São João — ápice da Festa Junina', type: 'br', tags: ['br'] },
       ],
     },
