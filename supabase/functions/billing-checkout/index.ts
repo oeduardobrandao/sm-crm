@@ -8,7 +8,7 @@ import {
   resolveTrialDays,
 } from "../_shared/trial.ts";
 import { isWorkspaceOwner } from "../_shared/workspace-role.ts";
-import { hasEverSubscribed } from "../_shared/billing-logic.ts";
+import { annualCheckoutBlocked, hasEverSubscribed } from "../_shared/billing-logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -58,8 +58,19 @@ Deno.serve(async (req: Request) => {
 
     const { data: plan } = await svc
       .from("plans")
-      .select("id, stripe_price_id, stripe_price_id_annual")
+      .select("id, stripe_price_id, stripe_price_id_annual, pagarme_12x_enabled")
       .eq("id", planId).single();
+
+    // Post-cutover, the annual plan is sold as 12x via Pagar.me; a pre-cutover tab must not
+    // open a one-shot annual Stripe subscription. Monthly is unaffected.
+    if (annualCheckoutBlocked(interval, plan)) {
+      return json(
+        { error: "O plano anual agora é parcelado em 12x no cartão. Atualize a página para assinar." },
+        400,
+        headers,
+      );
+    }
+
     const priceId = interval === "year" ? plan?.stripe_price_id_annual : plan?.stripe_price_id;
     if (!priceId) return json({ error: "Plan price not configured" }, 400, headers);
 

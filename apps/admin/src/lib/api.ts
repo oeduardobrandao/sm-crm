@@ -303,7 +303,7 @@ export interface PayingWorkspace {
   /** Coupon/discount label when the live Stripe amount is discounted. */
   discount_label: string | null;
   /** Whether monthly_cents came from live Stripe or the plan's catalog price. */
-  amount_source: 'stripe' | 'catalog' | null;
+  amount_source: 'stripe' | 'pagarme' | 'catalog' | null;
 }
 
 export interface MrrSummary {

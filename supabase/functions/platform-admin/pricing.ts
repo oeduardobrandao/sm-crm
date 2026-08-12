@@ -36,6 +36,9 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 
 export interface PriceableSub {
   workspace_id: string;
+  /** Which provider owns this row ('stripe' | 'pagarme'). NOT NULL in the db (default
+   * 'stripe'); nullable here so a missing select surfaces as stripe semantics, never a crash. */
+  provider: string | null;
   status?: string | null;
   plan_id: string | null;
   billing_interval: string | null;
@@ -62,6 +65,7 @@ export interface PlanMeta {
 export function resolveMirrorAmount(
   s: Pick<
     PriceableSub,
+    | "provider"
     | "amount_cents"
     | "currency"
     | "amount_interval"
@@ -74,15 +78,16 @@ export function resolveMirrorAmount(
   amount_cents: number | null;
   interval: string | null;
   discount_label: string | null;
-  amount_source: "stripe" | "catalog" | null;
+  amount_source: "stripe" | "pagarme" | "catalog" | null;
   needsLiveFetch: boolean;
 } {
+  const isPagarme = s.provider === "pagarme";
   if (s.amount_cents != null) {
     return {
       amount_cents: s.amount_cents,
       interval: s.amount_interval ?? s.billing_interval,
       discount_label: s.discount_label,
-      amount_source: "stripe",
+      amount_source: isPagarme ? "pagarme" : "stripe",
       needsLiveFetch: false,
     };
   }
@@ -94,7 +99,10 @@ export function resolveMirrorAmount(
     interval: s.billing_interval,
     discount_label: null,
     amount_source: catalog != null ? "catalog" : null,
-    needsLiveFetch: !!s.stripe_subscription_id,
+    // A Pagar.me row is priced synchronously at checkout; its stripe_subscription_id (if any)
+    // is a leftover from before the switch — fetching it would price a dead subscription and
+    // write it back over the Pagar.me mirror.
+    needsLiveFetch: !isPagarme && !!s.stripe_subscription_id,
   };
 }
 
@@ -119,7 +127,7 @@ export async function priceSubscriptionRows<T extends PriceableSub>(
       interval: string | null;
       amount_cents: number | null;
       discount_label: string | null;
-      amount_source: "stripe" | "catalog" | null;
+      amount_source: "stripe" | "pagarme" | "catalog" | null;
     }
   >
 > {
@@ -153,13 +161,26 @@ export async function priceSubscriptionRows<T extends PriceableSub>(
         amount_source: "stripe",
         needsLiveFetch: false,
       };
-      // Write back so the next load reads the mirror instead of Stripe.
-      const { error } = await svc
+      // Write back so the next load reads the mirror instead of Stripe. CAS on provider: if a
+      // concurrent Pagar.me bind took the row while the Stripe fetch was in flight, zero rows
+      // match — this is an opportunistic cache refresh, so we just skip and log (the in-memory
+      // result for THIS response still shows the read-time snapshot, which is acceptable).
+      const { data: written, error } = await svc
         .from("workspace_subscriptions")
         .update(buildAmountColumns(amt))
-        .eq("workspace_id", r.row.workspace_id);
+        .eq("workspace_id", r.row.workspace_id)
+        .eq("provider", "stripe")
+        // Same-provider pin: a webhook rebind to a NEW Stripe subscription mid-fetch keeps
+        // provider = 'stripe', so the id observed at read time must also still match — or this
+        // write-back would stamp the OLD subscription's amount into the new one's mirror.
+        .eq("stripe_subscription_id", r.row.stripe_subscription_id)
+        .select("workspace_id");
       if (error) {
         console.error("[platform-admin] amount write-back failed:", error.message);
+      } else if (!written?.length) {
+        console.warn(
+          `[platform-admin] amount write-back skipped for workspace ${r.row.workspace_id}: provider changed mid-fetch`,
+        );
       }
     } catch (err) {
       console.error("[platform-admin] price stripe fetch failed:", (err as Error).message);

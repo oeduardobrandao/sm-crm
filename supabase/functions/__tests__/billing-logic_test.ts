@@ -1,6 +1,8 @@
 import { assert, assertEquals } from "./assert.ts";
 import {
   aggregateMrr,
+  annualCheckoutBlocked,
+  extractInvoiceSubscriptionId,
   hasEverSubscribed,
   isMrrStatus,
   resolvePlanFromPriceId,
@@ -150,4 +152,49 @@ Deno.test("aggregateMrr: rows that cannot be priced are dropped, not counted", (
   const r = aggregateMrr(rows);
   assertEquals(r.mrr_cents, 5000);
   assertEquals(r.paying_count, 1);
+});
+
+// ─── extractInvoiceSubscriptionId ─────────────────────────────────────────────
+
+Deno.test("extractInvoiceSubscriptionId reads the root string shape (acacia)", () => {
+  assertEquals(extractInvoiceSubscriptionId({ subscription: "sub_123" }), "sub_123");
+});
+
+Deno.test("extractInvoiceSubscriptionId reads an expanded subscription object", () => {
+  assertEquals(extractInvoiceSubscriptionId({ subscription: { id: "sub_123" } }), "sub_123");
+});
+
+Deno.test("extractInvoiceSubscriptionId reads the basil parent shape", () => {
+  assertEquals(
+    extractInvoiceSubscriptionId({
+      parent: { subscription_details: { subscription: "sub_456" } },
+    }),
+    "sub_456",
+  );
+});
+
+Deno.test("extractInvoiceSubscriptionId prefers the root shape over parent", () => {
+  assertEquals(
+    extractInvoiceSubscriptionId({
+      subscription: "sub_root",
+      parent: { subscription_details: { subscription: "sub_parent" } },
+    }),
+    "sub_root",
+  );
+});
+
+Deno.test("extractInvoiceSubscriptionId returns null for a non-subscription invoice", () => {
+  assertEquals(extractInvoiceSubscriptionId({}), null);
+  assertEquals(extractInvoiceSubscriptionId({ subscription: null }), null);
+  assertEquals(extractInvoiceSubscriptionId({ subscription: {} }), null);
+});
+
+// ─── annualCheckoutBlocked ────────────────────────────────────────────────────────
+
+Deno.test("annualCheckoutBlocked blocks year only when the plan is on pagarme 12x", () => {
+  assertEquals(annualCheckoutBlocked("year", { pagarme_12x_enabled: true }), true);
+  assertEquals(annualCheckoutBlocked("year", { pagarme_12x_enabled: false }), false);
+  assertEquals(annualCheckoutBlocked("month", { pagarme_12x_enabled: true }), false);
+  assertEquals(annualCheckoutBlocked("year", { pagarme_12x_enabled: null }), false);
+  assertEquals(annualCheckoutBlocked("year", null), false);
 });

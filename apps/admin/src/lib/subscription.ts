@@ -17,6 +17,8 @@ export interface SubscriptionSummary {
 
 /** Full subscription view shown on the workspace detail (mirror + live Stripe amount). */
 export interface SubscriptionInfo {
+  /** Which billing provider owns this subscription row. */
+  provider: 'stripe' | 'pagarme';
   status: string | null;
   plan_id: string | null;
   plan_name: string | null;
@@ -26,13 +28,16 @@ export interface SubscriptionInfo {
   failed_payment_count: number;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
+  pagarme_subscription_id: string | null;
+  /** Card installments on the annual charge (12 for the Pagar.me 12x plan). */
+  installments: number | null;
   amount_cents: number | null;
   /** Pre-discount amount, present only when a discount makes it differ from amount_cents. */
   gross_cents: number | null;
   currency: string | null;
   interval: string | null;
   discount_label: string | null;
-  amount_source: 'stripe' | 'catalog' | null;
+  amount_source: 'stripe' | 'pagarme' | 'catalog' | null;
   stripe_dashboard_url: string | null;
 }
 

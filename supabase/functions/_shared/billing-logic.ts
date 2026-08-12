@@ -47,6 +47,19 @@ export function hasEverSubscribed(
   );
 }
 
+/**
+ * Once a plan's annual price is sold as 12x via Pagar.me (pagarme_12x_enabled), the Stripe
+ * annual checkout must refuse: a tab loaded before the cutover could otherwise still open a
+ * one-shot annual Stripe subscription. Monthly plans stay on Stripe and are never blocked.
+ * Fail-open on a missing plan/flag: the gate defaulting to off is the rollout switch.
+ */
+export function annualCheckoutBlocked(
+  interval: "month" | "year",
+  plan: { pagarme_12x_enabled?: boolean | null } | null | undefined,
+): boolean {
+  return interval === "year" && plan?.pagarme_12x_enabled === true;
+}
+
 export interface PlanPriceRow {
   id: string;
   stripe_price_id: string | null;
@@ -119,4 +132,26 @@ export function aggregateMrr<T extends MrrRow>(
     priced.push({ ...r, monthly_cents: monthly });
   }
   return { mrr_cents, paying_count: priced.length, priced };
+}
+
+// ─── Invoice → subscription id ─────────────────────────────────────────────
+
+export interface InvoiceSubscriptionSource {
+  subscription?: string | { id?: string | null } | null;
+  parent?: {
+    subscription_details?: { subscription?: string | { id?: string | null } | null } | null;
+  } | null;
+}
+
+/**
+ * Extracts the subscription id from a Stripe invoice payload. Webhook payloads use the
+ * ACCOUNT's API version regardless of the SDK pin: older versions (acacia) carry
+ * `invoice.subscription` at the root, basil (2025-03-31+) moved it to
+ * `invoice.parent.subscription_details.subscription`, and either shape may be an expanded
+ * object instead of a string. Null means the invoice is not tied to a subscription.
+ */
+export function extractInvoiceSubscriptionId(invoice: InvoiceSubscriptionSource): string | null {
+  const raw = invoice.subscription ?? invoice.parent?.subscription_details?.subscription ?? null;
+  if (raw == null) return null;
+  return typeof raw === "string" ? raw : (raw.id ?? null);
 }
