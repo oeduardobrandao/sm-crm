@@ -8,6 +8,8 @@ export interface CronFailureError {
   postId?: number;
   postCaption?: string;
   clientId?: number;
+  clientName?: string;
+  workspaceName?: string;
 }
 
 export interface CronFailureDetail {
@@ -43,14 +45,18 @@ export async function sendCronFailureEmail(
           ? escapeHtml(e.postCaption.length > 60 ? e.postCaption.slice(0, 57) + "..." : e.postCaption)
           : "";
         const postLabel = e.postId ? `#${e.postId}` : "?";
-        const clientLabel = e.clientId ? `#${e.clientId}` : "";
+        const clientLabel = e.clientName
+          ? escapeHtml(e.clientName)
+          : e.clientId ? `#${e.clientId}` : "";
+        const workspaceLabel = e.workspaceName ? escapeHtml(e.workspaceName) : "";
         const codeLabel = e.errorCode ? escapeHtml(e.errorCode) : "";
 
         return [
           "<tr>",
           `<td style="padding:8px;border:1px solid #ddd;vertical-align:top;">`,
+          workspaceLabel ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:#f0f0f0;color:#555;font-size:11px;font-weight:600;margin-bottom:2px;">${workspaceLabel}</span><br>` : "",
           `<strong>Post ${escapeHtml(postLabel)}</strong>`,
-          clientLabel ? `<br><span style="color:#666;font-size:12px;">Cliente ${escapeHtml(clientLabel)}</span>` : "",
+          clientLabel ? `<br><span style="color:#666;font-size:12px;">Cliente ${clientLabel}</span>` : "",
           caption ? `<br><span style="color:#888;font-size:12px;">${caption}</span>` : "",
           "</td>",
           `<td style="padding:8px;border:1px solid #ddd;vertical-align:top;">`,
