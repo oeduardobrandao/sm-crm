@@ -192,7 +192,12 @@ export function mapGatewayFailure(
   err: unknown,
 ): { status: number; body: { error: string; code: string } } {
   const apiErr = err instanceof PagarmeApiError ? err : null;
-  if (apiErr && apiErr.status >= 400 && apiErr.status < 500) {
+  // 401/403 are OUR credential/config problem and 429 is OUR rate limit at the gateway —
+  // never blame the user's document/card for those; they fall through to the generic 500.
+  const userAttributable = apiErr !== null &&
+    apiErr.status >= 400 && apiErr.status < 500 &&
+    apiErr.status !== 401 && apiErr.status !== 403 && apiErr.status !== 429;
+  if (userAttributable) {
     if (stage === "customer") {
       return {
         status: 400,

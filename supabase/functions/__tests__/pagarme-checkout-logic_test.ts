@@ -224,3 +224,15 @@ Deno.test("mapGatewayFailure: never leaks the gateway body", () => {
   const r = mapGatewayFailure("card", new PagarmeApiError(400, { message: "SECRET detail" }));
   assertEquals(JSON.stringify(r).includes("SECRET"), false);
 });
+
+Deno.test("mapGatewayFailure: 401/403/429 are OUR problem, never user-blame copy", () => {
+  const expected = {
+    status: 500,
+    body: { error: "Erro ao processar o pagamento. Tente novamente.", code: "gateway_error" },
+  };
+  for (const status of [401, 403, 429]) {
+    for (const stage of ["customer", "card", "subscription"] as const) {
+      assertEquals(mapGatewayFailure(stage, new PagarmeApiError(status, null)), expected, `${stage} ${status}`);
+    }
+  }
+});
