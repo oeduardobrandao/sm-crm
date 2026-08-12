@@ -1141,4 +1141,41 @@ Rejeitado com evidência:
 
 ## Post-PR hardening
 
-(Seção preenchida durante os review rounds, como nas fases 1-3.)
+### Fix round 1 (Task 3 review + Codex externo, 2026-08-12)
+
+Aceitos e corrigidos na branch antes do Task 4:
+
+- **[Task-3 reviewer, Important] reconcile() sem pin de estado observado** (`handler.ts:199`).
+  O write de `reconcile()` carregava só os 3 pins de ownership; os caminhos terminal/dunning
+  (`:228`/`:249`) já pinam o estado observado. Como `subscription.*` NÃO é autoritativa para
+  pagamento (charge.* é), um `subscription.updated` que leu a linha antes de um
+  `charge.payment_failed` concorrente commitar reescreve o `past_due` recém-criado com um
+  "active" obsoleto (o guard `holdDunning` lê o mesmo snapshot obsoleto). Bursts no mesmo
+  segundo, ordem não garantida, estão confirmados no spike. Fix: `casWrite(row, subId,
+  result.columns, { observedStatus: row.status })` em `reconcile()` — a corrida falha o CAS →
+  5xx → redelivery re-lê o estado fresco e `holdDunning` aplica. Converge; mesmo padrão dos
+  outros dois writes. (Gatilho depende da semântica de status do Pagar.me em falha de
+  renovação, pergunta 5 ao suporte ainda aberta; o fix é barato e fecha a janela
+  independentemente da resposta.)
+- **[Codex P2] `shouldCancelDeniedCheckoutSub` não cobre status Stripe terminais**
+  (`pagarme-logic.ts:213`). Um checkout negado redelivered depois que a Stripe expirou a sub
+  (`incomplete` → ~23h → `incomplete_expired`) chamaria `subscriptions.cancel` num status
+  terminal → throw → 5xx em loop infinito. Fix: tratar `canceled` E `incomplete_expired` como
+  já-resolvidos (nada a cancelar → ack).
+
+Rejeitado:
+
+- **[Codex P1] "webhook sem entrypoint deployável"** — correto como observação, mas é
+  exatamente o **Task 4** (`index.ts` serve shell + `config.toml` + `config-audit` +
+  `.env.example`), a próxima task já especificada neste plano. O Codex revisou o branch em
+  implementação parcial (SDD faz commits por task); não é lacuna do plano. Nenhuma ação além de
+  executar o Task 4.
+
+Recusados sem fix (documentados):
+
+- **[Task-3 reviewer, Minor] branch `.is("status", null)` do casWrite sem teste** — a coluna
+  `status` nunca é null numa linha pagarme bindada; o branch gêmeo (`pagarme_dunning_key` null)
+  é testado e é estruturalmente idêntico. Sem valor de teste.
+- **[Task-3 reviewer, Minor] `getDefaultPlanId` lido mesmo quando o target é descartado**
+  (cancels paid-through) — um round-trip desperdiçado, sem impacto de correção;
+  `resolvePagarmePlanTarget` exige o default upfront. Não vale reestruturar.
