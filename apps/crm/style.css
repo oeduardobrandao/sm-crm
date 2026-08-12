@@ -4030,7 +4030,7 @@ select.form-input option {
 }
 
 /* ===== Medical Calendar ===== */
-.med-controls {
+.niche-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -4041,26 +4041,26 @@ select.form-input option {
   border-bottom: 1px solid var(--border-color);
 }
 
-.med-count {
+.niche-count {
   font-family: var(--font-mono);
   font-size: 0.7rem;
   letter-spacing: 0.08em;
   color: var(--text-muted);
 }
 
-.med-count span {
+.niche-count span {
   color: var(--primary-color);
   font-weight: 700;
 }
 
-.med-legend {
+.niche-legend {
   display: flex;
   gap: 1.25rem;
   flex-wrap: wrap;
   align-items: center;
 }
 
-.med-legend-item {
+.niche-legend-item {
   display: flex;
   align-items: center;
   gap: 0.4rem;
@@ -4070,20 +4070,20 @@ select.form-input option {
   color: var(--text-muted);
 }
 
-.med-legend-dot {
+.niche-legend-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.med-grid {
+.niche-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 1.5rem;
 }
 
-.med-month-card {
+.niche-month-card {
   background: var(--surface-main);
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -4091,11 +4091,11 @@ select.form-input option {
   transition: border-color 0.2s;
 }
 
-.med-month-card:hover {
+.niche-month-card:hover {
   border-color: rgba(234, 179, 8, 0.3);
 }
 
-.med-month-header {
+.niche-month-header {
   padding: 1.25rem 1.5rem;
   display: flex;
   align-items: center;
@@ -4103,21 +4103,21 @@ select.form-input option {
   border-bottom: 1px solid var(--border-color);
 }
 
-.med-month-name {
+.niche-month-name {
   font-family: var(--font-heading);
   font-size: 1.4rem;
   font-weight: 700;
   color: var(--text-main);
 }
 
-.med-month-num {
+.niche-month-num {
   font-family: var(--font-mono);
   font-size: 0.65rem;
   color: var(--text-muted);
   letter-spacing: 0.1em;
 }
 
-.med-month-badge {
+.niche-month-badge {
   font-family: var(--font-mono);
   font-size: 0.6rem;
   letter-spacing: 0.08em;
@@ -4129,11 +4129,11 @@ select.form-input option {
   white-space: nowrap;
 }
 
-.med-events {
+.niche-events {
   padding: 0.5rem 0;
 }
 
-.med-event-item {
+.niche-event-item {
   display: flex;
   align-items: flex-start;
   gap: 0.8rem;
@@ -4142,11 +4142,11 @@ select.form-input option {
   cursor: default;
 }
 
-.med-event-item:hover {
+.niche-event-item:hover {
   background: var(--surface-hover);
 }
 
-.med-event-date {
+.niche-event-date {
   font-family: var(--font-mono);
   font-size: 0.68rem;
   color: var(--text-muted);
@@ -4156,7 +4156,7 @@ select.form-input option {
   padding-top: 1px;
 }
 
-.med-event-dot {
+.niche-event-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -4164,7 +4164,7 @@ select.form-input option {
   margin-top: 6px;
 }
 
-.med-event-name {
+.niche-event-name {
   font-size: 0.82rem;
   line-height: 1.5;
   color: var(--text-main);
