@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Globe, Flag } from 'lucide-react';
@@ -12,6 +12,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   getClientes,
   getMembros,
@@ -29,6 +36,13 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
 import { formatDeadlineStatus } from './deadlineStatus';
+import { dotColorMap, type NicheCalendarDef } from './nicheCalendars/types';
+import {
+  NICHE_CALENDARS,
+  DEFAULT_NICHE_KEY,
+  readStoredNicheKey,
+  writeStoredNicheKey,
+} from './nicheCalendars/registry';
 
 // ---- Types ----
 interface DeadlineEvent {
@@ -40,785 +54,6 @@ interface DeadlineEvent {
   diasRestantes: number;
   estourado: boolean;
 }
-
-// ---- Medical Calendar Data ----
-const medicalData = [
-  {
-    month: 'Janeiro',
-    num: '01',
-    badge: 'Roxo · Hanseníase',
-    events: [
-      { date: '02/01', name: 'Dia do Sanitarista', type: 'prof', tags: ['br', 'prof'] },
-      { date: '04/01', name: 'Dia do Hemofílico', type: 'br', tags: ['br'] },
-      {
-        date: '19/01',
-        name: 'Dia Mundial do Terapeuta Ocupacional',
-        type: 'world',
-        tags: ['world', 'prof'],
-      },
-      { date: '20/01', name: 'Dia do Farmacêutico', type: 'prof', tags: ['br', 'prof'] },
-      {
-        date: '20/01',
-        name: 'Dia Nacional da Parteira Tradicional',
-        type: 'br',
-        tags: ['br', 'prof'],
-      },
-      { date: '29/01', name: 'Dia Nacional da Visibilidade Trans', type: 'br', tags: ['br'] },
-      {
-        date: '30/01',
-        name: 'Dia Mundial das Doenças Tropicais Negligenciadas',
-        type: 'world',
-        tags: ['world', 'infeccao'],
-      },
-      {
-        date: 'Último dom.',
-        name: 'Dia Nacional de Combate e Prevenção da Hanseníase',
-        type: 'br',
-        tags: ['br', 'infeccao'],
-      },
-    ],
-  },
-  {
-    month: 'Fevereiro',
-    num: '02',
-    badge: 'Laranja · Leucemia',
-    events: [
-      {
-        date: '01–08/02',
-        name: 'Semana Nacional de Prevenção da Gravidez na Adolescência',
-        type: 'week',
-        tags: ['br', 'week'],
-      },
-      {
-        date: '04/02',
-        name: 'Dia Mundial do Câncer (OMS)',
-        type: 'world',
-        tags: ['world', 'cancer'],
-      },
-      { date: '05/02', name: 'Dia Nacional da Mamografia', type: 'br', tags: ['br', 'cancer'] },
-      {
-        date: '10/02',
-        name: 'Dia Internacional da Epilepsia',
-        type: 'world',
-        tags: ['world', 'saude-mental'],
-      },
-      {
-        date: '13/02',
-        name: 'Dia Internacional do Preservativo',
-        type: 'world',
-        tags: ['world', 'infeccao'],
-      },
-      { date: '14/02', name: 'Dia Mundial dos Enfermos', type: 'world', tags: ['world'] },
-      {
-        date: '15/02',
-        name: 'Dia Internacional de Luta contra o Câncer Infantil',
-        type: 'world',
-        tags: ['world', 'cancer'],
-      },
-      { date: '18/02', name: 'Dia Nacional da Criança Traqueostomizada', type: 'br', tags: ['br'] },
-      {
-        date: '20/02',
-        name: 'Dia Nacional de Combate às Drogas e Alcoolismo',
-        type: 'br',
-        tags: ['br', 'saude-mental'],
-      },
-      { date: '28/02', name: 'Dia Mundial das Doenças Raras', type: 'world', tags: ['world'] },
-      {
-        date: '28/02',
-        name: 'Dia e Semana Nacional sobre Doenças Raras',
-        type: 'br',
-        tags: ['br'],
-      },
-    ],
-  },
-  {
-    month: 'Março',
-    num: '03',
-    badge: '',
-    events: [
-      { date: '01/03', name: 'Dia Mundial de Zero Discriminação', type: 'world', tags: ['world'] },
-      { date: '03/03', name: 'Dia Mundial da Audição (OMS)', type: 'world', tags: ['world'] },
-      {
-        date: '03/03',
-        name: 'Dia Mundial dos Defeitos Congênitos',
-        type: 'world',
-        tags: ['world'],
-      },
-      { date: '04/03', name: 'Dia Mundial da Obesidade', type: 'world', tags: ['world'] },
-      {
-        date: '04/03',
-        name: 'Dia Internacional de Conscientização sobre HPV',
-        type: 'world',
-        tags: ['world', 'cancer', 'infeccao'],
-      },
-      { date: '08/03', name: 'Dia Internacional da Mulher', type: 'world', tags: ['world'] },
-      { date: '10/03', name: 'Dia Nacional de Combate ao Sedentarismo', type: 'br', tags: ['br'] },
-      {
-        date: '10–16/03',
-        name: 'Semana Mundial do Glaucoma',
-        type: 'week',
-        tags: ['world', 'week'],
-      },
-      { date: '2ª qui.', name: 'Dia Mundial do Rim (OMS)', type: 'world', tags: ['world'] },
-      {
-        date: '15/03',
-        name: 'Dia Mundial de Conscientização sobre Covid Longa',
-        type: 'world',
-        tags: ['world', 'infeccao'],
-      },
-      { date: '18/03', name: 'Dia Mundial do Sono', type: 'world', tags: ['world'] },
-      { date: '20/03', name: 'Dia Mundial da Saúde Bucal', type: 'world', tags: ['world'] },
-      {
-        date: '21/03',
-        name: 'Dia Mundial e Nacional da Síndrome de Down',
-        type: 'world',
-        tags: ['world', 'br'],
-      },
-      { date: '22/03', name: 'Dia Mundial da Água (OMS)', type: 'world', tags: ['world'] },
-      {
-        date: '24/03',
-        name: 'Dia Mundial de Combate à Tuberculose (OMS)',
-        type: 'world',
-        tags: ['world', 'infeccao'],
-      },
-      {
-        date: '24–31/03',
-        name: 'Semana Nacional de Luta Contra a Tuberculose',
-        type: 'week',
-        tags: ['br', 'week', 'infeccao'],
-      },
-      {
-        date: '26/03',
-        name: 'Dia Mundial do Câncer de Colo de Útero',
-        type: 'world',
-        tags: ['world', 'cancer'],
-      },
-      {
-        date: '27/03',
-        name: 'Dia Nacional de Combate ao Câncer Colorretal',
-        type: 'br',
-        tags: ['br', 'cancer'],
-      },
-      {
-        date: '30/03',
-        name: 'Dia Mundial do Transtorno Bipolar',
-        type: 'world',
-        tags: ['world', 'saude-mental'],
-      },
-      { date: '31/03', name: 'Dia da Saúde e da Nutrição', type: 'br', tags: ['br'] },
-    ],
-  },
-  {
-    month: 'Abril',
-    num: '04',
-    badge: 'Verde · Saúde no Trabalho',
-    events: [
-      {
-        date: 'Abril',
-        name: 'Abril Verde — Saúde e Segurança no Trabalho',
-        type: 'month',
-        tags: ['br', 'month'],
-      },
-      {
-        date: '02/04',
-        name: 'Dia Mundial de Conscientização sobre o Autismo',
-        type: 'world',
-        tags: ['world', 'br', 'saude-mental'],
-      },
-      { date: '02–07/04', name: 'Semana da Saúde no Brasil', type: 'week', tags: ['br', 'week'] },
-      {
-        date: '04/04',
-        name: 'Dia Nacional do Portador da Doença de Parkinson',
-        type: 'br',
-        tags: ['br'],
-      },
-      { date: '06/04', name: 'Dia Mundial da Atividade Física', type: 'world', tags: ['world'] },
-      { date: '07/04', name: 'Dia Mundial da Saúde (OMS)', type: 'world', tags: ['world'] },
-      { date: '11/04', name: 'Dia do Infectologista', type: 'prof', tags: ['prof'] },
-      {
-        date: '11/04',
-        name: 'Dia Mundial de Conscientização da Doença de Parkinson',
-        type: 'world',
-        tags: ['world'],
-      },
-      { date: '12/04', name: 'Dia do Obstetra', type: 'prof', tags: ['prof'] },
-      {
-        date: '14/04',
-        name: 'Dia Mundial da Doença de Chagas (OMS)',
-        type: 'world',
-        tags: ['world', 'infeccao'],
-      },
-      { date: '17/04', name: 'Dia Mundial da Hemofilia', type: 'world', tags: ['world'] },
-      {
-        date: '24/04',
-        name: 'Dia Mundial de Combate à Meningite',
-        type: 'world',
-        tags: ['world', 'infeccao'],
-      },
-      {
-        date: '23–30/04',
-        name: 'Semana de Vacinação nas Américas (OPAS)',
-        type: 'week',
-        tags: ['world', 'week', 'infeccao'],
-      },
-      {
-        date: '24–30/04',
-        name: 'Semana Mundial da Imunização (OMS)',
-        type: 'week',
-        tags: ['world', 'week', 'infeccao'],
-      },
-      {
-        date: '25/04',
-        name: 'Dia Mundial da Malária (OMS)',
-        type: 'world',
-        tags: ['world', 'infeccao'],
-      },
-      {
-        date: '26/04',
-        name: 'Dia Nacional de Prevenção e Combate à Hipertensão Arterial',
-        type: 'br',
-        tags: ['br', 'cardio'],
-      },
-      {
-        date: '28/04',
-        name: 'Dia Mundial da Segurança e Saúde no Trabalho (OIT)',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: '28/04',
-        name: 'Dia Nacional — Vítimas de Acidentes e Doenças do Trabalho',
-        type: 'br',
-        tags: ['br'],
-      },
-    ],
-  },
-  {
-    month: 'Maio',
-    num: '05',
-    badge: 'Amarelo · Trânsito',
-    events: [
-      { date: '1ª ter.', name: 'Dia Mundial de Combate à Asma', type: 'world', tags: ['world'] },
-      {
-        date: '05/05',
-        name: 'Dia Mundial de Higienização das Mãos (OMS)',
-        type: 'world',
-        tags: ['world', 'infeccao'],
-      },
-      {
-        date: '05/05',
-        name: 'Dia Internacional da Parteira',
-        type: 'world',
-        tags: ['world', 'prof'],
-      },
-      {
-        date: '05/05',
-        name: 'Dia Nacional do Uso Racional de Medicamentos',
-        type: 'br',
-        tags: ['br'],
-      },
-      {
-        date: '07/05',
-        name: 'Dia Internacional da Luta contra a Endometriose',
-        type: 'world',
-        tags: ['world'],
-      },
-      { date: '08/05', name: 'Dia da Talassemia', type: 'world', tags: ['world'] },
-      {
-        date: '08/05',
-        name: 'Dia Mundial do Câncer de Ovário',
-        type: 'world',
-        tags: ['world', 'cancer'],
-      },
-      { date: '10/05', name: 'Dia Mundial do Lúpus', type: 'world', tags: ['world'] },
-      { date: '12/05', name: 'Dia da Enfermagem', type: 'world', tags: ['world', 'prof'] },
-      {
-        date: '12/05',
-        name: 'Dia da Conscientização da Fibromialgia',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: '14/05',
-        name: 'Dia Nacional — Doenças Cardiovasculares na Mulher',
-        type: 'br',
-        tags: ['br', 'cardio'],
-      },
-      {
-        date: '15/05',
-        name: 'Dia de Combate à Infecção Hospitalar',
-        type: 'world',
-        tags: ['world', 'infeccao'],
-      },
-      {
-        date: '16/05',
-        name: 'Dia Mundial de Conscientização sobre Doença Celíaca',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: '17/05',
-        name: 'Dia Mundial da Hipertensão Arterial',
-        type: 'world',
-        tags: ['world', 'cardio'],
-      },
-      {
-        date: '18/05',
-        name: 'Dia Nacional da Luta Antimanicomial',
-        type: 'br',
-        tags: ['br', 'saude-mental'],
-      },
-      {
-        date: '19/05',
-        name: 'Dia Mundial da Doença Inflamatória Intestinal',
-        type: 'world',
-        tags: ['world'],
-      },
-      { date: '19/05', name: 'Dia Nacional de Doação de Leite Humano', type: 'br', tags: ['br'] },
-      { date: '19/05', name: 'Dia Nacional de Combate à Cefaleia', type: 'br', tags: ['br'] },
-      {
-        date: '22/05',
-        name: 'Dia Mundial da Pré-eclâmpsia',
-        type: 'world',
-        tags: ['world', 'cardio'],
-      },
-      { date: '25/05', name: 'Dia Mundial da Tireoide', type: 'world', tags: ['world'] },
-      {
-        date: '28/05',
-        name: 'Dia Internacional de Ação pela Saúde da Mulher',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: '29/05',
-        name: 'Dia Mundial da Saúde Digestiva (OMGE)',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: 'Últ. qua.',
-        name: 'Dia Mundial da Esclerose Múltipla',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: '31/05',
-        name: 'Dia Mundial Sem Tabaco (OMS)',
-        type: 'world',
-        tags: ['world', 'cancer'],
-      },
-    ],
-  },
-  {
-    month: 'Junho',
-    num: '06',
-    badge: 'Laranja · Queimaduras',
-    events: [
-      {
-        date: 'Junho',
-        name: 'Junho Laranja — Prevenção a Queimaduras',
-        type: 'month',
-        tags: ['br', 'month'],
-      },
-      {
-        date: 'Junho',
-        name: 'Junho Vermelho — Doação de Sangue',
-        type: 'month',
-        tags: ['br', 'month'],
-      },
-      {
-        date: '02/06',
-        name: 'Dia Mundial de Conscientização dos Transtornos Alimentares',
-        type: 'world',
-        tags: ['world', 'saude-mental'],
-      },
-      { date: '05/06', name: 'Dia Mundial do Meio Ambiente (ONU)', type: 'world', tags: ['world'] },
-      { date: '06/06', name: 'Dia Nacional de Luta Contra Queimaduras', type: 'br', tags: ['br'] },
-      { date: '06/06', name: 'Dia Nacional do Teste do Pezinho', type: 'br', tags: ['br'] },
-      {
-        date: '07/06',
-        name: 'Dia Mundial da Segurança Alimentar (OMS)',
-        type: 'world',
-        tags: ['world'],
-      },
-      { date: '09/06', name: 'Dia Nacional da Imunização', type: 'br', tags: ['br', 'infeccao'] },
-      {
-        date: '11/06',
-        name: 'Dia Mundial do Câncer de Próstata',
-        type: 'world',
-        tags: ['world', 'cancer'],
-      },
-      {
-        date: '14/06',
-        name: 'Dia Mundial do Doador de Sangue (OMS)',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: '15/06',
-        name: 'Dia Mundial de Conscientização sobre o Abuso Contra a Pessoa Idosa',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: '19/06',
-        name: 'Dia Mundial de Conscientização sobre a Doença Falciforme (ONU)',
-        type: 'world',
-        tags: ['world'],
-      },
-      { date: '21/06', name: 'Dia Nacional de Combate à Asma', type: 'br', tags: ['br'] },
-      { date: '21/06', name: 'Dia Nacional de Luta Contra a ELA', type: 'br', tags: ['br'] },
-      { date: '25/06', name: 'Dia Mundial do Vitiligo', type: 'world', tags: ['world'] },
-      { date: '26/06', name: 'Dia Nacional do Diabetes', type: 'br', tags: ['br'] },
-      {
-        date: '26/06',
-        name: 'Dia Internacional — Abuso e Tráfico Ilícito de Drogas (ONU)',
-        type: 'world',
-        tags: ['world', 'saude-mental'],
-      },
-    ],
-  },
-  {
-    month: 'Julho',
-    num: '07',
-    badge: 'Amarelo · Hepatites Virais',
-    events: [
-      {
-        date: 'Julho',
-        name: 'Julho Amarelo — Hepatites Virais',
-        type: 'month',
-        tags: ['br', 'month', 'infeccao'],
-      },
-      { date: '01/07', name: 'Dia da Vacina BCG', type: 'br', tags: ['br', 'infeccao'] },
-      { date: '02/07', name: 'Dia do Hospital', type: 'br', tags: ['br'] },
-      {
-        date: '06/07',
-        name: 'Dia Mundial das Zoonoses',
-        type: 'world',
-        tags: ['world', 'infeccao'],
-      },
-      {
-        date: '09/07',
-        name: 'Dia Nacional de Alerta Contra a Insuficiência Cardíaca',
-        type: 'br',
-        tags: ['br', 'cardio'],
-      },
-      { date: '10/07', name: 'Dia da Saúde Ocular', type: 'br', tags: ['br'] },
-      { date: '22/07', name: 'Dia Mundial do Cérebro (FMN)', type: 'world', tags: ['world'] },
-      {
-        date: '25/07',
-        name: 'Dia Mundial de Prevenção do Afogamento (OMS)',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: '27/07',
-        name: 'Dia Mundial do Câncer de Cabeça e Pescoço',
-        type: 'world',
-        tags: ['world', 'cancer'],
-      },
-      {
-        date: '28/07',
-        name: 'Dia Mundial da Hepatite (OMS)',
-        type: 'world',
-        tags: ['world', 'infeccao'],
-      },
-    ],
-  },
-  {
-    month: 'Agosto',
-    num: '08',
-    badge: 'Dourado · Amamentação',
-    events: [
-      {
-        date: 'Agosto',
-        name: 'Agosto Dourado — Amamentação',
-        type: 'month',
-        tags: ['br', 'month'],
-      },
-      {
-        date: '01–07/08',
-        name: 'Semana Mundial da Amamentação (OMS)',
-        type: 'week',
-        tags: ['world', 'week'],
-      },
-      {
-        date: '01/08',
-        name: 'Dia Mundial de Combate ao Câncer de Pulmão',
-        type: 'world',
-        tags: ['world', 'cancer'],
-      },
-      { date: '01/08', name: 'Dia Nacional dos Portadores de Vitiligo', type: 'br', tags: ['br'] },
-      {
-        date: '08/08',
-        name: 'Dia Nacional da Pessoa com Atrofia Muscular Espinhal (AME)',
-        type: 'br',
-        tags: ['br'],
-      },
-      {
-        date: 'Sem. 10/08',
-        name: 'Semana Nacional de Controle e Combate à Leishmaniose',
-        type: 'week',
-        tags: ['br', 'week', 'infeccao'],
-      },
-      {
-        date: '12/08',
-        name: 'Dia Internacional da Juventude (ONU)',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: '26/08',
-        name: 'Dia Nacional de Combate ao Colesterol',
-        type: 'br',
-        tags: ['br', 'cardio'],
-      },
-      { date: 'Últ. 5ª', name: 'Dia Nacional da Diálise', type: 'br', tags: ['br'] },
-    ],
-  },
-  {
-    month: 'Setembro',
-    num: '09',
-    badge: 'Amarelo-Verde · Suicídio',
-    events: [
-      {
-        date: 'Setembro',
-        name: 'Setembro Amarelo — Prevenção ao Suicídio',
-        type: 'month',
-        tags: ['br', 'month', 'saude-mental'],
-      },
-      {
-        date: 'Setembro',
-        name: 'Setembro Verde — Doação de Órgãos',
-        type: 'month',
-        tags: ['br', 'month'],
-      },
-      {
-        date: '01/09',
-        name: 'Dia Mundial da Saúde do Coração',
-        type: 'world',
-        tags: ['world', 'cardio'],
-      },
-      {
-        date: '02/09',
-        name: 'Dia Nacional de Prevenção à Gravidez na Adolescência',
-        type: 'br',
-        tags: ['br'],
-      },
-      {
-        date: '05/09',
-        name: 'Dia Nacional da Doação de Sangue e Órgãos',
-        type: 'br',
-        tags: ['br'],
-      },
-      {
-        date: '10/09',
-        name: 'Dia Mundial de Prevenção ao Suicídio (OMS)',
-        type: 'world',
-        tags: ['world', 'saude-mental'],
-      },
-      {
-        date: '15/09',
-        name: 'Dia Internacional da Democracia (ONU)',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: '17/09',
-        name: 'Dia Mundial da Segurança do Paciente (OMS)',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: '21/09',
-        name: 'Dia Mundial da Doença de Alzheimer (ADI)',
-        type: 'world',
-        tags: ['world', 'saude-mental'],
-      },
-      {
-        date: '28/09',
-        name: 'Dia Internacional do Acesso Seguro ao Aborto',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: '29/09',
-        name: 'Dia Mundial do Coração (OMS)',
-        type: 'world',
-        tags: ['world', 'cardio'],
-      },
-    ],
-  },
-  {
-    month: 'Outubro',
-    num: '10',
-    badge: 'Rosa · Câncer de Mama',
-    events: [
-      {
-        date: 'Outubro',
-        name: 'Outubro Rosa — Câncer de Mama',
-        type: 'month',
-        tags: ['br', 'month', 'cancer'],
-      },
-      {
-        date: 'Outubro',
-        name: 'Outubro Azul — Saúde do Homem / Câncer de Próstata',
-        type: 'month',
-        tags: ['br', 'month', 'cancer'],
-      },
-      {
-        date: '04/10',
-        name: 'Dia da Medicina do Trabalho / Médico do Trabalho',
-        type: 'prof',
-        tags: ['prof'],
-      },
-      {
-        date: '05/10',
-        name: 'Dia Mundial de Saúde Mental (OMS)',
-        type: 'world',
-        tags: ['world', 'saude-mental'],
-      },
-      {
-        date: '10/10',
-        name: 'Dia Mundial da Saúde Mental (WFMH)',
-        type: 'world',
-        tags: ['world', 'saude-mental'],
-      },
-      {
-        date: '10/10',
-        name: 'Dia Nacional dos Direitos Fundamentais da Pessoa com Transtornos Mentais',
-        type: 'br',
-        tags: ['br', 'saude-mental'],
-      },
-      { date: '11/10', name: 'Dia Nacional de Prevenção da Obesidade', type: 'br', tags: ['br'] },
-      {
-        date: '13/10',
-        name: 'Dia do Terapeuta Ocupacional e Fisioterapeuta',
-        type: 'prof',
-        tags: ['prof'],
-      },
-      { date: '15/10', name: 'Dia Mundial da Visão (OMS)', type: 'world', tags: ['world'] },
-      { date: '16/10', name: 'Dia Mundial da Alimentação (FAO)', type: 'world', tags: ['world'] },
-      { date: '20/10', name: 'Dia do Médico', type: 'prof', tags: ['br', 'prof'] },
-      { date: '20/10', name: 'Dia Nacional do Câncer de Mama', type: 'br', tags: ['br', 'cancer'] },
-      {
-        date: '22/10',
-        name: 'Dia Internacional de Atenção à Gagueira',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: '23/10',
-        name: 'Dia Nacional de Combate à Dengue',
-        type: 'br',
-        tags: ['br', 'infeccao'],
-      },
-      {
-        date: '26/10',
-        name: 'Dia Nacional de Combate ao Câncer de Cabeça e Pescoço',
-        type: 'br',
-        tags: ['br', 'cancer'],
-      },
-      { date: '29/10', name: 'Dia Mundial do AVC (OMS)', type: 'world', tags: ['world', 'cardio'] },
-    ],
-  },
-  {
-    month: 'Novembro',
-    num: '11',
-    badge: 'Azul · Saúde do Homem',
-    events: [
-      {
-        date: 'Novembro',
-        name: 'Novembro Azul — Saúde do Homem / Câncer de Próstata',
-        type: 'month',
-        tags: ['br', 'month', 'cancer'],
-      },
-      {
-        date: '03/11',
-        name: 'Dia Mundial e Nacional da Saúde Única (Lei nº 14.792/2024)',
-        type: 'br',
-        tags: ['br', 'world'],
-      },
-      {
-        date: '12/11',
-        name: 'Dia Mundial do Combate ao Diabetes (FID)',
-        type: 'world',
-        tags: ['world'],
-      },
-      { date: '14/11', name: 'Dia Mundial do Diabetes (OMS/FID)', type: 'world', tags: ['world'] },
-      { date: '17/11', name: 'Dia Mundial da Prematuridade (OMS)', type: 'world', tags: ['world'] },
-      { date: '20/11', name: 'Dia Nacional da Consciência Negra', type: 'br', tags: ['br'] },
-      { date: '21/11', name: 'Dia do Odontologista', type: 'prof', tags: ['prof'] },
-      {
-        date: 'Penúlt. sáb.',
-        name: 'Dia Nacional de Combate à Dengue',
-        type: 'br',
-        tags: ['br', 'infeccao'],
-      },
-      {
-        date: '23/11',
-        name: 'Dia Nacional de Combate ao Câncer Infanto-Juvenil',
-        type: 'br',
-        tags: ['br', 'cancer'],
-      },
-      {
-        date: '25/11',
-        name: 'Dia Internacional pela Eliminação da Violência contra a Mulher',
-        type: 'world',
-        tags: ['world'],
-      },
-    ],
-  },
-  {
-    month: 'Dezembro',
-    num: '12',
-    badge: 'Vermelho · HIV/AIDS / Laranja · Câncer de Pele',
-    events: [
-      {
-        date: 'Dezembro',
-        name: 'Dezembro Vermelho — Prevenção ao HIV/AIDS',
-        type: 'month',
-        tags: ['br', 'month', 'infeccao'],
-      },
-      {
-        date: 'Dezembro',
-        name: 'Dezembro Laranja — Câncer de Pele',
-        type: 'month',
-        tags: ['br', 'month', 'cancer'],
-      },
-      {
-        date: '01/12',
-        name: 'Dia Mundial de Luta Contra a AIDS (OMS)',
-        type: 'world',
-        tags: ['world', 'infeccao'],
-      },
-      {
-        date: '03/12',
-        name: 'Dia Internacional da Pessoa com Deficiência (ONU)',
-        type: 'world',
-        tags: ['world'],
-      },
-      {
-        date: '06/12',
-        name: 'Dia Nacional de Mobilização dos Homens pelo Fim da Violência contra Mulheres',
-        type: 'br',
-        tags: ['br'],
-      },
-      { date: '09/12', name: 'Dia da Nutrição e da Alimentação', type: 'br', tags: ['br'] },
-      { date: '10/12', name: 'Dia dos Direitos Humanos (ONU)', type: 'world', tags: ['world'] },
-      { date: '17/12', name: 'Dia Nacional dos Hansenianos', type: 'br', tags: ['br', 'infeccao'] },
-      { date: '27/12', name: 'Dia do Médico Sanitarista', type: 'prof', tags: ['prof'] },
-    ],
-  },
-];
-
-const dotColorMap: Record<string, string> = {
-  br: '#eab308',
-  world: '#14b8a6',
-  prof: '#f59e0b',
-  week: '#ec4899',
-  month: '#ef4444',
-};
 
 // ---- Financeiro Calendar ----
 function FinanceiroCalendar({
@@ -1304,10 +539,17 @@ function FinanceiroCalendar({
   );
 }
 
-// ---- Medical Calendar ----
-function MedicoCalendar() {
+// ---- Niche Calendar (Datas Comemorativas) ----
+function NicheCalendar({ niche }: { niche: NicheCalendarDef }) {
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Switching niches shows a different tag vocabulary — a filter/search that made sense
+  // for the previous niche can silently hide everything in the new one.
+  useEffect(() => {
+    setActiveFilter('all');
+    setSearchTerm('');
+  }, [niche.key]);
 
   const filterOptions = [
     { key: 'all', label: 'Todos' },
@@ -1328,14 +570,11 @@ function MedicoCalendar() {
       ),
     },
     { key: 'prof', label: 'Profissional' },
-    { key: 'cancer', label: 'Câncer' },
-    { key: 'cardio', label: 'Cardiologia' },
-    { key: 'saude-mental', label: 'Saúde Mental' },
-    { key: 'infeccao', label: 'Infecção' },
+    ...Object.entries(niche.filterLabels).map(([key, label]) => ({ key, label })),
   ];
 
   let totalVisible = 0;
-  medicalData.forEach((monthData) => {
+  niche.data.forEach((monthData) => {
     monthData.events.forEach((e) => {
       const matchFilter = activeFilter === 'all' || e.tags?.includes(activeFilter);
       const matchSearch =
@@ -1348,7 +587,7 @@ function MedicoCalendar() {
 
   return (
     <div>
-      <div className="med-controls">
+      <div className="niche-controls">
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {filterOptions.map((f) => (
             <button
@@ -1392,36 +631,36 @@ function MedicoCalendar() {
           />
         </div>
 
-        <div className="med-count">
+        <div className="niche-count">
           <span>{totalVisible}</span> DATAS EXIBIDAS
         </div>
       </div>
 
-      <div className="med-legend" style={{ marginBottom: '2rem' }}>
-        <div className="med-legend-item">
-          <div className="med-legend-dot" style={{ background: dotColorMap.br }} />
+      <div className="niche-legend" style={{ marginBottom: '2rem' }}>
+        <div className="niche-legend-item">
+          <div className="niche-legend-dot" style={{ background: dotColorMap.br }} />
           Brasil
         </div>
-        <div className="med-legend-item">
-          <div className="med-legend-dot" style={{ background: dotColorMap.world }} />
+        <div className="niche-legend-item">
+          <div className="niche-legend-dot" style={{ background: dotColorMap.world }} />
           Mundial / OMS / OPAS
         </div>
-        <div className="med-legend-item">
-          <div className="med-legend-dot" style={{ background: dotColorMap.prof }} />
+        <div className="niche-legend-item">
+          <div className="niche-legend-dot" style={{ background: dotColorMap.prof }} />
           Profissões
         </div>
-        <div className="med-legend-item">
-          <div className="med-legend-dot" style={{ background: dotColorMap.week }} />
+        <div className="niche-legend-item">
+          <div className="niche-legend-dot" style={{ background: dotColorMap.week }} />
           Semanas
         </div>
-        <div className="med-legend-item">
-          <div className="med-legend-dot" style={{ background: dotColorMap.month }} />
+        <div className="niche-legend-item">
+          <div className="niche-legend-dot" style={{ background: dotColorMap.month }} />
           Meses temáticos
         </div>
       </div>
 
-      <div className="med-grid">
-        {medicalData.map((monthData) => {
+      <div className="niche-grid">
+        {niche.data.map((monthData) => {
           const filtered = monthData.events.filter((e) => {
             const matchFilter = activeFilter === 'all' || e.tags?.includes(activeFilter);
             const matchSearch =
@@ -1433,23 +672,23 @@ function MedicoCalendar() {
           if (filtered.length === 0) return null;
 
           return (
-            <div key={monthData.month} className="med-month-card">
-              <div className="med-month-header">
+            <div key={monthData.month} className="niche-month-card">
+              <div className="niche-month-header">
                 <div>
-                  <div className="med-month-name">{monthData.month}</div>
-                  <div className="med-month-num">{monthData.num}</div>
+                  <div className="niche-month-name">{monthData.month}</div>
+                  <div className="niche-month-num">{monthData.num}</div>
                 </div>
-                {monthData.badge && <span className="med-month-badge">{monthData.badge}</span>}
+                {monthData.badge && <span className="niche-month-badge">{monthData.badge}</span>}
               </div>
-              <div className="med-events">
+              <div className="niche-events">
                 {filtered.map((e, i) => (
-                  <div key={i} className="med-event-item">
-                    <div className="med-event-date">{e.date}</div>
+                  <div key={i} className="niche-event-item">
+                    <div className="niche-event-date">{e.date}</div>
                     <div
-                      className="med-event-dot"
+                      className="niche-event-dot"
                       style={{ background: dotColorMap[e.type] || '#888' }}
                     />
-                    <div className="med-event-name">{e.name}</div>
+                    <div className="niche-event-name">{e.name}</div>
                   </div>
                 ))}
               </div>
@@ -1463,7 +702,18 @@ function MedicoCalendar() {
 
 // ---- Main Page ----
 export default function CalendarioPage() {
-  const [activeTab, setActiveTab] = useState<'financeiro' | 'medico'>('financeiro');
+  const [activeTab, setActiveTab] = useState<'financeiro' | 'comemorativas'>('financeiro');
+  const nicheKeys = NICHE_CALENDARS.map((n) => n.key);
+  const [activeNicheKey, setActiveNicheKey] = useState(() =>
+    readStoredNicheKey(nicheKeys, DEFAULT_NICHE_KEY),
+  );
+  const activeNiche = NICHE_CALENDARS.find((n) => n.key === activeNicheKey) ?? NICHE_CALENDARS[0];
+
+  function handleNicheChange(key: string) {
+    setActiveNicheKey(key);
+    writeStoredNicheKey(key);
+  }
+
   const { canSeeFinancials } = useAuth();
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
@@ -1534,11 +784,9 @@ export default function CalendarioPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <header className="header animate-up">
         <div className="header-title">
-          <h1>{activeTab === 'financeiro' ? 'Calendário' : 'Calendário Médico'}</h1>
+          <h1>{activeTab === 'financeiro' ? 'Calendário' : activeNiche.title}</h1>
           <p style={{ color: 'var(--text-muted)' }}>
-            {activeTab === 'financeiro'
-              ? 'Visão geral mensal.'
-              : 'Brasil & Mundial — Datas de Saúde & Conscientização'}
+            {activeTab === 'financeiro' ? 'Visão geral mensal.' : activeNiche.subtitle}
           </p>
         </div>
       </header>
@@ -1551,10 +799,10 @@ export default function CalendarioPage() {
           Calendário
         </button>
         <button
-          className={`calendar-tab${activeTab === 'medico' ? ' active' : ''}`}
-          onClick={() => setActiveTab('medico')}
+          className={`calendar-tab${activeTab === 'comemorativas' ? ' active' : ''}`}
+          onClick={() => setActiveTab('comemorativas')}
         >
-          Datas Médicas
+          Datas Comemorativas
         </button>
       </div>
 
@@ -1569,7 +817,23 @@ export default function CalendarioPage() {
             canSeeFinancials={canSeeFinancials}
           />
         ) : (
-          <MedicoCalendar />
+          <>
+            <div style={{ marginBottom: '1.5rem', maxWidth: 280 }}>
+              <Select value={activeNicheKey} onValueChange={handleNicheChange}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {NICHE_CALENDARS.map((n) => (
+                    <SelectItem key={n.key} value={n.key}>
+                      {n.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <NicheCalendar niche={activeNiche} />
+          </>
         )}
       </div>
     </div>
