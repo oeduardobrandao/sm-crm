@@ -170,20 +170,30 @@ export function createPagarmeCheckoutHandler(deps: {
 
     // Best-effort terminal state for the attempt: a failure to record it only costs an
     // earlier-than-necessary 409 for 15 minutes (the expiry sweep clears it), never money.
+    // Structurally best-effort: postgrest-js resolves fetch failures (incl. the abort) as
+    // { error } today, but this helper must stay non-throwing even if that convention or
+    // the client ever changes — a post-bind throw here would fail a checkout that succeeded.
     const finishAttempt = async (
       state: "succeeded" | "failed",
       pagarmeSubscriptionId?: string,
     ) => {
-      const { error } = await db
-        .from("pagarme_checkout_attempts")
-        .update({
-          state,
-          updated_at: new Date().toISOString(),
-          ...(pagarmeSubscriptionId ? { pagarme_subscription_id: pagarmeSubscriptionId } : {}),
-        })
-        .eq("id", attemptId)
-        .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
-      if (error) console.error("[pagarme-checkout] attempt update failed:", error.message);
+      try {
+        const { error } = await db
+          .from("pagarme_checkout_attempts")
+          .update({
+            state,
+            updated_at: new Date().toISOString(),
+            ...(pagarmeSubscriptionId ? { pagarme_subscription_id: pagarmeSubscriptionId } : {}),
+          })
+          .eq("id", attemptId)
+          .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+        if (error) console.error("[pagarme-checkout] attempt update failed:", error.message);
+      } catch (e) {
+        console.error(
+          "[pagarme-checkout] attempt update threw:",
+          e instanceof Error ? e.message : String(e),
+        );
+      }
     };
 
     const GENERIC_500 = {
