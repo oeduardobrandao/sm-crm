@@ -1,8 +1,10 @@
 import { assertEquals } from "./assert.ts";
+import { PagarmeApiError } from "../_shared/pagarme.ts";
 import {
   buildChargeDunningKey,
   canWebhookWrite,
   crossProviderCheckoutBlocked,
+  isDefinitiveGatewayReject,
   isInForce,
   isPaidThrough,
   mapPagarmeTemporalFields,
@@ -10,6 +12,8 @@ import {
   resolvePagarmePlanTarget,
   shouldAdvanceDunning,
   shouldCancelDeniedCheckoutSub,
+  shouldSweepRemoteSubscription,
+  SWEEP_MIN_AGE_MS,
 } from "../_shared/pagarme-logic.ts";
 
 const NOW = new Date("2026-08-11T00:00:00Z");
@@ -449,4 +453,88 @@ Deno.test("shouldCancelDeniedCheckoutSub: non-checkout denial never cancels", ()
 Deno.test("shouldCancelDeniedCheckoutSub: terminal remote status is already resolved, acks", () => {
   assertEquals(shouldCancelDeniedCheckoutSub(true, "canceled"), false);
   assertEquals(shouldCancelDeniedCheckoutSub(true, "incomplete_expired"), false);
+});
+
+// ─── isDefinitiveGatewayReject ──────────────────────────────────────────────
+
+Deno.test("isDefinitiveGatewayReject: definitive 4xx (404, 422) are true", () => {
+  assertEquals(isDefinitiveGatewayReject(new PagarmeApiError(404, {})), true);
+  assertEquals(isDefinitiveGatewayReject(new PagarmeApiError(422, {})), true);
+});
+
+Deno.test("isDefinitiveGatewayReject: credential/throttle statuses (401, 403, 429) are false", () => {
+  assertEquals(isDefinitiveGatewayReject(new PagarmeApiError(401, {})), false);
+  assertEquals(isDefinitiveGatewayReject(new PagarmeApiError(403, {})), false);
+  assertEquals(isDefinitiveGatewayReject(new PagarmeApiError(429, {})), false);
+});
+
+Deno.test("isDefinitiveGatewayReject: 5xx is false", () => {
+  assertEquals(isDefinitiveGatewayReject(new PagarmeApiError(500, {})), false);
+});
+
+Deno.test("isDefinitiveGatewayReject: non-gateway errors (network, timeout) are false", () => {
+  assertEquals(isDefinitiveGatewayReject(new Error("network")), false);
+  assertEquals(isDefinitiveGatewayReject(new DOMException("timeout", "TimeoutError")), false);
+});
+
+// ─── shouldSweepRemoteSubscription ──────────────────────────────────────────
+
+const SWEEP_NOW = new Date("2026-08-13T00:00:00Z");
+const OLD_ENOUGH = new Date(SWEEP_NOW.getTime() - SWEEP_MIN_AGE_MS - 60_000).toISOString(); // 61 min old
+const TOO_YOUNG = new Date(SWEEP_NOW.getTime() - SWEEP_MIN_AGE_MS + 60_000).toISOString(); // 59 min old
+
+Deno.test("shouldSweepRemoteSubscription: linked wins over everything (pending, young, unrecognized)", () => {
+  const sub = { id: "sub_1", created_at: TOO_YOUNG, metadata: null };
+  assertEquals(
+    shouldSweepRemoteSubscription(sub, new Set(["sub_1"]), new Set(["sub_1"]), SWEEP_NOW),
+    "skip_linked",
+  );
+});
+
+Deno.test("shouldSweepRemoteSubscription: pending-attempt wins over young and unrecognized", () => {
+  const sub = { id: "sub_2", created_at: TOO_YOUNG, metadata: null };
+  assertEquals(
+    shouldSweepRemoteSubscription(sub, new Set(), new Set(["sub_2"]), SWEEP_NOW),
+    "skip_pending_attempt",
+  );
+  const oldUnrecognized = { id: "sub_2", created_at: OLD_ENOUGH, metadata: null };
+  assertEquals(
+    shouldSweepRemoteSubscription(oldUnrecognized, new Set(), new Set(["sub_2"]), SWEEP_NOW),
+    "skip_pending_attempt",
+  );
+});
+
+Deno.test("shouldSweepRemoteSubscription: 59 minutes old is skip_young, 61 minutes old is not", () => {
+  const young = { id: "sub_3", created_at: TOO_YOUNG, metadata: { workspace_id: "ws_1" } };
+  assertEquals(shouldSweepRemoteSubscription(young, new Set(), new Set(), SWEEP_NOW), "skip_young");
+  const old = { id: "sub_3", created_at: OLD_ENOUGH, metadata: { workspace_id: "ws_1" } };
+  assertEquals(shouldSweepRemoteSubscription(old, new Set(), new Set(), SWEEP_NOW), "cancel");
+});
+
+Deno.test("shouldSweepRemoteSubscription: missing or unparseable created_at is skip_young", () => {
+  const missing = { id: "sub_4", created_at: null, metadata: { workspace_id: "ws_1" } };
+  assertEquals(shouldSweepRemoteSubscription(missing, new Set(), new Set(), SWEEP_NOW), "skip_young");
+  const unparseable = { id: "sub_4", created_at: "not-a-date", metadata: { workspace_id: "ws_1" } };
+  assertEquals(
+    shouldSweepRemoteSubscription(unparseable, new Set(), new Set(), SWEEP_NOW),
+    "skip_young",
+  );
+});
+
+Deno.test("shouldSweepRemoteSubscription: missing metadata or empty workspace_id is skip_unrecognized", () => {
+  const noMetadata = { id: "sub_5", created_at: OLD_ENOUGH, metadata: null };
+  assertEquals(
+    shouldSweepRemoteSubscription(noMetadata, new Set(), new Set(), SWEEP_NOW),
+    "skip_unrecognized",
+  );
+  const emptyWorkspaceId = { id: "sub_5", created_at: OLD_ENOUGH, metadata: { workspace_id: "" } };
+  assertEquals(
+    shouldSweepRemoteSubscription(emptyWorkspaceId, new Set(), new Set(), SWEEP_NOW),
+    "skip_unrecognized",
+  );
+});
+
+Deno.test("shouldSweepRemoteSubscription: full orphan (old, unlinked, recognized) is cancel", () => {
+  const sub = { id: "sub_6", created_at: OLD_ENOUGH, metadata: { workspace_id: "ws_1" } };
+  assertEquals(shouldSweepRemoteSubscription(sub, new Set(), new Set(), SWEEP_NOW), "cancel");
 });

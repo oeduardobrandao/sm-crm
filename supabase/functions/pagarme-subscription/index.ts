@@ -1,0 +1,93 @@
+// Serve shell for pagarme-subscription: CORS, JWT auth, workspace-owner check, rate limit and
+// body validation. Everything after that is handler.ts (unit-tested with injected deps).
+// Auth is byte-for-byte the pagarme-checkout pattern: service-role client + getUser(token),
+// owner checked against workspace_members for THIS workspace, never profiles.role. Unlike
+// checkout, the user's e-mail is not needed by anything downstream.
+
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { buildCorsHeaders } from "../_shared/cors.ts";
+import { isWorkspaceOwner } from "../_shared/workspace-role.ts";
+import { checkRateLimit, getClientIP } from "../_shared/rate-limit.ts";
+import { parseSubscriptionBody } from "./logic.ts";
+import { createPagarmeSubscriptionGateway } from "./gateway.ts";
+import { handleSubscriptionAction } from "./handler.ts";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+Deno.serve(async (req: Request) => {
+  const corsHeaders = buildCorsHeaders(req);
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const headers = { "Content-Type": "application/json", ...corsHeaders };
+
+  try {
+    if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, headers);
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) return json({ error: "Unauthorized" }, 401, headers);
+    const token = authHeader.replace("Bearer ", "");
+
+    // Bounded global fetch: the auth-shell calls (getUser, profiles, membership, rate-limit
+    // RPC) carry no per-call abort signal, and a stalled one would hang until the edge
+    // runtime kills the isolate, bypassing the catch (documented repo failure mode).
+    // AbortSignal.any preserves the handler's own per-call signals.
+    const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      global: {
+        fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+          fetch(input, {
+            ...init,
+            signal: init?.signal
+              ? AbortSignal.any([init.signal, AbortSignal.timeout(10_000)])
+              : AbortSignal.timeout(10_000),
+          }),
+      },
+    });
+    const { data: { user }, error: authError } = await svc.auth.getUser(token);
+    if (authError || !user) return json({ error: "Unauthorized" }, 401, headers);
+
+    const { data: profile } = await svc
+      .from("profiles").select("conta_id").eq("id", user.id).single();
+    if (!profile?.conta_id) return json({ error: "No workspace" }, 400, headers);
+    const workspaceId = profile.conta_id as string;
+
+    const { data: membership } = await svc
+      .from("workspace_members")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("workspace_id", workspaceId)
+      .maybeSingle();
+    if (!isWorkspaceOwner(membership?.role as string | null | undefined)) {
+      return json({ error: "Forbidden" }, 403, headers);
+    }
+
+    // update_card attaches a tokenized card — a card-testing target. Same limits as checkout:
+    // 5/h per workspace, 10/h per IP. checkRateLimit fails open by design.
+    const wsAllowed = await checkRateLimit(svc, `pagarme-subscription:ws:${workspaceId}`, 5, 3600);
+    const ipAllowed = await checkRateLimit(svc, `pagarme-subscription:ip:${getClientIP(req)}`, 10, 3600);
+    if (!wsAllowed || !ipAllowed) {
+      return json({ error: "Muitas tentativas. Aguarde alguns minutos e tente de novo." }, 429, headers);
+    }
+
+    // parseSubscriptionBody takes `unknown` and 400s any non-object (null / string / array),
+    // so a malformed JSON body can never turn into a 500 here.
+    const body: unknown = await req.json().catch(() => null);
+    const parsed = parseSubscriptionBody(body);
+    if (!parsed.ok) return json({ error: parsed.error, code: parsed.code }, parsed.status, headers);
+
+    const result = await handleSubscriptionAction(
+      { db: svc, gateway: createPagarmeSubscriptionGateway() },
+      { workspaceId },
+      parsed.value,
+    );
+    return json(result.body, result.status, headers);
+  } catch (err) {
+    // Message only — the request body carries card_token/address and must never reach the
+    // logs (PCI/LGPD).
+    console.error("[pagarme-subscription] error:", err instanceof Error ? err.message : String(err));
+    return json({ error: "Erro interno." }, 500, headers);
+  }
+});
+
+function json(body: unknown, status: number, headers: Record<string, string>) {
+  return new Response(JSON.stringify(body), { status, headers });
+}

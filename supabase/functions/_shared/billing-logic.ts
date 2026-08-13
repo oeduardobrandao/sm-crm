@@ -1,6 +1,26 @@
 // Pure helpers for mapping Stripe subscription state to effective plans.
 // No Stripe/Supabase/env dependencies — unit-testable in isolation.
 
+import { SupabaseClient } from "npm:@supabase/supabase-js@2";
+
+const DB_TIMEOUT_MS = 10_000;
+
+/**
+ * The plan a workspace falls back to when it loses its paid subscription. Throws on a read
+ * ERROR (a transient failure must not silently downgrade someone to "free"); returns "free"
+ * only when the query succeeds and no default plan exists.
+ */
+export async function getDefaultPlanId(db: SupabaseClient): Promise<string> {
+  const { data, error } = await db
+    .from("plans")
+    .select("id")
+    .eq("is_default", true)
+    .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
+    .maybeSingle();
+  if (error) throw new Error(`default plan read failed: ${error.message}`);
+  return (data?.id as string) ?? "free";
+}
+
 /**
  * Maps a Stripe subscription status to the value workspaces.plan_id should take.
  * Returns null to mean "leave plan_id unchanged".

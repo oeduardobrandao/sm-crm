@@ -37,6 +37,7 @@ const REQUIRED_FUNCTIONS = [
   "invite-expire-cron",
   "crisp-sync-cron",
   "storage-autoclean-cron",
+  "billing-downgrade-cron",
   // Token/internal auth
   "crisp-identity",
   "instagram-integration",
@@ -69,6 +70,7 @@ const REQUIRED_FUNCTIONS = [
   "billing-portal",
   "stripe-webhook",
   "pagarme-webhook",
+  "pagarme-subscription",
 ];
 
 Deno.test("config.toml: all non-JWT functions have verify_jwt = false", async () => {

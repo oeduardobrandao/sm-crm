@@ -2,6 +2,7 @@
 // this module owns event semantics. Every DB call is bounded (house rule). Throws propagate
 // to the shell → 5xx → Pagar.me redelivers (up to 3 attempts, dashboard-configured).
 
+import { getDefaultPlanId } from "../_shared/billing-logic.ts";
 import {
   buildChargeDunningKey,
   canWebhookWrite,
@@ -136,19 +137,6 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
     }
   }
 
-  async function getDefaultPlanId(): Promise<string> {
-    const { data, error } = await deps.db
-      .from("plans").select("id").eq("is_default", true)
-      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)).maybeSingle();
-    if (error) {
-      // "free" on a FAILED read would be a stealth downgrade to a possibly wrong plan while
-      // still acking the event (spec-review P1). Throw → 5xx → redelivery. The fallback below
-      // is only for the proven absence of a default plan row.
-      throw new Error(`default plan read failed: ${error.message}`);
-    }
-    return (data?.id as string) ?? "free";
-  }
-
   async function grantPlan(
     row: SubscriptionRow,
     subId: string,
@@ -163,7 +151,7 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
       );
       return;
     }
-    const defaultPlanId = await getDefaultPlanId();
+    const defaultPlanId = await getDefaultPlanId(deps.db);
     const target = resolvePagarmePlanTarget(
       status,
       row.plan_id,

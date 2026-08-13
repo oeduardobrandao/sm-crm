@@ -5,6 +5,8 @@
 // fourth status observed when a subscription's first charge fails — no plan was ever granted in
 // that case, so treating it as canceled is safe.
 
+import { PagarmeApiError } from "./pagarme.ts";
+
 /** Maps a raw Pagar.me subscription status to our internal status, or null for an unknown value
  * (the caller logs and does not write). `future` (a subscription with a future start_at) is our
  * trial state — we never persist the literal "future". */
@@ -221,4 +223,57 @@ export function shouldCancelDeniedCheckoutSub(
   remoteStatus: string,
 ): boolean {
   return hasSession && !RESOLVED_STRIPE_STATUSES.has(remoteStatus);
+}
+
+/**
+ * True when a gateway error is a DEFINITIVE 4xx statement about the target resource —
+ * i.e. a DELETE that failed because the subscription is already canceled/gone. 401/403
+ * (our credentials) and 429 (throttled) say nothing about the resource and are NOT
+ * definitive; neither are 5xx/network/timeout errors.
+ */
+export function isDefinitiveGatewayReject(err: unknown): boolean {
+  return err instanceof PagarmeApiError &&
+    err.status >= 400 && err.status < 500 &&
+    err.status !== 401 && err.status !== 403 && err.status !== 429;
+}
+
+/** A remote subscription younger than this is never swept: it may be a checkout mid-flight. */
+export const SWEEP_MIN_AGE_MS = 60 * 60 * 1000;
+
+export type SweepVerdict =
+  | "cancel"
+  | "skip_linked"
+  | "skip_pending_attempt"
+  | "skip_young"
+  | "skip_unrecognized";
+
+/**
+ * Decides the fate of one remote Pagar.me subscription during the orphan sweep.
+ * - linked locally (any workspace_subscriptions row, any provider) -> skip_linked
+ * - referenced by a PENDING checkout attempt -> skip_pending_attempt (mid-recovery; the
+ *   checkout self-heal or the stale-attempt leg owns it)
+ * - created less than SWEEP_MIN_AGE_MS ago -> skip_young (racing an in-flight checkout)
+ * - no metadata.workspace_id -> skip_unrecognized (not created by our checkout; a manual
+ *   dashboard subscription is not ours to cancel — logged loudly, never touched)
+ * - otherwise -> cancel (an orphan our checkout created but never bound)
+ */
+export function shouldSweepRemoteSubscription(
+  sub: {
+    id: string;
+    created_at?: string | null;
+    metadata?: { workspace_id?: string | null } | null;
+  },
+  linkedSubIds: ReadonlySet<string>,
+  pendingAttemptSubIds: ReadonlySet<string>,
+  now: Date,
+): SweepVerdict {
+  if (linkedSubIds.has(sub.id)) return "skip_linked";
+  if (pendingAttemptSubIds.has(sub.id)) return "skip_pending_attempt";
+  const created = sub.created_at ? Date.parse(sub.created_at) : NaN;
+  if (Number.isNaN(created) || now.getTime() - created < SWEEP_MIN_AGE_MS) {
+    // An unparseable created_at is treated as young: never cancel on missing evidence.
+    return "skip_young";
+  }
+  if (!sub.metadata?.workspace_id) return "skip_unrecognized";
+  return "cancel";
 }
