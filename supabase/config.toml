@@ -165,9 +165,6 @@ verify_jwt = false
 [functions.loops-sync-cron]
 verify_jwt = false
 
-[functions.mention-email-cron]
-verify_jwt = false
-
 [functions.notification-email-cron]
 verify_jwt = false
 
