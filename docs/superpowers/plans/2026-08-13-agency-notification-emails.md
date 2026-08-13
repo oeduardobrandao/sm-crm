@@ -20,7 +20,7 @@ Every task's requirements implicitly include this section.
 - **Cron auth:** verify `x-cron-secret` (timing-safe) BEFORE any work. Never wildcard CORS; use `buildCorsHeaders(req)`. Never return raw error detail to clients; log internally, return generic.
 - **Bound every edge I/O** with `AbortSignal.timeout(10_000)` (Resend fetch AND the supabase client's `global.fetch`) — an unbounded fetch can outlive the isolate and bypass `catch`.
 - **`REVOKE … FROM PUBLIC` also strips `service_role`** on this instance. After revoking, `GRANT EXECUTE … TO service_role` explicitly; verify with `proacl`, not `has_function_privilege`.
-- **Migration version prefixes** must be unique AND sit above `origin/main`'s migrations tail. This plan uses `20260813000001/2/3`; **re-verify at PR-open time** with `git ls-tree origin/main:supabase/migrations | tail` and renumber above the tail if main advanced (the `migration-version-guard` CI job fails on duplicates; this repo has hit collisions before).
+- **Migration version prefixes** must be unique AND sit above `origin/main`'s migrations tail. `origin/main` already holds `20260813000001_pagarme_dunning_key` and `20260813000002_grant_pagarme_plan`, so this plan uses `20260813000003` (prefs table, Task 1 — already committed), `20260813000004` (claim RPC, Task 2), `20260813000005` (reschedule, Task 6). **Re-verify at PR-open time** with `git ls-tree origin/main:supabase/migrations | tail` and renumber above the tail if main advances further (the `migration-version-guard` CI job fails on duplicates; this repo has hit collisions before).
 - **Icons:** `lucide-react` only. Toggles: shadcn `Switch` (`@/components/ui/switch`).
 - **`store/*` exports plain async functions;** components wrap them in TanStack Query `useQuery`/`useMutation`.
 - **`npm run test:functions` dirties root `deno.lock`** — run `git checkout -- deno.lock` afterward.
@@ -29,9 +29,9 @@ Every task's requirements implicitly include this section.
 ## File Structure
 
 **Create:**
-- `supabase/migrations/20260813000001_notification_email_prefs.sql` — prefs table + CHECK + RLS + grants.
-- `supabase/migrations/20260813000002_claim_notification_emails.sql` — atomic claim RPC + partial index + explicit `service_role` grant.
-- `supabase/migrations/20260813000003_reschedule_notification_email_cron.sql` — unschedule `mention-email-cron`, schedule `notification-email-cron`.
+- `supabase/migrations/20260813000003_notification_email_prefs.sql` — prefs table + CHECK + RLS + grants. (Task 1, already committed.)
+- `supabase/migrations/20260813000004_claim_notification_emails.sql` — atomic claim RPC + partial index + explicit `service_role` grant.
+- `supabase/migrations/20260813000005_reschedule_notification_email_cron.sql` — unschedule `mention-email-cron`, schedule `notification-email-cron`.
 - `supabase/functions/_shared/notification-email.ts` — digest item resolution + HTML render + subject + `sendNotificationDigestEmail` + idempotency-key helper. (Supersedes `_shared/mention-email.ts`.)
 - `supabase/functions/notification-email-cron/handler.ts` — DI business logic (claim RPC → group → order → send → reset/release/deadline).
 - `supabase/functions/notification-email-cron/index.ts` — auth wrapper + bounded fetch + wiring.
@@ -160,7 +160,7 @@ git commit -m "feat(notifications): notification_email_prefs table + RLS"
 ### Task 2: Atomic claim RPC migration
 
 **Files:**
-- Create: `supabase/migrations/20260813000002_claim_notification_emails.sql`
+- Create: `supabase/migrations/20260813000004_claim_notification_emails.sql`
 - Test: `supabase/tests/entitlements/64_notification_email_prefs.sql` (append Part B)
 
 **Interfaces:**
@@ -170,7 +170,7 @@ git commit -m "feat(notifications): notification_email_prefs table + RLS"
 - [ ] **Step 1: Write the migration**
 
 ```sql
--- 20260813000002_claim_notification_emails.sql
+-- 20260813000004_claim_notification_emails.sql
 -- Atomic claim for the notification digest cron. Every predicate — type set,
 -- settle/age window, read/dismissed/emailed re-check, workspace membership, and
 -- preference opt-out — is embedded in ONE statement so the send/no-send decision
@@ -300,7 +300,7 @@ Expected: `PASS 64 Part B …` and `PASS 64 Part C …`. (If no local DB: CI enf
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20260813000002_claim_notification_emails.sql \
+git add supabase/migrations/20260813000004_claim_notification_emails.sql \
         supabase/tests/entitlements/64_notification_email_prefs.sql
 git commit -m "feat(notifications): atomic claim_notification_emails RPC"
 ```
@@ -958,7 +958,7 @@ git checkout -- deno.lock
 ### Task 6: Retire the mention cron + reschedule pg_cron
 
 **Files:**
-- Create: `supabase/migrations/20260813000003_reschedule_notification_email_cron.sql`
+- Create: `supabase/migrations/20260813000005_reschedule_notification_email_cron.sql`
 - Delete: `supabase/functions/mention-email-cron/{handler,index}.ts`, `supabase/functions/_shared/mention-email.ts`, `supabase/functions/__tests__/mention-email-cron_test.ts`
 
 **Interfaces:**
@@ -983,7 +983,7 @@ git rm supabase/functions/mention-email-cron/handler.ts \
 - [ ] **Step 3: Write the reschedule migration**
 
 ```sql
--- 20260813000003_reschedule_notification_email_cron.sql
+-- 20260813000005_reschedule_notification_email_cron.sql
 -- Supersede mention-email-cron with notification-email-cron (all 8 types incl.
 -- mention). MUST be applied AFTER the notification-email-cron function is
 -- deployed — the schedule fires immediately (same rule as 20260803000007).
@@ -1024,7 +1024,7 @@ Expected: PASS with no dangling imports.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add -A supabase/functions supabase/migrations/20260813000003_reschedule_notification_email_cron.sql
+git add -A supabase/functions supabase/migrations/20260813000005_reschedule_notification_email_cron.sql
 git commit -m "feat(notifications): supersede mention-email-cron, reschedule pg_cron"
 git checkout -- deno.lock
 ```
