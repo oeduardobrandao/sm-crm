@@ -95,6 +95,7 @@ Deno.test("stream-shared: copyToStream posts to the accounts/{id}/stream/copy en
     meta: { postId: "p1" },
     requireSignedURLs: true,
   });
+  assert(cap.req!.signal instanceof AbortSignal, "expected the copy fetch to carry an AbortSignal");
   clearStreamEnv();
 });
 
@@ -288,6 +289,7 @@ Deno.test("stream-shared: deleteStreamVideo resolves on 200", async () => {
   await deleteStreamVideo("video-uid-1", fetchFn);
   assertEquals(cap.req!.url, "https://api.cloudflare.com/client/v4/accounts/acct1/stream/video-uid-1");
   assertEquals(cap.req!.method, "DELETE");
+  assert(cap.req!.signal instanceof AbortSignal, "expected the delete fetch to carry an AbortSignal");
   clearStreamEnv();
 });
 
@@ -328,6 +330,22 @@ Deno.test("stream-shared: getStreamVideoStatus maps ready/error and defaults to 
   clearStreamEnv();
 });
 
+Deno.test("stream-shared: getStreamVideoStatus fetch carries an AbortSignal", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+  const cap: { init?: RequestInit } = {};
+  const fetchFn = ((_input: RequestInfo | URL, init?: RequestInit) => {
+    cap.init = init;
+    return Promise.resolve(
+      new Response(JSON.stringify({ result: { status: { state: "ready" } } }), { status: 200 }),
+    );
+  }) as typeof fetch;
+
+  await getStreamVideoStatus("uid-1", fetchFn);
+  assert(cap.init?.signal instanceof AbortSignal, "expected the status fetch to carry an AbortSignal");
+  clearStreamEnv();
+});
+
 // ---------------------------------------------------------------------------
 // listStreamVideos
 // ---------------------------------------------------------------------------
@@ -347,9 +365,11 @@ Deno.test("stream-shared: listStreamVideos paginates until a short page, carryin
   ];
 
   const calls: string[] = [];
-  const fetchFn = ((input: RequestInfo | URL) => {
+  const inits: (RequestInit | undefined)[] = [];
+  const fetchFn = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
+    inits.push(init);
     if (calls.length === 1) {
       return Promise.resolve(new Response(JSON.stringify({ result: page1 }), { status: 200 }));
     }
@@ -367,6 +387,7 @@ Deno.test("stream-shared: listStreamVideos paginates until a short page, carryin
   );
   assertEquals(videos[0], { uid: "uid-0", created: page1[0].created });
   assertEquals(videos[1002], { uid: "uid-1002", created: "2026-01-02T00:02:00Z" });
+  assert(inits[0]?.signal instanceof AbortSignal, "expected the list fetch to carry an AbortSignal");
 
   clearStreamEnv();
 });

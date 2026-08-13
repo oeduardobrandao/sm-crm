@@ -5,6 +5,15 @@
 // than at module load. That means absence disables the feature (checked via
 // isStreamCleanupEnabled/isStreamEnabled) instead of throwing at import time,
 // and tests can Deno.env.set/delete freely between cases without reimporting.
+//
+// Every fetch to the Stream API is bounded by AbortSignal.timeout — the edge
+// runtime kills isolates on unbounded I/O in ways that bypass the surrounding
+// catch entirely (see AGENTS.md "Edge runtime kills bypass catch"; this repo
+// had a 100%-hang incident with the R2 SDK for exactly this reason), so a
+// hang here must surface as a normal retryable throw instead. One value for
+// all four calls: copy initiation can be slower than a status GET, but 15s is
+// still well under the isolate's own wall-clock budget.
+const STREAM_FETCH_TIMEOUT_MS = 15_000;
 
 function streamBase(accountId: string): string {
   return `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream`;
@@ -47,6 +56,7 @@ export async function copyToStream(
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ url: sourceUrl, meta, requireSignedURLs: true }),
+    signal: AbortSignal.timeout(STREAM_FETCH_TIMEOUT_MS),
   });
   const json = await res.json().catch(() => null) as
     | { success?: boolean; result?: { uid?: string } }
@@ -158,6 +168,7 @@ export async function deleteStreamVideo(uid: string, fetchFn: typeof fetch = fet
   const res = await fetchFn(`${streamBase(accountId)}/${uid}`, {
     method: "DELETE",
     headers: authHeaders(),
+    signal: AbortSignal.timeout(STREAM_FETCH_TIMEOUT_MS),
   });
   if (res.status === 200 || res.status === 404) return;
   throw new Error("stream delete failed: " + res.status);
@@ -169,7 +180,10 @@ export async function getStreamVideoStatus(
   fetchFn: typeof fetch = fetch,
 ): Promise<"ready" | "error" | "inprogress"> {
   const accountId = Deno.env.get("STREAM_ACCOUNT_ID") ?? "";
-  const res = await fetchFn(`${streamBase(accountId)}/${uid}`, { headers: authHeaders() });
+  const res = await fetchFn(`${streamBase(accountId)}/${uid}`, {
+    headers: authHeaders(),
+    signal: AbortSignal.timeout(STREAM_FETCH_TIMEOUT_MS),
+  });
   const json = await res.json().catch(() => null) as
     | { result?: { status?: { state?: string } } }
     | null;
@@ -191,7 +205,7 @@ export async function listStreamVideos(
     const url = after
       ? `${base}?asc=true&after=${encodeURIComponent(after)}`
       : `${base}?asc=true`;
-    const res = await fetchFn(url, { headers });
+    const res = await fetchFn(url, { headers, signal: AbortSignal.timeout(STREAM_FETCH_TIMEOUT_MS) });
     const json = await res.json() as { result?: Array<{ uid: string; created: string }> };
     const page = json.result ?? [];
     for (const v of page) items.push({ uid: v.uid, created: v.created });
