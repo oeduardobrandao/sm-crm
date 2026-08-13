@@ -243,7 +243,12 @@ export function buildCancelColumns(args: {
   nowIso: string;
 }): { columns: Record<string, unknown>; immediateDowngrade: boolean; accessUntil: string | null } {
   const accessUntil = args.storedPeriodEnd ?? args.remotePeriodEnd;
-  const paidThrough = args.observedStatus === "active" && accessUntil !== null;
+  // A period end that is unparseable or ALREADY ELAPSED proves no remaining paid window:
+  // paid-through here would return a past access_until and lean on the next cron run to
+  // repair it. Downgrade immediately instead.
+  const end = accessUntil === null ? NaN : Date.parse(accessUntil);
+  const paidThrough = args.observedStatus === "active" &&
+    Number.isFinite(end) && end > Date.parse(args.nowIso);
   return {
     columns: {
       status: "canceled",
@@ -415,7 +420,7 @@ Add `"pagarme-subscription"` to `REQUIRED_FUNCTIONS` in `config-audit_test.ts` u
 
 - [ ] **Step 6: Tests**
 
-`pagarme-subscription-logic_test.ts` (pure): parse matrix (non-object, unknown action, cancel ok, update_card missing token, bad cep/state, happy update_card with masked/dirty input normalized); `buildCancelColumns` matrix — active + stored end (paid-through, `current_period_end` NOT among columns, accessUntil = stored), active + null stored + remote end (paid-through, columns FILL `current_period_end` with the remote value, accessUntil = remote), active + null stored + null remote (immediate downgrade), stored wins over remote when both exist, trialing and past_due (immediate downgrade, `cancel_at_period_end: false`, no `current_period_end` in columns).
+`pagarme-subscription-logic_test.ts` (pure): parse matrix (non-object, unknown action, cancel ok, update_card missing token, bad cep/state, happy update_card with masked/dirty input normalized); `buildCancelColumns` matrix — active + stored end (paid-through, `current_period_end` NOT among columns, accessUntil = stored), active + null stored + remote end (paid-through, columns FILL `current_period_end` with the remote value, accessUntil = remote), active + null stored + null remote (immediate downgrade), active + period end ALREADY IN THE PAST (immediate downgrade, `accessUntil: null` — never a past date), active + unparseable period end (immediate downgrade), stored wins over remote when both exist AND both future, trialing and past_due (immediate downgrade, `cancel_at_period_end: false`, no `current_period_end` in columns).
 
 `pagarme-subscription-handler_test.ts`: copy the thenable `makeDb`/`makeGateway` event-recording harness from `pagarme-checkout-handler_test.ts` (events `{op, table, values, filters}` + gateway `calls`). Cases:
 1. cancel trialing: gateway DELETE called; CAS update pinned on `provider/pagarme_subscription_id/status='trialing'`; columns `{status:'canceled', cancel_at_period_end:false}`; `grant_pagarme_plan` RPC called with `p_status:'canceled'` and the default plan; 200 with `access_until: null`.
