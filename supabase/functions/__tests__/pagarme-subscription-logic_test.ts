@@ -163,6 +163,47 @@ Deno.test("buildCancelColumns: stored wins over remote when both present, and re
   assert(!("current_period_end" in r.columns), "a stored value must never be overwritten by the remote one");
 });
 
+Deno.test("buildCancelColumns: active + PAST stored period end -> no remaining paid window, immediate downgrade", () => {
+  const r = buildCancelColumns({
+    observedStatus: "active",
+    storedPeriodEnd: "2026-01-01T00:00:00.000Z", // before NOW (2026-08-13)
+    remotePeriodEnd: null,
+    nowIso: NOW_ISO,
+  });
+  assertEquals(r.columns, {
+    status: "canceled",
+    cancel_at_period_end: false,
+    updated_at: NOW_ISO,
+  });
+  assert(!("current_period_end" in r.columns));
+  assertEquals(r.immediateDowngrade, true);
+  assertEquals(r.accessUntil, null, "a past date must never be returned as access_until");
+});
+
+Deno.test("buildCancelColumns: active + PAST remote period end (null stored) -> no remaining paid window, immediate downgrade", () => {
+  const r = buildCancelColumns({
+    observedStatus: "active",
+    storedPeriodEnd: null,
+    remotePeriodEnd: "2026-01-01T00:00:00.000Z", // before NOW
+    nowIso: NOW_ISO,
+  });
+  assertEquals(r.immediateDowngrade, true);
+  assertEquals(r.accessUntil, null);
+  assert(!("current_period_end" in r.columns), "an elapsed remote end must not be filled in either");
+});
+
+Deno.test("buildCancelColumns: active + unparseable stored period end string -> treated as no provable window, immediate downgrade", () => {
+  const r = buildCancelColumns({
+    observedStatus: "active",
+    storedPeriodEnd: "not-a-date",
+    remotePeriodEnd: null,
+    nowIso: NOW_ISO,
+  });
+  assertEquals(r.immediateDowngrade, true);
+  assertEquals(r.accessUntil, null);
+  assert(!("current_period_end" in r.columns));
+});
+
 Deno.test("buildCancelColumns: trialing -> immediate downgrade, cancel_at_period_end false, no current_period_end", () => {
   const r = buildCancelColumns({
     observedStatus: "trialing",

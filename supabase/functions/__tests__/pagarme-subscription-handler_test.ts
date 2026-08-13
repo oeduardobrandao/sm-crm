@@ -214,6 +214,25 @@ Deno.test("cancel active with stored current_period_end: paid-through, no curren
   assertEquals(findPlanGrant(events), undefined, "paid-through cancel must not grant a plan");
 });
 
+Deno.test("cancel active with an ELAPSED stored current_period_end: no provable paid window, grant RPC IS called, access_until null", async () => {
+  const { events, result } = run(
+    {
+      subRow: {
+        provider: "pagarme",
+        pagarme_subscription_id: SUB,
+        status: "active",
+        current_period_end: "2026-01-01T00:00:00.000Z", // before NOW (2026-08-13)
+      },
+    },
+    {},
+    CANCEL,
+  );
+  const r = await result;
+  assertEquals(r.status, 200);
+  assertEquals(r.body, { status: "canceled", access_until: null });
+  assertEquals(findPlanGrant(events)?.values, { p_workspace: WS, p_plan: "free", p_sub: SUB, p_status: "canceled" });
+});
+
 Deno.test("cancel active with NULL stored end + DELETE response carrying current_cycle.end_at: paid-through, FILLS current_period_end, no rpc", async () => {
   const { events, result } = run(
     { subRow: { provider: "pagarme", pagarme_subscription_id: SUB, status: "active", current_period_end: null } },

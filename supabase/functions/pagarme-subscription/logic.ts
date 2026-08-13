@@ -64,7 +64,12 @@ export function buildCancelColumns(args: {
   nowIso: string;
 }): { columns: Record<string, unknown>; immediateDowngrade: boolean; accessUntil: string | null } {
   const accessUntil = args.storedPeriodEnd ?? args.remotePeriodEnd;
-  const paidThrough = args.observedStatus === "active" && accessUntil !== null;
+  // A period end that is unparseable or ALREADY ELAPSED proves no remaining paid window:
+  // paid-through here would return a past access_until and lean on the next cron run to
+  // repair it. Downgrade immediately instead.
+  const end = accessUntil === null ? NaN : Date.parse(accessUntil);
+  const paidThrough = args.observedStatus === "active" &&
+    Number.isFinite(end) && end > Date.parse(args.nowIso);
   return {
     columns: {
       status: "canceled",
