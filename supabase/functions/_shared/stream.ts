@@ -206,8 +206,18 @@ export async function listStreamVideos(
       ? `${base}?asc=true&after=${encodeURIComponent(after)}`
       : `${base}?asc=true`;
     const res = await fetchFn(url, { headers, signal: AbortSignal.timeout(STREAM_FETCH_TIMEOUT_MS) });
-    const json = await res.json() as { result?: Array<{ uid: string; created: string }> };
-    const page = json.result ?? [];
+    const json = await res.json().catch(() => null) as
+      | { success?: boolean; result?: Array<{ uid: string; created: string }> }
+      | null;
+    // A Cloudflare error response (401/429/5xx, or a 200 with success:false) must never be
+    // read as "no more videos" -- that would let the orphan reap silently no-op against a
+    // partial or empty list, hiding the outage instead of skipping cleanup for the run.
+    // Throw so the caller's existing per-step catch counts it into `errors` (the purge
+    // script's own listAllVideos() is a separate copy and untouched by this check).
+    if (!res.ok || json?.success === false) {
+      throw new Error("stream list failed: " + res.status);
+    }
+    const page = json?.result ?? [];
     for (const v of page) items.push({ uid: v.uid, created: v.created });
     if (page.length < 1000) break;
     const last = page[page.length - 1]?.created;

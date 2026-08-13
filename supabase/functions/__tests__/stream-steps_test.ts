@@ -163,6 +163,37 @@ Deno.test("stream-steps: settle maps a terminal error state to stream_status=err
   assertEquals(updates[0].payload, { stream_status: "error" });
 });
 
+Deno.test("stream-steps: settle does not credit a row when the status-settling write resolves with an error, and the loop continues", async () => {
+  // supabase-js update() RESOLVES with { error } instead of throwing -- an unchecked
+  // failure here used to still increment `settled` and log nothing, hiding a row that's
+  // actually still stuck `pending` in the DB (it's retried next run either way, since
+  // nothing here undoes anything -- the bug was purely the false credit + silent log).
+  const db = createSupabaseQueryMock();
+  db.queue("files", "select", { data: [] }); // ingest: none due
+  db.queue("files", "select", {
+    data: [
+      { id: 30, stream_uid: "uid-write-fails", created_at: hoursAgoIso(2) },
+      { id: 31, stream_uid: "uid-write-ok", created_at: hoursAgoIso(2) },
+    ],
+  }); // settle candidates
+  db.queue("files", "update", { data: null, error: { message: "connection reset" } }); // id:30 write FAILS
+  db.queue("files", "update", { data: null, error: null }); // id:31 write ok
+  db.queue("files", "select", { data: [] }); // reap known set
+  db.queue("file_deletions", "select", { data: [] }); // reap queued set
+
+  const result = await runStreamSweeps(baseDeps(db, {
+    copyToStream: unreachable("copyToStream") as unknown as StreamStepsDeps["copyToStream"],
+    signSourceUrl: unreachable("signSourceUrl") as unknown as StreamStepsDeps["signSourceUrl"],
+    getStreamVideoStatus: async () => "ready",
+    listStreamVideos: async () => [],
+  }));
+
+  assertEquals(result.settled, 1, "row 30's failed write must not be credited; row 31 still is");
+  assertEquals(result.errors, 0, "a per-row failure is not a step failure");
+  const updates = callsFor(db, "files", "update");
+  assertEquals(updates.length, 2, "both rows were attempted despite row 30 failing");
+});
+
 // ── orphan reap ───────────────────────────────────────────────────────────────
 
 Deno.test("stream-steps: reap deletes an unknown 2h-old uid but spares a known uid, a queued file_deletions uid, and a young 5-minute-old unknown uid", async () => {

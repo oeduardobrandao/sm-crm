@@ -164,7 +164,15 @@ async function settlePending(deps: StreamStepsDeps, nowMs: () => number): Promis
     try {
       const status = await getStreamVideoStatus(row.stream_uid);
       if (status === "inprogress") continue; // not terminal yet — retry next run
-      await deps.db.from("files").update({ stream_status: status }).eq("id", row.id);
+      // supabase-js update() RESOLVES with { error } instead of throwing -- an unchecked
+      // failure here used to still increment `settled` and log nothing, hiding a row that's
+      // actually still stuck `pending` in the DB. The row is left `pending` on a checked
+      // failure too (nothing to undo), which is already correct: it's retried next run.
+      const { error: updateErr } = await deps.db
+        .from("files")
+        .update({ stream_status: status })
+        .eq("id", row.id);
+      if (updateErr) throw updateErr;
       settled++;
     } catch (e) {
       console.error("stream-steps:settle-row", row.id, e);

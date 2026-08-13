@@ -391,3 +391,65 @@ Deno.test("stream-shared: listStreamVideos paginates until a short page, carryin
 
   clearStreamEnv();
 });
+
+Deno.test("stream-shared: listStreamVideos rejects on a non-2xx page instead of returning a short list", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+  const fetchFn = (() => Promise.resolve(new Response("rate limited", { status: 429 }))) as typeof fetch;
+
+  let message = "";
+  try {
+    await listStreamVideos(fetchFn);
+  } catch (e) {
+    message = e instanceof Error ? e.message : String(e);
+  }
+  assert(message.includes("429"), `expected the status in: ${message}`);
+  clearStreamEnv();
+});
+
+Deno.test("stream-shared: listStreamVideos rejects on success:false instead of returning an empty list", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+  const fetchFn = (() =>
+    Promise.resolve(
+      new Response(JSON.stringify({ success: false, errors: [{ message: "nope" }] }), { status: 200 }),
+    )) as typeof fetch;
+
+  let threw = false;
+  try {
+    await listStreamVideos(fetchFn);
+  } catch (_e) {
+    threw = true;
+  }
+  assert(threw, "expected listStreamVideos to throw on success:false");
+  clearStreamEnv();
+});
+
+Deno.test("stream-shared: listStreamVideos rejects when the second page 500s, discarding the first page instead of returning a partial list", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+
+  const page1 = Array.from({ length: 1000 }, (_, i) => ({
+    uid: `uid-${i}`,
+    created: `2026-01-01T00:${String(i % 60).padStart(2, "0")}:00Z-${i}`,
+  }));
+
+  const calls: string[] = [];
+  const fetchFn = ((input: RequestInfo | URL) => {
+    calls.push(String(input));
+    if (calls.length === 1) {
+      return Promise.resolve(new Response(JSON.stringify({ result: page1 }), { status: 200 }));
+    }
+    return Promise.resolve(new Response("server error", { status: 500 }));
+  }) as typeof fetch;
+
+  let threw = false;
+  try {
+    await listStreamVideos(fetchFn);
+  } catch (_e) {
+    threw = true;
+  }
+  assert(threw, "expected listStreamVideos to reject rather than return page 1 alone");
+  assertEquals(calls.length, 2, "the failure must come from the second page, not the first");
+  clearStreamEnv();
+});
