@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   BarChart3,
+  Bell,
   Building2,
   CreditCard,
   Globe,
@@ -42,6 +43,7 @@ const STAFF: ConfigRole[] = ['owner', 'admin'];
  */
 export const CONFIG_TABS: ConfigTab[] = [
   { path: 'perfil', label: 'Perfil', roles: ALL, group: 'Conta', icon: User },
+  { path: 'notificacoes', label: 'Notificações', roles: ALL, group: 'Conta', icon: Bell },
   { path: 'workspace', label: 'Workspace', roles: STAFF, group: 'Workspace', icon: Building2 },
   { path: 'membros', label: 'Membros', roles: STAFF, group: 'Workspace', icon: Users },
   { path: 'relatorios', label: 'Relatórios', roles: STAFF, group: 'Workspace', icon: BarChart3 },

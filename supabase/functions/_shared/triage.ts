@@ -100,6 +100,9 @@ export async function reportCronFailure(
           occurred_at: new Date().toISOString(),
         },
       }),
+      // Bound this I/O: same reason as the Resend alert in notify.ts. A stalled
+      // GitHub dispatch would hang the isolate past the surrounding catch.
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) console.error(`[triage] repository_dispatch non-2xx: ${res.status}`);
   } catch (_e) {

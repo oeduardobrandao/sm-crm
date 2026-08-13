@@ -2,12 +2,12 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { createJsonResponder } from "../_shared/http.ts";
-import { sendMentionEmail } from "../_shared/mention-email.ts";
+import { sendNotificationDigestEmail } from "../_shared/notification-email.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import {
-  createMentionEmailCronHandler,
-  type MentionEmailCronDeps,
-  runMentionEmailCron,
+  createNotificationEmailCronHandler,
+  type NotificationEmailCronDeps,
+  runNotificationEmailCron,
 } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -17,9 +17,9 @@ const CRON_SECRET = Deno.env.get("CRON_SECRET") ??
     throw new Error("CRON_SECRET is required");
   })();
 
-const CRON_NAME = "mention-email-cron";
+const CRON_NAME = "notification-email-cron";
 
-Deno.serve(createMentionEmailCronHandler({
+Deno.serve(createNotificationEmailCronHandler({
   cronSecret: CRON_SECRET,
   timingSafeEqual,
   run: async (req: Request): Promise<Response> => {
@@ -43,14 +43,14 @@ Deno.serve(createMentionEmailCronHandler({
     });
 
     try {
-      const deps: MentionEmailCronDeps = {
-        db: svc as unknown as MentionEmailCronDeps["db"],
+      const deps: NotificationEmailCronDeps = {
+        db: svc as unknown as NotificationEmailCronDeps["db"],
         now: () => new Date(),
         resendEnabled: !!Deno.env.get("RESEND_API_KEY"),
-        sendMentionEmail,
+        sendDigest: sendNotificationDigestEmail,
         report: (detail) => reportCronFailure(svc, CRON_NAME, detail),
       };
-      const result = await runMentionEmailCron(deps);
+      const result = await runNotificationEmailCron(deps);
       return json({ success: true, ...result });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

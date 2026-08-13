@@ -174,7 +174,7 @@ verify_jwt = false
 [functions.loops-sync-cron]
 verify_jwt = false
 
-[functions.mention-email-cron]
+[functions.notification-email-cron]
 verify_jwt = false
 
 [functions.crisp-sync-cron]

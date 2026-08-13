@@ -41,6 +41,7 @@ const EquipePage = lazy(() => import('./pages/equipe/EquipePage'));
 const MembroDetalhePage = lazy(() => import('./pages/membro-detalhe/MembroDetalhePage'));
 const ConfiguracaoLayout = lazy(() => import('./pages/configuracao/ConfiguracaoLayout'));
 const PerfilTab = lazy(() => import('./pages/configuracao/tabs/PerfilTab'));
+const NotificacoesTab = lazy(() => import('./pages/configuracao/tabs/NotificacoesTab'));
 const WorkspaceTab = lazy(() => import('./pages/configuracao/tabs/WorkspaceTab'));
 const MembrosTab = lazy(() => import('./pages/configuracao/tabs/MembrosTab'));
 const RelatoriosTab = lazy(() => import('./pages/configuracao/tabs/RelatoriosTab'));
@@ -181,6 +182,7 @@ export default function App() {
                 <Route path="/configuracao" element={<ConfiguracaoLayout />}>
                   <Route index element={<Navigate to="/configuracao/perfil" replace />} />
                   <Route path="perfil" element={<PerfilTab />} />
+                  <Route path="notificacoes" element={<NotificacoesTab />} />
                   <Route path="workspace" element={<WorkspaceTab />} />
                   <Route path="membros" element={<MembrosTab />} />
                   <Route path="relatorios" element={<RelatoriosTab />} />
