@@ -253,8 +253,11 @@ set.
    webhook URL in the Cloudflare dashboard, set secrets on staging; upload +
    verify; then prod.
 4. Run the backfill script (staging, then prod).
-5. Monitor: Stream dashboard spend, cron triage alerts already cover the new
-   cron step.
+5. Monitor: Stream dashboard spend, plus the cron's own response counters
+   (`deleted`/`failed`/etc. in `post-media-cleanup-cron`'s JSON response).
+   `post-media-cleanup-cron` is NOT wired into `reportCronFailure()`
+   cron-failure triage today — no other cron's failure alerts cover it, and
+   wiring it in is a separate, spawned follow-up task.
 
 No `vercel.json` changes (no new routes). No CSP changes (none configured).
 
