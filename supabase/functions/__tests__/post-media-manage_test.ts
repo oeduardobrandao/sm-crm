@@ -1,16 +1,20 @@
-import { assertEquals, readJson } from "./assert.ts";
+import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createPostMediaManageHandler } from "../post-media-manage/handler.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
-function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>) {
+function makeHandler(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  overrides: Partial<Parameters<typeof createPostMediaManageHandler>[0]> = {},
+) {
   return createPostMediaManageHandler({
     buildCorsHeaders,
     createDb: () => db as never,
     signUrl: async (key) => `https://signed.example.com/${key}`,
     signPutUrl: async (key, _mime) => `https://r2.example.com/put/${key}`,
     randomUUID: () => "thumb-uuid",
+    ...overrides,
   });
 }
 
@@ -170,6 +174,94 @@ Deno.test("post-media-manage: GET with post from different workspace returns 404
   const handler = makeHandler(db);
   const res = await handler(req("GET", "?post_id=50"));
   assertEquals(res.status, 404);
+});
+
+// ─── GET: media playback (Cloudflare Stream) ──────────────────
+
+function queuePostIdVideoFixture(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  file: { stream_uid: string | null; stream_status: string | null },
+) {
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "select", {
+    data: [
+      {
+        ...sampleLink,
+        files: {
+          ...sampleFile,
+          kind: "video",
+          mime_type: "video/mp4",
+          stream_uid: file.stream_uid,
+          stream_status: file.stream_status,
+        },
+      },
+    ],
+    error: null,
+  });
+}
+
+Deno.test("post-media-manage: GET media includes signed playback for a ready video when signPlayback is configured", async () => {
+  const db = createSupabaseQueryMock();
+  queuePostIdVideoFixture(db, { stream_uid: "stream-uid-1", stream_status: "ready" });
+  const handler = makeHandler(db, {
+    signPlayback: async (uid) => ({
+      hls: `https://stream.example/${uid}.m3u8`,
+      expires_at: "2026-04-20T22:00:00.000Z",
+    }),
+  });
+  const res = await handler(req("GET", "?post_id=50"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  const media = body.media[0];
+  assertEquals(media.playback, {
+    hls: "https://stream.example/stream-uid-1.m3u8",
+    expires_at: "2026-04-20T22:00:00.000Z",
+  });
+  assert(!("stream_uid" in media), "stream_uid must not leak to the client");
+  assert(!("stream_status" in media), "stream_status must not leak to the client");
+});
+
+Deno.test("post-media-manage: GET media returns playback: null for a video that has not finished processing", async () => {
+  const db = createSupabaseQueryMock();
+  queuePostIdVideoFixture(db, { stream_uid: "stream-uid-1", stream_status: "pending" });
+  const handler = makeHandler(db, {
+    signPlayback: async (uid) => ({
+      hls: `https://stream.example/${uid}.m3u8`,
+      expires_at: "2026-04-20T22:00:00.000Z",
+    }),
+  });
+  const res = await handler(req("GET", "?post_id=50"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.media[0].playback, null);
+});
+
+Deno.test("post-media-manage: GET media returns playback: null when signPlayback is not configured (Stream disabled)", async () => {
+  const db = createSupabaseQueryMock();
+  queuePostIdVideoFixture(db, { stream_uid: "stream-uid-1", stream_status: "ready" });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "?post_id=50"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.media[0].playback, null);
+});
+
+Deno.test("post-media-manage: GET media returns playback: null for an image (no stream_uid)", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "select", { data: [sampleLink], error: null });
+  const handler = makeHandler(db, {
+    signPlayback: async (uid) => ({
+      hls: `https://stream.example/${uid}.m3u8`,
+      expires_at: "2026-04-20T22:00:00.000Z",
+    }),
+  });
+  const res = await handler(req("GET", "?post_id=50"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.media[0].playback, null);
 });
 
 // ─── Non-GET: id validation ──────────────────────────────────
