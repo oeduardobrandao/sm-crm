@@ -66,6 +66,31 @@ function formatBRL(centavos: number): string {
   );
 }
 
+/**
+ * Formats a backend calendar-date boundary (e.g. `trial_ends_at`) as `dd/MM/yyyy` WITHOUT
+ * routing through the browser's local timezone. The gateway echoes `resolveStartAt`'s
+ * `YYYY-MM-DD` back as a midnight-UTC timestamp (see pagarme-checkout/logic.ts), so
+ * `format(new Date(iso), 'dd/MM/yyyy')` would convert that midnight through the visitor's
+ * offset: in Brazil (UTC-3) `2026-09-12T00:00:00.000Z` prints as `11/09/2026`, a day early.
+ * Reading the `YYYY-MM-DD` prefix directly sidesteps any timezone conversion entirely.
+ */
+export function formatUtcDateBR(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) {
+    // Defensive only: the backend always sends a YYYY-MM-DD-prefixed ISO string, so this branch
+    // should never run against real data. date-fns' format() throws on an invalid Date, and this
+    // renders inside a success screen with no error boundary of its own, so a crash here would
+    // take the whole dialog down over a display string — fall back to the raw value instead.
+    try {
+      return format(new Date(iso), 'dd/MM/yyyy');
+    } catch {
+      return iso;
+    }
+  }
+  const [, y, mo, d] = m;
+  return `${d}/${mo}/${y}`;
+}
+
 interface FormValues {
   cardNumber: string;
   holderName: string;
@@ -321,7 +346,7 @@ export function PagarmeCheckoutDialog({
               <DialogTitle>Assinatura confirmada!</DialogTitle>
               <DialogDescription>
                 {successResult?.trial_ends_at
-                  ? `Seu teste grátis termina em ${format(new Date(successResult.trial_ends_at), 'dd/MM/yyyy')}. Depois disso a cobrança de 12x começa automaticamente.`
+                  ? `Seu teste grátis termina em ${formatUtcDateBR(successResult.trial_ends_at)}. Depois disso a cobrança de 12x começa automaticamente.`
                   : 'Sua assinatura está ativa.'}
               </DialogDescription>
             </DialogHeader>

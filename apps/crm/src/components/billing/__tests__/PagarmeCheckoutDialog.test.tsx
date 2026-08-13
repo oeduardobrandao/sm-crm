@@ -1,6 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { format } from 'date-fns';
 
 const { tokenizeCardMock, startPagarmeCheckoutMock, updatePagarmeCardMock, captureEventMock } =
   vi.hoisted(() => ({
@@ -31,7 +30,11 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import { toast } from 'sonner';
 import { TokenizationError } from '@/services/pagarme-token';
 import { BillingApiError, type PagarmeCheckoutResult } from '@/services/billing';
-import { PagarmeCheckoutDialog, type PagarmeCheckoutDialogProps } from '../PagarmeCheckoutDialog';
+import {
+  formatUtcDateBR,
+  PagarmeCheckoutDialog,
+  type PagarmeCheckoutDialogProps,
+} from '../PagarmeCheckoutDialog';
 
 const PLAN = { id: 'pro', name: 'Pro', price_brl_annual: 118800 };
 
@@ -183,10 +186,10 @@ describe('PagarmeCheckoutDialog', () => {
     });
 
     expect(await screen.findByText('Assinatura confirmada!')).toBeInTheDocument();
-    // Formatted with the same date-fns call the component uses, not a hardcoded string: a
-    // literal date would drift a day depending on the runner's local timezone offset from UTC.
-    const expectedDate = format(new Date(CHECKOUT_RESULT.trial_ends_at!), 'dd/MM/yyyy');
-    expect(screen.getByText(new RegExp(expectedDate.replace(/\//g, '\\/')))).toBeInTheDocument();
+    // '2026-09-12T00:00:00.000Z' must render as 12/09/2026 literally, not through the runner's
+    // local timezone: the gateway echoes trial_ends_at as a midnight-UTC boundary, and running it
+    // through `new Date(iso)` + local formatting would print 11/09/2026 in Brazil (UTC-3).
+    expect(screen.getByText(/12\/09\/2026/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ir para o painel' })).toBeInTheDocument();
   });
 
@@ -291,5 +294,27 @@ describe('PagarmeCheckoutDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(captureEventMock).not.toHaveBeenCalledWith('card_form_abandoned', expect.anything());
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('formatUtcDateBR', () => {
+  it('reads the calendar date straight from the ISO prefix, never through a local timezone', () => {
+    // The regression this guards: `format(new Date(iso), 'dd/MM/yyyy')` converts a midnight-UTC
+    // timestamp through the runner's local offset, so in UTC-3 this would render 11/09/2026.
+    // Pure string slicing sidesteps Date/timezone conversion entirely, so the assertion holds
+    // regardless of which timezone the test runner (or a Brazil-based user's browser) is in.
+    expect(formatUtcDateBR('2026-09-12T00:00:00.000Z')).toBe('12/09/2026');
+  });
+
+  it('formats a plain YYYY-MM-DD the same way, with no time component at all', () => {
+    expect(formatUtcDateBR('2026-01-05')).toBe('05/01/2026');
+  });
+
+  it('degrades to the raw string instead of throwing for a non-date-prefixed input', () => {
+    // Defensive only: the backend always sends a YYYY-MM-DD-prefixed ISO string, so this path
+    // should never actually run against real data. date-fns' format() throws on an invalid
+    // Date, and this renders inside a dialog with no error boundary, so the fallback must not
+    // crash the component over a display string.
+    expect(formatUtcDateBR('not-a-date')).toBe('not-a-date');
   });
 });
