@@ -5,6 +5,7 @@
 -- stream_uid into file_deletions via the SECURITY DEFINER trigger.
 
 begin;
+select et_grant_hosted_parity();
 do $$
 declare
   v_ws uuid;
@@ -18,9 +19,9 @@ begin
     raise exception 'file_enqueue_delete lost SECURITY DEFINER';
   end if;
 
-  insert into workspaces (nome) values ('stream-test') returning id into v_ws;
-  insert into files (conta_id, r2_key, name, kind, mime_type, size_bytes, stream_uid, stream_status)
-  values (v_ws, 'contas/' || v_ws || '/files/v.mov', 'v.mov', 'video', 'video/quicktime', 1000, 'uid-abc', 'ready')
+  v_ws := et_make_workspace('max');
+  insert into files (conta_id, r2_key, thumbnail_r2_key, name, kind, mime_type, size_bytes, stream_uid, stream_status)
+  values (v_ws, 'contas/' || v_ws || '/files/v.mov', 'contas/' || v_ws || '/files/v.thumb', 'v.mov', 'video', 'video/quicktime', 1000, 'uid-abc', 'ready')
   returning id into v_file;
 
   delete from files where id = v_file;
