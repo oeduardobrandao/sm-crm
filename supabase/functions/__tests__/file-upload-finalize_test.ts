@@ -6,13 +6,17 @@ const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.me
 
 function makeHandler(
   db: ReturnType<typeof createSupabaseQueryMock>,
-  opts?: { headObject?: (key: string) => Promise<{ contentLength: number } | null> },
+  opts?: {
+    headObject?: (key: string) => Promise<{ contentLength: number } | null>;
+    streamCopy?: (r2Key: string, meta: { file_id: string; conta_id: string }) => Promise<string>;
+  },
 ) {
   return createFileUploadFinalizeHandler({
     buildCorsHeaders,
     createDb: () => db as never,
     headObject: opts?.headObject ?? (async () => ({ contentLength: 5000 })),
     signUrl: async (key) => `https://signed.example.com/${key}`,
+    streamCopy: opts?.streamCopy,
   });
 }
 
@@ -388,4 +392,96 @@ Deno.test("file-upload-finalize: forwards sort_order to the post_file_links inse
   const linkCalls = db.calls.filter((c) => c.table === "post_file_links" && c.operation === "insert");
   assertEquals(linkCalls.length, 1);
   assertEquals((linkCalls[0].payload as { sort_order?: number }).sort_order, 4);
+});
+
+// ─── Stream ingest (video finalize) ────────────────────────────
+
+Deno.test("file-upload-finalize: video finalize with streamCopy set kicks off Stream ingest", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const videoBody = {
+    ...baseBody,
+    kind: "video" as const,
+    mime_type: "video/mp4",
+    r2_key: "contas/conta-1/files/vid-stream.mp4",
+    thumbnail_r2_key: "contas/conta-1/files/vid-stream.thumb.jpg",
+  };
+  const insertedFile = { id: 20, r2_key: videoBody.r2_key, name: "clip.mp4", kind: "video" };
+  db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("files", "update", { data: null, error: null }); // pending
+  db.queue("files", "update", { data: null, error: null }); // uid
+  let streamCopyArgs: [string, { file_id: string; conta_id: string }] | null = null;
+  const streamCopy = async (r2Key: string, meta: { file_id: string; conta_id: string }) => {
+    streamCopyArgs = [r2Key, meta];
+    return "stream-uid-123";
+  };
+  const handler = makeHandler(db, { streamCopy });
+  const res = await handler(authedRequest(videoBody));
+  assertEquals(res.status, 200);
+  assertEquals(streamCopyArgs, [videoBody.r2_key, { file_id: "20", conta_id: "conta-1" }]);
+  const updateCalls = db.calls.filter((c) => c.table === "files" && c.operation === "update");
+  assertEquals(updateCalls.length, 2);
+  assertEquals(updateCalls[0].payload, { stream_status: "pending" });
+  assertEquals(updateCalls[1].payload, { stream_uid: "stream-uid-123" });
+});
+
+Deno.test("file-upload-finalize: video finalize with streamCopy rejecting still returns 200 without a uid update", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const videoBody = {
+    ...baseBody,
+    kind: "video" as const,
+    mime_type: "video/mp4",
+    r2_key: "contas/conta-1/files/vid-stream-fail.mp4",
+    thumbnail_r2_key: "contas/conta-1/files/vid-stream-fail.thumb.jpg",
+  };
+  const insertedFile = { id: 21, r2_key: videoBody.r2_key, name: "clip2.mp4", kind: "video" };
+  db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("files", "update", { data: null, error: null }); // pending
+  const streamCopy = async () => {
+    throw new Error("stream copy failed");
+  };
+  const handler = makeHandler(db, { streamCopy });
+  const res = await handler(authedRequest(videoBody));
+  assertEquals(res.status, 200);
+  const updateCalls = db.calls.filter((c) => c.table === "files" && c.operation === "update");
+  assertEquals(updateCalls.length, 1);
+  assertEquals(updateCalls[0].payload, { stream_status: "pending" });
+});
+
+Deno.test("file-upload-finalize: image finalize does not call streamCopy", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const insertedFile = { id: 22, r2_key: baseBody.r2_key, name: "photo.png", kind: "image" };
+  db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  let called = false;
+  const streamCopy = async () => {
+    called = true;
+    return "uid";
+  };
+  const handler = makeHandler(db, { streamCopy });
+  const res = await handler(authedRequest(baseBody));
+  assertEquals(res.status, 200);
+  assertEquals(called, false);
+  const updateCalls = db.calls.filter((c) => c.table === "files" && c.operation === "update");
+  assertEquals(updateCalls.length, 0);
+});
+
+Deno.test("file-upload-finalize: video finalize without streamCopy dep leaves stream fields untouched", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const videoBody = {
+    ...baseBody,
+    kind: "video" as const,
+    mime_type: "video/mp4",
+    r2_key: "contas/conta-1/files/vid-no-stream.mp4",
+    thumbnail_r2_key: "contas/conta-1/files/vid-no-stream.thumb.jpg",
+  };
+  const insertedFile = { id: 23, r2_key: videoBody.r2_key, name: "clip3.mp4", kind: "video" };
+  db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  const handler = makeHandler(db); // no streamCopy opt -> deps.streamCopy stays undefined
+  const res = await handler(authedRequest(videoBody));
+  assertEquals(res.status, 200);
+  const updateCalls = db.calls.filter((c) => c.table === "files" && c.operation === "update");
+  assertEquals(updateCalls.length, 0);
 });

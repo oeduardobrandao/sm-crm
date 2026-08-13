@@ -16,6 +16,7 @@ interface FileUploadFinalizeDeps {
   createDb: () => DbClient;
   headObject: (key: string) => Promise<HeadResult | null>;
   signUrl: (key: string) => Promise<string>;
+  streamCopy?: (r2Key: string, meta: { file_id: string; conta_id: string }) => Promise<string>;
 }
 
 export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
@@ -149,6 +150,22 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
       }
       const { error: linkErr } = await svc.from("post_file_links").insert(link);
       if (linkErr) return internalServerError(json, "file-upload-finalize:create-link", linkErr);
+    }
+
+    if (body.kind === "video" && deps.streamCopy) {
+      const fileId = (inserted as any).id;
+      try {
+        // Durable intent BEFORE the external call: a pending row with a null uid
+        // is exactly what the cron sweep repairs (spec §5.3).
+        await svc.from("files").update({ stream_status: "pending" }).eq("id", fileId);
+        const uid = await deps.streamCopy(body.r2_key, {
+          file_id: String(fileId),
+          conta_id: profile.conta_id,
+        });
+        await svc.from("files").update({ stream_uid: uid }).eq("id", fileId);
+      } catch (e) {
+        console.error("file-upload-finalize:stream-copy", e);
+      }
     }
 
     const url = await deps.signUrl(body.r2_key);
