@@ -79,6 +79,7 @@ describe('ConfiguracaoLayout', () => {
     renderAt('/configuracao/perfil');
     expect(tabLabels()).toEqual([
       'Perfil',
+      'Notificações',
       'Workspace',
       'Membros',
       'Relatórios',
@@ -98,10 +99,10 @@ describe('ConfiguracaoLayout', () => {
     expect(tabLabels()).toContain('Membros');
   });
 
-  it('renders no tab strip for an agent, who has only one section', () => {
+  it('renders the Conta tab strip for an agent, who only sees Perfil and Notificações', () => {
     setAuth('agent');
     renderAt('/configuracao/perfil');
-    expect(tabLabels()).toEqual([]);
+    expect(tabLabels()).toEqual(['Perfil', 'Notificações']);
     expect(screen.getByText('conteudo perfil')).toBeInTheDocument();
   });
 
@@ -221,7 +222,7 @@ describe('ConfiguracaoLayout', () => {
     // to someone whose real, current-workspace role is agent.
     setAuth('agent', { staleProfileRole: 'owner' });
     renderAt('/configuracao/membros');
-    expect(tabLabels()).toEqual([]);
+    expect(tabLabels()).toEqual(['Perfil', 'Notificações']);
     expect(screen.queryByText('conteudo membros')).not.toBeInTheDocument();
     expect(screen.getByTestId('path')).toHaveTextContent('/configuracao/perfil');
   });

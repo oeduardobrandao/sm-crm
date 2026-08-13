@@ -2,13 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { CONFIG_TABS, visibleConfigTabs, canAccessConfigTab } from '../configTabs';
 
 describe('configTabs', () => {
-  it('gives agents only the Perfil tab', () => {
-    expect(visibleConfigTabs('agent').map((t) => t.path)).toEqual(['perfil']);
+  it('gives agents only the Conta group tabs', () => {
+    expect(visibleConfigTabs('agent').map((t) => t.path)).toEqual(['perfil', 'notificacoes']);
   });
 
   it('gives admins everything except billing', () => {
     const paths = visibleConfigTabs('admin').map((t) => t.path);
-    expect(paths).toEqual(['perfil', 'workspace', 'membros', 'relatorios', 'status', 'hub', 'mcp']);
+    expect(paths).toEqual([
+      'perfil',
+      'notificacoes',
+      'workspace',
+      'membros',
+      'relatorios',
+      'status',
+      'hub',
+      'mcp',
+    ]);
     expect(paths).not.toContain('cobranca');
   });
 
