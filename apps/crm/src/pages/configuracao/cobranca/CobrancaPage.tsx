@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
 import {
   listActivePlans,
@@ -17,7 +16,7 @@ import {
 import { isInternalPlan, resolveCurrentPlanId, isPlanVisible, canUpgradeTo } from './plan-display';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
-import { PagarmeCheckoutDialog } from '@/components/billing/PagarmeCheckoutDialog';
+import { PagarmeCheckoutDialog, formatUtcDateBR } from '@/components/billing/PagarmeCheckoutDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,6 +48,28 @@ function formatDate(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+}
+
+/** True when `iso` is either a YYYY-MM-DD-prefixed string or anything else `Date` can parse. */
+function isFormattableDate(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  if (/^\d{4}-\d{2}-\d{2}/.test(iso)) return true;
+  return !Number.isNaN(new Date(iso).getTime());
+}
+
+/**
+ * current_period_end display, used both by the renewal/cancel meta line and the
+ * cancel-confirmation dialog. Pagar.me returns this as a midnight-UTC calendar-date boundary
+ * (the same hazard `formatUtcDateBR` exists for in PagarmeCheckoutDialog's trial_ends_at), so
+ * formatting it through the browser's local timezone can print a day early for a Brazil-based
+ * user (UTC-3). Stripe's timestamp is not a calendar-date boundary, so that path keeps the
+ * existing local-timezone formatDate() completely unchanged. Returns '' for a value neither
+ * path can make sense of, instead of throwing or showing a garbled string.
+ */
+function formatPeriodEnd(iso: string | null, provider: string | null): string {
+  if (!iso) return '';
+  if (provider === 'pagarme') return isFormattableDate(iso) ? formatUtcDateBR(iso) : '';
+  return formatDate(iso);
 }
 
 function planFeatures(p: BillingPlan): string[] {
@@ -210,11 +231,13 @@ export default function CobrancaPage() {
       await cancelPagarmeSubscription();
       toast.success('Assinatura cancelada.');
       startPlanRefetchPoll();
+      // Close only on success: a failure must leave the dialog open with the button
+      // re-enabled so the user has an in-context retry instead of only a toast.
+      setCancelDialogOpen(false);
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
       setCancelling(false);
-      setCancelDialogOpen(false);
     }
   }
 
@@ -237,13 +260,19 @@ export default function CobrancaPage() {
     return null;
   }
 
-  const cancelDialogDescription =
-    subscription?.status === 'trialing'
+  // Only relevant to the pagarme cancel dialog, so it's computed only when that dialog is
+  // reachable at all (showPagarmeManage is also what gates the trigger button that opens it).
+  // A malformed current_period_end must degrade to the no-date variant, not throw: formatDate's
+  // own NaN guard doesn't apply here since this reads dd/MM/yyyy via formatUtcDateBR, so the
+  // isFormattableDate check stands in for it.
+  const cancelDialogDescription = !showPagarmeManage
+    ? ''
+    : subscription?.status === 'trialing'
       ? 'Sua assinatura será cancelada agora, sem cobrança.'
       : subscription?.status === 'past_due'
         ? 'Sua assinatura será cancelada agora.'
-        : subscription?.current_period_end
-          ? `Seu acesso continua até ${format(new Date(subscription.current_period_end), 'dd/MM/yyyy')}. Depois disso, o workspace volta ao plano gratuito.`
+        : subscription?.current_period_end && isFormattableDate(subscription.current_period_end)
+          ? `Seu acesso continua até ${formatUtcDateBR(subscription.current_period_end)}. Depois disso, o workspace volta ao plano gratuito.`
           : 'Sua assinatura será cancelada.';
 
   return (
@@ -268,7 +297,7 @@ export default function CobrancaPage() {
               {subscription?.current_period_end && (
                 <div className="billing-current__meta">
                   {subscription.cancel_at_period_end ? 'Cancela em ' : 'Renova em '}
-                  {formatDate(subscription.current_period_end)}
+                  {formatPeriodEnd(subscription.current_period_end, subscription.provider)}
                 </div>
               )}
             </div>
@@ -429,7 +458,15 @@ export default function CobrancaPage() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={cancelling}>Manter assinatura</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => void handleCancelPagarmeSubscription()}
+              onClick={(e) => {
+                // AlertDialogAction is Radix's DialogPrimitive.Close under the hood: without
+                // preventDefault it closes synchronously on click, before the request below
+                // ever resolves, making `cancelling` dead code and leaving a failed cancel
+                // with no in-context retry. The dialog now closes itself, deliberately, only
+                // from inside handleCancelPagarmeSubscription's success path.
+                e.preventDefault();
+                void handleCancelPagarmeSubscription();
+              }}
               disabled={cancelling}
             >
               {cancelling ? 'Cancelando…' : 'Sim, cancelar assinatura'}

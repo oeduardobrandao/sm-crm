@@ -323,6 +323,109 @@ describe('CobrancaPage', () => {
       fireEvent.click(confirmBtn);
 
       await waitFor(() => expect(cancelPagarmeSubscription).toHaveBeenCalledTimes(1));
+      // Success closes the dialog.
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    });
+
+    it('keeps the cancel dialog open while the request is pending, closing only once it resolves', async () => {
+      // Reviewer's probe scenario: AlertDialogAction is Radix's DialogPrimitive.Close under the
+      // hood, so without preventDefault the dialog closes synchronously on click, before this
+      // promise ever settles. A controlled, deliberate close is the only thing that should be
+      // able to dismiss it while a cancel is in flight.
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({
+          status: 'active',
+          provider: 'pagarme',
+          plan_id: 'pro',
+          hasEverSubscribed: true,
+        }),
+      );
+      let resolveCancel: (v: { status: string; access_until: string | null }) => void = () => {};
+      vi.mocked(cancelPagarmeSubscription).mockReturnValue(
+        new Promise((resolve) => {
+          resolveCancel = resolve;
+        }),
+      );
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Cancelar assinatura' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Sim, cancelar assinatura' }));
+
+      // Still pending: the dialog is still on screen, showing the busy state.
+      expect(await screen.findByRole('button', { name: 'Cancelando…' })).toBeInTheDocument();
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+
+      resolveCancel({ status: 'canceled', access_until: null });
+
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    });
+
+    it('keeps the cancel dialog open and re-enables the button when the cancel request fails', async () => {
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({
+          status: 'active',
+          provider: 'pagarme',
+          plan_id: 'pro',
+          hasEverSubscribed: true,
+        }),
+      );
+      vi.mocked(cancelPagarmeSubscription).mockRejectedValue(new Error('Falha ao cancelar'));
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Cancelar assinatura' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Sim, cancelar assinatura' }));
+
+      await waitFor(() => expect(cancelPagarmeSubscription).toHaveBeenCalledTimes(1));
+
+      // A failed cancel is not a dead end: the dialog is still open with a usable retry button,
+      // not just a toast the user could miss.
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+      const retryBtn = await screen.findByRole('button', { name: 'Sim, cancelar assinatura' });
+      expect(retryBtn).toBeEnabled();
+    });
+
+    it('falls back to the no-date cancel description, without crashing, when current_period_end is malformed', async () => {
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({
+          status: 'active',
+          provider: 'pagarme',
+          plan_id: 'pro',
+          hasEverSubscribed: true,
+          current_period_end: 'not-a-real-date',
+        }),
+      );
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Cancelar assinatura' }));
+      expect(await screen.findByText('Sua assinatura será cancelada.')).toBeInTheDocument();
+    });
+
+    it('renders a pagarme current_period_end as the UTC calendar date, not shifted by local timezone', async () => {
+      // Pagar.me returns current_period_end as a midnight-UTC calendar-date boundary (the same
+      // hazard formatUtcDateBR exists for in PagarmeCheckoutDialog's trial_ends_at). Formatting
+      // it through the browser's local timezone would print 11/09/2026 in Brazil (UTC-3); both
+      // the renewal meta line and the cancel-dialog description must read 12/09/2026.
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({
+          status: 'active',
+          provider: 'pagarme',
+          plan_id: 'pro',
+          hasEverSubscribed: true,
+          current_period_end: '2026-09-12T00:00:00.000Z',
+        }),
+      );
+      renderPage();
+
+      expect(
+        await screen.findByText((_content, node) => node?.textContent === 'Renova em 12/09/2026'),
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar assinatura' }));
+      expect(
+        await screen.findByText(
+          'Seu acesso continua até 12/09/2026. Depois disso, o workspace volta ao plano gratuito.',
+        ),
+      ).toBeInTheDocument();
     });
   });
 });
