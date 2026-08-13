@@ -155,7 +155,12 @@ corresponding capability is silently off (same dark-ship pattern as
    - **Ingest catch-up**: video rows with `stream_uid is null` older than
      ~10 min get a `copyToStream` attempt. This covers enqueue failures AND
      rows created outside `file-upload-finalize` — notably `file-manage`
-     copy-file / copy-folder, which insert `files` rows directly.
+     copy-file / copy-folder, which insert `files` rows directly. The ~10 min
+     is a lower bound, not a promised recovery time: today this sweep only
+     runs inside `post-media-cleanup-cron`'s existing daily 03:00 schedule
+     (≤20 rows/run), so a video that misses inline ingest can stay on the MP4
+     fallback for up to ~24 h until the next run — a dedicated, more frequent
+     schedule is a spawned follow-up.
    - **Settle pending**: rows `pending` with a uid older than 1 h are checked
      against the Stream API and settled to `ready`/`error`.
    - **Orphan reap**: list Stream videos via API (volume is small) and delete

@@ -454,9 +454,9 @@ export interface StreamStepsDeps {
 export async function runStreamSweeps(deps: StreamStepsDeps): Promise<{ ingested: number; settled: number; reaped: number; errors: number }>;
 ```
 
-`runStreamSweeps` implements, in order (each step wrapped so one failure doesn't stop the next; count into `errors`):
+`runStreamSweeps` implements, in order (each step wrapped so one failure doesn't stop the next; count into `errors`). All three steps run only inside `post-media-cleanup-cron`'s existing daily `0 3 * * *` schedule — there is no dedicated, more frequent trigger yet (a spawned follow-up) — so a video that misses inline ingest (e.g. a `file-manage` copy) can sit on the MP4 fallback for up to ~24 h before the next run picks it up:
 
-1. **Ingest catch-up** (covers enqueue failures AND `file-manage` copies): select up to 20 of `files` where `kind = 'video'`, `stream_uid is null`, `stream_status is null or stream_status = 'pending'`, `created_at < now() - 10 min`, ordered `created_at asc`. For each: update `stream_status='pending'`, `copyToStream(await signSourceUrl(r2_key), { file_id: String(id), conta_id })`, save uid.
+1. **Ingest catch-up** (covers enqueue failures AND `file-manage` copies): select up to 20 of `files` where `kind = 'video'`, `stream_uid is null`, `stream_status is null or stream_status = 'pending'`, `created_at < now() - 10 min` (a lower bound, not a promised recovery time), ordered `created_at asc`. For each: update `stream_status='pending'`, `copyToStream(await signSourceUrl(r2_key), { file_id: String(id), conta_id })`, save uid.
 2. **Settle pending**: select up to 50 of `files` where `stream_status = 'pending'`, `stream_uid is not null`, `created_at < now() - 1 h`. For each, `getStreamVideoStatus(uid)` → `ready`/`error` update (skip `inprogress`).
 3. **Orphan reap**: `listStreamVideos()`; build the DB uid set (`select stream_uid from files where stream_uid is not null` — plus the pending `file_deletions.stream_uid` rows, which are queued for delete but not orphans to double-delete here); delete any Stream uid absent from both sets with `created` older than 1 h.
 
