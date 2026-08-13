@@ -14,7 +14,10 @@ import type { VideoHTMLAttributes } from 'react';
 //   - A fatal hls.js error, or an error on the fallback <video> itself, is
 //     the two ways this can end up unplayable; only the latter reports
 //     onFatalError, since the former still has a fallback left to try.
-export interface VideoPlayerProps extends Omit<VideoHTMLAttributes<HTMLVideoElement>, 'src'> {
+export interface VideoPlayerProps extends Omit<
+  VideoHTMLAttributes<HTMLVideoElement>,
+  'src' | 'onError'
+> {
   /** Tokenized HLS manifest URL. Absent = plain progressive video, no hls.js involved. */
   hlsSrc?: string | null;
   /** Progressive fallback (current media-proxy URL). Always required. */

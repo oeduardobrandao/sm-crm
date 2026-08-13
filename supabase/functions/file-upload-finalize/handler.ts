@@ -171,6 +171,10 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
     const url = await deps.signUrl(body.r2_key);
     const thumbnail_url = body.thumbnail_r2_key ? await deps.signUrl(body.thumbnail_r2_key) : null;
 
-    return json({ ...inserted, url, thumbnail_url, blur_data_url: body.blur_data_url ?? null });
+    // Same contract as file-manage: stream_uid/stream_status are internal, never returned
+    // to the client — always null at this point in the flow anyway (the ingest below hasn't
+    // run yet), but strip them so the keys never leak even if that ever changes.
+    const { stream_uid, stream_status, ...pub } = inserted as Record<string, unknown>;
+    return json({ ...pub, url, thumbnail_url, blur_data_url: body.blur_data_url ?? null });
   };
 }

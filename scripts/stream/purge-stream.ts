@@ -96,10 +96,16 @@ async function main(): Promise<void> {
 
   let deleted = 0;
   let failed = 0;
+  // Only uids that actually left Cloudflare Stream (200/404 — deleteVideo() treats a 404 as
+  // success, same as _shared/stream.ts's deleteStreamVideo()) get their `files` row nulled
+  // below. A failed delete leaves the row pointed at the uid on purpose: nulling it here would
+  // strand a still-billed, now-unreferenced video with nothing left to retry the delete.
+  const deletedUids: string[] = [];
   for (const video of videos) {
     try {
       await deleteVideo(video.uid);
       deleted++;
+      deletedUids.push(video.uid);
       console.log(`[OK] apagado ${video.uid}`);
     } catch (e) {
       failed++;
@@ -108,19 +114,40 @@ async function main(): Promise<void> {
   }
   console.log(`Apagados ${deleted}/${videos.length} vídeo(s) (${failed} falha(s)).`);
 
-  const { data: cleared, error } = await db
-    .from("files")
-    .update({ stream_uid: null, stream_status: null })
-    .not("stream_uid", "is", null)
-    .select("id");
-  if (error) {
-    console.error(`Falha ao limpar stream_uid/stream_status em files: ${error.message}`);
-    process.exitCode = 1;
-    return;
+  // PostgREST caps both the row count `.in()` can filter by a URL-length limit and the rows a
+  // single response can return at 1000, so batch the update the same way the cron's orphan
+  // reap paginates its known-uid selects (see post-media-cleanup-cron/stream-steps.ts).
+  const CHUNK_SIZE = 200;
+  let totalCleared = 0;
+  let dbErrors = 0;
+  for (let i = 0; i < deletedUids.length; i += CHUNK_SIZE) {
+    const chunk = deletedUids.slice(i, i + CHUNK_SIZE);
+    const { data: cleared, error } = await db
+      .from("files")
+      .update({ stream_uid: null, stream_status: null })
+      .in("stream_uid", chunk)
+      .select("id");
+    if (error) {
+      dbErrors++;
+      console.error(`Falha ao limpar stream_uid/stream_status em files (lote ${Math.floor(i / CHUNK_SIZE) + 1}): ${error.message}`);
+      continue;
+    }
+    totalCleared += cleared?.length ?? 0;
   }
 
-  console.log(`Referências limpas em files: ${cleared?.length ?? 0} linha(s).`);
-  if (failed > 0) process.exitCode = 1;
+  console.log(`Referências limpas em files: ${totalCleared} linha(s).`);
+
+  const { count: stranded, error: strandedErr } = await db
+    .from("files")
+    .select("id", { count: "exact", head: true })
+    .not("stream_uid", "is", null);
+  if (strandedErr) {
+    console.error(`Falha ao contar linhas ainda apontando para uids com falha na exclusão: ${strandedErr.message}`);
+  } else {
+    console.log(`Linhas ainda apontando para uids com falha na exclusão (não limpas de propósito): ${stranded ?? 0}.`);
+  }
+
+  if (failed > 0 || dbErrors > 0) process.exitCode = 1;
 }
 
 await main();

@@ -1,4 +1,4 @@
-import { assertEquals, readJson } from "./assert.ts";
+import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createFileUploadFinalizeHandler } from "../file-upload-finalize/handler.ts";
 
@@ -224,7 +224,17 @@ Deno.test("file-upload-finalize: RPC quota_exceeded returns 413", async () => {
 Deno.test("file-upload-finalize: image finalize returns signed file record", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
-  const insertedFile = { id: 10, r2_key: baseBody.r2_key, name: "photo.png", kind: "image" };
+  const insertedFile = {
+    id: 10,
+    r2_key: baseBody.r2_key,
+    name: "photo.png",
+    kind: "image",
+    // RPC result carries these (always null at this point in the flow, since Stream
+    // ingest hasn't run yet) — the response must strip them regardless, same contract
+    // as file-manage.
+    stream_uid: null,
+    stream_status: null,
+  };
   db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
   const handler = makeHandler(db);
   const res = await handler(authedRequest(baseBody));
@@ -234,6 +244,8 @@ Deno.test("file-upload-finalize: image finalize returns signed file record", asy
   assertEquals(body.url, `https://signed.example.com/${baseBody.r2_key}`);
   assertEquals(body.thumbnail_url, null);
   assertEquals(body.blur_data_url, null);
+  assert(!("stream_uid" in body), "stream_uid must not leak to the client");
+  assert(!("stream_status" in body), "stream_status must not leak to the client");
 });
 
 Deno.test("file-upload-finalize: finalize with blur_data_url patches and returns it", async () => {
