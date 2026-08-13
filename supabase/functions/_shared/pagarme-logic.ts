@@ -178,12 +178,47 @@ export function buildChargeDunningKey(chargeId: string, attempt: number | null |
 }
 
 /**
- * True only when the incoming charge+attempt key differs from the last one recorded — a real
- * retry advances the dunning stage; a redelivery of the same charge+attempt does not.
+ * True only when the incoming charge+attempt key should advance the dunning stage. A repeated
+ * key is a redelivery and never advances. When both keys carry the SAME charge id and numeric
+ * attempts, only a HIGHER attempt advances: an out-of-order delivery of attempt 1 arriving
+ * after attempt 2 must not regress the stored key (a later redelivery of attempt 2 would then
+ * advance and e-mail again). Different charge ids or non-numeric attempts ("na") cannot be
+ * ordered and keep the plain inequality rule.
  */
 export function shouldAdvanceDunning(
   lastKey: string | null | undefined,
   incomingKey: string,
 ): boolean {
-  return lastKey !== incomingKey;
+  if (lastKey === incomingKey) return false;
+  if (!lastKey) return true;
+  const lastSep = lastKey.lastIndexOf(":");
+  const inSep = incomingKey.lastIndexOf(":");
+  if (lastSep === -1 || inSep === -1) return true;
+  if (lastKey.slice(0, lastSep) !== incomingKey.slice(0, inSep)) return true;
+  const lastAttempt = Number(lastKey.slice(lastSep + 1));
+  const inAttempt = Number(incomingKey.slice(inSep + 1));
+  if (!Number.isFinite(lastAttempt) || !Number.isFinite(inAttempt)) return true;
+  return inAttempt > lastAttempt;
+}
+
+/**
+ * Enforcement arm of the cross-provider guard, for the ONE event where deny is not enough:
+ * checkout.session.completed. With a session present, canWebhookWrite(..., isAuthorizedBind:
+ * true) only returns false on the cross-provider in-force/paid-through branch — meaning the
+ * customer just PAID for a brand-new Stripe subscription that will never be bound (a Stripe
+ * Checkout Session lives 24h, so serializing checkout STARTS cannot prevent this completion).
+ * The just-created subscription must be canceled, not acked. A terminal remote status like
+ * `canceled` or `incomplete_expired` means there is nothing left to cancel: ack instead.
+ */
+// Stripe statuses a subscription can no longer be canceled FROM — it is already terminal.
+// A denied checkout redelivered after Stripe expired the unpaid sub (incomplete -> ~23h ->
+// incomplete_expired) or after our own earlier cancel (canceled) has nothing left to cancel;
+// calling subscriptions.cancel on it throws and would 5xx-loop the webhook forever. Ack instead.
+const RESOLVED_STRIPE_STATUSES = new Set(["canceled", "incomplete_expired"]);
+
+export function shouldCancelDeniedCheckoutSub(
+  hasSession: boolean,
+  remoteStatus: string,
+): boolean {
+  return hasSession && !RESOLVED_STRIPE_STATUSES.has(remoteStatus);
 }

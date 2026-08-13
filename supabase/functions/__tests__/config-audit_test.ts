@@ -68,6 +68,7 @@ const REQUIRED_FUNCTIONS = [
   "pagarme-checkout",
   "billing-portal",
   "stripe-webhook",
+  "pagarme-webhook",
 ];
 
 Deno.test("config.toml: all non-JWT functions have verify_jwt = false", async () => {
