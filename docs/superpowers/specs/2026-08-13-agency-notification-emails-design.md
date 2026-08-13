@@ -30,8 +30,9 @@ event emails are a separate, net-new outbound path — deferred to its own spec.
   set + per-type opt-out + a master "pause all" switch + a settle window that
   only emails what wasn't already caught in-app.
 - Reuse, not reinvent: inherit every reliability property the mention cron
-  already proved (claim-first at-most-once, deadline release, failure reset,
-  skip-without-claiming when Resend is unconfigured).
+  already proved (claim-first delivery, deadline release, failure reset,
+  skip-without-claiming when Resend is unconfigured), hardened into a single
+  atomic claim to close the removed-user and opt-out-race gaps.
 - Retroactively give the existing `mention` email an opt-out by folding it into
   the same system.
 
@@ -93,8 +94,8 @@ CREATE TABLE notification_email_prefs (
 - A `type` CHECK constrains values to the eight types plus `'__all__'`.
 
 **RLS:** `user_id = auth.uid()` for SELECT / INSERT / UPDATE / DELETE. Users
-manage only their own rows. The cron reads through the candidate RPC as
-`service_role`.
+manage only their own rows. The cron reaches these rows only through the atomic
+claim RPC (below), running as `service_role`.
 
 ### Delivery — supersede the mention cron
 
@@ -107,28 +108,61 @@ The new cron keeps the mention cron's two-layer shape verbatim
 (`handler.ts` = DI business logic; `index.ts` = auth wrapper + bounded
 `global.fetch`) and every reliability property:
 
-- **Claim-first at-most-once**: eligibility read → `UPDATE ... SET emailed_at
-  RETURNING`, re-checking `emailed_at/read_at/dismissed_at IS NULL` at claim time
-  to keep concurrent runs disjoint and to skip anything read/dismissed in the gap.
+- **Claim-first, single atomic statement** (see "The atomic claim" below):
+  one `UPDATE … RETURNING` embeds every predicate (type set, window,
+  `read/dismissed/emailed IS NULL`, workspace membership, preference opt-out) so
+  the send/no-send decision is atomic with the claim. `FOR UPDATE SKIP LOCKED`
+  keeps concurrent runs disjoint. This is a deliberate departure from the mention
+  cron's two-call (SELECT-then-UPDATE) shape, forced by the P0/P1 findings below.
 - `CLAIM_BATCH_SIZE = 100`, `SEND_DEADLINE_MS = 60_000` soft budget releasing
   unprocessed claims (`emailed_at → NULL`) so the next run retries them.
-- Per-user send failure → best-effort claim reset.
+- Per-user send failure → best-effort claim reset (`emailed_at → NULL`).
 - `RESEND_API_KEY` unset (staging) → **skip without claiming**, so rows stay
   eligible for when a key is configured.
 - Errors → `reportCronFailure(svc, 'notification-email-cron', …)`.
 - Every I/O bounded by `AbortSignal.timeout(10_000)`.
 
-### Preference filtering happens BEFORE the claim
+**Delivery guarantee — at-most-once *claim*, at-least-once *delivery*.** The claim
+stamps `emailed_at` atomically, so no two runs email the same row twice on the
+happy path. But the per-user failure reset (and deadline release) set
+`emailed_at → NULL` to retry, and Resend has no server-side transaction with us:
+a timeout *after* Resend accepted the request resets the rows and re-sends next
+run. To deduplicate the common case, each digest send carries a Resend
+`Idempotency-Key` derived from the sorted set of claimed notification ids (the
+pattern `_shared/lifecycle-emails.ts` already uses); an identical re-claim within
+Resend's 24h window is 409'd (treated as success). Residual, accepted: if a *new*
+qualifying notification arrives for that user inside the ~5-min retry gap, the
+re-claim is a superset, the key differs, and one or two lines can repeat. Losing a
+"your post failed to publish" email is worse than a rare repeated line, so the
+mention cron's retry-on-failure stance is kept, not inverted.
 
-This is the load-bearing invariant. An opted-out (or master-paused) notification
-must **never** be claimed, because claiming stamps `emailed_at` and would suppress
-that row forever while still leaving it in the bell. So filtering lives in the
-eligibility step, not in the send loop.
+### The atomic claim (closes the opt-out race AND the removed-user leak)
 
-A new SECURITY DEFINER RPC (owned by postgres, `EXECUTE` to `service_role`):
+Two invariants must hold, and neither survives a two-call *select-then-claim*
+design where a candidate RPC picks rows and a separate `UPDATE` claims them:
+
+1. **An opted-out / master-paused notification must never be claimed.** Claiming
+   stamps `emailed_at`, which would both email it and suppress it in the bell
+   forever. A user who opts out *between* a candidate SELECT and the claim UPDATE
+   would still be emailed.
+2. **A user removed from a workspace must never be emailed its content.** Nothing
+   deletes a removed user's `notifications` rows (verified: no cleanup on
+   `workspace_members` delete; `notify_member_removed` only *inserts*), and the
+   bell's RLS is `user_id = auth.uid()` with no membership check. With the type
+   set broadened to real client content (`client_message`, `post_message`,
+   `post_correction`), an ex-contractor could be emailed a former client's
+   message. A candidate-side membership filter alone reopens the same gap in the
+   select→claim window.
+
+Both are closed the way the repo's Loops sweep already closes the identical
+removal race ([`claim_marketing_email`](../../supabase/migrations/20260803000004_loops_sync_rpcs.sql),
+lines 36–100): **make every predicate part of one atomic claim.** A single
+SECURITY DEFINER RPC (owned by postgres, `EXECUTE` to `service_role` only —
+`REVOKE FROM PUBLIC` also strips `service_role` on this instance, so grant
+explicitly and verify with `proacl`):
 
 ```sql
-get_notification_email_candidates(
+claim_notification_emails(
   p_settle_before timestamptz,   -- now - 10 min
   p_after         timestamptz,   -- now - 24 h
   p_limit         int            -- CLAIM_BATCH_SIZE
@@ -136,24 +170,38 @@ get_notification_email_candidates(
                  link text, created_at timestamptz)
 ```
 
-Body selects from `notifications n` where:
+Body claims and returns in one statement:
 
-```
-n.type = ANY(<the 8 types>)
-AND n.read_at IS NULL AND n.dismissed_at IS NULL AND n.emailed_at IS NULL
-AND n.created_at <= p_settle_before AND n.created_at >= p_after
-AND NOT EXISTS (
-  SELECT 1 FROM notification_email_prefs p
-  WHERE p.user_id = n.user_id AND p.enabled = false
-    AND (p.type = n.type OR p.type = '__all__')
+```sql
+UPDATE notifications n SET emailed_at = now()
+WHERE n.id IN (
+  SELECT n2.id FROM notifications n2
+  WHERE n2.type = ANY(<the 8 types>)
+    AND n2.read_at IS NULL AND n2.dismissed_at IS NULL AND n2.emailed_at IS NULL
+    AND n2.created_at <= p_settle_before AND n2.created_at >= p_after
+    -- (P0) recipient must still belong to the workspace
+    AND EXISTS (SELECT 1 FROM workspace_members wm
+                WHERE wm.workspace_id = n2.workspace_id AND wm.user_id = n2.user_id)
+    -- (P1) preference opt-out / master pause, evaluated at claim time
+    AND NOT EXISTS (SELECT 1 FROM notification_email_prefs p
+                    WHERE p.user_id = n2.user_id AND p.enabled = false
+                      AND (p.type = n2.type OR p.type = '__all__'))
+  ORDER BY n2.created_at ASC
+  LIMIT p_limit
+  FOR UPDATE SKIP LOCKED
 )
-ORDER BY n.created_at ASC
-LIMIT p_limit
+RETURNING n.id, n.user_id, n.type, n.metadata, n.link, n.created_at;
 ```
 
-The cron then claims exactly those ids via the same
-`UPDATE … WHERE id IN (ids) AND emailed_at IS NULL AND read_at IS NULL AND
-dismissed_at IS NULL RETURNING id, user_id, type, metadata, link, created_at`.
+`FOR UPDATE SKIP LOCKED` on the inner select makes concurrent cron runs disjoint
+without relying on the `emailed_at` re-check alone. The **preference-change and
+membership cutoff is therefore the claim instant**: a user who opts out or is
+removed before this statement evaluates its `WHERE` is excluded; one who does so
+after is already claimed (and, for membership, this is a courtesy copy of a bell
+notification they can no longer see anyway — bounded and acceptable). The cron's
+`handler.ts` calls this via `db.rpc(...)` and receives the claimed rows directly;
+release/reset paths keep NULL-ing `emailed_at` by id as before (no membership
+re-check needed — they only make a row eligible again).
 
 Optional supporting index to keep the cross-user sweep cheap:
 `CREATE INDEX idx_notifications_email_pending ON notifications (created_at)
@@ -170,9 +218,12 @@ card) so it stays consistent with `mention-email.ts` / `lifecycle-emails.ts` /
 One email per user per run. Claimed rows are grouped by `user_id`, then within a
 user ordered by a fixed **urgency priority**:
 
-1. **Publish failures** — rendered with the actionable título/explicação/solução
-   from `getPublishErrorDisplay()` in `_shared/publish-error-codes.ts` (reused),
-   keyed off the failure's error code in `metadata`.
+1. **Publish failures** — rendered with `getPublishErrorDisplay()` from
+   `_shared/publish-error-codes.ts` (reused), keyed off the failure's error code
+   in `metadata`. That helper returns `{ titulo, explicacao }` — **there is no
+   separate `solução` field**; `explicacao` already carries the actionable "faça
+   X" guidance (e.g. "Reconecte a conta na página do cliente e reagende o post").
+   The digest line shows `titulo` as the heading and `explicacao` as the body.
 2. Client corrections & messages (`post_correction`, `post_message`,
    `client_message`).
 3. Approaching deadlines (`deadline_approaching`).
@@ -222,38 +273,69 @@ A new **Notificações** tab under the existing `/configuracao` layout:
 ## Error handling & reliability
 
 Inherited wholesale from the mention cron (see "supersede the mention cron"):
-claim-first at-most-once, deadline release, per-user failure reset,
-skip-without-claiming on missing key, bounded fetch, `reportCronFailure` on
-failure. A crash between claim and send loses at most that one digest (accepted:
-email is a courtesy copy of the reliable in-app bell). No new failure modes are
-introduced; the only additions are read-only (the candidate RPC) and idempotent
-(pref upserts).
+deadline release, per-user failure reset, skip-without-claiming on missing key,
+bounded fetch, `reportCronFailure` on failure. Delivery is at-most-once *claim* /
+at-least-once *delivery* (see "Delivery guarantee" above): a crash between claim
+and send loses at most that one digest, and a timeout-after-accept can repeat it,
+deduped best-effort by the Resend idempotency key. Both are accepted because email
+is a courtesy copy of the reliable in-app bell. The only new pieces are the atomic
+claim RPC (which mirrors the Loops `claim_marketing_email` precedent) and the
+idempotent preference upserts.
 
 ## Testing
 
 - **Deno** (`test:functions`), extending the mention-cron suite:
-  - opted-out rows and master-paused users are never returned as candidates (so
-    never claimed / `emailed_at` never stamped);
   - digest groups per user and orders sections by the urgency priority;
   - claim/release/deadline and per-user failure reset paths (inherited);
-  - `RESEND_API_KEY` unset → skip without claiming.
-- **Entitlement / RLS** (`entitlement-tests`, psql): a user can select/update only
-  their own `notification_email_prefs` rows; the candidate RPC is not executable
-  by `authenticated`.
+  - `RESEND_API_KEY` unset → skip without claiming;
+  - the idempotency key is stable for an identical re-claim and differs when the
+    claimed id set changes.
+- **Entitlement / RLS + atomic claim** (`entitlement-tests`, psql — this suite
+  IS gated by CI): the `claim_notification_emails` predicates, which are the
+  security boundary and can only be exercised against a real database:
+  - an opted-out type and a `'__all__'` master-paused user are never claimed
+    (`emailed_at` stays NULL, row still visible in the bell);
+  - a notification whose `user_id` is no longer in `workspace_members` for its
+    `workspace_id` is never claimed (the P0 removed-user leak);
+  - concurrent claims are disjoint (`FOR UPDATE SKIP LOCKED`);
+  - a user can select/update only their own `notification_email_prefs` rows, and
+    the claim RPC is not executable by `authenticated`.
 - **Vitest** (frontend): `NotificacoesTab` renders all types, toggles persist,
   master pause round-trips.
-- Full `npm run test` + `npm run test:functions` after the change (contract change
-  to the cron + shared email module).
+
+**Full local verification before pushing** (this is a contract change to the cron
+and the shared email module, and it touches four projects' typechecks). Run the
+same gates CI runs, not just the two test commands:
+
+```bash
+npx tsc -p apps/crm/tsconfig.json   --noEmit
+npx tsc -p apps/hub/tsconfig.json   --noEmit
+npx tsc -p apps/admin/tsconfig.json --noEmit
+npx tsc -p tsconfig.scripts.json
+npm run lint
+npm run format:check          # npm run format auto-fixes
+npm run test                  # Vitest
+npm run test:functions        # deno test (reverts root deno.lock afterward)
+```
+
+`entitlement-tests` needs Docker/colima locally but is enforced by CI regardless.
 
 ## Deploy order
 
 Ordering matters because the reschedule fires immediately (same rule as
 `20260803000007` / `20260730000002`):
 
+0. Add the tracked `supabase/config.toml` entry
+   `[functions.notification-email-cron]` / `verify_jwt = false`, mirroring the
+   existing `[functions.mention-email-cron]` block. The `--no-verify-jwt` deploy
+   flag works for the one-off deploy, but without the config.toml entry local
+   `functions serve` and later config-driven deploys would verify JWT and 401 the
+   cron. Commit it with the code.
 1. Deploy the **`notification-email-cron`** function (`--no-verify-jwt --use-api`).
 2. Apply the migration bundle in one `db push`:
    - `notification_email_prefs` table + RLS + grants;
-   - `get_notification_email_candidates()` RPC;
+   - `claim_notification_emails()` atomic-claim RPC (explicit `service_role`
+     grant, verified via `proacl`);
    - optional `idx_notifications_email_pending`;
    - **unschedule** `mention-email-cron` job, **schedule** `notification-email-cron`
      every `*/5 * * * *` (vault `decrypted_secrets` subselect form, per
