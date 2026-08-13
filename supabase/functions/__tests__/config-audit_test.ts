@@ -64,6 +64,7 @@ const REQUIRED_FUNCTIONS = [
   "invite-user",
   "manage-workspace-user",
   "sign-r2-urls",
+  "stream-webhook",
   // Billing (manual auth: user-JWT or Stripe signature)
   "billing-checkout",
   "pagarme-checkout",
