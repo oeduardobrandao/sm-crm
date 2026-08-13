@@ -60,6 +60,10 @@ interface DbFx {
   workspacePlanSource?: string | null;
   workspaceReadError?: { message: string } | null;
   workspaceWriteError?: { message: string } | null;
+  // grant_pagarme_plan RPC result: the count of workspaces rows written (0 = a concurrent
+  // transition or a manual comp blocked the write, server-side). Defaults to 1.
+  rpcResult?: number | null;
+  rpcError?: { message: string } | null;
 }
 
 /**
@@ -131,7 +135,34 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
     ) => Promise.resolve(settle()).then(onFulfilled, onRejected);
     return chain;
   };
-  return { from };
+  // grant_pagarme_plan is called via db.rpc(fn, params).abortSignal(...); recorded as a
+  // `rpc:<fn>` event so tests can assert the params and the abortSignal bound.
+  const rpc = (fn: string, params: Record<string, unknown>) => {
+    let sawAbortSignal = false;
+    // deno-lint-ignore no-explicit-any
+    const rchain: any = {};
+    rchain.abortSignal = () => {
+      sawAbortSignal = true;
+      return rchain;
+    };
+    const rsettle = () => {
+      fx.events.push({
+        table: `rpc:${fn}`,
+        op: "rpc",
+        values: params,
+        filters: [],
+        abortSignal: sawAbortSignal,
+        seq: seq.n++,
+      });
+      return { data: fx.rpcResult === undefined ? 1 : fx.rpcResult, error: fx.rpcError ?? null };
+    };
+    rchain.then = (
+      onFulfilled: (v: { data: unknown; error: unknown }) => unknown,
+      onRejected?: (e: unknown) => unknown,
+    ) => Promise.resolve(rsettle()).then(onFulfilled, onRejected);
+    return rchain;
+  };
+  return { from, rpc };
 }
 
 function makeGateway(
@@ -214,8 +245,8 @@ function findCasUpdate(events: Ev[]): Ev | undefined {
   return events.find((e) => e.table === "workspace_subscriptions" && e.op === "update");
 }
 
-function findPlanWrite(events: Ev[]): Ev | undefined {
-  return events.find((e) => e.table === "workspaces" && e.op === "update");
+function findPlanGrant(events: Ev[]): Ev | undefined {
+  return events.find((e) => e.table === "rpc:grant_pagarme_plan" && e.op === "rpc");
 }
 
 async function assertThrows(p: Promise<unknown>, needle: string) {
@@ -253,8 +284,10 @@ Deno.test("1. subscription.updated: active row + active remote -> CAS'd update, 
   const rowRead = events.find((e) => e.table === "workspace_subscriptions" && e.op === "read");
   assert(rowRead?.abortSignal, "row read must be bounded by abortSignal");
 
-  const planWrite = findPlanWrite(events);
-  assertEquals(planWrite?.values, { plan_id: "start", plan_source: "pagarme" });
+  const grant = findPlanGrant(events);
+  assert(grant, "plan grant RPC missing");
+  assertEquals(grant.values, { p_workspace: WS, p_plan: "start", p_sub: SUB, p_status: "active" });
+  assert(grant.abortSignal, "plan grant RPC must be bounded by abortSignal");
 });
 
 Deno.test("2. subscription.updated: no local row -> throws 'no local row'", async () => {
@@ -319,7 +352,7 @@ Deno.test("6. subscription.canceled: paid-through cancel retains current_period_
   assertEquals(cas.values?.status, "canceled");
   assertEquals(cas.values?.cancel_at_period_end, true);
   assertEquals(cas.values?.current_period_end, "2027-08-10T23:59:59Z");
-  assertEquals(findPlanWrite(events), undefined, "paid-through cancel must not write a plan target");
+  assertEquals(findPlanGrant(events), undefined, "paid-through cancel must not write a plan target");
 });
 
 Deno.test("7. subscription.canceled from trial (no cycle, cape stays false): plan write downgrades to DEFAULT ('free')", async () => {
@@ -336,8 +369,9 @@ Deno.test("7. subscription.canceled from trial (no cycle, cape stays false): pla
   assert(filterHas(cas.filters, "eq", "status", "trialing"), "must pin the observed status");
   assertEquals(cas.values?.cancel_at_period_end, false);
   assertEquals(cas.values?.current_period_end, "2026-09-11T00:00:00Z", "retained even though FUTURE");
-  const planWrite = findPlanWrite(events);
-  assertEquals(planWrite?.values, { plan_id: "free", plan_source: "pagarme" });
+  const grant = findPlanGrant(events);
+  assert(grant, "plan grant RPC missing");
+  assertEquals(grant.values, { p_workspace: WS, p_plan: "free", p_sub: SUB, p_status: "canceled" });
 });
 
 Deno.test("8. CAS matches zero rows -> throws 'concurrent ownership change'", async () => {
@@ -406,7 +440,7 @@ Deno.test("11. subscription.updated observing active while row is past_due holds
   const values = cas.values ?? {};
   assert(!("status" in values), "hold-dunning write must not touch status");
   assert(!("past_due_since" in values), "hold-dunning write must not touch the episode");
-  assertEquals(findPlanWrite(events), undefined);
+  assertEquals(findPlanGrant(events), undefined, "dunning-held reconcile is not plan-eligible: no grant");
 });
 
 // ─── charge.payment_failed, non-terminal (dunning advance) ─────────────────────────────────
@@ -545,8 +579,9 @@ Deno.test("15. charge.payment_failed, terminal (remote failed), open past_due ep
   );
   assertEquals(cas.values?.status, "canceled");
 
-  const planWrite = findPlanWrite(events);
-  assertEquals(planWrite?.values, { plan_id: "free", plan_source: "pagarme" });
+  const grant = findPlanGrant(events);
+  assert(grant, "plan grant RPC missing");
+  assertEquals(grant.values, { p_workspace: WS, p_plan: "free", p_sub: SUB, p_status: "canceled" });
 
   assertEquals(notified.length, 1);
   assertEquals(notified[0].ws, WS);
@@ -674,20 +709,52 @@ Deno.test("20. gateway throws (timeout) -> handler throws, propagating for a 5xx
 
 // ─── plan-writer integration ────────────────────────────────────────────────────────────────
 
-Deno.test("21. plan-writer: workspaces.plan_source 'manual' preserves the comp, no plan_id write, still reconciled", async () => {
+Deno.test("21. manual comp: the grant RPC's own guard (plan_source != 'manual') blocks the write server-side (0 rows); handler tolerates it and still reconciles", async () => {
+  // The comp preservation now lives in grant_pagarme_plan's WHERE, not a client-side read: the
+  // handler always calls the guarded RPC, which writes 0 rows for a manual comp. That server-side
+  // guard is exercised by the SQL migration, not this unit; here we assert the handler issues the
+  // guarded RPC (never a raw plan write) and tolerates the 0-row result.
   const { events, result } = run(
     "subscription.updated",
     { id: SUB },
-    { subRow: baseRow, workspacePlanSource: "manual" },
+    { subRow: baseRow, rpcResult: 0 },
   );
   assertEquals(await result, "reconciled");
   const cas = findCasUpdate(events);
   assert(cas);
   assertCasCoordinates(cas.filters);
   assert(filterHas(cas.filters, "eq", "status", "active"), "must pin the observed status");
-  assertEquals(findPlanWrite(events), undefined, "manual comp must never be overridden");
-  const wsRead = events.find((e) => e.table === "workspaces" && e.op === "read");
-  assert(wsRead, "writeWorkspacePlan must still read plan_source to check the comp");
+  const grant = findPlanGrant(events);
+  assert(grant, "plan grant RPC missing");
+  assertEquals(grant.values, { p_workspace: WS, p_plan: "start", p_sub: SUB, p_status: "active" });
+  assertEquals(
+    events.filter((e) => e.table === "workspaces" && e.op === "update").length,
+    0,
+    "the plan is only ever written through the guarded RPC, never a raw workspaces update",
+  );
+});
+
+Deno.test("21b. concurrent transition: the grant RPC matches 0 rows (a cancel/reclaim moved the sub) -> skip, no throw, still reconciled", async () => {
+  const { events, result } = run(
+    "subscription.updated",
+    { id: SUB },
+    { subRow: baseRow, rpcResult: 0 },
+  );
+  // 0 rows is the whole point of the guard: a delayed in-force handler whose subscription was
+  // reclaimed/canceled must NOT resurrect the plan, and must not error (the winning writer owns it).
+  assertEquals(await result, "reconciled");
+  const grant = findPlanGrant(events);
+  assert(grant, "the guarded RPC must still be attempted");
+  assertEquals(grant.values, { p_workspace: WS, p_plan: "start", p_sub: SUB, p_status: "active" });
+});
+
+Deno.test("21c. grant RPC error -> handler throws 'pagarme plan write failed' (5xx redelivery)", async () => {
+  const { result } = run(
+    "subscription.updated",
+    { id: SUB },
+    { subRow: baseRow, rpcError: { message: "deadlock detected" } },
+  );
+  await assertThrows(result, "pagarme plan write failed");
 });
 
 Deno.test("22. row with plan_id null: CRITICAL logged, no plans/workspaces write, reconcile still completes", async () => {
@@ -704,5 +771,6 @@ Deno.test("22. row with plan_id null: CRITICAL logged, no plans/workspaces write
   assert(filterHas(cas.filters, "eq", "status", "active"), "must pin the observed status");
   assertEquals(events.filter((e) => e.table === "workspaces").length, 0, "no plan_id -> grantPlan must not even read the default plan's workspace");
   assertEquals(events.filter((e) => e.table === "plans").length, 0, "no plan_id -> getDefaultPlanId must never run");
+  assertEquals(findPlanGrant(events), undefined, "no plan_id -> the grant RPC must never fire");
   assert(messages.some((m) => m.includes("CRITICAL")), "expected a CRITICAL log for the missing plan_id");
 });
