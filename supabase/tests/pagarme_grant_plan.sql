@@ -9,22 +9,38 @@
 
 begin;
 
--- 1. Security boundary. REVOKE FROM PUBLIC alone would leave anon/authenticated with the default
---    EXECUTE grant Supabase hands new public functions -- a free plan-set bypass, since any
---    authenticated user can read their own subscription row and supply a matching p_sub/p_status.
+-- 1. Security boundary, verified against proacl directly (AGENTS.md: "Check proacl, not
+--    has_function_privilege" -- REVOKE FROM PUBLIC silently strips service_role too, and
+--    has_function_privilege reports EFFECTIVE privilege, so it would mask both a service_role
+--    grant lost to that revoke and a PUBLIC/anon/authenticated leak inherited via PUBLIC). The
+--    grant is this SECURITY DEFINER function's entire boundary: a leak is a free plan-set bypass.
 do $$
+declare
+  v_svc  boolean;
+  v_anon boolean;
+  v_auth boolean;
+  v_pub  boolean;
 begin
-  if has_function_privilege('anon',
-       'public.grant_pagarme_plan(uuid, text, text, text)', 'execute') then
-    raise exception 'SECURITY: anon must not have EXECUTE on grant_pagarme_plan';
+  select
+    bool_or(a.grantee = 'service_role'::regrole and a.privilege_type = 'EXECUTE'),
+    bool_or(a.grantee = 'anon'::regrole          and a.privilege_type = 'EXECUTE'),
+    bool_or(a.grantee = 'authenticated'::regrole and a.privilege_type = 'EXECUTE'),
+    bool_or(a.grantee = 0::oid                    and a.privilege_type = 'EXECUTE')  -- PUBLIC
+  into v_svc, v_anon, v_auth, v_pub
+  from pg_proc p, lateral aclexplode(p.proacl) a
+  where p.oid = 'public.grant_pagarme_plan(uuid, text, text, text)'::regprocedure;
+
+  if not coalesce(v_svc, false) then
+    raise exception 'service_role must hold a DIRECT EXECUTE grant in proacl (REVOKE FROM PUBLIC strips it)';
   end if;
-  if has_function_privilege('authenticated',
-       'public.grant_pagarme_plan(uuid, text, text, text)', 'execute') then
-    raise exception 'SECURITY: authenticated must not have EXECUTE on grant_pagarme_plan';
+  if coalesce(v_anon, false) then
+    raise exception 'SECURITY: anon must not have a direct EXECUTE grant on grant_pagarme_plan';
   end if;
-  if not has_function_privilege('service_role',
-       'public.grant_pagarme_plan(uuid, text, text, text)', 'execute') then
-    raise exception 'service_role must retain EXECUTE on grant_pagarme_plan';
+  if coalesce(v_auth, false) then
+    raise exception 'SECURITY: authenticated must not have a direct EXECUTE grant on grant_pagarme_plan';
+  end if;
+  if coalesce(v_pub, false) then
+    raise exception 'SECURITY: PUBLIC must not have EXECUTE on grant_pagarme_plan';
   end if;
 end $$;
 
