@@ -118,10 +118,19 @@ async function ingestCatchUp(deps: StreamStepsDeps, nowMs: () => number): Promis
     try {
       // Durable intent BEFORE the external call (mirrors file-upload-finalize): a pending row
       // with a null uid is exactly what this sweep exists to repair on the next run.
-      await deps.db.from("files").update({ stream_status: "pending" }).eq("id", row.id);
+      // supabase-js update() RESOLVES with { error } instead of throwing -- both writes below
+      // must be checked and thrown explicitly, or a failed pending-write followed by a
+      // successful uid-write leaves stream_uid set with stream_status still null, a state none
+      // of the webhook, settle sweep, or this same catch-up sweep can ever pick back up again.
+      const { error: pendingErr } = await deps.db
+        .from("files")
+        .update({ stream_status: "pending" })
+        .eq("id", row.id);
+      if (pendingErr) throw pendingErr;
       const sourceUrl = await signSourceUrl(row.r2_key);
       const uid = await copyToStream(sourceUrl, { file_id: String(row.id), conta_id: row.conta_id });
-      await deps.db.from("files").update({ stream_uid: uid }).eq("id", row.id);
+      const { error: uidErr } = await deps.db.from("files").update({ stream_uid: uid }).eq("id", row.id);
+      if (uidErr) throw uidErr;
       ingested++;
     } catch (e) {
       console.error("stream-steps:ingest-row", row.id, e);

@@ -461,6 +461,65 @@ Deno.test("file-upload-finalize: video finalize with streamCopy rejecting still 
   assertEquals(updateCalls[0].payload, { stream_status: "pending" });
 });
 
+Deno.test("file-upload-finalize: video finalize skips streamCopy when the pending-status write resolves with an error", async () => {
+  // supabase-js update() RESOLVES with { error } instead of throwing -- an unchecked
+  // failure here used to let streamCopy run anyway, and the eventual stream_uid write
+  // would leave the row with stream_uid set but stream_status still null: a state no
+  // sweep (webhook/settle require stream_status='pending', catch-up requires stream_uid
+  // is null) can ever repair. The pending-write error must be checked and thrown BEFORE
+  // streamCopy is called.
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const videoBody = {
+    ...baseBody,
+    kind: "video" as const,
+    mime_type: "video/mp4",
+    r2_key: "contas/conta-1/files/vid-pending-fails.mp4",
+    thumbnail_r2_key: "contas/conta-1/files/vid-pending-fails.thumb.jpg",
+  };
+  const insertedFile = { id: 24, r2_key: videoBody.r2_key, name: "clip4.mp4", kind: "video" };
+  db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("files", "update", { data: null, error: { message: "connection reset" } }); // pending write FAILS
+  let streamCopyCalled = false;
+  const streamCopy = async () => {
+    streamCopyCalled = true;
+    return "stream-uid-should-not-be-saved";
+  };
+  const handler = makeHandler(db, { streamCopy });
+  const res = await handler(authedRequest(videoBody));
+  assertEquals(res.status, 200);
+  assertEquals(streamCopyCalled, false, "streamCopy must not run once the pending write is known to have failed");
+  const updateCalls = db.calls.filter((c) => c.table === "files" && c.operation === "update");
+  assertEquals(updateCalls.length, 1, "only the failed pending-status attempt -- no uid write follows");
+});
+
+Deno.test("file-upload-finalize: video finalize does not credit the uid write when it resolves with an error", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const videoBody = {
+    ...baseBody,
+    kind: "video" as const,
+    mime_type: "video/mp4",
+    r2_key: "contas/conta-1/files/vid-uid-save-fails.mp4",
+    thumbnail_r2_key: "contas/conta-1/files/vid-uid-save-fails.thumb.jpg",
+  };
+  const insertedFile = { id: 25, r2_key: videoBody.r2_key, name: "clip5.mp4", kind: "video" };
+  db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("files", "update", { data: null, error: null }); // pending write ok
+  db.queue("files", "update", { data: null, error: { message: "connection reset" } }); // uid write FAILS
+  const streamCopy = async () => "stream-uid-never-persisted";
+  const handler = makeHandler(db, { streamCopy });
+  const res = await handler(authedRequest(videoBody));
+  assertEquals(res.status, 200);
+  const updateCalls = db.calls.filter((c) => c.table === "files" && c.operation === "update");
+  assertEquals(updateCalls.length, 2, "both writes were attempted");
+  assertEquals(updateCalls[0].payload, { stream_status: "pending" });
+  assertEquals(updateCalls[1].payload, { stream_uid: "stream-uid-never-persisted" });
+  // Row is left with stream_status='pending' and no stream_uid recorded -- exactly the
+  // repairable state the ingest catch-up sweep selects for, not an unrepairable
+  // stream_uid-set/stream_status-null orphan.
+});
+
 Deno.test("file-upload-finalize: image finalize does not call streamCopy", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);

@@ -300,3 +300,59 @@ Deno.test("stream-steps: a single bad row in ingest (copyToStream throws) does n
   assertEquals(result.ingested, 1, "row 2 still succeeds despite row 1 failing");
   assertEquals(result.errors, 0, "a per-row failure is not a step failure");
 });
+
+Deno.test("stream-steps: ingest row skips copyToStream when the pending-status write resolves with an error, and the loop continues to the next row", async () => {
+  // supabase-js update() RESOLVES with { error } instead of throwing -- an unchecked
+  // failure here used to let copyToStream run anyway, and the eventual stream_uid write
+  // would leave the row with stream_uid set but stream_status still null: a state no
+  // sweep (webhook/settle require stream_status='pending', this same catch-up sweep
+  // requires stream_uid is null) can ever repair again.
+  const db = createSupabaseQueryMock();
+  db.queue("files", "select", {
+    data: [
+      { id: 1, r2_key: "contas/a/pending-fails.mp4", conta_id: "conta-1", created_at: hoursAgoIso(1) },
+      { id: 2, r2_key: "contas/a/good.mp4", conta_id: "conta-1", created_at: hoursAgoIso(1) },
+    ],
+  });
+  db.queue("files", "update", { data: null, error: { message: "connection reset" } }); // row 1 pending flip FAILS
+  db.queue("files", "update", { data: null, error: null }); // row 2 pending flip
+  db.queue("files", "update", { data: null, error: null }); // row 2 uid save
+  db.queue("files", "select", { data: [] }); // reap known set
+  db.queue("file_deletions", "select", { data: [] }); // reap queued set
+
+  const copyCalls: string[] = [];
+  const result = await runStreamSweeps(baseDeps(db, {
+    copyToStream: async (_url, meta) => {
+      copyCalls.push(meta.file_id);
+      return `uid-${meta.file_id}`;
+    },
+    signSourceUrl: async (r2Key) => `https://signed.example/${r2Key}`,
+    listStreamVideos: async () => [],
+  }));
+
+  assertEquals(copyCalls, ["2"], "row 1's failed pending-status write must not let copyToStream run for it");
+  assertEquals(result.ingested, 1, "row 1 is not counted as ingested; row 2 still is");
+  assertEquals(result.errors, 0, "a per-row failure is not a step failure");
+});
+
+Deno.test("stream-steps: ingest row is not counted as ingested when the uid-save write resolves with an error", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "select", {
+    data: [
+      { id: 1, r2_key: "contas/a/uid-save-fails.mp4", conta_id: "conta-1", created_at: hoursAgoIso(1) },
+    ],
+  });
+  db.queue("files", "update", { data: null, error: null }); // pending flip ok
+  db.queue("files", "update", { data: null, error: { message: "connection reset" } }); // uid save FAILS
+  db.queue("files", "select", { data: [] }); // reap known set
+  db.queue("file_deletions", "select", { data: [] }); // reap queued set
+
+  const result = await runStreamSweeps(baseDeps(db, {
+    copyToStream: async () => "new-uid",
+    signSourceUrl: async (r2Key) => `https://signed.example/${r2Key}`,
+    listStreamVideos: async () => [],
+  }));
+
+  assertEquals(result.ingested, 0, "row must not be credited when the uid was never durably saved");
+  assertEquals(result.errors, 0, "a per-row failure is not a step failure");
+});
