@@ -1,15 +1,19 @@
-import { assertEquals, readJson } from "./assert.ts";
+import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createFileManageHandler } from "../file-manage/handler.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
-function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>) {
+function makeHandler(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  overrides: Partial<Parameters<typeof createFileManageHandler>[0]> = {},
+) {
   return createFileManageHandler({
     buildCorsHeaders,
     createDb: () => db as never,
     signUrl: async (key) => `https://signed.example.com/${key}`,
     now: () => "2026-04-24T12:00:00.000Z",
+    ...overrides,
   });
 }
 
@@ -148,6 +152,95 @@ Deno.test("file-manage: GET /folders signs documents as url:null", async () => {
   assertEquals(res.status, 200);
   const body = await readJson(res);
   assertEquals(body.files[0].url, null);
+});
+
+// ─── FOLDERS: GET playback (Cloudflare Stream) ─────────────────
+
+Deno.test("file-manage: GET /folders includes signed playback for a ready streamed video and strips stream_* keys", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: [], error: null });
+  db.queue("files", "select", {
+    data: [{
+      id: 30,
+      name: "clip.mp4",
+      kind: "video",
+      r2_key: "contas/conta-1/files/clip.mp4",
+      thumbnail_r2_key: null,
+      stream_uid: "stream-uid-1",
+      stream_status: "ready",
+    }],
+    error: null,
+  });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 1000000, error: null });
+  const handler = makeHandler(db, {
+    signPlayback: async (uid) => ({ hls: `https://stream.example.com/${uid}.m3u8`, expires_at: "2026-04-24T13:00:00.000Z" }),
+  });
+  const res = await handler(req("GET", "/folders"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.files[0].playback, {
+    hls: "https://stream.example.com/stream-uid-1.m3u8",
+    expires_at: "2026-04-24T13:00:00.000Z",
+  });
+  assert(!("stream_uid" in body.files[0]), "stream_uid must not leak to the client");
+  assert(!("stream_status" in body.files[0]), "stream_status must not leak to the client");
+});
+
+Deno.test("file-manage: GET /folders returns playback: null for a pending streamed video", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: [], error: null });
+  db.queue("files", "select", {
+    data: [{
+      id: 31,
+      name: "clip2.mp4",
+      kind: "video",
+      r2_key: "contas/conta-1/files/clip2.mp4",
+      thumbnail_r2_key: null,
+      stream_uid: "stream-uid-2",
+      stream_status: "pending",
+    }],
+    error: null,
+  });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 1000000, error: null });
+  const handler = makeHandler(db, {
+    signPlayback: async (uid) => ({ hls: `https://stream.example.com/${uid}.m3u8`, expires_at: "2026-04-24T13:00:00.000Z" }),
+  });
+  const res = await handler(req("GET", "/folders"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.files[0].playback, null);
+  assert(!("stream_uid" in body.files[0]), "stream_uid must not leak to the client");
+  assert(!("stream_status" in body.files[0]), "stream_status must not leak to the client");
+});
+
+Deno.test("file-manage: GET /folders returns playback: null when signPlayback is not configured (Stream disabled)", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: [], error: null });
+  db.queue("files", "select", {
+    data: [{
+      id: 32,
+      name: "clip3.mp4",
+      kind: "video",
+      r2_key: "contas/conta-1/files/clip3.mp4",
+      thumbnail_r2_key: null,
+      stream_uid: "stream-uid-3",
+      stream_status: "ready",
+    }],
+    error: null,
+  });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 1000000, error: null });
+  const handler = makeHandler(db); // no signPlayback dep
+  const res = await handler(req("GET", "/folders"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.files[0].playback, null);
+  assert(!("stream_uid" in body.files[0]), "stream_uid must not leak to the client");
 });
 
 // ─── FOLDERS: POST ──────────────────────────────────────────────
@@ -444,6 +537,26 @@ Deno.test("file-manage: GET /links?post_id returns links with signed URLs", asyn
   const body = await readJson(res);
   assertEquals(body.links.length, 1);
   assertEquals(body.links[0].files.url, "https://signed.example.com/contas/conta-1/files/img.png");
+});
+
+Deno.test("file-manage: GET /links strips stream_uid/stream_status from the embedded file row", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("post_file_links", "select", {
+    data: [{
+      id: 1, post_id: 50, files: {
+        id: 10, kind: "video", r2_key: "contas/conta-1/files/clip.mp4", thumbnail_r2_key: null,
+        stream_uid: "stream-uid-9", stream_status: "ready",
+      },
+    }],
+    error: null,
+  });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "/links?post_id=50"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assert(!("stream_uid" in body.links[0].files), "stream_uid must not leak to the client");
+  assert(!("stream_status" in body.links[0].files), "stream_status must not leak to the client");
 });
 
 Deno.test("file-manage: GET /links without post_id returns 400", async () => {

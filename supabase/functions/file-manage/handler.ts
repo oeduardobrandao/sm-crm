@@ -1,6 +1,6 @@
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
-import { copyObject } from "../_shared/r2.ts";
+import { copyObject as r2CopyObject } from "../_shared/r2.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 
@@ -25,10 +25,16 @@ interface FileManageDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
   signUrl: (key: string) => Promise<string>;
+  signPlayback?: (uid: string) => Promise<{ hls: string; expires_at: string }>;
+  // Injectable for tests (copy-file/copy-folder happy paths hit real R2 otherwise);
+  // defaults to the real R2 client. Copies get NO inline Stream ingest here — the
+  // Task 8 reconciliation sweep picks up `files` rows with a null stream_uid.
+  copyObject?: (sourceKey: string, destKey: string) => Promise<void>;
   now?: () => string;
 }
 
 export function createFileManageHandler(deps: FileManageDeps) {
+  const copyObject = deps.copyObject ?? r2CopyObject;
   return async (req: Request): Promise<Response> => {
     const cors = { ...deps.buildCorsHeaders(req), "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS" };
     const json = createJsonResponder(cors);
@@ -146,11 +152,17 @@ export function createFileManageHandler(deps: FileManageDeps) {
           has_children: hasChildrenFlags[f.id] ?? false,
         }));
 
-        const signedFiles = await Promise.all((files ?? []).map(async (f: any) => ({
-          ...f,
-          url: f.kind !== "document" ? await deps.signUrl(f.r2_key) : null,
-          thumbnail_url: f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null,
-        })));
+        const signedFiles = await Promise.all((files ?? []).map(async (f: any) => {
+          const { stream_uid, stream_status, ...pub } = f;
+          return {
+            ...pub,
+            url: f.kind !== "document" ? await deps.signUrl(f.r2_key) : null,
+            thumbnail_url: f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null,
+            playback: stream_uid && stream_status === "ready" && deps.signPlayback
+              ? await deps.signPlayback(stream_uid)
+              : null,
+          };
+        }));
 
         // Build breadcrumbs via RPC (replaces while-loop of individual selects)
         let breadcrumbs: { id: number; name: string }[] = [];
@@ -441,7 +453,10 @@ export function createFileManageHandler(deps: FileManageDeps) {
           metadata: { source_file_id: fileId, destination_folder_id },
         });
 
-        return json(newFile, 201);
+        // No inline Stream ingest for copies (Task 8's sweep covers rows with a null
+        // stream_uid) — strip the columns anyway so the key never reaches the client.
+        const { stream_uid, stream_status, ...pub } = newFile;
+        return json(pub, 201);
       }
 
       // PATCH /files/:id → rename, move, or update blur_data_url
@@ -551,10 +566,11 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
         const withUrls = await Promise.all((links ?? []).map(async (l: any) => {
           const f = l.files;
+          const { stream_uid, stream_status, ...pub } = f;
           return {
             ...l,
             files: {
-              ...f,
+              ...pub,
               url: f.kind !== "document" ? await deps.signUrl(f.r2_key) : null,
               thumbnail_url: f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null,
             },
