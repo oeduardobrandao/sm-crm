@@ -509,6 +509,7 @@ const { data: due, error: dueErr } = await deps.db
   .eq("provider", "pagarme")
   .eq("status", "canceled")
   .eq("cancel_at_period_end", true)
+  .not("pagarme_subscription_id", "is", null)
   .lte("current_period_end", nowIso)
   .order("current_period_end", { ascending: true })
   .limit(BATCH_LIMIT)
@@ -530,7 +531,9 @@ For each row: (1) `grant_pagarme_plan` RPC (`p_workspace`, `p_plan: defaultPlanI
 Flip error → push to `errors`; flip zero rows → silent continue (the row moved; next run re-evaluates, and the grant is idempotent). ORDER MATTERS: grant first, flip second — flipping first and failing the grant would strand a paid plan forever (the row leaves the query).
 
 **Leg B — stale checkout attempts (global backstop of checkout's per-workspace self-heal):**
-Select `id, workspace_id, pagarme_subscription_id` from `pagarme_checkout_attempts` where `state = 'pending'` and `created_at < now - 15min`, `.order("created_at", { ascending: true }).limit(BATCH_LIMIT)` (oldest first; warn when the batch is full). For each: if it has a `pagarme_subscription_id` AND `deps.gateway` exists → `cancelSubscription`; a non-definitive failure (`!isDefinitiveGatewayReject`) → push to `errors`, SKIP the expiry (never release a reservation while the remote may be live — same rule as `pagarme-checkout/handler.ts:119-139`); if it has a sub id and `deps.gateway === null` → skip entirely (dark env: leave pending for the env that can check). Attempts with no sub id, or after a settled cancel: expire with the CAS `.update({ state: "expired", updated_at: nowIso }).eq("id", a.id).eq("state", "pending")`. Count `attemptsExpired`.
+Select `id, workspace_id, pagarme_subscription_id` from `pagarme_checkout_attempts` where `state = 'pending'` and `created_at < now - 15min`, `.order("created_at", { ascending: true }).limit(BATCH_LIMIT)` (oldest first; warn when the batch is full).
+
+BOUND-SUBSCRIPTION GUARD (load-bearing): a pending attempt with a sub id is NOT proof of an orphan — the checkout's `finishAttempt("succeeded")` is best-effort, so a checkout that fully bound the subscription locally can still leave its attempt `pending`. The checkout's own self-heal is protected by ordering (its 409 in-force gate runs before the self-heal); this cron has no such gate and would cancel a PAID, BOUND subscription. So: collect the stale attempts' sub ids and read `workspace_subscriptions .select("pagarme_subscription_id", { count: "exact" }).in("pagarme_subscription_id", ids)` (bounded, abortSignal). A read ERROR aborts ALL of leg B into its catch (fail closed: never cancel without the linked picture; same rule as leg C's local reads). For each attempt: sub id LINKED → the checkout actually succeeded; CAS the attempt to `{ state: "succeeded", updated_at: nowIso }` pinned `.eq("state","pending")`, count `attemptsReconciled`, NEVER call the gateway. Sub id unlinked AND `deps.gateway` exists → `cancelSubscription`; a non-definitive failure (`!isDefinitiveGatewayReject`) → push to `errors`, SKIP the expiry (never release a reservation while the remote may be live — same rule as `pagarme-checkout/handler.ts:119-139`); if unlinked and `deps.gateway === null` → skip entirely (dark env: leave pending for the env that can check). Attempts with no sub id, or after a settled cancel: expire with the CAS `.update({ state: "expired", updated_at: nowIso }).eq("id", a.id).eq("state", "pending")`. Count `attemptsExpired`. `CronResult` gains `attemptsReconciled: number`.
 
 **Leg C — remote orphan sweep (the flip precondition; runs only with a gateway):**
 1. Load local link sets. THE ERRORS ARE LOAD-BEARING: a failed read that silently became an
@@ -540,14 +543,28 @@ Select `id, workspace_id, pagarme_subscription_id` from `pagarme_checkout_attemp
 ```ts
 // ALL known pagarme subscription ids, regardless of current provider: a row Stripe
 // reclaimed keeps its legacy pagarme_subscription_id, and that remote sub is still "ours".
-const { data: linked, error: linkedErr } = await deps.db.from("workspace_subscriptions")
-  .select("pagarme_subscription_id").not("pagarme_subscription_id", "is", null)
+const { data: linked, error: linkedErr, count: linkedCount } = await deps.db
+  .from("workspace_subscriptions")
+  .select("pagarme_subscription_id", { count: "exact" })
+  .not("pagarme_subscription_id", "is", null)
   .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
 if (linkedErr) throw new Error(`sweep linked read failed: ${linkedErr.message}`);
-const { data: pendingAttempts, error: pendingErr } = await deps.db.from("pagarme_checkout_attempts")
-  .select("pagarme_subscription_id").eq("state", "pending").not("pagarme_subscription_id", "is", null)
+if (linkedCount !== null && (linked ?? []).length !== linkedCount) {
+  // PostgREST silently truncates unbounded selects at db-max-rows (1000 on hosted
+  // Supabase). A truncated linked set makes bound, PAID subscriptions look orphaned —
+  // the exact failure the fail-closed rule exists for. Truncation is not an error, so
+  // it must be detected by count and treated as one.
+  throw new Error(`sweep linked read truncated: got ${(linked ?? []).length} of ${linkedCount}`);
+}
+const { data: pendingAttempts, error: pendingErr, count: pendingCount } = await deps.db
+  .from("pagarme_checkout_attempts")
+  .select("pagarme_subscription_id", { count: "exact" })
+  .eq("state", "pending").not("pagarme_subscription_id", "is", null)
   .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
 if (pendingErr) throw new Error(`sweep pending read failed: ${pendingErr.message}`);
+if (pendingCount !== null && (pendingAttempts ?? []).length !== pendingCount) {
+  throw new Error(`sweep pending read truncated: got ${(pendingAttempts ?? []).length} of ${pendingCount}`);
+}
 ```
 Build `Set<string>`s from both.
 2. FETCH-THEN-CANCEL, never interleaved: Pagar.me pagination is page-number based, so
