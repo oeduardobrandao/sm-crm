@@ -127,6 +127,9 @@ export async function sendNotificationDigestEmail(
     }),
     signal: AbortSignal.timeout(10_000),
   });
+  // 409 = this Idempotency-Key was already accepted (a prior retry landed this
+  // exact digest). Treat as a successful, deduped send, not a failure.
+  if (res.status === 409) return { skipped: false };
   if (!res.ok) throw new Error(`Resend send failed: ${res.status}`);
   return { skipped: false };
 }
