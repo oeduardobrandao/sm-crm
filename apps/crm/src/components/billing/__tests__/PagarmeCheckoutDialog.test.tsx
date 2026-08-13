@@ -86,6 +86,17 @@ function fillForm() {
   fireEvent.change(screen.getByLabelText('UF'), { target: { value: VALID.state } });
 }
 
+/** A promise plus its own resolve/reject, for controlling exactly when an in-flight mock settles. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 const CHECKOUT_RESULT: PagarmeCheckoutResult = {
   status: 'trialing',
   trial_ends_at: '2026-09-12T00:00:00.000Z',
@@ -251,6 +262,65 @@ describe('PagarmeCheckoutDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Começar 30 dias grátis' }));
     await waitFor(() => expect(tokenizeCardMock).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(startPagarmeCheckoutMock).toHaveBeenCalledTimes(1));
+  });
+
+  it('ignores Escape, the X button, and an outside click while a checkout request is in flight, then shows success once it settles', async () => {
+    const onClose = vi.fn();
+    const pending = deferred<PagarmeCheckoutResult>();
+    startPagarmeCheckoutMock.mockReturnValueOnce(pending.promise);
+    render(<PagarmeCheckoutDialog {...baseProps({ onClose })} />);
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Começar 30 dias grátis' }));
+
+    // The submit button flips to its saving label once tokenizeCard resolves and
+    // startPagarmeCheckout is in flight (never resolving yet, via the deferred promise).
+    await screen.findByRole('button', { name: 'Processando...' });
+
+    // X button: routes through the same Dialog onOpenChange as Escape/outside-click (Radix's
+    // DialogClose composes onClick with context.onOpenChange(false)).
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    // Escape.
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    // Outside pointerdown (overlay click). Radix's DismissableLayer wires its outside-pointerdown
+    // listener inside a setTimeout(0), so a tick must pass before dispatching.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fireEvent.pointerDown(document.body);
+
+    // None of the three dismiss attempts closed the dialog: onClose was never called, and the
+    // in-flight form is still fully mounted (not the success step, not unmounted).
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText('Assinar o plano Pro')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Processando...' })).toBeInTheDocument();
+
+    // Now let the request settle: the success step appears, proving the dialog wasn't stuck,
+    // just held open for the duration of the in-flight request.
+    pending.resolve(CHECKOUT_RESULT);
+    expect(await screen.findByText('Assinatura confirmada!')).toBeInTheDocument();
+  });
+
+  it('applies the same in-flight close guard in update-card mode (shared handler)', async () => {
+    const onClose = vi.fn();
+    const pending = deferred<void>();
+    updatePagarmeCardMock.mockReturnValueOnce(pending.promise);
+    render(
+      <PagarmeCheckoutDialog
+        {...baseProps({ mode: 'update-card', onClose, trialEligible: false })}
+      />,
+    );
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar novo cartão' }));
+    await screen.findByRole('button', { name: 'Processando...' });
+
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fireEvent.pointerDown(document.body);
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText('Atualizar cartão')).toBeInTheDocument();
+
+    pending.resolve();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it('update-card happy path calls updatePagarmeCard and closes without a success step', async () => {

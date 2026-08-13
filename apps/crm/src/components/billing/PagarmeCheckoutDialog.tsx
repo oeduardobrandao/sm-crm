@@ -238,12 +238,20 @@ export function PagarmeCheckoutDialog({
 
   function handleClose() {
     if (step === 'success') {
-      // Closing from success (CTA or X/overlay) is a completed flow, not an abandonment.
+      // Closing from success (CTA or X/overlay) is a completed flow, not an abandonment. No
+      // request is in flight here — the checkout/update call has already settled by the time
+      // this step renders — so this branch is never gated on `saving`.
       onSuccess();
       onClose();
       return;
     }
-    if (!saving && isDirty && !abandonedFiredRef.current) {
+    // A tokenize/checkout/update-card request is in flight: the checkout POST is not cancelled
+    // on close (an aborted request could still commit server-side), so closing here would let
+    // the user believe they cancelled while a charge/subscription is created behind their back.
+    // Ignore the close entirely and hold the dialog open until the request settles (the success
+    // step renders, or the catch block below shows an error and re-enables the form).
+    if (saving) return;
+    if (isDirty && !abandonedFiredRef.current) {
       captureEvent('card_form_abandoned', { mode });
       abandonedFiredRef.current = true;
     }
@@ -339,7 +347,21 @@ export function PagarmeCheckoutDialog({
         if (!o) handleClose();
       }}
     >
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent
+        className="sm:max-w-[480px]"
+        onEscapeKeyDown={(e) => {
+          // Belt-and-suspenders with the `saving` check inside handleClose: block Radix's
+          // internal dismiss at the source too, so a request in flight never even reaches
+          // onOpenChange(false) via Escape.
+          if (saving) e.preventDefault();
+        }}
+        onInteractOutside={(e) => {
+          // Same guard for overlay clicks and any other outside interaction (covers pointerdown
+          // and focus-outside dismissal alike — see the house DialogContent's own onConfirmClose
+          // feature, which relies on this same event for its own close guard).
+          if (saving) e.preventDefault();
+        }}
+      >
         {step === 'success' ? (
           <>
             <DialogHeader>
