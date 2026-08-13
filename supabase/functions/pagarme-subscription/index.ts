@@ -27,7 +27,21 @@ Deno.serve(async (req: Request) => {
     if (!authHeader) return json({ error: "Unauthorized" }, 401, headers);
     const token = authHeader.replace("Bearer ", "");
 
-    const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    // Bounded global fetch: the auth-shell calls (getUser, profiles, membership, rate-limit
+    // RPC) carry no per-call abort signal, and a stalled one would hang until the edge
+    // runtime kills the isolate, bypassing the catch (documented repo failure mode).
+    // AbortSignal.any preserves the handler's own per-call signals.
+    const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      global: {
+        fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+          fetch(input, {
+            ...init,
+            signal: init?.signal
+              ? AbortSignal.any([init.signal, AbortSignal.timeout(10_000)])
+              : AbortSignal.timeout(10_000),
+          }),
+      },
+    });
     const { data: { user }, error: authError } = await svc.auth.getUser(token);
     if (authError || !user) return json({ error: "Unauthorized" }, 401, headers);
 
