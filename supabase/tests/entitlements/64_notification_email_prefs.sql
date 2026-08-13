@@ -49,6 +49,8 @@ declare
   v_settle timestamptz := now() - interval '11 minutes';
   v_claimed int;
   v_has_gone int;
+  v_has_out int;
+  v_has_in int;
 begin
   insert into auth.users (id, email) values
     (v_in,'in@x.test'), (v_out,'out@x.test'), (v_gone,'gone@x.test');
@@ -74,6 +76,18 @@ begin
   select count(*) into v_has_gone
     from notifications where user_id = v_gone and emailed_at is not null;
   assert v_has_gone = 0, 'removed user notification must NOT be claimed (emailed_at stays NULL)';
+
+  -- Positive + negative proof of WHICH row was claimed, not just the count:
+  -- catches an inverted opt-out predicate (exists() instead of not exists()),
+  -- which would still yield v_claimed = 1 and leave v_gone unclaimed, but
+  -- would claim v_out (opted-out) instead of v_in (opted-in).
+  select count(*) into v_has_out
+    from notifications where user_id = v_out and emailed_at is not null;
+  assert v_has_out = 0, 'opted-out row must NOT be claimed';
+
+  select count(*) into v_has_in
+    from notifications where user_id = v_in and emailed_at is not null;
+  assert v_has_in = 1, 'opted-in member row must be claimed';
 
   raise notice 'PASS 64 Part B claim_notification_emails membership + opt-out';
 end $$;
