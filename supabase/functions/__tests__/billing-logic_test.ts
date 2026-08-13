@@ -1,8 +1,10 @@
 import { assert, assertEquals } from "./assert.ts";
+import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import {
   aggregateMrr,
   annualCheckoutBlocked,
   extractInvoiceSubscriptionId,
+  getDefaultPlanId,
   hasEverSubscribed,
   isMrrStatus,
   resolvePlanFromPriceId,
@@ -197,4 +199,40 @@ Deno.test("annualCheckoutBlocked blocks year only when the plan is on pagarme 12
   assertEquals(annualCheckoutBlocked("month", { pagarme_12x_enabled: true }), false);
   assertEquals(annualCheckoutBlocked("year", { pagarme_12x_enabled: null }), false);
   assertEquals(annualCheckoutBlocked("year", null), false);
+});
+
+// ─── getDefaultPlanId ──────────────────────────────────────────────────────
+
+/** Minimal chainable thenable fake for a single `.from("plans").select(...).eq(...).maybeSingle()`
+ * read (house pattern, see pagarme-checkout-handler_test.ts's makeDb). */
+function makePlansDb(fx: { data?: { id: string } | null; error?: { message: string } | null }): SupabaseClient {
+  const chain = {
+    select: () => chain,
+    eq: () => chain,
+    abortSignal: () => chain,
+    maybeSingle: () => Promise.resolve({ data: fx.data ?? null, error: fx.error ?? null }),
+  };
+  return { from: () => chain } as unknown as SupabaseClient;
+}
+
+Deno.test("getDefaultPlanId: returns the default plan id when present", async () => {
+  const db = makePlansDb({ data: { id: "starter" } });
+  assertEquals(await getDefaultPlanId(db), "starter");
+});
+
+Deno.test('getDefaultPlanId: returns "free" when no default plan row exists', async () => {
+  const db = makePlansDb({ data: null });
+  assertEquals(await getDefaultPlanId(db), "free");
+});
+
+Deno.test("getDefaultPlanId: throws on a read error (never silently downgrades to free)", async () => {
+  const db = makePlansDb({ error: { message: "connection reset" } });
+  let threw = false;
+  try {
+    await getDefaultPlanId(db);
+  } catch (e) {
+    threw = true;
+    assert(e instanceof Error && e.message.includes("connection reset"));
+  }
+  assert(threw, "expected getDefaultPlanId to throw");
 });

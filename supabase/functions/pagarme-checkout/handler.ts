@@ -6,7 +6,11 @@
 import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { hasEverSubscribed } from "../_shared/billing-logic.ts";
 import { resolveTrialDays } from "../_shared/trial.ts";
-import { mapPagarmeTemporalFields, normalizePagarmeStatus } from "../_shared/pagarme-logic.ts";
+import {
+  isDefinitiveGatewayReject,
+  mapPagarmeTemporalFields,
+  normalizePagarmeStatus,
+} from "../_shared/pagarme-logic.ts";
 import { PagarmeApiError } from "../_shared/pagarme.ts";
 import { writeWorkspacePlan } from "../_shared/plan-writer.ts";
 import {
@@ -121,9 +125,7 @@ export function createPagarmeCheckoutHandler(deps: {
           // and 429 (throttled), which say nothing about the subscription's state. Same
           // split as mapGatewayFailure. Anything else (network, 5xx) means it MAY still be
           // live: keep the reservation blocking instead of expiring.
-          const settled = e instanceof PagarmeApiError &&
-            e.status >= 400 && e.status < 500 &&
-            e.status !== 401 && e.status !== 403 && e.status !== 429;
+          const settled = isDefinitiveGatewayReject(e);
           if (!settled) {
             console.error(
               `[pagarme-checkout] stale attempt ${stale.id} holds subscription ${stale.pagarme_subscription_id} and cancel failed; keeping the reservation:`,
