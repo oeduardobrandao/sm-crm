@@ -68,6 +68,15 @@ export function hasEverSubscribed(
 }
 
 /**
+ * Plan ids the Pagar.me 12x checkout flow (pagarme-checkout) actually accepts. Single source
+ * of truth, shared by that function's own request-parsing gate and by plan-mutations'
+ * `validatePagarme12x`: without the admin-side check mirroring this list, enabling
+ * `pagarme_12x_enabled` on any other plan id (e.g. a comp/enterprise row) passes plan-mutations
+ * validation and then every checkout for that plan 400s "Plano inválido." at the gateway.
+ */
+export const PAGARME_PAID_PLAN_IDS = ["start", "pro", "max"] as const;
+
+/**
  * Once a plan's annual price is sold as 12x via Pagar.me (pagarme_12x_enabled), the Stripe
  * annual checkout must refuse: a tab loaded before the cutover could otherwise still open a
  * one-shot annual Stripe subscription. Monthly plans stay on Stripe and are never blocked.

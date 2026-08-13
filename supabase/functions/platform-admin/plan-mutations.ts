@@ -2,20 +2,34 @@ import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 // Single source of truth for plan columns. Keeping a local copy here is what caused
 // max_mcp_keys / feature_mcp to be silently dropped by the admin plan editor.
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
+// Same allowlist the pagarme-checkout function itself enforces (PAGARME_PAID_PLAN_IDS). Without
+// mirroring it here, enabling pagarme_12x_enabled on any other plan id passes this validation
+// and then every checkout for that plan 400s "Plano inválido." at the gateway.
+import { PAGARME_PAID_PLAN_IDS } from "../_shared/billing-logic.ts";
 
 // Enabling 12x on a plan advertises it publicly; a misconfigured plan (no Pagar.me
 // annual plan id, or no positive annual price) 400s at checkout for every workspace
-// on that plan. Reject the mutation instead of persisting a broken config.
+// on that plan. Reject the mutation instead of persisting a broken config. `planId` is the
+// row's own id — always known directly from the request (update-plan's `plan_id`, or
+// create-plan's own `id` when supplied) — so unlike planIdAnnual/priceBrlAnnual this never
+// needs the merge-over-current-row read.
 function validatePagarme12x(
   enabled: unknown,
   planIdAnnual: unknown,
   priceBrlAnnual: unknown,
+  planId: unknown,
 ): string | null {
   if (!enabled) return null;
   const idOk = typeof planIdAnnual === "string" && planIdAnnual.trim() !== "";
   const priceOk = typeof priceBrlAnnual === "number" && priceBrlAnnual > 0;
   if (!idOk || !priceOk) {
     return "pagarme_12x_enabled requires pagarme_plan_id_annual and a positive price_brl_annual";
+  }
+  if (
+    typeof planId === "string" &&
+    !(PAGARME_PAID_PLAN_IDS as readonly string[]).includes(planId)
+  ) {
+    return `pagarme_12x_enabled is only supported for plans: ${PAGARME_PAID_PLAN_IDS.join(", ")}`;
   }
   return null;
 }
@@ -36,6 +50,7 @@ export async function handleCreatePlan(
     rest.pagarme_12x_enabled,
     rest.pagarme_plan_id_annual,
     rest.price_brl_annual,
+    rest.id,
   );
   if (createValidationError) {
     return new Response(JSON.stringify({ error: createValidationError }), { status: 400, headers });
@@ -114,6 +129,7 @@ export async function handleUpdatePlan(
     effectiveEnabled,
     effectivePlanIdAnnual,
     effectivePriceBrlAnnual,
+    plan_id,
   );
   if (updateValidationError) {
     return new Response(JSON.stringify({ error: updateValidationError }), { status: 400, headers });

@@ -5,6 +5,7 @@ import {
   isPlanVisible,
   canUpgradeTo,
   isSelectableTrialPlan,
+  checkoutBlocked,
 } from '../plan-display';
 
 describe('plan-display', () => {
@@ -111,6 +112,87 @@ describe('plan-display', () => {
       expect(isSelectableTrialPlan({ id: 'max', price_brl: 19990, price_brl_annual: 219890 })).toBe(
         true,
       );
+    });
+  });
+
+  describe('checkoutBlocked', () => {
+    const now = new Date('2026-08-13T00:00:00.000Z');
+
+    it('handles no subscription (never subscribed)', () => {
+      expect(checkoutBlocked(null, now)).toBe(false);
+      expect(checkoutBlocked(undefined, now)).toBe(false);
+    });
+
+    it('blocks in-force statuses regardless of provider', () => {
+      expect(checkoutBlocked({ status: 'active' }, now)).toBe(true);
+      expect(checkoutBlocked({ status: 'trialing' }, now)).toBe(true);
+      expect(checkoutBlocked({ status: 'past_due' }, now)).toBe(true);
+    });
+
+    it('blocks unpaid (Stripe terminal dunning, still an existing subscription)', () => {
+      expect(checkoutBlocked({ status: 'unpaid' }, now)).toBe(true);
+    });
+
+    it('blocks a canceled row that is still paid through the current period', () => {
+      expect(
+        checkoutBlocked(
+          {
+            status: 'canceled',
+            cancel_at_period_end: true,
+            current_period_end: '2026-09-12T00:00:00.000Z',
+          },
+          now,
+        ),
+      ).toBe(true);
+    });
+
+    it('does not block a canceled row without cancel_at_period_end', () => {
+      expect(
+        checkoutBlocked(
+          {
+            status: 'canceled',
+            cancel_at_period_end: false,
+            current_period_end: '2026-09-12T00:00:00.000Z',
+          },
+          now,
+        ),
+      ).toBe(false);
+    });
+
+    it('does not block a canceled row whose current_period_end already passed', () => {
+      expect(
+        checkoutBlocked(
+          {
+            status: 'canceled',
+            cancel_at_period_end: true,
+            current_period_end: '2026-01-01T00:00:00.000Z',
+          },
+          now,
+        ),
+      ).toBe(false);
+    });
+
+    it('does not block a canceled row with no current_period_end', () => {
+      expect(
+        checkoutBlocked(
+          { status: 'canceled', cancel_at_period_end: true, current_period_end: null },
+          now,
+        ),
+      ).toBe(false);
+    });
+
+    it('does not block a malformed current_period_end (degrades to not-blocked, never throws)', () => {
+      expect(
+        checkoutBlocked(
+          { status: 'canceled', cancel_at_period_end: true, current_period_end: 'not-a-real-date' },
+          now,
+        ),
+      ).toBe(false);
+    });
+
+    it('does not block other terminal statuses (free to re-subscribe)', () => {
+      expect(checkoutBlocked({ status: 'incomplete_expired' }, now)).toBe(false);
+      expect(checkoutBlocked({ status: null }, now)).toBe(false);
     });
   });
 });

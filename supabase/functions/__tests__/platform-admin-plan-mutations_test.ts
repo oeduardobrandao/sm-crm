@@ -332,6 +332,31 @@ Deno.test("update-plan: disabling 12x never validates, even with no id or price"
   assertEquals(payload.pagarme_12x_enabled, false);
 });
 
+Deno.test("update-plan rejects enabling 12x on a plan id pagarme-checkout doesn't accept (400, no update)", async () => {
+  // pagarme-checkout's own PAID_PLANS allowlist (now PAGARME_PAID_PLAN_IDS in
+  // _shared/billing-logic.ts) only accepts start/pro/max. Enabling the flag on any other
+  // plan id — e.g. a comp/enterprise row — would otherwise pass this validation and then
+  // 400 "Plano inválido." at every checkout attempt for that plan.
+  const { db, calls } = makeFakeDb({ plans: [] });
+
+  const res = await handleUpdatePlan(
+    db as unknown as SupabaseClient,
+    {
+      action: "update-plan",
+      plan_id: "enterprise",
+      pagarme_12x_enabled: true,
+      pagarme_plan_id_annual: "plan_abc",
+      price_brl_annual: 100000,
+    },
+    HEADERS,
+  );
+
+  assertEquals(res.status, 400);
+  const body = await res.json();
+  assertEquals(body.error, "pagarme_12x_enabled is only supported for plans: start, pro, max");
+  assertEquals(calls.some((c) => c.table === "plans" && c.method === "update"), false);
+});
+
 Deno.test("update-plan: unrelated field changes on an already-enabled plan skip the read (no relevant fields touched)", async () => {
   const { db, calls } = makeFakeDb({
     plans: [{ data: { id: "pro", name: "Renamed" }, error: null }],

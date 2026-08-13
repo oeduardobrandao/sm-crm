@@ -53,6 +53,46 @@ export function canUpgradeTo(
 }
 
 /**
+ * Mirrors the backend's checkout-block predicate — `pagarmeCheckoutBlocked` in
+ * `supabase/functions/pagarme-checkout/logic.ts` and the equivalent inline gate in
+ * `billing-checkout/index.ts` — so the CTA never offers an upgrade the server will 409 on
+ * (after the user has typed full card data into the Pagar.me dialog). It is provider-agnostic
+ * on purpose: a workspace has one `workspace_subscriptions` row regardless of which provider
+ * owns it, and the backend's gate reads `status` alone. In force (active/trialing/past_due) or
+ * Stripe-terminal-dunning (unpaid) blocks outright; a canceled row still blocks while it is
+ * "paid through" — canceled with `cancel_at_period_end` and a `current_period_end` still in
+ * the future (e.g. a 12x subscriber who canceled after the full year was already charged).
+ */
+export function checkoutBlocked(
+  subscription:
+    | {
+        status?: string | null;
+        cancel_at_period_end?: boolean | null;
+        current_period_end?: string | null;
+      }
+    | null
+    | undefined,
+  now: Date,
+): boolean {
+  if (!subscription) return false;
+  const { status } = subscription;
+  if (
+    status === 'active' ||
+    status === 'trialing' ||
+    status === 'past_due' ||
+    status === 'unpaid'
+  ) {
+    return true;
+  }
+  if (status !== 'canceled') return false;
+  if (!subscription.cancel_at_period_end) return false;
+  if (!subscription.current_period_end) return false;
+  const end = new Date(subscription.current_period_end).getTime();
+  if (Number.isNaN(end)) return false;
+  return end > now.getTime();
+}
+
+/**
  * Plans offered as a trial on the /comecar step. `isPlanVisible` is NOT a
  * substitute: it only filters internal plans, so Free would still render a card
  * even though declining is a secondary link there, not a plan choice. The
