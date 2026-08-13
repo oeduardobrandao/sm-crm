@@ -2,7 +2,6 @@
 // this module owns event semantics. Every DB call is bounded (house rule). Throws propagate
 // to the shell → 5xx → Pagar.me redelivers (up to 3 attempts, dashboard-configured).
 
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import {
   buildChargeDunningKey,
   canWebhookWrite,
@@ -10,7 +9,6 @@ import {
   shouldAdvanceDunning,
 } from "../_shared/pagarme-logic.ts";
 import { buildFailureEpisode, type DunningStage } from "../_shared/dunning-logic.ts";
-import { writeWorkspacePlan } from "../_shared/plan-writer.ts";
 import {
   buildReconcileColumns,
   extractChargeAttempt,
@@ -153,6 +151,7 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
 
   async function grantPlan(
     row: SubscriptionRow,
+    subId: string,
     status: "trialing" | "active" | "canceled",
     columns: Record<string, unknown>,
   ): Promise<void> {
@@ -175,8 +174,29 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
       },
       now(),
     );
-    if (target !== null) {
-      await writeWorkspacePlan(deps.db as SupabaseClient, row.workspace_id, target, "pagarme");
+    if (target === null) return;
+    // Atomic, state-guarded write (grant_pagarme_plan migration): the status CAS above does NOT
+    // cover this separate workspaces.plan_id write. An out-of-order delivery (a concurrent cancel,
+    // or a cross-provider Stripe reclaim) could otherwise let this stale handler restore a paid
+    // plan for a subscription it no longer owns — and a canceled sub gets no further event to
+    // self-heal it. The RPC writes only while the row is still THIS pagarme subscription in the
+    // reconciled status (and preserves manual comps); 0 rows = a concurrent transition took
+    // ownership, a legitimate no-op. A DB error still throws → 5xx → redelivery.
+    const { data: written, error } = await deps.db
+      .rpc("grant_pagarme_plan", {
+        p_workspace: row.workspace_id,
+        p_plan: target,
+        p_sub: subId,
+        p_status: status,
+      })
+      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+    if (error) {
+      throw new Error(`pagarme plan write failed for ${row.workspace_id}: ${error.message}`);
+    }
+    if (written === 0) {
+      console.warn(
+        `[pagarme-webhook] plan grant skipped for workspace ${row.workspace_id}: subscription ${subId} guard did not match reconciled status ${status} (concurrent transition or manual comp)`,
+      );
     }
   }
 
@@ -204,7 +224,7 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
     // re-reads fresh state and holdDunning then applies. Mirrors the terminal/dunning-advance pins.
     await casWrite(row, subId, result.columns, { observedStatus: row.status });
     if (result.planEligible) {
-      await grantPlan(row, result.status, result.columns);
+      await grantPlan(row, subId, result.status, result.columns);
       return source === "charge_paid" ? "reconciled:recovered" : "reconciled";
     }
     return "reconciled:dunning-held";
@@ -232,7 +252,7 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
       );
       if (result === null) return "ignored:unknown-status";
       await casWrite(row, subId, result.columns, { observedStatus: row.status });
-      await grantPlan(row, result.status, result.columns);
+      await grantPlan(row, subId, result.status, result.columns);
       if (shouldSendTerminalDunningEmail(remote.status, row)) {
         await deps.notify(row.workspace_id, "final");
         return "dunning:final";
