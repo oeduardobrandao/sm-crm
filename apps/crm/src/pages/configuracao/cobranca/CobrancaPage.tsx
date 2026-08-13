@@ -198,6 +198,14 @@ export default function CobrancaPage() {
   const showPagarmeManage =
     subscription?.provider === 'pagarme' &&
     ['active', 'trialing', 'past_due'].includes(subscription?.status ?? '');
+  // Stripe past_due/unpaid: hasActiveSub is deliberately false for these (see above), so
+  // without this the manage card — the only entry point to the Billing Portal, which IS the
+  // Stripe recovery path (update card / cancel) — would never render, leaving the customer
+  // with no affordance at all once the upgrade CTAs are suppressed below. pagarme rows are
+  // excluded: showPagarmeManage already covers past_due for that provider.
+  const showStripeManage =
+    subscription?.provider !== 'pagarme' &&
+    ['past_due', 'unpaid'].includes(subscription?.status ?? '');
   const currentPlanId = resolveCurrentPlanId(effectivePlanId, subscription?.plan_id);
   const currentPlan = plans?.find((p) => p.id === currentPlanId);
   const visiblePlans = (plans ?? []).filter((p) => isPlanVisible(p.id, currentPlanId));
@@ -300,7 +308,7 @@ export default function CobrancaPage() {
 
   return (
     <>
-      {(hasActiveSub || showPagarmeManage) && (
+      {(hasActiveSub || showPagarmeManage || showStripeManage) && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
           <div className="billing-current">
             <div>
@@ -344,10 +352,21 @@ export default function CobrancaPage() {
                 </div>
               </div>
             ) : (
-              <button className="btn-secondary" onClick={handleManage} disabled={busy === 'portal'}>
-                <i className="ph ph-gear-six" aria-hidden="true" />
-                {busy === 'portal' ? 'Aguarde…' : 'Gerenciar assinatura'}
-              </button>
+              <div className="billing-current__actions">
+                {showStripeManage && (
+                  <p className="billing-current__warning">
+                    Não conseguimos cobrar seu cartão. Atualize os dados para manter o acesso.
+                  </p>
+                )}
+                <button
+                  className="btn-secondary"
+                  onClick={handleManage}
+                  disabled={busy === 'portal'}
+                >
+                  <i className="ph ph-gear-six" aria-hidden="true" />
+                  {busy === 'portal' ? 'Aguarde…' : 'Gerenciar assinatura'}
+                </button>
+              </div>
             )}
           </div>
         </div>
