@@ -127,6 +127,10 @@ export async function sendCronFailureEmail(
         subject: `[Mesaas] ${cronName} — ${detail.failed ?? "?"} falha(s)`,
         html,
       }),
+      // Bound this I/O: a stalled Resend call in the failure-reporting path
+      // would otherwise run until the edge runtime kills the isolate, bypassing
+      // the catch below entirely (documented repo failure mode).
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       console.error(`[notify] Resend error: ${res.status}`);
