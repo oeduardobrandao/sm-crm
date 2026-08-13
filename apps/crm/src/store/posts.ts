@@ -73,13 +73,15 @@ export interface ClientePost {
   scheduled_at: string | null;
   ordem: number;
   workflow_titulo: string;
+  /** Target platform; absent on legacy rows (treat as 'instagram', the DB default). */
+  platform?: WorkflowPost['platform'];
 }
 
 export async function getClientePosts(clienteId: number): Promise<ClientePost[]> {
   const { data, error } = await supabase
     .from('workflow_posts')
     .select(
-      'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, workflows!inner(titulo, status)',
+      'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, platform, workflows!inner(titulo, status)',
     )
     .eq('workflows.cliente_id', clienteId)
     .eq('workflows.status', 'ativo')
@@ -95,6 +97,7 @@ export async function getClientePosts(clienteId: number): Promise<ClientePost[]>
     scheduled_at: row.scheduled_at,
     ordem: row.ordem,
     workflow_titulo: row.workflows.titulo,
+    platform: row.platform ?? undefined,
   }));
 }
 

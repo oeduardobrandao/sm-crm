@@ -62,17 +62,30 @@ export function WorkflowGridView({ clienteId, clienteNome }: WorkflowGridViewPro
         getClientePosts(clienteId),
       ]);
 
-      // Feed grid = non-story planned posts that are not already live or failed;
-      // published posts come from the live feed, not the planned set.
+      // Feed grid = non-story, Instagram-bound planned posts that are not already
+      // live or failed. TikTok-only posts never belong on an IG grid (and must not
+      // be reschedulable here); published posts come from the live feed, not the
+      // planned set. Legacy rows have no platform → treated as Instagram.
       const plannedFeed = planned.filter(
-        (p) => p.tipo !== 'stories' && p.status !== 'postado' && p.status !== 'falha_publicacao',
+        (p) =>
+          p.tipo !== 'stories' &&
+          p.platform !== 'tiktok' &&
+          p.status !== 'postado' &&
+          p.status !== 'falha_publicacao',
       );
       const covers = await getPostCovers(plannedFeed.map((p) => p.id));
 
+      // Load up to ~30 recent live posts (matches the Hub feed preview). The edge
+      // endpoint pages at 10, so walk pages until the cap or the feed runs out —
+      // otherwise the "full grid" would only show the 10 newest live anchors.
       let live: Awaited<ReturnType<typeof getInstagramPosts>>['posts'] = [];
       if (account) {
         try {
-          live = (await getInstagramPosts(clienteId)).posts;
+          for (let page = 1; page <= 3; page++) {
+            const res = await getInstagramPosts(clienteId, page);
+            live = live.concat(res.posts);
+            if (live.length >= res.total || res.posts.length < 10) break;
+          }
         } catch {
           live = [];
         }

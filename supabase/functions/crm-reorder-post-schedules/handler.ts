@@ -102,7 +102,9 @@ export function createCrmReorderHandler(deps: CrmReorderHandlerDeps) {
       if (msg.includes("BAD_REQUEST")) {
         return json({ error: "Datas inválidas para reagendamento." }, 400);
       }
-      // Never leak raw internals to the client.
+      // Unrecognized DB/infra failure: log internally for traceability (AGENTS.md),
+      // return a generic message so no raw internals leak to the client.
+      console.error("[crm-reorder-post-schedules] unexpected RPC error:", msg);
       return json({ error: "Falha ao reagendar." }, 500);
     }
 
