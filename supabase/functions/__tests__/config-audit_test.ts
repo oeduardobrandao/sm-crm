@@ -37,6 +37,7 @@ const REQUIRED_FUNCTIONS = [
   "invite-expire-cron",
   "crisp-sync-cron",
   "storage-autoclean-cron",
+  "billing-downgrade-cron",
   // Token/internal auth
   "crisp-identity",
   "instagram-integration",

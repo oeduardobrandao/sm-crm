@@ -148,6 +148,9 @@ verify_jwt = false
 [functions.pagarme-subscription]
 verify_jwt = false
 
+[functions.billing-downgrade-cron]
+verify_jwt = false
+
 # Hub (token-based) + cron functions added with the paywall/hub work — must NOT
 # require a JWT (clients/cron don't send one).
 [functions.hub-edit-suggestion]
