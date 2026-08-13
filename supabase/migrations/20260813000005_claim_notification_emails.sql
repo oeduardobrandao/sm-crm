@@ -1,4 +1,4 @@
--- 20260813000004_claim_notification_emails.sql
+-- 20260813000005_claim_notification_emails.sql
 -- Atomic claim for the notification digest cron. Every predicate — type set,
 -- settle/age window, read/dismissed/emailed re-check, workspace membership, and
 -- preference opt-out — is embedded in ONE statement so the send/no-send decision

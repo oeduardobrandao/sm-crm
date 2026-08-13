@@ -1,4 +1,4 @@
--- 20260813000003_notification_email_prefs.sql
+-- 20260813000004_notification_email_prefs.sql
 -- Per-user, per-type opt-out for agency notification emails. Stores only
 -- overrides: NO row = default ON. A row enabled=false = opted out of that type.
 -- type='__all__' with enabled=false = master "pause all email" switch.

@@ -1,4 +1,4 @@
--- 20260813000005_reschedule_notification_email_cron.sql
+-- 20260813000006_reschedule_notification_email_cron.sql
 -- Supersede mention-email-cron with notification-email-cron (all 8 types incl.
 -- mention). MUST be applied AFTER the notification-email-cron function is
 -- deployed -- the schedule fires immediately (same rule as 20260803000007).
