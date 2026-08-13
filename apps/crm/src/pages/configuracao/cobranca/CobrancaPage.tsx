@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
 import {
   listActivePlans,
@@ -9,11 +10,24 @@ import {
   getEffectivePlanId,
   startCheckout,
   openBillingPortal,
+  cancelPagarmeSubscription,
   type BillingInterval,
   type BillingPlan,
 } from '@/services/billing';
 import { isInternalPlan, resolveCurrentPlanId, isPlanVisible, canUpgradeTo } from './plan-display';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
+import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
+import { PagarmeCheckoutDialog } from '@/components/billing/PagarmeCheckoutDialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { UsagePanel } from './UsagePanel';
 import './cobranca.css';
 
@@ -62,6 +76,12 @@ export default function CobrancaPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [interval, setInterval] = useState<BillingInterval>('month');
   const [busy, setBusy] = useState<string | null>(null);
+  const [pagarmeDialog, setPagarmeDialog] = useState<{
+    mode: 'checkout' | 'update-card';
+    plan: BillingPlan | null;
+  } | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   // Follow the ACTIVE workspace role, not the stale profile-level role: a user
   // can be owner in one workspace and agent in another, and switch_workspace
@@ -90,19 +110,30 @@ export default function CobrancaPage() {
     enabled: isOwner,
   });
 
+  // Refetches the subscription + effective-plan queries every 2s, up to 5 tries, so the
+  // UI catches up once the backend (Stripe webhook or the synchronous Pagar.me checkout)
+  // has actually updated the row. Used both by the Checkout-return effect below (which
+  // owns the interval's cleanup) and by imperative callers (dialog onSuccess, cancel
+  // confirm) that fire-and-forget it — a self-clearing interval is fine there since
+  // there's no unmount to race against a stale closure.
+  function startPlanRefetchPoll(): number {
+    let tries = 0;
+    const id = window.setInterval(() => {
+      tries += 1;
+      refetchSub();
+      refetchEffectivePlan();
+      if (tries >= 5) window.clearInterval(id);
+    }, 2000);
+    return id;
+  }
+
   // Handle the Checkout return once on mount (see git history for why deps are empty).
   useEffect(() => {
     const status = searchParams.get('status');
     if (!status) return;
     if (status === 'success') {
       toast.success('Pagamento confirmado! Atualizando seu plano…');
-      let tries = 0;
-      const id = window.setInterval(() => {
-        tries += 1;
-        refetchSub();
-        refetchEffectivePlan();
-        if (tries >= 5) window.clearInterval(id);
-      }, 2000);
+      const id = startPlanRefetchPoll();
       setSearchParams({}, { replace: true });
       return () => window.clearInterval(id);
     }
@@ -133,11 +164,24 @@ export default function CobrancaPage() {
   }
 
   const hasActiveSub = subscription?.status === 'active' || subscription?.status === 'trialing';
+  // Pagar.me treats past_due as still in force (a new checkout is 409-blocked), and
+  // update-card is the dunning-recovery path, so past_due must ALSO surface the manage
+  // controls for a pagarme row — unlike hasActiveSub above, which stripe upgrade-gating
+  // deliberately leaves untouched.
+  const showPagarmeManage =
+    subscription?.provider === 'pagarme' &&
+    ['active', 'trialing', 'past_due'].includes(subscription?.status ?? '');
   const currentPlanId = resolveCurrentPlanId(effectivePlanId, subscription?.plan_id);
   const currentPlan = plans?.find((p) => p.id === currentPlanId);
   const visiblePlans = (plans ?? []).filter((p) => isPlanVisible(p.id, currentPlanId));
 
   async function handleUpgrade(planId: string) {
+    const plan = plans?.find((p) => p.id === planId);
+    if (interval === 'year' && isPagarme12xEnabled(plan)) {
+      captureCheckoutStarted(planId, 'year', 'billing', 'pagarme');
+      setPagarmeDialog({ mode: 'checkout', plan: plan ?? null });
+      return;
+    }
     setBusy(planId);
     try {
       const url = await startCheckout(planId, interval, 'billing');
@@ -160,6 +204,20 @@ export default function CobrancaPage() {
     }
   }
 
+  async function handleCancelPagarmeSubscription() {
+    setCancelling(true);
+    try {
+      await cancelPagarmeSubscription();
+      toast.success('Assinatura cancelada.');
+      startPlanRefetchPoll();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setCancelling(false);
+      setCancelDialogOpen(false);
+    }
+  }
+
   function renderCta(p: BillingPlan) {
     if (p.id === currentPlanId) {
       return <span className="plan-cta__static">Plano atual</span>;
@@ -179,9 +237,18 @@ export default function CobrancaPage() {
     return null;
   }
 
+  const cancelDialogDescription =
+    subscription?.status === 'trialing'
+      ? 'Sua assinatura será cancelada agora, sem cobrança.'
+      : subscription?.status === 'past_due'
+        ? 'Sua assinatura será cancelada agora.'
+        : subscription?.current_period_end
+          ? `Seu acesso continua até ${format(new Date(subscription.current_period_end), 'dd/MM/yyyy')}. Depois disso, o workspace volta ao plano gratuito.`
+          : 'Sua assinatura será cancelada.';
+
   return (
     <>
-      {hasActiveSub && (
+      {(hasActiveSub || showPagarmeManage) && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
           <div className="billing-current">
             <div>
@@ -205,10 +272,31 @@ export default function CobrancaPage() {
                 </div>
               )}
             </div>
-            <button className="btn-secondary" onClick={handleManage} disabled={busy === 'portal'}>
-              <i className="ph ph-gear-six" aria-hidden="true" />
-              {busy === 'portal' ? 'Aguarde…' : 'Gerenciar assinatura'}
-            </button>
+            {showPagarmeManage ? (
+              <div className="billing-current__actions">
+                {subscription?.status === 'past_due' && (
+                  <p className="billing-current__warning">
+                    Não conseguimos cobrar seu cartão. Atualize os dados para manter o acesso.
+                  </p>
+                )}
+                <div className="billing-current__action-row">
+                  <button
+                    className="btn-secondary"
+                    onClick={() => setPagarmeDialog({ mode: 'update-card', plan: null })}
+                  >
+                    Atualizar cartão
+                  </button>
+                  <button className="btn-secondary" onClick={() => setCancelDialogOpen(true)}>
+                    Cancelar assinatura
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button className="btn-secondary" onClick={handleManage} disabled={busy === 'portal'}>
+                <i className="ph ph-gear-six" aria-hidden="true" />
+                {busy === 'portal' ? 'Aguarde…' : 'Gerenciar assinatura'}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -281,7 +369,9 @@ export default function CobrancaPage() {
 
                   <div>
                     {!isInternal && isYear && monthly != null && monthly > 0 && (
-                      <div className="plan-annual-lead">em 12x de</div>
+                      <div className="plan-annual-lead">
+                        {isPagarme12xEnabled(p) ? 'em 12x de' : 'cobrado anualmente,'}
+                      </div>
                     )}
                     <div className="plan-price">
                       {isInternal ? (
@@ -311,6 +401,42 @@ export default function CobrancaPage() {
               );
             })}
       </div>
+
+      <PagarmeCheckoutDialog
+        open={!!pagarmeDialog}
+        mode={pagarmeDialog?.mode ?? 'checkout'}
+        plan={
+          pagarmeDialog?.plan
+            ? {
+                id: pagarmeDialog.plan.id,
+                name: pagarmeDialog.plan.name,
+                price_brl_annual: pagarmeDialog.plan.price_brl_annual ?? 0,
+              }
+            : null
+        }
+        source="billing"
+        trialEligible={!subscription?.hasEverSubscribed}
+        onClose={() => setPagarmeDialog(null)}
+        onSuccess={startPlanRefetchPoll}
+      />
+
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar assinatura</AlertDialogTitle>
+            <AlertDialogDescription>{cancelDialogDescription}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelling}>Manter assinatura</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void handleCancelPagarmeSubscription()}
+              disabled={cancelling}
+            >
+              {cancelling ? 'Cancelando…' : 'Sim, cancelar assinatura'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

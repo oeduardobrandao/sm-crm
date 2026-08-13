@@ -18,8 +18,10 @@ import {
 } from '@/pages/configuracao/cobranca/plan-display';
 import { captureEvent } from '@/lib/analytics';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
+import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
 import { isWhatsAppSupportEnabled } from '@/lib/whatsapp';
 import { WhatsAppSupportButton } from '@/components/support/WhatsAppSupportButton';
+import { PagarmeCheckoutDialog } from '@/components/billing/PagarmeCheckoutDialog';
 import { parsePlanIntent } from './plan-intent';
 import './comecar.css';
 
@@ -63,6 +65,7 @@ export default function ComecarPage() {
   const [interval, setInterval] = useState<BillingInterval>('month');
   const [busy, setBusy] = useState<string | null>(null);
   const [intent, setIntent] = useState(() => parsePlanIntent(location.search));
+  const [pagarmeDialog, setPagarmeDialog] = useState<{ plan: BillingPlan } | null>(null);
   // Latches so the auto-checkout and the view event fire once per mount. React's
   // double-invoke in development would otherwise open two Stripe sessions.
   const autoStarted = useRef(false);
@@ -125,6 +128,32 @@ export default function ComecarPage() {
   const eligible =
     ready && !hasError && subscription?.hasEverSubscribed !== true && currentPlanId === 'free';
 
+  /**
+   * Dispatches to the Pagar.me 12x dialog for a gated annual plan, or falls back to the
+   * Stripe redirect otherwise. Shared by the auto-intent effect and the manual "Começar
+   * teste" button so the two paths cannot drift, mirroring startAndRedirect above.
+   *
+   * When it opens the dialog it also clears `busy` and `intent`: `intent` gates the
+   * "Preparando checkout" standby screen below, which must not linger over a dialog that
+   * isn't redirecting anywhere, and closing the dialog without completing must land back
+   * on a usable plan grid rather than that screen. Both calls are no-ops for the manual
+   * path (intent is already null there, since the standby screen would otherwise block
+   * the grid) and harmless for the auto-intent path (busy isn't read while it renders the
+   * standby screen). Neither touches the Stripe/startAndRedirect branch, so that path
+   * stays byte-identical to today.
+   */
+  const beginCheckout = async (planId: string, interval: BillingInterval): Promise<boolean> => {
+    const plan = plans?.find((p) => p.id === planId);
+    if (interval === 'year' && plan && isPagarme12xEnabled(plan)) {
+      captureCheckoutStarted(planId, 'year', 'onboarding', 'pagarme');
+      setPagarmeDialog({ plan });
+      setBusy(null);
+      setIntent(null);
+      return true;
+    }
+    return startAndRedirect(planId, interval);
+  };
+
   useEffect(() => {
     if (!eligible || viewLogged.current) return;
     viewLogged.current = true;
@@ -135,9 +164,10 @@ export default function ComecarPage() {
     if (!eligible || !intent || autoStarted.current) return;
     autoStarted.current = true;
     void (async () => {
-      const ok = await startAndRedirect(intent.planId, intent.interval);
+      const ok = await beginCheckout(intent.planId, intent.interval);
       if (!ok) setIntent(null);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eligible, intent]);
 
   if (authLoading || (isOwner && (subLoading || plansLoading || planLoading))) {
@@ -201,7 +231,7 @@ export default function ComecarPage() {
 
   async function handleStart(planId: string) {
     setBusy(planId);
-    const ok = await startAndRedirect(planId, interval);
+    const ok = await beginCheckout(planId, interval);
     if (!ok) setBusy(null);
   }
 
@@ -253,7 +283,12 @@ export default function ComecarPage() {
                 </div>
                 <p className="comecar-card__trial">30 dias grátis</p>
                 <p className="comecar-card__price">
-                  depois {monthly != null ? `${formatBRL(monthly)}/mês` : 'Sob consulta'}
+                  depois{' '}
+                  {monthly == null
+                    ? 'Sob consulta'
+                    : isYear && isPagarme12xEnabled(p)
+                      ? `12x de ${formatBRL(monthly)} no cartão`
+                      : `${formatBRL(monthly)}/mês`}
                 </p>
                 <ul className="comecar-card__features">
                   {planHighlights(p).map((f) => (
@@ -293,6 +328,24 @@ export default function ComecarPage() {
           )}
         </footer>
       </div>
+
+      <PagarmeCheckoutDialog
+        open={!!pagarmeDialog}
+        mode="checkout"
+        plan={
+          pagarmeDialog
+            ? {
+                id: pagarmeDialog.plan.id,
+                name: pagarmeDialog.plan.name,
+                price_brl_annual: pagarmeDialog.plan.price_brl_annual ?? 0,
+              }
+            : null
+        }
+        source="onboarding"
+        trialEligible={!subscription?.hasEverSubscribed}
+        onClose={() => setPagarmeDialog(null)}
+        onSuccess={() => navigate('/dashboard?trial=started')}
+      />
     </div>
   );
 }

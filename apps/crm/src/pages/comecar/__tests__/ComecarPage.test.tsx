@@ -1,16 +1,24 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
-vi.mock('@/services/billing', () => ({
-  listActivePlans: vi.fn(),
-  getWorkspaceSubscription: vi.fn(),
-  getEffectivePlanId: vi.fn(),
-  startCheckout: vi.fn(),
-}));
+// importOriginal keeps BillingApiError and the Pagar.me checkout call real: PagarmeCheckoutDialog
+// (mounted by ComecarPage) imports them from this same module, and these tests never submit its
+// form, so nothing here needs a dedicated mock for them.
+vi.mock('@/services/billing', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/billing')>();
+  return {
+    ...actual,
+    listActivePlans: vi.fn(),
+    getWorkspaceSubscription: vi.fn(),
+    getEffectivePlanId: vi.fn(),
+    startCheckout: vi.fn(),
+  };
+});
 vi.mock('@/lib/analytics', () => ({ captureEvent: vi.fn() }));
+vi.mock('@/lib/checkout-analytics', () => ({ captureCheckoutStarted: vi.fn() }));
 vi.mock('@/components/support/WhatsAppSupportButton', () => ({
   WhatsAppSupportButton: ({ label, className }: { label: string; className?: string }) => (
     <a href="https://wa.me/" className={className}>
@@ -26,6 +34,7 @@ import {
   listActivePlans,
   startCheckout,
 } from '@/services/billing';
+import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import ComecarPage from '../ComecarPage';
 
 const assign = vi.fn();
@@ -43,6 +52,7 @@ const PLANS = [
     feature_hub_portal: false,
     feature_analytics_reports: false,
     feature_brand_customization: false,
+    pagarme_12x_enabled: false,
   },
   {
     id: 'pro',
@@ -56,8 +66,11 @@ const PLANS = [
     feature_hub_portal: true,
     feature_analytics_reports: true,
     feature_brand_customization: true,
+    pagarme_12x_enabled: false,
   },
 ];
+
+const PRO_PAGARME = { ...PLANS[1], pagarme_12x_enabled: true };
 
 const NEVER_SUBSCRIBED = {
   status: null,
@@ -78,6 +91,10 @@ beforeEach(() => {
   // A brand-new workspace has workspaces.plan_id = NULL; it resolves to 'free'.
   vi.mocked(getEffectivePlanId).mockResolvedValue(null);
   vi.mocked(startCheckout).mockResolvedValue('https://checkout.stripe.com/abc');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 function renderPage(search = '') {
@@ -366,5 +383,48 @@ describe('ComecarPage', () => {
     expect(screen.queryByText('Fale com a gente no WhatsApp')).not.toBeInTheDocument();
     expect(screen.queryByText('Prefere falar com uma pessoa?')).not.toBeInTheDocument();
     vi.unstubAllEnvs();
+  });
+
+  describe('Pagar.me 12x', () => {
+    it('opens the checkout dialog instead of redirecting when the manual "Começar teste" is year + gated', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PLANS[0], PRO_PAGARME] as never);
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Começar teste' }));
+
+      expect(await screen.findByText('Assinar o plano Pro')).toBeInTheDocument();
+      expect(startCheckout).not.toHaveBeenCalled();
+      expect(assign).not.toHaveBeenCalled();
+      expect(captureCheckoutStarted).toHaveBeenCalledWith('pro', 'year', 'onboarding', 'pagarme');
+    });
+
+    it('the auto-intent path also opens the dialog (not a redirect) when year + gated', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PLANS[0], PRO_PAGARME] as never);
+      renderPage('?plan=pro&interval=year');
+
+      expect(await screen.findByText('Assinar o plano Pro')).toBeInTheDocument();
+      expect(startCheckout).not.toHaveBeenCalled();
+      expect(assign).not.toHaveBeenCalled();
+      expect(captureCheckoutStarted).toHaveBeenCalledWith('pro', 'year', 'onboarding', 'pagarme');
+      // The standby "Preparando checkout" screen must not linger behind the dialog: intent
+      // is cleared as part of opening it, so the plan grid is the page underneath.
+      expect(screen.queryByText(/Preparando seu teste do plano/)).not.toBeInTheDocument();
+    });
+
+    it('leaves the month path unchanged even when the plan is gated for 12x', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PLANS[0], PRO_PAGARME] as never);
+      renderPage();
+
+      // Interval defaults to Mensal; the gate only applies to the year interval.
+      fireEvent.click(await screen.findByRole('button', { name: 'Começar teste' }));
+
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('https://checkout.stripe.com/abc'));
+      expect(startCheckout).toHaveBeenCalledWith('pro', 'month', 'onboarding');
+      expect(screen.queryByText('Assinar o plano Pro')).not.toBeInTheDocument();
+    });
   });
 });
