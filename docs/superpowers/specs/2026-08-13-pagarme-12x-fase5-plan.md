@@ -14,7 +14,7 @@
 - Generic errors to clients (fixed PT-BR strings), details to `console.error` only. Never forward gateway bodies. Never log card data, tokens, or the Authorization header.
 - No em-dashes in user-facing PT-BR copy (period/colon/"·" instead).
 - CORS via `buildCorsHeaders(req)` for the user-facing function; the cron has no CORS (server-to-server).
-- All user-facing writes are CAS-pinned on observed state; plan writes go ONLY through the `grant_pagarme_plan` RPC (never `writeWorkspacePlan`, never a direct `workspaces` update).
+- All user-facing writes are CAS-pinned on observed state; in the code THIS plan adds, plan writes go ONLY through the `grant_pagarme_plan` RPC (never `writeWorkspacePlan`, never a direct `workspaces` update). Existing call sites (`pagarme-checkout`'s bind-time `writeWorkspacePlan`) are OUT OF SCOPE: do not migrate them here — that is recorded follow-up debt shared with stripe-webhook.
 - `.eq(col, null)` matches nothing in PostgREST — null pins use `.is()`.
 - The webhook (`subscription.canceled` → reconcile) is the safety net for any local write this function loses; losing a CAS after a successful remote cancel is a tolerated no-op, not an error.
 - Commit trailer: `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
@@ -225,24 +225,38 @@ export function parseSubscriptionBody(raw: unknown): ParseResult {
 
 /**
  * Local columns for a user-initiated cancel, decided by the OBSERVED status:
- * - active: the year is already charged (12 installments in flight). The user keeps access
- *   until current_period_end (paid-through: cancel_at_period_end=true, period end RETAINED,
- *   never overwritten), and billing-downgrade-cron downgrades after the boundary.
- * - trialing: nothing was charged. Immediate downgrade.
- * - past_due: the charge failed, nothing was collected. Immediate downgrade.
+ * - active WITH a provable period end (stored locally, or recovered from the DELETE
+ *   response's current_cycle.end_at — the spike showed the cancel response carries the full
+ *   subscription): the year is already charged (12 installments in flight). Paid-through:
+ *   cancel_at_period_end=true, access until the boundary, billing-downgrade-cron downgrades
+ *   after it. The STORED value wins; the remote one only FILLS a null (same direction as the
+ *   webhook rule: canceled never clobbers a stored period end).
+ * - active WITHOUT any provable period end: an open-ended paid-through would never match the
+ *   cron's `.lte(current_period_end, now)` query — indefinite paid access on missing
+ *   evidence. Immediate downgrade instead.
+ * - trialing / past_due: nothing was collected. Immediate downgrade.
  */
-export function buildCancelColumns(
-  observedStatus: string,
-  nowIso: string,
-): { columns: Record<string, unknown>; immediateDowngrade: boolean } {
-  const paidThrough = observedStatus === "active";
+export function buildCancelColumns(args: {
+  observedStatus: string;
+  storedPeriodEnd: string | null;
+  remotePeriodEnd: string | null;
+  nowIso: string;
+}): { columns: Record<string, unknown>; immediateDowngrade: boolean; accessUntil: string | null } {
+  const accessUntil = args.storedPeriodEnd ?? args.remotePeriodEnd;
+  const paidThrough = args.observedStatus === "active" && accessUntil !== null;
   return {
     columns: {
       status: "canceled",
       cancel_at_period_end: paidThrough,
-      updated_at: nowIso,
+      updated_at: args.nowIso,
+      // Fill-only: current_period_end is written ONLY when the stored value was null and
+      // the DELETE response knew the cycle boundary. A stored value is never overwritten.
+      ...(paidThrough && args.storedPeriodEnd === null
+        ? { current_period_end: args.remotePeriodEnd }
+        : {}),
     },
     immediateDowngrade: !paidThrough,
+    accessUntil: paidThrough ? accessUntil : null,
   };
 }
 ```
@@ -254,8 +268,14 @@ export function buildCancelColumns(
 import { pagarmeFetch } from "../_shared/pagarme.ts";
 
 export interface PagarmeSubscriptionGateway {
-  /** DELETE /subscriptions/{id} — immediate cancellation (spike: no cancel-at-period-end exists). */
-  cancelSubscription(subId: string): Promise<unknown>;
+  /**
+   * DELETE /subscriptions/{id} — immediate cancellation (spike: no cancel-at-period-end
+   * exists). The 200 body is the full canceled subscription; current_cycle.end_at is the
+   * paid-through boundary the handler may need when the local row never stored one.
+   */
+  cancelSubscription(
+    subId: string,
+  ): Promise<{ current_cycle?: { end_at?: string | null } | null } | null>;
   /** POST /customers/{id}/cards — same attach shape as pagarme-checkout's gateway. */
   attachCard(
     customerId: string,
@@ -308,10 +328,29 @@ if (rowErr) throw new Error(`subscription read failed: ${rowErr.message}`);
 ```
 2. Guards (both actions): `if (!row || row.provider !== "pagarme" || !row.pagarme_subscription_id)` → `404 { error: "Nenhuma assinatura parcelada encontrada para este workspace." }`. Then `if (!isInForce(row.status))` → `409 { error: "Esta assinatura já está cancelada." }`.
 3. **cancel:**
-   - Remote-first: `try { await deps.gateway.cancelSubscription(subId); } catch (e) { if (!isDefinitiveGatewayReject(e)) { console.error(...); return { status: 500, body: { error: "Erro ao cancelar a assinatura. Tente novamente.", code: "gateway_error" } }; } }` (a definitive 4xx means already canceled remotely: proceed to reconcile locally).
+   - Remote-first, capturing the response body (it carries the cycle boundary):
+```ts
+let remotePeriodEnd: string | null = null;
+try {
+  const remote = await deps.gateway.cancelSubscription(subId);
+  remotePeriodEnd = remote?.current_cycle?.end_at ?? null;
+} catch (e) {
+  if (!isDefinitiveGatewayReject(e)) {
+    console.error("[pagarme-subscription] remote cancel failed:", e instanceof Error ? e.message : String(e));
+    return { status: 500, body: { error: "Erro ao cancelar a assinatura. Tente novamente.", code: "gateway_error" } };
+  }
+  // Definitive 4xx: already canceled/gone remotely. Proceed to reconcile locally
+  // (remotePeriodEnd stays null; the stored value, if any, still governs paid-through).
+}
+```
    - Local CAS pinned on everything observed:
 ```ts
-const { columns, immediateDowngrade } = buildCancelColumns(row.status as string, nowIso);
+const { columns, immediateDowngrade, accessUntil } = buildCancelColumns({
+  observedStatus: row.status as string,
+  storedPeriodEnd: (row.current_period_end as string | null) ?? null,
+  remotePeriodEnd,
+  nowIso,
+});
 const { data: casRows, error: casErr } = await deps.db
   .from("workspace_subscriptions")
   .update(columns)
@@ -325,7 +364,7 @@ if (casErr) throw new Error(`cancel write failed: ${casErr.message}`);
 ```
    - Zero CAS rows: the remote cancel SUCCEEDED and a concurrent writer (the webhook's `subscription.canceled` reconcile) already moved the row. Tolerated: `console.warn`, skip the grant, and still return success (the remote state is what the user asked for).
    - If `immediateDowngrade` AND the CAS wrote: `const target = await getDefaultPlanId(deps.db);` then the exact RPC idiom from `pagarme-webhook/handler.ts:185-200` with `p_status: "canceled"`, `p_sub: subId`, `p_plan: target`. RPC error → throw. `written === 0` → `console.warn` (concurrent transition or manual comp), not an error.
-   - Response: `200 { status: "canceled", access_until: immediateDowngrade ? null : (row.current_period_end ?? null) }`.
+   - Response: `200 { status: "canceled", access_until: accessUntil }` (from `buildCancelColumns` — null on any immediate downgrade).
 4. **update_card:** additionally guard `if (!row.pagarme_customer_id)` → same 404 body. Then:
 ```ts
 let cardId: string;
@@ -342,10 +381,11 @@ try {
 try {
   await deps.gateway.updateSubscriptionCard(subId, cardId);
 } catch (e) {
+  // A 4xx here is NOT the card's fault: the card_id was attached one call ago. It is a
+  // subscription-state/gateway problem — generic error, details in the log. The attached
+  // card left behind is benign: it hangs off the customer unused, and a retry attaches a
+  // fresh one (same residual as pagarme-checkout's attach-then-fail path).
   console.error("[pagarme-subscription] card swap failed:", e instanceof Error ? e.message : String(e));
-  if (isDefinitiveGatewayReject(e)) {
-    return { status: 400, body: { error: "Cartão recusado. Confira os dados ou tente outro cartão.", code: "invalid_card" } };
-  }
   return { status: 500, body: { error: "Erro ao atualizar o cartão. Tente novamente.", code: "gateway_error" } };
 }
 return { status: 200, body: { ok: true } };
@@ -375,11 +415,13 @@ Add `"pagarme-subscription"` to `REQUIRED_FUNCTIONS` in `config-audit_test.ts` u
 
 - [ ] **Step 6: Tests**
 
-`pagarme-subscription-logic_test.ts` (pure): parse matrix (non-object, unknown action, cancel ok, update_card missing token, bad cep/state, happy update_card with masked/dirty input normalized); `buildCancelColumns` for active (paid-through, no downgrade), trialing and past_due (immediate downgrade, `cancel_at_period_end: false`), and assert `current_period_end` is NEVER among the columns.
+`pagarme-subscription-logic_test.ts` (pure): parse matrix (non-object, unknown action, cancel ok, update_card missing token, bad cep/state, happy update_card with masked/dirty input normalized); `buildCancelColumns` matrix — active + stored end (paid-through, `current_period_end` NOT among columns, accessUntil = stored), active + null stored + remote end (paid-through, columns FILL `current_period_end` with the remote value, accessUntil = remote), active + null stored + null remote (immediate downgrade), stored wins over remote when both exist, trialing and past_due (immediate downgrade, `cancel_at_period_end: false`, no `current_period_end` in columns).
 
 `pagarme-subscription-handler_test.ts`: copy the thenable `makeDb`/`makeGateway` event-recording harness from `pagarme-checkout-handler_test.ts` (events `{op, table, values, filters}` + gateway `calls`). Cases:
 1. cancel trialing: gateway DELETE called; CAS update pinned on `provider/pagarme_subscription_id/status='trialing'`; columns `{status:'canceled', cancel_at_period_end:false}`; `grant_pagarme_plan` RPC called with `p_status:'canceled'` and the default plan; 200 with `access_until: null`.
-2. cancel active: CAS columns `{status:'canceled', cancel_at_period_end:true}`; NO rpc call; `access_until` = row's `current_period_end`.
+2. cancel active with stored `current_period_end`: CAS columns `{status:'canceled', cancel_at_period_end:true}` (no `current_period_end` in the payload); NO rpc call; `access_until` = stored value.
+2b. cancel active with NULL stored `current_period_end` + DELETE response carrying `current_cycle.end_at` → paid-through, CAS payload FILLS `current_period_end`, `access_until` = remote value, no rpc.
+2c. cancel active with NULL stored end + DELETE response without a cycle end → immediate downgrade (rpc called), `access_until: null`.
 3. cancel past_due: immediate downgrade (rpc called).
 4. remote DELETE throws definitive 404 → proceeds with local write (success).
 5. remote DELETE throws 500 → returns 500, NO local write events.
@@ -389,7 +431,7 @@ Add `"pagarme-subscription"` to `REQUIRED_FUNCTIONS` in `config-audit_test.ts` u
 9. status canceled → 409, no gateway calls.
 10. update_card happy: attachCard then updateSubscriptionCard with the attached card id; no `workspace_subscriptions` write events; 200 `{ok:true}`.
 11. attach 422 → 400 invalid_card; swap never called.
-12. swap 500 → 500 gateway_error.
+12. swap 500 → 500 gateway_error; swap 422 (definitive 4xx) → ALSO 500 gateway_error (a freshly attached card_id makes a 4xx a state problem, never the card's fault).
 13. update_card with null `pagarme_customer_id` → 404.
 14. Every `workspace_subscriptions` op carries an abortSignal (assert on recorded events, as the checkout tests do).
 
@@ -463,10 +505,14 @@ const { data: due, error: dueErr } = await deps.db
   .eq("status", "canceled")
   .eq("cancel_at_period_end", true)
   .lte("current_period_end", nowIso)
+  .order("current_period_end", { ascending: true })
   .limit(BATCH_LIMIT)
   .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
 if (dueErr) throw new Error(`due rows read failed: ${dueErr.message}`);
 ```
+Deterministic oldest-first ordering: with the daily cadence a >100 backlog drains across
+runs instead of starving arbitrary rows. When `due.length === BATCH_LIMIT`, `console.warn`
+that the batch is full (no silent caps).
 For each row: (1) `grant_pagarme_plan` RPC (`p_workspace`, `p_plan: defaultPlanId` — resolved ONCE before the loop via `getDefaultPlanId(deps.db)`, `p_sub: row.pagarme_subscription_id`, `p_status: "canceled"`); RPC error → push to `errors`, continue to the NEXT row (no flip). `written === 1` → increment `downgraded`. `written === 0` → `console.warn` (concurrent rebind OR manual comp — indistinguishable from the return value), do NOT count. (2) After ANY error-free RPC (written 1 or 0), attempt the flag flip so the row leaves the daily query — for a manual comp the episode is over and the comp stays preserved, and for a concurrently-changed row the flip's own CAS pins make it a natural zero-row no-op:
 ```ts
 .update({ cancel_at_period_end: false, updated_at: nowIso })
@@ -479,23 +525,37 @@ For each row: (1) `grant_pagarme_plan` RPC (`p_workspace`, `p_plan: defaultPlanI
 Flip error → push to `errors`; flip zero rows → silent continue (the row moved; next run re-evaluates, and the grant is idempotent). ORDER MATTERS: grant first, flip second — flipping first and failing the grant would strand a paid plan forever (the row leaves the query).
 
 **Leg B — stale checkout attempts (global backstop of checkout's per-workspace self-heal):**
-Select `id, workspace_id, pagarme_subscription_id` from `pagarme_checkout_attempts` where `state = 'pending'` and `created_at < now - 15min`, `limit(BATCH_LIMIT)`. For each: if it has a `pagarme_subscription_id` AND `deps.gateway` exists → `cancelSubscription`; a non-definitive failure (`!isDefinitiveGatewayReject`) → push to `errors`, SKIP the expiry (never release a reservation while the remote may be live — same rule as `pagarme-checkout/handler.ts:119-139`); if it has a sub id and `deps.gateway === null` → skip entirely (dark env: leave pending for the env that can check). Attempts with no sub id, or after a settled cancel: expire with the CAS `.update({ state: "expired", updated_at: nowIso }).eq("id", a.id).eq("state", "pending")`. Count `attemptsExpired`.
+Select `id, workspace_id, pagarme_subscription_id` from `pagarme_checkout_attempts` where `state = 'pending'` and `created_at < now - 15min`, `.order("created_at", { ascending: true }).limit(BATCH_LIMIT)` (oldest first; warn when the batch is full). For each: if it has a `pagarme_subscription_id` AND `deps.gateway` exists → `cancelSubscription`; a non-definitive failure (`!isDefinitiveGatewayReject`) → push to `errors`, SKIP the expiry (never release a reservation while the remote may be live — same rule as `pagarme-checkout/handler.ts:119-139`); if it has a sub id and `deps.gateway === null` → skip entirely (dark env: leave pending for the env that can check). Attempts with no sub id, or after a settled cancel: expire with the CAS `.update({ state: "expired", updated_at: nowIso }).eq("id", a.id).eq("state", "pending")`. Count `attemptsExpired`.
 
 **Leg C — remote orphan sweep (the flip precondition; runs only with a gateway):**
-1. Load local link sets (both reads bounded, errors throw into the leg's catch):
+1. Load local link sets. THE ERRORS ARE LOAD-BEARING: a failed read that silently became an
+   empty set would make EVERY remote subscription look unlinked and the sweep would cancel
+   live, paid subscriptions. Both reads MUST check `error` and throw (aborting all of leg C
+   into its catch — no sweep runs on a partial picture):
 ```ts
 // ALL known pagarme subscription ids, regardless of current provider: a row Stripe
 // reclaimed keeps its legacy pagarme_subscription_id, and that remote sub is still "ours".
-const { data: linked } = await deps.db.from("workspace_subscriptions")
+const { data: linked, error: linkedErr } = await deps.db.from("workspace_subscriptions")
   .select("pagarme_subscription_id").not("pagarme_subscription_id", "is", null)
   .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
-const { data: pendingAttempts } = await deps.db.from("pagarme_checkout_attempts")
+if (linkedErr) throw new Error(`sweep linked read failed: ${linkedErr.message}`);
+const { data: pendingAttempts, error: pendingErr } = await deps.db.from("pagarme_checkout_attempts")
   .select("pagarme_subscription_id").eq("state", "pending").not("pagarme_subscription_id", "is", null)
   .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+if (pendingErr) throw new Error(`sweep pending read failed: ${pendingErr.message}`);
 ```
 Build `Set<string>`s from both.
-2. For `status` of `["active", "future"]`: page from 1, `listSubscriptions(status, page, SWEEP_PAGE_SIZE)`; iterate `data`; stop when `data.length < SWEEP_PAGE_SIZE` or (paging.total_pages reached) or page > `SWEEP_MAX_PAGES` (then `sweepTruncated = true` and `console.warn` — no silent caps). A list-call failure → push to `errors`, break that status's loop, continue with the next status.
-3. Per sub: `shouldSweepRemoteSubscription(sub, linkedIds, pendingIds, deps.now())`:
+2. FETCH-THEN-CANCEL, never interleaved: Pagar.me pagination is page-number based, so
+   canceling while paging shifts unseen items into already-visited pages and the sweep
+   silently skips them — unacceptable for a flip precondition. First collect the full
+   candidate list: for `status` of `["active", "future"]`, page from 1 calling
+   `listSubscriptions(status, page, SWEEP_PAGE_SIZE)`, appending `data` to one array; stop
+   the status's loop when `data.length < SWEEP_PAGE_SIZE` or `paging.total_pages` is
+   reached; if page would exceed `SWEEP_MAX_PAGES`, set `sweepTruncated = true` and
+   `console.warn` (no silent caps). A list-call failure → push to `errors`, break that
+   status's loop, continue with the next status. Only after BOTH statuses are collected does
+   any cancel happen (bounded memory: ≤ 2 × 20 × 50 small objects).
+3. Per collected sub: `shouldSweepRemoteSubscription(sub, linkedIds, pendingIds, deps.now())`:
    - `"cancel"` → `console.error("[billing-downgrade-cron] CRITICAL orphan subscription: canceling", sub.id, "workspace", sub.metadata?.workspace_id)` then `cancelSubscription(sub.id)`; success or definitive reject → `orphansCanceled++`; other failure → push to `errors`.
    - `"skip_unrecognized"` → `orphansUnrecognized++` + `console.warn` with the sub id (a subscription in OUR account that our checkout did not create deserves eyes, but is never touched).
    - other skips → nothing.
@@ -503,6 +563,8 @@ Build `Set<string>`s from both.
 - [ ] **Step 3: `index.ts`**
 
 Follow `mention-email-cron/index.ts` exactly: module-load throw on missing `CRON_SECRET`; `timingSafeEqual` gate on `x-cron-secret` (401); service-role client with the 10s global fetch timeout; `const gateway = Deno.env.get("PAGARME_SECRET_KEY") ? createDowngradeCronGateway() : null;`; run → `200 { success: true, ...result }`; if `result.errors.length > 0`, call `reportCronFailure(svc, "billing-downgrade-cron", { failed: result.errors.length, errors: result.errors.map((e) => ({ error: e })) })` best-effort BEFORE returning 200 (partial failure is still a completed run; triage sees it). A thrown error → `reportCronFailure` + `500 { error: "Internal server error" }`. (Match `reportCronFailure`'s real detail shape from `_shared/triage.ts` — copy how mention-email-cron builds it.)
+
+`sweepTruncated === true` must ALSO push `"sweep truncated at SWEEP_MAX_PAGES pages"` into `result.errors` inside the handler (an incomplete sweep is a triage-worthy signal, not a curiosity — the flip gate below reads cron_failures). `remoteSkipped` does NOT go into errors: it is the expected dark-environment state.
 
 - [ ] **Step 4: config.toml + config-audit**
 
@@ -524,7 +586,8 @@ Add `"billing-downgrade-cron"` to `REQUIRED_FUNCTIONS` under the "Cron (x-cron-s
 7. Leg B definitive 404 → expiry proceeds.
 8. `gateway: null` → leg B expires only no-sub-id attempts; leg C skipped entirely; `remoteSkipped: true`; leg A still runs.
 9. Leg C: fixture pages — linked sub skipped, pending-attempt sub skipped, young sub skipped, no-metadata sub → `orphansUnrecognized`, true orphan → DELETE called, `orphansCanceled: 1`.
-10. Leg C pagination: first page full (size 50 mock → use size from the call), second short page ends the loop; `SWEEP_MAX_PAGES` exceeded → `sweepTruncated: true`.
+10. Leg C pagination: first page full (size 50 mock → use size from the call), second short page ends the loop; `SWEEP_MAX_PAGES` exceeded → `sweepTruncated: true` AND a truncation entry in `errors`; assert NO cancelSubscription call happens before the LAST listSubscriptions call (fetch-then-cancel, via the recorded call order).
+10b. Leg C linked-set read error → the leg aborts with the error collected and ZERO cancelSubscription calls (the P0 case: a failed local read must never make everything look orphaned).
 11. Leg C list failure on "active" → error collected, "future" still listed.
 12. Leg order and isolation: leg A read error → error collected, legs B/C still run.
 
@@ -601,6 +664,7 @@ git commit -m "feat(cron): schedule billing-downgrade-cron (daily 06:00 UTC)"
 1. Deploy order per env: `npx supabase functions deploy pagarme-subscription --no-verify-jwt --use-api`, same for `billing-downgrade-cron`, THEN `npx supabase db push --linked` (dry-run first) so the schedule never fires against a missing function. `npm ci` after deploys (deno pollution).
 2. `cat supabase/.temp/project-ref` before every linked command (link state flips; PROD=skjzpekeqefvlojenfsw, STAGING=wlyzhyfondykzpsiqsce).
 3. The cron runs harmlessly while dark: leg A/B find no rows; leg C is skipped wherever `PAGARME_SECRET_KEY` is unset (`remoteSkipped: true`); once the key exists, leg C starts guarding the account.
+4. **Flip gate (the sweep is a HARD precondition of enabling 12x in production).** Before checking `pagarme_12x_enabled` on any prod plan, ALL of the following must hold, verified operationally: (a) `PAGARME_SECRET_KEY` set in prod so the sweep actually runs (`remoteSkipped: false`); (b) a manual invoke (`curl -X POST .../functions/v1/billing-downgrade-cron -H "x-cron-secret: ..."` with the secret from a file, never a CLI literal) returns `errors: []`, `sweepTruncated: false`; (c) `select * from cron_failures where cron_name = 'billing-downgrade-cron'` shows no rows for the preceding 3 days; (d) every `orphansUnrecognized` log line has been eyeballed and explained. Any failure here blocks the flip, full stop.
 
 ## Riscos aceitos / follow-ups
 
