@@ -14,7 +14,7 @@ describe('captureCheckoutStarted', () => {
     captureCheckoutStarted('pro', 'year', 'onboarding');
     expect(captureEvent).toHaveBeenCalledWith(
       'checkout_started',
-      { plan_id: 'pro', billing_interval: 'year', source: 'onboarding' },
+      { plan_id: 'pro', billing_interval: 'year', source: 'onboarding', provider: 'stripe' },
       { sendInstantly: true },
     );
   });
@@ -23,7 +23,25 @@ describe('captureCheckoutStarted', () => {
     captureCheckoutStarted('start', 'month', 'billing');
     expect(captureEvent).toHaveBeenCalledWith(
       'checkout_started',
-      { plan_id: 'start', billing_interval: 'month', source: 'billing' },
+      { plan_id: 'start', billing_interval: 'month', source: 'billing', provider: 'stripe' },
+      { sendInstantly: true },
+    );
+  });
+
+  it('defaults the provider to stripe when omitted', () => {
+    captureCheckoutStarted('pro', 'year', 'billing');
+    expect(captureEvent).toHaveBeenCalledWith(
+      'checkout_started',
+      expect.objectContaining({ provider: 'stripe' }),
+      { sendInstantly: true },
+    );
+  });
+
+  it('carries an explicit pagarme provider', () => {
+    captureCheckoutStarted('pro', 'year', 'billing', 'pagarme');
+    expect(captureEvent).toHaveBeenCalledWith(
+      'checkout_started',
+      { plan_id: 'pro', billing_interval: 'year', source: 'billing', provider: 'pagarme' },
       { sendInstantly: true },
     );
   });
