@@ -170,6 +170,27 @@ export async function getInstagramPosts(
   return result;
 }
 
+/**
+ * Reschedule a batch of a client's posts by swapping their scheduled_at (the
+ * entregas grid reorder). The atomic swap, ownership scoping, agendado guard and
+ * container clearing all run server-side in the shared reorder_post_schedules RPC.
+ */
+export async function reorderClientePostSchedules(
+  clienteId: number,
+  updates: { post_id: number; scheduled_at: string | null }[],
+): Promise<{ ok: boolean; updated: number }> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/crm-reorder-post-schedules`,
+    { method: 'POST', headers, body: JSON.stringify({ cliente_id: clienteId, updates }) },
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || data.message || 'Erro ao reagendar');
+  }
+  return res.json();
+}
+
 export async function scheduleInstagramPost(
   postId: number,
 ): Promise<{ ok: boolean; status: string }> {

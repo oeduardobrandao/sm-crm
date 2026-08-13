@@ -9372,6 +9372,12 @@ a.mention-chip:hover {
   border-color: var(--primary-color);
 }
 
+/* Segmented Posts / Grade / Calendário switch in the drawer header. */
+.drawer-view-toggle {
+  display: flex;
+  gap: 4px;
+}
+
 /* Landing page — #root must not clip page scroll */
 body.landing-page #root {
   height: auto;

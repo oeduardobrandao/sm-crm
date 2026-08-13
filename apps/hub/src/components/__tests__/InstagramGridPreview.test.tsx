@@ -81,7 +81,7 @@ const livePosts: InstagramFeedPost[] = [
 ];
 
 describe('InstagramGridPreview', () => {
-  it('uses the generated thumbnail for an image grid tile', () => {
+  it('uses the full-resolution image (not the 128px thumbnail) for an image grid tile', () => {
     render(
       <InstagramGridPreview
         selectedPosts={[
@@ -101,8 +101,12 @@ describe('InstagramGridPreview', () => {
       />,
     );
 
-    expect(document.body.querySelector('img[src="https://cdn.example/thumb.webp"]')).not.toBeNull();
-    expect(document.body.querySelector('img[src="https://cdn.example/original.jpg"]')).toBeNull();
+    // The grid shows the full-res image (a blur-up placeholder covers the load);
+    // the low-res 128px thumbnail is no longer used for image tiles.
+    expect(
+      document.body.querySelector('img[src="https://cdn.example/original.jpg"]'),
+    ).not.toBeNull();
+    expect(document.body.querySelector('img[src="https://cdn.example/thumb.webp"]')).toBeNull();
   });
 
   it('renders the profile header with username and stats', () => {
@@ -136,7 +140,7 @@ describe('InstagramGridPreview', () => {
     expect(screen.getByText('22 de abr.')).toBeInTheDocument();
   });
 
-  it('renders live posts with view counts', () => {
+  it('renders live post thumbnails without the old view-count overlay', () => {
     render(
       <InstagramGridPreview
         selectedPosts={[makePost()]}
@@ -147,8 +151,11 @@ describe('InstagramGridPreview', () => {
       />,
     );
 
-    expect(screen.getByText('5.292')).toBeInTheDocument();
-    expect(screen.getByText('4.555')).toBeInTheDocument();
+    // Live posts still render their thumbnails...
+    expect(document.body.querySelector('img[src="https://cdn.ig/t1.jpg"]')).not.toBeNull();
+    // ...but the minimalist (Option A) tile no longer shows the impressions counter.
+    expect(screen.queryByText('5.292')).not.toBeInTheDocument();
+    expect(screen.queryByText('4.555')).not.toBeInTheDocument();
   });
 
   it('closes when the close button is clicked', () => {

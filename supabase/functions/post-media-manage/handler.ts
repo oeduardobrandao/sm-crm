@@ -118,6 +118,41 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
         return json({ covers: result });
       }
 
+      const postIdsParam = requestUrl.searchParams.get("post_ids");
+      if (postIdsParam) {
+        const postIds = postIdsParam.split(",").map(Number).filter((n) => Number.isFinite(n));
+        if (postIds.length === 0) return json({ covers: [] });
+
+        // Ownership: only cover media for this account's posts.
+        const { data: ownedPosts } = await svc.from("workflow_posts")
+          .select("id")
+          .in("id", postIds)
+          .eq("conta_id", profile.conta_id);
+        const ownedIds = (ownedPosts ?? []).map((p: any) => p.id);
+        if (ownedIds.length === 0) return json({ covers: [] });
+
+        const { data: links } = await svc.from("post_file_links")
+          .select("*, files(*)")
+          .in("post_id", ownedIds)
+          .order("sort_order", { ascending: true })
+          .order("id", { ascending: true });
+
+        // One cover per post: the is_cover link if flagged, else the first by sort_order.
+        const coverByPost = new Map<number, any>();
+        for (const l of (links ?? [])) {
+          const existing = coverByPost.get(l.post_id);
+          if (!existing || (l.is_cover && !existing.is_cover)) coverByPost.set(l.post_id, l);
+        }
+
+        const covers = await Promise.all(Array.from(coverByPost.values()).map(async (l: any) => {
+          const f = l.files;
+          const u = await deps.signUrl(f.r2_key);
+          const tu = f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null;
+          return { post_id: l.post_id, media: toLegacy(l, f, u, tu) };
+        }));
+        return json({ covers });
+      }
+
       const postId = Number(requestUrl.searchParams.get("post_id"));
       if (!postId) return json({ error: "post_id required" }, 400);
 
