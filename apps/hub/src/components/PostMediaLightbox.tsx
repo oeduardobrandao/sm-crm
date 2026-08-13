@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
 import type { HubPostMedia } from '../types';
 
 interface PostMediaLightboxProps {
@@ -140,13 +141,14 @@ export function PostMediaLightbox({
             className="max-h-[85vh] max-w-[90vw] object-contain select-none"
           />
         ) : (
-          <video
+          <VideoPlayer
             key={current.id}
+            hlsSrc={current.playback?.hls}
             src={current.url}
             poster={current.thumbnail_url ?? undefined}
             controls
             preload="auto"
-            onError={() => onStaleUrl?.()}
+            onFatalError={() => onStaleUrl?.()}
             className="max-h-[85vh] max-w-[90vw] object-contain"
           />
         )}
