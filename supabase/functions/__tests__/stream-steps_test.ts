@@ -5,7 +5,7 @@
 import { assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import type { QueryCall } from "../../../test/shared/supabaseMock.ts";
-import { runStreamSweeps } from "../post-media-cleanup-cron/stream-steps.ts";
+import { REAP_PAGE_SIZE, runStreamSweeps } from "../post-media-cleanup-cron/stream-steps.ts";
 import type { StreamStepsDeps } from "../post-media-cleanup-cron/stream-steps.ts";
 
 type Db = ReturnType<typeof createSupabaseQueryMock>;
@@ -98,10 +98,10 @@ Deno.test("stream-steps: ingest and settle are both skipped when copyToStream is
   assertEquals(result.errors, 0);
   assertEquals(deleted, ["orphan-old"]);
 
-  // No ingest/settle-shaped select should have run against files — only reap's "stream_uid" projection.
+  // No ingest/settle-shaped select should have run against files — only reap's known-set page.
   const fileSelects = callsFor(db, "files", "select");
   assertEquals(fileSelects.length, 1);
-  assertEquals(fileSelects[0].selectArgs, [["stream_uid"]]);
+  assertEquals(fileSelects[0].selectArgs, [["id, stream_uid"]]);
 });
 
 // ── settle pending ───────────────────────────────────────────────────────────
@@ -189,6 +189,67 @@ Deno.test("stream-steps: reap deletes an unknown 2h-old uid but spares a known u
   assertEquals(result.reaped, 1);
   assertEquals(result.errors, 0);
   assertEquals(deleted, ["orphan-old"]);
+});
+
+Deno.test("stream-steps: reap paginates the files known-set query past PostgREST's silent 1000-row cap, so a uid that only appears on the second page is still spared", async () => {
+  const db = createSupabaseQueryMock();
+
+  // PostgREST silently truncates any single response at 1000 rows regardless of `.limit()` —
+  // page 1 here is exactly that boundary, so the pagination loop must fetch a second page to
+  // see "known-only-on-page-2" at all. Before the fix, only page 1 was ever fetched: that uid
+  // would never make it into `known`, and the reap below would have deleted a real, still-
+  // referenced video.
+  const page1 = Array.from({ length: REAP_PAGE_SIZE }, (_, i) => ({
+    id: i + 1,
+    stream_uid: `filler-uid-${i + 1}`,
+  }));
+  const page2 = [{ id: REAP_PAGE_SIZE + 1, stream_uid: "known-only-on-page-2" }];
+
+  db.queue("files", "select", { data: page1 }); // reap known set, page 1 (full — must not be the last page fetched)
+  db.queue("files", "select", { data: page2 }); // reap known set, page 2 (short — loop must stop here)
+  db.queue("file_deletions", "select", { data: [] }); // reap queued set
+
+  const deleted: string[] = [];
+  const result = await runStreamSweeps(baseDeps(db, {
+    listStreamVideos: async () => [
+      { uid: "known-only-on-page-2", created: hoursAgoIso(2) }, // must be spared: known via page 2
+      { uid: "genuinely-orphaned", created: hoursAgoIso(2) }, // must be reaped: known nowhere
+    ],
+    deleteStreamVideo: async (uid) => {
+      deleted.push(uid);
+    },
+  }));
+
+  assertEquals(result.reaped, 1);
+  assertEquals(result.errors, 0);
+  assertEquals(
+    deleted,
+    ["genuinely-orphaned"],
+    "the uid that only appeared on page 2 must be spared, not deleted",
+  );
+
+  const fileSelects = callsFor(db, "files", "select");
+  assertEquals(
+    fileSelects.length,
+    2,
+    "the loop must stop right after the short second page — no spurious third page fetched",
+  );
+
+  const page1Gt = fileSelects[0].modifiers.find((m) => m.method === "gt");
+  const page2Gt = fileSelects[1].modifiers.find((m) => m.method === "gt");
+  assertEquals(page1Gt?.args, ["id", 0], "first page starts the id cursor at 0");
+  assertEquals(
+    page2Gt?.args,
+    ["id", REAP_PAGE_SIZE],
+    "second page's cursor is the last id of the full first page",
+  );
+
+  for (const call of fileSelects) {
+    const limitMod = call.modifiers.find((m) => m.method === "limit");
+    assertEquals(limitMod?.args, [REAP_PAGE_SIZE], "every page is capped at REAP_PAGE_SIZE");
+    const orderMod = call.modifiers.find((m) => m.method === "order");
+    assertEquals(orderMod?.args, ["id", { ascending: true }]);
+  }
 });
 
 // ── step isolation ───────────────────────────────────────────────────────────

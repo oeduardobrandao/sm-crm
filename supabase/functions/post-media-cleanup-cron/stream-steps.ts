@@ -45,6 +45,10 @@ const TEN_MINUTES_MS = 10 * 60 * 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const INGEST_BATCH = 20;
 const SETTLE_BATCH = 50;
+// PostgREST silently caps any single response at 1000 rows regardless of what `.limit()` asks
+// for — this is also the largest single page worth requesting. Exported so tests can build a
+// fixture that spans exactly one full page + one short page without guessing the boundary.
+export const REAP_PAGE_SIZE = 1000;
 
 interface IngestRow {
   id: number | string;
@@ -160,31 +164,50 @@ async function settlePending(deps: StreamStepsDeps, nowMs: () => number): Promis
   return settled;
 }
 
+interface KnownUidRow {
+  id: number;
+  stream_uid: string | null;
+}
+
+/** Paginates a `select(id, stream_uid) where stream_uid is not null` scan via an id-cursor
+ * loop. PostgREST silently caps any single response at 1000 rows regardless of `.limit()` —
+ * an unpaginated select here would silently drop older uids once a table crosses that count,
+ * and the subsequent Stream listing would then treat those very-real, still-referenced videos
+ * as orphans and delete them. A failed page throws and aborts the whole reap immediately: it
+ * must never proceed with a partial known set, since a partial set is indistinguishable from
+ * the truncation bug this pagination exists to fix. */
+async function fetchKnownStreamUids(db: DbClient, table: string): Promise<Set<string>> {
+  const known = new Set<string>();
+  let cursor = 0;
+  for (;;) {
+    const { data, error } = await db
+      .from(table)
+      .select("id, stream_uid")
+      .not("stream_uid", "is", null)
+      .order("id", { ascending: true })
+      .gt("id", cursor)
+      .limit(REAP_PAGE_SIZE);
+    if (error) throw error;
+
+    const page = (data ?? []) as KnownUidRow[];
+    for (const row of page) {
+      if (row.stream_uid) known.add(row.stream_uid);
+    }
+    if (page.length < REAP_PAGE_SIZE) break;
+    cursor = page[page.length - 1].id;
+  }
+  return known;
+}
+
 /** Deletes Stream videos that neither `files.stream_uid` nor the `file_deletions` delete queue
  * knows about — a copy whose uid was never persisted (e.g. index update failed after the Stream
  * API call succeeded). The 1h age gate spares an in-flight ingest that just hasn't been saved
  * yet. Rows already queued in `file_deletions` are deliberately excluded from "orphan": they're
  * on their way to deletion via the drain loop, not double-deleted here. */
 async function orphanReap(deps: StreamStepsDeps, nowMs: () => number): Promise<number> {
-  const known = new Set<string>();
-
-  const { data: fileRows, error: fileErr } = await deps.db
-    .from("files")
-    .select("stream_uid")
-    .not("stream_uid", "is", null);
-  if (fileErr) throw fileErr;
-  for (const row of (fileRows ?? []) as Array<{ stream_uid: string | null }>) {
-    if (row.stream_uid) known.add(row.stream_uid);
-  }
-
-  const { data: queuedRows, error: queuedErr } = await deps.db
-    .from("file_deletions")
-    .select("stream_uid")
-    .not("stream_uid", "is", null);
-  if (queuedErr) throw queuedErr;
-  for (const row of (queuedRows ?? []) as Array<{ stream_uid: string | null }>) {
-    if (row.stream_uid) known.add(row.stream_uid);
-  }
+  const known = await fetchKnownStreamUids(deps.db, "files");
+  const queued = await fetchKnownStreamUids(deps.db, "file_deletions");
+  for (const uid of queued) known.add(uid);
 
   const videos = await deps.listStreamVideos();
   const cutoffMs = nowMs() - ONE_HOUR_MS;
