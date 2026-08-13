@@ -18,11 +18,14 @@ function makeFakeDb(
 ) {
   const resetCalls: string[][] = [];
   let rpcCalls = 0;
+  let lastRpcArgs: unknown = undefined;
   const db = {
     resetCalls,
     rpcCallCount: () => rpcCalls,
+    lastRpcArgs: () => lastRpcArgs,
     rpc(_fn: string, _args: unknown) {
       rpcCalls++;
+      lastRpcArgs = _args;
       return Promise.resolve({ data: claimReturn, error: null });
     },
     from(_t: string) {
@@ -66,6 +69,18 @@ Deno.test("RESEND unset: skipped, rpc never called", async () => {
   assertEquals(r, { claimed: 0, emailed: 0, failed: 0, released: 0, skipped: true });
   assertEquals(db.rpcCallCount(), 0);
   assertEquals(sent.length, 0);
+});
+
+Deno.test("claim RPC is called with the settle/age window and batch size derived from `now`", async () => {
+  const db = makeFakeDb([claimed({ id: "1", user_id: "u1" })], { u1: "a@x.test" });
+  const { deps } = makeDeps(db);
+  await runNotificationEmailCron(deps);
+  assert(db.rpcCallCount() === 1, "expected exactly one rpc call");
+  assertEquals(db.lastRpcArgs(), {
+    p_settle_before: "2026-08-13T11:50:00.000Z", // NOW - 10 min
+    p_after: "2026-08-12T12:00:00.000Z", // NOW - 24 h
+    p_limit: 100, // CLAIM_BATCH_SIZE
+  });
 });
 
 Deno.test("one send per user, items ordered by urgency (publish failure first, mention last)", async () => {
