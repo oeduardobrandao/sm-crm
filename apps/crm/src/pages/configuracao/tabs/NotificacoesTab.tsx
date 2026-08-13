@@ -34,6 +34,7 @@ export default function NotificacoesTab() {
       toast.error('Não foi possível salvar a preferência.');
     },
     onSuccess: () => toast.success('Preferência salva.'),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['notification-email-prefs'] }),
   });
 
   if (isLoading)

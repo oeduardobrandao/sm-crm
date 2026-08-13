@@ -14,7 +14,7 @@ vi.mock('../../../store', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-// Radix Switch — mocked to a plain native checkbox (checked/onCheckedChange/
+// Radix Switch: mocked to a plain native checkbox (checked/onCheckedChange/
 // disabled/aria-label), same convention as MembrosTab.test.tsx and
 // TikTokSettingsPanel.test.tsx's Switch mock, so toggling can be driven with a
 // plain fireEvent.click and asserted via `.checked`.
@@ -42,6 +42,7 @@ vi.mock('@/components/ui/switch', () => ({
 }));
 
 import NotificacoesTab from '../tabs/NotificacoesTab';
+import { getNotificationEmailPrefs } from '../../../store';
 
 function renderTab() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -53,7 +54,16 @@ function renderTab() {
 }
 
 describe('NotificacoesTab', () => {
-  beforeEach(() => setPref.mockClear());
+  beforeEach(() => {
+    // The suite-wide afterEach (test/vitest.setup.ts) calls vi.restoreAllMocks(),
+    // which wipes vi.fn() implementations (including these vi.mock factory
+    // mocks) down to a no-op returning undefined after every test: not just
+    // their call history. Re-establishing the base implementation here (not
+    // just clearing calls) keeps every test's queryFn resolving a real value
+    // regardless of test order.
+    setPref.mockReset().mockResolvedValue(undefined);
+    vi.mocked(getNotificationEmailPrefs).mockReset().mockResolvedValue({ mention: false });
+  });
 
   it('reflects stored prefs (mention off) and toggling calls the setter', async () => {
     renderTab();
@@ -62,5 +72,20 @@ describe('NotificacoesTab', () => {
     expect((mention as HTMLInputElement).checked).toBe(false);
     fireEvent.click(mention);
     await waitFor(() => expect(setPref).toHaveBeenCalledWith('mention', true));
+    // onSettled invalidates the prefs query, triggering a background refetch.
+    // Wait for it here so nothing leaks past this test's teardown (afterEach
+    // resets all mocks, which would otherwise make a late in-flight refetch
+    // resolve against a reset mock and log a stray warning during the next test).
+    await waitFor(() => expect(getNotificationEmailPrefs).toHaveBeenCalledTimes(2));
+  });
+
+  it('renders the master pause switch unchecked when nothing is paused, and turning it on stores enabled=false', async () => {
+    vi.mocked(getNotificationEmailPrefs).mockResolvedValueOnce({});
+    renderTab();
+    const master = await screen.findByLabelText('Pausar todos os e-mails');
+    expect((master as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(master);
+    await waitFor(() => expect(setPref).toHaveBeenCalledWith('__all__', false));
+    await waitFor(() => expect(getNotificationEmailPrefs).toHaveBeenCalledTimes(2));
   });
 });

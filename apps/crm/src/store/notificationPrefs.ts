@@ -1,4 +1,4 @@
-import { supabase } from './core';
+import { supabase, getUserId } from './core';
 
 export type NotificationEmailType =
   | 'post_publish_failed'
@@ -60,12 +60,6 @@ export const EMAIL_NOTIFICATION_TYPES: {
   },
 ];
 
-async function currentUserId(): Promise<string> {
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) throw error ?? new Error('Not authenticated');
-  return data.user.id;
-}
-
 /** Returns a map of type → enabled. Types absent from the map default to true. */
 export async function getNotificationEmailPrefs(): Promise<Record<string, boolean>> {
   const { data, error } = await supabase.from('notification_email_prefs').select('type, enabled');
@@ -79,7 +73,7 @@ export async function setNotificationEmailPref(
   type: NotificationEmailType | typeof MASTER_PAUSE_TYPE,
   enabled: boolean,
 ): Promise<void> {
-  const user_id = await currentUserId();
+  const user_id = await getUserId();
   const { error } = await supabase
     .from('notification_email_prefs')
     .upsert(
