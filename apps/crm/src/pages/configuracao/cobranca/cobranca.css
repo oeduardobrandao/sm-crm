@@ -274,6 +274,14 @@
   border: 1px dashed var(--border-color);
   border-radius: 4px;
 }
+.plan-cta__note {
+  margin: 0;
+  text-align: center;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  padding: 0.62rem;
+}
 
 /* ── Lifetime: a shiny golden card so the exclusive plan feels special ───────── */
 .plan-card.is-lifetime {

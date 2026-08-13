@@ -4,8 +4,11 @@
 
 import { PagarmeApiError } from "../_shared/pagarme.ts";
 import { isInForce, isPaidThrough } from "../_shared/pagarme-logic.ts";
+import { PAGARME_PAID_PLAN_IDS } from "../_shared/billing-logic.ts";
 
-const PAID_PLANS = ["start", "pro", "max"];
+// Re-exported for callers that imported the old local name; the list itself now lives in
+// _shared/billing-logic.ts so plan-mutations' admin-side validation can share it.
+const PAID_PLANS: readonly string[] = PAGARME_PAID_PLAN_IDS;
 
 export interface PagarmeCheckoutRequest {
   planId: string;

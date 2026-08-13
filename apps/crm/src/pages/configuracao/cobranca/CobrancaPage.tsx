@@ -13,7 +13,13 @@ import {
   type BillingInterval,
   type BillingPlan,
 } from '@/services/billing';
-import { isInternalPlan, resolveCurrentPlanId, isPlanVisible, canUpgradeTo } from './plan-display';
+import {
+  isInternalPlan,
+  resolveCurrentPlanId,
+  isPlanVisible,
+  canUpgradeTo,
+  checkoutBlocked,
+} from './plan-display';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
 import { PagarmeCheckoutDialog, formatUtcDateBR } from '@/components/billing/PagarmeCheckoutDialog';
@@ -195,6 +201,12 @@ export default function CobrancaPage() {
   const currentPlanId = resolveCurrentPlanId(effectivePlanId, subscription?.plan_id);
   const currentPlan = plans?.find((p) => p.id === currentPlanId);
   const visiblePlans = (plans ?? []).filter((p) => isPlanVisible(p.id, currentPlanId));
+  // Mirrors the backend's checkout gate (pagarme-checkout/logic.ts + billing-checkout): a
+  // past_due row, or a canceled-but-paid-through row, would still 409 a new checkout even
+  // though hasActiveSub (above) is false for both. Only affects a card that canUpgradeTo would
+  // otherwise have offered — active/trialing already suppress the CTA via hasActiveSub, so that
+  // path stays exactly as it is today.
+  const blocked = checkoutBlocked(subscription, new Date());
 
   async function handleUpgrade(planId: string) {
     const plan = plans?.find((p) => p.id === planId);
@@ -245,7 +257,18 @@ export default function CobrancaPage() {
     if (p.id === currentPlanId) {
       return <span className="plan-cta__static">Plano atual</span>;
     }
-    if (canUpgradeTo(p.id, currentPlanId, hasActiveSub)) {
+    const upgradable = canUpgradeTo(p.id, currentPlanId, hasActiveSub);
+    // Suppress a CTA the backend would 409 on: this only fires for the past_due /
+    // canceled-but-paid-through cases hasActiveSub doesn't cover — hasActiveSub already
+    // makes `upgradable` false for active/trialing, so that path never reaches here.
+    if (upgradable && blocked) {
+      return (
+        <p className="plan-cta__note">
+          Cancele ou aguarde o fim do período atual para trocar de plano.
+        </p>
+      );
+    }
+    if (upgradable) {
       const firstTime = !subscription?.hasEverSubscribed;
       return (
         <button

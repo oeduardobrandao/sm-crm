@@ -303,6 +303,72 @@ describe('CobrancaPage', () => {
       expect(screen.queryByRole('button', { name: 'Cancelar assinatura' })).not.toBeInTheDocument();
     });
 
+    it('a pagarme past_due subscriber sees the blocked-checkout note instead of an upgrade CTA', async () => {
+      // The 409-avoidance case: past_due is not active/trialing, so hasActiveSub is false and
+      // canUpgradeTo alone would still offer "Fazer upgrade" on the Pro card — but the backend's
+      // pagarmeCheckoutBlocked gate 409s a new checkout while in-force, so the note must show
+      // instead, and no upgrade CTA of any kind should render anywhere on the grid.
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({
+          status: 'past_due',
+          provider: 'pagarme',
+          plan_id: 'pro',
+          hasEverSubscribed: true,
+        }),
+      );
+      renderPage();
+
+      expect(
+        await screen.findByText('Cancele ou aguarde o fim do período atual para trocar de plano.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Fazer upgrade' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Começar teste de 30 dias' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('a canceled-but-paid-through row sees the blocked-checkout note instead of an upgrade CTA', async () => {
+      // status: canceled with cancel_at_period_end + a future current_period_end: still paid
+      // through the period (e.g. a 12x subscriber who canceled after the year was fully
+      // charged). Same 409-avoidance as past_due, on either provider.
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({
+          status: 'canceled',
+          provider: 'pagarme',
+          plan_id: 'pro',
+          cancel_at_period_end: true,
+          current_period_end: '2099-01-01T00:00:00.000Z',
+          hasEverSubscribed: true,
+        }),
+      );
+      renderPage();
+
+      expect(
+        await screen.findByText('Cancele ou aguarde o fim do período atual para trocar de plano.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Fazer upgrade' })).not.toBeInTheDocument();
+    });
+
+    it('a canceled row WITHOUT paid-through access keeps the normal re-subscribe CTA', async () => {
+      // cancel_at_period_end is false (or current_period_end already passed): the workspace
+      // has no remaining paid access, so re-subscribing must stay reachable, not blocked.
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({
+          status: 'canceled',
+          provider: 'pagarme',
+          plan_id: 'pro',
+          cancel_at_period_end: false,
+          hasEverSubscribed: true,
+        }),
+      );
+      renderPage();
+
+      expect(await screen.findByRole('button', { name: 'Fazer upgrade' })).toBeInTheDocument();
+      expect(
+        screen.queryByText('Cancele ou aguarde o fim do período atual para trocar de plano.'),
+      ).not.toBeInTheDocument();
+    });
+
     it('confirming the cancel dialog calls cancelPagarmeSubscription', async () => {
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(
         subscription({
