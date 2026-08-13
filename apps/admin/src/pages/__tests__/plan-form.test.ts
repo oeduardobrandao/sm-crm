@@ -20,6 +20,7 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
     stripe_price_id_annual: null,
     pagarme_12x_enabled: false,
     pagarme_plan_id_annual: null,
+    pagarme_installment_cents: null,
     max_clients: 15,
     max_team_members: 3,
     max_workflow_templates: 8,
@@ -130,6 +131,33 @@ describe('plan-form mapping', () => {
     const form = emptyFormState();
     expect(form.pagarme_12x_enabled).toBe(false);
     expect(form.pagarme_plan_id_annual).toBe('');
+    expect(form.pagarme_installment_cents_input).toBe('');
+  });
+
+  it('planToForm exposes pagarme_installment_cents as an editable reais string', () => {
+    const form = planToForm(makePlan({ pagarme_installment_cents: 9490 }));
+    expect(form.pagarme_installment_cents_input).toBe('94.90');
+  });
+
+  it('planToForm exposes a null pagarme_installment_cents as an empty string', () => {
+    const form = planToForm(makePlan({ pagarme_installment_cents: null }));
+    expect(form.pagarme_installment_cents_input).toBe('');
+  });
+
+  it('formToPayload converts pagarme_installment_cents_input reais back to cents', () => {
+    const payload = formToPayload(planToForm(makePlan({ pagarme_installment_cents: 9490 })));
+    expect(payload.pagarme_installment_cents).toBe(9490);
+  });
+
+  it('formToPayload turns an empty pagarme_installment_cents_input into null', () => {
+    const payload = formToPayload(planToForm(makePlan({ pagarme_installment_cents: null })));
+    expect(payload.pagarme_installment_cents).toBeNull();
+  });
+
+  it('round-trips pagarme_installment_cents through reais and back', () => {
+    const form = planToForm(makePlan({ pagarme_installment_cents: 18490 }));
+    const payload = formToPayload(form);
+    expect(payload.pagarme_installment_cents).toBe(18490);
   });
 });
 

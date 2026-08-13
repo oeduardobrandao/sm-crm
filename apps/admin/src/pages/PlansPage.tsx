@@ -273,6 +273,21 @@ export default function PlansPage() {
                     className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                    Parcela 12x (R$)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={form.pagarme_installment_cents_input}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, pagarme_installment_cents_input: e.target.value }))
+                    }
+                    placeholder="94.90"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                  />
+                </div>
               </div>
 
               <NumberFieldGroup

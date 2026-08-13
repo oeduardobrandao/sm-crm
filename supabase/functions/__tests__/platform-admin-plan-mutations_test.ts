@@ -124,6 +124,8 @@ Deno.test("update-plan persists pagarme_12x_enabled and pagarme_plan_id_annual",
       pagarme_12x_enabled: true,
       pagarme_plan_id_annual: "plan_123",
       price_brl_annual: 134300,
+      pagarme_installment_cents: 12990,
+      price_brl: 13990,
     },
     HEADERS,
   );
@@ -133,6 +135,7 @@ Deno.test("update-plan persists pagarme_12x_enabled and pagarme_plan_id_annual",
   assert(payload, "expected an update on the plans table");
   assertEquals(payload.pagarme_12x_enabled, true);
   assertEquals(payload.pagarme_plan_id_annual, "plan_123");
+  assertEquals(payload.pagarme_installment_cents, 12990);
 });
 
 Deno.test("create-plan persists pagarme_12x_enabled and pagarme_plan_id_annual", async () => {
@@ -148,6 +151,8 @@ Deno.test("create-plan persists pagarme_12x_enabled and pagarme_plan_id_annual",
       pagarme_12x_enabled: true,
       pagarme_plan_id_annual: "plan_abc",
       price_brl_annual: 100000,
+      pagarme_installment_cents: 9490,
+      price_brl: 9990,
     },
     HEADERS,
   );
@@ -157,6 +162,7 @@ Deno.test("create-plan persists pagarme_12x_enabled and pagarme_plan_id_annual",
   assert(payload, "expected an insert on the plans table");
   assertEquals(payload.pagarme_12x_enabled, true);
   assertEquals(payload.pagarme_plan_id_annual, "plan_abc");
+  assertEquals(payload.pagarme_installment_cents, 9490);
 });
 
 Deno.test("create-plan rejects enabling 12x without a plan id (400, no insert)", async () => {
@@ -209,6 +215,8 @@ Deno.test("create-plan allows enabling 12x with both a plan id and a positive an
       pagarme_12x_enabled: true,
       pagarme_plan_id_annual: "plan_abc",
       price_brl_annual: 100000,
+      pagarme_installment_cents: 9490,
+      price_brl: 9990,
     },
     HEADERS,
   );
@@ -266,6 +274,8 @@ Deno.test("update-plan allows enabling 12x when the payload supplies both id and
       pagarme_12x_enabled: true,
       pagarme_plan_id_annual: "plan_abc",
       price_brl_annual: 100000,
+      pagarme_installment_cents: 9490,
+      price_brl: 9990,
     },
     HEADERS,
   );
@@ -277,7 +287,16 @@ Deno.test("update-plan: boolean-only flip on an already-configured row reads cur
   const { db, calls } = makeFakeDb({
     plans: [
       // First call: the current-row read triggered by the boolean-only flip.
-      { data: { pagarme_12x_enabled: false, pagarme_plan_id_annual: "plan_existing", price_brl_annual: 134300 }, error: null },
+      {
+        data: {
+          pagarme_12x_enabled: false,
+          pagarme_plan_id_annual: "plan_existing",
+          price_brl_annual: 134300,
+          pagarme_installment_cents: 12990,
+          price_brl: 13990,
+        },
+        error: null,
+      },
       // Second call: the real update.
       { data: { id: "pro", pagarme_12x_enabled: true, pagarme_plan_id_annual: "plan_existing" }, error: null },
     ],
@@ -347,6 +366,8 @@ Deno.test("update-plan rejects enabling 12x on a plan id pagarme-checkout doesn'
       pagarme_12x_enabled: true,
       pagarme_plan_id_annual: "plan_abc",
       price_brl_annual: 100000,
+      pagarme_installment_cents: 9490,
+      price_brl: 9990,
     },
     HEADERS,
   );
@@ -370,4 +391,162 @@ Deno.test("update-plan: unrelated field changes on an already-enabled plan skip 
 
   assertEquals(res.status, 200);
   assertEquals(currentRowReadCalls(calls).length, 0);
+});
+
+// ─── pagarme_installment_cents ceiling rule (0 < installment < price_brl mensal) ───
+
+Deno.test("update-plan rejects enabling 12x with pagarme_installment_cents 0 (400, no update)", async () => {
+  const { db, calls } = makeFakeDb({ plans: [] });
+
+  const res = await handleUpdatePlan(
+    db as unknown as SupabaseClient,
+    {
+      action: "update-plan",
+      plan_id: "pro",
+      pagarme_12x_enabled: true,
+      pagarme_plan_id_annual: "plan_abc",
+      price_brl_annual: 134300,
+      pagarme_installment_cents: 0,
+      price_brl: 13990,
+    },
+    HEADERS,
+  );
+
+  assertEquals(res.status, 400);
+  const body = await res.json();
+  assertEquals(
+    body.error,
+    "pagarme_12x_enabled requires 0 < pagarme_installment_cents < price_brl (mensal)",
+  );
+  assertEquals(calls.some((c) => c.table === "plans" && c.method === "update"), false);
+});
+
+Deno.test("update-plan rejects enabling 12x when pagarme_installment_cents equals price_brl (strict less-than)", async () => {
+  const { db, calls } = makeFakeDb({ plans: [] });
+
+  const res = await handleUpdatePlan(
+    db as unknown as SupabaseClient,
+    {
+      action: "update-plan",
+      plan_id: "pro",
+      pagarme_12x_enabled: true,
+      pagarme_plan_id_annual: "plan_abc",
+      price_brl_annual: 134300,
+      pagarme_installment_cents: 13990,
+      price_brl: 13990,
+    },
+    HEADERS,
+  );
+
+  assertEquals(res.status, 400);
+  const body = await res.json();
+  assertEquals(
+    body.error,
+    "pagarme_12x_enabled requires 0 < pagarme_installment_cents < price_brl (mensal)",
+  );
+  assertEquals(calls.some((c) => c.table === "plans" && c.method === "update"), false);
+});
+
+Deno.test("update-plan allows enabling 12x when pagarme_installment_cents is positive and strictly under price_brl", async () => {
+  const { db } = makeFakeDb({
+    plans: [{ data: { id: "pro", pagarme_12x_enabled: true, pagarme_installment_cents: 12990 }, error: null }],
+  });
+
+  const res = await handleUpdatePlan(
+    db as unknown as SupabaseClient,
+    {
+      action: "update-plan",
+      plan_id: "pro",
+      pagarme_12x_enabled: true,
+      pagarme_plan_id_annual: "plan_abc",
+      price_brl_annual: 134300,
+      pagarme_installment_cents: 12990,
+      price_brl: 13990,
+    },
+    HEADERS,
+  );
+
+  assertEquals(res.status, 200);
+});
+
+Deno.test("create-plan rejects enabling 12x with pagarme_installment_cents 0 (400, no insert)", async () => {
+  const { db, calls } = makeFakeDb({ plans: [] });
+
+  const res = await handleCreatePlan(
+    db as unknown as SupabaseClient,
+    {
+      action: "create-plan",
+      name: "New",
+      pagarme_12x_enabled: true,
+      pagarme_plan_id_annual: "plan_abc",
+      price_brl_annual: 134300,
+      pagarme_installment_cents: 0,
+      price_brl: 13990,
+    },
+    HEADERS,
+  );
+
+  assertEquals(res.status, 400);
+  const body = await res.json();
+  assertEquals(
+    body.error,
+    "pagarme_12x_enabled requires 0 < pagarme_installment_cents < price_brl (mensal)",
+  );
+  assertEquals(calls.some((c) => c.table === "plans" && c.method === "insert"), false);
+});
+
+Deno.test("update-plan: boolean-only flip on a fully-configured row (incl. installment) allows via merge-over-current", async () => {
+  const { db, calls } = makeFakeDb({
+    plans: [
+      {
+        data: {
+          pagarme_12x_enabled: false,
+          pagarme_plan_id_annual: "plan_existing",
+          price_brl_annual: 134300,
+          pagarme_installment_cents: 12990,
+          price_brl: 13990,
+        },
+        error: null,
+      },
+      { data: { id: "pro", pagarme_12x_enabled: true }, error: null },
+    ],
+  });
+
+  const res = await handleUpdatePlan(
+    db as unknown as SupabaseClient,
+    { action: "update-plan", plan_id: "pro", pagarme_12x_enabled: true },
+    HEADERS,
+  );
+
+  assertEquals(res.status, 200);
+  assertEquals(currentRowReadCalls(calls).length, 1);
+  const payload = lastPayload(calls, "plans", "update");
+  assert(payload, "expected an update on the plans table");
+  assertEquals(payload.pagarme_12x_enabled, true);
+});
+
+Deno.test("update-plan: boolean-only flip is rejected when installment is configured but >= price_brl", async () => {
+  const { db, calls } = makeFakeDb({
+    plans: [
+      {
+        data: {
+          pagarme_12x_enabled: false,
+          pagarme_plan_id_annual: "plan_existing",
+          price_brl_annual: 134300,
+          pagarme_installment_cents: 13990,
+          price_brl: 13990,
+        },
+        error: null,
+      },
+    ],
+  });
+
+  const res = await handleUpdatePlan(
+    db as unknown as SupabaseClient,
+    { action: "update-plan", plan_id: "pro", pagarme_12x_enabled: true },
+    HEADERS,
+  );
+
+  assertEquals(res.status, 400);
+  assertEquals(calls.some((c) => c.table === "plans" && c.method === "update"), false);
 });

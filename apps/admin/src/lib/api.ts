@@ -62,6 +62,7 @@ export interface Plan {
   stripe_price_id_annual: string | null;
   pagarme_12x_enabled: boolean;
   pagarme_plan_id_annual: string | null;
+  pagarme_installment_cents: number | null;
   max_clients: number | null;
   max_team_members: number | null;
   max_workflow_templates: number | null;

@@ -41,6 +41,8 @@ export interface FormState {
   stripe_price_id_annual: string;
   pagarme_12x_enabled: boolean;
   pagarme_plan_id_annual: string;
+  // Held as a raw reais string while editing, same treatment as price_brl_input.
+  pagarme_installment_cents_input: string;
 }
 
 export function emptyFormState(): FormState {
@@ -59,6 +61,7 @@ export function emptyFormState(): FormState {
     stripe_price_id_annual: '',
     pagarme_12x_enabled: false,
     pagarme_plan_id_annual: '',
+    pagarme_installment_cents_input: '',
   };
 }
 
@@ -84,6 +87,7 @@ export function planToForm(plan: Plan): FormState {
     stripe_price_id_annual: plan.stripe_price_id_annual ?? '',
     pagarme_12x_enabled: plan.pagarme_12x_enabled,
     pagarme_plan_id_annual: plan.pagarme_plan_id_annual ?? '',
+    pagarme_installment_cents_input: centavosToReais(plan.pagarme_installment_cents),
   };
 }
 
@@ -99,6 +103,7 @@ export function formToPayload(form: FormState): Record<string, unknown> {
     stripe_price_id_annual: form.stripe_price_id_annual || null,
     pagarme_12x_enabled: form.pagarme_12x_enabled,
     pagarme_plan_id_annual: form.pagarme_plan_id_annual.trim() || null,
+    pagarme_installment_cents: reaisToCentavos(form.pagarme_installment_cents_input),
     ...form.resources,
     ...form.features,
     ...form.rates,
