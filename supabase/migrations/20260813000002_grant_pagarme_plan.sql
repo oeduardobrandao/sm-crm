@@ -44,8 +44,9 @@ begin
   update public.workspaces w
      set plan_id = p_plan,
          plan_source = 'pagarme'
-   -- is distinct from: a NULL plan_source is still writable; only an explicit 'manual' comp
-   -- is preserved.
+   -- only an explicit 'manual' comp is preserved, matching writeWorkspacePlan's old guard.
+   -- plan_source is NOT NULL today, so `is distinct from` equals `<> 'manual'` here; the
+   -- distinct form is the defensive one (a hypothetical NULL would stay writable).
    where w.id = p_workspace
      and w.plan_source is distinct from 'manual';
   get diagnostics v_written = row_count;

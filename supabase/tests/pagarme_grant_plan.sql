@@ -86,21 +86,21 @@ begin
   if v_n <> 0 then raise exception '(d) provider mismatch expected 0 rows, got %', v_n; end if;
   update public.workspace_subscriptions set provider = 'pagarme' where workspace_id = v_ws;
 
-  -- (e) manual comp preserved: server-side guard writes 0 rows, plan untouched.
+  -- (e) manual comp preserved: server-side guard writes 0 rows, plan untouched. Then a
+  --     non-manual source (system) writes again -- proving (e)'s 0 was the comp, not a stuck row.
   update public.workspaces set plan_source = 'manual' where id = v_ws;
   select public.grant_pagarme_plan(v_ws, 'free', 'sub_et_gp', 'active') into v_n;
   if v_n <> 0 then raise exception '(e) manual comp expected 0 rows, got %', v_n; end if;
   select plan_id into v_plan from public.workspaces where id = v_ws;
   if v_plan <> 'max' then raise exception '(e) manual comp was overridden to %', v_plan; end if;
 
-  -- (f) NULL plan_source is still writable (is distinct from 'manual').
-  update public.workspaces set plan_source = null where id = v_ws;
+  update public.workspaces set plan_source = 'system' where id = v_ws;
   select public.grant_pagarme_plan(v_ws, 'free', 'sub_et_gp', 'active') into v_n;
-  if v_n <> 1 then raise exception '(f) NULL plan_source expected 1 row, got %', v_n; end if;
+  if v_n <> 1 then raise exception '(e2) non-manual source expected 1 row, got %', v_n; end if;
   select plan_id into v_plan from public.workspaces where id = v_ws;
-  if v_plan <> 'free' then raise exception '(f) NULL-source grant did not write: %', v_plan; end if;
+  if v_plan <> 'free' then raise exception '(e2) non-manual grant did not write: %', v_plan; end if;
 
-  raise notice 'pagarme_grant_plan: boundary + guard OK (match writes, mismatches/manual no-op, null writable)';
+  raise notice 'pagarme_grant_plan: boundary + guard OK (match writes, mismatches/manual no-op)';
 end $$;
 
 rollback;
