@@ -525,6 +525,12 @@ export async function sendNotificationDigestEmail(
     }),
     signal: AbortSignal.timeout(10_000),
   });
+  // 409 = this Idempotency-Key was already accepted (a prior retry after an
+  // ambiguous failure already landed this exact digest). Treat as a successful,
+  // deduped send, not a failure — otherwise the caller resets the claim and
+  // re-sends until the key expires, producing the duplicate the key exists to
+  // prevent. Mirrors _shared/lifecycle-emails.ts.
+  if (res.status === 409) return { skipped: false };
   if (!res.ok) throw new Error(`Resend send failed: ${res.status}`);
   return { skipped: false };
 }
