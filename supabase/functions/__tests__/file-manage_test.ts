@@ -376,6 +376,28 @@ Deno.test("file-manage: PATCH /files/:id renames a file", async () => {
   assertEquals(body.name, "renamed.png");
 });
 
+Deno.test("file-manage: PATCH /files/:id strips stream_uid/stream_status from the updated row", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", { data: { conta_id: "conta-1" }, error: null });
+  // A real `RETURNING *` includes every column, incl. the Stream ones (bare `.select()`
+  // after `.update()` is `select("*")`).
+  db.queue("files", "update", {
+    data: {
+      id: 10, name: "renamed.mp4", kind: "video",
+      stream_uid: "stream-uid-1", stream_status: "ready",
+    },
+    error: null,
+  });
+  const handler = makeHandler(db);
+  const res = await handler(req("PATCH", "/files/10", { name: "renamed.mp4" }));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.name, "renamed.mp4");
+  assert(!("stream_uid" in body), "stream_uid must not leak to the client");
+  assert(!("stream_status" in body), "stream_status must not leak to the client");
+});
+
 Deno.test("file-manage: PATCH /files/:id with empty body returns 400", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);

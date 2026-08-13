@@ -481,7 +481,8 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
         const { data: updated, error: updErr } = await svc.from("files").update(patch).eq("id", fileId).select().single();
         if (updErr) return internalServerError(json, "file-manage:update-file", updErr);
-        return json(updated);
+        const { stream_uid, stream_status, ...pub } = updated;
+        return json(pub);
       }
 
       // DELETE /files/:id
