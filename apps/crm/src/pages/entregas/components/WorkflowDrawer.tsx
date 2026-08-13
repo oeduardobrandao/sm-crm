@@ -12,6 +12,7 @@ import {
   GripVertical,
   ImageIcon,
   Calendar as CalendarIcon,
+  LayoutGrid,
   Maximize2,
   Minimize2,
 } from 'lucide-react';
@@ -100,6 +101,7 @@ import { shouldShowPublishErrorBlock } from './publishErrorBlockVisibility';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { supabase } from '@/lib/supabase';
 import { WorkflowCalendarView } from './WorkflowCalendarView';
+import { WorkflowGridView } from './WorkflowGridView';
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import { DiffView } from './DiffView';
 import { ReadOnlyTipTap } from './ReadOnlyTipTap';
@@ -156,7 +158,7 @@ export function WorkflowDrawer({
   const [pendingRejectSuggestionId, setPendingRejectSuggestionId] = useState<number | null>(null);
   const [editorVersions, setEditorVersions] = useState<Record<number, number>>({});
   const statusRegistry = useStatusRegistry();
-  const [showCalendar, setShowCalendar] = useState(false);
+  const [drawerView, setDrawerView] = useState<'posts' | 'calendar' | 'grid'>('posts');
   const [isFullscreen, setIsFullscreen] = useState(
     () => localStorage.getItem('workflow-drawer-fullscreen') === '1',
   );
@@ -698,14 +700,31 @@ export function WorkflowDrawer({
                 Enviar ao cliente ({readyToSend})
               </button>
             )}
-            <button
-              className={`drawer-calendar-btn${showCalendar ? ' active' : ''}`}
-              onClick={() => setShowCalendar((v) => !v)}
-              title={showCalendar ? 'Voltar aos posts' : 'Ver calendário do cliente'}
-            >
-              <CalendarIcon className="h-3.5 w-3.5" />
-              {showCalendar ? 'Posts' : 'Calendário'}
-            </button>
+            <div className="drawer-view-toggle" role="tablist">
+              <button
+                className={`drawer-calendar-btn${drawerView === 'posts' ? ' active' : ''}`}
+                onClick={() => setDrawerView('posts')}
+                title="Ver posts"
+              >
+                Posts
+              </button>
+              <button
+                className={`drawer-calendar-btn${drawerView === 'grid' ? ' active' : ''}`}
+                onClick={() => setDrawerView('grid')}
+                title="Ver a grade do Instagram do cliente"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                Grade
+              </button>
+              <button
+                className={`drawer-calendar-btn${drawerView === 'calendar' ? ' active' : ''}`}
+                onClick={() => setDrawerView('calendar')}
+                title="Ver calendário do cliente"
+              >
+                <CalendarIcon className="h-3.5 w-3.5" />
+                Calendário
+              </button>
+            </div>
             <button
               className="drawer-close-btn drawer-fullscreen-btn"
               onClick={toggleFullscreen}
@@ -720,8 +739,8 @@ export function WorkflowDrawer({
         </div>
 
         {/* Posts section */}
-        <div className={`drawer-body${showCalendar ? ' drawer-body--calendar' : ''}`}>
-          {showCalendar ? (
+        <div className={`drawer-body${drawerView === 'calendar' ? ' drawer-body--calendar' : ''}`}>
+          {drawerView === 'calendar' ? (
             <WorkflowCalendarView
               clienteId={clienteId}
               clienteNome={card.cliente?.nome || '—'}
@@ -730,11 +749,13 @@ export function WorkflowDrawer({
               membros={membros}
               hubUrl={card.hubUrl}
               onOpenPost={(postId) => {
-                setShowCalendar(false);
+                setDrawerView('posts');
                 setExpandedId(postId);
               }}
-              onBack={() => setShowCalendar(false)}
+              onBack={() => setDrawerView('posts')}
             />
+          ) : drawerView === 'grid' ? (
+            <WorkflowGridView clienteId={clienteId} clienteNome={card.cliente?.nome || '—'} />
           ) : (
             <>
               <div className="drawer-section-header">

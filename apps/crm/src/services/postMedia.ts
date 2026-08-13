@@ -187,6 +187,22 @@ export async function getWorkflowCovers(workflowIds: number[]): Promise<Map<numb
   return new Map(covers.map((c) => [c.workflow_id, Array.isArray(c.media) ? c.media : [c.media]]));
 }
 
+/**
+ * Batched cover lookup by post id — one cover PostMedia per post that has media.
+ * Used by the entregas grid view to thumbnail planned posts across workflows
+ * without an N-per-tile round trip. Posts with no media are simply absent.
+ */
+export async function getPostCovers(postIds: number[]): Promise<Map<number, PostMedia>> {
+  if (postIds.length === 0) return new Map();
+  const { covers } = await callFn<{ covers: { post_id: number; media: PostMedia }[] }>(
+    'post-media-manage',
+    'GET',
+    undefined,
+    { post_ids: postIds.join(',') },
+  );
+  return new Map(covers.map((c) => [c.post_id, c.media]));
+}
+
 export async function uploadPostMedia(args: {
   postId: number;
   file: File;
