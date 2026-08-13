@@ -195,7 +195,7 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
     }
     if (written === 0) {
       console.warn(
-        `[pagarme-webhook] plan grant skipped for workspace ${row.workspace_id}: subscription ${subId} no longer in reconciled status ${status} (concurrent transition)`,
+        `[pagarme-webhook] plan grant skipped for workspace ${row.workspace_id}: subscription ${subId} guard did not match reconciled status ${status} (concurrent transition or manual comp)`,
       );
     }
   }

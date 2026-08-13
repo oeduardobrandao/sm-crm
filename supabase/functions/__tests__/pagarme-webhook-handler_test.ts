@@ -709,11 +709,12 @@ Deno.test("20. gateway throws (timeout) -> handler throws, propagating for a 5xx
 
 // ─── plan-writer integration ────────────────────────────────────────────────────────────────
 
-Deno.test("21. manual comp: the grant RPC's own guard (plan_source != 'manual') blocks the write server-side (0 rows); handler tolerates it and still reconciles", async () => {
-  // The comp preservation now lives in grant_pagarme_plan's WHERE, not a client-side read: the
-  // handler always calls the guarded RPC, which writes 0 rows for a manual comp. That server-side
-  // guard is exercised by the SQL migration, not this unit; here we assert the handler issues the
-  // guarded RPC (never a raw plan write) and tolerates the 0-row result.
+Deno.test("21. guard writes 0 rows (a concurrent cancel/reclaim moved the sub, OR a manual comp): the plan is only ever written through the guarded RPC, and the handler tolerates the no-op and still reconciles", async () => {
+  // The whole point of the fix: the plan is never a raw workspaces write, and a 0-row result
+  // (a delayed in-force handler whose subscription was reclaimed/canceled, or a manual comp) must
+  // NOT resurrect the plan and must NOT error — the winning writer owns the plan. The distinction
+  // between the race and the manual comp lives in the RPC's SQL (WHERE + for update), exercised by
+  // the psql suite (tests/pagarme_grant_plan.sql), not this unit.
   const { events, result } = run(
     "subscription.updated",
     { id: SUB },
@@ -732,20 +733,6 @@ Deno.test("21. manual comp: the grant RPC's own guard (plan_source != 'manual') 
     0,
     "the plan is only ever written through the guarded RPC, never a raw workspaces update",
   );
-});
-
-Deno.test("21b. concurrent transition: the grant RPC matches 0 rows (a cancel/reclaim moved the sub) -> skip, no throw, still reconciled", async () => {
-  const { events, result } = run(
-    "subscription.updated",
-    { id: SUB },
-    { subRow: baseRow, rpcResult: 0 },
-  );
-  // 0 rows is the whole point of the guard: a delayed in-force handler whose subscription was
-  // reclaimed/canceled must NOT resurrect the plan, and must not error (the winning writer owns it).
-  assertEquals(await result, "reconciled");
-  const grant = findPlanGrant(events);
-  assert(grant, "the guarded RPC must still be attempted");
-  assertEquals(grant.values, { p_workspace: WS, p_plan: "start", p_sub: SUB, p_status: "active" });
 });
 
 Deno.test("21c. grant RPC error -> handler throws 'pagarme plan write failed' (5xx redelivery)", async () => {
