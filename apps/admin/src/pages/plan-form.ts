@@ -39,6 +39,8 @@ export interface FormState {
   stripe_product_id: string;
   stripe_price_id: string;
   stripe_price_id_annual: string;
+  pagarme_12x_enabled: boolean;
+  pagarme_plan_id_annual: string;
 }
 
 export function emptyFormState(): FormState {
@@ -55,6 +57,8 @@ export function emptyFormState(): FormState {
     stripe_product_id: '',
     stripe_price_id: '',
     stripe_price_id_annual: '',
+    pagarme_12x_enabled: false,
+    pagarme_plan_id_annual: '',
   };
 }
 
@@ -78,6 +82,8 @@ export function planToForm(plan: Plan): FormState {
     stripe_product_id: plan.stripe_product_id ?? '',
     stripe_price_id: plan.stripe_price_id ?? '',
     stripe_price_id_annual: plan.stripe_price_id_annual ?? '',
+    pagarme_12x_enabled: plan.pagarme_12x_enabled,
+    pagarme_plan_id_annual: plan.pagarme_plan_id_annual ?? '',
   };
 }
 
@@ -91,6 +97,8 @@ export function formToPayload(form: FormState): Record<string, unknown> {
     stripe_product_id: form.stripe_product_id || null,
     stripe_price_id: form.stripe_price_id || null,
     stripe_price_id_annual: form.stripe_price_id_annual || null,
+    pagarme_12x_enabled: form.pagarme_12x_enabled,
+    pagarme_plan_id_annual: form.pagarme_plan_id_annual.trim() || null,
     ...form.resources,
     ...form.features,
     ...form.rates,

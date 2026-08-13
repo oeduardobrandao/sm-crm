@@ -3,6 +3,23 @@ import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 // max_mcp_keys / feature_mcp to be silently dropped by the admin plan editor.
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
 
+// Enabling 12x on a plan advertises it publicly; a misconfigured plan (no Pagar.me
+// annual plan id, or no positive annual price) 400s at checkout for every workspace
+// on that plan. Reject the mutation instead of persisting a broken config.
+function validatePagarme12x(
+  enabled: unknown,
+  planIdAnnual: unknown,
+  priceBrlAnnual: unknown,
+): string | null {
+  if (!enabled) return null;
+  const idOk = typeof planIdAnnual === "string" && planIdAnnual.trim() !== "";
+  const priceOk = typeof priceBrlAnnual === "number" && priceBrlAnnual > 0;
+  if (!idOk || !priceOk) {
+    return "pagarme_12x_enabled requires pagarme_plan_id_annual and a positive price_brl_annual";
+  }
+  return null;
+}
+
 export async function handleCreatePlan(
   svc: SupabaseClient,
   body: Record<string, unknown>,
@@ -11,6 +28,17 @@ export async function handleCreatePlan(
   const { name, is_default, action: _, ...rest } = body;
   if (!name) {
     return new Response(JSON.stringify({ error: "name is required" }), { status: 400, headers });
+  }
+
+  // A fresh row has no prior state to merge over: the payload alone determines
+  // whether the resulting row would be enabled without a valid config.
+  const createValidationError = validatePagarme12x(
+    rest.pagarme_12x_enabled,
+    rest.pagarme_plan_id_annual,
+    rest.price_brl_annual,
+  );
+  if (createValidationError) {
+    return new Response(JSON.stringify({ error: createValidationError }), { status: 400, headers });
   }
 
   if (is_default) {
@@ -29,6 +57,8 @@ export async function handleCreatePlan(
   if (rest.stripe_product_id !== undefined) insert.stripe_product_id = rest.stripe_product_id;
   if (rest.stripe_price_id !== undefined) insert.stripe_price_id = rest.stripe_price_id;
   if (rest.stripe_price_id_annual !== undefined) insert.stripe_price_id_annual = rest.stripe_price_id_annual;
+  if (rest.pagarme_12x_enabled !== undefined) insert.pagarme_12x_enabled = rest.pagarme_12x_enabled;
+  if (rest.pagarme_plan_id_annual !== undefined) insert.pagarme_plan_id_annual = rest.pagarme_plan_id_annual;
 
   const { data, error } = await svc
     .from("plans")
@@ -50,6 +80,45 @@ export async function handleUpdatePlan(
     return new Response(JSON.stringify({ error: "plan_id is required" }), { status: 400, headers });
   }
 
+  // Explicitly disabling never needs validation. Otherwise, if the payload alone
+  // doesn't fully determine the resulting enabled/id/price trio, read the current
+  // row and merge the incoming fields over it before checking the invariant.
+  const needsCurrentRead = rest.pagarme_12x_enabled === false
+    ? false
+    : rest.pagarme_12x_enabled === true
+      ? rest.pagarme_plan_id_annual === undefined || rest.price_brl_annual === undefined
+      : rest.pagarme_plan_id_annual !== undefined || rest.price_brl_annual !== undefined;
+
+  let current: Record<string, unknown> | null = null;
+  if (needsCurrentRead) {
+    const { data: currentRow, error: readError } = await svc
+      .from("plans")
+      .select("pagarme_12x_enabled, pagarme_plan_id_annual, price_brl_annual")
+      .eq("id", plan_id)
+      .single();
+    if (readError) throw readError;
+    current = currentRow;
+  }
+
+  const effectiveEnabled = rest.pagarme_12x_enabled !== undefined
+    ? rest.pagarme_12x_enabled
+    : current?.pagarme_12x_enabled;
+  const effectivePlanIdAnnual = rest.pagarme_plan_id_annual !== undefined
+    ? rest.pagarme_plan_id_annual
+    : current?.pagarme_plan_id_annual;
+  const effectivePriceBrlAnnual = rest.price_brl_annual !== undefined
+    ? rest.price_brl_annual
+    : current?.price_brl_annual;
+
+  const updateValidationError = validatePagarme12x(
+    effectiveEnabled,
+    effectivePlanIdAnnual,
+    effectivePriceBrlAnnual,
+  );
+  if (updateValidationError) {
+    return new Response(JSON.stringify({ error: updateValidationError }), { status: 400, headers });
+  }
+
   if (rest.is_default) {
     await svc.from("plans").update({ is_default: false }).eq("is_default", true);
   }
@@ -59,6 +128,7 @@ export async function handleUpdatePlan(
   const allowedScalar = [
     "name", "is_default", "price_brl", "price_brl_annual", "sort_order", "is_active",
     "stripe_product_id", "stripe_price_id", "stripe_price_id_annual",
+    "pagarme_12x_enabled", "pagarme_plan_id_annual",
   ];
   for (const key of allowedScalar) {
     if (rest[key] !== undefined) updatePayload[key] = rest[key];

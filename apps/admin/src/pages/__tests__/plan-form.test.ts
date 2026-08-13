@@ -18,6 +18,8 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
     stripe_product_id: null,
     stripe_price_id: null,
     stripe_price_id_annual: null,
+    pagarme_12x_enabled: false,
+    pagarme_plan_id_annual: null,
     max_clients: 15,
     max_team_members: 3,
     max_workflow_templates: 8,
@@ -100,6 +102,34 @@ describe('plan-form mapping', () => {
     expect(payload.price_brl).toBeNull();
     expect(payload.price_brl_annual).toBeNull();
     expect(payload.sort_order).toBe(0);
+  });
+
+  it('formToPayload includes pagarme_12x_enabled and turns an empty plan id into null', () => {
+    const payload = formToPayload(
+      planToForm(makePlan({ pagarme_12x_enabled: true, pagarme_plan_id_annual: '  plan_123  ' })),
+    );
+    expect(payload.pagarme_12x_enabled).toBe(true);
+    expect(payload.pagarme_plan_id_annual).toBe('plan_123');
+  });
+
+  it('formToPayload turns an empty pagarme plan id into null', () => {
+    const payload = formToPayload(
+      planToForm(makePlan({ pagarme_12x_enabled: false, pagarme_plan_id_annual: null })),
+    );
+    expect(payload.pagarme_12x_enabled).toBe(false);
+    expect(payload.pagarme_plan_id_annual).toBeNull();
+  });
+
+  it('planToForm exposes a null pagarme plan id as an empty string', () => {
+    const form = planToForm(makePlan({ pagarme_12x_enabled: true, pagarme_plan_id_annual: null }));
+    expect(form.pagarme_12x_enabled).toBe(true);
+    expect(form.pagarme_plan_id_annual).toBe('');
+  });
+
+  it('emptyFormState defaults pagarme 12x to disabled with no plan id', () => {
+    const form = emptyFormState();
+    expect(form.pagarme_12x_enabled).toBe(false);
+    expect(form.pagarme_plan_id_annual).toBe('');
   });
 });
 
