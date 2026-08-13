@@ -5,7 +5,9 @@
 //      flag flipped so the row leaves this query. Always runs (no gateway needed).
 //   B. Stale checkout attempts -- global backstop for pagarme-checkout's own per-workspace
 //      self-heal (handler.ts:119-139): any pending attempt older than STALE_ATTEMPT_MINUTES
-//      is expired, but only after a remote subscription it recorded is confirmed settled.
+//      is expired, but only after its recorded subscription is confirmed either not bound
+//      locally (settled cancel) or reconciled as bound (finishAttempt("succeeded") is
+//      best-effort, so a fully-bound checkout can still leave its attempt pending).
 //   C. Remote orphan sweep -- the hard precondition for the production flip. Lists every
 //      active/future Pagar.me subscription and cancels the ones our checkout created but
 //      never bound to a local row. FETCH-THEN-CANCEL: the full candidate list is collected
@@ -39,6 +41,7 @@ export interface DowngradeCronDeps {
 export interface CronResult {
   downgraded: number;
   attemptsExpired: number;
+  attemptsReconciled: number;
   orphansCanceled: number;
   orphansUnrecognized: number;
   sweepTruncated: boolean;
@@ -57,6 +60,7 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
   const errors: string[] = [];
   let downgraded = 0;
   let attemptsExpired = 0;
+  let attemptsReconciled = 0;
   let orphansCanceled = 0;
   let orphansUnrecognized = 0;
   let sweepTruncated = false;
@@ -71,6 +75,7 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
         .eq("provider", "pagarme")
         .eq("status", "canceled")
         .eq("cancel_at_period_end", true)
+        .not("pagarme_subscription_id", "is", null)
         .lte("current_period_end", nowIso)
         .order("current_period_end", { ascending: true })
         .limit(BATCH_LIMIT)
@@ -164,9 +169,54 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
         );
       }
 
+      // BOUND-SUBSCRIPTION GUARD (load-bearing): a pending attempt with a sub id is NOT proof
+      // of an orphan -- the checkout's finishAttempt("succeeded") is best-effort, so a
+      // checkout that fully bound the subscription locally can still leave its attempt
+      // pending. The checkout's own self-heal is protected by its 409 in-force gate running
+      // before it; this cron has no such gate and would otherwise cancel a PAID, BOUND
+      // subscription. Read the linked picture BEFORE touching anything; a read error aborts
+      // ALL of leg B into the outer catch (fail closed, same rule as leg C's local reads).
+      const subIds = attempts
+        .map((a) => a.pagarme_subscription_id)
+        .filter((id): id is string => !!id);
+      const linkedSubIds = new Set<string>();
+      if (subIds.length > 0) {
+        const { data: linked, error: linkedErr } = await deps.db
+          .from("workspace_subscriptions")
+          .select("pagarme_subscription_id", { count: "exact" })
+          .in("pagarme_subscription_id", subIds)
+          .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+        if (linkedErr) throw new Error(`leg B linked read failed: ${linkedErr.message}`);
+        for (
+          const row of (linked ?? []) as Array<{ pagarme_subscription_id: string | null }>
+        ) {
+          if (row.pagarme_subscription_id) linkedSubIds.add(row.pagarme_subscription_id);
+        }
+      }
+
       for (const a of attempts) {
         try {
           if (a.pagarme_subscription_id) {
+            if (linkedSubIds.has(a.pagarme_subscription_id)) {
+              // The checkout actually succeeded and bound the row locally; only the
+              // attempt's own state write never landed. Reconcile it -- never call the
+              // gateway on a subscription that is paid and bound.
+              const { error: reconcileErr } = await deps.db
+                .from("pagarme_checkout_attempts")
+                .update({ state: "succeeded", updated_at: nowIso })
+                .eq("id", a.id)
+                .eq("state", "pending")
+                .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+              if (reconcileErr) {
+                errors.push(
+                  `leg B reconcile failed for attempt ${a.id}: ${reconcileErr.message}`,
+                );
+                continue;
+              }
+              attemptsReconciled++;
+              continue;
+            }
+
             if (deps.gateway === null) {
               // Dark env: nothing here can confirm the remote state. Leave pending for the
               // env that can check.
@@ -221,20 +271,34 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
       // Both reads are LOAD-BEARING: a failed read that silently became an empty set would
       // make every remote subscription look unlinked and the sweep would cancel live, paid
       // subscriptions. MUST throw on error so the whole leg aborts into the catch below.
-      const { data: linked, error: linkedErr } = await deps.db
+      // `{ count: "exact" }` + a length check also guards the read PostgREST itself performs
+      // silently: an unbounded select truncates at db-max-rows (1000 on hosted Supabase),
+      // which is not an error and would otherwise make bound, paid subscriptions look
+      // orphaned. Truncation must be detected by count and treated as a failure too.
+      const { data: linked, error: linkedErr, count: linkedCount } = await deps.db
         .from("workspace_subscriptions")
-        .select("pagarme_subscription_id")
+        .select("pagarme_subscription_id", { count: "exact" })
         .not("pagarme_subscription_id", "is", null)
         .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
       if (linkedErr) throw new Error(`sweep linked read failed: ${linkedErr.message}`);
+      if (linkedCount !== null && (linked ?? []).length !== linkedCount) {
+        throw new Error(
+          `sweep linked read truncated: got ${(linked ?? []).length} of ${linkedCount}`,
+        );
+      }
 
-      const { data: pendingAttempts, error: pendingErr } = await deps.db
+      const { data: pendingAttempts, error: pendingErr, count: pendingCount } = await deps.db
         .from("pagarme_checkout_attempts")
-        .select("pagarme_subscription_id")
+        .select("pagarme_subscription_id", { count: "exact" })
         .eq("state", "pending")
         .not("pagarme_subscription_id", "is", null)
         .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
       if (pendingErr) throw new Error(`sweep pending read failed: ${pendingErr.message}`);
+      if (pendingCount !== null && (pendingAttempts ?? []).length !== pendingCount) {
+        throw new Error(
+          `sweep pending read truncated: got ${(pendingAttempts ?? []).length} of ${pendingCount}`,
+        );
+      }
 
       const linkedIds = new Set<string>(
         ((linked ?? []) as Array<{ pagarme_subscription_id: string | null }>)
@@ -273,8 +337,9 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
           }
         } catch (e) {
           errors.push(`leg C list failed for status ${status}: ${errMessage(e)}`);
-          // Continue with the next status; this status's partial page is dropped rather
-          // than risking a half-collected candidate list for it.
+          // Only the failing page is dropped: any pages already fetched for this status
+          // stayed in `candidates` (pushed before the failure) and are still processed below.
+          // Continue with the next status rather than aborting the whole leg over one page.
         }
       }
 
@@ -317,6 +382,7 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
   return {
     downgraded,
     attemptsExpired,
+    attemptsReconciled,
     orphansCanceled,
     orphansUnrecognized,
     sweepTruncated,
