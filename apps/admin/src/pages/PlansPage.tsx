@@ -159,6 +159,17 @@ export default function PlansPage() {
                     />
                     Active
                   </label>
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={form.pagarme_12x_enabled}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, pagarme_12x_enabled: e.target.checked }))
+                      }
+                      className="rounded"
+                    />
+                    Parcelamento 12x (Pagar.me)
+                  </label>
                 </div>
               </div>
 
@@ -245,6 +256,20 @@ export default function PlansPage() {
                       setForm((f) => ({ ...f, stripe_price_id_annual: e.target.value }))
                     }
                     placeholder="price_..."
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                    Pagar.me plan ID (annual)
+                  </label>
+                  <input
+                    type="text"
+                    value={form.pagarme_plan_id_annual}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, pagarme_plan_id_annual: e.target.value }))
+                    }
+                    placeholder="plan_..."
                     className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>

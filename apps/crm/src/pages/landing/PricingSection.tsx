@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { listPublicPricingPlans, type PublicPricingPlan } from '@/services/billing';
 import { buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
+import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
 import PlanComparison from './PlanComparison';
 
 /** Centavos → display string. R$ 0 stays "R$ 0"; otherwise pt-BR currency (e.g. R$ 99,90). */
@@ -192,7 +193,9 @@ export function PricingSection() {
                   </div>
                   <div className="price-annual-note">
                     {isYear && plan.price_brl_annual != null && plan.price_brl_annual > 0
-                      ? `cobrado anualmente (${formatPrice(plan.price_brl_annual)}/ano)`
+                      ? isPagarme12xEnabled(plan)
+                        ? `12x de ${formatPrice(Math.round(plan.price_brl_annual / 12))} no cartão, sem juros (total ${formatPrice(plan.price_brl_annual)}/ano)`
+                        : `cobrado anualmente (${formatPrice(plan.price_brl_annual)}/ano)`
                       : ' '}
                   </div>
                   {!isFree && <div className="plan-trial-note">30 dias grátis para começar</div>}

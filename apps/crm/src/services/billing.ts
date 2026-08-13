@@ -14,6 +14,7 @@ export interface BillingPlan {
   feature_hub_portal: boolean;
   feature_analytics_reports: boolean;
   feature_brand_customization: boolean;
+  pagarme_12x_enabled: boolean;
 }
 
 export interface PublicPricingPlan {
@@ -35,6 +36,7 @@ export interface PublicPricingPlan {
   feature_contracts: boolean;
   feature_brand_customization: boolean;
   feature_mcp: boolean;
+  pagarme_12x_enabled: boolean;
 }
 
 const INTERNAL_PLAN_IDS = new Set(['lifetime']);
@@ -46,15 +48,34 @@ export interface WorkspaceSubscription {
   cancel_at_period_end: boolean;
   past_due_since: string | null;
   next_payment_attempt: string | null;
+  /** 'stripe' | 'pagarme' | null — which provider currently owns the subscription. */
+  provider: string | null;
+  /** Pagar.me installment count (12 for the annual-upfront-in-12x plan); null for Stripe. */
+  installments: number | null;
   /**
-   * True once the workspace has ever held a Stripe subscription — the trial
-   * eligibility flag. The raw stripe_subscription_id is deliberately dropped in
-   * the service and never reaches component state.
+   * True once the workspace has ever held a Stripe or Pagar.me subscription — the
+   * trial eligibility flag. The raw stripe_subscription_id / pagarme_subscription_id
+   * are deliberately dropped in the service and never reach component state.
    */
   hasEverSubscribed: boolean;
 }
 
 export type CheckoutSource = 'onboarding' | 'billing';
+
+/**
+ * Thrown by the Pagar.me service calls on a non-ok response. Carries the server's
+ * `code` alongside the human-readable `error` message so callers can branch on
+ * specific failure reasons (e.g. a declined card) without string-matching the message.
+ */
+export class BillingApiError extends Error {
+  code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = 'BillingApiError';
+    this.code = code;
+  }
+}
 
 const FUNCTIONS_BASE = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1';
 
@@ -74,24 +95,29 @@ export async function listActivePlans(): Promise<BillingPlan[]> {
   const { data, error } = await supabase
     .from('plans')
     .select(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization',
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization, pagarme_12x_enabled',
     )
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
   if (error) throw new Error(error.message);
-  return (data ?? []) as BillingPlan[];
+  return ((data ?? []) as BillingPlan[]).map((plan) => ({
+    ...plan,
+    pagarme_12x_enabled: Boolean(plan.pagarme_12x_enabled),
+  }));
 }
 
 export async function listPublicPricingPlans(): Promise<PublicPricingPlan[]> {
   const { data, error } = await supabase
     .from('plans')
     .select(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp',
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, pagarme_12x_enabled',
     )
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
   if (error) throw new Error(error.message);
-  return ((data ?? []) as PublicPricingPlan[]).filter((plan) => !INTERNAL_PLAN_IDS.has(plan.id));
+  return ((data ?? []) as PublicPricingPlan[])
+    .filter((plan) => !INTERNAL_PLAN_IDS.has(plan.id))
+    .map((plan) => ({ ...plan, pagarme_12x_enabled: Boolean(plan.pagarme_12x_enabled) }));
 }
 
 /**
@@ -136,16 +162,23 @@ export async function getWorkspaceSubscription(): Promise<WorkspaceSubscription 
   const { data, error } = await supabase
     .from('workspace_subscriptions')
     .select(
-      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, stripe_subscription_id',
+      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, provider, installments, stripe_subscription_id, pagarme_subscription_id, ever_subscribed_at',
     )
     .eq('workspace_id', profile.conta_id)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  const { stripe_subscription_id: subscriptionId, ...rest } = data as Record<string, unknown>;
+  const {
+    stripe_subscription_id: stripeSubscriptionId,
+    pagarme_subscription_id: pagarmeSubscriptionId,
+    ever_subscribed_at: everSubscribedAt,
+    ...rest
+  } = data as Record<string, unknown>;
   return {
-    ...(rest as Omit<WorkspaceSubscription, 'hasEverSubscribed'>),
-    hasEverSubscribed: Boolean(subscriptionId),
+    ...(rest as Omit<WorkspaceSubscription, 'hasEverSubscribed' | 'provider' | 'installments'>),
+    provider: (rest.provider as string | null) ?? null,
+    installments: (rest.installments as number | null) ?? null,
+    hasEverSubscribed: Boolean(stripeSubscriptionId || pagarmeSubscriptionId || everSubscribedAt),
   };
 }
 
@@ -174,4 +207,79 @@ export async function openBillingPortal(): Promise<string> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
   return data.url as string;
+}
+
+export interface PagarmeBillingAddress {
+  cep: string;
+  line_1: string;
+  city: string;
+  state: string;
+}
+
+export interface PagarmeCheckoutPayload {
+  plan_id: string;
+  card_token: string;
+  document: string;
+  phone: { ddd: string; number: string };
+  billing_address: PagarmeBillingAddress;
+  source: CheckoutSource;
+}
+
+export interface PagarmeCheckoutResult {
+  status: 'trialing' | 'active';
+  trial_ends_at: string | null;
+  next_charge_at: string | null;
+  installment_amount_cents: number;
+}
+
+async function parseBillingApiError(res: Response): Promise<BillingApiError> {
+  const data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  return new BillingApiError(
+    (data?.error as string) ?? 'Erro ao processar o pagamento. Tente novamente.',
+    data?.code as string | undefined,
+  );
+}
+
+/** Starts a Pagar.me 12x checkout; the subscription and first charge are created synchronously. */
+export async function startPagarmeCheckout(
+  payload: PagarmeCheckoutPayload,
+): Promise<PagarmeCheckoutResult> {
+  const res = await fetch(`${FUNCTIONS_BASE}/pagarme-checkout`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ ...payload, interval: 'year', installments: 12 }),
+  });
+  if (!res.ok) throw await parseBillingApiError(res);
+  return (await res.json()) as PagarmeCheckoutResult;
+}
+
+/** Cancels the workspace's active Pagar.me subscription. */
+export async function cancelPagarmeSubscription(): Promise<{
+  status: string;
+  access_until: string | null;
+}> {
+  const res = await fetch(`${FUNCTIONS_BASE}/pagarme-subscription`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ action: 'cancel' }),
+  });
+  if (!res.ok) throw await parseBillingApiError(res);
+  return (await res.json()) as { status: string; access_until: string | null };
+}
+
+/** Swaps the card on file for the workspace's Pagar.me subscription. */
+export async function updatePagarmeCard(
+  cardToken: string,
+  billingAddress: PagarmeBillingAddress,
+): Promise<void> {
+  const res = await fetch(`${FUNCTIONS_BASE}/pagarme-subscription`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({
+      action: 'update_card',
+      card_token: cardToken,
+      billing_address: billingAddress,
+    }),
+  });
+  if (!res.ok) throw await parseBillingApiError(res);
 }

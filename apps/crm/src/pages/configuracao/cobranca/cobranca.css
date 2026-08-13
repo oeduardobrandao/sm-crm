@@ -38,6 +38,23 @@
   color: var(--text-light);
   margin-top: 0.5rem;
 }
+.billing-current__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+.billing-current__action-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.billing-current__warning {
+  font-size: 0.8125rem;
+  color: var(--danger-text);
+  margin: 0;
+  text-align: right;
+}
 
 /* Billing-interval segmented control */
 .billing-toolbar {

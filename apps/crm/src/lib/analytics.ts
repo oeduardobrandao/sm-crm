@@ -33,7 +33,12 @@ export type AnalyticsEvent =
   | 'trial_step_viewed'
   | 'trial_skipped'
   | 'trial_nudge_clicked'
-  | 'whatsapp_support_clicked';
+  | 'whatsapp_support_clicked'
+  | 'card_form_submitted'
+  | 'card_tokenization_failed'
+  | 'checkout_completed'
+  | 'checkout_failed'
+  | 'card_form_abandoned';
 
 /**
  * Compile-time guard: `tsc` fails if any of these names is dropped from or misspelled in the union

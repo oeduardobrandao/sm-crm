@@ -10,10 +10,11 @@ export function captureCheckoutStarted(
   planId: string,
   interval: BillingInterval,
   source: CheckoutSource,
+  provider: 'stripe' | 'pagarme' = 'stripe',
 ): void {
   captureEvent(
     'checkout_started',
-    { plan_id: planId, billing_interval: interval, source },
+    { plan_id: planId, billing_interval: interval, source, provider },
     { sendInstantly: true },
   );
 }

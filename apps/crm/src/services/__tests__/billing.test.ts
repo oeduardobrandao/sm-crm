@@ -15,9 +15,15 @@ vi.mock('../../lib/supabase', () => ({
 import { supabase } from '../../lib/supabase';
 import {
   listPublicPricingPlans,
+  listActivePlans,
   startCheckout,
   openBillingPortal,
   getWorkspaceSubscription,
+  startPagarmeCheckout,
+  cancelPagarmeSubscription,
+  updatePagarmeCard,
+  BillingApiError,
+  type PagarmeCheckoutPayload,
 } from '../billing';
 
 describe('billing service', () => {
@@ -52,6 +58,7 @@ describe('billing service', () => {
       feature_contracts: true,
       feature_brand_customization: true,
       feature_mcp: true,
+      pagarme_12x_enabled: false,
     };
     const start = {
       id: 'start',
@@ -72,19 +79,48 @@ describe('billing service', () => {
       feature_contracts: true,
       feature_brand_customization: true,
       feature_mcp: true,
+      pagarme_12x_enabled: null,
     };
     const order = vi.fn().mockResolvedValue({ data: [lifetime, start], error: null });
     const eq = vi.fn().mockReturnValue({ order });
     const select = vi.fn().mockReturnValue({ eq });
     from.mockReturnValue({ select });
 
-    await expect(listPublicPricingPlans()).resolves.toEqual([start]);
+    await expect(listPublicPricingPlans()).resolves.toEqual([
+      { ...start, pagarme_12x_enabled: false },
+    ]);
     expect(from).toHaveBeenCalledWith('plans');
     expect(select).toHaveBeenCalledWith(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp',
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, pagarme_12x_enabled',
     );
     expect(eq).toHaveBeenCalledWith('is_active', true);
     expect(order).toHaveBeenCalledWith('sort_order', { ascending: true });
+  });
+
+  it('lists active plans with pagarme_12x_enabled coerced to boolean', async () => {
+    const pro = {
+      id: 'pro',
+      name: 'Pro',
+      price_brl: 19990,
+      price_brl_annual: 191900,
+      sort_order: 2,
+      max_clients: 20,
+      max_team_members: 5,
+      storage_quota_bytes: 20 * 1024 ** 3,
+      feature_hub_portal: true,
+      feature_analytics_reports: true,
+      feature_brand_customization: true,
+      pagarme_12x_enabled: true,
+    };
+    const order = vi.fn().mockResolvedValue({ data: [pro], error: null });
+    const eq = vi.fn().mockReturnValue({ order });
+    const select = vi.fn().mockReturnValue({ eq });
+    from.mockReturnValue({ select });
+
+    await expect(listActivePlans()).resolves.toEqual([pro]);
+    expect(select).toHaveBeenCalledWith(
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization, pagarme_12x_enabled',
+    );
   });
 
   it('surfaces public pricing catalog errors', async () => {
@@ -173,35 +209,189 @@ describe('billing service', () => {
     return { subSelect };
   }
 
+  const baseSubscriptionRow = {
+    status: 'active',
+    plan_id: 'pro',
+    current_period_end: null,
+    cancel_at_period_end: false,
+    past_due_since: null,
+    next_payment_attempt: null,
+    provider: 'stripe',
+    installments: null,
+    stripe_subscription_id: null,
+    pagarme_subscription_id: null,
+    ever_subscribed_at: null,
+  };
+
   it('derives hasEverSubscribed and hides the raw stripe id', async () => {
     const { subSelect } = mockSubscriptionRow({
-      status: 'active',
-      plan_id: 'pro',
-      current_period_end: null,
-      cancel_at_period_end: false,
-      past_due_since: null,
-      next_payment_attempt: null,
+      ...baseSubscriptionRow,
       stripe_subscription_id: 'sub_123',
     });
     const result = await getWorkspaceSubscription();
     expect(result?.hasEverSubscribed).toBe(true);
     expect(result).not.toHaveProperty('stripe_subscription_id');
+    expect(result).not.toHaveProperty('pagarme_subscription_id');
+    expect(result).not.toHaveProperty('ever_subscribed_at');
     expect(subSelect).toHaveBeenCalledWith(
-      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, stripe_subscription_id',
+      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, provider, installments, stripe_subscription_id, pagarme_subscription_id, ever_subscribed_at',
     );
+  });
+
+  it('derives hasEverSubscribed true via a pagarme subscription id', async () => {
+    mockSubscriptionRow({
+      ...baseSubscriptionRow,
+      provider: 'pagarme',
+      installments: 12,
+      pagarme_subscription_id: 'sub_pagarme_1',
+    });
+    const result = await getWorkspaceSubscription();
+    expect(result?.hasEverSubscribed).toBe(true);
+    expect(result?.provider).toBe('pagarme');
+    expect(result?.installments).toBe(12);
+  });
+
+  it('derives hasEverSubscribed true via ever_subscribed_at alone', async () => {
+    mockSubscriptionRow({
+      ...baseSubscriptionRow,
+      ever_subscribed_at: '2026-01-01T00:00:00Z',
+    });
+    const result = await getWorkspaceSubscription();
+    expect(result?.hasEverSubscribed).toBe(true);
   });
 
   it('treats an abandoned-checkout row as never subscribed', async () => {
     mockSubscriptionRow({
+      ...baseSubscriptionRow,
       status: null,
       plan_id: null,
-      current_period_end: null,
-      cancel_at_period_end: false,
-      past_due_since: null,
-      next_payment_attempt: null,
-      stripe_subscription_id: null,
+      provider: null,
     });
     const result = await getWorkspaceSubscription();
     expect(result?.hasEverSubscribed).toBe(false);
+    expect(result?.provider).toBeNull();
+    expect(result?.installments).toBeNull();
+  });
+
+  describe('startPagarmeCheckout', () => {
+    const payload: PagarmeCheckoutPayload = {
+      plan_id: 'pro',
+      card_token: 'tok_123',
+      document: '12345678900',
+      phone: { ddd: '11', number: '999998888' },
+      billing_address: {
+        cep: '01310-100',
+        line_1: 'Av. Paulista, 1000',
+        city: 'São Paulo',
+        state: 'SP',
+      },
+      source: 'billing',
+    };
+
+    it('posts the exact body with interval/installments constants added', async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          status: 'trialing',
+          trial_ends_at: null,
+          next_charge_at: '2026-09-01T00:00:00Z',
+          installment_amount_cents: 19990,
+        }),
+      });
+      const result = await startPagarmeCheckout(payload);
+      expect(result.status).toBe('trialing');
+      const [calledUrl, opts] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(calledUrl).toContain('/functions/v1/pagarme-checkout');
+      expect(JSON.parse(opts.body)).toEqual({ ...payload, interval: 'year', installments: 12 });
+      expect(opts.headers.Authorization).toBe('Bearer tok');
+    });
+
+    it('surfaces the server error string and code on non-ok', async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: 'Cartão recusado', code: 'card_declined' }),
+      });
+      await expect(startPagarmeCheckout(payload)).rejects.toMatchObject({
+        message: 'Cartão recusado',
+        code: 'card_declined',
+      });
+      await expect(startPagarmeCheckout(payload)).rejects.toBeInstanceOf(BillingApiError);
+    });
+
+    it('falls back to a generic message when the error body is unparseable', async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => {
+          throw new Error('not json');
+        },
+      });
+      await expect(startPagarmeCheckout(payload)).rejects.toMatchObject({
+        message: 'Erro ao processar o pagamento. Tente novamente.',
+      });
+    });
+  });
+
+  describe('cancelPagarmeSubscription', () => {
+    it('posts the cancel action', async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: async () => ({ status: 'canceled', access_until: '2026-12-01T00:00:00Z' }),
+      });
+      const result = await cancelPagarmeSubscription();
+      expect(result).toEqual({ status: 'canceled', access_until: '2026-12-01T00:00:00Z' });
+      const [calledUrl, opts] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(calledUrl).toContain('/functions/v1/pagarme-subscription');
+      expect(JSON.parse(opts.body)).toEqual({ action: 'cancel' });
+    });
+
+    it('throws BillingApiError on non-ok', async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: async () => ({ error: 'Nenhuma assinatura ativa', code: 'not_found' }),
+      });
+      await expect(cancelPagarmeSubscription()).rejects.toMatchObject({
+        message: 'Nenhuma assinatura ativa',
+        code: 'not_found',
+      });
+    });
+  });
+
+  describe('updatePagarmeCard', () => {
+    const billingAddress = {
+      cep: '01310-100',
+      line_1: 'Av. Paulista, 1000',
+      city: 'São Paulo',
+      state: 'SP',
+    };
+
+    it('posts the update_card action with card token and billing address', async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: async () => ({}),
+      });
+      await updatePagarmeCard('tok_456', billingAddress);
+      const [calledUrl, opts] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(calledUrl).toContain('/functions/v1/pagarme-subscription');
+      expect(JSON.parse(opts.body)).toEqual({
+        action: 'update_card',
+        card_token: 'tok_456',
+        billing_address: billingAddress,
+      });
+    });
+
+    it('throws BillingApiError on non-ok', async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: 'Token inválido', code: 'invalid_token' }),
+      });
+      await expect(updatePagarmeCard('bad_tok', billingAddress)).rejects.toMatchObject({
+        message: 'Token inválido',
+        code: 'invalid_token',
+      });
+    });
   });
 });
