@@ -374,7 +374,9 @@ export function PagarmeCheckoutDialog({
             </DialogHeader>
             <DialogFooter>
               <Button onClick={handleClose}>
-                {successResult?.trial_ends_at ? 'Ir para o painel' : 'Fechar'}
+                {/* O destino real do CTA vem do onSuccess do pai: só o fluxo de onboarding
+                    navega para o painel; no billing o dialog apenas fecha na própria página. */}
+                {source === 'onboarding' ? 'Ir para o painel' : 'Fechar'}
               </Button>
             </DialogFooter>
           </>

@@ -201,7 +201,16 @@ describe('PagarmeCheckoutDialog', () => {
     // local timezone: the gateway echoes trial_ends_at as a midnight-UTC boundary, and running it
     // through `new Date(iso)` + local formatting would print 11/09/2026 in Brazil (UTC-3).
     expect(screen.getByText(/12\/09\/2026/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Ir para o painel' })).toBeInTheDocument();
+    // source 'billing' fecha na própria página; 'Ir para o painel' é exclusivo do onboarding,
+    // cujo onSuccess de fato navega para o dashboard.
+    expect(screen.getByRole('button', { name: 'Fechar' })).toBeInTheDocument();
+  });
+
+  it('labels the success CTA "Ir para o painel" only for the onboarding source', async () => {
+    render(<PagarmeCheckoutDialog {...baseProps({ source: 'onboarding' })} />);
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Começar 30 dias grátis' }));
+    expect(await screen.findByRole('button', { name: 'Ir para o painel' })).toBeInTheDocument();
   });
 
   it('closing from the success step calls onSuccess and onClose', async () => {
@@ -210,7 +219,7 @@ describe('PagarmeCheckoutDialog', () => {
     render(<PagarmeCheckoutDialog {...baseProps({ onSuccess, onClose })} />);
     fillForm();
     fireEvent.click(screen.getByRole('button', { name: 'Começar 30 dias grátis' }));
-    const cta = await screen.findByRole('button', { name: 'Ir para o painel' });
+    const cta = await screen.findByRole('button', { name: 'Fechar' });
     fireEvent.click(cta);
     expect(onSuccess).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
