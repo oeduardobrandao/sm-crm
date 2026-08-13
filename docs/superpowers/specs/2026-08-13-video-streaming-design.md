@@ -76,8 +76,9 @@ today.
 | 100× | ~28,000 min | ~100,000 min | ~$240 |
 
 Delivery counts buffering, but idle cards fetch only the HLS manifest
-(negligible). Kill switch: unset the `STREAM_*` secrets — everything falls
-back to the current player instantly.
+(negligible). Kill switch: unset the signing/customer secrets — playback and
+ingest stop instantly, everything falls back to the current player, and the
+cleanup credentials stay so queued Stream deletions keep draining (§5.2).
 
 ## 5. Architecture
 
@@ -89,22 +90,36 @@ alter table files
   add column stream_status text check (stream_status in ('pending','ready','error'));
 create index on files (stream_uid) where stream_uid is not null;
 
--- Deletion rides the EXISTING outbox: file_deletions already has retry
--- bookkeeping (attempts, next_retry_at) and an AFTER DELETE trigger on files
--- (trg_file_enqueue_delete), drained by post-media-cleanup-cron.
+-- Deletion rides the EXISTING outbox: file_deletions already has bounded
+-- retries (attempts < 5, exponential backoff via next_retry_at, batch 500)
+-- and an AFTER DELETE trigger on files (trg_file_enqueue_delete), drained by
+-- post-media-cleanup-cron.
 alter table file_deletions add column stream_uid text;
--- and file_enqueue_delete() also copies OLD.stream_uid into the queued row.
+-- file_enqueue_delete() also copies OLD.stream_uid into the queued row. The
+-- function stays SECURITY DEFINER (it already is — tenant-RLS'd deletes must
+-- be able to write the no-RLS queue table).
 ```
 
 `files` is not under the column-grant allowlist regime (`membros`/`clientes`
-only), so no grant/view/SAFE_COLUMNS work is needed. CRM/Hub never read
-`stream_uid` directly; edge functions translate it into a playback URL.
+only), so no grant/view/SAFE_COLUMNS work is needed. Clients never receive
+`stream_uid`/`stream_status`: `file-manage` uses `select("*")` and spreads
+rows into responses, so its response mapping must strip both fields (a bare
+uid is unplayable — `requireSignedURLs` — but it stays out of the contract).
+Playback reaches clients only as the `playback` object.
 
 ### 5.2 Shared helper: `supabase/functions/_shared/stream.ts`
 
-Mirrors `media-url.ts` conventions:
+Mirrors `media-url.ts` conventions. Gating is split so the kill switch cannot
+strand billed Stream copies:
 
-- `isStreamEnabled()` — true only when all `STREAM_*` env vars are set.
+- `isStreamCleanupEnabled()` — `STREAM_ACCOUNT_ID` + `STREAM_API_TOKEN` set.
+  Required by the delete/reconciliation cron steps only.
+- `isStreamEnabled()` — cleanup vars **plus** `STREAM_CUSTOMER_CODE`,
+  `STREAM_SIGNING_KEY_ID`, `STREAM_SIGNING_KEY_JWK`, `STREAM_WEBHOOK_SECRET`.
+  Required for ingest and playback.
+- **Kill switch** = unset the signing/customer vars: ingest and playback stop,
+  cleanup keeps draining. **Full teardown** = run a purge script (delete all
+  Stream videos, null out `stream_uid`/`stream_status`), then unset everything.
 - `copyToStream(r2Key, meta)` — POST `/accounts/{id}/stream/copy` with a
   short-lived (10 min) presigned R2 GET URL, `requireSignedURLs: true`,
   `meta: { file_id, conta_id }`. Returns `uid`.
@@ -114,27 +129,39 @@ Mirrors `media-url.ts` conventions:
   `https://customer-{code}.cloudflarestream.com/{token}/manifest/video.m3u8`.
 - `deleteStreamVideo(uid)` — DELETE; 404 treated as success (idempotent).
 
-New env vars (edge functions; all REQUIRED together or the feature is off, no
-fallbacks — same pattern as `WHATSAPP_SUPPORT_NUMBER` dark-ship):
-`STREAM_ACCOUNT_ID`, `STREAM_API_TOKEN`, `STREAM_CUSTOMER_CODE`,
-`STREAM_SIGNING_KEY_ID`, `STREAM_SIGNING_KEY_JWK`, `STREAM_WEBHOOK_SECRET`.
+All vars are edge-function secrets with no fallbacks; absence means the
+corresponding capability is silently off (same dark-ship pattern as
+`WHATSAPP_SUPPORT_NUMBER`).
 
 ### 5.3 Ingest flow
 
 1. `file-upload-finalize`: after the existing quota-checked insert succeeds,
-   if `mime_type` starts with `video/` and `isStreamEnabled()`, call
-   `copyToStream` and update the row with
-   `stream_uid`, `stream_status='pending'`. Failure to enqueue is non-fatal:
-   log, set `stream_status='error'`, return the normal response (upload UX
-   never blocks on Stream).
+   if `mime_type` starts with `video/` and `isStreamEnabled()`: set
+   `stream_status='pending'` (durable intent, written **before** the external
+   call), call `copyToStream`, then save `stream_uid`. Any failure is
+   non-fatal: log and return the normal response (upload UX never blocks on
+   Stream). A row left `pending` with a null uid — copy call failed, or the
+   uid save failed after Stream accepted — is repaired by the sweep below.
 2. New `stream-webhook` edge function (deployed `--no-verify-jwt`): verifies
    the `Webhook-Signature` header (HMAC-SHA256, timing-safe, tolerance 5 min)
-   against `STREAM_WEBHOOK_SECRET`, then sets `stream_status` to
-   `ready`/`error` by `stream_uid`. Unknown uid → 200 (idempotent). Generic
-   error responses, details logged internally.
-3. Reconciliation (webhook is best-effort): `post-media-cleanup-cron` gains a
-   step that re-checks `stream_status='pending'` rows older than 1 h against
-   the Stream API and settles them to `ready`/`error`.
+   against `STREAM_WEBHOOK_SECRET`, then settles `stream_status` by
+   `stream_uid`. **Transitions are monotonic**: the update is guarded with
+   `where stream_status = 'pending'` — `ready` is terminal and a late or
+   duplicated `error` event can never downgrade it. Unknown uid or already
+   settled → 200 (idempotent). Generic error responses, details logged
+   internally.
+3. Reconciliation sweep (webhook is best-effort; runs in
+   `post-media-cleanup-cron`, self-healing for every path):
+   - **Ingest catch-up**: video rows with `stream_uid is null` older than
+     ~10 min get a `copyToStream` attempt. This covers enqueue failures AND
+     rows created outside `file-upload-finalize` — notably `file-manage`
+     copy-file / copy-folder, which insert `files` rows directly.
+   - **Settle pending**: rows `pending` with a uid older than 1 h are checked
+     against the Stream API and settled to `ready`/`error`.
+   - **Orphan reap**: list Stream videos via API (volume is small) and delete
+     any whose uid matches no `files.stream_uid` and is older than a 1 h grace
+     window — compensation for the copy-accepted-but-uid-save-failed case, so
+     no billed copy can leak.
 
 ### 5.4 Playback flow
 
@@ -157,8 +184,9 @@ Frontend: new `packages/ui/VideoPlayer` (precedent: `InstagramGrid`), props
 
 - Safari/iOS: native HLS (`canPlayType('application/vnd.apple.mpegurl')`) →
   `<video src={hlsSrc}>`.
-- Other browsers: lazy `import('hls.js')` (exact-pinned version — Deno
-  min-dep-age CI gate) and attach.
+- Other browsers: lazy `import('hls.js')` and attach. Frontend npm workspace
+  dependency (Vitest/tsc only — the Deno min-dep-age gate does not apply);
+  pin an exact version anyway for reproducibility.
 - Any HLS error or missing `hlsSrc` → fall back to `mp4Src` (current behavior).
 
 Swap-in sites: Hub `PostMediaLightbox`, CRM `PostMediaGallery`,
@@ -192,17 +220,20 @@ set.
 |---|---|
 | Stream copy enqueue fails | `stream_status='error'`, upload succeeds, playback falls back to MP4 |
 | Webhook lost / delayed | cron reconciliation settles pending rows |
-| Token expired in a long-lived tab (>12 h) | player error → fallback MP4 already in props; next data fetch gets a fresh token |
+| Token expired in a long-lived tab (>12 h) | fallback MP4 URL still valid (signed for 7 days via media-proxy, vs ≤12 h HLS token); on fatal player error the component also triggers a query refetch so the next attempt gets fresh URLs and tokens |
 | Stream outage | HLS error → automatic MP4 fallback in `VideoPlayer` |
 | Secrets unset (staging today, or kill switch) | `playback: null` everywhere, exactly today's behavior |
 
 ## 7. Testing
 
-- **Deno**: `_shared/stream.ts` (enabled-gating, copy payload, JWT shape/exp,
-  delete idempotency), `stream-webhook` handler (signature verify incl.
-  timing-safe + tolerance, status transitions, unknown uid), finalize handlers
-  (video → copy called; image → not; enqueue failure non-fatal), cron drain +
-  reconciliation steps, `hub-posts` playback field (ready/pending/disabled).
+- **Deno**: `_shared/stream.ts` (split enabled-gating, copy payload, JWT
+  shape/exp, delete idempotency), `stream-webhook` handler (signature verify
+  incl. timing-safe + tolerance, monotonic transitions — a late `error` never
+  downgrades `ready` — unknown uid), finalize handler (video → intent then
+  copy; image → not; copy failure non-fatal), cron drain + all three sweep
+  steps (ingest catch-up incl. file-manage copies, settle pending, orphan
+  reap), `file-manage` responses strip `stream_*`, `hub-posts` playback field
+  (ready/pending/disabled).
 - **Vitest**: `VideoPlayer` branches (native HLS, hls.js path mocked, fallback
   on error/missing hlsSrc); existing lightbox/gallery tests updated for the
   new component (grep both suites for the old `<video` usage — contract-change
@@ -233,6 +264,6 @@ No `vercel.json` changes (no new routes). No CSP changes (none configured).
   (dashboard, one click + billing acceptance) — owner action, like the Pagar.me
   webhook registration.
 - Decide later (not blocking): whether Arquivos-section videos (non-post) also
-  get ingested. This design ingests **all** video uploads for simplicity;
-  restricting to post-linked would save ~$0.30/month today. Not worth the
-  conditional.
+  get ingested. This design ingests **all** video `files` rows for simplicity
+  (uploads and file-manage copies alike, via the sweep); restricting to
+  post-linked would save ~$0.30/month today. Not worth the conditional.
