@@ -1,8 +1,17 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { deleteObject, listOrphanKeys } from "../_shared/r2.ts";
+import { deleteObject, listOrphanKeys, signGetUrl } from "../_shared/r2.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { timingSafeEqual } from "../_shared/crypto.ts";
+import {
+  copyToStream,
+  deleteStreamVideo,
+  getStreamVideoStatus,
+  isStreamCleanupEnabled,
+  isStreamEnabled,
+  listStreamVideos,
+} from "../_shared/stream.ts";
 import { createPostMediaCleanupCronHandler } from "./handler.ts";
+import { runStreamSweeps } from "./stream-steps.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -17,6 +26,9 @@ Deno.serve(createPostMediaCleanupCronHandler({
 
     let deleted = 0;
     let failed = 0;
+    // Gates the R2+Stream delete order below and the sweep call further down — computed once so
+    // both reflect the same env snapshot for this run.
+    const cleanupEnabled = isStreamCleanupEnabled();
 
     // Drain post_media_deletions (legacy)
     const { data: legacyPending } = await svc
@@ -42,7 +54,7 @@ Deno.serve(createPostMediaCleanupCronHandler({
     // Drain file_deletions (new)
     const { data: filePending } = await svc
       .from("file_deletions")
-      .select("id, r2_key, thumbnail_r2_key, attempts")
+      .select("id, r2_key, thumbnail_r2_key, stream_uid, attempts")
       .lt("attempts", 5)
       .lte("next_retry_at", new Date().toISOString())
       .order("queued_at", { ascending: true })
@@ -52,6 +64,11 @@ Deno.serve(createPostMediaCleanupCronHandler({
       try {
         await deleteObject(row.r2_key);
         if (row.thumbnail_r2_key) await deleteObject(row.thumbnail_r2_key);
+        // R2 deletes are idempotent on retry, so the row is only removed once the Stream delete
+        // (when applicable) also succeeds — a failure here goes through the same catch/backoff
+        // as an R2 failure. When cleanup isn't enabled (no STREAM_* secrets), stream_uid rows
+        // still complete their R2 deletes and are removed exactly as before Stream existed.
+        if (row.stream_uid && cleanupEnabled) await deleteStreamVideo(row.stream_uid);
         await svc.from("file_deletions").delete().eq("id", row.id);
         deleted++;
       } catch (e) {
@@ -87,6 +104,32 @@ Deno.serve(createPostMediaCleanupCronHandler({
       }
     }
 
-    return json({ deleted, failed, orphansDeleted });
+    // Stream reconciliation sweeps: ingest catch-up + settle pending need the full credential
+    // set (isStreamEnabled()); orphan reap only needs delete/list, so it still runs in
+    // cleanup-only ("kill-switch") mode.
+    let streamIngested = 0;
+    let streamSettled = 0;
+    let streamReaped = 0;
+    let streamErrors = 0;
+    if (cleanupEnabled) {
+      const sweep = await runStreamSweeps({
+        db: svc,
+        deleteStreamVideo,
+        listStreamVideos,
+        ...(isStreamEnabled()
+          ? {
+              copyToStream,
+              signSourceUrl: (r2Key: string) => signGetUrl(r2Key, 600),
+              getStreamVideoStatus,
+            }
+          : {}),
+      });
+      streamIngested = sweep.ingested;
+      streamSettled = sweep.settled;
+      streamReaped = sweep.reaped;
+      streamErrors = sweep.errors;
+    }
+
+    return json({ deleted, failed, orphansDeleted, streamIngested, streamSettled, streamReaped, streamErrors });
   },
 }));
