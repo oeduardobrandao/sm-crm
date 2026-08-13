@@ -36,6 +36,7 @@ interface HubPostsHandlerDeps {
   createDb: () => DbClient;
   now: () => string;
   signGetUrl: (key: string, expiresSeconds?: number) => Promise<string>;
+  signPlayback?: (uid: string) => Promise<{ hls: string; expires_at: string }>;
 }
 
 export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
@@ -197,7 +198,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     const { data: mediaLinks } = postIds.length > 0
       ? await db
           .from("post_file_links")
-          .select("id, post_id, is_cover, sort_order, files(id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, blur_data_url)")
+          .select("id, post_id, is_cover, sort_order, files(id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, blur_data_url, stream_uid, stream_status)")
           .in("post_id", postIds)
           .order("sort_order", { ascending: true })
           .order("id", { ascending: true })
@@ -218,6 +219,9 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         blur_data_url: f.blur_data_url ?? null,
         url: await deps.signGetUrl(f.r2_key, 3600),
         thumbnail_url: f.thumbnail_r2_key ? await deps.signGetUrl(f.thumbnail_r2_key, 3600) : null,
+        playback: f.stream_uid && f.stream_status === "ready" && deps.signPlayback
+          ? await deps.signPlayback(f.stream_uid)
+          : null,
       };
     }));
 
