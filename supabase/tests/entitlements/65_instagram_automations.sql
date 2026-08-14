@@ -18,6 +18,11 @@
 -- 5. instagram_automation_sends: SELECT isolation between workspaces, and
 --    confirmation that authenticated cannot write sends directly (service
 --    role only, per the migration's RLS policies).
+-- 6. claim_automation_send: the no-double-DM linchpin (advisory lock over
+--    (automation, commenter) + cooldown revalidation + comment_id UNIQUE).
+--    Single-session scenario: claimed (first comment) -> cooldown (second,
+--    different comment, same commenter -- the in-flight 'processing' row
+--    reserves it) -> duplicate (re-claiming the first comment again).
 
 -- 1-3. Feature gate (off -> on -> downgrade) + RLS (owner/admin write, agent
 --      read-only)
@@ -258,5 +263,69 @@ begin
 
   reset role;
   raise notice 'PASS 65 sends RLS isolation';
+end $$;
+rollback;
+
+-- 6. claim_automation_send: no-double-DM linchpin. Runs as the table owner
+--    (same stand-in for the service-role worker as section 4 -- the function
+--    is REVOKE ALL FROM PUBLIC / GRANT ... TO service_role, and ownership
+--    bypasses that grant check same as it bypasses RLS).
+begin;
+do $$
+declare
+  v_ws uuid;
+  v_uid uuid := gen_random_uuid();
+  v_cli bigint;
+  v_auto uuid;
+  v_send1 uuid;
+  v_send2 uuid;
+  v_send3 uuid;
+  v_outcome1 text;
+  v_outcome2 text;
+  v_outcome3 text;
+  v_n int;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_instagram_automation": true}'::jsonb);
+
+  insert into auth.users (id) values (v_uid);
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
+
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message)
+    values (v_ws, v_cli, 'Promo', array['preco'], 'Chama no DM que te mando o link!')
+    returning id into v_auto;
+
+  -- (a) first call, comment C1 / commenter U -> claimed, non-null send_id.
+  select send_id, outcome into v_send1, v_outcome1
+    from claim_automation_send('C1', v_auto, v_ws, 'media-1', 'commenter-U', 'user_u', 'oi', now());
+  assert v_outcome1 = 'claimed', format('first claim on C1 must be claimed, got %s', v_outcome1);
+  assert v_send1 is not null, 'claimed outcome must return a non-null send_id';
+
+  -- (b) second call, SAME automation+commenter, a DIFFERENT comment C2 ->
+  --     cooldown: the row from (a) is still 'processing' (in-flight), which
+  --     reserves the cooldown even though no DM has actually sent yet.
+  select send_id, outcome into v_send2, v_outcome2
+    from claim_automation_send('C2', v_auto, v_ws, 'media-1', 'commenter-U', 'user_u', 'de novo', now());
+  assert v_outcome2 = 'cooldown', format('second comment from same commenter must be cooldown, got %s', v_outcome2);
+  assert v_send2 is null, 'cooldown outcome must return a null send_id';
+
+  select count(*) into v_n from instagram_automation_sends
+    where comment_id = 'C2' and status = 'skipped' and skip_reason = 'cooldown';
+  assert v_n = 1, format('C2 must have a skipped/cooldown row recorded, saw %s', v_n);
+
+  -- (c) call again for C1 (same comment_id) -> duplicate, via the UNIQUE
+  --     constraint's ON CONFLICT DO NOTHING (no second insert, no second DM).
+  select send_id, outcome into v_send3, v_outcome3
+    from claim_automation_send('C1', v_auto, v_ws, 'media-1', 'commenter-U', 'user_u', 'oi', now());
+  assert v_outcome3 = 'duplicate', format('re-claiming C1 must be duplicate, got %s', v_outcome3);
+  assert v_send3 is null, 'duplicate outcome must return a null send_id';
+
+  select count(*) into v_n from instagram_automation_sends where comment_id = 'C1';
+  assert v_n = 1, format('C1 must still have exactly 1 row (no duplicate insert), saw %s', v_n);
+
+  raise notice 'PASS 65 claim_automation_send no-double-DM (claimed/cooldown/duplicate)';
 end $$;
 rollback;

@@ -179,6 +179,7 @@ export function createInstagramAutomationCronHandler(deps: InstagramAutomationCr
           .from("instagram_accounts")
           .select("id, client_id, encrypted_access_token")
           .in("client_id", clientIds)
+          .eq("authorization_status", "active")
           .lt("comments_subscribed_at", subscriptionCutoff);
         if (acctErr) throw new Error(errMessage(acctErr));
         const staleAccounts = (staleRows ?? []) as StaleAccountRow[];

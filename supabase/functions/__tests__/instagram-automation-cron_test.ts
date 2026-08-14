@@ -342,6 +342,41 @@ Deno.test("instagram-automation-cron: sem automações ativas -> fase de re-chec
   assertEquals(callsFor(db, "instagram_accounts", "select").length, 0);
 });
 
+Deno.test("instagram-automation-cron: re-check filtra authorization_status='active' -- conta com token expirado não é buscada/reverificada", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
+  db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
+  db.queue("instagram_comment_automations", "select", {
+    data: [{ client_id: CLIENT_ID, conta_id: CONTA_ID }],
+    error: null,
+  });
+  // Com o filtro authorization_status='active' aplicado, uma conta com token
+  // expirado/revogado nunca volta nessa query -- mesmo tendo
+  // comments_subscribed_at velho. baseDeps() já usa fetchFn/decryptToken
+  // "unreachable": se o código tentasse reverificá-la mesmo assim, o teste
+  // capturaria isso via failed=1 (fetchSubscribedFields nunca deve rodar).
+  db.queue("instagram_accounts", "select", { data: [], error: null });
+  db.queue("instagram_webhook_events", "delete", { data: null, error: null });
+
+  const handler = createInstagramAutomationCronHandler(baseDeps(db));
+  const response = await handler(
+    new Request("https://example.test/instagram-automation-cron", {
+      headers: { "x-cron-secret": CRON_SECRET },
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(await readJson(response), { ok: true, failed: 0 });
+
+  const acctSelects = callsFor(db, "instagram_accounts", "select");
+  assertEquals(acctSelects.length, 1);
+  assert(
+    hasModifier(acctSelects[0], "eq", ["authorization_status", "active"]),
+    "re-check deveria filtrar authorization_status='active' (consistente com a tripla de aptidão usada no resto do módulo)",
+  );
+});
+
 // ══════════════════════════════ Fase 2: fail_ineligible ═══════════════════
 
 Deno.test("instagram-automation-cron: fail_ineligible_automation_sends com erro não aborta as fases seguintes", async () => {

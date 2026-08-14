@@ -53,6 +53,7 @@ import { FeatureGate } from '@/components/paywall/FeatureGate';
 import { useAuth } from '../../context/AuthContext';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
+import { sanitizeUrl } from '@/utils/security';
 import {
   getInstagramAutomations,
   updateInstagramAutomation,
@@ -120,7 +121,13 @@ export default function AutomacoesPage() {
     enabled: expandedId != null,
   });
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: AUTOMATIONS_KEY });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: AUTOMATIONS_KEY });
+    // Sidebar/MobileNav's automations-count query (useEffectiveNavFeatures)
+    // has its own 5min staleTime -- without this, deleting the last
+    // automation leaves the nav item visible for up to 5 minutes.
+    qc.invalidateQueries({ queryKey: ['instagram-automations-count'] });
+  };
   const onMutationError = (err: unknown, fallback: string) => {
     if (!handleEntitlementMutationError(err, profile?.conta_id ?? null)) toast.error(fallback);
   };
@@ -287,7 +294,7 @@ export default function AutomacoesPage() {
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         {a.media_permalink ? (
                           <a
-                            href={a.media_permalink}
+                            href={sanitizeUrl(a.media_permalink)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1"
