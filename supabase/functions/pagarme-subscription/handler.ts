@@ -51,12 +51,31 @@ async function run(
   const { data: row, error: rowErr } = await db
     .from("workspace_subscriptions")
     .select(
-      "provider, pagarme_customer_id, pagarme_subscription_id, status, cancel_at_period_end, current_period_end",
+      "provider, pagarme_customer_id, pagarme_subscription_id, status, cancel_at_period_end, current_period_end, switched_from_stripe_subscription_id, switched_from_plan_id",
     )
     .eq("workspace_id", ctx.workspaceId)
     .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
     .maybeSingle();
   if (rowErr) throw new Error(`subscription read failed: ${rowErr.message}`);
+
+  // Decisao 9 do spec (idempotencia do undo, amplitude DELIBERADA): um retry do undo apos
+  // resposta perdida encontra a linha ja flipada para stripe sem pagarme_subscription_id.
+  // Uma assinatura Stripe comum que nunca fez switch tambem cai aqui e recebe o mesmo
+  // no-op 200 (antes: 404). Inofensivo e pinado em teste de regressao.
+  if (
+    action.action === "cancel" &&
+    row && ((row.provider as string | null) ?? "stripe") === "stripe" &&
+    isInForce(row.status as string | null | undefined) &&
+    !row.pagarme_subscription_id
+  ) {
+    return {
+      status: 200,
+      body: {
+        status: "reverted",
+        access_until: (row.current_period_end as string | null) ?? null,
+      },
+    };
+  }
 
   if (!row || row.provider !== "pagarme" || !row.pagarme_subscription_id) {
     return { ...NOT_FOUND };
@@ -68,9 +87,24 @@ async function run(
   const subId = row.pagarme_subscription_id as string;
 
   if (action.action === "cancel") {
+    // Janela de switch (marker + trialing): o cancel E o undo (decisao 1 do spec) e nunca
+    // pode chegar em buildCancelColumns, que derrubaria o plano na hora.
+    if (row.switched_from_stripe_subscription_id && row.status === "trialing") {
+      return await handleUndoSwitch(deps, ctx, row, subId, now);
+    }
     return await handleCancel(deps, ctx, row, subId, now);
   }
   return await handleUpdateCard(gateway, row, subId, action);
+}
+
+async function handleUndoSwitch(
+  _deps: PagarmeSubscriptionDeps,
+  _ctx: SubscriptionContext,
+  _row: Record<string, unknown>,
+  _subId: string,
+  _now: () => Date,
+): Promise<SubscriptionResult> {
+  return { status: 501, body: { error: "switch undo not implemented" } };
 }
 
 async function handleCancel(
@@ -79,6 +113,7 @@ async function handleCancel(
   row: Record<string, unknown>,
   subId: string,
   now: () => Date,
+  extraColumns: Record<string, unknown> = {},
 ): Promise<SubscriptionResult> {
   const { db, gateway } = deps;
   const nowIso = now().toISOString();
@@ -112,7 +147,7 @@ async function handleCancel(
 
   const { data: casRows, error: casErr } = await db
     .from("workspace_subscriptions")
-    .update(columns)
+    .update({ ...columns, ...extraColumns })
     .eq("workspace_id", ctx.workspaceId)
     .eq("provider", "pagarme")
     .eq("pagarme_subscription_id", subId)

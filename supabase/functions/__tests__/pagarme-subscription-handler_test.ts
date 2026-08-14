@@ -335,7 +335,10 @@ Deno.test("rpc error: throws", async () => {
 Deno.test("no row / provider stripe / null sub id: 404, no gateway calls", async () => {
   const cases: Array<[string, Record<string, unknown> | null]> = [
     ["no row", null],
-    ["provider stripe", { provider: "stripe", pagarme_subscription_id: null, status: "active" }],
+    // status "canceled" (not in-force): keeps this a genuine "no pagarme subscription" 404,
+    // distinct from the decision-9 idempotency no-op (200 reverted) covered separately below,
+    // which owns the in-force stripe-without-pagarme-id case.
+    ["provider stripe", { provider: "stripe", pagarme_subscription_id: null, status: "canceled" }],
     ["null sub id", { provider: "pagarme", pagarme_subscription_id: null, status: "active" }],
   ];
   for (const [label, subRow] of cases) {
@@ -355,6 +358,143 @@ Deno.test("status canceled: 409, no gateway calls", async () => {
   const r = await result;
   assertEquals(r.status, 409);
   assertEquals(calls.length, 0);
+});
+
+// ─── decisao 9: idempotencia do undo + roteamento ──────────────────────────
+
+Deno.test("idempotencia (decisao 9): linha stripe in-force sem pagarme id -> 200 reverted", async () => {
+  const { result } = run(
+    {
+      subRow: {
+        provider: "stripe",
+        pagarme_customer_id: null,
+        pagarme_subscription_id: null,
+        status: "active",
+        cancel_at_period_end: false,
+        current_period_end: "2026-09-15T14:23:11Z",
+        switched_from_stripe_subscription_id: null,
+        switched_from_plan_id: null,
+      },
+    },
+    {},
+    { action: "cancel" },
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals(res.body, { status: "reverted", access_until: "2026-09-15T14:23:11Z" });
+});
+
+Deno.test("idempotencia: assinatura Stripe comum que NUNCA fez switch tambem recebe o no-op 200 (amplitude deliberada, antes 404)", async () => {
+  const { events, result } = run(
+    {
+      subRow: {
+        provider: null, // legado = stripe
+        pagarme_customer_id: null,
+        pagarme_subscription_id: null,
+        status: "trialing",
+        cancel_at_period_end: false,
+        current_period_end: null,
+        switched_from_stripe_subscription_id: null,
+        switched_from_plan_id: null,
+      },
+    },
+    {},
+    { action: "cancel" },
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals((res.body as { status?: string }).status, "reverted");
+  // no-op de verdade: nenhum write
+  assert(!events.some((e) => e.op === "update"));
+});
+
+Deno.test("idempotencia NAO se aplica a update_card nem a linha stripe fora de vigor", async () => {
+  const deadRow = {
+    provider: "stripe",
+    pagarme_customer_id: null,
+    pagarme_subscription_id: null,
+    status: "canceled",
+    cancel_at_period_end: false,
+    current_period_end: null,
+    switched_from_stripe_subscription_id: null,
+    switched_from_plan_id: null,
+  };
+  const r1 = await run({ subRow: deadRow }, {}, { action: "cancel" }).result;
+  assertEquals(r1.status, 404);
+  const r2 = await run(
+    { subRow: { ...deadRow, status: "active" } },
+    {},
+    { action: "update_card", cardToken: "t", billingAddress: ADDRESS },
+  ).result;
+  assertEquals(r2.status, 404);
+});
+
+Deno.test("roteamento: marker + trialing vai para o undo, nunca para buildCancelColumns", async () => {
+  const { calls, result } = run(
+    {
+      subRow: {
+        provider: "pagarme",
+        pagarme_customer_id: "cus_1",
+        pagarme_subscription_id: SUB,
+        status: "trialing",
+        cancel_at_period_end: false,
+        current_period_end: "2026-09-16T00:00:00Z",
+        switched_from_stripe_subscription_id: "sub_s1",
+        switched_from_plan_id: "start",
+      },
+    },
+    {},
+    { action: "cancel" },
+  );
+  const res = await result;
+  // Nesta task o undo e um stub 501; o pin aqui e o ROTEAMENTO: o cancel comum NAO rodou.
+  assertEquals(res.status, 501);
+  assert(!calls.some((c) => c.method === "cancelSubscription"));
+});
+
+Deno.test("regressao: cancel sem marker segue o fluxo comum (trialing = downgrade imediato)", async () => {
+  const { calls, result } = run(
+    {
+      subRow: {
+        provider: "pagarme",
+        pagarme_customer_id: "cus_1",
+        pagarme_subscription_id: SUB,
+        status: "trialing",
+        cancel_at_period_end: false,
+        current_period_end: null,
+        switched_from_stripe_subscription_id: null,
+        switched_from_plan_id: null,
+      },
+    },
+    {},
+    { action: "cancel" },
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals((res.body as { status?: string }).status, "canceled");
+  assert(calls.some((c) => c.method === "cancelSubscription"));
+});
+
+Deno.test("regressao: marker + ACTIVE segue o cancel comum paid-through (undo so na janela)", async () => {
+  const { result } = run(
+    {
+      subRow: {
+        provider: "pagarme",
+        pagarme_customer_id: "cus_1",
+        pagarme_subscription_id: SUB,
+        status: "active",
+        cancel_at_period_end: false,
+        current_period_end: "2027-09-16T00:00:00Z",
+        switched_from_stripe_subscription_id: "sub_s1",
+        switched_from_plan_id: "start",
+      },
+    },
+    {},
+    { action: "cancel" },
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals((res.body as { status?: string }).status, "canceled");
 });
 
 // ─── update_card ─────────────────────────────────────────────────────────
