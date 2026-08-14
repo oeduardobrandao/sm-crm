@@ -50,11 +50,54 @@ export async function signGetUrl(key: string, expiresSeconds = 3600) {
 
 export async function headObject(key: string): Promise<{ contentLength: number; contentType: string | null } | null> {
   try {
-    const res = await getR2().send(new HeadObjectCommand({ Bucket: getBucket(), Key: key }));
+    const res = await getR2().send(
+      new HeadObjectCommand({ Bucket: getBucket(), Key: key }),
+      { abortSignal: AbortSignal.timeout(10_000) },
+    );
     return { contentLength: Number(res.ContentLength ?? 0), contentType: res.ContentType ?? null };
   } catch (_e) {
     return null;
   }
+}
+
+/** Two-phase delete: copy to `trash/<key>` then delete the original. Automated
+ * cleanup uses this instead of deleteObject so every automated removal has a
+ * 30-day undo window (see purgeTrash) — the 2026-08 incident had none. Throws
+ * if the copy fails; the original is only removed after the copy succeeds. */
+export async function trashObject(key: string): Promise<void> {
+  await getR2().send(
+    new CopyObjectCommand({
+      Bucket: getBucket(),
+      CopySource: `${getBucket()}/${encodeURIComponent(key).replace(/%2F/g, "/")}`,
+      Key: `trash/${key}`,
+    }),
+    { abortSignal: AbortSignal.timeout(30_000) },
+  );
+  await deleteObject(key);
+}
+
+/** Permanently removes trash/ entries older than `olderThanDays`, at most
+ * `maxPerRun` per call. Bounded and last-resort-safe: a listing error deletes
+ * nothing. Returns the number purged. */
+export async function purgeTrash(olderThanDays: number, maxPerRun = 200): Promise<number> {
+  const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+  let purged = 0;
+  let token: string | undefined;
+  do {
+    const res = await getR2().send(
+      new ListObjectsV2Command({ Bucket: getBucket(), Prefix: "trash/", ContinuationToken: token }),
+      { abortSignal: AbortSignal.timeout(30_000) },
+    );
+    for (const obj of res.Contents ?? []) {
+      if (purged >= maxPerRun) return purged;
+      if (obj.Key && obj.LastModified && obj.LastModified.getTime() < cutoff) {
+        await deleteObject(obj.Key);
+        purged++;
+      }
+    }
+    token = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (token);
+  return purged;
 }
 
 export async function deleteObject(key: string): Promise<void> {

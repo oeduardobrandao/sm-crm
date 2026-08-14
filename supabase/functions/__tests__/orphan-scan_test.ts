@@ -2,6 +2,7 @@ import { assertEquals } from "./assert.ts";
 import {
   EMPTY_KNOWN_FLOOR,
   KNOWN_CHUNK,
+  MAX_TRASH_PER_RUN,
   runOrphanScan,
   type OrphanScanDeps,
 } from "../post-media-cleanup-cron/orphan-scan.ts";
@@ -45,12 +46,12 @@ Deno.test("orphan-scan: chunks known-set queries and only deletes true orphans",
   const result = await runOrphanScan({
     db,
     listOrphanKeys: async () => candidates,
-    deleteObject: async (key) => {
+    trashObject: async (key) => {
       deleted.push(key);
     },
   });
   assertEquals(result.aborted, null);
-  assertEquals(result.deleted, 1);
+  assertEquals(result.trashed, 1);
   assertEquals(deleted, ["contas/w/files/obj-0.png"]);
   // 4 table/column pairs x 2 chunks each (251 candidates, chunk 200).
   assertEquals(queries.length, 8);
@@ -68,12 +69,12 @@ Deno.test("orphan-scan: any known-set query error aborts with ZERO deletions", a
   const result = await runOrphanScan({
     db,
     listOrphanKeys: async () => candidates,
-    deleteObject: async (key) => {
+    trashObject: async (key) => {
       deleted.push(key);
     },
   });
   assertEquals(result.aborted, "known-query:files.thumbnail_r2_key");
-  assertEquals(result.deleted, 0);
+  assertEquals(result.trashed, 0);
   assertEquals(deleted.length, 0);
 });
 
@@ -84,12 +85,12 @@ Deno.test("orphan-scan: empty known set with many candidates trips the circuit b
   const result = await runOrphanScan({
     db,
     listOrphanKeys: async () => candidates,
-    deleteObject: async (key) => {
+    trashObject: async (key) => {
       deleted.push(key);
     },
   });
   assertEquals(result.aborted, "empty-known-set");
-  assertEquals(result.deleted, 0);
+  assertEquals(result.trashed, 0);
   assertEquals(deleted.length, 0);
 });
 
@@ -100,10 +101,31 @@ Deno.test("orphan-scan: a small all-orphan candidate set below the floor still d
   const result = await runOrphanScan({
     db,
     listOrphanKeys: async () => candidates,
-    deleteObject: async (key) => {
+    trashObject: async (key) => {
       deleted.push(key);
     },
   });
   assertEquals(result.aborted, null);
-  assertEquals(result.deleted, 2);
+  assertEquals(result.trashed, 2);
+});
+
+Deno.test("orphan-scan: MAX_TRASH_PER_RUN caps removals and reports the deferred remainder", async () => {
+  const candidates = Array.from({ length: MAX_TRASH_PER_RUN + 30 }, (_, i) => `contas/w/files/orph-${i}.png`);
+  const { db } = makeDb(() => ({
+    // One known key keeps the empty-known-set breaker out of the way.
+    data: [{ r2_key: "contas/other/known.png", thumbnail_r2_key: null }],
+    error: null,
+  }));
+  const trashed: string[] = [];
+  const result = await runOrphanScan({
+    db,
+    listOrphanKeys: async () => candidates,
+    trashObject: async (key) => {
+      trashed.push(key);
+    },
+  });
+  assertEquals(result.aborted, null);
+  assertEquals(result.trashed, MAX_TRASH_PER_RUN);
+  assertEquals(result.capped, 30);
+  assertEquals(trashed.length, MAX_TRASH_PER_RUN);
 });

@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { deleteObject, listOrphanKeys, signGetUrl } from "../_shared/r2.ts";
+import { headObject, listOrphanKeys, purgeTrash, signGetUrl, trashObject } from "../_shared/r2.ts";
+import { reportCronFailure } from "../_shared/triage.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import {
@@ -13,6 +14,9 @@ import {
 import { createPostMediaCleanupCronHandler } from "./handler.ts";
 import { runStreamSweeps } from "./stream-steps.ts";
 import { runOrphanScan } from "./orphan-scan.ts";
+import { runIntegrityCanary } from "./canary.ts";
+
+const CRON_NAME = "post-media-cleanup-cron";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -41,7 +45,7 @@ Deno.serve(createPostMediaCleanupCronHandler({
 
     for (const row of legacyPending ?? []) {
       try {
-        await deleteObject(row.r2_key);
+        await trashObject(row.r2_key);
         await svc.from("post_media_deletions").delete().eq("id", row.id);
         deleted++;
       } catch (e) {
@@ -63,8 +67,8 @@ Deno.serve(createPostMediaCleanupCronHandler({
 
     for (const row of filePending ?? []) {
       try {
-        await deleteObject(row.r2_key);
-        if (row.thumbnail_r2_key) await deleteObject(row.thumbnail_r2_key);
+        await trashObject(row.r2_key);
+        if (row.thumbnail_r2_key) await trashObject(row.thumbnail_r2_key);
         // R2 deletes are idempotent on retry, so the row is only removed once the Stream delete
         // (when applicable) also succeeds — a failure here goes through the same catch/backoff
         // as an R2 failure. When cleanup isn't enabled (no STREAM_* secrets), stream_uid rows
@@ -118,11 +122,45 @@ Deno.serve(createPostMediaCleanupCronHandler({
     // Hardened module (see orphan-scan.ts): chunked known-set queries, abort on any
     // query error, and an empty-known-set circuit breaker — the 2026-08 incident
     // (silent .in() failures -> empty known set -> mass deletion) cannot recur.
-    const scan = await runOrphanScan({ db: svc, listOrphanKeys, deleteObject });
-    const orphansDeleted = scan.deleted;
+    const scan = await runOrphanScan({ db: svc, listOrphanKeys, trashObject });
+
+    // Purge trash/ entries past their 30-day undo window (bounded per run).
+    let trashPurged = 0;
+    try {
+      trashPurged = await purgeTrash(30);
+    } catch (e) {
+      console.error("post-media-cleanup:purge-trash", e);
+    }
+
+    // Integrity canary: recent DB rows whose objects vanished mean something is
+    // destroying storage — the exact silent failure of the 2026-08 incident.
+    let canaryChecked = 0;
+    let canaryMissing: Array<{ id: number; r2_key: string }> = [];
+    try {
+      const canary = await runIntegrityCanary({ db: svc, headObject });
+      canaryChecked = canary.checked;
+      canaryMissing = canary.missing;
+    } catch (e) {
+      console.error("post-media-cleanup:canary", e);
+    }
+
+    // Alerting: anything anomalous goes to cron triage (best-effort, never 500s the run).
+    const alerts: Array<{ error: string }> = [];
+    if (canaryMissing.length > 0) {
+      alerts.push({ error: `integrity canary: ${canaryMissing.length}/${canaryChecked} sampled objects MISSING (ids ${canaryMissing.map((m) => m.id).join(",")})` });
+    }
+    if (scan.aborted) alerts.push({ error: `orphan scan aborted: ${scan.aborted}` });
+    if (scan.capped > 0) alerts.push({ error: `orphan scan capped: ${scan.capped} orphans deferred (cap ${scan.trashed} trashed)` });
+    if (failed > 0) alerts.push({ error: `deletion drain: ${failed} rows failed this run` });
+    if (streamErrors > 0) alerts.push({ error: `stream sweeps: ${streamErrors} step errors` });
+    if (alerts.length > 0) {
+      await reportCronFailure(svc, CRON_NAME, { failed: alerts.length, errors: alerts });
+    }
 
     return json({
-      deleted, failed, orphansDeleted, orphanScanAborted: scan.aborted,
+      deleted, failed, orphansTrashed: scan.trashed, orphansCapped: scan.capped,
+      orphanScanAborted: scan.aborted, trashPurged, canaryChecked,
+      canaryMissing: canaryMissing.length,
       streamIngested, streamSettled, streamReaped, streamErrors,
     });
   },
