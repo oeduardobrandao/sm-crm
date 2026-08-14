@@ -1786,6 +1786,7 @@ git commit -m "feat(automacoes): página global /automacoes com nav flag-ou-coun
 **Files:**
 - Create: `supabase/tests/entitlements/65_instagram_automations.sql`
 - Modify: `CLAUDE.md` (documentar na seção de env vars das edge functions: `META_WEBHOOK_VERIFY_TOKEN` (obrigatória no instagram-webhook, throw no boot); `IG_AUTOMATION_SCOPES_LIVE` (opcional, default off: enquanto desligada a URL de OAuth pede só o trio aprovado; ligar SÓ depois do Advanced Access de manage_comments, ou em staging para teste); `AUTOMATION_HOURLY_CAP` opcional se implementado como env)
+- Modify: `.env.example` (AGENTS.md exige atualizar os templates `*.example` quando uma variável nova é introduzida — achado externo P2. Adicionar, na seção de secrets de edge functions junto de STRIPE_*: `META_WEBHOOK_VERIFY_TOKEN=choose-a-long-random-string` e `IG_AUTOMATION_SCOPES_LIVE=false` com comentário de rollout: "manter false até o Advanced Access de instagram_business_manage_comments; ligar = OAuth passa a pedir o escopo novo")
 - Modify: `README.md` (contagem de edge functions: "54" vira o número real após as 2 novas; conferir com `ls supabase/functions | grep -v _shared | grep -v __tests__ | grep -v test | wc -l`)
 
 - [ ] **Step 1: Ler o harness antes de escrever**
