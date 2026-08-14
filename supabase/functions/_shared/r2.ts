@@ -82,7 +82,13 @@ export async function trashObject(key: string): Promise<void> {
     signal: AbortSignal.timeout(30_000),
   });
   await res.body?.cancel();
-  if (!res.ok) {
+  // 404 = the source is already gone — either a previous attempt moved it to
+  // trash/ before a downstream step failed, or the object never existed. In
+  // both cases there is nothing left to preserve, so the retry must proceed
+  // (deleteObject below also treats 404 as done). Without this, a partially
+  // successful drain row retries into a copy-404 forever, exhausts its
+  // attempts, and the Stream delete behind it is never reached.
+  if (!res.ok && res.status !== 404) {
     throw new Error(`r2 trash copy failed: ${res.status}`);
   }
   await deleteObject(key);
