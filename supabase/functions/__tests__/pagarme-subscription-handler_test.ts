@@ -621,6 +621,9 @@ Deno.test("undo happy path: leituras -> cap_end=false -> CAS restaurando plan_id
   assert(methods.indexOf("retrieveSubscription") < reactivateIdx);
   assert(methods.indexOf("fetchAmount") < reactivateIdx);
   assertEquals(stripeCalls[reactivateIdx].args, ["sub_s1", false]);
+  // toda chamada Stripe usa o MARKER (sub_s1), nunca o id da assinatura pagarme (SUB)
+  assertEquals(stripeCalls.find((c) => c.method === "retrieveSubscription")?.args, ["sub_s1"]);
+  assertEquals(stripeCalls.find((c) => c.method === "fetchAmount")?.args, ["sub_s1"]);
 
   // CAS: pins pagarme + sub + trialing; colunas restauram plan_id do marker e limpam tudo
   const cas = events.find((e) => e.table === "workspace_subscriptions" && e.op === "update")!;
@@ -680,6 +683,48 @@ Deno.test("undo: erro de DB no CAS -> compensacao cap_end=true + 500", async () 
   assertEquals(sets[sets.length - 1]?.args, ["sub_s1", true]);
 });
 
+// review rodada 2, achado IMPORTANTE 2: o erro de CAS e ambiguo (o UPDATE pode ter
+// COMMITADO antes do timeout). Rearmar as cegas re-cancelaria o mensal que o usuario
+// acabou de recuperar. Um re-read decide.
+Deno.test("undo: erro no CAS mas re-read mostra flip ja commitado (provider stripe) -> 200 reverted, SEM rearme, grant e DELETE seguem", async () => {
+  const { events, calls, stripeCalls, result } = run(
+    {
+      subRow: SWITCH_WINDOW_ROW,
+      casError: { message: "timeout ambiguo pos-commit" },
+      reReadRow: { provider: "stripe", status: "active", pagarme_subscription_id: null },
+    },
+    {},
+    { action: "cancel" },
+    {},
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals((res.body as { status?: string }).status, "reverted");
+  assert(
+    !stripeCalls.some((c) => c.method === "setCancelAtPeriodEnd" && c.args[1] === true),
+    "rearme (cap_end=true) nao pode rodar quando o re-read confirma que o flip ja commitou",
+  );
+  const planWrite = events.find((e) => e.table === "workspaces" && e.op === "update");
+  assert(planWrite !== undefined, "o grant do plano-fonte deve rodar mesmo com o erro de CAS");
+  assert(calls.some((c) => c.method === "cancelSubscription" && c.args[0] === SUB));
+});
+
+// gap de teste (a): a variante em que o proprio rearme tambem falha (dupla falha remota):
+// 500 de qualquer forma, mas as DUAS tentativas de setCancelAtPeriodEnd ficam registradas
+// (a segunda e o rearme que vira CRITICAL no log, backstop pelo leg D).
+Deno.test("undo: cap_end=false falha E o rearme tambem falha -> 500, tentativa + rearme registrados", async () => {
+  const { stripeCalls, result } = run(
+    { subRow: SWITCH_WINDOW_ROW },
+    {},
+    { action: "cancel" },
+    { setCancelFalseThrows: new Error("timeout ambiguo"), setCancelTrueThrows: new Error("rearme tambem falhou") },
+  );
+  const res = await result;
+  assertEquals(res.status, 500);
+  const sets = stripeCalls.filter((c) => c.method === "setCancelAtPeriodEnd");
+  assertEquals(sets.map((c) => c.args[1]), [false, true]);
+});
+
 Deno.test("undo: fetchAmount falha -> mirror CLEARED no mesmo statement, fluxo segue", async () => {
   const { events, result } = run(
     { subRow: SWITCH_WINDOW_ROW },
@@ -733,6 +778,43 @@ Deno.test("undo: remota terminal (canceled) -> fallback cancel comum limpando os
   assertEquals(cas.values?.status, "canceled");
 });
 
+// gap de teste (c): o retrieve pode LANCAR um 404-shaped error (em vez de retornar um sub com
+// status terminal) -- mesmo fallback da decisao 4, so que pelo branch do catch.
+Deno.test("undo: retrieveSubscription lanca 404 -> fallback decisao 4 (cancel comum, ambos markers limpos)", async () => {
+  const { events, calls, result } = run(
+    { subRow: SWITCH_WINDOW_ROW },
+    {},
+    { action: "cancel" },
+    { retrieveThrows: { statusCode: 404 } },
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals((res.body as { status?: string }).status, "canceled");
+  assert(calls.some((c) => c.method === "cancelSubscription"));
+  const cas = events.find((e) => e.table === "workspace_subscriptions" && e.op === "update")!;
+  assertEquals(cas.values?.switched_from_stripe_subscription_id, null);
+  assertEquals(cas.values?.switched_from_plan_id, null);
+  assertEquals(cas.values?.status, "canceled");
+});
+
+// review rodada 2, achado IMPORTANTE 1: assessStripeSourceSub("not_in_force") cobre QUALQUER
+// status fora de active/trialing -- past_due/unpaid/incomplete/paused NAO sao terminais. Cair
+// no fallback (decisao 4) para um desses derrubaria o plano e apagaria o 12x enquanto o
+// mensal Stripe ainda esta vivo (so nao em force agora) e ainda vai morrer na fronteira
+// (cap_end=true do bind original). Isso tem que 500 sem mutar nada, nunca cair no fallback.
+Deno.test("undo: remoto past_due (nao terminal) -> 500, ZERO mutacoes remotas ou locais (nao cai no fallback)", async () => {
+  const { events, stripeCalls, result } = run(
+    { subRow: SWITCH_WINDOW_ROW },
+    {},
+    { action: "cancel" },
+    { retrieveResult: { ...STRIPE_SUB_MONTHLY, status: "past_due" } },
+  );
+  const res = await result;
+  assertEquals(res.status, 500);
+  assert(!stripeCalls.some((c) => c.method === "setCancelAtPeriodEnd"));
+  assert(!events.some((e) => e.op === "update"));
+});
+
 Deno.test("undo zero-rows -> re-read ACTIVE (fronteira cruzou): consolidacao cancelNow + 409", async () => {
   const { stripeCalls, result } = run(
     {
@@ -750,7 +832,8 @@ Deno.test("undo zero-rows -> re-read ACTIVE (fronteira cruzou): consolidacao can
     (res.body as { error?: string }).error,
     "A troca já foi concluída e a primeira parcela foi cobrada.",
   );
-  assert(stripeCalls.some((c) => c.method === "cancelNow"));
+  // consolidacao cancela na STRIPE via o marker (sub_s1), nunca o id pagarme (SUB)
+  assertEquals(stripeCalls.find((c) => c.method === "cancelNow")?.args, ["sub_s1"]);
 });
 
 Deno.test("undo zero-rows -> re-read PAST_DUE: consolidacao com copy de cobranca pendente", async () => {
@@ -770,6 +853,28 @@ Deno.test("undo zero-rows -> re-read PAST_DUE: consolidacao com copy de cobranca
     (res.body as { error?: string }).error,
     "A troca já foi concluída e a primeira cobrança está pendente. Atualize o cartão ou cancele a assinatura.",
   );
+});
+
+// gap de teste (b): 12x morre em voo (re-read acha status canceled); o retry CAS pinado em
+// 'canceled' tem sucesso -> segue para o grant + DELETE normalmente, 200 reverted.
+Deno.test("undo zero-rows -> re-read CANCELED: retry CAS pinado com sucesso -> grant + DELETE + 200 reverted", async () => {
+  const { events, calls, result } = run(
+    {
+      subRow: SWITCH_WINDOW_ROW,
+      casZeroRows: true,
+      reReadRow: { provider: "pagarme", status: "canceled", pagarme_subscription_id: SUB },
+      // secondCasZeroRows fica false (default): o retry CAS acha a linha e escreve.
+    },
+    {},
+    { action: "cancel" },
+    {},
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals((res.body as { status?: string }).status, "reverted");
+  const planWrite = events.find((e) => e.table === "workspaces" && e.op === "update");
+  assert(planWrite !== undefined, "o grant do plano-fonte deve rodar apos o retry CAS ter sucesso");
+  assert(calls.some((c) => c.method === "cancelSubscription" && c.args[0] === SUB));
 });
 
 Deno.test("undo zero-rows -> re-read provider stripe: 200 reverted idempotente", async () => {

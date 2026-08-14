@@ -9,6 +9,7 @@ import { buildRestoreStripeColumns, isDefinitiveGatewayReject, isInForce } from 
 import {
   assessStripeSourceSub,
   isStripeNotFoundError,
+  readStripeSubSnapshot,
   StripeSwitchGateway,
 } from "../_shared/stripe-switch.ts";
 import { buildAmountColumns, clearedAmountColumns } from "../_shared/stripe-amount.ts";
@@ -161,15 +162,27 @@ async function handleUndoSwitch(
   }
   const assessed = assessStripeSourceSub(remote, now());
   if (!assessed.ok) {
-    if (assessed.code === "not_in_force") {
-      // canceled/incomplete_expired remoto = decisao 4 (fallback).
+    // review rodada 2, achado IMPORTANTE 1: assessed.code "not_in_force" cobre QUALQUER status
+    // fora de active/trialing -- past_due/unpaid/incomplete/paused NAO sao terminais, o mensal
+    // so nao esta em force AGORA. Cair no fallback (decisao 4) para um desses derrubaria o
+    // plano e apagaria o 12x com o mensal Stripe ainda vivo (e ainda a caminho de morrer na
+    // fronteira via o cap_end=true do bind original). So um status remoto EXPLICITAMENTE
+    // terminal justifica o fallback; le o status cru (nao o assess, que so distingue
+    // in-force/not-in-force) para decidir.
+    const rawStatus = readStripeSubSnapshot(remote).status;
+    if (rawStatus === "canceled" || rawStatus === "incomplete_expired") {
+      // Stripe terminal remoto (decisao 4): nao ha para onde voltar. Cancel comum
+      // limpando os DOIS markers no mesmo CAS.
       return await handleCancel(deps, ctx, row, subId, now, {
         switched_from_stripe_subscription_id: null,
         switched_from_plan_id: null,
       });
     }
-    // not_monthly/malformed/boundary_elapsed: transiente ou estado inesperado; nada mudou.
-    console.error(`[pagarme-subscription] undo assess failed: ${assessed.code}`);
+    // past_due/unpaid/incomplete/paused (not_in_force nao-terminal), not_monthly, malformed,
+    // boundary_elapsed: transiente ou estado inesperado; nada mudou remotamente ainda.
+    console.error(
+      `[pagarme-subscription] undo assess failed: ${assessed.code} (remote status ${rawStatus ?? "unknown"})`,
+    );
     return { ...UNDO_500 };
   }
 
@@ -236,20 +249,35 @@ async function handleUndoSwitch(
       .eq("status", statusPin)
       .select("workspace_id")
       .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
-  const { data: casRows, error: casErr } = await runCas("trialing");
-  if (casErr) {
-    console.error("[pagarme-subscription] undo CAS failed:", casErr.message);
-    await rearm();
-    return { ...UNDO_500 };
-  }
-  if (!casRows?.length) {
-    // Fronteira/transicao cruzou o undo em voo: re-read e branch (decisao 8).
-    const { data: current, error: reErr } = await db
+  const reReadCurrent = () =>
+    db
       .from("workspace_subscriptions")
       .select("provider, status, pagarme_subscription_id")
       .eq("workspace_id", ctx.workspaceId)
       .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
       .maybeSingle();
+  const { data: casRows, error: casErr } = await runCas("trialing");
+  if (casErr) {
+    // review rodada 2, achado IMPORTANTE 2: o erro e AMBIGUO -- o UPDATE pode ter COMMITADO
+    // antes do timeout que virou esse erro. Se ja commitou, a linha esta stripe-owned com os
+    // markers limpos: rearmar as cegas re-cancelaria o mensal que o usuario acabou de
+    // recuperar, com o leg D cego (markers null) e o retry da decisao-9 curto-circuitando
+    // antes de chegar aqui de novo. Um re-read decide antes de rearmar.
+    console.error("[pagarme-subscription] undo CAS failed:", casErr.message);
+    const { data: current, error: reErr } = await reReadCurrent();
+    const flipCommitted = !reErr && !!current &&
+      ((current.provider as string | null) ?? "stripe") === "stripe";
+    if (!flipCommitted) {
+      await rearm();
+      return { ...UNDO_500 };
+    }
+    console.warn(
+      `[pagarme-subscription] undo CAS reported an error but the re-read shows the flip already committed for workspace ${ctx.workspaceId}; skipping rearm`,
+    );
+    // segue para os passos pos-CAS (plano-fonte + DELETE) como se o CAS tivesse achado a linha.
+  } else if (!casRows?.length) {
+    // Fronteira/transicao cruzou o undo em voo: re-read e branch (decisao 8).
+    const { data: current, error: reErr } = await reReadCurrent();
     if (reErr) {
       console.error("[pagarme-subscription] undo re-read failed:", reErr.message);
       await rearm();
