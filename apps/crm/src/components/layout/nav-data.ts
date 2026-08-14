@@ -101,6 +101,13 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         icon: 'ph-paper-plane-tilt',
       },
       {
+        id: 'automacoes',
+        route: '/automacoes',
+        label: 'Automações',
+        labelKey: 'nav.automacoes',
+        icon: 'ph-robot',
+      },
+      {
         id: 'arquivos',
         route: '/arquivos',
         label: 'Arquivos',
@@ -215,6 +222,7 @@ const NAV_FEATURE: Record<string, string> = {
   analytics: 'feature_analytics_reports',
   'analytics-fluxos': 'feature_analytics_reports',
   'post-express': 'feature_post_scheduling',
+  automacoes: 'feature_instagram_automation',
 };
 
 export function getNavGroups(

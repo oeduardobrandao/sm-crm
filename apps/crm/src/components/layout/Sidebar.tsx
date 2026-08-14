@@ -9,6 +9,7 @@ import type { Language } from '@mesaas/i18n';
 import { getNavGroups } from './nav-data';
 import type { NavGroup } from './nav-data';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
+import { useEffectiveNavFeatures } from '../../hooks/useEffectiveNavFeatures';
 import { useMensagensUnread } from '../../hooks/useMensagensUnread';
 import { FlagIcon } from '@mesaas/ui/FlagIcon';
 import { avatarColorClass } from '@/lib/avatarColor';
@@ -25,7 +26,8 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
-  const { features } = useWorkspaceLimits();
+  const { features: rawFeatures } = useWorkspaceLimits();
+  const features = useEffectiveNavFeatures(rawFeatures as Record<string, boolean> | null);
   const mensagensUnread = useMensagensUnread();
   const [isDark, setIsDark] = useState(
     document.documentElement.getAttribute('data-theme') === 'dark',
@@ -33,12 +35,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<any[]>([]);
 
-  const navGroups = getNavGroups(
-    role,
-    features as Record<string, boolean> | null,
-    canSeeFinancials,
-    workspaceRole,
-  );
+  const navGroups = getNavGroups(role, features, canSeeFinancials, workspaceRole);
   const activeRoute = location.pathname;
 
   // Load workspaces for switcher

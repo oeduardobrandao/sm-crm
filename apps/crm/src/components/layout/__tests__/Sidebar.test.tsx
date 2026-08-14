@@ -10,6 +10,15 @@ vi.mock('../../../hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: vi.fn(),
 }));
 
+// Passthrough: the flag-OR-count widening itself is covered by
+// useEffectiveNavFeatures.test.ts's pure-function tests. Mocking it here
+// keeps Sidebar's existing feature-flag assertions exercising exactly the
+// `features` object they pass in, and avoids needing a QueryClientProvider
+// in this test tree (the real hook calls useQuery).
+vi.mock('../../../hooks/useEffectiveNavFeatures', () => ({
+  useEffectiveNavFeatures: vi.fn((features: unknown) => features),
+}));
+
 vi.mock('../../../hooks/useMensagensUnread', () => ({
   useMensagensUnread: vi.fn(() => 0),
 }));
