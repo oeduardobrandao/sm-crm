@@ -30,6 +30,7 @@ BEGIN
     SELECT 1 FROM instagram_automation_sends s
     WHERE s.automation_id = p_automation_id
       AND s.commenter_id = p_commenter_id
+      AND s.comment_id <> p_comment_id
       AND s.dm_status = 'sent'
       AND s.created_at > now() - make_interval(hours => p_cooldown_hours)
   ) THEN
