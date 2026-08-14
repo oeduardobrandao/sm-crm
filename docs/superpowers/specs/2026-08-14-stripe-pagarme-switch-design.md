@@ -122,9 +122,14 @@ O 12x está ao vivo em prod desde 2026-08-14 e a infra existente já resolve qua
    muda, mas o índice único parcial passa a cobrir `pending` E `quarantined` (migration).
 7. **Create Pagar.me**: fluxo existente (customer → card → subscription) com
    `start_at = ceilToUtcMidnightDate(periodEnd da Stripe)` (refactor extraindo o ceil de
-   `resolveStartAt`; até 24h de sobreposição GRÁTIS, direção segura). NUNCA
-   `resolveTrialDays` neste caminho. Idempotency key da attempt, retry ambíguo:
-   existentes.
+   `resolveStartAt`). O `start_at` é date-only (meia-noite UTC), então o ceil empurra a 1ª
+   parcela para até 24h DEPOIS do fim do período Stripe. Isso NÃO cria gap de acesso: o
+   acesso vem de `workspaces.plan_id`, concedido no bind, e nada o derruba entre a
+   fronteira e o start_at (os eventos Stripe da fronteira são negados pelo guard; o leg A
+   do cron só derruba linhas canceled). As horas entre a fronteira e o start_at são
+   cortesia não cobrada, a direção segura; o floor cobraria o usuário duas vezes pelo
+   trecho. NUNCA `resolveTrialDays` neste caminho. Idempotency key da attempt, retry
+   ambíguo: existentes.
 8. **Status esperado é exatamente `future`**: switch sub nascida `active` = gateway
    cobrou agora com Stripe ainda cobrando → cancela a sub remota + attempt `quarantined`
    + CRITICAL + 500 (decisão 10; NÃO `failed`). Difere do checkout comum, que aceita
@@ -138,11 +143,34 @@ O 12x está ao vivo em prod desde 2026-08-14 e a infra existente já resolve qua
    existentes (provider observado + stripe_subscription_id) + `.eq('status', row.status)`
    (só no switch): webhook Stripe concorrente que mudou o status entre verify e bind faz
    o CAS falhar → compensating cancel + 409.
-10. **Grant do plano + finishAttempt**: inalterados.
-11. **Perna Stripe (última)**: `setCancelAtPeriodEnd(stripe_sub_id, true)` best-effort,
-    bounded 10s; falha → CRITICAL, request ainda 200 (markers + cron leg D recuperam). O
-    webhook `customer.subscription.updated` resultante é negado (esperado); a linha local
-    nunca espelha o estado Stripe pós-flip: o cron checa o REMOTO.
+10. **Grant do plano**: inalterado. `finishAttempt` no switch move para DEPOIS da perna
+    Stripe (passo 11): `succeeded` quando a perna (ou o rollback parcial) deixa a troca de
+    pé, `failed` quando o rollback completo desfez tudo. Enquanto isso a attempt segue
+    `pending`, bloqueando checkouts concorrentes.
+11. **Perna Stripe (última)**: `setCancelAtPeriodEnd(stripe_sub_id, true)` bounded 10s.
+    **Falha → rollback completo em-request** (review externo Codex: perto da renovação,
+    esperar o cron das 06:00 abriria uma janela real de cobrança dupla, não o residual de
+    segundos aceito):
+    (i) CAS flip-back num statement, pinado em provider='pagarme' + pagarme_subscription_id
+    + status='trialing', via `buildRestoreStripeColumns` (builder compartilhado com o undo,
+    em `_shared/pagarme-logic.ts`): provider='stripe', status e `cancel_at_period_end` =
+    valores OBSERVADOS no verify (cobre a fonte em churn da decisão 7), plan_id =
+    plano-fonte, billing_interval='month', installments=null, current_period_end = period
+    end real da Stripe, pagarme_subscription_id=null (leg C varre a future sub se o passo
+    iv falhar), markers=null, mirror cleared (auto-cura na leitura do admin);
+    (ii) restaura o `cancel_at_period_end` REMOTO ao valor observado (o timeout da perna é
+    ambíguo: o `true` pode ter landado; falha aqui → CRITICAL, o mismatch se auto-expõe
+    via webhooks Stripe, que voltam a ser aceitos após o flip-back);
+    (iii) re-grant do plano-fonte via `writeWorkspacePlan(..., 'stripe')` (falha →
+    CRITICAL);
+    (iv) DELETE best-effort da future sub Pagar.me (falha → CRITICAL, leg C backstop);
+    (v) attempt → `failed` e responde 500 retryable ("Não foi possível concluir a troca.
+    Tente novamente.", code `gateway_error`).
+    **Rollback parcial** (o CAS do flip-back falhou): a troca fica DE PÉ; 200 `switched` +
+    CRITICAL; markers + leg D recuperam (comportamento anterior). Crash entre bind e a
+    perna Stripe (sem chance de rollback): markers + leg D, como antes. O webhook
+    `customer.subscription.updated` de um cancel bem-sucedido é negado (esperado); a linha
+    local nunca espelha o estado Stripe pós-flip: o cron checa o REMOTO.
 12. **Response**: shape existente + `switched: true` e `first_charge_at` (o `start_at`
     efetivo; a UI usa esta data autoritativa na tela de sucesso; `trial_ends_at` ignorado
     no modo switch).
@@ -192,7 +220,10 @@ imediata em todo exit entre a mutação e o flip confirmado):
    decisão 4: cancel comum limpando os dois markers no mesmo CAS); `fetchStripeAmount`
    best-effort (mirror restaurado ou cleared; cleared se auto-cura na leitura do admin);
    plano-fonte = `switched_from_plan_id` (fallback: `resolvePlanFromPriceId` do price
-   atual; ambos null → CRITICAL + grant pulado, precedente pagarme-webhook).
+   atual; ambos null → CRITICAL + grant pulado, precedente pagarme-webhook). O CAS do
+   passo 3 usa `buildRestoreStripeColumns` (em `_shared/pagarme-logic.ts`, compartilhado
+   com o rollback da perna Stripe do checkout), com `cancel_at_period_end: false` (o undo
+   acabou de reativar).
 2. **Mutação remota**: `setCancelAtPeriodEnd(marker, false)`. O catch da PRÓPRIA mutação
    (timeout é ambíguo: o `false` pode ter landado antes da resposta se perder, o caso
    mais perigoso perto da renovação) tenta imediatamente rearmar
@@ -325,6 +356,7 @@ fecha aqui).
 | Timeout ambíguo no create | Retry mesma key; órfã → leg C (residual: fronteira <30h, decisão 5) |
 | Falha entre create e bind | Compensating cancel da future sub; Stripe intocada (perna é a última) |
 | Webhook Stripe concorrente muda status | CAS com pin de status falha → compensa + 409 |
+| Perna Stripe falha (sem crash) | Rollback completo em-request → 500 retryable; rollback parcial → 200 + CRITICAL + leg D |
 | Crash entre bind e cancel Stripe | Markers set → leg D aplica cap_end=true; renovação já disparou → cancelNow + CRITICAL |
 | Double-submit | Unique parcial (pending ou quarantined) → 409 |
 | Switch sub nascida active (malfunção) | Cancel remoto + attempt quarantined + 500; checkouts bloqueados até revisão manual |
@@ -336,7 +368,7 @@ fecha aqui).
 | Portal Stripe mid-janela | Fechado pelo hardening; leg D é o backstop |
 | DELETE do undo falha | pagarme_subscription_id limpo → leg C varre a órfã |
 | Mais markers que o cap do leg D | Rotação por switch_checked_at garante cobertura eventual; cap é só throughput por run |
-| 1ª parcela do 12x falha no start_at | failed → canceled normalizado, downgrade padrão; Stripe já cancelada na mesma fronteira |
+| 1ª parcela do 12x falha no start_at | Sub remota ainda viva → past_due + dunning, plano preservado (update-card recupera; comportamento padrão do 12x, sem mudança no pagarme-webhook); sub remota terminal (failed/canceled) → downgrade padrão. Nos dois casos a Stripe já morreu na fronteira, sem cobrança dupla |
 
 Residuais aceitos: renovação mensal disparando na janela de segundos entre verify e bind
 (um mês de sobreposição, refund manual); janela trialing fora do MRR (`MRR_STATUSES` só
@@ -347,16 +379,23 @@ conta active/past_due; pontual, some quando o 12x ativa).
 Backend (Deno):
 
 - `supabase/migrations/<versão acima do tail do main>_switch_from_stripe_marker.sql` (novo)
-- `supabase/functions/_shared/stripe-switch.ts` (novo: gateway injetável +
-  assessStripeSourceSub)
+- `supabase/functions/_shared/stripe-switch.ts` (novo: gateway Stripe injetável com
+  factory que recebe a key como argumento + assessStripeSourceSub + snapshot/404 helpers;
+  consumido por pagarme-checkout, pagarme-subscription E billing-downgrade-cron, cada um
+  construindo o gateway atrás de `Deno.env.get("STRIPE_SECRET_KEY")` — null em ambiente
+  dark)
+- `supabase/functions/_shared/pagarme-logic.ts` (novos pures: buildRestoreStripeColumns,
+  stripePortalBlocked; `canWebhookWrite` e demais intocados)
 - `supabase/functions/pagarme-checkout/logic.ts` (parse switch,
   stripeSwitchSourceEligible, ceilToUtcMidnightDate, markers em
   buildPagarmeSubscriptionColumns)
-- `supabase/functions/pagarme-checkout/handler.ts` + `index.ts` (fluxo switch, dep
-  stripeSwitch)
+- `supabase/functions/pagarme-checkout/handler.ts` + `index.ts` (fluxo switch com
+  rollback, dep stripeSwitch)
 - `supabase/functions/pagarme-subscription/logic.ts` + `handler.ts` + `index.ts` (undo,
-  buildUndoSwitchColumns, regra de idempotência, compensação)
-- `supabase/functions/billing-downgrade-cron/handler.ts` + `index.ts` (leg D com rotação)
+  regra de idempotência, compensação; dep stripeSwitch)
+- `supabase/functions/billing-downgrade-cron/handler.ts` + `index.ts` (leg D com rotação;
+  dep stripeGateway do _shared/stripe-switch.ts, testes com fake próprio; null → leg
+  pulado com flag no CronResult)
 - `supabase/functions/billing-checkout/index.ts` (gate de attempt quarentenada,
   fail-closed)
 - `supabase/functions/billing-portal/index.ts` (409 para linha pagarme)
@@ -390,8 +429,11 @@ antes da reserva (zero attempts); plano-fonte: workspaces.plan_id vem primeiro
 (divergência com row.plan_id → log), row.plan_id como fallback, ambos null + price remoto
 desconhecido → 409 pré-reserva, `plan_source='manual'` → 409 pré-reserva; born-active →
 cancel remoto + attempt QUARANTINED + 500, attempt quarentenada existente → 409 antes da
-reserva, e reserva com quarentena concorrente → 23505 → 409; falha da perna Stripe → 200
-+ CRITICAL; CAS zero rows → compensa + 409; stripeSwitch null → 500; switch com price
+reserva, e reserva com quarentena concorrente → 23505 → 409; perna Stripe falha →
+ROLLBACK completo (CAS flip-back com colunas restauradas incl. cap_end observado, restore
+remoto do cap_end, re-grant, DELETE da future sub, attempt failed, 500 retryable) e
+variante rollback parcial (CAS do flip-back falha → 200 switched + CRITICAL + attempt
+succeeded); CAS zero rows → compensa + 409; stripeSwitch null → 500; switch com price
 legado (billing_interval null) persiste plano-fonte; regressão: não-switch continua 409
 em linha stripe in-force. billing-checkout: attempt quarentenada → 409; erro de leitura
 da quarentena falha FECHADO (contraste pinado com o fail-open do gate de pending). Undo:
