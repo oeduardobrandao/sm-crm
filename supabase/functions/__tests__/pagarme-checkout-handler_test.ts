@@ -82,8 +82,13 @@ function makeDb(fx: {
   workspaceRow?: { plan_id?: string | null; plan_source: string };
   /** True = existe attempt quarantined para o workspace (gate amigavel da decisao 10). */
   quarantinedAttempt?: boolean;
+  /** Faz o SEGUNDO update de workspace_subscriptions em diante devolver zero linhas (o
+   * flip-back CAS da perna Stripe do switch perde a corrida). O contador vive no closure de
+   * makeDb (fora do from-factory) porque cada from() cria um chain novo. */
+  secondSubUpdateZeroRows?: boolean;
   events: Ev[];
 }): SupabaseClient {
+  let subUpdates = 0;
   const from = (table: string) => {
     let op = "read";
     let values: Record<string, unknown> | undefined;
@@ -120,6 +125,10 @@ function makeDb(fx: {
       }
       if (table === "workspace_subscriptions" && op === "update") {
         // CAS bind: update(...).eq(...).select("workspace_id") resolves to matched rows
+        subUpdates++;
+        if (fx.secondSubUpdateZeroRows && subUpdates >= 2) {
+          return { data: [], error: null };
+        }
         return {
           data: fx.bindZeroRows ? [] : [{ workspace_id: WS }],
           error: fx.bindUpdateError ?? null,
@@ -1124,4 +1133,78 @@ Deno.test("switch com price legado: billing_interval null passa e o marker persi
   assertEquals(res.status, 200);
   const bind = events.find((e) => e.table === "workspace_subscriptions" && e.op === "update")!;
   assertEquals(bind.values?.switched_from_plan_id, "start");
+});
+
+// ─── Switch mensal Stripe -> 12x: perna Stripe + rollback (Task 7) ─────────
+
+Deno.test("switch: perna Stripe roda por ULTIMO e com sucesso -> 200 switched", async () => {
+  const { events, stripeCalls, result } = run(
+    { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW },
+    { subStatus: "future", subStartAt: "2026-09-16" },
+    {},
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  const leg = stripeCalls.find((c) => c.method === "setCancelAtPeriodEnd");
+  assert(leg);
+  assertEquals(leg!.args, ["sub_s1", true]);
+  // attempt succeeded DEPOIS da perna: o update de state=succeeded e o ultimo evento de attempts
+  const attemptWrites = events.filter(
+    (e) => e.table === "pagarme_checkout_attempts" && e.op === "update" && e.values?.state !== undefined,
+  );
+  assertEquals(attemptWrites[attemptWrites.length - 1]?.values?.state, "succeeded");
+});
+
+Deno.test("switch: perna Stripe falha -> ROLLBACK completo, attempt failed, 500 retryable", async () => {
+  const { events, calls, stripeCalls, result } = run(
+    { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW },
+    { subStatus: "future", subStartAt: "2026-09-16" },
+    { setCancelTrueThrows: new Error("stripe 500") },
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 500);
+  assertEquals((res.body as { error?: string }).error, "Não foi possível concluir a troca. Tente novamente.");
+
+  // (i) CAS flip-back pinado em pagarme+sub+trialing com colunas restauradas
+  const updates = events.filter((e) => e.table === "workspace_subscriptions" && e.op === "update");
+  const restore = updates.find((e) => e.values?.provider === "stripe")!;
+  assert(restore, "flip-back deve existir");
+  assert(restore.filters.some(([m, c, v]) => m === "eq" && c === "provider" && v === "pagarme"));
+  assert(restore.filters.some(([m, c, v]) => m === "eq" && c === "pagarme_subscription_id" && v === "sub_1"));
+  assert(restore.filters.some(([m, c, v]) => m === "eq" && c === "status" && v === "trialing"));
+  assertEquals(restore.values?.plan_id, "start");
+  assertEquals(restore.values?.cancel_at_period_end, false); // valor OBSERVADO no verify
+  assertEquals(restore.values?.pagarme_subscription_id, null);
+  assertEquals(restore.values?.switched_from_stripe_subscription_id, null);
+
+  // (ii) restore remoto do cap_end ao valor observado (timeout ambiguo)
+  const restores = stripeCalls.filter((c) => c.method === "setCancelAtPeriodEnd");
+  assertEquals(restores[restores.length - 1]?.args, ["sub_s1", false]);
+
+  // (iv) DELETE da future sub
+  assert(calls.some((c) => c.method === "cancelSubscription"));
+
+  // attempt failed
+  const attemptWrites = events.filter(
+    (e) => e.table === "pagarme_checkout_attempts" && e.op === "update" && e.values?.state !== undefined,
+  );
+  assertEquals(attemptWrites[attemptWrites.length - 1]?.values?.state, "failed");
+});
+
+Deno.test("switch: rollback PARCIAL (flip-back CAS falha) -> troca fica de pe, 200 + succeeded", async () => {
+  // bindZeroRows faria o PRIMEIRO CAS (bind) falhar tambem. Em vez disso o fixture precisa
+  // falhar SO o segundo update de workspace_subscriptions: adicione ao makeDb o campo
+  // `secondSubUpdateZeroRows?: boolean` que conta os updates da tabela e devolve [] a
+  // partir do segundo. (Implemente no settle: `if (op === "update" && table === "workspace_subscriptions") { subUpdates++; if (fx.secondSubUpdateZeroRows && subUpdates >= 2) return { data: [], error: null }; ... }`)
+  const { result } = run(
+    { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW, secondSubUpdateZeroRows: true },
+    { subStatus: "future", subStartAt: "2026-09-16" },
+    { setCancelTrueThrows: new Error("stripe 500") },
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals((res.body as { switched?: boolean }).switched, true);
 });

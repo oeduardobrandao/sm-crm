@@ -7,12 +7,14 @@ import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { hasEverSubscribed } from "../_shared/billing-logic.ts";
 import { resolveTrialDays } from "../_shared/trial.ts";
 import {
+  buildRestoreStripeColumns,
   isDefinitiveGatewayReject,
   mapPagarmeTemporalFields,
   normalizePagarmeStatus,
 } from "../_shared/pagarme-logic.ts";
 import { PagarmeApiError } from "../_shared/pagarme.ts";
 import { writeWorkspacePlan } from "../_shared/plan-writer.ts";
+import { clearedAmountColumns } from "../_shared/stripe-amount.ts";
 import {
   assessStripeSourceSub,
   StripeSwitchGateway,
@@ -202,11 +204,6 @@ export function createPagarmeCheckoutHandler(deps: {
         };
       }
     }
-    // switchObserved (cancelAtPeriodEnd) is consumed by the Stripe cancel leg landing in
-    // Task 7. Voided here so a lint pass on this file stays clean in the meantime —
-    // TODO Task 7: remove.
-    void switchObserved;
-
     // Carve-out: switch eligibility was already fully validated above, so isSwitch here
     // implies eligible and this check only ever fires for the non-switch path. Kept BEFORE
     // the quarantine read below so a plain blocked-row request still short-circuits with
@@ -617,24 +614,108 @@ export function createPagarmeCheckoutHandler(deps: {
           e instanceof Error ? e.message : String(e),
         );
       }
-      const successBody = isSwitch
-        ? {
-          status: liveStatus,
-          trial_ends_at: null, // switch nunca fala de trial
-          next_charge_at: currentPeriodEnd,
-          installment_amount_cents: amountMirror.installmentAmountCents,
-          switched: true,
-          first_charge_at: currentPeriodEnd,
-        }
-        : {
-          status: liveStatus,
-          trial_ends_at: liveStatus === "trialing" ? currentPeriodEnd : null,
-          next_charge_at: currentPeriodEnd,
-          installment_amount_cents: amountMirror.installmentAmountCents,
+      if (!isSwitch) {
+        await finishAttempt("succeeded", sub.id);
+        return {
+          status: 200,
+          body: {
+            status: liveStatus,
+            trial_ends_at: liveStatus === "trialing" ? currentPeriodEnd : null,
+            next_charge_at: currentPeriodEnd,
+            installment_amount_cents: amountMirror.installmentAmountCents,
+          },
         };
-      await finishAttempt("succeeded", sub.id);
+      }
 
-      return { status: 200, body: successBody };
+      // (12) Perna Stripe do switch, por ULTIMO. Falha -> ROLLBACK completo em-request
+      // (spec pos-review Codex): perto da renovacao, esperar o cron das 06:00 abriria uma
+      // janela real de cobranca dupla, nao o residual de segundos aceito. O leg D fica
+      // como backstop apenas de CRASH entre o bind e esta perna.
+      const switchSuccessBody = {
+        status: liveStatus,
+        trial_ends_at: null,
+        next_charge_at: currentPeriodEnd,
+        installment_amount_cents: amountMirror.installmentAmountCents,
+        switched: true,
+        first_charge_at: currentPeriodEnd,
+      };
+      try {
+        await deps.stripeSwitch!.setCancelAtPeriodEnd(
+          row!.stripe_subscription_id as string,
+          true,
+        );
+      } catch (stripeLegErr) {
+        console.error(
+          "[pagarme-checkout] switch stripe leg failed, rolling back:",
+          stripeLegErr instanceof Error ? stripeLegErr.message : String(stripeLegErr),
+        );
+        // (i) Flip-back local primeiro (ordem do undo): se o CAS falhar, NADA remoto foi
+        // desfeito e a troca fica de pe com o leg D como recuperacao.
+        const restore = buildRestoreStripeColumns({
+          status: switchObserved!.status,
+          cancelAtPeriodEnd: switchObserved!.cancelAtPeriodEnd,
+          periodEndIso: switchBoundary!.toISOString(),
+          sourcePlanId: switchSourcePlanId,
+          amountColumns: clearedAmountColumns(),
+          nowIso: new Date().toISOString(),
+        });
+        const { data: rolled, error: rollErr } = await db
+          .from("workspace_subscriptions")
+          .update(restore)
+          .eq("workspace_id", ctx.workspaceId)
+          .eq("provider", "pagarme")
+          .eq("pagarme_subscription_id", sub.id)
+          .eq("status", "trialing")
+          .select("workspace_id")
+          .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+        if (rollErr || !rolled?.length) {
+          console.error(
+            `[pagarme-checkout] CRITICAL: switch rollback CAS failed for workspace ${ctx.workspaceId}; switch stands, leg D will enforce the stripe cancel${rollErr ? `: ${rollErr.message}` : ""}`,
+          );
+          await finishAttempt("succeeded", sub.id);
+          return { status: 200, body: switchSuccessBody };
+        }
+        // (ii) O timeout da perna e ambiguo: o true pode ter landado. Restaura o valor
+        // OBSERVADO no verify (cobre a fonte em churn da decisao 7).
+        try {
+          await deps.stripeSwitch!.setCancelAtPeriodEnd(
+            row!.stripe_subscription_id as string,
+            switchObserved!.cancelAtPeriodEnd,
+          );
+        } catch (e) {
+          console.error(
+            "[pagarme-checkout] CRITICAL: rollback cap_end restore failed (mismatch self-surfaces via stripe webhooks, allowed again post flip-back):",
+            e instanceof Error ? e.message : String(e),
+          );
+        }
+        // (iii) Re-grant do plano-fonte (falha: CRITICAL, precedente do grant pos-bind).
+        try {
+          await writeWorkspacePlan(db, ctx.workspaceId, switchSourcePlanId!, "stripe");
+        } catch (e) {
+          console.error(
+            `[pagarme-checkout] CRITICAL: rollback plan re-grant failed for workspace ${ctx.workspaceId}:`,
+            e instanceof Error ? e.message : String(e),
+          );
+        }
+        // (iv) DELETE da future sub (nada cobrado). Falha: leg C varre a orfa, ja que o
+        // flip-back limpou pagarme_subscription_id (skip_linked desligado).
+        try {
+          await gateway.cancelSubscription(sub.id);
+        } catch (e) {
+          console.error(
+            "[pagarme-checkout] rollback pagarme cancel failed (leg C sweeps the orphan):",
+            e instanceof Error ? e.message : String(e),
+          );
+        }
+        await finishAttempt("failed", sub.id);
+        return {
+          status: 500,
+          body: { error: "Não foi possível concluir a troca. Tente novamente.", code: "gateway_error" },
+        };
+      }
+
+      await finishAttempt("succeeded", sub.id);
+      return { status: 200, body: switchSuccessBody };
     } catch (err) {
       // Ambiguous subscription-stage outcomes (timeout/network/5xx even after the same-key
       // retry) may have a live remote subscription with no recorded id. Releasing the

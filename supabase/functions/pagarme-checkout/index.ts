@@ -10,6 +10,7 @@ import { checkRateLimit, getClientIP } from "../_shared/rate-limit.ts";
 import { parseCheckoutBody } from "./logic.ts";
 import { createPagarmeGateway } from "./gateway.ts";
 import { createPagarmeCheckoutHandler } from "./handler.ts";
+import { createStripeSwitchGateway } from "../_shared/stripe-switch.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -60,10 +61,12 @@ Deno.serve(async (req: Request) => {
     const parsed = parseCheckoutBody(body);
     if (!parsed.ok) return json({ error: parsed.error, code: parsed.code }, parsed.status, headers);
 
+    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     const handle = createPagarmeCheckoutHandler({
       db: svc,
       gateway: createPagarmeGateway(),
       now: () => new Date(),
+      stripeSwitch: stripeKey ? createStripeSwitchGateway(stripeKey) : null,
     });
     const result = await handle(
       {
