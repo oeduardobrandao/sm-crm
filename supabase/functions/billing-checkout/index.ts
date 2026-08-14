@@ -8,7 +8,7 @@ import {
   resolveTrialDays,
 } from "../_shared/trial.ts";
 import { isWorkspaceOwner } from "../_shared/workspace-role.ts";
-import { hasEverSubscribed, pendingPagarmeAttemptBlocksCheckout } from "../_shared/billing-logic.ts";
+import { hasEverSubscribed, pendingPagarmeAttemptBlocksCheckout, quarantinedAttemptBlocksCheckout } from "../_shared/billing-logic.ts";
 import { crossProviderCheckoutBlocked } from "../_shared/pagarme-logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -133,6 +133,30 @@ Deno.serve(async (req: Request) => {
           error:
             "Outra tentativa de pagamento está em andamento. Aguarde alguns instantes e tente de novo.",
         },
+        409,
+        headers,
+      );
+    }
+
+    // Quarentena (spec do switch, decisao 10): cobranca possivelmente nao estornada em
+    // revisao manual bloqueia AMBOS os providers. Fail closed no erro de leitura.
+    const { data: quarantinedAttempt, error: quarantinedErr } = await svc
+      .from("pagarme_checkout_attempts")
+      .select("id")
+      .eq("workspace_id", workspaceId)
+      .eq("state", "quarantined")
+      .limit(1)
+      .abortSignal(AbortSignal.timeout(10_000))
+      .maybeSingle();
+    if (quarantinedErr) {
+      console.error(
+        "[billing-checkout] quarantined attempt read failed, blocking (fail-closed):",
+        quarantinedErr.message,
+      );
+    }
+    if (quarantinedAttemptBlocksCheckout(!!quarantinedAttempt, quarantinedErr)) {
+      return json(
+        { error: "Encontramos uma cobrança que precisa de revisão. Fale com o suporte." },
         409,
         headers,
       );

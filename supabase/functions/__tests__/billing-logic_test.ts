@@ -7,6 +7,7 @@ import {
   hasEverSubscribed,
   isMrrStatus,
   pendingPagarmeAttemptBlocksCheckout,
+  quarantinedAttemptBlocksCheckout,
   resolvePlanFromPriceId,
   statusToPlanId,
   toMonthlyCents,
@@ -202,6 +203,22 @@ Deno.test("pendingPagarmeAttemptBlocksCheckout: blocks only when a pending attem
 Deno.test("pendingPagarmeAttemptBlocksCheckout: a read ERROR fails OPEN (never blocks), even with a pending attempt", () => {
   assertEquals(pendingPagarmeAttemptBlocksCheckout(true, { message: "timeout" }), false);
   assertEquals(pendingPagarmeAttemptBlocksCheckout(false, { message: "timeout" }), false);
+});
+
+// ─── quarantinedAttemptBlocksCheckout ──────────────────────────────────────
+
+Deno.test("quarantinedAttemptBlocksCheckout: encontrado bloqueia", () => {
+  assertEquals(quarantinedAttemptBlocksCheckout(true, null), true);
+});
+
+Deno.test("quarantinedAttemptBlocksCheckout: ausente libera", () => {
+  assertEquals(quarantinedAttemptBlocksCheckout(false, null), false);
+});
+
+Deno.test("quarantinedAttemptBlocksCheckout: erro de leitura FALHA FECHADO (contraste com pending)", () => {
+  assertEquals(quarantinedAttemptBlocksCheckout(false, { message: "boom" }), true);
+  // O gate de pending continua fail-open:
+  assertEquals(pendingPagarmeAttemptBlocksCheckout(false, { message: "boom" }), false);
 });
 
 // ─── getDefaultPlanId ──────────────────────────────────────────────────────
