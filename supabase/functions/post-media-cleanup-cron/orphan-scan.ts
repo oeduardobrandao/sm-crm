@@ -9,7 +9,7 @@
 //   3. a non-trivial candidate list with a suspiciously empty known set aborts —
 //      deleting "everything" is never a plausible correct outcome.
 
-export const KNOWN_CHUNK = 200;
+export const KNOWN_CHUNK = 50;
 /** With at least this many aged candidates, an empty known set means the
  * reference queries lied (or the DB is unreachable) — never that every single
  * object is genuinely orphaned. */
