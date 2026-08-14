@@ -12,6 +12,7 @@ import {
 } from "../_shared/stream.ts";
 import { createPostMediaCleanupCronHandler } from "./handler.ts";
 import { runStreamSweeps } from "./stream-steps.ts";
+import { runOrphanScan } from "./orphan-scan.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -114,26 +115,15 @@ Deno.serve(createPostMediaCleanupCronHandler({
 
     // R2 orphan cleanup LAST: the most expensive, least urgent stage. A resource-limit
     // death here costs only this stage; everything above has already committed.
-    const orphanCandidates = await listOrphanKeys("contas/", 24 * 60 * 60 * 1000);
-    let orphansDeleted = 0;
-    if (orphanCandidates.length > 0) {
-      const [byMain, byThumb, byFileMain, byFileThumb] = await Promise.all([
-        svc.from("post_media").select("r2_key, thumbnail_r2_key").in("r2_key", orphanCandidates),
-        svc.from("post_media").select("r2_key, thumbnail_r2_key").in("thumbnail_r2_key", orphanCandidates),
-        svc.from("files").select("r2_key, thumbnail_r2_key").in("r2_key", orphanCandidates),
-        svc.from("files").select("r2_key, thumbnail_r2_key").in("thumbnail_r2_key", orphanCandidates),
-      ]);
-      const known = new Set<string>();
-      for (const row of [...(byMain.data ?? []), ...(byThumb.data ?? []), ...(byFileMain.data ?? []), ...(byFileThumb.data ?? [])]) {
-        if (row.r2_key) known.add(row.r2_key);
-        if (row.thumbnail_r2_key) known.add(row.thumbnail_r2_key);
-      }
-      for (const key of orphanCandidates) {
-        if (known.has(key)) continue;
-        try { await deleteObject(key); orphansDeleted++; } catch { /* retry next run */ }
-      }
-    }
+    // Hardened module (see orphan-scan.ts): chunked known-set queries, abort on any
+    // query error, and an empty-known-set circuit breaker — the 2026-08 incident
+    // (silent .in() failures -> empty known set -> mass deletion) cannot recur.
+    const scan = await runOrphanScan({ db: svc, listOrphanKeys, deleteObject });
+    const orphansDeleted = scan.deleted;
 
-    return json({ deleted, failed, orphansDeleted, streamIngested, streamSettled, streamReaped, streamErrors });
+    return json({
+      deleted, failed, orphansDeleted, orphanScanAborted: scan.aborted,
+      streamIngested, streamSettled, streamReaped, streamErrors,
+    });
   },
 }));
