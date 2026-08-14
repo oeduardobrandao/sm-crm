@@ -65,14 +65,26 @@ export async function headObject(key: string): Promise<{ contentLength: number; 
  * 30-day undo window (see purgeTrash) — the 2026-08 incident had none. Throws
  * if the copy fails; the original is only removed after the copy succeeds. */
 export async function trashObject(key: string): Promise<void> {
-  await getR2().send(
-    new CopyObjectCommand({
-      Bucket: getBucket(),
-      CopySource: `${getBucket()}/${encodeURIComponent(key).replace(/%2F/g, "/")}`,
-      Key: `trash/${key}`,
-    }),
-    { abortSignal: AbortSignal.timeout(30_000) },
-  );
+  // Presign + plain fetch, same as deleteObject above: the SDK's own transport
+  // is the documented edge-runtime hang path, and this function sits on the
+  // deletion drains — a hang here stalls every queue. The presigner keeps
+  // x-amz-copy-source as a signed header, so the fetch must send it verbatim.
+  const copySource = `${getBucket()}/${encodeURIComponent(key).replace(/%2F/g, "/")}`;
+  const cmd = new CopyObjectCommand({
+    Bucket: getBucket(),
+    CopySource: copySource,
+    Key: `trash/${key}`,
+  });
+  const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "x-amz-copy-source": copySource },
+    signal: AbortSignal.timeout(30_000),
+  });
+  await res.body?.cancel();
+  if (!res.ok) {
+    throw new Error(`r2 trash copy failed: ${res.status}`);
+  }
   await deleteObject(key);
 }
 
