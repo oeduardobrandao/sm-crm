@@ -43,6 +43,7 @@ export interface FeatureFlags {
   feature_mcp: boolean;
   feature_tiktok: boolean;
   feature_mensagens: boolean;
+  feature_instagram_automation: boolean;
 }
 
 interface WorkspaceLimitsResponse {

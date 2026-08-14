@@ -40,7 +40,7 @@ describe('getInstagramAccountStatuses', () => {
     expect(mockedSupabase.__getSupabaseCalls()).toHaveLength(0);
   });
 
-  it('derives revoked / expired / canPublish per client', async () => {
+  it('derives revoked / expired / canPublish / canAutomate per client', async () => {
     mockedSupabase.__queueSupabaseResult('instagram_accounts', 'select', {
       data: [
         {
@@ -48,28 +48,78 @@ describe('getInstagramAccountStatuses', () => {
           authorization_status: 'active',
           token_expires_at: '2999-01-01T00:00:00.000Z',
           permissions: ['instagram_business_content_publish'],
+          comments_subscribed_at: null,
         },
         {
           client_id: 2,
           authorization_status: 'revoked',
           token_expires_at: '2999-01-01T00:00:00.000Z',
           permissions: [],
+          comments_subscribed_at: null,
         },
         {
           client_id: 3,
           authorization_status: 'active',
           token_expires_at: '2000-01-01T00:00:00.000Z',
           permissions: ['instagram_business_content_publish'],
+          comments_subscribed_at: null,
+        },
+        {
+          client_id: 4,
+          authorization_status: 'active',
+          token_expires_at: '2999-01-01T00:00:00.000Z',
+          permissions: ['instagram_business_content_publish', 'instagram_business_manage_comments'],
+          comments_subscribed_at: '2026-08-01T00:00:00.000Z',
         },
       ],
       error: null,
     });
 
-    const map = await store.getInstagramAccountStatuses([1, 2, 3]);
+    const map = await store.getInstagramAccountStatuses([1, 2, 3, 4]);
 
-    expect(map.get(1)).toEqual({ revoked: false, expired: false, canPublish: true });
-    expect(map.get(2)).toEqual({ revoked: true, expired: false, canPublish: false });
-    expect(map.get(3)).toEqual({ revoked: false, expired: true, canPublish: true });
+    expect(map.get(1)).toEqual({
+      revoked: false,
+      expired: false,
+      canPublish: true,
+      canAutomate: false,
+    });
+    expect(map.get(2)).toEqual({
+      revoked: true,
+      expired: false,
+      canPublish: false,
+      canAutomate: false,
+    });
+    expect(map.get(3)).toEqual({
+      revoked: false,
+      expired: true,
+      canPublish: true,
+      canAutomate: false,
+    });
+    expect(map.get(4)).toEqual({
+      revoked: false,
+      expired: false,
+      canPublish: true,
+      canAutomate: true,
+    });
+  });
+
+  it('canAutomate is false when the permission is present but the comments webhook was never confirmed', async () => {
+    mockedSupabase.__queueSupabaseResult('instagram_accounts', 'select', {
+      data: [
+        {
+          client_id: 5,
+          authorization_status: 'active',
+          token_expires_at: '2999-01-01T00:00:00.000Z',
+          permissions: ['instagram_business_manage_comments'],
+          comments_subscribed_at: null,
+        },
+      ],
+      error: null,
+    });
+
+    const map = await store.getInstagramAccountStatuses([5]);
+
+    expect(map.get(5)?.canAutomate).toBe(false);
   });
 
   it('throws when the query errors', async () => {

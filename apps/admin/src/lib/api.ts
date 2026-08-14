@@ -96,6 +96,7 @@ export interface Plan {
   feature_mcp: boolean;
   feature_tiktok: boolean;
   feature_mensagens: boolean;
+  feature_instagram_automation: boolean;
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
   rate_report_generations_per_month: number | null;
@@ -189,6 +190,7 @@ export const FEATURE_FLAG_KEYS = [
   'feature_mcp',
   'feature_tiktok',
   'feature_mensagens',
+  'feature_instagram_automation',
 ] as const;
 
 export const FEATURE_FLAG_LABELS: Record<string, string> = {
@@ -213,6 +215,7 @@ export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_mcp: 'MCP (Claude)',
   feature_tiktok: 'TikTok',
   feature_mensagens: 'Mensagens',
+  feature_instagram_automation: 'Instagram Automation',
 };
 
 export const RATE_LIMIT_KEYS = [

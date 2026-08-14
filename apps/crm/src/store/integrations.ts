@@ -76,6 +76,7 @@ export interface IgAccountStatus {
   revoked: boolean;
   expired: boolean;
   canPublish: boolean;
+  canAutomate: boolean;
 }
 
 /**
@@ -90,7 +91,9 @@ export async function getInstagramAccountStatuses(
   if (clientIds.length === 0) return result;
   const { data, error } = await supabase
     .from('instagram_accounts')
-    .select('client_id, authorization_status, token_expires_at, permissions')
+    .select(
+      'client_id, authorization_status, token_expires_at, permissions, comments_subscribed_at',
+    )
     .in('client_id', clientIds);
   if (error) throw error;
   const now = Date.now();
@@ -99,6 +102,7 @@ export async function getInstagramAccountStatuses(
     authorization_status: string | null;
     token_expires_at: string | null;
     permissions: unknown;
+    comments_subscribed_at: string | null;
   }>) {
     if (row.client_id == null) continue;
     result.set(row.client_id, {
@@ -109,6 +113,10 @@ export async function getInstagramAccountStatuses(
       canPublish:
         Array.isArray(row.permissions) &&
         row.permissions.includes('instagram_business_content_publish'),
+      canAutomate:
+        Array.isArray(row.permissions) &&
+        row.permissions.includes('instagram_business_manage_comments') &&
+        row.comments_subscribed_at != null,
     });
   }
   return result;

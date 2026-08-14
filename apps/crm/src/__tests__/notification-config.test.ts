@@ -89,6 +89,17 @@ describe('getNotificationDisplay', () => {
     );
   });
 
+  it('renders instagram_automation_failed notification', () => {
+    const display = getNotificationDisplay('instagram_automation_failed', {});
+
+    expect(display.title).toBe('Automação do Instagram com problema');
+    expect(display.body).toBe(
+      'Uma automação de comentários parou de enviar. Reconecte o Instagram do cliente para reativar.',
+    );
+    expect(display.tone).toBe('danger');
+    expect(display.icon).toBeDefined();
+  });
+
   it('still falls back to default for unknown types', () => {
     const display = getNotificationDisplay('future_unknown_type' as any, {});
 
