@@ -299,11 +299,14 @@ BEGIN
     hashtext(p_automation_id::text || ':' || coalesce(p_commenter_id, ''))
   );
 
+  -- Um envio em voo (processing/retry) reserva o cooldown; se ele falhar no fim,
+  -- perdemos um DM do segundo comentário, o que é preferível a DM duplicada.
   IF p_commenter_id IS NOT NULL AND EXISTS (
     SELECT 1 FROM instagram_automation_sends s
     WHERE s.automation_id = p_automation_id
       AND s.commenter_id = p_commenter_id
-      AND s.dm_status = 'sent'
+      AND s.comment_id <> p_comment_id
+      AND (s.dm_status = 'sent' OR s.status IN ('processing', 'retry'))
       AND s.created_at > now() - make_interval(hours => p_cooldown_hours)
   ) THEN
     INSERT INTO instagram_automation_sends
