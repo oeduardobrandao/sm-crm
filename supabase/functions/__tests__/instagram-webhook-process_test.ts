@@ -230,13 +230,15 @@ Deno.test("processDelivery (c): match feliz -> claim, DM, mark_automation_dm_sen
   db.queue("instagram_accounts", "select", { data: [accountRow()], error: null }); // candidatos
   db.queue("instagram_comment_automations", "select", { data: [automationRow()], error: null }); // passo 2
   db.queueRpc("claim_automation_send", { data: [{ send_id: SEND_ID, outcome: "claimed" }], error: null });
-  db.queue("instagram_automation_sends", "select", { data: null, error: null, count: 0 }); // throttle
+  db.queue("instagram_comment_automations", "select", { data: [{ id: AUTOMATION_ID }], error: null }); // throttle: ids do cliente (sem filtro ativo)
+  db.queue("instagram_automation_sends", "select", { data: null, error: null, count: 0 }); // throttle: contagem
   db.queue("instagram_comment_automations", "select", {
     data: { ativo: true, dm_message: "Aqui está o link da promo!", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
     error: null,
   }); // revalidação (executeSend)
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null }); // aptidão (executeSend)
   db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // public_reply_status='unknown' (em voo)
   db.queue("instagram_automation_sends", "update", { data: null, error: null }); // public_reply sent
   db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
   db.queue("instagram_webhook_events", "update", { data: null, error: null }); // stamp
@@ -266,9 +268,10 @@ Deno.test("processDelivery (c): match feliz -> claim, DM, mark_automation_dm_sen
   assertEquals(rpcCallsFor(db, "mark_automation_dm_sent").length, 1);
 
   const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
-  assertEquals(sendUpdates.length, 2);
-  assertEquals(sendUpdates[0].payload, { public_reply_id: "reply-99", public_reply_status: "sent" });
-  assertEquals(sendUpdates[1].payload, { status: "sent" });
+  assertEquals(sendUpdates.length, 3);
+  assertEquals(sendUpdates[0].payload, { public_reply_status: "unknown" }, "estado em voo gravado ANTES do POST");
+  assertEquals(sendUpdates[1].payload, { public_reply_id: "reply-99", public_reply_status: "sent" });
+  assertEquals(sendUpdates[2].payload, { status: "sent" });
 
   assertEquals(callsFor(db, "instagram_webhook_events", "update").length, 1);
 });
@@ -347,16 +350,17 @@ Deno.test("processDelivery (e): conflito cross-workspace -> nenhuma claim + 2 no
 Deno.test("processDelivery: throttle horário excedido -> retry sem incrementar attempts, sem executeSend", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_accounts", "select", { data: [accountRow()], error: null });
-  db.queue("instagram_comment_automations", "select", { data: [automationRow()], error: null });
+  db.queue("instagram_comment_automations", "select", { data: [automationRow()], error: null }); // passo 2
   db.queueRpc("claim_automation_send", { data: [{ send_id: SEND_ID, outcome: "claimed" }], error: null });
+  db.queue("instagram_comment_automations", "select", { data: [{ id: AUTOMATION_ID }], error: null }); // throttle: ids do cliente
   db.queue("instagram_automation_sends", "select", { data: null, error: null, count: 700 });
   db.queue("instagram_automation_sends", "update", { data: null, error: null });
   db.queue("instagram_webhook_events", "update", { data: null, error: null });
 
   await createProcessDelivery(baseProcessDeps({ hourlyCap: 700 }))(db as never, [eventRow()]);
 
-  // executeSend nunca deve rodar: só a query de automações do passo 2 toca essa tabela.
-  assertEquals(callsFor(db, "instagram_comment_automations", "select").length, 1);
+  // executeSend nunca deve rodar: só as duas queries de automações (passo 2 + throttle) tocam essa tabela.
+  assertEquals(callsFor(db, "instagram_comment_automations", "select").length, 2);
   assertEquals(callsFor(db, "instagram_accounts", "select").length, 1);
 
   const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
@@ -367,6 +371,43 @@ Deno.test("processDelivery: throttle horário excedido -> retry sem incrementar 
   assertEquals(payload.next_attempt_at, new Date(FIXED_NOW.getTime() + 10 * 60 * 1000).toISOString());
 
   assertEquals(callsFor(db, "instagram_webhook_events", "update").length, 1);
+});
+
+Deno.test("processDelivery: throttle inclui automações PAUSADAS do mesmo cliente na contagem (Finding 1)", async () => {
+  const db = createSupabaseQueryMock();
+  const PAUSED_AUTOMATION_ID = "aaaaaaa9-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+
+  db.queue("instagram_accounts", "select", { data: [accountRow()], error: null });
+  db.queue("instagram_comment_automations", "select", { data: [automationRow()], error: null }); // passo 2: só a ativa casa a keyword
+  db.queueRpc("claim_automation_send", { data: [{ send_id: SEND_ID, outcome: "claimed" }], error: null });
+  // Consulta DEDICADA do throttle, sem filtro de `ativo`: devolve a automação
+  // ativa que casou (AUTOMATION_ID) E uma PAUSADA do MESMO client_id que já
+  // disparou DMs recentes antes de ser pausada. Se a consulta estivesse
+  // filtrando por ativo=true (o bug do Finding 1), a pausada nunca apareceria.
+  db.queue("instagram_comment_automations", "select", {
+    data: [{ id: AUTOMATION_ID }, { id: PAUSED_AUTOMATION_ID }],
+    error: null,
+  });
+  db.queue("instagram_automation_sends", "select", { data: null, error: null, count: 700 });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // throttle retry
+  db.queue("instagram_webhook_events", "update", { data: null, error: null });
+
+  await createProcessDelivery(baseProcessDeps({ hourlyCap: 700 }))(db as never, [eventRow()]);
+
+  const countCalls = callsFor(db, "instagram_automation_sends", "select");
+  assertEquals(countCalls.length, 1);
+  const inModifier = countCalls[0].modifiers.find((m) => m.method === "in" && m.args[0] === "automation_id");
+  assert(inModifier, "a contagem do throttle precisa filtrar por automation_id");
+  const filteredIds = inModifier!.args[1] as string[];
+  assert(filteredIds.includes(AUTOMATION_ID), "inclui a automação ativa que casou");
+  assert(
+    filteredIds.includes(PAUSED_AUTOMATION_ID),
+    "inclui a automação PAUSADA do mesmo cliente -- exatamente o bypass do Finding 1",
+  );
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals((sendUpdates[0].payload as Record<string, unknown>).status, "retry");
 });
 
 Deno.test("processDelivery: from/text faltando -> fetchComment reconcilia e o fluxo segue até o claim", async () => {
@@ -483,6 +524,7 @@ Deno.test("executeSend (h): retry com dm_status='sent' -> NÃO chama sendPrivate
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // public_reply_status='unknown' (em voo)
   db.queue("instagram_automation_sends", "update", { data: null, error: null }); // public_reply sent
   db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
 
@@ -497,9 +539,10 @@ Deno.test("executeSend (h): retry com dm_status='sent' -> NÃO chama sendPrivate
   assertEquals(fetchCalls.filter((c) => c.method === "POST" && c.url.includes("/replies")).length, 1);
 
   const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
-  assertEquals(sendUpdates.length, 2);
-  assertEquals(sendUpdates[0].payload, { public_reply_id: "reply-1", public_reply_status: "sent" });
-  assertEquals(sendUpdates[1].payload, { status: "sent" });
+  assertEquals(sendUpdates.length, 3);
+  assertEquals(sendUpdates[0].payload, { public_reply_status: "unknown" }, "estado em voo gravado ANTES do POST");
+  assertEquals(sendUpdates[1].payload, { public_reply_id: "reply-1", public_reply_status: "sent" });
+  assertEquals(sendUpdates[2].payload, { status: "sent" });
 });
 
 Deno.test("executeSend (i-1): reply pública timeout + fetchReplies encontra -> sent com id, nunca reposta", async () => {
@@ -509,6 +552,7 @@ Deno.test("executeSend (i-1): reply pública timeout + fetchReplies encontra -> 
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // public_reply_status='unknown' (em voo)
   db.queue("instagram_automation_sends", "update", { data: null, error: null }); // reconciled sent
   db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
 
@@ -522,9 +566,10 @@ Deno.test("executeSend (i-1): reply pública timeout + fetchReplies encontra -> 
   await executeSend(baseSendCtx(db, { fetchFn }), baseClaimedSend({ dm_status: "sent" }));
 
   const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
-  assertEquals(sendUpdates.length, 2);
-  assertEquals(sendUpdates[0].payload, { public_reply_id: "reply-found", public_reply_status: "sent" });
-  assertEquals(sendUpdates[1].payload, { status: "sent" });
+  assertEquals(sendUpdates.length, 3);
+  assertEquals(sendUpdates[0].payload, { public_reply_status: "unknown" }, "estado em voo gravado ANTES do POST");
+  assertEquals(sendUpdates[1].payload, { public_reply_id: "reply-found", public_reply_status: "sent" });
+  assertEquals(sendUpdates[2].payload, { status: "sent" });
   assertEquals(fetchCalls.filter((c) => c.method === "POST" && c.url.includes("/replies")).length, 1, "nunca reposta");
 });
 
@@ -535,7 +580,7 @@ Deno.test("executeSend (i-2): reply pública timeout + fetchReplies NÃO encontr
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
-  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // unknown
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // public_reply_status='unknown' (em voo, ANTES do POST)
   db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
 
   const { fetchFn, calls: fetchCalls } = routedFetch({
@@ -550,6 +595,100 @@ Deno.test("executeSend (i-2): reply pública timeout + fetchReplies NÃO encontr
   assertEquals(sendUpdates[0].payload, { public_reply_status: "unknown" });
   assertEquals(sendUpdates[1].payload, { status: "sent_partial" });
   assertEquals(fetchCalls.filter((c) => c.method === "POST" && c.url.includes("/replies")).length, 1, "nunca reposta");
+});
+
+// ── Finding 2 (external review): estado em voo da resposta pública ─────────
+// 'unknown' é gravado ANTES da chamada à Graph API (nunca depois), então uma
+// reentrada após crash/falha de persistência sempre encontra 'unknown' já
+// persistido e NUNCA chama replyToComment de novo -- só reconcilia.
+
+Deno.test("executeSend: grava public_reply_status='unknown' ANTES de chamar replyToComment (ordem verificada)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: { ativo: true, dm_message: "msg", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+
+  const sequence: string[] = [];
+  db.queue("instagram_automation_sends", "update", () => {
+    sequence.push("db:public_reply_status=unknown");
+    return { data: null, error: null };
+  });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // sent
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  const { fetchFn } = routedFetch({
+    publicReply: () => {
+      sequence.push("fetch:replyToComment");
+      return { body: { id: "reply-1" } };
+    },
+  });
+
+  await executeSend(baseSendCtx(db, { fetchFn }), baseClaimedSend({ dm_status: "sent" }));
+
+  assertEquals(
+    sequence,
+    ["db:public_reply_status=unknown", "fetch:replyToComment"],
+    "o estado em voo precisa estar gravado ANTES da chamada externa, nunca depois",
+  );
+});
+
+Deno.test("executeSend: reentrada com public_reply_status='unknown' -> NÃO chama replyToComment, só reconcilia; achou -> sent", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: { ativo: true, dm_message: "msg", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // reconciled sent
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  // Sem handler `publicReply`: se o código chamar replyToComment na reentrada,
+  // routedFetch lança "fetch não mapeado" e o teste falha -- é a asserção por
+  // omissão para "nunca reposta".
+  const { fetchFn, calls: fetchCalls } = routedFetch({
+    fetchReplies: () => ({
+      body: { data: [{ id: "reply-found", text: "Verifique sua DM!", from: { id: IG_USER_ID } }] },
+    }),
+  });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn }),
+    baseClaimedSend({ dm_status: "sent", public_reply_status: "unknown" }),
+  );
+
+  assertEquals(fetchCalls.filter((c) => c.method === "POST" && c.url.includes("/replies")).length, 0, "nunca reposta");
+  assertEquals(fetchCalls.filter((c) => c.method === "GET" && c.url.includes("/replies?")).length, 1);
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 2);
+  assertEquals(sendUpdates[0].payload, { public_reply_id: "reply-found", public_reply_status: "sent" });
+  assertEquals(sendUpdates[1].payload, { status: "sent" });
+});
+
+Deno.test("executeSend: reentrada com 'unknown' e fetchReplies não encontra -> mantém unknown sem regravar, nunca reposta", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: { ativo: true, dm_message: "msg", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento (único update)
+
+  const { fetchFn, calls: fetchCalls } = routedFetch({
+    fetchReplies: () => ({ body: { data: [] } }),
+  });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn }),
+    baseClaimedSend({ dm_status: "sent", public_reply_status: "unknown" }),
+  );
+
+  assertEquals(fetchCalls.filter((c) => c.method === "POST" && c.url.includes("/replies")).length, 0, "nunca reposta");
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1, "não achou -> mantém 'unknown', nada a regravar além do fechamento");
+  assertEquals(sendUpdates[0].payload, { status: "sent_partial" });
 });
 
 Deno.test("executeSend: erro permanente no DM -> failed/dm_permanent, sem retry", async () => {
@@ -694,6 +833,7 @@ Deno.test("executeSend: erro não-timeout na resposta pública -> public_reply_s
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // public_reply_status='unknown' (em voo)
   db.queue("instagram_automation_sends", "update", { data: null, error: null }); // failed
   db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
 
@@ -704,9 +844,10 @@ Deno.test("executeSend: erro não-timeout na resposta pública -> public_reply_s
   await executeSend(baseSendCtx(db, { fetchFn }), baseClaimedSend({ dm_status: "sent" }));
 
   const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
-  assertEquals(sendUpdates.length, 2);
-  assertEquals(sendUpdates[0].payload, { public_reply_status: "failed" });
-  assertEquals(sendUpdates[1].payload, { status: "sent_partial" });
+  assertEquals(sendUpdates.length, 3);
+  assertEquals(sendUpdates[0].payload, { public_reply_status: "unknown" }, "estado em voo gravado ANTES do POST");
+  assertEquals(sendUpdates[1].payload, { public_reply_status: "failed" });
+  assertEquals(sendUpdates[2].payload, { status: "sent_partial" });
 });
 
 Deno.test("executeSend: 'já existe private reply' (already_replied) -> auto-correção, mark_automation_dm_sent chamado", async () => {

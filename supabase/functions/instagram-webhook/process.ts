@@ -255,10 +255,19 @@ async function processRow(svc: DbClient, row: EventRow, ctx: RowCtx): Promise<vo
   const sendId = claim.send_id;
 
   // 9. Throttle interno: sends com DM enviada na última hora, das automações
-  // do mesmo cliente (não só a que casou).
-  const clientAutomationIds = automationsAll
-    .filter((a) => a.client_id === winner.client_id)
-    .map((a) => a.id);
+  // do mesmo cliente (não só a que casou). Consulta DEDICADA, sem filtro de
+  // `ativo`: uma automação pausada continua contando para o teto -- ela pode
+  // ter disparado 690 DMs e sido pausada logo depois, e uma segunda automação
+  // ativa do MESMO cliente não pode contornar o teto só porque `automationsAll`
+  // (passo 2, filtrada `ativo=true`) não a enxerga mais.
+  const { data: clientAutomationRows, error: clientAutoErr } = await svc
+    .from("instagram_comment_automations")
+    .select("id")
+    .eq("client_id", winner.client_id);
+  if (clientAutoErr) {
+    throw new Error(`instagram_comment_automations (throttle): ${errMessage(clientAutoErr)}`);
+  }
+  const clientAutomationIds = ((clientAutomationRows ?? []) as Array<{ id: string }>).map((a) => a.id);
   const hourAgoIso = new Date(nowDate.getTime() - 60 * 60 * 1000).toISOString();
   const { count, error: countErr } = await svc
     .from("instagram_automation_sends")
@@ -435,61 +444,103 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
     }
   }
 
-  // 4. Resposta pública (opcional; NÃO idempotente -> nunca reposta).
+  // 4. Resposta pública (opcional; NÃO idempotente -> nunca reposta às cegas).
+  // Estado em voo: 'unknown' é gravado ANTES de chamar a Graph API, nunca
+  // depois. Se o comentário aceitar a reply mas o runtime morrer (ou o UPDATE
+  // de sucesso falhar) antes de gravarmos 'sent', a reentrada encontra
+  // `public_reply_status='unknown'` já persistido e SÓ reconcilia via GET
+  // replies -- nunca chama `replyToComment` de novo.
   let finalPublicReplyStatus = send.public_reply_status;
   if (automation.public_reply && send.public_reply_status !== "sent") {
-    try {
-      const { replyId } = await replyToComment(msgDeps, {
-        commentId: send.comment_id,
-        token,
-        text: automation.public_reply,
-      });
-      const { error } = await ctx.svc
+    if (send.public_reply_status === "unknown") {
+      // Reentrada após uma tentativa anterior que já pode ter postado (crash
+      // ou falha de persistência entre o POST e o UPDATE de sucesso): nunca
+      // reposta, só reconcilia via GET replies.
+      let found: { id: string } | undefined;
+      try {
+        const replies = await fetchReplies(msgDeps, { commentId: send.comment_id, token });
+        found = replies.find(
+          (r) => r.from?.id === send.instagram_user_id && r.text === automation.public_reply,
+        );
+      } catch (reconcileErr) {
+        console.error(
+          `[instagram-webhook] fetchReplies falhou na reconciliação (reentrada) do send ${send.send_id}:`,
+          errMessage(reconcileErr),
+        );
+      }
+      if (found) {
+        const { error } = await ctx.svc
+          .from("instagram_automation_sends")
+          .update({ public_reply_id: found.id, public_reply_status: "sent" })
+          .eq("id", send.send_id);
+        if (error) throw new Error(`instagram_automation_sends (public_reply reconciled): ${errMessage(error)}`);
+        finalPublicReplyStatus = "sent";
+      }
+      // Não achou -> mantém 'unknown' (já é o valor persistido; nada a regravar).
+    } else {
+      // Primeira tentativa (public_reply_status ainda null, ou 'failed' de uma
+      // rodada anterior confirmada sem post). Grava o estado em voo ANTES da
+      // chamada externa -- se este UPDATE falhar, nem tentamos `replyToComment`:
+      // deixamos a exceção subir (mesmo tratamento de qualquer erro de banco
+      // neste arquivo) para a linha ser reprocessada depois, em vez de arriscar
+      // um POST sem registro do estado em voo.
+      const { error: markErr } = await ctx.svc
         .from("instagram_automation_sends")
-        .update({ public_reply_id: replyId, public_reply_status: "sent" })
+        .update({ public_reply_status: "unknown" })
         .eq("id", send.send_id);
-      if (error) throw new Error(`instagram_automation_sends (public_reply sent): ${errMessage(error)}`);
-      finalPublicReplyStatus = "sent";
-    } catch (err) {
-      const kind = classifyIgError(err);
-      if (kind === "timeout") {
-        // Resultado ambíguo: reconcilia via GET replies procurando a nossa
-        // própria reply com o texto configurado. Sem achar (ou erro na
-        // reconciliação) -> 'unknown', nunca posta de novo.
-        let found: { id: string } | undefined;
-        try {
-          const replies = await fetchReplies(msgDeps, { commentId: send.comment_id, token });
-          found = replies.find(
-            (r) => r.from?.id === send.instagram_user_id && r.text === automation.public_reply,
-          );
-        } catch (reconcileErr) {
-          console.error(
-            `[instagram-webhook] fetchReplies falhou na reconciliação do send ${send.send_id}:`,
-            errMessage(reconcileErr),
-          );
-        }
-        if (found) {
-          const { error } = await ctx.svc
-            .from("instagram_automation_sends")
-            .update({ public_reply_id: found.id, public_reply_status: "sent" })
-            .eq("id", send.send_id);
-          if (error) throw new Error(`instagram_automation_sends (public_reply reconciled): ${errMessage(error)}`);
-          finalPublicReplyStatus = "sent";
+      if (markErr) {
+        throw new Error(`instagram_automation_sends (public_reply em voo): ${errMessage(markErr)}`);
+      }
+      finalPublicReplyStatus = "unknown";
+
+      try {
+        const { replyId } = await replyToComment(msgDeps, {
+          commentId: send.comment_id,
+          token,
+          text: automation.public_reply,
+        });
+        const { error } = await ctx.svc
+          .from("instagram_automation_sends")
+          .update({ public_reply_id: replyId, public_reply_status: "sent" })
+          .eq("id", send.send_id);
+        if (error) throw new Error(`instagram_automation_sends (public_reply sent): ${errMessage(error)}`);
+        finalPublicReplyStatus = "sent";
+      } catch (err) {
+        const kind = classifyIgError(err);
+        if (kind === "timeout") {
+          // Resultado ambíguo: reconcilia via GET replies procurando a nossa
+          // própria reply com o texto configurado. Sem achar (ou erro na
+          // reconciliação) -> fica 'unknown' (já gravado acima), nunca posta de novo.
+          let found: { id: string } | undefined;
+          try {
+            const replies = await fetchReplies(msgDeps, { commentId: send.comment_id, token });
+            found = replies.find(
+              (r) => r.from?.id === send.instagram_user_id && r.text === automation.public_reply,
+            );
+          } catch (reconcileErr) {
+            console.error(
+              `[instagram-webhook] fetchReplies falhou na reconciliação do send ${send.send_id}:`,
+              errMessage(reconcileErr),
+            );
+          }
+          if (found) {
+            const { error } = await ctx.svc
+              .from("instagram_automation_sends")
+              .update({ public_reply_id: found.id, public_reply_status: "sent" })
+              .eq("id", send.send_id);
+            if (error) {
+              throw new Error(`instagram_automation_sends (public_reply reconciled): ${errMessage(error)}`);
+            }
+            finalPublicReplyStatus = "sent";
+          }
         } else {
           const { error } = await ctx.svc
             .from("instagram_automation_sends")
-            .update({ public_reply_status: "unknown" })
+            .update({ public_reply_status: "failed" })
             .eq("id", send.send_id);
-          if (error) throw new Error(`instagram_automation_sends (public_reply unknown): ${errMessage(error)}`);
-          finalPublicReplyStatus = "unknown";
+          if (error) throw new Error(`instagram_automation_sends (public_reply failed): ${errMessage(error)}`);
+          finalPublicReplyStatus = "failed";
         }
-      } else {
-        const { error } = await ctx.svc
-          .from("instagram_automation_sends")
-          .update({ public_reply_status: "failed" })
-          .eq("id", send.send_id);
-        if (error) throw new Error(`instagram_automation_sends (public_reply failed): ${errMessage(error)}`);
-        finalPublicReplyStatus = "failed";
       }
     }
   }
