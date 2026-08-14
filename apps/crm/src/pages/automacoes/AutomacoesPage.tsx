@@ -409,8 +409,8 @@ export default function AutomacoesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir "{deleteTarget?.name}"?</AlertDialogTitle>
             <AlertDialogDescription>
-              A automação para de responder comentários imediatamente. O histórico de envios já
-              feitos é mantido.
+              A automação para de responder comentários imediatamente e o histórico de envios dela é
+              removido junto.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

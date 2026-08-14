@@ -122,6 +122,41 @@ describe('getInstagramAccountStatuses', () => {
     expect(map.get(5)?.canAutomate).toBe(false);
   });
 
+  it('canAutomate requires an active, non-expired authorization even with permissions and subscription', async () => {
+    mockedSupabase.__queueSupabaseResult('instagram_accounts', 'select', {
+      data: [
+        {
+          client_id: 6,
+          authorization_status: 'revoked',
+          token_expires_at: '2999-01-01T00:00:00.000Z',
+          permissions: ['instagram_business_manage_comments'],
+          comments_subscribed_at: '2026-08-01T00:00:00.000Z',
+        },
+        {
+          client_id: 7,
+          authorization_status: 'active',
+          token_expires_at: '2000-01-01T00:00:00.000Z',
+          permissions: ['instagram_business_manage_comments'],
+          comments_subscribed_at: '2026-08-01T00:00:00.000Z',
+        },
+        {
+          client_id: 8,
+          authorization_status: 'active',
+          token_expires_at: '2999-01-01T00:00:00.000Z',
+          permissions: ['instagram_business_manage_comments'],
+          comments_subscribed_at: '2026-08-01T00:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    const map = await store.getInstagramAccountStatuses([6, 7, 8]);
+
+    expect(map.get(6)?.canAutomate).toBe(false); // revoked, despite permissions + subscription
+    expect(map.get(7)?.canAutomate).toBe(false); // expired token, despite permissions + subscription
+    expect(map.get(8)?.canAutomate).toBe(true); // active + scope + subscription
+  });
+
   it('throws when the query errors', async () => {
     mockedSupabase.__queueSupabaseResult('instagram_accounts', 'select', {
       data: null,

@@ -105,15 +105,18 @@ export async function getInstagramAccountStatuses(
     comments_subscribed_at: string | null;
   }>) {
     if (row.client_id == null) continue;
+    const expired =
+      row.authorization_status === 'expired' ||
+      (row.token_expires_at ? new Date(row.token_expires_at).getTime() < now : false);
     result.set(row.client_id, {
       revoked: row.authorization_status === 'revoked',
-      expired:
-        row.authorization_status === 'expired' ||
-        (row.token_expires_at ? new Date(row.token_expires_at).getTime() < now : false),
+      expired,
       canPublish:
         Array.isArray(row.permissions) &&
         row.permissions.includes('instagram_business_content_publish'),
       canAutomate:
+        row.authorization_status === 'active' &&
+        !expired &&
         Array.isArray(row.permissions) &&
         row.permissions.includes('instagram_business_manage_comments') &&
         row.comments_subscribed_at != null,
