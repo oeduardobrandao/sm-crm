@@ -258,6 +258,13 @@ automação casar, a mais antiga vence". Sem campo `priority` no v1.
   `instagram-connect-link/handler.ts:10`) → extrair para
   `_shared/instagram-scopes.ts` e adicionar só
   `instagram_business_manage_comments`.
+- **O escopo novo só entra na URL de OAuth atrás da env var
+  `IG_AUTOMATION_SCOPES_LIVE`** (padrão `TIKTOK_APP_AUDITED`). Antes do
+  Advanced Access, pedir o escopo para usuário sem papel no app pode quebrar o
+  dialog de login ("Invalid Scopes"); produção segue pedindo só o trio
+  aprovado até o review passar. Teste real: flag ligada no staging (contas com
+  papel no app funcionam em Standard Access). Aprovado o review, liga em
+  produção e os clientes veem a caixa nova ao reconectar.
 - O escopo novo é **opcional** no check `MISSING_PERMISSIONS` (o trio básico
   continua obrigatório) e **fail-closed no registro**: nunca entra no fallback
   otimista de `permissions[]` (hoje o callback grava os escopos pedidos quando
@@ -372,8 +379,9 @@ automação casar, a mais antiga vence". Sem campo `priority` no v1.
    Access): screencast do fluxo completo (conectar → criar automação →
    comentar → DM chega) + justificativa: automação de atendimento a
    comentários para contas profissionais gerenciadas por agências.
-6. Após aprovação: ligar `feature_instagram_automation` nos planos escolhidos
-   (admin).
+6. Após aprovação: ligar `IG_AUTOMATION_SCOPES_LIVE=true` em produção (a URL
+   de OAuth passa a pedir o escopo novo para todo mundo) e ligar
+   `feature_instagram_automation` nos planos escolhidos (admin).
 
 ## Deploy (ordem)
 

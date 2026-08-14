@@ -498,7 +498,8 @@ git commit -m "feat(automacoes): RPCs de claim/estado e tipo de notificação"
 
 **Interfaces:**
 - Produces:
-  - `IG_BASE_SCOPES: readonly string[]` (o trio atual, obrigatório), `IG_OPTIONAL_SCOPES: readonly string[]` (`['instagram_business_manage_comments']`), `IG_ALL_SCOPES: readonly string[]`, `IG_SCOPE_PARAM: string` (join por vírgula de ALL)
+  - `IG_BASE_SCOPES: readonly string[]` (o trio atual, obrigatório), `IG_OPTIONAL_SCOPES: readonly string[]` (`['instagram_business_manage_comments']`), `IG_ALL_SCOPES: readonly string[]`
+  - `buildScopeParam(includeOptional: boolean): string` — join por vírgula do trio, com os opcionais anexados só quando `includeOptional`. Os call sites decidem por `Deno.env.get('IG_AUTOMATION_SCOPES_LIVE') === 'true'` (lido no `index.ts` de cada função e passado adiante; em `instagram-connect-link` vira dep injetada no handler). ANTES do Advanced Access, pedir o escopo para usuário sem papel no app pode quebrar o dialog de OAuth; a env var mantém produção no trio até o review aprovar.
   - `GRAPH_VERSION = "v22.0"`, `GRAPH_BASE = "https://graph.instagram.com/v22.0"`, `throwGraphError(data: any): never` (mesmo corpo de hoje, agora exportado)
 
 - [ ] **Step 1: Teste falhando**
@@ -507,7 +508,7 @@ git commit -m "feat(automacoes): RPCs de claim/estado e tipo de notificação"
 // supabase/functions/__tests__/instagram-scopes_test.ts
 import { assert, assertEquals } from "./assert.ts";
 import {
-  IG_ALL_SCOPES, IG_BASE_SCOPES, IG_OPTIONAL_SCOPES, IG_SCOPE_PARAM,
+  buildScopeParam, IG_ALL_SCOPES, IG_BASE_SCOPES, IG_OPTIONAL_SCOPES,
 } from "../_shared/instagram-scopes.ts";
 
 Deno.test("base scopes são exatamente o trio historicamente pedido", () => {
@@ -523,8 +524,9 @@ Deno.test("único escopo opcional do v1 é manage_comments (nunca manage_message
   assert(!IG_ALL_SCOPES.includes("instagram_business_manage_messages"));
 });
 
-Deno.test("scope param é ALL em ordem, separado por vírgula", () => {
-  assertEquals(IG_SCOPE_PARAM, IG_ALL_SCOPES.join(","));
+Deno.test("buildScopeParam: trio sem a flag; trio + opcionais com a flag", () => {
+  assertEquals(buildScopeParam(false), IG_BASE_SCOPES.join(","));
+  assertEquals(buildScopeParam(true), IG_ALL_SCOPES.join(","));
 });
 ```
 
@@ -551,7 +553,13 @@ export const IG_OPTIONAL_SCOPES = ["instagram_business_manage_comments"] as cons
 
 export const IG_ALL_SCOPES: readonly string[] = [...IG_BASE_SCOPES, ...IG_OPTIONAL_SCOPES];
 
-export const IG_SCOPE_PARAM = IG_ALL_SCOPES.join(",");
+/** Os opcionais só entram na URL de OAuth quando IG_AUTOMATION_SCOPES_LIVE
+ * estiver ligada (Advanced Access aprovado, ou staging para teste com conta
+ * com papel no app): pedir escopo sem Advanced Access para usuário sem papel
+ * pode quebrar o dialog de login da Meta. */
+export function buildScopeParam(includeOptional: boolean): string {
+  return (includeOptional ? IG_ALL_SCOPES : IG_BASE_SCOPES).join(",");
+}
 ```
 
 ```ts
@@ -574,15 +582,18 @@ export function throwGraphError(data: any): never {
 Em `instagram-publish-utils.ts`: apagar as definições locais e adicionar
 `import { GRAPH_BASE, throwGraphError } from "./instagram-graph.ts";`.
 
-Em `instagram-integration/index.ts`: importar `IG_SCOPE_PARAM` e `IG_BASE_SCOPES`;
-na URL de autorização (linha ~157) trocar a string literal por `${IG_SCOPE_PARAM}`;
-na linha ~264 trocar `const REQUESTED_SCOPES = [...]` por
-`const REQUESTED_SCOPES = [...IG_BASE_SCOPES];` (o check MISSING_PERMISSIONS
-continua só sobre o trio).
+Em `instagram-integration/index.ts`: importar `buildScopeParam` e `IG_BASE_SCOPES`;
+no topo do módulo, `const IG_SCOPES_LIVE = Deno.env.get("IG_AUTOMATION_SCOPES_LIVE") === "true";`
+na URL de autorização (linha ~157) trocar a string literal por
+`${buildScopeParam(IG_SCOPES_LIVE)}`; na linha ~264 trocar
+`const REQUESTED_SCOPES = [...]` por `const REQUESTED_SCOPES = [...IG_BASE_SCOPES];`
+(o check MISSING_PERMISSIONS continua só sobre o trio).
 
-Em `instagram-connect-link/handler.ts`: trocar `const IG_SCOPES = "..."` por
-`import { IG_SCOPE_PARAM } from "../_shared/instagram-scopes.ts";` e usar
-`IG_SCOPE_PARAM` no ponto de uso (linha ~217).
+Em `instagram-connect-link`: o `index.ts` lê a env
+(`automationScopesLive: Deno.env.get("IG_AUTOMATION_SCOPES_LIVE") === "true"`)
+e injeta como dep; `handler.ts` troca `const IG_SCOPES = "..."` por
+`buildScopeParam(deps.automationScopesLive)` no ponto de uso (linha ~217) —
+handlers não leem `Deno.env` (convenção index/handler).
 
 - [ ] **Step 4: Rodar testes (novos + suite inteira, para pegar regressão do publish-utils)**
 
@@ -1771,7 +1782,7 @@ git commit -m "feat(automacoes): página global /automacoes com nav flag-ou-coun
 
 **Files:**
 - Create: `supabase/tests/entitlements/65_instagram_automations.sql`
-- Modify: `CLAUDE.md` (documentar `META_WEBHOOK_VERIFY_TOKEN` na seção de env vars das edge functions; mencionar `AUTOMATION_HOURLY_CAP` opcional se implementado como env)
+- Modify: `CLAUDE.md` (documentar na seção de env vars das edge functions: `META_WEBHOOK_VERIFY_TOKEN` (obrigatória no instagram-webhook, throw no boot); `IG_AUTOMATION_SCOPES_LIVE` (opcional, default off: enquanto desligada a URL de OAuth pede só o trio aprovado; ligar SÓ depois do Advanced Access de manage_comments, ou em staging para teste); `AUTOMATION_HOURLY_CAP` opcional se implementado como env)
 - Modify: `README.md` (contagem de edge functions: "54" vira o número real após as 2 novas; conferir com `ls supabase/functions | grep -v _shared | grep -v __tests__ | grep -v test | wc -l`)
 
 - [ ] **Step 1: Ler o harness antes de escrever**
