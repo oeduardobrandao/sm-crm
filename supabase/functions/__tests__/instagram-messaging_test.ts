@@ -51,3 +51,9 @@ Deno.test("fetchSubscribedFields devolve nomes dos campos assinados", async () =
   const fetchFn = fakeFetch(200, { data: [{ subscribed_fields: ["comments"] }] });
   assertEquals(await fetchSubscribedFields({ fetchFn }, "tk"), ["comments"]);
 });
+
+Deno.test("classifyIgError respeita err.kind mesmo com overlap 190 + already_replied", () => {
+  const e = new IgApiError("The comment has already received a private reply", { graphCode: 190 });
+  assertEquals(e.kind, "already_replied");
+  assertEquals(classifyIgError(e), e.kind);
+});

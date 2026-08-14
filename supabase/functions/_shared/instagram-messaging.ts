@@ -30,15 +30,14 @@ export class IgApiError extends Error {
 }
 
 function classifyRaw(message: string, graphCode?: number): IgErrorKind {
-  if (graphCode === 190) return "token_expired";
   if (ALREADY_REPLIED_RE.test(message)) return "already_replied";
+  if (graphCode === 190) return "token_expired";
   if (graphCode !== undefined && TRANSIENT_GRAPH_CODES.has(graphCode)) return "transient";
   return "permanent";
 }
 
 export function classifyIgError(err: unknown): IgErrorKind {
   if (err instanceof IgApiError) {
-    if (ALREADY_REPLIED_RE.test(err.message)) return "already_replied";
     return err.kind;
   }
   if (err instanceof DOMException && err.name === "TimeoutError") return "timeout";
