@@ -4,6 +4,7 @@ import { PagarmeApiError } from "../_shared/pagarme.ts";
 import { createPagarmeCheckoutHandler } from "../pagarme-checkout/handler.ts";
 import { PagarmeGateway, PagarmeSubscriptionResponse } from "../pagarme-checkout/gateway.ts";
 import { PagarmeCheckoutRequest } from "../pagarme-checkout/logic.ts";
+import { StripeSwitchGateway } from "../_shared/stripe-switch.ts";
 
 const NOW = new Date("2026-08-12T12:00:00.000Z");
 const WS = "22222222-2222-2222-2222-222222222222";
@@ -31,6 +32,21 @@ const PLAN = {
   // à vista annual total (95900). This is the whole point of Fase 8.
   pagarme_installment_cents: 9490,
 };
+
+const SWITCH_REQ: PagarmeCheckoutRequest = { ...REQ, isSwitch: true };
+const STRIPE_ROW = {
+  provider: "stripe",
+  stripe_subscription_id: "sub_s1",
+  pagarme_customer_id: null,
+  pagarme_subscription_id: null,
+  status: "active",
+  cancel_at_period_end: false,
+  current_period_end: "2026-09-15T14:23:11Z",
+  ever_subscribed_at: "2026-01-01T00:00:00Z",
+  billing_interval: "month",
+  plan_id: "start",
+};
+const WS_ROW = { plan_id: "start", plan_source: "system" };
 
 type Ev = {
   op: string;
@@ -61,6 +77,11 @@ function makeDb(fx: {
   planWriteError?: { message: string } | null;
   /** Rows returned by the stale-pending-attempt read (step 3). Defaults to none. */
   stalePending?: Array<{ id: string; pagarme_subscription_id: string | null }>;
+  /** Linha devolvida pelo read de workspaces do PASSO 3b do switch (plan_id + plan_source)
+   * e pelo read do plan-writer (que so olha plan_source). */
+  workspaceRow?: { plan_id?: string | null; plan_source: string };
+  /** True = existe attempt quarantined para o workspace (gate amigavel da decisao 10). */
+  quarantinedAttempt?: boolean;
   events: Ev[];
 }): SupabaseClient {
   const from = (table: string) => {
@@ -71,6 +92,7 @@ function makeDb(fx: {
     const chain: any = {};
     chain.select = () => chain;
     chain.lt = () => chain;
+    chain.limit = () => chain;
     chain.abortSignal = () => chain;
     chain.eq = (col: string, val: unknown) => {
       filters.push(["eq", col, val]);
@@ -107,6 +129,9 @@ function makeDb(fx: {
         return { data: null, error: fx.bindInsertError ?? null };
       }
       if (table === "pagarme_checkout_attempts" && op === "read") {
+        if (filters.some(([m, c, v]) => m === "eq" && c === "state" && v === "quarantined")) {
+          return { data: fx.quarantinedAttempt ? { id: "at-q" } : null, error: null };
+        }
         return { data: fx.stalePending ?? [], error: null };
       }
       if (table === "pagarme_checkout_attempts" && op === "insert") {
@@ -120,7 +145,7 @@ function makeDb(fx: {
         return { data: null, error: fx.attemptPointerError ?? null };
       }
       if (table === "workspaces" && op === "read") {
-        return { data: { plan_source: "system" }, error: null };
+        return { data: fx.workspaceRow ?? { plan_source: "system" }, error: null };
       }
       if (table === "workspaces" && op === "update") {
         return { data: null, error: fx.planWriteError ?? null };
@@ -201,18 +226,71 @@ function makeGateway(fx: {
   };
 }
 
+// Fronteira do mensal de teste: 2026-09-15T14:23:11Z -> ceil = "2026-09-16".
+const STRIPE_BOUNDARY_UNIX = Math.floor(Date.parse("2026-09-15T14:23:11Z") / 1000);
+const STRIPE_SUB_MONTHLY = {
+  status: "active",
+  cancel_at_period_end: false,
+  current_period_end: STRIPE_BOUNDARY_UNIX,
+  items: { data: [{ price: { id: "price_m1", recurring: { interval: "month" } } }] },
+};
+
+function makeStripeSwitch(fx: {
+  calls: Array<{ method: string; args: unknown[] }>;
+  retrieveResult?: unknown;
+  retrieveThrows?: unknown;
+  /** Lanca em setCancelAtPeriodEnd(id, true) (a perna do switch). */
+  setCancelTrueThrows?: unknown;
+  /** Lanca em setCancelAtPeriodEnd(id, false). */
+  setCancelFalseThrows?: unknown;
+}): StripeSwitchGateway {
+  const record = (method: string, args: unknown[]) => fx.calls.push({ method, args });
+  return {
+    retrieveSubscription: (id) => {
+      record("retrieveSubscription", [id]);
+      if (fx.retrieveThrows) return Promise.reject(fx.retrieveThrows);
+      return Promise.resolve(fx.retrieveResult ?? STRIPE_SUB_MONTHLY);
+    },
+    setCancelAtPeriodEnd: (id, value) => {
+      record("setCancelAtPeriodEnd", [id, value]);
+      if (value === true && fx.setCancelTrueThrows) return Promise.reject(fx.setCancelTrueThrows);
+      if (value === false && fx.setCancelFalseThrows) return Promise.reject(fx.setCancelFalseThrows);
+      return Promise.resolve();
+    },
+    cancelNow: (id) => {
+      record("cancelNow", [id]);
+      return Promise.resolve();
+    },
+    fetchAmount: (id) => {
+      record("fetchAmount", [id]);
+      return Promise.resolve({
+        amount_cents: 9990,
+        gross_cents: null,
+        currency: "brl",
+        interval: "month",
+        discount_label: null,
+        livemode: false,
+      });
+    },
+  };
+}
+
 function run(
   dbFx: Omit<Parameters<typeof makeDb>[0], "events">,
   gwFx: Omit<Parameters<typeof makeGateway>[0], "calls"> = {},
+  swFx?: Omit<Parameters<typeof makeStripeSwitch>[0], "calls"> | null,
+  req: PagarmeCheckoutRequest = REQ,
 ) {
   const events: Ev[] = [];
   const calls: Array<{ method: string; args: unknown[] }> = [];
+  const stripeCalls: Array<{ method: string; args: unknown[] }> = [];
   const handle = createPagarmeCheckoutHandler({
     db: makeDb({ ...dbFx, events }),
     gateway: makeGateway({ ...gwFx, calls }),
     now: () => NOW,
+    stripeSwitch: swFx === null ? null : makeStripeSwitch({ ...(swFx ?? {}), calls: stripeCalls }),
   });
-  return { events, calls, result: handle(CTX, REQ) };
+  return { events, calls, stripeCalls, result: handle(CTX, req) };
 }
 
 /** Patches console.error/warn for the duration of `fn`, capturing every call as a joined
@@ -806,4 +884,153 @@ Deno.test("stale orphan cancel 401/403/429: reservation kept (says nothing about
       `no new reservation for ${status}`,
     );
   }
+});
+
+// ─── Switch mensal Stripe -> 12x: gates pre-reserva (Fase 5) ───────────────
+
+// TODO Task 6: remove ignore (the switch creation path with start_at lands in Task 6).
+Deno.test({
+  name: "switch: linha stripe active elegivel passa do gate e chega na reserva",
+  ignore: true,
+  fn: async () => {
+    const { events, result } = run(
+      { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW },
+      { subStatus: "future", subStartAt: "2026-09-16" },
+      {},
+      SWITCH_REQ,
+    );
+    const res = await result;
+    assertEquals(res.status, 200);
+    assert(events.some((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert"));
+  },
+});
+
+Deno.test("switch: linha inelegivel (past_due) -> 409 switch_not_eligible, zero remoto, zero reserva", async () => {
+  const { events, calls, stripeCalls, result } = run(
+    { plan: PLAN, subRow: { ...STRIPE_ROW, status: "past_due" }, workspaceRow: WS_ROW },
+    {},
+    {},
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 409);
+  assertEquals((res.body as { code?: string }).code, "switch_not_eligible");
+  assertEquals(calls.length, 0);
+  assertEquals(stripeCalls.length, 0);
+  assert(!events.some((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert"));
+});
+
+Deno.test("switch: stripeSwitch null (env dark) -> 500, zero reserva", async () => {
+  const { events, result } = run(
+    { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW },
+    {},
+    null,
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 500);
+  assert(!events.some((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert"));
+});
+
+Deno.test("switch: verify remoto diz anual -> 409 antes da reserva", async () => {
+  const annual = {
+    ...STRIPE_SUB_MONTHLY,
+    items: { data: [{ price: { id: "p_y", recurring: { interval: "year" } } }] },
+  };
+  const { events, calls, result } = run(
+    { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW },
+    {},
+    { retrieveResult: annual },
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 409);
+  assertEquals(calls.length, 0);
+  assert(!events.some((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert"));
+});
+
+Deno.test("switch: fronteira remota ja passada -> 409 com copy de renovacao", async () => {
+  const elapsed = { ...STRIPE_SUB_MONTHLY, current_period_end: Math.floor(Date.parse("2026-08-01T00:00:00Z") / 1000) };
+  const { result } = run(
+    { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW },
+    {},
+    { retrieveResult: elapsed },
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 409);
+  assertEquals(
+    (res.body as { error?: string }).error,
+    "Sua renovação está em processamento. Tente novamente em alguns minutos.",
+  );
+});
+
+Deno.test("switch: retrieve remoto lanca -> 500, zero reserva", async () => {
+  const { events, result } = run(
+    { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW },
+    {},
+    { retrieveThrows: new Error("stripe down") },
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 500);
+  assert(!events.some((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert"));
+});
+
+Deno.test("switch: plan_source manual -> 409 pre-reserva (decisao 11)", async () => {
+  const { result } = run(
+    { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: { plan_id: "pro", plan_source: "manual" } },
+    {},
+    {},
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 409);
+});
+
+// TODO Task 6: remove ignore (the switch creation path with start_at lands in Task 6).
+Deno.test({
+  name: "switch: plano-fonte prefere workspaces.plan_id; row.plan_id e fallback",
+  ignore: true,
+  fn: async () => {
+    // workspaces.plan_id=pro, row.plan_id=start -> marker de plano deve ser pro (Task 6 asserta
+    // o bind; aqui so garante que NAO 409a e diverge com log)
+    const { result } = await (async () => {
+      const r = run(
+        { plan: PLAN, subRow: { ...STRIPE_ROW, plan_id: "start" }, workspaceRow: { plan_id: "pro", plan_source: "system" } },
+        { subStatus: "future", subStartAt: "2026-09-16" },
+        {},
+        SWITCH_REQ,
+      );
+      return { result: await r.result };
+    })();
+    assertEquals(result.status, 200);
+  },
+});
+
+Deno.test("switch: ambos os planos-fonte null -> 409 pre-reserva", async () => {
+  const { events, result } = run(
+    { plan: PLAN, subRow: { ...STRIPE_ROW, plan_id: null }, workspaceRow: { plan_id: null, plan_source: "system" } },
+    {},
+    {},
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 409);
+  assert(!events.some((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert"));
+});
+
+Deno.test("quarentena existente -> 409 antes da reserva (qualquer request, nao so switch)", async () => {
+  const { events, result } = run({ plan: PLAN, subRow: null, quarantinedAttempt: true });
+  const res = await result;
+  assertEquals(res.status, 409);
+  assertEquals((res.body as { code?: string }).code, "quarantined");
+  assert(!events.some((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert"));
+});
+
+Deno.test("regressao: nao-switch continua 409 em linha stripe in-force", async () => {
+  const { result } = run({ plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW });
+  const res = await result;
+  assertEquals(res.status, 409);
+  assertEquals((res.body as { error?: string }).error, "Este workspace já tem uma assinatura vigente.");
 });

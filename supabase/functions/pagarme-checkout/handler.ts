@@ -14,13 +14,19 @@ import {
 import { PagarmeApiError } from "../_shared/pagarme.ts";
 import { writeWorkspacePlan } from "../_shared/plan-writer.ts";
 import {
+  assessStripeSourceSub,
+  StripeSwitchGateway,
+} from "../_shared/stripe-switch.ts";
+import {
   buildAttemptIdempotencyKey,
   buildPagarmeSubscriptionColumns,
+  ceilToUtcMidnightDate,
   mapGatewayFailure,
   PagarmeCheckoutRequest,
   pagarmeCheckoutBlocked,
   resolveAmountMirror,
   resolveStartAt,
+  stripeSwitchSourceEligible,
 } from "./logic.ts";
 import { PagarmeGateway, PagarmeSubscriptionResponse } from "./gateway.ts";
 
@@ -46,6 +52,8 @@ export function createPagarmeCheckoutHandler(deps: {
   db: SupabaseClient;
   gateway: PagarmeGateway;
   now: () => Date;
+  /** Porta Stripe do switch. null/ausente = ambiente sem STRIPE_SECRET_KEY: switch 500a. */
+  stripeSwitch?: StripeSwitchGateway | null;
 }) {
   return async function handle(
     ctx: CheckoutContext,
@@ -88,14 +96,148 @@ export function createPagarmeCheckoutHandler(deps: {
     const { data: row, error: rowErr } = await db
       .from("workspace_subscriptions")
       .select(
-        "provider, stripe_subscription_id, pagarme_customer_id, pagarme_subscription_id, status, cancel_at_period_end, current_period_end, ever_subscribed_at",
+        "provider, stripe_subscription_id, pagarme_customer_id, pagarme_subscription_id, status, cancel_at_period_end, current_period_end, ever_subscribed_at, billing_interval, plan_id",
       )
       .eq("workspace_id", ctx.workspaceId)
       .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
       .maybeSingle();
     if (rowErr) throw new Error(`subscription read failed: ${rowErr.message}`);
-    if (pagarmeCheckoutBlocked(row, now)) {
+
+    const GENERIC_500 = {
+      error: "Erro ao processar o pagamento. Tente novamente.",
+      code: "gateway_error",
+    };
+    const ROW_CONFLICT_409 = { error: "Este workspace já tem uma assinatura vigente." };
+
+    // ── Switch mensal Stripe -> 12x (spec 2026-08-14). Gate local estrito + verificacao
+    // REMOTA como autoridade + plano-fonte, tudo ANTES da reserva: nada remoto foi criado,
+    // entao cada saida aqui e um 4xx/5xx limpo sem compensacao. O retrieve read-only antes
+    // da reserva e excecao documentada a regra "nenhuma chamada remota antes da reserva"
+    // (nao cria recurso; mesma familia da excecao do self-heal abaixo). ──
+    const isSwitch = reqData.isSwitch;
+    const SWITCH_NOT_ELIGIBLE_409 = {
+      status: 409,
+      body: {
+        error: "A troca está disponível apenas para assinaturas mensais ativas.",
+        code: "switch_not_eligible",
+      },
+    } as const;
+    let switchBoundary: Date | null = null;
+    let switchSourcePlanId: string | null = null;
+    let switchObserved: { status: "active" | "trialing"; cancelAtPeriodEnd: boolean } | null =
+      null;
+    if (isSwitch) {
+      if (!row || !stripeSwitchSourceEligible(row)) return { ...SWITCH_NOT_ELIGIBLE_409 };
+      if (!deps.stripeSwitch) {
+        console.error("[pagarme-checkout] switch requested but no Stripe gateway configured");
+        return { status: 500, body: GENERIC_500 };
+      }
+      let remoteSub: unknown;
+      try {
+        remoteSub = await deps.stripeSwitch.retrieveSubscription(
+          row.stripe_subscription_id as string,
+        );
+      } catch (e) {
+        console.error(
+          "[pagarme-checkout] switch verify failed:",
+          e instanceof Error ? e.message : String(e),
+        );
+        return { status: 500, body: GENERIC_500 };
+      }
+      const assessed = assessStripeSourceSub(remoteSub, now);
+      if (!assessed.ok) {
+        if (assessed.code === "boundary_elapsed") {
+          return {
+            status: 409,
+            body: {
+              error: "Sua renovação está em processamento. Tente novamente em alguns minutos.",
+              code: "switch_not_eligible",
+            },
+          };
+        }
+        return { ...SWITCH_NOT_ELIGIBLE_409 };
+      }
+      switchBoundary = assessed.periodEnd;
+      switchObserved = {
+        status: assessed.status,
+        cancelAtPeriodEnd: assessed.cancelAtPeriodEnd,
+      };
+
+      // Plano-fonte NAO nulo antes de criar qualquer coisa: o undo precisa cumprir
+      // "continua como estava". workspaces.plan_id (fonte efetiva) primeiro; row.plan_id e
+      // fallback (o stripe-webhook grava null para price desconhecido). plan_source manual
+      // nao troca em self-service: writeWorkspacePlan preservaria o comp e a copy de
+      // concessao imediata viraria mentira (decisao 11).
+      const { data: ws, error: wsErr } = await db
+        .from("workspaces")
+        .select("plan_id, plan_source")
+        .eq("id", ctx.workspaceId)
+        .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
+        .single();
+      if (wsErr) throw new Error(`workspace read failed: ${wsErr.message}`);
+      if (ws?.plan_source === "manual") {
+        return {
+          status: 409,
+          body: {
+            error: "Seu plano é gerenciado pelo suporte. Fale com a gente para trocar.",
+            code: "switch_not_eligible",
+          },
+        };
+      }
+      const wsPlanId = (ws?.plan_id as string | null) ?? null;
+      const rowPlanId = (row.plan_id as string | null) ?? null;
+      if (wsPlanId !== rowPlanId) {
+        console.warn(
+          `[pagarme-checkout] switch source plan divergence for workspace ${ctx.workspaceId}: workspaces=${wsPlanId} row=${rowPlanId}`,
+        );
+      }
+      switchSourcePlanId = wsPlanId ?? rowPlanId;
+      if (!switchSourcePlanId) {
+        return {
+          status: 409,
+          body: {
+            error: "Não foi possível confirmar seu plano atual. Fale com o suporte.",
+            code: "switch_not_eligible",
+          },
+        };
+      }
+    }
+    // switchObserved/switchBoundary are consumed by the switch CREATION path landing in Task
+    // 6 (the marker columns and the ceiled start_at); ceilToUtcMidnightDate likewise. Voided
+    // here so a lint pass on this file stays clean in the meantime — TODO Task 6: remove.
+    void switchObserved;
+    void switchBoundary;
+    void ceilToUtcMidnightDate;
+
+    // Carve-out: switch eligibility was already fully validated above, so isSwitch here
+    // implies eligible and this check only ever fires for the non-switch path. Kept BEFORE
+    // the quarantine read below so a plain blocked-row request still short-circuits with
+    // zero pagarme_checkout_attempts touches, exactly like before the switch/quarantine gates
+    // existed (no DB call needed: pagarmeCheckoutBlocked is a pure check on the row already
+    // in hand).
+    if (!isSwitch && pagarmeCheckoutBlocked(row, now)) {
       return { status: 409, body: { error: "Este workspace já tem uma assinatura vigente." } };
+    }
+
+    // Quarentena (decisao 10): read amigavel para a mensagem; a garantia atomica e o
+    // indice unico parcial alargado (a reserva abaixo 23505a se uma quarentena existir).
+    const { data: quarantinedAttempt, error: quarantineErr } = await db
+      .from("pagarme_checkout_attempts")
+      .select("id")
+      .eq("workspace_id", ctx.workspaceId)
+      .eq("state", "quarantined")
+      .limit(1)
+      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
+      .maybeSingle();
+    if (quarantineErr) throw new Error(`quarantine read failed: ${quarantineErr.message}`);
+    if (quarantinedAttempt) {
+      return {
+        status: 409,
+        body: {
+          error: "Encontramos uma cobrança que precisa de revisão. Fale com o suporte.",
+          code: "quarantined",
+        },
+      };
     }
 
     // (3) Self-heal stale reservations, then reserve atomically. A crash between reserving
@@ -203,12 +345,6 @@ export function createPagarmeCheckoutHandler(deps: {
         );
       }
     };
-
-    const GENERIC_500 = {
-      error: "Erro ao processar o pagamento. Tente novamente.",
-      code: "gateway_error",
-    };
-    const ROW_CONFLICT_409 = { error: "Este workspace já tem uma assinatura vigente." };
 
     let stage: "customer" | "card" | "subscription" = "customer";
     try {
