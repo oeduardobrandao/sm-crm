@@ -61,9 +61,19 @@ export async function runIntegrityCanary(deps: CanaryDeps): Promise<CanaryResult
   }
 
   const missing: CanaryResult["missing"] = [];
+  let checked = 0;
   for (const row of picked) {
-    const head = await deps.headObject(row.r2_key);
+    // Watchdog independent of the SDK's own signal handling (the edge runtime
+    // has ignored SDK-level timeouts before): a HEAD that answers neither way
+    // within 10 s is SKIPPED — a timeout is not evidence of a missing object,
+    // and one stall must never wedge the whole canary.
+    const head = await Promise.race([
+      deps.headObject(row.r2_key),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 10_000)),
+    ]);
+    if (head === "timeout") continue;
+    checked++;
     if (head === null) missing.push({ id: row.id, r2_key: row.r2_key });
   }
-  return { checked: picked.length, missing };
+  return { checked, missing };
 }
