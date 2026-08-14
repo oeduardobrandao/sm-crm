@@ -29,6 +29,10 @@ export interface PagarmeSubscriptionResponse {
   start_at?: string | null;
   next_billing_at?: string | null;
   current_cycle?: { end_at?: string | null } | null;
+  /** The plan object's items as billed on THIS subscription. `items[0].pricing_scheme.price`
+   * is the gateway-observed total (Fase 8 truthful-mirror rule): the plans row is only a
+   * mirror, so this is what actually got charged and must win over the configured value. */
+  items?: Array<{ pricing_scheme?: { price?: number | null } | null } | null> | null;
 }
 
 export interface PagarmeGateway {

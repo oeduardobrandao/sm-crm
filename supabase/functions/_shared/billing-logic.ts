@@ -77,16 +77,24 @@ export function hasEverSubscribed(
 export const PAGARME_PAID_PLAN_IDS = ["start", "pro", "max"] as const;
 
 /**
- * Once a plan's annual price is sold as 12x via Pagar.me (pagarme_12x_enabled), the Stripe
- * annual checkout must refuse: a tab loaded before the cutover could otherwise still open a
- * one-shot annual Stripe subscription. Monthly plans stay on Stripe and are never blocked.
- * Fail-open on a missing plan/flag: the gate defaulting to off is the rollout switch.
+ * Fase 8: Stripe annual à vista now coexists with the Pagar.me 12x (the Fase 2 rejection of
+ * `interval === 'year'` on a pagarme_12x_enabled plan is removed) — this decision moved from
+ * "should the checkout even be attempted" to "is a Pagar.me attempt for this workspace mid-
+ * flight right now."
+ *
+ * Cross-provider race narrower (accepted external finding): a bounded, best-effort read of
+ * `pagarme_checkout_attempts` for the workspace immediately before opening a Stripe session.
+ * A read ERROR fails OPEN (returns false, i.e. proceed) — availability wins over closing a
+ * seconds-wide race window; the Fase 4 webhook deny+cancel hardening is the backstop for a
+ * Stripe session that completes after a pagarme bind (unavoidable once a session is open,
+ * since Stripe sessions live up to 24h).
  */
-export function annualCheckoutBlocked(
-  interval: "month" | "year",
-  plan: { pagarme_12x_enabled?: boolean | null } | null | undefined,
+export function pendingPagarmeAttemptBlocksCheckout(
+  hasPendingAttempt: boolean,
+  readError: { message: string } | null | undefined,
 ): boolean {
-  return interval === "year" && plan?.pagarme_12x_enabled === true;
+  if (readError) return false;
+  return hasPendingAttempt;
 }
 
 export interface PlanPriceRow {

@@ -2,7 +2,7 @@ import { assert, assertEquals } from "./assert.ts";
 import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { PagarmeApiError } from "../_shared/pagarme.ts";
 import { createPagarmeCheckoutHandler } from "../pagarme-checkout/handler.ts";
-import { PagarmeGateway } from "../pagarme-checkout/gateway.ts";
+import { PagarmeGateway, PagarmeSubscriptionResponse } from "../pagarme-checkout/gateway.ts";
 import { PagarmeCheckoutRequest } from "../pagarme-checkout/logic.ts";
 
 const NOW = new Date("2026-08-12T12:00:00.000Z");
@@ -26,6 +26,9 @@ const PLAN = {
   price_brl_annual: 95900,
   pagarme_12x_enabled: true,
   pagarme_plan_id_annual: "plan_remote_1",
+  // The parcela has its own (higher, financing-inclusive) price: 9490 * 12 = 113880, not the
+  // à vista annual total (95900). This is the whole point of Fase 8.
+  pagarme_installment_cents: 9490,
 };
 
 type Ev = {
@@ -149,6 +152,10 @@ function makeGateway(fx: {
   failCancel?: boolean;
   /** Error thrown by cancelSubscription when failCancel is true. Defaults to a generic Error. */
   failCancelWith?: unknown;
+  /** `items` on the createSubscription response (truthful-mirror rule). Omitted by default,
+   * matching a response with no usable observed price -> the fallback path. `price` is
+   * loosely typed so malformed-payload tests can pass a non-numeric value on purpose. */
+  subItems?: Array<{ pricing_scheme?: { price?: unknown } | null } | null>;
 }): PagarmeGateway {
   const record = (method: string, args: unknown[]) => fx.calls.push({ method, args });
   const maybeFail = (stage: string) => {
@@ -180,6 +187,9 @@ function makeGateway(fx: {
         start_at: fx.subStartAt ?? null,
         next_billing_at: fx.nextBillingAt ?? null,
         current_cycle: null,
+        ...(fx.subItems !== undefined
+          ? { items: fx.subItems as unknown as PagarmeSubscriptionResponse["items"] }
+          : {}),
       });
     },
     cancelSubscription: (id) => {
@@ -204,6 +214,30 @@ function run(
   return { events, calls, result: handle(CTX, REQ) };
 }
 
+/** Patches console.error/warn for the duration of `fn`, capturing every call as a joined
+ * string (house pattern, see pagarme-webhook-handler_test.ts's withConsoleErrorSpy). */
+async function withConsoleSpies<T>(
+  fn: () => Promise<T>,
+): Promise<{ result: T; errors: string[]; warnings: string[] }> {
+  const originalError = console.error;
+  const originalWarn = console.warn;
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  console.error = (...args: unknown[]) => {
+    errors.push(args.map((a) => String(a)).join(" "));
+  };
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map((a) => String(a)).join(" "));
+  };
+  try {
+    const result = await fn();
+    return { result, errors, warnings };
+  } finally {
+    console.error = originalError;
+    console.warn = originalWarn;
+  }
+}
+
 Deno.test("gate off: 403, no reservation, zero gateway calls", async () => {
   const { events, calls, result } = run({ plan: { ...PLAN, pagarme_12x_enabled: false } });
   const r = await result;
@@ -218,6 +252,25 @@ Deno.test("unconfigured plan: 400 plan_not_configured before any write", async (
   assertEquals(r.status, 400);
   assertEquals((r.body as { code: string }).code, "plan_not_configured");
   assertEquals(calls.length, 0);
+});
+
+Deno.test("unconfigured parcela (null pagarme_installment_cents): 400 plan_not_configured before any remote call", async () => {
+  const { events, calls, result } = run({ plan: { ...PLAN, pagarme_installment_cents: null } });
+  const r = await result;
+  assertEquals(r.status, 400);
+  assertEquals((r.body as { code: string }).code, "plan_not_configured");
+  assertEquals(calls.length, 0);
+  assertEquals(events.filter((e) => e.table === "pagarme_checkout_attempts").length, 0);
+});
+
+Deno.test("unconfigured parcela (<=0 pagarme_installment_cents): 400 plan_not_configured before any remote call", async () => {
+  for (const badValue of [0, -1]) {
+    const { calls, result } = run({ plan: { ...PLAN, pagarme_installment_cents: badValue } });
+    const r = await result;
+    assertEquals(r.status, 400, `parcela ${badValue}`);
+    assertEquals((r.body as { code: string }).code, "plan_not_configured", `parcela ${badValue}`);
+    assertEquals(calls.length, 0, `parcela ${badValue}`);
+  }
 });
 
 Deno.test("blocked row: 409 before reservation", async () => {
@@ -263,7 +316,7 @@ Deno.test("happy path, no trial: order, idempotency key, single-statement bind, 
     status: "active",
     trial_ends_at: null,
     next_charge_at: "2027-08-12T00:00:00Z",
-    installment_amount_cents: 7992,
+    installment_amount_cents: 9490,
   });
 
   // Gateway call order and shapes
@@ -290,10 +343,12 @@ Deno.test("happy path, no trial: order, idempotency key, single-statement bind, 
   assert(rowBind !== -1, "row bind missing");
   assert(subIdWrite < rowBind, "attempt sub-id write must land BEFORE the row bind");
 
-  // Single-statement invariant: provider flip and amount mirror in the SAME payload
+  // Single-statement invariant: provider flip and amount mirror in the SAME payload. No
+  // observed price on this fixture's response -> the mirror falls back to the configured
+  // parcela * 12 (9490 * 12 = 113880), NOT price_brl_annual (the à vista price).
   const bind = events[rowBind].values as Record<string, unknown>;
   assertEquals(bind.provider, "pagarme");
-  assertEquals(bind.amount_cents, 95900);
+  assertEquals(bind.amount_cents, 113880);
   assertEquals(bind.installments, 12);
   assertEquals(bind.ever_subscribed_at, "2026-01-01T00:00:00Z"); // retained, not overwritten
 
@@ -361,7 +416,7 @@ Deno.test("trial path: fresh workspace gets start_at ceiled to the next UTC midn
     status: "trialing",
     trial_ends_at: "2026-09-12T00:00:00Z",
     next_charge_at: "2026-09-12T00:00:00Z",
-    installment_amount_cents: 7992,
+    installment_amount_cents: 9490,
   });
   const subInput = calls[2].args[0] as Record<string, unknown>;
   // NOW is 12:00Z: +30d rounds UP, never a short trial
@@ -371,7 +426,7 @@ Deno.test("trial path: fresh workspace gets start_at ceiled to the next UTC midn
   const ins = events.find((e) => e.table === "workspace_subscriptions" && e.op === "insert");
   assert(ins !== undefined, "insert bind missing");
   assertEquals((ins.values as Record<string, unknown>).provider, "pagarme");
-  assertEquals((ins.values as Record<string, unknown>).amount_cents, 95900);
+  assertEquals((ins.values as Record<string, unknown>).amount_cents, 113880);
   assertEquals((ins.values as Record<string, unknown>).workspace_id, WS);
 });
 
@@ -654,6 +709,86 @@ Deno.test("stale orphan cancel 4xx (already canceled or gone): treated as settle
   );
   const r = await result;
   assertEquals(r.status, 200);
+});
+
+// ─── TRUTHFUL-MIRROR RULE (Fase 8) ──────────────────────────────────────────
+
+Deno.test("observed gateway total wins and differs from configured: mirror + response use the OBSERVED total, CRITICAL logged, still 200", async () => {
+  const { errors, warnings, result } = await withConsoleSpies(async () => {
+    const { events, result } = run(
+      { plan: PLAN, subRow: null },
+      // Configured parcela*12 = 9490*12 = 113880; the gateway's plan object actually charges
+      // 155880 (as if it were mistakenly left at the "pro" total) -> drift.
+      { subStatus: "active", nextBillingAt: "2027-08-12T00:00:00Z", subItems: [{ pricing_scheme: { price: 155880 } }] },
+    );
+    const r = await result;
+    return { r, events };
+  });
+  const { r, events } = result;
+  assertEquals(r.status, 200);
+  assertEquals((r.body as { installment_amount_cents: number }).installment_amount_cents, 12990); // round(155880/12)
+  const bind = events.find((e) => e.table === "workspace_subscriptions" && e.op === "insert");
+  assert(bind !== undefined, "insert bind missing");
+  assertEquals((bind.values as Record<string, unknown>).amount_cents, 155880);
+  assert(
+    errors.some((m) => m.includes("CRITICAL") && m.includes("price drift")),
+    "drift must be logged CRITICAL",
+  );
+  assertEquals(warnings.length, 0, "no fallback WARN when the observed price is usable");
+});
+
+Deno.test("observed gateway total present but matches configured: no drift log, mirror uses it anyway", async () => {
+  const { errors, result } = await withConsoleSpies(async () => {
+    const { events, result } = run(
+      { plan: PLAN, subRow: null },
+      { subStatus: "active", subItems: [{ pricing_scheme: { price: 113880 } }] }, // == 9490 * 12
+    );
+    const r = await result;
+    return { r, events };
+  });
+  const { r, events } = result;
+  assertEquals(r.status, 200);
+  assertEquals((r.body as { installment_amount_cents: number }).installment_amount_cents, 9490);
+  const bind = events.find((e) => e.table === "workspace_subscriptions" && e.op === "insert");
+  assertEquals((bind?.values as Record<string, unknown>).amount_cents, 113880);
+  assertEquals(errors.some((m) => m.includes("CRITICAL")), false, "no drift, no CRITICAL log");
+});
+
+Deno.test("observed price missing (no items on the response): fallback to parcela*12, WARN logged", async () => {
+  const { warnings, result } = await withConsoleSpies(async () => {
+    const { events, result } = run(
+      { plan: PLAN, subRow: null },
+      { subStatus: "active" }, // no subItems -> no items key on the response at all
+    );
+    const r = await result;
+    return { r, events };
+  });
+  const { r, events } = result;
+  assertEquals(r.status, 200);
+  assertEquals((r.body as { installment_amount_cents: number }).installment_amount_cents, 9490);
+  const bind = events.find((e) => e.table === "workspace_subscriptions" && e.op === "insert");
+  assertEquals((bind?.values as Record<string, unknown>).amount_cents, 113880);
+  assert(
+    warnings.some((m) => m.includes("observed price")),
+    "the fallback path must WARN",
+  );
+});
+
+Deno.test("observed price malformed (non-numeric): fallback to parcela*12, WARN logged", async () => {
+  const { warnings, result } = await withConsoleSpies(async () => {
+    const { events, result } = run(
+      { plan: PLAN, subRow: null },
+      { subStatus: "active", subItems: [{ pricing_scheme: { price: "not-a-number" } }] },
+    );
+    const r = await result;
+    return { r, events };
+  });
+  const { r, events } = result;
+  assertEquals(r.status, 200);
+  assertEquals((r.body as { installment_amount_cents: number }).installment_amount_cents, 9490);
+  const bind = events.find((e) => e.table === "workspace_subscriptions" && e.op === "insert");
+  assertEquals((bind?.values as Record<string, unknown>).amount_cents, 113880);
+  assert(warnings.some((m) => m.includes("observed price")), "the fallback path must WARN");
 });
 
 Deno.test("stale orphan cancel 401/403/429: reservation kept (says nothing about the subscription)", async () => {

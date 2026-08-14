@@ -2,11 +2,11 @@ import { assert, assertEquals } from "./assert.ts";
 import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import {
   aggregateMrr,
-  annualCheckoutBlocked,
   extractInvoiceSubscriptionId,
   getDefaultPlanId,
   hasEverSubscribed,
   isMrrStatus,
+  pendingPagarmeAttemptBlocksCheckout,
   resolvePlanFromPriceId,
   statusToPlanId,
   toMonthlyCents,
@@ -191,14 +191,17 @@ Deno.test("extractInvoiceSubscriptionId returns null for a non-subscription invo
   assertEquals(extractInvoiceSubscriptionId({ subscription: {} }), null);
 });
 
-// ─── annualCheckoutBlocked ────────────────────────────────────────────────────────
+// ─── pendingPagarmeAttemptBlocksCheckout ────────────────────────────────────
 
-Deno.test("annualCheckoutBlocked blocks year only when the plan is on pagarme 12x", () => {
-  assertEquals(annualCheckoutBlocked("year", { pagarme_12x_enabled: true }), true);
-  assertEquals(annualCheckoutBlocked("year", { pagarme_12x_enabled: false }), false);
-  assertEquals(annualCheckoutBlocked("month", { pagarme_12x_enabled: true }), false);
-  assertEquals(annualCheckoutBlocked("year", { pagarme_12x_enabled: null }), false);
-  assertEquals(annualCheckoutBlocked("year", null), false);
+Deno.test("pendingPagarmeAttemptBlocksCheckout: blocks only when a pending attempt was actually found", () => {
+  assertEquals(pendingPagarmeAttemptBlocksCheckout(true, null), true);
+  assertEquals(pendingPagarmeAttemptBlocksCheckout(false, null), false);
+  assertEquals(pendingPagarmeAttemptBlocksCheckout(false, undefined), false);
+});
+
+Deno.test("pendingPagarmeAttemptBlocksCheckout: a read ERROR fails OPEN (never blocks), even with a pending attempt", () => {
+  assertEquals(pendingPagarmeAttemptBlocksCheckout(true, { message: "timeout" }), false);
+  assertEquals(pendingPagarmeAttemptBlocksCheckout(false, { message: "timeout" }), false);
 });
 
 // ─── getDefaultPlanId ──────────────────────────────────────────────────────

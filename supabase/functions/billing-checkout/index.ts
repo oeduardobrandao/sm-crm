@@ -8,7 +8,7 @@ import {
   resolveTrialDays,
 } from "../_shared/trial.ts";
 import { isWorkspaceOwner } from "../_shared/workspace-role.ts";
-import { annualCheckoutBlocked, hasEverSubscribed } from "../_shared/billing-logic.ts";
+import { hasEverSubscribed, pendingPagarmeAttemptBlocksCheckout } from "../_shared/billing-logic.ts";
 import { crossProviderCheckoutBlocked } from "../_shared/pagarme-logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -59,19 +59,12 @@ Deno.serve(async (req: Request) => {
 
     const { data: plan } = await svc
       .from("plans")
-      .select("id, stripe_price_id, stripe_price_id_annual, pagarme_12x_enabled")
+      .select("id, stripe_price_id, stripe_price_id_annual")
       .eq("id", planId).single();
 
-    // Post-cutover, the annual plan is sold as 12x via Pagar.me; a pre-cutover tab must not
-    // open a one-shot annual Stripe subscription. Monthly is unaffected.
-    if (annualCheckoutBlocked(interval, plan)) {
-      return json(
-        { error: "O plano anual agora é parcelado em 12x no cartão. Atualize a página para assinar." },
-        400,
-        headers,
-      );
-    }
-
+    // Fase 8: Stripe annual à vista now coexists with the Pagar.me 12x (the Fase 2 rejection
+    // of interval === 'year' on a pagarme_12x_enabled plan is removed). Monthly is unaffected
+    // either way.
     const priceId = interval === "year" ? plan?.stripe_price_id_annual : plan?.stripe_price_id;
     if (!priceId) return json({ error: "Plan price not configured" }, 400, headers);
 
@@ -110,6 +103,36 @@ Deno.serve(async (req: Request) => {
     if (crossProviderCheckoutBlocked("stripe", subRow, new Date())) {
       return json(
         { error: "Este workspace tem uma assinatura parcelada vigente. Gerencie o plano atual em Plano e Cobrança." },
+        409,
+        headers,
+      );
+    }
+
+    // Fase 8 cross-provider race narrower: a Pagar.me checkout for this workspace mid-flight
+    // (attempt still "pending") might bind any moment now, so opening a Stripe session in
+    // parallel risks both providers granting a subscription. Bounded, best-effort read; a
+    // read ERROR fails OPEN (proceeds) -- availability over closing a seconds-wide window that
+    // the Fase 4 webhook deny+cancel hardening backstops anyway.
+    const { data: pendingAttempt, error: pendingAttemptErr } = await svc
+      .from("pagarme_checkout_attempts")
+      .select("id")
+      .eq("workspace_id", workspaceId)
+      .eq("state", "pending")
+      .limit(1)
+      .abortSignal(AbortSignal.timeout(10_000))
+      .maybeSingle();
+    if (pendingAttemptErr) {
+      console.warn(
+        "[billing-checkout] pending pagarme attempt read failed, proceeding (fail-open):",
+        pendingAttemptErr.message,
+      );
+    }
+    if (pendingPagarmeAttemptBlocksCheckout(!!pendingAttempt, pendingAttemptErr)) {
+      return json(
+        {
+          error:
+            "Outra tentativa de pagamento está em andamento. Aguarde alguns instantes e tente de novo.",
+        },
         409,
         headers,
       );

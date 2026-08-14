@@ -5,6 +5,7 @@
 import { PagarmeApiError } from "../_shared/pagarme.ts";
 import { isInForce, isPaidThrough } from "../_shared/pagarme-logic.ts";
 import { PAGARME_PAID_PLAN_IDS } from "../_shared/billing-logic.ts";
+import type { PagarmeSubscriptionResponse } from "./gateway.ts";
 
 // Re-exported for callers that imported the old local name; the list itself now lives in
 // _shared/billing-logic.ts so plan-mutations' admin-side validation can share it.
@@ -150,9 +151,58 @@ export function buildAttemptIdempotencyKey(attemptId: string): string {
   return `pagarme-co-${attemptId}`;
 }
 
-/** Display amount of one of the 12 installments, rounded to the nearest centavo. */
-export function installmentAmountCents(annualCents: number): number {
-  return Math.round(annualCents / 12);
+/**
+ * TRUTHFUL-MIRROR RULE (Fase 8 adjudication): the admin treats `amount_cents` as
+ * authoritative for pagarme rows and never live-fetches, so recording the CONFIGURED price
+ * while the gateway actually charged a different one (a stale/hand-edited Pagar.me plan
+ * object) corrupts billing/MRR. The gateway-observed total from the create response
+ * (`items[0].pricing_scheme.price`) wins whenever it is present and a positive integer;
+ * `pagarme_installment_cents * 12` is only the fallback when the response is missing or
+ * malformed. A drift between the observed total and the configured one is logged CRITICAL
+ * by the caller but never fails the checkout: the gateway already charged, and reversing a
+ * completed charge is strictly worse than an accurate mirror of what happened.
+ */
+export interface AmountMirrorResult {
+  /** What actually got charged (or the best fallback) — goes straight into `amount_cents`. */
+  amountCents: number;
+  /** Per-installment display amount for the checkout response. */
+  installmentAmountCents: number;
+  source: "observed" | "fallback";
+  /** True when the observed total disagrees with `pagarme_installment_cents * 12` — the
+   * caller logs CRITICAL when this is true. Always false on the fallback path (nothing to
+   * compare against). */
+  driftDetected: boolean;
+}
+
+/** The gateway-observed total, or null when the response has no usable price (absent
+ * `items`, non-numeric, zero/negative). Zero/negative is treated as malformed, not "free":
+ * a real Pagar.me plan object is never priced at zero. */
+function extractObservedTotalCents(sub: PagarmeSubscriptionResponse): number | null {
+  const price = sub.items?.[0]?.pricing_scheme?.price;
+  if (typeof price !== "number" || !Number.isInteger(price) || price <= 0) return null;
+  return price;
+}
+
+export function resolveAmountMirror(
+  sub: PagarmeSubscriptionResponse,
+  configuredInstallmentCents: number,
+): AmountMirrorResult {
+  const observed = extractObservedTotalCents(sub);
+  if (observed !== null) {
+    const configuredTotal = configuredInstallmentCents * 12;
+    return {
+      amountCents: observed,
+      installmentAmountCents: Math.round(observed / 12),
+      source: "observed",
+      driftDetected: observed !== configuredTotal,
+    };
+  }
+  return {
+    amountCents: configuredInstallmentCents * 12,
+    installmentAmountCents: configuredInstallmentCents,
+    source: "fallback",
+    driftDetected: false,
+  };
 }
 
 /**

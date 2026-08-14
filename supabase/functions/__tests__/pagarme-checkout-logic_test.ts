@@ -3,12 +3,13 @@ import { PagarmeApiError } from "../_shared/pagarme.ts";
 import {
   buildAttemptIdempotencyKey,
   buildPagarmeSubscriptionColumns,
-  installmentAmountCents,
   mapGatewayFailure,
   pagarmeCheckoutBlocked,
   parseCheckoutBody,
+  resolveAmountMirror,
   resolveStartAt,
 } from "../pagarme-checkout/logic.ts";
+import type { PagarmeSubscriptionResponse } from "../pagarme-checkout/gateway.ts";
 
 const NOW = new Date("2026-08-12T12:00:00.000Z");
 
@@ -159,9 +160,67 @@ Deno.test("buildAttemptIdempotencyKey derives from the attempt id", () => {
   assertEquals(buildAttemptIdempotencyKey("a1b2"), "pagarme-co-a1b2");
 });
 
-Deno.test("installmentAmountCents rounds annual/12 to the nearest centavo", () => {
-  assertEquals(installmentAmountCents(95900), 7992);
-  assertEquals(installmentAmountCents(120000), 10000);
+// ─── resolveAmountMirror (TRUTHFUL-MIRROR RULE) ─────────────────────────────
+
+function subWithItems(price: unknown): PagarmeSubscriptionResponse {
+  return {
+    id: "sub_1",
+    status: "active",
+    // deno-lint-ignore no-explicit-any
+    items: [{ pricing_scheme: { price } }] as any,
+  };
+}
+
+Deno.test("resolveAmountMirror: observed total present and matching -> uses it, no drift", () => {
+  const r = resolveAmountMirror(subWithItems(113880), 9490);
+  assertEquals(r, {
+    amountCents: 113880,
+    installmentAmountCents: 9490,
+    source: "observed",
+    driftDetected: false,
+  });
+});
+
+Deno.test("resolveAmountMirror: observed total present and DIFFERS from configured*12 -> uses the observed total, flags drift", () => {
+  const r = resolveAmountMirror(subWithItems(155880), 9490);
+  assertEquals(r.amountCents, 155880);
+  assertEquals(r.installmentAmountCents, 12990); // round(155880/12)
+  assertEquals(r.source, "observed");
+  assertEquals(r.driftDetected, true);
+});
+
+Deno.test("resolveAmountMirror: rounds the per-installment display amount to the nearest centavo", () => {
+  const r = resolveAmountMirror(subWithItems(95900), 9490);
+  assertEquals(r.installmentAmountCents, 7992); // round(95900/12)
+});
+
+Deno.test("resolveAmountMirror: no items on the response -> fallback to configured*12, never drift", () => {
+  const r = resolveAmountMirror({ id: "sub_1", status: "active" }, 9490);
+  assertEquals(r, {
+    amountCents: 113880,
+    installmentAmountCents: 9490,
+    source: "fallback",
+    driftDetected: false,
+  });
+});
+
+Deno.test("resolveAmountMirror: empty items array -> fallback", () => {
+  const r = resolveAmountMirror({ id: "sub_1", status: "active", items: [] }, 9490);
+  assertEquals(r.source, "fallback");
+});
+
+Deno.test("resolveAmountMirror: non-numeric price -> fallback", () => {
+  const r = resolveAmountMirror(subWithItems("113880"), 9490);
+  assertEquals(r.source, "fallback");
+});
+
+Deno.test("resolveAmountMirror: zero or negative price is malformed -> fallback", () => {
+  assertEquals(resolveAmountMirror(subWithItems(0), 9490).source, "fallback");
+  assertEquals(resolveAmountMirror(subWithItems(-100), 9490).source, "fallback");
+});
+
+Deno.test("resolveAmountMirror: non-integer price is malformed -> fallback", () => {
+  assertEquals(resolveAmountMirror(subWithItems(113880.5), 9490).source, "fallback");
 });
 
 // ─── buildPagarmeSubscriptionColumns ───────────────────────────────────────
