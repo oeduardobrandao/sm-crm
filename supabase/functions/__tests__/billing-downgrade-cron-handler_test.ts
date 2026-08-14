@@ -9,6 +9,7 @@ import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { PagarmeApiError } from "../_shared/pagarme.ts";
 import { runBillingDowngradeCron, type CronResult, type DowngradeCronDeps } from "../billing-downgrade-cron/handler.ts";
 import type { DowngradeCronGateway, RemoteSubListItem } from "../billing-downgrade-cron/gateway.ts";
+import type { StripeSwitchGateway } from "../_shared/stripe-switch.ts";
 
 const NOW = new Date("2026-08-13T13:00:00Z");
 // Well past SWEEP_MIN_AGE_MS (1h) relative to NOW -- never "young".
@@ -60,6 +61,22 @@ interface DbFx {
   pendingRows?: Array<{ pagarme_subscription_id: string | null }>;
   pendingReadError?: { message: string } | null;
   pendingCount?: number;
+  // Leg D: switch-marker batch read (`.not` on switched_from_stripe_subscription_id `.or`'d
+  // with the switch_checked_at staleness window) -- distinguished from leg C's `.not`-only
+  // linked read by `sawOr`. The sweep pages until empty: `markerRows` is served on the FIRST
+  // read and `[]` after (closure counter), unless `markerPages` is set, in which case each
+  // read consumes the next page in order (used by the intra-run rotation test). The re-read
+  // after an enforce write (`.eq(workspace_id).maybeSingle()`, no `.not`/`.or`/`.in`/`.lte`)
+  // is a distinct branch served by `recheckRow`.
+  markerRows?: Array<Record<string, unknown>>;
+  markerPages?: Array<Array<Record<string, unknown>>>;
+  recheckRow?: Record<string, unknown> | null;
+  stamp?: (
+    filters: Array<[string, string, unknown]>,
+  ) => { data: unknown; error: { message: string } | null };
+  clear?: (
+    filters: Array<[string, string, unknown]>,
+  ) => { data: unknown; error: { message: string } | null };
 }
 
 /**
@@ -71,6 +88,9 @@ interface DbFx {
  * and which query fixture to serve.
  */
 function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
+  // Leg D pages until it reads an empty batch; this counter (shared across every
+  // `.from("workspace_subscriptions")` call within one run) tracks which page is being served.
+  let markerReadCount = 0;
   const from = (table: string) => {
     let op = "read";
     let values: Record<string, unknown> | undefined;
@@ -78,6 +98,7 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
     let sawNot = false;
     let sawIn = false;
     let sawLte = false;
+    let sawOr = false;
     const filters: Array<[string, string, unknown]> = [];
     // deno-lint-ignore no-explicit-any
     const chain: any = {};
@@ -90,6 +111,10 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
       filters.push(["eq", col, val]);
       return chain;
     };
+    chain.neq = (col: string, val: unknown) => {
+      filters.push(["neq", col, val]);
+      return chain;
+    };
     chain.is = (col: string, val: unknown) => {
       filters.push(["is", col, val]);
       return chain;
@@ -97,6 +122,11 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
     chain.not = (col: string, _op2: string, val: unknown) => {
       sawNot = true;
       filters.push(["not", col, val]);
+      return chain;
+    };
+    chain.or = (expr: string) => {
+      sawOr = true;
+      filters.push(["or", expr, undefined]);
       return chain;
     };
     chain.in = (col: string, vals: unknown) => {
@@ -144,11 +174,39 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
             error: fx.legBLinkedReadError ?? null,
           };
         }
-        const data = fx.linkedRows ?? [];
-        const count = fx.linkedCount !== undefined ? fx.linkedCount : data.length;
-        return { data, error: fx.linkedReadError ?? null, count };
+        if (sawOr) {
+          // Leg D's marker batch read: `.not(switched_from_stripe_subscription_id)` PLUS
+          // `.or(switch_checked_at...)`, the only workspace_subscriptions read using `.or`.
+          let rows: Array<Record<string, unknown>>;
+          if (fx.markerPages) {
+            rows = fx.markerPages[markerReadCount] ?? [];
+          } else {
+            rows = markerReadCount === 0 ? (fx.markerRows ?? []) : [];
+          }
+          markerReadCount++;
+          return { data: rows, error: null };
+        }
+        if (sawNot) {
+          const data = fx.linkedRows ?? [];
+          const count = fx.linkedCount !== undefined ? fx.linkedCount : data.length;
+          return { data, error: fx.linkedReadError ?? null, count };
+        }
+        // Leg D's post-enforce re-read: `.eq(workspace_id).maybeSingle()`, no `.not`/`.or`/
+        // `.in`/`.lte` at all -- the only remaining shape.
+        return {
+          data: fx.recheckRow ?? { switched_from_stripe_subscription_id: "sub_s1" },
+          error: null,
+        };
       }
       if (table === "workspace_subscriptions" && op === "update") {
+        if (values && values.switched_from_stripe_subscription_id === null) {
+          // Leg D's clear: both markers nulled together.
+          return fx.clear ? fx.clear(filters) : { data: [{ workspace_id: "ws" }], error: null };
+        }
+        if (values && "switch_checked_at" in values && !("cancel_at_period_end" in values)) {
+          // Leg D's stamp: switch_checked_at only.
+          return fx.stamp ? fx.stamp(filters) : { data: [{ workspace_id: "ws" }], error: null };
+        }
         return fx.flip ? fx.flip(filters) : { data: [{ workspace_id: "ws" }], error: null };
       }
       if (table === "pagarme_checkout_attempts" && op === "read") {
@@ -238,26 +296,85 @@ function makeGateway(
   };
 }
 
+// Boundary of the test monthly sub: 2026-09-15T14:23:11Z -> ceil = "2026-09-16" (copied from
+// the Task 5 fixture -- Deno test files in this repo do not share helpers between each other).
+const STRIPE_SUB_MONTHLY = {
+  status: "active",
+  cancel_at_period_end: false,
+  current_period_end: Math.floor(Date.parse("2026-09-15T14:23:11Z") / 1000),
+  items: { data: [{ price: { id: "price_m1", recurring: { interval: "month" } } }] },
+};
+
+/** Copied from pagarme-subscription-handler_test.ts / pagarme-checkout-handler_test.ts, with
+ * `retrieveResults`/`retrieveThrowsForId` added so a multi-row leg D test can give each
+ * subscription id its own remote outcome. */
+function makeStripeSwitch(fx: {
+  calls: Array<{ method: string; args: unknown[] }>;
+  retrieveResult?: unknown;
+  /** Per-sub-id override for retrieveResult, keyed by subscription id. */
+  retrieveResults?: Record<string, unknown>;
+  retrieveThrows?: unknown;
+  /** Per-sub-id override for retrieveThrows, keyed by subscription id. */
+  retrieveThrowsForId?: Record<string, unknown>;
+}): StripeSwitchGateway {
+  const record = (method: string, args: unknown[]) => fx.calls.push({ method, args });
+  return {
+    retrieveSubscription: (id) => {
+      record("retrieveSubscription", [id]);
+      if (fx.retrieveThrowsForId && id in fx.retrieveThrowsForId) {
+        return Promise.reject(fx.retrieveThrowsForId[id]);
+      }
+      if (fx.retrieveThrows) return Promise.reject(fx.retrieveThrows);
+      if (fx.retrieveResults && id in fx.retrieveResults) {
+        return Promise.resolve(fx.retrieveResults[id]);
+      }
+      return Promise.resolve(fx.retrieveResult ?? STRIPE_SUB_MONTHLY);
+    },
+    setCancelAtPeriodEnd: (id, value) => {
+      record("setCancelAtPeriodEnd", [id, value]);
+      return Promise.resolve();
+    },
+    cancelNow: (id) => {
+      record("cancelNow", [id]);
+      return Promise.resolve();
+    },
+    fetchAmount: (id) => {
+      record("fetchAmount", [id]);
+      return Promise.resolve({
+        amount_cents: 9990,
+        gross_cents: null,
+        currency: "brl",
+        interval: "month",
+        discount_label: null,
+        livemode: false,
+      });
+    },
+  };
+}
+
 async function run(
   dbFx: DbFx,
   gwImpl: Parameters<typeof makeGateway>[0] | null,
   now: Date = NOW,
-): Promise<{ result: CronResult; events: Ev[]; gwCalls: GwCall[] }> {
+  swFx?: Omit<Parameters<typeof makeStripeSwitch>[0], "calls"> | null,
+): Promise<{ result: CronResult; events: Ev[]; gwCalls: GwCall[]; stripeCalls: GwCall[] }> {
   const events: Ev[] = [];
   const gwCalls: GwCall[] = [];
+  const stripeCalls: GwCall[] = [];
   const seq = { n: 0 };
   const deps: DowngradeCronDeps = {
     db: makeDb({ ...dbFx, events }, seq) as unknown as SupabaseClient,
     gateway: gwImpl === null ? null : makeGateway(gwImpl, gwCalls),
+    stripeGateway: swFx == null ? null : makeStripeSwitch({ ...swFx, calls: stripeCalls }),
     now: () => now,
   };
   const result = await runBillingDowngradeCron(deps);
-  return { result, events, gwCalls };
+  return { result, events, gwCalls, stripeCalls };
 }
 
 function filterHas(
   filters: Array<[string, string, unknown]>,
-  method: "eq" | "is" | "not" | "lte" | "lt",
+  method: "eq" | "is" | "not" | "lte" | "lt" | "neq",
   col: string,
   val: unknown,
 ) {
@@ -667,4 +784,209 @@ Deno.test("12. leg order and isolation: leg A read error -> error collected, leg
   assertEquals(result.remoteSkipped, false, "leg C must still run after leg A's crash");
   assertEquals(result.errors.length, 1);
   assert(result.errors[0].includes("due read boom") || result.errors[0].includes("leg A"));
+});
+
+// ─── Leg D: switch enforcement (spec 2026-08-14) ───────────────────────────
+
+// Marker row still inside its trialing window: the switch checkout wrote all three markers
+// and the undo has not raced it.
+const MARKER_ROW = {
+  workspace_id: "ws-1",
+  provider: "pagarme",
+  status: "trialing",
+  current_period_end: "2026-09-16T00:00:00Z",
+  switched_from_stripe_subscription_id: "sub_s1",
+  switched_from_plan_id: "start",
+  pagarme_subscription_id: "sub_pm_1",
+  switch_checked_at: null,
+};
+// Remote Stripe sub: still active, no cancel_at_period_end, period end BEFORE the local
+// boundary (2026-09-16) -- the renewal has not fired yet.
+const REMOTE_ACTIVE_NO_CAP = {
+  status: "active",
+  cancel_at_period_end: false,
+  current_period_end: Math.floor(Date.parse("2026-09-15T14:23:11Z") / 1000),
+  items: { data: [{ price: { id: "price_m1", recurring: { interval: "month" } } }] },
+};
+
+/** All stamp updates (values.switch_checked_at set) across the run, in call order. */
+function findStamps(events: Ev[]): Ev[] {
+  return events.filter(
+    (e) =>
+      e.table === "workspace_subscriptions" && e.op === "update" &&
+      e.values !== undefined && "switch_checked_at" in e.values,
+  );
+}
+
+/** All clear updates (both switch markers nulled) across the run, in call order. */
+function findClears(events: Ev[]): Ev[] {
+  return events.filter(
+    (e) =>
+      e.table === "workspace_subscriptions" && e.op === "update" &&
+      e.values?.switched_from_stripe_subscription_id === null,
+  );
+}
+
+Deno.test("15. leg D: gateway null -> switchSkipped true, nenhuma linha tocada", async () => {
+  const { result, events } = await run({
+    markerRows: [MARKER_ROW],
+  }, { listSubscriptions: () => ({ data: [] }) });
+
+  assertEquals(result.switchSkipped, true);
+  assertEquals(result.switchesEnforced, 0);
+  assertEquals(result.switchesCleared, 0);
+  assertEquals(result.switchesCanceledNow, 0);
+  assertEquals(findStamps(events).length, 0, "no row may be touched when the gateway is null");
+  assertEquals(findClears(events).length, 0);
+});
+
+Deno.test("16. leg D enforce: janela aberta + remoto ativo sem cap_end -> setCancelAtPeriodEnd(true) + carimbo", async () => {
+  const { result, events, stripeCalls } = await run(
+    { markerRows: [MARKER_ROW] },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    { retrieveResult: REMOTE_ACTIVE_NO_CAP },
+  );
+
+  assert(
+    stripeCalls.some((c) =>
+      c.method === "setCancelAtPeriodEnd" && c.args[0] === "sub_s1" && c.args[1] === true
+    ),
+    "expected setCancelAtPeriodEnd(sub_s1, true)",
+  );
+  assertEquals(result.switchesEnforced, 1);
+
+  const stamps = findStamps(events);
+  assertEquals(stamps.length, 1, "expected exactly one stamp update");
+
+  assertEquals(findClears(events).length, 0, "trialing row must keep its markers");
+});
+
+Deno.test("17. leg D: re-read pos-write sem marker (undo correu no meio) -> reverte para false", async () => {
+  const { result, stripeCalls } = await run(
+    { markerRows: [MARKER_ROW], recheckRow: { switched_from_stripe_subscription_id: null } },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    { retrieveResult: REMOTE_ACTIVE_NO_CAP },
+  );
+
+  const sets = stripeCalls
+    .filter((c) => c.method === "setCancelAtPeriodEnd")
+    .map((c) => c.args[1]);
+  assertEquals(sets, [true, false]);
+  assertEquals(result.switchesEnforced, 0);
+});
+
+Deno.test("18. leg D: renovacao escapou (period end remoto > fronteira) -> cancelNow + CRITICAL", async () => {
+  const { result, stripeCalls } = await run(
+    { markerRows: [MARKER_ROW] },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    {
+      retrieveResult: {
+        ...REMOTE_ACTIVE_NO_CAP,
+        current_period_end: Math.floor(Date.parse("2026-10-15T00:00:00Z") / 1000),
+      },
+    },
+  );
+
+  assert(
+    stripeCalls.some((c) => c.method === "cancelNow" && c.args[0] === "sub_s1"),
+    "expected cancelNow(sub_s1)",
+  );
+  assertEquals(result.switchesCanceledNow, 1);
+});
+
+Deno.test("19. leg D: janela fechada (status != trialing) + remoto seguro -> clear dos DOIS markers", async () => {
+  const ROW = { ...MARKER_ROW, status: "active" };
+  const { result, events } = await run(
+    { markerRows: [ROW] },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    { retrieveResult: { ...REMOTE_ACTIVE_NO_CAP, cancel_at_period_end: true } },
+  );
+
+  assertEquals(result.switchesCleared, 1);
+
+  const clears = findClears(events);
+  assertEquals(clears.length, 1);
+  assertEquals(clears[0].values?.switched_from_plan_id, null);
+  assert(filterHas(clears[0].filters, "eq", "workspace_id", "ws-1"));
+  assert(filterHas(clears[0].filters, "eq", "switched_from_stripe_subscription_id", "sub_s1"));
+  assert(filterHas(clears[0].filters, "neq", "status", "trialing"));
+});
+
+Deno.test("20. leg D: remoto 404 e seguro; retrieve com erro nao-404 coleta erro e segue para a proxima linha", async () => {
+  const ROW1 = { ...MARKER_ROW, workspace_id: "ws-1", switched_from_stripe_subscription_id: "sub_s1" };
+  const ROW2 = {
+    ...MARKER_ROW,
+    workspace_id: "ws-2",
+    status: "active",
+    switched_from_stripe_subscription_id: "sub_s2",
+  };
+  const { result, events } = await run(
+    { markerRows: [ROW1, ROW2] },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    {
+      retrieveThrowsForId: {
+        sub_s1: new Error("stripe boom"),
+        sub_s2: { statusCode: 404 },
+      },
+    },
+  );
+
+  assertEquals(result.errors.length, 1);
+  assert(result.errors[0].includes("ws-1"));
+  assertEquals(result.switchesCleared, 1, "the second row (404, safe, non-trialing) must still be processed");
+
+  const clears = findClears(events);
+  assert(clears.some((c) => filterHas(c.filters, "eq", "workspace_id", "ws-2")));
+
+  // Both rows still got their queue-progress stamp, including the one whose retrieve failed.
+  const stamps = findStamps(events);
+  assertEquals(stamps.length, 2);
+});
+
+Deno.test("21. leg D rotacao intra-run: duas paginas na MESMA execucao, cada workspace stamped exatamente uma vez", async () => {
+  const page1 = Array.from({ length: 100 }, (_, i) => ({
+    ...MARKER_ROW,
+    workspace_id: `ws-${i}`,
+    switched_from_stripe_subscription_id: `sub-${i}`,
+  }));
+  const page2 = [{
+    ...MARKER_ROW,
+    workspace_id: "ws-100",
+    switched_from_stripe_subscription_id: "sub-100",
+  }];
+
+  const { result, events } = await run(
+    { markerPages: [page1, page2, []] },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    {},
+  );
+
+  const stamps = findStamps(events);
+  assertEquals(stamps.length, 101);
+  const stampedWsIds = stamps.map((e) =>
+    e.filters.find(([m, c]) => m === "eq" && c === "workspace_id")?.[2]
+  );
+  assertEquals(new Set(stampedWsIds).size, 101, "each workspace must be stamped exactly once");
+  assertEquals(result.switchSweepTruncated, false);
+});
+
+Deno.test("22. leg D: carimbo mesmo no caso 'seguro mas trialing' (fila avanca, markers mantidos)", async () => {
+  const { result, events } = await run(
+    { markerRows: [MARKER_ROW] },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    { retrieveResult: { ...REMOTE_ACTIVE_NO_CAP, cancel_at_period_end: true } },
+  );
+
+  const stamps = findStamps(events);
+  assertEquals(stamps.length, 1);
+
+  assertEquals(findClears(events).length, 0, "trialing row must keep its markers even when the remote is already safe");
+  assertEquals(result.switchesCleared, 0);
 });

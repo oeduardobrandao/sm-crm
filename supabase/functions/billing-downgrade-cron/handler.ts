@@ -24,6 +24,11 @@ import {
   isDefinitiveGatewayReject,
   shouldSweepRemoteSubscription,
 } from "../_shared/pagarme-logic.ts";
+import {
+  isStripeNotFoundError,
+  readStripeSubSnapshot,
+  type StripeSwitchGateway,
+} from "../_shared/stripe-switch.ts";
 import type { DowngradeCronGateway, RemoteSubListItem } from "./gateway.ts";
 
 const DB_TIMEOUT_MS = 10_000;
@@ -31,10 +36,13 @@ const BATCH_LIMIT = 100;
 const STALE_ATTEMPT_MINUTES = 15;
 const SWEEP_PAGE_SIZE = 50;
 const SWEEP_MAX_PAGES = 20;
+const SWITCH_BATCH_LIMIT = 100;
+const SWITCH_MAX_PAGES = 20;
 
 export interface DowngradeCronDeps {
   db: SupabaseClient;
   gateway: DowngradeCronGateway | null;
+  stripeGateway: StripeSwitchGateway | null;
   now?: () => Date;
 }
 
@@ -46,6 +54,11 @@ export interface CronResult {
   orphansUnrecognized: number;
   sweepTruncated: boolean;
   remoteSkipped: boolean;
+  switchesEnforced: number;
+  switchesCleared: number;
+  switchesCanceledNow: number;
+  switchSkipped: boolean;
+  switchSweepTruncated: boolean;
   errors: string[];
 }
 
@@ -65,6 +78,11 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
   let orphansUnrecognized = 0;
   let sweepTruncated = false;
   let remoteSkipped = false;
+  let switchesEnforced = 0;
+  let switchesCleared = 0;
+  let switchesCanceledNow = 0;
+  let switchSkipped = false;
+  let switchSweepTruncated = false;
 
   // ── Leg A: paid-through downgrade ─────────────────────────────────────────
   async function runLegA(): Promise<void> {
@@ -375,9 +393,151 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
     }
   }
 
+  // ── Leg D: switch enforcement (spec 2026-08-14) ────────────────────────
+  // Fair rotation by switch_checked_at: markers persist for the whole switch window (up to
+  // ~31d), so a fixed limit or a keyset on the smallest workspace_id would starve the tail
+  // forever (unlike leg C, whose candidate set shrinks because orphans get removed). With
+  // runStartedAt plus a per-row stamp, each workspace appears at most ONCE within a run (the
+  // stamp removes the row from the predicate), and across runs the queue resumes from the
+  // oldest unchecked marker.
+  async function runLegD(): Promise<void> {
+    if (deps.stripeGateway === null) {
+      switchSkipped = true;
+      console.warn("[billing-downgrade-cron] STRIPE_SECRET_KEY unset; leg D skipped");
+      return;
+    }
+    const stripeGateway = deps.stripeGateway;
+    try {
+      const runStartedAt = now().toISOString();
+      let pages = 0;
+      while (true) {
+        const { data: batch, error: batchErr } = await deps.db
+          .from("workspace_subscriptions")
+          .select(
+            "workspace_id, provider, status, current_period_end, switched_from_stripe_subscription_id, switched_from_plan_id, pagarme_subscription_id, switch_checked_at",
+          )
+          .not("switched_from_stripe_subscription_id", "is", null)
+          .or(`switch_checked_at.is.null,switch_checked_at.lt.${runStartedAt}`)
+          .order("switch_checked_at", { ascending: true, nullsFirst: true })
+          .order("workspace_id", { ascending: true })
+          .limit(SWITCH_BATCH_LIMIT)
+          .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+        if (batchErr) throw new Error(`leg D batch read failed: ${batchErr.message}`);
+        const rows = (batch ?? []) as Array<Record<string, unknown>>;
+        if (rows.length === 0) break;
+        pages++;
+
+        for (const row of rows) {
+          const wsId = row.workspace_id as string;
+          const marker = row.switched_from_stripe_subscription_id as string;
+          // Stamp FIRST: guarantees queue progress even when row processing fails. A stamp
+          // that fails ABORTS the whole leg (rethrow): without it, the same row would come
+          // back in the next batch of this run in an infinite loop.
+          const { error: stampErr } = await deps.db
+            .from("workspace_subscriptions")
+            .update({ switch_checked_at: new Date().toISOString() })
+            .eq("workspace_id", wsId)
+            .not("switched_from_stripe_subscription_id", "is", null)
+            .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+          if (stampErr) throw new Error(`leg D stamp failed for ${wsId}: ${stampErr.message}`);
+
+          try {
+            let remote: unknown | null = null;
+            let notFound = false;
+            try {
+              remote = await stripeGateway.retrieveSubscription(marker);
+            } catch (e) {
+              if (isStripeNotFoundError(e)) {
+                notFound = true; // sub no longer exists: safe
+              } else {
+                errors.push(`leg D retrieve failed for workspace ${wsId}: ${errMessage(e)}`);
+                continue;
+              }
+            }
+            const snap = notFound ? null : readStripeSubSnapshot(remote);
+            let safe = snap === null ||
+              snap.status === "canceled" ||
+              snap.status === "incomplete_expired" ||
+              snap.cancelAtPeriodEnd;
+
+            if (!safe) {
+              const boundaryMs = typeof row.current_period_end === "string"
+                ? Date.parse(row.current_period_end)
+                : NaN;
+              const windowOpen = row.provider === "pagarme" && row.status === "trialing";
+              const renewalFired = Number.isFinite(boundaryMs) &&
+                snap!.periodEndMs !== null && snap!.periodEndMs > boundaryMs;
+              if (windowOpen && !renewalFired) {
+                await stripeGateway.setCancelAtPeriodEnd(marker, true);
+                switchesEnforced++;
+                // Re-read post-write: the undo may have raced this and cleared the marker;
+                // in that case the monthly plan was REACTIVATED on purpose, revert the true.
+                const { data: recheck, error: recheckErr } = await deps.db
+                  .from("workspace_subscriptions")
+                  .select("switched_from_stripe_subscription_id")
+                  .eq("workspace_id", wsId)
+                  .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
+                  .maybeSingle();
+                if (recheckErr) {
+                  errors.push(`leg D recheck failed for workspace ${wsId}: ${recheckErr.message}`);
+                  continue;
+                }
+                if (!recheck?.switched_from_stripe_subscription_id) {
+                  await stripeGateway.setCancelAtPeriodEnd(marker, false);
+                  switchesEnforced--;
+                }
+                continue; // window open: markers stay (undo/frontend rely on them)
+              }
+              // Renewal escaped or the window closed with the monthly still armed:
+              // cancel_at_period_end=true would now wait a whole extra month, so cancel NOW
+              // and flag the manual refund.
+              console.error(
+                `[billing-downgrade-cron] CRITICAL: leg D canceling stripe sub ${marker} NOW for workspace ${wsId} (renewal escaped or window closed); check for a renewal charge to refund manually`,
+              );
+              await stripeGateway.cancelNow(marker);
+              switchesCanceledNow++;
+              safe = true;
+            }
+
+            // Clear only when safe AND outside the window (trialing still needs the markers).
+            if (safe && row.status !== "trialing") {
+              const { error: clearErr } = await deps.db
+                .from("workspace_subscriptions")
+                .update({
+                  switched_from_stripe_subscription_id: null,
+                  switched_from_plan_id: null,
+                  updated_at: nowIso,
+                })
+                .eq("workspace_id", wsId)
+                .eq("switched_from_stripe_subscription_id", marker)
+                .neq("status", "trialing")
+                .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+              if (clearErr) {
+                errors.push(`leg D clear failed for workspace ${wsId}: ${clearErr.message}`);
+                continue;
+              }
+              switchesCleared++;
+            }
+          } catch (e) {
+            errors.push(`leg D row failed for workspace ${wsId}: ${errMessage(e)}`);
+          }
+        }
+
+        if (pages >= SWITCH_MAX_PAGES) {
+          switchSweepTruncated = true;
+          errors.push("leg D truncated at SWITCH_MAX_PAGES pages");
+          break;
+        }
+      }
+    } catch (e) {
+      errors.push(`leg D failed: ${errMessage(e)}`);
+    }
+  }
+
   await runLegA();
   await runLegB();
   await runLegC();
+  await runLegD();
 
   return {
     downgraded,
@@ -387,6 +547,11 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
     orphansUnrecognized,
     sweepTruncated,
     remoteSkipped,
+    switchesEnforced,
+    switchesCleared,
+    switchesCanceledNow,
+    switchSkipped,
+    switchSweepTruncated,
     errors,
   };
 }
