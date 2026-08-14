@@ -67,10 +67,19 @@ export async function runIntegrityCanary(deps: CanaryDeps): Promise<CanaryResult
     // has ignored SDK-level timeouts before): a HEAD that answers neither way
     // within 10 s is SKIPPED — a timeout is not evidence of a missing object,
     // and one stall must never wedge the whole canary.
-    const head = await Promise.race([
-      deps.headObject(row.r2_key),
-      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 10_000)),
-    ]);
+    const head = await new Promise<{ contentLength: number } | null | "timeout">((resolve) => {
+      const watchdog = setTimeout(() => resolve("timeout"), 10_000);
+      deps.headObject(row.r2_key).then(
+        (v) => {
+          clearTimeout(watchdog);
+          resolve(v);
+        },
+        () => {
+          clearTimeout(watchdog);
+          resolve(null);
+        },
+      );
+    });
     if (head === "timeout") continue;
     checked++;
     if (head === null) missing.push({ id: row.id, r2_key: row.r2_key });
