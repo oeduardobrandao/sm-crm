@@ -194,3 +194,6 @@ enabled = false
 
 [functions.storage-autoclean-cron]
 verify_jwt = false
+
+[functions.instagram-automation-cron]
+verify_jwt = false
