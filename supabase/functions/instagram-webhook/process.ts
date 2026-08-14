@@ -397,7 +397,14 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
   const token = await ctx.decryptToken(send.encrypted_access_token);
 
   // 3. DM (private reply). Retry com dm_status já 'sent' pula direto pra resposta pública.
-  if (send.dm_status !== "sent") {
+  // `dmDelivered` separa "a Meta aceitou o DM" de "gravamos que aceitou": o
+  // try/catch classifica SÓ o resultado de `sendPrivateReply` (a chamada
+  // externa); `mark_automation_dm_sent` roda DEPOIS, fora do catch -- uma falha
+  // transitória de banco/RPC nessa RPC não pode ser classificada como erro
+  // permanente da Graph (Finding 1, P1: isso gravava status='failed' num DM que
+  // JÁ tinha sido entregue, e failed nunca é reclamado pelo cron).
+  let dmDelivered = send.dm_status === "sent";
+  if (!dmDelivered) {
     try {
       await sendPrivateReply(msgDeps, {
         igUserId: send.instagram_user_id,
@@ -405,16 +412,14 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
         commentId: send.comment_id,
         text: automation.dm_message,
       });
-      const { error } = await ctx.svc.rpc("mark_automation_dm_sent", { p_send_id: send.send_id });
-      if (error) throw new Error(`mark_automation_dm_sent: ${errMessage(error)}`);
+      dmDelivered = true;
     } catch (err) {
       const kind = classifyIgError(err);
 
       if (kind === "already_replied") {
         // Auto-correção: a Meta já tem uma private reply para este comentário
         // (só existe uma); registra como enviada e segue para a resposta pública.
-        const { error } = await ctx.svc.rpc("mark_automation_dm_sent", { p_send_id: send.send_id });
-        if (error) throw new Error(`mark_automation_dm_sent: ${errMessage(error)}`);
+        dmDelivered = true;
       } else if (kind === "token_expired") {
         const { error: acctErr } = await ctx.svc
           .from("instagram_accounts")
@@ -460,6 +465,15 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
         return;
       }
     }
+
+    // FORA do catch/classify: a Meta já aceitou (ou "já respondeu") o DM neste
+    // ponto; um erro AQUI é da nossa própria persistência, nunca da Graph.
+    // Deixa subir com a linha ainda 'processing' -- o cron reclama depois da
+    // janela de staleness e, na reentrada, `sendPrivateReply` bate em
+    // "already_replied" (a Meta só aceita uma private reply por comentário):
+    // self-heal automático, sem duplicar DM nem marcar failed indevidamente.
+    const { error } = await ctx.svc.rpc("mark_automation_dm_sent", { p_send_id: send.send_id });
+    if (error) throw new Error(`mark_automation_dm_sent: ${errMessage(error)}`);
   }
 
   // 4. Resposta pública (opcional; NÃO idempotente -> nunca reposta às cegas).
@@ -511,18 +525,22 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
       }
       finalPublicReplyStatus = "unknown";
 
+      // O try/catch classifica SÓ o resultado de `replyToComment` (a chamada
+      // externa) -- `replyId` só é atribuído quando a Graph aceita a reply.
+      // O UPDATE que grava 'sent' roda DEPOIS, fora do catch: uma falha
+      // transitória de banco nesse UPDATE não pode ser classificada como erro
+      // permanente da Graph e sobrescrever o 'unknown' já persistido acima
+      // (Finding 2, P2 -- isso fechava sent_partial com 'failed' e uma
+      // reentrada reconhecia 'failed' como "nunca tentado", arriscando
+      // repostar uma reply que a Graph já tinha aceitado).
+      let replyId: string | undefined;
       try {
-        const { replyId } = await replyToComment(msgDeps, {
+        const result = await replyToComment(msgDeps, {
           commentId: send.comment_id,
           token,
           text: automation.public_reply,
         });
-        const { error } = await ctx.svc
-          .from("instagram_automation_sends")
-          .update({ public_reply_id: replyId, public_reply_status: "sent" })
-          .eq("id", send.send_id);
-        if (error) throw new Error(`instagram_automation_sends (public_reply sent): ${errMessage(error)}`);
-        finalPublicReplyStatus = "sent";
+        replyId = result.replyId;
       } catch (err) {
         const kind = classifyIgError(err);
         if (kind === "timeout") {
@@ -552,6 +570,9 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
             finalPublicReplyStatus = "sent";
           }
         } else {
+          // Erro genuíno e não-ambíguo da PRÓPRIA chamada `replyToComment`
+          // (nunca chega aqui por falha de UPDATE -- esse throw está fora
+          // deste catch, ver abaixo).
           const { error } = await ctx.svc
             .from("instagram_automation_sends")
             .update({ public_reply_status: "failed" })
@@ -559,6 +580,15 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
           if (error) throw new Error(`instagram_automation_sends (public_reply failed): ${errMessage(error)}`);
           finalPublicReplyStatus = "failed";
         }
+      }
+
+      if (replyId !== undefined) {
+        const { error } = await ctx.svc
+          .from("instagram_automation_sends")
+          .update({ public_reply_id: replyId, public_reply_status: "sent" })
+          .eq("id", send.send_id);
+        if (error) throw new Error(`instagram_automation_sends (public_reply sent): ${errMessage(error)}`);
+        finalPublicReplyStatus = "sent";
       }
     }
   }

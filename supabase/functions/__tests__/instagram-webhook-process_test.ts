@@ -945,3 +945,76 @@ Deno.test("executeSend: 'já existe private reply' (already_replied) -> auto-cor
   assertEquals(sendUpdates.length, 1);
   assertEquals(sendUpdates[0].payload, { status: "sent" });
 });
+
+// ── Persistência pós-envio-aceito NUNCA vira erro permanente da Graph ──────
+// (external review, on-PR): o classify-catch tem que embrulhar SÓ a chamada
+// externa, nunca a escrita de banco que registra o resultado dela.
+
+Deno.test(
+  "executeSend: sendPrivateReply aceito + mark_automation_dm_sent falha -> LANÇA, sem marcar failed (Finding 1, P1)",
+  async () => {
+    const db = createSupabaseQueryMock();
+    db.queue("instagram_comment_automations", "select", {
+      data: { ativo: true, dm_message: "msg", public_reply: null, client_id: CLIENT_ID },
+      error: null,
+    });
+    db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+    db.queueRpc("mark_automation_dm_sent", { data: null, error: { message: "connection reset" } });
+
+    const { fetchFn } = routedFetch({
+      privateReply: () => ({ body: { message_id: "m1" } }),
+    });
+
+    let threw = false;
+    try {
+      await executeSend(baseSendCtx(db, { fetchFn }), baseClaimedSend());
+    } catch {
+      threw = true;
+    }
+    assert(threw, "uma falha de persistência da RPC precisa propagar, não ser engolida e reclassificada");
+
+    assertEquals(
+      callsFor(db, "instagram_automation_sends", "update").length,
+      0,
+      "nenhum UPDATE deve rodar -- em especial, NUNCA status='failed' para um DM que a Graph já aceitou; " +
+        "a linha fica 'processing' para o cron reclamar e self-heal via already_replied",
+    );
+  },
+);
+
+Deno.test(
+  "executeSend: replyToComment aceito + UPDATE 'sent' falha -> LANÇA, public_reply_status permanece 'unknown' (Finding 2, P2)",
+  async () => {
+    const db = createSupabaseQueryMock();
+    db.queue("instagram_comment_automations", "select", {
+      data: { ativo: true, dm_message: "msg", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
+      error: null,
+    });
+    db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+    db.queue("instagram_automation_sends", "update", { data: null, error: null }); // public_reply_status='unknown' (em voo) -- ok
+    db.queue("instagram_automation_sends", "update", { data: null, error: { message: "connection reset" } }); // grava 'sent' -- falha
+
+    const { fetchFn } = routedFetch({
+      publicReply: () => ({ body: { id: "reply-1" } }),
+    });
+
+    let threw = false;
+    try {
+      await executeSend(baseSendCtx(db, { fetchFn }), baseClaimedSend({ dm_status: "sent" }));
+    } catch {
+      threw = true;
+    }
+    assert(threw, "uma falha de persistência do UPDATE 'sent' precisa propagar, não ser engolida e reclassificada");
+
+    const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+    assertEquals(sendUpdates.length, 2, "só o pre-write 'unknown' e a tentativa falha de 'sent'");
+    assertEquals(sendUpdates[0].payload, { public_reply_status: "unknown" });
+    assertEquals(sendUpdates[1].payload, { public_reply_id: "reply-1", public_reply_status: "sent" });
+    assertEquals(
+      sendUpdates.filter((c) => (c.payload as Record<string, unknown>).public_reply_status === "failed").length,
+      0,
+      "NUNCA deve sobrescrever com 'failed' -- 'unknown' é o que fica persistido de fato; " +
+        "a reentrada reconcilia via GET replies em vez de arriscar repostar",
+    );
+  },
+);
