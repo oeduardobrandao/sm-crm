@@ -83,30 +83,12 @@ Deno.serve(createPostMediaCleanupCronHandler({
       }
     }
 
-    // Orphan cleanup
-    const orphanCandidates = await listOrphanKeys("contas/", 24 * 60 * 60 * 1000);
-    let orphansDeleted = 0;
-    if (orphanCandidates.length > 0) {
-      const [byMain, byThumb, byFileMain, byFileThumb] = await Promise.all([
-        svc.from("post_media").select("r2_key, thumbnail_r2_key").in("r2_key", orphanCandidates),
-        svc.from("post_media").select("r2_key, thumbnail_r2_key").in("thumbnail_r2_key", orphanCandidates),
-        svc.from("files").select("r2_key, thumbnail_r2_key").in("r2_key", orphanCandidates),
-        svc.from("files").select("r2_key, thumbnail_r2_key").in("thumbnail_r2_key", orphanCandidates),
-      ]);
-      const known = new Set<string>();
-      for (const row of [...(byMain.data ?? []), ...(byThumb.data ?? []), ...(byFileMain.data ?? []), ...(byFileThumb.data ?? [])]) {
-        if (row.r2_key) known.add(row.r2_key);
-        if (row.thumbnail_r2_key) known.add(row.thumbnail_r2_key);
-      }
-      for (const key of orphanCandidates) {
-        if (known.has(key)) continue;
-        try { await deleteObject(key); orphansDeleted++; } catch { /* retry next run */ }
-      }
-    }
-
     // Stream reconciliation sweeps: ingest catch-up + settle pending need the full credential
     // set (isStreamEnabled()); orphan reap only needs delete/list, so it still runs in
-    // cleanup-only ("kill-switch") mode.
+    // cleanup-only ("kill-switch") mode. Deliberately BEFORE the R2 orphan scan below: that
+    // full-bucket listing has hit WORKER_RESOURCE_LIMIT on prod, and dying there must not
+    // starve the small, bounded sweep work (prod evidence 2026-08-13: sweeps behind the scan
+    // never ran).
     let streamIngested = 0;
     let streamSettled = 0;
     let streamReaped = 0;
@@ -128,6 +110,28 @@ Deno.serve(createPostMediaCleanupCronHandler({
       streamSettled = sweep.settled;
       streamReaped = sweep.reaped;
       streamErrors = sweep.errors;
+    }
+
+    // R2 orphan cleanup LAST: the most expensive, least urgent stage. A resource-limit
+    // death here costs only this stage; everything above has already committed.
+    const orphanCandidates = await listOrphanKeys("contas/", 24 * 60 * 60 * 1000);
+    let orphansDeleted = 0;
+    if (orphanCandidates.length > 0) {
+      const [byMain, byThumb, byFileMain, byFileThumb] = await Promise.all([
+        svc.from("post_media").select("r2_key, thumbnail_r2_key").in("r2_key", orphanCandidates),
+        svc.from("post_media").select("r2_key, thumbnail_r2_key").in("thumbnail_r2_key", orphanCandidates),
+        svc.from("files").select("r2_key, thumbnail_r2_key").in("r2_key", orphanCandidates),
+        svc.from("files").select("r2_key, thumbnail_r2_key").in("thumbnail_r2_key", orphanCandidates),
+      ]);
+      const known = new Set<string>();
+      for (const row of [...(byMain.data ?? []), ...(byThumb.data ?? []), ...(byFileMain.data ?? []), ...(byFileThumb.data ?? [])]) {
+        if (row.r2_key) known.add(row.r2_key);
+        if (row.thumbnail_r2_key) known.add(row.thumbnail_r2_key);
+      }
+      for (const key of orphanCandidates) {
+        if (known.has(key)) continue;
+        try { await deleteObject(key); orphansDeleted++; } catch { /* retry next run */ }
+      }
     }
 
     return json({ deleted, failed, orphansDeleted, streamIngested, streamSettled, streamReaped, streamErrors });
