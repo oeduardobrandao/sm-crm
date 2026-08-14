@@ -224,6 +224,12 @@
   color: var(--text-light);
   margin-bottom: 0.2rem;
 }
+/* The à vista alternative under a gated (12x) card's price. */
+.plan-price__secondary {
+  font-size: 0.72rem;
+  color: var(--text-light);
+  margin-top: 0.15rem;
+}
 
 /* Feature list */
 .plan-features {
@@ -281,6 +287,25 @@
   line-height: 1.4;
   color: var(--text-muted);
   padding: 0.62rem;
+}
+/* Secondary "Assinar à vista" action under a gated card's primary CTA. */
+.plan-cta__upfront {
+  display: block;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0;
+  background: none;
+  border: none;
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.plan-cta__upfront:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ── Lifetime: a shiny golden card so the exclusive plan feels special ───────── */

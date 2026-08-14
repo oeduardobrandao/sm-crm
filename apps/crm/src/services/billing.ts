@@ -15,6 +15,8 @@ export interface BillingPlan {
   feature_analytics_reports: boolean;
   feature_brand_customization: boolean;
   pagarme_12x_enabled: boolean;
+  /** Per-installment price of the 12x annual, in centavos. Null = plan has no 12x configured. */
+  pagarme_installment_cents: number | null;
 }
 
 export interface PublicPricingPlan {
@@ -37,6 +39,8 @@ export interface PublicPricingPlan {
   feature_brand_customization: boolean;
   feature_mcp: boolean;
   pagarme_12x_enabled: boolean;
+  /** Per-installment price of the 12x annual, in centavos. Null = plan has no 12x configured. */
+  pagarme_installment_cents: number | null;
 }
 
 const INTERNAL_PLAN_IDS = new Set(['lifetime']);
@@ -95,7 +99,7 @@ export async function listActivePlans(): Promise<BillingPlan[]> {
   const { data, error } = await supabase
     .from('plans')
     .select(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization, pagarme_12x_enabled',
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization, pagarme_12x_enabled, pagarme_installment_cents',
     )
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
@@ -110,7 +114,7 @@ export async function listPublicPricingPlans(): Promise<PublicPricingPlan[]> {
   const { data, error } = await supabase
     .from('plans')
     .select(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, pagarme_12x_enabled',
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, pagarme_12x_enabled, pagarme_installment_cents',
     )
     .eq('is_active', true)
     .order('sort_order', { ascending: true });

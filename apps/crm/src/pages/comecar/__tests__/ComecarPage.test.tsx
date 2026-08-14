@@ -53,6 +53,7 @@ const PLANS = [
     feature_analytics_reports: false,
     feature_brand_customization: false,
     pagarme_12x_enabled: false,
+    pagarme_installment_cents: null,
   },
   {
     id: 'pro',
@@ -67,10 +68,13 @@ const PLANS = [
     feature_analytics_reports: true,
     feature_brand_customization: true,
     pagarme_12x_enabled: false,
+    pagarme_installment_cents: null,
   },
 ];
 
-const PRO_PAGARME = { ...PLANS[1], pagarme_12x_enabled: true };
+// The 12x's OWN, higher price (approved catalog value for Pro) — deliberately NOT
+// price_brl_annual / 12, so a regression back to that derivation would fail these tests.
+const PRO_PAGARME = { ...PLANS[1], pagarme_12x_enabled: true, pagarme_installment_cents: 12990 };
 
 const NEVER_SUBSCRIBED = {
   status: null,
@@ -425,6 +429,41 @@ describe('ComecarPage', () => {
       await waitFor(() => expect(assign).toHaveBeenCalledWith('https://checkout.stripe.com/abc'));
       expect(startCheckout).toHaveBeenCalledWith('pro', 'month', 'onboarding');
       expect(screen.queryByText('Assinar o plano Pro')).not.toBeInTheDocument();
+    });
+
+    it('shows the parcela (not price_brl_annual / 12) plus the à vista alternative in the gated year copy', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PLANS[0], PRO_PAGARME] as never);
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+
+      expect(
+        await screen.findByText(
+          // node.textContent bypasses RTL's default normalizer, so the NBSP
+          // Intl.NumberFormat puts between "R$" and the figure must be collapsed by hand
+          // (\s matches NBSP too) before comparing against a plain-space literal.
+          (_content, node) =>
+            node?.textContent?.replace(/\s+/g, ' ') ===
+            'depois 12x de R$ 129,90 no cartão ou R$ 959,00 à vista',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("the dialog's onPayUpfront closes it and redirects to the Stripe annual checkout", async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PLANS[0], PRO_PAGARME] as never);
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Começar teste' }));
+      await screen.findByText('Assinar o plano Pro');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Pagar à vista' }));
+
+      expect(screen.queryByText('Assinar o plano Pro')).not.toBeInTheDocument();
+      await waitFor(() => expect(startCheckout).toHaveBeenCalledWith('pro', 'year', 'onboarding'));
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('https://checkout.stripe.com/abc'));
     });
   });
 });

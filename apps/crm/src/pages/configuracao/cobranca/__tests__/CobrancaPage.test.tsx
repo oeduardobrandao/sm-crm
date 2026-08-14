@@ -56,9 +56,25 @@ const PRO_PLAN: BillingPlan = {
   feature_analytics_reports: true,
   feature_brand_customization: true,
   pagarme_12x_enabled: false,
+  pagarme_installment_cents: null,
 };
 
-const PRO_PLAN_PAGARME: BillingPlan = { ...PRO_PLAN, pagarme_12x_enabled: true };
+// The 12x's OWN, higher price (approved catalog value for Pro) — deliberately NOT
+// price_brl_annual / 12 (99900 / 12 = 8325), so a test asserting on this figure catches a
+// regression back to that derivation.
+const PRO_PLAN_PAGARME: BillingPlan = {
+  ...PRO_PLAN,
+  pagarme_12x_enabled: true,
+  pagarme_installment_cents: 12990,
+};
+
+// The checkbox is on but nobody has typed a parcela yet: the gate must fall back to
+// Stripe-only, exactly like PRO_PLAN (pagarme_12x_enabled: false) does.
+const PRO_PLAN_PAGARME_MISCONFIGURED: BillingPlan = {
+  ...PRO_PLAN,
+  pagarme_12x_enabled: true,
+  pagarme_installment_cents: null,
+};
 
 function subscription(overrides: Partial<WorkspaceSubscription>): WorkspaceSubscription {
   return {
@@ -203,6 +219,23 @@ describe('CobrancaPage', () => {
       expect(screen.queryByText('Assinar o plano Pro')).not.toBeInTheDocument();
     });
 
+    it('gate ON but pagarme_installment_cents missing: a year upgrade falls back to startCheckout, not the dialog', async () => {
+      // The safety net: the checkbox alone is not enough, so a misconfigured plan (no parcela
+      // typed in) never shows a 12x price of R$ 0,00 — it behaves exactly like gate OFF.
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME_MISCONFIGURED]);
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({ hasEverSubscribed: false }),
+      );
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Começar teste de 30 dias' }));
+
+      await waitFor(() => expect(startCheckout).toHaveBeenCalledWith('pro', 'year', 'billing'));
+      expect(screen.queryByText('Assinar o plano Pro')).not.toBeInTheDocument();
+    });
+
     it('shows "em 12x de" only when gated on, "cobrado anualmente," otherwise', async () => {
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(
         subscription({ hasEverSubscribed: false }),
@@ -223,6 +256,73 @@ describe('CobrancaPage', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
       expect(await screen.findByText('em 12x de')).toBeInTheDocument();
       expect(screen.queryByText('cobrado anualmente,')).not.toBeInTheDocument();
+    });
+
+    it('PRIMARY AMOUNT RULE: a gated year card shows the parcela as the big number plus the à vista alternative below it', async () => {
+      // pagarme_installment_cents (12990) is the 12x's OWN price, deliberately NOT
+      // price_brl_annual / 12 (99900 / 12 = 8325 -> R$ 83,25). Rendering the latter here would
+      // contradict the exact figure the checkout dialog charges.
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({ hasEverSubscribed: false }),
+      );
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+
+      expect(await screen.findByText('R$ 129,90')).toBeInTheDocument();
+      expect(screen.queryByText('R$ 83,25')).not.toBeInTheDocument();
+      expect(screen.getByText('ou R$ 999,00 à vista')).toBeInTheDocument();
+    });
+
+    it('the secondary "Assinar à vista" CTA calls startCheckout directly, without opening the dialog', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({ hasEverSubscribed: false }),
+      );
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Assinar à vista' }));
+
+      await waitFor(() => expect(startCheckout).toHaveBeenCalledWith('pro', 'year', 'billing'));
+      expect(captureCheckoutStarted).toHaveBeenCalledWith('pro', 'year', 'billing');
+      expect(screen.queryByText('Assinar o plano Pro')).not.toBeInTheDocument();
+    });
+
+    it('does not offer "Assinar à vista" on a non-gated or month card', async () => {
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN]);
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({ hasEverSubscribed: false }),
+      );
+      renderPage();
+
+      await screen.findByRole('button', { name: 'Começar teste de 30 dias' });
+      expect(screen.queryByRole('button', { name: 'Assinar à vista' })).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+      await screen.findByRole('button', { name: 'Começar teste de 30 dias' });
+      expect(screen.queryByRole('button', { name: 'Assinar à vista' })).not.toBeInTheDocument();
+    });
+
+    it('the dialog\'s "Pagar à vista" escape hatch closes the dialog and starts the Stripe checkout', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({ hasEverSubscribed: false }),
+      );
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Começar teste de 30 dias' }));
+      await screen.findByText('Assinar o plano Pro');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Pagar à vista' }));
+
+      expect(screen.queryByText('Assinar o plano Pro')).not.toBeInTheDocument();
+      await waitFor(() => expect(startCheckout).toHaveBeenCalledWith('pro', 'year', 'billing'));
     });
 
     it('a pagarme subscriber sees "Atualizar cartão" / "Cancelar assinatura", never "Gerenciar assinatura"', async () => {

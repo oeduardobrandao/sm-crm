@@ -59,6 +59,7 @@ describe('billing service', () => {
       feature_brand_customization: true,
       feature_mcp: true,
       pagarme_12x_enabled: false,
+      pagarme_installment_cents: null,
     };
     const start = {
       id: 'start',
@@ -80,6 +81,7 @@ describe('billing service', () => {
       feature_brand_customization: true,
       feature_mcp: true,
       pagarme_12x_enabled: null,
+      pagarme_installment_cents: 9490,
     };
     const order = vi.fn().mockResolvedValue({ data: [lifetime, start], error: null });
     const eq = vi.fn().mockReturnValue({ order });
@@ -91,7 +93,7 @@ describe('billing service', () => {
     ]);
     expect(from).toHaveBeenCalledWith('plans');
     expect(select).toHaveBeenCalledWith(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, pagarme_12x_enabled',
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, pagarme_12x_enabled, pagarme_installment_cents',
     );
     expect(eq).toHaveBeenCalledWith('is_active', true);
     expect(order).toHaveBeenCalledWith('sort_order', { ascending: true });
@@ -111,6 +113,7 @@ describe('billing service', () => {
       feature_analytics_reports: true,
       feature_brand_customization: true,
       pagarme_12x_enabled: true,
+      pagarme_installment_cents: 12990,
     };
     const order = vi.fn().mockResolvedValue({ data: [pro], error: null });
     const eq = vi.fn().mockReturnValue({ order });
@@ -119,7 +122,7 @@ describe('billing service', () => {
 
     await expect(listActivePlans()).resolves.toEqual([pro]);
     expect(select).toHaveBeenCalledWith(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization, pagarme_12x_enabled',
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization, pagarme_12x_enabled, pagarme_installment_cents',
     );
   });
 

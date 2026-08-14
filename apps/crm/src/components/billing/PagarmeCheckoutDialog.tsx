@@ -49,10 +49,22 @@ export interface PagarmeCheckoutDialogProps {
   onClose: () => void;
   mode: 'checkout' | 'update-card';
   /** Required in checkout mode; ignored (no summary/trial note) in update-card mode. */
-  plan: { id: string; name: string; price_brl_annual: number } | null;
+  plan: {
+    id: string;
+    name: string;
+    price_brl_annual: number;
+    /** The 12x's own per-installment price, in centavos (NOT price_brl_annual / 12). */
+    pagarme_installment_cents: number;
+  } | null;
   source: CheckoutSource;
   /** Checkout mode only: !subscription.hasEverSubscribed. */
   trialEligible: boolean;
+  /**
+   * Checkout mode only. When provided, an "À vista sai por ..." escape hatch renders below the
+   * 12x summary; clicking it calls this instead of submitting the card form. The parent is
+   * expected to close this dialog and start the Stripe annual (à vista) checkout.
+   */
+  onPayUpfront?: () => void;
   /** Parent refetches subscription/plan. */
   onSuccess: () => void;
 }
@@ -208,6 +220,7 @@ export function PagarmeCheckoutDialog({
   plan,
   source,
   trialEligible,
+  onPayUpfront,
   onSuccess,
 }: PagarmeCheckoutDialogProps) {
   const [step, setStep] = useState<'form' | 'success'>('form');
@@ -395,9 +408,23 @@ export function PagarmeCheckoutDialog({
 
             {mode === 'checkout' && plan && (
               <div className="text-sm">
-                <p>{`12x de ${formatBRL(Math.round(plan.price_brl_annual / 12))} sem juros`}</p>
-                <p className="text-muted-foreground">{`total ${formatBRL(plan.price_brl_annual)}/ano`}</p>
+                <p>{`12x de ${formatBRL(plan.pagarme_installment_cents)} sem juros`}</p>
+                <p className="text-muted-foreground">{`total ${formatBRL(plan.pagarme_installment_cents * 12)}/ano`}</p>
               </div>
+            )}
+
+            {mode === 'checkout' && plan && onPayUpfront && (
+              <p className="text-xs text-muted-foreground">
+                {`À vista sai por ${formatBRL(plan.price_brl_annual)}. `}
+                <button
+                  type="button"
+                  className="underline underline-offset-2 disabled:no-underline disabled:opacity-50"
+                  onClick={onPayUpfront}
+                  disabled={saving}
+                >
+                  Pagar à vista
+                </button>
+              </p>
             )}
 
             {mode === 'checkout' && trialEligible && (
