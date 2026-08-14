@@ -70,6 +70,7 @@ interface DbFx {
   // is a distinct branch served by `recheckRow`.
   markerRows?: Array<Record<string, unknown>>;
   markerPages?: Array<Array<Record<string, unknown>>>;
+  markerReadError?: { message: string } | null;
   recheckRow?: Record<string, unknown> | null;
   stamp?: (
     filters: Array<[string, string, unknown]>,
@@ -177,6 +178,9 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
         if (sawOr) {
           // Leg D's marker batch read: `.not(switched_from_stripe_subscription_id)` PLUS
           // `.or(switch_checked_at...)`, the only workspace_subscriptions read using `.or`.
+          if (fx.markerReadError) {
+            return { data: null, error: fx.markerReadError };
+          }
           let rows: Array<Record<string, unknown>>;
           if (fx.markerPages) {
             rows = fx.markerPages[markerReadCount] ?? [];
@@ -374,7 +378,7 @@ async function run(
 
 function filterHas(
   filters: Array<[string, string, unknown]>,
-  method: "eq" | "is" | "not" | "lte" | "lt" | "neq",
+  method: "eq" | "is" | "not" | "lte" | "lt" | "neq" | "or",
   col: string,
   val: unknown,
 ) {
@@ -974,6 +978,26 @@ Deno.test("21. leg D rotacao intra-run: duas paginas na MESMA execucao, cada wor
   );
   assertEquals(new Set(stampedWsIds).size, 101, "each workspace must be stamped exactly once");
   assertEquals(result.switchSweepTruncated, false);
+
+  // Fair rotation pin: runStartedAt must be computed ONCE per leg, not once per batch. A
+  // regression that recomputes it per page would let a workspace's marker escape the
+  // `switch_checked_at.lt.runStartedAt` bound of a LATER page in the same run (starving the
+  // tail forever, since markers persist for the whole switch window). Every batch read --
+  // including the empty terminator, which still issues the same query -- must carry the
+  // `.or(switch_checked_at...)` predicate, and its recorded expression must be byte-identical
+  // across every page of this run.
+  const batchReads = events.filter((e) =>
+    e.table === "workspace_subscriptions" && e.op === "read" &&
+    e.filters.some(([m]) => m === "or")
+  );
+  assertEquals(batchReads.length, 3, "expected three batch reads: two data pages + the empty terminator");
+  const orExprs = batchReads.map((e) => e.filters.find(([m]) => m === "or")?.[1]);
+  assert(
+    orExprs.every((expr) => typeof expr === "string" && expr.length > 0),
+    "every batch read must carry the .or(...) staleness predicate",
+  );
+  assertEquals(orExprs[0], orExprs[1], "runStartedAt must be the SAME across page 1 and page 2 of this run");
+  assertEquals(orExprs[1], orExprs[2], "runStartedAt must be the SAME across every page of this run");
 });
 
 Deno.test("22. leg D: carimbo mesmo no caso 'seguro mas trialing' (fila avanca, markers mantidos)", async () => {
@@ -989,4 +1013,81 @@ Deno.test("22. leg D: carimbo mesmo no caso 'seguro mas trialing' (fila avanca, 
 
   assertEquals(findClears(events).length, 0, "trialing row must keep its markers even when the remote is already safe");
   assertEquals(result.switchesCleared, 0);
+});
+
+Deno.test("23. leg D: stamp DB error ABORTS the whole leg (no row processed after)", async () => {
+  const ROW1 = { ...MARKER_ROW, workspace_id: "ws-1", switched_from_stripe_subscription_id: "sub_s1" };
+  const ROW2 = { ...MARKER_ROW, workspace_id: "ws-2", switched_from_stripe_subscription_id: "sub_s2" };
+  const { result, stripeCalls } = await run(
+    {
+      // Leg A gets its own due row so we can prove legs A-C ran to completion untouched by
+      // leg D's abort.
+      dueRows: [{ workspace_id: "ws-x", pagarme_subscription_id: "sub-x" }],
+      markerRows: [ROW1, ROW2],
+      stamp: () => ({ data: null, error: { message: "stamp boom" } }),
+    },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    {},
+  );
+
+  assertEquals(result.downgraded, 1, "legs A-C must complete normally; leg D's abort must not affect them");
+  assertEquals(result.errors.length, 1, "the stamp failure must be the ONLY error (the leg aborts, it does not retry per row)");
+  assert(result.errors[0].includes("leg D"));
+  assert(result.errors[0].includes("stamp"));
+  assertEquals(
+    stripeCalls.filter((c) => c.method === "retrieveSubscription").length,
+    0,
+    "no row may be processed once the stamp write fails -- the throw aborts before row 1's own processing, and row 2 is never reached",
+  );
+});
+
+Deno.test("24. leg D: clear DB error is collected and the loop continues to the next row", async () => {
+  const ROW1 = { ...MARKER_ROW, workspace_id: "ws-1", status: "active", switched_from_stripe_subscription_id: "sub_s1" };
+  const ROW2 = { ...MARKER_ROW, workspace_id: "ws-2", status: "active", switched_from_stripe_subscription_id: "sub_s2" };
+  const { result, stripeCalls } = await run(
+    {
+      markerRows: [ROW1, ROW2],
+      clear: (filters) => {
+        const wsId = filters.find(([m, c]) => m === "eq" && c === "workspace_id")?.[2];
+        if (wsId === "ws-1") return { data: null, error: { message: "clear boom" } };
+        return { data: [{ workspace_id: wsId }], error: null };
+      },
+    },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    {
+      // Both rows are remote-safe and non-trialing, so both reach the clear step.
+      retrieveResults: {
+        sub_s1: { ...REMOTE_ACTIVE_NO_CAP, cancel_at_period_end: true },
+        sub_s2: { ...REMOTE_ACTIVE_NO_CAP, cancel_at_period_end: true },
+      },
+    },
+  );
+
+  assertEquals(result.errors.length, 1);
+  assert(result.errors[0].includes("ws-1"));
+  assert(result.errors[0].includes("clear"));
+  assertEquals(result.switchesCleared, 1, "row 2's clear must still succeed after row 1's clear failed");
+  assertEquals(
+    stripeCalls.filter((c) => c.method === "retrieveSubscription").map((c) => c.args[0]),
+    ["sub_s1", "sub_s2"],
+    "row 2 must still be processed (its own remote retrieve reached) after row 1's clear error",
+  );
+});
+
+Deno.test("25. leg D: batch-read error aborts the leg into errors, legs A-C unaffected", async () => {
+  const { result } = await run(
+    {
+      dueRows: [{ workspace_id: "ws-x", pagarme_subscription_id: "sub-x" }],
+      markerReadError: { message: "batch read boom" },
+    },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    {},
+  );
+
+  assertEquals(result.downgraded, 1, "legs A-C must complete normally despite leg D's batch-read failure");
+  assertEquals(result.errors.length, 1);
+  assert(result.errors[0].includes("leg D batch read failed"));
 });
