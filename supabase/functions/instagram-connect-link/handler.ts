@@ -1,5 +1,6 @@
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { buildConnectUrl, connectLinkLive, connectLinkStatus, isValidEmail } from "../_shared/instagram-connect-link.ts";
+import { buildScopeParam } from "../_shared/instagram-scopes.ts";
 
 // deno-lint-ignore no-explicit-any
 type DbClient = { from: (table: string) => any; rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> };
@@ -7,7 +8,6 @@ type DbClient = { from: (table: string) => any; rpc: (fn: string, params: Record
 const TTL_DAYS = 30;
 const EMAIL_MAX_PER_HOUR = 5;
 const START_MAX_PER_HOUR = 10;
-const IG_SCOPES = "instagram_business_basic,instagram_business_manage_insights,instagram_business_content_publish";
 
 export interface ConnectLinkHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
@@ -35,6 +35,11 @@ export interface ConnectLinkHandlerDeps {
   ) => Promise<string>;
   metaAppId: () => string;
   metaRedirectUri: () => string;
+  /** IG_AUTOMATION_SCOPES_LIVE === "true": whether the optional automation
+   *  scopes (comment-to-DM) are requested alongside the base trio. Read from
+   *  Deno.env by index.ts and injected here -- handlers never read Deno.env
+   *  directly (index/handler convention). */
+  automationScopesLive: boolean;
 }
 
 /**
@@ -214,7 +219,7 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
           const authorizeUrl =
             `https://www.instagram.com/oauth/authorize?client_id=${deps.metaAppId()}` +
             `&redirect_uri=${encodeURIComponent(deps.metaRedirectUri())}` +
-            `&response_type=code&scope=${IG_SCOPES}&state=${state}`;
+            `&response_type=code&scope=${buildScopeParam(deps.automationScopesLive)}&state=${state}`;
           return json({ url: authorizeUrl });
         }
 

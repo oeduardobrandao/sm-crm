@@ -73,6 +73,7 @@ function makeDeps(over: Record<string, unknown> = {}) {
     createSignedState: () => Promise.resolve("signed.state"),
     metaAppId: () => "app-id",
     metaRedirectUri: () => "https://x/functions/v1/instagram-integration",
+    automationScopesLive: false,
     ...over,
   };
 }

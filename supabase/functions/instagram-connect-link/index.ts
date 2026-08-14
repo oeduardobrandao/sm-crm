@@ -51,5 +51,6 @@ Deno.serve(
     metaAppId: () => META_APP_ID,
     metaRedirectUri: () =>
       Deno.env.get("META_REDIRECT_URI") ?? `${SUPABASE_URL}/functions/v1/instagram-integration`,
+    automationScopesLive: Deno.env.get("IG_AUTOMATION_SCOPES_LIVE") === "true",
   }),
 );

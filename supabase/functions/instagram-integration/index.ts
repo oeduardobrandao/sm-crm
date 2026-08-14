@@ -11,6 +11,7 @@ import { classifyOAuthError, isAppConfigError } from "./oauth-error.ts";
 import { gateConnectLinkOrigin } from "../instagram-connect-link/gate.ts";
 import { sendConnectedNoticeEmail } from "../_shared/instagram-connect-email.ts";
 import { appBaseUrl } from "../_shared/app-url.ts";
+import { buildScopeParam, IG_BASE_SCOPES } from "../_shared/instagram-scopes.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
@@ -18,6 +19,7 @@ const META_APP_SECRET = Deno.env.get("META_APP_SECRET")!;
 const META_REDIRECT_URI = Deno.env.get("META_REDIRECT_URI");
 const OAUTH_REDIRECT_BASE = Deno.env.get("OAUTH_REDIRECT_BASE") || "http://localhost:3000";
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
+const IG_SCOPES_LIVE = Deno.env.get("IG_AUTOMATION_SCOPES_LIVE") === "true";
 
 // --- Token Encryption Utility ---
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
@@ -154,7 +156,7 @@ Deno.serve(async (req) => {
 
         const state = await createSignedState(clientId, user!.id, authCallerProfile.conta_id, authServiceClient);
         
-        const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(functionBaseUrl)}&response_type=code&scope=instagram_business_basic,instagram_business_manage_insights,instagram_business_content_publish&state=${state}`;
+        const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(functionBaseUrl)}&response_type=code&scope=${buildScopeParam(IG_SCOPES_LIVE)}&state=${state}`;
 
         return new Response(JSON.stringify({ url: oauthUrl }), { 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -261,7 +263,7 @@ Deno.serve(async (req) => {
             throw new Error('Profile fetch failed');
         }
 
-        const REQUESTED_SCOPES = ['instagram_business_basic', 'instagram_business_manage_insights', 'instagram_business_content_publish'];
+        const REQUESTED_SCOPES = [...IG_BASE_SCOPES];
         const grantedPermissions = Array.isArray(slTokenData.permissions) && slTokenData.permissions.length > 0
             ? slTokenData.permissions
             : REQUESTED_SCOPES;
