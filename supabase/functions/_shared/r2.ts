@@ -58,7 +58,20 @@ export async function headObject(key: string): Promise<{ contentLength: number; 
 }
 
 export async function deleteObject(key: string): Promise<void> {
-  await getR2().send(new DeleteObjectCommand({ Bucket: getBucket(), Key: key }));
+  // Presign + plain fetch + AbortSignal, NOT getR2().send(): the SDK's own network
+  // stack has hung indefinitely on the edge runtime despite the client-level
+  // requestTimeout above — prod evidence: the cleanup cron's file_deletions drain
+  // made zero progress (attempts never incremented) for three weeks, dying at the
+  // first DeleteObjectCommand every hourly run. Presigning is local crypto; the
+  // DELETE itself goes through fetch with a hard bound, the same pattern
+  // getObjectBytes below already uses. 404 = already gone = success.
+  const cmd = new DeleteObjectCommand({ Bucket: getBucket(), Key: key });
+  const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
+  const res = await fetch(url, { method: "DELETE", signal: AbortSignal.timeout(10_000) });
+  await res.body?.cancel();
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`r2 delete failed: ${res.status}`);
+  }
 }
 
 export async function listOrphanKeys(prefix: string, olderThanMs: number): Promise<string[]> {
@@ -66,7 +79,12 @@ export async function listOrphanKeys(prefix: string, olderThanMs: number): Promi
   const out: string[] = [];
   let token: string | undefined;
   do {
-    const res = await getR2().send(new ListObjectsV2Command({ Bucket: getBucket(), Prefix: prefix, ContinuationToken: token }));
+    // Belt for the same edge-runtime hang class as deleteObject above: bound each
+    // page fetch so a stalled listing fails the run instead of freezing it.
+    const res = await getR2().send(
+      new ListObjectsV2Command({ Bucket: getBucket(), Prefix: prefix, ContinuationToken: token }),
+      { abortSignal: AbortSignal.timeout(30_000) },
+    );
     for (const obj of res.Contents ?? []) {
       if (obj.Key && obj.LastModified && obj.LastModified.getTime() < cutoff) out.push(obj.Key);
     }
