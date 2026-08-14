@@ -78,9 +78,14 @@ Numeração de migrations a partir de `20260815000002` (origin/main termina em
 
 **`instagram_comment_automations`** — a regra:
 
-- `id uuid pk`, `conta_id uuid NOT NULL`, `client_id bigint NOT NULL` (tenancy
-  no padrão de `20260806000002_instagram_connect_links.sql`: EXISTS de posse do
-  cliente em USING e WITH CHECK).
+- `id uuid pk`, `conta_id uuid NOT NULL`, `client_id bigint NOT NULL`.
+  **Tenancy estrutural, não só RLS**: `UNIQUE (id, conta_id)` na própria
+  tabela (alvo da FK composta de sends) e FK composta
+  `(client_id, conta_id) → clientes (id, conta_id)` — exige
+  `ALTER TABLE clientes ADD CONSTRAINT clientes_id_conta_uq UNIQUE (id,
+  conta_id)` (padrão de `20260805000002_post_status_automations.sql:36`).
+  RLS adicionalmente com EXISTS de posse do cliente em USING e WITH CHECK
+  (`20260806000002_instagram_connect_links.sql`).
 - `name text NOT NULL`, `ig_media_id text NULL` (NULL = todos os posts) +
   snapshot `media_permalink`/`media_caption` para a UI não depender do sync dos
   últimos 50 posts.
@@ -112,41 +117,68 @@ as fixtures oficiais mostram duas formas (`entry[].changes[]` e
   deduplicado pelo `comment_id UNIQUE` de sends); o expurgo de 30 dias limita
   o crescimento.
 - `from`/`parent_id` não são garantidos no payload: fallback =
-  `GET /{comment_id}?fields=from,parent_id,text,media` com o token da conta;
-  se ainda indeterminado → skip seguro (loga, não envia DM).
+  `GET /{comment_id}?fields=from,parent_id,text,media,timestamp` com o token
+  da conta; se ainda indeterminado → skip seguro (loga, não envia DM).
+- **`comment_created_at`**: vem do timestamp do value quando presente, senão
+  do fallback GET, senão `received_at` como aproximação conservadora (o
+  webhook chega segundos após o comentário). A janela de 7 dias da private
+  reply e o corte de retry usam essa coluna — `received_at` sozinho não é a
+  base correta do prazo, que conta da criação do comentário.
 
 **`instagram_automation_sends`** — máquina de estados explícita do envio
 (evento durável ≠ envio):
 
 - `id uuid pk`, `comment_id text UNIQUE` (idempotência global),
-  `automation_id uuid`, `conta_id uuid` (denormalizado p/ RLS), `media_id`,
-  `commenter_id`, `commenter_username`, `comment_text` (excerpt).
-- `status text CHECK IN ('processing','retry','sent','failed','skipped')`,
+  `automation_id uuid`, `conta_id uuid` (denormalizado p/ RLS) com **FK
+  composta tenant-safe `(automation_id, conta_id) →
+  instagram_comment_automations (id, conta_id)`** — a escrita é service role
+  (fora da RLS), e a FK torna estruturalmente impossível associar a automação
+  de um workspace ao `conta_id` de outro. `media_id`, `commenter_id`,
+  `commenter_username`, `comment_text` (excerpt),
+  `comment_created_at timestamptz` (base da janela de 7 dias),
+  `public_reply_id text`.
+- `status text CHECK IN
+  ('processing','retry','sent','sent_partial','failed','skipped')`,
   `skip_reason text`, `error_code text`, `dm_status`/`public_reply_status`
   (sub-resultados), `processing_at timestamptz`, `next_attempt_at timestamptz`,
-  `attempts int DEFAULT 0`, `updated_at`.
-- Fluxo: INSERT `status='processing', processing_at=now` ON CONFLICT DO
-  NOTHING (conflito = outro worker ou redelivery; ignora). **Cada efeito
-  externo é persistido separadamente** (as chamadas à Meta não participam de
-  transação): DM aceita → `dm_status='sent'` gravado imediatamente em
-  statement próprio; só então a resposta pública → `public_reply_status`.
-  Retry de linha com `dm_status='sent'` **pula a DM** e completa só a
-  resposta pública. Resultado incerto (timeout sem resposta da Meta) →
-  `retry`; na retentativa, o erro da Meta "já existe private reply para este
-  comentário" é mapeado para `dm_status='sent'` (auto-correção — a private
-  reply é única por comentário). O fechamento em `sent` é uma **RPC atômica**:
-  `UPDATE ... SET status='sent' WHERE id=? AND status='processing'` e, na
-  mesma transação e **condicional à transição**, incremento de
-  `dms_sent_count`/`last_triggered_at` — crash não perde nem duplica contador.
-  Erro transitório → `status='retry', next_attempt_at=now+backoff,
-  attempts+1`. Permanente → `failed`. Cooldown → inserido direto como
-  `skipped`/`cooldown`.
+  `attempts int DEFAULT 0`, `created_at timestamptz NOT NULL DEFAULT now()`,
+  `updated_at`.
+- Fluxo: o claim (INSERT `status='processing', processing_at=now` ON CONFLICT
+  DO NOTHING; conflito = outro worker ou redelivery, ignora) acontece numa
+  **RPC que toma `pg_advisory_xact_lock` sobre o hash de
+  `(automation_id, commenter_id)` e revalida o cooldown na mesma transação**
+  (usada pelo webhook e pelo cron) — dois comentários simultâneos do mesmo
+  usuário têm `comment_id` distintos e o UNIQUE sozinho não os serializa.
+  **Cada efeito externo é persistido separadamente** (as chamadas à Meta não
+  participam de transação): DM aceita → `dm_status='sent'` gravado
+  imediatamente em statement próprio, e é **nessa transição** (RPC atômica,
+  condicional a `dm_status` ainda não ser `sent`) que
+  `dms_sent_count`/`last_triggered_at` incrementam — independentemente da
+  resposta pública; crash não perde nem duplica contador. Só então a resposta
+  pública → grava `public_reply_id` + `public_reply_status`. Retry de linha
+  com `dm_status='sent'` **pula a DM** e completa só a resposta pública. DM
+  com resultado incerto (timeout) → `retry`; na retentativa, o erro da Meta
+  "já existe private reply para este comentário" é mapeado para
+  `dm_status='sent'` (auto-correção — a private reply é única por
+  comentário). **A resposta pública NÃO é idempotente**: timeout ambíguo →
+  reconciliação via `GET /{comment_id}/replies` procurando reply da própria
+  conta com o texto configurado (achou → grava `public_reply_id`);
+  inconclusivo → `public_reply_status='unknown'`, **sem nova tentativa
+  automática** (nunca postar duas vezes). Estados terminais: `sent` (todos os
+  efeitos configurados ok), `sent_partial` (DM enviada, resposta pública
+  `failed`/`unknown`), `failed`, `skipped`. Erro transitório →
+  `status='retry', next_attempt_at=now+backoff, attempts+1`. Cooldown →
+  inserido direto como `skipped`/`cooldown`.
 - Claim RPC do cron opera sobre sends: `WHERE (status='retry' AND
   next_attempt_at<=now) OR (status='processing' AND
   processing_at<now-interval '10 min')`, `FOR UPDATE SKIP LOCKED`, seta
   `processing`/`processing_at`, devolve `encrypted_access_token`/
   `instagram_user_id` via join (molde de `claim_posts_for_publishing` +
-  `20260807000002_claim_skip_nonretryable.sql`).
+  `20260807000002_claim_skip_nonretryable.sql`). O join **exige conta apta**:
+  `authorization_status='active'`, escopo `manage_comments` explícito em
+  `permissions[]` e `comments_subscribed_at IS NOT NULL` — backlog de conta
+  que perdeu permissão/assinatura (ex.: reconexão sem o escopo) vira
+  `failed`/`account_unauthorized` em vez de retry eterno.
 - SELECT por RLS de workspace (log na UI); escrita só service role. Índices
   `(automation_id, created_at DESC)`, `(conta_id, created_at DESC)`.
 
@@ -195,22 +227,27 @@ automação casar, a mais antiga vence". Sem campo `priority` no v1.
   query string.
 - **Erros**: transitórios (graph codes 4/9/17/613, reuso de
   `_shared/publish-error-codes.ts`) → `retry` com backoff exponencial (1 min, 5 min, 15 min, 1 h, 6 h), máx. 5 tentativas,
-  nunca após 7 dias do comentário. Código 190 →
+  nunca após 7 dias de `comment_created_at`. Código 190 →
   `authorization_status='expired'` + notificação, sem retry. Permanentes
   (comentário apagado, DM bloqueada pelo destinatário) → `failed`, sem retry,
   sem notificação.
-- **Throttle interno**: limite oficial ≈750 private replies/hora/conta; cap
-  interno ~700/h por conta, excedente vira `retry`.
+- **Throttle interno**: cap conservador **configurável** (default 700 private
+  replies/hora/conta — não há fonte oficial verificável para o limite exato
+  da Meta, então não o tratamos como tal) + tratamento dos códigos/headers de
+  rate limit da Graph; excedente vira `retry`.
 - **Timeout em toda I/O**: todas as chamadas à Graph API no processador e no
   cron passam pelo cliente compartilhado com `AbortSignal.timeout` (~10 s) —
   regra da casa: I/O em handler que assume estado precisa de timeout; um
   fetch pendurado seguraria o lock de `processing` até expirar e permitiria
   reclaims repetidos.
-- **Revalidação no envio**: o worker re-lê a automação imediatamente antes das
-  chamadas externas — precisa existir e estar `ativo`, e usa o
-  `dm_message`/`public_reply` **atuais** (edições valem até o envio real;
-  pausar/excluir entre o claim e o envio vira `skipped`/`automation_inactive`;
-  resta uma janela de poucos segundos, aceita e documentada).
+- **Revalidação no envio**: o worker re-lê a automação **e a conta**
+  imediatamente antes das chamadas externas — a automação precisa existir e
+  estar `ativo` (usa `dm_message`/`public_reply` **atuais**; edições valem
+  até o envio real; pausar/excluir entre o claim e o envio vira
+  `skipped`/`automation_inactive`) e a conta precisa seguir apta
+  (`authorization_status='active'` + escopo explícito +
+  `comments_subscribed_at`); resta uma janela de poucos segundos, aceita e
+  documentada.
   `sends.automation_id` é FK `ON DELETE CASCADE` — excluir a automação leva o
   log junto, decisão consciente.
 
@@ -300,12 +337,16 @@ automação casar, a mais antiga vence". Sem campo `priority` no v1.
   assinatura inválida → drop; falha no insert → 500; parser com múltiplas
   entries e ambas as formas de payload; redelivery → conflito ignorado; skip
   de comentário próprio/reply/fallback GET; matching (acentos, frase, palavra
-  inteira); cooldown; claim concorrente; máquina de estados (retry com
-  backoff, 190, permanente, efeitos persistidos separadamente, retry com
-  `dm_status='sent'` pula a DM, "já respondido" → auto-correção);
-  revalidação no envio (pausada/excluída → skipped); conta duplicada
-  (conflito cross-workspace → fail-closed + notificação; intra-workspace →
-  desempate); cron (claim, purge, re-check). Restaurar `deno.lock` depois
+  inteira); cooldown, incluindo **cooldown concorrente** (dois comentários
+  simultâneos do mesmo commenter → 1 DM, via advisory lock); claim
+  concorrente; máquina de estados (retry com backoff, 190, permanente,
+  efeitos persistidos separadamente, contador na transição de `dm_status`,
+  retry com `dm_status='sent'` pula a DM, "já respondido" → auto-correção,
+  resposta pública ambígua → reconciliação via GET replies ou `unknown` sem
+  repost, `sent_partial`); revalidação no envio (pausada/excluída → skipped;
+  conta inapta → `account_unauthorized`); conta duplicada (conflito
+  cross-workspace → fail-closed + notificação; intra-workspace → desempate);
+  cron (claim, purge, re-check). Restaurar `deno.lock` depois
   (`git checkout -- deno.lock`).
 - **Vitest** (`npm run test`): store, página, notification-config, nav
   "flag OR count>0"; os testes de contrato de rota/nav existentes cobram a
