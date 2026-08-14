@@ -197,3 +197,6 @@ verify_jwt = false
 
 [functions.instagram-automation-cron]
 verify_jwt = false
+
+[functions.stream-webhook]
+verify_jwt = false

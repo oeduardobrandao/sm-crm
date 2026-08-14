@@ -1,0 +1,20 @@
+name = "media-backup"
+main = "src/index.ts"
+compatibility_date = "2024-05-12"
+
+# Daily incremental sync mesaas -> mesaas-backup. Deletes are NEVER propagated:
+# the backup accumulates every object that ever existed, which is the whole
+# point (see the 2026-08 orphan-scan incident). Deploy manually via the local
+# pinned wrangler, like media-proxy. BACKUP_TRIGGER_SECRET must be set via
+# `wrangler secret put BACKUP_TRIGGER_SECRET` for the manual-trigger endpoint.
+
+[[r2_buckets]]
+binding = "SRC"
+bucket_name = "mesaas"
+
+[[r2_buckets]]
+binding = "DST"
+bucket_name = "mesaas-backup"
+
+[triggers]
+crons = ["30 4 * * *"]

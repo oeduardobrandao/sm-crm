@@ -1,4 +1,4 @@
-import { assertEquals, readJson } from "./assert.ts";
+import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createFileManageHandler } from "../file-manage/handler.ts";
 
@@ -7,12 +7,16 @@ Deno.env.set("SUPABASE_URL", "https://test.supabase.co");
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
-function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>) {
+function makeHandler(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  overrides: Partial<Parameters<typeof createFileManageHandler>[0]> = {},
+) {
   return createFileManageHandler({
     buildCorsHeaders,
     createDb: () => db as never,
     signUrl: async (key) => `https://signed.example.com/${key}`,
     now: () => "2026-05-01T12:00:00.000Z",
+    ...overrides,
   });
 }
 
@@ -176,6 +180,60 @@ Deno.test("copy-file: quota=0 (fail-closed) blocks copy", async () => {
   assertEquals(res.status, 413);
   const body = await readJson(res);
   assertEquals(body.error, "quota_exceeded");
+});
+
+Deno.test("copy-file: response strips stream_uid/stream_status keys (copies get no inline ingest)", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", {
+    data: {
+      id: 5,
+      conta_id: "conta-1",
+      size_bytes: 100,
+      name: "clip.mp4",
+      kind: "video",
+      r2_key: "conta-1/clip.mp4",
+      thumbnail_r2_key: null,
+      stream_uid: "old-uid",
+      stream_status: "ready",
+    },
+    error: null,
+  });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: null, error: null });
+  db.queue("files", "insert", {
+    data: {
+      id: 6,
+      conta_id: "conta-1",
+      folder_id: null,
+      r2_key: "conta-1/new-clip.mp4",
+      thumbnail_r2_key: null,
+      name: "clip.mp4",
+      kind: "video",
+      mime_type: "video/mp4",
+      size_bytes: 100,
+      width: null,
+      height: null,
+      duration_seconds: 12,
+      blur_data_url: null,
+      uploaded_by: "user-1",
+      reference_count: 0,
+      // A fresh copy is never re-ingested inline (Task 8's sweep picks it up later),
+      // so these come back null from the insert ... RETURNING * — but the KEYS must
+      // still be stripped from the response.
+      stream_uid: null,
+      stream_status: null,
+    },
+    error: null,
+  });
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const handler = makeHandler(db, { copyObject: async () => {} });
+  const res = await handler(req("POST", "/files/5/copy", { destination_folder_id: null }));
+  assertEquals(res.status, 201);
+  const body = await readJson(res);
+  assertEquals(body.id, 6);
+  assert(!("stream_uid" in body), "stream_uid must not leak to the client");
+  assert(!("stream_status" in body), "stream_status must not leak to the client");
 });
 
 // ─── COPY FOLDER ──────────────────────────────────────────────

@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { signGetUrl } from "../_shared/r2.ts";
 import { signMediaUrl, isMediaProxyEnabled } from "../_shared/media-url.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { isStreamEnabled, signPlaybackUrl } from "../_shared/stream.ts";
 import { createFileManageHandler } from "./handler.ts";
 
 const signUrl = isMediaProxyEnabled()
@@ -18,4 +19,5 @@ Deno.serve(createFileManageHandler({
     auth: { autoRefreshToken: false, persistSession: false },
   }),
   signUrl,
+  signPlayback: isStreamEnabled() ? (uid) => signPlaybackUrl(uid) : undefined,
 }));

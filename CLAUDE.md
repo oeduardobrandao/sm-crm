@@ -199,6 +199,20 @@ Monorepo with npm workspaces:
   `true` adds the optional `instagram_business_manage_comments` scope to the request.
   Turn on only after Meta's Advanced Access for that scope is approved, or in staging
   to test with an account that has a role on the app
+- `STREAM_ACCOUNT_ID`, `STREAM_API_TOKEN` -- Cloudflare Stream account + API
+  token, used by `_shared/stream.ts` to copy videos in, list, and delete them
+- `STREAM_CUSTOMER_CODE`, `STREAM_SIGNING_KEY_ID`, `STREAM_SIGNING_KEY_JWK`,
+  `STREAM_WEBHOOK_SECRET` -- signed HLS playback (JWT signing) + webhook
+  verification for Cloudflare Stream
+- All six are optional with no default. `STREAM_ACCOUNT_ID` + `STREAM_API_TOKEN`
+  alone gate cleanup (`isStreamCleanupEnabled()` -- list/delete, the
+  post-media-cleanup-cron orphan reap and queued-deletion drain); all six
+  together additionally gate ingest + signed playback (`isStreamEnabled()`).
+  Unsetting only the other four (`STREAM_CUSTOMER_CODE`, `STREAM_SIGNING_KEY_ID`,
+  `STREAM_SIGNING_KEY_JWK`, `STREAM_WEBHOOK_SECRET`) is the kill switch --
+  ingest and playback stop while cleanup keeps draining queued deletions.
+  Losing `STREAM_ACCOUNT_ID` or `STREAM_API_TOKEN` is what disables the whole
+  feature, cleanup included
 
 ## Gotchas
 
