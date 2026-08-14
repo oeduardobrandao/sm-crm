@@ -21,8 +21,20 @@ function toEvent(igUserId: string, change: any): NormalizedCommentEvent | null {
   const value = change?.value;
   const commentId = value?.id;
   if (typeof commentId !== "string" || !commentId) return null;
+
+  let timestamp: string | undefined;
   const epoch = typeof value.created_time === "number" ? value.created_time
     : typeof value.timestamp === "number" ? value.timestamp : null;
+
+  if (epoch !== null && Number.isFinite(epoch)) {
+    const d = new Date(epoch * 1000);
+    if (!Number.isNaN(d.getTime())) {
+      timestamp = d.toISOString();
+    }
+  } else if (typeof value.timestamp === "string") {
+    timestamp = value.timestamp;
+  }
+
   return {
     igUserId,
     commentId,
@@ -31,8 +43,7 @@ function toEvent(igUserId: string, change: any): NormalizedCommentEvent | null {
     commenterId: typeof value.from?.id === "string" ? value.from.id : undefined,
     commenterUsername: typeof value.from?.username === "string" ? value.from.username : undefined,
     text: typeof value.text === "string" ? value.text : undefined,
-    timestamp: epoch !== null ? new Date(epoch * 1000).toISOString()
-      : typeof value.timestamp === "string" ? value.timestamp : undefined,
+    timestamp,
     raw: change,
   };
 }
@@ -49,8 +60,13 @@ export function parseWebhookDelivery(body: any): NormalizedCommentEvent[] {
       : entry.field !== undefined ? [{ field: entry.field, value: entry.value }] : [];
     for (const change of changes) {
       if (change?.field !== "comments") continue;
-      const ev = toEvent(igUserId, change);
-      if (ev) out.push(ev);
+      try {
+        const ev = toEvent(igUserId, change);
+        if (ev) out.push(ev);
+      } catch {
+        // Poisoned change is skipped; delivery continues
+        continue;
+      }
     }
   }
   return out;
