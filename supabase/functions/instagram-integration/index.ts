@@ -12,6 +12,8 @@ import { gateConnectLinkOrigin } from "../instagram-connect-link/gate.ts";
 import { sendConnectedNoticeEmail } from "../_shared/instagram-connect-email.ts";
 import { appBaseUrl } from "../_shared/app-url.ts";
 import { buildScopeParam, IG_BASE_SCOPES } from "../_shared/instagram-scopes.ts";
+import { resolveGrantedPermissions } from "../_shared/instagram-permissions.ts";
+import { subscribeToComments, fetchSubscribedFields } from "../_shared/instagram-messaging.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
@@ -264,10 +266,8 @@ Deno.serve(async (req) => {
         }
 
         const REQUESTED_SCOPES = [...IG_BASE_SCOPES];
-        const grantedPermissions = Array.isArray(slTokenData.permissions) && slTokenData.permissions.length > 0
-            ? slTokenData.permissions
-            : REQUESTED_SCOPES;
-        console.error('[IG-CALLBACK] Permissions:', JSON.stringify(grantedPermissions), Array.isArray(slTokenData.permissions) ? '(from token response)' : '(from requested scopes)');
+        const { permissions: grantedPermissions, hasCommentsScope } = resolveGrantedPermissions(slTokenData.permissions);
+        console.error('[IG-CALLBACK] Permissions:', JSON.stringify(grantedPermissions), Array.isArray(slTokenData.permissions) ? '(from token response)' : '(from requested scopes)', 'hasCommentsScope:', hasCommentsScope);
 
         // If Meta reported the actually granted scopes and the user unchecked a
         // required one, refuse the half-working connection and tell them to
@@ -378,11 +378,39 @@ Deno.serve(async (req) => {
                 last_synced_at: new Date().toISOString(),
                 authorization_status: 'active',
                 permissions: grantedPermissions,
+                // Reset-antes-de-regravar: cobre tanto o connect (linha nova) quanto o
+                // reconnect (upsert por onConflict client_id atualiza a linha existente)
+                // -- reconectar sem o escopo opcional não pode deixar canAutomate=true
+                // por resíduo de uma assinatura anterior.
+                comments_subscribed_at: null,
             }, { onConflict: 'client_id' })
             .select('id')
             .single();
 
         if (dbError) throw new Error(dbError.message);
+
+        // Assinatura do webhook de comments. Best-effort e depois da conexão já
+        // persistida: qualquer falha aqui não pode derrubar o fluxo de conexão --
+        // canAutomate fica false e a UI oferece reconectar (Task 6/spec "Escopos").
+        if (hasCommentsScope) {
+            try {
+                await subscribeToComments({}, longLivedToken!);
+                const subscribedFields = await fetchSubscribedFields({}, longLivedToken!);
+                if (subscribedFields.includes('comments')) {
+                    const { error: subErr } = await serviceClient
+                        .from('instagram_accounts')
+                        .update({ comments_subscribed_at: new Date().toISOString() })
+                        .eq('id', upsertedAccount!.id);
+                    if (subErr) {
+                        console.error('[IG-CALLBACK] comments_subscribed_at update failed:', subErr.message);
+                    }
+                } else {
+                    console.error('[IG-CALLBACK] subscribed_apps did not confirm "comments" field:', JSON.stringify(subscribedFields));
+                }
+            } catch (e) {
+                console.error('[IG-CALLBACK] comments subscription failed (non-fatal):', e);
+            }
+        }
 
         await insertAuditLog(serviceClient, {
           // Both come from the signed state. Without conta_id the row is unattributable: it is
