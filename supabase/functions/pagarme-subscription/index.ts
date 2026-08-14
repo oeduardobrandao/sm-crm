@@ -8,6 +8,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { isWorkspaceOwner } from "../_shared/workspace-role.ts";
 import { checkRateLimit, getClientIP } from "../_shared/rate-limit.ts";
+import { createStripeSwitchGateway } from "../_shared/stripe-switch.ts";
 import { parseSubscriptionBody } from "./logic.ts";
 import { createPagarmeSubscriptionGateway } from "./gateway.ts";
 import { handleSubscriptionAction } from "./handler.ts";
@@ -74,8 +75,13 @@ Deno.serve(async (req: Request) => {
     const parsed = parseSubscriptionBody(body);
     if (!parsed.ok) return json({ error: parsed.error, code: parsed.code }, parsed.status, headers);
 
+    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     const result = await handleSubscriptionAction(
-      { db: svc, gateway: createPagarmeSubscriptionGateway() },
+      {
+        db: svc,
+        gateway: createPagarmeSubscriptionGateway(),
+        stripeSwitch: stripeKey ? createStripeSwitchGateway(stripeKey) : null,
+      },
       { workspaceId },
       parsed.value,
     );

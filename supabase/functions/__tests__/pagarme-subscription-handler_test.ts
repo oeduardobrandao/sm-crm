@@ -6,6 +6,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { PagarmeApiError } from "../_shared/pagarme.ts";
+import { StripeSwitchGateway } from "../_shared/stripe-switch.ts";
 import { handleSubscriptionAction } from "../pagarme-subscription/handler.ts";
 import { PagarmeSubscriptionGateway } from "../pagarme-subscription/gateway.ts";
 import { SubscriptionAction } from "../pagarme-subscription/logic.ts";
@@ -32,9 +33,20 @@ interface DbFx {
   defaultPlan?: { id: string } | null;
   rpcResult?: number | null;
   rpcError?: { message: string } | null;
+  /** Fallback price rows for the plans-table read WITHOUT an is_default filter (undo's
+   * resolvePlanFromPriceId source), distinct from getDefaultPlanId's is_default read above. */
+  planPriceRows?: Array<{ id: string; stripe_price_id: string | null; stripe_price_id_annual: string | null }>;
+  /** Second read of workspace_subscriptions (the undo's zero-rows re-read). */
+  reReadRow?: Record<string, unknown> | null;
+  /** Second update of workspace_subscriptions (the undo's retry pinned on status=canceled). */
+  secondCasZeroRows?: boolean;
+  /** workspaces read for the plan-writer (writeWorkspacePlan's manual-comp guard). */
+  workspaceRow?: { plan_source: string };
 }
 
 function makeDb(fx: DbFx & { events: Ev[] }): SupabaseClient {
+  let subReads = 0;
+  let subUpdates = 0;
   const from = (table: string) => {
     let op = "read";
     let values: Record<string, unknown> | undefined;
@@ -63,19 +75,36 @@ function makeDb(fx: DbFx & { events: Ev[] }): SupabaseClient {
     const settle = () => {
       fx.events.push({ table, op, values, filters, abortSignal: sawAbortSignal });
       if (table === "workspace_subscriptions" && op === "read") {
-        return { data: fx.subRow === undefined ? null : fx.subRow, error: fx.subRowError ?? null };
+        subReads++;
+        if (subReads === 1) {
+          return { data: fx.subRow === undefined ? null : fx.subRow, error: fx.subRowError ?? null };
+        }
+        return { data: fx.reReadRow === undefined ? null : fx.reReadRow, error: null };
       }
       if (table === "workspace_subscriptions" && op === "update") {
+        subUpdates++;
+        if (subUpdates === 1) {
+          return {
+            data: fx.casZeroRows ? [] : [{ workspace_id: WS }],
+            error: fx.casError ?? null,
+          };
+        }
         return {
-          data: fx.casZeroRows ? [] : [{ workspace_id: WS }],
-          error: fx.casError ?? null,
+          data: fx.secondCasZeroRows ? [] : [{ workspace_id: WS }],
+          error: null,
         };
       }
       if (table === "plans") {
-        return {
-          data: fx.defaultPlan === undefined ? { id: "free" } : fx.defaultPlan,
-          error: null,
-        };
+        if (filters.some(([m, c]) => m === "eq" && c === "is_default")) {
+          return { data: fx.defaultPlan === undefined ? { id: "free" } : fx.defaultPlan, error: null };
+        }
+        return { data: fx.planPriceRows ?? [], error: null };
+      }
+      if (table === "workspaces" && op === "read") {
+        return { data: fx.workspaceRow ?? { plan_source: "system" }, error: null };
+      }
+      if (table === "workspaces" && op === "update") {
+        return { data: null, error: null };
       }
       return { data: null, error: null };
     };
@@ -135,19 +164,81 @@ function makeGateway(fx: {
   };
 }
 
+// Fronteira do mensal de teste: 2026-09-15T14:23:11Z -> ceil = "2026-09-16" (mesmo fixture da
+// Task 5, copiado -- os arquivos de teste Deno nao compartilham helpers entre si neste repo).
+const STRIPE_BOUNDARY_UNIX = Math.floor(Date.parse("2026-09-15T14:23:11Z") / 1000);
+const STRIPE_SUB_MONTHLY = {
+  status: "active",
+  cancel_at_period_end: false,
+  current_period_end: STRIPE_BOUNDARY_UNIX,
+  items: { data: [{ price: { id: "price_m1", recurring: { interval: "month" } } }] },
+};
+
+function makeStripeSwitch(fx: {
+  calls: Array<{ method: string; args: unknown[] }>;
+  retrieveResult?: unknown;
+  retrieveThrows?: unknown;
+  /** Lanca em setCancelAtPeriodEnd(id, true) (o rearme). */
+  setCancelTrueThrows?: unknown;
+  /** Lanca em setCancelAtPeriodEnd(id, false) (a reativacao). */
+  setCancelFalseThrows?: unknown;
+  amountThrows?: unknown;
+}): StripeSwitchGateway {
+  const record = (method: string, args: unknown[]) => fx.calls.push({ method, args });
+  return {
+    retrieveSubscription: (id) => {
+      record("retrieveSubscription", [id]);
+      if (fx.retrieveThrows) return Promise.reject(fx.retrieveThrows);
+      return Promise.resolve(fx.retrieveResult ?? STRIPE_SUB_MONTHLY);
+    },
+    setCancelAtPeriodEnd: (id, value) => {
+      record("setCancelAtPeriodEnd", [id, value]);
+      if (value === true && fx.setCancelTrueThrows) return Promise.reject(fx.setCancelTrueThrows);
+      if (value === false && fx.setCancelFalseThrows) return Promise.reject(fx.setCancelFalseThrows);
+      return Promise.resolve();
+    },
+    cancelNow: (id) => {
+      record("cancelNow", [id]);
+      return Promise.resolve();
+    },
+    fetchAmount: (id) => {
+      record("fetchAmount", [id]);
+      if (fx.amountThrows) return Promise.reject(fx.amountThrows);
+      return Promise.resolve({
+        amount_cents: 9990,
+        gross_cents: null,
+        currency: "brl",
+        interval: "month",
+        discount_label: null,
+        livemode: false,
+      });
+    },
+  };
+}
+
 function run(
   dbFx: Omit<Parameters<typeof makeDb>[0], "events">,
   gwFx: Omit<Parameters<typeof makeGateway>[0], "calls">,
   action: SubscriptionAction,
+  swFx?: Omit<Parameters<typeof makeStripeSwitch>[0], "calls"> | null,
 ) {
   const events: Ev[] = [];
   const calls: Array<{ method: string; args: unknown[] }> = [];
+  const stripeCalls: Array<{ method: string; args: unknown[] }> = [];
   const result = handleSubscriptionAction(
-    { db: makeDb({ ...dbFx, events }), gateway: makeGateway({ ...gwFx, calls }), now: () => NOW },
+    {
+      db: makeDb({ ...dbFx, events }),
+      gateway: makeGateway({ ...gwFx, calls }),
+      // 3-arg calls (existing tests) never wire a Stripe gateway: they must never reach a
+      // real undo path. Only a 4th arg (even `{}`) wires the fake; an explicit `null` also
+      // stays null (the dedicated "no gateway configured" test says so with intent).
+      stripeSwitch: swFx == null ? null : makeStripeSwitch({ ...swFx, calls: stripeCalls }),
+      now: () => NOW,
+    },
     { workspaceId: WS },
     action,
   );
-  return { events, calls, result };
+  return { events, calls, stripeCalls, result };
 }
 
 function findCasUpdate(events: Ev[]): Ev | undefined {
@@ -163,6 +254,18 @@ const UPDATE_CARD: SubscriptionAction = {
   action: "update_card",
   cardToken: "tok_1",
   billingAddress: ADDRESS,
+};
+
+// Janela de switch (marker + trialing): a linha local que o undo opera em cima.
+const SWITCH_WINDOW_ROW = {
+  provider: "pagarme",
+  pagarme_customer_id: "cus_1",
+  pagarme_subscription_id: SUB,
+  status: "trialing",
+  cancel_at_period_end: false,
+  current_period_end: "2026-09-16T00:00:00Z",
+  switched_from_stripe_subscription_id: "sub_s1",
+  switched_from_plan_id: "start",
 };
 
 // ─── cancel ──────────────────────────────────────────────────────────────
@@ -447,8 +550,10 @@ Deno.test("roteamento: marker + trialing vai para o undo, nunca para buildCancel
     { action: "cancel" },
   );
   const res = await result;
-  // Nesta task o undo e um stub 501; o pin aqui e o ROTEAMENTO: o cancel comum NAO rodou.
-  assertEquals(res.status, 501);
+  // Sem o 4o arg, run() nao arma um stripeSwitch (existing-test default = null), entao o
+  // undo real recusa de partida (UNDO_500 = 500). O pin aqui continua sendo o ROTEAMENTO:
+  // o cancel comum (que chamaria cancelSubscription) NAO rodou.
+  assertEquals(res.status, 500);
   assert(!calls.some((c) => c.method === "cancelSubscription"));
 });
 
@@ -495,6 +600,228 @@ Deno.test("regressao: marker + ACTIVE segue o cancel comum paid-through (undo so
   const res = await result;
   assertEquals(res.status, 200);
   assertEquals((res.body as { status?: string }).status, "canceled");
+});
+
+// ─── undo do switch ─────────────────────────────────────────────────────
+
+Deno.test("undo happy path: leituras -> cap_end=false -> CAS restaurando plan_id -> grant stripe -> DELETE -> reverted", async () => {
+  const { events, calls, stripeCalls, result } = run(
+    { subRow: SWITCH_WINDOW_ROW },
+    {},
+    { action: "cancel" },
+    {},
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals(res.body, { status: "reverted", access_until: "2026-09-15T14:23:11.000Z" });
+
+  // ordem: retrieve e fetchAmount ANTES do setCancelAtPeriodEnd(false)
+  const methods = stripeCalls.map((c) => c.method);
+  const reactivateIdx = methods.indexOf("setCancelAtPeriodEnd");
+  assert(methods.indexOf("retrieveSubscription") < reactivateIdx);
+  assert(methods.indexOf("fetchAmount") < reactivateIdx);
+  assertEquals(stripeCalls[reactivateIdx].args, ["sub_s1", false]);
+
+  // CAS: pins pagarme + sub + trialing; colunas restauram plan_id do marker e limpam tudo
+  const cas = events.find((e) => e.table === "workspace_subscriptions" && e.op === "update")!;
+  assert(cas.filters.some(([m, c, v]) => m === "eq" && c === "provider" && v === "pagarme"));
+  assert(cas.filters.some(([m, c, v]) => m === "eq" && c === "pagarme_subscription_id" && v === SUB));
+  assert(cas.filters.some(([m, c, v]) => m === "eq" && c === "status" && v === "trialing"));
+  assertEquals(cas.values?.provider, "stripe");
+  assertEquals(cas.values?.plan_id, "start");
+  assertEquals(cas.values?.pagarme_subscription_id, null);
+  assertEquals(cas.values?.switched_from_stripe_subscription_id, null);
+  assertEquals(cas.values?.switched_from_plan_id, null);
+  assertEquals(cas.values?.cancel_at_period_end, false);
+  // mirror restaurado do fetchAmount (amount_cents 9990 no fake)
+  assertEquals(cas.values?.amount_cents, 9990);
+
+  // grant do plano-fonte via workspaces (plan-writer), plan_source stripe
+  const planWrite = events.find((e) => e.table === "workspaces" && e.op === "update")!;
+  assertEquals(planWrite.values?.plan_id, "start");
+  assertEquals(planWrite.values?.plan_source, "stripe");
+
+  // DELETE da future sub por ultimo
+  assert(calls.some((c) => c.method === "cancelSubscription" && c.args[0] === SUB));
+});
+
+Deno.test("undo: stripeSwitch null -> 500 sem nada remoto/local", async () => {
+  const { events, calls, result } = run({ subRow: SWITCH_WINDOW_ROW }, {}, { action: "cancel" }, null);
+  const res = await result;
+  assertEquals(res.status, 500);
+  assertEquals(calls.length, 0);
+  assert(!events.some((e) => e.op === "update"));
+});
+
+Deno.test("undo: cap_end=false falha -> rearme imediato cap_end=true + 500 sem writes locais", async () => {
+  const { events, stripeCalls, result } = run(
+    { subRow: SWITCH_WINDOW_ROW },
+    {},
+    { action: "cancel" },
+    { setCancelFalseThrows: new Error("timeout ambiguo") },
+  );
+  const res = await result;
+  assertEquals(res.status, 500);
+  const sets = stripeCalls.filter((c) => c.method === "setCancelAtPeriodEnd");
+  assertEquals(sets.map((c) => c.args[1]), [false, true]); // tentativa + rearme
+  assert(!events.some((e) => e.table === "workspace_subscriptions" && e.op === "update"));
+});
+
+Deno.test("undo: erro de DB no CAS -> compensacao cap_end=true + 500", async () => {
+  const { stripeCalls, result } = run(
+    { subRow: SWITCH_WINDOW_ROW, casError: { message: "db down" } },
+    {},
+    { action: "cancel" },
+    {},
+  );
+  const res = await result;
+  assertEquals(res.status, 500);
+  const sets = stripeCalls.filter((c) => c.method === "setCancelAtPeriodEnd");
+  assertEquals(sets[sets.length - 1]?.args, ["sub_s1", true]);
+});
+
+Deno.test("undo: fetchAmount falha -> mirror CLEARED no mesmo statement, fluxo segue", async () => {
+  const { events, result } = run(
+    { subRow: SWITCH_WINDOW_ROW },
+    {},
+    { action: "cancel" },
+    { amountThrows: new Error("stripe amount down") },
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  const cas = events.find((e) => e.table === "workspace_subscriptions" && e.op === "update")!;
+  assertEquals(cas.values?.amount_cents, null);
+  assertEquals(cas.values?.amount_refreshed_at, null);
+});
+
+Deno.test("undo: marker de plano null usa resolvePlanFromPriceId; ambos null -> grant pulado + CRITICAL", async () => {
+  const row = { ...SWITCH_WINDOW_ROW, switched_from_plan_id: null };
+  // fallback resolve pelo price do assess (price_m1 -> start)
+  const r1 = run(
+    { subRow: row, planPriceRows: [{ id: "start", stripe_price_id: "price_m1", stripe_price_id_annual: null }] },
+    {},
+    { action: "cancel" },
+    {},
+  );
+  const res1 = await r1.result;
+  assertEquals(res1.status, 200);
+  const cas = r1.events.find((e) => e.table === "workspace_subscriptions" && e.op === "update")!;
+  assertEquals(cas.values?.plan_id, "start");
+  // ambos null: sem plan_id no CAS e sem write em workspaces
+  const r2 = run({ subRow: row, planPriceRows: [] }, {}, { action: "cancel" }, {});
+  const res2 = await r2.result;
+  assertEquals(res2.status, 200);
+  const cas2 = r2.events.find((e) => e.table === "workspace_subscriptions" && e.op === "update")!;
+  assert(!("plan_id" in (cas2.values ?? {})));
+  assert(!r2.events.some((e) => e.table === "workspaces" && e.op === "update"));
+});
+
+Deno.test("undo: remota terminal (canceled) -> fallback cancel comum limpando os DOIS markers no mesmo CAS", async () => {
+  const { events, calls, result } = run(
+    { subRow: SWITCH_WINDOW_ROW },
+    {},
+    { action: "cancel" },
+    { retrieveResult: { ...STRIPE_SUB_MONTHLY, status: "canceled" } },
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals((res.body as { status?: string }).status, "canceled");
+  assert(calls.some((c) => c.method === "cancelSubscription")); // cancel comum cancela a pagarme
+  const cas = events.find((e) => e.table === "workspace_subscriptions" && e.op === "update")!;
+  assertEquals(cas.values?.switched_from_stripe_subscription_id, null);
+  assertEquals(cas.values?.switched_from_plan_id, null);
+  assertEquals(cas.values?.status, "canceled");
+});
+
+Deno.test("undo zero-rows -> re-read ACTIVE (fronteira cruzou): consolidacao cancelNow + 409", async () => {
+  const { stripeCalls, result } = run(
+    {
+      subRow: SWITCH_WINDOW_ROW,
+      casZeroRows: true,
+      reReadRow: { provider: "pagarme", status: "active", pagarme_subscription_id: SUB },
+    },
+    {},
+    { action: "cancel" },
+    {},
+  );
+  const res = await result;
+  assertEquals(res.status, 409);
+  assertEquals(
+    (res.body as { error?: string }).error,
+    "A troca já foi concluída e a primeira parcela foi cobrada.",
+  );
+  assert(stripeCalls.some((c) => c.method === "cancelNow"));
+});
+
+Deno.test("undo zero-rows -> re-read PAST_DUE: consolidacao com copy de cobranca pendente", async () => {
+  const { result } = run(
+    {
+      subRow: SWITCH_WINDOW_ROW,
+      casZeroRows: true,
+      reReadRow: { provider: "pagarme", status: "past_due", pagarme_subscription_id: SUB },
+    },
+    {},
+    { action: "cancel" },
+    {},
+  );
+  const res = await result;
+  assertEquals(res.status, 409);
+  assertEquals(
+    (res.body as { error?: string }).error,
+    "A troca já foi concluída e a primeira cobrança está pendente. Atualize o cartão ou cancele a assinatura.",
+  );
+});
+
+Deno.test("undo zero-rows -> re-read provider stripe: 200 reverted idempotente", async () => {
+  const { result } = run(
+    {
+      subRow: SWITCH_WINDOW_ROW,
+      casZeroRows: true,
+      reReadRow: { provider: "stripe", status: "active", pagarme_subscription_id: null },
+    },
+    {},
+    { action: "cancel" },
+    {},
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals((res.body as { status?: string }).status, "reverted");
+});
+
+Deno.test("undo: DELETE da pagarme falha -> ainda 200 reverted (leg C e o backstop)", async () => {
+  const { result } = run(
+    { subRow: SWITCH_WINDOW_ROW },
+    { cancelThrows: new Error("gateway down") },
+    { action: "cancel" },
+    {},
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals((res.body as { status?: string }).status, "reverted");
+});
+
+Deno.test("undo: retry pos-undo com resposta perdida PARTE do estado final -> 200 reverted (decisao 9)", async () => {
+  // Estado FINAL do undo: provider stripe, sem pagarme id, markers limpos, active.
+  const { result } = run(
+    {
+      subRow: {
+        provider: "stripe",
+        pagarme_customer_id: "cus_1",
+        pagarme_subscription_id: null,
+        status: "active",
+        cancel_at_period_end: false,
+        current_period_end: "2026-09-15T14:23:11Z",
+        switched_from_stripe_subscription_id: null,
+        switched_from_plan_id: null,
+      },
+    },
+    {},
+    { action: "cancel" },
+    {},
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals((res.body as { status?: string }).status, "reverted");
 });
 
 // ─── update_card ─────────────────────────────────────────────────────────
