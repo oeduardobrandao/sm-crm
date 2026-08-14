@@ -202,12 +202,10 @@ export function createPagarmeCheckoutHandler(deps: {
         };
       }
     }
-    // switchObserved/switchBoundary are consumed by the switch CREATION path landing in Task
-    // 6 (the marker columns and the ceiled start_at); ceilToUtcMidnightDate likewise. Voided
-    // here so a lint pass on this file stays clean in the meantime — TODO Task 6: remove.
+    // switchObserved (cancelAtPeriodEnd) is consumed by the Stripe cancel leg landing in
+    // Task 7. Voided here so a lint pass on this file stays clean in the meantime —
+    // TODO Task 7: remove.
     void switchObserved;
-    void switchBoundary;
-    void ceilToUtcMidnightDate;
 
     // Carve-out: switch eligibility was already fully validated above, so isSwitch here
     // implies eligible and this check only ever fires for the non-switch path. Kept BEFORE
@@ -324,7 +322,7 @@ export function createPagarmeCheckoutHandler(deps: {
     // { error } today, but this helper must stay non-throwing even if that convention or
     // the client ever changes — a post-bind throw here would fail a checkout that succeeded.
     const finishAttempt = async (
-      state: "succeeded" | "failed",
+      state: "succeeded" | "failed" | "quarantined",
       pagarmeSubscriptionId?: string,
     ) => {
       try {
@@ -348,11 +346,13 @@ export function createPagarmeCheckoutHandler(deps: {
 
     let stage: "customer" | "card" | "subscription" = "customer";
     try {
-      // (4) Trial: permanent per-workspace eligibility, provider-agnostic. start_at in the
-      // future means the card is NOT authorized at creation (spike): a bad card surfaces on
-      // day 30 and dunning covers it.
-      const trialDays = resolveTrialDays(hasEverSubscribed(row));
-      const startAt = resolveStartAt(trialDays, now);
+      // (4) Trial (checkout comum) OU fronteira do switch. O switch NUNCA consulta
+      // resolveTrialDays: o "periodo gratis" dele e o mes Stripe ja pago, e a 1a parcela
+      // cai no ceil da fronteira (spec: nao ha gap de acesso; o plano e concedido no bind).
+      const trialDays = isSwitch ? undefined : resolveTrialDays(hasEverSubscribed(row));
+      const startAt = isSwitch && switchBoundary
+        ? ceilToUtcMidnightDate(switchBoundary)
+        : resolveStartAt(trialDays, now);
 
       // (5) Customer upsert: email is unique at Pagar.me, so this is find-or-create. The
       // customer may be shared across this owner's workspaces (1:N by design, never a
@@ -484,10 +484,32 @@ export function createPagarmeCheckoutHandler(deps: {
           return await failCompensating(500, GENERIC_500);
         }
 
+        const normalized = normalizePagarmeStatus(sub.status);
+
+        // (9a) Switch DEVE nascer future->trialing (start_at estritamente futuro). Nascer
+        // active = 1a cobranca disparou com a Stripe ainda cobrando: malfuncionamento do
+        // gateway. Quarentena duravel (decisao 10): cancela a sub remota e trava NOVAS
+        // tentativas nos dois providers ate revisao manual. NUNCA "failed": failed libera
+        // retry com nova idempotency key e possivel segunda cobranca.
+        if (isSwitch && normalized !== "trialing") {
+          console.error(
+            `[pagarme-checkout] CRITICAL: switch subscription born ${sub.status} for workspace ${ctx.workspaceId} (subscription ${sub.id}); quarantining checkout`,
+          );
+          try {
+            await gateway.cancelSubscription(sub.id);
+          } catch (e) {
+            console.error(
+              "[pagarme-checkout] CRITICAL: quarantine cancel failed; subscription may be live AND charged:",
+              e instanceof Error ? e.message : String(e),
+            );
+          }
+          await finishAttempt("quarantined", sub.id);
+          return { status: 500, body: GENERIC_500 };
+        }
+
         // (9) "failed" is the undocumented fourth status: the first charge was refused, no
         // plan was ever granted, so there is nothing to preserve. Any other non-live status
         // at creation (canceled / unknown) gets the same treatment: nothing was granted.
-        const normalized = normalizePagarmeStatus(sub.status);
         if (normalized !== "trialing" && normalized !== "active") {
           console.error(`[pagarme-checkout] subscription born non-live (status=${sub.status})`);
           return await failCompensating(400, {
@@ -515,6 +537,10 @@ export function createPagarmeCheckoutHandler(deps: {
           currentPeriodEnd: temporal.current_period_end,
           everSubscribedAt: (row?.ever_subscribed_at as string | null) ?? nowIso,
           nowIso,
+          switchedFromStripeSubscriptionId: isSwitch
+            ? (row!.stripe_subscription_id as string)
+            : null,
+          switchedFromPlanId: isSwitch ? switchSourcePlanId : null,
         });
         if (row) {
           const observedProvider = (row.provider as string | null) ?? "stripe";
@@ -530,6 +556,11 @@ export function createPagarmeCheckoutHandler(deps: {
           bind = observedId == null
             ? bind.is(observedIdColumn, null)
             : bind.eq(observedIdColumn, observedId);
+          if (isSwitch) {
+            // Pin extra do switch: um webhook Stripe concorrente que mudou o status entre o
+            // verify e o bind (deleted, renovacao) faz o CAS falhar -> compensa + 409.
+            bind = bind.eq("status", row!.status as string);
+          }
           const { data: bound, error: bindErr } = await bind
             .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
             .select("workspace_id");
@@ -586,17 +617,24 @@ export function createPagarmeCheckoutHandler(deps: {
           e instanceof Error ? e.message : String(e),
         );
       }
-      await finishAttempt("succeeded", sub.id);
-
-      return {
-        status: 200,
-        body: {
+      const successBody = isSwitch
+        ? {
+          status: liveStatus,
+          trial_ends_at: null, // switch nunca fala de trial
+          next_charge_at: currentPeriodEnd,
+          installment_amount_cents: amountMirror.installmentAmountCents,
+          switched: true,
+          first_charge_at: currentPeriodEnd,
+        }
+        : {
           status: liveStatus,
           trial_ends_at: liveStatus === "trialing" ? currentPeriodEnd : null,
           next_charge_at: currentPeriodEnd,
           installment_amount_cents: amountMirror.installmentAmountCents,
-        },
-      };
+        };
+      await finishAttempt("succeeded", sub.id);
+
+      return { status: 200, body: successBody };
     } catch (err) {
       // Ambiguous subscription-stage outcomes (timeout/network/5xx even after the same-key
       // retry) may have a live remote subscription with no recorded id. Releasing the

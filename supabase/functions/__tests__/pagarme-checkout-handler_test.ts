@@ -888,21 +888,16 @@ Deno.test("stale orphan cancel 401/403/429: reservation kept (says nothing about
 
 // ─── Switch mensal Stripe -> 12x: gates pre-reserva (Fase 5) ───────────────
 
-// TODO Task 6: remove ignore (the switch creation path with start_at lands in Task 6).
-Deno.test({
-  name: "switch: linha stripe active elegivel passa do gate e chega na reserva",
-  ignore: true,
-  fn: async () => {
-    const { events, result } = run(
-      { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW },
-      { subStatus: "future", subStartAt: "2026-09-16" },
-      {},
-      SWITCH_REQ,
-    );
-    const res = await result;
-    assertEquals(res.status, 200);
-    assert(events.some((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert"));
-  },
+Deno.test("switch: linha stripe active elegivel passa do gate e chega na reserva", async () => {
+  const { events, result } = run(
+    { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW },
+    { subStatus: "future", subStartAt: "2026-09-16" },
+    {},
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assert(events.some((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert"));
 });
 
 Deno.test("switch: linha inelegivel (past_due) -> 409 switch_not_eligible, zero remoto, zero reserva", async () => {
@@ -988,24 +983,19 @@ Deno.test("switch: plan_source manual -> 409 pre-reserva (decisao 11)", async ()
   assertEquals(res.status, 409);
 });
 
-// TODO Task 6: remove ignore (the switch creation path with start_at lands in Task 6).
-Deno.test({
-  name: "switch: plano-fonte prefere workspaces.plan_id; row.plan_id e fallback",
-  ignore: true,
-  fn: async () => {
-    // workspaces.plan_id=pro, row.plan_id=start -> marker de plano deve ser pro (Task 6 asserta
-    // o bind; aqui so garante que NAO 409a e diverge com log)
-    const { result } = await (async () => {
-      const r = run(
-        { plan: PLAN, subRow: { ...STRIPE_ROW, plan_id: "start" }, workspaceRow: { plan_id: "pro", plan_source: "system" } },
-        { subStatus: "future", subStartAt: "2026-09-16" },
-        {},
-        SWITCH_REQ,
-      );
-      return { result: await r.result };
-    })();
-    assertEquals(result.status, 200);
-  },
+Deno.test("switch: plano-fonte prefere workspaces.plan_id; row.plan_id e fallback", async () => {
+  // workspaces.plan_id=pro, row.plan_id=start -> marker de plano deve ser pro (Task 6 asserta
+  // o bind; aqui so garante que NAO 409a e diverge com log)
+  const { result } = await (async () => {
+    const r = run(
+      { plan: PLAN, subRow: { ...STRIPE_ROW, plan_id: "start" }, workspaceRow: { plan_id: "pro", plan_source: "system" } },
+      { subStatus: "future", subStartAt: "2026-09-16" },
+      {},
+      SWITCH_REQ,
+    );
+    return { result: await r.result };
+  })();
+  assertEquals(result.status, 200);
 });
 
 Deno.test("switch: ambos os planos-fonte null -> 409 pre-reserva", async () => {
@@ -1033,4 +1023,105 @@ Deno.test("regressao: nao-switch continua 409 em linha stripe in-force", async (
   const res = await result;
   assertEquals(res.status, 409);
   assertEquals((res.body as { error?: string }).error, "Este workspace já tem uma assinatura vigente.");
+});
+
+// ─── Switch mensal Stripe -> 12x: criacao (Task 6) ─────────────────────────
+
+Deno.test("switch happy path: start_at da fronteira, CAS com pin de status + markers, response switched", async () => {
+  const { events, calls, result } = run(
+    { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW },
+    { subStatus: "future", subStartAt: "2026-09-16" },
+    {},
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  const body = res.body as Record<string, unknown>;
+  assertEquals(body.status, "trialing");
+  assertEquals(body.trial_ends_at, null); // switch nunca fala de trial
+  assertEquals(body.switched, true);
+  assertEquals(body.first_charge_at, "2026-09-16");
+  assertEquals(body.next_charge_at, "2026-09-16");
+
+  // start_at enviado ao gateway = ceil da fronteira Stripe (14:23Z -> dia seguinte)
+  const createCall = calls.find((c) => c.method === "createSubscription")!;
+  const subInput = createCall.args[0] as Record<string, unknown>;
+  assertEquals(subInput.start_at, "2026-09-16");
+
+  // CAS: pins existentes + pin extra de status + markers no MESMO payload
+  const bind = events.find((e) => e.table === "workspace_subscriptions" && e.op === "update")!;
+  assert(bind.filters.some(([m, c, v]) => m === "eq" && c === "provider" && v === "stripe"));
+  assert(
+    bind.filters.some(([m, c, v]) => m === "eq" && c === "stripe_subscription_id" && v === "sub_s1"),
+  );
+  assert(bind.filters.some(([m, c, v]) => m === "eq" && c === "status" && v === "active"));
+  assertEquals(bind.values?.switched_from_stripe_subscription_id, "sub_s1");
+  assertEquals(bind.values?.switched_from_plan_id, "start");
+  assertEquals(bind.values?.switch_checked_at, null);
+});
+
+Deno.test("switch: nunca chama resolveTrialDays (sem start_at de trial mesmo se nunca assinou)", async () => {
+  // Linha stripe sem ever_subscribed_at nao existe na pratica (o id ja implica), mas o pin
+  // aqui e: o start_at do switch vem SEMPRE da fronteira, nunca de now+30d.
+  const { calls, result } = run(
+    { plan: PLAN, subRow: { ...STRIPE_ROW, ever_subscribed_at: null }, workspaceRow: WS_ROW },
+    { subStatus: "future", subStartAt: "2026-09-16" },
+    {},
+    SWITCH_REQ,
+  );
+  await result;
+  const subInput = calls.find((c) => c.method === "createSubscription")!.args[0] as Record<string, unknown>;
+  assertEquals(subInput.start_at, "2026-09-16"); // e nao "2026-09-11" (now+30d)
+});
+
+Deno.test("switch born-active: cancel remoto + attempt QUARANTINED + 500", async () => {
+  const { result } = await withConsoleSpies(async () => {
+    const { events, calls, result } = run(
+      { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW },
+      { subStatus: "active" },
+      {},
+      SWITCH_REQ,
+    );
+    const r = await result;
+    return { r, events, calls };
+  });
+  const { r, events, calls } = result;
+  assertEquals(r.status, 500);
+  assert(calls.some((c) => c.method === "cancelSubscription"));
+  const quarantineWrite = events.find(
+    (e) => e.table === "pagarme_checkout_attempts" && e.op === "update" && e.values?.state === "quarantined",
+  );
+  assert(quarantineWrite, "attempt deve virar quarantined, nunca failed");
+  assert(!events.some(
+    (e) => e.table === "pagarme_checkout_attempts" && e.op === "update" && e.values?.state === "failed",
+  ));
+});
+
+Deno.test("switch: CAS zero rows (webhook concorrente mudou status) -> compensa + 409", async () => {
+  const { calls, result } = run(
+    { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW, bindZeroRows: true },
+    { subStatus: "future", subStartAt: "2026-09-16" },
+    {},
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 409);
+  assert(calls.some((c) => c.method === "cancelSubscription"));
+});
+
+Deno.test("switch com price legado: billing_interval null passa e o marker persiste o plano-fonte", async () => {
+  const { events, result } = run(
+    {
+      plan: PLAN,
+      subRow: { ...STRIPE_ROW, billing_interval: null, plan_id: null },
+      workspaceRow: { plan_id: "start", plan_source: "system" },
+    },
+    { subStatus: "future", subStartAt: "2026-09-16" },
+    {},
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  const bind = events.find((e) => e.table === "workspace_subscriptions" && e.op === "update")!;
+  assertEquals(bind.values?.switched_from_plan_id, "start");
 });
