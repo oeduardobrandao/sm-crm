@@ -125,10 +125,12 @@ export default function AutomacoesPage() {
     if (!handleEntitlementMutationError(err, profile?.conta_id ?? null)) toast.error(fallback);
   };
 
-  // Toggle and delete are never gated by the automation feature flag (a
-  // downgrade only blocks CREATING new automations, per the post-downgrade
-  // policy), so a plain fallback toast is enough here -- the entitlement
-  // helper is reserved for the create/edit dialog's mutations.
+  // Toggle and delete route through the same onMutationError as the
+  // create/edit dialog (handleEntitlementMutationError first, plain fallback
+  // toast otherwise) for consistency -- in practice the entitlement branch is
+  // a no-op here, since toggle/delete are never gated by the automation
+  // feature flag (a downgrade only blocks CREATING new automations, per the
+  // post-downgrade policy).
   const toggleMutation = useMutation({
     mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>
       updateInstagramAutomation(id, { ativo }),
