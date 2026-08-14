@@ -89,7 +89,10 @@ Numeração de migrations a partir de `20260815000002` (origin/main termina em
 - `dms_sent_count int DEFAULT 0`, `last_triggered_at timestamptz`,
   `created_at`/`updated_at` + trigger de `updated_at`.
 - RLS: SELECT para qualquer membro do workspace; INSERT/UPDATE/DELETE só
-  `get_my_role() in ('owner','admin')`; `service_role_bypass`.
+  `get_my_role() in ('owner','admin')`; `service_role_bypass`. **Desvio
+  intencional** do padrão `post_status_automations` (que restringe também o
+  SELECT a owner/admin): aqui `agent` lê para acompanhar resultados, sem
+  mutar.
 - Gate INSERT-only:
   `enforce_plan_feature('feature_instagram_automation','direct','conta_id')`.
 - Índices parciais `(conta_id) WHERE ativo`, `(client_id) WHERE ativo`.
@@ -104,6 +107,10 @@ as fixtures oficiais mostram duas formas (`entry[].changes[]` e
   entry), `received_at`, `processed_at`.
 - RLS ligada **sem** policies (só service role). Índice parcial
   `received_at WHERE processed_at IS NULL`.
+- Deliberadamente **append-only**, sem unicidade por `comment_id`: redelivery
+  gera linha nova e reprocessa de forma idempotente (o efeito externo é
+  deduplicado pelo `comment_id UNIQUE` de sends); o expurgo de 30 dias limita
+  o crescimento.
 - `from`/`parent_id` não são garantidos no payload: fallback =
   `GET /{comment_id}?fields=from,parent_id,text,media` com o token da conta;
   se ainda indeterminado → skip seguro (loga, não envia DM).
@@ -119,9 +126,17 @@ as fixtures oficiais mostram duas formas (`entry[].changes[]` e
   (sub-resultados), `processing_at timestamptz`, `next_attempt_at timestamptz`,
   `attempts int DEFAULT 0`, `updated_at`.
 - Fluxo: INSERT `status='processing', processing_at=now` ON CONFLICT DO
-  NOTHING (conflito = outro worker ou redelivery; ignora). Sucesso → **RPC
-  atômica**: `UPDATE ... SET status='sent' WHERE id=? AND status='processing'`
-  e, na mesma transação e **condicional à transição**, incremento de
+  NOTHING (conflito = outro worker ou redelivery; ignora). **Cada efeito
+  externo é persistido separadamente** (as chamadas à Meta não participam de
+  transação): DM aceita → `dm_status='sent'` gravado imediatamente em
+  statement próprio; só então a resposta pública → `public_reply_status`.
+  Retry de linha com `dm_status='sent'` **pula a DM** e completa só a
+  resposta pública. Resultado incerto (timeout sem resposta da Meta) →
+  `retry`; na retentativa, o erro da Meta "já existe private reply para este
+  comentário" é mapeado para `dm_status='sent'` (auto-correção — a private
+  reply é única por comentário). O fechamento em `sent` é uma **RPC atômica**:
+  `UPDATE ... SET status='sent' WHERE id=? AND status='processing'` e, na
+  mesma transação e **condicional à transição**, incremento de
   `dms_sent_count`/`last_triggered_at` — crash não perde nem duplica contador.
   Erro transitório → `status='retry', next_attempt_at=now+backoff,
   attempts+1`. Permanente → `failed`. Cooldown → inserido direto como
@@ -138,15 +153,19 @@ as fixtures oficiais mostram duas formas (`entry[].changes[]` e
 **Resolução de conta duplicada.** `instagram_accounts` só tem
 `UNIQUE(client_id)` — o mesmo `instagram_user_id` pode estar ativo em clientes
 ou workspaces distintos. Sem retrofit de UNIQUE no v1: candidatos = linhas com
-`instagram_user_id = entry.id` e `authorization_status='active'`; o processador
-avalia automações de **todos** os candidatos e o vencedor sai do desempate
-global. Só o vencedor gera linha em sends (o `comment_id UNIQUE` garante 1 DM).
-Índice novo **não-único** em `instagram_accounts (instagram_user_id)`.
+`instagram_user_id = entry.id` e `authorization_status='active'`. Regra de
+isolamento: **se automações ativas casam o comentário em MAIS de um workspace,
+ninguém envia** (fail-closed: nenhuma linha em sends — não há dono único para o
+registro; evento marcado processado; notificação `instagram_automation_failed`
+para cada workspace envolvido, dedupe 24h). Um workspace jamais consome o
+único private reply de uma conta que outro workspace também administra.
+Duplicidade **dentro do mesmo workspace** (dois clientes com a mesma conta IG)
+é resolvida pelo desempate normal — é configuração do próprio dono. Índice
+novo **não-único** em `instagram_accounts (instagram_user_id)`.
 
-**Desempate determinístico** (inclusive entre contas duplicadas): post
-específico > todos os posts; depois `created_at ASC`, `id ASC`. A UI documenta:
-"se mais de uma automação casar, a mais antiga vence". Sem campo `priority` no
-v1.
+**Desempate determinístico** (dentro do workspace): post específico > todos os
+posts; depois `created_at ASC`, `id ASC`. A UI documenta: "se mais de uma
+automação casar, a mais antiga vence". Sem campo `priority` no v1.
 
 **Outros:**
 
@@ -182,6 +201,18 @@ v1.
   sem notificação.
 - **Throttle interno**: limite oficial ≈750 private replies/hora/conta; cap
   interno ~700/h por conta, excedente vira `retry`.
+- **Timeout em toda I/O**: todas as chamadas à Graph API no processador e no
+  cron passam pelo cliente compartilhado com `AbortSignal.timeout` (~10 s) —
+  regra da casa: I/O em handler que assume estado precisa de timeout; um
+  fetch pendurado seguraria o lock de `processing` até expirar e permitiria
+  reclaims repetidos.
+- **Revalidação no envio**: o worker re-lê a automação imediatamente antes das
+  chamadas externas — precisa existir e estar `ativo`, e usa o
+  `dm_message`/`public_reply` **atuais** (edições valem até o envio real;
+  pausar/excluir entre o claim e o envio vira `skipped`/`automation_inactive`;
+  resta uma janela de poucos segundos, aceita e documentada).
+  `sends.automation_id` é FK `ON DELETE CASCADE` — excluir a automação leva o
+  log junto, decisão consciente.
 
 ### Escopos, reconexão e assinatura
 
@@ -197,6 +228,11 @@ v1.
 - `canAutomate` por conta = escopo explícito concedido **e**
   `comments_subscribed_at` preenchido. Cron re-verifica diariamente a
   assinatura das contas com automação ativa; se caiu, limpa e notifica.
+- **Reconexão zera antes de regravar**: o callback limpa
+  `comments_subscribed_at` e remove o escopo opcional de `permissions[]` no
+  início do processamento, re-adicionando só com concessão explícita + nova
+  confirmação da assinatura — reconectar sem o escopo não deixa `canAutomate`
+  verdadeiro por resíduo da autorização anterior.
 - Contas conectadas antes da mudança → página de Automações mostra
   "Reconectar Instagram para habilitar" (derivação no padrão do `canPublish`
   em `store/integrations.ts`).
@@ -212,13 +248,19 @@ v1.
   na resposta.
 - **`instagram-automation-cron`** (nova): `x-cron-secret` + `timingSafeEqual`;
   claim RPC de sends; sweep de eventos órfãos; expurgo 30d; re-check de
-  assinaturas; `reportCronFailure` de `_shared/triage.ts`.
+  assinaturas; `reportCronFailure` de `_shared/triage.ts`. Também exige
+  `verify_jwt = false` no `config.toml` + registro em `REQUIRED_FUNCTIONS`
+  (como todo cron da casa — sem isso o gateway exige JWT e o `x-cron-secret`
+  nunca chega a autenticar).
 - **`instagram-integration`** (alterada): escopo novo + `subscribed_apps`
   (POST + GET de confirmação) no callback + `comments_subscribed_at`.
 - CRUD das automações: PostgREST + RLS via `store/` — sem edge function.
 - Cliente compartilhado novo `_shared/instagram-messaging.ts` (forma de
-  `_shared/tiktok.ts`), reusando `decryptToken` de
-  `_shared/instagram-publish-utils.ts` e `throwGraphError`/classificação.
+  `_shared/tiktok.ts`), reusando `decryptToken` (já exportado de
+  `_shared/instagram-publish-utils.ts`). `throwGraphError` e a constante de
+  versão `GRAPH_BASE` são **privados** hoje — a extração os move para um
+  módulo público compartilhado (`_shared/instagram-graph.ts`) consumido pelo
+  cliente novo e pelo publish-utils.
 
 ## UI (CRM)
 
@@ -259,8 +301,11 @@ v1.
   entries e ambas as formas de payload; redelivery → conflito ignorado; skip
   de comentário próprio/reply/fallback GET; matching (acentos, frase, palavra
   inteira); cooldown; claim concorrente; máquina de estados (retry com
-  backoff, 190, permanente); conta duplicada → vencedor determinístico; cron
-  (claim, purge, re-check). Restaurar `deno.lock` depois
+  backoff, 190, permanente, efeitos persistidos separadamente, retry com
+  `dm_status='sent'` pula a DM, "já respondido" → auto-correção);
+  revalidação no envio (pausada/excluída → skipped); conta duplicada
+  (conflito cross-workspace → fail-closed + notificação; intra-workspace →
+  desempate); cron (claim, purge, re-check). Restaurar `deno.lock` depois
   (`git checkout -- deno.lock`).
 - **Vitest** (`npm run test`): store, página, notification-config, nav
   "flag OR count>0"; os testes de contrato de rota/nav existentes cobram a
