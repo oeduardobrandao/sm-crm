@@ -112,3 +112,43 @@ export function isSelectableTrialPlan(plan: {
     ((plan.price_brl ?? 0) > 0 || (plan.price_brl_annual ?? 0) > 0)
   );
 }
+
+/**
+ * Espelho frontend do gate local do switch no backend (stripeSwitchSourceEligible em
+ * pagarme-checkout/logic.ts): linha stripe (null = legado), status ESTRITO active/trialing
+ * e billingInterval que não afirme 'year' (null passa; a autoridade final é a verificação
+ * remota do backend). Os dois devem mudar juntos ou o CTA oferece um switch que 409a
+ * depois do usuário digitar o cartão inteiro.
+ */
+export function switchEligible(
+  subscription:
+    | { provider?: string | null; status?: string | null; billingInterval?: string | null }
+    | null
+    | undefined,
+): boolean {
+  if (!subscription) return false;
+  if ((subscription.provider ?? 'stripe') !== 'stripe') return false;
+  if (subscription.status !== 'active' && subscription.status !== 'trialing') return false;
+  return subscription.billingInterval !== 'year';
+}
+
+/**
+ * Réplica EXATA do ceilToUtcMidnightDate do backend (pagarme-checkout/logic.ts): o
+ * start_at é date-only lido como meia-noite UTC, então um current_period_end de
+ * 15/09 12:00Z vira 16/09. Exibir a data crua prometeria o dia errado. Retorna
+ * YYYY-MM-DD (formatável com formatUtcDateBR) ou null para iso inválido.
+ */
+export function ceilPeriodEndToUtcDate(iso: string): string | null {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const end = new Date(t);
+  if (
+    end.getUTCHours() !== 0 ||
+    end.getUTCMinutes() !== 0 ||
+    end.getUTCSeconds() !== 0 ||
+    end.getUTCMilliseconds() !== 0
+  ) {
+    end.setUTCHours(24, 0, 0, 0);
+  }
+  return end.toISOString().slice(0, 10);
+}
