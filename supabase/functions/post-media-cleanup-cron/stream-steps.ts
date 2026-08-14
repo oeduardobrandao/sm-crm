@@ -128,7 +128,25 @@ async function ingestCatchUp(deps: StreamStepsDeps, nowMs: () => number): Promis
         .eq("id", row.id);
       if (pendingErr) throw pendingErr;
       const sourceUrl = await signSourceUrl(row.r2_key);
-      const uid = await copyToStream(sourceUrl, { file_id: String(row.id), conta_id: row.conta_id });
+      let uid: string;
+      try {
+        uid = await copyToStream(sourceUrl, { file_id: String(row.id), conta_id: row.conta_id });
+      } catch (copyErr) {
+        // Stream's /copy validates the source URL SYNCHRONOUSLY: a missing R2 object
+        // (dead media row) fails the POST with a 4xx every single run. Left `pending`,
+        // such rows head-of-line block this created_at-asc batch forever — observed on
+        // prod during the 2026-08-13 backfill (20 dead rows starved 169 healthy ones).
+        // 4xx = permanent source problem → settle `error` so the row exits the window.
+        // Anything else (5xx, timeout, network) stays `pending` for a normal retry.
+        if (copyErr instanceof Error && /: 4\d\d$/.test(copyErr.message)) {
+          const { error: markErr } = await deps.db
+            .from("files")
+            .update({ stream_status: "error" })
+            .eq("id", row.id);
+          if (markErr) console.error("stream-steps:ingest-mark-error", row.id, markErr);
+        }
+        throw copyErr;
+      }
       const { error: uidErr } = await deps.db.from("files").update({ stream_uid: uid }).eq("id", row.id);
       if (uidErr) throw uidErr;
       ingested++;

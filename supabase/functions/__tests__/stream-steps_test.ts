@@ -387,3 +387,50 @@ Deno.test("stream-steps: ingest row is not counted as ingested when the uid-save
   assertEquals(result.ingested, 0, "row must not be credited when the uid was never durably saved");
   assertEquals(result.errors, 0, "a per-row failure is not a step failure");
 });
+
+Deno.test("stream-steps: ingest marks a row error on a 4xx copy failure (dead source) but leaves it pending on a 5xx, and the loop continues", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "select", {
+    data: [
+      { id: 40, r2_key: "contas/a/videos/dead.mp4", conta_id: "conta-1", created_at: minutesAgoIso(30) },
+      { id: 41, r2_key: "contas/a/videos/flaky.mp4", conta_id: "conta-1", created_at: minutesAgoIso(20) },
+      { id: 42, r2_key: "contas/a/videos/good.mp4", conta_id: "conta-1", created_at: minutesAgoIso(15) },
+    ],
+  });
+  db.queue("files", "update", { data: null, error: null }); // id:40 pending flip
+  db.queue("files", "update", { data: null, error: null }); // id:40 mark error (4xx)
+  db.queue("files", "update", { data: null, error: null }); // id:41 pending flip
+  db.queue("files", "update", { data: null, error: null }); // id:42 pending flip
+  db.queue("files", "update", { data: null, error: null }); // id:42 uid save
+  db.queue("files", "select", { data: [] }); // reap: files known set
+  db.queue("file_deletions", "select", { data: [] }); // reap: queued set
+
+  const result = await runStreamSweeps(baseDeps(db, {
+    copyToStream: async (sourceUrl) => {
+      if (sourceUrl.includes("dead")) throw new Error("stream copy failed: 400");
+      if (sourceUrl.includes("flaky")) throw new Error("stream copy failed: 503");
+      return "uid-good";
+    },
+    signSourceUrl: async (r2Key) => `https://signed.example/${r2Key}`,
+    listStreamVideos: async () => [],
+    deleteStreamVideo: unreachable("deleteStreamVideo") as unknown as StreamStepsDeps["deleteStreamVideo"],
+  }));
+
+  assertEquals(result.ingested, 1, "only the good row ingests");
+
+  const updates = callsFor(db, "files", "update");
+  assertEquals(updates.length, 5);
+  // Dead row: pending flip then terminal error mark -- it exits the batch window.
+  assertEquals(updates[0].payload, { stream_status: "pending" });
+  assertEquals(updates[0].modifiers, [{ method: "eq", args: ["id", 40] }]);
+  assertEquals(updates[1].payload, { stream_status: "error" });
+  assertEquals(updates[1].modifiers, [{ method: "eq", args: ["id", 40] }]);
+  // Flaky row: pending flip only -- NO error mark, retried next run.
+  assertEquals(updates[2].payload, { stream_status: "pending" });
+  assertEquals(updates[2].modifiers, [{ method: "eq", args: ["id", 41] }]);
+  // Good row still processes after both failures.
+  assertEquals(updates[3].payload, { stream_status: "pending" });
+  assertEquals(updates[3].modifiers, [{ method: "eq", args: ["id", 42] }]);
+  assertEquals(updates[4].payload, { stream_uid: "uid-good" });
+  assertEquals(updates[4].modifiers, [{ method: "eq", args: ["id", 42] }]);
+});
