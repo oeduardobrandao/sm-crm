@@ -221,9 +221,11 @@ describe('billing service', () => {
     next_payment_attempt: null,
     provider: 'stripe',
     installments: null,
+    billing_interval: null,
     stripe_subscription_id: null,
     pagarme_subscription_id: null,
     ever_subscribed_at: null,
+    switched_from_stripe_subscription_id: null,
   };
 
   it('derives hasEverSubscribed and hides the raw stripe id', async () => {
@@ -237,8 +239,29 @@ describe('billing service', () => {
     expect(result).not.toHaveProperty('pagarme_subscription_id');
     expect(result).not.toHaveProperty('ever_subscribed_at');
     expect(subSelect).toHaveBeenCalledWith(
-      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, provider, installments, stripe_subscription_id, pagarme_subscription_id, ever_subscribed_at',
+      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, provider, installments, billing_interval, stripe_subscription_id, pagarme_subscription_id, ever_subscribed_at, switched_from_stripe_subscription_id',
     );
+  });
+
+  it('expõe billingInterval e deriva switchScheduled do marker, descartando o id cru', async () => {
+    mockSubscriptionRow({
+      ...baseSubscriptionRow,
+      billing_interval: 'month',
+      switched_from_stripe_subscription_id: 'sub_s1',
+    });
+    const sub = await getWorkspaceSubscription();
+    expect(sub?.billingInterval).toBe('month');
+    expect(sub?.switchScheduled).toBe(true);
+    expect(sub as object).not.toHaveProperty('switched_from_stripe_subscription_id');
+  });
+
+  it('switchScheduled false quando o marker é null', async () => {
+    mockSubscriptionRow({
+      ...baseSubscriptionRow,
+      switched_from_stripe_subscription_id: null,
+    });
+    const sub = await getWorkspaceSubscription();
+    expect(sub?.switchScheduled).toBe(false);
   });
 
   it('derives hasEverSubscribed true via a pagarme subscription id', async () => {
@@ -309,6 +332,25 @@ describe('billing service', () => {
       expect(opts.headers.Authorization).toBe('Bearer tok');
     });
 
+    it('repassa switch: true no body quando presente', async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          status: 'active',
+          trial_ends_at: null,
+          next_charge_at: '2026-09-01T00:00:00Z',
+          installment_amount_cents: 19990,
+          switched: true,
+          first_charge_at: '2026-09-01T00:00:00Z',
+        }),
+      });
+      const result = await startPagarmeCheckout({ ...payload, switch: true });
+      expect(result.switched).toBe(true);
+      expect(result.first_charge_at).toBe('2026-09-01T00:00:00Z');
+      const [, opts] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(JSON.parse(opts.body).switch).toBe(true);
+    });
+
     it('surfaces the server error string and code on non-ok', async () => {
       (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
         ok: false,
@@ -359,6 +401,15 @@ describe('billing service', () => {
         message: 'Nenhuma assinatura ativa',
         code: 'not_found',
       });
+    });
+
+    it('returns a reverted status when the cancel undoes a scheduled switch', async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: async () => ({ status: 'reverted', access_until: null }),
+      });
+      const result = await cancelPagarmeSubscription();
+      expect(result).toEqual({ status: 'reverted', access_until: null });
     });
   });
 
