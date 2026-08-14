@@ -53,6 +53,11 @@ type Ev = {
   table: string;
   values?: Record<string, unknown>;
   filters: Array<[string, string, unknown]>; // [method, column, value] for eq/is
+  /** Monotonic counter shared with gateway/stripeSwitch calls (house pattern from
+   * pagarme-webhook-handler_test.ts), so cross-source ordering (e.g. "the Stripe restore call
+   * happens BEFORE the flip-back DB update") can be asserted directly instead of inferred from
+   * await timing. */
+  seq: number;
 };
 
 /**
@@ -87,7 +92,7 @@ function makeDb(fx: {
    * makeDb (fora do from-factory) porque cada from() cria um chain novo. */
   secondSubUpdateZeroRows?: boolean;
   events: Ev[];
-}): SupabaseClient {
+}, seq: { n: number }): SupabaseClient {
   let subUpdates = 0;
   const from = (table: string) => {
     let op = "read";
@@ -118,7 +123,7 @@ function makeDb(fx: {
       return chain;
     };
     const settle = () => {
-      fx.events.push({ op, table, values, filters });
+      fx.events.push({ op, table, values, filters, seq: seq.n++ });
       if (table === "plans") return { data: fx.plan ?? null, error: null };
       if (table === "workspace_subscriptions" && op === "read") {
         return { data: fx.subRow ?? null, error: fx.subRowError ?? null };
@@ -173,7 +178,7 @@ function makeDb(fx: {
 }
 
 function makeGateway(fx: {
-  calls: Array<{ method: string; args: unknown[] }>;
+  calls: Array<{ method: string; args: unknown[]; seq: number }>;
   subStatus?: string;
   subStartAt?: string | null;
   nextBillingAt?: string | null;
@@ -191,8 +196,8 @@ function makeGateway(fx: {
    * matching a response with no usable observed price -> the fallback path. `price` is
    * loosely typed so malformed-payload tests can pass a non-numeric value on purpose. */
   subItems?: Array<{ pricing_scheme?: { price?: unknown } | null } | null>;
-}): PagarmeGateway {
-  const record = (method: string, args: unknown[]) => fx.calls.push({ method, args });
+}, seq: { n: number }): PagarmeGateway {
+  const record = (method: string, args: unknown[]) => fx.calls.push({ method, args, seq: seq.n++ });
   const maybeFail = (stage: string) => {
     if (fx.failAt === stage) throw fx.failWith ?? new Error("gateway boom");
   };
@@ -245,15 +250,15 @@ const STRIPE_SUB_MONTHLY = {
 };
 
 function makeStripeSwitch(fx: {
-  calls: Array<{ method: string; args: unknown[] }>;
+  calls: Array<{ method: string; args: unknown[]; seq: number }>;
   retrieveResult?: unknown;
   retrieveThrows?: unknown;
   /** Lanca em setCancelAtPeriodEnd(id, true) (a perna do switch). */
   setCancelTrueThrows?: unknown;
   /** Lanca em setCancelAtPeriodEnd(id, false). */
   setCancelFalseThrows?: unknown;
-}): StripeSwitchGateway {
-  const record = (method: string, args: unknown[]) => fx.calls.push({ method, args });
+}, seq: { n: number }): StripeSwitchGateway {
+  const record = (method: string, args: unknown[]) => fx.calls.push({ method, args, seq: seq.n++ });
   return {
     retrieveSubscription: (id) => {
       record("retrieveSubscription", [id]);
@@ -291,13 +296,17 @@ function run(
   req: PagarmeCheckoutRequest = REQ,
 ) {
   const events: Ev[] = [];
-  const calls: Array<{ method: string; args: unknown[] }> = [];
-  const stripeCalls: Array<{ method: string; args: unknown[] }> = [];
+  const calls: Array<{ method: string; args: unknown[]; seq: number }> = [];
+  const stripeCalls: Array<{ method: string; args: unknown[]; seq: number }> = [];
+  // Single monotonic counter shared by DB events AND both gateway call lists (house pattern
+  // from pagarme-webhook-handler_test.ts), so cross-source ordering can be asserted by
+  // comparing .seq instead of inferring it from await timing.
+  const seq = { n: 0 };
   const handle = createPagarmeCheckoutHandler({
-    db: makeDb({ ...dbFx, events }),
-    gateway: makeGateway({ ...gwFx, calls }),
+    db: makeDb({ ...dbFx, events }, seq),
+    gateway: makeGateway({ ...gwFx, calls }, seq),
     now: () => NOW,
-    stripeSwitch: swFx === null ? null : makeStripeSwitch({ ...(swFx ?? {}), calls: stripeCalls }),
+    stripeSwitch: swFx === null ? null : makeStripeSwitch({ ...(swFx ?? {}), calls: stripeCalls }, seq),
   });
   return { events, calls, stripeCalls, result: handle(CTX, req) };
 }
@@ -1167,7 +1176,14 @@ Deno.test("switch: perna Stripe falha -> ROLLBACK completo, attempt failed, 500 
   assertEquals(res.status, 500);
   assertEquals((res.body as { error?: string }).error, "Não foi possível concluir a troca. Tente novamente.");
 
-  // (i) CAS flip-back pinado em pagarme+sub+trialing com colunas restauradas
+  // (i) restore remoto do cap_end ao valor OBSERVADO no verify, PRIMEIRO (timeout ambiguo do
+  // bind original: o true pode ter landado, entao restaura antes de qualquer outra coisa).
+  const restores = stripeCalls.filter((c) => c.method === "setCancelAtPeriodEnd");
+  const remoteRestore = restores[restores.length - 1]!;
+  assertEquals(remoteRestore.args, ["sub_s1", false]);
+
+  // (ii) CAS flip-back pinado em pagarme+sub+trialing com colunas restauradas, SO DEPOIS do
+  // remoto confirmado.
   const updates = events.filter((e) => e.table === "workspace_subscriptions" && e.op === "update");
   const restore = updates.find((e) => e.values?.provider === "stripe")!;
   assert(restore, "flip-back deve existir");
@@ -1178,10 +1194,10 @@ Deno.test("switch: perna Stripe falha -> ROLLBACK completo, attempt failed, 500 
   assertEquals(restore.values?.cancel_at_period_end, false); // valor OBSERVADO no verify
   assertEquals(restore.values?.pagarme_subscription_id, null);
   assertEquals(restore.values?.switched_from_stripe_subscription_id, null);
-
-  // (ii) restore remoto do cap_end ao valor observado (timeout ambiguo)
-  const restores = stripeCalls.filter((c) => c.method === "setCancelAtPeriodEnd");
-  assertEquals(restores[restores.length - 1]?.args, ["sub_s1", false]);
+  assert(
+    remoteRestore.seq < restore.seq,
+    "o restore remoto deve rodar ANTES do flip-back local (markers so limpam depois do remoto confirmado)",
+  );
 
   // (iv) DELETE da future sub
   assert(calls.some((c) => c.method === "cancelSubscription"));
@@ -1193,12 +1209,44 @@ Deno.test("switch: perna Stripe falha -> ROLLBACK completo, attempt failed, 500 
   assertEquals(attemptWrites[attemptWrites.length - 1]?.values?.state, "failed");
 });
 
+Deno.test("switch: restore remoto falha no rollback -> troca fica de pe, ZERO flip-back, ZERO cancel pagarme, 200 + succeeded", async () => {
+  // O restore remoto (setCancelAtPeriodEnd false) roda ANTES de qualquer coisa local no undo.
+  // Se ELE falha, o abort e imediato: nada local foi tocado, entao os markers ficam intactos e
+  // o leg D e o unico backstop -- nunca um flip-back parcial com o remoto ainda armado.
+  const { events, calls, stripeCalls, result } = run(
+    { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW },
+    { subStatus: "future", subStartAt: "2026-09-16" },
+    { setCancelTrueThrows: new Error("stripe 500"), setCancelFalseThrows: new Error("stripe 500 again") },
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals((res.body as { switched?: boolean }).switched, true);
+
+  // o restore foi tentado...
+  const restores = stripeCalls.filter((c) => c.method === "setCancelAtPeriodEnd");
+  assertEquals(restores[restores.length - 1]?.args, ["sub_s1", false]);
+
+  // ...mas nenhum flip-back (a linha permanece bound ao pagarme, markers intactos)
+  assert(
+    !events.some((e) => e.table === "workspace_subscriptions" && e.op === "update" && e.values?.provider === "stripe"),
+    "nenhum flip-back deve rodar quando o restore remoto falha",
+  );
+  // ...e nenhum DELETE da future sub (o abort e antes do leg (iv))
+  assert(!calls.some((c) => c.method === "cancelSubscription"), "nenhum cancelSubscription de rollback");
+
+  const attemptWrites = events.filter(
+    (e) => e.table === "pagarme_checkout_attempts" && e.op === "update" && e.values?.state !== undefined,
+  );
+  assertEquals(attemptWrites[attemptWrites.length - 1]?.values?.state, "succeeded");
+});
+
 Deno.test("switch: rollback PARCIAL (flip-back CAS falha) -> troca fica de pe, 200 + succeeded", async () => {
   // bindZeroRows faria o PRIMEIRO CAS (bind) falhar tambem. Em vez disso o fixture precisa
   // falhar SO o segundo update de workspace_subscriptions: adicione ao makeDb o campo
   // `secondSubUpdateZeroRows?: boolean` que conta os updates da tabela e devolve [] a
   // partir do segundo. (Implemente no settle: `if (op === "update" && table === "workspace_subscriptions") { subUpdates++; if (fx.secondSubUpdateZeroRows && subUpdates >= 2) return { data: [], error: null }; ... }`)
-  const { result } = run(
+  const { events, stripeCalls, result } = run(
     { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW, secondSubUpdateZeroRows: true },
     { subStatus: "future", subStartAt: "2026-09-16" },
     { setCancelTrueThrows: new Error("stripe 500") },
@@ -1207,4 +1255,14 @@ Deno.test("switch: rollback PARCIAL (flip-back CAS falha) -> troca fica de pe, 2
   const res = await result;
   assertEquals(res.status, 200);
   assertEquals((res.body as { switched?: boolean }).switched, true);
+
+  // o restore remoto (agora o PRIMEIRO passo do undo) aconteceu ANTES da tentativa de CAS que
+  // perdeu a corrida.
+  const restore = stripeCalls.filter((c) => c.method === "setCancelAtPeriodEnd").pop()!;
+  assertEquals(restore.args, ["sub_s1", false]);
+  const failedCas = events.filter((e) => e.table === "workspace_subscriptions" && e.op === "update").pop()!;
+  assert(
+    restore.seq < failedCas.seq,
+    "o restore remoto deve rodar ANTES da tentativa de CAS que perde a corrida",
+  );
 });

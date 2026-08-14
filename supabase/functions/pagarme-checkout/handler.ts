@@ -649,8 +649,32 @@ export function createPagarmeCheckoutHandler(deps: {
           "[pagarme-checkout] switch stripe leg failed, rolling back:",
           stripeLegErr instanceof Error ? stripeLegErr.message : String(stripeLegErr),
         );
-        // (i) Flip-back local primeiro (ordem do undo): se o CAS falhar, NADA remoto foi
-        // desfeito e a troca fica de pe com o leg D como recuperacao.
+        // Ordem do undo (pos-review Codex): o remoto restaura PRIMEIRO, os markers locais so
+        // sao limpos DEPOIS de confirmado. O timeout da perna e ambiguo -- o true pode ter
+        // landado -- entao o valor OBSERVADO no verify e restaurado antes de qualquer outra
+        // coisa. Uma troca de pe com os markers intactos e sempre recuperavel pelo leg D (esse
+        // e o job dele); uma linha ja flipada de volta SEM os markers fica invisivel para ele.
+        // Inverter essa ordem reabriria exatamente o buraco que essa reescrita fecha: bind true
+        // landou + restore falha + CAS ja tivesse limpado os markers = assinatura perdida em
+        // silencio na fronteira.
+        // (i) Restore remoto do cap_end ao valor OBSERVADO no verify, PRIMEIRO.
+        try {
+          await deps.stripeSwitch!.setCancelAtPeriodEnd(
+            row!.stripe_subscription_id as string,
+            switchObserved!.cancelAtPeriodEnd,
+          );
+        } catch (e) {
+          console.error(
+            `[pagarme-checkout] CRITICAL: rollback aborted: remote restore failed for workspace ${ctx.workspaceId}; switch stands, leg D enforces the stripe cancel:`,
+            e instanceof Error ? e.message : String(e),
+          );
+          await finishAttempt("succeeded", sub.id);
+          return { status: 200, body: switchSuccessBody };
+        }
+        // (ii) Flip-back local SO depois do remoto confirmado. Se o CAS falhar aqui, o remoto
+        // ja esta desarmado (cancel_at_period_end restaurado) mas os markers ficam -- leg D
+        // re-arma o true na proxima passada (janela ainda aberta) ou cancela + sinaliza reembolso
+        // (fronteira ja cruzada); converge nos dois casos.
         const restore = buildRestoreStripeColumns({
           status: switchObserved!.status,
           cancelAtPeriodEnd: switchObserved!.cancelAtPeriodEnd,
@@ -670,23 +694,10 @@ export function createPagarmeCheckoutHandler(deps: {
           .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
         if (rollErr || !rolled?.length) {
           console.error(
-            `[pagarme-checkout] CRITICAL: switch rollback CAS failed for workspace ${ctx.workspaceId}; switch stands, leg D will enforce the stripe cancel${rollErr ? `: ${rollErr.message}` : ""}`,
+            `[pagarme-checkout] CRITICAL: switch stands with remote cap_end disarmed for workspace ${ctx.workspaceId}; leg D will re-arm it${rollErr ? `: ${rollErr.message}` : ""}`,
           );
           await finishAttempt("succeeded", sub.id);
           return { status: 200, body: switchSuccessBody };
-        }
-        // (ii) O timeout da perna e ambiguo: o true pode ter landado. Restaura o valor
-        // OBSERVADO no verify (cobre a fonte em churn da decisao 7).
-        try {
-          await deps.stripeSwitch!.setCancelAtPeriodEnd(
-            row!.stripe_subscription_id as string,
-            switchObserved!.cancelAtPeriodEnd,
-          );
-        } catch (e) {
-          console.error(
-            "[pagarme-checkout] CRITICAL: rollback cap_end restore failed (mismatch self-surfaces via stripe webhooks, allowed again post flip-back):",
-            e instanceof Error ? e.message : String(e),
-          );
         }
         // (iii) Re-grant do plano-fonte (falha: CRITICAL, precedente do grant pos-bind).
         try {

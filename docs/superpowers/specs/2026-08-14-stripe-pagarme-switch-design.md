@@ -150,27 +150,34 @@ O 12x está ao vivo em prod desde 2026-08-14 e a infra existente já resolve qua
 11. **Perna Stripe (última)**: `setCancelAtPeriodEnd(stripe_sub_id, true)` bounded 10s.
     **Falha → rollback completo em-request** (review externo Codex: perto da renovação,
     esperar o cron das 06:00 abriria uma janela real de cobrança dupla, não o residual de
-    segundos aceito):
-    (i) CAS flip-back num statement, pinado em provider='pagarme' + pagarme_subscription_id
-    + status='trialing', via `buildRestoreStripeColumns` (builder compartilhado com o undo,
-    em `_shared/pagarme-logic.ts`): provider='stripe', status e `cancel_at_period_end` =
-    valores OBSERVADOS no verify (cobre a fonte em churn da decisão 7), plan_id =
-    plano-fonte, billing_interval='month', installments=null, current_period_end = period
-    end real da Stripe, pagarme_subscription_id=null (leg C varre a future sub se o passo
-    iv falhar), markers=null, mirror cleared (auto-cura na leitura do admin);
-    (ii) restaura o `cancel_at_period_end` REMOTO ao valor observado (o timeout da perna é
-    ambíguo: o `true` pode ter landado; falha aqui → CRITICAL, o mismatch se auto-expõe
-    via webhooks Stripe, que voltam a ser aceitos após o flip-back);
+    segundos aceito). Ordem do rollback (segunda rodada do review externo: os markers só
+    podem ser limpos DEPOIS do restore remoto confirmado; uma troca de pé com markers é
+    sempre recuperável pelo leg D, mas uma linha flipada de volta sem markers fica
+    invisível para ele):
+    (i) restaura o `cancel_at_period_end` REMOTO ao valor observado no verify (o timeout
+    da perna é ambíguo: o `true` pode ter landado; cobre a fonte em churn da decisão 7).
+    Falha do restore → a troca FICA DE PÉ: CRITICAL, attempt `succeeded`, 200 `switched`;
+    markers intactos, leg D é o backstop durável;
+    (ii) só com o restore confirmado, CAS flip-back num statement, pinado em
+    provider='pagarme' + pagarme_subscription_id + status='trialing', via
+    `buildRestoreStripeColumns` (builder compartilhado com o undo, em
+    `_shared/pagarme-logic.ts`): provider='stripe', status e `cancel_at_period_end` =
+    valores OBSERVADOS, plan_id = plano-fonte, billing_interval='month',
+    installments=null, current_period_end = period end real da Stripe,
+    pagarme_subscription_id=null (leg C varre a future sub se o passo iv falhar),
+    markers=null, mirror cleared (auto-cura na leitura do admin). CAS falhou/zero rows →
+    a troca fica DE PÉ com o remoto desarmado: CRITICAL, attempt `succeeded`, 200
+    `switched`; o leg D re-arma o `cap_end=true` no próximo run (e o branch de renovação
+    escapada cobre a fronteira cruzada nesse intervalo);
     (iii) re-grant do plano-fonte via `writeWorkspacePlan(..., 'stripe')` (falha →
     CRITICAL);
     (iv) DELETE best-effort da future sub Pagar.me (falha → CRITICAL, leg C backstop);
     (v) attempt → `failed` e responde 500 retryable ("Não foi possível concluir a troca.
     Tente novamente.", code `gateway_error`).
-    **Rollback parcial** (o CAS do flip-back falhou): a troca fica DE PÉ; 200 `switched` +
-    CRITICAL; markers + leg D recuperam (comportamento anterior). Crash entre bind e a
-    perna Stripe (sem chance de rollback): markers + leg D, como antes. O webhook
-    `customer.subscription.updated` de um cancel bem-sucedido é negado (esperado); a linha
-    local nunca espelha o estado Stripe pós-flip: o cron checa o REMOTO.
+    Crash entre bind e a perna Stripe (sem chance de rollback): markers + leg D, como
+    antes. O webhook `customer.subscription.updated` de um cancel bem-sucedido é negado
+    (esperado); a linha local nunca espelha o estado Stripe pós-flip: o cron checa o
+    REMOTO.
 12. **Response**: shape existente + `switched: true` e `first_charge_at` (o `start_at`
     efetivo; a UI usa esta data autoritativa na tela de sucesso; `trial_ends_at` ignorado
     no modo switch).
@@ -356,7 +363,7 @@ fecha aqui).
 | Timeout ambíguo no create | Retry mesma key; órfã → leg C (residual: fronteira <30h, decisão 5) |
 | Falha entre create e bind | Compensating cancel da future sub; Stripe intocada (perna é a última) |
 | Webhook Stripe concorrente muda status | CAS com pin de status falha → compensa + 409 |
-| Perna Stripe falha (sem crash) | Rollback completo em-request → 500 retryable; rollback parcial → 200 + CRITICAL + leg D |
+| Perna Stripe falha (sem crash) | Restore remoto primeiro; confirmado → flip-back + 500 retryable; restore ou CAS falham → troca fica de pé, 200 + CRITICAL + leg D |
 | Crash entre bind e cancel Stripe | Markers set → leg D aplica cap_end=true; renovação já disparou → cancelNow + CRITICAL |
 | Double-submit | Unique parcial (pending ou quarantined) → 409 |
 | Switch sub nascida active (malfunção) | Cancel remoto + attempt quarantined + 500; checkouts bloqueados até revisão manual |
