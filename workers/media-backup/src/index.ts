@@ -52,7 +52,7 @@ async function runSync(env: Env, maxCopies = MAX_COPIES_PER_RUN): Promise<{ srcO
 }
 
 export default {
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(runSync(env));
   },
 

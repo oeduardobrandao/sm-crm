@@ -127,7 +127,18 @@ Deno.serve(createPostMediaCleanupCronHandler({
     // Purge trash/ entries past their 30-day undo window (bounded per run).
     let trashPurged = 0;
     try {
-      trashPurged = await purgeTrash(30);
+      // SDK-independent watchdog: listings have worked reliably on this runtime,
+      // but a wedged purge must never block the canary/alert stages behind it.
+      trashPurged = await new Promise<number>((resolve) => {
+        const watchdog = setTimeout(() => {
+          console.error("post-media-cleanup:purge-trash timed out");
+          resolve(0);
+        }, 60_000);
+        purgeTrash(30).then(
+          (n) => { clearTimeout(watchdog); resolve(n); },
+          (e) => { clearTimeout(watchdog); console.error("post-media-cleanup:purge-trash", e); resolve(0); },
+        );
+      });
     } catch (e) {
       console.error("post-media-cleanup:purge-trash", e);
     }
