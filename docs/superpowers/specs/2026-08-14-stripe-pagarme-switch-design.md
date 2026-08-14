@@ -271,8 +271,8 @@ durante a paginação quebra offset/keyset ingênuos):
   execução retoma do mais antigo; starvation estruturalmente impossível). Truncamento
   vira flag + entrada em `errors`.
 
-Por linha, retrieve pelo marker (gateway Stripe injetado null-safe; env ausente → skip
-com contador):
+Por linha, retrieve pelo marker (gateway Stripe injetado null-safe; env ausente → leg
+inteiro pulado com `switchSkipped: true` no CronResult, espelhando `remoteSkipped`):
 
 - 404 / canceled / `cancel_at_period_end=true` → seguro.
 - Ativa com `cap_end=false` e janela aberta (provider pagarme + trialing + period end
