@@ -20,6 +20,9 @@ export interface PagarmeCheckoutRequest {
   customerType: "individual" | "company";
   phone: { ddd: string; number: string };
   billingAddress: { cep: string; line1: string; city: string; state: string };
+  /** Switch mensal Stripe -> 12x: consentimento explicito no body (spec 2026-08-14).
+   * Clientes velhos sem o campo seguem recebendo o 409 de linha vigente. */
+  isSwitch: boolean;
 }
 
 export type ParseFailure = {
@@ -56,6 +59,10 @@ export function parseCheckoutBody(raw: unknown): ParseResult {
   if (body.interval !== "year") return fail("Intervalo inválido.");
   if (body.installments !== 12) return fail("Parcelamento inválido.");
 
+  if (body.switch !== undefined && body.switch !== true) {
+    return fail("Requisição inválida.");
+  }
+
   const cardToken = typeof body.card_token === "string" ? body.card_token.trim() : "";
   if (!cardToken) return fail("Dados do cartão inválidos.");
 
@@ -91,6 +98,7 @@ export function parseCheckoutBody(raw: unknown): ParseResult {
       customerType: isCpf ? "individual" : "company",
       phone: { ddd, number: phoneNumber },
       billingAddress: { cep, line1, city, state },
+      isSwitch: body.switch === true,
     },
   };
 }
@@ -123,6 +131,41 @@ export function pagarmeCheckoutBlocked(
 }
 
 /**
+ * Gate LOCAL do switch (spec, decisao 3): linha Stripe (null = legado) com id remoto,
+ * status ESTRITO active|trialing (nunca isInForce: past_due fica fora, dunning primeiro)
+ * e billing_interval que nao afirme "year". billing_interval null passa: o stripe-webhook
+ * grava null para price desconhecido, e a autoridade de "e mensal" e a verificacao REMOTA
+ * do handler (assessStripeSourceSub).
+ */
+export function stripeSwitchSourceEligible(row: {
+  provider?: string | null;
+  stripe_subscription_id?: string | null;
+  status?: string | null;
+  billing_interval?: string | null;
+} | null | undefined): boolean {
+  if (!row) return false;
+  if ((row.provider ?? "stripe") !== "stripe") return false;
+  if (!row.stripe_subscription_id) return false;
+  if (row.status !== "active" && row.status !== "trialing") return false;
+  return row.billing_interval !== "year";
+}
+
+/**
+ * Ceil de uma fronteira arbitraria para a proxima meia-noite UTC, date-only (o gateway
+ * le start_at como midnight UTC). Direcao segura: nunca cobra antes da fronteira paga.
+ */
+export function ceilToUtcMidnightDate(boundary: Date): string {
+  const end = new Date(boundary.getTime());
+  if (
+    end.getUTCHours() !== 0 || end.getUTCMinutes() !== 0 ||
+    end.getUTCSeconds() !== 0 || end.getUTCMilliseconds() !== 0
+  ) {
+    end.setUTCHours(24, 0, 0, 0); // ceil to the next UTC midnight
+  }
+  return end.toISOString().slice(0, 10);
+}
+
+/**
  * `start_at` for the trial: date-only string (the spike sent YYYY-MM-DD and the gateway
  * echoed it as midnight UTC). Undefined when there is no trial — the subscription then
  * charges its first installment at creation. Because the gateway reads the date as
@@ -132,14 +175,7 @@ export function pagarmeCheckoutBlocked(
  */
 export function resolveStartAt(trialDays: number | undefined, now: Date): string | undefined {
   if (!trialDays) return undefined;
-  const end = new Date(now.getTime() + trialDays * 24 * 3600 * 1000);
-  if (
-    end.getUTCHours() !== 0 || end.getUTCMinutes() !== 0 ||
-    end.getUTCSeconds() !== 0 || end.getUTCMilliseconds() !== 0
-  ) {
-    end.setUTCHours(24, 0, 0, 0); // ceil to the next UTC midnight
-  }
-  return end.toISOString().slice(0, 10);
+  return ceilToUtcMidnightDate(new Date(now.getTime() + trialDays * 24 * 3600 * 1000));
 }
 
 /**
@@ -222,6 +258,8 @@ export function buildPagarmeSubscriptionColumns(args: {
   currentPeriodEnd: string | null;
   everSubscribedAt: string;
   nowIso: string;
+  switchedFromStripeSubscriptionId?: string | null;
+  switchedFromPlanId?: string | null;
 }): Record<string, unknown> {
   return {
     provider: "pagarme",
@@ -233,6 +271,12 @@ export function buildPagarmeSubscriptionColumns(args: {
     installments: 12,
     current_period_end: args.currentPeriodEnd,
     cancel_at_period_end: false,
+    // Markers do switch (spec 2026-08-14): sempre emitidos (null no checkout comum) para
+    // manter o invariante de payload unico auto-documentado. switch_checked_at zerado poe
+    // um segundo switch do mesmo workspace na FRENTE da fila do leg D.
+    switched_from_stripe_subscription_id: args.switchedFromStripeSubscriptionId ?? null,
+    switched_from_plan_id: args.switchedFromPlanId ?? null,
+    switch_checked_at: null,
     ever_subscribed_at: args.everSubscribedAt,
     // Fresh takeover clears ALL dunning state (mirroring buildRecoveryEpisode): a Stripe row
     // that churned mid-dunning must not leak its past_due_since into the first pagarme episode.

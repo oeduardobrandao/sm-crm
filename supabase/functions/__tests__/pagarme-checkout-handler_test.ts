@@ -19,6 +19,7 @@ const REQ: PagarmeCheckoutRequest = {
   customerType: "individual",
   phone: { ddd: "11", number: "999990000" },
   billingAddress: { cep: "01310100", line1: "Av. Paulista, 1000", city: "São Paulo", state: "SP" },
+  isSwitch: false,
 };
 
 const PLAN = {
