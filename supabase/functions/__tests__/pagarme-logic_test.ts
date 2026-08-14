@@ -1,7 +1,8 @@
-import { assertEquals } from "./assert.ts";
+import { assert, assertEquals } from "./assert.ts";
 import { PagarmeApiError } from "../_shared/pagarme.ts";
 import {
   buildChargeDunningKey,
+  buildRestoreStripeColumns,
   canWebhookWrite,
   crossProviderCheckoutBlocked,
   isDefinitiveGatewayReject,
@@ -13,6 +14,7 @@ import {
   shouldAdvanceDunning,
   shouldCancelDeniedCheckoutSub,
   shouldSweepRemoteSubscription,
+  stripePortalBlocked,
   SWEEP_MIN_AGE_MS,
 } from "../_shared/pagarme-logic.ts";
 
@@ -537,4 +539,65 @@ Deno.test("shouldSweepRemoteSubscription: missing metadata or empty workspace_id
 Deno.test("shouldSweepRemoteSubscription: full orphan (old, unlinked, recognized) is cancel", () => {
   const sub = { id: "sub_6", created_at: OLD_ENOUGH, metadata: { workspace_id: "ws_1" } };
   assertEquals(shouldSweepRemoteSubscription(sub, new Set(), new Set(), SWEEP_NOW), "cancel");
+});
+
+// ─── buildRestoreStripeColumns ───────────────────────────────────────────────
+
+Deno.test("buildRestoreStripeColumns: payload completo num statement, markers e pagarme id limpos", () => {
+  const cols = buildRestoreStripeColumns({
+    status: "active",
+    cancelAtPeriodEnd: false,
+    periodEndIso: "2026-09-15T14:23:11.000Z",
+    sourcePlanId: "start",
+    amountColumns: { amount_cents: null, gross_cents: null, currency: null, amount_interval: null, discount_label: null, amount_refreshed_at: null },
+    nowIso: "2026-08-12T12:00:00.000Z",
+  });
+  assertEquals(cols.provider, "stripe");
+  assertEquals(cols.status, "active");
+  assertEquals(cols.plan_id, "start");
+  assertEquals(cols.billing_interval, "month");
+  assertEquals(cols.installments, null);
+  assertEquals(cols.current_period_end, "2026-09-15T14:23:11.000Z");
+  assertEquals(cols.cancel_at_period_end, false);
+  assertEquals(cols.pagarme_subscription_id, null);
+  assertEquals(cols.switched_from_stripe_subscription_id, null);
+  assertEquals(cols.switched_from_plan_id, null);
+  assertEquals(cols.amount_cents, null);
+  assertEquals(cols.updated_at, "2026-08-12T12:00:00.000Z");
+});
+
+Deno.test("buildRestoreStripeColumns: fonte em churn preserva cancel_at_period_end=true", () => {
+  const cols = buildRestoreStripeColumns({
+    status: "active",
+    cancelAtPeriodEnd: true,
+    periodEndIso: "2026-09-15T14:23:11.000Z",
+    sourcePlanId: "pro",
+    amountColumns: {},
+    nowIso: "2026-08-12T12:00:00.000Z",
+  });
+  assertEquals(cols.cancel_at_period_end, true);
+});
+
+Deno.test("buildRestoreStripeColumns: periodEnd/plan desconhecidos sao OMITIDOS, nunca null por cima", () => {
+  const cols = buildRestoreStripeColumns({
+    status: "trialing",
+    cancelAtPeriodEnd: false,
+    periodEndIso: null,
+    sourcePlanId: null,
+    amountColumns: {},
+    nowIso: "2026-08-12T12:00:00.000Z",
+  });
+  assert(!("current_period_end" in cols));
+  assert(!("plan_id" in cols));
+});
+
+// ─── stripePortalBlocked ────────────────────────────────────────────────────
+
+Deno.test("stripePortalBlocked: linha pagarme in force ou com marker bloqueia; stripe nunca", () => {
+  assert(stripePortalBlocked({ provider: "pagarme", status: "active", switched_from_stripe_subscription_id: null }));
+  assert(stripePortalBlocked({ provider: "pagarme", status: "trialing", switched_from_stripe_subscription_id: "sub_s1" }));
+  assert(stripePortalBlocked({ provider: "pagarme", status: "canceled", switched_from_stripe_subscription_id: "sub_s1" }));
+  assert(!stripePortalBlocked({ provider: "pagarme", status: "canceled", switched_from_stripe_subscription_id: null }));
+  assert(!stripePortalBlocked({ provider: "stripe", status: "active", switched_from_stripe_subscription_id: null }));
+  assert(!stripePortalBlocked(null));
 });
