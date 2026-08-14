@@ -448,6 +448,76 @@ Deno.test("processDelivery: from/text ainda indeterminados após o GET -> skip s
   assertEquals(callsFor(db, "instagram_webhook_events", "update").length, 1);
 });
 
+// ── media.id ausente no payload (P2, external review) ──────────────────────
+// `from`/`text` sozinhos não bastam para pular o GET: `media.id` também entra
+// no gatilho, porque alimenta o filtro de automação específica de post e o
+// `p_media_id` do claim. Sem isso, um comentário assinado que só omite
+// `value.media.id` excluiria silenciosamente toda automação de post específico
+// do matching e deixaria uma regra "todos os posts" vencer no lugar dela.
+
+Deno.test("processDelivery: media.id ausente no payload mas presente no GET -> filtro por post usa o valor enriquecido", async () => {
+  const db = createSupabaseQueryMock();
+  const POST_SPECIFIC_AUTOMATION_ID = "aaaaaaa8-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+
+  db.queue("instagram_accounts", "select", { data: [accountRow()], error: null });
+  db.queue("instagram_comment_automations", "select", {
+    data: [
+      automationRow(), // "todos os posts" (ig_media_id: null)
+      automationRow({ id: POST_SPECIFIC_AUTOMATION_ID, ig_media_id: MEDIA_ID }), // específica do post
+    ],
+    error: null,
+  });
+  db.queueRpc("claim_automation_send", { data: [{ send_id: null, outcome: "duplicate" }], error: null });
+  db.queue("instagram_webhook_events", "update", { data: null, error: null });
+
+  const { fetchFn } = routedFetch({
+    fetchComment: () => ({ body: { id: COMMENT_ID, media: { id: MEDIA_ID } } }),
+  });
+
+  // from/text presentes no payload (não acionariam o GET sozinhos); só media.id falta.
+  const row = eventRow({ media: undefined });
+  await createProcessDelivery(baseProcessDeps({ fetchFn, decryptToken: okDecrypt }))(db as never, [row]);
+
+  const claimCalls = rpcCallsFor(db, "claim_automation_send");
+  assertEquals(claimCalls.length, 1);
+  const payload = claimCalls[0].payload as Record<string, unknown>;
+  assertEquals(payload.p_media_id, MEDIA_ID, "media.id do GET alimenta o claim");
+  assertEquals(
+    payload.p_automation_id,
+    POST_SPECIFIC_AUTOMATION_ID,
+    "a automação específica do post vence -- sem o fix ela seria excluída do matching e a 'todos os posts' venceria no lugar dela",
+  );
+});
+
+Deno.test("processDelivery: media.id ausente também no GET -> automação específica de post fica de fora, 'todos os posts' casa (comportamento atual, agora explícito)", async () => {
+  const db = createSupabaseQueryMock();
+  const POST_SPECIFIC_AUTOMATION_ID = "aaaaaaa8-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+
+  db.queue("instagram_accounts", "select", { data: [accountRow()], error: null });
+  db.queue("instagram_comment_automations", "select", {
+    data: [
+      automationRow(), // "todos os posts"
+      automationRow({ id: POST_SPECIFIC_AUTOMATION_ID, ig_media_id: MEDIA_ID }),
+    ],
+    error: null,
+  });
+  db.queueRpc("claim_automation_send", { data: [{ send_id: null, outcome: "duplicate" }], error: null });
+  db.queue("instagram_webhook_events", "update", { data: null, error: null });
+
+  const { fetchFn } = routedFetch({
+    fetchComment: () => ({ body: { id: COMMENT_ID } }), // sem media também
+  });
+
+  const row = eventRow({ media: undefined });
+  await createProcessDelivery(baseProcessDeps({ fetchFn, decryptToken: okDecrypt }))(db as never, [row]);
+
+  const claimCalls = rpcCallsFor(db, "claim_automation_send");
+  assertEquals(claimCalls.length, 1);
+  const payload = claimCalls[0].payload as Record<string, unknown>;
+  assertEquals(payload.p_media_id, null, "sem media.id em lugar nenhum -> segue com null, não trava o evento");
+  assertEquals(payload.p_automation_id, AUTOMATION_ID, "só a automação 'todos os posts' sobra no matching");
+});
+
 // ══════════════════════════════ executeSend ════════════════════════════════
 
 Deno.test("executeSend (f): token_expired -> conta marcada expired + notificação + failed, sem reply pública", async () => {

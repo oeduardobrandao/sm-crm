@@ -156,7 +156,8 @@ async function processRow(svc: DbClient, row: EventRow, ctx: RowCtx): Promise<vo
   }
 
   // 2. Automações ativas dos clientes candidatos (todas — o throttle do passo 9
-  // usa esta mesma lista, sem restringir por mídia).
+  // usa esta mesma lista, sem restringir por mídia). O filtro por mídia roda
+  // MAIS ABAIXO, só depois do passo 3 -- precisa do mediaId JÁ enriquecido.
   const candidateClientIds = [...new Set(candidates.map((c) => c.client_id))];
   const { data: automationRows, error: autoErr } = await svc
     .from("instagram_comment_automations")
@@ -165,31 +166,35 @@ async function processRow(svc: DbClient, row: EventRow, ctx: RowCtx): Promise<vo
     .in("client_id", candidateClientIds);
   if (autoErr) throw new Error(`instagram_comment_automations: ${errMessage(autoErr)}`);
   const automationsAll = (automationRows ?? []) as AutomationRow[];
-  const mediaId = event.mediaId ?? null;
-  const automations = automationsAll.filter((a) => a.ig_media_id === null || a.ig_media_id === mediaId);
 
   // 3. Campos que faltam no payload -> GET de reconciliação (token do 1º candidato).
-  // Gatilho = falta commenterId OU text: são exatamente os dois campos que a
-  // checagem seguinte ("ainda indeterminado") volta a examinar depois do GET.
-  // `parentId` NÃO entra no gatilho: sua ausência no payload da Meta É o sinal
-  // normal de "comentário de primeiro nível" (não é campo obrigatório só em
-  // replies) -- tratá-la como "faltando" acionaria o GET em todo comentário
-  // comum, o caso mais frequente, sem necessidade. Quando o GET roda por outro
-  // motivo, `parentId`/timestamp são enriquecidos de graça abaixo mesmo assim.
+  // Gatilho = falta commenterId OU text OU mediaId. `mediaId` ENTRA no gatilho:
+  // ele alimenta o filtro de automações específicas de post logo abaixo e o
+  // `p_media_id` do claim -- um comentário assinado que só omite `value.media.id`
+  // (a Meta não garante o campo) faria toda automação de post específico ficar
+  // silenciosamente de fora do matching, e uma regra "todos os posts" venceria
+  // no lugar dela. `parentId` continua FORA do gatilho: sua ausência no payload
+  // da Meta É o sinal normal de "comentário de primeiro nível" (não é campo
+  // obrigatório só em replies) -- tratá-la como "faltando" acionaria o GET em
+  // todo comentário comum, o caso mais frequente, sem necessidade. Quando o GET
+  // roda por outro motivo, `parentId`/timestamp são enriquecidos de graça abaixo
+  // mesmo assim.
   let commenterId = event.commenterId;
   let commenterUsername = event.commenterUsername;
   let text = event.text;
   let parentId = event.parentId;
+  let mediaId = event.mediaId;
   const valueTimestamp = event.timestamp;
   let getTimestamp: string | undefined;
 
-  if (commenterId === undefined || text === undefined) {
+  if (commenterId === undefined || text === undefined || mediaId === undefined) {
     const token = await ctx.decryptTokenFn(candidates[0].encrypted_access_token);
     const fetched = await fetchComment(ctx.msgDeps, { commentId: row.comment_id, token });
     commenterId = commenterId ?? fetched.from?.id;
     commenterUsername = commenterUsername ?? fetched.from?.username;
     text = text ?? fetched.text;
     parentId = parentId ?? fetched.parent_id;
+    mediaId = mediaId ?? fetched.media?.id;
     getTimestamp = fetched.timestamp;
   }
 
@@ -200,6 +205,19 @@ async function processRow(svc: DbClient, row: EventRow, ctx: RowCtx): Promise<vo
     await stampProcessed(svc, row.id, nowDate);
     return;
   }
+
+  // mediaId ainda indeterminado após o GET: NÃO é motivo de skip (from/text já
+  // resolvidos) -- segue com mediaId nulo, que só exclui automações específicas
+  // de post (uma automação "todos os posts" ainda pode casar); só loga.
+  if (mediaId === undefined) {
+    console.log(
+      `[instagram-webhook] comentário ${row.comment_id} sem media.id mesmo após GET; automações específicas de post ficam de fora`,
+    );
+  }
+  const resolvedMediaId = mediaId ?? null;
+  const automations = automationsAll.filter(
+    (a) => a.ig_media_id === null || a.ig_media_id === resolvedMediaId,
+  );
 
   // 4. comment_created_at: timestamp do value, senão do GET, senão o instante
   // do processamento como aproximação conservadora.
@@ -240,7 +258,7 @@ async function processRow(svc: DbClient, row: EventRow, ctx: RowCtx): Promise<vo
     p_comment_id: row.comment_id,
     p_automation_id: winner.id,
     p_conta_id: winner.conta_id,
-    p_media_id: mediaId,
+    p_media_id: resolvedMediaId,
     p_commenter_id: commenterId,
     p_commenter_username: commenterUsername ?? null,
     p_comment_text: text,
