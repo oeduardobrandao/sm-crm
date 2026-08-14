@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders, resolveAllowedOrigin } from "../_shared/cors.ts";
 import { stripe } from "../_shared/stripe.ts";
 import { isWorkspaceOwner } from "../_shared/workspace-role.ts";
+import { stripePortalBlocked } from "../_shared/pagarme-logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -45,8 +46,15 @@ Deno.serve(async (req: Request) => {
 
     const { data: subRow } = await svc
       .from("workspace_subscriptions")
-      .select("stripe_customer_id").eq("workspace_id", workspaceId).maybeSingle();
+      .select("stripe_customer_id, provider, status, switched_from_stripe_subscription_id")
+      .eq("workspace_id", workspaceId).maybeSingle();
     if (!subRow?.stripe_customer_id) return json({ error: "No subscription" }, 400, headers);
+    // Linha pagarme (in force ou com janela de switch viva) nao abre o portal: o "renovar"
+    // de la desfaria o cancel_at_period_end na Stripe, o webhook resultante e negado
+    // pos-flip e nada local perceberia ate o leg D (spec do switch).
+    if (stripePortalBlocked(subRow)) {
+      return json({ error: "Sua assinatura atual é gerenciada fora do portal Stripe." }, 409, headers);
+    }
 
     const portal = await stripe.billingPortal.sessions.create({
       customer: subRow.stripe_customer_id,
