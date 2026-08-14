@@ -41,6 +41,7 @@ const REQUIRED_FUNCTIONS = [
   // Token/internal auth
   "crisp-identity",
   "instagram-integration",
+  "instagram-webhook",
   "hub-bootstrap",
   "hub-posts",
   "hub-approve",
