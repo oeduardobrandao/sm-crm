@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/services/fileService', () => ({
   getFolderContents: vi.fn(),
@@ -188,6 +188,55 @@ describe('ArquivosPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Nenhum arquivo nesta pasta')).toBeInTheDocument();
+    });
+  });
+
+  describe('lightbox playback mapping', () => {
+    // Stubbing canPlayType('probably') keeps the HLS-bearing case on the
+    // synchronous native-HLS path in VideoPlayer, mirroring the pattern in
+    // entregas/hub's PostMediaLightbox tests and VideoPlayer's own tests.
+    afterEach(() => {
+      delete (HTMLMediaElement.prototype as { canPlayType?: unknown }).canPlayType;
+    });
+
+    it('carries the playback field from FileRecord into the lightbox video element', async () => {
+      HTMLMediaElement.prototype.canPlayType = vi.fn(() => 'probably') as unknown as (
+        type: string,
+      ) => CanPlayTypeResult;
+
+      mockedGetFolderContents.mockResolvedValue(
+        makeFolderContents({
+          files: [
+            makeFile({
+              id: 200,
+              name: 'clip.mp4',
+              kind: 'video',
+              mime_type: 'video/mp4',
+              url: 'https://media.test/clip.mp4',
+              playback: {
+                hls: 'https://videodelivery.example.com/uid123/manifest/video.m3u8',
+                expires_at: '2026-08-13T12:00:00Z',
+              },
+            }),
+          ],
+        }),
+      );
+
+      render(<ArquivosPage />, { wrapper: createWrapper() });
+
+      await waitFor(() => {
+        expect(screen.getByText('clip.mp4')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('clip.mp4'));
+
+      await waitFor(() => {
+        const video = document.body.querySelector('video');
+        expect(video).toHaveAttribute(
+          'src',
+          'https://videodelivery.example.com/uid123/manifest/video.m3u8',
+        );
+      });
     });
   });
 });

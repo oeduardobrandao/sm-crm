@@ -1,7 +1,19 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PostMediaLightbox } from '../PostMediaLightbox';
 import type { HubPostMedia } from '../../types';
+
+// VideoPlayer (packages/ui/VideoPlayer) is the component under test here by
+// proxy -- these tests only need to prove the lightbox wires hlsSrc/src/
+// onFatalError correctly, so hls.js itself is never exercised. Stubbing
+// canPlayType to 'probably' keeps every playback-bearing case on the
+// synchronous native-HLS path, mirroring the pattern in
+// packages/ui/VideoPlayer/__tests__/index.test.tsx.
+function stubCanPlayType(returnValue: string) {
+  HTMLMediaElement.prototype.canPlayType = vi.fn(() => returnValue) as unknown as (
+    type: string,
+  ) => CanPlayTypeResult;
+}
 
 function makeMedia(overrides: Partial<HubPostMedia> = {}): HubPostMedia {
   return {
@@ -21,6 +33,10 @@ function makeMedia(overrides: Partial<HubPostMedia> = {}): HubPostMedia {
 }
 
 describe('PostMediaLightbox', () => {
+  afterEach(() => {
+    delete (HTMLMediaElement.prototype as { canPlayType?: unknown }).canPlayType;
+  });
+
   it('navigates with buttons and keyboard, updates the counter, and supports all close controls', () => {
     const onClose = vi.fn();
     const media = [
@@ -187,5 +203,102 @@ describe('PostMediaLightbox', () => {
     fireEvent.error(video);
 
     expect(onStaleUrl).toHaveBeenCalledTimes(2);
+  });
+
+  it('plays the HLS manifest through VideoPlayer when media has a playback field', () => {
+    stubCanPlayType('probably');
+
+    render(
+      <PostMediaLightbox
+        media={[
+          makeMedia({
+            id: 4,
+            kind: 'video',
+            mime_type: 'video/mp4',
+            url: 'https://cdn.example.com/video.mp4',
+            thumbnail_url: 'https://cdn.example.com/video-thumb.jpg',
+            playback: {
+              hls: 'https://videodelivery.example.com/abc123/manifest/video.m3u8',
+              expires_at: '2026-08-13T12:00:00Z',
+            },
+          }),
+        ]}
+        initialIndex={0}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const video = document.body.querySelector('video');
+    expect(video).toHaveAttribute(
+      'src',
+      'https://videodelivery.example.com/abc123/manifest/video.m3u8',
+    );
+  });
+
+  it('renders the plain progressive src, unchanged, when media has no playback field', () => {
+    render(
+      <PostMediaLightbox
+        media={[
+          makeMedia({
+            id: 5,
+            kind: 'video',
+            mime_type: 'video/mp4',
+            url: 'https://cdn.example.com/video.mp4',
+            thumbnail_url: 'https://cdn.example.com/video-thumb.jpg',
+          }),
+        ]}
+        initialIndex={0}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const video = document.body.querySelector('video');
+    expect(video).toHaveAttribute('src', 'https://cdn.example.com/video.mp4');
+  });
+
+  it('routes only the fallback-mode fatal error to onStaleUrl, not the initial HLS error', () => {
+    stubCanPlayType('probably');
+    const onStaleUrl = vi.fn();
+
+    render(
+      <PostMediaLightbox
+        media={[
+          makeMedia({
+            id: 6,
+            kind: 'video',
+            mime_type: 'video/mp4',
+            url: 'https://cdn.example.com/video.mp4',
+            thumbnail_url: 'https://cdn.example.com/video-thumb.jpg',
+            playback: {
+              hls: 'https://videodelivery.example.com/abc123/manifest/video.m3u8',
+              expires_at: '2026-08-13T12:00:00Z',
+            },
+          }),
+        ]}
+        initialIndex={0}
+        onClose={vi.fn()}
+        onStaleUrl={onStaleUrl}
+      />,
+    );
+
+    const hlsVideo = document.body.querySelector('video');
+    expect(hlsVideo).toHaveAttribute(
+      'src',
+      'https://videodelivery.example.com/abc123/manifest/video.m3u8',
+    );
+
+    // First error is on the native-HLS source: VideoPlayer still has the
+    // progressive fallback left to try, so it swaps sources silently.
+    fireEvent.error(hlsVideo as HTMLVideoElement);
+
+    const fallbackVideo = document.body.querySelector('video');
+    expect(fallbackVideo).toHaveAttribute('src', 'https://cdn.example.com/video.mp4');
+    expect(onStaleUrl).not.toHaveBeenCalled();
+
+    // Second error is on the fallback itself: nothing left to try, so this
+    // is the one that should trigger the parent's refetch.
+    fireEvent.error(fallbackVideo as HTMLVideoElement);
+
+    expect(onStaleUrl).toHaveBeenCalledTimes(1);
   });
 });

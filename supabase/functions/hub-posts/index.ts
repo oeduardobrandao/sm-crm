@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { signGetUrl } from "../_shared/r2.ts";
 import { signMediaUrl, isMediaProxyEnabled } from "../_shared/media-url.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { isStreamEnabled, signPlaybackUrl } from "../_shared/stream.ts";
 import { createHubPostsHandler } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -16,4 +17,5 @@ Deno.serve(createHubPostsHandler({
   createDb: () => createClient(SUPABASE_URL, SERVICE_ROLE_KEY),
   now: () => new Date().toISOString(),
   signGetUrl: signUrl,
+  signPlayback: isStreamEnabled() ? (uid) => signPlaybackUrl(uid) : undefined,
 }));

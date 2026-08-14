@@ -38,6 +38,9 @@ export interface FileRecord {
   created_at: string;
   url?: string;
   thumbnail_url?: string | null;
+  /** Cloudflare Stream HLS manifest, when the video has one. Optional — cached
+   * pre-deploy responses omit it, same convention as in store/posts.ts's PostMedia. */
+  playback?: { hls: string; expires_at: string } | null;
   _uploading?: boolean;
   _progress?: number;
   _localPreviewUrl?: string;

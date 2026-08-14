@@ -160,6 +160,134 @@ Deno.test("hub-posts returns flattened post data with signed media URLs", async 
   assertEquals(body.posts[0].workflow_titulo, "Calendário Abril");
   assertEquals(body.posts[0].cover_media.url, "https://signed.mesaas.com/contas/1/post.png");
   assertEquals(body.posts[0].platform, "tiktok");
+  assertEquals(body.posts[0].cover_media.playback, null);
+});
+
+function queueHubPostsVideoFixture(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  file: { stream_uid: string | null; stream_status: string | null },
+) {
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [{ id: 7 }], error: null });
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 99,
+        titulo: "Post em vídeo",
+        tipo: "reels",
+        status: "enviado_cliente",
+        ordem: 0,
+        conteudo_plain: "Legenda",
+        scheduled_at: "2026-04-20T10:00:00.000Z",
+        platform: "instagram",
+        workflow_id: 7,
+        workflows: { titulo: "Calendário Abril" },
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", {
+    data: [
+      {
+        id: 1,
+        post_id: 99,
+        is_cover: true,
+        sort_order: 0,
+        files: {
+          id: 10,
+          kind: "video",
+          mime_type: "video/mp4",
+          r2_key: "contas/1/post.mp4",
+          thumbnail_r2_key: null,
+          width: 1080,
+          height: 1920,
+          duration_seconds: 12,
+          blur_data_url: null,
+          stream_uid: file.stream_uid,
+          stream_status: file.stream_status,
+        },
+      },
+    ],
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", {
+    data: { username: "studio_marca", profile_picture_url: "https://cdn.ig/pic.jpg" },
+    error: null,
+  });
+}
+
+Deno.test("hub-posts includes signed playback for a ready video when signPlayback is configured", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsVideoFixture(db, { stream_uid: "stream-uid-1", stream_status: "ready" });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => `https://signed.mesaas.com/${key}`,
+    signPlayback: async (uid) => ({
+      hls: `https://stream.example/${uid}.m3u8`,
+      expires_at: "2026-04-20T22:00:00.000Z",
+    }),
+  });
+
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  const media = body.posts[0].cover_media;
+  assertEquals(media.playback, {
+    hls: "https://stream.example/stream-uid-1.m3u8",
+    expires_at: "2026-04-20T22:00:00.000Z",
+  });
+  assert(!("stream_uid" in media), "stream_uid must not leak to the client");
+  assert(!("stream_status" in media), "stream_status must not leak to the client");
+});
+
+Deno.test("hub-posts returns playback: null for a video that has not finished processing", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsVideoFixture(db, { stream_uid: "stream-uid-1", stream_status: "pending" });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => `https://signed.mesaas.com/${key}`,
+    signPlayback: async (uid) => ({
+      hls: `https://stream.example/${uid}.m3u8`,
+      expires_at: "2026-04-20T22:00:00.000Z",
+    }),
+  });
+
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.posts[0].cover_media.playback, null);
+});
+
+Deno.test("hub-posts returns playback: null when signPlayback is not configured (Stream disabled)", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsVideoFixture(db, { stream_uid: "stream-uid-1", stream_status: "ready" });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => `https://signed.mesaas.com/${key}`,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.posts[0].cover_media.playback, null);
 });
 
 Deno.test("hub-posts rejects missing tokens", async () => {

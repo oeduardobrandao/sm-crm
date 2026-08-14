@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { headObject, signGetUrl } from "../_shared/r2.ts";
 import { signMediaUrl, isMediaProxyEnabled } from "../_shared/media-url.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { copyToStream, isStreamEnabled } from "../_shared/stream.ts";
 import { createFileUploadFinalizeHandler } from "./handler.ts";
 
 const signUrl = isMediaProxyEnabled()
@@ -19,4 +20,7 @@ Deno.serve(createFileUploadFinalizeHandler({
   }),
   headObject,
   signUrl,
+  streamCopy: isStreamEnabled()
+    ? async (r2Key, meta) => copyToStream(await signGetUrl(r2Key, 600), meta)
+    : undefined,
 }));

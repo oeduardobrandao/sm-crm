@@ -1,4 +1,4 @@
-import { assertEquals, readJson } from "./assert.ts";
+import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createFileUploadFinalizeHandler } from "../file-upload-finalize/handler.ts";
 
@@ -6,13 +6,17 @@ const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.me
 
 function makeHandler(
   db: ReturnType<typeof createSupabaseQueryMock>,
-  opts?: { headObject?: (key: string) => Promise<{ contentLength: number } | null> },
+  opts?: {
+    headObject?: (key: string) => Promise<{ contentLength: number } | null>;
+    streamCopy?: (r2Key: string, meta: { file_id: string; conta_id: string }) => Promise<string>;
+  },
 ) {
   return createFileUploadFinalizeHandler({
     buildCorsHeaders,
     createDb: () => db as never,
     headObject: opts?.headObject ?? (async () => ({ contentLength: 5000 })),
     signUrl: async (key) => `https://signed.example.com/${key}`,
+    streamCopy: opts?.streamCopy,
   });
 }
 
@@ -220,7 +224,17 @@ Deno.test("file-upload-finalize: RPC quota_exceeded returns 413", async () => {
 Deno.test("file-upload-finalize: image finalize returns signed file record", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
-  const insertedFile = { id: 10, r2_key: baseBody.r2_key, name: "photo.png", kind: "image" };
+  const insertedFile = {
+    id: 10,
+    r2_key: baseBody.r2_key,
+    name: "photo.png",
+    kind: "image",
+    // RPC result carries these (always null at this point in the flow, since Stream
+    // ingest hasn't run yet) — the response must strip them regardless, same contract
+    // as file-manage.
+    stream_uid: null,
+    stream_status: null,
+  };
   db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
   const handler = makeHandler(db);
   const res = await handler(authedRequest(baseBody));
@@ -230,6 +244,8 @@ Deno.test("file-upload-finalize: image finalize returns signed file record", asy
   assertEquals(body.url, `https://signed.example.com/${baseBody.r2_key}`);
   assertEquals(body.thumbnail_url, null);
   assertEquals(body.blur_data_url, null);
+  assert(!("stream_uid" in body), "stream_uid must not leak to the client");
+  assert(!("stream_status" in body), "stream_status must not leak to the client");
 });
 
 Deno.test("file-upload-finalize: finalize with blur_data_url patches and returns it", async () => {
@@ -388,4 +404,155 @@ Deno.test("file-upload-finalize: forwards sort_order to the post_file_links inse
   const linkCalls = db.calls.filter((c) => c.table === "post_file_links" && c.operation === "insert");
   assertEquals(linkCalls.length, 1);
   assertEquals((linkCalls[0].payload as { sort_order?: number }).sort_order, 4);
+});
+
+// ─── Stream ingest (video finalize) ────────────────────────────
+
+Deno.test("file-upload-finalize: video finalize with streamCopy set kicks off Stream ingest", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const videoBody = {
+    ...baseBody,
+    kind: "video" as const,
+    mime_type: "video/mp4",
+    r2_key: "contas/conta-1/files/vid-stream.mp4",
+    thumbnail_r2_key: "contas/conta-1/files/vid-stream.thumb.jpg",
+  };
+  const insertedFile = { id: 20, r2_key: videoBody.r2_key, name: "clip.mp4", kind: "video" };
+  db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("files", "update", { data: null, error: null }); // pending
+  db.queue("files", "update", { data: null, error: null }); // uid
+  let streamCopyArgs: [string, { file_id: string; conta_id: string }] | null = null;
+  const streamCopy = async (r2Key: string, meta: { file_id: string; conta_id: string }) => {
+    streamCopyArgs = [r2Key, meta];
+    return "stream-uid-123";
+  };
+  const handler = makeHandler(db, { streamCopy });
+  const res = await handler(authedRequest(videoBody));
+  assertEquals(res.status, 200);
+  assertEquals(streamCopyArgs, [videoBody.r2_key, { file_id: "20", conta_id: "conta-1" }]);
+  const updateCalls = db.calls.filter((c) => c.table === "files" && c.operation === "update");
+  assertEquals(updateCalls.length, 2);
+  assertEquals(updateCalls[0].payload, { stream_status: "pending" });
+  assertEquals(updateCalls[1].payload, { stream_uid: "stream-uid-123" });
+});
+
+Deno.test("file-upload-finalize: video finalize with streamCopy rejecting still returns 200 without a uid update", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const videoBody = {
+    ...baseBody,
+    kind: "video" as const,
+    mime_type: "video/mp4",
+    r2_key: "contas/conta-1/files/vid-stream-fail.mp4",
+    thumbnail_r2_key: "contas/conta-1/files/vid-stream-fail.thumb.jpg",
+  };
+  const insertedFile = { id: 21, r2_key: videoBody.r2_key, name: "clip2.mp4", kind: "video" };
+  db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("files", "update", { data: null, error: null }); // pending
+  const streamCopy = async () => {
+    throw new Error("stream copy failed");
+  };
+  const handler = makeHandler(db, { streamCopy });
+  const res = await handler(authedRequest(videoBody));
+  assertEquals(res.status, 200);
+  const updateCalls = db.calls.filter((c) => c.table === "files" && c.operation === "update");
+  assertEquals(updateCalls.length, 1);
+  assertEquals(updateCalls[0].payload, { stream_status: "pending" });
+});
+
+Deno.test("file-upload-finalize: video finalize skips streamCopy when the pending-status write resolves with an error", async () => {
+  // supabase-js update() RESOLVES with { error } instead of throwing -- an unchecked
+  // failure here used to let streamCopy run anyway, and the eventual stream_uid write
+  // would leave the row with stream_uid set but stream_status still null: a state no
+  // sweep (webhook/settle require stream_status='pending', catch-up requires stream_uid
+  // is null) can ever repair. The pending-write error must be checked and thrown BEFORE
+  // streamCopy is called.
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const videoBody = {
+    ...baseBody,
+    kind: "video" as const,
+    mime_type: "video/mp4",
+    r2_key: "contas/conta-1/files/vid-pending-fails.mp4",
+    thumbnail_r2_key: "contas/conta-1/files/vid-pending-fails.thumb.jpg",
+  };
+  const insertedFile = { id: 24, r2_key: videoBody.r2_key, name: "clip4.mp4", kind: "video" };
+  db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("files", "update", { data: null, error: { message: "connection reset" } }); // pending write FAILS
+  let streamCopyCalled = false;
+  const streamCopy = async () => {
+    streamCopyCalled = true;
+    return "stream-uid-should-not-be-saved";
+  };
+  const handler = makeHandler(db, { streamCopy });
+  const res = await handler(authedRequest(videoBody));
+  assertEquals(res.status, 200);
+  assertEquals(streamCopyCalled, false, "streamCopy must not run once the pending write is known to have failed");
+  const updateCalls = db.calls.filter((c) => c.table === "files" && c.operation === "update");
+  assertEquals(updateCalls.length, 1, "only the failed pending-status attempt -- no uid write follows");
+});
+
+Deno.test("file-upload-finalize: video finalize does not credit the uid write when it resolves with an error", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const videoBody = {
+    ...baseBody,
+    kind: "video" as const,
+    mime_type: "video/mp4",
+    r2_key: "contas/conta-1/files/vid-uid-save-fails.mp4",
+    thumbnail_r2_key: "contas/conta-1/files/vid-uid-save-fails.thumb.jpg",
+  };
+  const insertedFile = { id: 25, r2_key: videoBody.r2_key, name: "clip5.mp4", kind: "video" };
+  db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  db.queue("files", "update", { data: null, error: null }); // pending write ok
+  db.queue("files", "update", { data: null, error: { message: "connection reset" } }); // uid write FAILS
+  const streamCopy = async () => "stream-uid-never-persisted";
+  const handler = makeHandler(db, { streamCopy });
+  const res = await handler(authedRequest(videoBody));
+  assertEquals(res.status, 200);
+  const updateCalls = db.calls.filter((c) => c.table === "files" && c.operation === "update");
+  assertEquals(updateCalls.length, 2, "both writes were attempted");
+  assertEquals(updateCalls[0].payload, { stream_status: "pending" });
+  assertEquals(updateCalls[1].payload, { stream_uid: "stream-uid-never-persisted" });
+  // Row is left with stream_status='pending' and no stream_uid recorded -- exactly the
+  // repairable state the ingest catch-up sweep selects for, not an unrepairable
+  // stream_uid-set/stream_status-null orphan.
+});
+
+Deno.test("file-upload-finalize: image finalize does not call streamCopy", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const insertedFile = { id: 22, r2_key: baseBody.r2_key, name: "photo.png", kind: "image" };
+  db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  let called = false;
+  const streamCopy = async () => {
+    called = true;
+    return "uid";
+  };
+  const handler = makeHandler(db, { streamCopy });
+  const res = await handler(authedRequest(baseBody));
+  assertEquals(res.status, 200);
+  assertEquals(called, false);
+  const updateCalls = db.calls.filter((c) => c.table === "files" && c.operation === "update");
+  assertEquals(updateCalls.length, 0);
+});
+
+Deno.test("file-upload-finalize: video finalize without streamCopy dep leaves stream fields untouched", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const videoBody = {
+    ...baseBody,
+    kind: "video" as const,
+    mime_type: "video/mp4",
+    r2_key: "contas/conta-1/files/vid-no-stream.mp4",
+    thumbnail_r2_key: "contas/conta-1/files/vid-no-stream.thumb.jpg",
+  };
+  const insertedFile = { id: 23, r2_key: videoBody.r2_key, name: "clip3.mp4", kind: "video" };
+  db.queueRpc("file_insert_with_quota", { data: insertedFile, error: null });
+  const handler = makeHandler(db); // no streamCopy opt -> deps.streamCopy stays undefined
+  const res = await handler(authedRequest(videoBody));
+  assertEquals(res.status, 200);
+  const updateCalls = db.calls.filter((c) => c.table === "files" && c.operation === "update");
+  assertEquals(updateCalls.length, 0);
 });

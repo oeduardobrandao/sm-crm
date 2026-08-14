@@ -191,3 +191,6 @@ enabled = false
 
 [functions.storage-autoclean-cron]
 verify_jwt = false
+
+[functions.stream-webhook]
+verify_jwt = false

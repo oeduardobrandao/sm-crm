@@ -14,6 +14,7 @@
   "include": [
     "scripts/changelog/**/*.ts",
     "scripts/blog/**/*.ts",
+    "scripts/stream/**/*.ts",
     "scripts/seo/**/*.ts",
     "scripts/seo/**/*.tsx",
     "apps/crm/src/content/**/*.ts",

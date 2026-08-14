@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { ChevronLeft, ChevronRight, Download, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
 import type { PostMedia } from '../../../store';
 import { downloadMedia } from '@/utils/downloadMedia';
 
@@ -89,9 +90,10 @@ export function PostMediaLightbox({
                 draggable={false}
               />
             ) : (
-              <video
+              <VideoPlayer
                 key={current.id}
-                src={current.url ?? undefined}
+                hlsSrc={current.playback?.hls}
+                src={current.url ?? ''}
                 poster={current.thumbnail_url ?? undefined}
                 crossOrigin="anonymous"
                 controls

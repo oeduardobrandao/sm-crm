@@ -50,15 +50,83 @@ export async function signGetUrl(key: string, expiresSeconds = 3600) {
 
 export async function headObject(key: string): Promise<{ contentLength: number; contentType: string | null } | null> {
   try {
-    const res = await getR2().send(new HeadObjectCommand({ Bucket: getBucket(), Key: key }));
+    const res = await getR2().send(
+      new HeadObjectCommand({ Bucket: getBucket(), Key: key }),
+      { abortSignal: AbortSignal.timeout(10_000) },
+    );
     return { contentLength: Number(res.ContentLength ?? 0), contentType: res.ContentType ?? null };
   } catch (_e) {
     return null;
   }
 }
 
+/** Two-phase delete: copy to `trash/<key>` then delete the original. Automated
+ * cleanup uses this instead of deleteObject so every automated removal has a
+ * 30-day undo window (see purgeTrash) — the 2026-08 incident had none. Throws
+ * if the copy fails; the original is only removed after the copy succeeds. */
+export async function trashObject(key: string): Promise<void> {
+  // Presign + plain fetch, same as deleteObject above: the SDK's own transport
+  // is the documented edge-runtime hang path, and this function sits on the
+  // deletion drains — a hang here stalls every queue. The presigner keeps
+  // x-amz-copy-source as a signed header, so the fetch must send it verbatim.
+  const copySource = `${getBucket()}/${encodeURIComponent(key).replace(/%2F/g, "/")}`;
+  const cmd = new CopyObjectCommand({
+    Bucket: getBucket(),
+    CopySource: copySource,
+    Key: `trash/${key}`,
+  });
+  const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "x-amz-copy-source": copySource },
+    signal: AbortSignal.timeout(30_000),
+  });
+  await res.body?.cancel();
+  if (!res.ok) {
+    throw new Error(`r2 trash copy failed: ${res.status}`);
+  }
+  await deleteObject(key);
+}
+
+/** Permanently removes trash/ entries older than `olderThanDays`, at most
+ * `maxPerRun` per call. Bounded and last-resort-safe: a listing error deletes
+ * nothing. Returns the number purged. */
+export async function purgeTrash(olderThanDays: number, maxPerRun = 200): Promise<number> {
+  const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+  let purged = 0;
+  let token: string | undefined;
+  do {
+    const res = await getR2().send(
+      new ListObjectsV2Command({ Bucket: getBucket(), Prefix: "trash/", ContinuationToken: token }),
+      { abortSignal: AbortSignal.timeout(30_000) },
+    );
+    for (const obj of res.Contents ?? []) {
+      if (purged >= maxPerRun) return purged;
+      if (obj.Key && obj.LastModified && obj.LastModified.getTime() < cutoff) {
+        await deleteObject(obj.Key);
+        purged++;
+      }
+    }
+    token = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (token);
+  return purged;
+}
+
 export async function deleteObject(key: string): Promise<void> {
-  await getR2().send(new DeleteObjectCommand({ Bucket: getBucket(), Key: key }));
+  // Presign + plain fetch + AbortSignal, NOT getR2().send(): the SDK's own network
+  // stack has hung indefinitely on the edge runtime despite the client-level
+  // requestTimeout above — prod evidence: the cleanup cron's file_deletions drain
+  // made zero progress (attempts never incremented) for three weeks, dying at the
+  // first DeleteObjectCommand every hourly run. Presigning is local crypto; the
+  // DELETE itself goes through fetch with a hard bound, the same pattern
+  // getObjectBytes below already uses. 404 = already gone = success.
+  const cmd = new DeleteObjectCommand({ Bucket: getBucket(), Key: key });
+  const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
+  const res = await fetch(url, { method: "DELETE", signal: AbortSignal.timeout(10_000) });
+  await res.body?.cancel();
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`r2 delete failed: ${res.status}`);
+  }
 }
 
 export async function listOrphanKeys(prefix: string, olderThanMs: number): Promise<string[]> {
@@ -66,7 +134,12 @@ export async function listOrphanKeys(prefix: string, olderThanMs: number): Promi
   const out: string[] = [];
   let token: string | undefined;
   do {
-    const res = await getR2().send(new ListObjectsV2Command({ Bucket: getBucket(), Prefix: prefix, ContinuationToken: token }));
+    // Belt for the same edge-runtime hang class as deleteObject above: bound each
+    // page fetch so a stalled listing fails the run instead of freezing it.
+    const res = await getR2().send(
+      new ListObjectsV2Command({ Bucket: getBucket(), Prefix: prefix, ContinuationToken: token }),
+      { abortSignal: AbortSignal.timeout(30_000) },
+    );
     for (const obj of res.Contents ?? []) {
       if (obj.Key && obj.LastModified && obj.LastModified.getTime() < cutoff) out.push(obj.Key);
     }

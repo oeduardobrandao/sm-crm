@@ -16,6 +16,7 @@ interface FileUploadFinalizeDeps {
   createDb: () => DbClient;
   headObject: (key: string) => Promise<HeadResult | null>;
   signUrl: (key: string) => Promise<string>;
+  streamCopy?: (r2Key: string, meta: { file_id: string; conta_id: string }) => Promise<string>;
 }
 
 export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
@@ -151,9 +152,42 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
       if (linkErr) return internalServerError(json, "file-upload-finalize:create-link", linkErr);
     }
 
+    if (body.kind === "video" && deps.streamCopy) {
+      const fileId = (inserted as any).id;
+      try {
+        // Durable intent BEFORE the external call: a pending row with a null uid
+        // is exactly what the cron sweep repairs (spec §5.3). supabase-js update()
+        // RESOLVES with { error } instead of throwing, so both writes below must be
+        // checked and thrown explicitly -- an unchecked pending-write failure would
+        // still call streamCopy for a row the DB never actually marked pending, and
+        // an unchecked uid-write failure would leave stream_uid set with
+        // stream_status left null, a state none of the webhook (requires
+        // stream_status='pending'), settle sweep (selects stream_status='pending'),
+        // or catch-up sweep (selects stream_uid is null) can ever pick back up --
+        // the video falls back to MP4 forever while Stream keeps billing for it.
+        const { error: pendingErr } = await svc
+          .from("files")
+          .update({ stream_status: "pending" })
+          .eq("id", fileId);
+        if (pendingErr) throw pendingErr;
+        const uid = await deps.streamCopy(body.r2_key, {
+          file_id: String(fileId),
+          conta_id: profile.conta_id,
+        });
+        const { error: uidErr } = await svc.from("files").update({ stream_uid: uid }).eq("id", fileId);
+        if (uidErr) throw uidErr;
+      } catch (e) {
+        console.error("file-upload-finalize:stream-copy", e);
+      }
+    }
+
     const url = await deps.signUrl(body.r2_key);
     const thumbnail_url = body.thumbnail_r2_key ? await deps.signUrl(body.thumbnail_r2_key) : null;
 
-    return json({ ...inserted, url, thumbnail_url, blur_data_url: body.blur_data_url ?? null });
+    // Same contract as file-manage: stream_uid/stream_status are internal, never returned
+    // to the client — always null at this point in the flow anyway (the ingest below hasn't
+    // run yet), but strip them so the keys never leak even if that ever changes.
+    const { stream_uid, stream_status, ...pub } = inserted as Record<string, unknown>;
+    return json({ ...pub, url, thumbnail_url, blur_data_url: body.blur_data_url ?? null });
   };
 }

@@ -42,6 +42,7 @@ export interface HubPostMedia {
   is_cover: boolean;
   sort_order: number;
   blur_data_url?: string | null;
+  playback?: { hls: string; expires_at: string } | null;
 }
 
 export interface HubPost {
