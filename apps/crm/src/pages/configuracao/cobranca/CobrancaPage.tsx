@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import {
   listActivePlans,
   getWorkspaceSubscription,
-  getEffectivePlanId,
+  getEffectivePlanWithSource,
   startCheckout,
   openBillingPortal,
   cancelPagarmeSubscription,
@@ -132,12 +132,17 @@ export default function CobrancaPage() {
     enabled: isOwner,
   });
   // Source of truth for the workspace's plan, incl. comp overrides (e.g. Lifetime)
-  // that have no Stripe subscription and would otherwise read as Free.
-  const { data: effectivePlanId, refetch: refetchEffectivePlan } = useQuery({
-    queryKey: ['billing', 'effective-plan'],
-    queryFn: getEffectivePlanId,
+  // that have no Stripe subscription and would otherwise read as Free. planSource is
+  // used below to hide the switch CTA from comped (plan_source='manual') workspaces —
+  // a distinct query key from the ['billing', 'effective-plan'] TrialNudgeCard/ComecarPage
+  // share, since its queryFn returns a different shape.
+  const { data: effectivePlan, refetch: refetchEffectivePlan } = useQuery({
+    queryKey: ['billing', 'effective-plan-with-source'],
+    queryFn: getEffectivePlanWithSource,
     enabled: isOwner,
   });
+  const effectivePlanId = effectivePlan?.planId;
+  const planSource = effectivePlan?.planSource;
 
   // Refetches the subscription + effective-plan queries every 2s, up to 5 tries, so the
   // UI catches up once the backend (Stripe webhook or the synchronous Pagar.me checkout)
@@ -218,7 +223,12 @@ export default function CobrancaPage() {
   // path stays exactly as it is today.
   const blocked = checkoutBlocked(subscription, new Date());
   // Switch mensal Stripe -> 12x (espelho do gate do backend; os dois mudam juntos).
-  const canSwitch = switchEligible(subscription) && !isInternalPlan(currentPlanId);
+  // planSource null/undefined (still loading, or unset) fails OPEN here on purpose — this
+  // gate is UX only, the backend's own plan-writer guard (plan_source='manual' skips every
+  // write) is the real enforcement. A comped workspace (plan_source='manual') never sees the
+  // CTA, since the backend would 409 it after a full card entry.
+  const canSwitch =
+    switchEligible(subscription) && !isInternalPlan(currentPlanId) && planSource !== 'manual';
   const switchWindow =
     subscription?.provider === 'pagarme' &&
     subscription?.status === 'trialing' &&

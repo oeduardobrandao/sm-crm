@@ -13,7 +13,7 @@ vi.mock('@/services/billing', async (importOriginal) => {
     ...actual,
     listActivePlans: vi.fn(),
     getWorkspaceSubscription: vi.fn(),
-    getEffectivePlanId: vi.fn(),
+    getEffectivePlanWithSource: vi.fn(),
     startCheckout: vi.fn(),
     openBillingPortal: vi.fn(),
     cancelPagarmeSubscription: vi.fn(),
@@ -36,7 +36,7 @@ import { toast } from 'sonner';
 import {
   listActivePlans,
   getWorkspaceSubscription,
-  getEffectivePlanId,
+  getEffectivePlanWithSource,
   startCheckout,
   cancelPagarmeSubscription,
   BillingApiError,
@@ -122,7 +122,7 @@ beforeEach(() => {
   // so these tests exercise the resolved owner path, not the fallback.
   vi.mocked(useAuth).mockReturnValue({ role: 'owner', workspaceRole: 'owner' } as never);
   vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN]);
-  vi.mocked(getEffectivePlanId).mockResolvedValue('free');
+  vi.mocked(getEffectivePlanWithSource).mockResolvedValue({ planId: 'free', planSource: 'system' });
   vi.mocked(startCheckout).mockResolvedValue('https://checkout.stripe.com/abc');
   // UsagePanel is covered by its own test suite; keep it a no-op here (isUnlimited: true).
   vi.mocked(useWorkspaceLimits).mockReturnValue({
@@ -688,7 +688,10 @@ describe('CobrancaPage', () => {
     it('assinante mensal stripe vê o CTA de switch no card do plano ATUAL no toggle anual', async () => {
       vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
       vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
-      vi.mocked(getEffectivePlanId).mockResolvedValue('pro');
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: 'stripe',
+      });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
 
@@ -707,7 +710,10 @@ describe('CobrancaPage', () => {
       vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
       // Plano atual não é o Pro renderizado no grid: o card do Pro deve oferecer o
       // switch com o nome do plano, não a variante "Trocar para o anual em 12x".
-      vi.mocked(getEffectivePlanId).mockResolvedValue('start');
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'start',
+        planSource: 'stripe',
+      });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
 
@@ -724,7 +730,10 @@ describe('CobrancaPage', () => {
     it('clicar no CTA de switch abre o dialog em modo switch SEM chamar startCheckout', async () => {
       vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
       vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
-      vi.mocked(getEffectivePlanId).mockResolvedValue('pro');
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: 'stripe',
+      });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
 
@@ -738,10 +747,52 @@ describe('CobrancaPage', () => {
       expect(captureCheckoutStarted).toHaveBeenCalledWith('pro', 'year', 'billing', 'pagarme');
     });
 
+    it('workspace comped (plan_source manual) NAO ve o CTA de switch mesmo elegivel', async () => {
+      // Um workspace comped tem plan_source='manual' -- o plan-writer do backend recusa
+      // TODA escrita de plano nele (inclusive o switch), então a CTA nunca deve aparecer
+      // mesmo com uma assinatura mensal Stripe elegível por trás.
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: 'manual',
+      });
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+      await screen.findAllByText('Pro');
+
+      expect(screen.queryByText(/em 12x$/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Trocar para o anual em 12x' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('workspace nao-manual (planSource stripe) continua vendo o CTA de switch', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: 'stripe',
+      });
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+
+      expect(
+        await screen.findByRole('button', { name: 'Trocar para o anual em 12x' }),
+      ).toBeInTheDocument();
+    });
+
     it('sem CTA de switch para: anual stripe, past_due, linha pagarme, toggle mensal', async () => {
       vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
       vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
-      vi.mocked(getEffectivePlanId).mockResolvedValue('pro');
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: 'stripe',
+      });
 
       // 1) Já está no anual: billingInterval 'year' desqualifica o switch.
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(

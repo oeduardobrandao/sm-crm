@@ -59,7 +59,7 @@ export function parseCheckoutBody(raw: unknown): ParseResult {
   if (body.interval !== "year") return fail("Intervalo inválido.");
   if (body.installments !== 12) return fail("Parcelamento inválido.");
 
-  if (body.switch !== undefined && body.switch !== true) {
+  if (body.switch !== undefined && typeof body.switch !== "boolean") {
     return fail("Requisição inválida.");
   }
 

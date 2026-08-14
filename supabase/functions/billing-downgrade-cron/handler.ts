@@ -460,13 +460,31 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
               snap.status === "incomplete_expired" ||
               snap.cancelAtPeriodEnd;
 
-            if (!safe) {
-              const boundaryMs = typeof row.current_period_end === "string"
-                ? Date.parse(row.current_period_end)
-                : NaN;
+            // A renewal invoice can fire between the checkout's own verify and its cap write
+            // (the checkout race). That charge is real regardless of cancel_at_period_end, so
+            // renewalFired must be evaluated for any LIVE remote status BEFORE honoring the
+            // cancelAtPeriodEnd-safe shortcut above -- otherwise a capped-but-charged sub reads
+            // as safe and the markers get cleared with the double charge silent. A 404
+            // (snap null), canceled or incomplete_expired sub has nothing left to renew, so it
+            // is never re-evaluated here.
+            const boundaryMs = typeof row.current_period_end === "string"
+              ? Date.parse(row.current_period_end)
+              : NaN;
+            const isLiveRemote = snap !== null &&
+              (snap.status === "active" || snap.status === "trialing" ||
+                snap.status === "past_due");
+            const renewalFired = snap !== null && Number.isFinite(boundaryMs) &&
+              snap.periodEndMs !== null && snap.periodEndMs > boundaryMs;
+
+            if (isLiveRemote && renewalFired) {
+              console.error(
+                `[billing-downgrade-cron] CRITICAL: leg D renewal escaped during the switch race for workspace ${wsId} (stripe sub ${marker}); canceling now, check for a renewal charge to refund manually`,
+              );
+              await stripeGateway.cancelNow(marker);
+              switchesCanceledNow++;
+              safe = true;
+            } else if (!safe) {
               const windowOpen = row.provider === "pagarme" && row.status === "trialing";
-              const renewalFired = Number.isFinite(boundaryMs) &&
-                snap!.periodEndMs !== null && snap!.periodEndMs > boundaryMs;
               if (windowOpen && !renewalFired) {
                 await stripeGateway.setCancelAtPeriodEnd(marker, true);
                 switchesEnforced++;
@@ -479,6 +497,13 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
                   .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
                   .maybeSingle();
                 if (recheckErr) {
+                  // Fail-safe direction: revert the arm rather than leave it standing on a row
+                  // whose undo may have just restored the monthly. With markers cleared the row
+                  // never re-enters this leg on its own; if the marker is actually still
+                  // present, the row still matches the predicate next run and gets
+                  // re-enforced -- safe either way.
+                  await stripeGateway.setCancelAtPeriodEnd(marker, false);
+                  switchesEnforced--;
                   errors.push(`leg D recheck failed for workspace ${wsId}: ${recheckErr.message}`);
                   continue;
                 }

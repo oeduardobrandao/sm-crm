@@ -104,11 +104,17 @@ Deno.test("parseCheckoutBody: switch ausente -> isSwitch false", () => {
   if (r.ok) assertEquals(r.value.isSwitch, false);
 });
 
-Deno.test("parseCheckoutBody: switch presente e nao-boolean-true -> 400", () => {
-  for (const bad of [false, "true", 1, null]) {
+Deno.test("parseCheckoutBody: switch presente e nao-boolean -> 400", () => {
+  for (const bad of ["true", 1, null]) {
     const r = parseCheckoutBody({ ...validBody(), switch: bad });
     assert(!r.ok, `switch=${String(bad)}`);
   }
+});
+
+Deno.test("parseCheckoutBody: switch false e aceito e vira isSwitch false", () => {
+  const r = parseCheckoutBody({ ...validBody(), switch: false });
+  assert(r.ok);
+  if (r.ok) assertEquals(r.value.isSwitch, false);
 });
 
 // ─── pagarmeCheckoutBlocked ────────────────────────────────────────────────

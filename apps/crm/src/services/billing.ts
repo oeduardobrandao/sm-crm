@@ -128,31 +128,59 @@ export async function listPublicPricingPlans(): Promise<PublicPricingPlan[]> {
     .map((plan) => ({ ...plan, pagarme_12x_enabled: Boolean(plan.pagarme_12x_enabled) }));
 }
 
+export interface EffectivePlan {
+  planId: string | null;
+  /** 'system' | 'stripe' | 'manual' | 'pagarme' | null. 'manual' = admin comp override. */
+  planSource: string | null;
+}
+
 /**
- * The current workspace's effective plan id (`workspaces.plan_id`). This is the
- * source of truth for what plan the workspace is on — including admin/comp overrides
- * like Lifetime, which have no Stripe subscription. Owner can read their own
- * workspace row via the `ws_select_member` RLS policy. Returns null when unset
- * (resolves to the default plan elsewhere).
+ * Shared read behind `getEffectivePlanId` / `getEffectivePlanWithSource` — one workspace
+ * lookup, two shapes. Owner can read their own workspace row via the `ws_select_member` RLS
+ * policy.
  */
-export async function getEffectivePlanId(): Promise<string | null> {
+async function fetchEffectivePlan(): Promise<EffectivePlan> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) return { planId: null, planSource: null };
   const { data: profile } = await supabase
     .from('profiles')
     .select('conta_id')
     .eq('id', user.id)
     .single();
-  if (!profile?.conta_id) return null;
+  if (!profile?.conta_id) return { planId: null, planSource: null };
   const { data, error } = await supabase
     .from('workspaces')
-    .select('plan_id')
+    .select('plan_id, plan_source')
     .eq('id', profile.conta_id)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return (data?.plan_id as string | null) ?? null;
+  return {
+    planId: (data?.plan_id as string | null) ?? null,
+    planSource: (data?.plan_source as string | null) ?? null,
+  };
+}
+
+/**
+ * The current workspace's effective plan id (`workspaces.plan_id`). This is the
+ * source of truth for what plan the workspace is on — including admin/comp overrides
+ * like Lifetime, which have no Stripe subscription. Returns null when unset
+ * (resolves to the default plan elsewhere).
+ */
+export async function getEffectivePlanId(): Promise<string | null> {
+  const { planId } = await fetchEffectivePlan();
+  return planId;
+}
+
+/**
+ * Same read as `getEffectivePlanId`, plus `plan_source` — used by CobrancaPage to gate the
+ * mensal->12x switch CTA away from comped (plan_source='manual') workspaces, which the
+ * backend's own switch gate (stripeSwitchSourceEligible) refuses with a 409 after the user
+ * has already typed a full card into the Pagar.me dialog.
+ */
+export async function getEffectivePlanWithSource(): Promise<EffectivePlan> {
+  return fetchEffectivePlan();
 }
 
 /** Current workspace's subscription row (owner-only via RLS), or null. */

@@ -72,6 +72,7 @@ interface DbFx {
   markerPages?: Array<Array<Record<string, unknown>>>;
   markerReadError?: { message: string } | null;
   recheckRow?: Record<string, unknown> | null;
+  recheckReadError?: { message: string } | null;
   stamp?: (
     filters: Array<[string, string, unknown]>,
   ) => { data: unknown; error: { message: string } | null };
@@ -197,6 +198,9 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
         }
         // Leg D's post-enforce re-read: `.eq(workspace_id).maybeSingle()`, no `.not`/`.or`/
         // `.in`/`.lte` at all -- the only remaining shape.
+        if (fx.recheckReadError) {
+          return { data: null, error: fx.recheckReadError };
+        }
         return {
           data: fx.recheckRow ?? { switched_from_stripe_subscription_id: "sub_s1" },
           error: null,
@@ -1090,4 +1094,73 @@ Deno.test("25. leg D: batch-read error aborts the leg into errors, legs A-C unaf
   assertEquals(result.downgraded, 1, "legs A-C must complete normally despite leg D's batch-read failure");
   assertEquals(result.errors.length, 1);
   assert(result.errors[0].includes("leg D batch read failed"));
+});
+
+Deno.test("26. leg D: recheck read error -> reverte para false (fail-safe), enforced volta a 0, um erro", async () => {
+  const { result, stripeCalls } = await run(
+    { markerRows: [MARKER_ROW], recheckReadError: { message: "recheck db down" } },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    { retrieveResult: REMOTE_ACTIVE_NO_CAP },
+  );
+
+  const sets = stripeCalls
+    .filter((c) => c.method === "setCancelAtPeriodEnd")
+    .map((c) => c.args[1]);
+  assertEquals(
+    sets,
+    [true, false],
+    "a failed recheck read must revert the arm, not leave cancel_at_period_end=true standing",
+  );
+  assertEquals(result.switchesEnforced, 0);
+  assertEquals(result.errors.length, 1);
+  assert(result.errors[0].includes("ws-1"));
+  assert(result.errors[0].includes("recheck"));
+});
+
+Deno.test("27. leg D: capped (cancel_at_period_end=true) mas renovacao escapou -> cancelNow mesmo assim, clear no fechamento", async () => {
+  const ROW = { ...MARKER_ROW, status: "active" };
+  const { result, events, stripeCalls } = await run(
+    { markerRows: [ROW] },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    {
+      retrieveResult: {
+        ...REMOTE_ACTIVE_NO_CAP,
+        cancel_at_period_end: true,
+        current_period_end: Math.floor(Date.parse("2026-10-15T00:00:00Z") / 1000),
+      },
+    },
+  );
+
+  assert(
+    stripeCalls.some((c) => c.method === "cancelNow" && c.args[0] === "sub_s1"),
+    "expected cancelNow(sub_s1) even though the remote is already capped -- the cap alone does not undo an already-fired invoice",
+  );
+  assertEquals(result.switchesCanceledNow, 1);
+  assertEquals(result.switchesEnforced, 0, "an already-safe (capped) sub must never be enforced");
+  assertEquals(
+    result.switchesCleared,
+    1,
+    "window closed (status != trialing) + safe (post-cancelNow) -> both markers still clear",
+  );
+  assertEquals(findClears(events).length, 1);
+});
+
+Deno.test("28. leg D: capped (cancel_at_period_end=true) e renovacao NAO escapou -> seguro, sem cancelNow (regressao)", async () => {
+  const ROW = { ...MARKER_ROW, status: "active" };
+  const { result, stripeCalls } = await run(
+    { markerRows: [ROW] },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    { retrieveResult: { ...REMOTE_ACTIVE_NO_CAP, cancel_at_period_end: true } },
+  );
+
+  assertEquals(
+    stripeCalls.filter((c) => c.method === "cancelNow").length,
+    0,
+    "a capped-but-not-renewed live sub must stay safe as today -- no cancelNow",
+  );
+  assertEquals(result.switchesCanceledNow, 0);
+  assertEquals(result.switchesCleared, 1);
 });

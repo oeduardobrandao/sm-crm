@@ -19,6 +19,8 @@ import {
   startCheckout,
   openBillingPortal,
   getWorkspaceSubscription,
+  getEffectivePlanId,
+  getEffectivePlanWithSource,
   startPagarmeCheckout,
   cancelPagarmeSubscription,
   updatePagarmeCard,
@@ -297,6 +299,58 @@ describe('billing service', () => {
     expect(result?.hasEverSubscribed).toBe(false);
     expect(result?.provider).toBeNull();
     expect(result?.installments).toBeNull();
+  });
+
+  describe('getEffectivePlanId / getEffectivePlanWithSource', () => {
+    function mockWorkspaceRow(row: Record<string, unknown> | null) {
+      const maybeSingle = vi.fn().mockResolvedValue({ data: row, error: null });
+      const wsEq = vi.fn().mockReturnValue({ maybeSingle });
+      const wsSelect = vi.fn().mockReturnValue({ eq: wsEq });
+      const profileSingle = vi.fn().mockResolvedValue({ data: { conta_id: 'ws-1' }, error: null });
+      const profileEq = vi.fn().mockReturnValue({ single: profileSingle });
+      const profileSelect = vi.fn().mockReturnValue({ eq: profileEq });
+      vi.mocked(supabase.auth.getUser).mockResolvedValue({
+        data: { user: { id: 'user-1' } },
+      } as never);
+      from.mockImplementation((table: string) =>
+        table === 'profiles' ? { select: profileSelect } : { select: wsSelect },
+      );
+      return { wsSelect };
+    }
+
+    it('getEffectivePlanId returns just the plan id, selecting plan_id + plan_source in one read', async () => {
+      const { wsSelect } = mockWorkspaceRow({ plan_id: 'pro', plan_source: 'stripe' });
+      await expect(getEffectivePlanId()).resolves.toBe('pro');
+      expect(wsSelect).toHaveBeenCalledWith('plan_id, plan_source');
+    });
+
+    it('getEffectivePlanId returns null when the user has no profile/workspace', async () => {
+      const profileSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+      const profileEq = vi.fn().mockReturnValue({ single: profileSingle });
+      const profileSelect = vi.fn().mockReturnValue({ eq: profileEq });
+      vi.mocked(supabase.auth.getUser).mockResolvedValue({
+        data: { user: { id: 'user-1' } },
+      } as never);
+      from.mockReturnValue({ select: profileSelect });
+      await expect(getEffectivePlanId()).resolves.toBeNull();
+    });
+
+    it('getEffectivePlanWithSource exposes both planId and planSource from the SAME read', async () => {
+      const { wsSelect } = mockWorkspaceRow({ plan_id: 'pro', plan_source: 'manual' });
+      await expect(getEffectivePlanWithSource()).resolves.toEqual({
+        planId: 'pro',
+        planSource: 'manual',
+      });
+      expect(wsSelect).toHaveBeenCalledWith('plan_id, plan_source');
+    });
+
+    it('getEffectivePlanWithSource returns nulls for a signed-out user, never throws', async () => {
+      vi.mocked(supabase.auth.getUser).mockResolvedValue({ data: { user: null } } as never);
+      await expect(getEffectivePlanWithSource()).resolves.toEqual({
+        planId: null,
+        planSource: null,
+      });
+    });
   });
 
   describe('startPagarmeCheckout', () => {
