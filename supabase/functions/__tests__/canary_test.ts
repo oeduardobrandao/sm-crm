@@ -7,10 +7,14 @@ function makeDb(rows: Array<{ id: number; r2_key: string }>, error: { message: s
       return {
         select(_c: string) {
           return {
-            order(_col: string, _o: { ascending: boolean }) {
+            is(_col: string, _v: null) {
               return {
-                limit(_n: number) {
-                  return Promise.resolve({ data: error ? null : rows, error });
+                order(_ocol: string, _o: { ascending: boolean }) {
+                  return {
+                    limit(_n: number) {
+                      return Promise.resolve({ data: error ? null : rows, error });
+                    },
+                  };
                 },
               };
             },

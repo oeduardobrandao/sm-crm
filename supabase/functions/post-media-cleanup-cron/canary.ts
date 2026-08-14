@@ -16,14 +16,19 @@ export interface CanaryDeps {
   db: {
     from(table: "files"): {
       select(columns: string): {
-        order(
+        is(
           column: string,
-          opts: { ascending: boolean },
+          value: null,
         ): {
-          limit(n: number): PromiseLike<{
-            data: Array<{ id: number; r2_key: string }> | null;
-            error: DbError | null;
-          }>;
+          order(
+            column: string,
+            opts: { ascending: boolean },
+          ): {
+            limit(n: number): PromiseLike<{
+              data: Array<{ id: number; r2_key: string }> | null;
+              error: DbError | null;
+            }>;
+          };
         };
       };
     };
@@ -40,9 +45,12 @@ export interface CanaryResult {
 
 export async function runIntegrityCanary(deps: CanaryDeps): Promise<CanaryResult> {
   const rng = deps.random ?? Math.random;
+  // media_lost_at rows are the reconciled 2026-08 losses — known, recorded,
+  // and excluded so the canary only ever alarms on NEW damage.
   const { data, error } = await deps.db
     .from("files")
     .select("id, r2_key")
+    .is("media_lost_at", null)
     .order("id", { ascending: false })
     .limit(CANARY_POOL);
   if (error) throw error;
