@@ -16,10 +16,10 @@ import { writeWorkspacePlan } from "../_shared/plan-writer.ts";
 import {
   buildAttemptIdempotencyKey,
   buildPagarmeSubscriptionColumns,
-  installmentAmountCents,
   mapGatewayFailure,
   PagarmeCheckoutRequest,
   pagarmeCheckoutBlocked,
+  resolveAmountMirror,
   resolveStartAt,
 } from "./logic.ts";
 import { PagarmeGateway, PagarmeSubscriptionResponse } from "./gateway.ts";
@@ -59,7 +59,9 @@ export function createPagarmeCheckoutHandler(deps: {
     // frontend gate is advisory. Off means a generic 403 with no detail.
     const { data: plan, error: planErr } = await db
       .from("plans")
-      .select("id, price_brl_annual, pagarme_12x_enabled, pagarme_plan_id_annual")
+      .select(
+        "id, price_brl_annual, pagarme_12x_enabled, pagarme_plan_id_annual, pagarme_installment_cents",
+      )
       .eq("id", reqData.planId)
       .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
       .single();
@@ -67,7 +69,11 @@ export function createPagarmeCheckoutHandler(deps: {
     if (!plan?.pagarme_12x_enabled) {
       return { status: 403, body: { error: "Indisponível." } };
     }
-    if (!plan.pagarme_plan_id_annual || plan.price_brl_annual == null) {
+    const configuredInstallmentCents = Number(plan.pagarme_installment_cents);
+    if (
+      !plan.pagarme_plan_id_annual || plan.price_brl_annual == null ||
+      !plan.pagarme_installment_cents || configuredInstallmentCents <= 0
+    ) {
       return {
         status: 400,
         body: {
@@ -277,6 +283,24 @@ export function createPagarmeCheckoutHandler(deps: {
       // nothing. After a committed bind, failures never cancel. DB failures here RETURN
       // (after compensating) instead of throwing, so the outer catch stays a pure
       // gateway-stage mapper. ──
+
+      // TRUTHFUL-MIRROR RULE (Fase 8 adjudication): the plans row is only a mirror, so the
+      // amount bound to workspace_subscriptions and echoed to the client must come from what
+      // the gateway actually charged (items[0].pricing_scheme.price on the create response),
+      // never from the configured column, whenever that observed total is usable. A drift
+      // against the configured pagarme_installment_cents*12 is a CRITICAL alert — ops fixes
+      // the stale plan object — but it never fails an already-charged checkout.
+      const amountMirror = resolveAmountMirror(sub, configuredInstallmentCents);
+      if (amountMirror.source === "fallback") {
+        console.warn(
+          `[pagarme-checkout] gateway response had no usable observed price for subscription ${sub.id}; falling back to the configured pagarme_installment_cents*12`,
+        );
+      } else if (amountMirror.driftDetected) {
+        console.error(
+          `[pagarme-checkout] CRITICAL: price drift between plans row and gateway plan object (plan=${reqData.planId}, configured_total=${configuredInstallmentCents * 12}, observed_total=${amountMirror.amountCents}, subscription=${sub.id})`,
+        );
+      }
+
       const failCompensating = async (status: number, body: unknown): Promise<CheckoutResult> => {
         let cancelled = false;
         try {
@@ -351,7 +375,7 @@ export function createPagarmeCheckoutHandler(deps: {
           subscriptionId: sub.id,
           status: normalized,
           planId: reqData.planId,
-          annualPriceCents: Number(plan.price_brl_annual),
+          annualPriceCents: amountMirror.amountCents,
           currentPeriodEnd: temporal.current_period_end,
           everSubscribedAt: (row?.ever_subscribed_at as string | null) ?? nowIso,
           nowIso,
@@ -434,7 +458,7 @@ export function createPagarmeCheckoutHandler(deps: {
           status: liveStatus,
           trial_ends_at: liveStatus === "trialing" ? currentPeriodEnd : null,
           next_charge_at: currentPeriodEnd,
-          installment_amount_cents: installmentAmountCents(Number(plan.price_brl_annual)),
+          installment_amount_cents: amountMirror.installmentAmountCents,
         },
       };
     } catch (err) {

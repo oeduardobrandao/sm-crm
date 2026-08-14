@@ -171,13 +171,26 @@ export function PricingSection() {
               };
               const hasAnnualPrice = plan.price_brl_annual != null && plan.price_brl_annual > 0;
               const isFree = plan.price_brl === 0 && plan.price_brl_annual === 0;
+              // PRIMARY AMOUNT RULE: a gated year card's prominent price is the 12x's own
+              // parcela (pagarme_installment_cents), never price_brl_annual / 12 — that
+              // derivation would contradict the exact figure the checkout dialog charges.
+              // Non-gated cards (or gate off) keep today's derivation unchanged.
+              const gated = isYear && hasAnnualPrice && isPagarme12xEnabled(plan);
               const amount = isYear
                 ? isFree
                   ? 0
-                  : hasAnnualPrice
-                    ? plan.price_brl_annual! / 12
-                    : null
+                  : gated
+                    ? plan.pagarme_installment_cents!
+                    : hasAnnualPrice
+                      ? plan.price_brl_annual! / 12
+                      : null
                 : plan.price_brl;
+              // The discount vs. paying monthly all year, always computed from the real
+              // catalog values (never a hard-coded percentage — plans discount unevenly).
+              const upfrontOffPct =
+                gated && plan.price_brl && plan.price_brl > 0
+                  ? Math.round((1 - plan.price_brl_annual! / (12 * plan.price_brl)) * 100)
+                  : null;
               return (
                 <div
                   key={plan.id}
@@ -192,10 +205,12 @@ export function PricingSection() {
                     {amount != null && <span className="price-sub">/mês</span>}
                   </div>
                   <div className="price-annual-note">
-                    {isYear && plan.price_brl_annual != null && plan.price_brl_annual > 0
-                      ? isPagarme12xEnabled(plan)
-                        ? `12x de ${formatPrice(Math.round(plan.price_brl_annual / 12))} no cartão, sem juros (total ${formatPrice(plan.price_brl_annual)}/ano)`
-                        : `cobrado anualmente (${formatPrice(plan.price_brl_annual)}/ano)`
+                    {isYear && hasAnnualPrice
+                      ? gated
+                        ? `12x no cartão, sem juros · ou ${formatPrice(plan.price_brl_annual!)} à vista${
+                            upfrontOffPct != null ? ` (${upfrontOffPct}% off)` : ''
+                          }`
+                        : `cobrado anualmente (${formatPrice(plan.price_brl_annual!)}/ano)`
                       : ' '}
                   </div>
                   {!isFree && <div className="plan-trial-note">30 dias grátis para começar</div>}

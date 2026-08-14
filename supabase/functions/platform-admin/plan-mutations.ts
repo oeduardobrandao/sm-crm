@@ -18,12 +18,21 @@ function validatePagarme12x(
   planIdAnnual: unknown,
   priceBrlAnnual: unknown,
   planId: unknown,
+  installmentCents: unknown,
+  priceBrl: unknown,
 ): string | null {
   if (!enabled) return null;
   const idOk = typeof planIdAnnual === "string" && planIdAnnual.trim() !== "";
   const priceOk = typeof priceBrlAnnual === "number" && priceBrlAnnual > 0;
   if (!idOk || !priceOk) {
     return "pagarme_12x_enabled requires pagarme_plan_id_annual and a positive price_brl_annual";
+  }
+  // The 12x carries its own per-installment price (ceiling-checked against the monthly
+  // price so the financed installment can never exceed paying month-to-month).
+  const installmentOk = typeof installmentCents === "number" && installmentCents > 0 &&
+    typeof priceBrl === "number" && installmentCents < priceBrl;
+  if (!installmentOk) {
+    return "pagarme_12x_enabled requires 0 < pagarme_installment_cents < price_brl (mensal)";
   }
   if (
     typeof planId === "string" &&
@@ -51,6 +60,8 @@ export async function handleCreatePlan(
     rest.pagarme_plan_id_annual,
     rest.price_brl_annual,
     rest.id,
+    rest.pagarme_installment_cents,
+    rest.price_brl,
   );
   if (createValidationError) {
     return new Response(JSON.stringify({ error: createValidationError }), { status: 400, headers });
@@ -74,6 +85,7 @@ export async function handleCreatePlan(
   if (rest.stripe_price_id_annual !== undefined) insert.stripe_price_id_annual = rest.stripe_price_id_annual;
   if (rest.pagarme_12x_enabled !== undefined) insert.pagarme_12x_enabled = rest.pagarme_12x_enabled;
   if (rest.pagarme_plan_id_annual !== undefined) insert.pagarme_plan_id_annual = rest.pagarme_plan_id_annual;
+  if (rest.pagarme_installment_cents !== undefined) insert.pagarme_installment_cents = rest.pagarme_installment_cents;
 
   const { data, error } = await svc
     .from("plans")
@@ -101,14 +113,18 @@ export async function handleUpdatePlan(
   const needsCurrentRead = rest.pagarme_12x_enabled === false
     ? false
     : rest.pagarme_12x_enabled === true
-      ? rest.pagarme_plan_id_annual === undefined || rest.price_brl_annual === undefined
-      : rest.pagarme_plan_id_annual !== undefined || rest.price_brl_annual !== undefined;
+      ? rest.pagarme_plan_id_annual === undefined || rest.price_brl_annual === undefined ||
+        rest.pagarme_installment_cents === undefined || rest.price_brl === undefined
+      : rest.pagarme_plan_id_annual !== undefined || rest.price_brl_annual !== undefined ||
+        rest.pagarme_installment_cents !== undefined || rest.price_brl !== undefined;
 
   let current: Record<string, unknown> | null = null;
   if (needsCurrentRead) {
     const { data: currentRow, error: readError } = await svc
       .from("plans")
-      .select("pagarme_12x_enabled, pagarme_plan_id_annual, price_brl_annual")
+      .select(
+        "pagarme_12x_enabled, pagarme_plan_id_annual, price_brl_annual, pagarme_installment_cents, price_brl",
+      )
       .eq("id", plan_id)
       .single();
     if (readError) throw readError;
@@ -124,12 +140,20 @@ export async function handleUpdatePlan(
   const effectivePriceBrlAnnual = rest.price_brl_annual !== undefined
     ? rest.price_brl_annual
     : current?.price_brl_annual;
+  const effectiveInstallmentCents = rest.pagarme_installment_cents !== undefined
+    ? rest.pagarme_installment_cents
+    : current?.pagarme_installment_cents;
+  const effectivePriceBrl = rest.price_brl !== undefined
+    ? rest.price_brl
+    : current?.price_brl;
 
   const updateValidationError = validatePagarme12x(
     effectiveEnabled,
     effectivePlanIdAnnual,
     effectivePriceBrlAnnual,
     plan_id,
+    effectiveInstallmentCents,
+    effectivePriceBrl,
   );
   if (updateValidationError) {
     return new Response(JSON.stringify({ error: updateValidationError }), { status: 400, headers });
@@ -144,7 +168,7 @@ export async function handleUpdatePlan(
   const allowedScalar = [
     "name", "is_default", "price_brl", "price_brl_annual", "sort_order", "is_active",
     "stripe_product_id", "stripe_price_id", "stripe_price_id_annual",
-    "pagarme_12x_enabled", "pagarme_plan_id_annual",
+    "pagarme_12x_enabled", "pagarme_plan_id_annual", "pagarme_installment_cents",
   ];
   for (const key of allowedScalar) {
     if (rest[key] !== undefined) updatePayload[key] = rest[key];

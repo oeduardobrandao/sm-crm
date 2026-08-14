@@ -272,6 +272,7 @@ export default function ComecarPage() {
             const amount = isYear ? p.price_brl_annual : p.price_brl;
             const unpriced = amount == null || amount <= 0;
             const monthly = unpriced ? null : isYear ? amount / 12 : amount;
+            const gated = isYear && isPagarme12xEnabled(p);
             return (
               <div
                 key={p.id}
@@ -286,8 +287,9 @@ export default function ComecarPage() {
                   depois{' '}
                   {monthly == null
                     ? 'Sob consulta'
-                    : isYear && isPagarme12xEnabled(p)
-                      ? `12x de ${formatBRL(monthly)} no cartão`
+                    : gated
+                      ? // PRIMARY AMOUNT RULE: the 12x's own parcela, never price_brl_annual / 12.
+                        `12x de ${formatBRL(p.pagarme_installment_cents ?? 0)} no cartão ou ${formatBRL(amount ?? 0)} à vista`
                       : `${formatBRL(monthly)}/mês`}
                 </p>
                 <ul className="comecar-card__features">
@@ -338,11 +340,21 @@ export default function ComecarPage() {
                 id: pagarmeDialog.plan.id,
                 name: pagarmeDialog.plan.name,
                 price_brl_annual: pagarmeDialog.plan.price_brl_annual ?? 0,
+                pagarme_installment_cents: pagarmeDialog.plan.pagarme_installment_cents ?? 0,
               }
             : null
         }
         source="onboarding"
         trialEligible={!subscription?.hasEverSubscribed}
+        onPayUpfront={
+          pagarmeDialog
+            ? () => {
+                const planId = pagarmeDialog.plan.id;
+                setPagarmeDialog(null);
+                void startAndRedirect(planId, 'year');
+              }
+            : undefined
+        }
         onClose={() => setPagarmeDialog(null)}
         onSuccess={() => navigate('/dashboard?trial=started')}
       />

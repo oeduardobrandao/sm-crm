@@ -216,13 +216,13 @@ export default function CobrancaPage() {
   // path stays exactly as it is today.
   const blocked = checkoutBlocked(subscription, new Date());
 
-  async function handleUpgrade(planId: string) {
-    const plan = plans?.find((p) => p.id === planId);
-    if (interval === 'year' && isPagarme12xEnabled(plan)) {
-      captureCheckoutStarted(planId, 'year', 'billing', 'pagarme');
-      setPagarmeDialog({ mode: 'checkout', plan: plan ?? null });
-      return;
-    }
+  /**
+   * Starts the Stripe checkout for `planId` at the current `interval`. Shared by the Stripe
+   * branch of `handleUpgrade` (month, or year on a non-gated plan) and the à vista escape
+   * hatch (year on a gated plan, reached from the secondary "Assinar à vista" CTA or from
+   * inside the Pagar.me dialog's `onPayUpfront`) so both callers cannot drift.
+   */
+  async function startStripeUpgrade(planId: string) {
     setBusy(planId);
     try {
       const url = await startCheckout(planId, interval, 'billing');
@@ -232,6 +232,16 @@ export default function CobrancaPage() {
       toast.error('Erro ao iniciar checkout: ' + (err as Error).message);
       setBusy(null);
     }
+  }
+
+  async function handleUpgrade(planId: string) {
+    const plan = plans?.find((p) => p.id === planId);
+    if (interval === 'year' && isPagarme12xEnabled(plan)) {
+      captureCheckoutStarted(planId, 'year', 'billing', 'pagarme');
+      setPagarmeDialog({ mode: 'checkout', plan: plan ?? null });
+      return;
+    }
+    await startStripeUpgrade(planId);
   }
 
   async function handleManage() {
@@ -278,14 +288,30 @@ export default function CobrancaPage() {
     }
     if (upgradable) {
       const firstTime = !subscription?.hasEverSubscribed;
+      // The à vista escape hatch only makes sense next to the 12x path itself: month plans and
+      // non-gated year plans already charge price_brl_annual (or price_brl) directly via
+      // startStripeUpgrade above, so this second CTA would just be a duplicate of the primary one.
+      const showUpfront = interval === 'year' && isPagarme12xEnabled(p);
       return (
-        <button
-          className="btn-primary"
-          onClick={() => handleUpgrade(p.id)}
-          disabled={busy === p.id}
-        >
-          {busy === p.id ? 'Aguarde…' : firstTime ? 'Começar teste de 30 dias' : 'Fazer upgrade'}
-        </button>
+        <>
+          <button
+            className="btn-primary"
+            onClick={() => handleUpgrade(p.id)}
+            disabled={busy === p.id}
+          >
+            {busy === p.id ? 'Aguarde…' : firstTime ? 'Começar teste de 30 dias' : 'Fazer upgrade'}
+          </button>
+          {showUpfront && (
+            <button
+              type="button"
+              className="plan-cta__upfront"
+              onClick={() => startStripeUpgrade(p.id)}
+              disabled={busy === p.id}
+            >
+              Assinar à vista
+            </button>
+          )}
+        </>
       );
     }
     return null;
@@ -415,8 +441,16 @@ export default function CobrancaPage() {
             ))
           : visiblePlans.map((p, i) => {
               const isYear = interval === 'year';
-              const monthly =
-                isYear && p.price_brl_annual != null ? p.price_brl_annual / 12 : p.price_brl;
+              // PRIMARY AMOUNT RULE: a gated year card's prominent price is the 12x's own
+              // parcela (pagarme_installment_cents), never price_brl_annual / 12 — that
+              // derivation would contradict the exact figure the checkout dialog charges.
+              // Non-gated cards (or gate off) keep today's derivation unchanged.
+              const gated = isYear && isPagarme12xEnabled(p);
+              const monthly = gated
+                ? (p.pagarme_installment_cents ?? 0)
+                : isYear && p.price_brl_annual != null
+                  ? p.price_brl_annual / 12
+                  : p.price_brl;
               const isCurrent = p.id === currentPlanId;
               const isReco = p.id === RECOMMENDED_ID && !isCurrent;
               const isInternal = isInternalPlan(p.id);
@@ -441,7 +475,7 @@ export default function CobrancaPage() {
                   <div>
                     {!isInternal && isYear && monthly != null && monthly > 0 && (
                       <div className="plan-annual-lead">
-                        {isPagarme12xEnabled(p) ? 'em 12x de' : 'cobrado anualmente,'}
+                        {gated ? 'em 12x de' : 'cobrado anualmente,'}
                       </div>
                     )}
                     <div className="plan-price">
@@ -456,6 +490,11 @@ export default function CobrancaPage() {
                         <span className="plan-price__free">Grátis</span>
                       )}
                     </div>
+                    {gated && p.price_brl_annual != null && p.price_brl_annual > 0 && (
+                      <div className="plan-price__secondary">
+                        {`ou ${formatBRL(p.price_brl_annual)} à vista`}
+                      </div>
+                    )}
                   </div>
 
                   <ul className="plan-features">
@@ -482,11 +521,21 @@ export default function CobrancaPage() {
                 id: pagarmeDialog.plan.id,
                 name: pagarmeDialog.plan.name,
                 price_brl_annual: pagarmeDialog.plan.price_brl_annual ?? 0,
+                pagarme_installment_cents: pagarmeDialog.plan.pagarme_installment_cents ?? 0,
               }
             : null
         }
         source="billing"
         trialEligible={!subscription?.hasEverSubscribed}
+        onPayUpfront={
+          pagarmeDialog?.plan
+            ? () => {
+                const planId = pagarmeDialog.plan!.id;
+                setPagarmeDialog(null);
+                void startStripeUpgrade(planId);
+              }
+            : undefined
+        }
         onClose={() => setPagarmeDialog(null)}
         onSuccess={startPlanRefetchPoll}
       />

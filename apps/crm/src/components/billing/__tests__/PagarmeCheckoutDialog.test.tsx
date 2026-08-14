@@ -36,7 +36,10 @@ import {
   type PagarmeCheckoutDialogProps,
 } from '../PagarmeCheckoutDialog';
 
-const PLAN = { id: 'pro', name: 'Pro', price_brl_annual: 118800 };
+// price_brl_annual is the à vista price; pagarme_installment_cents is the 12x's OWN, higher
+// price with the financing embedded — deliberately not price_brl_annual / 12 (that derivation
+// is exactly the bug this dialog must not reproduce).
+const PLAN = { id: 'pro', name: 'Pro', price_brl_annual: 118800, pagarme_installment_cents: 12990 };
 
 const VALID = {
   cardNumber: '4242424242424242',
@@ -112,10 +115,10 @@ beforeEach(() => {
 });
 
 describe('PagarmeCheckoutDialog', () => {
-  it('renders the 12x summary and the trial note when trialEligible is true', () => {
+  it("renders the 12x summary (the parcela's OWN price, not price_brl_annual / 12) and the trial note when trialEligible is true", () => {
     render(<PagarmeCheckoutDialog {...baseProps()} />);
-    expect(screen.getByText('12x de R$ 99,00 sem juros')).toBeInTheDocument();
-    expect(screen.getByText('total R$ 1.188,00/ano')).toBeInTheDocument();
+    expect(screen.getByText('12x de R$ 129,90 sem juros')).toBeInTheDocument();
+    expect(screen.getByText('total R$ 1.558,80/ano')).toBeInTheDocument();
     expect(
       screen.getByText(
         '30 dias grátis. A primeira parcela só é cobrada depois do teste e você pode cancelar antes.',
@@ -125,9 +128,33 @@ describe('PagarmeCheckoutDialog', () => {
 
   it('hides the trial note when trialEligible is false', () => {
     render(<PagarmeCheckoutDialog {...baseProps({ trialEligible: false })} />);
-    expect(screen.getByText('12x de R$ 99,00 sem juros')).toBeInTheDocument();
+    expect(screen.getByText('12x de R$ 129,90 sem juros')).toBeInTheDocument();
     expect(screen.queryByText(/30 dias grátis/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Confirmar assinatura' })).toBeInTheDocument();
+  });
+
+  it('shows the à vista escape hatch only when onPayUpfront is provided, and fires it', () => {
+    const onPayUpfront = vi.fn();
+    const { rerender } = render(<PagarmeCheckoutDialog {...baseProps()} />);
+    expect(screen.queryByText(/À vista sai por/)).not.toBeInTheDocument();
+
+    rerender(<PagarmeCheckoutDialog {...baseProps({ onPayUpfront })} />);
+    expect(screen.getByText(/À vista sai por R\$ 1\.188,00\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Pagar à vista' }));
+    expect(onPayUpfront).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables the à vista button while saving, like every other control', async () => {
+    const onPayUpfront = vi.fn();
+    const pending = deferred<PagarmeCheckoutResult>();
+    startPagarmeCheckoutMock.mockReturnValueOnce(pending.promise);
+    render(<PagarmeCheckoutDialog {...baseProps({ onPayUpfront })} />);
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Começar 30 dias grátis' }));
+
+    expect(await screen.findByRole('button', { name: 'Pagar à vista' })).toBeDisabled();
+    pending.resolve(CHECKOUT_RESULT);
+    await screen.findByText('Assinatura confirmada!');
   });
 
   it('hides document and phone fields, plan summary and trial note in update-card mode', () => {

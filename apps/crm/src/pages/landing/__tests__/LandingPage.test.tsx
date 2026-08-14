@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import type { PublicPricingPlan } from '@/services/billing';
 
@@ -50,6 +50,8 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     feature_contracts: false,
     feature_brand_customization: false,
     feature_mcp: false,
+    pagarme_12x_enabled: false,
+    pagarme_installment_cents: null,
   },
   {
     id: 'start',
@@ -64,6 +66,8 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     max_hub_tokens: 5,
     storage_quota_bytes: 5 * 1024 ** 3,
     ...PAID_FEATURES,
+    pagarme_12x_enabled: false,
+    pagarme_installment_cents: null,
   },
   {
     id: 'pro',
@@ -78,6 +82,8 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     max_hub_tokens: 15,
     storage_quota_bytes: 10 * 1024 ** 3,
     ...PAID_FEATURES,
+    pagarme_12x_enabled: false,
+    pagarme_installment_cents: null,
   },
   {
     id: 'max',
@@ -92,6 +98,8 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     max_hub_tokens: null,
     storage_quota_bytes: 25 * 1024 ** 3,
     ...PAID_FEATURES,
+    pagarme_12x_enabled: false,
+    pagarme_installment_cents: null,
   },
 ];
 
@@ -371,6 +379,61 @@ describe('LandingPage', () => {
     expect(
       within(startCard as HTMLElement).getByRole('link', { name: 'Começar teste grátis' }),
     ).toHaveAttribute('href', '/login?tab=register&plan=start&interval=year');
+  });
+
+  describe('Pagar.me 12x', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('PRIMARY AMOUNT RULE: renders the parcela as the big number plus the à vista price and computed discount', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      // pagarme_installment_cents (12990) is the Pro plan's OWN 12x price, deliberately NOT
+      // price_brl_annual / 12 (134300 / 12 = 11191.67 -> R$ 111,92). Rendering the latter would
+      // contradict the exact figure the checkout dialog charges.
+      const gatedPro = {
+        ...PRICING_PLANS[2],
+        pagarme_12x_enabled: true,
+        pagarme_installment_cents: 12990,
+      };
+      vi.mocked(listPublicPricingPlans).mockResolvedValue([PRICING_PLANS[0], gatedPro]);
+      renderLandingPage();
+      triggerPricingIntersection();
+      await screen.findByRole('heading', { name: 'Pro', level: 3 });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+
+      const proCard = screen.getByRole('heading', { name: 'Pro', level: 3 }).closest('.plan-card');
+      expect(proCard).not.toBeNull();
+      expect(within(proCard as HTMLElement).getByText('R$ 129,90')).toBeInTheDocument();
+      expect(within(proCard as HTMLElement).queryByText('R$ 111,92')).not.toBeInTheDocument();
+      // X = round((1 - 134300 / (12 * 13990)) * 100) = 20.
+      expect(
+        within(proCard as HTMLElement).getByText(
+          '12x no cartão, sem juros · ou R$ 1.343,00 à vista (20% off)',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("leaves a non-gated plan's derivation and copy unchanged", async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      // pagarme_12x_enabled is false: the env key alone must not gate anything on.
+      renderLandingPage();
+      triggerPricingIntersection();
+      await screen.findByRole('heading', { name: 'Start', level: 3 });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+
+      const startCard = screen
+        .getByRole('heading', { name: 'Start', level: 3 })
+        .closest('.plan-card');
+      expect(startCard).not.toBeNull();
+      expect(within(startCard as HTMLElement).getByText('R$ 79,92')).toBeInTheDocument();
+      expect(
+        within(startCard as HTMLElement).getByText('cobrado anualmente (R$ 959,00/ano)'),
+      ).toBeInTheDocument();
+      expect(within(startCard as HTMLElement).queryByText(/12x no cartão/)).not.toBeInTheDocument();
+    });
   });
 
   it('shows paid plans with a null annual price as unavailable in annual mode', async () => {
