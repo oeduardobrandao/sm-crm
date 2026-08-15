@@ -185,6 +185,33 @@ Deno.test("processDelivery: zero contas candidatas -> stamp processed, nada mais
   assert("processed_at" in (stamps[0].payload as Record<string, unknown>));
 });
 
+Deno.test("processDelivery: lookup de candidatos casa professional_account_id OU instagram_user_id", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_accounts", "select", { data: [], error: null });
+  db.queue("instagram_webhook_events", "update", { data: null, error: null });
+
+  await createProcessDelivery(baseProcessDeps())(db as never, [eventRow()]);
+
+  const [candidates] = callsFor(db, "instagram_accounts", "select");
+  const or = candidates.modifiers.find((m) => m.method === "or");
+  assertEquals(
+    or?.args[0],
+    `professional_account_id.eq.${IG_USER_ID},instagram_user_id.eq.${IG_USER_ID}`,
+  );
+});
+
+Deno.test("processDelivery: ig_user_id fora do conjunto seguro -> stamp direto, sem query de contas", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_webhook_events", "update", { data: null, error: null });
+
+  const row = eventRow({}, { ig_user_id: "1,2)(injeta" });
+  await createProcessDelivery(baseProcessDeps())(db as never, [row]);
+
+  assertEquals(callsFor(db, "instagram_accounts", "select").length, 0);
+  assertEquals(rpcCallsFor(db, "claim_automation_send").length, 0);
+  assertEquals(callsFor(db, "instagram_webhook_events", "update").length, 1);
+});
+
 Deno.test("processDelivery (a): comentário da própria conta -> nenhuma claim RPC", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_accounts", "select", { data: [accountRow()], error: null });

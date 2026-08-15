@@ -99,7 +99,17 @@ async function selectEligibleAccounts(
     .eq("authorization_status", "active")
     .contains("permissions", [AUTOMATION_SCOPE])
     .not("comments_subscribed_at", "is", null);
-  if (filter.instagramUserId !== undefined) q = q.eq("instagram_user_id", filter.instagramUserId);
+  if (filter.instagramUserId !== undefined) {
+    // entry.id do webhook é o ID PROFISSIONAL (professional_account_id);
+    // instagram_user_id (app-scoped) fica como fallback para contas em que os
+    // dois espaços de ID coincidem. Como o valor entra na expressão do .or(),
+    // qualquer caractere fora do conjunto seguro (ids reais são dígitos)
+    // devolve zero candidatos em vez de arriscar a sintaxe do PostgREST.
+    if (!/^[A-Za-z0-9_-]+$/.test(filter.instagramUserId)) return [];
+    q = q.or(
+      `professional_account_id.eq.${filter.instagramUserId},instagram_user_id.eq.${filter.instagramUserId}`,
+    );
+  }
   if (filter.clientId !== undefined) q = q.eq("client_id", filter.clientId);
   const { data, error } = await q;
   if (error) throw new Error(`instagram_accounts (candidatos): ${errMessage(error)}`);

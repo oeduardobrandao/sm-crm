@@ -225,12 +225,16 @@ Deno.serve(async (req) => {
 
         // Fetch the real user ID via /me to avoid JSON number precision loss
         // (Instagram user IDs exceed Number.MAX_SAFE_INTEGER)
-        const meRes = await fetch(`https://graph.instagram.com/me?fields=id&access_token=${shortLivedToken}`);
+        // `id` é o ID app-scoped (usado nas chamadas Graph); `user_id` é o ID
+        // PROFISSIONAL da conta -- o que a Meta usa como entry.id nos webhooks
+        // de comentário. Sem ele o lookup do instagram-webhook não acha a conta.
+        const meRes = await fetch(`https://graph.instagram.com/me?fields=id,user_id&access_token=${shortLivedToken}`);
         const meData = await meRes.json();
         if (meData.error || !meData.id) {
             throw new Error(`Failed to fetch Instagram user ID: ${meData.error?.message ?? 'no id returned'}`);
         }
         const igBusinessId = String(meData.id);
+        const igProfessionalId = meData.user_id ? String(meData.user_id) : null;
         console.error('[IG-CALLBACK] Token exchange OK. user_id (from /me):', igBusinessId, 'token_type:', slTokenData.token_type, 'permissions:', JSON.stringify(slTokenData.permissions));
 
         // Exchange short-lived token for long-lived token (retry on transient 500s)
@@ -364,6 +368,7 @@ Deno.serve(async (req) => {
             .upsert({
                 client_id: clientId,
                 instagram_user_id: igBusinessId,
+                professional_account_id: igProfessionalId,
                 username: igProfile.username || '',
                 profile_picture_url: igProfile.profile_picture_url || '',
                 follower_count: igProfile.followers_count,
