@@ -228,8 +228,17 @@ Deno.serve(async (req) => {
         // `id` é o ID app-scoped (usado nas chamadas Graph); `user_id` é o ID
         // PROFISSIONAL da conta -- o que a Meta usa como entry.id nos webhooks
         // de comentário. Sem ele o lookup do instagram-webhook não acha a conta.
-        const meRes = await fetch(`https://graph.instagram.com/me?fields=id,user_id&access_token=${shortLivedToken}`);
-        const meData = await meRes.json();
+        // Caminho VERSIONADO obrigatório: o /me sem versão cai numa default
+        // antiga onde `user_id` não existe e o Graph devolve erro. Se ainda
+        // assim falhar, cai para fields=id -- o connect não pode morrer por
+        // causa do campo opcional (professional_account_id fica NULL).
+        const meRes = await fetch(`https://graph.instagram.com/v22.0/me?fields=id,user_id&access_token=${shortLivedToken}`);
+        let meData = await meRes.json();
+        if (meData.error) {
+            console.error('[IG-CALLBACK] /me com user_id falhou, fallback para fields=id:', JSON.stringify(meData.error));
+            const fallbackRes = await fetch(`https://graph.instagram.com/me?fields=id&access_token=${shortLivedToken}`);
+            meData = await fallbackRes.json();
+        }
         if (meData.error || !meData.id) {
             throw new Error(`Failed to fetch Instagram user ID: ${meData.error?.message ?? 'no id returned'}`);
         }
