@@ -10856,3 +10856,12 @@ body.landing-page #root {
   border-color: var(--text-light);
   background: var(--surface-main);
 }
+
+/* ============ PagarmeCheckoutDialog: fold único ============ */
+/* O DialogContent compartilhado trava conteúdo em 85vh (wrapper interno idem). O form de
+   cartão é o dialog mais alto do app e o objetivo é caber sem scroll interno num fold de
+   notebook, então só ele ganha um teto maior; os 3vh de folga por lado continuam. */
+.pagarme-checkout-dialog,
+.pagarme-checkout-dialog > div {
+  max-height: 94vh;
+}
