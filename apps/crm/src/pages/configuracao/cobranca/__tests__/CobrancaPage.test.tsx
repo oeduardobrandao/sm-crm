@@ -867,7 +867,7 @@ describe('CobrancaPage', () => {
       await waitFor(() => expect(cancelPagarmeSubscription).toHaveBeenCalledTimes(1));
       await waitFor(() =>
         expect(toast.success).toHaveBeenCalledWith(
-          'Troca desfeita. Seu plano mensal continua ativo.',
+          'Troca desfeita. Seu plano mensal continua como estava.',
         ),
       );
     });

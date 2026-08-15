@@ -307,6 +307,7 @@ export function buildRestoreStripeColumns(args: {
     pagarme_subscription_id: null,
     switched_from_stripe_subscription_id: null,
     switched_from_plan_id: null,
+    switched_from_cancel_at_period_end: null,
     failed_payment_count: 0,
     past_due_since: null,
     next_payment_attempt: null,

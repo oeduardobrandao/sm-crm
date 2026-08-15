@@ -260,6 +260,10 @@ export function buildPagarmeSubscriptionColumns(args: {
   nowIso: string;
   switchedFromStripeSubscriptionId?: string | null;
   switchedFromPlanId?: string | null;
+  /** cancel_at_period_end OBSERVADO do mensal Stripe fonte no momento do switch (Codex P1-2):
+   * o undo restaura este valor em vez de sempre reativar, entao uma fonte ja em churn volta
+   * a ficar em churn. */
+  switchedFromCancelAtPeriodEnd?: boolean | null;
 }): Record<string, unknown> {
   return {
     provider: "pagarme",
@@ -276,6 +280,7 @@ export function buildPagarmeSubscriptionColumns(args: {
     // um segundo switch do mesmo workspace na FRENTE da fila do leg D.
     switched_from_stripe_subscription_id: args.switchedFromStripeSubscriptionId ?? null,
     switched_from_plan_id: args.switchedFromPlanId ?? null,
+    switched_from_cancel_at_period_end: args.switchedFromCancelAtPeriodEnd ?? null,
     switch_checked_at: null,
     ever_subscribed_at: args.everSubscribedAt,
     // Fresh takeover clears ALL dunning state (mirroring buildRecoveryEpisode): a Stripe row

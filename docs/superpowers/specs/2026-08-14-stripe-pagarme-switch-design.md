@@ -27,8 +27,9 @@ O 12x está ao vivo em prod desde 2026-08-14 e a infra existente já resolve qua
 ## Decisões de produto
 
 1. **Arrependimento = desfazer a troca.** Cancelar o 12x agendado antes do `start_at`
-   reativa o mensal Stripe (`cancel_at_period_end=false`) e devolve a linha ao provider
-   stripe. O botão de cancelar durante a janela É o undo.
+   restaura o `cancel_at_period_end` observado do mensal Stripe no momento do switch
+   (tipicamente `false` → reativa; ver decisão 7 para a fonte já em churn) e devolve a
+   linha ao provider stripe. O botão de cancelar durante a janela É o undo.
 2. **Qualquer plano-alvo.** Switch em qualquer card anual visível (mesmo plano, maior ou
    menor). Plano concedido NO BIND (invariante atual). Copy avisa que os recursos mudam já
    em QUALQUER troca entre planos (não só downgrade).
@@ -46,8 +47,16 @@ O 12x está ao vivo em prod desde 2026-08-14 e a infra existente já resolve qua
 6. **Contrato do undo**: `POST pagarme-subscription {action:'cancel'}` numa linha em janela
    responde `{ status: 'reverted', access_until: <period end Stripe> }`.
 7. **Mensal já com cancel agendado pode fazer switch** (usuário em churn): permitido,
-   retenção estritamente melhor. O undo devolve `cancel_at_period_end=false` (benigno,
-   copy diz "seu mensal foi reativado").
+   retenção estritamente melhor (elegibilidade continua a mesma: `assessStripeSourceSub`
+   nunca rejeita por `cancel_at_period_end=true`). **Codex P1-2**: o undo RESTAURA o
+   `cancel_at_period_end` OBSERVADO da fonte no momento do switch, em vez de sempre
+   reativar. O valor é persistido no bind em `switched_from_cancel_at_period_end`
+   (migration nova) e devolvido tal-e-qual pelo undo: quem já estava em churn volta a
+   ficar em churn (ainda agendado para cancelar), quem não estava é reativado — "continua
+   como estava" nos dois casos. Toast do undo (`CobrancaPage.tsx`) fica genérico o
+   bastante para cobrir ambos: "Troca desfeita. Seu plano mensal continua como estava."
+   (o manage card mostra "Cancela em X" via a linha sincronizada quando o mensal restaurado
+   segue agendado para cancelar).
 8. **Corrida de fronteira no undo consolida a troca**: se a 1ª parcela do 12x disparou
    (ativou OU falhou → past_due) enquanto o undo estava em voo, a Stripe já morreu na
    fronteira e não há para onde voltar. O undo aborta consolidando: `cancelNow` da Stripe
@@ -134,12 +143,14 @@ O 12x está ao vivo em prod desde 2026-08-14 e a infra existente já resolve qua
    cobrou agora com Stripe ainda cobrando → cancela a sub remota + attempt `quarantined`
    + CRITICAL + 500 (decisão 10; NÃO `failed`). Difere do checkout comum, que aceita
    active.
-9. **CAS bind**: colunas de `buildPagarmeSubscriptionColumns` + os dois markers
+9. **CAS bind**: colunas de `buildPagarmeSubscriptionColumns` + os três markers
    (`switched_from_stripe_subscription_id = row.stripe_subscription_id`,
    `switched_from_plan_id = <plano-fonte do passo 4>`; o bind sobrescreve `plan_id` com o
    alvo e preços legados não são resolvíveis no undo, então o plano-fonte é persistido
-   aqui) + `switch_checked_at = null` (um segundo switch do mesmo workspace entra na
-   frente da fila do leg D, não herda a posição antiga), mesmo statement. Pins: os
+   aqui; `switched_from_cancel_at_period_end = cancel_at_period_end OBSERVADO da fonte no
+   verify` — Codex P1-2, é o que o undo restaura) + `switch_checked_at = null` (um segundo
+   switch do mesmo workspace entra na frente da fila do leg D, não herda a posição
+   antiga), mesmo statement. Pins: os
    existentes (provider observado + stripe_subscription_id) + `.eq('status', row.status)`
    (só no switch): webhook Stripe concorrente que mudou o status entre verify e bind faz
    o CAS falhar → compensating cancel + 409.
@@ -188,7 +199,8 @@ O 12x está ao vivo em prod desde 2026-08-14 e a infra existente já resolve qua
 alter table workspace_subscriptions
   add column switched_from_stripe_subscription_id text,
   add column switched_from_plan_id text,
-  add column switch_checked_at timestamptz;
+  add column switch_checked_at timestamptz,
+  add column switched_from_cancel_at_period_end boolean;
 create index workspace_subscriptions_switch_marker
   on workspace_subscriptions (switch_checked_at, workspace_id)
   where switched_from_stripe_subscription_id is not null;
@@ -210,9 +222,12 @@ escrever; numerar a migration acima do tail de `origin/main` no momento do PR.)
 
 Os markers servem a: (a) sweep do cron; (b) detecção do undo (marker + trialing) e
 restauração do plano-fonte sem depender de price ids legados; (c) sinal do frontend
-("Troca agendada"). Escritos só por bind/undo/cron; webhooks não tocam. Enquanto trialing
-os markers persistem; limpos pelo cron só quando seguro E status != trialing (sempre os
-dois juntos). `switch_checked_at` é bookkeeping do leg D (rotação justa), fora dos
+("Troca agendada"); (d) `switched_from_cancel_at_period_end` guarda o `cancel_at_period_end`
+observado da fonte no momento do switch, para o undo restaurar o valor original em vez de
+sempre reativar (Codex P1-2, decisão 7). Escritos só por bind/undo/cron; webhooks não
+tocam. Enquanto trialing os markers persistem; limpos pelo cron só quando seguro E status
+!= trialing (sempre os três juntos). `switch_checked_at` é bookkeeping do leg D (rotação
+justa), fora dos
 statements de invariante.
 
 ### Undo (em `pagarme-subscription`, roteado no `action: 'cancel'`)
@@ -224,25 +239,31 @@ derrubaria o plano na hora). Ordem (TODAS as leituras antes da mutação remota;
 imediata em todo exit entre a mutação e o flip confirmado):
 
 1. **Leituras primeiro**: `retrieveSubscription(marker)` (remota terminal canceled/404 →
-   decisão 4: cancel comum limpando os dois markers no mesmo CAS); `fetchStripeAmount`
+   decisão 4: cancel comum limpando os três markers no mesmo CAS); `fetchStripeAmount`
    best-effort (mirror restaurado ou cleared; cleared se auto-cura na leitura do admin);
    plano-fonte = `switched_from_plan_id` (fallback: `resolvePlanFromPriceId` do price
-   atual; ambos null → CRITICAL + grant pulado, precedente pagarme-webhook). O CAS do
-   passo 3 usa `buildRestoreStripeColumns` (em `_shared/pagarme-logic.ts`, compartilhado
-   com o rollback da perna Stripe do checkout), com `cancel_at_period_end: false` (o undo
-   acabou de reativar).
-2. **Mutação remota**: `setCancelAtPeriodEnd(marker, false)`. O catch da PRÓPRIA mutação
-   (timeout é ambíguo: o `false` pode ter landado antes da resposta se perder, o caso
-   mais perigoso perto da renovação) tenta imediatamente rearmar
-   `setCancelAtPeriodEnd(marker, true)` bounded; só se o rearme também falhar o leg D
-   vira backstop (CRITICAL). Depois → 500, NADA local mudou, retryable.
+   atual; ambos null → CRITICAL + grant pulado, precedente pagarme-webhook);
+   `restoreCapEnd = row.switched_from_cancel_at_period_end === true` (Codex P1-2: o valor
+   OBSERVADO da fonte no momento do switch, persistido pelo bind — decisão 9 — e lido aqui
+   da própria linha, sem chamada extra). O CAS do passo 3 usa `buildRestoreStripeColumns`
+   (em `_shared/pagarme-logic.ts`, compartilhado com o rollback da perna Stripe do
+   checkout), com `cancel_at_period_end: restoreCapEnd` (o undo acabou de restaurar o
+   valor original, não sempre reativar).
+2. **Mutação remota**: `setCancelAtPeriodEnd(marker, restoreCapEnd)`. O catch da PRÓPRIA
+   mutação (timeout é ambíguo: o valor pode ter landado antes da resposta se perder, o
+   caso mais perigoso perto da renovação) tenta imediatamente rearmar
+   `setCancelAtPeriodEnd(marker, true)` bounded — direção segura nos dois casos (deixa
+   agendado para cancelar se a fonte não estava em churn, ou mantém a operação pretendida
+   se já estava); só se o rearme também falhar o leg D vira backstop (CRITICAL). Depois →
+   500, NADA local mudou, retryable.
 3. **CAS flip-back num statement** (pins: provider='pagarme' + pagarme_subscription_id +
    status='trialing'): provider='stripe', status remoto (active|trialing),
    plan_id = plano-fonte, billing_interval='month', installments=null,
    current_period_end = period end real da Stripe (omitir a chave se ilegível, nunca null
-   por cima), cancel_at_period_end=false, pagarme_subscription_id=null (desliga o
-   skip_linked → leg C varre a future sub órfã se o passo 5 falhar), os dois
-   markers=null, mirror, updated_at.
+   por cima), cancel_at_period_end=restoreCapEnd, pagarme_subscription_id=null (desliga o
+   skip_linked → leg C varre a future sub órfã se o passo 5 falhar), os três
+   markers=null (`buildRestoreStripeColumns` nula `switched_from_cancel_at_period_end`
+   junto dos outros dois, mesmo quando o valor RESTAURADO é `true`), mirror, updated_at.
    Qualquer falha daqui em diante sem flip confirmado (erro/timeout de DB) → compensação
    imediata `setCancelAtPeriodEnd(marker, true)` bounded (falhou também → CRITICAL;
    markers + leg D são o backstop durável) e 500.

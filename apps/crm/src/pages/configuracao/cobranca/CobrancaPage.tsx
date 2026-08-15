@@ -288,7 +288,7 @@ export default function CobrancaPage() {
       const result = await cancelPagarmeSubscription();
       toast.success(
         result.status === 'reverted'
-          ? 'Troca desfeita. Seu plano mensal continua ativo.'
+          ? 'Troca desfeita. Seu plano mensal continua como estava.'
           : 'Assinatura cancelada.',
       );
       startPlanRefetchPoll();

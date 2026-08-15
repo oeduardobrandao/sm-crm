@@ -562,6 +562,7 @@ Deno.test("buildRestoreStripeColumns: payload completo num statement, markers e 
   assertEquals(cols.pagarme_subscription_id, null);
   assertEquals(cols.switched_from_stripe_subscription_id, null);
   assertEquals(cols.switched_from_plan_id, null);
+  assertEquals(cols.switched_from_cancel_at_period_end, null);
   assertEquals(cols.amount_cents, null);
   assertEquals(cols.updated_at, "2026-08-12T12:00:00.000Z");
 });
@@ -576,6 +577,8 @@ Deno.test("buildRestoreStripeColumns: fonte em churn preserva cancel_at_period_e
     nowIso: "2026-08-12T12:00:00.000Z",
   });
   assertEquals(cols.cancel_at_period_end, true);
+  // O marker e sempre limpo, mesmo quando o valor RESTAURADO e true (fonte em churn).
+  assertEquals(cols.switched_from_cancel_at_period_end, null);
 });
 
 Deno.test("buildRestoreStripeColumns: periodEnd/plan desconhecidos sao OMITIDOS, nunca null por cima", () => {

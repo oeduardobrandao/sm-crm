@@ -266,6 +266,10 @@ const SWITCH_WINDOW_ROW = {
   current_period_end: "2026-09-16T00:00:00Z",
   switched_from_stripe_subscription_id: "sub_s1",
   switched_from_plan_id: "start",
+  // Codex P1-2: cap_end observado da fonte no momento do switch. false = fonte NAO estava em
+  // churn, entao o undo reativa (comportamento pre-existente de todos os testes abaixo que
+  // usam esta fixture sem sobrescrever o campo).
+  switched_from_cancel_at_period_end: false,
 };
 
 // ─── cancel ──────────────────────────────────────────────────────────────
@@ -635,6 +639,7 @@ Deno.test("undo happy path: leituras -> cap_end=false -> CAS restaurando plan_id
   assertEquals(cas.values?.pagarme_subscription_id, null);
   assertEquals(cas.values?.switched_from_stripe_subscription_id, null);
   assertEquals(cas.values?.switched_from_plan_id, null);
+  assertEquals(cas.values?.switched_from_cancel_at_period_end, null);
   assertEquals(cas.values?.cancel_at_period_end, false);
   // mirror restaurado do fetchAmount (amount_cents 9990 no fake)
   assertEquals(cas.values?.amount_cents, 9990);
@@ -646,6 +651,29 @@ Deno.test("undo happy path: leituras -> cap_end=false -> CAS restaurando plan_id
 
   // DELETE da future sub por ultimo
   assert(calls.some((c) => c.method === "cancelSubscription" && c.args[0] === SUB));
+});
+
+// Codex P1-2: o undo restaura o cancel_at_period_end OBSERVADO da fonte, nao sempre false.
+// Uma fonte ja em churn (decisao 7: switch a partir de um mensal com cancelamento agendado e
+// permitido) volta EXATAMENTE como estava, ainda agendada para cancelar.
+Deno.test("undo com fonte em churn (marker column true): restaura cancel_at_period_end=true em vez de reativar", async () => {
+  const { events, stripeCalls, result } = run(
+    { subRow: { ...SWITCH_WINDOW_ROW, switched_from_cancel_at_period_end: true } },
+    {},
+    { action: "cancel" },
+    {},
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  assertEquals(res.body, { status: "reverted", access_until: "2026-09-15T14:23:11.000Z" });
+
+  const methods = stripeCalls.map((c) => c.method);
+  const reactivateIdx = methods.indexOf("setCancelAtPeriodEnd");
+  assertEquals(stripeCalls[reactivateIdx].args, ["sub_s1", true]);
+
+  const cas = events.find((e) => e.table === "workspace_subscriptions" && e.op === "update")!;
+  assertEquals(cas.values?.cancel_at_period_end, true);
+  assertEquals(cas.values?.switched_from_cancel_at_period_end, null);
 });
 
 Deno.test("undo: stripeSwitch null -> 500 sem nada remoto/local", async () => {
@@ -775,6 +803,7 @@ Deno.test("undo: remota terminal (canceled) -> fallback cancel comum limpando os
   const cas = events.find((e) => e.table === "workspace_subscriptions" && e.op === "update")!;
   assertEquals(cas.values?.switched_from_stripe_subscription_id, null);
   assertEquals(cas.values?.switched_from_plan_id, null);
+  assertEquals(cas.values?.switched_from_cancel_at_period_end, null);
   assertEquals(cas.values?.status, "canceled");
 });
 
@@ -794,6 +823,7 @@ Deno.test("undo: retrieveSubscription lanca 404 -> fallback decisao 4 (cancel co
   const cas = events.find((e) => e.table === "workspace_subscriptions" && e.op === "update")!;
   assertEquals(cas.values?.switched_from_stripe_subscription_id, null);
   assertEquals(cas.values?.switched_from_plan_id, null);
+  assertEquals(cas.values?.switched_from_cancel_at_period_end, null);
   assertEquals(cas.values?.status, "canceled");
 });
 

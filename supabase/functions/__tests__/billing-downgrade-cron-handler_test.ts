@@ -919,6 +919,7 @@ Deno.test("19. leg D: janela fechada (status != trialing) + remoto seguro -> cle
   const clears = findClears(events);
   assertEquals(clears.length, 1);
   assertEquals(clears[0].values?.switched_from_plan_id, null);
+  assertEquals(clears[0].values?.switched_from_cancel_at_period_end, null);
   assert(filterHas(clears[0].filters, "eq", "workspace_id", "ws-1"));
   assert(filterHas(clears[0].filters, "eq", "switched_from_stripe_subscription_id", "sub_s1"));
   assert(filterHas(clears[0].filters, "neq", "status", "trialing"));

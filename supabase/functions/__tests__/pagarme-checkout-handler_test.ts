@@ -1075,7 +1075,22 @@ Deno.test("switch happy path: start_at da fronteira, CAS com pin de status + mar
   assert(bind.filters.some(([m, c, v]) => m === "eq" && c === "status" && v === "active"));
   assertEquals(bind.values?.switched_from_stripe_subscription_id, "sub_s1");
   assertEquals(bind.values?.switched_from_plan_id, "start");
+  // STRIPE_ROW/STRIPE_SUB_MONTHLY fixture's source has cancel_at_period_end false -> marker false.
+  assertEquals(bind.values?.switched_from_cancel_at_period_end, false);
   assertEquals(bind.values?.switch_checked_at, null);
+});
+
+Deno.test("switch a partir de mensal em churn: marker do cap_end observado persiste true", async () => {
+  const { events, result } = run(
+    { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW },
+    { subStatus: "future", subStartAt: "2026-09-16" },
+    { retrieveResult: { ...STRIPE_SUB_MONTHLY, cancel_at_period_end: true } },
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 200);
+  const bind = events.find((e) => e.table === "workspace_subscriptions" && e.op === "update")!;
+  assertEquals(bind.values?.switched_from_cancel_at_period_end, true);
 });
 
 Deno.test("switch: nunca chama resolveTrialDays (sem start_at de trial mesmo se nunca assinou)", async () => {

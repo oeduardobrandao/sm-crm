@@ -61,7 +61,7 @@ async function run(
   const { data: row, error: rowErr } = await db
     .from("workspace_subscriptions")
     .select(
-      "provider, pagarme_customer_id, pagarme_subscription_id, status, cancel_at_period_end, current_period_end, switched_from_stripe_subscription_id, switched_from_plan_id",
+      "provider, pagarme_customer_id, pagarme_subscription_id, status, cancel_at_period_end, current_period_end, switched_from_stripe_subscription_id, switched_from_plan_id, switched_from_cancel_at_period_end",
     )
     .eq("workspace_id", ctx.workspaceId)
     .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
@@ -123,13 +123,22 @@ async function handleUndoSwitch(
   const stripeSwitch = deps.stripeSwitch ?? null;
   const nowIso = now().toISOString();
   const marker = row.switched_from_stripe_subscription_id as string;
+  // Codex P1-2: o undo restaura o cancel_at_period_end OBSERVADO da fonte no momento do
+  // switch (persistido em switched_from_cancel_at_period_end pelo bind), nao sempre `false`.
+  // Um usuario que ja estava em churn (decisao 7 do spec: switch a partir de um mensal com
+  // cancelamento agendado e permitido) volta EXATAMENTE como estava, ainda agendado para
+  // cancelar, em vez de ser reativado por engano.
+  const restoreCapEnd = row.switched_from_cancel_at_period_end === true;
   if (!stripeSwitch) {
     console.error("[pagarme-subscription] undo requested but no Stripe gateway configured");
     return { ...UNDO_500 };
   }
-  // Compensacao dos exits pos-mutacao (spec, review rodada 2): o cap_end=false pode ter
-  // landado num timeout ambiguo, entao TODO exit entre a mutacao e o flip confirmado
-  // rearma true imediatamente; so se o rearme tambem falhar o leg D vira backstop.
+  // Compensacao dos exits pos-mutacao (spec, review rodada 2): o valor restaurado pode ter
+  // landado num timeout ambiguo, entao TODO exit entre a mutacao e o flip confirmado rearma
+  // `true` imediatamente. Direcao segura nos dois casos: se a fonte nao estava em churn isso
+  // deixa o mensal agendado para cancelar (leg D e o backstop que resolve), e se ja estava em
+  // churn e a operacao que se pretendia manter. So se o rearme tambem falhar o leg D vira
+  // backstop.
   const rearm = async () => {
     try {
       await stripeSwitch.setCancelAtPeriodEnd(marker, true);
@@ -148,10 +157,11 @@ async function handleUndoSwitch(
   } catch (e) {
     if (isStripeNotFoundError(e)) {
       // Stripe morta remotamente (decisao 4): nao ha para onde voltar. Cancel comum
-      // limpando os DOIS markers no mesmo CAS.
+      // limpando os TRES markers no mesmo CAS.
       return await handleCancel(deps, ctx, row, subId, now, {
         switched_from_stripe_subscription_id: null,
         switched_from_plan_id: null,
+        switched_from_cancel_at_period_end: null,
       });
     }
     console.error(
@@ -172,10 +182,11 @@ async function handleUndoSwitch(
     const rawStatus = readStripeSubSnapshot(remote).status;
     if (rawStatus === "canceled" || rawStatus === "incomplete_expired") {
       // Stripe terminal remoto (decisao 4): nao ha para onde voltar. Cancel comum
-      // limpando os DOIS markers no mesmo CAS.
+      // limpando os TRES markers no mesmo CAS.
       return await handleCancel(deps, ctx, row, subId, now, {
         switched_from_stripe_subscription_id: null,
         switched_from_plan_id: null,
+        switched_from_cancel_at_period_end: null,
       });
     }
     // past_due/unpaid/incomplete/paused (not_in_force nao-terminal), not_monthly, malformed,
@@ -218,9 +229,10 @@ async function handleUndoSwitch(
     );
   }
 
-  // ── (2) Mutacao remota: reativa o mensal. Falha -> rearme imediato + 500. ──
+  // ── (2) Mutacao remota: restaura o cap_end ORIGINAL da fonte (restoreCapEnd). Falha ->
+  // rearme imediato + 500. ──
   try {
-    await stripeSwitch.setCancelAtPeriodEnd(marker, false);
+    await stripeSwitch.setCancelAtPeriodEnd(marker, restoreCapEnd);
   } catch (e) {
     console.error(
       "[pagarme-subscription] undo reactivation failed:",
@@ -233,7 +245,7 @@ async function handleUndoSwitch(
   // ── (3) CAS flip-back num statement. ──
   const columns = buildRestoreStripeColumns({
     status: assessed.status,
-    cancelAtPeriodEnd: false, // o undo ACABOU de reativar
+    cancelAtPeriodEnd: restoreCapEnd, // o undo ACABOU de restaurar o valor observado na fonte
     periodEndIso: assessed.periodEnd.toISOString(),
     sourcePlanId,
     amountColumns,
@@ -292,7 +304,8 @@ async function handleUndoSwitch(
     }
     if (st === "active" || st === "past_due") {
       // A 1a parcela disparou (ou falhou) durante o undo; a Stripe ja morreu na fronteira
-      // e o cap_end=false do passo 2 pode te-la renovado: consolida cancelando JA.
+      // e o restore do passo 2 (quando restoreCapEnd=false) pode te-la renovado: consolida
+      // cancelando JA.
       console.error(
         `[pagarme-subscription] CRITICAL: switch boundary crossed mid-undo for workspace ${ctx.workspaceId}; consolidating (stripe cancelNow)`,
       );
@@ -318,7 +331,8 @@ async function handleUndoSwitch(
       const { data: retryRows, error: retryErr } = await runCas("canceled");
       if (retryErr || !retryRows?.length) {
         // Residual documentado no spec: dead-end raro (12x morto em voo + retry falhou);
-        // suporte resolve via CRITICAL. NAO rearma: a Stripe reativada e o que o usuario quer.
+        // suporte resolve via CRITICAL. NAO rearma: o estado da Stripe ja restaurado (reativado
+        // ou mantido agendado para cancelar, conforme restoreCapEnd) e o que o usuario quer.
         console.error(
           `[pagarme-subscription] CRITICAL: undo retry CAS failed for workspace ${ctx.workspaceId}; manual repair needed${retryErr ? `: ${retryErr.message}` : ""}`,
         );

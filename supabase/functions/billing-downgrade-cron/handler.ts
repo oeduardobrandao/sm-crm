@@ -553,6 +553,7 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
                 .update({
                   switched_from_stripe_subscription_id: null,
                   switched_from_plan_id: null,
+                  switched_from_cancel_at_period_end: null,
                   updated_at: nowIso,
                 })
                 .eq("workspace_id", wsId)

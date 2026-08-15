@@ -4,7 +4,8 @@
 alter table workspace_subscriptions
   add column switched_from_stripe_subscription_id text,
   add column switched_from_plan_id text,
-  add column switch_checked_at timestamptz;
+  add column switch_checked_at timestamptz,
+  add column switched_from_cancel_at_period_end boolean;
 
 comment on column workspace_subscriptions.switched_from_stripe_subscription_id is
   'Non-null = 12x Pagar.me vinculado por switch a partir deste mensal Stripe. O cron (leg D) confirma o cancel_at_period_end remoto e limpa quando seguro; enquanto a linha esta trialing tambem habilita o undo e o estado "Troca agendada" no frontend.';
@@ -12,6 +13,8 @@ comment on column workspace_subscriptions.switched_from_plan_id is
   'Plano-fonte no momento do switch. O undo restaura plan_id daqui: precos Stripe legados nao sao resolviveis via resolvePlanFromPriceId.';
 comment on column workspace_subscriptions.switch_checked_at is
   'Bookkeeping do leg D (rotacao justa da fila de markers). Fora dos statements de invariante.';
+comment on column workspace_subscriptions.switched_from_cancel_at_period_end is
+  'cancel_at_period_end observado do mensal Stripe fonte no momento do switch. O undo restaura este valor (Codex P1-2): uma fonte ja agendada para cancelar volta a ficar agendada para cancelar, em vez de ser reativada por engano.';
 
 create index workspace_subscriptions_switch_marker
   on workspace_subscriptions (switch_checked_at, workspace_id)
