@@ -11,6 +11,11 @@ vi.mock('../../../hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: vi.fn(),
 }));
 
+// Passthrough — see the matching comment in Sidebar.test.tsx.
+vi.mock('../../../hooks/useEffectiveNavFeatures', () => ({
+  useEffectiveNavFeatures: vi.fn((features: unknown) => features),
+}));
+
 vi.mock('../../../hooks/useMensagensUnread', () => ({
   useMensagensUnread: vi.fn(() => 0),
 }));

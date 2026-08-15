@@ -1,6 +1,7 @@
 import { signGetUrl } from "./r2.ts";
 import { CAROUSEL_MAX_ITEMS, validateMedia } from "./instagram-limits.ts";
 import type { MediaFile, ValidationError } from "./instagram-limits.ts";
+import { GRAPH_BASE, throwGraphError } from "./instagram-graph.ts";
 
 export { CAROUSEL_MAX_ITEMS, validateMedia };
 export type { MediaFile, ValidationError };
@@ -154,17 +155,6 @@ export async function validateForScheduling(
 }
 
 // --- Graph API Helpers ---
-
-const GRAPH_BASE = "https://graph.instagram.com/v22.0";
-
-function throwGraphError(data: any): never {
-  const err: any = new Error(data.error.message);
-  if (data.error.code === 190) err.code = 'TOKEN_EXPIRED';
-  if (typeof data.error.code === "number") err.graphCode = data.error.code;
-  if (typeof data.error.error_subcode === "number") err.graphSubcode = data.error.error_subcode;
-  if (typeof data.error.fbtrace_id === "string") err.fbtraceId = data.error.fbtrace_id;
-  throw err;
-}
 
 export async function createSingleImageContainer(
   igUserId: string,

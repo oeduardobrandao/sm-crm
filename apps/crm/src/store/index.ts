@@ -8,6 +8,7 @@ export * from './leads';
 export * from './workflows';
 export * from './posts';
 export * from './postStatuses';
+export * from './instagramAutomations';
 export * from './comments';
 export * from './hub';
 export * from './ideias';

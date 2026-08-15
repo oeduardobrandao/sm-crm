@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
+import { useEffectiveNavFeatures } from '../../hooks/useEffectiveNavFeatures';
 import { useMensagensUnread } from '../../hooks/useMensagensUnread';
 import { getMoreSheetGroups } from './nav-data';
 import { Search, MessageCircle } from 'lucide-react';
@@ -32,7 +33,8 @@ export default function MobileNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { profile, role, signOut, canSeeFinancials, workspaceRole } = useAuth();
-  const { features } = useWorkspaceLimits();
+  const { features: rawFeatures } = useWorkspaceLimits();
+  const features = useEffectiveNavFeatures(rawFeatures as Record<string, boolean> | null);
   const mensagensUnread = useMensagensUnread();
   const { t } = useTranslation();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -41,12 +43,7 @@ export default function MobileNav() {
   );
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const moreSheetGroups = getMoreSheetGroups(
-    role,
-    features as Record<string, boolean> | null,
-    canSeeFinancials,
-    workspaceRole,
-  );
+  const moreSheetGroups = getMoreSheetGroups(role, features, canSeeFinancials, workspaceRole);
   const isMoreRouteActive = moreSheetGroups.some((group) =>
     group.items.some((item) => location.pathname.startsWith(item.route)),
   );

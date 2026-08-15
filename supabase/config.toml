@@ -16,6 +16,9 @@ verify_jwt = false
 [functions.tiktok-webhook]
 verify_jwt = false
 
+[functions.instagram-webhook]
+verify_jwt = false
+
 [functions.tiktok-media]
 verify_jwt = false
 
@@ -190,6 +193,9 @@ verify_jwt = false
 enabled = false
 
 [functions.storage-autoclean-cron]
+verify_jwt = false
+
+[functions.instagram-automation-cron]
 verify_jwt = false
 
 [functions.stream-webhook]

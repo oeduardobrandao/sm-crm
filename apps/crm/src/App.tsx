@@ -60,6 +60,7 @@ const AnalyticsFluxosPage = lazy(() => import('./pages/analytics-fluxos/Analytic
 const IdeiasPage = lazy(() => import('./pages/ideias/IdeiasPage'));
 const MensagensPage = lazy(() => import('./pages/mensagens/MensagensPage'));
 const ArquivosPage = lazy(() => import('./pages/arquivos/ArquivosPage'));
+const AutomacoesPage = lazy(() => import('./pages/automacoes/AutomacoesPage'));
 const ImportarPage = lazy(() => import('./pages/importar/ImportarPage'));
 const AjudaPage = lazy(() => import('./pages/ajuda/AjudaPage'));
 const SecaoPage = lazy(() => import('./pages/ajuda/SecaoPage'));
@@ -202,6 +203,7 @@ export default function App() {
                 <Route path="/analytics-fluxos" element={<AnalyticsFluxosPage />} />
                 <Route path="/ideias" element={<IdeiasPage />} />
                 <Route path="/mensagens" element={<MensagensPage />} />
+                <Route path="/automacoes" element={<AutomacoesPage />} />
                 <Route path="/importar" element={<ImportarPage />} />
                 <Route path="/ajuda" element={<AjudaPage />} />
                 <Route path="/ajuda/secao/:category" element={<SecaoPage />} />

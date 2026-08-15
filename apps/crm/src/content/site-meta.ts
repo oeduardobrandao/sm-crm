@@ -38,6 +38,7 @@ export const APP_ROUTE_PREFIXES = [
   'analytics',
   'ideias',
   'mensagens',
+  'automacoes',
   'ajuda',
   'importar',
 ] as const;
