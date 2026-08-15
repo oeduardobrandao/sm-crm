@@ -23,7 +23,13 @@ import { notifyAutomationFailure } from "../_shared/automation-notify.ts";
 // deno-lint-ignore no-explicit-any
 type DbClient = { from: (table: string) => any; rpc: (name: string, params: Record<string, unknown>) => any };
 
-const AUTOMATION_SCOPE = "instagram_business_manage_comments";
+// Teste real (staging 2026-08-15): a doc de private replies lista só
+// manage_comments, mas o POST /messages devolve 403 code 10 sem
+// manage_messages no token. Elegibilidade exige os DOIS escopos.
+const AUTOMATION_SCOPES = [
+  "instagram_business_manage_comments",
+  "instagram_business_manage_messages",
+];
 const MAX_ATTEMPTS = 5;
 const RETRY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias, janela da private reply
 
@@ -97,7 +103,7 @@ async function selectEligibleAccounts(
     .from("instagram_accounts")
     .select("id, client_id, instagram_user_id, encrypted_access_token")
     .eq("authorization_status", "active")
-    .contains("permissions", [AUTOMATION_SCOPE])
+    .contains("permissions", AUTOMATION_SCOPES)
     .not("comments_subscribed_at", "is", null);
   if (filter.instagramUserId !== undefined) {
     // entry.id do webhook é o ID PROFISSIONAL (professional_account_id);
@@ -116,17 +122,23 @@ async function selectEligibleAccounts(
   return (data ?? []) as EligibleAccount[];
 }
 
-async function hasEligibleAccount(svc: DbClient, clientId: number): Promise<boolean> {
+// Devolve também o professional_account_id: o endpoint de private reply é
+// POST /<IG_ID_PROFISSIONAL>/messages -- com o ID app-scoped o Graph responde
+// 403 code 10 ("Application does not have permission for this action").
+async function getEligibleAccount(
+  svc: DbClient,
+  clientId: number,
+): Promise<{ id: string; professional_account_id: string | null } | null> {
   const { data, error } = await svc
     .from("instagram_accounts")
-    .select("id")
+    .select("id, professional_account_id")
     .eq("client_id", clientId)
     .eq("authorization_status", "active")
-    .contains("permissions", [AUTOMATION_SCOPE])
+    .contains("permissions", AUTOMATION_SCOPES)
     .not("comments_subscribed_at", "is", null)
     .maybeSingle();
   if (error) throw new Error(`instagram_accounts (aptidão): ${errMessage(error)}`);
-  return !!data;
+  return (data ?? null) as { id: string; professional_account_id: string | null } | null;
 }
 
 async function stampProcessed(svc: DbClient, rowId: string, now: Date): Promise<void> {
@@ -393,7 +405,7 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
     return;
   }
 
-  const apta = await hasEligibleAccount(ctx.svc, automation.client_id);
+  const apta = await getEligibleAccount(ctx.svc, automation.client_id);
   if (!apta) {
     const { error } = await ctx.svc
       .from("instagram_automation_sends")
@@ -417,7 +429,7 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
   if (!dmDelivered) {
     try {
       await sendPrivateReply(msgDeps, {
-        igUserId: send.instagram_user_id,
+        igUserId: apta.professional_account_id ?? send.instagram_user_id,
         token,
         commentId: send.comment_id,
         text: automation.dm_message,

@@ -590,6 +590,33 @@ Deno.test("executeSend (f): token_expired -> conta marcada expired + notificaç�
   assertEquals(fetchCalls.length, 1, "não deve tentar a resposta pública depois de token_expired");
 });
 
+Deno.test("executeSend: DM usa professional_account_id no path quando presente (app-scoped só como fallback)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: { ativo: true, dm_message: "msg", public_reply: null, client_id: CLIENT_ID },
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", {
+    data: { id: "acct-row-1", professional_account_id: "17841400000000099" },
+    error: null,
+  });
+  db.queueRpc("mark_automation_dm_sent", { data: null, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  const { fetchFn, calls: fetchCalls } = routedFetch({
+    privateReply: () => ({ body: { recipient_id: "r1", message_id: "m1" } }),
+  });
+
+  await executeSend(baseSendCtx(db, { fetchFn }), baseClaimedSend());
+
+  const dmCalls = fetchCalls.filter((c) => c.method === "POST" && c.url.includes("/messages"));
+  assertEquals(dmCalls.length, 1);
+  assert(
+    dmCalls[0].url.includes("/17841400000000099/messages"),
+    `path do DM deve usar o ID profissional, não o app-scoped: ${dmCalls[0].url}`,
+  );
+});
+
 Deno.test("executeSend (g): erro transiente com attempts=0 -> retry com next_attempt_at +60s", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {

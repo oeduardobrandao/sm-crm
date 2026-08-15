@@ -68,7 +68,11 @@ describe('getInstagramAccountStatuses', () => {
           client_id: 4,
           authorization_status: 'active',
           token_expires_at: '2999-01-01T00:00:00.000Z',
-          permissions: ['instagram_business_content_publish', 'instagram_business_manage_comments'],
+          permissions: [
+            'instagram_business_content_publish',
+            'instagram_business_manage_comments',
+            'instagram_business_manage_messages',
+          ],
           comments_subscribed_at: '2026-08-01T00:00:00.000Z',
         },
       ],
@@ -143,6 +147,13 @@ describe('getInstagramAccountStatuses', () => {
           client_id: 8,
           authorization_status: 'active',
           token_expires_at: '2999-01-01T00:00:00.000Z',
+          permissions: ['instagram_business_manage_comments', 'instagram_business_manage_messages'],
+          comments_subscribed_at: '2026-08-01T00:00:00.000Z',
+        },
+        {
+          client_id: 9,
+          authorization_status: 'active',
+          token_expires_at: '2999-01-01T00:00:00.000Z',
           permissions: ['instagram_business_manage_comments'],
           comments_subscribed_at: '2026-08-01T00:00:00.000Z',
         },
@@ -150,11 +161,12 @@ describe('getInstagramAccountStatuses', () => {
       error: null,
     });
 
-    const map = await store.getInstagramAccountStatuses([6, 7, 8]);
+    const map = await store.getInstagramAccountStatuses([6, 7, 8, 9]);
 
     expect(map.get(6)?.canAutomate).toBe(false); // revoked, despite permissions + subscription
     expect(map.get(7)?.canAutomate).toBe(false); // expired token, despite permissions + subscription
-    expect(map.get(8)?.canAutomate).toBe(true); // active + scope + subscription
+    expect(map.get(8)?.canAutomate).toBe(true); // active + BOTH scopes + subscription
+    expect(map.get(9)?.canAutomate).toBe(false); // manage_messages missing: DM would 403 (code 10)
   });
 
   it('throws when the query errors', async () => {
