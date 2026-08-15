@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { CalendarDays, CreditCard, Lock } from 'lucide-react';
 import { captureEvent } from '@/lib/analytics';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,6 +44,8 @@ import {
   type CheckoutSource,
   type PagarmeCheckoutResult,
 } from '@/services/billing';
+import { ceilPeriodEndToUtcDate } from '@/pages/configuracao/cobranca/plan-display';
+import { PagarmeLogo } from './PagarmeLogo';
 
 export interface PagarmeCheckoutDialogProps {
   open: boolean;
@@ -75,6 +78,17 @@ export interface PagarmeCheckoutDialogProps {
 }
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível concluir a operação. Tente novamente.';
+
+/**
+ * Espelho do TRIAL_DAYS de supabase/functions/_shared/trial.ts, usado só para a data PREVISTA
+ * no aviso verde (mesma conta do resolveStartAt do backend: now + 30d com ceil para a próxima
+ * meia-noite UTC, via ceilPeriodEndToUtcDate). A data autoritativa é o trial_ends_at do
+ * response, exibido na tela de sucesso.
+ */
+const TRIAL_DAYS = 30;
+
+/** Campos do modelo: altos e arredondados. Concatenado (não cn) para preservar ph-no-capture. */
+const FIELD_CLASS = 'h-12 rounded-xl px-4';
 
 /** plans.price_brl_annual is stored in centavos (e.g. 999000 = R$ 9.990,00). */
 function formatBRL(centavos: number): string {
@@ -354,6 +368,11 @@ export function PagarmeCheckoutDialog({
 
   if ((mode === 'checkout' || mode === 'switch') && !plan) return null;
 
+  const trialEndPreview =
+    mode === 'checkout' && trialEligible
+      ? ceilPeriodEndToUtcDate(new Date(Date.now() + TRIAL_DAYS * 24 * 3600 * 1000).toISOString())
+      : null;
+
   const ctaLabel =
     mode === 'checkout'
       ? trialEligible
@@ -387,7 +406,7 @@ export function PagarmeCheckoutDialog({
       }}
     >
       <DialogContent
-        className="sm:max-w-[480px]"
+        className="sm:max-w-[500px] sm:rounded-3xl"
         onEscapeKeyDown={(e) => {
           // Belt-and-suspenders with the `saving` check inside handleClose: block Radix's
           // internal dismiss at the source too, so a request in flight never even reaches
@@ -418,14 +437,14 @@ export function PagarmeCheckoutDialog({
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>
+              <DialogTitle className="text-2xl font-bold tracking-tight">
                 {mode === 'checkout'
                   ? `Assinar o plano ${plan?.name}`
                   : mode === 'switch'
                     ? 'Trocar para o anual em 12x'
                     : 'Atualizar cartão'}
               </DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="text-base">
                 {mode === 'checkout' || mode === 'switch'
                   ? 'Anual no cartão de crédito'
                   : 'A próxima cobrança usa o novo cartão.'}
@@ -433,9 +452,12 @@ export function PagarmeCheckoutDialog({
             </DialogHeader>
 
             {(mode === 'checkout' || mode === 'switch') && plan && (
-              <div className="text-sm">
-                <p>{`12x de ${formatBRL(plan.pagarme_installment_cents)} sem juros`}</p>
-                <p className="text-muted-foreground">{`total ${formatBRL(plan.pagarme_installment_cents * 12)}/ano`}</p>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-2xl bg-muted px-4 py-4">
+                <p className="whitespace-nowrap">
+                  <span className="text-2xl font-bold tracking-tight">{`12x de ${formatBRL(plan.pagarme_installment_cents)}`}</span>{' '}
+                  <span className="text-sm">sem juros</span>
+                </p>
+                <p className="text-sm text-muted-foreground">{`total ${formatBRL(plan.pagarme_installment_cents * 12)}/ano`}</p>
               </div>
             )}
 
@@ -453,21 +475,6 @@ export function PagarmeCheckoutDialog({
               </p>
             )}
 
-            {mode === 'checkout' && trialEligible && (
-              <p className="text-sm text-muted-foreground">
-                30 dias grátis. A primeira parcela só é cobrada depois do teste e você pode cancelar
-                antes.
-              </p>
-            )}
-
-            {mode === 'switch' && (
-              <p className="text-sm text-muted-foreground">
-                {firstChargeAt
-                  ? `Sem cobrança agora. A primeira parcela está prevista para ${formatUtcDateBR(firstChargeAt)}, quando termina o período que você já pagou.`
-                  : 'Sem cobrança agora. A primeira parcela vem quando terminar o período que você já pagou.'}
-              </p>
-            )}
-
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
                 <FormField
@@ -476,16 +483,24 @@ export function PagarmeCheckoutDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Número do cartão</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          onChange={(e) => field.onChange(maskCardNumber(e.target.value))}
-                          placeholder="0000 0000 0000 0000"
-                          autoComplete="cc-number"
-                          inputMode="numeric"
-                          className="ph-no-capture"
+                      {/* O wrapper do ícone fica FORA do FormControl: o Slot precisa do Input
+                          como filho direto para o id/aria cair no input (senão o label quebra). */}
+                      <div className="relative">
+                        <CreditCard
+                          aria-hidden="true"
+                          className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground"
                         />
-                      </FormControl>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            onChange={(e) => field.onChange(maskCardNumber(e.target.value))}
+                            placeholder="0000 0000 0000 0000"
+                            autoComplete="cc-number"
+                            inputMode="numeric"
+                            className={`${FIELD_CLASS} pl-11 ph-no-capture`}
+                          />
+                        </FormControl>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -495,13 +510,13 @@ export function PagarmeCheckoutDialog({
                   name="holderName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nome no cartão</FormLabel>
+                      <FormLabel>Nome impresso no cartão</FormLabel>
                       <FormControl>
                         <Input
                           {...field}
-                          placeholder="Nome como está no cartão"
+                          placeholder="Como aparece no cartão"
                           autoComplete="cc-name"
-                          className="ph-no-capture"
+                          className={`${FIELD_CLASS} ph-no-capture`}
                         />
                       </FormControl>
                       <FormMessage />
@@ -522,7 +537,7 @@ export function PagarmeCheckoutDialog({
                             placeholder="MM/AA"
                             autoComplete="cc-exp"
                             inputMode="numeric"
-                            className="ph-no-capture"
+                            className={`${FIELD_CLASS} ph-no-capture`}
                           />
                         </FormControl>
                         <FormMessage />
@@ -539,11 +554,11 @@ export function PagarmeCheckoutDialog({
                           <Input
                             {...field}
                             onChange={(e) => field.onChange(onlyDigits(e.target.value).slice(0, 4))}
-                            placeholder="CVV"
+                            placeholder="123"
                             type="password"
                             inputMode="numeric"
                             autoComplete="cc-csc"
-                            className="ph-no-capture"
+                            className={`${FIELD_CLASS} ph-no-capture`}
                           />
                         </FormControl>
                         <FormMessage />
@@ -565,7 +580,7 @@ export function PagarmeCheckoutDialog({
                               onChange={(e) => field.onChange(maskDocument(e.target.value))}
                               placeholder="000.000.000-00"
                               inputMode="numeric"
-                              className="ph-no-capture"
+                              className={`${FIELD_CLASS} ph-no-capture`}
                             />
                           </FormControl>
                           <FormMessage />
@@ -582,9 +597,10 @@ export function PagarmeCheckoutDialog({
                             <Input
                               {...field}
                               onChange={(e) => field.onChange(maskPhone(e.target.value))}
-                              placeholder="(00) 00000-0000"
+                              placeholder="(11) 99999-0000"
                               autoComplete="tel"
                               inputMode="numeric"
+                              className={FIELD_CLASS}
                             />
                           </FormControl>
                           <FormMessage />
@@ -593,7 +609,7 @@ export function PagarmeCheckoutDialog({
                     />
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-[2fr_3fr] gap-3">
                   <FormField
                     control={form.control}
                     name="cep"
@@ -607,6 +623,7 @@ export function PagarmeCheckoutDialog({
                             placeholder="00000-000"
                             autoComplete="postal-code"
                             inputMode="numeric"
+                            className={FIELD_CLASS}
                           />
                         </FormControl>
                         <FormMessage />
@@ -618,12 +635,13 @@ export function PagarmeCheckoutDialog({
                     name="line1"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Endereço</FormLabel>
+                        <FormLabel>Endereço de cobrança</FormLabel>
                         <FormControl>
                           <Input
                             {...field}
                             placeholder="Rua, número"
                             autoComplete="address-line1"
+                            className={FIELD_CLASS}
                           />
                         </FormControl>
                         <FormMessage />
@@ -631,7 +649,7 @@ export function PagarmeCheckoutDialog({
                     )}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-[2fr_1fr] gap-3">
                   <FormField
                     control={form.control}
                     name="city"
@@ -639,7 +657,12 @@ export function PagarmeCheckoutDialog({
                       <FormItem>
                         <FormLabel>Cidade</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="Cidade" autoComplete="address-level2" />
+                          <Input
+                            {...field}
+                            placeholder="São Paulo"
+                            autoComplete="address-level2"
+                            className={FIELD_CLASS}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -662,8 +685,9 @@ export function PagarmeCheckoutDialog({
                                   .slice(0, 2),
                               )
                             }
-                            placeholder="UF"
+                            placeholder="SP"
                             autoComplete="address-level1"
+                            className={FIELD_CLASS}
                           />
                         </FormControl>
                         <FormMessage />
@@ -672,19 +696,48 @@ export function PagarmeCheckoutDialog({
                   />
                 </div>
 
-                <p className="text-xs text-muted-foreground">
-                  Seus dados vão direto para a Pagar.me com segurança. Nós não armazenamos o número
-                  do seu cartão.
-                </p>
+                {mode === 'checkout' && trialEligible && (
+                  <div className="flex items-start gap-3 rounded-2xl bg-emerald-500/10 px-4 py-3.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                    <CalendarDays aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                    <p>
+                      {trialEndPreview
+                        ? `30 dias grátis. A primeira parcela só é cobrada em ${formatUtcDateBR(trialEndPreview)} e você pode cancelar antes disso.`
+                        : '30 dias grátis. A primeira parcela só é cobrada depois do teste e você pode cancelar antes disso.'}
+                    </p>
+                  </div>
+                )}
 
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={handleClose} disabled={saving}>
-                    Cancelar
-                  </Button>
-                  <Button type="submit" disabled={saving}>
-                    {saving ? 'Processando...' : ctaLabel}
-                  </Button>
-                </DialogFooter>
+                {mode === 'switch' && (
+                  <div className="flex items-start gap-3 rounded-2xl bg-emerald-500/10 px-4 py-3.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                    <CalendarDays aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                    <p>
+                      {firstChargeAt
+                        ? `Sem cobrança agora. A primeira parcela está prevista para ${formatUtcDateBR(firstChargeAt)}, quando termina o período que você já pagou.`
+                        : 'Sem cobrança agora. A primeira parcela vem quando terminar o período que você já pagou.'}
+                    </p>
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  disabled={saving}
+                  className="mt-1 h-12 w-full rounded-2xl text-base font-semibold"
+                >
+                  {saving ? 'Processando...' : ctaLabel}
+                </Button>
+
+                <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <Lock aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
+                  <p>
+                    Seus dados vão direto para a Pagar.me com segurança. Nós não armazenamos o
+                    número do seu cartão.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <span>Pagamento processado por</span>
+                  <PagarmeLogo className="h-6 w-auto" />
+                </div>
               </form>
             </Form>
           </>
