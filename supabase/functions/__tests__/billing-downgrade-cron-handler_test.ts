@@ -1147,7 +1147,13 @@ Deno.test("27. leg D: capped (cancel_at_period_end=true) mas renovacao escapou -
   assertEquals(findClears(events).length, 1);
 });
 
-Deno.test("28. leg D: capped (cancel_at_period_end=true) e renovacao NAO escapou -> seguro, sem cancelNow (regressao)", async () => {
+Deno.test("28. leg D: janela fechada + capped (cancel_at_period_end=true) mas remoto ainda vivo -> cancelNow MESMO ASSIM (P1: cap sozinho nao prova que a renovacao nao escapou pos-janela)", async () => {
+  // Pre-fix this test pinned the exact bug from the external review: once the window is
+  // closed, current_period_end is the ANNUAL boundary, so a remote period end from BEFORE
+  // that boundary (the monthly's own, un-renewed-looking end) used to read as "not renewed"
+  // and the cancelAtPeriodEnd=true shortcut made the row look safe -- clearing the markers
+  // with a silent duplicate month charged. Post-fix: any LIVE remote after the window closed
+  // is itself proof the monthly outlived its boundary, independent of the cap.
   const ROW = { ...MARKER_ROW, status: "active" };
   const { result, stripeCalls } = await run(
     { markerRows: [ROW] },
@@ -1156,11 +1162,83 @@ Deno.test("28. leg D: capped (cancel_at_period_end=true) e renovacao NAO escapou
     { retrieveResult: { ...REMOTE_ACTIVE_NO_CAP, cancel_at_period_end: true } },
   );
 
+  assert(
+    stripeCalls.some((c) => c.method === "cancelNow" && c.args[0] === "sub_s1"),
+    "a live remote found after the window closed must be canceled now regardless of the cap",
+  );
+  assertEquals(result.switchesCanceledNow, 1);
+  assertEquals(result.switchesCleared, 1);
+});
+
+Deno.test("29 (a). leg D P1: janela fechada + remoto vivo com cap + period end remoto ABAIXO do boundary ANUAL (o miss exato do review) -> cancelNow + canceledNow:1 + markers limpos", async () => {
+  // The exact shape from the external review: once the 12x activates, pagarme-webhook
+  // rewrites current_period_end to the ANNUAL cycle end (here ~11 months out), so the
+  // escaped monthly's own (much closer) remote period end will ALWAYS compare < the annual
+  // boundary -- renewalFired reads false by construction, no matter how far the monthly
+  // actually renewed past its own boundary. The window-closed guard must not depend on that
+  // comparison at all.
+  const ROW = {
+    ...MARKER_ROW,
+    status: "active",
+    current_period_end: "2027-07-15T00:00:00Z", // annual boundary, far past the monthly's own
+  };
+  const { result, events, stripeCalls } = await run(
+    { markerRows: [ROW] },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    // Remote: live, capped, and its own period end sits months BEFORE the annual boundary --
+    // exactly the shape that used to read renewalFired:false and "safe" via the cap.
+    { retrieveResult: { ...REMOTE_ACTIVE_NO_CAP, cancel_at_period_end: true } },
+  );
+
+  assert(
+    stripeCalls.some((c) => c.method === "cancelNow" && c.args[0] === "sub_s1"),
+    "expected cancelNow(sub_s1): a live remote past the annual boundary window-close is an escaped renewal by construction",
+  );
+  assertEquals(result.switchesCanceledNow, 1);
+  assertEquals(result.switchesCleared, 1);
+  assertEquals(findClears(events).length, 1, "markers must still clear once cancelNow made the row safe");
+});
+
+Deno.test("30 (b). leg D P1 regressao: janela fechada + remoto 'canceled' -> seguro, SEM cancelNow, markers limpos (forma normal do switch completo)", async () => {
+  // The completed-switch happy path: the cap landed cleanly before the boundary, Stripe
+  // auto-canceled the monthly exactly as expected, so the remote status now reads
+  // "canceled". This must NOT trip the new window-closed guard (isLiveRemote requires
+  // active/trialing/past_due) -- no renewal escaped here, nothing to refund.
+  const ROW = { ...MARKER_ROW, status: "active" };
+  const { result, stripeCalls } = await run(
+    { markerRows: [ROW] },
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    { retrieveResult: { ...REMOTE_ACTIVE_NO_CAP, status: "canceled" } },
+  );
+
   assertEquals(
     stripeCalls.filter((c) => c.method === "cancelNow").length,
     0,
-    "a capped-but-not-renewed live sub must stay safe as today -- no cancelNow",
+    "a genuinely canceled remote must never be re-canceled",
   );
   assertEquals(result.switchesCanceledNow, 0);
   assertEquals(result.switchesCleared, 1);
+});
+
+Deno.test("31 (c). leg D P1 regressao: janela ABERTA (trialing) + remoto vivo com cap e nao renovado -> segue seguro, SEM cancelNow (o shortcut do cap sobrevive dentro da janela)", async () => {
+  // Pin that the window-closed guard is genuinely gated on row.status !== "trialing" -- a
+  // capped, not-yet-renewed monthly still inside its own trial window must keep taking the
+  // pre-fix "safe" path (markers stay, no cancelNow), exactly like test 22, but asserted
+  // here directly against the new branch's side effects (cancelNow / switchesCanceledNow).
+  const { result, stripeCalls } = await run(
+    { markerRows: [MARKER_ROW] }, // status: "trialing" (window open)
+    { listSubscriptions: () => ({ data: [] }) },
+    NOW,
+    { retrieveResult: { ...REMOTE_ACTIVE_NO_CAP, cancel_at_period_end: true } },
+  );
+
+  assertEquals(
+    stripeCalls.filter((c) => c.method === "cancelNow").length,
+    0,
+    "in-window (trialing) capped-but-not-renewed subs must stay on the safe shortcut, no cancelNow",
+  );
+  assertEquals(result.switchesCanceledNow, 0);
+  assertEquals(result.switchesCleared, 0, "trialing row must keep its markers");
 });

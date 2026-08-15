@@ -476,7 +476,29 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
             const renewalFired = snap !== null && Number.isFinite(boundaryMs) &&
               snap.periodEndMs !== null && snap.periodEndMs > boundaryMs;
 
-            if (isLiveRemote && renewalFired) {
+            // WINDOW-CLOSED GUARD (P1 fix, external review 2026-08-15): once the switch window
+            // is closed (row.status !== "trialing"), pagarme-webhook has already rewritten
+            // current_period_end from start_at to the ANNUAL cycle end, so comparing the remote
+            // Stripe period end against it as a renewal boundary silently misses an escaped
+            // monthly renewal -- the renewed period end lands nowhere near the annual boundary,
+            // so renewalFired reads false even though the monthly charged again. The correct
+            // signal post-window needs no boundary at all: if the cap had landed cleanly before
+            // the monthly's own boundary with no renewal, Stripe would have auto-canceled the
+            // subscription AT that boundary, so its remote status would already read "canceled".
+            // A LIVE remote status found after the window closed can only mean the monthly
+            // outlived its boundary, i.e. it renewed. This must win over the cancelAtPeriodEnd
+            // "safe" shortcut computed above -- a stray cap does not undo an invoice that
+            // already fired -- so it is checked here, ahead of (and independent of) the
+            // in-window renewalFired race branch below.
+            const windowClosed = row.status !== "trialing";
+            if (isLiveRemote && windowClosed) {
+              console.error(
+                `[billing-downgrade-cron] CRITICAL: leg D stripe monthly outlived the switch boundary (renewal escaped) for workspace ${wsId} (stripe sub ${marker}); canceling now, check for a renewal charge to refund manually`,
+              );
+              await stripeGateway.cancelNow(marker);
+              switchesCanceledNow++;
+              safe = true;
+            } else if (isLiveRemote && renewalFired) {
               console.error(
                 `[billing-downgrade-cron] CRITICAL: leg D renewal escaped during the switch race for workspace ${wsId} (stripe sub ${marker}); canceling now, check for a renewal charge to refund manually`,
               );
