@@ -16,6 +16,13 @@ export interface NormalizedCommentEvent {
   raw: unknown;
 }
 
+// Um timestamp cru inválido chegaria ao Postgres como timestamptz inválido e
+// viraria evento-veneno (processed_at nunca preenche, sweep retenta para sempre).
+export function toValidIso(ts: string): string | undefined {
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+}
+
 // deno-lint-ignore no-explicit-any
 function toEvent(igUserId: string, change: any): NormalizedCommentEvent | null {
   const value = change?.value;
@@ -32,7 +39,7 @@ function toEvent(igUserId: string, change: any): NormalizedCommentEvent | null {
       timestamp = d.toISOString();
     }
   } else if (typeof value.timestamp === "string") {
-    timestamp = value.timestamp;
+    timestamp = toValidIso(value.timestamp);
   }
 
   return {

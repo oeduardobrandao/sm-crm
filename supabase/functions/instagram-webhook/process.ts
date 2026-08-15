@@ -6,7 +6,7 @@
 // NUNCA lança: cada linha roda no seu próprio try/catch e um crash deixa
 // `processed_at` NULL de propósito, para o sweep do cron reprocessar depois.
 import type { EventRow } from "./handler.ts";
-import { parseWebhookDelivery } from "./parse.ts";
+import { parseWebhookDelivery, toValidIso } from "./parse.ts";
 import { matchesKeywords, pickWinner } from "../_shared/instagram-comment-matching.ts";
 import type { AutomationCandidate } from "../_shared/instagram-comment-matching.ts";
 import {
@@ -195,7 +195,7 @@ async function processRow(svc: DbClient, row: EventRow, ctx: RowCtx): Promise<vo
     text = text ?? fetched.text;
     parentId = parentId ?? fetched.parent_id;
     mediaId = mediaId ?? fetched.media?.id;
-    getTimestamp = fetched.timestamp;
+    getTimestamp = fetched.timestamp === undefined ? undefined : toValidIso(fetched.timestamp);
   }
 
   // Ainda indeterminado após o GET (sem from ou sem text) -> não dá para decidir
