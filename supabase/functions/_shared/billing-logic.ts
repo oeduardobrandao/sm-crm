@@ -97,6 +97,21 @@ export function pendingPagarmeAttemptBlocksCheckout(
   return hasPendingAttempt;
 }
 
+/**
+ * Gate de quarentena (spec do switch, decisao 10): uma attempt `quarantined` marca uma
+ * cobranca possivelmente NAO estornada em revisao manual. Diferente do gate de pending
+ * acima (fail-open: pending expira sozinho em 15min), este FALHA FECHADO: um erro de
+ * leitura bloqueia o checkout, porque liberar poderia cobrar o usuario de novo antes da
+ * revisao.
+ */
+export function quarantinedAttemptBlocksCheckout(
+  found: boolean,
+  readError: { message: string } | null | undefined,
+): boolean {
+  if (readError) return true;
+  return found;
+}
+
 export interface PlanPriceRow {
   id: string;
   stripe_price_id: string | null;

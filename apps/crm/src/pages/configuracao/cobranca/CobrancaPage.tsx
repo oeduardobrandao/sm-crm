@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import {
   listActivePlans,
   getWorkspaceSubscription,
-  getEffectivePlanId,
+  getEffectivePlanWithSource,
   startCheckout,
   openBillingPortal,
   cancelPagarmeSubscription,
@@ -19,6 +19,8 @@ import {
   isPlanVisible,
   canUpgradeTo,
   checkoutBlocked,
+  ceilPeriodEndToUtcDate,
+  switchEligible,
 } from './plan-display';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
@@ -104,7 +106,7 @@ export default function CobrancaPage() {
   const [interval, setInterval] = useState<BillingInterval>('month');
   const [busy, setBusy] = useState<string | null>(null);
   const [pagarmeDialog, setPagarmeDialog] = useState<{
-    mode: 'checkout' | 'update-card';
+    mode: 'checkout' | 'update-card' | 'switch';
     plan: BillingPlan | null;
   } | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -130,12 +132,17 @@ export default function CobrancaPage() {
     enabled: isOwner,
   });
   // Source of truth for the workspace's plan, incl. comp overrides (e.g. Lifetime)
-  // that have no Stripe subscription and would otherwise read as Free.
-  const { data: effectivePlanId, refetch: refetchEffectivePlan } = useQuery({
-    queryKey: ['billing', 'effective-plan'],
-    queryFn: getEffectivePlanId,
+  // that have no Stripe subscription and would otherwise read as Free. planSource is
+  // used below to hide the switch CTA from comped (plan_source='manual') workspaces —
+  // a distinct query key from the ['billing', 'effective-plan'] TrialNudgeCard/ComecarPage
+  // share, since its queryFn returns a different shape.
+  const { data: effectivePlan, refetch: refetchEffectivePlan } = useQuery({
+    queryKey: ['billing', 'effective-plan-with-source'],
+    queryFn: getEffectivePlanWithSource,
     enabled: isOwner,
   });
+  const effectivePlanId = effectivePlan?.planId;
+  const planSource = effectivePlan?.planSource;
 
   // Refetches the subscription + effective-plan queries every 2s, up to 5 tries, so the
   // UI catches up once the backend (Stripe webhook or the synchronous Pagar.me checkout)
@@ -215,6 +222,20 @@ export default function CobrancaPage() {
   // otherwise have offered — active/trialing already suppress the CTA via hasActiveSub, so that
   // path stays exactly as it is today.
   const blocked = checkoutBlocked(subscription, new Date());
+  // Switch mensal Stripe -> 12x (espelho do gate do backend; os dois mudam juntos).
+  // planSource null/undefined (still loading, or unset) fails OPEN here on purpose — this
+  // gate is UX only, the backend's own plan-writer guard (plan_source='manual' skips every
+  // write) is the real enforcement. A comped workspace (plan_source='manual') never sees the
+  // CTA, since the backend would 409 it after a full card entry.
+  const canSwitch =
+    switchEligible(subscription) && !isInternalPlan(currentPlanId) && planSource !== 'manual';
+  const switchWindow =
+    subscription?.provider === 'pagarme' &&
+    subscription?.status === 'trialing' &&
+    subscription?.switchScheduled === true;
+  const switchPreviewDate = subscription?.current_period_end
+    ? ceilPeriodEndToUtcDate(subscription.current_period_end)
+    : null;
 
   /**
    * Starts the Stripe checkout for `planId` at the current `interval`. Shared by the Stripe
@@ -244,6 +265,12 @@ export default function CobrancaPage() {
     await startStripeUpgrade(planId);
   }
 
+  function handleSwitch(planId: string) {
+    const plan = plans?.find((p) => p.id === planId);
+    captureCheckoutStarted(planId, 'year', 'billing', 'pagarme');
+    setPagarmeDialog({ mode: 'switch', plan: plan ?? null });
+  }
+
   async function handleManage() {
     setBusy('portal');
     try {
@@ -258,20 +285,55 @@ export default function CobrancaPage() {
   async function handleCancelPagarmeSubscription() {
     setCancelling(true);
     try {
-      await cancelPagarmeSubscription();
-      toast.success('Assinatura cancelada.');
+      const result = await cancelPagarmeSubscription();
+      toast.success(
+        result.status === 'reverted'
+          ? 'Troca desfeita. Seu plano mensal continua como estava.'
+          : 'Assinatura cancelada.',
+      );
       startPlanRefetchPoll();
       // Close only on success: a failure must leave the dialog open with the button
       // re-enabled so the user has an in-context retry instead of only a toast.
       setCancelDialogOpen(false);
     } catch (err) {
+      // O 409 de consolidação (a fronteira cruzou durante o undo) muda o estado no
+      // backend: mostra a mensagem e re-sincroniza.
       toast.error((err as Error).message);
+      startPlanRefetchPoll();
     } finally {
       setCancelling(false);
     }
   }
 
   function renderCta(p: BillingPlan) {
+    // Um assinante mensal ativo tem hasActiveSub true, então nenhum branch abaixo mostraria
+    // CTA, inclusive o card do próprio plano atual, que sem este branch cairia direto em
+    // "Plano atual" estático. Por isso o switch vem ANTES de tudo, inclusive do check de
+    // plano atual.
+    const switchable =
+      canSwitch && interval === 'year' && isPagarme12xEnabled(p) && p.id !== 'free';
+    if (switchable) {
+      return (
+        <>
+          <button
+            className="btn-primary"
+            onClick={() => handleSwitch(p.id)}
+            disabled={busy === p.id}
+          >
+            {busy === p.id
+              ? 'Aguarde…'
+              : p.id === currentPlanId
+                ? 'Trocar para o anual em 12x'
+                : `Mudar para ${p.name} em 12x`}
+          </button>
+          <p className="plan-cta__note">
+            {switchPreviewDate
+              ? `Primeira parcela prevista para ${formatUtcDateBR(switchPreviewDate)}. Sem cobrança agora.`
+              : 'Sem cobrança agora. A primeira parcela vem depois do período já pago.'}
+          </p>
+        </>
+      );
+    }
     if (p.id === currentPlanId) {
       return <span className="plan-cta__static">Plano atual</span>;
     }
@@ -324,13 +386,15 @@ export default function CobrancaPage() {
   // isFormattableDate check stands in for it.
   const cancelDialogDescription = !showPagarmeManage
     ? ''
-    : subscription?.status === 'trialing'
-      ? 'Sua assinatura será cancelada agora, sem cobrança.'
-      : subscription?.status === 'past_due'
-        ? 'Sua assinatura será cancelada agora.'
-        : subscription?.current_period_end && isFormattableDate(subscription.current_period_end)
-          ? `Seu acesso continua até ${formatUtcDateBR(subscription.current_period_end)}. Depois disso, o workspace volta ao plano gratuito.`
-          : 'Sua assinatura será cancelada.';
+    : switchWindow
+      ? 'Seu plano mensal continua como estava e o 12x agendado é cancelado sem cobrança.'
+      : subscription?.status === 'trialing'
+        ? 'Sua assinatura será cancelada agora, sem cobrança.'
+        : subscription?.status === 'past_due'
+          ? 'Sua assinatura será cancelada agora.'
+          : subscription?.current_period_end && isFormattableDate(subscription.current_period_end)
+            ? `Seu acesso continua até ${formatUtcDateBR(subscription.current_period_end)}. Depois disso, o workspace volta ao plano gratuito.`
+            : 'Sua assinatura será cancelada.';
 
   return (
     <>
@@ -344,16 +408,22 @@ export default function CobrancaPage() {
                 <span
                   className={`badge ${subscription?.status === 'past_due' ? 'badge-warning' : 'badge-success'}`}
                 >
-                  {subscription?.status === 'trialing'
-                    ? 'Teste'
-                    : subscription?.status === 'past_due'
-                      ? 'Pagamento pendente'
-                      : 'Ativo'}
+                  {switchWindow
+                    ? 'Troca agendada'
+                    : subscription?.status === 'trialing'
+                      ? 'Teste'
+                      : subscription?.status === 'past_due'
+                        ? 'Pagamento pendente'
+                        : 'Ativo'}
                 </span>
               </div>
               {subscription?.current_period_end && (
                 <div className="billing-current__meta">
-                  {subscription.cancel_at_period_end ? 'Cancela em ' : 'Renova em '}
+                  {switchWindow
+                    ? 'Primeira cobrança em '
+                    : subscription.cancel_at_period_end
+                      ? 'Cancela em '
+                      : 'Renova em '}
                   {formatPeriodEnd(subscription.current_period_end, subscription.provider)}
                 </div>
               )}
@@ -373,7 +443,7 @@ export default function CobrancaPage() {
                     Atualizar cartão
                   </button>
                   <button className="btn-secondary" onClick={() => setCancelDialogOpen(true)}>
-                    Cancelar assinatura
+                    {switchWindow ? 'Desfazer a troca' : 'Cancelar assinatura'}
                   </button>
                 </div>
               </div>
@@ -527,8 +597,12 @@ export default function CobrancaPage() {
         }
         source="billing"
         trialEligible={!subscription?.hasEverSubscribed}
+        firstChargeAt={switchPreviewDate}
+        switchChangesPlan={pagarmeDialog?.plan ? pagarmeDialog.plan.id !== currentPlanId : false}
         onPayUpfront={
-          pagarmeDialog?.plan
+          // undefined no modo switch: a saída à vista abriria um checkout Stripe que 409a
+          // com a assinatura ativa.
+          pagarmeDialog?.plan && pagarmeDialog.mode === 'checkout'
             ? () => {
                 const planId = pagarmeDialog.plan!.id;
                 setPagarmeDialog(null);

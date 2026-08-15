@@ -277,3 +277,57 @@ export function shouldSweepRemoteSubscription(
   if (!sub.metadata?.workspace_id) return "skip_unrecognized";
   return "cancel";
 }
+
+/**
+ * Payload completo que devolve a linha ao ownership Stripe depois de um switch desfeito.
+ * Usado pelo UNDO (pagarme-subscription) e pelo ROLLBACK da perna Stripe do checkout
+ * (pagarme-checkout). Mesmo invariante de statement unico do bind: provider + mirror +
+ * markers juntos, com CAS do caller pinado nas coordenadas pagarme observadas.
+ * pagarme_subscription_id e LIMPO de proposito: sem ele a future sub remota deixa de ser
+ * "linked" e o leg C do billing-downgrade-cron varre a orfa se o DELETE best-effort do
+ * caller falhar. current_period_end e plan_id sao OMITIDOS quando desconhecidos (nunca
+ * null por cima; invariante dos handlers de cancel).
+ */
+export function buildRestoreStripeColumns(args: {
+  status: "active" | "trialing";
+  cancelAtPeriodEnd: boolean;
+  periodEndIso: string | null;
+  sourcePlanId: string | null;
+  amountColumns: Record<string, unknown>;
+  nowIso: string;
+}): Record<string, unknown> {
+  return {
+    provider: "stripe",
+    status: args.status,
+    ...(args.sourcePlanId ? { plan_id: args.sourcePlanId } : {}),
+    billing_interval: "month",
+    installments: null,
+    ...(args.periodEndIso ? { current_period_end: args.periodEndIso } : {}),
+    cancel_at_period_end: args.cancelAtPeriodEnd,
+    pagarme_subscription_id: null,
+    switched_from_stripe_subscription_id: null,
+    switched_from_plan_id: null,
+    switched_from_cancel_at_period_end: null,
+    failed_payment_count: 0,
+    past_due_since: null,
+    next_payment_attempt: null,
+    ...args.amountColumns,
+    updated_at: args.nowIso,
+  };
+}
+
+/**
+ * Bloqueia o Billing Portal da Stripe quando a linha e pagarme (in force) ou carrega uma
+ * janela de switch viva: o "renovar" do portal desfaria o cancel_at_period_end na Stripe,
+ * o webhook resultante e negado pos-flip e nada local perceberia ate o leg D. Cobranca
+ * dupla no start_at. Linhas realmente Stripe seguem abrindo o portal normalmente.
+ */
+export function stripePortalBlocked(row: {
+  provider?: string | null;
+  status?: string | null;
+  switched_from_stripe_subscription_id?: string | null;
+} | null | undefined): boolean {
+  if (!row) return false;
+  if (row.provider !== "pagarme") return false;
+  return isInForce(row.status) || !!row.switched_from_stripe_subscription_id;
+}

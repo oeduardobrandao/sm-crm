@@ -13,13 +13,14 @@ vi.mock('@/services/billing', async (importOriginal) => {
     ...actual,
     listActivePlans: vi.fn(),
     getWorkspaceSubscription: vi.fn(),
-    getEffectivePlanId: vi.fn(),
+    getEffectivePlanWithSource: vi.fn(),
     startCheckout: vi.fn(),
     openBillingPortal: vi.fn(),
     cancelPagarmeSubscription: vi.fn(),
   };
 });
 vi.mock('@/lib/checkout-analytics', () => ({ captureCheckoutStarted: vi.fn() }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // UsagePanel (rendered by CobrancaPage) reaches AuthContext via useContext directly, which the
 // bare useAuth mock above doesn't provide. Mock its hooks the same way ProtectedRoute.test.tsx
 // mocks useWorkspaceLimits, and keep it a no-op (isUnlimited) since these tests aren't about it.
@@ -31,12 +32,14 @@ import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useWorkspaceUsage } from '@/hooks/useWorkspaceUsage';
 import { useIsWorkspaceOwner } from '@/hooks/useIsWorkspaceOwner';
+import { toast } from 'sonner';
 import {
   listActivePlans,
   getWorkspaceSubscription,
-  getEffectivePlanId,
+  getEffectivePlanWithSource,
   startCheckout,
   cancelPagarmeSubscription,
+  BillingApiError,
   type BillingPlan,
   type WorkspaceSubscription,
 } from '@/services/billing';
@@ -86,10 +89,30 @@ function subscription(overrides: Partial<WorkspaceSubscription>): WorkspaceSubsc
     next_payment_attempt: null,
     provider: null,
     installments: null,
+    billingInterval: null,
+    switchScheduled: false,
     hasEverSubscribed: false,
     ...overrides,
   };
 }
+
+// Elegível ao switch mensal->12x: stripe, ativo, billingInterval não-anual.
+const MONTHLY_STRIPE_SUB = subscription({
+  status: 'active',
+  provider: 'stripe',
+  billingInterval: 'month',
+  current_period_end: '2026-09-15T14:23:11Z',
+});
+
+// Janela pós-switch: linha pagarme ainda em trialing (o mensal em curso) carregando a
+// marca switchScheduled até a fronteira virar.
+const SWITCH_WINDOW_SUB = subscription({
+  provider: 'pagarme',
+  status: 'trialing',
+  switchScheduled: true,
+  installments: 12,
+  current_period_end: '2026-09-16T00:00:00Z',
+});
 
 const assign = vi.fn();
 
@@ -99,7 +122,7 @@ beforeEach(() => {
   // so these tests exercise the resolved owner path, not the fallback.
   vi.mocked(useAuth).mockReturnValue({ role: 'owner', workspaceRole: 'owner' } as never);
   vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN]);
-  vi.mocked(getEffectivePlanId).mockResolvedValue('free');
+  vi.mocked(getEffectivePlanWithSource).mockResolvedValue({ planId: 'free', planSource: 'system' });
   vi.mocked(startCheckout).mockResolvedValue('https://checkout.stripe.com/abc');
   // UsagePanel is covered by its own test suite; keep it a no-op here (isUnlimited: true).
   vi.mocked(useWorkspaceLimits).mockReturnValue({
@@ -658,6 +681,212 @@ describe('CobrancaPage', () => {
           'Seu acesso continua até 12/09/2026. Depois disso, o workspace volta ao plano gratuito.',
         ),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('Switch mensal -> 12x', () => {
+    it('assinante mensal stripe vê o CTA de switch no card do plano ATUAL no toggle anual', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: 'stripe',
+      });
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+
+      expect(
+        await screen.findByRole('button', { name: 'Trocar para o anual em 12x' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Primeira parcela prevista para 16/09/2026. Sem cobrança agora.'),
+      ).toBeInTheDocument();
+    });
+
+    it('assinante mensal stripe vê "Mudar para {plano} em 12x" nos outros cards anuais', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      // Plano atual não é o Pro renderizado no grid: o card do Pro deve oferecer o
+      // switch com o nome do plano, não a variante "Trocar para o anual em 12x".
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'start',
+        planSource: 'stripe',
+      });
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+
+      expect(
+        await screen.findByRole('button', { name: 'Mudar para Pro em 12x' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Trocar para o anual em 12x' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('clicar no CTA de switch abre o dialog em modo switch SEM chamar startCheckout', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: 'stripe',
+      });
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Trocar para o anual em 12x' }));
+
+      expect(
+        await screen.findByRole('heading', { name: 'Trocar para o anual em 12x' }),
+      ).toBeInTheDocument();
+      expect(startCheckout).not.toHaveBeenCalled();
+      expect(captureCheckoutStarted).toHaveBeenCalledWith('pro', 'year', 'billing', 'pagarme');
+    });
+
+    it('workspace comped (plan_source manual) NAO ve o CTA de switch mesmo elegivel', async () => {
+      // Um workspace comped tem plan_source='manual' -- o plan-writer do backend recusa
+      // TODA escrita de plano nele (inclusive o switch), então a CTA nunca deve aparecer
+      // mesmo com uma assinatura mensal Stripe elegível por trás.
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: 'manual',
+      });
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+      await screen.findAllByText('Pro');
+
+      expect(screen.queryByText(/em 12x$/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Trocar para o anual em 12x' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('workspace nao-manual (planSource stripe) continua vendo o CTA de switch', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: 'stripe',
+      });
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+
+      expect(
+        await screen.findByRole('button', { name: 'Trocar para o anual em 12x' }),
+      ).toBeInTheDocument();
+    });
+
+    it('sem CTA de switch para: anual stripe, past_due, linha pagarme, toggle mensal', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: 'stripe',
+      });
+
+      // 1) Já está no anual: billingInterval 'year' desqualifica o switch.
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({ status: 'active', provider: 'stripe', billingInterval: 'year' }),
+      );
+      const r1 = renderPage();
+      await screen.findAllByText('Pro');
+      fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+      expect(screen.queryByText(/em 12x$/)).not.toBeInTheDocument();
+      r1.unmount();
+
+      // 2) past_due: fora do status estrito active/trialing.
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({ status: 'past_due', provider: 'stripe', billingInterval: 'month' }),
+      );
+      const r2 = renderPage();
+      await screen.findAllByText('Pro');
+      fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+      expect(screen.queryByText(/em 12x$/)).not.toBeInTheDocument();
+      r2.unmount();
+
+      // 3) Linha já é pagarme: nada para trocar.
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(
+        subscription({ status: 'active', provider: 'pagarme', billingInterval: 'month' }),
+      );
+      const r3 = renderPage();
+      await screen.findAllByText('Pro');
+      fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+      expect(screen.queryByText(/em 12x$/)).not.toBeInTheDocument();
+      r3.unmount();
+
+      // 4) Toggle ainda em Mensal: o switch só se oferece no toggle Anual.
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
+      renderPage();
+      await screen.findAllByText('Pro');
+      expect(screen.queryByText(/em 12x$/)).not.toBeInTheDocument();
+    });
+
+    it('janela do switch: badge "Troca agendada", meta "Primeira cobrança em", ações Atualizar cartão + Desfazer a troca', async () => {
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(SWITCH_WINDOW_SUB);
+      renderPage();
+
+      expect(await screen.findByText('Troca agendada')).toBeInTheDocument();
+      expect(screen.queryByText('Teste')).not.toBeInTheDocument();
+      expect(
+        await screen.findByText(
+          (_content, node) => node?.textContent === 'Primeira cobrança em 16/09/2026',
+        ),
+      ).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: 'Atualizar cartão' })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: 'Desfazer a troca' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Cancelar assinatura' })).not.toBeInTheDocument();
+    });
+
+    it('undo: dialog com copy própria e sucesso reverted mostra o toast de troca desfeita', async () => {
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(SWITCH_WINDOW_SUB);
+      vi.mocked(cancelPagarmeSubscription).mockResolvedValue({
+        status: 'reverted',
+        access_until: '2026-09-15T14:23:11Z',
+      });
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Desfazer a troca' }));
+      expect(
+        await screen.findByText(
+          'Seu plano mensal continua como estava e o 12x agendado é cancelado sem cobrança.',
+        ),
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sim, cancelar assinatura' }));
+
+      await waitFor(() => expect(cancelPagarmeSubscription).toHaveBeenCalledTimes(1));
+      await waitFor(() =>
+        expect(toast.success).toHaveBeenCalledWith(
+          'Troca desfeita. Seu plano mensal continua como estava.',
+        ),
+      );
+    });
+
+    it('undo: 409 de consolidação mostra a mensagem do backend e dispara o poll', async () => {
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(SWITCH_WINDOW_SUB);
+      vi.mocked(cancelPagarmeSubscription).mockRejectedValue(
+        new BillingApiError('A troca já foi concluída e a primeira parcela foi cobrada.'),
+      );
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Desfazer a troca' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Sim, cancelar assinatura' }));
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(
+          'A troca já foi concluída e a primeira parcela foi cobrada.',
+        ),
+      );
     });
   });
 });

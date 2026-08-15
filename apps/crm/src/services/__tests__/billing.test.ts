@@ -19,6 +19,8 @@ import {
   startCheckout,
   openBillingPortal,
   getWorkspaceSubscription,
+  getEffectivePlanId,
+  getEffectivePlanWithSource,
   startPagarmeCheckout,
   cancelPagarmeSubscription,
   updatePagarmeCard,
@@ -221,9 +223,11 @@ describe('billing service', () => {
     next_payment_attempt: null,
     provider: 'stripe',
     installments: null,
+    billing_interval: null,
     stripe_subscription_id: null,
     pagarme_subscription_id: null,
     ever_subscribed_at: null,
+    switched_from_stripe_subscription_id: null,
   };
 
   it('derives hasEverSubscribed and hides the raw stripe id', async () => {
@@ -237,8 +241,29 @@ describe('billing service', () => {
     expect(result).not.toHaveProperty('pagarme_subscription_id');
     expect(result).not.toHaveProperty('ever_subscribed_at');
     expect(subSelect).toHaveBeenCalledWith(
-      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, provider, installments, stripe_subscription_id, pagarme_subscription_id, ever_subscribed_at',
+      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, provider, installments, billing_interval, stripe_subscription_id, pagarme_subscription_id, ever_subscribed_at, switched_from_stripe_subscription_id',
     );
+  });
+
+  it('expõe billingInterval e deriva switchScheduled do marker, descartando o id cru', async () => {
+    mockSubscriptionRow({
+      ...baseSubscriptionRow,
+      billing_interval: 'month',
+      switched_from_stripe_subscription_id: 'sub_s1',
+    });
+    const sub = await getWorkspaceSubscription();
+    expect(sub?.billingInterval).toBe('month');
+    expect(sub?.switchScheduled).toBe(true);
+    expect(sub as object).not.toHaveProperty('switched_from_stripe_subscription_id');
+  });
+
+  it('switchScheduled false quando o marker é null', async () => {
+    mockSubscriptionRow({
+      ...baseSubscriptionRow,
+      switched_from_stripe_subscription_id: null,
+    });
+    const sub = await getWorkspaceSubscription();
+    expect(sub?.switchScheduled).toBe(false);
   });
 
   it('derives hasEverSubscribed true via a pagarme subscription id', async () => {
@@ -276,6 +301,58 @@ describe('billing service', () => {
     expect(result?.installments).toBeNull();
   });
 
+  describe('getEffectivePlanId / getEffectivePlanWithSource', () => {
+    function mockWorkspaceRow(row: Record<string, unknown> | null) {
+      const maybeSingle = vi.fn().mockResolvedValue({ data: row, error: null });
+      const wsEq = vi.fn().mockReturnValue({ maybeSingle });
+      const wsSelect = vi.fn().mockReturnValue({ eq: wsEq });
+      const profileSingle = vi.fn().mockResolvedValue({ data: { conta_id: 'ws-1' }, error: null });
+      const profileEq = vi.fn().mockReturnValue({ single: profileSingle });
+      const profileSelect = vi.fn().mockReturnValue({ eq: profileEq });
+      vi.mocked(supabase.auth.getUser).mockResolvedValue({
+        data: { user: { id: 'user-1' } },
+      } as never);
+      from.mockImplementation((table: string) =>
+        table === 'profiles' ? { select: profileSelect } : { select: wsSelect },
+      );
+      return { wsSelect };
+    }
+
+    it('getEffectivePlanId returns just the plan id, selecting plan_id + plan_source in one read', async () => {
+      const { wsSelect } = mockWorkspaceRow({ plan_id: 'pro', plan_source: 'stripe' });
+      await expect(getEffectivePlanId()).resolves.toBe('pro');
+      expect(wsSelect).toHaveBeenCalledWith('plan_id, plan_source');
+    });
+
+    it('getEffectivePlanId returns null when the user has no profile/workspace', async () => {
+      const profileSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+      const profileEq = vi.fn().mockReturnValue({ single: profileSingle });
+      const profileSelect = vi.fn().mockReturnValue({ eq: profileEq });
+      vi.mocked(supabase.auth.getUser).mockResolvedValue({
+        data: { user: { id: 'user-1' } },
+      } as never);
+      from.mockReturnValue({ select: profileSelect });
+      await expect(getEffectivePlanId()).resolves.toBeNull();
+    });
+
+    it('getEffectivePlanWithSource exposes both planId and planSource from the SAME read', async () => {
+      const { wsSelect } = mockWorkspaceRow({ plan_id: 'pro', plan_source: 'manual' });
+      await expect(getEffectivePlanWithSource()).resolves.toEqual({
+        planId: 'pro',
+        planSource: 'manual',
+      });
+      expect(wsSelect).toHaveBeenCalledWith('plan_id, plan_source');
+    });
+
+    it('getEffectivePlanWithSource returns nulls for a signed-out user, never throws', async () => {
+      vi.mocked(supabase.auth.getUser).mockResolvedValue({ data: { user: null } } as never);
+      await expect(getEffectivePlanWithSource()).resolves.toEqual({
+        planId: null,
+        planSource: null,
+      });
+    });
+  });
+
   describe('startPagarmeCheckout', () => {
     const payload: PagarmeCheckoutPayload = {
       plan_id: 'pro',
@@ -307,6 +384,25 @@ describe('billing service', () => {
       expect(calledUrl).toContain('/functions/v1/pagarme-checkout');
       expect(JSON.parse(opts.body)).toEqual({ ...payload, interval: 'year', installments: 12 });
       expect(opts.headers.Authorization).toBe('Bearer tok');
+    });
+
+    it('repassa switch: true no body quando presente', async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          status: 'active',
+          trial_ends_at: null,
+          next_charge_at: '2026-09-01T00:00:00Z',
+          installment_amount_cents: 19990,
+          switched: true,
+          first_charge_at: '2026-09-01T00:00:00Z',
+        }),
+      });
+      const result = await startPagarmeCheckout({ ...payload, switch: true });
+      expect(result.switched).toBe(true);
+      expect(result.first_charge_at).toBe('2026-09-01T00:00:00Z');
+      const [, opts] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(JSON.parse(opts.body).switch).toBe(true);
     });
 
     it('surfaces the server error string and code on non-ok', async () => {
@@ -359,6 +455,15 @@ describe('billing service', () => {
         message: 'Nenhuma assinatura ativa',
         code: 'not_found',
       });
+    });
+
+    it('returns a reverted status when the cancel undoes a scheduled switch', async () => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        json: async () => ({ status: 'reverted', access_until: null }),
+      });
+      const result = await cancelPagarmeSubscription();
+      expect(result).toEqual({ status: 'reverted', access_until: null });
     });
   });
 

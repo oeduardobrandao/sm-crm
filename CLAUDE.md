@@ -157,7 +157,7 @@ Monorepo with npm workspaces:
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` -- Cloudflare R2
 - `CRON_SECRET` -- Shared secret for cron function authentication
 - `GEMINI_API_KEY` -- Google Gemini key for AI narrative generation in analytics reports (instagram-analytics, instagram-report-generator-v2). Optional, no default -- AI narrative is skipped when unset
-- `STRIPE_SECRET_KEY` -- Stripe API secret key. REQUIRED by billing functions, no default -- throw if missing
+- `STRIPE_SECRET_KEY` -- Stripe API secret key. REQUIRED by billing functions, no default -- throw if missing. Also used (optionally) by billing-downgrade-cron for the switch's leg D enforcement; absent, that leg is skipped with `switchSkipped: true`
 - `STRIPE_WEBHOOK_SECRET` -- Stripe webhook signing secret. REQUIRED by stripe-webhook, no default -- throw if missing
 - `PAGARME_SECRET_KEY` -- Pagar.me v5 API secret for 12x installment billing (pagarme-client). No default; shared client throws on first call when missing
 - `PAGARME_WEBHOOK_TOKEN` -- secret path segment of the Pagar.me webhook URL

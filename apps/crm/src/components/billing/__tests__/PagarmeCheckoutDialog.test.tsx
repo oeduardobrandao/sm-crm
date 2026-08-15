@@ -403,6 +403,87 @@ describe('PagarmeCheckoutDialog', () => {
   });
 });
 
+describe('modo switch', () => {
+  const switchProps = () => ({
+    ...baseProps(),
+    mode: 'switch' as const,
+    firstChargeAt: '2026-09-16',
+    trialEligible: false,
+  });
+
+  const SWITCH_RESULT: PagarmeCheckoutResult = {
+    status: 'trialing',
+    trial_ends_at: null,
+    next_charge_at: '2026-09-16',
+    installment_amount_cents: 12990,
+    switched: true,
+    first_charge_at: '2026-09-16',
+  };
+
+  it('título e nota de previsão, sem copy de trial e sem saída à vista', () => {
+    render(<PagarmeCheckoutDialog {...switchProps()} onPayUpfront={undefined} />);
+    expect(screen.getByText('Trocar para o anual em 12x')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Sem cobrança agora. A primeira parcela está prevista para 16/09/2026, quando termina o período que você já pagou.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/30 dias grátis/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Pagar à vista')).not.toBeInTheDocument();
+  });
+
+  it('submit envia switch: true no payload', async () => {
+    render(<PagarmeCheckoutDialog {...switchProps()} />);
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar troca' }));
+
+    await waitFor(() => expect(startPagarmeCheckoutMock).toHaveBeenCalledTimes(1));
+    expect(startPagarmeCheckoutMock).toHaveBeenCalledWith(
+      expect.objectContaining({ switch: true }),
+    );
+  });
+
+  it('CTA é "Confirmar troca"', () => {
+    render(<PagarmeCheckoutDialog {...switchProps()} />);
+    expect(screen.getByRole('button', { name: 'Confirmar troca' })).toBeInTheDocument();
+  });
+
+  it('sucesso usa first_charge_at do response e a copy de mesmo plano', async () => {
+    startPagarmeCheckoutMock.mockResolvedValueOnce(SWITCH_RESULT);
+    render(<PagarmeCheckoutDialog {...switchProps()} />);
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar troca' }));
+
+    expect(await screen.findByText('Troca confirmada!')).toBeInTheDocument();
+    expect(
+      screen.getByText('Primeira parcela de 12x em 16/09/2026. Até lá nada muda no seu acesso.'),
+    ).toBeInTheDocument();
+  });
+
+  it('sucesso com troca entre planos avisa a mudança imediata de recursos', async () => {
+    startPagarmeCheckoutMock.mockResolvedValueOnce(SWITCH_RESULT);
+    render(<PagarmeCheckoutDialog {...switchProps()} switchChangesPlan />);
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar troca' }));
+
+    expect(await screen.findByText('Troca confirmada!')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Primeira parcela de 12x em 16/09/2026. Os recursos do plano Pro passam a valer imediatamente.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('firstChargeAt null degrada a nota sem data', () => {
+    render(<PagarmeCheckoutDialog {...switchProps()} firstChargeAt={null} />);
+    expect(
+      screen.getByText(
+        'Sem cobrança agora. A primeira parcela vem quando terminar o período que você já pagou.',
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
 describe('formatUtcDateBR', () => {
   it('reads the calendar date straight from the ISO prefix, never through a local timezone', () => {
     // The regression this guards: `format(new Date(iso), 'dd/MM/yyyy')` converts a midnight-UTC

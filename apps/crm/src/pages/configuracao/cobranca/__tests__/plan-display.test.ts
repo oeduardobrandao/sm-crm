@@ -6,6 +6,8 @@ import {
   canUpgradeTo,
   isSelectableTrialPlan,
   checkoutBlocked,
+  switchEligible,
+  ceilPeriodEndToUtcDate,
 } from '../plan-display';
 
 describe('plan-display', () => {
@@ -193,6 +195,41 @@ describe('plan-display', () => {
     it('does not block other terminal statuses (free to re-subscribe)', () => {
       expect(checkoutBlocked({ status: 'incomplete_expired' }, now)).toBe(false);
       expect(checkoutBlocked({ status: null }, now)).toBe(false);
+    });
+  });
+
+  describe('switchEligible', () => {
+    const base = { provider: 'stripe', status: 'active', billingInterval: 'month' };
+    it('mensal stripe active/trialing é elegível (provider null = stripe legado)', () => {
+      expect(switchEligible(base)).toBe(true);
+      expect(switchEligible({ ...base, status: 'trialing' })).toBe(true);
+      expect(switchEligible({ ...base, provider: null })).toBe(true);
+      expect(switchEligible({ ...base, billingInterval: null })).toBe(true);
+    });
+    it('past_due, pagarme, anual e ausência nunca são elegíveis', () => {
+      expect(switchEligible({ ...base, status: 'past_due' })).toBe(false);
+      expect(switchEligible({ ...base, status: 'unpaid' })).toBe(false);
+      expect(switchEligible({ ...base, status: 'canceled' })).toBe(false);
+      expect(switchEligible({ ...base, provider: 'pagarme' })).toBe(false);
+      expect(switchEligible({ ...base, billingInterval: 'year' })).toBe(false);
+      expect(switchEligible(null)).toBe(false);
+    });
+  });
+
+  describe('ceilPeriodEndToUtcDate', () => {
+    // MESMOS casos do teste Deno de ceilToUtcMidnightDate: as duas implementações precisam
+    // concordar ou a data prometida no form diverge do start_at real.
+    it('meio-dia sobe para o próximo midnight UTC', () => {
+      expect(ceilPeriodEndToUtcDate('2026-09-15T14:23:11Z')).toBe('2026-09-16');
+    });
+    it('midnight exato fica', () => {
+      expect(ceilPeriodEndToUtcDate('2026-09-15T00:00:00.000Z')).toBe('2026-09-15');
+    });
+    it('virada de mês', () => {
+      expect(ceilPeriodEndToUtcDate('2026-08-31T23:59:59Z')).toBe('2026-09-01');
+    });
+    it('iso inválido -> null', () => {
+      expect(ceilPeriodEndToUtcDate('not-a-date')).toBeNull();
     });
   });
 });

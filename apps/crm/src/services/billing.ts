@@ -56,6 +56,10 @@ export interface WorkspaceSubscription {
   provider: string | null;
   /** Pagar.me installment count (12 for the annual-upfront-in-12x plan); null for Stripe. */
   installments: number | null;
+  /** 'month' | 'year' | null. Null = price não resolvido (legado); trate como "não anual". */
+  billingInterval: string | null;
+  /** True enquanto a linha carrega uma troca mensal→12x agendada (janela do switch). */
+  switchScheduled: boolean;
   /**
    * True once the workspace has ever held a Stripe or Pagar.me subscription — the
    * trial eligibility flag. The raw stripe_subscription_id / pagarme_subscription_id
@@ -124,31 +128,59 @@ export async function listPublicPricingPlans(): Promise<PublicPricingPlan[]> {
     .map((plan) => ({ ...plan, pagarme_12x_enabled: Boolean(plan.pagarme_12x_enabled) }));
 }
 
+export interface EffectivePlan {
+  planId: string | null;
+  /** 'system' | 'stripe' | 'manual' | 'pagarme' | null. 'manual' = admin comp override. */
+  planSource: string | null;
+}
+
 /**
- * The current workspace's effective plan id (`workspaces.plan_id`). This is the
- * source of truth for what plan the workspace is on — including admin/comp overrides
- * like Lifetime, which have no Stripe subscription. Owner can read their own
- * workspace row via the `ws_select_member` RLS policy. Returns null when unset
- * (resolves to the default plan elsewhere).
+ * Shared read behind `getEffectivePlanId` / `getEffectivePlanWithSource` — one workspace
+ * lookup, two shapes. Owner can read their own workspace row via the `ws_select_member` RLS
+ * policy.
  */
-export async function getEffectivePlanId(): Promise<string | null> {
+async function fetchEffectivePlan(): Promise<EffectivePlan> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) return { planId: null, planSource: null };
   const { data: profile } = await supabase
     .from('profiles')
     .select('conta_id')
     .eq('id', user.id)
     .single();
-  if (!profile?.conta_id) return null;
+  if (!profile?.conta_id) return { planId: null, planSource: null };
   const { data, error } = await supabase
     .from('workspaces')
-    .select('plan_id')
+    .select('plan_id, plan_source')
     .eq('id', profile.conta_id)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return (data?.plan_id as string | null) ?? null;
+  return {
+    planId: (data?.plan_id as string | null) ?? null,
+    planSource: (data?.plan_source as string | null) ?? null,
+  };
+}
+
+/**
+ * The current workspace's effective plan id (`workspaces.plan_id`). This is the
+ * source of truth for what plan the workspace is on — including admin/comp overrides
+ * like Lifetime, which have no Stripe subscription. Returns null when unset
+ * (resolves to the default plan elsewhere).
+ */
+export async function getEffectivePlanId(): Promise<string | null> {
+  const { planId } = await fetchEffectivePlan();
+  return planId;
+}
+
+/**
+ * Same read as `getEffectivePlanId`, plus `plan_source` — used by CobrancaPage to gate the
+ * mensal->12x switch CTA away from comped (plan_source='manual') workspaces, which the
+ * backend's own switch gate (stripeSwitchSourceEligible) refuses with a 409 after the user
+ * has already typed a full card into the Pagar.me dialog.
+ */
+export async function getEffectivePlanWithSource(): Promise<EffectivePlan> {
+  return fetchEffectivePlan();
 }
 
 /** Current workspace's subscription row (owner-only via RLS), or null. */
@@ -166,7 +198,7 @@ export async function getWorkspaceSubscription(): Promise<WorkspaceSubscription 
   const { data, error } = await supabase
     .from('workspace_subscriptions')
     .select(
-      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, provider, installments, stripe_subscription_id, pagarme_subscription_id, ever_subscribed_at',
+      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, provider, installments, billing_interval, stripe_subscription_id, pagarme_subscription_id, ever_subscribed_at, switched_from_stripe_subscription_id',
     )
     .eq('workspace_id', profile.conta_id)
     .maybeSingle();
@@ -176,12 +208,19 @@ export async function getWorkspaceSubscription(): Promise<WorkspaceSubscription 
     stripe_subscription_id: stripeSubscriptionId,
     pagarme_subscription_id: pagarmeSubscriptionId,
     ever_subscribed_at: everSubscribedAt,
+    billing_interval: billingInterval,
+    switched_from_stripe_subscription_id: switchedFromStripeSubscriptionId,
     ...rest
   } = data as Record<string, unknown>;
   return {
-    ...(rest as Omit<WorkspaceSubscription, 'hasEverSubscribed' | 'provider' | 'installments'>),
+    ...(rest as Omit<
+      WorkspaceSubscription,
+      'hasEverSubscribed' | 'provider' | 'installments' | 'billingInterval' | 'switchScheduled'
+    >),
     provider: (rest.provider as string | null) ?? null,
     installments: (rest.installments as number | null) ?? null,
+    billingInterval: (billingInterval as string | null) ?? null,
+    switchScheduled: Boolean(switchedFromStripeSubscriptionId),
     hasEverSubscribed: Boolean(stripeSubscriptionId || pagarmeSubscriptionId || everSubscribedAt),
   };
 }
@@ -227,6 +266,8 @@ export interface PagarmeCheckoutPayload {
   phone: { ddd: string; number: string };
   billing_address: PagarmeBillingAddress;
   source: CheckoutSource;
+  /** Switch mensal Stripe → 12x: consentimento explícito (o backend exige o campo). */
+  switch?: true;
 }
 
 export interface PagarmeCheckoutResult {
@@ -234,6 +275,9 @@ export interface PagarmeCheckoutResult {
   trial_ends_at: string | null;
   next_charge_at: string | null;
   installment_amount_cents: number;
+  /** Presentes apenas na resposta de um switch. */
+  switched?: boolean;
+  first_charge_at?: string | null;
 }
 
 async function parseBillingApiError(res: Response): Promise<BillingApiError> {
@@ -259,7 +303,7 @@ export async function startPagarmeCheckout(
 
 /** Cancels the workspace's active Pagar.me subscription. */
 export async function cancelPagarmeSubscription(): Promise<{
-  status: string;
+  status: 'canceled' | 'reverted';
   access_until: string | null;
 }> {
   const res = await fetch(`${FUNCTIONS_BASE}/pagarme-subscription`, {
@@ -268,7 +312,7 @@ export async function cancelPagarmeSubscription(): Promise<{
     body: JSON.stringify({ action: 'cancel' }),
   });
   if (!res.ok) throw await parseBillingApiError(res);
-  return (await res.json()) as { status: string; access_until: string | null };
+  return (await res.json()) as { status: 'canceled' | 'reverted'; access_until: string | null };
 }
 
 /** Swaps the card on file for the workspace's Pagar.me subscription. */

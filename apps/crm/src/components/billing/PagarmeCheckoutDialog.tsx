@@ -47,8 +47,8 @@ import {
 export interface PagarmeCheckoutDialogProps {
   open: boolean;
   onClose: () => void;
-  mode: 'checkout' | 'update-card';
-  /** Required in checkout mode; ignored (no summary/trial note) in update-card mode. */
+  mode: 'checkout' | 'update-card' | 'switch';
+  /** Required in checkout/switch mode; ignored (no summary/trial note) in update-card mode. */
   plan: {
     id: string;
     name: string;
@@ -67,6 +67,11 @@ export interface PagarmeCheckoutDialogProps {
   onPayUpfront?: () => void;
   /** Parent refetches subscription/plan. */
   onSuccess: () => void;
+  /** Switch mode only. Data PREVISTA da 1ª parcela do switch (YYYY-MM-DD, ceil do mirror local).
+   * A data autoritativa vem no response (first_charge_at) e é a única exibida como definitiva. */
+  firstChargeAt?: string | null;
+  /** Switch mode only. True quando o switch muda de plano (recursos passam a valer imediatamente). */
+  switchChangesPlan?: boolean;
 }
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível concluir a operação. Tente novamente.';
@@ -130,12 +135,12 @@ const BLANK: FormValues = {
 };
 
 /**
- * Single schema shared by both modes: document/phone are only validated (and only rendered) in
- * checkout mode. superRefine (not two separate z.object schemas) keeps the inferred FormValues
- * shape identical across modes, which is what update-card's unrendered-but-still-in-state
- * document/phone fields need to type-check against.
+ * Single schema shared by all modes: document/phone are only validated (and only rendered) in
+ * checkout and switch mode. superRefine (not separate z.object schemas per mode) keeps the
+ * inferred FormValues shape identical across modes, which is what update-card's
+ * unrendered-but-still-in-state document/phone fields need to type-check against.
  */
-function buildSchema(mode: 'checkout' | 'update-card') {
+function buildSchema(mode: 'checkout' | 'update-card' | 'switch') {
   return z
     .object({
       cardNumber: z.string(),
@@ -194,7 +199,7 @@ function buildSchema(mode: 'checkout' | 'update-card') {
       if (!/^[A-Za-z]{2}$/.test(v.state)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['state'], message: 'UF inválida.' });
       }
-      if (mode === 'checkout') {
+      if (mode === 'checkout' || mode === 'switch') {
         if (!documentValid(v.document)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -222,6 +227,8 @@ export function PagarmeCheckoutDialog({
   trialEligible,
   onPayUpfront,
   onSuccess,
+  firstChargeAt,
+  switchChangesPlan,
 }: PagarmeCheckoutDialogProps) {
   const [step, setStep] = useState<'form' | 'success'>('form');
   const [saving, setSaving] = useState(false);
@@ -303,8 +310,8 @@ export function PagarmeCheckoutDialog({
         state: values.state.toUpperCase(),
       };
 
-      if (mode === 'checkout') {
-        if (!plan) return; // defensive: caller contract requires a plan in checkout mode
+      if (mode === 'checkout' || mode === 'switch') {
+        if (!plan) return; // defensive: caller contract requires a plan in checkout/switch mode
         try {
           const result = await startPagarmeCheckout({
             plan_id: plan.id,
@@ -313,6 +320,7 @@ export function PagarmeCheckoutDialog({
             phone: splitPhone(values.phone)!,
             billing_address: billingAddress,
             source,
+            ...(mode === 'switch' ? { switch: true as const } : {}),
           });
           captureEvent('checkout_completed', { plan_id: plan.id, provider: 'pagarme' });
           setSuccessResult(result);
@@ -344,14 +352,32 @@ export function PagarmeCheckoutDialog({
     }
   };
 
-  if (mode === 'checkout' && !plan) return null;
+  if ((mode === 'checkout' || mode === 'switch') && !plan) return null;
 
   const ctaLabel =
     mode === 'checkout'
       ? trialEligible
         ? 'Começar 30 dias grátis'
         : 'Confirmar assinatura'
-      : 'Salvar novo cartão';
+      : mode === 'switch'
+        ? 'Confirmar troca'
+        : 'Salvar novo cartão';
+
+  const successTitle = mode === 'switch' ? 'Troca confirmada!' : 'Assinatura confirmada!';
+  const successDescription =
+    mode === 'switch'
+      ? `${
+          successResult?.first_charge_at
+            ? `Primeira parcela de 12x em ${formatUtcDateBR(successResult.first_charge_at)}. `
+            : 'Sua troca para o anual em 12x está agendada. '
+        }${
+          switchChangesPlan
+            ? `Os recursos do plano ${plan?.name} passam a valer imediatamente.`
+            : 'Até lá nada muda no seu acesso.'
+        }`
+      : successResult?.trial_ends_at
+        ? `Seu teste grátis termina em ${formatUtcDateBR(successResult.trial_ends_at)}. Depois disso a cobrança de 12x começa automaticamente.`
+        : 'Sua assinatura está ativa.';
 
   return (
     <Dialog
@@ -378,12 +404,8 @@ export function PagarmeCheckoutDialog({
         {step === 'success' ? (
           <>
             <DialogHeader>
-              <DialogTitle>Assinatura confirmada!</DialogTitle>
-              <DialogDescription>
-                {successResult?.trial_ends_at
-                  ? `Seu teste grátis termina em ${formatUtcDateBR(successResult.trial_ends_at)}. Depois disso a cobrança de 12x começa automaticamente.`
-                  : 'Sua assinatura está ativa.'}
-              </DialogDescription>
+              <DialogTitle>{successTitle}</DialogTitle>
+              <DialogDescription>{successDescription}</DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button onClick={handleClose}>
@@ -397,16 +419,20 @@ export function PagarmeCheckoutDialog({
           <>
             <DialogHeader>
               <DialogTitle>
-                {mode === 'checkout' ? `Assinar o plano ${plan?.name}` : 'Atualizar cartão'}
+                {mode === 'checkout'
+                  ? `Assinar o plano ${plan?.name}`
+                  : mode === 'switch'
+                    ? 'Trocar para o anual em 12x'
+                    : 'Atualizar cartão'}
               </DialogTitle>
               <DialogDescription>
-                {mode === 'checkout'
+                {mode === 'checkout' || mode === 'switch'
                   ? 'Anual no cartão de crédito'
                   : 'A próxima cobrança usa o novo cartão.'}
               </DialogDescription>
             </DialogHeader>
 
-            {mode === 'checkout' && plan && (
+            {(mode === 'checkout' || mode === 'switch') && plan && (
               <div className="text-sm">
                 <p>{`12x de ${formatBRL(plan.pagarme_installment_cents)} sem juros`}</p>
                 <p className="text-muted-foreground">{`total ${formatBRL(plan.pagarme_installment_cents * 12)}/ano`}</p>
@@ -431,6 +457,14 @@ export function PagarmeCheckoutDialog({
               <p className="text-sm text-muted-foreground">
                 30 dias grátis. A primeira parcela só é cobrada depois do teste e você pode cancelar
                 antes.
+              </p>
+            )}
+
+            {mode === 'switch' && (
+              <p className="text-sm text-muted-foreground">
+                {firstChargeAt
+                  ? `Sem cobrança agora. A primeira parcela está prevista para ${formatUtcDateBR(firstChargeAt)}, quando termina o período que você já pagou.`
+                  : 'Sem cobrança agora. A primeira parcela vem quando terminar o período que você já pagou.'}
               </p>
             )}
 
@@ -517,7 +551,7 @@ export function PagarmeCheckoutDialog({
                     )}
                   />
                 </div>
-                {mode === 'checkout' && (
+                {(mode === 'checkout' || mode === 'switch') && (
                   <div className="grid grid-cols-2 gap-3">
                     <FormField
                       control={form.control}

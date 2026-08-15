@@ -3,6 +3,7 @@ import { timingSafeEqual } from "../_shared/crypto.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { createJsonResponder } from "../_shared/http.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
+import { createStripeSwitchGateway } from "../_shared/stripe-switch.ts";
 import { createDowngradeCronGateway } from "./gateway.ts";
 import {
   createBillingDowngradeCronHandler,
@@ -46,10 +47,15 @@ Deno.serve(createBillingDowngradeCronHandler({
     // remoteSkipped: true instead.
     const gateway = Deno.env.get("PAGARME_SECRET_KEY") ? createDowngradeCronGateway() : null;
 
+    // stripeGateway === null means STRIPE_SECRET_KEY is unset in this environment (dark):
+    // leg D's switch enforcement is skipped by the handler, which reports switchSkipped: true.
+    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+
     try {
       const deps: DowngradeCronDeps = {
         db: svc,
         gateway,
+        stripeGateway: stripeKey ? createStripeSwitchGateway(stripeKey) : null,
         now: () => new Date(),
       };
       const result = await runBillingDowngradeCron(deps);

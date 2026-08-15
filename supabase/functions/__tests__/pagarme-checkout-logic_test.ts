@@ -3,11 +3,13 @@ import { PagarmeApiError } from "../_shared/pagarme.ts";
 import {
   buildAttemptIdempotencyKey,
   buildPagarmeSubscriptionColumns,
+  ceilToUtcMidnightDate,
   mapGatewayFailure,
   pagarmeCheckoutBlocked,
   parseCheckoutBody,
   resolveAmountMirror,
   resolveStartAt,
+  stripeSwitchSourceEligible,
 } from "../pagarme-checkout/logic.ts";
 import type { PagarmeSubscriptionResponse } from "../pagarme-checkout/gateway.ts";
 
@@ -39,6 +41,7 @@ Deno.test("parseCheckoutBody: valid CPF body normalizes digits and derives cpf/i
     customerType: "individual",
     phone: { ddd: "11", number: "999990000" },
     billingAddress: { cep: "01310100", line1: "Av. Paulista, 1000", city: "São Paulo", state: "SP" },
+    isSwitch: false,
   });
 });
 
@@ -87,6 +90,31 @@ Deno.test("parseCheckoutBody: bad document length is invalid_document, not inval
   const r = parseCheckoutBody({ ...validBody(), document: "123" });
   assert(!r.ok);
   assertEquals(r.code, "invalid_document");
+});
+
+Deno.test("parseCheckoutBody: switch true e aceito e vira isSwitch", () => {
+  const r = parseCheckoutBody({ ...validBody(), switch: true });
+  assert(r.ok);
+  if (r.ok) assertEquals(r.value.isSwitch, true);
+});
+
+Deno.test("parseCheckoutBody: switch ausente -> isSwitch false", () => {
+  const r = parseCheckoutBody(validBody());
+  assert(r.ok);
+  if (r.ok) assertEquals(r.value.isSwitch, false);
+});
+
+Deno.test("parseCheckoutBody: switch presente e nao-boolean -> 400", () => {
+  for (const bad of ["true", 1, null]) {
+    const r = parseCheckoutBody({ ...validBody(), switch: bad });
+    assert(!r.ok, `switch=${String(bad)}`);
+  }
+});
+
+Deno.test("parseCheckoutBody: switch false e aceito e vira isSwitch false", () => {
+  const r = parseCheckoutBody({ ...validBody(), switch: false });
+  assert(r.ok);
+  if (r.ok) assertEquals(r.value.isSwitch, false);
 });
 
 // ─── pagarmeCheckoutBlocked ────────────────────────────────────────────────
@@ -138,6 +166,36 @@ Deno.test("pagarmeCheckoutBlocked: fully churned row does not block", () => {
     }, NOW),
     false,
   );
+});
+
+Deno.test("stripeSwitchSourceEligible: matriz", () => {
+  const base = {
+    provider: "stripe",
+    stripe_subscription_id: "sub_s1",
+    status: "active",
+    billing_interval: "month",
+  };
+  assert(stripeSwitchSourceEligible(base));
+  assert(stripeSwitchSourceEligible({ ...base, status: "trialing" }));
+  // provider null = legado stripe
+  assert(stripeSwitchSourceEligible({ ...base, provider: null }));
+  // billing_interval null (price legado) passa: a autoridade e o remoto
+  assert(stripeSwitchSourceEligible({ ...base, billing_interval: null }));
+  // estrito: past_due/unpaid NUNCA (nao usar isInForce)
+  assert(!stripeSwitchSourceEligible({ ...base, status: "past_due" }));
+  assert(!stripeSwitchSourceEligible({ ...base, status: "unpaid" }));
+  assert(!stripeSwitchSourceEligible({ ...base, status: "canceled" }));
+  assert(!stripeSwitchSourceEligible({ ...base, provider: "pagarme" }));
+  assert(!stripeSwitchSourceEligible({ ...base, billing_interval: "year" }));
+  assert(!stripeSwitchSourceEligible({ ...base, stripe_subscription_id: null }));
+  assert(!stripeSwitchSourceEligible(null));
+});
+
+Deno.test("ceilToUtcMidnightDate: meio-dia sobe para o proximo midnight; midnight exato fica", () => {
+  assertEquals(ceilToUtcMidnightDate(new Date("2026-09-15T14:23:11Z")), "2026-09-16");
+  assertEquals(ceilToUtcMidnightDate(new Date("2026-09-15T00:00:00.000Z")), "2026-09-15");
+  // virada de mes
+  assertEquals(ceilToUtcMidnightDate(new Date("2026-08-31T23:59:59Z")), "2026-09-01");
 });
 
 // ─── small helpers ─────────────────────────────────────────────────────────
@@ -246,6 +304,10 @@ Deno.test("buildPagarmeSubscriptionColumns: provider flip and amount mirror in O
     installments: 12,
     current_period_end: "2026-09-11T00:00:00Z",
     cancel_at_period_end: false,
+    switched_from_stripe_subscription_id: null,
+    switched_from_plan_id: null,
+    switched_from_cancel_at_period_end: null,
+    switch_checked_at: null,
     ever_subscribed_at: "2026-01-01T00:00:00Z",
     failed_payment_count: 0,
     past_due_since: null,
@@ -258,6 +320,26 @@ Deno.test("buildPagarmeSubscriptionColumns: provider flip and amount mirror in O
     amount_refreshed_at: "2026-08-12T12:00:00.000Z",
     updated_at: "2026-08-12T12:00:00.000Z",
   });
+});
+
+Deno.test("buildPagarmeSubscriptionColumns: markers do switch no MESMO payload + switch_checked_at zerado", () => {
+  const cols = buildPagarmeSubscriptionColumns({
+    customerId: "cus_1",
+    subscriptionId: "sub_1",
+    status: "trialing",
+    planId: "pro",
+    annualPriceCents: 155880,
+    currentPeriodEnd: "2026-09-16T00:00:00Z",
+    everSubscribedAt: "2026-01-01T00:00:00Z",
+    nowIso: "2026-08-12T12:00:00.000Z",
+    switchedFromStripeSubscriptionId: "sub_s1",
+    switchedFromPlanId: "start",
+    switchedFromCancelAtPeriodEnd: true,
+  });
+  assertEquals(cols.switched_from_stripe_subscription_id, "sub_s1");
+  assertEquals(cols.switched_from_plan_id, "start");
+  assertEquals(cols.switched_from_cancel_at_period_end, true);
+  assertEquals(cols.switch_checked_at, null);
 });
 
 // ─── mapGatewayFailure ─────────────────────────────────────────────────────
