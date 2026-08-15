@@ -17,7 +17,7 @@ export const FEATURE_COLUMNS = [
   "feature_workflow_gantt", "feature_workflow_recurrence", "feature_csv_import",
   "feature_custom_properties", "feature_post_scheduling", "feature_auto_sync_cron",
   "feature_post_tagging", "feature_brand_customization", "feature_mcp",
-  "feature_tiktok", "feature_mensagens",
+  "feature_tiktok", "feature_mensagens", "feature_instagram_automation",
 ] as const;
 
 type PlanRow = Record<string, unknown>;

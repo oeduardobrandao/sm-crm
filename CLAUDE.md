@@ -191,6 +191,14 @@ Monorepo with npm workspaces:
   `VITE_WHATSAPP_SUPPORT_NUMBER`; nothing verifies the two agree. The CRM
   counterpart is inlined at Vite build time and needs a redeploy to pick up a
   change; this Deno-side one only needs the function itself redeployed
+- `META_WEBHOOK_VERIFY_TOKEN` -- Meta webhook verify token for the Instagram
+  comment-to-DM automation (instagram-webhook). REQUIRED, no default -- throws
+  at module load if missing
+- `IG_AUTOMATION_SCOPES_LIVE` -- optional, default off (unset/`false`). While off, the
+  Instagram OAuth URL only requests the approved trio of base scopes; flipping it to
+  `true` adds the optional `instagram_business_manage_comments` scope to the request.
+  Turn on only after Meta's Advanced Access for that scope is approved, or in staging
+  to test with an account that has a role on the app
 - `STREAM_ACCOUNT_ID`, `STREAM_API_TOKEN` -- Cloudflare Stream account + API
   token, used by `_shared/stream.ts` to copy videos in, list, and delete them
 - `STREAM_CUSTOMER_CODE`, `STREAM_SIGNING_KEY_ID`, `STREAM_SIGNING_KEY_JWK`,

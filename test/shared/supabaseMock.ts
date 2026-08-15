@@ -111,6 +111,11 @@ class QueryBuilder {
     return this;
   }
 
+  contains(...args: unknown[]) {
+    this.modifiers.push({ method: 'contains', args });
+    return this;
+  }
+
   ilike(...args: unknown[]) {
     this.modifiers.push({ method: 'ilike', args });
     return this;

@@ -209,6 +209,13 @@ export function getNotificationDisplay(
         title: 'Falha na publicação',
         body: m.client_name ? `${client} · ${post}` : post,
       };
+    case 'instagram_automation_failed':
+      return {
+        icon: Instagram,
+        tone: 'danger',
+        title: 'Automação do Instagram com problema',
+        body: 'Uma automação de comentários parou de enviar. Reconecte o Instagram do cliente para reativar.',
+      };
     case 'storage_autoclean_report': {
       const filesCount = typeof m.files_count === 'number' ? m.files_count : 0;
       const bytesFreed = typeof m.bytes_freed === 'number' ? m.bytes_freed : 0;
