@@ -262,11 +262,26 @@
 /* CTA */
 .plan-cta {
   margin-top: auto;
+  container-type: inline-size;
 }
+/* Os rótulos de switch ("Trocar para o anual em 12x" / "Mudar para {plano} em 12x") são os
+   mais longos que um CTA de card recebe; no 0.8rem padrão do .btn-primary eles quebravam em
+   duas linhas em colunas com menos de ~260px. Medido: neste tamanho cabem numa linha a partir
+   de 220px de card, e o degrau do container query cobre até 210px (só o mínimo absoluto do
+   grid, 200px, ainda quebra). */
 .plan-cta .btn-primary,
 .plan-cta .btn-secondary {
   width: 100%;
   justify-content: center;
+  font-size: 0.72rem;
+  padding-inline: 0.6rem;
+}
+@container (max-width: 176px) {
+  .plan-cta .btn-primary,
+  .plan-cta .btn-secondary {
+    font-size: 0.7rem;
+    padding-inline: 0.5rem;
+  }
 }
 .plan-cta__static {
   display: block;
