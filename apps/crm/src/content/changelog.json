@@ -1,6 +1,144 @@
 {
-  "lastMergedAt": "2026-08-08T19:15:36Z",
+  "lastMergedAt": "2026-08-15T11:32:34Z",
   "releases": [
+    {
+      "date": "2026-08-15",
+      "summary": "Melhorias no parcelamento 12x, automação de comentários no Instagram e notificações para agências",
+      "items": [
+        {
+          "type": "feature",
+          "area": "Financeiro",
+          "title": "Parcelamento 12x com Pagar.me",
+          "description": "Agora é possível parcelar o pagamento em 12x com o Pagar.me, sem precisar cancelar a assinatura atual ou esperar o fim do ciclo de pagamento.",
+          "pr": 353,
+          "link": {
+            "href": "/financeiro",
+            "label": "Abrir Financeiro"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Automatizações",
+          "title": "Automação de comentários no Instagram",
+          "description": "Agora é possível configurar gatilhos de palavra-chave para comentários no Instagram, que disparam respostas automáticas por DM.",
+          "pr": 352,
+          "link": {
+            "href": "/mensagens",
+            "label": "Abrir Mensagens"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Notificações",
+          "title": "Notificações para agências",
+          "description": "Agora as agências recebem notificações por email sobre eventos importantes, como falhas na publicação ou mensagens de clientes.",
+          "pr": 346,
+          "link": {
+            "href": "/equipe",
+            "label": "Abrir Equipe"
+          }
+        },
+        {
+          "type": "improvement",
+          "area": "Entregas",
+          "title": "Visualização de grade no workflow de entregas",
+          "description": "Agora é possível visualizar a grade de posts do Instagram no workflow de entregas, facilitando a organização e o planejamento de conteúdo.",
+          "pr": 344,
+          "link": {
+            "href": "/entregas",
+            "label": "Abrir Entregas"
+          }
+        },
+        {
+          "type": "fix",
+          "area": "Financeiro",
+          "title": "Correção de problemas de pagamento",
+          "description": "Foram corrigidos problemas de pagamento, incluindo a falta de abort signals em chamadas de banco de dados.",
+          "pr": 338,
+          "link": {
+            "href": "/financeiro",
+            "label": "Abrir Financeiro"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Calendario",
+          "title": "Calendários de nicho",
+          "description": "Agora você pode escolher entre 5 calendários de nicho diferentes: Médico, Jurídico, Varejo, Beleza & Estética e Gastronomia",
+          "pr": 336,
+          "link": {
+            "href": "/calendario",
+            "label": "Abrir o Calendário"
+          }
+        },
+        {
+          "type": "improvement",
+          "area": "Entregas",
+          "title": "Alinhamento de filtros e busca",
+          "description": "Os filtros e busca agora estão alinhados corretamente, melhorando a experiência do usuário",
+          "pr": 334,
+          "link": {
+            "href": "/entregas",
+            "label": "Abrir Entregas"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Analytics",
+          "title": "Visualizações como primeiro KPI da conta",
+          "description": "Agora as visualizações são exibidas como o primeiro KPI da página de analytics de conta, antes de Seguidores",
+          "pr": 331,
+          "link": {
+            "href": "/analytics",
+            "label": "Abrir Analytics"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Post Express",
+          "title": "Opção de aprovação do cliente",
+          "description": "Agora você pode escolher entre publicar agora ou enviar para aprovação do cliente",
+          "pr": 330,
+          "link": {
+            "href": "/entregas",
+            "label": "Abrir Entregas"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Armazenamento",
+          "title": "Auto-limpeza de mídia de posts publicados",
+          "description": "Agora você pode configurar a auto-limpeza de mídia de posts publicados, liberando espaço de armazenamento",
+          "pr": 327,
+          "link": {
+            "href": "/arquivos",
+            "label": "Abrir Arquivos"
+          }
+        },
+        {
+          "type": "improvement",
+          "area": "Arquivos",
+          "title": "Medidor de armazenamento",
+          "description": "O medidor de armazenamento agora é exibido corretamente, sem cortes ou quebras de linha",
+          "pr": 324,
+          "link": {
+            "href": "/arquivos",
+            "label": "Abrir Arquivos"
+          }
+        },
+        {
+          "type": "feature",
+          "area": "Plano",
+          "title": "Indicadores visuais de uso dos limites do plano",
+          "description": "Agora você pode visualizar os indicadores de uso dos limites do plano em todo o CRM",
+          "pr": 320,
+          "link": {
+            "href": "/precos",
+            "label": "Ver planos"
+          }
+        }
+      ]
+    },
     {
       "date": "2026-08-08",
       "summary": "Melhorias no Instagram, importação e analytics",
@@ -22,11 +160,11 @@
           "title": "Link de conexão para autorizar o Instagram",
           "description": "Um link para que os clientes possam autorizar o próprio Instagram",
           "pr": 308,
+          "image": "/novidades/pr-308.png",
           "link": {
             "href": "/clientes",
             "label": "Abrir Clientes"
-          },
-          "image": "/novidades/pr-308.png"
+          }
         },
         {
           "type": "feature",
@@ -56,11 +194,11 @@
           "title": "Não propor coluna de cliente vazia no mapeamento",
           "description": "Melhoria na proposta de mapeamento para evitar colunas vazias",
           "pr": 311,
+          "image": "/novidades/pr-311.png",
           "link": {
             "href": "/importar",
             "label": "Importar dados"
-          },
-          "image": "/novidades/pr-311.png"
+          }
         },
         {
           "type": "fix",
@@ -87,11 +225,11 @@
           "title": "Feedback visual e linhas compactas na seleção de etapas do wizard",
           "description": "Melhoria na interface do wizard de entregas com feedback visual e linhas compactas",
           "pr": 299,
+          "image": "/novidades/pr-299.png",
           "link": {
             "href": "/entregas",
             "label": "Abrir Entregas"
-          },
-          "image": "/novidades/pr-299.png"
+          }
         },
         {
           "type": "feature",
