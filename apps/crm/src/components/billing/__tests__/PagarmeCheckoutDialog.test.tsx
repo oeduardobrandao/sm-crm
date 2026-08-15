@@ -74,7 +74,7 @@ function fillForm() {
   fireEvent.change(screen.getByLabelText('Número do cartão'), {
     target: { value: VALID.cardNumber },
   });
-  fireEvent.change(screen.getByLabelText('Nome no cartão'), {
+  fireEvent.change(screen.getByLabelText('Nome impresso no cartão'), {
     target: { value: VALID.holderName },
   });
   fireEvent.change(screen.getByLabelText('Validade'), { target: { value: VALID.expiry } });
@@ -84,7 +84,9 @@ function fillForm() {
   const phoneInput = screen.queryByLabelText('Celular');
   if (phoneInput) fireEvent.change(phoneInput, { target: { value: VALID.phone } });
   fireEvent.change(screen.getByLabelText('CEP'), { target: { value: VALID.cep } });
-  fireEvent.change(screen.getByLabelText('Endereço'), { target: { value: VALID.line1 } });
+  fireEvent.change(screen.getByLabelText('Endereço de cobrança'), {
+    target: { value: VALID.line1 },
+  });
   fireEvent.change(screen.getByLabelText('Cidade'), { target: { value: VALID.city } });
   fireEvent.change(screen.getByLabelText('UF'), { target: { value: VALID.state } });
 }
@@ -117,18 +119,21 @@ beforeEach(() => {
 describe('PagarmeCheckoutDialog', () => {
   it("renders the 12x summary (the parcela's OWN price, not price_brl_annual / 12) and the trial note when trialEligible is true", () => {
     render(<PagarmeCheckoutDialog {...baseProps()} />);
-    expect(screen.getByText('12x de R$ 129,90 sem juros')).toBeInTheDocument();
+    expect(screen.getByText('12x de R$ 129,90')).toBeInTheDocument();
+    expect(screen.getByText('sem juros')).toBeInTheDocument();
     expect(screen.getByText('total R$ 1.558,80/ano')).toBeInTheDocument();
+    // A data é a PREVISÃO local (now + 30d, ceil UTC) — a autoritativa só existe no response,
+    // então o teste pina o formato e a copy em volta, não um dia específico.
     expect(
       screen.getByText(
-        '30 dias grátis. A primeira parcela só é cobrada depois do teste e você pode cancelar antes.',
+        /^30 dias grátis\. A primeira parcela só é cobrada em \d{2}\/\d{2}\/\d{4} e você pode cancelar antes disso\.$/,
       ),
     ).toBeInTheDocument();
   });
 
   it('hides the trial note when trialEligible is false', () => {
     render(<PagarmeCheckoutDialog {...baseProps({ trialEligible: false })} />);
-    expect(screen.getByText('12x de R$ 129,90 sem juros')).toBeInTheDocument();
+    expect(screen.getByText('12x de R$ 129,90')).toBeInTheDocument();
     expect(screen.queryByText(/30 dias grátis/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Confirmar assinatura' })).toBeInTheDocument();
   });
@@ -170,7 +175,13 @@ describe('PagarmeCheckoutDialog', () => {
 
   it('every card/document input carries ph-no-capture', () => {
     render(<PagarmeCheckoutDialog {...baseProps()} />);
-    for (const label of ['Número do cartão', 'Nome no cartão', 'Validade', 'CVV', 'CPF ou CNPJ']) {
+    for (const label of [
+      'Número do cartão',
+      'Nome impresso no cartão',
+      'Validade',
+      'CVV',
+      'CPF ou CNPJ',
+    ]) {
       expect(screen.getByLabelText(label)).toHaveClass('ph-no-capture');
     }
     expect(screen.getByLabelText('CVV')).toHaveAttribute('type', 'password');
@@ -388,7 +399,7 @@ describe('PagarmeCheckoutDialog', () => {
     fireEvent.change(screen.getByLabelText('Número do cartão'), {
       target: { value: '4242' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
     expect(captureEventMock).toHaveBeenCalledWith('card_form_abandoned', { mode: 'checkout' });
     expect(captureEventMock).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -397,7 +408,7 @@ describe('PagarmeCheckoutDialog', () => {
   it('does not fire card_form_abandoned when the form was never touched', () => {
     const onClose = vi.fn();
     render(<PagarmeCheckoutDialog {...baseProps({ onClose })} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
     expect(captureEventMock).not.toHaveBeenCalledWith('card_form_abandoned', expect.anything());
     expect(onClose).toHaveBeenCalledTimes(1);
   });
