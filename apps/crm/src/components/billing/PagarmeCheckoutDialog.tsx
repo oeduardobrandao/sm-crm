@@ -88,7 +88,10 @@ const GENERIC_ERROR_MESSAGE = 'Não foi possível concluir a operação. Tente n
 const TRIAL_DAYS = 30;
 
 /** Campos do modelo: altos e arredondados. Concatenado (não cn) para preservar ph-no-capture. */
-const FIELD_CLASS = 'h-12 rounded-xl px-4';
+const FIELD_CLASS = 'h-10 rounded-xl px-4';
+
+/** Espaço label-campo compacto (o space-y-2 default do FormItem estoura o fold do dialog). */
+const ITEM_CLASS = 'space-y-0.5';
 
 /** plans.price_brl_annual is stored in centavos (e.g. 999000 = R$ 9.990,00). */
 function formatBRL(centavos: number): string {
@@ -406,7 +409,7 @@ export function PagarmeCheckoutDialog({
       }}
     >
       <DialogContent
-        className="sm:max-w-[500px] sm:rounded-3xl"
+        className="pagarme-checkout-dialog sm:max-w-[540px] sm:rounded-3xl"
         onEscapeKeyDown={(e) => {
           // Belt-and-suspenders with the `saving` check inside handleClose: block Radix's
           // internal dismiss at the source too, so a request in flight never even reaches
@@ -435,16 +438,20 @@ export function PagarmeCheckoutDialog({
             </DialogFooter>
           </>
         ) : (
-          <>
-            <DialogHeader>
-              <DialogTitle className="text-2xl font-bold tracking-tight">
+          /* Container único: o wrapper do DialogContent aplica grid gap-4 entre filhos diretos;
+             com tudo dentro de um filho só, o espaçamento vertical inteiro fica sob controle
+             daqui (gap-2.5), e o -my-2 recupera um pouco do p-6 fixo — é o que faz o form
+             caber num fold de notebook sem scroll interno. */
+          <div className="-my-3 flex flex-col gap-2">
+            <DialogHeader className="space-y-1">
+              <DialogTitle className="text-xl font-bold tracking-tight">
                 {mode === 'checkout'
                   ? `Assinar o plano ${plan?.name}`
                   : mode === 'switch'
                     ? 'Trocar para o anual em 12x'
                     : 'Atualizar cartão'}
               </DialogTitle>
-              <DialogDescription className="text-base">
+              <DialogDescription>
                 {mode === 'checkout' || mode === 'switch'
                   ? 'Anual no cartão de crédito'
                   : 'A próxima cobrança usa o novo cartão.'}
@@ -452,9 +459,9 @@ export function PagarmeCheckoutDialog({
             </DialogHeader>
 
             {(mode === 'checkout' || mode === 'switch') && plan && (
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-2xl bg-muted px-4 py-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-2xl bg-muted px-4 py-2">
                 <p className="whitespace-nowrap">
-                  <span className="text-2xl font-bold tracking-tight">{`12x de ${formatBRL(plan.pagarme_installment_cents)}`}</span>{' '}
+                  <span className="text-xl font-bold tracking-tight">{`12x de ${formatBRL(plan.pagarme_installment_cents)}`}</span>{' '}
                   <span className="text-sm">sem juros</span>
                 </p>
                 <p className="text-sm text-muted-foreground">{`total ${formatBRL(plan.pagarme_installment_cents * 12)}/ano`}</p>
@@ -476,13 +483,13 @@ export function PagarmeCheckoutDialog({
             )}
 
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-2">
                 <FormField
                   control={form.control}
                   name="cardNumber"
                   render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Número do cartão</FormLabel>
+                    <FormItem className={ITEM_CLASS}>
+                      <FormLabel className="text-xs">Número do cartão</FormLabel>
                       {/* O wrapper do ícone fica FORA do FormControl: o Slot precisa do Input
                           como filho direto para o id/aria cair no input (senão o label quebra). */}
                       <div className="relative">
@@ -509,8 +516,8 @@ export function PagarmeCheckoutDialog({
                   control={form.control}
                   name="holderName"
                   render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nome impresso no cartão</FormLabel>
+                    <FormItem className={ITEM_CLASS}>
+                      <FormLabel className="text-xs">Nome impresso no cartão</FormLabel>
                       <FormControl>
                         <Input
                           {...field}
@@ -528,8 +535,8 @@ export function PagarmeCheckoutDialog({
                     control={form.control}
                     name="expiry"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Validade</FormLabel>
+                      <FormItem className={ITEM_CLASS}>
+                        <FormLabel className="text-xs">Validade</FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -548,8 +555,8 @@ export function PagarmeCheckoutDialog({
                     control={form.control}
                     name="cvv"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>CVV</FormLabel>
+                      <FormItem className={ITEM_CLASS}>
+                        <FormLabel className="text-xs">CVV</FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -572,8 +579,8 @@ export function PagarmeCheckoutDialog({
                       control={form.control}
                       name="document"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>CPF ou CNPJ</FormLabel>
+                        <FormItem className={ITEM_CLASS}>
+                          <FormLabel className="text-xs">CPF ou CNPJ</FormLabel>
                           <FormControl>
                             <Input
                               {...field}
@@ -591,8 +598,8 @@ export function PagarmeCheckoutDialog({
                       control={form.control}
                       name="phone"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Celular</FormLabel>
+                        <FormItem className={ITEM_CLASS}>
+                          <FormLabel className="text-xs">Celular</FormLabel>
                           <FormControl>
                             <Input
                               {...field}
@@ -614,8 +621,8 @@ export function PagarmeCheckoutDialog({
                     control={form.control}
                     name="cep"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>CEP</FormLabel>
+                      <FormItem className={ITEM_CLASS}>
+                        <FormLabel className="text-xs">CEP</FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -634,8 +641,8 @@ export function PagarmeCheckoutDialog({
                     control={form.control}
                     name="line1"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Endereço de cobrança</FormLabel>
+                      <FormItem className={ITEM_CLASS}>
+                        <FormLabel className="text-xs">Endereço de cobrança</FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -654,8 +661,8 @@ export function PagarmeCheckoutDialog({
                     control={form.control}
                     name="city"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Cidade</FormLabel>
+                      <FormItem className={ITEM_CLASS}>
+                        <FormLabel className="text-xs">Cidade</FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -672,8 +679,8 @@ export function PagarmeCheckoutDialog({
                     control={form.control}
                     name="state"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>UF</FormLabel>
+                      <FormItem className={ITEM_CLASS}>
+                        <FormLabel className="text-xs">UF</FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -697,7 +704,7 @@ export function PagarmeCheckoutDialog({
                 </div>
 
                 {mode === 'checkout' && trialEligible && (
-                  <div className="flex items-start gap-3 rounded-2xl bg-emerald-500/10 px-4 py-3.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                  <div className="flex items-start gap-3 rounded-2xl bg-emerald-500/10 px-4 py-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
                     <CalendarDays aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
                     <p>
                       {trialEndPreview
@@ -708,7 +715,7 @@ export function PagarmeCheckoutDialog({
                 )}
 
                 {mode === 'switch' && (
-                  <div className="flex items-start gap-3 rounded-2xl bg-emerald-500/10 px-4 py-3.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                  <div className="flex items-start gap-3 rounded-2xl bg-emerald-500/10 px-4 py-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
                     <CalendarDays aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
                     <p>
                       {firstChargeAt
@@ -721,26 +728,24 @@ export function PagarmeCheckoutDialog({
                 <Button
                   type="submit"
                   disabled={saving}
-                  className="mt-1 h-12 w-full rounded-2xl text-base font-semibold"
+                  className="mb-0 h-10 w-full rounded-2xl text-[15px] font-semibold"
                 >
                   {saving ? 'Processando...' : ctaLabel}
                 </Button>
 
-                <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                  <Lock aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
-                  <p>
-                    Seus dados vão direto para a Pagar.me com segurança. Nós não armazenamos o
-                    número do seu cartão.
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                  <span>Pagamento processado por</span>
-                  <PagarmeLogo className="h-6 w-auto" />
+                <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                  <div className="flex items-start gap-2">
+                    <Lock aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
+                    <p>
+                      Seus dados vão direto para a Pagar.me com segurança. Nós não armazenamos o
+                      número do seu cartão.
+                    </p>
+                  </div>
+                  <PagarmeLogo className="h-6 w-auto shrink-0" />
                 </div>
               </form>
             </Form>
-          </>
+          </div>
         )}
       </DialogContent>
     </Dialog>
