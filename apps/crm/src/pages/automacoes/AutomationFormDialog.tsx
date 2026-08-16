@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { AlertTriangle, Check, Instagram, X } from 'lucide-react';
@@ -78,6 +79,7 @@ export default function AutomationFormDialog({
   editing: InstagramCommentAutomation | null;
   onSaved: () => void;
 }) {
+  const { t } = useTranslation('automations');
   const { profile } = useAuth();
   const qc = useQueryClient();
 
@@ -170,7 +172,7 @@ export default function AutomationFormDialog({
         : createInstagramAutomation(payload);
     },
     onSuccess: () => {
-      toast.success(editing ? 'Automação atualizada' : 'Automação criada');
+      toast.success(editing ? t('toastUpdated') : t('toastCreated'));
       qc.invalidateQueries({ queryKey: ['instagram-automations'] });
       qc.invalidateQueries({ queryKey: ['instagram-automations-count'] });
       onSaved();
@@ -178,8 +180,7 @@ export default function AutomationFormDialog({
     // The plan gate raises feature_disabled from a DB trigger on the direct
     // PostgREST insert -- this catch is the observation point (same pattern
     // as StatusTab's AutomationsSection).
-    onError: (err) =>
-      onMutationError(err, editing ? 'Erro ao atualizar automação' : 'Erro ao criar automação'),
+    onError: (err) => onMutationError(err, editing ? t('toastUpdateError') : t('toastCreateError')),
   });
 
   const addKeyword = () => {
@@ -206,23 +207,23 @@ export default function AutomationFormDialog({
 
   const submit = () => {
     if (form.clientId === '') {
-      toast.error('Escolha um cliente');
+      toast.error(t('form.validationClient'));
       return;
     }
     if (!form.name.trim()) {
-      toast.error('Dê um nome à automação');
+      toast.error(t('form.validationName'));
       return;
     }
     if (form.targetMode === 'post' && !form.selectedPost) {
-      toast.error('Escolha um post');
+      toast.error(t('form.validationPost'));
       return;
     }
     if (form.keywords.length === 0) {
-      toast.error('Adicione ao menos uma palavra-chave');
+      toast.error(t('form.validationKeyword'));
       return;
     }
     if (!form.dmMessage.trim()) {
-      toast.error('Escreva a mensagem do direct');
+      toast.error(t('form.validationDm'));
       return;
     }
     saveMutation.mutate();
@@ -238,25 +239,25 @@ export default function AutomationFormDialog({
         }
       >
         <DialogHeader>
-          <DialogTitle>{editing ? 'Editar automação' : 'Nova automação'}</DialogTitle>
+          <DialogTitle>{editing ? t('form.editTitle') : t('form.createTitle')}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div>
             <label className="text-sm font-medium" htmlFor="automacao-nome">
-              Nome *
+              {t('form.nameLabel')}
             </label>
             <Input
               id="automacao-nome"
               value={form.name}
               maxLength={80}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="Ex.: Promoção de agosto"
+              placeholder={t('form.namePlaceholder')}
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium">Cliente *</label>
+            <label className="text-sm font-medium">{t('form.clientLabel')}</label>
             <Select
               value={form.clientId === '' ? '' : String(form.clientId)}
               onValueChange={(v) =>
@@ -268,8 +269,8 @@ export default function AutomationFormDialog({
                 }))
               }
             >
-              <SelectTrigger aria-label="Cliente">
-                <SelectValue placeholder="Selecione um cliente com Instagram conectado" />
+              <SelectTrigger aria-label={t('form.clientAria')}>
+                <SelectValue placeholder={t('form.clientPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
                 {selectableClientes.map((c) => (
@@ -295,22 +296,19 @@ export default function AutomationFormDialog({
                   className="h-4 w-4"
                   style={{ color: 'var(--warning)', flexShrink: 0 }}
                 />
-                <span style={{ flex: 1 }}>
-                  Esse cliente precisa reconectar o Instagram com permissão para comentários antes
-                  de automatizar.
-                </span>
+                <span style={{ flex: 1 }}>{t('form.reconnectWarning')}</span>
                 <Button asChild size="sm" variant="outline">
-                  <Link to={`/clientes/${form.clientId}`}>Reconectar Instagram</Link>
+                  <Link to={`/clientes/${form.clientId}`}>{t('form.reconnectCta')}</Link>
                 </Button>
               </div>
             )}
           </div>
 
           <div>
-            <label className="text-sm font-medium">Alvo *</label>
+            <label className="text-sm font-medium">{t('form.targetLabel')}</label>
             <div
               role="radiogroup"
-              aria-label="Alvo da automação"
+              aria-label={t('form.targetAria')}
               className="flex gap-4"
               style={{ marginTop: 6 }}
             >
@@ -324,7 +322,7 @@ export default function AutomationFormDialog({
                     setForm((f) => ({ ...f, targetMode: 'todos', selectedPost: null }))
                   }
                 />
-                Todos os posts
+                {t('form.targetAll')}
               </label>
               <label className="flex items-center gap-2 text-sm" style={{ cursor: 'pointer' }}>
                 <input
@@ -334,14 +332,14 @@ export default function AutomationFormDialog({
                   checked={form.targetMode === 'post'}
                   onChange={() => setForm((f) => ({ ...f, targetMode: 'post' }))}
                 />
-                Post específico
+                {t('form.targetPost')}
               </label>
             </div>
 
             {form.targetMode === 'post' &&
               (form.clientId === '' ? (
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 6 }}>
-                  Selecione um cliente para ver os posts.
+                  {t('form.selectClientForPosts')}
                 </p>
               ) : (
                 <div style={{ marginTop: 8 }}>
@@ -419,7 +417,7 @@ export default function AutomationFormDialog({
                               fontSize: '0.8rem',
                             }}
                           >
-                            Nenhum post sincronizado ainda.
+                            {t('form.noPostsSynced')}
                           </p>
                         )}
                       </div>
@@ -431,7 +429,7 @@ export default function AutomationFormDialog({
                           disabled={postsPage <= 1}
                           onClick={() => setPostsPage((p) => p - 1)}
                         >
-                          Anterior
+                          {t('form.previous')}
                         </Button>
                         <Button
                           type="button"
@@ -440,7 +438,7 @@ export default function AutomationFormDialog({
                           disabled={!hasMorePosts}
                           onClick={() => setPostsPage((p) => p + 1)}
                         >
-                          Próxima
+                          {t('form.next')}
                         </Button>
                       </div>
                     </>
@@ -450,7 +448,7 @@ export default function AutomationFormDialog({
           </div>
 
           <div>
-            <label className="text-sm font-medium">Palavras-chave *</label>
+            <label className="text-sm font-medium">{t('form.keywordsLabel')}</label>
             <div className="flex flex-wrap gap-1.5" style={{ marginTop: 6, marginBottom: 6 }}>
               {form.keywords.map((k) => (
                 <Badge key={k} variant="outline" size="sm" className="flex items-center gap-1">
@@ -458,7 +456,7 @@ export default function AutomationFormDialog({
                   <button
                     type="button"
                     onClick={() => removeKeyword(k)}
-                    aria-label={`Remover ${k}`}
+                    aria-label={t('form.keywordRemove', { keyword: k })}
                     style={{
                       background: 'transparent',
                       border: 'none',
@@ -480,13 +478,13 @@ export default function AutomationFormDialog({
                   addKeyword();
                 }
               }}
-              placeholder="Digite e pressione Enter"
+              placeholder={t('form.keywordPlaceholder')}
             />
           </div>
 
           <div>
             <label className="text-sm font-medium" htmlFor="automacao-dm">
-              Mensagem no direct *
+              {t('form.dmLabel')}
             </label>
             <Textarea
               id="automacao-dm"
@@ -494,7 +492,7 @@ export default function AutomationFormDialog({
               maxLength={1000}
               rows={4}
               onChange={(e) => setForm((f) => ({ ...f, dmMessage: e.target.value }))}
-              placeholder="Oi! Aqui está o link que você pediu:"
+              placeholder={t('form.dmPlaceholder')}
             />
             <div style={{ textAlign: 'right', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
               {form.dmMessage.length}/1000
@@ -503,7 +501,7 @@ export default function AutomationFormDialog({
 
           <div>
             <label className="text-sm font-medium" htmlFor="automacao-reply">
-              Resposta pública (opcional)
+              {t('form.replyLabel')}
             </label>
             <Textarea
               id="automacao-reply"
@@ -511,7 +509,7 @@ export default function AutomationFormDialog({
               maxLength={500}
               rows={2}
               onChange={(e) => setForm((f) => ({ ...f, publicReply: e.target.value }))}
-              placeholder="Respondido no direct! ✉️"
+              placeholder={t('form.replyPlaceholder')}
             />
             <div style={{ textAlign: 'right', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
               {form.publicReply.length}/500
@@ -521,10 +519,10 @@ export default function AutomationFormDialog({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
+            {t('form.cancel')}
           </Button>
           <Button type="button" onClick={submit} disabled={saveMutation.isPending}>
-            {saveMutation.isPending && <Spinner size="sm" />} Salvar
+            {saveMutation.isPending && <Spinner size="sm" />} {t('form.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

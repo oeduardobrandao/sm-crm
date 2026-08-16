@@ -24,6 +24,16 @@ const {
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+// Mesmo padrão do ConectarPage.test: t devolve a CHAVE (com vars serializadas),
+// então os asserts abaixo verificam chaves do namespace, não strings pt/en.
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, vars?: Record<string, unknown>) =>
+      vars ? `${key}:${JSON.stringify(vars)}` : key,
+    i18n: { language: 'pt' },
+  }),
+}));
+
 vi.mock('../../../store', async () => {
   const actual = await vi.importActual<typeof import('../../../store')>('../../../store');
   return {
@@ -145,7 +155,7 @@ describe('AutomacoesPage', () => {
 
     expect(await screen.findByText('Promo de agosto')).toBeInTheDocument();
     expect(screen.getByText('ACME')).toBeInTheDocument();
-    expect(screen.getByText('Todos os posts')).toBeInTheDocument();
+    expect(screen.getByText('allPosts')).toBeInTheDocument();
     expect(screen.getByText('preco')).toBeInTheDocument();
     expect(screen.getByText('valor')).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
@@ -158,9 +168,9 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('Nenhuma automação ainda.')).toBeInTheDocument();
+    expect(await screen.findByText('emptyNone')).toBeInTheDocument();
     expect(screen.getByTestId('feature-gate-locked')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Nova automação/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /newAutomation/ })).not.toBeInTheDocument();
   });
 
   it('hides mutation controls (create button, switch, edit/delete menu) for the agent role', async () => {
@@ -169,13 +179,13 @@ describe('AutomacoesPage', () => {
     renderPage();
 
     expect(await screen.findByText('Promo de agosto')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Nova automação/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /newAutomation/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Ações de/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /rowActions/ })).not.toBeInTheDocument();
     // Read-only status still communicated via a badge instead of the switch
-    // (scoped to <tbody> since "Ativa" is also the column header's text).
+    // (scoped to <tbody>; the column header uses table.active).
     const tbody = document.querySelector('tbody')!;
-    expect(within(tbody).getByText('Ativa')).toBeInTheDocument();
+    expect(within(tbody).getByText('status.active')).toBeInTheDocument();
   });
 
   it('expands a row to load and show its sends log', async () => {
@@ -185,7 +195,7 @@ describe('AutomacoesPage', () => {
     fireEvent.click(row);
 
     expect(await screen.findByText('@fulano')).toBeInTheDocument();
-    expect(screen.getByText('Enviado')).toBeInTheDocument();
+    expect(screen.getByText('sendStatus.sent')).toBeInTheDocument();
     await waitFor(() => expect(mockGetSends).toHaveBeenCalledWith('auto-1'));
   });
 });

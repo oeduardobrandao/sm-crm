@@ -20,6 +20,8 @@ import ptAuth from '../../../packages/i18n/locales/pt/auth.json';
 import enAuth from '../../../packages/i18n/locales/en/auth.json';
 import ptBrand from '../../../packages/i18n/locales/pt/brand.json';
 import enBrand from '../../../packages/i18n/locales/en/brand.json';
+import ptAutomations from '../../../packages/i18n/locales/pt/automations.json';
+import enAutomations from '../../../packages/i18n/locales/en/automations.json';
 import App from './App';
 import '../style.css';
 
@@ -48,6 +50,7 @@ initI18n({
     posts: ptPosts,
     auth: ptAuth,
     brand: ptBrand,
+    automations: ptAutomations,
   },
   en: {
     common: enCommon,
@@ -57,6 +60,7 @@ initI18n({
     posts: enPosts,
     auth: enAuth,
     brand: enBrand,
+    automations: enAutomations,
   },
 });
 
