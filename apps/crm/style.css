@@ -9569,6 +9569,7 @@ body.landing-page #root {
 
   .cliente-tabs-nav__item {
     flex: 0 0 auto;
+    min-height: 44px;
     white-space: nowrap;
     border-radius: 999px;
     padding: 0.35rem 0.85rem;
@@ -9962,11 +9963,6 @@ body.landing-page #root {
    present (>=1101px). Below that the layout uses an off-canvas drawer with
    .main-content margin-left: 0, so the rail must not render. */
 @media (min-width: 1101px) {
-  .cliente-detalhe-page {
-    /* reserve room for the 48px collapsed rail + breathing space */
-    padding-left: calc(1.5rem + 48px + 0.75rem);
-  }
-
   .cliente-detalhe-nav {
     position: fixed;
     left: calc(var(--sidebar-width) + 0.5rem);

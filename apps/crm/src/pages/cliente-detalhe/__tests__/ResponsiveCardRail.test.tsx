@@ -50,9 +50,9 @@ describe('ResponsiveCardRail', () => {
     expect(railViewport - leadingInset - cardMinimum - gap).toBeGreaterThan(0);
   });
 
-  it('keeps phone section chips at least 44px tall', () => {
+  it('keeps phone tab pills at least 44px tall', () => {
     const phoneChipRules = Array.from(
-      crmStyles.matchAll(/\.cliente-detalhe-nav__item\s*\{([^}]*)\}/g),
+      crmStyles.matchAll(/\.cliente-tabs-nav__item\s*\{([^}]*)\}/g),
       (match) => match[1],
     );
     expect(phoneChipRules.some((rule) => /min-height:\s*44px;/.test(rule))).toBe(true);

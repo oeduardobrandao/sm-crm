@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 
 vi.mock('../../../store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../store')>()),
@@ -40,6 +40,21 @@ function renderDialog(ui: ReactElement) {
   const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
   const utils = render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
   return { ...utils, invalidateSpy };
+}
+
+/**
+ * Wires `open` to real React state instead of a hardcoded literal, so
+ * "click a trigger to open it" reproduces the actual bug scenario: `open`
+ * flipping true is what fires the effect, not a value handed in already-open.
+ */
+function StatefulTrigger({ cliente }: { cliente: Cliente }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Abrir edição</button>
+      <ClienteEditDialog cliente={cliente} open={open} onOpenChange={setOpen} />
+    </>
+  );
 }
 
 describe('ClienteEditDialog', () => {
@@ -127,6 +142,26 @@ describe('ClienteEditDialog', () => {
     );
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('stays open when an agent opens it via a real "Editar" trigger (regression: open must not itself trigger the revoke-close effect)', () => {
+    setAuth(false); // agent: canSeeFinancials is false from the very start, never a transition
+    renderDialog(<StatefulTrigger cliente={CLIENTE} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir edição' }));
+
+    // The dialog rendered and stayed open — it did not flash-close itself
+    // the instant `open` flipped to true.
+    expect(screen.getByDisplayValue(CLIENTE.nome)).toBeInTheDocument();
+  });
+
+  it('stays open when an owner opens it while canSeeFinancials is still "unknown" (hydration window)', () => {
+    setAuth('unknown');
+    renderDialog(<StatefulTrigger cliente={CLIENTE} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir edição' }));
+
+    expect(screen.getByDisplayValue(CLIENTE.nome)).toBeInTheDocument();
   });
 
   it('does not close on financial revocation when the dialog is not open', () => {

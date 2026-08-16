@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -69,11 +69,30 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
     setFAniDia(aniDia);
   }, [open, cliente]);
 
-  // The dialog can hold a valor_mensal value in its form state. On live
-  // revocation of financial access, close it rather than let the value linger.
+  // The dialog can hold a valor_mensal value in its form state. On a LIVE
+  // REVOCATION of financial access (a true -> not-true transition) while
+  // open, close it rather than let the value linger.
+  //
+  // Deliberately NOT keyed on `open` the way a first pass at this read: for
+  // an agent or a restricted admin, canSeeFinancials is never true to begin
+  // with, so the moment "Editar cliente" flips `open` to true, a naive
+  // `if (open && canSeeFinancials !== true)` fires immediately and closes
+  // the dialog right back — it never had a chance to render. Only a
+  // transition matters here, not the current value, so the previous value
+  // is tracked in a ref and compared on each canSeeFinancials change; `open`
+  // is read from a ref too, kept fresh via a separate effect, so opening
+  // the dialog alone never re-runs this check.
+  const wasFinanciallyVisibleRef = useRef(canSeeFinancials === true);
+  const openRef = useRef(open);
   useEffect(() => {
-    if (open && canSeeFinancials !== true) onOpenChange(false);
-  }, [open, canSeeFinancials, onOpenChange]);
+    openRef.current = open;
+  }, [open]);
+  useEffect(() => {
+    const wasVisible = wasFinanciallyVisibleRef.current;
+    const isVisible = canSeeFinancials === true;
+    wasFinanciallyVisibleRef.current = isVisible;
+    if (wasVisible && !isVisible && openRef.current) onOpenChange(false);
+  }, [canSeeFinancials, onOpenChange]);
 
   const handleSubmit = async () => {
     if (!fNome) {
