@@ -236,6 +236,8 @@
     "dayOf": "{{day}} de {{month}}",
     "dayN": "Dia {{day}}",
     "activeDeliveries": "Entregas Ativas",
+    "noActiveDeliveries": "Nenhuma entrega ativa no momento.",
+    "noActiveDeliveriesHint": "Crie um fluxo para este cliente na página de Entregas para acompanhar aqui.",
     "complete": "Concluir",
     "overdueBy": "Estourado por {{days}} dia(s)",
     "daysRemaining": "{{days}} dia(s) restante(s)",
