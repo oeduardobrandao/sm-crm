@@ -49,6 +49,18 @@ Deno.test("value sem from/parent_id não quebra; timestamp epoch vira ISO", () =
   assertEquals(out[0].timestamp, new Date(1723640400 * 1000).toISOString());
 });
 
+Deno.test("timestamp string: ISO válida normaliza, malformada vira undefined", () => {
+  const out = parseWebhookDelivery({
+    entry: [{ id: "acc1", time: 1723640400, changes: [
+      { field: "comments", value: { id: "c_iso", timestamp: "2026-08-14T17:27:00+0000" } },
+      { field: "comments", value: { id: "c_bad", timestamp: "not-a-date" } },
+    ]}],
+  });
+  assertEquals(out.length, 2);
+  assertEquals(out[0].timestamp, new Date("2026-08-14T17:27:00+0000").toISOString());
+  assertEquals(out[1].timestamp, undefined);
+});
+
 Deno.test("malformed timestamp (NaN, Infinity, out-of-range): vira undefined; change envenenado não derruba a entrega", () => {
   const out = parseWebhookDelivery({
     entry: [{ id: "acc1", time: 1723640400, changes: [
