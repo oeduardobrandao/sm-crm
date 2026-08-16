@@ -197,10 +197,11 @@ describe('Sidebar', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('opens the Novidades changelog in a new tab', () => {
+  it('opens the Novidades changelog in a new tab from the account menu', () => {
     setAuth();
 
     renderSidebar('/dashboard');
+    fireEvent.click(screen.getByText('Ana Maria'));
 
     const link = screen.getByText('Novidades').closest('a');
     expect(link).toHaveAttribute('href', '/novidades');
