@@ -104,7 +104,11 @@ export default function ClienteDetalhePage() {
     );
   }
 
-  const current = pathname.replace(/^\/clientes\/[^/]+\/?/, '').split('/')[0];
+  // Validate the ENTIRE remaining path, not just its first segment: a known
+  // tab prefix with a bogus nested segment (e.g. /clientes/42/relatorios/x)
+  // must redirect too, or it falls through to App.tsx's catch-all `*` route
+  // under /clientes/:id and renders a blank content pane.
+  const current = pathname.replace(/^\/clientes\/[^/]+\/?/, '').replace(/\/+$/, '');
 
   // Unknown segment: not one of the seven registered tabs (and not the empty
   // index segment, which has its own route/component).

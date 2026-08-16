@@ -181,6 +181,13 @@ describe('ClienteDetalhePage', () => {
       await screen.findByText('conteudo visao-geral');
       expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/visao-geral');
     });
+
+    it('redirects a known tab prefix with a bogus nested segment to Visão geral', async () => {
+      setAuth('owner');
+      renderAt('/clientes/42/visao-geral/extra');
+      await screen.findByText('conteudo visao-geral');
+      expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/visao-geral');
+    });
   });
 
   describe('per-tab permission gating', () => {

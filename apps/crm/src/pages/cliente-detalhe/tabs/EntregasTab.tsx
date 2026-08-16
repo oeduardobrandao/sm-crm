@@ -24,6 +24,8 @@ import {
   getWorkflowPostsWithProperties,
   updateWorkflowPost,
   getClientes,
+  getWorkspaceSlug,
+  getHubToken,
   type Workflow,
   type WorkflowEtapa,
 } from '@/store';
@@ -73,12 +75,19 @@ interface WorkflowWithEtapas {
  * `workflow-covers`, `concluded-by-cliente`, `concluded-summaries-cliente`,
  * plus `clientes` — lazily, only once the edit-workflow modal opens, since
  * that modal's client-reassign dropdown needs the full portfolio). It
- * deliberately never fetches Instagram (`igSummary`) or Hub (`hub-token`)
- * data — those belong to the Redes sociais and Hub tabs respectively — so
- * `BoardCard.clienteAvatarUrl` and `BoardCard.hubUrl` are always left
+ * deliberately never fetches Instagram (`igSummary`) data — that belongs to
+ * the Redes sociais tab — so `BoardCard.clienteAvatarUrl` is always left
  * `undefined` here; `WorkflowCard` already falls back to a colored-initials
- * avatar and simply omits the "open hub" link when they are unset, so this
- * is a graceful, contained trade-off rather than a broken render.
+ * avatar when it's unset, so this is a graceful, contained trade-off rather
+ * than a broken render.
+ *
+ * `BoardCard.hubUrl` is the one narrow exception: it IS fetched here (via
+ * `['workspace-slug']` and `['hub-token', clienteId]`, mirroring the
+ * pre-split ClienteDetalhePage at d30adeea), because it powers a real
+ * existing feature — WorkflowCard's "Abrir Hub do cliente" link and
+ * WorkflowDrawer's copy-post-link button — not a Hub-domain content fetch.
+ * Leaving it `undefined` would silently regress that feature, which is why
+ * this one field breaks the otherwise-strict isolation above.
  */
 export default function EntregasTab() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
@@ -150,6 +159,24 @@ export default function EntregasTab() {
     enabled: editCardModal !== null,
   });
 
+  // Narrow, deliberate exception to per-tab query isolation: BoardCard.hubUrl
+  // powers a real existing feature (WorkflowCard's "Abrir Hub do cliente"
+  // link and WorkflowDrawer's copy-post-link button), so it's fetched here
+  // even though it technically touches the Hub domain. Only the token and
+  // workspace slug are fetched — no briefing/pages/ideias content, which
+  // would violate isolation. Mirrors the pre-split ClienteDetalhePage
+  // (d30adeea) and HubClienteTab's `getWorkspaceSlug` usage.
+  const { data: workspaceSlug } = useQuery({
+    queryKey: ['workspace-slug'],
+    queryFn: getWorkspaceSlug,
+  });
+  const { data: hubTokenData } = useQuery({
+    queryKey: ['hub-token', clienteId],
+    queryFn: () => getHubToken(clienteId),
+    enabled: !isNaN(clienteId),
+  });
+  const hubToken = hubTokenData?.is_active ? hubTokenData.token : undefined;
+
   const [workflowsWithEtapas, setWorkflowsWithEtapas] = useState<WorkflowWithEtapas[]>([]);
   useEffect(() => {
     const activeWfs = (clienteWorkflowsRaw ?? []).filter((w) => w.status === 'ativo');
@@ -202,6 +229,10 @@ export default function EntregasTab() {
 
   const boardCards: BoardCard[] = useMemo(() => {
     if (!cliente) return [];
+    const hubUrl =
+      hubToken && workspaceSlug
+        ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
+        : undefined;
     return workflowsWithEtapas
       .map(({ workflow, etapas }) => {
         const activeEtapa = etapas.find((e) => e.status === 'ativo');
@@ -219,13 +250,14 @@ export default function EntregasTab() {
           etapaIdx: activeEtapa.ordem,
           allEtapas: etapas,
           postCovers: workflowCovers?.get(workflow.id!),
-          // Instagram/Hub data deliberately unavailable here — see module doc.
+          // Instagram avatar deliberately unavailable here — see module doc.
+          // hubUrl IS fetched (narrow exception, see the queries above).
           clienteAvatarUrl: undefined,
-          hubUrl: undefined,
+          hubUrl,
         } satisfies BoardCard;
       })
       .filter(Boolean) as BoardCard[];
-  }, [workflowsWithEtapas, cliente, membros, workflowCovers]);
+  }, [workflowsWithEtapas, cliente, membros, workflowCovers, hubToken, workspaceSlug]);
 
   // Post calendar: fetch posts with scheduled_at for all active workflows
   const [postCalendarEvents, setPostCalendarEvents] = useState<PostCalendarEvent[]>([]);

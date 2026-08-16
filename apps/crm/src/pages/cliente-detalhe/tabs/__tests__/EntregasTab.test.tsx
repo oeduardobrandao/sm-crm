@@ -23,6 +23,8 @@ vi.mock('@/store', () => ({
   getWorkflowPostsWithProperties: vi.fn(),
   updateWorkflowPost: vi.fn(),
   getClientes: vi.fn(),
+  getWorkspaceSlug: vi.fn(),
+  getHubToken: vi.fn(),
   // Consumed by the real advanceEtapa.ts (not mocked — the rearm decision
   // itself is covered by advanceEtapa.test.ts / KanbanRearm.test.tsx; this
   // suite pins that EntregasTab wires it exactly the same way).
@@ -65,7 +67,7 @@ vi.mock('@/pages/entregas/components/WorkflowCard', () => ({
     onForwardClick,
     onRevertClick,
   }: {
-    card: { workflow: { id: number; titulo: string } };
+    card: { workflow: { id: number; titulo: string }; hubUrl?: string };
     onClick?: () => void;
     onEditClick?: () => void;
     onPostsClick?: () => void;
@@ -74,6 +76,7 @@ vi.mock('@/pages/entregas/components/WorkflowCard', () => ({
   }) => (
     <div>
       <span>{card.workflow.titulo}</span>
+      <span data-testid={`hub-url-${card.workflow.id}`}>{card.hubUrl ?? ''}</span>
       <button onClick={onClick}>open-card-{card.workflow.id}</button>
       <button onClick={onEditClick}>edit-card-{card.workflow.id}</button>
       <button onClick={onPostsClick}>posts-card-{card.workflow.id}</button>
@@ -129,6 +132,8 @@ import {
   getWorkflowPosts,
   getWorkflowPostsWithProperties,
   getClientes,
+  getWorkspaceSlug,
+  getHubToken,
   completeEtapa,
   completeEtapaWithRearm,
   type Cliente,
@@ -160,6 +165,8 @@ const mockedGetConcludedWorkflowsByCliente = vi.mocked(getConcludedWorkflowsByCl
 const mockedGetWorkflowPosts = vi.mocked(getWorkflowPosts);
 const mockedGetWorkflowPostsWithProperties = vi.mocked(getWorkflowPostsWithProperties);
 const mockedGetClientes = vi.mocked(getClientes);
+const mockedGetWorkspaceSlug = vi.mocked(getWorkspaceSlug);
+const mockedGetHubToken = vi.mocked(getHubToken);
 const mockedGetWorkflowCovers = vi.mocked(getWorkflowCovers);
 const mockedCompleteEtapa = vi.mocked(completeEtapa);
 const mockedCompleteEtapaWithRearm = vi.mocked(completeEtapaWithRearm);
@@ -258,6 +265,8 @@ describe('EntregasTab', () => {
     mockedGetWorkflowPostsWithProperties.mockResolvedValue([]);
     mockedGetWorkflowCovers.mockResolvedValue(new Map());
     mockedGetClientes.mockResolvedValue([]);
+    mockedGetWorkspaceSlug.mockResolvedValue(null);
+    mockedGetHubToken.mockResolvedValue(null);
     mockCounts(0);
     mockedCompleteEtapa.mockResolvedValue({
       workflow: workflow({ status: 'ativo' }),
@@ -415,11 +424,14 @@ describe('EntregasTab', () => {
   });
 
   describe('query isolation', () => {
-    it('declares only Entregas/workflow-domain query keys — nothing from Instagram, Hub, or Financeiro', async () => {
+    it('declares only Entregas/workflow-domain query keys, plus the narrow hub-url exception — nothing else from Instagram, Hub, or Financeiro', async () => {
       // `clientes` is included here even though EditWorkflowModal isn't open:
       // React Query registers a cache entry for every declared `useQuery` call
       // as soon as it mounts, `enabled: false` or not — it just never fetches.
       // The companion test below asserts the actual fetch stays lazy.
+      // `workspace-slug`/`hub-token` are the one deliberate exception (see
+      // EntregasTab.tsx's module doc): they exist only to compute
+      // BoardCard.hubUrl, not to pull any Hub-domain content.
       const { queryClient } = renderTab();
       await screen.findByText('Posts Agosto');
 
@@ -443,6 +455,8 @@ describe('EntregasTab', () => {
             'workflow-revisao-interna-counts',
             'workflow-awaiting-cliente-counts',
             'workflow-covers',
+            'workspace-slug',
+            'hub-token',
           ]),
         );
       });
@@ -456,6 +470,59 @@ describe('EntregasTab', () => {
 
       fireEvent.click(screen.getByText('edit-card-1'));
       await waitFor(() => expect(vi.mocked(getClientes)).toHaveBeenCalled());
+    });
+  });
+
+  describe('hubUrl', () => {
+    it('populates BoardCard.hubUrl from the active hub token and workspace slug', async () => {
+      mockedGetWorkspaceSlug.mockResolvedValue('aurora-estetica');
+      mockedGetHubToken.mockResolvedValue({
+        id: 'tok-1',
+        token: 'abc123',
+        is_active: true,
+        expires_at: '2099-01-01T00:00:00Z',
+      });
+      renderTab();
+      await screen.findByText('Posts Agosto');
+      await waitFor(() =>
+        expect(screen.getByTestId('hub-url-1')).toHaveTextContent(
+          `${window.location.origin}/aurora-estetica/hub/abc123`,
+        ),
+      );
+    });
+
+    it('leaves BoardCard.hubUrl undefined when there is no active hub token', async () => {
+      mockedGetWorkspaceSlug.mockResolvedValue('aurora-estetica');
+      mockedGetHubToken.mockResolvedValue(null);
+      renderTab();
+      await screen.findByText('Posts Agosto');
+      await waitFor(() => expect(screen.getByTestId('hub-url-1')).toHaveTextContent(''));
+    });
+
+    it('leaves BoardCard.hubUrl undefined when the workspace has no slug', async () => {
+      mockedGetWorkspaceSlug.mockResolvedValue(null);
+      mockedGetHubToken.mockResolvedValue({
+        id: 'tok-1',
+        token: 'abc123',
+        is_active: true,
+        expires_at: '2099-01-01T00:00:00Z',
+      });
+      renderTab();
+      await screen.findByText('Posts Agosto');
+      await waitFor(() => expect(screen.getByTestId('hub-url-1')).toHaveTextContent(''));
+    });
+
+    it('leaves BoardCard.hubUrl undefined when the hub token is inactive', async () => {
+      mockedGetWorkspaceSlug.mockResolvedValue('aurora-estetica');
+      mockedGetHubToken.mockResolvedValue({
+        id: 'tok-1',
+        token: 'abc123',
+        is_active: false,
+        expires_at: '2099-01-01T00:00:00Z',
+      });
+      renderTab();
+      await screen.findByText('Posts Agosto');
+      await waitFor(() => expect(screen.getByTestId('hub-url-1')).toHaveTextContent(''));
     });
   });
 });

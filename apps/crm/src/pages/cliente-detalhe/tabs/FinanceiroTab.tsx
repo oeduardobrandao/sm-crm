@@ -56,9 +56,10 @@ function StatusBadge({ status }: { status: string }) {
  *     true` on both queries below, AND a read-time ternary on the data those
  *     queries return. Neither alone is sufficient — `enabled: false` only
  *     stops a NEW fetch, it does not clear data already cached under the
- *     same query key by an unrelated component (e.g. GlobalSearchTrigger,
- *     which fetches the same `['contratos']`/`['transacoes']` keys without
- *     this gate). The read-time ternary is what stops that cached data from
+ *     same query key by an unrelated component (e.g. FinanceiroPage and
+ *     ContratosPage, which fetch the same `['transacoes']`/`['contratos']`
+ *     keys via plain `useQuery`, with no `enabled` gate). The read-time
+ *     ternary is what stops that cached data from
  *     ever reaching the JSX. This redundancy is intentional, not
  *     simplifiable.
  *

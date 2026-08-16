@@ -70,11 +70,7 @@ const CLIENTE_SAFE_COLUMNS =
 const PAGE_SIZE = 500;
 
 export async function getCliente(id: number): Promise<Cliente | null> {
-  const { data, error } = await supabase
-    .from('clientes_v')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
+  const { data, error } = await supabase.from('clientes_v').select('*').eq('id', id).maybeSingle();
   if (error) throw error;
   return data;
 }

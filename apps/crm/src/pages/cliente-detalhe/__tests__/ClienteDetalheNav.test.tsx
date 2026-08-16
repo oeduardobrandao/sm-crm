@@ -94,4 +94,84 @@ describe('ClienteDetalheNav', () => {
     expect(scrollIntoViewSpy).not.toHaveBeenCalled();
     (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = originalIO;
   });
+
+  describe('mobile scroll-into-view', () => {
+    // Layout getters jsdom otherwise hardcodes to 0. Overridden with fixed
+    // values (not per-element) so the math below is deterministic:
+    // centeredLeft = 800 - (300 - 100) / 2 = 700; maxLeft = 1200 - 300 = 900
+    // -> clamped scroll target is 700, distinct from the untouched 0.
+    function stubLayout() {
+      const offsetLeftDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetLeft');
+      const offsetWidthDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+      const clientWidthDesc = Object.getOwnPropertyDescriptor(Element.prototype, 'clientWidth');
+      const scrollWidthDesc = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollWidth');
+      Object.defineProperty(HTMLElement.prototype, 'offsetLeft', {
+        configurable: true,
+        value: 800,
+      });
+      Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+        configurable: true,
+        value: 100,
+      });
+      Object.defineProperty(Element.prototype, 'clientWidth', { configurable: true, value: 300 });
+      Object.defineProperty(Element.prototype, 'scrollWidth', { configurable: true, value: 1200 });
+      return () => {
+        const restore = (target: object, prop: string, desc: PropertyDescriptor | undefined) => {
+          if (desc) Object.defineProperty(target, prop, desc);
+          else delete (target as Record<string, unknown>)[prop];
+        };
+        restore(HTMLElement.prototype, 'offsetLeft', offsetLeftDesc);
+        restore(HTMLElement.prototype, 'offsetWidth', offsetWidthDesc);
+        restore(Element.prototype, 'clientWidth', clientWidthDesc);
+        restore(Element.prototype, 'scrollWidth', scrollWidthDesc);
+      };
+    }
+
+    function stubMobileMatchMedia() {
+      const original = window.matchMedia;
+      window.matchMedia = vi.fn((query: string) => ({
+        matches: query === '(max-width: 1100px)',
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })) as unknown as typeof window.matchMedia;
+      return () => {
+        window.matchMedia = original;
+      };
+    }
+
+    it('scrolls the active tab into view via scrollTo when it is outside the visible strip', () => {
+      const restoreLayout = stubLayout();
+      const restoreMatchMedia = stubMobileMatchMedia();
+      const scrollToSpy = vi.fn();
+      Element.prototype.scrollTo = scrollToSpy;
+
+      setAuth('owner', true);
+      renderNav('/clientes/42/financeiro');
+
+      expect(scrollToSpy).toHaveBeenCalledWith({ left: 700, behavior: 'smooth' });
+
+      restoreMatchMedia();
+      restoreLayout();
+    });
+
+    it('does not scroll above the 1100px breakpoint (static desktop sidebar, no overflow strip)', () => {
+      const restoreLayout = stubLayout();
+      const scrollToSpy = vi.fn();
+      Element.prototype.scrollTo = scrollToSpy;
+      // Default test matchMedia mock (test/vitest.setup.ts) always returns
+      // matches: false, i.e. simulates a desktop viewport here.
+
+      setAuth('owner', true);
+      renderNav('/clientes/42/financeiro');
+
+      expect(scrollToSpy).not.toHaveBeenCalled();
+
+      restoreLayout();
+    });
+  });
 });

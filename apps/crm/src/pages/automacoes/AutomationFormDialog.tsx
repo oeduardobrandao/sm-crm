@@ -298,7 +298,9 @@ export default function AutomationFormDialog({
                 />
                 <span style={{ flex: 1 }}>{t('form.reconnectWarning')}</span>
                 <Button asChild size="sm" variant="outline">
-                  <Link to={`/clientes/${form.clientId}`}>{t('form.reconnectCta')}</Link>
+                  <Link to={`/clientes/${form.clientId}/redes-sociais`}>
+                    {t('form.reconnectCta')}
+                  </Link>
                 </Button>
               </div>
             )}
