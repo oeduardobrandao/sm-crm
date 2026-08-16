@@ -24,12 +24,17 @@ tokens, publicação, analytics) e pode oferecer isso nativamente.
    evento cru persistido antes do 200, processamento em `EdgeRuntime.waitUntil`,
    cron varre retries. DM sai em segundos.
 2. **Qualquer post da conta IG**, incluindo os publicados fora do Mesaas.
-3. **Escopo novo: só `instagram_business_manage_comments`.** Doc oficial da Meta:
-   private reply com Instagram Login exige apenas `instagram_business_basic` +
-   `instagram_business_manage_comments` — que também cobre o webhook de
-   `comments`, `POST /{comment_id}/replies` e `GET /{comment_id}`.
-   `instagram_business_manage_messages` fica fora do v1 (só para follow-ups
-   futuros). Menos superfície de App Review.
+3. **Escopos novos: `instagram_business_manage_comments` +
+   `instagram_business_manage_messages`.** [REVISADO no teste real de staging,
+   2026-08-15] A doc oficial de private replies lista só `manage_comments`,
+   mas na prática o `POST /<IG_ID>/messages` devolve 403 code 10 ("Application
+   does not have permission for this action") sem `manage_messages` no token;
+   com os dois escopos a DM sai de primeira. `manage_comments` segue cobrindo
+   o webhook de `comments`, `POST /{comment_id}/replies` e `GET /{comment_id}`.
+   O App Review submete os DOIS escopos, e a elegibilidade (canAutomate,
+   candidatos do webhook, RPCs do cron) exige os dois.
+   [Decisão original: só manage_comments, "menos superfície de App Review" —
+   invalidada pelo comportamento real da API.]
 4. **Ship dark + Meta App Review**: flag de plano `feature_instagram_automation`
    nasce `false` em todos os planos. Teste real via override do workspace
    interno com conta que tem papel no app Meta. Submissão do review depois do
@@ -175,8 +180,9 @@ as fixtures oficiais mostram duas formas (`entry[].changes[]` e
   `processing`/`processing_at`, devolve `encrypted_access_token`/
   `instagram_user_id` via join (molde de `claim_posts_for_publishing` +
   `20260807000002_claim_skip_nonretryable.sql`). O join **exige conta apta**:
-  `authorization_status='active'`, escopo `manage_comments` explícito em
-  `permissions[]` e `comments_subscribed_at IS NOT NULL` — backlog de conta
+  `authorization_status='active'`, escopos `manage_comments` E `manage_messages`
+  explícitos em `permissions[]` (migration `20260815000007`) e
+  `comments_subscribed_at IS NOT NULL` — backlog de conta
   que perdeu permissão/assinatura (ex.: reconexão sem o escopo) vira
   `failed`/`account_unauthorized` em vez de retry eterno.
 - SELECT por RLS de workspace (log na UI); escrita só service role. Índices
@@ -256,9 +262,10 @@ automação casar, a mais antiga vence". Sem campo `priority` no v1.
 - A string de escopos hoje está triplicada
   (`instagram-integration/index.ts:157`, `:264`,
   `instagram-connect-link/handler.ts:10`) → extrair para
-  `_shared/instagram-scopes.ts` e adicionar só
-  `instagram_business_manage_comments`.
-- **O escopo novo só entra na URL de OAuth atrás da env var
+  `_shared/instagram-scopes.ts` e adicionar `instagram_business_manage_comments`
+  + `instagram_business_manage_messages` (os dois opcionais; ver decisão 3 —
+  o /messages exige o segundo apesar da doc de private replies).
+- **Os escopos novos só entram na URL de OAuth atrás da env var
   `IG_AUTOMATION_SCOPES_LIVE`** (padrão `TIKTOK_APP_AUDITED`). Antes do
   Advanced Access, pedir o escopo para usuário sem papel no app pode quebrar o
   dialog de login ("Invalid Scopes"); produção segue pedindo só o trio
@@ -375,7 +382,8 @@ automação casar, a mais antiga vence". Sem campo `priority` no v1.
 4. Painel da Meta (ação do usuário): configurar o webhook do produto
    Instagram — callback `https://<projeto>.supabase.co/functions/v1/instagram-webhook`
    + `META_WEBHOOK_VERIFY_TOKEN` — e assinar o campo `comments`.
-5. Submeter App Review de `instagram_business_manage_comments` (Advanced
+5. Submeter App Review de `instagram_business_manage_comments` E
+   `instagram_business_manage_messages` (Advanced
    Access): screencast do fluxo completo (conectar → criar automação →
    comentar → DM chega) + justificativa: automação de atendimento a
    comentários para contas profissionais gerenciadas por agências.

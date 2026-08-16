@@ -8,7 +8,10 @@ export const IG_BASE_SCOPES = [
   "instagram_business_content_publish",
 ] as const;
 
-export const IG_OPTIONAL_SCOPES = ["instagram_business_manage_comments"] as const;
+export const IG_OPTIONAL_SCOPES = [
+  "instagram_business_manage_comments",
+  "instagram_business_manage_messages",
+] as const;
 
 export const IG_ALL_SCOPES: readonly string[] = [...IG_BASE_SCOPES, ...IG_OPTIONAL_SCOPES];
 

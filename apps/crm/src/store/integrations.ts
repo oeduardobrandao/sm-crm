@@ -119,6 +119,9 @@ export async function getInstagramAccountStatuses(
         !expired &&
         Array.isArray(row.permissions) &&
         row.permissions.includes('instagram_business_manage_comments') &&
+        // A doc de private replies omite, mas o POST /messages exige também o
+        // escopo de mensagens (403 code 10 sem ele; provado em staging).
+        row.permissions.includes('instagram_business_manage_messages') &&
         row.comments_subscribed_at != null,
     });
   }

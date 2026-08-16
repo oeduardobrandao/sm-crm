@@ -196,9 +196,12 @@ Monorepo with npm workspaces:
   at module load if missing
 - `IG_AUTOMATION_SCOPES_LIVE` -- optional, default off (unset/`false`). While off, the
   Instagram OAuth URL only requests the approved trio of base scopes; flipping it to
-  `true` adds the optional `instagram_business_manage_comments` scope to the request.
-  Turn on only after Meta's Advanced Access for that scope is approved, or in staging
-  to test with an account that has a role on the app
+  `true` adds the optional `instagram_business_manage_comments` AND
+  `instagram_business_manage_messages` scopes to the request (Meta's private-replies
+  doc lists only the former, but the POST /messages endpoint 403s without the latter --
+  proven empirically on staging 2026-08-15). Turn on only after Meta's Advanced Access
+  for BOTH scopes is approved, or in staging to test with an account that has a role
+  on the app
 - `STREAM_ACCOUNT_ID`, `STREAM_API_TOKEN` -- Cloudflare Stream account + API
   token, used by `_shared/stream.ts` to copy videos in, list, and delete them
 - `STREAM_CUSTOMER_CODE`, `STREAM_SIGNING_KEY_ID`, `STREAM_SIGNING_KEY_JWK`,
