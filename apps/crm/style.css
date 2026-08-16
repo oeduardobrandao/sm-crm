@@ -9587,7 +9587,10 @@ body.landing-page #root {
 }
 
 .cliente-deliveries-rail {
-  grid-template-columns: minmax(0, 1fr);
+  /* Matches .board-column's width (285-320px, style.css:5043-5045) so cards read the
+     same size as the Kanban board's, wrapping to additional rows instead of stacking
+     one per line. */
+  grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
 }
 .cliente-dates-rail {
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
