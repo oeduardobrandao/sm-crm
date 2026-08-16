@@ -69,6 +69,16 @@ const CLIENTE_SAFE_COLUMNS =
 // Paged explicitly rather than trusting the cap, following the same pattern.
 const PAGE_SIZE = 500;
 
+export async function getCliente(id: number): Promise<Cliente | null> {
+  const { data, error } = await supabase
+    .from('clientes_v')
+    .select(CLIENTE_SAFE_COLUMNS)
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 export async function getClientes(): Promise<Cliente[]> {
   const all: Cliente[] = [];
   for (let from = 0; ; ) {
