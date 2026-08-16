@@ -225,7 +225,8 @@
       "connectInstagram": "Conectar Instagram",
       "analytics": "Ir para Analytics",
       "openHub": "Abrir Hub",
-      "editar": "Editar cliente"
+      "editar": "Editar cliente",
+      "backToClients": "Voltar para clientes"
     },
     "email": "Email",
     "phone": "Telefone",
@@ -233,6 +234,7 @@
     "deliveryDay": "Dia de Entrega",
     "specialty": "Especialidade",
     "birthday": "Aniversário",
+    "notionLabel": "Notion",
     "dayOf": "{{day}} de {{month}}",
     "dayN": "Dia {{day}}",
     "activeDeliveries": "Entregas Ativas",

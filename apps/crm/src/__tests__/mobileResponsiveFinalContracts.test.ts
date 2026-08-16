@@ -61,18 +61,21 @@ describe('final mobile responsive CSS contracts', () => {
     expect(lastValue('.latest-instagram-posts__pagination button', 'min-height', 390)).toBe('44px');
   });
 
-  it('does not double-count the banner in phone sticky and section offsets', () => {
-    expect(lastValue('.cliente-detalhe-nav', 'top', 390)).not.toContain('--banner-height');
-    expect(lastValue('#sec-info', 'scroll-margin-top', 390)).not.toContain('--banner-height');
-  });
-
-  it('expands the desktop section rail for keyboard focus and keeps focus visible', () => {
-    expect(css).toMatch(
-      /\.cliente-detalhe-nav:(?:hover[^,{]*,\s*)?focus-within\s*\{[^}]*width:\s*190px/s,
-    );
-    expect(css).toMatch(
-      /\.cliente-detalhe-nav:focus-within \.cliente-detalhe-nav__label\s*\{[^}]*opacity:\s*1/s,
-    );
-    expect(css).toMatch(/\.cliente-detalhe-nav__item:focus-visible\s*\{[^}]*outline:\s*[^;]+/s);
+  it('does not reintroduce position: sticky or a fixed rail for the routed client tab shell', () => {
+    // The old floating anchor-scroll rail (class prefix removed below) relied
+    // on position: sticky/fixed and per-section scroll-margin-top; both were
+    // removed when the tabs became real routes (.cliente-tabs-nav /
+    // .cliente-tabs-shell). Guard against either reappearing — walking parsed
+    // rule selectors (not the raw source) so an unrelated code comment
+    // mentioning the old class name for context can't trip this up.
+    let foundOldRailSelector = false;
+    root.walkRules((rule) => {
+      if (rule.selectors?.some((s) => s.includes('cliente-detalhe-nav'))) {
+        foundOldRailSelector = true;
+      }
+    });
+    expect(foundOldRailSelector).toBe(false);
+    expect(lastValue('.cliente-tabs-nav', 'position', 390)).not.toBe('sticky');
+    expect(lastValue('.cliente-tabs-nav', 'position', 1200)).not.toBe('fixed');
   });
 });

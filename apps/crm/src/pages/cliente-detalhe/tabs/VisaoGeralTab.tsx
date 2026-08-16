@@ -72,7 +72,7 @@ export default function VisaoGeralTab() {
           </div>
           {cliente.notion_page_url && (
             <div className="client-info-item">
-              <span className="client-info-label">Notion</span>
+              <span className="client-info-label">{t('detail.notionLabel')}</span>
               <span className="client-info-value">
                 <a
                   href={sanitizeUrl(cliente.notion_page_url)}

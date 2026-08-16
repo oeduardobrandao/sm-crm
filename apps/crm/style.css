@@ -9640,25 +9640,6 @@ body.landing-page #root {
   gap: 0.75rem;
 }
 
-/* Smooth-scroll targets clear the top bar. Harmless when the rail is hidden. */
-#sec-info,
-#sec-entregas,
-#sec-historico,
-#ig-container,
-#sec-relatorio,
-#sec-hub,
-#sec-arquivos,
-#sec-datas,
-#sec-enderecos,
-#sec-financeiro {
-  scroll-margin-top: calc(var(--topbar-height) + var(--banner-height, 0px) + 1rem);
-}
-
-/* Hide the rail by default; only show at ≥1101px. */
-.cliente-detalhe-nav {
-  display: none;
-}
-
 .cliente-finance-empty {
   display: flex;
   flex-direction: column;
@@ -9853,94 +9834,11 @@ body.landing-page #root {
     min-height: 44px;
     width: 100%;
   }
-
-  .cliente-detalhe-nav {
-    position: sticky;
-    /* Sticky offsets resolve against .main-content's padding edge, so its
-       1.25rem top padding would otherwise leave a permanent gap above the
-       stuck strip. Cancel it here so the strip sits flush at the safe area. */
-    top: -1.25rem;
-    z-index: 35;
-    display: flex;
-    width: calc(100% + 2rem);
-    margin: 0 -1rem 1rem;
-    overflow-x: auto;
-    border-block: 1px solid var(--border-color);
-    background: var(--surface-main);
-    background: color-mix(in srgb, var(--surface-main) 88%, transparent);
-    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
-    scrollbar-width: none;
-    -webkit-backdrop-filter: blur(18px) saturate(140%);
-    backdrop-filter: blur(18px) saturate(140%);
-  }
-
-  .cliente-detalhe-nav::-webkit-scrollbar {
-    display: none;
-  }
-
-  .cliente-detalhe-nav__group {
-    display: flex;
-    min-width: max-content;
-    gap: 0.35rem;
-    padding: 0.55rem 1rem;
-  }
-
-  .cliente-detalhe-nav__group--actions,
-  .cliente-detalhe-nav__divider {
-    display: none;
-  }
-
-  .cliente-detalhe-nav__item {
-    display: inline-flex;
-    min-height: 44px;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.55rem 0.75rem;
-    border: 1px solid var(--border-color);
-    border-radius: 999px;
-    background: var(--surface-main);
-    color: var(--text-muted);
-    white-space: nowrap;
-  }
-
-  .cliente-detalhe-nav__item--active {
-    border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color));
-    background: color-mix(in srgb, var(--primary-color) 18%, var(--surface-main));
-    color: var(--text-main);
-    font-weight: 700;
-  }
-
-  .cliente-detalhe-nav__icon {
-    width: 16px;
-    height: 16px;
-  }
-  .cliente-detalhe-nav__label {
-    font-size: 0.78rem;
-    opacity: 1;
-  }
-
-  #sec-info,
-  #sec-entregas,
-  #sec-historico,
-  #ig-container,
-  #sec-relatorio,
-  #sec-hub,
-  #sec-arquivos,
-  #sec-datas,
-  #sec-enderecos,
-  #sec-financeiro {
-    scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 68px);
-  }
 }
 
 @media (max-width: 359px) {
   .main-content {
     padding-inline: 12px;
-  }
-
-  .cliente-detalhe-nav {
-    width: calc(100% + 24px);
-    margin-inline: -12px;
   }
 
   .cliente-detalhe-header__edit {
@@ -9953,119 +9851,6 @@ body.landing-page #root {
   }
 }
 
-@media (min-width: 768px) and (max-width: 1100px) {
-  .cliente-detalhe-nav {
-    display: none;
-  }
-}
-
-/* The rail and its gutter only make sense where the sidebar is statically
-   present (>=1101px). Below that the layout uses an off-canvas drawer with
-   .main-content margin-left: 0, so the rail must not render. */
-@media (min-width: 1101px) {
-  .cliente-detalhe-nav {
-    position: fixed;
-    left: calc(var(--sidebar-width) + 0.5rem);
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 30;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    width: 48px;
-    max-height: calc(100vh - 2rem);
-    overflow-x: hidden;
-    overflow-y: auto;
-    padding: 8px;
-    background: var(--surface-main);
-    border: 1px solid var(--border-color);
-    border-radius: 14px;
-    box-shadow: var(--shadow);
-    transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .cliente-detalhe-nav:hover,
-  .cliente-detalhe-nav:focus-within {
-    width: 190px;
-  }
-
-  .cliente-detalhe-nav__group {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .cliente-detalhe-nav__divider {
-    height: 1px;
-    background: var(--border-color);
-    margin: 4px 6px;
-    flex-shrink: 0;
-  }
-
-  .cliente-detalhe-nav__item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    padding: 8px;
-    border: none;
-    background: transparent;
-    border-radius: 8px;
-    color: var(--text-muted);
-    cursor: pointer;
-    text-align: left;
-    white-space: nowrap;
-    overflow: hidden;
-    transition:
-      background 0.15s ease,
-      color 0.15s ease;
-  }
-
-  .cliente-detalhe-nav__item:hover {
-    background: var(--surface-hover);
-    color: var(--text-main);
-  }
-
-  .cliente-detalhe-nav__item:focus-visible {
-    outline: 2px solid var(--primary-color);
-    outline-offset: -2px;
-  }
-
-  .cliente-detalhe-nav__icon {
-    flex-shrink: 0;
-    width: 18px;
-    height: 18px;
-  }
-
-  .cliente-detalhe-nav__label {
-    font-size: 0.82rem;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-  }
-
-  .cliente-detalhe-nav:hover .cliente-detalhe-nav__label,
-  .cliente-detalhe-nav:focus-within .cliente-detalhe-nav__label {
-    opacity: 1;
-  }
-
-  .cliente-detalhe-nav__item--active {
-    color: var(--text-main);
-    background: rgba(234, 179, 8, 0.16);
-    font-weight: 600;
-  }
-
-  .cliente-detalhe-nav__item--active .cliente-detalhe-nav__icon {
-    color: var(--primary-hover);
-  }
-
-  .cliente-detalhe-nav__item--action {
-    color: var(--text-main);
-  }
-
-  .cliente-detalhe-nav__item--action .cliente-detalhe-nav__icon {
-    color: var(--primary-hover);
-  }
-}
 .context-help {
   display: flex;
   justify-content: flex-end;
