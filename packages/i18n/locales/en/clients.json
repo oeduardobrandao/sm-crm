@@ -257,6 +257,8 @@
     "concluded": "Completed",
     "clientHub": "Client Hub",
     "clientHubDesc": "Permanent link for client access to the content hub.",
+    "clientHubRestrictedTitle": "Client Hub",
+    "clientHubRestrictedDesc": "Managing the Client Hub is only available to workspace owners and admins.",
     "files": "Files",
     "viewAll": "View all",
     "noFiles": "No files found for this client.",

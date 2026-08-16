@@ -257,6 +257,8 @@
     "concluded": "Concluído",
     "clientHub": "Hub do Cliente",
     "clientHubDesc": "Link permanente de acesso do cliente ao hub de conteúdo.",
+    "clientHubRestrictedTitle": "Hub do Cliente",
+    "clientHubRestrictedDesc": "O gerenciamento do Hub do Cliente está disponível apenas para proprietários e administradores do workspace.",
     "files": "Arquivos",
     "viewAll": "Ver todos",
     "noFiles": "Nenhum arquivo encontrado para este cliente.",
