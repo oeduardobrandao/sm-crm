@@ -230,7 +230,10 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                           href={item.route}
                           target="_blank"
                           rel="noopener noreferrer"
-                          onClick={() => setUserMenuOpen(false)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setUserMenuOpen(false);
+                          }}
                         >
                           <i className={`ph ${item.icon}`} />
                           <span>{t(item.labelKey, item.label)}</span>
@@ -239,7 +242,8 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                         <button
                           key={item.id}
                           className="user-dropdown-item"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             handleNavClick(item.route);
                             setUserMenuOpen(false);
                           }}
