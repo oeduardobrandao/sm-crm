@@ -1,8 +1,9 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { enUS, ptBR } from 'date-fns/locale';
 import {
   ChevronDown,
   ChevronRight,
@@ -71,21 +72,22 @@ import AutomationFormDialog from './AutomationFormDialog';
  * count query) can invalidate the same cache entry after a write. */
 export const AUTOMATIONS_KEY = ['instagram-automations'];
 
-const SEND_STATUS_BADGE: Record<
+const SEND_STATUS_VARIANT: Record<
   InstagramAutomationSend['status'],
-  { label: string; variant: NonNullable<BadgeProps['variant']> }
+  NonNullable<BadgeProps['variant']>
 > = {
-  sent: { label: 'Enviado', variant: 'success' },
-  sent_partial: { label: 'Parcial', variant: 'warning' },
-  failed: { label: 'Falhou', variant: 'danger' },
-  skipped: { label: 'Ignorado', variant: 'neutral' },
-  retry: { label: 'Tentando de novo', variant: 'info' },
-  processing: { label: 'Processando', variant: 'info' },
+  sent: 'success',
+  sent_partial: 'warning',
+  failed: 'danger',
+  skipped: 'neutral',
+  retry: 'info',
+  processing: 'info',
 };
 
-function formatDate(iso: string | null): string {
-  if (!iso) return 'Nunca disparou';
-  return format(new Date(iso), "dd MMM yyyy '·' HH:mm", { locale: ptBR });
+function formatDate(iso: string, lang: string): string {
+  return format(new Date(iso), "dd MMM yyyy '·' HH:mm", {
+    locale: lang.startsWith('en') ? enUS : ptBR,
+  });
 }
 
 function truncate(text: string, max: number): string {
@@ -93,6 +95,7 @@ function truncate(text: string, max: number): string {
 }
 
 export default function AutomacoesPage() {
+  const { t, i18n } = useTranslation('automations');
   const { role, profile } = useAuth();
   const isAgent = role === 'agent';
   const qc = useQueryClient();
@@ -142,16 +145,16 @@ export default function AutomacoesPage() {
     mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>
       updateInstagramAutomation(id, { ativo }),
     onSuccess: invalidate,
-    onError: (err) => onMutationError(err, 'Erro ao atualizar automação'),
+    onError: (err) => onMutationError(err, t('toastUpdateError')),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteInstagramAutomation(id),
     onSuccess: () => {
-      toast.success('Automação removida');
+      toast.success(t('toastDeleted'));
       invalidate();
     },
-    onError: (err) => onMutationError(err, 'Erro ao remover automação'),
+    onError: (err) => onMutationError(err, t('toastDeleteError')),
   });
 
   const clientesComAutomacao = useMemo(() => {
@@ -185,13 +188,13 @@ export default function AutomacoesPage() {
           className="header-title"
           style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
         >
-          <h1>Automações</h1>
+          <h1>{t('title')}</h1>
         </div>
         {!isAgent && (
           <div className="header-actions">
-            <FeatureGate flag="feature_instagram_automation" label="Automações do Instagram">
+            <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
               <Button onClick={openCreate}>
-                <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Nova automação
+                <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newAutomation')}
               </Button>
             </FeatureGate>
           </div>
@@ -203,7 +206,7 @@ export default function AutomacoesPage() {
         style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: '0 0 1rem' }}
       >
         <Info className="h-3.5 w-3.5" style={{ flexShrink: 0 }} />
-        Se mais de uma automação casar com o mesmo comentário, a mais antiga vence.
+        {t('tiebreakHint')}
       </p>
 
       {clientesComAutomacao.length > 0 && (
@@ -212,11 +215,11 @@ export default function AutomacoesPage() {
             value={String(clientFilter)}
             onValueChange={(v) => setClientFilter(v === 'todos' ? 'todos' : Number(v))}
           >
-            <SelectTrigger aria-label="Filtrar por cliente">
+            <SelectTrigger aria-label={t('filterByClient')}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todos">Todos os clientes</SelectItem>
+              <SelectItem value="todos">{t('allClients')}</SelectItem>
               {clientesComAutomacao.map((c) => (
                 <SelectItem key={c.id} value={String(c.id)}>
                   {c.nome}
@@ -237,13 +240,13 @@ export default function AutomacoesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead style={{ width: 32 }} />
-                <TableHead style={{ paddingLeft: '0.5rem' }}>Automação</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Alvo</TableHead>
-                <TableHead>Palavras-chave</TableHead>
-                <TableHead>DMs enviados</TableHead>
-                <TableHead>Último disparo</TableHead>
-                <TableHead>Ativa</TableHead>
+                <TableHead style={{ paddingLeft: '0.5rem' }}>{t('table.automation')}</TableHead>
+                <TableHead>{t('table.client')}</TableHead>
+                <TableHead>{t('table.target')}</TableHead>
+                <TableHead>{t('table.keywords')}</TableHead>
+                <TableHead>{t('table.dmsSent')}</TableHead>
+                <TableHead>{t('table.lastTriggered')}</TableHead>
+                <TableHead>{t('table.active')}</TableHead>
                 {!isAgent && <TableHead style={{ width: 60 }} />}
               </TableRow>
             </TableHeader>
@@ -254,9 +257,7 @@ export default function AutomacoesPage() {
                     colSpan={columnCount}
                     style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}
                   >
-                    {automations.length === 0
-                      ? 'Nenhuma automação ainda.'
-                      : 'Nenhuma automação para este cliente.'}
+                    {automations.length === 0 ? t('emptyNone') : t('emptyForClient')}
                   </TableCell>
                 </TableRow>
               )}
@@ -288,7 +289,7 @@ export default function AutomacoesPage() {
                           >
                             {cliente ? getInitials(cliente.nome) : '?'}
                           </div>
-                          <span>{cliente?.nome ?? 'Cliente removido'}</span>
+                          <span>{cliente?.nome ?? t('clientRemoved')}</span>
                         </div>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
@@ -301,12 +302,12 @@ export default function AutomacoesPage() {
                             style={{ color: 'var(--primary-color)' }}
                           >
                             <Instagram className="h-3.5 w-3.5" style={{ flexShrink: 0 }} />
-                            {a.media_caption ? truncate(a.media_caption, 40) : 'Ver post'}
+                            {a.media_caption ? truncate(a.media_caption, 40) : t('viewPost')}
                             <ExternalLink className="h-3 w-3" style={{ flexShrink: 0 }} />
                           </a>
                         ) : (
                           <Badge variant="neutral" size="sm">
-                            Todos os posts
+                            {t('allPosts')}
                           </Badge>
                         )}
                       </TableCell>
@@ -321,17 +322,19 @@ export default function AutomacoesPage() {
                       </TableCell>
                       <TableCell>{a.dms_sent_count}</TableCell>
                       <TableCell style={{ whiteSpace: 'nowrap' }}>
-                        {formatDate(a.last_triggered_at)}
+                        {a.last_triggered_at
+                          ? formatDate(a.last_triggered_at, i18n.language)
+                          : t('neverTriggered')}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         {isAgent ? (
                           <Badge variant={a.ativo ? 'success' : 'neutral'} size="sm">
-                            {a.ativo ? 'Ativa' : 'Inativa'}
+                            {a.ativo ? t('status.active') : t('status.inactive')}
                           </Badge>
                         ) : (
                           <Switch
                             checked={a.ativo}
-                            aria-label={a.ativo ? 'Desativar automação' : 'Ativar automação'}
+                            aria-label={a.ativo ? t('switchDeactivate') : t('switchActivate')}
                             onCheckedChange={(ativo) => toggleMutation.mutate({ id: a.id, ativo })}
                           />
                         )}
@@ -347,7 +350,7 @@ export default function AutomacoesPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8"
-                                aria-label={`Ações de ${a.name}`}
+                                aria-label={t('rowActions', { name: a.name })}
                               >
                                 <MoreVertical className="h-4 w-4" />
                               </Button>
@@ -355,14 +358,14 @@ export default function AutomacoesPage() {
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => openEdit(a)}>
                                 <Pencil className="h-3.5 w-3.5" style={{ marginRight: '0.5rem' }} />
-                                Editar
+                                {t('edit')}
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => setDeleteTarget(a)}
                                 className="text-destructive"
                               >
                                 <Trash2 className="h-3.5 w-3.5" style={{ marginRight: '0.5rem' }} />
-                                Excluir
+                                {t('delete')}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -407,21 +410,20 @@ export default function AutomacoesPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir "{deleteTarget?.name}"?</AlertDialogTitle>
-            <AlertDialogDescription>
-              A automação para de responder comentários imediatamente e o histórico de envios dela é
-              removido junto.
-            </AlertDialogDescription>
+            <AlertDialogTitle>
+              {t('deleteTitle', { name: deleteTarget?.name ?? '' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{t('deleteDescription')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
                 setDeleteTarget(null);
               }}
             >
-              Excluir
+              {t('delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -439,6 +441,7 @@ function SendsLog({
   isLoading: boolean;
   isError: boolean;
 }) {
+  const { t, i18n } = useTranslation('automations');
   if (isLoading) {
     return (
       <div className="flex justify-center p-4">
@@ -449,32 +452,35 @@ function SendsLog({
   if (isError) {
     return (
       <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '0.5rem 0' }}>
-        Não foi possível carregar os envios.
+        {t('sendsLoadError')}
       </p>
     );
   }
   if (!sends || sends.length === 0) {
     return (
       <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '0.5rem 0' }}>
-        Nenhum envio registrado ainda.
+        {t('sendsEmpty')}
       </p>
     );
   }
   return (
     <div style={{ display: 'grid', gap: 6, padding: '0.5rem 0' }}>
       {sends.map((s) => {
-        const badge = SEND_STATUS_BADGE[s.status];
         return (
           <div
             key={s.id}
             className="flex flex-wrap items-center gap-2"
             style={{ fontSize: '0.8rem' }}
           >
-            <Badge variant={badge.variant} size="sm">
-              {badge.label}
+            <Badge variant={SEND_STATUS_VARIANT[s.status]} size="sm">
+              {t(`sendStatus.${s.status}`)}
             </Badge>
-            <span style={{ fontWeight: 600 }}>@{s.commenter_username ?? 'desconhecido'}</span>
-            <span style={{ color: 'var(--text-muted)' }}>{formatDate(s.comment_created_at)}</span>
+            <span style={{ fontWeight: 600 }}>
+              @{s.commenter_username ?? t('unknownCommenter')}
+            </span>
+            <span style={{ color: 'var(--text-muted)' }}>
+              {formatDate(s.comment_created_at, i18n.language)}
+            </span>
             {s.comment_text && (
               <span style={{ color: 'var(--text-muted)' }}>"{truncate(s.comment_text, 80)}"</span>
             )}
