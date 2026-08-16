@@ -317,6 +317,7 @@ describe('store core helpers and CRUD', () => {
       email: 'contato@aurora.com.br',
       telefone: '(85) 99999-0000',
       status: 'ativo' as const,
+      valor_mensal: 3200,
     };
     mockedSupabase.__queueSupabaseResult('clientes_v', 'select', {
       data: clienteData,
@@ -328,6 +329,10 @@ describe('store core helpers and CRUD', () => {
     expect(result).toEqual(clienteData);
     const call = getLastCall('clientes_v');
     expect(call.operation).toBe('select');
+    // Assert on select('*') to catch accidental column narrowing in the future.
+    // The view handles financial visibility masking via CASE WHEN
+    // public.can_see_financials(), so '*' is the correct query, not a safe-columns list.
+    expect(call.selectArgs).toContainEqual(['*']);
     expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 42] });
     expect(call.modifiers).toContainEqual({ method: 'maybeSingle', args: [] });
   });

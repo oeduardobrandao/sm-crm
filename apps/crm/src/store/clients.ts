@@ -72,7 +72,7 @@ const PAGE_SIZE = 500;
 export async function getCliente(id: number): Promise<Cliente | null> {
   const { data, error } = await supabase
     .from('clientes_v')
-    .select(CLIENTE_SAFE_COLUMNS)
+    .select('*')
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;

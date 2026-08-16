@@ -45,7 +45,14 @@ const mockedSupabase = supabaseModule as MockedSupabaseModule;
 describe('FINANCIAL_QUERY_KEYS', () => {
   it('covers every cache holding financial values', () => {
     expect(FINANCIAL_QUERY_KEYS).toEqual(
-      expect.arrayContaining(['clientes', 'membros', 'transacoes', 'contratos', 'dashboardStats']),
+      expect.arrayContaining([
+        'cliente',
+        'clientes',
+        'membros',
+        'transacoes',
+        'contratos',
+        'dashboardStats',
+      ]),
     );
   });
 

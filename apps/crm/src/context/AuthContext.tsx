@@ -29,6 +29,7 @@ interface Profile {
  * field. Purging it would refetch a large payload for nothing.
  */
 export const FINANCIAL_QUERY_KEYS = [
+  'cliente',
   'clientes',
   'membros',
   'transacoes',
