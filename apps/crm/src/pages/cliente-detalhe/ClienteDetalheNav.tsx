@@ -1,156 +1,53 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment } from 'react';
+import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import {
-  Info,
-  LayoutList,
-  History,
-  Instagram,
-  Music2,
-  FileText,
-  LayoutDashboard,
-  FolderOpen,
-  CalendarDays,
-  MapPin,
-  Wallet,
-  Plug,
-  BarChart3,
-  ExternalLink,
-  Edit2,
-  type LucideIcon,
-} from 'lucide-react';
-import type {
-  NavSectionItem,
-  NavActionItem,
-  NavSectionKey,
-  NavActionKey,
-} from './clienteDetalheNav.model';
-
-const SECTION_META: Record<NavSectionKey, { icon: LucideIcon; labelKey: string }> = {
-  info: { icon: Info, labelKey: 'detail.nav.info' },
-  entregas: { icon: LayoutList, labelKey: 'detail.nav.entregas' },
-  historico: { icon: History, labelKey: 'detail.nav.historico' },
-  instagram: { icon: Instagram, labelKey: 'detail.nav.instagram' },
-  tiktok: { icon: Music2, labelKey: 'detail.nav.tiktok' },
-  relatorio: { icon: FileText, labelKey: 'detail.nav.relatorio' },
-  hub: { icon: LayoutDashboard, labelKey: 'detail.nav.hub' },
-  arquivos: { icon: FolderOpen, labelKey: 'detail.nav.arquivos' },
-  datas: { icon: CalendarDays, labelKey: 'detail.nav.datas' },
-  enderecos: { icon: MapPin, labelKey: 'detail.nav.enderecos' },
-  financeiro: { icon: Wallet, labelKey: 'detail.nav.financeiro' },
-};
-
-const ACTION_META: Record<NavActionKey, { icon: LucideIcon; labelKey: string }> = {
-  connectInstagram: { icon: Plug, labelKey: 'detail.nav.connectInstagram' },
-  analytics: { icon: BarChart3, labelKey: 'detail.nav.analytics' },
-  openHub: { icon: ExternalLink, labelKey: 'detail.nav.openHub' },
-  editar: { icon: Edit2, labelKey: 'detail.nav.editar' },
-};
+import { useAuth } from '../../context/AuthContext';
+import { visibleClienteTabs, CLIENTE_TAB_GROUP_LABELS } from './clienteTabs.model';
+import type { Cliente } from '../../store';
 
 interface ClienteDetalheNavProps {
-  sections: NavSectionItem[];
-  actions: NavActionItem[];
+  clienteId: number;
+  /**
+   * Not read internally today — kept in the props contract because tabs may
+   * need to react to cliente state (plan, features) in a later task, and this
+   * is the seam ConfiguracaoLayout doesn't need but this nav does.
+   */
+  cliente: Cliente;
 }
 
-export function ClienteDetalheNav({ sections, actions }: ClienteDetalheNavProps) {
+/**
+ * Grouped, route-based tab strip for /clientes/:id/*. Each item is a real
+ * `NavLink` (deep-linkable, survives a refresh); the active tab comes from
+ * React Router's own route matching via `NavLink`'s `aria-current="page"`,
+ * not from scroll position.
+ */
+export function ClienteDetalheNav({ clienteId }: ClienteDetalheNavProps) {
   const { t } = useTranslation('clients');
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const navRef = useRef<HTMLElement>(null);
-  const sectionButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-
-  // Stable dependency: re-subscribe only when the set of section ids changes,
-  // not on every render (the parent recomputes the arrays each render).
-  const sectionIds = sections.map((s) => s.id).join(',');
-
-  useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') return;
-    const ids = sectionIds ? sectionIds.split(',') : [];
-    if (ids.length === 0) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) setActiveId(entry.target.id);
-        }
-      },
-      { rootMargin: '-80px 0px -60% 0px' },
-    );
-    for (const id of ids) {
-      const el = document.getElementById(id);
-      if (el) observer.observe(el);
-    }
-    return () => observer.disconnect();
-  }, [sectionIds]);
-
-  useEffect(() => {
-    if (!activeId || typeof window === 'undefined') return;
-    if (!window.matchMedia('(max-width: 767px)').matches) return;
-    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const nav = navRef.current;
-    const button = sectionButtonRefs.current[activeId];
-    if (!nav || !button) return;
-    const centeredLeft = button.offsetLeft - (nav.clientWidth - button.offsetWidth) / 2;
-    const maxLeft = Math.max(0, nav.scrollWidth - nav.clientWidth);
-    nav.scrollTo({
-      left: Math.min(maxLeft, Math.max(0, centeredLeft)),
-      behavior: prefersReduced ? 'auto' : 'smooth',
-    });
-  }, [activeId]);
-
-  const handleSectionClick = (id: string) => {
-    const prefersReduced =
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    document
-      .getElementById(id)
-      ?.scrollIntoView({ behavior: prefersReduced ? 'auto' : 'smooth', block: 'start' });
-    setActiveId(id);
-  };
+  const { workspaceRole, canSeeFinancials } = useAuth();
+  const tabs = visibleClienteTabs(workspaceRole, canSeeFinancials);
 
   return (
-    <nav ref={navRef} className="cliente-detalhe-nav" aria-label={t('detail.pageNav')}>
-      <div className="cliente-detalhe-nav__group">
-        {sections.map((s) => {
-          const { icon: Icon, labelKey } = SECTION_META[s.key];
-          const label = t(labelKey);
-          const active = activeId === s.id;
-          return (
-            <button
-              key={s.key}
-              type="button"
-              className={`cliente-detalhe-nav__item${
-                active ? ' cliente-detalhe-nav__item--active' : ''
-              }`}
-              aria-label={label}
-              aria-current={active ? 'true' : undefined}
-              onClick={() => handleSectionClick(s.id)}
-              ref={(element) => {
-                sectionButtonRefs.current[s.id] = element;
-              }}
+    <nav className="cliente-tabs-nav" aria-label={t('detail.pageNav')}>
+      {tabs.map((tab, i) => {
+        const Icon = tab.icon;
+        const startsGroup = i === 0 || tabs[i - 1].group !== tab.group;
+        return (
+          <Fragment key={tab.key}>
+            {startsGroup && (
+              <span className="cliente-tabs-nav__label">
+                {t(CLIENTE_TAB_GROUP_LABELS[tab.group])}
+              </span>
+            )}
+            <NavLink
+              to={`/clientes/${clienteId}/${tab.key}`}
+              className={({ isActive }) => `cliente-tabs-nav__item${isActive ? ' active' : ''}`}
             >
-              <Icon className="cliente-detalhe-nav__icon" aria-hidden="true" />
-              <span className="cliente-detalhe-nav__label">{label}</span>
-            </button>
-          );
-        })}
-      </div>
-      {actions.length > 0 && <div className="cliente-detalhe-nav__divider" />}
-      <div className="cliente-detalhe-nav__group cliente-detalhe-nav__group--actions">
-        {actions.map((a) => {
-          const { icon: Icon, labelKey } = ACTION_META[a.key];
-          const label = t(labelKey);
-          return (
-            <button
-              key={a.key}
-              type="button"
-              className="cliente-detalhe-nav__item cliente-detalhe-nav__item--action"
-              aria-label={label}
-              onClick={a.onClick}
-            >
-              <Icon className="cliente-detalhe-nav__icon" aria-hidden="true" />
-              <span className="cliente-detalhe-nav__label">{label}</span>
-            </button>
-          );
-        })}
-      </div>
+              <Icon className="cliente-tabs-nav__icon" aria-hidden="true" />
+              <span className="cliente-tabs-nav__text">{t(tab.labelKey)}</span>
+            </NavLink>
+          </Fragment>
+        );
+      })}
     </nav>
   );
 }

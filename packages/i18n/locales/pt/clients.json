@@ -196,6 +196,20 @@
     "notFound": "Cliente não encontrado",
     "information": "Informações",
     "pageNav": "Navegação da página",
+    "tabs": {
+      "visaoGeral": "Visão geral",
+      "entregas": "Entregas",
+      "redesSociais": "Redes sociais",
+      "relatorios": "Relatórios",
+      "hub": "Hub",
+      "arquivos": "Arquivos",
+      "financeiro": "Financeiro"
+    },
+    "tabGroups": {
+      "cliente": "Cliente",
+      "canais": "Canais e análise",
+      "gestao": "Gestão"
+    },
     "nav": {
       "info": "Informação",
       "entregas": "Entregas",

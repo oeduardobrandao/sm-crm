@@ -1,187 +1,97 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act, cleanup, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import type { Cliente } from '../../../store';
+
+vi.mock('../../../context/AuthContext', () => ({
+  useAuth: vi.fn(),
+}));
+
+import { useAuth } from '../../../context/AuthContext';
 import { ClienteDetalheNav } from '../ClienteDetalheNav';
-import type { NavSectionItem, NavActionItem } from '../clienteDetalheNav.model';
 
-class MockIntersectionObserver {
-  static instances: MockIntersectionObserver[] = [];
-  readonly observe = vi.fn();
-  readonly unobserve = vi.fn();
-  readonly disconnect = vi.fn();
-  readonly takeRecords = vi.fn(() => []);
-  constructor(
-    readonly callback: IntersectionObserverCallback,
-    readonly options: IntersectionObserverInit = {},
-  ) {
-    MockIntersectionObserver.instances.push(this);
-  }
+const mockedUseAuth = vi.mocked(useAuth);
+
+const CLIENTE = { id: 42, nome: 'Aurora' } as Cliente;
+
+function setAuth(workspaceRole: string | null, canSeeFinancials: boolean | 'unknown' = true) {
+  mockedUseAuth.mockReturnValue({ workspaceRole, canSeeFinancials } as never);
 }
 
-const sections: NavSectionItem[] = [
-  { key: 'info', id: 'sec-info' },
-  { key: 'datas', id: 'sec-datas' },
-];
-
-let scrollIntoViewDescriptor: PropertyDescriptor | undefined;
-let scrollToDescriptor: PropertyDescriptor | undefined;
-
-function setGeometry(
-  element: Element,
-  geometry: Partial<Record<'offsetLeft' | 'offsetWidth' | 'clientWidth' | 'scrollWidth', number>>,
-) {
-  for (const [property, value] of Object.entries(geometry)) {
-    Object.defineProperty(element, property, { configurable: true, value });
-  }
-}
-
-beforeEach(() => {
-  MockIntersectionObserver.instances = [];
-  vi.stubGlobal(
-    'IntersectionObserver',
-    MockIntersectionObserver as unknown as typeof IntersectionObserver,
+function renderNav(path = '/clientes/42/entregas') {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <ClienteDetalheNav clienteId={42} cliente={CLIENTE} />
+    </MemoryRouter>,
   );
-  // jsdom does not implement these scrolling methods. Preserve their descriptors so
-  // this suite cannot leak mocks into other test files.
-  scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
-  scrollToDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo');
-  Object.defineProperty(Element.prototype, 'scrollIntoView', {
-    configurable: true,
-    writable: true,
-    value: vi.fn(),
-  });
-  Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
-    configurable: true,
-    writable: true,
-    value: vi.fn(),
-  });
-  document.body.innerHTML = '<div id="sec-info"></div><div id="sec-datas"></div>';
-});
-
-afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
-  if (scrollIntoViewDescriptor) {
-    Object.defineProperty(Element.prototype, 'scrollIntoView', scrollIntoViewDescriptor);
-  } else {
-    delete (Element.prototype as Partial<Element>).scrollIntoView;
-  }
-  if (scrollToDescriptor) {
-    Object.defineProperty(HTMLElement.prototype, 'scrollTo', scrollToDescriptor);
-  } else {
-    delete (HTMLElement.prototype as Partial<HTMLElement>).scrollTo;
-  }
-  document.body.innerHTML = '';
-});
+}
 
 describe('ClienteDetalheNav', () => {
-  it('renders a button per section and per action (PT labels)', () => {
-    const actions: NavActionItem[] = [{ key: 'editar', onClick: vi.fn() }];
-    render(<ClienteDetalheNav sections={sections} actions={actions} />);
-    expect(screen.getByRole('button', { name: 'Informação' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Datas' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Editar cliente' })).toBeInTheDocument();
-    expect(screen.getByRole('navigation', { name: 'Navegação da página' })).toBeInTheDocument();
+  beforeEach(() => vi.clearAllMocks());
+
+  it('renders one link per visible tab, grouped, in order, for an owner', () => {
+    setAuth('owner', true);
+    renderNav();
+    const links = screen.getAllByRole('link');
+    expect(links.map((l) => l.textContent)).toEqual([
+      'Visão geral',
+      'Entregas',
+      'Redes sociais',
+      'Relatórios',
+      'Hub',
+      'Arquivos',
+      'Financeiro',
+    ]);
+    expect(links.map((l) => l.getAttribute('href'))).toEqual([
+      '/clientes/42/visao-geral',
+      '/clientes/42/entregas',
+      '/clientes/42/redes-sociais',
+      '/clientes/42/relatorios',
+      '/clientes/42/hub',
+      '/clientes/42/arquivos',
+      '/clientes/42/financeiro',
+    ]);
   });
 
-  it('clicking a phone section scrolls its target without scrolling the sticky chip vertically', () => {
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn().mockImplementation((query: string) => ({
-        matches: query === '(max-width: 767px)',
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      })),
-    );
-    render(<ClienteDetalheNav sections={sections} actions={[]} />);
-    const target = document.getElementById('sec-datas')!;
-    const targetScroll = vi.fn();
-    const chip = screen.getByRole('button', { name: 'Datas' });
-    const chipScroll = vi.fn();
-    target.scrollIntoView = targetScroll;
-    chip.scrollIntoView = chipScroll;
-
-    fireEvent.click(chip);
-
-    expect(targetScroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
-    expect(chipScroll).not.toHaveBeenCalled();
-    expect(
-      screen.getByRole('navigation', { name: 'Navegação da página' }).scrollTo,
-    ).toHaveBeenCalled();
+  it('renders group headings before the first tab of each group only', () => {
+    setAuth('owner', true);
+    renderNav();
+    expect(screen.getByText('Cliente')).toBeInTheDocument();
+    expect(screen.getByText('Canais e análise')).toBeInTheDocument();
+    expect(screen.getByText('Gestão')).toBeInTheDocument();
   });
 
-  it('clicking an action fires its onClick', () => {
-    const onClick = vi.fn();
-    render(<ClienteDetalheNav sections={sections} actions={[{ key: 'editar', onClick }]} />);
-    screen.getByRole('button', { name: 'Editar cliente' }).click();
-    expect(onClick).toHaveBeenCalledTimes(1);
+  it('hides relatorios and financeiro for an agent', () => {
+    setAuth('agent', false);
+    renderNav('/clientes/42/visao-geral');
+    const links = screen.getAllByRole('link').map((l) => l.textContent);
+    expect(links).not.toContain('Relatórios');
+    expect(links).not.toContain('Financeiro');
   });
 
-  it('marks the intersecting section active via aria-current', () => {
-    render(<ClienteDetalheNav sections={sections} actions={[]} />);
-    const observer = MockIntersectionObserver.instances[0];
-    act(() => {
-      observer.callback(
-        [
-          {
-            isIntersecting: true,
-            target: document.getElementById('sec-datas')!,
-          } as IntersectionObserverEntry,
-        ],
-        observer as unknown as IntersectionObserver,
-      );
-    });
-    expect(screen.getByRole('button', { name: 'Datas' })).toHaveAttribute('aria-current', 'true');
-    expect(screen.getByRole('button', { name: 'Informação' })).not.toHaveAttribute('aria-current');
+  it('marks the active tab via aria-current, matching the current route', () => {
+    setAuth('owner', true);
+    renderNav('/clientes/42/entregas');
+    expect(screen.getByRole('link', { name: 'Entregas' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Visão geral' })).not.toHaveAttribute('aria-current');
   });
 
-  it('keeps an observer-selected phone chip visible with horizontal-only nav scrolling', () => {
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn().mockImplementation((query: string) => ({
-        matches: query === '(max-width: 767px)',
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      })),
-    );
-    render(<ClienteDetalheNav sections={sections} actions={[]} />);
-    const dates = screen.getByRole('button', { name: 'Datas' });
-    const nav = screen.getByRole('navigation', { name: 'Navegação da página' });
-    setGeometry(nav, { clientWidth: 200, scrollWidth: 500 });
-    setGeometry(dates, { offsetLeft: 320, offsetWidth: 80 });
+  it('does not use IntersectionObserver or scrollIntoView', () => {
+    const observeSpy = vi.fn();
+    const originalIO = (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver;
+    (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = class {
+      observe = observeSpy;
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    };
+    const scrollIntoViewSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoViewSpy;
 
-    act(() => {
-      MockIntersectionObserver.instances[0].callback(
-        [
-          {
-            isIntersecting: true,
-            target: document.getElementById('sec-datas')!,
-          } as IntersectionObserverEntry,
-        ],
-        MockIntersectionObserver.instances[0] as unknown as IntersectionObserver,
-      );
-    });
+    setAuth('owner', true);
+    renderNav();
 
-    expect(nav.scrollTo).toHaveBeenCalledWith({
-      left: 260,
-      behavior: 'smooth',
-    });
-    expect(dates.scrollIntoView).not.toHaveBeenCalled();
-  });
-
-  it('uses an instant section jump when reduced motion is preferred', () => {
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn().mockImplementation((query: string) => ({
-        matches: query === '(prefers-reduced-motion: reduce)',
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      })),
-    );
-    render(<ClienteDetalheNav sections={sections} actions={[]} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Datas' }));
-    expect(document.getElementById('sec-datas')!.scrollIntoView).toHaveBeenCalledWith({
-      behavior: 'auto',
-      block: 'start',
-    });
+    expect(observeSpy).not.toHaveBeenCalled();
+    expect(scrollIntoViewSpy).not.toHaveBeenCalled();
+    (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = originalIO;
   });
 });

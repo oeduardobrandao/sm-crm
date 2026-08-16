@@ -34,6 +34,16 @@ const MarketingPage = lazy(() => import('./pages/marketing/MarketingPage'));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
 const ClientesPage = lazy(() => import('./pages/clientes/ClientesPage'));
 const ClienteDetalhePage = lazy(() => import('./pages/cliente-detalhe/ClienteDetalhePage'));
+const ClienteDetalheIndexRedirect = lazy(
+  () => import('./pages/cliente-detalhe/ClienteDetalheIndexRedirect'),
+);
+const ClienteVisaoGeralTab = lazy(() => import('./pages/cliente-detalhe/tabs/VisaoGeralTab'));
+const ClienteEntregasTab = lazy(() => import('./pages/cliente-detalhe/tabs/EntregasTab'));
+const ClienteRedesSociaisTab = lazy(() => import('./pages/cliente-detalhe/tabs/RedesSociaisTab'));
+const ClienteRelatoriosTab = lazy(() => import('./pages/cliente-detalhe/tabs/RelatoriosTab'));
+const ClienteHubTab = lazy(() => import('./pages/cliente-detalhe/tabs/HubClienteTab'));
+const ClienteArquivosTab = lazy(() => import('./pages/cliente-detalhe/tabs/ArquivosTab'));
+const ClienteFinanceiroTab = lazy(() => import('./pages/cliente-detalhe/tabs/FinanceiroTab'));
 const FinanceiroPage = lazy(() => import('./pages/financeiro/FinanceiroPage'));
 const ContratosPage = lazy(() => import('./pages/contratos/ContratosPage'));
 const LeadsPage = lazy(() => import('./pages/leads/LeadsPage'));
@@ -174,7 +184,22 @@ export default function App() {
               >
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/clientes" element={<ClientesPage />} />
-                <Route path="/clientes/:id" element={<ClienteDetalhePage />} />
+                <Route path="/clientes/:id" element={<ClienteDetalhePage />}>
+                  <Route index element={<ClienteDetalheIndexRedirect />} />
+                  <Route path="visao-geral" element={<ClienteVisaoGeralTab />} />
+                  <Route path="entregas" element={<ClienteEntregasTab />} />
+                  <Route path="redes-sociais" element={<ClienteRedesSociaisTab />} />
+                  <Route path="relatorios" element={<ClienteRelatoriosTab />} />
+                  <Route path="hub" element={<ClienteHubTab />} />
+                  <Route path="arquivos" element={<ClienteArquivosTab />} />
+                  <Route path="financeiro" element={<ClienteFinanceiroTab />} />
+                  {/* Unregistered sub-path: ClienteDetalhePage's own guard parses the
+                      pathname and redirects to visao-geral before this Outlet child
+                      would ever render — this route only exists so React Router
+                      matches the /clientes/:id branch at all instead of falling
+                      through to the top-level "*" 404 route. */}
+                  <Route path="*" element={null} />
+                </Route>
                 <Route path="/financeiro" element={<FinanceiroPage />} />
                 <Route path="/contratos" element={<ContratosPage />} />
                 <Route path="/leads" element={<LeadsPage />} />
