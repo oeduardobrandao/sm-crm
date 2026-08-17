@@ -2672,6 +2672,24 @@ select.form-input option {
   color: var(--primary-color);
 }
 
+.user-dropdown-item-value {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.8rem;
+}
+
+.user-dropdown-submenu {
+  padding: 0.15rem 0 0.25rem;
+}
+
+.user-dropdown-submenu .user-dropdown-item {
+  padding-left: 1.75rem;
+}
+
 .user-dropdown-item:hover {
   background: var(--surface-hover);
 }
@@ -3378,6 +3396,19 @@ select.form-input option {
   .main-content {
     padding: calc(1.25rem + env(safe-area-inset-top, 0px)) 1rem
       calc(104px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Mensagens (.page-full-bleed) forces .main-content padding to 0 at every
+     viewport width so the split-pane can size itself by flex instead of a
+     fixed height (see the .page-full-bleed rule above). That strips the
+     shell's own bottom compensation for the floating .mobile-nav-glass pill
+     here on mobile, so the last conversation row and the composer would
+     otherwise render underneath it with no page scroll to escape. Reserve
+     the same clearance directly on the two scrollable regions instead —
+     same value the shell itself uses at this breakpoint. */
+  .mensagens-list-scroll,
+  .mensagens-thread-root {
+    padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
   }
 }
 

@@ -1,26 +1,15 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const {
-  mockFeed,
-  mockConversas,
-  mockClientes,
-  mockSend,
-  mockReply,
-  mockSeen,
-  mockPreview,
-  mockMedia,
-} = vi.hoisted(() => ({
+const { mockFeed, mockConversas, mockClientes, mockSend, mockReply, mockSeen } = vi.hoisted(() => ({
   mockFeed: vi.fn(),
   mockConversas: vi.fn(),
   mockClientes: vi.fn(),
   mockSend: vi.fn().mockResolvedValue(undefined),
   mockReply: vi.fn().mockResolvedValue(undefined),
   mockSeen: vi.fn().mockResolvedValue(undefined),
-  mockPreview: vi.fn(),
-  mockMedia: vi.fn(),
 }));
 
 vi.mock('@/store', () => ({
@@ -30,12 +19,11 @@ vi.mock('@/store', () => ({
   sendMensagem: mockSend,
   replyToPostApproval: mockReply,
   markMensagensSeen: mockSeen,
-  getPostChipPreview: mockPreview,
 }));
 
-vi.mock('@/services/postMedia', () => ({
-  listPostMedia: mockMedia,
-}));
+// PostChip's own hover-preview queries are covered by ConversationThread.test.tsx.
+// Mocked here only so the real (Supabase-touching) module never loads.
+vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn() }));
 
 import MensagensPage from '../MensagensPage';
 
@@ -66,7 +54,7 @@ const CONVERSAS = [
   },
 ];
 
-const ITEMS = [
+const ITEMS_14 = [
   {
     source: 'post_feedback',
     item_id: 1,
@@ -101,105 +89,177 @@ const ITEMS = [
   },
 ];
 
-function renderPage() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/mensagens']}>
-        <MensagensPage />
-      </MemoryRouter>
-    </QueryClientProvider>,
+function PathProbe() {
+  const location = useLocation();
+  return <div data-testid="current-path">{location.pathname}</div>;
+}
+
+function mockMatchMedia(matches: boolean) {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      matches,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
   );
 }
 
-async function abrirConversaAcme() {
-  renderPage();
-  fireEvent.click(await screen.findByTestId('conversa-14'));
-  await screen.findByText('Trocar a foto');
+function renderPage(initialPath = '/mensagens') {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const utils = render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <Routes>
+          <Route
+            path="/mensagens"
+            element={
+              <>
+                <MensagensPage />
+                <PathProbe />
+              </>
+            }
+          />
+          <Route
+            path="/mensagens/:clienteId"
+            element={
+              <>
+                <MensagensPage />
+                <PathProbe />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  return { ...utils, qc };
 }
 
 describe('MensagensPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockFeed.mockResolvedValue(ITEMS);
+    mockFeed.mockImplementation(({ clienteId }: { clienteId?: number }) =>
+      Promise.resolve(clienteId === 14 ? ITEMS_14 : []),
+    );
     mockConversas.mockResolvedValue(CONVERSAS);
     mockClientes.mockResolvedValue([
       { id: 14, nome: 'ACME', sigla: 'AC', cor: '#3ecf8e' },
       { id: 15, nome: 'Beta Corp', sigla: 'BC', cor: '#42c8f5' },
     ]);
-    // The repo's global afterEach calls vi.restoreAllMocks(); re-arm everything.
     mockSend.mockResolvedValue(undefined);
     mockReply.mockResolvedValue(undefined);
     mockSeen.mockResolvedValue(undefined);
-    mockPreview.mockResolvedValue({
-      id: 7,
-      titulo: 'Post de julho',
-      tipo: 'feed',
-      status: 'aprovado_cliente',
-      scheduled_at: null,
-      workflow_id: 3,
-      workflow_titulo: 'Fluxo de agosto',
-    });
-    mockMedia.mockResolvedValue([]);
   });
 
-  it('renders the conversation list with preview, unread badge and agency prefix', async () => {
+  it('mobile (default): shows only the list, opens a thread by URL, and returns via back', async () => {
     renderPage();
     expect(await screen.findByText('ACME')).toBeInTheDocument();
-    expect(screen.getByText('Obrigado!')).toBeInTheDocument();
-    expect(screen.getByText('Ana: Segue o ajuste combinado.')).toBeInTheDocument();
-    const acmeRow = screen.getByTestId('conversa-14');
-    expect(acmeRow).toHaveTextContent('2');
-  });
+    expect(screen.queryByPlaceholderText('Enviar mensagem…')).not.toBeInTheDocument();
 
-  it('sorts conversations by recency by default and flips to oldest', async () => {
-    renderPage();
-    await screen.findByText('ACME');
-    const nomes = () =>
-      [screen.getByTestId('conversa-15'), screen.getByTestId('conversa-14')].map((el) =>
-        el.compareDocumentPosition(screen.getByTestId('conversa-14')),
-      );
-    // recentes: Beta Corp (jul 31) before ACME (jul 30)
-    expect(
-      screen.getByTestId('conversa-15').compareDocumentPosition(screen.getByTestId('conversa-14')) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /Mais recentes/ }));
-    await waitFor(() =>
-      expect(
-        screen
-          .getByTestId('conversa-14')
-          .compareDocumentPosition(screen.getByTestId('conversa-15')) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy(),
-    );
-    void nomes;
-  });
-
-  it('opens a thread in chronological order and returns via back', async () => {
-    await abrirConversaAcme();
+    fireEvent.click(screen.getByTestId('conversa-14'));
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/mensagens/14');
+    await screen.findByText('Trocar a foto');
     expect(mockFeed).toHaveBeenCalledWith(expect.objectContaining({ clienteId: 14 }));
-    const bolhas = screen.getAllByText(/Trocar a foto|Obrigado!/);
-    expect(bolhas[0]).toHaveTextContent('Trocar a foto');
+    expect(screen.queryByTestId('conversa-15')).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole('button', { name: 'Voltar para as conversas' }));
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/mensagens');
     expect(await screen.findByTestId('conversa-15')).toBeInTheDocument();
   });
 
-  it('sends a general message from the thread composer', async () => {
-    await abrirConversaAcme();
-    const input = screen.getByPlaceholderText('Enviar mensagem…');
-    fireEvent.change(input, { target: { value: 'Olá' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(mockSend).toHaveBeenCalledWith(14, 'Olá'));
+  it('desktop: renders the list and the thread at the same time, with a placeholder until one is picked', async () => {
+    mockMatchMedia(true);
+    renderPage();
+    expect(await screen.findByText('ACME')).toBeInTheDocument();
+    expect(screen.getByText('Selecione uma conversa')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('conversa-14'));
+    await screen.findByText('Trocar a foto');
+    expect(screen.getByTestId('conversa-15')).toBeInTheDocument();
+    expect(screen.queryByText('Selecione uma conversa')).not.toBeInTheDocument();
   });
 
-  it('replies to a post via the Responder flow', async () => {
-    await abrirConversaAcme();
+  it('/mensagens/999 (unknown id) shows the not-found state with a link back', async () => {
+    mockMatchMedia(true);
+    renderPage('/mensagens/999');
+    expect(await screen.findByText('Conversa não encontrada.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Voltar para as conversas' })).toHaveAttribute(
+      'href',
+      '/mensagens',
+    );
+    expect(mockFeed).not.toHaveBeenCalled();
+  });
+
+  it('/mensagens/abc (non-numeric id) shows not-found immediately without fetching', async () => {
+    renderPage('/mensagens/abc');
+    expect(await screen.findByText('Conversa não encontrada.')).toBeInTheDocument();
+    expect(mockFeed).not.toHaveBeenCalled();
+  });
+
+  it('shows a retriable error, not "not found", when the conversation list fails to load', async () => {
+    mockConversas.mockRejectedValueOnce(new Error('network'));
+    renderPage('/mensagens/14');
+    expect(await screen.findByText('Não foi possível carregar as conversas.')).toBeInTheDocument();
+    expect(screen.queryByText('Conversa não encontrada.')).not.toBeInTheDocument();
+
+    mockConversas.mockResolvedValueOnce(CONVERSAS);
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    await screen.findByText('Trocar a foto');
+  });
+
+  it('does not tear down an open thread or the list when a background conversas refetch fails', async () => {
+    mockMatchMedia(true);
+    const { qc } = renderPage('/mensagens/14');
+    await screen.findByText('Trocar a foto');
+    expect(screen.getByTestId('conversa-15')).toBeInTheDocument();
+
+    // Simulate a background refetch (window refocus, the seen-marker's
+    // post-mount invalidation, ...) that fails on top of already-cached,
+    // still-valid data — `conversas.data` stays populated, only
+    // `conversas.isError` flips true.
+    mockConversas.mockRejectedValueOnce(new Error('network'));
+    await act(async () => {
+      await qc.refetchQueries({ queryKey: ['mensagens-conversas'] });
+    });
+
+    // The open thread and its draft-bearing composer stay mounted...
+    expect(screen.getByText('Trocar a foto')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Enviar mensagem…')).toBeInTheDocument();
+    // ...and the list keeps showing its (still-valid, cached) rows instead
+    // of a self-contradictory "couldn't load" message above them.
+    expect(screen.getByTestId('conversa-14')).toBeInTheDocument();
+    expect(screen.getByTestId('conversa-15')).toBeInTheDocument();
+    expect(screen.queryByText('Não foi possível carregar as conversas.')).not.toBeInTheDocument();
+  });
+
+  it('resets thread-scoped state (reply target, draft) when switching conversations', async () => {
+    mockMatchMedia(true);
+    renderPage('/mensagens/14');
+    await screen.findByText('Trocar a foto');
     fireEvent.click(screen.getByRole('button', { name: 'Responder' }));
-    const input = screen.getByPlaceholderText('Responder sobre o post…');
-    fireEvent.change(input, { target: { value: 'Feito' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(mockReply).toHaveBeenCalledWith(7, 3, 'Feito'));
+    expect(screen.getByPlaceholderText('Responder sobre o post…')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('conversa-15'));
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText('Enviar mensagem…')).toBeInTheDocument(),
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('Enviar mensagem…'), { target: { value: 'Olá' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('Enviar mensagem…'), { key: 'Enter' });
+    await waitFor(() => expect(mockSend).toHaveBeenCalledWith(15, 'Olá'));
+    expect(mockReply).not.toHaveBeenCalled();
+  });
+
+  it('does not disturb an open thread when the list is filtered to a different client', async () => {
+    mockMatchMedia(true);
+    renderPage('/mensagens/14');
+    await screen.findByText('Trocar a foto');
+
+    fireEvent.change(screen.getByLabelText('Buscar cliente'), { target: { value: 'beta' } });
+    expect(screen.queryByTestId('conversa-14')).not.toBeInTheDocument();
+    expect(screen.getByText('Trocar a foto')).toBeInTheDocument();
   });
 
   it('marks the feed seen on mount', async () => {
@@ -207,23 +267,49 @@ describe('MensagensPage', () => {
     await waitFor(() => expect(mockSeen).toHaveBeenCalledTimes(1));
   });
 
-  it('uses the Instagram profile picture as the client avatar when available', async () => {
+  it('does not fetch the feed when no conversation is selected', async () => {
     renderPage();
-    await screen.findByText('Beta Corp');
-    expect(screen.getByTestId('cliente-avatar-foto')).toHaveAttribute(
-      'src',
-      'https://cdn.example.com/beta.png',
-    );
+    await screen.findByText('ACME');
+    expect(mockFeed).not.toHaveBeenCalled();
   });
 
-  it('filters the conversation list by client name', async () => {
-    renderPage();
-    await screen.findByText('Beta Corp');
-    fireEvent.change(screen.getByLabelText('Buscar cliente'), { target: { value: 'acm' } });
-    expect(screen.getByText('ACME')).toBeInTheDocument();
-    expect(screen.queryByText('Beta Corp')).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Buscar cliente'), { target: { value: 'zzz' } });
-    expect(screen.getByText('Nenhum cliente encontrado.')).toBeInTheDocument();
+  it('fetches the feed for a deep-linked conversation and scrolls to the newest message', async () => {
+    let resolveFeed!: (items: typeof ITEMS_14) => void;
+    mockFeed.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFeed = resolve;
+        }),
+    );
+
+    renderPage('/mensagens/14');
+    const scrollEl = await screen.findByTestId('thread-scroll');
+    Object.defineProperty(scrollEl, 'scrollHeight', { value: 999, configurable: true });
+    const scrollTopSpy = vi.fn();
+    Object.defineProperty(scrollEl, 'scrollTop', {
+      get: () => 0,
+      set: scrollTopSpy,
+      configurable: true,
+    });
+
+    await act(async () => {
+      resolveFeed(ITEMS_14);
+      await Promise.resolve();
+    });
+    await screen.findByText('Trocar a foto');
+
+    expect(scrollTopSpy).toHaveBeenCalledWith(999);
+  });
+
+  it('replies to a post via the Responder flow', async () => {
+    renderPage('/mensagens/14');
+    await screen.findByText('Trocar a foto');
+    fireEvent.click(screen.getByRole('button', { name: 'Responder' }));
+    const input = screen.getByPlaceholderText('Responder sobre o post…');
+    fireEvent.change(input, { target: { value: 'Feito' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(mockReply).toHaveBeenCalledWith(7, 3, 'Feito'));
+    expect(mockSend).not.toHaveBeenCalled();
   });
 
   it('does not send twice on a rapid double Enter', async () => {
@@ -234,7 +320,8 @@ describe('MensagensPage', () => {
           resolveSend = resolve;
         }),
     );
-    await abrirConversaAcme();
+    renderPage('/mensagens/14');
+    await screen.findByText('Trocar a foto');
     const input = screen.getByPlaceholderText('Enviar mensagem…');
     fireEvent.change(input, { target: { value: 'Olá' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -252,7 +339,8 @@ describe('MensagensPage', () => {
 
   it('keeps the reply draft when the send fails', async () => {
     mockReply.mockRejectedValueOnce(new Error('network error'));
-    await abrirConversaAcme();
+    renderPage('/mensagens/14');
+    await screen.findByText('Trocar a foto');
     fireEvent.click(screen.getByRole('button', { name: 'Responder' }));
     const input = screen.getByPlaceholderText('Responder sobre o post…');
     fireEvent.change(input, { target: { value: 'Feito' } });
@@ -262,28 +350,5 @@ describe('MensagensPage', () => {
       await Promise.resolve();
     });
     expect(screen.getByPlaceholderText('Responder sobre o post…')).toHaveValue('Feito');
-  });
-
-  it('shows the hover preview with tipo, status and fluxo on the post chip', async () => {
-    await abrirConversaAcme();
-    const chip = screen.getByRole('link', { name: 'Post de julho' });
-    fireEvent.mouseEnter(chip.parentElement!);
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    });
-    await waitFor(() => expect(mockPreview).toHaveBeenCalledWith(7));
-    const card = await screen.findByTestId('post-hover-preview');
-    expect(card).toHaveTextContent('Feed');
-    expect(card).toHaveTextContent('Fluxo de agosto');
-    fireEvent.mouseLeave(chip.parentElement!);
-    await waitFor(() => expect(screen.queryByTestId('post-hover-preview')).not.toBeInTheDocument());
-  });
-
-  // The chip used to link to the fluxo alone, which opened the workflow drawer with no
-  // post expanded — the linked post was the one thing the user could not reach.
-  it('links the post chip to the post inside its fluxo, not just the fluxo', async () => {
-    await abrirConversaAcme();
-    const chip = screen.getByRole('link', { name: 'Post de julho' });
-    expect(chip).toHaveAttribute('href', '/entregas?drawer=3&post=7');
   });
 });

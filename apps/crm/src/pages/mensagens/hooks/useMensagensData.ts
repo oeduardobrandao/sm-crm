@@ -15,6 +15,19 @@ const PAGE_SIZE = 50;
 export function useMensagensData(clienteId: number | null) {
   const qc = useQueryClient();
 
+  const conversas = useQuery({
+    queryKey: ['mensagens-conversas'],
+    queryFn: getMensagensConversas,
+  });
+  const clientes = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
+
+  // A merely-numeric clienteId isn't enough — confirm it's a real conversation
+  // before fetching its feed. Stays false (no fetch) while conversas is still
+  // loading too, same as an unconfirmed id; the shell's precedence (Task 5)
+  // is what decides what to show meanwhile, this just avoids the wasted call.
+  const conversaExists =
+    clienteId != null && (conversas.data?.some((c) => c.cliente_id === clienteId) ?? false);
+
   const feed = useInfiniteQuery({
     queryKey: ['mensagens-feed', clienteId],
     queryFn: ({ pageParam }) =>
@@ -29,13 +42,8 @@ export function useMensagensData(clienteId: number | null) {
         beforeItemId: oldest.item_id,
       };
     },
+    enabled: conversaExists,
   });
-
-  const conversas = useQuery({
-    queryKey: ['mensagens-conversas'],
-    queryFn: getMensagensConversas,
-  });
-  const clientes = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
 
   // Opening the page marks the whole feed seen for this user.
   useEffect(() => {
