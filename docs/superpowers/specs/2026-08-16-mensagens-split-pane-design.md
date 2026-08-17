@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-16
 **Scope:** `apps/crm/src/pages/mensagens/` + one route addition in `apps/crm/src/App.tsx`
-**Status:** design approved, awaiting implementation plan
+**Status:** implemented
 
 ## Problem
 
