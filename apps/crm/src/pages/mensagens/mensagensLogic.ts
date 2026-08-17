@@ -78,3 +78,14 @@ export function eventLabel(i: MensagemFeedItem): string {
   }
   return i.action === 'aprovado' ? 'Aprovou o post' : 'Pediu correção';
 }
+
+/** "10 de ago., 17:35" — pt-BR day + abbreviated month + time, used by both
+ * the conversation list row and the thread's message timestamps. */
+export function formatTime(iso: string): string {
+  return new Date(iso).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
