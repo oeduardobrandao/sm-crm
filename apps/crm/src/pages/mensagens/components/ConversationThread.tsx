@@ -89,7 +89,7 @@ export function ConversationThread({
   }
 
   return (
-    <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+    <div className="flex-1 min-w-0 flex flex-col overflow-hidden mensagens-thread-root">
       <div className="flex items-center gap-3 border-b border-[var(--border-color)] px-4 py-3">
         {onBack && (
           <button

@@ -78,7 +78,7 @@ export function ConversationList({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto mensagens-list-scroll">
         {isLoading && (
           <p className="py-10 text-center text-sm text-[var(--text-muted)]">Carregando…</p>
         )}
