@@ -108,7 +108,7 @@ function mockMatchMedia(matches: boolean) {
 
 function renderPage(initialPath = '/mensagens') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const utils = render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
@@ -134,6 +134,7 @@ function renderPage(initialPath = '/mensagens') {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { ...utils, qc };
 }
 
 describe('MensagensPage', () => {
@@ -206,6 +207,31 @@ describe('MensagensPage', () => {
     mockConversas.mockResolvedValueOnce(CONVERSAS);
     fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
     await screen.findByText('Trocar a foto');
+  });
+
+  it('does not tear down an open thread or the list when a background conversas refetch fails', async () => {
+    mockMatchMedia(true);
+    const { qc } = renderPage('/mensagens/14');
+    await screen.findByText('Trocar a foto');
+    expect(screen.getByTestId('conversa-15')).toBeInTheDocument();
+
+    // Simulate a background refetch (window refocus, the seen-marker's
+    // post-mount invalidation, ...) that fails on top of already-cached,
+    // still-valid data — `conversas.data` stays populated, only
+    // `conversas.isError` flips true.
+    mockConversas.mockRejectedValueOnce(new Error('network'));
+    await act(async () => {
+      await qc.refetchQueries({ queryKey: ['mensagens-conversas'] });
+    });
+
+    // The open thread and its draft-bearing composer stay mounted...
+    expect(screen.getByText('Trocar a foto')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Enviar mensagem…')).toBeInTheDocument();
+    // ...and the list keeps showing its (still-valid, cached) rows instead
+    // of a self-contradictory "couldn't load" message above them.
+    expect(screen.getByTestId('conversa-14')).toBeInTheDocument();
+    expect(screen.getByTestId('conversa-15')).toBeInTheDocument();
+    expect(screen.queryByText('Não foi possível carregar as conversas.')).not.toBeInTheDocument();
   });
 
   it('resets thread-scoped state (reply target, draft) when switching conversations', async () => {

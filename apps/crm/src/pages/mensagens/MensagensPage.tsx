@@ -24,6 +24,14 @@ export default function MensagensPage() {
 
   const { feed, conversas, clientes, sendGeneral, replyToPost } = useMensagensData(clienteId);
 
+  // A failed background refetch (e.g. window refocus, or the seen-marker's
+  // post-mount invalidation) keeps `data` populated from the last successful
+  // fetch — TanStack Query only clears it when the query has never
+  // succeeded. Treat only the latter as a hard failure: a background blip
+  // on top of good cached data should leave the list and any open thread
+  // alone rather than tearing them down for a spurious error screen.
+  const conversasHardError = conversas.isError && conversas.data == null;
+
   const clientesById = useMemo(() => {
     const map = new Map<number, Cliente>();
     for (const c of clientes.data ?? []) if (c.id != null) map.set(c.id, c);
@@ -42,7 +50,7 @@ export default function MensagensPage() {
     // is false and the list fills the screen instead.
     if (clienteId == null) return <ThreadPlaceholder />;
     if (conversas.isLoading) return <ThreadLoading onBack={onBack} />;
-    if (conversas.isError) {
+    if (conversasHardError) {
       return <ThreadLoadError onRetry={() => conversas.refetch()} onBack={onBack} />;
     }
     const conversa = conversas.data?.find((c) => c.cliente_id === clienteId);
@@ -72,7 +80,7 @@ export default function MensagensPage() {
           }
           conversas={conversas.data ?? []}
           isLoading={conversas.isLoading}
-          isError={conversas.isError}
+          isError={conversasHardError}
           selectedClienteId={clienteId}
           clientesById={clientesById}
           onSelect={goToConversa}
