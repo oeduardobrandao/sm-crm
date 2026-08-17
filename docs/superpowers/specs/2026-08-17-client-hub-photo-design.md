@@ -54,8 +54,9 @@ needs to special-case it.
 ## Schema & storage
 
 One new migration (pick a timestamp prefix above main's current tail —
-`20260816000001` as of this writing, but re-verify at PR-open time per the
-project's migration-collision history):
+`20260817000001` as of this writing, but re-verify at PR-open time per the
+project's migration-collision history — this repo has been bitten by this
+exact mistake twice before):
 
 ```sql
 ALTER TABLE public.clientes ADD COLUMN foto_url text;
@@ -83,15 +84,15 @@ CREATE OR REPLACE VIEW public.clientes_v WITH (security_barrier = true) AS
   WHERE c.conta_id = public.get_my_conta_id();
 
 -- Storage RLS: path pattern clientes/{cliente_id}/foto.*
--- clientes.id is an integer (unlike workspace_id, which is uuid) — the
--- folder-segment check casts to ::int, not ::uuid.
+-- clientes.id is bigserial (bigint), NOT the uuid workspace_id is — the
+-- folder-segment check casts to ::bigint, not ::int or ::uuid.
 CREATE POLICY "cliente_photo_insert"
   ON storage.objects FOR INSERT
   TO authenticated
   WITH CHECK (
     bucket_id = 'avatars'
     AND (storage.foldername(name))[1] = 'clientes'
-    AND (storage.foldername(name))[2]::int IN (
+    AND (storage.foldername(name))[2]::bigint IN (
       SELECT c.id FROM public.clientes c
       WHERE c.conta_id IN (
         SELECT workspace_id FROM workspace_members
@@ -106,7 +107,7 @@ CREATE POLICY "cliente_photo_update"
   USING (
     bucket_id = 'avatars'
     AND (storage.foldername(name))[1] = 'clientes'
-    AND (storage.foldername(name))[2]::int IN (
+    AND (storage.foldername(name))[2]::bigint IN (
       SELECT c.id FROM public.clientes c
       WHERE c.conta_id IN (
         SELECT workspace_id FROM workspace_members
@@ -114,12 +115,75 @@ CREATE POLICY "cliente_photo_update"
       )
     )
   );
+
+-- SECURITY-CRITICAL, and NOT optional: avatars_service_write/_update
+-- (20260319_avatars_bucket.sql) were created with no `TO` clause, which
+-- Postgres defaults to PUBLIC — so today, ANY authenticated user can already
+-- write to ANY path in the 'avatars' bucket, including other workspaces'
+-- logos and, without this fix, other clients' photos. RLS policies for the
+-- same command are OR'd, so the path-scoped policies above add no real
+-- restriction until this gap is closed. Their doc comments already say the
+-- intent was service_role-only; the `TO` clause was just missing.
+--
+-- Verified safe to narrow: the only three client-side writes into 'avatars'
+-- today (WorkspaceTab's logo, RelatoriosTab's report-splash art, and this
+-- new client photo) all live under path prefixes with their own dedicated
+-- scoped policy (workspaces/*, clientes/*). service_role bypasses RLS
+-- entirely in Supabase, so this is a no-op for edge-function writes and a
+-- real fix for everyone else.
+DROP POLICY "avatars_service_write" ON storage.objects;
+DROP POLICY "avatars_service_update" ON storage.objects;
+CREATE POLICY "avatars_service_write"
+  ON storage.objects FOR INSERT
+  TO service_role
+  WITH CHECK (bucket_id = 'avatars');
+CREATE POLICY "avatars_service_update"
+  ON storage.objects FOR UPDATE
+  TO service_role
+  USING (bucket_id = 'avatars');
+
+-- DB-level enforcement of "owner/admin only": clientes_update RLS permits
+-- any workspace member to update a client row, so the CRM's UI-level role
+-- gate alone cannot stop an agent-role user from calling the API directly
+-- and setting foto_url to an arbitrary string — the storage policies above
+-- don't help here, since this is a plain table UPDATE, not a storage write.
+-- This codebase already has precedent for column-level DB enforcement
+-- (financial_visibility's can_see_financials() masking, hub_brand's
+-- trg_feature_brand trigger) — same idea, scoped to just this one column.
+CREATE OR REPLACE FUNCTION public.enforce_cliente_foto_owner_admin()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.foto_url IS DISTINCT FROM OLD.foto_url THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM workspace_members
+      WHERE user_id = auth.uid()
+        AND workspace_id = NEW.conta_id
+        AND role IN ('owner', 'admin')
+    ) THEN
+      RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_cliente_foto_owner_admin
+  BEFORE UPDATE ON public.clientes
+  FOR EACH ROW
+  EXECUTE FUNCTION public.enforce_cliente_foto_owner_admin();
 ```
 
-This is the same `workspace_members` role table and shape the workspace-logo
-policy already uses (`clientes.conta_id` and `workspaces.id` are the same
-space `get_my_conta_id()` resolves to), just walked from `clientes` instead
-of `workspaces` directly.
+The storage policies are the same `workspace_members` role table and shape
+the workspace-logo policy already uses (`clientes.conta_id` and
+`workspaces.id` are the same space `get_my_conta_id()` resolves to), just
+walked from `clientes` instead of `workspaces` directly. Whether
+`enforce_cliente_foto_owner_admin()` needs `SECURITY DEFINER` to read
+`workspace_members` safely from inside a trigger on a different table
+(avoiding any recursive-RLS surprise) needs a check against how
+`get_my_conta_id()` and similar helpers already handle this — verify during
+planning rather than treating the snippet above as final syntax.
 
 ## Store layer (`apps/crm/src/store/clients.ts`)
 
@@ -134,29 +198,46 @@ of `workspaces` directly.
   `ClienteDetalheHeader` (the prop already exists and renders correctly;
   it's just never been fed a value).
 - `ClienteDetalheHeader`'s avatar becomes interactive, gated to
-  `role === 'owner' || role === 'admin'` (read from `AuthContext`, same
-  pattern as `WorkspaceTab.tsx`):
+  `workspaceRole === 'owner' || workspaceRole === 'admin'` (read from
+  `AuthContext`) — **not** the plain `role` field `WorkspaceTab.tsx` uses.
+  `AuthContext`'s own doc comment says to prefer `workspaceRole` for
+  anything permission-bearing, since `role` comes from `profiles` and goes
+  stale on workspace switch; `WorkspaceTab` predates that guidance and
+  should not be copied here.
   - Hovering shows a semi-transparent overlay with a camera icon.
   - Clicking opens a hidden `<input type="file" accept="image/*">`.
   - On file select: reject files over 2MB with a toast (same limit as the
     workspace logo); otherwise resize client-side via `createImageBitmap` +
-    `<canvas>` to a 512px square PNG (same as `WorkspaceTab.handleLogoUpload`).
+    `<canvas>`, following `WorkspaceTab.handleLogoUpload` exactly: canvas
+    side = `min(width, height, 512)`, whole source image drawn into that
+    square. This is **not** a center-crop — a non-square source gets
+    stretched/squashed to fit, and small sources aren't upscaled to 512.
+    That's an inherited, accepted quirk (same one the workspace logo already
+    has in production), not something this feature introduces or fixes.
   - Upload to the `avatars` bucket at `clientes/{cliente.id}/foto.png` with
     `{ upsert: true, contentType: 'image/png' }`.
   - Read back the public URL via `getPublicUrl`, append `?t=${Date.now()}`
-    for cache-busting, call `updateCliente(cliente.id, { foto_url: publicUrl })`,
-    then refetch/update local state and toast success.
+    for cache-busting, call `updateCliente(cliente.id, { foto_url: publicUrl })`.
+    On success, invalidate **both** `['cliente', clienteId]` (the detail
+    page's own query) and `['clientes']` (the roster page) — `updateCliente`
+    returns `void`, and the two pages read from separate TanStack Query
+    caches, so a single local `setState` on the detail page would leave the
+    roster showing the old photo.
   - Non-owner/admin viewers see the avatar in its current read-only form (no
     hover affordance).
 - When `cliente.foto_url` is set, a small remove control (e.g. an "x" badge)
   appears on hover. Clicking it opens an `AlertDialog` confirmation (mirrors
   `WorkspaceTab`'s remove-logo flow) and, on confirm, calls
-  `updateCliente(cliente.id, { foto_url: null })`. This does not delete the
-  underlying storage object — same accepted trade-off as the workspace logo
-  today (an orphaned blob in a bucket with no cleanup job).
+  `updateCliente(cliente.id, { foto_url: null })`, invalidating the same two
+  query keys. This does not delete the underlying storage object — same
+  accepted trade-off as the workspace logo today (an orphaned blob in a
+  bucket with no cleanup job).
 - All failures surface as a generic toast (e.g. "Erro ao enviar foto."); raw
   Postgres/Storage error text is never shown, per the project's security
-  rules.
+  rules. A `forbidden` error from the new DB trigger (a non-owner/admin
+  bypassing the UI gate directly) maps to the same generic toast — it should
+  never be reachable through the UI itself, so no special-cased message is
+  needed for it.
 
 ## Hub: display
 
@@ -180,6 +261,12 @@ of `workspaces` directly.
   `<ClientAvatar name={bootstrap.cliente_nome} photoUrl={bootstrap.cliente_foto_url} size={128} />`
   above the existing eyebrow/heading `<section>`, using the same
   `hub-fade-up` treatment the rest of the page uses.
+- `ClientAvatar`'s initials fallback currently hardcodes `text-[11px]`
+  regardless of the `size` prop — fine at the 28px it was built for, but a
+  128px circle with an 11px monogram in the corner looks broken. `size`
+  needs to drive the fallback's font size too (e.g. roughly
+  `size * 0.4`), so a client with no photo at all still gets a legible,
+  proportionally-sized initial on the homepage.
 
 ## Out of scope
 
@@ -205,3 +292,11 @@ of `workspaces` directly.
 - Verify the Hub homepage's 128px avatar rendering in the browser, both with
   and without a manual photo set, and both with and without a connected
   Instagram account.
+- The new storage RLS policies, the narrowed `avatars_service_write`/
+  `avatars_service_update`, and the `trg_cliente_foto_owner_admin` trigger
+  are exactly the kind of thing `supabase/tests/entitlements/*.sql` already
+  covers and CI gates on (`entitlement-tests`) — add cases there: an agent
+  cannot set `foto_url` via a direct table update; an owner/admin from a
+  *different* workspace cannot write to `clientes/{other_id}/foto.png`; a
+  service-role write to an arbitrary `avatars` path still succeeds after the
+  narrowing.
