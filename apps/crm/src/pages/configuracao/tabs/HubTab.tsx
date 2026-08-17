@@ -864,6 +864,23 @@ export default function HubTab() {
         </p>
       </div>
 
+      {/* Live preview: a large full-width block, shown first so the user sees the
+          result before touching any controls below. Configurações → Hub is
+          workspace-level, not per-client, so there is no token to build a real "Ver
+          hub" link from here either; every hub URL is per-client (see
+          pages/cliente-detalhe/HubTab.tsx). We deliberately don't invent a tokenless
+          workspace route; the per-client tab is still the place to copy/open a
+          client's actual link. HubPreview owns its own "Pré-visualização ao vivo"
+          caption + toggles header. */}
+      <div style={{ marginBottom: '2rem' }}>
+        <HubPreview
+          draft={previewDraft}
+          workspaceName={workspace?.name ?? ''}
+          workspaceLogoUrl={workspace?.logo_url ?? null}
+          customized={customized}
+        />
+      </div>
+
       {/* Two-column grid on desktop (row 1: Aparência | Cor da marca; row 2:
           Tipografia | Componentes), collapsing to one column on narrow viewports via
           auto-fit — see .config-hub-sections-grid. Identidade spans the full row
@@ -1155,22 +1172,6 @@ export default function HubTab() {
       >
         {saveMutation.isPending && <Spinner size="sm" />} Salvar
       </Button>
-
-      {/* Live preview: a large full-width block below every section, not a side
-          column -- Configurações → Hub is workspace-level, not per-client, so there
-          is no token to build a real "Ver hub" link from here either; every hub URL
-          is per-client (see pages/cliente-detalhe/HubTab.tsx). We deliberately don't
-          invent a tokenless workspace route; the per-client tab is still the place
-          to copy/open a client's actual link. HubPreview owns its own "Pré-
-          visualização ao vivo" caption + toggles header. */}
-      <div style={{ marginTop: '2rem' }}>
-        <HubPreview
-          draft={previewDraft}
-          workspaceName={workspace?.name ?? ''}
-          workspaceLogoUrl={workspace?.logo_url ?? null}
-          customized={customized}
-        />
-      </div>
 
       {/* Remove Dark Logo Confirm */}
       <AlertDialog open={removeLogoOpen} onOpenChange={setRemoveLogoOpen}>
