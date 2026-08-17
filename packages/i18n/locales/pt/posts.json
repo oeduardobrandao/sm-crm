@@ -117,5 +117,8 @@
     "captureError": "Não foi possível capturar o frame",
     "imageError": "Não foi possível processar a imagem",
     "updated": "Miniatura atualizada"
+  },
+  "publishError": {
+    "reconnectCta": "Reconectar Instagram"
   }
 }

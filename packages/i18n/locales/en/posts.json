@@ -117,5 +117,8 @@
     "captureError": "Could not capture the frame",
     "imageError": "Could not process the image",
     "updated": "Thumbnail updated"
+  },
+  "publishError": {
+    "reconnectCta": "Reconnect Instagram"
   }
 }

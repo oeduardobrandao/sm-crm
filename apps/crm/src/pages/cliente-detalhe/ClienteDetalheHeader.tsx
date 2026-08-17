@@ -24,6 +24,7 @@ const STATUS_CLASS: Record<string, string> = {
 };
 
 export function ClienteDetalheHeader(props: ClienteDetalheHeaderProps) {
+  const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
 
   return (
@@ -34,7 +35,7 @@ export function ClienteDetalheHeader(props: ClienteDetalheHeaderProps) {
           size="icon"
           className="cliente-detalhe-header__back"
           onClick={props.onBack}
-          aria-label="Voltar para clientes"
+          aria-label={t('detail.nav.backToClients')}
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>

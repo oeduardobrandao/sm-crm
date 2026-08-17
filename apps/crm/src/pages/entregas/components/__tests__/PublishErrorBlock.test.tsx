@@ -31,7 +31,7 @@ function makePost(overrides?: Partial<WorkflowPost>): WorkflowPost {
 }
 
 describe('PublishErrorBlock', () => {
-  it('TOKEN_EXPIRED: mostra copy e link de reconexão para /clientes/:id', () => {
+  it('TOKEN_EXPIRED: mostra copy e link de reconexão para /clientes/:id/redes-sociais', () => {
     render(
       <MemoryRouter>
         <PublishErrorBlock
@@ -46,7 +46,7 @@ describe('PublishErrorBlock', () => {
     );
     expect(screen.getByText('Conexão com o Instagram expirou')).toBeTruthy();
     const link = screen.getByRole('link', { name: /reconectar instagram/i });
-    expect(link.getAttribute('href')).toBe('/clientes/42');
+    expect(link.getAttribute('href')).toBe('/clientes/42/redes-sociais');
     expect(screen.queryByText('raw')).toBeNull(); // mostrarDetalhes: false
   });
 

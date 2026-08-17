@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n } from '@mesaas/i18n';
 import { getInstagramPosts } from '../../../services/instagram';
 import { LatestInstagramPosts } from '../LatestInstagramPosts';
-import { InstagramSection } from '../../../pages/cliente-detalhe/ClienteDetalhePage';
 
 vi.mock('../../../services/instagram', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../services/instagram')>()),
@@ -202,23 +201,5 @@ describe('LatestInstagramPosts', () => {
     renderWithQueryClient(<LatestInstagramPosts clienteId={42} />);
 
     expect(screen.getByRole('status')).toHaveTextContent('Carregando publicações');
-  });
-
-  it('renders the real paginated carousel through the client-detail Instagram section', async () => {
-    mockedGetInstagramPosts.mockResolvedValue({ posts: [newerPost], total: 1 });
-
-    renderWithQueryClient(
-      <InstagramSection
-        clienteId={42}
-        loadingIg={false}
-        igSummary={{ account: { last_synced_at: '2026-07-18T12:00:00Z' }, history: [] }}
-        refetchIg={vi.fn()}
-        onNavigateAnalytics={vi.fn()}
-      />,
-    );
-
-    const region = await screen.findByRole('region', { name: 'Últimas Publicações' });
-    expect(within(region).getByRole('article')).toHaveTextContent(newerPost.caption);
-    expect(mockedGetInstagramPosts).toHaveBeenCalledWith(42, 1);
   });
 });

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AlertCircle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ interface PublishErrorBlockProps {
 /** Highlighted, actionable-cause block for a post stuck in `falha_publicacao`. Shown in
  * the WorkflowDrawer above ScheduleButton's own (terser) inline error line. */
 export function PublishErrorBlock({ post, clienteId, onStatusChange }: PublishErrorBlockProps) {
+  const { t } = useTranslation('posts');
   const [loading, setLoading] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const d = getPublishErrorDisplay(post.publish_error_code);
@@ -54,7 +56,7 @@ export function PublishErrorBlock({ post, clienteId, onStatusChange }: PublishEr
 
       {d.acao === 'reconnect' && clienteId != null && (
         <Button asChild size="sm" className="mt-2 text-xs font-semibold">
-          <Link to={`/clientes/${clienteId}`}>Reconectar Instagram</Link>
+          <Link to={`/clientes/${clienteId}/redes-sociais`}>{t('publishError.reconnectCta')}</Link>
         </Button>
       )}
       {d.acao === 'retry' && (

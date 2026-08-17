@@ -2,26 +2,27 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 /**
- * ClienteDetalhePage duplicates the Kanban advance paths, so it has to re-arm the approval
- * cycle the same way. It is a ~2.5k-line component with the advance handlers inline and no
- * harness that mounts it — the sibling render tests here all target extracted child components
- * (ClienteDetalheHeader, ClienteDetalheNav, ClienteFinanceEmptyState, HubTab, TikTokSection),
- * never the page itself — so this pins the wiring rather than the behaviour. The behaviour is
- * covered where it lives: `pages/entregas/__tests__/advanceEtapa.test.ts` for the re-arm
- * decision and toasts, and `views/__tests__/KanbanRearm.test.tsx` for the same handler shape
- * driven through a real UI.
+ * Source-level pin for the approval re-arm wiring, migrated from
+ * `ClienteDetalheRearm.test.ts` (see git history at commit d30adeea, before
+ * the cliente-detalhe tabs split moved this logic into EntregasTab.tsx). The
+ * original doc comment still applies: this pins the wiring, not the
+ * behaviour. The behaviour itself is covered where it lives —
+ * `pages/entregas/__tests__/advanceEtapa.test.ts` for the re-arm decision and
+ * toasts, `views/__tests__/KanbanRearm.test.tsx` for the same handler shape
+ * driven through a real UI, and `EntregasTab.test.tsx` (sibling file) for a
+ * behavioural run of the same three paths through this tab specifically.
  */
-const source = readFileSync('apps/crm/src/pages/cliente-detalhe/ClienteDetalhePage.tsx', 'utf8');
+const source = readFileSync('apps/crm/src/pages/cliente-detalhe/tabs/EntregasTab.tsx', 'utf8');
 
-describe('ClienteDetalhePage approval re-arm wiring', () => {
+describe('EntregasTab approval re-arm wiring', () => {
   it('routes every advance through the shared advance helper', () => {
     expect(source).toContain(
-      "import { completeEtapaForAdvance, notifyRearmOutcome } from '../entregas/advanceEtapa'",
+      "import { completeEtapaForAdvance, notifyRearmOutcome } from '@/pages/entregas/advanceEtapa'",
     );
     expect(source).toMatch(/completeEtapaForAdvance\(/);
   });
 
-  it('no longer calls the non-re-arming completeEtapa directly', () => {
+  it('never calls the non-re-arming completeEtapa directly', () => {
     expect(source).not.toMatch(/\bawait completeEtapa\(/);
     expect(source).not.toMatch(/^\s*completeEtapa,$/m);
   });

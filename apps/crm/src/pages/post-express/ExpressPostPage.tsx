@@ -608,7 +608,7 @@ export default function ExpressPostPage() {
                 <AlertCircle className="h-4 w-4 flex-shrink-0" />
                 <span>{warningMessage}</span>
                 <a
-                  href={`/clientes/${selectedClientId}`}
+                  href={`/clientes/${selectedClientId}/redes-sociais`}
                   className="ml-auto underline font-medium whitespace-nowrap"
                   style={{ color: '#f55a42' }}
                 >

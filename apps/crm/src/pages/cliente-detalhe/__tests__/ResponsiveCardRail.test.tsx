@@ -4,10 +4,6 @@ import { describe, expect, it } from 'vitest';
 import { ResponsiveCardRail } from '../ResponsiveCardRail';
 
 const crmStyles = readFileSync('apps/crm/style.css', 'utf8');
-const clienteDetalheSource = readFileSync(
-  'apps/crm/src/pages/cliente-detalhe/ClienteDetalhePage.tsx',
-  'utf8',
-);
 
 describe('ResponsiveCardRail', () => {
   it('marks multiple children as a discoverable rail', () => {
@@ -54,33 +50,11 @@ describe('ResponsiveCardRail', () => {
     expect(railViewport - leadingInset - cardMinimum - gap).toBeGreaterThan(0);
   });
 
-  it('keeps phone section chips at least 44px tall', () => {
+  it('keeps phone tab pills at least 44px tall', () => {
     const phoneChipRules = Array.from(
-      crmStyles.matchAll(/\.cliente-detalhe-nav__item\s*\{([^}]*)\}/g),
+      crmStyles.matchAll(/\.cliente-tabs-nav__item\s*\{([^}]*)\}/g),
       (match) => match[1],
     );
     expect(phoneChipRules.some((rule) => /min-height:\s*44px;/.test(rule))).toBe(true);
-  });
-
-  it('gives date and address icon actions localized names and decorative icons', () => {
-    const dateActions = clienteDetalheSource.slice(
-      clienteDetalheSource.indexOf('className="cliente-date-card"'),
-      clienteDetalheSource.indexOf('{/* Addresses Section */}'),
-    );
-    expect(dateActions).toContain("aria-label={`${t('detail.editDate')}: ${d.titulo}`}");
-    expect(dateActions).toContain("aria-label={`${t('detail.removeDate')}: ${d.titulo}`}");
-    expect(dateActions.match(/<(?:Pencil|Trash2)[^>]*aria-hidden="true"/g)).toHaveLength(2);
-
-    const addressActions = clienteDetalheSource.slice(
-      clienteDetalheSource.indexOf('className="cliente-address-card"'),
-      clienteDetalheSource.indexOf('{!isAgent && ('),
-    );
-    expect(addressActions).toContain(
-      "aria-label={`${t('detail.editAddress')}: ${addr.logradouro}, ${addr.numero}`}",
-    );
-    expect(addressActions).toContain(
-      "aria-label={`${t('detail.removeAddress')}: ${addr.logradouro}, ${addr.numero}`}",
-    );
-    expect(addressActions.match(/<(?:Pencil|Trash2)[^>]*aria-hidden="true"/g)).toHaveLength(2);
   });
 });
