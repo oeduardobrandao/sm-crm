@@ -2672,6 +2672,24 @@ select.form-input option {
   color: var(--primary-color);
 }
 
+.user-dropdown-item-value {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.8rem;
+}
+
+.user-dropdown-submenu {
+  padding: 0.15rem 0 0.25rem;
+}
+
+.user-dropdown-submenu .user-dropdown-item {
+  padding-left: 1.75rem;
+}
+
 .user-dropdown-item:hover {
   background: var(--surface-hover);
 }

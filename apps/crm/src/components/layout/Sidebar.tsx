@@ -33,6 +33,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
     document.documentElement.getAttribute('data-theme') === 'dark',
   );
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<any[]>([]);
 
   const navGroups = getNavGroups(role, features, canSeeFinancials, workspaceRole);
@@ -176,9 +177,18 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
             className="sidebar-user-menu"
             id="user-menu-wrap"
             tabIndex={0}
-            onClick={() => setUserMenuOpen((v) => !v)}
+            onClick={() =>
+              setUserMenuOpen((v) => {
+                const next = !v;
+                if (!next) setLanguageMenuOpen(false);
+                return next;
+              })
+            }
             onBlur={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) setUserMenuOpen(false);
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                setUserMenuOpen(false);
+                setLanguageMenuOpen(false);
+              }
             }}
           >
             <div className="sidebar-user-trigger">
@@ -257,24 +267,43 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                 )}
 
                 <div className="user-dropdown-section">
-                  <div className="user-dropdown-section-label">{t('sidebar.language')}</div>
-                  {SUPPORTED_LANGUAGES.map((lang) => {
-                    const isActive = i18n.language === lang;
-                    return (
-                      <button
-                        key={lang}
-                        className={`user-dropdown-item${isActive ? ' user-dropdown-item--active' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleLanguageChange(lang);
-                        }}
-                      >
-                        <FlagIcon lang={lang} size={16} />
-                        <span>{t(`language.${lang}`)}</span>
-                        {isActive && <i className="ph ph-check user-dropdown-item-check" />}
-                      </button>
-                    );
-                  })}
+                  <button
+                    className="user-dropdown-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLanguageMenuOpen((v) => !v);
+                    }}
+                  >
+                    <i className="ph ph-globe" />
+                    <span>{t('sidebar.language')}</span>
+                    <span className="user-dropdown-item-value">
+                      <FlagIcon lang={i18n.language as Language} size={14} />
+                      {t(`language.${i18n.language}`)}
+                    </span>
+                    <i className={`ph ${languageMenuOpen ? 'ph-caret-up' : 'ph-caret-down'}`} />
+                  </button>
+                  {languageMenuOpen && (
+                    <div className="user-dropdown-submenu">
+                      {SUPPORTED_LANGUAGES.map((lang) => {
+                        const isActive = i18n.language === lang;
+                        return (
+                          <button
+                            key={lang}
+                            className={`user-dropdown-item${isActive ? ' user-dropdown-item--active' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleLanguageChange(lang);
+                              setLanguageMenuOpen(false);
+                            }}
+                          >
+                            <FlagIcon lang={lang} size={16} />
+                            <span>{t(`language.${lang}`)}</span>
+                            {isActive && <i className="ph ph-check user-dropdown-item-check" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <button

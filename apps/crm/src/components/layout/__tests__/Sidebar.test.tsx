@@ -183,6 +183,25 @@ describe('Sidebar', () => {
     expect(signOut).toHaveBeenCalled();
   });
 
+  it('collapses the language options into a submenu that expands on click', async () => {
+    setAuth();
+
+    renderSidebar('/dashboard');
+    fireEvent.click(screen.getByText('Ana Maria'));
+
+    const languageToggle = await screen.findByText('Idioma');
+    // Collapsed by default: no selectable language rows in the DOM yet.
+    expect(screen.queryByText('English')).not.toBeInTheDocument();
+
+    fireEvent.click(languageToggle);
+
+    expect(await screen.findByText('English')).toBeInTheDocument();
+    expect(screen.getAllByText('Português').length).toBeGreaterThan(0);
+
+    fireEvent.click(languageToggle);
+    expect(screen.queryByText('English')).not.toBeInTheDocument();
+  });
+
   it('navigates to the selected route and closes the drawer after a nav click', async () => {
     const onClose = vi.fn();
     setAuth();
