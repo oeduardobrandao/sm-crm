@@ -9667,11 +9667,17 @@ body.landing-page #root {
   min-width: 0;
   width: 100%;
 }
-.hub-access__secondary-actions,
-.hub-access__primary-actions {
+.hub-access__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+/* Flattened into .hub-access__actions's flex row so Copiar/Preview/Desativar/Gerar
+   novo link render as one inline group -- the two-div split only matters again at
+   the mobile breakpoint below, where each becomes its own 2-col grid. */
+.hub-access__secondary-actions,
+.hub-access__primary-actions {
+  display: contents;
 }
 
 .cliente-finance-empty {
@@ -9855,12 +9861,18 @@ body.landing-page #root {
     flex: 0 0 auto;
     min-height: 44px;
   }
+  /* .hub-access__actions is a flex row on desktop; these two groups become real
+     boxes again here (overriding the desktop `display: contents`), so re-assert
+     full width -- flex items don't stretch on the main axis by default the way
+     grid items did under the old `.hub-access` grid container. */
   .hub-access__secondary-actions {
     display: grid;
+    width: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .hub-access__primary-actions {
     display: grid;
+    width: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .hub-access__secondary-actions > *,

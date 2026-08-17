@@ -277,57 +277,64 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
                 <code className="hub-access__url text-xs bg-muted px-3 py-2 rounded-lg truncate">
                   {hubUrl}
                 </code>
-                <div className="hub-access__secondary-actions">
-                  <Button size="sm" variant="outline" onClick={copyLink}>
-                    <Copy size={14} className="mr-1.5" /> Copiar
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => openExternalUrl(hubUrl)}>
-                    <Eye size={14} className="mr-1.5" /> Preview
-                  </Button>
-                </div>
-                <div className="hub-access__primary-actions">
-                  <Button
-                    size="sm"
-                    variant={tokenData.is_active ? 'destructive' : 'default'}
-                    onClick={toggleActive}
-                  >
-                    {tokenData.is_active ? (
-                      <>
-                        <ToggleRight size={14} className="mr-1.5" /> Desativar
-                      </>
-                    ) : (
-                      <>
-                        <ToggleLeft size={14} className="mr-1.5" /> Ativar
-                      </>
-                    )}
-                  </Button>
-
-                  {showRescue && (
-                    <Button size="sm" variant="outline" onClick={handleExtend} disabled={extending}>
-                      <CalendarClock size={14} className="mr-1.5" /> Estender +1 ano
+                <div className="hub-access__actions">
+                  <div className="hub-access__secondary-actions">
+                    <Button size="sm" variant="outline" onClick={copyLink}>
+                      <Copy size={14} className="mr-1.5" /> Copiar
                     </Button>
-                  )}
+                    <Button size="sm" variant="outline" onClick={() => openExternalUrl(hubUrl)}>
+                      <Eye size={14} className="mr-1.5" /> Preview
+                    </Button>
+                  </div>
+                  <div className="hub-access__primary-actions">
+                    <Button
+                      size="sm"
+                      variant={tokenData.is_active ? 'destructive' : 'default'}
+                      onClick={toggleActive}
+                    >
+                      {tokenData.is_active ? (
+                        <>
+                          <ToggleRight size={14} className="mr-1.5" /> Desativar
+                        </>
+                      ) : (
+                        <>
+                          <ToggleLeft size={14} className="mr-1.5" /> Ativar
+                        </>
+                      )}
+                    </Button>
 
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button size="sm" variant="destructive" disabled={rotating}>
-                        <RefreshCw size={14} className="mr-1.5" /> Gerar novo link
+                    {showRescue && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleExtend}
+                        disabled={extending}
+                      >
+                        <CalendarClock size={14} className="mr-1.5" /> Estender +1 ano
                       </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Gerar um novo link?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          O link atual para de funcionar imediatamente. O cliente perde o acesso até
-                          você enviar o novo link. Esta ação não pode ser desfeita.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleRotate}>Confirmar</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                    )}
+
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="sm" variant="destructive" disabled={rotating}>
+                          <RefreshCw size={14} className="mr-1.5" /> Gerar novo link
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Gerar um novo link?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            O link atual para de funcionar imediatamente. O cliente perde o acesso
+                            até você enviar o novo link. Esta ação não pode ser desfeita.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={handleRotate}>Confirmar</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </div>
               </div>
 
