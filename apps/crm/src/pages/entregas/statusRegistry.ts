@@ -1,5 +1,13 @@
 import type { PostStatusDefinition, WorkflowPost } from '../../store';
-import { POST_STATUS_ORDER, STATUS_LABELS, STATUS_CLASS } from './postLabels';
+import {
+  POST_STATUS_ORDER,
+  STATUS_LABELS,
+  STATUS_CLASS,
+  STATUS_OWNER,
+  STATUS_OWNER_LABELS,
+  STATUS_OWNER_ORDER,
+  type StatusOwner,
+} from './postLabels';
 
 // The dynamic status registry: the 9 canonical statuses (from postLabels,
 // which stays the single source for them) merged with the workspace's custom
@@ -123,4 +131,22 @@ export function postMatchesStatusFilter(post: ResolvablePost, keys: StatusKey[])
       ? post.custom_status_id === key.slice('custom:'.length)
       : post.status === key,
   );
+}
+
+/**
+ * Partition the registry's options into the picker's `<optgroup>`s, preserving
+ * each group's pipeline order. A custom status inherits its anchor's owner —
+ * one that behaves as `postado` is written by the cron just like `postado` is.
+ *
+ * Only groups that actually have options are returned, so a workspace whose
+ * customs all hang off `equipe` anchors never renders an empty heading.
+ */
+export function groupOptionsByOwner(
+  options: StatusOption[],
+): { owner: StatusOwner; label: string; options: StatusOption[] }[] {
+  return STATUS_OWNER_ORDER.map((owner) => ({
+    owner,
+    label: STATUS_OWNER_LABELS[owner],
+    options: options.filter((o) => STATUS_OWNER[o.canonical] === owner),
+  })).filter((g) => g.options.length > 0);
 }

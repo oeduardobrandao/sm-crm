@@ -6396,6 +6396,22 @@ body.role-agent input[name='valor_total'] {
   border-color: rgba(234, 179, 8, 0.25);
 }
 
+/* Quieter sibling of .drawer-external-warning: states what the system will do
+   to this post on its own. Informational, not a warning, so it uses the muted
+   text ramp and surface tokens (theme-aware) rather than the amber alert skin.
+   Full width under the meta row — the sentence is far too long for the ~140px
+   status field it describes. */
+.drawer-status-hint {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.45rem 0.7rem;
+  margin: 0;
+}
+
 /* Comment thread */
 .drawer-approval-thread {
   display: flex;

@@ -6,7 +6,13 @@ interface ModeToggleProps {
 }
 
 /** Pill toggle between workflow cards and individual posts, shared by the
- *  Kanban, Calendário and Lista views (each holds its own mode state). */
+ *  Kanban, Calendário and Lista views (each holds its own mode state).
+ *
+ *  The 'entregas' mode is labelled "Fluxos": the page is already called
+ *  Entregas, so the old label read as "Entregas › Entregas" and gave the
+ *  workflow object no name of its own. The *value* stays 'entregas' — it is
+ *  serialized into the URL and into saved vistas, and renaming it would
+ *  silently reset every shared link. */
 export function ModeToggle({ mode, onModeChange }: ModeToggleProps) {
   return (
     <div
@@ -21,7 +27,7 @@ export function ModeToggle({ mode, onModeChange }: ModeToggleProps) {
     >
       {(
         [
-          ['entregas', 'Entregas'],
+          ['entregas', 'Fluxos'],
           ['publicacoes', 'Publicações'],
         ] as const
       ).map(([id, label]) => (

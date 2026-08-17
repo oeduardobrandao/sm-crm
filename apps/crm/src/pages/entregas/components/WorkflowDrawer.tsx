@@ -107,9 +107,15 @@ import { DiffView } from './DiffView';
 import { ReadOnlyTipTap } from './ReadOnlyTipTap';
 import { computeWordDiff } from '@/utils/textDiff';
 import { computeTipTapDiff } from '@/utils/tiptapDiff';
-import { TIPO_LABELS, getPostPublishState, buildTipoDayMarkers, TIPO_LEGEND } from '../postLabels';
+import {
+  TIPO_LABELS,
+  getPostPublishState,
+  getStatusAutomationHint,
+  buildTipoDayMarkers,
+  TIPO_LEGEND,
+} from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
-import { statusKeyToPatch, type StatusKey } from '../statusRegistry';
+import { groupOptionsByOwner, statusKeyToPatch, type StatusKey } from '../statusRegistry';
 import { PostStatusChip } from './PostStatusChip';
 import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 
@@ -1158,6 +1164,9 @@ function SortablePostItem({
     post.status === 'falha_publicacao';
   const isScheduleLocked = post.status === 'agendado';
   const isStoryPost = post.tipo === 'stories';
+  // One sentence on what the system will do to this post without being asked;
+  // null for the statuses that just sit there waiting on a person.
+  const statusAutomationHint = getStatusAutomationHint(post);
 
   // Publish date shown in the collapsed row: once a post is actually live the real
   // published_at wins, otherwise fall back to the scheduled "Data de postagem".
@@ -1279,10 +1288,14 @@ function SortablePostItem({
                 value={statusRegistry.resolve(post).key}
                 onChange={(e) => onFieldChange('status', e.target.value)}
               >
-                {statusRegistry.options.map((o) => (
-                  <option key={o.key} value={o.key}>
-                    {o.kind === 'custom' ? `· ${o.label}` : o.label}
-                  </option>
+                {groupOptionsByOwner(statusRegistry.options).map((group) => (
+                  <optgroup key={group.owner} label={group.label}>
+                    {group.options.map((o) => (
+                      <option key={o.key} value={o.key}>
+                        {o.kind === 'custom' ? `· ${o.label}` : o.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
@@ -1318,6 +1331,8 @@ function SortablePostItem({
               />
             </div>
           </div>
+
+          {statusAutomationHint && <p className="drawer-status-hint">{statusAutomationHint}</p>}
 
           {shouldShowPublishErrorBlock(post) && (
             <PublishErrorBlock post={post} clienteId={clienteId} onStatusChange={onRefresh} />

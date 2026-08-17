@@ -1,3 +1,4 @@
+import { formatPostDateFull } from '@/utils/postDate';
 import type { ClientePost, WorkflowPost } from '../../store';
 
 export const TIPO_LABELS: Record<WorkflowPost['tipo'], string> = {
@@ -157,4 +158,85 @@ export function buildTipoDayMarkers(
     });
   }
   return markers;
+}
+
+/**
+ * Who actually writes each status.
+ *
+ * Only the `equipe` set is a decision someone makes in the CRM. The rest arrive
+ * on their own — the client acting in the Hub, or the publish cron — and a flat
+ * list of nine equally-pickable options hid that completely. The picker groups
+ * by this and the chip explains it.
+ *
+ * Client- and system-owned statuses stay selectable on purpose: publishing
+ * outside Mesaas and then marking a post `postado` by hand is a legitimate
+ * correction, so this labels ownership rather than enforcing it.
+ */
+export type StatusOwner = 'equipe' | 'cliente' | 'sistema';
+
+export const STATUS_OWNER: Record<WorkflowPost['status'], StatusOwner> = {
+  rascunho: 'equipe',
+  revisao_interna: 'equipe',
+  aprovado_interno: 'equipe',
+  enviado_cliente: 'equipe',
+  agendado: 'equipe',
+  aprovado_cliente: 'cliente',
+  correcao_cliente: 'cliente',
+  postado: 'sistema',
+  falha_publicacao: 'sistema',
+};
+
+/** Group order for the status picker. */
+export const STATUS_OWNER_ORDER = [
+  'equipe',
+  'cliente',
+  'sistema',
+] as const satisfies readonly StatusOwner[];
+
+/** `<optgroup label>` copy — reads as "who puts a post in this status". */
+export const STATUS_OWNER_LABELS: Record<StatusOwner, string> = {
+  equipe: 'Você define',
+  cliente: 'O cliente define — pelo portal',
+  sistema: 'O sistema define — automático',
+};
+
+/**
+ * What happens to this post on its own, in one sentence, or null when nothing
+ * automatic is pending and the post is simply waiting on a person.
+ *
+ * Rendered as the status chip's tooltip and as help text under the picker, so
+ * the automatic transitions stop being folklore. Keep these claims true — each
+ * one describes real behaviour:
+ *  - `agendado`   → the publish cron fires at `scheduled_at`; date and caption
+ *                   are locked while it is armed (see `isScheduleLocked`).
+ *  - `publicando` → derived state, the cron has the post in hand right now.
+ *  - `enviado_cliente` → visible in the Hub; the client's verdict writes the status.
+ *  - `falha_publicacao` → retried automatically while `publish_retry_count < 3`,
+ *                   except for errors classified as non-retryable.
+ */
+export function getStatusAutomationHint(p: {
+  status: WorkflowPost['status'];
+  scheduled_at?: string | null;
+  platform?: WorkflowPost['platform'];
+  tiktok_publish_status?: WorkflowPost['tiktok_publish_status'];
+}): string | null {
+  const state = getPostPublishState(p);
+  switch (state) {
+    case 'publicando':
+      return 'Publicando agora. O status vira "Postado" sozinho assim que a rede confirmar.';
+    case 'agendado':
+      return p.scheduled_at
+        ? `Publica sozinho em ${formatPostDateFull(p.scheduled_at)}. Data e legenda ficam travadas até você cancelar o agendamento.`
+        : 'Publica sozinho na data agendada. Data e legenda ficam travadas até você cancelar o agendamento.';
+    case 'enviado_cliente':
+      return 'Visível para o cliente no portal. O status muda sozinho quando ele aprovar ou pedir correção.';
+    case 'aprovado_cliente':
+      return 'O cliente aprovou pelo portal. Continua visível para ele.';
+    case 'correcao_cliente':
+      return 'O cliente pediu correção pelo portal. Nada acontece sozinho a partir daqui.';
+    case 'falha_publicacao':
+      return 'A publicação falhou. O sistema tenta de novo sozinho até 3 vezes; erros não recuperáveis param na hora.';
+    default:
+      return null;
+  }
 }

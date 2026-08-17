@@ -1,5 +1,10 @@
 import type { WorkflowPost } from '../../../store';
-import { getPostPublishState, PUBLISH_STATE_LABELS, PUBLISH_STATE_CLASS } from '../postLabels';
+import {
+  getPostPublishState,
+  getStatusAutomationHint,
+  PUBLISH_STATE_LABELS,
+  PUBLISH_STATE_CLASS,
+} from '../postLabels';
 import type { StatusRegistry } from '../statusRegistry';
 
 type ChipPost = Pick<WorkflowPost, 'status'> & {
@@ -18,10 +23,18 @@ type ChipPost = Pick<WorkflowPost, 'status'> & {
  */
 export function PostStatusChip({ post, registry }: { post: ChipPost; registry: StatusRegistry }) {
   const opt = registry.resolve(post);
+  // Carried as a tooltip rather than visible text: the chip renders inside
+  // kanban cards, list rows and the drawer trigger, none of which have room for
+  // a sentence. The drawer's status field shows the same string in full.
+  // A custom status inherits its anchor's automation — the cron reads the
+  // canonical column, not the pointer.
+  const hint = getStatusAutomationHint({ ...post, status: opt.canonical });
+
   if (opt.kind === 'custom') {
     return (
       <span
         className="post-status-chip"
+        title={hint ?? undefined}
         style={{
           background: `${opt.color}22`,
           color: opt.color,
@@ -34,7 +47,7 @@ export function PostStatusChip({ post, registry }: { post: ChipPost; registry: S
   }
   const pubState = getPostPublishState(post);
   return (
-    <span className={`post-status-chip ${PUBLISH_STATE_CLASS[pubState]}`}>
+    <span className={`post-status-chip ${PUBLISH_STATE_CLASS[pubState]}`} title={hint ?? undefined}>
       {PUBLISH_STATE_LABELS[pubState]}
     </span>
   );
