@@ -99,8 +99,12 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
 
   const userName = profile?.nome || t('sidebar.myAccount');
 
-  const mainGroups = navGroups.filter((g) => !g.isBottom);
+  // The support group (Novidades/Ajuda) lives in the account menu on desktop
+  // instead of the main nav list — see the utilityItems section below.
+  const mainGroups = navGroups.filter((g) => !g.isBottom && g.id !== 'ajuda-group');
   const configItems = navGroups.find((g) => g.id === 'config')?.items ?? [];
+  const supportItems = navGroups.find((g) => g.id === 'ajuda-group')?.items ?? [];
+  const utilityItems = [...configItems, ...supportItems];
 
   const renderGroup = (group: NavGroup) => (
     <li key={group.id} className="sidebar-group">
@@ -193,149 +197,73 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
 
             {userMenuOpen && (
               <div className="user-menu-popover">
-                <div
-                  className="user-dropdown-header"
-                  style={{
-                    padding: '0.75rem',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    color: 'var(--text-muted)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                  }}
-                >
-                  {t('sidebar.accountOptions')}
-                </div>
+                <div className="user-dropdown-header">{t('sidebar.accountOptions')}</div>
 
                 {workspaces.length > 1 && (
-                  <div
-                    style={{
-                      padding: '0.25rem 0',
-                      borderBottom: '1px solid var(--border-color)',
-                      marginBottom: '0.25rem',
-                    }}
-                  >
-                    <div
-                      style={{
-                        padding: '0.25rem 0.75rem',
-                        fontSize: '0.7rem',
-                        color: 'var(--text-muted)',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                      }}
-                    >
-                      {t('sidebar.workspace')}
-                    </div>
+                  <div className="user-dropdown-section">
+                    <div className="user-dropdown-section-label">{t('sidebar.workspace')}</div>
                     {workspaces.map((m: any) => {
                       const isActive =
                         m.workspaces.id === (profile?.active_workspace_id || profile?.conta_id);
                       return (
                         <button
                           key={m.workspaces.id}
-                          className="user-dropdown-item"
-                          style={{
-                            width: '100%',
-                            border: 'none',
-                            background: 'transparent',
-                            textAlign: 'left',
-                            fontFamily: 'inherit',
-                            fontSize: '0.85rem',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                            fontWeight: isActive ? 600 : 400,
-                            color: isActive ? 'var(--primary-color)' : 'var(--text-main)',
-                            padding: '0.5rem 0.75rem',
-                          }}
+                          className={`user-dropdown-item${isActive ? ' user-dropdown-item--active' : ''}`}
                           onClick={() => !isActive && handleWorkspaceSwitch(m.workspaces.id)}
                         >
-                          <i className={`ph ${isActive ? 'ph-check-circle' : 'ph-circle'}`} />
+                          <i className="ph ph-buildings" />
                           <span>{m.workspaces.name || 'Workspace'}</span>
+                          {isActive && <i className="ph ph-check user-dropdown-item-check" />}
                         </button>
                       );
                     })}
                   </div>
                 )}
 
-                {configItems.length > 0 && (
-                  <div
-                    style={{
-                      padding: '0.25rem 0',
-                      borderBottom: '1px solid var(--border-color)',
-                      marginBottom: '0.25rem',
-                    }}
-                  >
-                    {configItems.map((item) => (
-                      <button
-                        key={item.id}
-                        className="user-dropdown-item"
-                        style={{
-                          width: '100%',
-                          border: 'none',
-                          background: 'transparent',
-                          textAlign: 'left',
-                          fontFamily: 'inherit',
-                          fontSize: '0.85rem',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem',
-                          color: 'var(--text-main)',
-                          padding: '0.5rem 0.75rem',
-                        }}
-                        onClick={() => {
-                          handleNavClick(item.route);
-                          setUserMenuOpen(false);
-                        }}
-                      >
-                        <i className={`ph ${item.icon}`} />
-                        <span>{t(item.labelKey, item.label)}</span>
-                      </button>
-                    ))}
+                {utilityItems.length > 0 && (
+                  <div className="user-dropdown-section">
+                    {utilityItems.map((item) =>
+                      item.newTab ? (
+                        <a
+                          key={item.id}
+                          className="user-dropdown-item"
+                          href={item.route}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setUserMenuOpen(false);
+                          }}
+                        >
+                          <i className={`ph ${item.icon}`} />
+                          <span>{t(item.labelKey, item.label)}</span>
+                        </a>
+                      ) : (
+                        <button
+                          key={item.id}
+                          className="user-dropdown-item"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNavClick(item.route);
+                            setUserMenuOpen(false);
+                          }}
+                        >
+                          <i className={`ph ${item.icon}`} />
+                          <span>{t(item.labelKey, item.label)}</span>
+                        </button>
+                      ),
+                    )}
                   </div>
                 )}
 
-                <div
-                  style={{
-                    padding: '0.25rem 0',
-                    borderBottom: '1px solid var(--border-color)',
-                    marginBottom: '0.25rem',
-                  }}
-                >
-                  <div
-                    style={{
-                      padding: '0.25rem 0.75rem',
-                      fontSize: '0.7rem',
-                      color: 'var(--text-muted)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                    }}
-                  >
-                    {t('sidebar.language')}
-                  </div>
+                <div className="user-dropdown-section">
+                  <div className="user-dropdown-section-label">{t('sidebar.language')}</div>
                   {SUPPORTED_LANGUAGES.map((lang) => {
                     const isActive = i18n.language === lang;
                     return (
                       <button
                         key={lang}
-                        className="user-dropdown-item"
-                        style={{
-                          width: '100%',
-                          border: 'none',
-                          textAlign: 'left',
-                          fontFamily: 'inherit',
-                          fontSize: '0.85rem',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem',
-                          padding: '0.5rem 0.75rem',
-                          background: isActive ? 'rgba(234, 179, 8, 0.08)' : 'transparent',
-                          fontWeight: isActive ? 600 : 400,
-                          color: isActive ? 'var(--primary-color)' : 'var(--text-main)',
-                          borderRadius: '6px',
-                        }}
+                        className={`user-dropdown-item${isActive ? ' user-dropdown-item--active' : ''}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleLanguageChange(lang);
@@ -343,7 +271,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                       >
                         <FlagIcon lang={lang} size={16} />
                         <span>{t(`language.${lang}`)}</span>
-                        {isActive && <i className="ph ph-check" style={{ marginLeft: 'auto' }} />}
+                        {isActive && <i className="ph ph-check user-dropdown-item-check" />}
                       </button>
                     );
                   })}
@@ -351,20 +279,6 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
 
                 <button
                   className="user-dropdown-item"
-                  style={{
-                    width: '100%',
-                    border: 'none',
-                    background: 'transparent',
-                    textAlign: 'left',
-                    fontFamily: 'inherit',
-                    fontSize: '0.85rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    color: 'var(--text-main)',
-                    padding: '0.5rem 0.75rem',
-                  }}
                   onClick={(e) => {
                     e.stopPropagation();
                     toggleTheme();
@@ -376,24 +290,11 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
 
                 <button
                   id="btn-logout-flutuante"
-                  className="user-dropdown-item"
-                  style={{
-                    width: '100%',
-                    border: 'none',
-                    background: 'transparent',
-                    textAlign: 'left',
-                    fontFamily: 'inherit',
-                    fontSize: '0.85rem',
-                    cursor: 'pointer',
-                    color: 'var(--danger)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.5rem 0.75rem',
-                  }}
+                  className="user-dropdown-item text-danger"
                   onClick={signOut}
                 >
-                  <i className="ph ph-sign-out" /> {t('sidebar.logout')}
+                  <i className="ph ph-sign-out" />
+                  <span>{t('sidebar.logout')}</span>
                 </button>
               </div>
             )}
