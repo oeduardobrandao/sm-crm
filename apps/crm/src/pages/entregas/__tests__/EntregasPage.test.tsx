@@ -698,7 +698,7 @@ describe('EntregasPage', () => {
     expect(screen.queryByText(/ver tour novamente/i)).toBeNull();
     expect(screen.getByText('FiltersMode: posts')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Entregas' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fluxos' }));
     expect(screen.getByText(/^kanban view:/i)).toBeInTheDocument();
   });
 

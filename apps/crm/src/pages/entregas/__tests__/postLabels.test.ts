@@ -6,7 +6,11 @@ import {
   TIPO_ORDER,
   TIPO_LABELS,
   buildTipoDayMarkers,
+  getStatusAutomationHint,
+  POST_STATUS_ORDER,
+  STATUS_OWNER,
 } from '../postLabels';
+import { formatPostDateFull } from '@/utils/postDate';
 import type { ClientePost } from '@/store/posts';
 
 describe('tipo palette', () => {
@@ -236,5 +240,58 @@ describe('buildTipoDayMarkers', () => {
   it('drops a day entirely when the excluded post was its only one', () => {
     const posts: P[] = [{ id: 1, tipo: 'feed', scheduled_at: at(2026, 7, 24) }];
     expect(buildTipoDayMarkers(posts, { excludePostId: 1 }).size).toBe(0);
+  });
+});
+
+describe('status ownership', () => {
+  it('assigns every canonical status an owner', () => {
+    expect(Object.keys(STATUS_OWNER).sort()).toEqual([...POST_STATUS_ORDER].sort());
+  });
+
+  it('marks only the statuses the CRM user actually sets as theirs', () => {
+    const byOwner = (owner: string) => POST_STATUS_ORDER.filter((s) => STATUS_OWNER[s] === owner);
+
+    expect(byOwner('cliente')).toEqual(['aprovado_cliente', 'correcao_cliente']);
+    expect(byOwner('sistema')).toEqual(['postado', 'falha_publicacao']);
+    // Everything else is a decision made in the CRM.
+    expect(byOwner('equipe')).toHaveLength(POST_STATUS_ORDER.length - 4);
+  });
+});
+
+describe('getStatusAutomationHint', () => {
+  const future = new Date(Date.now() + 86_400_000).toISOString();
+  const past = new Date(Date.now() - 86_400_000).toISOString();
+
+  it('names the publish date for an armed scheduled post', () => {
+    const hint = getStatusAutomationHint({ status: 'agendado', scheduled_at: future });
+    expect(hint).toMatch(/Publica sozinho em/);
+    expect(hint).toContain(formatPostDateFull(future));
+  });
+
+  it('falls back to generic copy when a scheduled post has no date', () => {
+    const hint = getStatusAutomationHint({ status: 'agendado', scheduled_at: null });
+    expect(hint).toMatch(/Publica sozinho na data agendada/);
+  });
+
+  it('switches to the in-flight sentence once the scheduled time has passed', () => {
+    expect(getStatusAutomationHint({ status: 'agendado', scheduled_at: past })).toMatch(
+      /Publicando agora/,
+    );
+  });
+
+  it('explains that the client, not the user, moves a post out of enviado_cliente', () => {
+    expect(getStatusAutomationHint({ status: 'enviado_cliente' })).toMatch(
+      /muda sozinho quando ele aprovar/,
+    );
+  });
+
+  it('says a failed publish is retried automatically', () => {
+    expect(getStatusAutomationHint({ status: 'falha_publicacao' })).toMatch(/até 3 vezes/);
+  });
+
+  it('returns null for the statuses where nothing happens on its own', () => {
+    for (const status of ['rascunho', 'revisao_interna', 'aprovado_interno', 'postado'] as const) {
+      expect(getStatusAutomationHint({ status })).toBeNull();
+    }
   });
 });

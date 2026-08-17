@@ -3,6 +3,7 @@ import type { PostStatusDefinition } from '../../../store';
 import {
   buildStatusRegistry,
   customKey,
+  groupOptionsByOwner,
   isStatusKeyToken,
   postMatchesStatusFilter,
   statusKeyToPatch,
@@ -126,5 +127,50 @@ describe('isStatusKeyToken', () => {
     expect(isStatusKeyToken('custom:11111111-2222-3333-4444-55555555555Z')).toBe(false);
     expect(isStatusKeyToken('publicando')).toBe(false);
     expect(isStatusKeyToken('')).toBe(false);
+  });
+});
+
+describe('groupOptionsByOwner', () => {
+  it('splits the canonical statuses into who actually writes them', () => {
+    const groups = groupOptionsByOwner(buildStatusRegistry([]).options);
+
+    expect(groups.map((g) => g.owner)).toEqual(['equipe', 'cliente', 'sistema']);
+    expect(groups.map((g) => g.options.map((o) => o.key))).toEqual([
+      ['rascunho', 'revisao_interna', 'aprovado_interno', 'enviado_cliente', 'agendado'],
+      ['aprovado_cliente', 'correcao_cliente'],
+      ['postado', 'falha_publicacao'],
+    ]);
+  });
+
+  it('loses no option and keeps each group in pipeline order', () => {
+    const options = buildStatusRegistry([]).options;
+    const flattened = groupOptionsByOwner(options).flatMap((g) => g.options);
+
+    expect(flattened).toHaveLength(options.length);
+    for (const group of groupOptionsByOwner(options)) {
+      const positions = group.options.map((o) => options.indexOf(o));
+      expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+    }
+  });
+
+  it('files a custom status under its anchor owner, not under equipe', () => {
+    const registry = buildStatusRegistry([
+      def({ id: UUID_A, nome: 'Em design', behaves_as: 'rascunho', ordem: 0 }),
+      def({ id: UUID_B, nome: 'Publicado manualmente', behaves_as: 'postado', ordem: 0 }),
+    ]);
+    const groups = groupOptionsByOwner(registry.options);
+
+    expect(groups.find((g) => g.owner === 'equipe')!.options.map((o) => o.key)).toContain(
+      customKey(UUID_A),
+    );
+    expect(groups.find((g) => g.owner === 'sistema')!.options.map((o) => o.key)).toContain(
+      customKey(UUID_B),
+    );
+  });
+
+  it('drops groups that have no options', () => {
+    const onlyEquipe = buildStatusRegistry([]).options.filter((o) => o.key === 'rascunho');
+
+    expect(groupOptionsByOwner(onlyEquipe).map((g) => g.owner)).toEqual(['equipe']);
   });
 });
