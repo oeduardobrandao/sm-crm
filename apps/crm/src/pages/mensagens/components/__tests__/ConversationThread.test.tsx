@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ComponentProps } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -7,12 +7,22 @@ import { ConversationThread } from '../ConversationThread';
 import type { MensagemConversa, MensagemFeedItem } from '@/store';
 
 const { mockPreview, mockMedia } = vi.hoisted(() => ({
-  mockPreview: vi.fn().mockResolvedValue(null),
-  mockMedia: vi.fn().mockResolvedValue([]),
+  mockPreview: vi.fn(),
+  mockMedia: vi.fn(),
 }));
 
 vi.mock('@/store', () => ({ getPostChipPreview: mockPreview }));
 vi.mock('@/services/postMedia', () => ({ listPostMedia: mockMedia }));
+
+// The repo's global afterEach calls vi.restoreAllMocks(), which strips a
+// mockResolvedValue set only once at module scope — re-arm every test so a
+// later test doesn't see these resolve to bare undefined (PostChip's
+// useQuery flags that as an error, and it's order-dependent: only breaks
+// when this file runs after another test already triggered the reset).
+beforeEach(() => {
+  mockPreview.mockResolvedValue(null);
+  mockMedia.mockResolvedValue([]);
+});
 
 const CONVERSA: MensagemConversa = {
   cliente_id: 14,
@@ -130,11 +140,18 @@ describe('ConversationThread', () => {
     expect(screen.getByText('Trocar a foto')).toBeInTheDocument();
   });
 
-  it('sends a general message from the composer', () => {
+  it('sends a general message from the composer', async () => {
     const { sendGeneral } = renderThread();
     const input = screen.getByPlaceholderText('Enviar mensagem…');
     fireEvent.change(input, { target: { value: 'Olá' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
+    // enviar() is async (awaits mutateAsync before its own setState calls) —
+    // wrap the triggering event in act() so those updates settle inside the
+    // test instead of firing after it returns (that's what an un-awaited
+    // fireEvent.keyDown here produces: a real "not wrapped in act(...)"
+    // warning, not just theoretical noise).
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
+    });
     expect(sendGeneral.mutateAsync).toHaveBeenCalledWith({ cliente: 14, content: 'Olá' });
   });
 
@@ -142,6 +159,22 @@ describe('ConversationThread', () => {
     renderThread();
     fireEvent.click(screen.getByRole('button', { name: 'Responder' }));
     expect(screen.getByPlaceholderText('Responder sobre o post…')).toBeInTheDocument();
+  });
+
+  it('sends a reply with the post context via the composer', async () => {
+    const { replyToPost, sendGeneral } = renderThread();
+    fireEvent.click(screen.getByRole('button', { name: 'Responder' }));
+    const input = screen.getByPlaceholderText('Responder sobre o post…');
+    fireEvent.change(input, { target: { value: 'Feito' } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
+    });
+    expect(replyToPost.mutateAsync).toHaveBeenCalledWith({
+      postId: 7,
+      workflowId: 3,
+      content: 'Feito',
+    });
+    expect(sendGeneral.mutateAsync).not.toHaveBeenCalled();
   });
 
   it('shows a retriable error, not "no messages", when the feed fails to load', () => {
