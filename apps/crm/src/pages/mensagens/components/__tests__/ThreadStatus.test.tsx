@@ -36,7 +36,9 @@ describe('ThreadStatus', () => {
   it('ThreadLoading shows a loading message with no back affordance by default', () => {
     render(<ThreadLoading />);
     expect(screen.getByText('Carregando…')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Voltar para as conversas' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Voltar para as conversas' }),
+    ).not.toBeInTheDocument();
   });
 
   it('ThreadLoading shows a back button when onBack is provided', () => {

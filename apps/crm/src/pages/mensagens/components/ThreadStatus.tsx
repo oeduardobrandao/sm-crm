@@ -56,13 +56,7 @@ export function ThreadLoading({ onBack }: { onBack?: () => void }) {
   );
 }
 
-export function ThreadLoadError({
-  onRetry,
-  onBack,
-}: {
-  onRetry: () => void;
-  onBack?: () => void;
-}) {
+export function ThreadLoadError({ onRetry, onBack }: { onRetry: () => void; onBack?: () => void }) {
   return (
     <div className={WRAPPER}>
       <BackButton onBack={onBack} />
