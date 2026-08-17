@@ -106,7 +106,10 @@ export function ConversationList({
                 border: 'none',
                 cursor: 'pointer',
                 ...(isActive
-                  ? { background: 'rgba(255,191,48,0.12)', boxShadow: 'inset 3px 0 0 var(--primary-color)' }
+                  ? {
+                      background: 'rgba(255,191,48,0.12)',
+                      boxShadow: 'inset 3px 0 0 var(--primary-color)',
+                    }
                   : { background: 'transparent' }),
               }}
             >
