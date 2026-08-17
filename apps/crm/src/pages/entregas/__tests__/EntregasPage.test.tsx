@@ -376,6 +376,11 @@ describe('EntregasPage', () => {
     tourMock.startEntregasTour.mockReset();
     mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false });
     localStorage.clear();
+    // The "Como funciona" panel is open by default, and its copy names the same
+    // objects the board does ("Publicações", "Fluxos"), which makes the board's
+    // own getByText queries ambiguous. Board tests start with it dismissed; the
+    // explainer's own describe block clears this key to get it back.
+    localStorage.setItem('entregas_explainer_dismissed_conta-1', 'true');
     // Anchors are queried one frame after launch; run the callback inline so launchTour
     // completes within the test tick.
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
@@ -882,5 +887,70 @@ describe('EntregasPage', () => {
 
     fireEvent.click(screen.getByText('Filter prazo atrasado'));
     expect(screen.getByText('Posts kanban view: 1')).toBeInTheDocument();
+  });
+});
+
+describe('EntregasPage — painel "Como funciona"', () => {
+  const EXPLAINER_KEY = 'entregas_explainer_dismissed_conta-1';
+
+  beforeEach(() => {
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false });
+    tourMock.startEntregasTour.mockReset();
+    localStorage.clear();
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+  });
+
+  it('opens by default when the conta has never dismissed it', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+
+    expect(screen.getByRole('heading', { name: /como funciona esta página/i })).toBeTruthy();
+  });
+
+  it('shows on a board that already has workflows, unlike the tour', () => {
+    // The tour only auto-starts on an empty board; the explainer must not inherit
+    // that gate — a full board is exactly as opaque to a new team member.
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+
+    expect(screen.getByRole('heading', { name: /como funciona esta página/i })).toBeTruthy();
+    expect(tourMock.startEntregasTour).not.toHaveBeenCalled();
+  });
+
+  it('stays closed once the conta has dismissed it', () => {
+    localStorage.setItem(EXPLAINER_KEY, 'true');
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+
+    expect(screen.queryByRole('heading', { name: /como funciona esta página/i })).toBeNull();
+  });
+
+  it('persists the dismissal and swaps the panel for the reopen button', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+
+    fireEvent.click(screen.getByLabelText('Fechar explicação'));
+
+    expect(localStorage.getItem(EXPLAINER_KEY)).toBe('true');
+    expect(screen.queryByRole('heading', { name: /como funciona esta página/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /como funciona/i })).toBeTruthy();
+  });
+
+  it('reopens from the header button without clearing the dismissal', () => {
+    localStorage.setItem(EXPLAINER_KEY, 'true');
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+
+    fireEvent.click(screen.getByRole('button', { name: /como funciona/i }));
+
+    expect(screen.getByRole('heading', { name: /como funciona esta página/i })).toBeTruthy();
+    // Reopening is a one-off view, not an un-dismiss: the key survives so the
+    // panel does not come back by itself on the next visit.
+    expect(localStorage.getItem(EXPLAINER_KEY)).toBe('true');
+  });
+
+  it('states the two rules the page never explained: the split tracks and hub visibility', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+
+    expect(screen.getByText(/não se sincronizam/i)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /quem vê o quê/i })).toBeTruthy();
   });
 });

@@ -6432,6 +6432,197 @@ body.role-agent input[name='valor_total'] {
    text ramp and surface tokens (theme-aware) rather than the amber alert skin.
    Full width under the meta row — the sentence is far too long for the ~140px
    status field it describes. */
+/* ── "Como funciona" explainer ──────────────────────────────────────────────
+   Always-reachable replacement for the one-shot tour's reach problem. Reads as
+   a quiet reference card, not a promo banner: surface tokens, no accent fill,
+   so it can sit above the board permanently without competing with it. */
+.entregas-explainer {
+  background: var(--surface-1);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+}
+
+.entregas-explainer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.entregas-explainer-head h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.entregas-explainer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 0.25rem;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.entregas-explainer-close:hover {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+
+/* auto-fit rather than a fixed count: the four blocks collapse to one column on
+   a narrow drawer-width viewport without a media query. */
+.entregas-explainer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.1rem 1.75rem;
+}
+
+.entregas-explainer-block h3 {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 0 0 0.5rem;
+}
+
+.entregas-explainer-block h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0 0 0.35rem;
+}
+
+.entregas-explainer-block p,
+.entregas-explainer-block dd,
+.entregas-explainer-block li {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.entregas-explainer-block p {
+  margin: 0 0 0.5rem;
+}
+
+.entregas-explainer-block dl {
+  margin: 0;
+}
+
+.entregas-explainer-block dt {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-top: 0.45rem;
+}
+
+.entregas-explainer-block dd {
+  margin: 0.1rem 0 0;
+}
+
+.entregas-explainer-block ul {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.entregas-explainer-block li {
+  margin-bottom: 0.2rem;
+}
+
+.entregas-explainer-chain {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-main) !important;
+  margin-bottom: 0.6rem !important;
+}
+
+.entregas-explainer-chain svg {
+  color: var(--text-light);
+  flex-shrink: 0;
+}
+
+.entregas-explainer-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.9rem;
+}
+
+.entregas-explainer-note {
+  font-size: 0.73rem !important;
+  color: var(--text-light) !important;
+  border-left: 2px solid var(--border-color);
+  padding-left: 0.55rem;
+  margin-bottom: 0 !important;
+}
+
+.entregas-explainer-visibility {
+  list-style: none;
+  padding-left: 0 !important;
+}
+
+.entregas-explainer-visibility li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin-bottom: 0.4rem;
+}
+
+.entregas-explainer-vis-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 0.12rem;
+  color: var(--text-light);
+}
+
+.entregas-explainer-vis-icon.is-visible {
+  color: var(--teal);
+}
+
+.entregas-explainer-reopen {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.entregas-explainer-reopen:hover {
+  color: var(--text-main);
+}
+
+/* Client-visibility badge on every post row, collapsed included. Two states so
+   it reads as a scannable column rather than an occasional alert: the internal
+   eye-off sits in the muted ramp, the visible one takes the accent so
+   "the client can see this" is the state that draws the eye. */
+.drawer-post-visibility {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-light);
+  opacity: 0.65;
+}
+
+.drawer-post-visibility.is-visible {
+  color: var(--teal);
+  opacity: 1;
+}
+
 .drawer-status-hint {
   font-size: 0.75rem;
   line-height: 1.45;

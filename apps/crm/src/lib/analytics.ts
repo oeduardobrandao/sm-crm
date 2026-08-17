@@ -21,6 +21,12 @@ export type AnalyticsEvent =
   | 'entregas_tour_started'
   | 'entregas_tour_completed'
   | 'entregas_tour_dismissed'
+  // The always-reachable "Como funciona" panel. Tracked separately from the tour so
+  // its reach can be compared against it — the tour only auto-starts on an empty
+  // board, which is why so few accounts ever saw it.
+  | 'entregas_explainer_shown'
+  | 'entregas_explainer_reopened'
+  | 'entregas_explainer_dismissed'
   | 'hub_link_copied'
   | 'hub_upgrade_prompt_clicked'
   | 'report_generated'
