@@ -57,8 +57,13 @@ beforeEach(() => {
 describe('ClienteAvatarUpload', () => {
   it('renders a plain, non-interactive avatar when canEdit is false', () => {
     renderIt({ canEdit: false });
-    expect(screen.queryByRole('button', { name: /Alterar foto/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Alterar foto/)).not.toBeInTheDocument();
     expect(screen.getByText('AE')).toBeInTheDocument();
+  });
+
+  it('renders the upload trigger when canEdit is true', () => {
+    renderIt({ canEdit: true });
+    expect(screen.getByLabelText(/Alterar foto/)).toBeInTheDocument();
   });
 
   it('uploads and calls updateCliente with the resulting public URL, then invalidates both cache keys', async () => {
