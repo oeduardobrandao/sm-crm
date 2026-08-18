@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
-import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslation } from 'react-i18next';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -8,8 +7,6 @@ import {
   getClientes,
   getMembros,
   getWorkflows,
-  getWorkflowEtapas,
-  getAllClienteDatas,
   getLeads,
   type Membro,
   type Cliente,
@@ -24,12 +21,11 @@ import { TrialNudgeCard } from '../../components/billing/TrialNudgeCard';
 import { WhatsAppSupportCard } from '@/components/support/WhatsAppSupportCard';
 import { ClientHealthMonitor } from './components/ClientHealthMonitor';
 import { AgentPendingSection } from './components/AgentPendingSection';
-import { TodayCard, type TodayEvent } from './components/TodayCard';
+import { TodayCard } from './components/TodayCard';
 import { FinanceKpiStrip } from './components/FinanceKpiStrip';
 
 export default function DashboardPage() {
   const { role, workspaceRole, canSeeFinancials } = useAuth();
-  const { t } = useTranslation('dashboard');
   // workspaceRole reflects the ACTIVE workspace; profile-level `role` goes
   // stale across workspace switches (a user can be owner in one workspace and
   // agent in another). Fall back to `role` only while membership resolves.
@@ -93,89 +89,6 @@ export default function DashboardPage() {
   const leads: Lead[] = leadsRes.data ?? [];
   const portfolio: PortfolioSummary | undefined = portfolioRes.data;
 
-  const { data: datasImportantes = [] } = useQuery({
-    queryKey: ['allClienteDatas'],
-    queryFn: getAllClienteDatas,
-    retry: 1,
-  });
-  const { data: deadlineEvents = [] } = useQuery({
-    queryKey: ['calendar-deadlines', workflows.map((w) => w.id).join(',')],
-    queryFn: async () => {
-      const activeWfs = workflows.filter((w) => w.status === 'ativo');
-      const etapasResults = await Promise.all(activeWfs.map((w) => getWorkflowEtapas(w.id!)));
-      const now = new Date();
-      const events: { etapaNome: string; clienteNome: string; deadlineDate: Date }[] = [];
-      activeWfs.forEach((w, idx) => {
-        const activeEtapa = etapasResults[idx].find((e) => e.status === 'ativo');
-        if (!activeEtapa || !activeEtapa.iniciado_em) return;
-        const deadlineDate = new Date(activeEtapa.iniciado_em);
-        if (activeEtapa.tipo_prazo === 'uteis') {
-          let added = 0;
-          while (added < activeEtapa.prazo_dias) {
-            deadlineDate.setDate(deadlineDate.getDate() + 1);
-            const dow = deadlineDate.getDay();
-            if (dow !== 0 && dow !== 6) added++;
-          }
-        } else {
-          deadlineDate.setDate(deadlineDate.getDate() + activeEtapa.prazo_dias);
-        }
-        const cliente = clientes.find((c) => c.id === w.cliente_id);
-        events.push({
-          etapaNome: activeEtapa.nome,
-          clienteNome: cliente?.nome || '—',
-          deadlineDate,
-        });
-      });
-      return events;
-    },
-    enabled: workflows.length > 0,
-  });
-
-  // ---- today's events ----
-  const now = new Date();
-  const todayDay = now.getDate();
-  const todayMonth = now.getMonth();
-  const todayYear = now.getFullYear();
-  const sameDay = (d: Date) =>
-    d.getDate() === todayDay && d.getMonth() === todayMonth && d.getFullYear() === todayYear;
-
-  const todayEvents: TodayEvent[] = [];
-  if (canSeeFinancials === true) {
-    clientes
-      .filter((c) => c.data_pagamento === todayDay && c.status === 'ativo')
-      .forEach((c) =>
-        todayEvents.push({ kind: 'income', label: c.nome, sublabel: t('events.recebimento') }),
-      );
-    membros
-      .filter((m) => m.data_pagamento === todayDay)
-      .forEach((m) =>
-        todayEvents.push({ kind: 'expense', label: m.nome, sublabel: t('events.despesa') }),
-      );
-  }
-  deadlineEvents
-    .filter((d) => sameDay(d.deadlineDate))
-    .forEach((d) =>
-      todayEvents.push({ kind: 'deadline', label: d.etapaNome, sublabel: d.clienteNome }),
-    );
-  clientes
-    .filter((c) => {
-      if (!c.data_aniversario) return false;
-      const [mm, dd] = c.data_aniversario.split('-').map(Number);
-      return mm - 1 === todayMonth && dd === todayDay;
-    })
-    .forEach((c) =>
-      todayEvents.push({ kind: 'birthday', label: c.nome, sublabel: t('events.aniversario') }),
-    );
-  datasImportantes
-    .filter((d) => sameDay(new Date(d.data + 'T00:00:00')))
-    .forEach((d) =>
-      todayEvents.push({
-        kind: 'data',
-        label: d.titulo,
-        sublabel: clientes.find((c) => c.id === d.cliente_id)?.nome ?? '',
-      }),
-    );
-
   // ---- finance figures ----
   const transacoes = stats?.transacoes ?? [];
   const aReceber = transacoes
@@ -187,6 +100,8 @@ export default function DashboardPage() {
 
   return (
     <div>
+      <TodayCard />
+
       {!isAgent && <TrialNudgeCard />}
       {!isAgent && <WhatsAppSupportCard />}
       {!isAgent && (
@@ -203,10 +118,6 @@ export default function DashboardPage() {
       {isAgent ? <AgentPendingSection /> : <ClientHealthMonitor />}
 
       {clientesRes.data && <ImportBanner clienteCount={clientes.length} />}
-
-      <div className="dashboard-hub" style={{ marginTop: '1.5rem' }}>
-        <TodayCard events={todayEvents} />
-      </div>
 
       {canSeeFinancials === true && stats && (
         <FinanceKpiStrip

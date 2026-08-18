@@ -414,6 +414,7 @@ export interface AssignedPendingPost {
   workflow_id: number;
   titulo: string;
   status: WorkflowPost['status'];
+  custom_status_id: string | null;
   workflow_titulo: string;
   cliente_nome: string;
 }
@@ -423,7 +424,7 @@ export async function getAssignedPendingPosts(membroId: number): Promise<Assigne
   const { data, error } = await supabase
     .from('workflow_posts')
     .select(
-      'id, workflow_id, titulo, status, workflows!inner(titulo, status, clientes!inner(nome))',
+      'id, workflow_id, titulo, status, custom_status_id, workflows!inner(titulo, status, clientes!inner(nome))',
     )
     .eq('workflows.status', 'ativo')
     .eq('responsavel_id', membroId)
@@ -435,9 +436,50 @@ export async function getAssignedPendingPosts(membroId: number): Promise<Assigne
     workflow_id: row.workflow_id,
     titulo: row.titulo,
     status: row.status,
+    custom_status_id: row.custom_status_id ?? null,
     workflow_titulo: row.workflows?.titulo ?? '',
     cliente_nome: row.workflows?.clientes?.nome ?? '',
   }));
+}
+
+export interface AwaitingClientePost extends ActivePost {
+  /** ISO timestamp of the latest transition into enviado_cliente, or null when
+   * no status event recorded it (legacy rows). */
+  waiting_since: string | null;
+}
+
+/**
+ * Posts of active workflows currently waiting on the client (enviado_cliente),
+ * with the moment they entered that status. `waiting_since` comes from
+ * post_status_events, NOT updated_at (which moves on every edit), so it
+ * reliably means "waiting since". Dashboard "Hoje" follow-up signal.
+ */
+export async function getAwaitingClientePosts(): Promise<AwaitingClientePost[]> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select(`${POST_CONTEXT_COLUMNS}, workflows!inner(titulo, cliente_id, status, clientes(nome))`)
+    .eq('workflows.status', 'ativo')
+    .eq('status', 'enviado_cliente')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  const posts = (data || []).map(mapPostContextRow);
+  if (posts.length === 0) return [];
+
+  const { data: events, error: evError } = await supabase
+    .from('post_status_events')
+    .select('post_id, created_at')
+    .in(
+      'post_id',
+      posts.map((p) => p.id),
+    )
+    .eq('to_status', 'enviado_cliente')
+    .order('created_at', { ascending: false });
+  if (evError) throw evError;
+  const latest = new Map<number, string>();
+  for (const ev of (events ?? []) as { post_id: number; created_at: string }[]) {
+    if (!latest.has(ev.post_id)) latest.set(ev.post_id, ev.created_at);
+  }
+  return posts.map((p) => ({ ...p, waiting_since: latest.get(p.id) ?? null }));
 }
 
 export async function getAllWorkflowPosts(): Promise<WorkflowPost[]> {

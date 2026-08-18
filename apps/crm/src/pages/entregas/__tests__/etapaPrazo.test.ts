@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { etapaDeadlineDate, formatEtapaPrazo, matchesEtapaPrazo } from '../etapaPrazo';
+import {
+  etapaDeadlineDate,
+  etapaDeadlineDateOf,
+  formatEtapaPrazo,
+  matchesEtapaPrazo,
+} from '../etapaPrazo';
 import type { BoardCard } from '../hooks/useEntregasData';
 
 // Fixed "now": Wednesday 2026-07-15 10:00 local.
@@ -30,6 +35,42 @@ function makeCard(overrides: {
     },
   } as BoardCard;
 }
+
+describe('etapaDeadlineDateOf', () => {
+  it('prefers data_limite, preserving the local day', () => {
+    const d = etapaDeadlineDateOf({
+      data_limite: '2026-07-20',
+      iniciado_em: '2026-07-01T12:00:00Z',
+      prazo_dias: 2,
+      tipo_prazo: 'corridos',
+    });
+    expect([d?.getFullYear(), d?.getMonth(), d?.getDate()]).toEqual([2026, 6, 20]);
+  });
+
+  it('adds calendar days for corridos', () => {
+    // Wed 2026-07-15 + 3 corridos = Sat 2026-07-18
+    const d = etapaDeadlineDateOf({
+      iniciado_em: NOW.toISOString(),
+      prazo_dias: 3,
+      tipo_prazo: 'corridos',
+    });
+    expect(d?.getDate()).toBe(18);
+  });
+
+  it('skips the weekend for uteis', () => {
+    // Wed 2026-07-15 + 3 uteis = Mon 2026-07-20
+    const d = etapaDeadlineDateOf({
+      iniciado_em: NOW.toISOString(),
+      prazo_dias: 3,
+      tipo_prazo: 'uteis',
+    });
+    expect(d?.getDate()).toBe(20);
+  });
+
+  it('returns null when not started and no fixed date', () => {
+    expect(etapaDeadlineDateOf({ prazo_dias: 2, tipo_prazo: 'corridos' })).toBeNull();
+  });
+});
 
 describe('etapaDeadlineDate', () => {
   it('prefers data_limite, preserving the local day', () => {

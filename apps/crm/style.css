@@ -1552,6 +1552,222 @@ body {
   border-bottom: none;
 }
 
+/* ===== Dashboard "Hoje" (role-aware agenda) ===== */
+.today-card {
+  padding: 1.25rem 1.5rem;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+}
+.today-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.today-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.today-cal-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.today-cal-link:hover {
+  color: var(--text-main);
+}
+.today-sub {
+  margin: 0.2rem 0 0.9rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.today-note {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.today-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+.today-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-hover);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.today-chip .today-chip-n {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+.today-chip[aria-pressed='true'] {
+  background: var(--text-main);
+  color: var(--card-bg);
+  border-color: var(--text-main);
+}
+.today-chip.is-danger[aria-pressed='true'] {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.today-chip.is-empty {
+  opacity: 0.55;
+}
+.today-group + .today-group {
+  margin-top: 0.9rem;
+}
+.today-group-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.today-group-label.is-danger {
+  color: var(--danger-text);
+}
+.today-group-count {
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  letter-spacing: 0;
+}
+.today-list {
+  display: flex;
+  flex-direction: column;
+}
+.today-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.5rem;
+  border-radius: 8px;
+  border-bottom: 1px solid var(--border-color);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.85rem;
+  transition: background 0.15s ease;
+}
+.today-row:last-child {
+  border-bottom: none;
+}
+.today-row:hover {
+  background: var(--surface-hover);
+}
+.today-row-check {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.today-row-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.today-row-title {
+  font-weight: 500;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.today-row-context {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 2;
+  min-width: 0;
+}
+.today-row-end {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+.today-row-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.today-row-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.today-more-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+}
+.today-more {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: pointer;
+}
+.today-more:hover {
+  color: var(--text-main);
+}
+@media (max-width: 640px) {
+  .today-row-who {
+    display: none;
+  }
+  .today-row-context {
+    display: none;
+  }
+}
+
 /* ===== Tables ===== */
 .table-container {
   margin-top: 2rem;

@@ -151,5 +151,42 @@
       "filtered": "No clients in this filter."
     },
     "error": "Could not load client health."
+  },
+  "today": {
+    "title": "Today",
+    "calendar": "Calendar",
+    "summary": "{{overdue}} overdue, {{today}} for today",
+    "mine": "assigned to you",
+    "buckets": {
+      "atrasado": "Overdue",
+      "hoje": "Today",
+      "proximos": "Next 7 days"
+    },
+    "more": "Show {{count}} more · {{remaining}} remaining",
+    "empty": "Nothing for today.",
+    "emptyMine": "Nothing for today. Nice work!",
+    "emptyAction": "See calendar",
+    "roleError": "Could not load your role in this workspace. Reload the page.",
+    "taskDone": "Task completed",
+    "taskDoneUndo": "Undo",
+    "taskDoneError": "Could not complete the task.",
+    "markDone": "Complete task",
+    "less": "Show less",
+    "labels": {
+      "hoje": "Today",
+      "amanha": "Tomorrow",
+      "overdueDays_one": "1 day overdue",
+      "overdueDays_other": "{{count}} days overdue",
+      "inDays_one": "{{count}} day",
+      "inDays_other": "{{count}} days",
+      "agendado": "Scheduled",
+      "naoAprovado": "Not approved",
+      "publicaAs": "Publishes {{time}}",
+      "aguardandoCliente": "Awaiting client",
+      "aguardandoClienteHa": "Awaiting client for {{days}}d",
+      "aguardando": "Awaiting",
+      "semResposta": "{{days}}d no reply"
+    },
+    "noMembership": "You no longer have access to this workspace. Switch workspaces or ask an administrator to invite you again."
   }
 }
