@@ -25,8 +25,8 @@
     {
       "name": "hub-staging",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:hub:staging", "--", "--port", "5174"],
-      "port": 5174,
+      "runtimeArgs": ["run", "dev:hub:staging", "--", "--port", "5173"],
+      "port": 5173,
       "autoPort": false
     },
     {
