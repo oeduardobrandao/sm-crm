@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_AGENDA_LABELS,
   agendaRangeISO,
   bucketFor,
   buildTodayAgenda,
   type AgendaInput,
   type AgendaItem,
 } from '../todayAgenda';
-import { dueBadge } from '../../tarefas/tarefasLogic';
 import type { TarefaWithRelations } from '../../../store';
 
 // Monday 2026-08-17 at 23:30 LOCAL. Late in the day on purpose: any UTC-parse
@@ -88,8 +88,10 @@ describe('buildTodayAgenda · tarefas', () => {
     expect(b.hoje.map((i) => i.tarefaId)).toEqual([2]);
     expect(b.proximos.map((i) => i.tarefaId)).toEqual([3]);
 
-    expect(b.atrasado[0].badge).toEqual(dueBadge(yesterday, NOW));
-    expect(b.atrasado[0].badge?.className).toBe('deadline-overdue');
+    expect(b.atrasado[0].badge).toEqual({
+      label: '1 dia de atraso',
+      className: 'deadline-overdue',
+    });
     expect(b.hoje[0].badge?.className).toBe('deadline-warning');
     expect(b.hoje[0].href).toBe('/tarefas?tarefa=2');
     expect(b.hoje[0].tarefaStatus).toBe('pendente');
@@ -372,6 +374,33 @@ describe('buildTodayAgenda · finance, birthdays, datas', () => {
   it('emits none of them in mine scope', () => {
     const b = buildTodayAgenda(base({ clientes, membros, datas, scope: 'mine' }));
     expect(b.hoje).toHaveLength(0);
+  });
+});
+
+describe('buildTodayAgenda · labels + custom statuses', () => {
+  it('uses the injected labels and status resolver', () => {
+    const b = buildTodayAgenda(
+      base({
+        scope: 'mine',
+        membroId: 10,
+        tarefas: [tarefa({ id: 1, data_limite: '2026-08-16' })],
+        assignedPendingPosts: [
+          {
+            id: 1,
+            workflow_id: 1,
+            titulo: 'P',
+            status: 'rascunho',
+            custom_status_id: 'abc',
+            workflow_titulo: '',
+            cliente_nome: '',
+          },
+        ],
+        labels: { ...DEFAULT_AGENDA_LABELS, overdueDays: (n) => `${n} day(s) late` },
+        postStatusLabel: (p) => (p.custom_status_id ? 'Custom!' : 'canon'),
+      }),
+    );
+    expect(b.atrasado[0].badge?.label).toBe('1 day(s) late');
+    expect(b.hoje[0].badge?.label).toBe('Custom!');
   });
 });
 

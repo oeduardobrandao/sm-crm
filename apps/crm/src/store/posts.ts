@@ -414,6 +414,7 @@ export interface AssignedPendingPost {
   workflow_id: number;
   titulo: string;
   status: WorkflowPost['status'];
+  custom_status_id: string | null;
   workflow_titulo: string;
   cliente_nome: string;
 }
@@ -423,7 +424,7 @@ export async function getAssignedPendingPosts(membroId: number): Promise<Assigne
   const { data, error } = await supabase
     .from('workflow_posts')
     .select(
-      'id, workflow_id, titulo, status, workflows!inner(titulo, status, clientes!inner(nome))',
+      'id, workflow_id, titulo, status, custom_status_id, workflows!inner(titulo, status, clientes!inner(nome))',
     )
     .eq('workflows.status', 'ativo')
     .eq('responsavel_id', membroId)
@@ -435,6 +436,7 @@ export async function getAssignedPendingPosts(membroId: number): Promise<Assigne
     workflow_id: row.workflow_id,
     titulo: row.titulo,
     status: row.status,
+    custom_status_id: row.custom_status_id ?? null,
     workflow_titulo: row.workflows?.titulo ?? '',
     cliente_nome: row.workflows?.clientes?.nome ?? '',
   }));

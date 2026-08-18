@@ -171,6 +171,21 @@
     "taskDoneUndo": "Desfazer",
     "taskDoneError": "Não foi possível concluir a tarefa.",
     "markDone": "Concluir tarefa",
-    "less": "Mostrar menos"
+    "less": "Mostrar menos",
+    "labels": {
+      "hoje": "Hoje",
+      "amanha": "Amanhã",
+      "overdueDays_one": "1 dia de atraso",
+      "overdueDays_other": "{{count}} dias de atraso",
+      "inDays_one": "{{count}} dia",
+      "inDays_other": "{{count}} dias",
+      "agendado": "Agendado",
+      "naoAprovado": "Não aprovado",
+      "publicaAs": "Publica {{time}}",
+      "aguardandoCliente": "Aguardando cliente",
+      "aguardandoClienteHa": "Aguardando cliente há {{days}}d",
+      "aguardando": "Aguardando",
+      "semResposta": "{{days}}d sem resposta"
+    }
   }
 }

@@ -171,6 +171,21 @@
     "taskDoneUndo": "Undo",
     "taskDoneError": "Could not complete the task.",
     "markDone": "Complete task",
-    "less": "Show less"
+    "less": "Show less",
+    "labels": {
+      "hoje": "Today",
+      "amanha": "Tomorrow",
+      "overdueDays_one": "1 day overdue",
+      "overdueDays_other": "{{count}} days overdue",
+      "inDays_one": "{{count}} day",
+      "inDays_other": "{{count}} days",
+      "agendado": "Scheduled",
+      "naoAprovado": "Not approved",
+      "publicaAs": "Publishes {{time}}",
+      "aguardandoCliente": "Awaiting client",
+      "aguardandoClienteHa": "Awaiting client for {{days}}d",
+      "aguardando": "Awaiting",
+      "semResposta": "{{days}}d no reply"
+    }
   }
 }

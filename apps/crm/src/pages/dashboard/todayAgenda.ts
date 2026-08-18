@@ -11,7 +11,8 @@ import type {
 import type { FinancialAccess } from '../../lib/financialAccess';
 import { dayNum, etapaDeadlineDateOf } from '../entregas/etapaPrazo';
 import { STATUS_LABELS as POST_STATUS_LABELS } from '../entregas/postLabels';
-import { dueBadge, parseDateOnly } from '../tarefas/tarefasLogic';
+import type { ResolvablePost } from '../entregas/statusRegistry';
+import { parseDateOnly } from '../tarefas/tarefasLogic';
 
 // Pure logic for the dashboard "Hoje" card. No React, no fetching. Every
 // bucketing decision is made on LOCAL calendar days (dayNum), never on ms
@@ -74,9 +75,56 @@ export interface AgendaInput {
   clientes: Cliente[];
   membros: Membro[];
   datas: ClienteData[];
+  /** Localized copy; defaults to pt-BR. */
+  labels?: AgendaLabels;
+  /** Effective post status label (honors workspace custom statuses). */
+  postStatusLabel?: (p: ResolvablePost) => string;
 }
 
 export type AgendaBuckets = Record<AgendaBucket, AgendaItem[]>;
+
+/**
+ * Every user-visible string the builder emits. The hook fills this from t()
+ * so the pure module stays React/i18n-free; the defaults are the pt-BR copy
+ * and double as the test fixture.
+ */
+export interface AgendaLabels {
+  recebimento: string;
+  despesa: string;
+  aniversario: string;
+  hoje: string;
+  amanha: string;
+  overdueDays: (n: number) => string;
+  inDays: (n: number) => string;
+  agendado: string;
+  naoAprovado: string;
+  publicaAs: (time: string) => string;
+  aguardandoCliente: string;
+  aguardandoClienteHa: (days: number) => string;
+  aguardando: string;
+  semResposta: (days: number) => string;
+}
+
+export const DEFAULT_AGENDA_LABELS: AgendaLabels = {
+  recebimento: 'Recebimento',
+  despesa: 'Despesa',
+  aniversario: 'Aniversário',
+  hoje: 'Hoje',
+  amanha: 'Amanhã',
+  overdueDays: (n) => (n === 1 ? '1 dia de atraso' : `${n} dias de atraso`),
+  inDays: (n) => `${n} dias`,
+  agendado: 'Agendado',
+  naoAprovado: 'Não aprovado',
+  publicaAs: (time) => `Publica ${time}`,
+  aguardandoCliente: 'Aguardando cliente',
+  aguardandoClienteHa: (days) => `Aguardando cliente há ${days}d`,
+  aguardando: 'Aguardando',
+  semResposta: (days) => `${days}d sem resposta`,
+};
+
+/** Canonical-only fallback; the hook passes the workspace registry's resolve(). */
+export const canonicalPostStatusLabel = (p: ResolvablePost): string =>
+  POST_STATUS_LABELS[p.status] ?? p.status;
 
 export const HORIZON_DAYS = 7;
 /** Posts sent to the client and unanswered for this many full days count as overdue. */
@@ -117,18 +165,14 @@ export function bucketFor(when: Date | null, now: Date): AgendaBucket | null {
   return null;
 }
 
-function etapaBadge(when: Date, now: Date): AgendaItem['badge'] {
+/** Deadline badge shared by tarefas and etapas (same thresholds as
+ * tarefasLogic.dueBadge, but localized through `labels`). */
+function deadlineBadge(when: Date, now: Date, L: AgendaLabels): AgendaItem['badge'] {
   const diff = dayDiff(when, now);
-  if (diff < 0) {
-    const d = Math.abs(diff);
-    return {
-      label: d === 1 ? '1 dia de atraso' : `${d} dias de atraso`,
-      className: 'deadline-overdue',
-    };
-  }
-  if (diff === 0) return { label: 'Hoje', className: 'deadline-warning' };
-  if (diff === 1) return { label: 'Amanhã', className: 'deadline-caution' };
-  return { label: `${diff} dias`, className: diff <= 3 ? 'deadline-caution' : 'deadline-ok' };
+  if (diff < 0) return { label: L.overdueDays(Math.abs(diff)), className: 'deadline-overdue' };
+  if (diff === 0) return { label: L.hoje, className: 'deadline-warning' };
+  if (diff === 1) return { label: L.amanha, className: 'deadline-caution' };
+  return { label: L.inDays(diff), className: diff <= 3 ? 'deadline-caution' : 'deadline-ok' };
 }
 
 function joinContext(...parts: (string | null | undefined)[]): string {
@@ -152,6 +196,8 @@ function sortItems(items: AgendaItem[]): AgendaItem[] {
 
 export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
   const { now, scope, membroId, canSeeFinancials } = input;
+  const L = input.labels ?? DEFAULT_AGENDA_LABELS;
+  const statusLabel = input.postStatusLabel ?? canonicalPostStatusLabel;
   const mine = scope === 'mine';
   const items: AgendaItem[] = [];
 
@@ -184,7 +230,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
         when,
         href: `/tarefas?tarefa=${t.id}`,
         responsavel: responsavelOf(t.responsavel_id),
-        badge: dueBadge(t, now),
+        badge: deadlineBadge(when, now, L),
         tarefaId: t.id,
         tarefaStatus: t.status,
       },
@@ -207,7 +253,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
         when,
         href: `/entregas?drawer=${e.workflow_id}`,
         responsavel: responsavelOf(e.responsavel_id),
-        badge: etapaBadge(when, now),
+        badge: deadlineBadge(when, now, L),
       },
       bucketFor(when, now),
     );
@@ -233,18 +279,14 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
         key: `post_agendado:${p.id}`,
         kind: 'post_agendado',
         title: p.titulo,
-        context: joinContext(
-          `Publica ${fmtTime(when)}`,
-          POST_STATUS_LABELS[p.status] ?? p.status,
-          p.cliente_nome,
-        ),
+        context: joinContext(L.publicaAs(fmtTime(when)), statusLabel(p), p.cliente_nome),
         when,
         href: `/entregas?drawer=${p.workflow_id}&post=${p.id}`,
         responsavel: responsavelOf(p.responsavel_id),
         badge: ready
-          ? { label: 'Agendado', className: 'deadline-ok' }
+          ? { label: L.agendado, className: 'deadline-ok' }
           : {
-              label: 'Não aprovado',
+              label: L.naoAprovado,
               className: bucket === 'hoje' ? 'deadline-warning' : 'deadline-caution',
             },
       },
@@ -265,15 +307,15 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
           kind: 'post_aguardando_cliente',
           title: p.titulo,
           context: joinContext(
-            days != null && days > 0 ? `Aguardando cliente há ${days}d` : 'Aguardando cliente',
+            days != null && days > 0 ? L.aguardandoClienteHa(days) : L.aguardandoCliente,
             p.cliente_nome,
           ),
           when: null,
           href: `/entregas?drawer=${p.workflow_id}&post=${p.id}`,
           responsavel: responsavelOf(p.responsavel_id),
           badge: overdue
-            ? { label: `${days}d sem resposta`, className: 'deadline-warning' }
-            : { label: 'Aguardando', className: 'deadline-caution' },
+            ? { label: L.semResposta(days), className: 'deadline-warning' }
+            : { label: L.aguardando, className: 'deadline-caution' },
         },
         overdue ? 'atrasado' : 'hoje',
       );
@@ -294,7 +336,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
           href: `/entregas?drawer=${p.workflow_id}&post=${p.id}`,
           responsavel: null,
           badge: {
-            label: POST_STATUS_LABELS[p.status] ?? p.status,
+            label: statusLabel(p),
             className: urgent ? 'deadline-warning' : 'deadline-caution',
           },
         },
@@ -317,7 +359,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
             key: `income:${c.id}`,
             kind: 'income',
             title: c.nome,
-            context: 'Recebimento',
+            context: L.recebimento,
             when: today,
             href: `/clientes/${c.id}`,
             responsavel: null,
@@ -333,7 +375,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
             key: `expense:${m.id}`,
             kind: 'expense',
             title: m.nome,
-            context: 'Despesa',
+            context: L.despesa,
             when: today,
             href: `/equipe/${m.id}`,
             responsavel: null,
@@ -353,7 +395,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
           key: `birthday:${c.id}`,
           kind: 'birthday',
           title: c.nome,
-          context: 'Aniversário',
+          context: L.aniversario,
           when: today,
           href: `/clientes/${c.id}`,
           responsavel: null,

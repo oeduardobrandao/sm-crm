@@ -14,6 +14,7 @@ const {
   getAwaitingMock,
   getPendingMock,
   getDatasMock,
+  getStatusDefsMock,
   updateTarefaMock,
   toastSuccessMock,
   toastErrorMock,
@@ -27,6 +28,7 @@ const {
   getAwaitingMock: vi.fn(),
   getPendingMock: vi.fn(),
   getDatasMock: vi.fn(),
+  getStatusDefsMock: vi.fn(),
   updateTarefaMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
@@ -43,6 +45,7 @@ vi.mock('../../../../store', () => ({
   getAwaitingClientePosts: getAwaitingMock,
   getAssignedPendingPosts: getPendingMock,
   getAllClienteDatas: getDatasMock,
+  getPostStatusDefinitions: getStatusDefsMock,
   updateTarefa: updateTarefaMock,
 }));
 
@@ -113,11 +116,13 @@ describe('TodayCard', () => {
       getAwaitingMock,
       getPendingMock,
       getDatasMock,
+      getStatusDefsMock,
       updateTarefaMock,
       toastSuccessMock,
       toastErrorMock,
     ])
       m.mockReset();
+    getStatusDefsMock.mockResolvedValue([]);
     getMembrosMock.mockResolvedValue(MEMBROS);
     getClientesMock.mockResolvedValue([]);
     getTarefasMock.mockResolvedValue([]);
@@ -143,10 +148,49 @@ describe('TodayCard', () => {
     expect(screen.getByText('Hoje')).toBeInTheDocument();
     // Let any effect/query settle
     await new Promise((r) => setTimeout(r, 20));
+    expect(getMembrosMock).not.toHaveBeenCalled();
+    expect(getStatusDefsMock).not.toHaveBeenCalled();
     expect(getTarefasMock).not.toHaveBeenCalled();
     expect(getAwaitingMock).not.toHaveBeenCalled();
     expect(getClientesMock).not.toHaveBeenCalled();
     expect(getPendingMock).not.toHaveBeenCalled();
+  });
+
+  it('labels posts with the workspace custom status name when one is set', async () => {
+    useAuthMock.mockReturnValue(AGENT_AUTH);
+    getStatusDefsMock.mockResolvedValue([
+      {
+        id: '11111111-1111-4111-8111-111111111111',
+        nome: 'Ideia bruta',
+        behaves_as: 'rascunho',
+        ordem: 1,
+        arquivado: false,
+        cor: '#ccc',
+      },
+    ]);
+    getPendingMock.mockResolvedValue([
+      {
+        id: 5,
+        workflow_id: 3,
+        titulo: 'Post custom',
+        status: 'rascunho',
+        custom_status_id: '11111111-1111-4111-8111-111111111111',
+        workflow_titulo: 'Pack',
+        cliente_nome: 'Dra. Ana',
+      },
+      {
+        id: 6,
+        workflow_id: 3,
+        titulo: 'Post canonico',
+        status: 'rascunho',
+        custom_status_id: null,
+        workflow_titulo: 'Pack',
+        cliente_nome: 'Dra. Ana',
+      },
+    ]);
+    renderCard();
+    expect(await screen.findByText('Ideia bruta')).toBeInTheDocument();
+    expect(screen.getByText('Rascunho')).toBeInTheDocument();
   });
 
   it('agent scope never touches workspace-only sources and hides finance rows', async () => {
