@@ -1,14 +1,17 @@
 import { ArrowLeft, Edit2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
+import { ClienteAvatarUpload } from './ClienteAvatarUpload';
 
 interface ClienteDetalheHeaderProps {
+  clienteId: number;
   nome: string;
   initials: string;
   cor: string;
   plano: string;
   status: string;
   imageUrl?: string | null;
+  canEditPhoto: boolean;
   onBack: () => void;
   onEdit: () => void;
 }
@@ -39,17 +42,14 @@ export function ClienteDetalheHeader(props: ClienteDetalheHeaderProps) {
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        {props.imageUrl ? (
-          <img className="cliente-detalhe-header__avatar" src={props.imageUrl} alt={props.nome} />
-        ) : (
-          <div
-            className="cliente-detalhe-header__avatar cliente-detalhe-header__initials"
-            style={{ background: props.cor }}
-            aria-hidden="true"
-          >
-            {props.initials}
-          </div>
-        )}
+        <ClienteAvatarUpload
+          clienteId={props.clienteId}
+          nome={props.nome}
+          cor={props.cor}
+          initials={props.initials}
+          imageUrl={props.imageUrl ?? null}
+          canEdit={props.canEditPhoto}
+        />
         <div className="cliente-detalhe-header__text">
           <h2 className="cliente-detalhe-header__name">{props.nome}</h2>
           <div className="cliente-detalhe-header__badges">
