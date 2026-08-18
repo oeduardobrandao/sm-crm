@@ -1248,7 +1248,7 @@ git commit -m "feat(hub-bootstrap): prefer a manual client photo over the Instag
 - Create: `apps/hub/src/components/__tests__/ClientAvatar.test.tsx`
 
 **Interfaces:**
-- Produces: `ClientAvatar`'s initials fallback font size now scales with the `size` prop (previously hardcoded at 11px regardless of size). No prop signature change — Task 8 and the existing `HubSidebar`/`HubMobileNav` callers are unaffected.
+- Produces: `ClientAvatar`'s initials fallback font size now scales with the `size` prop (previously hardcoded at 11px regardless of size). No prop signature change. `HubSidebar` calls with no `size` prop (true 28px default, fallback stays exactly 11px, byte-for-byte unaffected). **Correction, found during implementation:** `HubMobileNav` actually calls with `size={32}`, not the 28px default — its fallback initial moves from a fixed 11px to a computed 13px. Reviewed and accepted as an acceptable, barely-perceptible change to a rarely-seen fallback path (a client with neither a manual photo nor a connected Instagram account), not a regression worth special-casing.
 
 - [ ] **Step 1: Write the failing tests**
 
