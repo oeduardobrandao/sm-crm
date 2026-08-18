@@ -6485,12 +6485,12 @@ body.role-agent input[name='valor_total'] {
 }
 
 /* Exactly one or two columns, never three: there are four cards, and auto-fit
-   at a wide viewport produced a 3+1 orphan row. align-items:start keeps a short
-   card short instead of stretching it to its neighbour's height. */
+   at a wide viewport produced a 3+1 orphan row.
+   Rows stretch (the grid default) so the two cards in a row share a bottom
+   edge — ragged card bottoms read as broken rather than airy. */
 .ex-grid {
   display: grid;
   grid-template-columns: 1fr;
-  align-items: start;
   gap: 0.85rem;
 }
 
@@ -6501,10 +6501,20 @@ body.role-agent input[name='valor_total'] {
 }
 
 .ex-card {
+  display: flex;
+  flex-direction: column;
   background: var(--surface-1);
   border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 0.9rem 1rem 1rem;
+}
+
+/* With rows stretched, the shorter card gains slack. Push a closing footnote to
+   the bottom edge so that slack collects above it — the footnotes then line up
+   across the row instead of floating mid-card. Higher specificity than the
+   `.ex-body + .ex-aside` spacing rules below, so it wins the margin-top. */
+.ex-card > .ex-aside:last-child {
+  margin-top: auto;
 }
 
 .ex-card h3 {
