@@ -162,4 +162,63 @@ describe('ClienteAvatarUpload', () => {
     renderIt({ imageUrl: null });
     expect(screen.queryByRole('button', { name: /Remover foto/ })).not.toBeInTheDocument();
   });
+
+  it('falls back to initials when the photo fails to load, instead of a broken image', () => {
+    renderIt({
+      imageUrl: 'https://cdn.mesaas.com/avatars/clientes/1/broken.png',
+      cor: '#ffbf30',
+    });
+
+    const img = screen.getByRole('img');
+    fireEvent.error(img);
+
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.getByText('AE')).toBeInTheDocument();
+    // The remove control must stay available — foto_url is still set even
+    // though the current object 404s, and removing it is exactly the fix.
+    expect(screen.getByRole('button', { name: /Remover foto/ })).toBeInTheDocument();
+  });
+
+  it('recovers from a previous load failure once a new photo uploads successfully', async () => {
+    const { container, rerender, queryClient } = (() => {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const utils = render(
+        <QueryClientProvider client={qc}>
+          <ClienteAvatarUpload
+            clienteId={1}
+            nome="Aurora Estética"
+            cor="#ffbf30"
+            initials="AE"
+            imageUrl="https://cdn.mesaas.com/avatars/clientes/1/broken.png"
+            canEdit
+          />
+        </QueryClientProvider>,
+      );
+      return { ...utils, queryClient: qc };
+    })();
+
+    fireEvent.error(screen.getByRole('img'));
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+
+    const input = getFileInput(container);
+    fireEvent.change(input, {
+      target: { files: [new File(['x'], 'foto.png', { type: 'image/png' })] },
+    });
+    await waitFor(() => expect(mockedUpdateCliente).toHaveBeenCalled());
+
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <ClienteAvatarUpload
+          clienteId={1}
+          nome="Aurora Estética"
+          cor="#ffbf30"
+          initials="AE"
+          imageUrl="https://cdn.mesaas.com/avatars/clientes/1/foto.png"
+          canEdit
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByRole('img')).toBeInTheDocument();
+  });
 });

@@ -38,6 +38,7 @@ export function ClienteAvatarUpload({
   const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function invalidate() {
@@ -61,6 +62,7 @@ export function ClienteAvatarUpload({
 
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
       await updateCliente(clienteId, { foto_url: urlData.publicUrl });
+      setImageFailed(false);
       invalidate();
       toast.success('Foto atualizada!');
     } catch {
@@ -84,17 +86,23 @@ export function ClienteAvatarUpload({
     }
   }
 
-  const avatar = imageUrl ? (
-    <img className="cliente-detalhe-header__avatar" src={imageUrl} alt={nome} />
-  ) : (
-    <div
-      className="cliente-detalhe-header__avatar cliente-detalhe-header__initials"
-      style={{ background: cor }}
-      aria-hidden="true"
-    >
-      {initials}
-    </div>
-  );
+  const avatar =
+    imageUrl && !imageFailed ? (
+      <img
+        className="cliente-detalhe-header__avatar"
+        src={imageUrl}
+        alt={nome}
+        onError={() => setImageFailed(true)}
+      />
+    ) : (
+      <div
+        className="cliente-detalhe-header__avatar cliente-detalhe-header__initials"
+        style={{ background: cor }}
+        aria-hidden="true"
+      >
+        {initials}
+      </div>
+    );
 
   if (!canEdit) return avatar;
 
