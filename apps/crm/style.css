@@ -6432,6 +6432,366 @@ body.role-agent input[name='valor_total'] {
    text ramp and surface tokens (theme-aware) rather than the amber alert skin.
    Full width under the meta row — the sentence is far too long for the ~140px
    status field it describes. */
+/* ── "Como funciona" explainer ──────────────────────────────────────────────
+   Always-reachable replacement for the one-shot tour's reach problem.
+
+   Built to be scanned: four bordered cards so the sections separate at a
+   glance, a nesting tree instead of a definition list, colour-coded columns
+   for automatic vs manual, and prose only where a sentence is genuinely
+   needed. Sits above the board permanently, so it stays on surface tokens
+   with a single accent hairline rather than a filled banner. */
+.ex-panel {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  border-top: 2px solid var(--primary-color);
+  padding: 1.15rem 1.35rem 1.35rem;
+}
+
+.ex-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.ex-head h2 {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.ex-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem;
+  cursor: pointer;
+  color: var(--text-light);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.ex-close:hover {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+
+/* Exactly one or two columns, never three: there are four cards, and auto-fit
+   at a wide viewport produced a 3+1 orphan row.
+   Rows stretch (the grid default) so the two cards in a row share a bottom
+   edge — ragged card bottoms read as broken rather than airy. */
+.ex-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.85rem;
+}
+
+@media (min-width: 900px) {
+  .ex-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.ex-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0.9rem 1rem 1rem;
+}
+
+/* With rows stretched, the shorter card gains slack. Push a closing footnote to
+   the bottom edge so that slack collects above it — the footnotes then line up
+   across the row instead of floating mid-card. Higher specificity than the
+   `.ex-body + .ex-aside` spacing rules below, so it wins the margin-top. */
+.ex-card > .ex-aside:last-child {
+  margin-top: auto;
+}
+
+.ex-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0 0 0.7rem;
+}
+
+.ex-card h3 svg {
+  color: var(--primary-hover);
+  flex-shrink: 0;
+}
+
+.ex-body,
+.ex-aside {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.ex-body {
+  color: var(--text-muted);
+}
+
+.ex-body + .ex-aside,
+.ex-vis + .ex-aside,
+.ex-tree + .ex-aside {
+  margin-top: 0.7rem;
+}
+
+.ex-aside {
+  font-size: 0.73rem;
+  color: var(--text-light);
+  background: var(--surface-2);
+  border-radius: 7px;
+  padding: 0.5rem 0.6rem;
+}
+
+.ex-term {
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+/* ── Os objetos: containment as indentation ── */
+.ex-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ex-tree li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  padding: 0.4rem 0 0.4rem 0.65rem;
+  border-left: 2px solid var(--border-color);
+}
+
+.ex-tree-l1 {
+  margin-left: 0.9rem;
+}
+
+.ex-tree-l2 {
+  margin-left: 1.8rem;
+}
+
+.ex-tree .ex-term {
+  font-size: 0.8rem;
+}
+
+.ex-def {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* ── Dois trilhos ── */
+.ex-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.7rem;
+}
+
+.ex-track {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ex-track-obj {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-main);
+  min-width: 3.1rem;
+}
+
+.ex-track-verb {
+  font-size: 0.73rem;
+  color: var(--text-light);
+}
+
+.ex-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid transparent;
+}
+
+.ex-chip--etapa {
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
+  border-color: color-mix(in srgb, var(--teal) 30%, transparent);
+}
+
+.ex-chip--status {
+  color: var(--pink);
+  background: color-mix(in srgb, var(--pink) 14%, transparent);
+  border-color: color-mix(in srgb, var(--pink) 30%, transparent);
+}
+
+.ex-punch {
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0 0 0.3rem;
+}
+
+/* ── Automático vs manual ── */
+.ex-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+  gap: 0.75rem;
+}
+
+.ex-split-col h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin: 0 0 0.4rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ex-split-col--auto h4 {
+  color: var(--primary-hover);
+}
+
+.ex-split-col--manual h4 {
+  color: var(--text-muted);
+}
+
+.ex-split-col ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ex-split-col li {
+  position: relative;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  padding-left: 0.65rem;
+  margin-bottom: 0.3rem;
+}
+
+.ex-split-col li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.45em;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-light);
+}
+
+.ex-split-col--auto li::before {
+  background: var(--primary-color);
+}
+
+/* ── Quem vê o quê ── */
+.ex-vis {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ex-vis li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+}
+
+.ex-vis li.is-visible {
+  background: color-mix(in srgb, var(--teal) 9%, transparent);
+  border-color: color-mix(in srgb, var(--teal) 22%, transparent);
+}
+
+.ex-vis-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+  color: var(--text-light);
+}
+
+.ex-vis li.is-visible .ex-vis-icon {
+  color: var(--teal);
+}
+
+.ex-vis-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.ex-vis-text strong {
+  font-size: 0.78rem;
+  color: var(--text-main);
+}
+
+.ex-vis-list {
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.entregas-explainer-reopen {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.entregas-explainer-reopen:hover {
+  color: var(--text-main);
+}
+
+/* Client-visibility badge on every post row, collapsed included. Two states so
+   it reads as a scannable column rather than an occasional alert: the internal
+   eye-off sits in the muted ramp, the visible one takes the accent so
+   "the client can see this" is the state that draws the eye. */
+.drawer-post-visibility {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-light);
+  opacity: 0.65;
+}
+
+.drawer-post-visibility.is-visible {
+  color: var(--teal);
+  opacity: 1;
+}
+
 .drawer-status-hint {
   font-size: 0.75rem;
   line-height: 1.45;

@@ -9,6 +9,8 @@ import {
   getStatusAutomationHint,
   POST_STATUS_ORDER,
   STATUS_OWNER,
+  STATUS_CLIENT_VISIBILITY,
+  isVisibleToClient,
 } from '../postLabels';
 import { formatPostDateFull } from '@/utils/postDate';
 import type { ClientePost } from '@/store/posts';
@@ -292,6 +294,43 @@ describe('getStatusAutomationHint', () => {
   it('returns null for the statuses where nothing happens on its own', () => {
     for (const status of ['rascunho', 'revisao_interna', 'aprovado_interno', 'postado'] as const) {
       expect(getStatusAutomationHint({ status })).toBeNull();
+    }
+  });
+});
+
+describe('client visibility', () => {
+  it('covers every canonical status', () => {
+    expect(Object.keys(STATUS_CLIENT_VISIBILITY).sort()).toEqual([...POST_STATUS_ORDER].sort());
+  });
+
+  it('keeps the three pre-send statuses internal and everything after them visible', () => {
+    expect(POST_STATUS_ORDER.filter((s) => !isVisibleToClient(s))).toEqual([
+      'rascunho',
+      'revisao_interna',
+      'aprovado_interno',
+    ]);
+  });
+
+  it('is sticky from enviado_cliente onward — including a failed publish', () => {
+    // A post that failed to publish has already been in the client's portal for a
+    // while; hiding it again on failure would be a surprise, so the rule keeps it up.
+    const sendIdx = POST_STATUS_ORDER.indexOf('enviado_cliente');
+    for (const status of POST_STATUS_ORDER.slice(sendIdx)) {
+      expect(isVisibleToClient(status)).toBe(true);
+    }
+    expect(isVisibleToClient('falha_publicacao')).toBe(true);
+  });
+
+  it('matches the rule the drawer used to inline as isExternallyVisible', () => {
+    const legacy = (s: string) =>
+      s === 'enviado_cliente' ||
+      s === 'aprovado_cliente' ||
+      s === 'correcao_cliente' ||
+      s === 'agendado' ||
+      s === 'postado' ||
+      s === 'falha_publicacao';
+    for (const status of POST_STATUS_ORDER) {
+      expect(isVisibleToClient(status)).toBe(legacy(status));
     }
   });
 });

@@ -450,6 +450,17 @@ describe('live revocation handler', () => {
     // Only non-null once .subscribe() has actually been called on the
     // channel — deleting that call must fail this assertion, not slip past a
     // mock that routes callbacks regardless (Important 4).
+    //
+    // Polled, not read once: canSeeFinancials above is set by the membership
+    // lookup, while the channel is created by a separate effect gated on
+    // `profile?.conta_id`. The two resolve independently, so a settled
+    // canSeeFinancials does NOT imply the channel has subscribed — reading
+    // synchronously here loses that race under load (it went red in CI while
+    // passing locally). Same pattern already used by the revocation test above.
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
+    });
+
     const subscription = mockedSupabase.__getWorkspaceMemberSubscription();
     expect(subscription).not.toBeNull();
     expect(subscription).toMatchObject({

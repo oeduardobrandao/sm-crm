@@ -240,3 +240,55 @@ export function getStatusAutomationHint(p: {
       return null;
   }
 }
+
+/**
+ * Whether a post in this status is visible to the client in the Hub.
+ *
+ * This is the rule that used to live inline in WorkflowDrawer as
+ * `isExternallyVisible`, and it is the single most consequential thing the
+ * status column decides — picking "Enviado ao cliente" publishes the post to
+ * the client's portal. It was only ever surfaced as a banner *inside* an
+ * already-expanded post, i.e. after the fact. Exported so the row badge, the
+ * status picker and the explainer all read the same source.
+ *
+ * Visibility is sticky: once a post reaches `enviado_cliente` every later
+ * status keeps it visible, including `falha_publicacao`.
+ */
+export const STATUS_CLIENT_VISIBILITY: Record<WorkflowPost['status'], boolean> = {
+  rascunho: false,
+  revisao_interna: false,
+  aprovado_interno: false,
+  enviado_cliente: true,
+  aprovado_cliente: true,
+  correcao_cliente: true,
+  agendado: true,
+  postado: true,
+  falha_publicacao: true,
+};
+
+export function isVisibleToClient(status: WorkflowPost['status']): boolean {
+  return STATUS_CLIENT_VISIBILITY[status] ?? false;
+}
+
+/**
+ * Short suffix for the status picker's options. Carries the emoji because a
+ * native `<option>` renders text only — an SVG icon is impossible there.
+ * Anywhere a real icon can be drawn, use VISIBILITY_TEXT_LABEL with a lucide
+ * icon instead, or the line ends up with two icons saying the same thing.
+ */
+export const VISIBILITY_OPTION_SUFFIX = {
+  visible: '👁 o cliente vê',
+  internal: '🔒 interno',
+} as const;
+
+/** Same two labels, icon-free, for use alongside a real icon. */
+export const VISIBILITY_TEXT_LABEL = {
+  visible: 'o cliente vê',
+  internal: 'interno',
+} as const;
+
+/** Row-badge copy — the tooltip carries the sentence the badge cannot. */
+export const VISIBILITY_BADGE_LABEL = {
+  visible: 'Visível para o cliente no portal',
+  internal: 'Interno — o cliente não vê este post',
+} as const;

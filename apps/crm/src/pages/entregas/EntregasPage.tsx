@@ -1,11 +1,22 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Plus, LayoutGrid, Info, BarChart2, Calendar, List, Columns, Archive } from 'lucide-react';
+import {
+  Plus,
+  LayoutGrid,
+  Info,
+  BarChart2,
+  Calendar,
+  List,
+  Columns,
+  Archive,
+  BookOpen,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useAuth } from '@/context/AuthContext';
 import { startEntregasTour, tourStorageKey } from './tour/entregasTour';
+import { ComoFuncionaPanel, explainerStorageKey } from './components/ComoFuncionaPanel';
 import { useEntregasData, type BoardCard } from './hooks/useEntregasData';
 import { EntregasFilters, type FilterState, type StatusFilter } from './components/EntregasFilters';
 import {
@@ -89,6 +100,32 @@ export default function EntregasPage() {
     () => localStorage.getItem(tourStorageKey(contaId)) === 'true',
   );
   const [replayActive, setReplayActive] = useState(false);
+
+  // The "Como funciona" panel. Open by default and dismissed per conta — unlike the
+  // tour it does not wait for an empty board, because the model it explains is
+  // exactly as opaque on a full one.
+  const [explainerOpen, setExplainerOpen] = useState(
+    () => localStorage.getItem(explainerStorageKey(contaId)) !== 'true',
+  );
+
+  const dismissExplainer = useCallback(() => {
+    localStorage.setItem(explainerStorageKey(contaId), 'true');
+    setExplainerOpen(false);
+    captureEvent('entregas_explainer_dismissed');
+  }, [contaId]);
+
+  const reopenExplainer = useCallback(() => {
+    setExplainerOpen(true);
+    captureEvent('entregas_explainer_reopened');
+  }, []);
+
+  // One impression per mount that actually renders the panel.
+  const explainerSeen = useRef(false);
+  useEffect(() => {
+    if (!explainerOpen || explainerSeen.current) return;
+    explainerSeen.current = true;
+    captureEvent('entregas_explainer_shown');
+  }, [explainerOpen]);
 
   // The example board stands in for a real board on an empty first visit, and comes back
   // temporarily during a replay. A board emptied by filters (but with real workflows) shows the
@@ -375,6 +412,12 @@ export default function EntregasPage() {
                 there, so a click elsewhere (other views, or the Publicações board) would fire
                 a "started" event and hit startEntregasTour's zero-anchor early return with no
                 visible tour. */}
+            {!explainerOpen && (
+              <button type="button" onClick={reopenExplainer} className="entregas-explainer-reopen">
+                <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                Como funciona
+              </button>
+            )}
             {activeView === 'kanban' && kanbanMode === 'entregas' && (
               <button
                 type="button"
@@ -417,6 +460,8 @@ export default function EntregasPage() {
           </Button>
         </div>
       </header>
+
+      {explainerOpen && <ComoFuncionaPanel onDismiss={dismissExplainer} />}
 
       <VistasTabs contaId={contaId} currentQuery={currentQuery} onApply={applySavedView} />
 

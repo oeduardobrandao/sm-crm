@@ -11,6 +11,8 @@ import {
   MessageSquare,
   GripVertical,
   ImageIcon,
+  Eye,
+  EyeOff,
   Calendar as CalendarIcon,
   LayoutGrid,
   Maximize2,
@@ -111,8 +113,11 @@ import {
   TIPO_LABELS,
   getPostPublishState,
   getStatusAutomationHint,
+  isVisibleToClient,
   buildTipoDayMarkers,
   TIPO_LEGEND,
+  VISIBILITY_BADGE_LABEL,
+  VISIBILITY_OPTION_SUFFIX,
 } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { groupOptionsByOwner, statusKeyToPatch, type StatusKey } from '../statusRegistry';
@@ -1155,13 +1160,7 @@ function SortablePostItem({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const isExternallyVisible =
-    post.status === 'enviado_cliente' ||
-    post.status === 'aprovado_cliente' ||
-    post.status === 'correcao_cliente' ||
-    post.status === 'agendado' ||
-    post.status === 'postado' ||
-    post.status === 'falha_publicacao';
+  const isExternallyVisible = isVisibleToClient(post.status);
   const isScheduleLocked = post.status === 'agendado';
   const isStoryPost = post.tipo === 'stories';
   // One sentence on what the system will do to this post without being asked;
@@ -1196,6 +1195,21 @@ function SortablePostItem({
             <ChevronRight className="h-4 w-4 drawer-post-chevron" />
           )}
           <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
+          <span
+            className={`drawer-post-visibility${isExternallyVisible ? ' is-visible' : ''}`}
+            title={
+              isExternallyVisible ? VISIBILITY_BADGE_LABEL.visible : VISIBILITY_BADGE_LABEL.internal
+            }
+            aria-label={
+              isExternallyVisible ? VISIBILITY_BADGE_LABEL.visible : VISIBILITY_BADGE_LABEL.internal
+            }
+          >
+            {isExternallyVisible ? (
+              <Eye className="h-3.5 w-3.5" />
+            ) : (
+              <EyeOff className="h-3.5 w-3.5" />
+            )}
+          </span>
           <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
           {hasMedia && (
             <span className="drawer-post-media-badge" title="Mídia anexada">
@@ -1293,6 +1307,10 @@ function SortablePostItem({
                     {group.options.map((o) => (
                       <option key={o.key} value={o.key}>
                         {o.kind === 'custom' ? `· ${o.label}` : o.label}
+                        {' — '}
+                        {isVisibleToClient(o.canonical)
+                          ? VISIBILITY_OPTION_SUFFIX.visible
+                          : VISIBILITY_OPTION_SUFFIX.internal}
                       </option>
                     ))}
                   </optgroup>
