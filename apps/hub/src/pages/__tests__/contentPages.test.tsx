@@ -38,6 +38,7 @@ const hubValue = {
       brand_color: '#0f766e',
     },
     cliente_nome: 'Clínica Aurora',
+    cliente_foto_url: null,
     is_active: true,
     cliente_id: 14,
     feature_mensagens: true,
@@ -164,6 +165,30 @@ describe('hub content pages', () => {
         '/mesaas/hub/token-publico/aprovacoes',
       );
     });
+  });
+
+  it('shows a bigger client avatar above the greeting when a photo is set', async () => {
+    mockedFetchPosts.mockResolvedValue({ posts: [] } as never);
+    const withPhoto = {
+      ...hubValue,
+      bootstrap: { ...hubValue.bootstrap, cliente_foto_url: 'https://cdn.mesaas.com/foto.png' },
+    };
+
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <HubContext.Provider value={withPhoto}>
+          <MemoryRouter initialEntries={['/mesaas/hub/token-publico']}>
+            <Routes>
+              <Route path="/:workspace/hub/:token/*" element={<HomePage />} />
+            </Routes>
+          </MemoryRouter>
+        </HubContext.Provider>
+      </QueryClientProvider>,
+    );
+
+    const avatar = await screen.findByRole('img');
+    expect(avatar).toHaveAttribute('src', 'https://cdn.mesaas.com/foto.png');
+    expect(avatar).toHaveStyle({ width: '128px', height: '128px' });
   });
 
   it('renders the empty pages state when no materials exist yet', async () => {
