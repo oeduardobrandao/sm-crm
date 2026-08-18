@@ -6,7 +6,18 @@
 --   1. trg_cliente_foto_owner_admin — clientes_update RLS is open to any
 --      workspace member, so without this trigger an agent-role user could
 --      set foto_url to an arbitrary URL through a direct table update,
---      bypassing the CRM's UI-level workspaceRole gate entirely.
+--      bypassing the CRM's UI-level workspaceRole gate entirely. Also fires
+--      on INSERT (post-review fix): clientes_insert RLS has no role check
+--      at all, so the same agent could otherwise set foto_url at row
+--      creation time instead of via a later UPDATE. And it must NOT block
+--      a trusted service_role caller that has no workspace_members row of
+--      its own — the escape hatch (post-review fix) checks auth.role(),
+--      not current_user/session_user; see the long comment above the
+--      function definition in the migration for why either identity-based
+--      check would either silently defeat the whole guard (current_user,
+--      under SECURITY DEFINER) or reopen it for any downgraded-from-
+--      postgres session (session_user, empirically proven against THIS
+--      test file's own Case 1 while developing the fix).
 --   2. cliente_photo_insert (storage RLS) — an owner/admin of workspace A
 --      must not be able to write to workspace B's client photo path.
 --   3. avatars_service_write narrowed to `service_role` — must not have
@@ -92,6 +103,68 @@ begin
   select foto_url into v_foto from clientes where id = v_cli_a;
   assert v_foto = 'https://cdn.mesaas.com/avatars/clientes/1/foto.png',
     'clientes.foto_url: owner-role update was rejected';
+
+  -- ---- Case 1c: agent-role cannot INSERT a new client with foto_url set ----
+  -- (post-review fix: the trigger used to be BEFORE UPDATE only, so an
+  -- agent could set foto_url at creation time — clientes_insert RLS has no
+  -- role check to stop it.)
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_agent, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+
+  v_rejected := false;
+  begin
+    insert into clientes (user_id, conta_id, nome, sigla, cor, foto_url)
+      values (v_agent, v_ws_a, 'Cliente C', 'CC', '#000', 'https://evil.example/insert.png');
+  exception when others then
+    v_rejected := true;
+  end;
+  assert v_rejected,
+    'clientes.foto_url: agent-role INSERT with foto_url set was NOT rejected';
+
+  -- An agent must still be able to create a client that leaves foto_url unset
+  -- — the trigger only guards a foto_url that is actually being set.
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_agent, v_ws_a, 'Cliente D', 'CD', '#000');
+
+  execute 'reset role';
+
+  -- ---- Case 1d: owner of A CAN insert a new client with foto_url set ----
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner_a, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+
+  insert into clientes (user_id, conta_id, nome, sigla, cor, foto_url)
+    values (v_owner_a, v_ws_a, 'Cliente E', 'CE', '#000',
+            'https://cdn.mesaas.com/avatars/clientes/5/foto.png')
+    returning foto_url into v_foto;
+  assert v_foto = 'https://cdn.mesaas.com/avatars/clientes/5/foto.png',
+    'clientes.foto_url: owner-role INSERT with foto_url set was rejected';
+
+  execute 'reset role';
+
+  -- ---- Case 1e: service_role bypasses the owner/admin check entirely ----
+  -- (post-review fix #2. service_role has no workspace_members row for
+  -- either client, so this only passes if the escape hatch actually took —
+  -- proves the fix isn't a no-op. The escape hatch checks auth.role() only
+  -- — deliberately NOT current_user or session_user; both were tried and
+  -- rejected while developing this fix (see the migration's comment above
+  -- the function definition): current_user is frozen to the function OWNER
+  -- under SECURITY DEFINER regardless of caller, and session_user does not
+  -- change with SET LOCAL ROLE, so either would have made this escape fire
+  -- for every persona in this file, not just this one — which is exactly
+  -- what happened first when session_user was tried: Case 1 above passed
+  -- for the wrong reason instead of correctly rejecting the agent.)
+  perform set_config('request.jwt.claims',
+    json_build_object('role', 'service_role')::text, true);
+  execute 'set local role service_role';
+  update clientes set foto_url = 'https://cdn.mesaas.com/service/backfill.png'
+   where id = v_cli_b;
+  execute 'reset role';
+
+  select foto_url into v_foto from clientes where id = v_cli_b;
+  assert v_foto = 'https://cdn.mesaas.com/service/backfill.png',
+    'clientes.foto_url: service_role write was rejected by the owner/admin trigger';
 
   -- ---- Case 2: owner of A cannot write to B's client photo path ----
   perform set_config('request.jwt.claims',

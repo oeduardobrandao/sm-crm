@@ -93,14 +93,101 @@ CREATE POLICY "avatars_service_update"
 -- SET search_path, matching get_my_conta_id()'s existing pattern, so this
 -- check is deterministic regardless of the caller's own RLS visibility into
 -- workspace_members.
+--
+-- POST-REVIEW FIX #1: BEFORE UPDATE alone left an INSERT-time hole -- the
+-- clientes_insert RLS policy (20260315_rls_security_audit.sql) has no role
+-- check at all, so an agent-role user could INSERT a brand-new clientes row
+-- with foto_url already set, bypassing this guard entirely by writing the
+-- column at creation time instead of via a later UPDATE. Now fires on
+-- INSERT too, branching on TG_OP before touching OLD (which is unassigned
+-- on INSERT) -- same shape as guard_financial_write()
+-- (20260728000002_financial_visibility_b_enforcement.sql), the existing
+-- precedent for this exact same-table INSERT/UPDATE column guard pattern.
+--
+-- POST-REVIEW FIX #2: added a trusted-caller escape hatch, but deliberately
+-- NARROWER than guard_financial_write()'s literal shape
+-- (20260728000002_financial_visibility_b_enforcement.sql:235-238) --
+-- service_role only, no postgres/supabase_admin arm. Two escalating reasons,
+-- both verified empirically against a scratch Postgres 14, not assumed:
+--
+-- 1. current_user is unsafe here. guard_financial_write() is SECURITY
+--    INVOKER, where current_user correctly reflects the real caller. This
+--    function is SECURITY DEFINER (see the comment above this one), and
+--    SECURITY DEFINER reassigns current_user to the FUNCTION OWNER for the
+--    entire duration of the call -- confirmed both as a plain function call
+--    and inside a live BEFORE INSERT trigger: current_user read back
+--    "postgres" (the owner, since migrations run as postgres) no matter who
+--    actually called it. Copying current_user IN ('postgres','supabase_
+--    admin') into THIS function would make that branch unconditionally
+--    true and permanently disable the whole guard for every caller --
+--    exactly the landmine 20260728000002's own "DEVIATION FROM THE ORIGINAL
+--    DRAFT" comment warns about, just triggered by copying the check into
+--    the wrong kind of function instead of by marking the function itself
+--    SECURITY DEFINER.
+--
+-- 2. The natural fix for (1) -- session_user, which SECURITY DEFINER does
+--    NOT reassign (confirmed with a real second login, not just SET ROLE:
+--    it kept reading back the actual connecting login throughout) -- turns
+--    out to be unsafe for a different reason, caught by actually running
+--    this file's own test after adding it: EVERY entitlement test in this
+--    repo, including this one, impersonates a role by connecting once as
+--    `postgres` and then `SET LOCAL ROLE authenticated/service_role/...`
+--    (see the IMPORTANT note below) -- SET ROLE does not change
+--    session_user, so session_user stays 'postgres' for the caller's ENTIRE
+--    file regardless of persona. A session_user-based escape hatch is
+--    therefore not just untestable here, it is a real hole: any connection
+--    that authenticates as postgres/supabase_admin and then downgrades via
+--    SET ROLE -- Supabase Studio's SQL editor, a leaked postgres credential
+--    used from psql, an internal debugging tool -- would silently disable
+--    the guard regardless of the role it actually downgraded to. Confirmed
+--    live: adding it made this file's own Case 1 (agent update, expected
+--    rejected) pass for the wrong reason -- the escape hatch fired instead
+--    of the owner/admin check ever running.
+--
+-- auth.role() = 'service_role' is unaffected by either problem: like
+-- auth.uid(), it is GUC-based (current_setting('request.jwt.claims', ...)),
+-- not identity-based, so it already correctly reflects the real caller
+-- inside a SECURITY DEFINER function AND correctly tracks this repo's
+-- SET LOCAL ROLE test-impersonation technique (test cases set the JWT
+-- role claim together with SET LOCAL ROLE, not as a substitute for it) --
+-- exactly what this migration's own auth.uid() check below already relied
+-- on before this fix. It is also the only escape this feature actually
+-- needs today: every real server-side writer of this column (the
+-- Instagram-avatar cache, the report-splash art, this feature itself, and
+-- any future backend/MCP path) is an edge function authenticating with the
+-- service role key. A one-off admin backfill connecting directly as
+-- postgres remains possible -- explicitly, via
+-- `ALTER TABLE clientes DISABLE TRIGGER trg_cliente_foto_owner_admin` for
+-- its duration, the same kind of deliberate, auditable escape valve
+-- 56_profiles_write_lockdown.sql already uses (DISABLE ROW LEVEL SECURITY)
+-- for the analogous problem on profiles -- rather than an automatic,
+-- identity-based bypass that a downgraded postgres session would also
+-- trigger by accident.
+--
+-- Deliberately NOT using auth.uid() IS NULL as an additional heuristic for
+-- "not an API-mediated request" either: this migration's own sibling
+-- (20260728000002) already documents why -- "auth.uid() IS NULL is NOT a
+-- proxy for service role -- it also covers anonymous requests."
 CREATE OR REPLACE FUNCTION public.enforce_cliente_foto_owner_admin()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_changed boolean;
 BEGIN
-  IF NEW.foto_url IS DISTINCT FROM OLD.foto_url THEN
+  IF auth.role() = 'service_role' THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    v_changed := NEW.foto_url IS NOT NULL;
+  ELSE
+    v_changed := NEW.foto_url IS DISTINCT FROM OLD.foto_url;
+  END IF;
+
+  IF v_changed THEN
     IF NOT EXISTS (
       SELECT 1 FROM workspace_members
       WHERE user_id = auth.uid()
@@ -110,11 +197,12 @@ BEGIN
       RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
     END IF;
   END IF;
+
   RETURN NEW;
 END;
 $$;
 
 CREATE TRIGGER trg_cliente_foto_owner_admin
-  BEFORE UPDATE ON public.clientes
+  BEFORE INSERT OR UPDATE ON public.clientes
   FOR EACH ROW
   EXECUTE FUNCTION public.enforce_cliente_foto_owner_admin();
