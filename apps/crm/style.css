@@ -9530,6 +9530,9 @@ body.landing-page #root {
   display: block;
   width: 48px;
   height: 48px;
+  padding: 0;
+  border: none;
+  background: none;
   cursor: pointer;
   border-radius: 50%;
 }
@@ -9549,7 +9552,7 @@ body.landing-page #root {
 }
 
 .cliente-avatar-upload__trigger:hover .cliente-avatar-upload__overlay,
-.cliente-avatar-upload__trigger:focus-within .cliente-avatar-upload__overlay {
+.cliente-avatar-upload__trigger:focus-visible .cliente-avatar-upload__overlay {
   opacity: 1;
 }
 
@@ -9563,15 +9566,18 @@ body.landing-page #root {
   border: 2px solid var(--card-bg);
   background: var(--danger);
   color: #fff;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   padding: 0;
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
 }
 
-.cliente-avatar-upload:hover .cliente-avatar-upload__remove {
-  display: flex;
+.cliente-avatar-upload__remove:hover,
+.cliente-avatar-upload__remove:focus-visible {
+  opacity: 1;
 }
 
 .cliente-detalhe-header__text {

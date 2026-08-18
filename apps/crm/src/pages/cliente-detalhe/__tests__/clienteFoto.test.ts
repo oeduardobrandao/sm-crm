@@ -19,7 +19,10 @@ function stubCanvas(toBlob: (cb: (b: Blob | null) => void) => void) {
 
 describe('resizeClientePhoto', () => {
   it('caps the square side at 512 for a large image', async () => {
-    vi.stubGlobal('createImageBitmap', vi.fn(async () => fakeBitmap(2000, 2000)));
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(async () => fakeBitmap(2000, 2000)),
+    );
     const { canvas } = stubCanvas((cb) => cb(new Blob(['x'], { type: 'image/png' })));
 
     await resizeClientePhoto(new File(['x'], 'a.png', { type: 'image/png' }));
@@ -29,7 +32,10 @@ describe('resizeClientePhoto', () => {
   });
 
   it('does not upscale a small image', async () => {
-    vi.stubGlobal('createImageBitmap', vi.fn(async () => fakeBitmap(200, 300)));
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(async () => fakeBitmap(200, 300)),
+    );
     const { canvas } = stubCanvas((cb) => cb(new Blob(['x'], { type: 'image/png' })));
 
     await resizeClientePhoto(new File(['x'], 'a.png', { type: 'image/png' }));
@@ -39,7 +45,10 @@ describe('resizeClientePhoto', () => {
   });
 
   it('uses the shorter side for a non-square source (WorkspaceTab-parity, not a crop)', async () => {
-    vi.stubGlobal('createImageBitmap', vi.fn(async () => fakeBitmap(800, 400)));
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(async () => fakeBitmap(800, 400)),
+    );
     const { canvas, ctx } = stubCanvas((cb) => cb(new Blob(['x'], { type: 'image/png' })));
 
     await resizeClientePhoto(new File(['x'], 'a.png', { type: 'image/png' }));
@@ -52,7 +61,10 @@ describe('resizeClientePhoto', () => {
   });
 
   it('outputs image/png', async () => {
-    vi.stubGlobal('createImageBitmap', vi.fn(async () => fakeBitmap(300, 300)));
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(async () => fakeBitmap(300, 300)),
+    );
     const { canvas } = stubCanvas((cb) => cb(new Blob(['x'], { type: 'image/png' })));
 
     await resizeClientePhoto(new File(['x'], 'a.png', { type: 'image/png' }));
@@ -62,7 +74,10 @@ describe('resizeClientePhoto', () => {
 
   it('releases the bitmap even when getContext fails', async () => {
     const bitmap = fakeBitmap(300, 300);
-    vi.stubGlobal('createImageBitmap', vi.fn(async () => bitmap));
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(async () => bitmap),
+    );
     const canvas = { width: 0, height: 0, getContext: () => null } as unknown as HTMLCanvasElement;
     vi.spyOn(document, 'createElement').mockReturnValue(canvas as HTMLElement & HTMLCanvasElement);
 

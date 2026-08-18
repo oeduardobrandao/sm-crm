@@ -53,15 +53,14 @@ export function ClienteAvatarUpload({
     setUploading(true);
     try {
       const blob = await resizeClientePhoto(file);
-      const path = `clientes/${clienteId}/foto.png`;
+      const path = `clientes/${clienteId}/${crypto.randomUUID()}.png`;
       const { error: upErr } = await supabase.storage
         .from('avatars')
-        .upload(path, blob, { upsert: true, contentType: 'image/png' });
+        .upload(path, blob, { contentType: 'image/png' });
       if (upErr) throw upErr;
 
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
-      const publicUrl = urlData.publicUrl + '?t=' + Date.now();
-      await updateCliente(clienteId, { foto_url: publicUrl });
+      await updateCliente(clienteId, { foto_url: urlData.publicUrl });
       invalidate();
       toast.success('Foto atualizada!');
     } catch {
@@ -101,25 +100,30 @@ export function ClienteAvatarUpload({
 
   return (
     <div className="cliente-avatar-upload">
-      <label className="cliente-avatar-upload__trigger">
+      <button
+        type="button"
+        className="cliente-avatar-upload__trigger"
+        aria-label="Alterar foto do cliente"
+        disabled={uploading}
+        onClick={() => inputRef.current?.click()}
+      >
         {avatar}
         <span className="cliente-avatar-upload__overlay" aria-hidden="true">
           <Camera size={16} />
         </span>
-        <input
-          type="file"
-          accept="image/*"
-          className="hidden"
-          aria-label="Alterar foto do cliente"
-          ref={inputRef}
-          disabled={uploading}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            e.target.value = '';
-            if (file) void handleUpload(file);
-          }}
-        />
-      </label>
+      </button>
+      <input
+        type="file"
+        accept="image/*"
+        className="hidden"
+        ref={inputRef}
+        disabled={uploading}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file) void handleUpload(file);
+        }}
+      />
       {imageUrl && (
         <>
           <button

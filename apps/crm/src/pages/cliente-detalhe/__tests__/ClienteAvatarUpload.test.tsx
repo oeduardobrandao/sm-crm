@@ -9,14 +9,19 @@ vi.mock('../../../store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../store')>()),
   updateCliente: vi.fn(async () => {}),
 }));
+
+const { mockUpload, mockGetPublicUrl } = vi.hoisted(() => ({
+  mockUpload: vi.fn(async () => ({ error: null })),
+  mockGetPublicUrl: vi.fn(() => ({
+    data: { publicUrl: 'https://cdn.mesaas.com/avatars/clientes/1/foto.png' },
+  })),
+}));
 vi.mock('../../../lib/supabase', () => ({
   supabase: {
     storage: {
       from: () => ({
-        upload: vi.fn(async () => ({ error: null })),
-        getPublicUrl: () => ({
-          data: { publicUrl: 'https://cdn.mesaas.com/avatars/clientes/1/foto.png' },
-        }),
+        upload: mockUpload,
+        getPublicUrl: mockGetPublicUrl,
       }),
     },
   },
@@ -52,7 +57,13 @@ function renderIt(props: Partial<React.ComponentProps<typeof ClienteAvatarUpload
 beforeEach(() => {
   mockedResize.mockClear();
   mockedUpdateCliente.mockClear();
+  mockUpload.mockClear();
+  mockGetPublicUrl.mockClear();
 });
+
+function getFileInput(container: HTMLElement) {
+  return container.querySelector('input[type="file"]') as HTMLInputElement;
+}
 
 describe('ClienteAvatarUpload', () => {
   it('renders a plain, non-interactive avatar when canEdit is false', () => {
@@ -61,36 +72,74 @@ describe('ClienteAvatarUpload', () => {
     expect(screen.getByText('AE')).toBeInTheDocument();
   });
 
-  it('renders the upload trigger when canEdit is true', () => {
+  it('renders the upload trigger as a real, focusable button (keyboard-reachable)', () => {
     renderIt({ canEdit: true });
-    expect(screen.getByLabelText(/Alterar foto/)).toBeInTheDocument();
+    const trigger = screen.getByRole('button', { name: /Alterar foto/ });
+    expect(trigger.tagName).toBe('BUTTON');
+    expect(trigger).not.toBeDisabled();
   });
 
-  it('uploads and calls updateCliente with the resulting public URL, then invalidates both cache keys', async () => {
-    const { queryClient } = renderIt();
+  it('clicking the trigger button opens the hidden file picker input', () => {
+    const { container } = renderIt({ canEdit: true });
+    const input = getFileInput(container);
+    const clickSpy = vi.spyOn(input, 'click').mockImplementation(() => {});
+
+    fireEvent.click(screen.getByRole('button', { name: /Alterar foto/ }));
+
+    expect(clickSpy).toHaveBeenCalled();
+  });
+
+  it('uploads to a randomized path (not upsert), and calls updateCliente with the resulting public URL, then invalidates both cache keys', async () => {
+    const { queryClient, container } = renderIt();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const file = new File(['x'], 'foto.png', { type: 'image/png' });
 
-    const input = screen.getByLabelText(/Alterar foto/, { selector: 'input' });
+    const input = getFileInput(container);
     fireEvent.change(input, { target: { files: [file] } });
 
     await waitFor(() =>
       expect(mockedUpdateCliente).toHaveBeenCalledWith(1, {
-        foto_url: expect.stringContaining('https://cdn.mesaas.com/avatars/clientes/1/foto.png'),
+        foto_url: 'https://cdn.mesaas.com/avatars/clientes/1/foto.png',
       }),
     );
     expect(mockedResize).toHaveBeenCalledWith(file);
+    expect(mockUpload).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^clientes\/1\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$/i,
+      ),
+      expect.any(Blob),
+      { contentType: 'image/png' },
+    );
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['cliente', 1] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientes'] });
   });
 
+  it('uploads two files to two different random paths', async () => {
+    const { container } = renderIt();
+    const input = getFileInput(container);
+
+    fireEvent.change(input, {
+      target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] },
+    });
+    await waitFor(() => expect(mockUpload).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(input, {
+      target: { files: [new File(['x'], 'b.png', { type: 'image/png' })] },
+    });
+    await waitFor(() => expect(mockUpload).toHaveBeenCalledTimes(2));
+
+    const [firstPath] = mockUpload.mock.calls[0];
+    const [secondPath] = mockUpload.mock.calls[1];
+    expect(firstPath).not.toBe(secondPath);
+  });
+
   it('rejects a file over 2MB without calling resize or updateCliente', async () => {
-    renderIt();
+    const { container } = renderIt();
     const bigFile = new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'big.png', {
       type: 'image/png',
     });
 
-    const input = screen.getByLabelText(/Alterar foto/, { selector: 'input' });
+    const input = getFileInput(container);
     fireEvent.change(input, { target: { files: [bigFile] } });
 
     await waitFor(() => expect(mockedResize).not.toHaveBeenCalled());
