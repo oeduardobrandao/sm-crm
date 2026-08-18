@@ -151,5 +151,26 @@
       "filtered": "No clients in this filter."
     },
     "error": "Could not load client health."
+  },
+  "today": {
+    "title": "Today",
+    "calendar": "Calendar",
+    "summary": "{{overdue}} overdue, {{today}} for today",
+    "mine": "assigned to you",
+    "buckets": {
+      "atrasado": "Overdue",
+      "hoje": "Today",
+      "proximos": "Next 7 days"
+    },
+    "more": "Show {{count}} more · {{remaining}} remaining",
+    "empty": "Nothing for today.",
+    "emptyMine": "Nothing for today. Nice work!",
+    "emptyAction": "See calendar",
+    "roleError": "Could not load your role in this workspace. Reload the page.",
+    "taskDone": "Task completed",
+    "taskDoneUndo": "Undo",
+    "taskDoneError": "Could not complete the task.",
+    "markDone": "Complete task",
+    "less": "Show less"
   }
 }

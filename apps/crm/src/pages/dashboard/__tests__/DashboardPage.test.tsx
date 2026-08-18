@@ -45,8 +45,6 @@ vi.mock('../../../store', () => ({
   getMembros: vi.fn(),
   getClientes: vi.fn(),
   getWorkflows: vi.fn(),
-  getWorkflowEtapas: vi.fn(),
-  getAllClienteDatas: vi.fn(),
   formatBRL: (value: number) => `R$ ${Number(value).toLocaleString('pt-BR')}`,
   formatDate: (value: string) => value,
 }));
@@ -63,6 +61,11 @@ vi.mock('../components/ClientHealthMonitor', () => ({
 // Same for the agent variant — it owns its own queries and is tested separately
 vi.mock('../components/AgentPendingSection', () => ({
   AgentPendingSection: () => <div data-testid="agent-pending-section">Minhas pendências</div>,
+}));
+
+// TodayCard owns its role-aware queries (useTodayAgenda) and is tested separately
+vi.mock('../components/TodayCard', () => ({
+  TodayCard: () => <div data-testid="today-card">Hoje</div>,
 }));
 
 import DashboardPage from '../DashboardPage';
@@ -128,11 +131,7 @@ describe('DashboardPage', () => {
     mockedUseQueryClient.mockReturnValue({ invalidateQueries: vi.fn() } as never);
     mockedUseAuth.mockReturnValue({ role: 'admin', canSeeFinancials: true } as never);
     mockedUseQueries.mockReturnValue(makeDefaultUseQueries() as never);
-    mockedUseQuery.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
-      if (queryKey[0] === 'allClienteDatas') return makeQueryResult([]);
-      if (queryKey[0] === 'calendar-deadlines') return makeQueryResult([]);
-      return makeQueryResult([]);
-    });
+    mockedUseQuery.mockImplementation(() => makeQueryResult([]));
     mockedOnboardingBanner.mockImplementation(() => <div data-testid="onboarding-banner" />);
   });
 
@@ -145,7 +144,16 @@ describe('DashboardPage', () => {
     renderDashboardPage();
 
     expect(screen.getByTestId('client-health-monitor')).toBeInTheDocument();
-    expect(screen.getByText('Hoje')).toBeInTheDocument();
+    expect(screen.getByTestId('today-card')).toBeInTheDocument();
+  });
+
+  it('renders TodayCard as the first section, above the role-specific block', () => {
+    renderDashboardPage();
+
+    const today = screen.getByTestId('today-card');
+    const health = screen.getByTestId('client-health-monitor');
+    // DOCUMENT_POSITION_FOLLOWING (4): health comes after today in DOM order
+    expect(today.compareDocumentPosition(health) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('renders the agent branch without onboarding banner or finance strip', () => {
@@ -200,11 +208,8 @@ describe('DashboardPage', () => {
     // Agent sees their pending-work section INSTEAD of the health monitor
     expect(screen.getByTestId('agent-pending-section')).toBeInTheDocument();
     expect(screen.queryByTestId('client-health-monitor')).not.toBeInTheDocument();
-    expect(screen.getByText('Hoje')).toBeInTheDocument();
-    // Agent: income/expense events are suppressed; birthday still shows
-    expect(screen.queryByText('Recebimento')).not.toBeInTheDocument();
-    expect(screen.queryByText('Despesa')).not.toBeInTheDocument();
-    expect(screen.getByText('Aniversário')).toBeInTheDocument();
+    // Today card still mounts first (its agent scoping is covered by its own tests)
+    expect(screen.getByTestId('today-card')).toBeInTheDocument();
   });
 
   // The dashboard variant follows the ACTIVE workspace role, not the
@@ -235,7 +240,7 @@ describe('DashboardPage', () => {
     expect(screen.queryByTestId('agent-pending-section')).not.toBeInTheDocument();
   });
 
-  it('shows onboarding, today events, and finance KPIs for non-agent', () => {
+  it('shows onboarding, today card, and finance KPIs for non-agent', () => {
     mockedUseQueries.mockReturnValue(
       makeDefaultUseQueries({
         0: makeQueryResult({
@@ -289,18 +294,6 @@ describe('DashboardPage', () => {
       }) as never,
     );
 
-    mockedUseQuery.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
-      if (queryKey[0] === 'allClienteDatas') {
-        return makeQueryResult([
-          { id: 'data-1', titulo: 'Lançamento', data: '2026-04-18', cliente_id: 'cli-1' },
-        ]);
-      }
-      if (queryKey[0] === 'calendar-deadlines') {
-        return makeQueryResult([]);
-      }
-      return makeQueryResult([]);
-    });
-
     renderDashboardPage();
 
     // Onboarding banner present for non-agent
@@ -309,12 +302,8 @@ describe('DashboardPage', () => {
     // Health monitor always present
     expect(screen.getByTestId('client-health-monitor')).toBeInTheDocument();
 
-    // Today events from TodayCard
-    expect(screen.getAllByText('Cliente Hoje').length).toBeGreaterThan(0);
-    expect(screen.getByText('Recebimento')).toBeInTheDocument();
-    expect(screen.getByText('Despesa')).toBeInTheDocument();
-    expect(screen.getByText('Aniversário')).toBeInTheDocument();
-    expect(screen.getByText('Lançamento')).toBeInTheDocument();
+    // Today card mounts (its content is covered by TodayCard/todayAgenda tests)
+    expect(screen.getByTestId('today-card')).toBeInTheDocument();
 
     // Finance KPI strip (FinanceKpiStrip component)
     expect(screen.getByText('A receber')).toBeInTheDocument();
@@ -391,25 +380,5 @@ describe('DashboardPage', () => {
       expect(toastSuccessMock).not.toHaveBeenCalled();
       expect(screen.getByTestId('location-search')).toHaveTextContent('?foo=bar');
     });
-  });
-
-  it('shows the empty today card when there are no events', () => {
-    mockedUseQueries.mockReturnValue(
-      makeDefaultUseQueries({
-        0: makeQueryResult({
-          transacoes: [],
-          receitaMensal: 0,
-          despesaTotal: 0,
-          saldo: 0,
-          clientesAtivos: [],
-          clientes: [],
-        }),
-      }) as never,
-    );
-    mockedUseQuery.mockReturnValue(makeQueryResult([]));
-
-    renderDashboardPage();
-
-    expect(screen.getByText('Nenhum evento hoje.')).toBeInTheDocument();
   });
 });

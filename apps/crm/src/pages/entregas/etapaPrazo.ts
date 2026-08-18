@@ -20,7 +20,23 @@ export const PRAZO_PRESET_ORDER: PrazoPreset[] = ['atrasado', 'hoje', 'amanha', 
  * precedence: an explicit data_limite wins over iniciado_em + prazo_dias.
  */
 export function etapaDeadlineDate(card: BoardCard): Date | null {
-  const { data_limite, iniciado_em, prazo_dias, tipo_prazo } = card.etapa;
+  return etapaDeadlineDateOf(card.etapa);
+}
+
+/** Minimal shape needed to compute an etapa's deadline (WorkflowEtapa subset). */
+export interface EtapaDeadlineFields {
+  data_limite?: string | null;
+  iniciado_em?: string | null;
+  prazo_dias: number;
+  tipo_prazo: 'corridos' | 'uteis';
+}
+
+/**
+ * Same as etapaDeadlineDate but for a bare etapa row (dashboard agenda,
+ * calendars). data_limite wins; otherwise iniciado_em + prazo_dias; else null.
+ */
+export function etapaDeadlineDateOf(etapa: EtapaDeadlineFields): Date | null {
+  const { data_limite, iniciado_em, prazo_dias, tipo_prazo } = etapa;
   if (data_limite) {
     // 'YYYY-MM-DD' — build via components so the LOCAL day is preserved
     // (new Date('YYYY-MM-DD') parses as UTC midnight and can shift a day).
@@ -33,7 +49,7 @@ export function etapaDeadlineDate(card: BoardCard): Date | null {
 }
 
 /** Comparable local-day key (yyyymmdd) — avoids ms arithmetic across DST. */
-function dayNum(d: Date): number {
+export function dayNum(d: Date): number {
   return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
 }
 
