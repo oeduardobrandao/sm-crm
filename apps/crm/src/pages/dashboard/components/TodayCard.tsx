@@ -217,7 +217,16 @@ export function TodayCard() {
         </p>
       )}
 
-      {(status === 'no_membership' || status === 'membro_missing') && (
+      {status === 'no_membership' && (
+        <p className="today-note">
+          {t(
+            'today.noMembership',
+            'Você não tem mais acesso a este workspace. Troque de workspace ou peça a um administrador para convidar você de novo.',
+          )}
+        </p>
+      )}
+
+      {status === 'membro_missing' && (
         <p className="today-note">
           {t(
             'agentPending.semVinculo',

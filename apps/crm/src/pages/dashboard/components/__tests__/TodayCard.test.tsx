@@ -223,6 +223,31 @@ describe('TodayCard', () => {
     expect(document.querySelector('.today-row-who')).toBeNull();
   });
 
+  it('tells a removed member they lost access (distinct from an unlinked membro)', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-owner' },
+      workspaceRole: null,
+      membershipResolved: true,
+      canSeeFinancials: 'unknown',
+    });
+    renderCard();
+    expect(await screen.findByText(/não tem mais acesso a este workspace/)).toBeInTheDocument();
+    expect(screen.queryByText(/vinculado a um membro/)).not.toBeInTheDocument();
+    expect(getMembrosMock).not.toHaveBeenCalled();
+  });
+
+  it('stays loading until the status registry resolves (no canonical-label flicker)', async () => {
+    useAuthMock.mockReturnValue(OWNER_AUTH);
+    let resolveDefs: (v: unknown[]) => void = () => {};
+    getStatusDefsMock.mockReturnValue(new Promise((r) => (resolveDefs = r)));
+    getTarefasMock.mockResolvedValue([tarefa({ id: 1, titulo: 'Só depois' })]);
+    renderCard();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByText('Só depois')).not.toBeInTheDocument();
+    resolveDefs([]);
+    expect(await screen.findByText('Só depois')).toBeInTheDocument();
+  });
+
   it('shows the unlinked-membro message for an agent without a membro row', async () => {
     useAuthMock.mockReturnValue({ ...AGENT_AUTH, user: { id: 'nobody' } });
     renderCard();

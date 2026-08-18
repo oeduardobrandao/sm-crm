@@ -186,6 +186,7 @@
       "aguardandoClienteHa": "Aguardando cliente há {{days}}d",
       "aguardando": "Aguardando",
       "semResposta": "{{days}}d sem resposta"
-    }
+    },
+    "noMembership": "Você não tem mais acesso a este workspace. Troque de workspace ou peça a um administrador para convidar você de novo."
   }
 }

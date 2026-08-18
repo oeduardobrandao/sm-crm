@@ -186,6 +186,7 @@
       "aguardandoClienteHa": "Awaiting client for {{days}}d",
       "aguardando": "Awaiting",
       "semResposta": "{{days}}d no reply"
-    }
+    },
+    "noMembership": "You no longer have access to this workspace. Switch workspaces or ask an administrator to invite you again."
   }
 }

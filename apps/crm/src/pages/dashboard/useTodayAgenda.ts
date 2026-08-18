@@ -184,7 +184,7 @@ export function useTodayAgenda(): TodayAgenda {
   if (membershipResolved === 'error') status = 'role_error';
   else if (membershipResolved === true && workspaceRole === null) status = 'no_membership';
   else if (!roleReady) status = 'loading';
-  else if (membroLoading) status = 'loading';
+  else if (membroLoading || statusDefs.isLoading) status = 'loading';
   else if (mine && membroId == null) status = 'membro_missing';
   else {
     const loading = mine
