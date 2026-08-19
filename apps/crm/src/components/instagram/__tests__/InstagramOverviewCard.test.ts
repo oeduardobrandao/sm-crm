@@ -59,10 +59,10 @@ describe('renderInstagramOverviewCard', () => {
       /@media\s*\(max-width:\s*600px\)\s*\{[^}]*\.instagram-overview__profile\s*\{[^}]*display:\s*grid\s*!important[^}]*grid-template-columns:\s*80px\s+minmax\(0,\s*1fr\)/s,
     );
     expect(css).toMatch(
-      /\.instagram-overview__metadata\s*\{[^}]*grid-column:\s*1\s*\/\s*-1[^}]*min-width:\s*0/s,
+      /\.instagram-overview__metadata\s*\{[^}]*grid-column:\s*2[^}]*grid-row:\s*1[^}]*min-width:\s*0/s,
     );
     expect(css).toMatch(
-      /\.instagram-overview__actions\s*\{[^}]*grid-column:\s*2[^}]*grid-row:\s*1[^}]*justify-self:\s*end/s,
+      /\.instagram-overview__actions\s*\{[^}]*grid-column:\s*1\s*\/\s*-1[^}]*grid-row:\s*2[^}]*justify-self:\s*stretch/s,
     );
     expect(container.querySelector('.instagram-overview__metadata')).toBeTruthy();
     expect(container.querySelector('.instagram-overview__actions')).toBeTruthy();
