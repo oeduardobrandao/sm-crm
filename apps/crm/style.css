@@ -6692,7 +6692,9 @@ body.role-agent input[name='valor_total'] {
   padding: 0.3rem;
   cursor: pointer;
   color: var(--text-light);
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
 .ex-close:hover {
@@ -10580,6 +10582,49 @@ body.landing-page #root {
   gap: 0.75rem;
 }
 
+.instagram-overview__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.btn-instagram-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-main);
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.btn-instagram-action:hover {
+  background: var(--surface-hover);
+  border-color: var(--text-light);
+  color: var(--text-main);
+}
+.btn-instagram-action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.btn-instagram-action--danger {
+  color: var(--danger-text);
+  border-color: rgba(245, 90, 66, 0.3);
+}
+.btn-instagram-action--danger:hover {
+  background: rgba(245, 90, 66, 0.08);
+  color: var(--danger-text);
+  border-color: var(--danger);
+}
+
 .instagram-overview__token-badge {
   white-space: nowrap;
   min-height: 36px;
@@ -10609,14 +10654,21 @@ body.landing-page #root {
   }
 
   .instagram-overview__metadata {
-    grid-column: 1 / -1;
+    grid-column: 2;
+    grid-row: 1;
     min-width: 0;
   }
 
   .instagram-overview__actions {
-    grid-column: 2;
-    grid-row: 1;
-    justify-self: end;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: stretch;
+    margin-left: 0;
+    margin-top: 0.5rem;
+  }
+
+  .instagram-overview__actions .btn-instagram-action {
+    flex: 1 1 140px;
   }
 
   .instagram-overview__account-kpis .kpi-card {

@@ -70,7 +70,7 @@ export function renderInstagramOverviewCard(
 
       ${statusBanner}
 
-      <div class="instagram-overview__profile" style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem;">
+      <div class="instagram-overview__profile" style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
          <img src="${account.profile_picture_url ? sanitizeUrl(account.profile_picture_url) : 'https://ui-avatars.com/api/?name=IG&background=random'}" alt="IG Profile" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #E1306C;" />
          <div class="instagram-overview__metadata" style="flex: 1; min-width: 0;">
             <h3 class="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-1">
@@ -82,9 +82,9 @@ export function renderInstagramOverviewCard(
               ${tokenBadge}
             </div>
          </div>
-         <div class="instagram-overview__actions" style="display: flex; gap: 0.5rem; flex-shrink: 0;">
-            <button id="btn-ig-sync" class="btn-icon" aria-label="${escapeHTML(t('instagram.syncTooltip'))}" data-tooltip="${escapeHTML(t('instagram.syncTooltip'))}" data-tooltip-dir="bottom" style="color: var(--text-muted);"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i></button>
-            <button id="btn-ig-disconnect" class="btn-icon" aria-label="${escapeHTML(t('instagram.disconnectTooltip'))}" data-tooltip="${escapeHTML(t('instagram.disconnectTooltip'))}" data-tooltip-dir="bottom" style="color: var(--danger);"><i class="ph ph-plugs" aria-hidden="true"></i></button>
+         <div class="instagram-overview__actions">
+            <button id="btn-ig-sync" class="btn-instagram-action" aria-label="${escapeHTML(t('instagram.syncTooltip'))}"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i><span>${escapeHTML(t('instagram.syncTooltip'))}</span></button>
+            <button id="btn-ig-disconnect" class="btn-instagram-action btn-instagram-action--danger" aria-label="${escapeHTML(t('instagram.disconnectTooltip'))}"><i class="ph ph-plugs" aria-hidden="true"></i><span>${escapeHTML(t('instagram.disconnectTooltip'))}</span></button>
          </div>
       </div>
 
@@ -130,13 +130,13 @@ export function renderInstagramOverviewCard(
   if (btnSync) {
     btnSync.addEventListener('click', async () => {
       try {
-        btnSync.innerHTML = '<i class="ph ph-spinner ph-spin" aria-hidden="true"></i>';
+        btnSync.innerHTML = `<i class="ph ph-spinner ph-spin" aria-hidden="true"></i><span>${escapeHTML(t('instagram.syncTooltip'))}</span>`;
         btnSync.disabled = true;
         await syncInstagramData(clientId);
         showToast(t('instagram.syncSuccess'));
         onRefresh();
       } catch (err: any) {
-        btnSync.innerHTML = '<i class="ph ph-arrows-clockwise" aria-hidden="true"></i>';
+        btnSync.innerHTML = `<i class="ph ph-arrows-clockwise" aria-hidden="true"></i><span>${escapeHTML(t('instagram.syncTooltip'))}</span>`;
         btnSync.disabled = false;
         if (err.message === 'TOKEN_EXPIRED') {
           showToast(t('instagram.syncTokenExpired'), 'error');
@@ -175,13 +175,13 @@ export function renderInstagramOverviewCard(
         async () => {
           closeModal();
           try {
-            btnDisconnect.innerHTML = '<i class="ph ph-spinner ph-spin" aria-hidden="true"></i>';
+            btnDisconnect.innerHTML = `<i class="ph ph-spinner ph-spin" aria-hidden="true"></i><span>${escapeHTML(t('instagram.disconnectTooltip'))}</span>`;
             btnDisconnect.disabled = true;
             await disconnectInstagram(clientId);
             showToast(t('instagram.disconnectSuccess'));
             onRefresh();
           } catch (err: any) {
-            btnDisconnect.innerHTML = '<i class="ph ph-plugs" aria-hidden="true"></i>';
+            btnDisconnect.innerHTML = `<i class="ph ph-plugs" aria-hidden="true"></i><span>${escapeHTML(t('instagram.disconnectTooltip'))}</span>`;
             btnDisconnect.disabled = false;
             showToast(t('instagram.disconnectError', { error: err.message }), 'error');
           }
