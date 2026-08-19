@@ -13,10 +13,17 @@ import {
   classifyIgError,
   fetchComment,
   fetchReplies,
+  IgApiError,
   replyToComment,
   sendPrivateReply,
 } from "../_shared/instagram-messaging.ts";
 import type { IgMessagingDeps } from "../_shared/instagram-messaging.ts";
+import {
+  buildFallbackText,
+  buildPrivateReplyMessage,
+  parseDmButtons,
+} from "../_shared/instagram-dm-payload.ts";
+import type { PrivateReplyMessage } from "../_shared/instagram-dm-payload.ts";
 import { decryptToken as defaultDecryptToken } from "../_shared/instagram-publish-utils.ts";
 import { notifyAutomationFailure } from "../_shared/automation-notify.ts";
 
@@ -30,6 +37,8 @@ const AUTOMATION_SCOPES = [
   "instagram_business_manage_comments",
   "instagram_business_manage_messages",
 ];
+type DmKind = "text" | "buttons" | "buttons_fallback_text";
+
 const MAX_ATTEMPTS = 5;
 const RETRY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias, janela da private reply
 
@@ -84,6 +93,7 @@ interface AutomationRow extends AutomationCandidate {
 interface RevalidatedAutomation {
   ativo: boolean;
   dm_message: string;
+  dm_buttons: unknown;
   public_reply: string | null;
   client_id: number;
 }
@@ -390,7 +400,7 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
   // precisa seguir apta. Usa os valores ATUAIS (edições valem até o envio real).
   const { data: automationData, error: autoErr } = await ctx.svc
     .from("instagram_comment_automations")
-    .select("ativo, dm_message, public_reply, client_id")
+    .select("ativo, dm_message, dm_buttons, public_reply, client_id")
     .eq("id", send.automation_id)
     .maybeSingle();
   if (autoErr) throw new Error(`instagram_comment_automations (revalidação): ${errMessage(autoErr)}`);
@@ -425,66 +435,103 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
   // transitória de banco/RPC nessa RPC não pode ser classificada como erro
   // permanente da Graph (Finding 1, P1: isso gravava status='failed' num DM que
   // JÁ tinha sido entregue, e failed nunca é reclamado pelo cron).
+  //
+  // Com botões (dm_buttons), a lista tem DUAS tentativas: o button template e
+  // um fallback de texto puro com as URLs anexadas. O fallback SÓ roda quando
+  // o template falha com erro `permanent` (a Meta recusou a forma); qualquer
+  // outro kind (transient/timeout/token_expired/already_replied), em qualquer
+  // tentativa, cai nas ramificações originais abaixo -- em particular, um
+  // retry posterior reconstrói a lista e recomeça do template. Nunca duplica
+  // DM: a Meta só aceita uma private reply por comentário.
   let dmDelivered = send.dm_status === "sent";
+  let deliveredKind: DmKind | null = null;
   if (!dmDelivered) {
-    try {
-      await sendPrivateReply(msgDeps, {
-        igUserId: apta.professional_account_id ?? send.instagram_user_id,
-        token,
-        commentId: send.comment_id,
-        text: automation.dm_message,
+    const buttons = parseDmButtons(automation.dm_buttons);
+    const dmAttempts: Array<{ message: PrivateReplyMessage; kind: DmKind }> = [
+      {
+        message: buildPrivateReplyMessage(automation.dm_message, buttons),
+        kind: buttons.length > 0 ? "buttons" : "text",
+      },
+    ];
+    if (buttons.length > 0) {
+      dmAttempts.push({
+        message: { text: buildFallbackText(automation.dm_message, buttons) },
+        kind: "buttons_fallback_text",
       });
-      dmDelivered = true;
-    } catch (err) {
-      const kind = classifyIgError(err);
+    }
 
-      if (kind === "already_replied") {
-        // Auto-correção: a Meta já tem uma private reply para este comentário
-        // (só existe uma); registra como enviada e segue para a resposta pública.
-        dmDelivered = true;
-      } else if (kind === "token_expired") {
-        const { error: acctErr } = await ctx.svc
-          .from("instagram_accounts")
-          .update({ authorization_status: "expired" })
-          .eq("client_id", automation.client_id);
-        if (acctErr) throw new Error(`instagram_accounts (expired): ${errMessage(acctErr)}`);
-        await notifyAutomationFailure(ctx.svc, {
-          contaId: send.conta_id,
-          clientId: automation.client_id,
-          reason: "token_expired",
+    for (let i = 0; i < dmAttempts.length && !dmDelivered; i++) {
+      try {
+        await sendPrivateReply(msgDeps, {
+          igUserId: apta.professional_account_id ?? send.instagram_user_id,
+          token,
+          commentId: send.comment_id,
+          message: dmAttempts[i].message,
         });
-        const { error } = await ctx.svc
-          .from("instagram_automation_sends")
-          .update({ status: "failed", error_code: "token_expired" })
-          .eq("id", send.send_id);
-        if (error) throw new Error(`instagram_automation_sends (token_expired): ${errMessage(error)}`);
-        return;
-      } else if (kind === "transient" || kind === "timeout") {
-        const commentTooOld = new Date(send.comment_created_at).getTime() <= nowDate.getTime() - RETRY_WINDOW_MS;
-        if (send.attempts >= MAX_ATTEMPTS || commentTooOld) {
-          const { error } = await ctx.svc
-            .from("instagram_automation_sends")
-            .update({ status: "failed", error_code: "retry_exhausted" })
-            .eq("id", send.send_id);
-          if (error) throw new Error(`instagram_automation_sends (retry_exhausted): ${errMessage(error)}`);
-        } else {
-          const backoffSeconds = BACKOFF_SECONDS[send.attempts];
-          const nextAttemptAt = new Date(nowDate.getTime() + backoffSeconds * 1000).toISOString();
-          const { error } = await ctx.svc
-            .from("instagram_automation_sends")
-            .update({ status: "retry", next_attempt_at: nextAttemptAt, attempts: send.attempts + 1 })
-            .eq("id", send.send_id);
-          if (error) throw new Error(`instagram_automation_sends (retry): ${errMessage(error)}`);
+        dmDelivered = true;
+        deliveredKind = dmAttempts[i].kind;
+      } catch (err) {
+        const kind = classifyIgError(err);
+
+        if (kind === "permanent" && i + 1 < dmAttempts.length) {
+          // A Meta recusou o button template; tenta UMA vez como texto puro.
+          const graphCode = err instanceof IgApiError ? err.graphCode : undefined;
+          console.warn(
+            `[instagram-webhook] template recusado (permanent, code ${graphCode ?? "?"}) no send ${send.send_id}; tentando fallback de texto`,
+          );
+          continue;
         }
-        return;
-      } else {
-        // permanent
-        const { error } = await ctx.svc
-          .from("instagram_automation_sends")
-          .update({ status: "failed", error_code: "dm_permanent" })
-          .eq("id", send.send_id);
-        if (error) throw new Error(`instagram_automation_sends (dm_permanent): ${errMessage(error)}`);
-        return;
+
+        if (kind === "already_replied") {
+          // Auto-correção: a Meta já tem uma private reply para este comentário
+          // (só existe uma); registra como enviada e segue para a resposta pública.
+          // Não sabemos QUAL forma foi aceita -> dm_kind fica NULL.
+          dmDelivered = true;
+          deliveredKind = null;
+        } else if (kind === "token_expired") {
+          const { error: acctErr } = await ctx.svc
+            .from("instagram_accounts")
+            .update({ authorization_status: "expired" })
+            .eq("client_id", automation.client_id);
+          if (acctErr) throw new Error(`instagram_accounts (expired): ${errMessage(acctErr)}`);
+          await notifyAutomationFailure(ctx.svc, {
+            contaId: send.conta_id,
+            clientId: automation.client_id,
+            reason: "token_expired",
+          });
+          const { error } = await ctx.svc
+            .from("instagram_automation_sends")
+            .update({ status: "failed", error_code: "token_expired" })
+            .eq("id", send.send_id);
+          if (error) throw new Error(`instagram_automation_sends (token_expired): ${errMessage(error)}`);
+          return;
+        } else if (kind === "transient" || kind === "timeout") {
+          const commentTooOld = new Date(send.comment_created_at).getTime() <= nowDate.getTime() - RETRY_WINDOW_MS;
+          if (send.attempts >= MAX_ATTEMPTS || commentTooOld) {
+            const { error } = await ctx.svc
+              .from("instagram_automation_sends")
+              .update({ status: "failed", error_code: "retry_exhausted" })
+              .eq("id", send.send_id);
+            if (error) throw new Error(`instagram_automation_sends (retry_exhausted): ${errMessage(error)}`);
+          } else {
+            const backoffSeconds = BACKOFF_SECONDS[send.attempts];
+            const nextAttemptAt = new Date(nowDate.getTime() + backoffSeconds * 1000).toISOString();
+            const { error } = await ctx.svc
+              .from("instagram_automation_sends")
+              .update({ status: "retry", next_attempt_at: nextAttemptAt, attempts: send.attempts + 1 })
+              .eq("id", send.send_id);
+            if (error) throw new Error(`instagram_automation_sends (retry): ${errMessage(error)}`);
+          }
+          return;
+        } else {
+          // permanent (sem próxima tentativa)
+          const { error } = await ctx.svc
+            .from("instagram_automation_sends")
+            .update({ status: "failed", error_code: "dm_permanent" })
+            .eq("id", send.send_id);
+          if (error) throw new Error(`instagram_automation_sends (dm_permanent): ${errMessage(error)}`);
+          return;
+        }
       }
     }
 
@@ -494,7 +541,10 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
     // janela de staleness e, na reentrada, `sendPrivateReply` bate em
     // "already_replied" (a Meta só aceita uma private reply por comentário):
     // self-heal automático, sem duplicar DM nem marcar failed indevidamente.
-    const { error } = await ctx.svc.rpc("mark_automation_dm_sent", { p_send_id: send.send_id });
+    const { error } = await ctx.svc.rpc("mark_automation_dm_sent", {
+      p_send_id: send.send_id,
+      p_dm_kind: deliveredKind,
+    });
     if (error) throw new Error(`mark_automation_dm_sent: ${errMessage(error)}`);
   }
 

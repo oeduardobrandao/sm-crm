@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { AlertTriangle, Check, Instagram, X } from 'lucide-react';
+import { AlertTriangle, Check, Instagram, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -31,9 +31,12 @@ import {
   updateInstagramAutomation,
   getClientes,
   getInstagramAccountStatuses,
+  type DmButton,
   type InstagramCommentAutomation,
   type IgAccountStatus,
 } from '../../store';
+import DmPreview from './DmPreview';
+import { dmMessageLimit, MAX_BUTTON_TITLE, MAX_DM_BUTTONS, validateDmButtons } from './dmButtons';
 
 const POSTS_PAGE_SIZE = 10;
 const MAX_KEYWORD_LENGTH = 40;
@@ -64,6 +67,7 @@ function emptyState() {
     keywords: [] as string[],
     keywordInput: '',
     dmMessage: '',
+    buttons: [] as DmButton[],
     publicReply: '',
   };
 }
@@ -106,6 +110,7 @@ export default function AutomationFormDialog({
         keywords: editing.keywords,
         keywordInput: '',
         dmMessage: editing.dm_message,
+        buttons: editing.dm_buttons ?? [],
         publicReply: editing.public_reply ?? '',
       });
     } else {
@@ -141,6 +146,22 @@ export default function AutomationFormDialog({
   const selectedStatus =
     typeof form.clientId === 'number' ? statuses.get(form.clientId) : undefined;
   const canAutomate = selectedStatus?.canAutomate ?? false;
+  const selectedCliente =
+    typeof form.clientId === 'number' ? clientes.find((c) => c.id === form.clientId) : undefined;
+
+  const dmLimit = dmMessageLimit(form.buttons);
+  // Automação antiga pode ter até 1000 chars; ao adicionar um botão o limite
+  // cai para 640 e o contador fica vermelho -- maxLength não corta valor já
+  // digitado, então o bloqueio real é o validateDmButtons no submit.
+  const dmOverLimit = form.dmMessage.length > dmLimit;
+
+  const updateButton = (index: number, patch: Partial<DmButton>) =>
+    setForm((f) => ({
+      ...f,
+      buttons: f.buttons.map((b, i) => (i === index ? { ...b, ...patch } : b)),
+    }));
+  const removeButton = (index: number) =>
+    setForm((f) => ({ ...f, buttons: f.buttons.filter((_, i) => i !== index) }));
 
   const postsQuery = useQuery({
     queryKey: ['instagram-posts-for-automation', form.clientId, postsPage],
@@ -165,6 +186,7 @@ export default function AutomationFormDialog({
           form.targetMode === 'post' ? (form.selectedPost?.media_caption ?? null) : null,
         keywords: form.keywords,
         dm_message: form.dmMessage.trim(),
+        dm_buttons: form.buttons.map((b) => ({ title: b.title.trim(), url: b.url.trim() })),
         public_reply: form.publicReply.trim() || null,
       };
       return editing
@@ -226,6 +248,11 @@ export default function AutomationFormDialog({
       toast.error(t('form.validationDm'));
       return;
     }
+    const buttonsError = validateDmButtons(form.buttons, form.dmMessage);
+    if (buttonsError) {
+      toast.error(t(buttonsError));
+      return;
+    }
     saveMutation.mutate();
   };
 
@@ -235,7 +262,10 @@ export default function AutomationFormDialog({
         className="max-w-xl"
         onConfirmClose={() => onOpenChange(false)}
         confirmClose={
-          form.name.trim() !== '' || form.keywords.length > 0 || form.dmMessage.trim() !== ''
+          form.name.trim() !== '' ||
+          form.keywords.length > 0 ||
+          form.dmMessage.trim() !== '' ||
+          form.buttons.length > 0
         }
       >
         <DialogHeader>
@@ -491,15 +521,91 @@ export default function AutomationFormDialog({
             <Textarea
               id="automacao-dm"
               value={form.dmMessage}
-              maxLength={1000}
+              maxLength={dmLimit}
               rows={4}
               onChange={(e) => setForm((f) => ({ ...f, dmMessage: e.target.value }))}
               placeholder={t('form.dmPlaceholder')}
             />
-            <div style={{ textAlign: 'right', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              {form.dmMessage.length}/1000
+            <div
+              style={{
+                textAlign: 'right',
+                fontSize: '0.7rem',
+                color: dmOverLimit ? 'var(--danger-text)' : 'var(--text-muted)',
+              }}
+            >
+              {form.dmMessage.length}/{dmLimit}
             </div>
           </div>
+
+          <div>
+            <span className="text-sm font-medium">{t('form.buttonsLabel')}</span>
+            <p
+              style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.1rem 0 0.5rem' }}
+            >
+              {t('form.buttonsHelp')}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {form.buttons.map((b, i) => (
+                <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                  <div style={{ width: '38%' }}>
+                    <Input
+                      value={b.title}
+                      maxLength={MAX_BUTTON_TITLE}
+                      aria-label={t('form.buttonTitleLabel')}
+                      placeholder={t('form.buttonTitleLabel')}
+                      onChange={(e) => updateButton(i, { title: e.target.value })}
+                    />
+                    <div
+                      style={{
+                        textAlign: 'right',
+                        fontSize: '0.65rem',
+                        color: 'var(--text-muted)',
+                      }}
+                    >
+                      {b.title.length}/{MAX_BUTTON_TITLE}
+                    </div>
+                  </div>
+                  <Input
+                    value={b.url}
+                    aria-label={t('form.buttonUrlLabel')}
+                    placeholder="https://..."
+                    onChange={(e) => updateButton(i, { url: e.target.value })}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t('form.removeButton')}
+                    onClick={() => removeButton(i)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              {form.buttons.length < MAX_DM_BUTTONS && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  style={{ alignSelf: 'flex-start' }}
+                  onClick={() =>
+                    setForm((f) => ({ ...f, buttons: [...f.buttons, { title: '', url: '' }] }))
+                  }
+                >
+                  <Plus className="h-4 w-4" style={{ marginRight: '0.35rem' }} />
+                  {t('form.addButton')}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <DmPreview
+            clientName={selectedCliente?.nome ?? null}
+            clientSeed={selectedCliente?.id ?? selectedCliente?.nome ?? null}
+            text={form.dmMessage}
+            buttons={form.buttons}
+          />
 
           <div>
             <label className="text-sm font-medium" htmlFor="automacao-reply">

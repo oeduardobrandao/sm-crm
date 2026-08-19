@@ -1,0 +1,56 @@
+import { describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import DmPreview from '../DmPreview';
+
+// t devolve a CHAVE (padrão AutomacoesPage.test): asserts sobre chaves do
+// namespace automations, não strings pt/en.
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => key,
+    i18n: { language: 'pt' },
+  }),
+}));
+
+describe('DmPreview', () => {
+  it('renderiza o texto e os botões com título', () => {
+    render(
+      <DmPreview
+        clientName="Dra. Marina"
+        clientSeed={7}
+        text="Escolha uma opção:"
+        buttons={[
+          { title: 'Agendar', url: 'https://agenda.x' },
+          { title: 'WhatsApp', url: 'https://wa.me/55' },
+          { title: '  ', url: 'https://vazio.x' },
+        ]}
+      />,
+    );
+    expect(screen.getByText('Escolha uma opção:')).toBeInTheDocument();
+    const agendar = screen.getByRole('link', { name: 'Agendar' });
+    expect(agendar).toHaveAttribute('href', 'https://agenda.x');
+    expect(agendar).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(screen.getByRole('link', { name: 'WhatsApp' })).toBeInTheDocument();
+    // botão com título vazio não aparece
+    expect(screen.getAllByRole('link')).toHaveLength(2);
+    expect(screen.getByText('Dra. Marina')).toBeInTheDocument();
+    expect(screen.queryByText('form.previewEmpty')).not.toBeInTheDocument();
+  });
+
+  it('estado vazio mostra o placeholder e nenhum balão', () => {
+    render(<DmPreview clientName={null} clientSeed={null} text="  " buttons={[]} />);
+    expect(screen.getByText('form.previewEmpty')).toBeInTheDocument();
+    expect(screen.queryByTestId('dm-preview-bubble')).not.toBeInTheDocument();
+  });
+
+  it('URL perigosa é neutralizada no href do preview', () => {
+    render(
+      <DmPreview
+        clientName="C"
+        clientSeed={1}
+        text="oi"
+        buttons={[{ title: 'Zap', url: 'javascript:alert(1)' }]}
+      />,
+    );
+    expect(screen.getByRole('link', { name: 'Zap' })).toHaveAttribute('href', '#');
+  });
+});

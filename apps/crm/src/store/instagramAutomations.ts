@@ -9,6 +9,13 @@ import { supabase, getContaId } from './core';
 // comments webhook subscription -- see IgAccountStatus.canAutomate in
 // './integrations'.
 
+// Botao de link na DM (button template da Meta). Guardado em
+// instagram_comment_automations.dm_buttons (jsonb, 0..3 itens, CHECK no banco).
+export interface DmButton {
+  title: string;
+  url: string;
+}
+
 export interface InstagramCommentAutomation {
   id: string;
   conta_id: string;
@@ -19,6 +26,7 @@ export interface InstagramCommentAutomation {
   media_caption: string | null;
   keywords: string[];
   dm_message: string;
+  dm_buttons: DmButton[];
   public_reply: string | null;
   ativo: boolean;
   dms_sent_count: number;
@@ -41,6 +49,7 @@ export interface InstagramAutomationSend {
   skip_reason: string | null;
   error_code: string | null;
   dm_status: 'sent' | 'failed' | null;
+  dm_kind: 'text' | 'buttons' | 'buttons_fallback_text' | null;
   public_reply_status: 'sent' | 'failed' | 'unknown' | null;
   attempts: number;
   created_at: string;
@@ -65,6 +74,7 @@ export async function createInstagramAutomation(
     | 'media_caption'
     | 'keywords'
     | 'dm_message'
+    | 'dm_buttons'
     | 'public_reply'
   >,
 ): Promise<InstagramCommentAutomation> {
@@ -89,6 +99,7 @@ export async function updateInstagramAutomation(
       | 'media_caption'
       | 'keywords'
       | 'dm_message'
+      | 'dm_buttons'
       | 'public_reply'
       | 'ativo'
     >
