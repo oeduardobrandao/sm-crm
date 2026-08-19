@@ -40,20 +40,27 @@ const NEUTRAL_HUB_THEME = {
   default_appearance: "light",
 };
 
-function makeDb(tokenRow: unknown) {
+function makeDb(
+  tokenRow: unknown,
+  clienteRow: { nome: string; foto_url?: string | null } = { nome: "Vanessa" },
+  igRow: { profile_picture_url?: string | null } | null = null,
+) {
   return {
     from: (table: string) => ({
       select: () => ({
         eq: () => ({
           eq: () => ({ maybeSingle: async () => ({ data: tokenRow }) }),
           maybeSingle: async () => ({
-            data: table === "workspaces" ? WORKSPACE_ROW : tokenRow,
+            data:
+              table === "workspaces" ? WORKSPACE_ROW
+              : table === "instagram_accounts" ? igRow
+              : tokenRow,
           }),
           gt: () => ({
             eq: () => ({ maybeSingle: async () => ({ data: tokenRow }) }),
             maybeSingle: async () => ({ data: tokenRow }),
           }),
-          single: async () => ({ data: { nome: "Vanessa" } }),
+          single: async () => ({ data: clienteRow }),
         }),
       }),
       // effective_plan_feature is reached through rpc, below
@@ -262,6 +269,59 @@ Deno.test("feature_mensagens and feature_brand_customization are resolved indepe
   assertEquals(body.cliente_foto_url, null);
   assertEquals(body.is_active, true);
   assertEquals(body.cliente_id, 15);
+});
+
+// --- cliente_foto_url precedence ------------------------------------------
+
+Deno.test("cliente_foto_url uses the manual foto_url when set, ignoring a connected Instagram account", async () => {
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () =>
+      makeDb(
+        { cliente_id: 15, conta_id: "ws-1", is_active: true },
+        { nome: "Vanessa", foto_url: "https://cdn.mesaas.com/avatars/clientes/15/foto.png" },
+        { profile_picture_url: "https://scontent.cdninstagram.com/ig.jpg" },
+      ) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+  });
+  const res = await handler(req());
+  const body = await res.json();
+  assertEquals(body.cliente_foto_url, "https://cdn.mesaas.com/avatars/clientes/15/foto.png");
+});
+
+Deno.test("cliente_foto_url falls back to the Instagram avatar when no manual photo is set", async () => {
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () =>
+      makeDb(
+        { cliente_id: 15, conta_id: "ws-1", is_active: true },
+        { nome: "Vanessa", foto_url: null },
+        { profile_picture_url: "https://scontent.cdninstagram.com/ig.jpg" },
+      ) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+  });
+  const res = await handler(req());
+  const body = await res.json();
+  assertEquals(body.cliente_foto_url, "https://scontent.cdninstagram.com/ig.jpg");
+});
+
+Deno.test("cliente_foto_url is null when neither a manual photo nor a connected Instagram account exists", async () => {
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () =>
+      makeDb(
+        { cliente_id: 15, conta_id: "ws-1", is_active: true },
+        { nome: "Vanessa", foto_url: null },
+        null,
+      ) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+  });
+  const res = await handler(req());
+  const body = await res.json();
+  assertEquals(body.cliente_foto_url, null);
 });
 
 // --- makeTouchToken (the real factory wired in index.ts) -------------------------------

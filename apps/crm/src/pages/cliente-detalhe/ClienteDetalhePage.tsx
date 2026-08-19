@@ -147,11 +147,14 @@ export default function ClienteDetalhePage() {
   return (
     <div className="cliente-detalhe-page">
       <ClienteDetalheHeader
+        clienteId={clienteId}
         nome={cliente.nome}
         initials={getInitials(cliente.nome)}
         cor={cliente.cor}
         plano={cliente.plano}
         status={cliente.status}
+        imageUrl={cliente.foto_url}
+        canEditPhoto={workspaceRole === 'owner' || workspaceRole === 'admin'}
         onBack={() => navigate('/clientes')}
         onEdit={() => setEditOpen(true)}
       />

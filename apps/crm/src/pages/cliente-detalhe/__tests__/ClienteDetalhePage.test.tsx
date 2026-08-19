@@ -239,6 +239,20 @@ describe('ClienteDetalhePage', () => {
     });
   });
 
+  it('shows the photo-upload control for an owner but not for an agent', async () => {
+    setAuth('owner');
+    mockedGetCliente.mockResolvedValue({ ...CLIENTE, foto_url: null });
+    const ownerRender = renderAt('/clientes/42/visao-geral');
+    expect(await screen.findByLabelText('Alterar foto do cliente')).toBeInTheDocument();
+    ownerRender.unmount();
+
+    setAuth('agent');
+    mockedGetCliente.mockResolvedValue({ ...CLIENTE, foto_url: null });
+    renderAt('/clientes/42/visao-geral');
+    await screen.findByText('conteudo visao-geral');
+    expect(screen.queryByLabelText('Alterar foto do cliente')).not.toBeInTheDocument();
+  });
+
   describe('client edit', () => {
     it('invalidates both cliente and clientes query keys after a successful save', async () => {
       setAuth('owner');
