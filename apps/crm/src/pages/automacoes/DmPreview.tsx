@@ -10,12 +10,14 @@ import { sanitizeExternalUrl } from '@/utils/security';
 
 export default function DmPreview({
   clientName,
-  clientSeed,
+  clientSigla,
+  clientCor,
   text,
   buttons,
 }: {
   clientName: string | null;
-  clientSeed: string | number | null;
+  clientSigla?: string | null;
+  clientCor?: string | null;
   text: string;
   buttons: DmButton[];
 }) {
@@ -40,10 +42,18 @@ export default function DmPreview({
           style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}
         >
           <div
-            className={`avatar ${avatarColorClass(clientSeed ?? clientName)}`}
-            style={{ width: 24, height: 24, fontSize: '0.65rem', flexShrink: 0 }}
+            className={`avatar ${clientCor ? '' : avatarColorClass(clientName)}`}
+            style={{
+              width: 24,
+              height: 24,
+              fontSize: '0.65rem',
+              flexShrink: 0,
+              // Identidade real do cliente (mesma convenção da ClientesPage):
+              // cor/sigla do cadastro; hash só como fallback sem cadastro.
+              ...(clientCor ? { background: clientCor } : {}),
+            }}
           >
-            {clientName ? getInitials(clientName) : '?'}
+            {clientSigla?.trim() || (clientName ? getInitials(clientName) : '?')}
           </div>
           <span className="text-xs font-medium">{clientName ?? t('form.previewAccount')}</span>
         </div>

@@ -602,7 +602,8 @@ export default function AutomationFormDialog({
 
           <DmPreview
             clientName={selectedCliente?.nome ?? null}
-            clientSeed={selectedCliente?.id ?? selectedCliente?.nome ?? null}
+            clientSigla={selectedCliente?.sigla ?? null}
+            clientCor={selectedCliente?.cor ?? null}
             text={form.dmMessage}
             buttons={form.buttons}
           />

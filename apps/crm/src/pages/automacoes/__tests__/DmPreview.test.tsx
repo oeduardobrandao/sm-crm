@@ -16,7 +16,8 @@ describe('DmPreview', () => {
     render(
       <DmPreview
         clientName="Dra. Marina"
-        clientSeed={7}
+        clientSigla="DM"
+        clientCor="#3ecf8e"
         text="Escolha uma opção:"
         buttons={[
           { title: 'Agendar', url: 'https://agenda.x' },
@@ -33,11 +34,14 @@ describe('DmPreview', () => {
     // botão com título vazio não aparece
     expect(screen.getAllByRole('link')).toHaveLength(2);
     expect(screen.getByText('Dra. Marina')).toBeInTheDocument();
+    // monograma usa a sigla/cor reais do cadastro, não hash do nome
+    const monogram = screen.getByText('DM');
+    expect(monogram).toHaveStyle({ background: '#3ecf8e' });
     expect(screen.queryByText('form.previewEmpty')).not.toBeInTheDocument();
   });
 
   it('estado vazio mostra o placeholder e nenhum balão', () => {
-    render(<DmPreview clientName={null} clientSeed={null} text="  " buttons={[]} />);
+    render(<DmPreview clientName={null} text="  " buttons={[]} />);
     expect(screen.getByText('form.previewEmpty')).toBeInTheDocument();
     expect(screen.queryByTestId('dm-preview-bubble')).not.toBeInTheDocument();
   });
@@ -46,7 +50,6 @@ describe('DmPreview', () => {
     render(
       <DmPreview
         clientName="C"
-        clientSeed={1}
         text="oi"
         buttons={[{ title: 'Zap', url: 'javascript:alert(1)' }]}
       />,
