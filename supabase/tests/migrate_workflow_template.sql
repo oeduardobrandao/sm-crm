@@ -11,6 +11,7 @@
 --   (e2) guarda de concorrência: p_expected_template_id divergente = workflow_changed
 --   (e3) migrar para o próprio template = same_template (no-op destrutivo barrado)
 --   (e4) data_limite não-ISO = invalid_etapa (contrato de erro, não cast cru)
+--   (e5) responsavel_id não-numérico = invalid_responsavel (contrato de erro, não cast cru)
 --   (f) validação falha = rollback total (escada antiga intacta)
 --   (g) adoção: workflow com template_id null migra sem tocar em propriedades
 --   (h) portal_approvals legadas arquivadas no metadata antes da cascata
@@ -152,6 +153,18 @@ begin
     v_blocked := true;
   end;
   assert v_blocked, 'data_limite invalida deve falhar com codigo estavel';
+
+  -- (e5) responsavel_id não-numérico vira invalid_responsavel
+  v_blocked := false;
+  begin
+    perform migrate_workflow_template(v_wf, v_tpl_b,
+      jsonb_build_array(jsonb_build_object('nome','X','prazo_dias',1,'tipo_prazo','corridos','responsavel_id','abc','tipo','padrao','data_limite',null)),
+      0, 'padrao', v_tpl_a);
+  exception when others then
+    assert sqlerrm like '%invalid_responsavel%', format('esperava invalid_responsavel, veio: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'responsavel_id invalido deve falhar com codigo estavel';
 
   -- (f) validação falha = rollback total
   v_blocked := false;

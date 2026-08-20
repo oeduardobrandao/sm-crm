@@ -194,7 +194,11 @@ BEGIN
       RAISE EXCEPTION 'invalid_etapa';
     END IF;
 
-    v_resp := NULLIF(v_etapa->>'responsavel_id', '')::bigint;
+    BEGIN
+      v_resp := NULLIF(v_etapa->>'responsavel_id', '')::bigint;
+    EXCEPTION WHEN others THEN
+      RAISE EXCEPTION 'invalid_responsavel';
+    END;
     IF v_resp IS NOT NULL THEN
       PERFORM 1 FROM membros WHERE id = v_resp AND conta_id = v_conta;
       IF NOT FOUND THEN RAISE EXCEPTION 'invalid_responsavel'; END IF;
