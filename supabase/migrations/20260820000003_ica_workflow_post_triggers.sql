@@ -206,5 +206,9 @@ END $$;
 
 -- service_role only. REVOKE FROM PUBLIC tambem tira o default do service_role:
 -- o GRANT explicito abaixo e obrigatorio (gotcha da casa, 20260806000002).
-REVOKE ALL ON FUNCTION sweep_pending_instagram_automation_links() FROM PUBLIC;
+-- anon/authenticated na lista: em prod/staging as default privileges concedem
+-- EXECUTE direto a esses papeis, e REVOKE FROM PUBLIC nao alcanca grant direto
+-- (drift ja visto nas claim RPCs; local nao reproduz porque os defaults locais
+-- nao concedem nada).
+REVOKE ALL ON FUNCTION sweep_pending_instagram_automation_links() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION sweep_pending_instagram_automation_links() TO service_role;
