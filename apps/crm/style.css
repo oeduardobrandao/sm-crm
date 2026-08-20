@@ -8286,6 +8286,7 @@ a.mention-chip:hover {
 }
 .edit-modal-footer-secondary {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   order: 1;
 }
@@ -8304,6 +8305,9 @@ a.mention-chip:hover {
 @media (min-width: 640px) {
   .edit-modal-footer {
     flex-direction: row;
+    /* 5 botões + dica não cabem nos ~464px úteis do max-w-lg: sem wrap o
+       min-content alarga o conteúdo e cria scroll horizontal no dialog */
+    flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
   }
