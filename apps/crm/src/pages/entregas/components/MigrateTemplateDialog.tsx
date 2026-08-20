@@ -38,16 +38,13 @@ import {
   migrateWorkflowTemplate,
   getPropertyDefinitions,
   getWorkflowPostsWithProperties,
+  OPTION_TYPES,
   type Cliente,
   type PropertyMatch,
   type Workflow,
   type WorkflowTemplate,
 } from '../../../store';
 import { getNextDeliveryDate } from '../hooks/useEntregasData';
-
-// Tipos cujos valores guardam ids de opção gerados por template — as opções em si
-// nunca migram, então a perda merece uma explicação extra na prévia.
-const OPTION_TYPES = new Set(['select', 'multiselect', 'status']);
 
 const TIPO_PRAZO_LABEL: Record<'uteis' | 'corridos', string> = {
   uteis: 'dias úteis',

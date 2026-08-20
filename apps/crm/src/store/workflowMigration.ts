@@ -16,11 +16,12 @@ export interface PropertyMatch {
   destino: TemplatePropertyDefinition | null;
 }
 
-const normalize = (name: string) => name.trim().toLowerCase();
+// mesmo charset do btrim(..., E' \t\r\n') da RPC: paridade exata entre prévia e escrita
+const normalize = (name: string) => name.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, '').toLowerCase();
 
 /** Tipos cujos valores guardam ids de opção gerados por template (config.options[].id):
  *  um remap apontaria para uma opção inexistente no destino, então nunca casam. */
-const OPTION_TYPES = new Set(['select', 'multiselect', 'status']);
+export const OPTION_TYPES = new Set(['select', 'multiselect', 'status']);
 
 /**
  * Espelha a regra de remapeamento da RPC migrate_workflow_template: mesmo nome
