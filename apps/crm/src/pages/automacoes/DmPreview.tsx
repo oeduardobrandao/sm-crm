@@ -1,12 +1,50 @@
-// Preview ao vivo da DM (balão simulado do Instagram) no editor de automação.
-// Puramente apresentacional: monograma do cliente (registro do CRM, não a
-// conta IG -- é um preview, não uma simulação), texto e botões empilhados
-// como o button template renderiza no app.
+// Prévia ao vivo da DM, replicando o chat do Instagram (estilo ManyChat):
+// cabeçalho da conversa, bolha cinza de mensagem recebida, botões do button
+// template como bolhas empilhadas e a barra "Responder..." ao pé. Cores FIXAS
+// do Instagram light de propósito (é um mockup do app, não uma superfície do
+// CRM), então o painel fica idêntico nos temas claro e escuro do CRM.
+// Monograma: sigla/cor do cadastro do cliente; hash do nome só como fallback.
+import type { CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DmButton } from '@/store';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { getInitials } from '@/store';
 import { sanitizeExternalUrl } from '@/utils/security';
+
+const IG = {
+  surface: '#ffffff',
+  bubble: '#efefef',
+  text: '#111111',
+  muted: '#8e8e8e',
+  hairline: '#dbdbdb',
+};
+
+function Avatar({
+  clientName,
+  clientSigla,
+  clientCor,
+  size,
+}: {
+  clientName: string | null;
+  clientSigla?: string | null;
+  clientCor?: string | null;
+  size: number;
+}) {
+  return (
+    <div
+      className={`avatar ${clientCor ? '' : avatarColorClass(clientName)}`}
+      style={{
+        width: size,
+        height: size,
+        fontSize: size * 0.36,
+        flexShrink: 0,
+        ...(clientCor ? { background: clientCor } : {}),
+      }}
+    >
+      {clientSigla?.trim() || (clientName ? getInitials(clientName) : '?')}
+    </div>
+  );
+}
 
 export default function DmPreview({
   clientName,
@@ -25,6 +63,14 @@ export default function DmPreview({
   const trimmedText = text.trim();
   const visibleButtons = buttons.filter((b) => b.title.trim() !== '');
   const empty = !trimmedText && visibleButtons.length === 0;
+  const bubbleBase: CSSProperties = {
+    background: IG.bubble,
+    borderRadius: 18,
+    maxWidth: '85%',
+    fontSize: '0.8rem',
+    lineHeight: 1.35,
+    color: IG.text,
+  };
 
   return (
     <div>
@@ -35,65 +81,134 @@ export default function DmPreview({
         {t('form.previewTitle')}
       </p>
       <div
-        className="rounded-lg border"
-        style={{ background: 'var(--surface-hover, var(--surface-1))', padding: '0.75rem' }}
+        className="rounded-2xl border"
+        style={{ background: IG.surface, borderColor: IG.hairline, overflow: 'hidden' }}
       >
+        {/* Cabeçalho da conversa */}
         <div
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.55rem 0.75rem',
+            borderBottom: `1px solid ${IG.hairline}`,
+          }}
+        >
+          <Avatar
+            clientName={clientName}
+            clientSigla={clientSigla}
+            clientCor={clientCor}
+            size={28}
+          />
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                color: IG.text,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {clientName ?? t('form.previewAccount')}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: IG.muted }}>Instagram</div>
+          </div>
+        </div>
+
+        {/* Área do chat */}
+        <div
+          style={{
+            padding: '0.75rem',
+            minHeight: 200,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'flex-end',
+            gap: 6,
+          }}
         >
           <div
-            className={`avatar ${clientCor ? '' : avatarColorClass(clientName)}`}
             style={{
-              width: 24,
-              height: 24,
-              fontSize: '0.65rem',
-              flexShrink: 0,
-              // Identidade real do cliente (mesma convenção da ClientesPage):
-              // cor/sigla do cadastro; hash só como fallback sem cadastro.
-              ...(clientCor ? { background: clientCor } : {}),
+              textAlign: 'center',
+              fontSize: '0.62rem',
+              color: IG.muted,
+              marginBottom: 4,
             }}
           >
-            {clientSigla?.trim() || (clientName ? getInitials(clientName) : '?')}
+            {t('form.previewNow')}
           </div>
-          <span className="text-xs font-medium">{clientName ?? t('form.previewAccount')}</span>
+          {empty ? (
+            <p style={{ color: IG.muted, fontSize: '0.78rem', margin: 0, textAlign: 'center' }}>
+              {t('form.previewEmpty')}
+            </p>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6 }}>
+              <Avatar
+                clientName={clientName}
+                clientSigla={clientSigla}
+                clientCor={clientCor}
+                size={22}
+              />
+              <div
+                data-testid="dm-preview-bubble"
+                style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1 }}
+              >
+                {trimmedText && (
+                  <p
+                    style={{
+                      ...bubbleBase,
+                      margin: 0,
+                      padding: '0.5rem 0.7rem',
+                      whiteSpace: 'pre-wrap',
+                      overflowWrap: 'anywhere',
+                      borderBottomLeftRadius: visibleButtons.length > 0 ? 18 : 4,
+                    }}
+                  >
+                    {trimmedText}
+                  </p>
+                )}
+                {visibleButtons.map((b, i) => (
+                  <a
+                    key={i}
+                    href={sanitizeExternalUrl(b.url)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      ...bubbleBase,
+                      display: 'block',
+                      padding: '0.55rem 0.7rem',
+                      textAlign: 'center',
+                      fontWeight: 600,
+                      textDecoration: 'none',
+                      maxWidth: '85%',
+                      overflow: 'hidden',
+                      whiteSpace: 'nowrap',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {b.title.trim()}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-        {empty ? (
-          <p className="text-sm" style={{ color: 'var(--text-muted)', margin: 0 }}>
-            {t('form.previewEmpty')}
-          </p>
-        ) : (
+
+        {/* Barra de resposta */}
+        <div style={{ padding: '0 0.75rem 0.75rem' }}>
           <div
-            className="rounded-lg border bg-card"
-            style={{ maxWidth: '85%', overflow: 'hidden' }}
-            data-testid="dm-preview-bubble"
+            style={{
+              border: `1px solid ${IG.hairline}`,
+              borderRadius: 999,
+              padding: '0.45rem 0.85rem',
+              fontSize: '0.75rem',
+              color: IG.muted,
+            }}
           >
-            {trimmedText && (
-              <p
-                className="text-sm"
-                style={{
-                  margin: 0,
-                  padding: '0.6rem 0.75rem',
-                  whiteSpace: 'pre-wrap',
-                  overflowWrap: 'anywhere',
-                }}
-              >
-                {trimmedText}
-              </p>
-            )}
-            {visibleButtons.map((b, i) => (
-              <a
-                key={i}
-                href={sanitizeExternalUrl(b.url)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block border-t text-center text-sm font-medium text-primary"
-                style={{ padding: '0.55rem 0.75rem', textDecoration: 'none' }}
-              >
-                {b.title.trim()}
-              </a>
-            ))}
+            {t('form.previewComposer')}
           </div>
-        )}
+        </div>
       </div>
       <p className="text-xs" style={{ color: 'var(--text-muted)', margin: '0.35rem 0 0' }}>
         {t('form.previewDesktopNote')}

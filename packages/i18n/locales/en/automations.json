@@ -97,6 +97,8 @@
     "previewTitle": "DM preview",
     "previewAccount": "Your account",
     "previewEmpty": "Your message will appear here.",
-    "previewDesktopNote": "Buttons show in the Instagram app. On Instagram web they may not be displayed."
+    "previewDesktopNote": "Buttons show in the Instagram app. On Instagram web they may not be displayed.",
+    "previewNow": "Now",
+    "previewComposer": "Reply..."
   }
 }

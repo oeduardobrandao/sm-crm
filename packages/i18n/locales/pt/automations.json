@@ -97,6 +97,8 @@
     "previewTitle": "Prévia da DM",
     "previewAccount": "Sua conta",
     "previewEmpty": "Sua mensagem aparece aqui.",
-    "previewDesktopNote": "Botões aparecem no app do Instagram. No Instagram web podem não ser exibidos."
+    "previewDesktopNote": "Botões aparecem no app do Instagram. No Instagram web podem não ser exibidos.",
+    "previewNow": "Agora",
+    "previewComposer": "Responder..."
   }
 }

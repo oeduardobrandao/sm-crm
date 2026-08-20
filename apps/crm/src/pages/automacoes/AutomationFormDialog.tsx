@@ -259,7 +259,7 @@ export default function AutomationFormDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-xl"
+        className="max-w-3xl"
         onConfirmClose={() => onOpenChange(false)}
         confirmClose={
           form.name.trim() !== '' ||
@@ -272,357 +272,368 @@ export default function AutomationFormDialog({
           <DialogTitle>{editing ? t('form.editTitle') : t('form.createTitle')}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium" htmlFor="automacao-nome">
-              {t('form.nameLabel')}
-            </label>
-            <Input
-              id="automacao-nome"
-              value={form.name}
-              maxLength={80}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder={t('form.namePlaceholder')}
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">{t('form.clientLabel')}</label>
-            <Select
-              value={form.clientId === '' ? '' : String(form.clientId)}
-              onValueChange={(v) =>
-                setForm((f) => ({
-                  ...f,
-                  clientId: Number(v),
-                  targetMode: 'todos',
-                  selectedPost: null,
-                }))
-              }
-            >
-              <SelectTrigger aria-label={t('form.clientAria')}>
-                <SelectValue placeholder={t('form.clientPlaceholder')} />
-              </SelectTrigger>
-              <SelectContent>
-                {selectableClientes.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {form.clientId !== '' && !canAutomate && (
-              <div
-                className="flex items-center gap-2"
-                style={{
-                  marginTop: 8,
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: 8,
-                  background: 'rgba(245, 163, 66, 0.12)',
-                  color: 'var(--text-main)',
-                  fontSize: '0.8rem',
-                }}
-              >
-                <AlertTriangle
-                  className="h-4 w-4"
-                  style={{ color: 'var(--warning)', flexShrink: 0 }}
-                />
-                <span style={{ flex: 1 }}>{t('form.reconnectWarning')}</span>
-                <Button asChild size="sm" variant="outline">
-                  <Link to={`/clientes/${form.clientId}/redes-sociais`}>
-                    {t('form.reconnectCta')}
-                  </Link>
-                </Button>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">{t('form.targetLabel')}</label>
-            <div
-              role="radiogroup"
-              aria-label={t('form.targetAria')}
-              className="flex gap-4"
-              style={{ marginTop: 6 }}
-            >
-              <label className="flex items-center gap-2 text-sm" style={{ cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="automacao-alvo"
-                  value="todos"
-                  checked={form.targetMode === 'todos'}
-                  onChange={() =>
-                    setForm((f) => ({ ...f, targetMode: 'todos', selectedPost: null }))
-                  }
-                />
-                {t('form.targetAll')}
+        {/* Side-by-side no desktop: campos à esquerda, prévia fixa à direita
+            (sticky dentro do scroll do dialog). No mobile a grade colapsa e a
+            prévia vai para o fim. */}
+        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium" htmlFor="automacao-nome">
+                {t('form.nameLabel')}
               </label>
-              <label className="flex items-center gap-2 text-sm" style={{ cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="automacao-alvo"
-                  value="post"
-                  checked={form.targetMode === 'post'}
-                  onChange={() => setForm((f) => ({ ...f, targetMode: 'post' }))}
-                />
-                {t('form.targetPost')}
-              </label>
+              <Input
+                id="automacao-nome"
+                value={form.name}
+                maxLength={80}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder={t('form.namePlaceholder')}
+              />
             </div>
 
-            {form.targetMode === 'post' &&
-              (form.clientId === '' ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 6 }}>
-                  {t('form.selectClientForPosts')}
-                </p>
-              ) : (
-                <div style={{ marginTop: 8 }}>
-                  {postsQuery.isLoading ? (
-                    <div className="flex justify-center p-4">
-                      <Spinner size="sm" />
-                    </div>
-                  ) : (
-                    <>
-                      <div
-                        className="grid grid-cols-4 gap-2"
-                        style={{ maxHeight: 220, overflowY: 'auto' }}
-                      >
-                        {(postsQuery.data?.posts ?? []).map((post) => {
-                          const selected = form.selectedPost?.ig_media_id === post.id;
-                          return (
-                            <button
-                              key={post.id}
-                              type="button"
-                              onClick={() => selectPost(post)}
-                              aria-pressed={selected}
-                              style={{
-                                position: 'relative',
-                                aspectRatio: '1',
-                                borderRadius: 8,
-                                overflow: 'hidden',
-                                border: selected
-                                  ? '2px solid var(--primary-color)'
-                                  : '1px solid var(--border-color)',
-                                padding: 0,
-                                cursor: 'pointer',
-                                background: 'var(--surface-1)',
-                              }}
-                            >
-                              {post.thumbnail_url ? (
-                                <img
-                                  src={post.thumbnail_url}
-                                  alt=""
-                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                />
-                              ) : (
-                                <div className="flex items-center justify-center h-full">
-                                  <Instagram
-                                    className="h-4 w-4"
-                                    style={{ color: 'var(--text-muted)' }}
-                                  />
-                                </div>
-                              )}
-                              {selected && (
-                                <span
-                                  style={{
-                                    position: 'absolute',
-                                    top: 3,
-                                    right: 3,
-                                    background: 'var(--primary-color)',
-                                    borderRadius: '50%',
-                                    width: 16,
-                                    height: 16,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                  }}
-                                >
-                                  <Check className="h-2.5 w-2.5" style={{ color: '#fff' }} />
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                        {postsQuery.data?.posts.length === 0 && (
-                          <p
-                            style={{
-                              gridColumn: '1 / -1',
-                              color: 'var(--text-muted)',
-                              fontSize: '0.8rem',
-                            }}
-                          >
-                            {t('form.noPostsSynced')}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between" style={{ marginTop: 6 }}>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={postsPage <= 1}
-                          onClick={() => setPostsPage((p) => p - 1)}
-                        >
-                          {t('form.previous')}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={!hasMorePosts}
-                          onClick={() => setPostsPage((p) => p + 1)}
-                        >
-                          {t('form.next')}
-                        </Button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">{t('form.keywordsLabel')}</label>
-            <div className="flex flex-wrap gap-1.5" style={{ marginTop: 6, marginBottom: 6 }}>
-              {form.keywords.map((k) => (
-                <Badge key={k} variant="outline" size="sm" className="flex items-center gap-1">
-                  {k}
-                  <button
-                    type="button"
-                    onClick={() => removeKeyword(k)}
-                    aria-label={t('form.keywordRemove', { keyword: k })}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      display: 'flex',
-                    }}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
-            <Input
-              value={form.keywordInput}
-              onChange={(e) => setForm((f) => ({ ...f, keywordInput: e.target.value }))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addKeyword();
+            <div>
+              <label className="text-sm font-medium">{t('form.clientLabel')}</label>
+              <Select
+                value={form.clientId === '' ? '' : String(form.clientId)}
+                onValueChange={(v) =>
+                  setForm((f) => ({
+                    ...f,
+                    clientId: Number(v),
+                    targetMode: 'todos',
+                    selectedPost: null,
+                  }))
                 }
-              }}
-              placeholder={t('form.keywordPlaceholder')}
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium" htmlFor="automacao-dm">
-              {t('form.dmLabel')}
-            </label>
-            <Textarea
-              id="automacao-dm"
-              value={form.dmMessage}
-              maxLength={dmLimit}
-              rows={4}
-              onChange={(e) => setForm((f) => ({ ...f, dmMessage: e.target.value }))}
-              placeholder={t('form.dmPlaceholder')}
-            />
-            <div
-              style={{
-                textAlign: 'right',
-                fontSize: '0.7rem',
-                color: dmOverLimit ? 'var(--danger-text)' : 'var(--text-muted)',
-              }}
-            >
-              {form.dmMessage.length}/{dmLimit}
-            </div>
-          </div>
-
-          <div>
-            <span className="text-sm font-medium">{t('form.buttonsLabel')}</span>
-            <p
-              style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.1rem 0 0.5rem' }}
-            >
-              {t('form.buttonsHelp')}
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {form.buttons.map((b, i) => (
-                <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                  <div style={{ width: '38%' }}>
-                    <Input
-                      value={b.title}
-                      maxLength={MAX_BUTTON_TITLE}
-                      aria-label={t('form.buttonTitleLabel')}
-                      placeholder={t('form.buttonTitleLabel')}
-                      onChange={(e) => updateButton(i, { title: e.target.value })}
-                    />
-                    <div
-                      style={{
-                        textAlign: 'right',
-                        fontSize: '0.65rem',
-                        color: 'var(--text-muted)',
-                      }}
-                    >
-                      {b.title.length}/{MAX_BUTTON_TITLE}
-                    </div>
-                  </div>
-                  <Input
-                    value={b.url}
-                    aria-label={t('form.buttonUrlLabel')}
-                    placeholder="https://..."
-                    onChange={(e) => updateButton(i, { url: e.target.value })}
-                    style={{ flex: 1 }}
+              >
+                <SelectTrigger aria-label={t('form.clientAria')}>
+                  <SelectValue placeholder={t('form.clientPlaceholder')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectableClientes.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {form.clientId !== '' && !canAutomate && (
+                <div
+                  className="flex items-center gap-2"
+                  style={{
+                    marginTop: 8,
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: 8,
+                    background: 'rgba(245, 163, 66, 0.12)',
+                    color: 'var(--text-main)',
+                    fontSize: '0.8rem',
+                  }}
+                >
+                  <AlertTriangle
+                    className="h-4 w-4"
+                    style={{ color: 'var(--warning)', flexShrink: 0 }}
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={t('form.removeButton')}
-                    onClick={() => removeButton(i)}
-                  >
-                    <X className="h-4 w-4" />
+                  <span style={{ flex: 1 }}>{t('form.reconnectWarning')}</span>
+                  <Button asChild size="sm" variant="outline">
+                    <Link to={`/clientes/${form.clientId}/redes-sociais`}>
+                      {t('form.reconnectCta')}
+                    </Link>
                   </Button>
                 </div>
-              ))}
-              {form.buttons.length < MAX_DM_BUTTONS && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  style={{ alignSelf: 'flex-start' }}
-                  onClick={() =>
-                    setForm((f) => ({ ...f, buttons: [...f.buttons, { title: '', url: '' }] }))
-                  }
-                >
-                  <Plus className="h-4 w-4" style={{ marginRight: '0.35rem' }} />
-                  {t('form.addButton')}
-                </Button>
               )}
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">{t('form.targetLabel')}</label>
+              <div
+                role="radiogroup"
+                aria-label={t('form.targetAria')}
+                className="flex gap-4"
+                style={{ marginTop: 6 }}
+              >
+                <label className="flex items-center gap-2 text-sm" style={{ cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="automacao-alvo"
+                    value="todos"
+                    checked={form.targetMode === 'todos'}
+                    onChange={() =>
+                      setForm((f) => ({ ...f, targetMode: 'todos', selectedPost: null }))
+                    }
+                  />
+                  {t('form.targetAll')}
+                </label>
+                <label className="flex items-center gap-2 text-sm" style={{ cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="automacao-alvo"
+                    value="post"
+                    checked={form.targetMode === 'post'}
+                    onChange={() => setForm((f) => ({ ...f, targetMode: 'post' }))}
+                  />
+                  {t('form.targetPost')}
+                </label>
+              </div>
+
+              {form.targetMode === 'post' &&
+                (form.clientId === '' ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 6 }}>
+                    {t('form.selectClientForPosts')}
+                  </p>
+                ) : (
+                  <div style={{ marginTop: 8 }}>
+                    {postsQuery.isLoading ? (
+                      <div className="flex justify-center p-4">
+                        <Spinner size="sm" />
+                      </div>
+                    ) : (
+                      <>
+                        <div
+                          className="grid grid-cols-4 gap-2"
+                          style={{ maxHeight: 220, overflowY: 'auto' }}
+                        >
+                          {(postsQuery.data?.posts ?? []).map((post) => {
+                            const selected = form.selectedPost?.ig_media_id === post.id;
+                            return (
+                              <button
+                                key={post.id}
+                                type="button"
+                                onClick={() => selectPost(post)}
+                                aria-pressed={selected}
+                                style={{
+                                  position: 'relative',
+                                  aspectRatio: '1',
+                                  borderRadius: 8,
+                                  overflow: 'hidden',
+                                  border: selected
+                                    ? '2px solid var(--primary-color)'
+                                    : '1px solid var(--border-color)',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  background: 'var(--surface-1)',
+                                }}
+                              >
+                                {post.thumbnail_url ? (
+                                  <img
+                                    src={post.thumbnail_url}
+                                    alt=""
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  />
+                                ) : (
+                                  <div className="flex items-center justify-center h-full">
+                                    <Instagram
+                                      className="h-4 w-4"
+                                      style={{ color: 'var(--text-muted)' }}
+                                    />
+                                  </div>
+                                )}
+                                {selected && (
+                                  <span
+                                    style={{
+                                      position: 'absolute',
+                                      top: 3,
+                                      right: 3,
+                                      background: 'var(--primary-color)',
+                                      borderRadius: '50%',
+                                      width: 16,
+                                      height: 16,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                    }}
+                                  >
+                                    <Check className="h-2.5 w-2.5" style={{ color: '#fff' }} />
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                          {postsQuery.data?.posts.length === 0 && (
+                            <p
+                              style={{
+                                gridColumn: '1 / -1',
+                                color: 'var(--text-muted)',
+                                fontSize: '0.8rem',
+                              }}
+                            >
+                              {t('form.noPostsSynced')}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between" style={{ marginTop: 6 }}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={postsPage <= 1}
+                            onClick={() => setPostsPage((p) => p - 1)}
+                          >
+                            {t('form.previous')}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={!hasMorePosts}
+                            onClick={() => setPostsPage((p) => p + 1)}
+                          >
+                            {t('form.next')}
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">{t('form.keywordsLabel')}</label>
+              <div className="flex flex-wrap gap-1.5" style={{ marginTop: 6, marginBottom: 6 }}>
+                {form.keywords.map((k) => (
+                  <Badge key={k} variant="outline" size="sm" className="flex items-center gap-1">
+                    {k}
+                    <button
+                      type="button"
+                      onClick={() => removeKeyword(k)}
+                      aria-label={t('form.keywordRemove', { keyword: k })}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+              <Input
+                value={form.keywordInput}
+                onChange={(e) => setForm((f) => ({ ...f, keywordInput: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addKeyword();
+                  }
+                }}
+                placeholder={t('form.keywordPlaceholder')}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium" htmlFor="automacao-dm">
+                {t('form.dmLabel')}
+              </label>
+              <Textarea
+                id="automacao-dm"
+                value={form.dmMessage}
+                maxLength={dmLimit}
+                rows={4}
+                onChange={(e) => setForm((f) => ({ ...f, dmMessage: e.target.value }))}
+                placeholder={t('form.dmPlaceholder')}
+              />
+              <div
+                style={{
+                  textAlign: 'right',
+                  fontSize: '0.7rem',
+                  color: dmOverLimit ? 'var(--danger-text)' : 'var(--text-muted)',
+                }}
+              >
+                {form.dmMessage.length}/{dmLimit}
+              </div>
+            </div>
+
+            <div>
+              <span className="text-sm font-medium">{t('form.buttonsLabel')}</span>
+              <p
+                style={{
+                  fontSize: '0.75rem',
+                  color: 'var(--text-muted)',
+                  margin: '0.1rem 0 0.5rem',
+                }}
+              >
+                {t('form.buttonsHelp')}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {form.buttons.map((b, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                    <div style={{ width: '38%' }}>
+                      <Input
+                        value={b.title}
+                        maxLength={MAX_BUTTON_TITLE}
+                        aria-label={t('form.buttonTitleLabel')}
+                        placeholder={t('form.buttonTitleLabel')}
+                        onChange={(e) => updateButton(i, { title: e.target.value })}
+                      />
+                      <div
+                        style={{
+                          textAlign: 'right',
+                          fontSize: '0.65rem',
+                          color: 'var(--text-muted)',
+                        }}
+                      >
+                        {b.title.length}/{MAX_BUTTON_TITLE}
+                      </div>
+                    </div>
+                    <Input
+                      value={b.url}
+                      aria-label={t('form.buttonUrlLabel')}
+                      placeholder="https://..."
+                      onChange={(e) => updateButton(i, { url: e.target.value })}
+                      style={{ flex: 1 }}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t('form.removeButton')}
+                      onClick={() => removeButton(i)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                {form.buttons.length < MAX_DM_BUTTONS && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    style={{ alignSelf: 'flex-start' }}
+                    onClick={() =>
+                      setForm((f) => ({ ...f, buttons: [...f.buttons, { title: '', url: '' }] }))
+                    }
+                  >
+                    <Plus className="h-4 w-4" style={{ marginRight: '0.35rem' }} />
+                    {t('form.addButton')}
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium" htmlFor="automacao-reply">
+                {t('form.replyLabel')}
+              </label>
+              <Textarea
+                id="automacao-reply"
+                value={form.publicReply}
+                maxLength={500}
+                rows={2}
+                onChange={(e) => setForm((f) => ({ ...f, publicReply: e.target.value }))}
+                placeholder={t('form.replyPlaceholder')}
+              />
+              <div style={{ textAlign: 'right', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                {form.publicReply.length}/500
+              </div>
             </div>
           </div>
 
-          <DmPreview
-            clientName={selectedCliente?.nome ?? null}
-            clientSigla={selectedCliente?.sigla ?? null}
-            clientCor={selectedCliente?.cor ?? null}
-            text={form.dmMessage}
-            buttons={form.buttons}
-          />
-
-          <div>
-            <label className="text-sm font-medium" htmlFor="automacao-reply">
-              {t('form.replyLabel')}
-            </label>
-            <Textarea
-              id="automacao-reply"
-              value={form.publicReply}
-              maxLength={500}
-              rows={2}
-              onChange={(e) => setForm((f) => ({ ...f, publicReply: e.target.value }))}
-              placeholder={t('form.replyPlaceholder')}
+          <div className="md:sticky md:top-0 self-start">
+            <DmPreview
+              clientName={selectedCliente?.nome ?? null}
+              clientSigla={selectedCliente?.sigla ?? null}
+              clientCor={selectedCliente?.cor ?? null}
+              text={form.dmMessage}
+              buttons={form.buttons}
             />
-            <div style={{ textAlign: 'right', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              {form.publicReply.length}/500
-            </div>
           </div>
         </div>
 
