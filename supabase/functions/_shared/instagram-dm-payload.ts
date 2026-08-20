@@ -25,6 +25,17 @@ export const MAX_BUTTON_TITLE = 20;
 const FALLBACK_MAX = 1000;
 const HTTP_URL_RE = /^https?:\/\//i;
 
+// URL com userinfo (https://user:pass@evil.x) é padrão de phishing; espelha o
+// CHECK do banco e o form do CRM. @ no path (instagram.com/@handle) é válido.
+function hasUserinfo(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.username !== "" || parsed.password !== "";
+  } catch {
+    return true;
+  }
+}
+
 // Fail-open POR DESIGN (ver spec): undefined/null -> [] em silêncio (fixtures
 // de teste e a janela migration->redeploy); valor presente porém malformado
 // descarta itens com console.warn em vez de lançar -- o enforcement da forma
@@ -53,7 +64,7 @@ export function parseDmButtons(raw: unknown): DmButton[] {
     const url = typeof (item as { url?: unknown }).url === "string"
       ? ((item as { url: string }).url).trim()
       : "";
-    if (!title || !HTTP_URL_RE.test(url)) {
+    if (!title || !HTTP_URL_RE.test(url) || hasUserinfo(url)) {
       discarded++;
       continue;
     }

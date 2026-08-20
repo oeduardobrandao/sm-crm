@@ -27,6 +27,9 @@ RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
           AND jsonb_typeof(item->'url') = 'string'
           AND char_length(item->>'url') <= 500
           AND item->>'url' ~* '^https?://'
+          -- sem userinfo (https://user:pass@evil.x); @ no PATH segue válido
+          -- (https://instagram.com/@handle) porque o guard para em /?#
+          AND item->>'url' !~ '^[Hh][Tt][Tt][Pp][Ss]?://[^/?#]*@'
         , false)
       END)
       FROM jsonb_array_elements(b) AS item

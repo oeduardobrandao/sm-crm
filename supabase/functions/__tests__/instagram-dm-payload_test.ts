@@ -24,10 +24,18 @@ Deno.test("parseDmButtons: itens inválidos são descartados em silêncio", () =
       { url: "https://a.b" }, // sem título
       { title: "Ftp", url: "ftp://a.b" }, // esquema inválido
       { title: "Rel", url: "/caminho" }, // relativa
+      { title: "Phish", url: "https://accounts.instagram.com@evil.example/x" }, // userinfo
       "string", // não-objeto
       null,
     ]),
     [{ title: "Ok", url: "https://a.b" }],
+  );
+});
+
+Deno.test("parseDmButtons: @ no path é válido (perfis do Instagram)", () => {
+  assertEquals(
+    parseDmButtons([{ title: "Perfil", url: "https://instagram.com/@handle" }]),
+    [{ title: "Perfil", url: "https://instagram.com/@handle" }],
   );
 });
 

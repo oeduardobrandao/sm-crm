@@ -456,6 +456,23 @@ begin
   end;
   assert v_rejected, 'elemento não-objeto deve cair no CHECK (23514), não em 22023';
 
+  -- (f3) URL com userinfo (phishing) -> check_violation; @ no PATH é válido
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+      values (v_ws, v_cli, 'Phish', array['x'], 'msg',
+        '[{"title":"Login","url":"https://accounts.instagram.com@evil.example/x"}]'::jsonb);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'URL com userinfo deve ser rejeitada';
+
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+    values (v_ws, v_cli, 'Perfil', array['perfil'], 'msg',
+      '[{"title":"Perfil","url":"https://instagram.com/@handle"}]'::jsonb);
+
   -- (g) dm_message 641 chars COM botão -> check_violation (limite do template)
   v_rejected := false;
   begin
