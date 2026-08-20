@@ -15,15 +15,15 @@ e mídia dos posts existentes (caso real de suporte).
 
 ## Decisões de produto
 
-| Questão | Decisão |
-|---|---|
-| Escada de etapas | Substituir por completo pela escada do template destino; usuário escolhe em qual etapa o fluxo está agora |
-| Posts | Intocados: status, custom status, comentários, aprovação, mídia, agendamento |
-| Propriedades personalizadas | Remap automático por nome+tipo; o resto é descartado com aviso e confirmação explícita |
-| Reversibilidade | Sem undo; audit_log com snapshot no metadata; confirmação forte no diálogo |
-| Superfície | Só UI do CRM (sem MCP tool nesta fase) |
-| Entitlement | Liberado para todos os planos (manutenção de dados, não cria recurso) |
-| Fluxos sem template | Entram no escopo: a mesma tela serve para "adotar" um template |
+| Questão                     | Decisão                                                                                                   |
+| --------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Escada de etapas            | Substituir por completo pela escada do template destino; usuário escolhe em qual etapa o fluxo está agora |
+| Posts                       | Intocados: status, custom status, comentários, aprovação, mídia, agendamento                              |
+| Propriedades personalizadas | Remap automático por nome+tipo; o resto é descartado com aviso e confirmação explícita                    |
+| Reversibilidade             | Sem undo; audit_log com snapshot no metadata; confirmação forte no diálogo                                |
+| Superfície                  | Só UI do CRM (sem MCP tool nesta fase)                                                                    |
+| Entitlement                 | Liberado para todos os planos (manutenção de dados, não cria recurso)                                     |
+| Fluxos sem template         | Entram no escopo: a mesma tela serve para "adotar" um template                                            |
 
 ## Semântica da migração
 
@@ -75,12 +75,13 @@ verificado contra o tail de `origin/main` na hora do PR) criando:
 
 ```sql
 migrate_workflow_template(
-  p_workflow_id          bigint,
-  p_template_id          bigint,   -- template destino
-  p_new_etapas           jsonb,    -- escada completa montada no cliente
-  p_active_ordem         integer,  -- índice da etapa ativa na escada nova
-  p_modo_prazo           text,
-  p_expected_template_id bigint    -- guarda otimista: template_id que o cliente viu (null p/ adoção)
+  p_workflow_id           bigint,
+  p_template_id           bigint,   -- template destino
+  p_new_etapas            jsonb,    -- escada completa montada no cliente
+  p_active_ordem          integer,  -- índice da etapa ativa na escada nova
+  p_modo_prazo            text,
+  p_expected_template_id  bigint,   -- guarda otimista: template_id que o cliente viu (null p/ adoção)
+  p_expected_etapa_atual  integer   -- guarda otimista: etapa_atual que o cliente viu
 ) returns void
 ```
 
@@ -89,8 +90,10 @@ migrate_workflow_template(
 - **Validações (dentro da transação):**
   - workflow existe e `conta_id = get_my_conta_id()`;
   - guarda de concorrência: `template_id` atual do fluxo deve ser
-    `IS NOT DISTINCT FROM p_expected_template_id`, senão `workflow_changed`
-    (duas migrações em sequência não se sobrescrevem em silêncio);
+    `IS NOT DISTINCT FROM p_expected_template_id` E `etapa_atual` atual deve
+    ser `IS NOT DISTINCT FROM p_expected_etapa_atual`, senão `workflow_changed`
+    (duas migrações em sequência, ou uma migração concorrente com um avanço de
+    etapa, não se sobrescrevem em silêncio);
   - template destino existe na mesma conta e é DIFERENTE do atual (`same_template`
     barra o no-op destrutivo que apagaria os timestamps da escada sem migrar nada);
   - workflow com `status = 'ativo'` (não se migra concluído/arquivado);
@@ -105,7 +108,7 @@ migrate_workflow_template(
   1. remap de `post_property_values`: para cada definição do template origem com
      par no destino (nome+tipo, excluindo `select`/`multiselect`/`status`),
      `INSERT ... SELECT DISTINCT ON (post_id, def_destino) ... ON CONFLICT
-     (post_id, property_definition_id) DO NOTHING` limitado aos posts deste
+(post_id, property_definition_id) DO NOTHING` limitado aos posts deste
      workflow, com desempate determinístico por menor `display_order` e depois
      menor `id` da definição de ORIGEM. Isso resolve os dois conflitos
      possíveis: valor pré-existente no destino vence, e duas definições de
@@ -150,8 +153,9 @@ migrate_workflow_template(
   tela com 3 blocos:
   1. select do template destino (exclui o template atual do fluxo);
   2. select "em qual etapa este fluxo está agora" (etapas do destino);
-  3. prévia: escada antes/depois, propriedades que migram e as que serão
-     perdidas (com contagem de posts afetados), aviso de irreversibilidade.
+  3. prévia: escada nova (a antiga permanece visível no modal de edição),
+     propriedades que migram e as que serão perdidas (com contagem de posts
+     afetados), aviso de irreversibilidade.
   - Confirmação final via `AlertDialog`.
 - Sem gate de plano; disponível aos papéis que já editam fluxos.
 - Copy em pt-BR, sem em-dash (regra da casa).

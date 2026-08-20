@@ -139,6 +139,7 @@ export function MigrateTemplateDialog({
         activeOrdem,
         modoPrazo: (destino.modo_prazo ?? 'padrao') as 'padrao' | 'data_fixa' | 'data_entrega',
         expectedTemplateId: workflow.template_id ?? null,
+        expectedEtapaAtual: workflow.etapa_atual,
       });
       toast.success('Fluxo migrado para o novo template.');
       onMigrated();

@@ -29,7 +29,6 @@ import {
   getWorkflowTemplates,
   type Workflow,
   type WorkflowEtapa,
-  type WorkflowTemplate,
 } from '@/store';
 import { HistoryDrawer } from '@/pages/entregas/components/HistoryDrawer';
 import { WorkflowCard } from '@/pages/entregas/components/WorkflowCard';

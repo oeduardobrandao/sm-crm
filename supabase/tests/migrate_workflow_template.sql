@@ -9,7 +9,7 @@
 --   (c3) tipos de opção (select/multiselect/status) NUNCA remapeiam, mesmo com nome igual
 --   (d) workflow_select_options do template origem são apagadas
 --   (e) isolamento: usuário de outra conta não migra
---   (e2) guarda de concorrência: p_expected_template_id divergente = workflow_changed
+--   (e2) guarda de concorrência: p_expected_template_id/p_expected_etapa_atual divergentes = workflow_changed
 --   (e3) migrar para o próprio template = same_template (no-op destrutivo barrado)
 --   (e4) data_limite não-ISO = invalid_etapa (contrato de erro, não cast cru)
 --   (e6) p_active_ordem/p_modo_prazo NULL = erro estável, nunca bypass trivalente
@@ -124,7 +124,7 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', v_other)::text, true);
   v_blocked := false;
   begin
-    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, 1, 'padrao', v_tpl_a);
+    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, 1, 'padrao', v_tpl_a, 0);
   exception when others then
     assert sqlerrm like '%workflow_not_found%', format('esperava workflow_not_found, veio: %s', sqlerrm);
     v_blocked := true;
@@ -135,17 +135,27 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', v_owner)::text, true);
   v_blocked := false;
   begin
-    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, 1, 'padrao', null);
+    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, 1, 'padrao', null, 0);
   exception when others then
     assert sqlerrm like '%workflow_changed%', format('esperava workflow_changed, veio: %s', sqlerrm);
     v_blocked := true;
   end;
   assert v_blocked, 'expected_template_id divergente deve falhar';
 
+  -- (e2) guarda de concorrência: expected_etapa_atual divergente (template correto, etapa desatualizada)
+  v_blocked := false;
+  begin
+    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, 1, 'padrao', v_tpl_a, 5);
+  exception when others then
+    assert sqlerrm like '%workflow_changed%', format('esperava workflow_changed, veio: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'etapa_atual divergente deve falhar';
+
   -- (e3) migrar para o próprio template é barrado
   v_blocked := false;
   begin
-    perform migrate_workflow_template(v_wf, v_tpl_a, v_new_etapas, 0, 'padrao', v_tpl_a);
+    perform migrate_workflow_template(v_wf, v_tpl_a, v_new_etapas, 0, 'padrao', v_tpl_a, 0);
   exception when others then
     assert sqlerrm like '%same_template%', format('esperava same_template, veio: %s', sqlerrm);
     v_blocked := true;
@@ -157,7 +167,7 @@ begin
   begin
     perform migrate_workflow_template(v_wf, v_tpl_b,
       jsonb_build_array(jsonb_build_object('nome','X','prazo_dias',1,'tipo_prazo','corridos','responsavel_id',null,'tipo','padrao','data_limite','data-invalida')),
-      0, 'padrao', v_tpl_a);
+      0, 'padrao', v_tpl_a, 0);
   exception when others then
     assert sqlerrm like '%invalid_etapa%', format('esperava invalid_etapa, veio: %s', sqlerrm);
     v_blocked := true;
@@ -167,7 +177,7 @@ begin
   -- (e6) NULLs não atravessam a validação por lógica trivalente
   v_blocked := false;
   begin
-    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, null, 'padrao', v_tpl_a);
+    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, null, 'padrao', v_tpl_a, 0);
   exception when others then
     assert sqlerrm like '%invalid_active_ordem%', format('esperava invalid_active_ordem, veio: %s', sqlerrm);
     v_blocked := true;
@@ -175,7 +185,7 @@ begin
   assert v_blocked, 'p_active_ordem NULL deve falhar';
   v_blocked := false;
   begin
-    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, 1, null, v_tpl_a);
+    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, 1, null, v_tpl_a, 0);
   exception when others then
     assert sqlerrm like '%invalid_modo_prazo%', format('esperava invalid_modo_prazo, veio: %s', sqlerrm);
     v_blocked := true;
@@ -187,7 +197,7 @@ begin
   begin
     perform migrate_workflow_template(v_wf, v_tpl_b,
       jsonb_build_array(jsonb_build_object('nome','X','prazo_dias',1,'tipo_prazo','corridos','responsavel_id','abc','tipo','padrao','data_limite',null)),
-      0, 'padrao', v_tpl_a);
+      0, 'padrao', v_tpl_a, 0);
   exception when others then
     assert sqlerrm like '%invalid_responsavel%', format('esperava invalid_responsavel, veio: %s', sqlerrm);
     v_blocked := true;
@@ -197,7 +207,7 @@ begin
   -- (f) validação falha = rollback total
   v_blocked := false;
   begin
-    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, 99, 'padrao', v_tpl_a);
+    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, 99, 'padrao', v_tpl_a, 0);
   exception when others then
     assert sqlerrm like '%invalid_active_ordem%', format('esperava invalid_active_ordem, veio: %s', sqlerrm);
     v_blocked := true;
@@ -209,7 +219,7 @@ begin
   assert v_cnt = 5, 'valores intactos após falha (inclui o valor NULL de Nota da fixture b2)';
 
   -- (a) migração feliz
-  perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, 1, 'padrao', v_tpl_a);
+  perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, 1, 'padrao', v_tpl_a, 0);
 
   select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf;
   assert v_cnt = 3, format('escada nova deve ter 3 etapas, tem %s', v_cnt);
@@ -281,7 +291,7 @@ begin
     returning id into v_wf_adopt;
   insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, status, iniciado_em)
     values (v_wf_adopt, 0, 'Solta', 1, 'corridos', 'ativo', now());
-  perform migrate_workflow_template(v_wf_adopt, v_tpl_b, v_new_etapas, 0, 'padrao', null);
+  perform migrate_workflow_template(v_wf_adopt, v_tpl_b, v_new_etapas, 0, 'padrao', null, 0);
   select * into r from workflows where id = v_wf_adopt;
   assert r.template_id = v_tpl_b, 'adoção deve setar template_id';
   select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf_adopt;
@@ -291,7 +301,7 @@ begin
   update workflows set status = 'concluido' where id = v_wf_adopt;
   v_blocked := false;
   begin
-    perform migrate_workflow_template(v_wf_adopt, v_tpl_b, v_new_etapas, 0, 'padrao', v_tpl_b);
+    perform migrate_workflow_template(v_wf_adopt, v_tpl_b, v_new_etapas, 0, 'padrao', v_tpl_b, 0);
   exception when others then
     assert sqlerrm like '%workflow_not_active%', format('esperava workflow_not_active, veio: %s', sqlerrm);
     v_blocked := true;

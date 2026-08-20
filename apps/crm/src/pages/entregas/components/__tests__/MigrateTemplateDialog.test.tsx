@@ -209,6 +209,7 @@ describe('MigrateTemplateDialog', () => {
         activeOrdem: 0,
         modoPrazo: 'padrao',
         expectedTemplateId: 1,
+        expectedEtapaAtual: 0,
       });
       expect(onMigrated).toHaveBeenCalled();
     });

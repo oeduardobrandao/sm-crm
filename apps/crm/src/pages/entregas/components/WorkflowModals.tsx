@@ -331,9 +331,14 @@ export function EditWorkflowModal({
           </div>
           <div className="edit-modal-footer">
             <div className="edit-modal-footer-secondary">
-              <Button variant="outline" onClick={() => setMigrateOpen(true)}>
+              <Button variant="outline" onClick={() => setMigrateOpen(true)} disabled={isDirty}>
                 <ArrowRightLeft className="h-4 w-4" /> Migrar template
               </Button>
+              {isDirty && (
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Salve as alterações antes de migrar.
+                </span>
+              )}
               <Button
                 variant="outline"
                 className="text-destructive"

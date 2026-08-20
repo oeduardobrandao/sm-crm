@@ -18,17 +18,22 @@
 --   7. atualiza workflows (template_id, etapa_atual, modo_prazo)
 --   8. grava audit_log (SECURITY DEFINER cobre o insert; RLS ali é service_role-only)
 -- Guarda de concorrência: p_expected_template_id é o template_id que o cliente
--- viu; divergência = workflow_changed (duas migrações não se sobrescrevem caladas).
+-- viu, e p_expected_etapa_atual é a etapa_atual que o cliente viu; divergência
+-- em qualquer um dos dois = workflow_changed (duas migrações, ou uma migração
+-- concorrente com um avanço de etapa, não se sobrescrevem caladas).
 -- Erros: mensagens-código estáveis consumidas pelo frontend (mapMigrationError).
 -- ============================================================
 
+DROP FUNCTION IF EXISTS public.migrate_workflow_template(bigint, bigint, jsonb, integer, text, bigint);
+
 CREATE OR REPLACE FUNCTION public.migrate_workflow_template(
-  p_workflow_id          bigint,
-  p_template_id          bigint,
-  p_new_etapas           jsonb,
-  p_active_ordem         integer,
-  p_modo_prazo           text,
-  p_expected_template_id bigint
+  p_workflow_id           bigint,
+  p_template_id           bigint,
+  p_new_etapas            jsonb,
+  p_active_ordem          integer,
+  p_modo_prazo            text,
+  p_expected_template_id  bigint,
+  p_expected_etapa_atual  integer
 ) RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -56,12 +61,13 @@ BEGIN
     RAISE EXCEPTION 'workspace_not_found';
   END IF;
 
-  SELECT id, template_id, status INTO v_wf
+  SELECT id, template_id, status, etapa_atual INTO v_wf
     FROM workflows
     WHERE id = p_workflow_id AND conta_id = v_conta
     FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'workflow_not_found'; END IF;
-  IF v_wf.template_id IS DISTINCT FROM p_expected_template_id THEN
+  IF v_wf.template_id IS DISTINCT FROM p_expected_template_id
+     OR v_wf.etapa_atual IS DISTINCT FROM p_expected_etapa_atual THEN
     RAISE EXCEPTION 'workflow_changed';
   END IF;
   IF v_wf.status <> 'ativo' THEN RAISE EXCEPTION 'workflow_not_active'; END IF;
@@ -253,7 +259,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.migrate_workflow_template(bigint, bigint, jsonb, integer, text, bigint)
+REVOKE ALL ON FUNCTION public.migrate_workflow_template(bigint, bigint, jsonb, integer, text, bigint, integer)
   FROM public, anon;
-GRANT EXECUTE ON FUNCTION public.migrate_workflow_template(bigint, bigint, jsonb, integer, text, bigint)
+GRANT EXECUTE ON FUNCTION public.migrate_workflow_template(bigint, bigint, jsonb, integer, text, bigint, integer)
   TO authenticated, service_role;

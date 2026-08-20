@@ -112,6 +112,8 @@ export async function migrateWorkflowTemplate(args: {
   modoPrazo: 'padrao' | 'data_fixa' | 'data_entrega';
   /** template_id que o cliente estava vendo (null para adoção); guarda de concorrência da RPC. */
   expectedTemplateId: number | null;
+  /** etapa_atual que o cliente estava vendo; guarda de concorrência da RPC. */
+  expectedEtapaAtual: number;
 }): Promise<void> {
   const { error } = await supabase.rpc('migrate_workflow_template', {
     p_workflow_id: args.workflowId,
@@ -120,6 +122,7 @@ export async function migrateWorkflowTemplate(args: {
     p_active_ordem: args.activeOrdem,
     p_modo_prazo: args.modoPrazo,
     p_expected_template_id: args.expectedTemplateId,
+    p_expected_etapa_atual: args.expectedEtapaAtual,
   });
   if (error) throw new Error(mapMigrationError(error.message));
 }
