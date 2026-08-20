@@ -1,6 +1,6 @@
 import { assert, assertEquals } from "./assert.ts";
 import {
-  matchesKeywords, normalizeForMatch, pickWinner,
+  matchesKeywords, normalizeForMatch, pickWinner, targetMatches,
 } from "../_shared/instagram-comment-matching.ts";
 
 Deno.test("normaliza acentos e caixa", () => {
@@ -23,6 +23,34 @@ Deno.test("keyword com espaços vira frase", () => {
 Deno.test("qualquer keyword da lista dispara; lista vazia nunca", () => {
   assert(matchesKeywords("link por favor", ["promo", "link"]));
   assert(!matchesKeywords("link por favor", []));
+});
+
+// ── targetMatches: alvo da automação (global / pendente / específico / ligado) ──
+
+Deno.test("targetMatches: global (ambos null) casa qualquer mídia, inclusive mediaId desconhecido", () => {
+  const global = { ig_media_id: null, workflow_post_id: null };
+  assert(targetMatches(global, "media-1"));
+  assert(targetMatches(global, null));
+});
+
+Deno.test("targetMatches: pendente (só workflow_post_id) NUNCA casa", () => {
+  const pendente = { ig_media_id: null, workflow_post_id: 42 };
+  assert(!targetMatches(pendente, "media-1"));
+  assert(!targetMatches(pendente, null), "nem quando a mídia do comentário é desconhecida");
+});
+
+Deno.test("targetMatches: específico casa só a própria mídia, e não casa com mediaId null", () => {
+  const especifico = { ig_media_id: "media-1", workflow_post_id: null };
+  assert(targetMatches(especifico, "media-1"));
+  assert(!targetMatches(especifico, "media-2"));
+  assert(!targetMatches(especifico, null), "mídia desconhecida nunca casa alvo específico");
+});
+
+Deno.test("targetMatches: ligado (ambos set) se comporta como específico", () => {
+  const ligado = { ig_media_id: "media-1", workflow_post_id: 42 };
+  assert(targetMatches(ligado, "media-1"));
+  assert(!targetMatches(ligado, "media-2"));
+  assert(!targetMatches(ligado, null));
 });
 
 Deno.test("desempate: específico > global, depois created_at ASC, id ASC", () => {

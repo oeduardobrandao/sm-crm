@@ -7,7 +7,7 @@
 // `processed_at` NULL de propósito, para o sweep do cron reprocessar depois.
 import type { EventRow } from "./handler.ts";
 import { parseWebhookDelivery, toValidIso } from "./parse.ts";
-import { matchesKeywords, pickWinner } from "../_shared/instagram-comment-matching.ts";
+import { matchesKeywords, pickWinner, targetMatches } from "../_shared/instagram-comment-matching.ts";
 import type { AutomationCandidate } from "../_shared/instagram-comment-matching.ts";
 import {
   classifyIgError,
@@ -52,6 +52,10 @@ export interface ClaimedSend {
   comment_id: string;
   automation_id: string;
   conta_id: string;
+  // Mídia do comentário resolvida no matching (null = desconhecida). Alimenta a
+  // revalidação de ALVO em `executeSend`; no cron vem da própria coluna
+  // `media_id` devolvida por `claim_retryable_automation_sends`.
+  media_id: string | null;
   commenter_id: string | null;
   comment_created_at: string;
   dm_status: string | null;
@@ -76,6 +80,7 @@ interface EligibleAccount {
 }
 
 interface AutomationRow extends AutomationCandidate {
+  workflow_post_id: number | null;
   keywords: string[];
   dm_message: string;
   public_reply: string | null;
@@ -86,6 +91,8 @@ interface RevalidatedAutomation {
   dm_message: string;
   public_reply: string | null;
   client_id: number;
+  ig_media_id: string | null;
+  workflow_post_id: number | null;
 }
 
 function errMessage(err: unknown): string {
@@ -183,7 +190,9 @@ async function processRow(svc: DbClient, row: EventRow, ctx: RowCtx): Promise<vo
   const candidateClientIds = [...new Set(candidates.map((c) => c.client_id))];
   const { data: automationRows, error: autoErr } = await svc
     .from("instagram_comment_automations")
-    .select("id, conta_id, client_id, ig_media_id, keywords, dm_message, public_reply, created_at")
+    .select(
+      "id, conta_id, client_id, ig_media_id, workflow_post_id, keywords, dm_message, public_reply, created_at",
+    )
     .eq("ativo", true)
     .in("client_id", candidateClientIds);
   if (autoErr) throw new Error(`instagram_comment_automations: ${errMessage(autoErr)}`);
@@ -237,9 +246,9 @@ async function processRow(svc: DbClient, row: EventRow, ctx: RowCtx): Promise<vo
     );
   }
   const resolvedMediaId = mediaId ?? null;
-  const automations = automationsAll.filter(
-    (a) => a.ig_media_id === null || a.ig_media_id === resolvedMediaId,
-  );
+  // Alvo: específico/ligado casa só a própria mídia, "todos os posts" casa
+  // qualquer uma e pendente (post interno ainda não publicado) nunca casa.
+  const automations = automationsAll.filter((a) => targetMatches(a, resolvedMediaId));
 
   // 4. comment_created_at: timestamp do value, senão do GET, senão o instante
   // do processamento como aproximação conservadora.
@@ -333,6 +342,7 @@ async function processRow(svc: DbClient, row: EventRow, ctx: RowCtx): Promise<vo
     comment_id: row.comment_id,
     automation_id: winner.id,
     conta_id: winner.conta_id,
+    media_id: resolvedMediaId,
     commenter_id: commenterId,
     comment_created_at: commentCreatedAt,
     dm_status: null,
@@ -390,7 +400,7 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
   // precisa seguir apta. Usa os valores ATUAIS (edições valem até o envio real).
   const { data: automationData, error: autoErr } = await ctx.svc
     .from("instagram_comment_automations")
-    .select("ativo, dm_message, public_reply, client_id")
+    .select("ativo, dm_message, public_reply, client_id, ig_media_id, workflow_post_id")
     .eq("id", send.automation_id)
     .maybeSingle();
   if (autoErr) throw new Error(`instagram_comment_automations (revalidação): ${errMessage(autoErr)}`);
@@ -402,6 +412,21 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
       .update({ status: "skipped", skip_reason: "automation_inactive" })
       .eq("id", send.send_id);
     if (error) throw new Error(`instagram_automation_sends (skipped): ${errMessage(error)}`);
+    return;
+  }
+
+  // 1b. Revalidação de ALVO. O matching roda ANTES do claim: uma automação
+  // "todos os posts" que ganhou um send em retry e foi trocada para um alvo
+  // específico (ou para um post interno ainda não publicado) mandaria a DM
+  // assim mesmo. Só vale enquanto o DM NÃO saiu -- um DM já entregue não é
+  // des-entregável, e nesse caso o retry apenas completa a resposta pública
+  // como configurado.
+  if (send.dm_status !== "sent" && !targetMatches(automation, send.media_id)) {
+    const { error } = await ctx.svc
+      .from("instagram_automation_sends")
+      .update({ status: "skipped", skip_reason: "target_changed" })
+      .eq("id", send.send_id);
+    if (error) throw new Error(`instagram_automation_sends (target_changed): ${errMessage(error)}`);
     return;
   }
 
