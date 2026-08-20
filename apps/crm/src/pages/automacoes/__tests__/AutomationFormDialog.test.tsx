@@ -151,9 +151,24 @@ vi.mock('@/components/ui/dialog', async () => {
     );
   }
 
-  function DialogContent({ children }: { children: ReactNode; onConfirmClose?: () => void }) {
+  // className/overlayClassName are surfaced (rather than dropped) so the
+  // stacking-order contract above the Entregas drawer is assertable in jsdom.
+  function DialogContent({
+    children,
+    className,
+    overlayClassName,
+  }: {
+    children: ReactNode;
+    className?: string;
+    overlayClassName?: string;
+    onConfirmClose?: () => void;
+  }) {
     const { open } = ReactModule.useContext(DialogContext);
-    return open ? <div role="dialog">{children}</div> : null;
+    return open ? (
+      <div role="dialog" className={className} data-overlay-class={overlayClassName}>
+        {children}
+      </div>
+    ) : null;
   }
 
   function DialogHeader({ children }: { children: ReactNode }) {
@@ -251,6 +266,7 @@ function renderDialog(
   onSaved = vi.fn(),
   editing: InstagramCommentAutomation | null = null,
   initialTarget?: { clientId: number; target: SelectedTarget },
+  elevated?: boolean,
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return {
@@ -263,6 +279,7 @@ function renderDialog(
             onOpenChange={vi.fn()}
             editing={editing}
             initialTarget={initialTarget}
+            elevated={elevated}
             onSaved={onSaved}
           />
         </MemoryRouter>
@@ -685,6 +702,26 @@ describe('AutomationFormDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'form.next' }));
 
     expect(await screen.findByRole('button', { name: 'Post fora do feed' })).toBeTruthy();
+  });
+
+  // ── Stacking above the Entregas drawer ────────────────────────────────────
+
+  it('lifts overlay and content above the drawer when opened elevated', async () => {
+    renderDialog(vi.fn(), null, undefined, true);
+
+    const content = await screen.findByRole('dialog');
+    // .drawer-panel is z-index 9001 and .drawer-overlay 9000; the default z-50
+    // leaves the dialog buried under both.
+    expect(content.className).toContain('z-[9005]');
+    expect(content.getAttribute('data-overlay-class')).toBe('z-[9005]');
+  });
+
+  it('keeps the default stacking on the Automações page, which has no drawer', async () => {
+    renderDialog();
+
+    const content = await screen.findByRole('dialog');
+    expect(content.className).not.toContain('z-[');
+    expect(content.getAttribute('data-overlay-class')).toBeNull();
   });
 
   it('leaves the dialog untouched when no initialTarget is given', async () => {

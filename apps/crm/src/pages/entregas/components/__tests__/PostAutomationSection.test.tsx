@@ -32,15 +32,18 @@ vi.mock('@/pages/automacoes/AutomationFormDialog', () => ({
     open,
     editing,
     initialTarget,
+    elevated,
   }: {
     open: boolean;
     editing: InstagramCommentAutomation | null;
     initialTarget?: unknown;
+    elevated?: boolean;
   }) =>
     open ? (
       <div data-testid="automation-dialog">
         <span data-testid="dialog-editing">{editing?.id ?? 'none'}</span>
         <span data-testid="dialog-initial-target">{JSON.stringify(initialTarget ?? null)}</span>
+        <span data-testid="dialog-elevated">{String(elevated ?? false)}</span>
       </div>
     ) : null,
 }));
@@ -297,6 +300,18 @@ describe('PostAutomationSection', () => {
     expect(
       JSON.parse(screen.getByTestId('dialog-initial-target').textContent!).target.media_caption,
     ).toBe('Carrossel de agosto');
+  });
+
+  it('always asks the dialog to stack above the drawer it lives in', async () => {
+    mockGetAutomationsForPost.mockResolvedValue([makeAutomation()]);
+    renderSection();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'postSection.createForPost' }));
+    expect((await screen.findByTestId('dialog-elevated')).textContent).toBe('true');
+
+    // Same on the edit path: both open on top of the drawer panel.
+    fireEvent.click(screen.getByRole('button', { name: /Promo de agosto/ }));
+    expect((await screen.findByTestId('dialog-elevated')).textContent).toBe('true');
   });
 
   it('opens an existing automation in edit mode, without a seeded target', async () => {

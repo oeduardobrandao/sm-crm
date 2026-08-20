@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { cn } from '@/lib/utils';
 import { sanitizeUrl } from '@/utils/security';
 import { useAuth } from '../../context/AuthContext';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
@@ -40,6 +41,19 @@ import {
   type InstagramCommentAutomation,
   type IgAccountStatus,
 } from '../../store';
+
+/**
+ * Stacking for the copy opened from inside the Entregas drawer. The default
+ * `z-50` of DialogContent/DialogOverlay leaves the dialog buried under
+ * `.drawer-panel` (z-index 9001) and `.drawer-overlay` (9000): it opens, it is
+ * focused, and the user sees nothing.
+ *
+ * 9005 and not the AlertDialog layer's 9010/9011: this dialog renders its own
+ * unsaved-changes AlertDialog, which lives at exactly those two values. Sitting
+ * at 9011 would put the form above the guard's own overlay. Same value, same
+ * reason, as ThumbnailPickerDialog and PostMediaLightbox.
+ */
+const DRAWER_ELEVATED_Z = 'z-[9005]';
 
 const POSTS_PAGE_SIZE = 10;
 /** The production list arrives unpaginated, so it is chunked client-side. */
@@ -342,6 +356,7 @@ export default function AutomationFormDialog({
   onOpenChange,
   editing,
   initialTarget,
+  elevated,
   onSaved,
 }: {
   open: boolean;
@@ -351,6 +366,9 @@ export default function AutomationFormDialog({
    * editor's entry point). Ignored while `editing`, which carries its own
    * target. */
   initialTarget?: { clientId: number; target: SelectedTarget } | null;
+  /** Set by callers that render inside the Entregas drawer, whose panel
+   * out-stacks the dialog's default z-50. See DRAWER_ELEVATED_Z. */
+  elevated?: boolean;
   onSaved: () => void;
 }) {
   const { t } = useTranslation('automations');
@@ -655,7 +673,8 @@ export default function AutomationFormDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-xl"
+        className={cn('max-w-xl', elevated && DRAWER_ELEVATED_Z)}
+        overlayClassName={elevated ? DRAWER_ELEVATED_Z : undefined}
         onConfirmClose={() => onOpenChange(false)}
         confirmClose={
           form.name.trim() !== '' || form.keywords.length > 0 || form.dmMessage.trim() !== ''

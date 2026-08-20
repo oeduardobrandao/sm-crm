@@ -214,6 +214,9 @@ export function PostAutomationSection({
             editing={editing}
             // An edit carries its own target; only a creation gets seeded.
             initialTarget={editing ? null : initialTarget}
+            // This section lives inside the drawer panel, which out-stacks the
+            // dialog's default z-50 and would swallow it whole.
+            elevated
             onSaved={() => {
               setDialogOpen(false);
               // Prefix match: covers this post's key whatever media id it carries.
