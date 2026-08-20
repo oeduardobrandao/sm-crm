@@ -329,3 +329,240 @@ begin
   raise notice 'PASS 65 claim_automation_send no-double-DM (claimed/cooldown/duplicate)';
 end $$;
 rollback;
+
+-- 7. dm_buttons (migration 20260819000001): CHECK de forma via
+--    validate_ig_dm_buttons + limite de 640 chars em dm_message quando há
+--    botão. O insert VÁLIDO roda como authenticated de propósito: prova que
+--    a função de CHECK é executável pelo role da API (ela NÃO leva o
+--    REVOKE/GRANT do padrão de RPC da casa; revogar quebraria todo
+--    INSERT/UPDATE com 42501).
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid;
+  v_owner uuid := gen_random_uuid();
+  v_cli bigint;
+  v_auto uuid;
+  v_buttons jsonb;
+  v_rejected boolean;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_instagram_automation": true}'::jsonb);
+
+  insert into auth.users (id) values (v_owner);
+  insert into workspace_members (user_id, workspace_id, role) values (v_owner, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws, role = 'owner'
+    where id = v_owner;
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_owner, v_ws, 'C', 'C', '#000') returning id into v_cli;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+
+  -- (a) Válido: 3 botões + dm_message de exatamente 640 chars, como authenticated.
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+    values (v_ws, v_cli, 'Botões', array['promo'], repeat('a', 640),
+      '[{"title":"Agendar","url":"https://agenda.x"},
+        {"title":"WhatsApp","url":"https://wa.me/55"},
+        {"title":"Site","url":"https://site.x"}]'::jsonb)
+    returning id, dm_buttons into v_auto, v_buttons;
+  assert jsonb_array_length(v_buttons) = 3, 'insert válido com 3 botões deve passar';
+
+  -- (b) 4 botões -> check_violation
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+      values (v_ws, v_cli, 'Quatro', array['x'], 'msg',
+        '[{"title":"1","url":"https://a.b"},{"title":"2","url":"https://a.b"},
+          {"title":"3","url":"https://a.b"},{"title":"4","url":"https://a.b"}]'::jsonb);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, '4 botões devem ser rejeitados';
+
+  -- (c) URL sem http(s) -> check_violation
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+      values (v_ws, v_cli, 'Ftp', array['x'], 'msg',
+        '[{"title":"Ftp","url":"ftp://a.b"}]'::jsonb);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'URL sem http(s) deve ser rejeitada';
+
+  -- (d) título com 21 chars -> check_violation
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+      values (v_ws, v_cli, 'Longo', array['x'], 'msg',
+        jsonb_build_array(jsonb_build_object('title', repeat('t', 21), 'url', 'https://a.b')));
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'título de 21 chars deve ser rejeitado';
+
+  -- (e) chave extra no objeto -> check_violation
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+      values (v_ws, v_cli, 'Extra', array['x'], 'msg',
+        '[{"title":"Ok","url":"https://a.b","payload":"x"}]'::jsonb);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'chave extra no objeto do botão deve ser rejeitada';
+
+  -- (f) objeto vazio -> check_violation (regressão do coalesce por item:
+  --     bool_and ignora NULLs; sem o coalesce(false) um {} passaria)
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+      values (v_ws, v_cli, 'Vazio', array['x'], 'msg', '[{}]'::jsonb);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'objeto vazio deve ser rejeitado';
+
+  -- (f2) valor não-array e elemento não-objeto -> check_violation LIMPO
+  --      (23514), nunca 22023: o CASE em validate_ig_dm_buttons garante a
+  --      ordem dos type-guards (AND não garante short-circuit no Postgres).
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+      values (v_ws, v_cli, 'Escalar', array['x'], 'msg', '"not-an-array"'::jsonb);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'valor não-array deve cair no CHECK (23514), não em 22023';
+
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+      values (v_ws, v_cli, 'String', array['x'], 'msg', '["just-a-string"]'::jsonb);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'elemento não-objeto deve cair no CHECK (23514), não em 22023';
+
+  -- (f3) URL com userinfo (phishing) -> check_violation; @ no PATH é válido
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+      values (v_ws, v_cli, 'Phish', array['x'], 'msg',
+        '[{"title":"Login","url":"https://accounts.instagram.com@evil.example/x"}]'::jsonb);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'URL com userinfo deve ser rejeitada';
+
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+      values (v_ws, v_cli, 'Backslash', array['x'], 'msg',
+        jsonb_build_array(jsonb_build_object('title', 'Login', 'url', 'https://good.com' || chr(92) || '@evil.com/x')));
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'URL com barra invertida deve ser rejeitada';
+
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+    values (v_ws, v_cli, 'Perfil', array['perfil'], 'msg',
+      '[{"title":"Perfil","url":"https://instagram.com/@handle"}]'::jsonb);
+
+  -- (g) dm_message 641 chars COM botão -> check_violation (limite do template)
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+      values (v_ws, v_cli, 'Grande', array['x'], repeat('a', 641),
+        '[{"title":"Ok","url":"https://a.b"}]'::jsonb);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'dm_message de 641 chars com botão deve ser rejeitada';
+
+  -- (h) dm_message 641 chars SEM botão segue válida (CHECK original 1..1000)
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message)
+    values (v_ws, v_cli, 'Texto', array['y'], repeat('a', 641));
+
+  reset role;
+  raise notice 'PASS 65 dm_buttons CHECKs (forma, 640, EXECUTE como authenticated)';
+end $$;
+rollback;
+
+-- 8. mark_automation_dm_sent(p_send_id, p_dm_kind): grava dm_kind SÓ na
+--    transição dm_status -> 'sent' (idempotência preservada); kind inválido
+--    cai no CHECK da coluna. Roda como table owner (stand-in do service role,
+--    como as seções 4 e 6).
+begin;
+do $$
+declare
+  v_ws uuid;
+  v_uid uuid := gen_random_uuid();
+  v_cli bigint;
+  v_auto uuid;
+  v_send uuid;
+  v_marked boolean;
+  v_kind text;
+  v_count int;
+  v_rejected boolean;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_instagram_automation": true}'::jsonb);
+  insert into auth.users (id) values (v_uid);
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+    values (v_ws, v_cli, 'Promo', array['preco'], 'msg',
+      '[{"title":"Link","url":"https://a.b"}]'::jsonb)
+    returning id into v_auto;
+  select send_id into v_send
+    from claim_automation_send('C1', v_auto, v_ws, 'media-1', 'commenter-U', 'user_u', 'oi', now());
+
+  -- (a) transição: grava dm_kind e incrementa o contador
+  select mark_automation_dm_sent(v_send, 'buttons') into v_marked;
+  assert v_marked, 'primeira chamada deve reportar a transição';
+  select dm_kind into v_kind from instagram_automation_sends where id = v_send;
+  assert v_kind = 'buttons', format('dm_kind deve ser buttons, veio %s', v_kind);
+  select dms_sent_count into v_count from instagram_comment_automations where id = v_auto;
+  assert v_count = 1, format('contador deve ser 1, veio %s', v_count);
+
+  -- (b) rechamada com outro kind: idempotente, NÃO regrava dm_kind nem conta
+  select mark_automation_dm_sent(v_send, 'text') into v_marked;
+  assert not v_marked, 'rechamada não deve reportar transição';
+  select dm_kind into v_kind from instagram_automation_sends where id = v_send;
+  assert v_kind = 'buttons', 'dm_kind não pode mudar fora da transição';
+  select dms_sent_count into v_count from instagram_comment_automations where id = v_auto;
+  assert v_count = 1, 'contador não pode incrementar fora da transição';
+
+  -- (c) kind inválido em outra linha -> check_violation da coluna
+  update instagram_automation_sends set dm_status = null where id = v_send;
+  v_rejected := false;
+  begin
+    perform mark_automation_dm_sent(v_send, 'carrier_pigeon');
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'dm_kind inválido deve cair no CHECK';
+
+  raise notice 'PASS 65 mark_automation_dm_sent dm_kind (transição única + CHECK)';
+end $$;
+rollback;

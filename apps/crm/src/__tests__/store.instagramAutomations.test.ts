@@ -107,6 +107,7 @@ describe('store instagram automations', () => {
       media_caption: 'Legenda do post',
       keywords: ['quero', 'link'],
       dm_message: 'Oi! Aqui está o link.',
+      dm_buttons: [{ title: 'Agendar', url: 'https://agenda.x' }],
       public_reply: 'Te chamei no direct!',
     });
 
@@ -117,6 +118,7 @@ describe('store instagram automations', () => {
       name: 'Promo verão',
       keywords: ['quero', 'link'],
       dm_message: 'Oi! Aqui está o link.',
+      dm_buttons: [{ title: 'Agendar', url: 'https://agenda.x' }],
       conta_id: 'conta-1',
     });
   });

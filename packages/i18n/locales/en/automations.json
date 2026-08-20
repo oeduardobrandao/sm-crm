@@ -12,7 +12,9 @@
     "keywords": "Keywords",
     "dmsSent": "DMs sent",
     "lastTriggered": "Last triggered",
-    "active": "Active"
+    "active": "Active",
+    "buttonsCount_one": "{{count}} button",
+    "buttonsCount_other": "{{count}} buttons"
   },
   "emptyNone": "No automations yet.",
   "emptyForClient": "No automations for this client.",
@@ -38,7 +40,8 @@
     "failed": "Failed",
     "skipped": "Skipped",
     "retry": "Retrying",
-    "processing": "Processing"
+    "processing": "Processing",
+    "buttons_fallback_text": "sent as text"
   },
   "sendsLoadError": "Could not load the send log.",
   "sendsEmpty": "No sends recorded yet.",
@@ -80,6 +83,22 @@
     "validationName": "Give the automation a name",
     "validationPost": "Pick a post",
     "validationKeyword": "Add at least one keyword",
-    "validationDm": "Write the direct message"
+    "validationDm": "Write the direct message",
+    "buttonsLabel": "Buttons (optional)",
+    "buttonsHelp": "Up to 3 buttons that open a link. With buttons, the DM text is limited to 640 characters.",
+    "addButton": "Add button",
+    "buttonTitleLabel": "Button title",
+    "buttonUrlLabel": "Button URL",
+    "removeButton": "Remove button",
+    "validationButtonTitle": "Each button needs a title of 1 to 20 characters.",
+    "validationButtonUrl": "The button URL must start with https:// and have at most 500 characters.",
+    "validationButtonsMax": "At most 3 buttons per automation.",
+    "validationDmWithButtons": "With buttons, the DM message is limited to 640 characters. Shorten the text or remove the buttons.",
+    "previewTitle": "DM preview",
+    "previewAccount": "Your account",
+    "previewEmpty": "Your message will appear here.",
+    "previewDesktopNote": "Buttons show in the Instagram app. On Instagram web they may not be displayed.",
+    "previewNow": "Now",
+    "previewComposer": "Reply..."
   }
 }

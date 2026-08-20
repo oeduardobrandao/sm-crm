@@ -59,11 +59,11 @@ function routedFetch(handlers: {
   fetchComment?: RouteHandler;
   fetchReplies?: RouteHandler;
 }) {
-  const calls: Array<{ method: string; url: string }> = [];
+  const calls: Array<{ method: string; url: string; body?: string }> = [];
   const fetchFn = (async (input: unknown, init?: RequestInit) => {
     const url = String(input);
     const method = (init?.method ?? "GET").toUpperCase();
-    calls.push({ method, url });
+    calls.push({ method, url, body: typeof init?.body === "string" ? init.body : undefined });
 
     let handler: RouteHandler | undefined;
     if (method === "POST" && url.includes("/messages")) handler = handlers.privateReply;
@@ -1072,3 +1072,166 @@ Deno.test(
     );
   },
 );
+
+// ══════════════════════ executeSend: dm_buttons (button template) ═════════
+
+const BUTTONS_FIXTURE = [{ title: "Agendar", url: "https://agenda.x" }];
+const TEMPLATE_BODY = {
+  recipient: { comment_id: COMMENT_ID },
+  message: {
+    attachment: {
+      type: "template",
+      payload: {
+        template_type: "button",
+        text: "Escolha:",
+        buttons: [{ type: "web_url", url: "https://agenda.x", title: "Agendar" }],
+      },
+    },
+  },
+};
+
+function buttonsAutomationSelect(db: Db) {
+  db.queue("instagram_comment_automations", "select", {
+    data: {
+      ativo: true,
+      dm_message: "Escolha:",
+      dm_buttons: BUTTONS_FIXTURE,
+      public_reply: null,
+      client_id: CLIENT_ID,
+    },
+    error: null,
+  });
+}
+
+Deno.test("executeSend: dm_buttons -> POST com button template exato e p_dm_kind='buttons'", async () => {
+  const db = createSupabaseQueryMock();
+  buttonsAutomationSelect(db);
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  const { fetchFn, calls: fetchCalls } = routedFetch({
+    privateReply: () => ({ body: { message_id: "m1" } }),
+  });
+
+  await executeSend(baseSendCtx(db, { fetchFn }), baseClaimedSend());
+
+  const dmCalls = fetchCalls.filter((c) => c.method === "POST" && c.url.includes("/messages"));
+  assertEquals(dmCalls.length, 1);
+  assertEquals(JSON.parse(dmCalls[0].body ?? "null"), TEMPLATE_BODY);
+
+  const marks = rpcCallsFor(db, "mark_automation_dm_sent");
+  assertEquals(marks.length, 1);
+  assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "buttons" });
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "sent" });
+});
+
+Deno.test("executeSend: template recusado (permanent) -> fallback texto no 2º POST, p_dm_kind='buttons_fallback_text'", async () => {
+  const db = createSupabaseQueryMock();
+  buttonsAutomationSelect(db);
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  let attempt = 0;
+  const { fetchFn, calls: fetchCalls } = routedFetch({
+    privateReply: () =>
+      ++attempt === 1
+        ? { status: 400, ok: false, body: { error: { message: "unsupported message payload", code: 100 } } }
+        : { body: { message_id: "m2" } },
+  });
+
+  await executeSend(baseSendCtx(db, { fetchFn }), baseClaimedSend());
+
+  const dmCalls = fetchCalls.filter((c) => c.method === "POST" && c.url.includes("/messages"));
+  assertEquals(dmCalls.length, 2);
+  assertEquals(JSON.parse(dmCalls[0].body ?? "null"), TEMPLATE_BODY);
+  assertEquals(JSON.parse(dmCalls[1].body ?? "null"), {
+    recipient: { comment_id: COMMENT_ID },
+    message: { text: "Escolha:\n\nAgendar: https://agenda.x" },
+  });
+
+  const marks = rpcCallsFor(db, "mark_automation_dm_sent");
+  assertEquals(marks.length, 1);
+  assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "buttons_fallback_text" });
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "sent" });
+});
+
+Deno.test("executeSend: permanent no template E no fallback -> failed/dm_permanent com exatamente 2 POSTs", async () => {
+  const db = createSupabaseQueryMock();
+  buttonsAutomationSelect(db);
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  const { fetchFn, calls: fetchCalls } = routedFetch({
+    privateReply: () => ({ status: 400, ok: false, body: { error: { message: "no can do", code: 100 } } }),
+  });
+
+  await executeSend(baseSendCtx(db, { fetchFn }), baseClaimedSend());
+
+  const dmCalls = fetchCalls.filter((c) => c.method === "POST" && c.url.includes("/messages"));
+  assertEquals(dmCalls.length, 2, "template + fallback, nada além");
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "failed", error_code: "dm_permanent" });
+  assertEquals(rpcCallsFor(db, "mark_automation_dm_sent").length, 0);
+});
+
+Deno.test("executeSend: transient no template -> retry SEM tentar o fallback (1 POST)", async () => {
+  const db = createSupabaseQueryMock();
+  buttonsAutomationSelect(db);
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  const { fetchFn, calls: fetchCalls } = routedFetch({
+    privateReply: () => ({ status: 500, ok: false, body: { error: { message: "temporary", code: 4 } } }),
+  });
+
+  await executeSend(baseSendCtx(db, { fetchFn }), baseClaimedSend({ attempts: 0 }));
+
+  const dmCalls = fetchCalls.filter((c) => c.method === "POST" && c.url.includes("/messages"));
+  assertEquals(dmCalls.length, 1, "transient NÃO dispara o fallback; o retry recomeça do template");
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, {
+    status: "retry",
+    next_attempt_at: new Date(FIXED_NOW.getTime() + BACKOFF_SECONDS[0] * 1000).toISOString(),
+    attempts: 1,
+  });
+});
+
+Deno.test("executeSend: sem dm_buttons -> body de texto puro e p_dm_kind='text'", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: { ativo: true, dm_message: "msg", public_reply: null, client_id: CLIENT_ID },
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  const { fetchFn, calls: fetchCalls } = routedFetch({
+    privateReply: () => ({ body: { message_id: "m1" } }),
+  });
+
+  await executeSend(baseSendCtx(db, { fetchFn }), baseClaimedSend());
+
+  const dmCalls = fetchCalls.filter((c) => c.method === "POST" && c.url.includes("/messages"));
+  assertEquals(dmCalls.length, 1);
+  assertEquals(JSON.parse(dmCalls[0].body ?? "null"), {
+    recipient: { comment_id: COMMENT_ID },
+    message: { text: "msg" },
+  });
+
+  const marks = rpcCallsFor(db, "mark_automation_dm_sent");
+  assertEquals(marks.length, 1);
+  assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "text" });
+});
