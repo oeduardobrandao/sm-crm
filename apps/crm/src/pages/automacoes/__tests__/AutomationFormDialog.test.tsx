@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -240,15 +240,25 @@ const POST = {
   instagram_post_id: '17900000000000001',
 };
 
+/** 15 eligible posts, so the client-side pagination spans two blocks of 12. */
+const MANY_PRODUCTION = Array.from({ length: 15 }, (_, i) =>
+  productionPost({ id: 700 + i, titulo: `Post ${i + 1}` }),
+);
+/** The 13th eligible post -- first card of the second page. */
+const THIRTEENTH = MANY_PRODUCTION[12];
+
 function renderDialog(onSaved = vi.fn(), editing: InstagramCommentAutomation | null = null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={qc}>
-      <MemoryRouter>
-        <AutomationFormDialog open onOpenChange={vi.fn()} editing={editing} onSaved={onSaved} />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+  return {
+    qc,
+    ...render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <AutomationFormDialog open onOpenChange={vi.fn()} editing={editing} onSaved={onSaved} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 /** Fills the fields the submit validation requires, leaving the target alone. */
@@ -379,6 +389,57 @@ describe('AutomationFormDialog', () => {
     expect(
       (screen.getByRole('radio', { name: 'form.targetPost' }) as HTMLInputElement).checked,
     ).toBe(true);
+  });
+
+  it('opens on the page that actually holds the seeded target, not page 1', async () => {
+    mockGetClientePosts.mockResolvedValue(MANY_PRODUCTION);
+    renderDialog(vi.fn(), {
+      ...EDITING_BASE,
+      workflow_post_id: THIRTEENTH.id,
+      media_caption: THIRTEENTH.titulo,
+    });
+
+    const card = await screen.findByRole('button', { name: 'Post 13' });
+    expect(card.getAttribute('aria-pressed')).toBe('true');
+    // Page 2 is showing, so the first block is off screen.
+    expect(screen.queryByRole('button', { name: 'Post 1' })).toBeNull();
+  });
+
+  it('pins the seeded target to the top when it dropped out of the eligible list', async () => {
+    // 999 is in no page of the list: derived to stories/tiktok, or its workflow
+    // left 'ativo' (getClientePosts only returns active workflows).
+    renderDialog(vi.fn(), {
+      ...EDITING_BASE,
+      workflow_post_id: 999,
+      media_caption: 'Post arquivado',
+    });
+
+    const pinned = await screen.findByRole('button', { name: 'Post arquivado' });
+    expect(pinned.getAttribute('aria-pressed')).toBe('true');
+    // The regular grid still renders underneath, so retargeting stays possible.
+    expect(screen.getByRole('button', { name: 'Carrossel de agosto' })).toBeTruthy();
+  });
+
+  it('does not drag the user back to the seeded page after they paginate', async () => {
+    mockGetClientePosts.mockResolvedValue(MANY_PRODUCTION);
+    const { qc } = renderDialog(vi.fn(), {
+      ...EDITING_BASE,
+      workflow_post_id: THIRTEENTH.id,
+      media_caption: THIRTEENTH.titulo,
+    });
+
+    await screen.findByRole('button', { name: 'Post 13' });
+    fireEvent.click(screen.getByRole('button', { name: 'form.previous' }));
+    expect(await screen.findByRole('button', { name: 'Post 1' })).toBeTruthy();
+
+    // A refetch hands the effect a brand new list identity -- the seed must stay
+    // spent, or the user gets yanked off the page they just chose.
+    await act(async () => {
+      await qc.invalidateQueries({ queryKey: ['clientePosts', 7] });
+    });
+
+    expect(screen.getByRole('button', { name: 'Post 1' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Post 13' })).toBeNull();
   });
 
   it('blocks submit on a tombstoned automation until a new target is picked', async () => {

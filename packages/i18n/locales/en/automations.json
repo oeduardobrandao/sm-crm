@@ -63,6 +63,7 @@
     "targetAria": "Automation target",
     "targetAll": "All posts",
     "targetPost": "Specific post",
+    "targetSourceLabel": "Post source",
     "targetSourceProduction": "In production",
     "targetSourcePublished": "Published",
     "selectClientForPosts": "Select a client to see their posts.",

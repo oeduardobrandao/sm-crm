@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -139,6 +139,89 @@ function seedTarget(editing: InstagramCommentAutomation): {
   return { targetMode: 'todos', targetSource: 'production', selectedPost: null };
 }
 
+/** One tile of the "Em produção" grid. Shared by the live list and by the pinned
+ * card that stands in for a target which has dropped out of that list, so the two
+ * are visually identical by construction. */
+function ProductionCard({
+  titulo,
+  tipoLabel,
+  imageUrl,
+  selected,
+  onSelect,
+}: {
+  titulo: string;
+  /** Omitted for the pinned card: the seed carries a titulo and nothing else. */
+  tipoLabel: string | null;
+  imageUrl: string | null;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      // The cover is decorative (alt=""), so the titulo has to carry the
+      // accessible name either way.
+      aria-label={titulo}
+      style={{
+        position: 'relative',
+        aspectRatio: '1',
+        borderRadius: 8,
+        overflow: 'hidden',
+        border: selected ? '2px solid var(--primary-color)' : '1px solid var(--border-color)',
+        padding: 0,
+        cursor: 'pointer',
+        background: 'var(--surface-1)',
+      }}
+    >
+      {imageUrl ? (
+        <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ) : (
+        <span
+          className="flex flex-col justify-center h-full"
+          style={{ padding: '0.375rem', gap: 2, textAlign: 'left', overflow: 'hidden' }}
+        >
+          <span
+            style={{
+              fontSize: '0.7rem',
+              lineHeight: 1.2,
+              color: 'var(--text-main)',
+              display: '-webkit-box',
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {titulo}
+          </span>
+          {tipoLabel && (
+            <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{tipoLabel}</span>
+          )}
+        </span>
+      )}
+      {selected && (
+        <span
+          style={{
+            position: 'absolute',
+            top: 3,
+            right: 3,
+            background: 'var(--primary-color)',
+            borderRadius: '50%',
+            width: 16,
+            height: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Check className="h-2.5 w-2.5" style={{ color: '#fff' }} />
+        </span>
+      )}
+    </button>
+  );
+}
+
 export default function AutomationFormDialog({
   open,
   onOpenChange,
@@ -157,6 +240,10 @@ export default function AutomationFormDialog({
   const [form, setForm] = useState(emptyState);
   const [postsPage, setPostsPage] = useState(1);
   const [productionPage, setProductionPage] = useState(1);
+  /** One-shot: the production page is derived from the seeded target exactly
+   * once per dialog opening, and never again -- a refetch must not yank the user
+   * off the page they just paged to. */
+  const productionPageSeededRef = useRef(false);
 
   // Re-seed the form only when the dialog transitions to open, from
   // `editing` (edit) or a blank slate (create) -- not on every render, or
@@ -178,6 +265,7 @@ export default function AutomationFormDialog({
     }
     setPostsPage(1);
     setProductionPage(1);
+    productionPageSeededRef.current = false;
   }, [open, editing]);
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
@@ -236,6 +324,33 @@ export default function AutomationFormDialog({
     (safeProductionPage - 1) * PRODUCTION_PAGE_SIZE,
     safeProductionPage * PRODUCTION_PAGE_SIZE,
   );
+
+  const seededTarget = form.selectedPost?.kind === 'production' ? form.selectedPost : null;
+
+  // The seeded target can sit on any block of the client-side pagination, so
+  // jump to the one that holds it the first time the list lands. Without this the
+  // dialog opens on page 1 with nothing highlighted, which reads as "no target"
+  // and invites an accidental retarget on the next click.
+  useEffect(() => {
+    if (productionPageSeededRef.current || !productionQuery.isSuccess) return;
+    // Spend the seed on the first list we see, whether or not it contains the
+    // target -- from here on the page is the user's to choose.
+    productionPageSeededRef.current = true;
+    if (!seededTarget) return;
+    const index = productionPosts.findIndex((p) => p.id === seededTarget.workflow_post_id);
+    if (index >= 0) setProductionPage(Math.floor(index / PRODUCTION_PAGE_SIZE) + 1);
+  }, [productionQuery.isSuccess, productionPosts, seededTarget]);
+
+  // A seeded target can be missing from the eligible list entirely: the post may
+  // have derived into stories/tiktok, or its workflow left 'ativo' (getClientePosts
+  // only returns active workflows). Rebuild a card from the seed alone -- no extra
+  // request -- so the current target stays visible instead of reading as "none".
+  const orphanTarget =
+    seededTarget &&
+    productionQuery.isSuccess &&
+    !productionPosts.some((p) => p.id === seededTarget.workflow_post_id)
+      ? seededTarget
+      : null;
 
   // react-query hashes the key structurally, so a fresh array each render is fine.
   const productionIds = pagedProductionPosts.map((p) => p.id);
@@ -344,6 +459,17 @@ export default function AutomationFormDialog({
       selectedPost: { kind: 'production', workflow_post_id: post.id, titulo: post.titulo },
     }));
 
+  /** Re-asserts the pinned target. Idempotent: it is already the selection, so
+   * clicking its card is a no-op, while clicking any other card retargets. */
+  const selectSeededTarget = (target: SelectedTarget) =>
+    setForm((f) => ({ ...f, selectedPost: target }));
+
+  /** Paging by hand also spends the seed, in case the list only lands afterwards. */
+  const goToProductionPage = (page: number) => {
+    productionPageSeededRef.current = true;
+    setProductionPage(page);
+  };
+
   const submit = () => {
     if (form.clientId === '') {
       toast.error(t('form.validationClient'));
@@ -413,6 +539,9 @@ export default function AutomationFormDialog({
                 }));
                 setPostsPage(1);
                 setProductionPage(1);
+                // A different client means a different list; the (now cleared)
+                // target has nothing left to seed.
+                productionPageSeededRef.current = true;
               }}
             >
               <SelectTrigger aria-label={t('form.clientAria')}>
@@ -513,6 +642,7 @@ export default function AutomationFormDialog({
                 <div style={{ marginTop: 8 }}>
                   <ToggleGroup
                     type="single"
+                    aria-label={t('form.targetSourceLabel')}
                     value={form.targetSource}
                     onValueChange={(v) => {
                       if (!v || v === form.targetSource) return;
@@ -540,95 +670,38 @@ export default function AutomationFormDialog({
                           className="grid grid-cols-4 gap-2"
                           style={{ maxHeight: 220, overflowY: 'auto' }}
                         >
+                          {/* The pinned target only exists on page one, above the
+                              live list, and only while it is missing from it. */}
+                          {orphanTarget && safeProductionPage === 1 && (
+                            <ProductionCard
+                              titulo={orphanTarget.titulo}
+                              tipoLabel={null}
+                              imageUrl={null}
+                              selected
+                              onSelect={() => selectSeededTarget(orphanTarget)}
+                            />
+                          )}
                           {pagedProductionPosts.map((post) => {
-                            const selected =
-                              form.selectedPost?.kind === 'production' &&
-                              form.selectedPost.workflow_post_id === post.id;
                             const cover = covers?.get(post.id);
-                            const img =
-                              cover?.kind === 'video'
-                                ? (cover.thumbnail_url ?? null)
-                                : (cover?.url ?? cover?.thumbnail_url ?? null);
                             return (
-                              <button
+                              <ProductionCard
                                 key={post.id}
-                                type="button"
-                                onClick={() => selectProductionPost(post)}
-                                aria-pressed={selected}
-                                // The cover is decorative (alt=""), so the titulo
-                                // has to carry the accessible name either way.
-                                aria-label={post.titulo}
-                                style={{
-                                  position: 'relative',
-                                  aspectRatio: '1',
-                                  borderRadius: 8,
-                                  overflow: 'hidden',
-                                  border: selected
-                                    ? '2px solid var(--primary-color)'
-                                    : '1px solid var(--border-color)',
-                                  padding: 0,
-                                  cursor: 'pointer',
-                                  background: 'var(--surface-1)',
-                                }}
-                              >
-                                {img ? (
-                                  <img
-                                    src={img}
-                                    alt=""
-                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                  />
-                                ) : (
-                                  <span
-                                    className="flex flex-col justify-center h-full"
-                                    style={{
-                                      padding: '0.375rem',
-                                      gap: 2,
-                                      textAlign: 'left',
-                                      overflow: 'hidden',
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        fontSize: '0.7rem',
-                                        lineHeight: 1.2,
-                                        color: 'var(--text-main)',
-                                        display: '-webkit-box',
-                                        WebkitLineClamp: 3,
-                                        WebkitBoxOrient: 'vertical',
-                                        overflow: 'hidden',
-                                      }}
-                                    >
-                                      {post.titulo}
-                                    </span>
-                                    <span
-                                      style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}
-                                    >
-                                      {TIPO_LABELS[post.tipo]}
-                                    </span>
-                                  </span>
-                                )}
-                                {selected && (
-                                  <span
-                                    style={{
-                                      position: 'absolute',
-                                      top: 3,
-                                      right: 3,
-                                      background: 'var(--primary-color)',
-                                      borderRadius: '50%',
-                                      width: 16,
-                                      height: 16,
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                    }}
-                                  >
-                                    <Check className="h-2.5 w-2.5" style={{ color: '#fff' }} />
-                                  </span>
-                                )}
-                              </button>
+                                titulo={post.titulo}
+                                tipoLabel={TIPO_LABELS[post.tipo]}
+                                imageUrl={
+                                  cover?.kind === 'video'
+                                    ? (cover.thumbnail_url ?? null)
+                                    : (cover?.url ?? cover?.thumbnail_url ?? null)
+                                }
+                                selected={
+                                  form.selectedPost?.kind === 'production' &&
+                                  form.selectedPost.workflow_post_id === post.id
+                                }
+                                onSelect={() => selectProductionPost(post)}
+                              />
                             );
                           })}
-                          {productionPosts.length === 0 && (
+                          {productionPosts.length === 0 && !orphanTarget && (
                             <p
                               style={{
                                 gridColumn: '1 / -1',
@@ -650,7 +723,7 @@ export default function AutomationFormDialog({
                               variant="outline"
                               size="sm"
                               disabled={safeProductionPage <= 1}
-                              onClick={() => setProductionPage(safeProductionPage - 1)}
+                              onClick={() => goToProductionPage(safeProductionPage - 1)}
                             >
                               {t('form.previous')}
                             </Button>
@@ -659,7 +732,7 @@ export default function AutomationFormDialog({
                               variant="outline"
                               size="sm"
                               disabled={safeProductionPage >= productionPageCount}
-                              onClick={() => setProductionPage(safeProductionPage + 1)}
+                              onClick={() => goToProductionPage(safeProductionPage + 1)}
                             >
                               {t('form.next')}
                             </Button>

@@ -63,6 +63,7 @@
     "targetAria": "Alvo da automação",
     "targetAll": "Todos os posts",
     "targetPost": "Post específico",
+    "targetSourceLabel": "Origem do post",
     "targetSourceProduction": "Em produção",
     "targetSourcePublished": "Publicados",
     "selectClientForPosts": "Selecione um cliente para ver os posts.",
