@@ -576,6 +576,117 @@ describe('AutomationFormDialog', () => {
     );
   });
 
+  // The published grid is fed by `instagram_posts`, which a DAILY sync fills, so
+  // a post published today is missing from it for up to 24h -- exactly when the
+  // user opens the drawer to arm an automation for it.
+  const OFF_FEED_TARGET: SelectedTarget = {
+    kind: 'published',
+    ig_media_id: '17911111111111111',
+    media_permalink: 'https://instagram.com/p/fora-do-feed',
+    media_caption: 'Post fora do feed',
+    workflow_post_id: 501,
+  };
+
+  it('pins a published target the synced feed has not caught up with yet', async () => {
+    renderDialog(vi.fn(), null, { clientId: 7, target: OFF_FEED_TARGET });
+
+    const pinned = await screen.findByRole('button', { name: 'Post fora do feed' });
+    expect(pinned.getAttribute('aria-pressed')).toBe('true');
+    // The synced grid still renders underneath, so retargeting stays possible.
+    expect(screen.getByRole('link', { name: 'viewPost' }).getAttribute('href')).toBe(
+      'https://instagram.com/p/fora-do-feed',
+    );
+
+    fillNameKeywordAndDm();
+    fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ig_media_id: '17911111111111111',
+        media_permalink: 'https://instagram.com/p/fora-do-feed',
+        media_caption: 'Post fora do feed',
+        workflow_post_id: 501,
+      }),
+    );
+  });
+
+  it('keeps the pinned published target out of the way once the feed does hold it', async () => {
+    renderDialog(vi.fn(), null, {
+      clientId: 7,
+      target: { ...OFF_FEED_TARGET, ig_media_id: POST.instagram_post_id },
+    });
+
+    // The live tile carries the selection; no stand-in is drawn for it.
+    expect(await screen.findByRole('button', { pressed: true })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Post fora do feed' })).toBeNull();
+  });
+
+  it('drops the pinned target the moment another card is picked', async () => {
+    renderDialog(vi.fn(), null, { clientId: 7, target: OFF_FEED_TARGET });
+
+    await screen.findByRole('button', { name: 'Post fora do feed' });
+    fireEvent.click(screen.getByRole('button', { pressed: false }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Post fora do feed' })).toBeNull(),
+    );
+    fillNameKeywordAndDm();
+    fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ ig_media_id: POST.instagram_post_id }),
+    );
+  });
+
+  it('treats a click on the pinned target as a no-op, not a retarget', async () => {
+    renderDialog(vi.fn(), null, { clientId: 7, target: OFF_FEED_TARGET });
+
+    const pinned = await screen.findByRole('button', { name: 'Post fora do feed' });
+    fireEvent.click(pinned);
+
+    expect(
+      screen.getByRole('button', { name: 'Post fora do feed' }).getAttribute('aria-pressed'),
+    ).toBe('true');
+    fillNameKeywordAndDm();
+    fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ ig_media_id: '17911111111111111' }),
+    );
+  });
+
+  it('does not claim "nothing synced" while the pinned target is standing there', async () => {
+    mockGetInstagramPosts.mockResolvedValue({ posts: [], total: 0 });
+    renderDialog(vi.fn(), null, { clientId: 7, target: OFF_FEED_TARGET });
+
+    expect(await screen.findByRole('button', { name: 'Post fora do feed' })).toBeTruthy();
+    expect(screen.queryByText('form.noPostsSynced')).toBeNull();
+  });
+
+  it('pins the target again as soon as the user pages away from it', async () => {
+    mockGetInstagramPosts.mockResolvedValue({ posts: [POST], total: 40 });
+    renderDialog(vi.fn(), null, {
+      clientId: 7,
+      target: { ...OFF_FEED_TARGET, ig_media_id: POST.instagram_post_id },
+    });
+
+    await screen.findByRole('button', { pressed: true });
+    expect(screen.queryByRole('button', { name: 'Post fora do feed' })).toBeNull();
+
+    // Page 2 is server-side and the mock hands back the same single post, which
+    // stands in for "the target is not on this page".
+    mockGetInstagramPosts.mockResolvedValue({
+      posts: [{ ...POST, id: 'other', instagram_post_id: '17922222222222222' }],
+      total: 40,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'form.next' }));
+
+    expect(await screen.findByRole('button', { name: 'Post fora do feed' })).toBeTruthy();
+  });
+
   it('leaves the dialog untouched when no initialTarget is given', async () => {
     renderDialog();
 

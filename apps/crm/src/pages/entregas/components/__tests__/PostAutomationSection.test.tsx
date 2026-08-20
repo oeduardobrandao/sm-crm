@@ -85,24 +85,35 @@ function makeAutomation(over?: Partial<InstagramCommentAutomation>): InstagramCo
   };
 }
 
+function tree(props?: {
+  post?: WorkflowPost;
+  currentUserRole?: 'owner' | 'admin' | 'agent';
+  hasInstagramAccount?: boolean;
+}) {
+  return (
+    <PostAutomationSection
+      post={props?.post ?? makePost()}
+      clienteId={7}
+      currentUserRole={props?.currentUserRole ?? 'owner'}
+      hasInstagramAccount={props?.hasInstagramAccount ?? true}
+    />
+  );
+}
+
 function renderSection(props?: {
   post?: WorkflowPost;
   currentUserRole?: 'owner' | 'admin' | 'agent';
   hasInstagramAccount?: boolean;
 }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const utils = render(<QueryClientProvider client={qc}>{tree(props)}</QueryClientProvider>);
   return {
     qc,
-    ...render(
-      <QueryClientProvider client={qc}>
-        <PostAutomationSection
-          post={props?.post ?? makePost()}
-          clienteId={7}
-          currentUserRole={props?.currentUserRole ?? 'owner'}
-          hasInstagramAccount={props?.hasInstagramAccount ?? true}
-        />
-      </QueryClientProvider>,
-    ),
+    ...utils,
+    /** Re-renders through the SAME QueryClient, so a key change is a real cache
+     * miss rather than a fresh cache. */
+    rerenderWith: (next: Parameters<typeof tree>[0]) =>
+      utils.rerender(<QueryClientProvider client={qc}>{tree(next)}</QueryClientProvider>),
   };
 }
 
@@ -164,6 +175,39 @@ describe('PostAutomationSection', () => {
     await waitFor(() =>
       expect(mockGetAutomationsForPost).toHaveBeenCalledWith(501, '17900000000000001'),
     );
+  });
+
+  it('refetches when the post publishes under an open drawer', async () => {
+    const { rerenderWith } = renderSection();
+
+    await waitFor(() => expect(mockGetAutomationsForPost).toHaveBeenCalledWith(501, null));
+
+    // The media id lives inside the queryFn closure, so it has to be part of the
+    // key too -- otherwise the cache keeps serving the pre-publish list.
+    rerenderWith({ post: makePost({ instagram_media_id: '17900000000000001' }) });
+
+    await waitFor(() =>
+      expect(mockGetAutomationsForPost).toHaveBeenCalledWith(501, '17900000000000001'),
+    );
+    expect(mockGetAutomationsForPost).toHaveBeenCalledTimes(2);
+  });
+
+  it('holds a placeholder instead of the empty hint while the list is loading', async () => {
+    mockGetAutomationsForPost.mockReturnValue(new Promise(() => {}));
+    renderSection();
+
+    expect(await screen.findByText('postSection.loading')).toBeTruthy();
+    expect(screen.queryByText('postSection.emptyHint')).toBeNull();
+  });
+
+  it('says the list failed instead of pretending the post has no automation', async () => {
+    mockGetAutomationsForPost.mockRejectedValue(new Error('boom'));
+    renderSection();
+
+    expect(await screen.findByText('postSection.loadError')).toBeTruthy();
+    expect(screen.queryByText('postSection.emptyHint')).toBeNull();
+    // Creating one is still on the table.
+    expect(screen.getByRole('button', { name: 'postSection.createForPost' })).toBeTruthy();
   });
 
   it('shows the empty hint when the post has no automation yet', async () => {

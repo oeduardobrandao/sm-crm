@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { AlertTriangle, Check, Instagram, X } from 'lucide-react';
+import { AlertTriangle, Check, ExternalLink, Instagram, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { sanitizeUrl } from '@/utils/security';
 import { useAuth } from '../../context/AuthContext';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
 import { getInstagramPosts, type InstagramPostSummary } from '../../services/instagram';
@@ -222,6 +223,120 @@ function ProductionCard({
   );
 }
 
+/** One tile of the "Publicados" grid. Shared by the synced feed and by the
+ * pinned card that stands in for a target the daily `instagram_posts` sync has
+ * not landed yet, so the two are visually identical by construction. */
+function PublishedCard({
+  caption,
+  thumbnailUrl,
+  permalink,
+  permalinkLabel,
+  selected,
+  onSelect,
+}: {
+  /** Accessible name. Null for the synced tiles, whose thumbnail is decorative
+   * and which are identified by position; the pinned card names itself. */
+  caption: string | null;
+  thumbnailUrl: string | null;
+  permalink: string | null;
+  permalinkLabel: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <span style={{ position: 'relative', display: 'block', aspectRatio: '1' }}>
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-pressed={selected}
+        aria-label={caption ?? undefined}
+        style={{
+          width: '100%',
+          height: '100%',
+          borderRadius: 8,
+          overflow: 'hidden',
+          border: selected ? '2px solid var(--primary-color)' : '1px solid var(--border-color)',
+          padding: 0,
+          cursor: 'pointer',
+          background: 'var(--surface-1)',
+        }}
+      >
+        {thumbnailUrl ? (
+          <img
+            src={thumbnailUrl}
+            alt=""
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : caption ? (
+          <span
+            className="flex flex-col justify-center h-full"
+            style={{ padding: '0.375rem', textAlign: 'left', overflow: 'hidden' }}
+          >
+            <span
+              style={{
+                fontSize: '0.7rem',
+                lineHeight: 1.2,
+                color: 'var(--text-main)',
+                display: '-webkit-box',
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}
+            >
+              {caption}
+            </span>
+          </span>
+        ) : (
+          <span className="flex items-center justify-center h-full">
+            <Instagram className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+          </span>
+        )}
+      </button>
+      {selected && (
+        <span
+          style={{
+            position: 'absolute',
+            top: 3,
+            right: 3,
+            background: 'var(--primary-color)',
+            borderRadius: '50%',
+            width: 16,
+            height: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+          }}
+        >
+          <Check className="h-2.5 w-2.5" style={{ color: '#fff' }} />
+        </span>
+      )}
+      {/* Sibling of the button, never nested inside it: an anchor within a
+          button is invalid markup and swallows the click. */}
+      {permalink && (
+        <a
+          href={sanitizeUrl(permalink)}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={permalinkLabel}
+          style={{
+            position: 'absolute',
+            left: 3,
+            bottom: 3,
+            display: 'flex',
+            padding: 2,
+            borderRadius: 4,
+            background: 'var(--surface-main)',
+            color: 'var(--text-muted)',
+          }}
+        >
+          <ExternalLink className="h-3 w-3" />
+        </a>
+      )}
+    </span>
+  );
+}
+
 export default function AutomationFormDialog({
   open,
   onOpenChange,
@@ -375,6 +490,20 @@ export default function AutomationFormDialog({
     productionQuery.isSuccess &&
     !productionPosts.some((p) => p.id === seededTarget.workflow_post_id)
       ? seededTarget
+      : null;
+
+  // Same idea for the published grid, with two differences that rule out the
+  // production tab's "jump to the right page" trick: this list is paginated
+  // SERVER-side, and it comes from `instagram_posts`, which a DAILY sync fills.
+  // A post published in the last 24h is not on any page yet, so there is nothing
+  // to jump to. Pin the target whenever it is absent from the page in view --
+  // built from the seed alone, no extra request.
+  const publishedSelected = form.selectedPost?.kind === 'published' ? form.selectedPost : null;
+  const publishedPagePosts = postsQuery.data?.posts ?? [];
+  const publishedOrphanTarget =
+    publishedSelected &&
+    !publishedPagePosts.some((p) => p.instagram_post_id === publishedSelected.ig_media_id)
+      ? publishedSelected
       : null;
 
   // react-query hashes the key structurally, so a fresh array each render is fine.
@@ -788,65 +917,33 @@ export default function AutomationFormDialog({
                         className="grid grid-cols-4 gap-2"
                         style={{ maxHeight: 220, overflowY: 'auto' }}
                       >
-                        {(postsQuery.data?.posts ?? []).map((post) => {
-                          const selected =
-                            form.selectedPost?.kind === 'published' &&
-                            form.selectedPost.ig_media_id === post.instagram_post_id;
-                          return (
-                            <button
-                              key={post.id}
-                              type="button"
-                              onClick={() => selectPost(post)}
-                              aria-pressed={selected}
-                              style={{
-                                position: 'relative',
-                                aspectRatio: '1',
-                                borderRadius: 8,
-                                overflow: 'hidden',
-                                border: selected
-                                  ? '2px solid var(--primary-color)'
-                                  : '1px solid var(--border-color)',
-                                padding: 0,
-                                cursor: 'pointer',
-                                background: 'var(--surface-1)',
-                              }}
-                            >
-                              {post.thumbnail_url ? (
-                                <img
-                                  src={post.thumbnail_url}
-                                  alt=""
-                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                />
-                              ) : (
-                                <div className="flex items-center justify-center h-full">
-                                  <Instagram
-                                    className="h-4 w-4"
-                                    style={{ color: 'var(--text-muted)' }}
-                                  />
-                                </div>
-                              )}
-                              {selected && (
-                                <span
-                                  style={{
-                                    position: 'absolute',
-                                    top: 3,
-                                    right: 3,
-                                    background: 'var(--primary-color)',
-                                    borderRadius: '50%',
-                                    width: 16,
-                                    height: 16,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                  }}
-                                >
-                                  <Check className="h-2.5 w-2.5" style={{ color: '#fff' }} />
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                        {postsQuery.data?.posts.length === 0 && (
+                        {/* The pinned target sits above the synced feed on
+                            whatever page fails to show it. */}
+                        {publishedOrphanTarget && (
+                          <PublishedCard
+                            caption={publishedOrphanTarget.media_caption ?? t('viewPost')}
+                            thumbnailUrl={null}
+                            permalink={publishedOrphanTarget.media_permalink}
+                            permalinkLabel={t('viewPost')}
+                            selected
+                            onSelect={() => selectSeededTarget(publishedOrphanTarget)}
+                          />
+                        )}
+                        {publishedPagePosts.map((post) => (
+                          <PublishedCard
+                            key={post.id}
+                            caption={null}
+                            thumbnailUrl={post.thumbnail_url ?? null}
+                            permalink={null}
+                            permalinkLabel={t('viewPost')}
+                            selected={
+                              form.selectedPost?.kind === 'published' &&
+                              form.selectedPost.ig_media_id === post.instagram_post_id
+                            }
+                            onSelect={() => selectPost(post)}
+                          />
+                        ))}
+                        {publishedPagePosts.length === 0 && !publishedOrphanTarget && (
                           <p
                             style={{
                               gridColumn: '1 / -1',

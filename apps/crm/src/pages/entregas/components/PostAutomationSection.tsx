@@ -65,8 +65,15 @@ export function PostAutomationSection({
     hasInstagramAccount &&
     post.id != null;
 
-  const { data: automations = [] } = useQuery({
-    queryKey: ['post-automations', post.id],
+  // The media id is part of the key because the queryFn closes over it: a post
+  // that publishes while the drawer is open would otherwise keep being served
+  // the pre-publish list, which misses every automation aimed at the live media.
+  const {
+    data: automations = [],
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ['post-automations', post.id, post.instagram_media_id ?? null],
     queryFn: () => getAutomationsForPost(post.id as number, post.instagram_media_id ?? null),
     enabled,
   });
@@ -140,7 +147,17 @@ export function PostAutomationSection({
         {t('postSection.title')}
       </div>
 
-      {automations.length === 0 ? (
+      {isLoading ? (
+        <p className="text-xs" style={{ color: 'var(--text-light)' }}>
+          {t('postSection.loading')}
+        </p>
+      ) : isError ? (
+        // Distinct from the empty hint on purpose: "we could not look" must never
+        // read as "there is nothing armed for this post".
+        <p className="text-xs" style={{ color: 'var(--danger-text)' }}>
+          {t('postSection.loadError')}
+        </p>
+      ) : automations.length === 0 ? (
         <p className="text-xs" style={{ color: 'var(--text-light)' }}>
           {t('postSection.emptyHint')}
         </p>
@@ -199,6 +216,7 @@ export function PostAutomationSection({
             initialTarget={editing ? null : initialTarget}
             onSaved={() => {
               setDialogOpen(false);
+              // Prefix match: covers this post's key whatever media id it carries.
               qc.invalidateQueries({ queryKey: ['post-automations', post.id] });
               // AUTOMATIONS_KEY, spelled out rather than imported: pulling it
               // from AutomacoesPage would drag that whole page module into the

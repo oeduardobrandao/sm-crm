@@ -30,7 +30,9 @@
   "postSection": {
     "title": "Automação de comentários",
     "createForPost": "Criar automação para este post",
-    "emptyHint": "Nenhuma automação para este post ainda."
+    "emptyHint": "Nenhuma automação para este post ainda.",
+    "loading": "Carregando automações...",
+    "loadError": "Não foi possível carregar as automações deste post."
   },
   "switchActivate": "Ativar automação",
   "switchDeactivate": "Desativar automação",
