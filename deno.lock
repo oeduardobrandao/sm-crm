@@ -69,7 +69,6 @@
     "npm:eslint-plugin-react-hooks@^7.1.1": "7.1.1_eslint@9.39.5",
     "npm:eslint@^9.39.4": "9.39.5",
     "npm:fflate@0.8.2": "0.8.2",
-    "npm:hls.js@1.7.0": "1.7.0",
     "npm:i18next@^26.0.8": "26.3.6_typescript@5.9.3",
     "npm:jsdom@^26.1.0": "26.1.0",
     "npm:jszip@^3.10.1": "3.10.1",
@@ -5054,9 +5053,6 @@
         "hermes-estree"
       ]
     },
-    "hls.js@1.7.0": {
-      "integrity": "sha512-NnQpT6Z//+2IB2qovSUbKbrlXY1MOpi0JynZ9L2NNOuTJiNCyMSQj9k2laEj1v7CxU/Hb8oTWR98eT3mVpPQVQ=="
-    },
     "hono@4.12.15": {
       "integrity": "sha512-qM0jDhFEaCBb4TxoW7f53Qrpv9RBiayUHo0S52JudprkhvpjIrGoU1mnnr29Fvd1U335ZFPZQY1wlkqgfGXyLg=="
     },
@@ -7868,7 +7864,6 @@
         "npm:eslint-config-prettier@^10.1.8",
         "npm:eslint-plugin-react-hooks@^7.1.1",
         "npm:eslint@^9.39.4",
-        "npm:hls.js@1.7.0",
         "npm:i18next@^26.0.8",
         "npm:jsdom@^26.1.0",
         "npm:jszip@^3.10.1",
