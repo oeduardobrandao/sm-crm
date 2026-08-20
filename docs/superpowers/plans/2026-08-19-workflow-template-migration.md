@@ -51,6 +51,7 @@ Criar `supabase/tests/migrate_workflow_template.sql`. O runner `scripts/test-ent
 --   (e2) guarda de concorrência: p_expected_template_id divergente = workflow_changed
 --   (e3) migrar para o próprio template = same_template (no-op destrutivo barrado)
 --   (e4) data_limite não-ISO = invalid_etapa (contrato de erro, não cast cru)
+--   (e6) p_active_ordem/p_modo_prazo NULL = erro estável, nunca bypass trivalente
 --   (f) validação falha = rollback total (escada antiga intacta)
 --   (g) adoção: workflow com template_id null migra sem tocar em propriedades
 --   (h) portal_approvals legadas arquivadas no metadata antes da cascata
@@ -192,6 +193,24 @@ begin
     v_blocked := true;
   end;
   assert v_blocked, 'data_limite invalida deve falhar com codigo estavel';
+
+  -- (e6) NULLs não atravessam a validação por lógica trivalente
+  v_blocked := false;
+  begin
+    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, null, 'padrao', v_tpl_a);
+  exception when others then
+    assert sqlerrm like '%invalid_active_ordem%', format('esperava invalid_active_ordem, veio: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'p_active_ordem NULL deve falhar';
+  v_blocked := false;
+  begin
+    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, 1, null, v_tpl_a);
+  exception when others then
+    assert sqlerrm like '%invalid_modo_prazo%', format('esperava invalid_modo_prazo, veio: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'p_modo_prazo NULL deve falhar';
 
   -- (f) validação falha = rollback total
   v_blocked := false;
@@ -391,7 +410,10 @@ BEGIN
   PERFORM 1 FROM workflow_templates WHERE id = p_template_id AND conta_id = v_conta;
   IF NOT FOUND THEN RAISE EXCEPTION 'template_not_found'; END IF;
 
-  IF p_modo_prazo NOT IN ('padrao', 'data_fixa', 'data_entrega') THEN
+  -- NULL explícito nos IFs: em plpgsql um IF com expressão NULL é pulado
+  -- (lógica trivalente), então sem estas guardas um p_modo_prazo/p_active_ordem
+  -- nulo atravessaria as validações e deixaria o fluxo sem etapa ativa
+  IF p_modo_prazo IS NULL OR p_modo_prazo NOT IN ('padrao', 'data_fixa', 'data_entrega') THEN
     RAISE EXCEPTION 'invalid_modo_prazo';
   END IF;
 
@@ -400,7 +422,7 @@ BEGIN
   END IF;
   v_n := jsonb_array_length(p_new_etapas);
   IF v_n = 0 THEN RAISE EXCEPTION 'empty_etapas'; END IF;
-  IF p_active_ordem < 0 OR p_active_ordem >= v_n THEN
+  IF p_active_ordem IS NULL OR p_active_ordem < 0 OR p_active_ordem >= v_n THEN
     RAISE EXCEPTION 'invalid_active_ordem';
   END IF;
 

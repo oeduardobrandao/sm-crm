@@ -81,8 +81,22 @@ describe('buildMigrationEtapas', () => {
   it('padrao: mapeia campos e data_limite null', () => {
     const etapas = buildMigrationEtapas(template, null);
     expect(etapas).toEqual([
-      { nome: 'Roteiro', prazo_dias: 2, tipo_prazo: 'uteis', responsavel_id: 7, tipo: 'padrao', data_limite: null },
-      { nome: 'Aprovação', prazo_dias: 3, tipo_prazo: 'corridos', responsavel_id: null, tipo: 'aprovacao_cliente', data_limite: null },
+      {
+        nome: 'Roteiro',
+        prazo_dias: 2,
+        tipo_prazo: 'uteis',
+        responsavel_id: 7,
+        tipo: 'padrao',
+        data_limite: null,
+      },
+      {
+        nome: 'Aprovação',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        responsavel_id: null,
+        tipo: 'aprovacao_cliente',
+        data_limite: null,
+      },
     ]);
   });
 
@@ -103,12 +117,16 @@ describe('buildMigrationEtapas', () => {
 describe('mapMigrationError', () => {
   it('mapeia códigos conhecidos para pt-BR', () => {
     expect(mapMigrationError('workflow_not_active')).toBe('Só é possível migrar fluxos ativos.');
-    expect(mapMigrationError('template_not_found')).toBe('Template não encontrado neste workspace.');
+    expect(mapMigrationError('template_not_found')).toBe(
+      'Template não encontrado neste workspace.',
+    );
     expect(mapMigrationError('workflow_changed')).toBe(
       'Este fluxo foi alterado por outra pessoa. Recarregue a página e tente novamente.',
     );
   });
   it('erro desconhecido vira mensagem genérica', () => {
-    expect(mapMigrationError('deadlock detected')).toBe('Não foi possível migrar o template. Tente novamente.');
+    expect(mapMigrationError('deadlock detected')).toBe(
+      'Não foi possível migrar o template. Tente novamente.',
+    );
   });
 });

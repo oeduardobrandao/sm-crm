@@ -84,7 +84,8 @@ export function buildMigrationEtapas(
 const MIGRATION_ERRORS: Record<string, string> = {
   workspace_not_found: 'Workspace não encontrado. Recarregue a página.',
   workflow_not_found: 'Fluxo não encontrado neste workspace.',
-  workflow_changed: 'Este fluxo foi alterado por outra pessoa. Recarregue a página e tente novamente.',
+  workflow_changed:
+    'Este fluxo foi alterado por outra pessoa. Recarregue a página e tente novamente.',
   workflow_not_active: 'Só é possível migrar fluxos ativos.',
   same_template: 'O fluxo já usa este template.',
   template_not_found: 'Template não encontrado neste workspace.',
