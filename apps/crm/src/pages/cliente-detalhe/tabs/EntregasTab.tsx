@@ -26,8 +26,10 @@ import {
   getClientes,
   getWorkspaceSlug,
   getHubToken,
+  getWorkflowTemplates,
   type Workflow,
   type WorkflowEtapa,
+  type WorkflowTemplate,
 } from '@/store';
 import { HistoryDrawer } from '@/pages/entregas/components/HistoryDrawer';
 import { WorkflowCard } from '@/pages/entregas/components/WorkflowCard';
@@ -113,6 +115,11 @@ export default function EntregasTab() {
   const { data: membros = [] } = useQuery({
     queryKey: ['membros'],
     queryFn: getMembros,
+  });
+
+  const { data: templates = [] } = useQuery({
+    queryKey: ['workflow-templates'],
+    queryFn: getWorkflowTemplates,
   });
 
   const { data: concludedWfs = [] } = useQuery({
@@ -670,6 +677,7 @@ export default function EntregasTab() {
           card={editCardModal}
           membros={membros}
           clientes={clientesPortfolio ?? []}
+          templates={templates}
           onClose={() => setEditCardModal(null)}
           onSaved={refreshCards}
           onDeleted={() => {

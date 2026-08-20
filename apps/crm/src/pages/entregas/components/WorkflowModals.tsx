@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Trash2, Edit2, FileText, Settings } from 'lucide-react';
+import { Trash2, Edit2, FileText, Settings, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -50,6 +50,7 @@ import {
   type TemplatePropertyDefinition,
 } from '../../../store';
 import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
+import { MigrateTemplateDialog } from './MigrateTemplateDialog';
 import {
   SortableEtapaList,
   defaultEtapa,
@@ -73,6 +74,7 @@ export function EditWorkflowModal({
   card,
   membros,
   clientes,
+  templates,
   onClose,
   onSaved,
   onDeleted,
@@ -81,6 +83,7 @@ export function EditWorkflowModal({
   card: BoardCard;
   membros: Membro[];
   clientes: Cliente[];
+  templates: WorkflowTemplate[];
   onClose: () => void;
   onSaved: () => void;
   onDeleted: () => void;
@@ -91,6 +94,7 @@ export function EditWorkflowModal({
   const modoPrazo: ModoPrazo = (w.modo_prazo as ModoPrazo) || 'padrao';
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [migrateOpen, setMigrateOpen] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [fTitulo, setFTitulo] = useState(w.titulo);
   const [fClienteId, setFClienteId] = useState(String(w.cliente_id));
@@ -327,6 +331,9 @@ export function EditWorkflowModal({
           </div>
           <div className="edit-modal-footer">
             <div className="edit-modal-footer-secondary">
+              <Button variant="outline" onClick={() => setMigrateOpen(true)}>
+                <ArrowRightLeft className="h-4 w-4" /> Migrar template
+              </Button>
               <Button
                 variant="outline"
                 className="text-destructive"
@@ -363,6 +370,18 @@ export function EditWorkflowModal({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {migrateOpen && (
+        <MigrateTemplateDialog
+          workflow={w}
+          cliente={card.cliente}
+          templates={templates}
+          onClose={() => setMigrateOpen(false)}
+          onMigrated={() => {
+            onSaved();
+            onClose();
+          }}
+        />
+      )}
     </>
   );
 }

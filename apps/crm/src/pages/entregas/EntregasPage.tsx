@@ -621,6 +621,7 @@ export default function EntregasPage() {
           card={editCard}
           membros={membros}
           clientes={clientes}
+          templates={templates}
           onClose={() => setEditCard(null)}
           onSaved={refresh}
           onDeleted={refresh}
