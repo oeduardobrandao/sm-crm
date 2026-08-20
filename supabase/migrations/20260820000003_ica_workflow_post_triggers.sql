@@ -3,12 +3,25 @@
 --   (b) z3 em workflow_posts: liga a automacao pendente quando o post publica;
 --   (c) z4 em workflow_posts: tombstone quando o post e excluido antes disso;
 --   (d) RPC de sweep, rede de seguranca do cron para a janela MVCC do resolver.
+--
+-- REGRA QUE ATRAVESSA OS QUATRO: operacao do SISTEMA (publicacao, delete do
+-- post, sweep) NUNCA aborta por causa de alvo derivado. O alvo pode derivar
+-- depois de escolhido -- o post vira 'stories', o post vira so-TikTok, o
+-- workflow e movido para outro cliente -- e como o z3 e o z4 escrevem NA
+-- TABELA DE AUTOMACOES, uma excecao do resolver nesses caminhos derrubaria o
+-- DELETE do post ou, pior, a propria publicacao (o Graph ja publicou e o
+-- handler registraria falha_publicacao). Entao: validacao dura com RAISE so
+-- para escrita DIRIGIDA PELO USUARIO (INSERT, ou UPDATE que mexe em
+-- workflow_post_id/client_id); deriva descoberta em qualquer outro caminho
+-- apenas deixa a automacao pendente/inerte, sem ligar e sem estourar.
 
 -- ---------- (a) resolver/validador na automacao -----------------------------
 CREATE OR REPLACE FUNCTION resolve_ica_workflow_post_target()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_tipo text; v_platform text; v_cliente bigint; v_media text; v_permalink text;
+  v_found boolean;
+  v_user_directed boolean;
 BEGIN
   -- Tombstone limpa SO quando um alvo novo nao-nulo e escolhido: o SET NULL da
   -- FK (post excluido) tambem dispara este trigger e nao pode apagar o
@@ -35,25 +48,45 @@ BEGIN
   FROM workflow_posts wp
   JOIN workflows w ON w.id = wp.workflow_id
   WHERE wp.id = NEW.workflow_post_id AND wp.conta_id = NEW.conta_id;
+  v_found := FOUND;
 
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'instagram automation target post not found in workspace';
-  END IF;
-  -- A FK composta so garante mesmo workspace; owner/admin via PostgREST
-  -- poderia apontar para post de OUTRO cliente do mesmo tenant.
-  IF v_cliente IS DISTINCT FROM NEW.client_id THEN
-    RAISE EXCEPTION 'instagram automation target post belongs to another client';
-  END IF;
-  IF COALESCE(v_platform, 'instagram') = 'tiktok' THEN
-    RAISE EXCEPTION 'instagram automation target cannot be a tiktok-only post';
-  END IF;
-  IF v_tipo = 'stories' THEN
-    RAISE EXCEPTION 'instagram automation target cannot be a stories post';
+  -- Escrita dirigida pelo usuario = INSERT, ou UPDATE que mexe no ALVO
+  -- (workflow_post_id) ou no CLIENTE (client_id). Os dois buracos que a
+  -- revisao original apontou continuam fechados: INSERT com workflow_post_id E
+  -- ig_media_id valida, e trocar so client_id no estado Ligado revalida. O que
+  -- deixa de validar sao os UPDATEs de maquina: o do z3 (toca ig_media_id) e o
+  -- do z4 (toca ativo), que nao escolhem alvo nenhum.
+  v_user_directed := TG_OP = 'INSERT'
+    OR (TG_OP = 'UPDATE'
+        AND (NEW.workflow_post_id IS DISTINCT FROM OLD.workflow_post_id
+             OR NEW.client_id IS DISTINCT FROM OLD.client_id));
+
+  IF v_user_directed THEN
+    IF NOT v_found THEN
+      RAISE EXCEPTION 'instagram automation target post not found in workspace';
+    END IF;
+    -- A FK composta so garante mesmo workspace; owner/admin via PostgREST
+    -- poderia apontar para post de OUTRO cliente do mesmo tenant.
+    IF v_cliente IS DISTINCT FROM NEW.client_id THEN
+      RAISE EXCEPTION 'instagram automation target post belongs to another client';
+    END IF;
+    IF COALESCE(v_platform, 'instagram') = 'tiktok' THEN
+      RAISE EXCEPTION 'instagram automation target cannot be a tiktok-only post';
+    END IF;
+    IF v_tipo = 'stories' THEN
+      RAISE EXCEPTION 'instagram automation target cannot be a stories post';
+    END IF;
   END IF;
 
-  -- So o preenchimento depende de ig_media_id nulo; as validacoes acima rodam
-  -- SEMPRE que ha workflow_post_id (cobre o estado Ligado e INSERT com ambos).
-  IF NEW.ig_media_id IS NULL AND v_media IS NOT NULL THEN
+  -- Preenchimento com as MESMAS guardas, agora silenciosas: alvo derivado (ou
+  -- sumido) nunca liga a automacao, so a deixa pendente. Aqui nao pode haver
+  -- RAISE -- este bloco tambem roda nos caminhos de maquina.
+  IF v_found
+     AND NEW.ig_media_id IS NULL
+     AND v_media IS NOT NULL
+     AND v_cliente IS NOT DISTINCT FROM NEW.client_id
+     AND COALESCE(v_platform, 'instagram') <> 'tiktok'
+     AND v_tipo <> 'stories' THEN
     NEW.ig_media_id := v_media;
     NEW.media_permalink := COALESCE(NEW.media_permalink, v_permalink);
   END IF;
@@ -69,17 +102,30 @@ CREATE TRIGGER ica_a1_resolve_workflow_post_target
 CREATE OR REPLACE FUNCTION link_pending_instagram_automations()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
+  -- Guardas de deriva: o post pode ter virado stories ou so-TikTok depois que
+  -- a automacao o escolheu. Sai calado -- a publicacao nao pode falhar por
+  -- causa disso, e a automacao fica pendente ate o usuario reescolher.
+  IF NEW.tipo = 'stories' OR COALESCE(NEW.platform, 'instagram') = 'tiktok' THEN
+    RETURN NULL;
+  END IF;
+
   -- O ramo do OR e obrigatorio: a publicacao grava instagram_media_id primeiro
   -- (liga a automacao) e o permalink num UPDATE separado DEPOIS; sem o OR o
   -- segundo UPDATE nao alcancaria a automacao ja ligada e o permalink ficaria
   -- nulo para sempre.
+  -- O EXISTS e a terceira guarda de deriva: workflow movido para outro cliente
+  -- nao pode ligar a automacao do cliente antigo.
   UPDATE instagram_comment_automations a
      SET ig_media_id     = COALESCE(a.ig_media_id, NEW.instagram_media_id),
          media_permalink = COALESCE(a.media_permalink, NEW.instagram_permalink),
          media_caption   = COALESCE(a.media_caption, NULLIF(left(NEW.ig_caption, 300), ''))
    WHERE a.workflow_post_id = NEW.id
      AND (a.ig_media_id IS NULL
-          OR (a.media_permalink IS NULL AND NEW.instagram_permalink IS NOT NULL));
+          OR (a.media_permalink IS NULL AND NEW.instagram_permalink IS NOT NULL))
+     AND EXISTS (
+       SELECT 1 FROM workflows w
+        WHERE w.id = NEW.workflow_id AND w.cliente_id = a.client_id
+     );
   RETURN NULL;
 END $$;
 
@@ -128,9 +174,14 @@ BEGIN
          media_permalink = COALESCE(a.media_permalink, wp.instagram_permalink),
          media_caption   = COALESCE(a.media_caption, NULLIF(left(wp.ig_caption, 300), ''))
     FROM workflow_posts wp
+    JOIN workflows w ON w.id = wp.workflow_id
    WHERE wp.id = a.workflow_post_id
      AND a.ig_media_id IS NULL
-     AND wp.instagram_media_id IS NOT NULL;
+     AND wp.instagram_media_id IS NOT NULL
+     -- mesmas guardas de deriva do z3: o cron nao liga o que o trigger recusou
+     AND w.cliente_id = a.client_id
+     AND wp.tipo <> 'stories'
+     AND COALESCE(wp.platform, 'instagram') <> 'tiktok';
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;
 END $$;

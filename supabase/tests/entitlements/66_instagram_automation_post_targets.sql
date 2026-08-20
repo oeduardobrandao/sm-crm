@@ -17,8 +17,10 @@
 --     trigger para provar que a garantia e estrutural, nao so de trigger --
 --     mesmo espirito da secao 4 da suite 65).
 -- 2-4. Resolver: cliente errado (mesmo workspace), post so-TikTok e post de
---     stories sao rejeitados; as validacoes rodam SEMPRE que ha
---     workflow_post_id, inclusive no estado Ligado e no INSERT com ambos.
+--     stories sao rejeitados. A validacao dura vale para escrita DIRIGIDA PELO
+--     USUARIO -- INSERT, ou UPDATE que mexe em workflow_post_id/client_id --,
+--     o que cobre o INSERT com ambos os campos e a troca de client_id no
+--     estado Ligado (ver secao 10 para o outro lado dessa regra).
 -- 5-6. Vinculo: post que ja publicou preenche ig_media_id no proprio INSERT;
 --     post que publica depois e ligado pelo z3, com o permalink chegando num
 --     segundo UPDATE e um record_post_status_change posterior nao corrompendo
@@ -29,6 +31,12 @@
 --     regex, replicado aqui porque a migration ja rodou antes do teste).
 -- 9.  sweep_pending_instagram_automation_links: rede de seguranca do cron para
 --     a janela MVCC em que o z3 nao enxergou a automacao.
+-- 10. DERIVA DE ALVO (regressao): o alvo pode virar invalido DEPOIS de
+--     escolhido -- post vira stories, post vira so-TikTok, workflow e movido
+--     para outro cliente. Como o z3 e o z4 escrevem na tabela de automacoes,
+--     um RAISE do resolver nesses caminhos derrubaria o DELETE do post e a
+--     PUBLICACAO. A regra: operacao do sistema nunca aborta por deriva, so
+--     deixa de ligar; a automacao fica pendente ou vira tombstone.
 --
 -- Tudo roda como dono da tabela, o mesmo stand-in do worker service-role usado
 -- nas secoes 4 e 6 da suite 65: FK, CHECK e triggers nao dependem do papel.
@@ -480,5 +488,123 @@ begin
   assert v_n = 0, format('segundo sweep nao deve religar nada, got %s', v_n);
 
   raise notice 'PASS 66 sweep religa a automacao orfa (e e idempotente)';
+end $$;
+rollback;
+
+-- 10. Deriva de alvo: publicacao, DELETE e sweep NUNCA abortam; so nao ligam.
+--     Os dois primeiros cenarios sao os repros da revisao do fix round 1.
+begin;
+do $$
+declare
+  v_ws uuid;
+  v_uid uuid := gen_random_uuid();
+  v_cli bigint; v_cli2 bigint;
+  v_wf bigint; v_wf_mov bigint; v_wf_tt bigint;
+  v_post_st bigint; v_post_mov bigint; v_post_tt bigint;
+  v_auto_st uuid; v_auto_mov uuid; v_auto_tt uuid;
+  v_a record;
+  v_n integer;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_instagram_automation": true}'::jsonb);
+
+  insert into auth.users (id) values (v_uid);
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C1', 'C1', '#000') returning id into v_cli;
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C2', 'C2', '#000') returning id into v_cli2;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status)
+    values (v_uid, v_ws, v_cli, 'WF', 'ativo') returning id into v_wf;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status)
+    values (v_uid, v_ws, v_cli, 'WF movido', 'ativo') returning id into v_wf_mov;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status)
+    values (v_uid, v_ws, v_cli, 'WF tiktok', 'ativo') returning id into v_wf_tt;
+
+  insert into workflow_posts (workflow_id, conta_id, titulo, ig_caption)
+    values (v_wf, v_ws, 'Vira stories', 'Legenda') returning id into v_post_st;
+  insert into workflow_posts (workflow_id, conta_id, titulo, ig_caption)
+    values (v_wf_mov, v_ws, 'Muda de cliente', 'Legenda') returning id into v_post_mov;
+  insert into workflow_posts (workflow_id, conta_id, titulo, ig_caption)
+    values (v_wf_tt, v_ws, 'Vira tiktok', 'Legenda') returning id into v_post_tt;
+
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, workflow_post_id)
+    values (v_ws, v_cli, 'No stories', array['x'], 'y', v_post_st) returning id into v_auto_st;
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, workflow_post_id)
+    values (v_ws, v_cli, 'No movido', array['x'], 'y', v_post_mov) returning id into v_auto_mov;
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, workflow_post_id)
+    values (v_ws, v_cli, 'No tiktok', array['x'], 'y', v_post_tt) returning id into v_auto_tt;
+
+  -- (a/b) post vira stories: updateWorkflowPost aceita `tipo` num Partial, e
+  --       operacao corriqueira de UI. Nem o UPDATE nem a publicacao podem
+  --       falhar; a automacao so nao liga.
+  update workflow_posts set tipo = 'stories' where id = v_post_st;
+  update workflow_posts set instagram_media_id = 'IG-ST-1' where id = v_post_st;
+
+  select * into v_a from instagram_comment_automations where id = v_auto_st;
+  assert v_a.ig_media_id is null, 'z3 nao pode ligar alvo que virou stories';
+  assert v_a.ativo, 'a automacao continua ativa, so pendente';
+
+  -- (d) o sweep tambem recusa o alvo derivado
+  v_n := sweep_pending_instagram_automation_links();
+  assert v_n = 0, format('o sweep nao pode ligar alvo derivado, got %s', v_n);
+
+  -- (a) e o DELETE do post FUNCIONA (era o repro 1: falhava com
+  --     'cannot be a stories post'), deixando o tombstone normal
+  delete from workflow_posts where id = v_post_st;
+  select * into v_a from instagram_comment_automations where id = v_auto_st;
+  assert v_a.ativo = false and v_a.pending_post_deleted_at is not null,
+    'DELETE de post derivado deve tombstonar a automacao pendente';
+  assert v_a.workflow_post_id is null and v_a.ig_media_id is null,
+    'tombstone de alvo derivado nao pode carregar media ID';
+
+  -- (c) workflow movido para outro cliente: a PUBLICACAO nao pode falhar
+  --     (era o repro 2: 'belongs to another client' com o Graph ja publicado)
+  update workflows set cliente_id = v_cli2 where id = v_wf_mov;
+  perform mark_platform_published(v_post_mov, 'instagram', 'system', null,
+    jsonb_build_object('instagram_media_id', 'IG-MOV-1',
+                       'instagram_permalink', 'https://instagram.com/p/mov1'));
+
+  select * into v_a from instagram_comment_automations where id = v_auto_mov;
+  assert v_a.ig_media_id is null,
+    'z3 nao pode ligar a automacao do cliente antigo depois da migracao';
+  assert v_a.media_permalink is null and v_a.media_caption is null,
+    'nada do snapshot pode vazar para a automacao do cliente antigo';
+
+  v_n := sweep_pending_instagram_automation_links();
+  assert v_n = 0, format('o sweep nao pode ligar alvo de outro cliente, got %s', v_n);
+
+  delete from workflow_posts where id = v_post_mov;
+  select * into v_a from instagram_comment_automations where id = v_auto_mov;
+  assert v_a.ativo = false and v_a.pending_post_deleted_at is not null,
+    'DELETE de post migrado de cliente deve tombstonar, nao estourar';
+
+  -- (b') mesma coisa para deriva de plataforma
+  update workflow_posts set platform = 'tiktok' where id = v_post_tt;
+  update workflow_posts set instagram_media_id = 'IG-TT-1' where id = v_post_tt;
+  select * into v_a from instagram_comment_automations where id = v_auto_tt;
+  assert v_a.ig_media_id is null, 'z3 nao pode ligar alvo que virou so-TikTok';
+
+  v_n := sweep_pending_instagram_automation_links();
+  assert v_n = 0, format('o sweep nao pode ligar alvo so-TikTok, got %s', v_n);
+
+  delete from workflow_posts where id = v_post_tt; -- nao pode estourar
+
+  -- a validacao dura continua valendo para escrita DIRIGIDA PELO USUARIO:
+  -- reescolher um alvo derivado ainda e rejeitado na cara do usuario
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf, v_ws, 'Stories novo', 'stories') returning id into v_post_st;
+  begin
+    update instagram_comment_automations set workflow_post_id = v_post_st
+      where id = v_auto_st;
+    assert false, 'escolher um post de stories na mao ainda deve ser rejeitado';
+  exception when sqlstate 'P0001' then
+    assert sqlerrm like '%stories post%', format('wrong msg: %s', sqlerrm);
+  end;
+
+  raise notice 'PASS 66 deriva de alvo nao aborta publicacao, DELETE nem sweep';
 end $$;
 rollback;
