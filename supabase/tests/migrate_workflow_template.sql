@@ -1,4 +1,4 @@
--- Valida supabase/migrations/20260819000001_workflow_template_migration.sql.
+-- Valida supabase/migrations/20260819000010_workflow_template_migration.sql.
 -- Casos:
 --   (a) migração feliz: escada substituída, statuses derivados, workflow atualizado, audit_log gravado
 --   (b) remap de propriedade por nome+tipo (case-insensitive, trim), valor órfão apagado

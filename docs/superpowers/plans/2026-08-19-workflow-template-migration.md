@@ -13,7 +13,7 @@
 - Worktree: TODO caminho é absoluto sob `/Users/eduardosouza/Projects/sm-crm/.claude/worktrees/workflow-template-migration-54002c/` (nunca o repo principal). Antes de afirmar qualquer coisa: `git -C <worktree> status`.
 - Branch: `claude/workflow-template-migration-54002c` (já criado a partir de main).
 - Copy de UI em pt-BR, **sem em-dash** (usar ponto, dois-pontos ou "·").
-- Migration: prefixo de versão único; **re-verificar contra `git ls-tree origin/main:supabase/migrations | tail` na hora do PR** e renumerar acima do tail se main avançou. Hoje o tail é `20260816000001`; usamos `20260819000001`.
+- Migration: prefixo de versão único; **re-verificar contra `git ls-tree origin/main:supabase/migrations | tail` na hora do PR** e renumerar acima do tail se main avançou. Hoje o tail é `20260816000001`; usamos `20260819000010`.
 - Antes de qualquer PR: `npm run lint`, `npm run format:check`, os 4 tsc (`npx tsc -p apps/crm/tsconfig.json --noEmit`, `apps/hub`, `apps/admin`, `tsconfig.scripts.json`), `npm run test`, `npm run test:functions`.
 - `npm run test:functions` e deploys sujam `deno.lock` e `node_modules`: `git checkout -- deno.lock` depois; se rodar deno, conferir `ls node_modules/.deno` e rodar `npm ci` no worktree antes de confiar em prettier/tsc locais.
 - Toasts: `toast()` de `sonner`. Ícones: `lucide-react`. Sem moment.js.
@@ -25,7 +25,7 @@
 
 **Files:**
 - Create: `supabase/tests/migrate_workflow_template.sql`
-- Create: `supabase/migrations/20260819000001_workflow_template_migration.sql`
+- Create: `supabase/migrations/20260819000010_workflow_template_migration.sql`
 
 **Interfaces:**
 - Produces: RPC `public.migrate_workflow_template(p_workflow_id bigint, p_template_id bigint, p_new_etapas jsonb, p_active_ordem integer, p_modo_prazo text, p_expected_template_id bigint) returns void`, executável por `authenticated`. Erros via `raise exception` com mensagens-código: `workspace_not_found`, `workflow_not_found`, `workflow_changed`, `workflow_not_active`, `same_template`, `template_not_found`, `invalid_modo_prazo`, `empty_etapas`, `invalid_active_ordem`, `invalid_etapa`, `invalid_responsavel`.
@@ -38,7 +38,7 @@
 Criar `supabase/tests/migrate_workflow_template.sql`. O runner `scripts/test-entitlements.sh` pega qualquer `supabase/tests/*.sql` automaticamente; o padrão da casa é `\set ON_ERROR_STOP on`, `\i _helpers.sql`, um `do $$ ... $$` entre `begin;`/`rollback;`, asserts com `assert`, e `raise notice 'PASS ...'` no fim. Impersonação de usuário é via `set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true)` (o trigger `handle_new_user_workspace` já cria um profile por `auth.users` inserido; fazer UPDATE do profile, nunca INSERT).
 
 ```sql
--- Valida supabase/migrations/20260819000001_workflow_template_migration.sql.
+-- Valida supabase/migrations/20260819000010_workflow_template_migration.sql.
 -- Casos:
 --   (a) migração feliz: escada substituída, statuses derivados, workflow atualizado, audit_log gravado
 --   (b) remap de propriedade por nome+tipo (case-insensitive, trim), valor órfão apagado
@@ -329,7 +329,7 @@ Expected: FAIL em `migrate_workflow_template.sql` com `function migrate_workflow
 
 - [ ] **Step 3: Escrever a migration**
 
-Criar `supabase/migrations/20260819000001_workflow_template_migration.sql`:
+Criar `supabase/migrations/20260819000010_workflow_template_migration.sql`:
 
 ```sql
 -- ============================================================
@@ -605,7 +605,7 @@ Expected: `PASS migrate_workflow_template` (e todas as suítes existentes contin
 (A spec já reflete a RPC final, incluindo os pontos do review externo: guarda de concorrência, INSERT+ON CONFLICT, exclusão de tipos de opção, arquivamento de portal_approvals e ativação via UPDATE. Nada a editar nela nesta task.)
 
 ```bash
-git -C /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/workflow-template-migration-54002c add supabase/migrations/20260819000001_workflow_template_migration.sql supabase/tests/migrate_workflow_template.sql
+git -C /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/workflow-template-migration-54002c add supabase/migrations/20260819000010_workflow_template_migration.sql supabase/tests/migrate_workflow_template.sql
 git -C /Users/eduardosouza/Projects/sm-crm/.claude/worktrees/workflow-template-migration-54002c commit -m "feat(workflows): RPC atômica migrate_workflow_template + suíte psql"
 ```
 
@@ -1389,4 +1389,4 @@ O worktree não tem `.env.staging` por padrão: `cp /Users/eduardosouza/Projects
 
 - [ ] **Step 3: Push + PR**
 
-Invocar a skill `superpowers:finishing-a-development-branch`. No PR: descrever a feature, apontar a spec, avisar que a migration `20260819000001` precisa de `db push` em prod ANTES do deploy do frontend (o diálogo chama uma RPC que não existe sem ela). Antes do `gh pr create`, re-rodar `git ls-tree origin/main:supabase/migrations | tail` e renumerar a migration se main ganhou prefixo >= `20260819000001` (regra que já mordeu duas vezes). Lembrar: review externo do Codex dispara sozinho no `gh pr create`; verificar os findings antes de aceitar.
+Invocar a skill `superpowers:finishing-a-development-branch`. No PR: descrever a feature, apontar a spec, avisar que a migration `20260819000010` precisa de `db push` em prod ANTES do deploy do frontend (o diálogo chama uma RPC que não existe sem ela). Antes do `gh pr create`, re-rodar `git ls-tree origin/main:supabase/migrations | tail` e renumerar a migration se main ganhou prefixo >= `20260819000010` (regra que já mordeu duas vezes). Lembrar: review externo do Codex dispara sozinho no `gh pr create`; verificar os findings antes de aceitar.
