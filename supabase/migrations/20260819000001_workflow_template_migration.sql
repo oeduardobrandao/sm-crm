@@ -76,7 +76,10 @@ BEGIN
   PERFORM 1 FROM workflow_templates WHERE id = p_template_id AND conta_id = v_conta;
   IF NOT FOUND THEN RAISE EXCEPTION 'template_not_found'; END IF;
 
-  IF p_modo_prazo NOT IN ('padrao', 'data_fixa', 'data_entrega') THEN
+  -- NULL explícito nos IFs: em plpgsql um IF com expressão NULL é pulado
+  -- (lógica trivalente), então sem estas guardas um p_modo_prazo/p_active_ordem
+  -- nulo atravessaria as validações e deixaria o fluxo sem etapa ativa
+  IF p_modo_prazo IS NULL OR p_modo_prazo NOT IN ('padrao', 'data_fixa', 'data_entrega') THEN
     RAISE EXCEPTION 'invalid_modo_prazo';
   END IF;
 
@@ -85,7 +88,7 @@ BEGIN
   END IF;
   v_n := jsonb_array_length(p_new_etapas);
   IF v_n = 0 THEN RAISE EXCEPTION 'empty_etapas'; END IF;
-  IF p_active_ordem < 0 OR p_active_ordem >= v_n THEN
+  IF p_active_ordem IS NULL OR p_active_ordem < 0 OR p_active_ordem >= v_n THEN
     RAISE EXCEPTION 'invalid_active_ordem';
   END IF;
 

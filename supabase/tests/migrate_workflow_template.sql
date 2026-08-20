@@ -11,6 +11,7 @@
 --   (e2) guarda de concorrência: p_expected_template_id divergente = workflow_changed
 --   (e3) migrar para o próprio template = same_template (no-op destrutivo barrado)
 --   (e4) data_limite não-ISO = invalid_etapa (contrato de erro, não cast cru)
+--   (e6) p_active_ordem/p_modo_prazo NULL = erro estável, nunca bypass trivalente
 --   (e5) responsavel_id não-numérico = invalid_responsavel (contrato de erro, não cast cru)
 --   (f) validação falha = rollback total (escada antiga intacta)
 --   (g) adoção: workflow com template_id null migra sem tocar em propriedades
@@ -153,6 +154,24 @@ begin
     v_blocked := true;
   end;
   assert v_blocked, 'data_limite invalida deve falhar com codigo estavel';
+
+  -- (e6) NULLs não atravessam a validação por lógica trivalente
+  v_blocked := false;
+  begin
+    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, null, 'padrao', v_tpl_a);
+  exception when others then
+    assert sqlerrm like '%invalid_active_ordem%', format('esperava invalid_active_ordem, veio: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'p_active_ordem NULL deve falhar';
+  v_blocked := false;
+  begin
+    perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, 1, null, v_tpl_a);
+  exception when others then
+    assert sqlerrm like '%invalid_modo_prazo%', format('esperava invalid_modo_prazo, veio: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'p_modo_prazo NULL deve falhar';
 
   -- (e5) responsavel_id não-numérico vira invalid_responsavel
   v_blocked := false;
