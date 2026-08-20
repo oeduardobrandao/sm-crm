@@ -1031,6 +1031,41 @@ Deno.test("executeSend: alvo virou específico de OUTRA mídia e o DM não saiu 
   assertEquals(sendUpdates[0].payload, { status: "skipped", skip_reason: "target_changed" });
 });
 
+// Caso POSITIVO, e não é redundante com os de mismatch: sem ele, um
+// `send.media_id` chegando `undefined` (regressão na claim RPC ou no caminho
+// que monta o ClaimedSend) faria `targetMatches` devolver false para TODA
+// automação específica -- todo retry viraria skipped/target_changed em
+// silêncio, com a suíte inteira verde, porque os demais casos ou esperam skip
+// ou usam o default global (que casa qualquer coisa, inclusive undefined).
+Deno.test("executeSend: alvo específico que CASA o media_id do send -> prossegue e manda a DM", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ ig_media_id: MEDIA_ID }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  const { fetchFn, calls: fetchCalls } = routedFetch({
+    privateReply: () => ({ body: { message_id: "m1" } }),
+  });
+
+  await executeSend(baseSendCtx(db, { fetchFn }), baseClaimedSend({ media_id: MEDIA_ID }));
+
+  assertEquals(fetchCalls.filter((c) => c.method === "POST" && c.url.endsWith("/messages")).length, 1);
+  assertEquals(rpcCallsFor(db, "mark_automation_dm_sent").length, 1);
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(
+    sendUpdates.filter((c) => (c.payload as Record<string, unknown>).skip_reason === "target_changed").length,
+    0,
+    "alvo que casa NUNCA pode pular",
+  );
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "sent" });
+});
+
 Deno.test("executeSend: alvo virou PENDENTE (post interno não publicado) -> skipped/target_changed", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {

@@ -14,12 +14,14 @@
 //      banco; `createServiceDb()` só é invocado depois que o segredo confere.
 //   2. `fail_ineligible_automation_sends()` -- encerra sends que nunca mais
 //      serão elegíveis (janela de 7 dias vencida ou conta inapta).
-//   3. Sweep de eventos órfãos: `instagram_webhook_events` nunca normalizados
+//   3. Sweep de convergência: `sweep_pending_instagram_automation_links()`
+//      liga automações com alvo em post interno que já publicou. Roda ANTES do
+//      sweep de eventos órfãos: um evento reprocessado no mesmo tick precisa
+//      enxergar o vínculo já estabelecido, senão perde a automação em definitivo.
+//   4. Sweep de eventos órfãos: `instagram_webhook_events` nunca normalizados
 //      (processed_at NULL) há mais de 10 min -> reprocessa via
 //      `processDelivery` (Task 9), idempotente por natureza (claims caem em
 //      conflito).
-//   4. Sweep de convergência: `sweep_pending_instagram_automation_links()`
-//      liga automações com alvo em post interno que já publicou.
 //   5. Retries: `claim_retryable_automation_sends(25)` -> `executeSend`
 //      (Task 9, a MESMA máquina de estados do webhook) para cada linha
 //      claimada.
@@ -110,7 +112,28 @@ export function createInstagramAutomationCronHandler(deps: InstagramAutomationCr
       errors.push({ error: `fail_ineligible_automation_sends: ${errMessage(err)}` });
     }
 
-    // 3. Sweep de eventos órfãos: nunca normalizados, mais de 10 min parados.
+    // 3. Sweep de convergência dos vínculos pendentes. O resolver das
+    // automações lê `workflow_posts` SEM lock (evita deadlock com a
+    // publicação), então sobra uma janela MVCC: o post publica e uma automação
+    // pendente commitada em paralelo não enxerga o media ID (nem o trigger
+    // enxerga a automação). A RPC religa o que ficou para trás -- convergência
+    // em no máximo 5 min, o intervalo do cron. As guardas de deriva
+    // (cliente/plataforma/tipo) são da própria RPC; aqui só chamamos e logamos.
+    // Precisa vir ANTES do sweep de eventos órfãos: um evento reprocessado no
+    // mesmo tick tem que enxergar o vínculo JÁ estabelecido -- na ordem
+    // inversa ele não casaria a automação e o processed_at ficaria carimbado,
+    // perdendo o envio em definitivo.
+    try {
+      const { data, error } = await svc.rpc("sweep_pending_instagram_automation_links");
+      if (error) throw new Error(errMessage(error));
+      console.log(`[${CRON_NAME}] sweep_pending_instagram_automation_links: ${data ?? 0} vínculo(s) ligado(s)`);
+    } catch (err) {
+      console.error(`[${CRON_NAME}] sweep_pending_instagram_automation_links falhou:`, errMessage(err));
+      failed++;
+      errors.push({ error: `sweep_pending_instagram_automation_links: ${errMessage(err)}` });
+    }
+
+    // 4. Sweep de eventos órfãos: nunca normalizados, mais de 10 min parados.
     // Reprocessar é seguro (idempotente): claim_automation_send cai em
     // conflito de comment_id UNIQUE se já tiver rodado antes.
     try {
@@ -132,23 +155,6 @@ export function createInstagramAutomationCronHandler(deps: InstagramAutomationCr
       console.error(`[${CRON_NAME}] sweep falhou:`, errMessage(err));
       failed++;
       errors.push({ error: `sweep: ${errMessage(err)}` });
-    }
-
-    // 4. Sweep de convergência dos vínculos pendentes. O resolver das
-    // automações lê `workflow_posts` SEM lock (evita deadlock com a
-    // publicação), então sobra uma janela MVCC: o post publica e uma automação
-    // pendente commitada em paralelo não enxerga o media ID (nem o trigger
-    // enxerga a automação). A RPC religa o que ficou para trás -- convergência
-    // em no máximo 5 min, o intervalo do cron. As guardas de deriva
-    // (cliente/plataforma/tipo) são da própria RPC; aqui só chamamos e logamos.
-    try {
-      const { data, error } = await svc.rpc("sweep_pending_instagram_automation_links");
-      if (error) throw new Error(errMessage(error));
-      console.log(`[${CRON_NAME}] sweep_pending_instagram_automation_links: ${data ?? 0} vínculo(s) ligado(s)`);
-    } catch (err) {
-      console.error(`[${CRON_NAME}] sweep_pending_instagram_automation_links falhou:`, errMessage(err));
-      failed++;
-      errors.push({ error: `sweep_pending_instagram_automation_links: ${errMessage(err)}` });
     }
 
     // 5. Retries: envios com retry vencido ou processing órfão (RPC, Task 3).
