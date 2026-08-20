@@ -199,7 +199,7 @@ export default function AutomationFormDialog({
     setForm((f) => ({
       ...f,
       selectedPost: {
-        ig_media_id: post.id,
+        ig_media_id: post.instagram_post_id,
         media_permalink: post.permalink,
         media_caption: post.caption ? truncate(post.caption, 300) : null,
       },
@@ -356,7 +356,8 @@ export default function AutomationFormDialog({
                         style={{ maxHeight: 220, overflowY: 'auto' }}
                       >
                         {(postsQuery.data?.posts ?? []).map((post) => {
-                          const selected = form.selectedPost?.ig_media_id === post.id;
+                          const selected =
+                            form.selectedPost?.ig_media_id === post.instagram_post_id;
                           return (
                             <button
                               key={post.id}

@@ -129,6 +129,7 @@ export async function getInstagramSummary(clientId: number): Promise<any> {
 
 export interface InstagramPostSummary {
   id: string;
+  instagram_post_id: string;
   posted_at: string;
   media_type: string;
   caption: string | null;
