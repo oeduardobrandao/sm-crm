@@ -46,6 +46,7 @@ DECLARE
   v_resp bigint;
   v_etapa_id bigint;
   v_active_id bigint;
+  v_data_limite date;
   v_old_etapas jsonb;
   v_dropped_names text[] := '{}';
   v_dropped_values jsonb := '[]'::jsonb;
@@ -66,6 +67,12 @@ BEGIN
   IF v_wf.status <> 'ativo' THEN RAISE EXCEPTION 'workflow_not_active'; END IF;
   v_old_template_id := v_wf.template_id;
 
+  -- migrar para o próprio template seria um no-op destrutivo (apagaria os
+  -- timestamps da escada sem mudar nada); a UI nem oferece, a RPC também barra
+  IF v_old_template_id IS NOT NULL AND p_template_id = v_old_template_id THEN
+    RAISE EXCEPTION 'same_template';
+  END IF;
+
   PERFORM 1 FROM workflow_templates WHERE id = p_template_id AND conta_id = v_conta;
   IF NOT FOUND THEN RAISE EXCEPTION 'template_not_found'; END IF;
 
@@ -73,8 +80,11 @@ BEGIN
     RAISE EXCEPTION 'invalid_modo_prazo';
   END IF;
 
+  IF p_new_etapas IS NULL OR jsonb_typeof(p_new_etapas) <> 'array' THEN
+    RAISE EXCEPTION 'empty_etapas';
+  END IF;
   v_n := jsonb_array_length(p_new_etapas);
-  IF v_n IS NULL OR v_n = 0 THEN RAISE EXCEPTION 'empty_etapas'; END IF;
+  IF v_n = 0 THEN RAISE EXCEPTION 'empty_etapas'; END IF;
   IF p_active_ordem < 0 OR p_active_ordem >= v_n THEN
     RAISE EXCEPTION 'invalid_active_ordem';
   END IF;
@@ -190,6 +200,12 @@ BEGIN
       IF NOT FOUND THEN RAISE EXCEPTION 'invalid_responsavel'; END IF;
     END IF;
 
+    BEGIN
+      v_data_limite := NULLIF(v_etapa->>'data_limite', '')::date;
+    EXCEPTION WHEN others THEN
+      RAISE EXCEPTION 'invalid_etapa';
+    END;
+
     -- a etapa ativa entra como 'pendente' e é ativada por UPDATE no fim do loop,
     -- para o trigger notify_step_activated (AFTER UPDATE) disparar
     INSERT INTO workflow_etapas
@@ -200,7 +216,7 @@ BEGIN
        coalesce(v_etapa->>'tipo', 'padrao'),
        CASE WHEN v_i < p_active_ordem THEN 'concluido' ELSE 'pendente' END,
        NULL, NULL,
-       NULLIF(v_etapa->>'data_limite', '')::date)
+       v_data_limite)
     RETURNING id INTO v_etapa_id;
     IF v_i = p_active_ordem THEN v_active_id := v_etapa_id; END IF;
     v_i := v_i + 1;

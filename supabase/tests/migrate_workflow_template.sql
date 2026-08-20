@@ -9,6 +9,8 @@
 --   (d) workflow_select_options do template origem são apagadas
 --   (e) isolamento: usuário de outra conta não migra
 --   (e2) guarda de concorrência: p_expected_template_id divergente = workflow_changed
+--   (e3) migrar para o próprio template = same_template (no-op destrutivo barrado)
+--   (e4) data_limite não-ISO = invalid_etapa (contrato de erro, não cast cru)
 --   (f) validação falha = rollback total (escada antiga intacta)
 --   (g) adoção: workflow com template_id null migra sem tocar em propriedades
 --   (h) portal_approvals legadas arquivadas no metadata antes da cascata
@@ -128,6 +130,28 @@ begin
     v_blocked := true;
   end;
   assert v_blocked, 'expected_template_id divergente deve falhar';
+
+  -- (e3) migrar para o próprio template é barrado
+  v_blocked := false;
+  begin
+    perform migrate_workflow_template(v_wf, v_tpl_a, v_new_etapas, 0, 'padrao', v_tpl_a);
+  exception when others then
+    assert sqlerrm like '%same_template%', format('esperava same_template, veio: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'migrar para o próprio template deve falhar';
+
+  -- (e4) data_limite não-ISO vira invalid_etapa, não erro cru de cast
+  v_blocked := false;
+  begin
+    perform migrate_workflow_template(v_wf, v_tpl_b,
+      jsonb_build_array(jsonb_build_object('nome','X','prazo_dias',1,'tipo_prazo','corridos','responsavel_id',null,'tipo','padrao','data_limite','data-invalida')),
+      0, 'padrao', v_tpl_a);
+  exception when others then
+    assert sqlerrm like '%invalid_etapa%', format('esperava invalid_etapa, veio: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'data_limite invalida deve falhar com codigo estavel';
 
   -- (f) validação falha = rollback total
   v_blocked := false;
