@@ -19,6 +19,9 @@
   "clientRemoved": "Client removed",
   "viewPost": "View post",
   "allPosts": "All posts",
+  "pendingBadge": "Awaiting publication",
+  "deletedPostBadge": "Target unavailable",
+  "reactivateNeedsTarget": "Pick a new target before reactivating: this automation's target is no longer available.",
   "neverTriggered": "Never triggered",
   "status": {
     "active": "Active",

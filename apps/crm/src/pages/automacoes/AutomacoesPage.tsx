@@ -94,6 +94,18 @@ function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+/** Detects the DB's `ica_tombstone_inactive` CHECK violation (reactivating an
+ * automation whose target was deleted before it ever published). Checks the
+ * `message`/`details` text too so an unrelated CHECK failure (23514 is a
+ * generic Postgres code) doesn't get mislabeled with this specific copy. */
+function isTombstoneCheckViolation(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { code?: string; message?: string; details?: string };
+  if (e.code !== '23514') return false;
+  const haystack = `${e.message ?? ''} ${e.details ?? ''}`;
+  return haystack.includes('ica_tombstone_inactive');
+}
+
 export default function AutomacoesPage() {
   const { t, i18n } = useTranslation('automations');
   const { role, profile } = useAuth();
@@ -145,7 +157,13 @@ export default function AutomacoesPage() {
     mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>
       updateInstagramAutomation(id, { ativo }),
     onSuccess: invalidate,
-    onError: (err) => onMutationError(err, t('toastUpdateError')),
+    onError: (err) => {
+      if (isTombstoneCheckViolation(err)) {
+        toast.error(t('reactivateNeedsTarget'));
+        return;
+      }
+      onMutationError(err, t('toastUpdateError'));
+    },
   });
 
   const deleteMutation = useMutation({
@@ -293,18 +311,36 @@ export default function AutomacoesPage() {
                         </div>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        {a.media_permalink ? (
-                          <a
-                            href={sanitizeUrl(a.media_permalink)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1"
-                            style={{ color: 'var(--primary-color)' }}
-                          >
-                            <Instagram className="h-3.5 w-3.5" style={{ flexShrink: 0 }} />
-                            {a.media_caption ? truncate(a.media_caption, 40) : t('viewPost')}
-                            <ExternalLink className="h-3 w-3" style={{ flexShrink: 0 }} />
-                          </a>
+                        {a.pending_post_deleted_at ? (
+                          <Badge variant="neutral" size="sm">
+                            {t('deletedPostBadge')}
+                          </Badge>
+                        ) : a.ig_media_id ? (
+                          a.media_permalink ? (
+                            <a
+                              href={sanitizeUrl(a.media_permalink)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1"
+                              style={{ color: 'var(--primary-color)' }}
+                            >
+                              <Instagram className="h-3.5 w-3.5" style={{ flexShrink: 0 }} />
+                              {a.media_caption ? truncate(a.media_caption, 40) : t('viewPost')}
+                              <ExternalLink className="h-3 w-3" style={{ flexShrink: 0 }} />
+                            </a>
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              <Instagram className="h-3.5 w-3.5" style={{ flexShrink: 0 }} />
+                              {a.media_caption ? truncate(a.media_caption, 40) : t('viewPost')}
+                            </span>
+                          )
+                        ) : a.workflow_post_id ? (
+                          <span className="flex flex-wrap items-center gap-1.5">
+                            {truncate(a.media_caption ?? '', 40)}
+                            <Badge variant="info" size="sm">
+                              {t('pendingBadge')}
+                            </Badge>
+                          </span>
                         ) : (
                           <Badge variant="neutral" size="sm">
                             {t('allPosts')}
