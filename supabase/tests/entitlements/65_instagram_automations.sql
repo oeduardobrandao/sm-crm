@@ -433,6 +433,29 @@ begin
   end;
   assert v_rejected, 'objeto vazio deve ser rejeitado';
 
+  -- (f2) valor não-array e elemento não-objeto -> check_violation LIMPO
+  --      (23514), nunca 22023: o CASE em validate_ig_dm_buttons garante a
+  --      ordem dos type-guards (AND não garante short-circuit no Postgres).
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+      values (v_ws, v_cli, 'Escalar', array['x'], 'msg', '"not-an-array"'::jsonb);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'valor não-array deve cair no CHECK (23514), não em 22023';
+
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+      values (v_ws, v_cli, 'String', array['x'], 'msg', '["just-a-string"]'::jsonb);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'elemento não-objeto deve cair no CHECK (23514), não em 22023';
+
   -- (g) dm_message 641 chars COM botão -> check_violation (limite do template)
   v_rejected := false;
   begin

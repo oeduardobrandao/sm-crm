@@ -6,24 +6,32 @@
 -- PostgREST); revogar EXECUTE de PUBLIC quebraria todo INSERT/UPDATE da
 -- tabela com 42501. O default do Supabase já concede EXECUTE aos roles da API.
 
+-- CASE (não AND) para o type-guard: o Postgres NÃO garante ordem/short-circuit
+-- entre operandos de AND, então `jsonb_typeof(b)='array' AND jsonb_array_length(b)...`
+-- poderia avaliar jsonb_array_length primeiro e estourar 22023 cru em vez do
+-- 23514 limpo do CHECK. CASE tem ordem de avaliação garantida.
 CREATE FUNCTION validate_ig_dm_buttons(b jsonb)
 RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
-  SELECT jsonb_typeof(b) = 'array'
-     AND jsonb_array_length(b) <= 3
-     AND coalesce((
-       -- coalesce POR ITEM: um objeto vazio/malformado gera NULL na comparação
-       -- de chaves e bool_and IGNORA NULLs -- sem o coalesce(false) ele passaria.
-       SELECT bool_and(coalesce(
-         jsonb_typeof(item) = 'object'
-         AND (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(item) k) = ARRAY['title', 'url']
-         AND jsonb_typeof(item->'title') = 'string'
-         AND char_length(btrim(item->>'title')) BETWEEN 1 AND 20
-         AND jsonb_typeof(item->'url') = 'string'
-         AND char_length(item->>'url') <= 500
-         AND item->>'url' ~* '^https?://'
-       , false))
-       FROM jsonb_array_elements(b) AS item
-     ), true)
+  SELECT CASE
+    WHEN jsonb_typeof(b) <> 'array' THEN false
+    WHEN jsonb_array_length(b) > 3 THEN false
+    ELSE coalesce((
+      -- coalesce POR ITEM: um objeto sem as chaves gera NULL na comparação
+      -- de chaves e bool_and IGNORA NULLs -- sem o coalesce(false) um {} passaria.
+      SELECT bool_and(CASE
+        WHEN jsonb_typeof(item) <> 'object' THEN false
+        ELSE coalesce(
+          (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(item) k) = ARRAY['title', 'url']
+          AND jsonb_typeof(item->'title') = 'string'
+          AND char_length(btrim(item->>'title')) BETWEEN 1 AND 20
+          AND jsonb_typeof(item->'url') = 'string'
+          AND char_length(item->>'url') <= 500
+          AND item->>'url' ~* '^https?://'
+        , false)
+      END)
+      FROM jsonb_array_elements(b) AS item
+    ), true)
+  END
 $$;
 
 ALTER TABLE instagram_comment_automations
