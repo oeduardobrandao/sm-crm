@@ -64,6 +64,32 @@ export async function getInstagramAutomations(): Promise<InstagramCommentAutomat
   return data || [];
 }
 
+/**
+ * Every automation attached to one post of the editor, in creation order.
+ *
+ * Two columns can point at the same post and only one of them survives the
+ * publish: an automation created while the post was still in production carries
+ * `workflow_post_id`, one created straight against the live media carries
+ * `ig_media_id`. Once the post publishes, the DB trigger fills `ig_media_id` in
+ * next to the existing `workflow_post_id`, so the OR (not an AND) is what keeps
+ * both kinds visible on the same post.
+ *
+ * `igMediaId` is a Graph API media id we stored ourselves, never user input, so
+ * it goes into the PostgREST filter grammar as-is.
+ */
+export async function getAutomationsForPost(
+  postId: number,
+  igMediaId: string | null,
+): Promise<InstagramCommentAutomation[]> {
+  const base = supabase.from('instagram_comment_automations').select('*');
+  const filtered = igMediaId
+    ? base.or(`workflow_post_id.eq.${postId},ig_media_id.eq.${igMediaId}`)
+    : base.eq('workflow_post_id', postId);
+  const { data, error } = await filtered.order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function createInstagramAutomation(
   payload: Pick<
     InstagramCommentAutomation,

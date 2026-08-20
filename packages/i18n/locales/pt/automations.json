@@ -27,6 +27,11 @@
     "active": "Ativa",
     "inactive": "Inativa"
   },
+  "postSection": {
+    "title": "Automação de comentários",
+    "createForPost": "Criar automação para este post",
+    "emptyHint": "Nenhuma automação para este post ainda."
+  },
   "switchActivate": "Ativar automação",
   "switchDeactivate": "Desativar automação",
   "rowActions": "Ações de {{name}}",

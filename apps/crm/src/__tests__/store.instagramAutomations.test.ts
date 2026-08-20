@@ -195,6 +195,51 @@ describe('store instagram automations', () => {
     expect(call.payload).toMatchObject({ pending_post_deleted_at: null });
   });
 
+  it('getAutomationsForPost filters by workflow_post_id alone while the post has no media id', async () => {
+    mockedSupabase.__queueSupabaseResult('instagram_comment_automations', 'select', {
+      data: [{ ...AUTOMATION, ig_media_id: null, workflow_post_id: 501 }],
+      error: null,
+    });
+
+    const result = await store.getAutomationsForPost(501, null);
+
+    expect(result).toHaveLength(1);
+    const call = getCalls('instagram_comment_automations', 'select').at(-1)!;
+    expect(call.modifiers).toContainEqual({ method: 'eq', args: ['workflow_post_id', 501] });
+    expect(call.modifiers.some((m) => m.method === 'or')).toBe(false);
+    expect(call.modifiers).toContainEqual({
+      method: 'order',
+      args: ['created_at', { ascending: true }],
+    });
+  });
+
+  it('getAutomationsForPost also matches the media id once the post has published', async () => {
+    mockedSupabase.__queueSupabaseResult('instagram_comment_automations', 'select', {
+      data: [AUTOMATION],
+      error: null,
+    });
+
+    await store.getAutomationsForPost(501, '17900000000000001');
+
+    const call = getCalls('instagram_comment_automations', 'select').at(-1)!;
+    expect(call.modifiers).toContainEqual({
+      method: 'or',
+      args: ['workflow_post_id.eq.501,ig_media_id.eq.17900000000000001'],
+    });
+    // The `or` replaces the equality filter -- keeping both would AND them and
+    // hide every automation created straight against the published media.
+    expect(call.modifiers.some((m) => m.method === 'eq')).toBe(false);
+  });
+
+  it('getAutomationsForPost surfaces the error instead of swallowing it', async () => {
+    mockedSupabase.__queueSupabaseResult('instagram_comment_automations', 'select', {
+      data: null,
+      error: { message: 'boom' },
+    });
+
+    await expect(store.getAutomationsForPost(501, null)).rejects.toBeTruthy();
+  });
+
   it('deleteInstagramAutomation deletes by id', async () => {
     mockedSupabase.__queueSupabaseResult('instagram_comment_automations', 'delete', {
       data: null,

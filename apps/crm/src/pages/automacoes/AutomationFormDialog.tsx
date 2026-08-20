@@ -226,11 +226,16 @@ export default function AutomationFormDialog({
   open,
   onOpenChange,
   editing,
+  initialTarget,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editing: InstagramCommentAutomation | null;
+  /** Pre-seeds a creation with the post it was opened from (the Entregas
+   * editor's entry point). Ignored while `editing`, which carries its own
+   * target. */
+  initialTarget?: { clientId: number; target: SelectedTarget } | null;
   onSaved: () => void;
 }) {
   const { t } = useTranslation('automations');
@@ -245,11 +250,18 @@ export default function AutomationFormDialog({
    * off the page they just paged to. */
   const productionPageSeededRef = useRef(false);
 
+  // Read through a ref, never a dependency: callers build `initialTarget` inline,
+  // so a fresh object identity every parent render would re-run the seed below
+  // and clobber whatever the user had typed.
+  const initialTargetRef = useRef(initialTarget);
+  initialTargetRef.current = initialTarget;
+
   // Re-seed the form only when the dialog transitions to open, from
   // `editing` (edit) or a blank slate (create) -- not on every render, or
   // typing would get clobbered by the next parent re-render.
   useEffect(() => {
     if (!open) return;
+    const seed = initialTargetRef.current;
     if (editing) {
       setForm({
         name: editing.name,
@@ -259,6 +271,14 @@ export default function AutomationFormDialog({
         keywordInput: '',
         dmMessage: editing.dm_message,
         publicReply: editing.public_reply ?? '',
+      });
+    } else if (seed) {
+      setForm({
+        ...emptyState(),
+        clientId: seed.clientId,
+        targetMode: 'post',
+        targetSource: seed.target.kind === 'production' ? 'production' : 'published',
+        selectedPost: seed.target,
       });
     } else {
       setForm(emptyState());
@@ -297,6 +317,11 @@ export default function AutomationFormDialog({
   const canAutomate = selectedStatus?.canAutomate ?? false;
 
   const targetingPost = form.targetMode === 'post' && typeof form.clientId === 'number';
+
+  /** A dialog opened from a post belongs to that post's client: letting the
+   * Select move would silently strand the seeded target on another workspace's
+   * grid. Editing keeps the Select free, as before. */
+  const clientLocked = !editing && initialTarget != null;
 
   const postsQuery = useQuery({
     queryKey: ['instagram-posts-for-automation', form.clientId, postsPage],
@@ -528,6 +553,7 @@ export default function AutomationFormDialog({
           <div>
             <label className="text-sm font-medium">{t('form.clientLabel')}</label>
             <Select
+              disabled={clientLocked}
               value={form.clientId === '' ? '' : String(form.clientId)}
               onValueChange={(v) => {
                 setForm((f) => ({
@@ -544,7 +570,10 @@ export default function AutomationFormDialog({
                 productionPageSeededRef.current = true;
               }}
             >
-              <SelectTrigger aria-label={t('form.clientAria')}>
+              {/* Radix mirrors the root's `disabled` onto the trigger, but
+                  saying it here too keeps the button's own disabled attribute
+                  independent of that plumbing. */}
+              <SelectTrigger aria-label={t('form.clientAria')} disabled={clientLocked}>
                 <SelectValue placeholder={t('form.clientPlaceholder')} />
               </SelectTrigger>
               <SelectContent>

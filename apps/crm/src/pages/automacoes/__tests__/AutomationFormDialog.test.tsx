@@ -170,7 +170,7 @@ vi.mock('@/components/ui/dialog', async () => {
 });
 
 import { toast } from 'sonner';
-import AutomationFormDialog from '../AutomationFormDialog';
+import AutomationFormDialog, { type SelectedTarget } from '../AutomationFormDialog';
 import type { InstagramCommentAutomation } from '../../../store';
 
 const CLIENTES = [{ id: 7, nome: 'Clinica X', sigla: 'CX', cor: '#3ecf8e' }];
@@ -247,26 +247,36 @@ const MANY_PRODUCTION = Array.from({ length: 15 }, (_, i) =>
 /** The 13th eligible post -- first card of the second page. */
 const THIRTEENTH = MANY_PRODUCTION[12];
 
-function renderDialog(onSaved = vi.fn(), editing: InstagramCommentAutomation | null = null) {
+function renderDialog(
+  onSaved = vi.fn(),
+  editing: InstagramCommentAutomation | null = null,
+  initialTarget?: { clientId: number; target: SelectedTarget },
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return {
     qc,
     ...render(
       <QueryClientProvider client={qc}>
         <MemoryRouter>
-          <AutomationFormDialog open onOpenChange={vi.fn()} editing={editing} onSaved={onSaved} />
+          <AutomationFormDialog
+            open
+            onOpenChange={vi.fn()}
+            editing={editing}
+            initialTarget={initialTarget}
+            onSaved={onSaved}
+          />
         </MemoryRouter>
       </QueryClientProvider>,
     ),
   };
 }
 
-/** Fills the fields the submit validation requires, leaving the target alone. */
-async function fillRequiredFields() {
+/** Everything the submit validation wants except the client, which a seeded
+ * dialog already carries (and whose Select is locked there). */
+function fillNameKeywordAndDm() {
   fireEvent.change(screen.getByLabelText('form.nameLabel'), {
     target: { value: 'Minha automacao' },
   });
-  fireEvent.click(await screen.findByRole('button', { name: 'Clinica X' }));
   fireEvent.change(screen.getByPlaceholderText('form.keywordPlaceholder'), {
     target: { value: 'preco' },
   });
@@ -274,6 +284,13 @@ async function fillRequiredFields() {
   fireEvent.change(screen.getByLabelText('form.dmLabel'), {
     target: { value: 'Segue o link!' },
   });
+}
+
+/** Fills the fields the submit validation requires, leaving the target alone.
+ * Picking the client resets the target, so it has to come first. */
+async function fillRequiredFields() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Clinica X' }));
+  fillNameKeywordAndDm();
 }
 
 describe('AutomationFormDialog', () => {
@@ -483,6 +500,110 @@ describe('AutomationFormDialog', () => {
     });
     // Reactivation stays a deliberate act on the listing toggle.
     expect(patch).not.toHaveProperty('ativo');
+  });
+
+  // ── initialTarget (entry point from the post editor) ───────────────────────
+
+  it('opens seeded on the production post it was handed, with the client locked', async () => {
+    renderDialog(vi.fn(), null, {
+      clientId: 7,
+      target: { kind: 'production', workflow_post_id: 501, titulo: 'Carrossel de agosto' },
+    });
+
+    const card = await screen.findByRole('button', { name: 'Carrossel de agosto' });
+    expect(card.getAttribute('aria-pressed')).toBe('true');
+    expect(
+      (screen.getByRole('radio', { name: 'form.targetPost' }) as HTMLInputElement).checked,
+    ).toBe(true);
+    expect((screen.getByLabelText('form.clientAria') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('creates against the seeded production post without ever touching the client select', async () => {
+    renderDialog(vi.fn(), null, {
+      clientId: 7,
+      target: { kind: 'production', workflow_post_id: 501, titulo: 'Carrossel de agosto' },
+    });
+
+    await screen.findByRole('button', { name: 'Carrossel de agosto' });
+    fillNameKeywordAndDm();
+    fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        client_id: 7,
+        workflow_post_id: 501,
+        ig_media_id: null,
+        media_permalink: null,
+        media_caption: 'Carrossel de agosto',
+      }),
+    );
+  });
+
+  it('opens seeded on the published tab when the post already has a media id', async () => {
+    renderDialog(vi.fn(), null, {
+      clientId: 7,
+      target: {
+        kind: 'published',
+        ig_media_id: '17900000000000001',
+        media_permalink: 'https://instagram.com/p/teste',
+        media_caption: 'Post de teste',
+        workflow_post_id: 501,
+      },
+    });
+
+    expect(
+      (await screen.findByRole('radio', { name: 'form.targetSourcePublished' })).getAttribute(
+        'aria-checked',
+      ),
+    ).toBe('true');
+    // The published grid's tiles carry no accessible text, so the selected one
+    // is identified by its pressed state.
+    expect(await screen.findByRole('button', { pressed: true })).toBeTruthy();
+
+    fillNameKeywordAndDm();
+    fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        client_id: 7,
+        ig_media_id: '17900000000000001',
+        // The internal link survives the round trip, so the post keeps showing
+        // the automation after it publishes.
+        workflow_post_id: 501,
+      }),
+    );
+  });
+
+  it('leaves the dialog untouched when no initialTarget is given', async () => {
+    renderDialog();
+
+    await screen.findByRole('button', { name: 'Clinica X' });
+    expect((screen.getByLabelText('form.clientAria') as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      (screen.getByRole('radio', { name: 'form.targetAll' }) as HTMLInputElement).checked,
+    ).toBe(true);
+  });
+
+  it('lets an edit win over a stale initialTarget', async () => {
+    // Reopening the same section in edit mode must not drag the post seed along.
+    renderDialog(
+      vi.fn(),
+      { ...EDITING_BASE, workflow_post_id: 999, media_caption: 'Post arquivado' },
+      {
+        clientId: 7,
+        target: { kind: 'production', workflow_post_id: 501, titulo: 'Carrossel de agosto' },
+      },
+    );
+
+    const pinned = await screen.findByRole('button', { name: 'Post arquivado' });
+    expect(pinned.getAttribute('aria-pressed')).toBe('true');
+    expect(
+      screen.getByRole('button', { name: 'Carrossel de agosto' }).getAttribute('aria-pressed'),
+    ).toBe('false');
+    // Editing keeps the client select usable.
+    expect((screen.getByLabelText('form.clientAria') as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('leaves pending_post_deleted_at out of the patch for a plain published automation', async () => {

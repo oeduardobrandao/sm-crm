@@ -98,6 +98,7 @@ import { InstagramCaptionField } from './InstagramCaptionField';
 import { PlatformSelector } from './PlatformSelector';
 import { TikTokSettingsPanel } from './TikTokSettingsPanel';
 import { ScheduleButton } from './ScheduleButton';
+import { PostAutomationSection } from './PostAutomationSection';
 import { PublishErrorBlock } from './PublishErrorBlock';
 import { shouldShowPublishErrorBlock } from './publishErrorBlockVisibility';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
@@ -1510,6 +1511,15 @@ function SortablePostItem({
             tiktokSettingsComplete={tiktokSettingsComplete}
             onTikTokUnaudited={() => setTiktokTestModeBanner(true)}
             onStatusChange={onRefresh}
+          />
+
+          {/* Self-gating: renders nothing without the plan feature, an Instagram
+              account, or on a post comments can never reach (stories, TikTok-only). */}
+          <PostAutomationSection
+            post={post}
+            clienteId={clienteId}
+            currentUserRole={currentUserRole}
+            hasInstagramAccount={hasInstagramAccount}
           />
 
           <PostCommentSummary
