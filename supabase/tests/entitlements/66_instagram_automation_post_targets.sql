@@ -37,6 +37,12 @@
 --     um RAISE do resolver nesses caminhos derrubaria o DELETE do post e a
 --     PUBLICACAO. A regra: operacao do sistema nunca aborta por deriva, so
 --     deixa de ligar; a automacao fica pendente ou vira tombstone.
+-- 11. A CHECK ica_tombstone_inactive olha so o estado final da linha: sem a
+--     guarda do resolver, UM write limparia o tombstone e ativaria de uma vez,
+--     virando automacao GLOBAL ativa. Dois passos (e o write que ja traz alvo
+--     novo) continuam valendo.
+-- 12. O tombstone do z4 e SECURITY DEFINER: vale ate para um agent, que pela
+--     RLS nem consegue dar UPDATE na automacao.
 --
 -- Tudo roda como dono da tabela, o mesmo stand-in do worker service-role usado
 -- nas secoes 4 e 6 da suite 65: FK, CHECK e triggers nao dependem do papel.
@@ -606,5 +612,154 @@ begin
   end;
 
   raise notice 'PASS 66 deriva de alvo nao aborta publicacao, DELETE nem sweep';
+end $$;
+rollback;
+
+-- 11. Tombstone nao pode ser limpo E reativado sem alvo num UNICO write.
+--     A CHECK ica_tombstone_inactive so olha o estado final da linha, entao
+--     sozinha ela deixaria passar um UPDATE que limpa o tombstone e ativa ao
+--     mesmo tempo -- o resultado seria uma automacao GLOBAL ativa que ninguem
+--     pediu. Quem fecha isso e a guarda do resolver. O caminho legitimo (dois
+--     passos) e o write que ja traz alvo novo continuam funcionando.
+begin;
+do $$
+declare
+  v_ws uuid;
+  v_uid uuid := gen_random_uuid();
+  v_cli bigint; v_wf bigint;
+  v_post bigint; v_post2 bigint;
+  v_a1 uuid; v_a2 uuid; v_a3 uuid;
+  v_a record;
+  v_rejected boolean;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_instagram_automation": true}'::jsonb);
+
+  insert into auth.users (id) values (v_uid);
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status)
+    values (v_uid, v_ws, v_cli, 'WF', 'ativo') returning id into v_wf;
+  insert into workflow_posts (workflow_id, conta_id, titulo)
+    values (v_wf, v_ws, 'Vai sumir') returning id into v_post;
+  insert into workflow_posts (workflow_id, conta_id, titulo)
+    values (v_wf, v_ws, 'Alvo novo') returning id into v_post2;
+
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, workflow_post_id)
+    values (v_ws, v_cli, 'A1', array['x'], 'y', v_post) returning id into v_a1;
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, workflow_post_id)
+    values (v_ws, v_cli, 'A2', array['x'], 'y', v_post) returning id into v_a2;
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, workflow_post_id)
+    values (v_ws, v_cli, 'A3', array['x'], 'y', v_post) returning id into v_a3;
+
+  delete from workflow_posts where id = v_post; -- tombstona as tres
+
+  -- (a) o write malicioso de um statement so: limpa tombstone + ativa + sem alvo
+  v_rejected := false;
+  begin
+    update instagram_comment_automations
+       set pending_post_deleted_at = null, ativo = true,
+           workflow_post_id = null, ig_media_id = null
+     where id = v_a1;
+  exception when sqlstate 'P0001' then
+    assert sqlerrm like '%without a target in one write%', format('wrong msg: %s', sqlerrm);
+    v_rejected := true;
+  end;
+  assert v_rejected, 'limpar tombstone e ativar sem alvo num write so deve ser rejeitado';
+
+  select * into v_a from instagram_comment_automations where id = v_a1;
+  assert v_a.pending_post_deleted_at is not null and v_a.ativo = false,
+    'a linha rejeitada continua tombstoned e inativa';
+
+  -- (b) caminho legitimo em DOIS passos: "Todos os posts" limpa sem ativar...
+  update instagram_comment_automations set pending_post_deleted_at = null
+    where id = v_a2;
+  select * into v_a from instagram_comment_automations where id = v_a2;
+  assert v_a.pending_post_deleted_at is null, 'passo 1 deve limpar o tombstone';
+  assert v_a.ativo = false, 'passo 1 nao ativa';
+  assert v_a.workflow_post_id is null and v_a.ig_media_id is null,
+    'passo 1 deixa a automacao no estado "todos os posts"';
+
+  -- ...e so entao o toggle reativa
+  update instagram_comment_automations set ativo = true where id = v_a2;
+  select * into v_a from instagram_comment_automations where id = v_a2;
+  assert v_a.ativo, 'passo 2 deve reativar';
+
+  -- (c) um write so que ja TRAZ alvo novo nao e o caso guardado: passa
+  update instagram_comment_automations
+     set pending_post_deleted_at = null, ativo = true, workflow_post_id = v_post2
+   where id = v_a3;
+  select * into v_a from instagram_comment_automations where id = v_a3;
+  assert v_a.ativo and v_a.pending_post_deleted_at is null and v_a.workflow_post_id = v_post2,
+    'escolher alvo novo e reativar no mesmo write deve passar';
+
+  raise notice 'PASS 66 tombstone nao vira automacao global ativa num write so';
+end $$;
+rollback;
+
+-- 12. O tombstone do DELETE vale para QUALQUER papel: o z4 e SECURITY DEFINER,
+--     entao um agent -- que pela RLS nem consegue dar UPDATE na automacao --
+--     ainda tombstona ao excluir o post.
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid;
+  v_owner uuid := gen_random_uuid();
+  v_agent uuid := gen_random_uuid();
+  v_cli bigint; v_wf bigint; v_post bigint;
+  v_auto uuid;
+  v_a record;
+  v_rows bigint;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_instagram_automation": true}'::jsonb);
+
+  insert into auth.users (id) values (v_owner), (v_agent);
+  insert into workspace_members (user_id, workspace_id, role)
+    values (v_owner, v_ws, 'owner'), (v_agent, v_ws, 'agent');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws, role = 'owner'
+    where id = v_owner;
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws, role = 'agent'
+    where id = v_agent;
+
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_owner, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status)
+    values (v_owner, v_ws, v_cli, 'WF', 'ativo') returning id into v_wf;
+  insert into workflow_posts (workflow_id, conta_id, titulo)
+    values (v_wf, v_ws, 'Pendente') returning id into v_post;
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, workflow_post_id)
+    values (v_ws, v_cli, 'Pendente', array['x'], 'y', v_post) returning id into v_auto;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_agent, 'role', 'authenticated')::text, true);
+
+  -- o agent nao consegue mexer na automacao pela RLS (ica_update e owner/admin)
+  update instagram_comment_automations set ativo = false where id = v_auto;
+  get diagnostics v_rows = row_count;
+  assert v_rows = 0, format('agent nao pode dar UPDATE na automacao, afetou %s', v_rows);
+
+  -- mas excluir o post e permitido para ele, e o z4 tombstona mesmo assim
+  delete from workflow_posts where id = v_post;
+  get diagnostics v_rows = row_count;
+  assert v_rows = 1, format('agent deve conseguir excluir o post, afetou %s', v_rows);
+
+  reset role;
+
+  select * into v_a from instagram_comment_automations where id = v_auto;
+  assert v_a.ativo = false, 'DELETE feito por agent tambem deve desativar';
+  assert v_a.pending_post_deleted_at is not null,
+    'DELETE feito por agent tambem deve gravar o tombstone (z4 e SECURITY DEFINER)';
+  assert v_a.workflow_post_id is null, 'o ponteiro cai pelo SET NULL da FK';
+
+  raise notice 'PASS 66 tombstone via SECURITY DEFINER vale ate para agent';
 end $$;
 rollback;

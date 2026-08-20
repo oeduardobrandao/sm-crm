@@ -23,6 +23,21 @@ DECLARE
   v_found boolean;
   v_user_directed boolean;
 BEGIN
+  -- A CHECK ica_tombstone_inactive so proibe o par (ativo, tombstone) no
+  -- estado FINAL da linha, entao um UNICO write que limpa o tombstone e ativa
+  -- ao mesmo tempo -- sem escolher alvo -- passaria por ela e entregaria uma
+  -- automacao GLOBAL ativa que ninguem pediu. O caminho legitimo e em dois
+  -- passos e continua valendo: escolher "Todos os posts" limpa o tombstone sem
+  -- ativar, e so depois o toggle reativa.
+  IF TG_OP = 'UPDATE'
+     AND OLD.pending_post_deleted_at IS NOT NULL
+     AND NEW.pending_post_deleted_at IS NULL
+     AND NEW.ativo
+     AND NEW.ig_media_id IS NULL
+     AND NEW.workflow_post_id IS NULL THEN
+    RAISE EXCEPTION 'cannot clear tombstone and reactivate without a target in one write';
+  END IF;
+
   -- Tombstone limpa SO quando um alvo novo nao-nulo e escolhido: o SET NULL da
   -- FK (post excluido) tambem dispara este trigger e nao pode apagar o
   -- tombstone que workflow_posts_z4 acabou de gravar.
@@ -93,8 +108,11 @@ BEGIN
   RETURN NEW;
 END $$;
 
+-- pending_post_deleted_at entra no UPDATE OF para que uma limpeza DIRETA do
+-- tombstone (PostgREST, MCP, psql) passe pelo resolver em vez de escapar dele.
 CREATE TRIGGER ica_a1_resolve_workflow_post_target
-  BEFORE INSERT OR UPDATE OF workflow_post_id, ig_media_id, ativo, client_id
+  BEFORE INSERT OR UPDATE OF workflow_post_id, ig_media_id, ativo, client_id,
+                             pending_post_deleted_at
   ON instagram_comment_automations
   FOR EACH ROW EXECUTE FUNCTION resolve_ica_workflow_post_target();
 
