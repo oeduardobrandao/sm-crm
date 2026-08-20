@@ -164,6 +164,26 @@ export function EditWorkflowModal({
           <DialogHeader>
             <DialogTitle>Editar Fluxo</DialogTitle>
           </DialogHeader>
+          <div className="edit-modal-toolbar">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setMigrateOpen(true)}
+              disabled={isDirty}
+            >
+              <ArrowRightLeft className="h-4 w-4" /> Migrar template
+            </Button>
+            {onOpenPosts && (
+              <Button variant="outline" size="sm" onClick={onOpenPosts}>
+                <FileText className="h-4 w-4" /> Posts
+              </Button>
+            )}
+            {isDirty && (
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                Salve as alterações antes de migrar.
+              </span>
+            )}
+          </div>
           <div className="space-y-3">
             <div className="space-y-1">
               <Label>Título *</Label>
@@ -331,14 +351,6 @@ export function EditWorkflowModal({
           </div>
           <div className="edit-modal-footer">
             <div className="edit-modal-footer-secondary">
-              <Button variant="outline" onClick={() => setMigrateOpen(true)} disabled={isDirty}>
-                <ArrowRightLeft className="h-4 w-4" /> Migrar template
-              </Button>
-              {isDirty && (
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Salve as alterações antes de migrar.
-                </span>
-              )}
               <Button
                 variant="outline"
                 className="text-destructive"
@@ -346,11 +358,6 @@ export function EditWorkflowModal({
               >
                 <Trash2 className="h-4 w-4" /> Excluir
               </Button>
-              {onOpenPosts && (
-                <Button variant="outline" onClick={onOpenPosts}>
-                  <FileText className="h-4 w-4" /> Posts
-                </Button>
-              )}
             </div>
             <div className="edit-modal-footer-primary">
               <Button variant="outline" onClick={onClose}>

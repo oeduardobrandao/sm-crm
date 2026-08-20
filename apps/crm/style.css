@@ -8277,6 +8277,16 @@ a.mention-chip:hover {
   margin-left: auto;
 }
 
+/* ── Edit Workflow Modal toolbar (ações de navegação, abaixo do título) ─────── */
+.edit-modal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
 /* ── Edit Workflow Modal footer ─────────────────────────────────────────────── */
 .edit-modal-footer {
   display: flex;
