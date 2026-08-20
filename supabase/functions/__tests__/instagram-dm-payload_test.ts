@@ -25,6 +25,7 @@ Deno.test("parseDmButtons: itens inválidos são descartados em silêncio", () =
       { title: "Ftp", url: "ftp://a.b" }, // esquema inválido
       { title: "Rel", url: "/caminho" }, // relativa
       { title: "Phish", url: "https://accounts.instagram.com@evil.example/x" }, // userinfo
+      { title: "Back", url: "https://good.com\\@evil.com/phish" }, // barra invertida
       "string", // não-objeto
       null,
     ]),

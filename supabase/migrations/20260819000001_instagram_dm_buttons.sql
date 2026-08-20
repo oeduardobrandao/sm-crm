@@ -30,6 +30,11 @@ RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
           -- sem userinfo (https://user:pass@evil.x); @ no PATH segue válido
           -- (https://instagram.com/@handle) porque o guard para em /?#
           AND item->>'url' !~ '^[Hh][Tt][Tt][Pp][Ss]?://[^/?#]*@'
+          -- sem barra invertida: o parser WHATWG do browser normaliza a barra
+          -- invertida para / (https://a.com<bs>@evil.com viraria path la e
+          -- userinfo aqui); rejeitar nas TRES camadas mantem cliente e CHECK
+          -- de acordo. chr(92) evita ambiguidade de escape.
+          AND strpos(item->>'url', chr(92)) = 0
         , false)
       END)
       FROM jsonb_array_elements(b) AS item

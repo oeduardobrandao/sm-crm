@@ -35,7 +35,12 @@ describe('validateDmButtons', () => {
   });
 
   it('rejeita esquemas perigosos e URLs com credenciais', () => {
-    for (const url of ['ftp://a.b', 'javascript:alert(1)', 'https://user:pass@a.b']) {
+    for (const url of [
+      'ftp://a.b',
+      'javascript:alert(1)',
+      'https://user:pass@a.b',
+      'https://good.com\\@evil.com/phish',
+    ]) {
       expect(validateDmButtons([{ title: 'Ok', url }], 'msg')).toBe('form.validationButtonUrl');
     }
   });

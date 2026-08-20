@@ -27,7 +27,15 @@ export function validateDmButtons(buttons: DmButton[], dmMessage: string): strin
     const title = b.title.trim();
     if (!title || title.length > MAX_BUTTON_TITLE) return 'form.validationButtonTitle';
     const url = b.url.trim();
-    if (!HTTP_URL_RE.test(url) || url.length > MAX_BUTTON_URL || sanitizeExternalUrl(url) === '#') {
+    // Barra invertida: o parser WHATWG normaliza \ para / (entao
+    // https://a.com\@evil.com passaria aqui), mas o CHECK do banco nao --
+    // rejeitar sempre mantem o contrato "erro inline, nunca 23514".
+    if (
+      !HTTP_URL_RE.test(url) ||
+      url.includes('\\') ||
+      url.length > MAX_BUTTON_URL ||
+      sanitizeExternalUrl(url) === '#'
+    ) {
       return 'form.validationButtonUrl';
     }
   }

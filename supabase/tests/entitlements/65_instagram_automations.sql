@@ -468,6 +468,17 @@ begin
   end;
   assert v_rejected, 'URL com userinfo deve ser rejeitada';
 
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_buttons)
+      values (v_ws, v_cli, 'Backslash', array['x'], 'msg',
+        jsonb_build_array(jsonb_build_object('title', 'Login', 'url', 'https://good.com' || chr(92) || '@evil.com/x')));
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'URL com barra invertida deve ser rejeitada';
+
   insert into instagram_comment_automations
     (conta_id, client_id, name, keywords, dm_message, dm_buttons)
     values (v_ws, v_cli, 'Perfil', array['perfil'], 'msg',

@@ -64,7 +64,7 @@ export function parseDmButtons(raw: unknown): DmButton[] {
     const url = typeof (item as { url?: unknown }).url === "string"
       ? ((item as { url: string }).url).trim()
       : "";
-    if (!title || !HTTP_URL_RE.test(url) || hasUserinfo(url)) {
+    if (!title || !HTTP_URL_RE.test(url) || url.includes("\\") || hasUserinfo(url)) {
       discarded++;
       continue;
     }
