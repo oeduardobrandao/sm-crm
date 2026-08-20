@@ -101,7 +101,7 @@ BEGIN
       JOIN template_property_definitions n
         ON n.template_id = p_template_id
        AND n.type = o.type
-       AND lower(btrim(n.name)) = lower(btrim(o.name))
+       AND lower(btrim(n.name, E' \t\r\n')) = lower(btrim(o.name, E' \t\r\n'))
       WHERE o.template_id = v_old_template_id
         AND o.type NOT IN ('select', 'multiselect', 'status')
       ORDER BY o.id, n.display_order, n.id
@@ -121,7 +121,7 @@ BEGIN
       JOIN template_property_definitions n
         ON n.template_id = p_template_id
        AND n.type = o.type
-       AND lower(btrim(n.name)) = lower(btrim(o.name))
+       AND lower(btrim(n.name, E' \t\r\n')) = lower(btrim(o.name, E' \t\r\n'))
       WHERE o.template_id = v_old_template_id
         AND o.type NOT IN ('select', 'multiselect', 'status')
       ORDER BY o.id, n.display_order, n.id
@@ -137,7 +137,7 @@ BEGIN
           SELECT 1 FROM post_property_values x
           WHERE x.post_id = pv.post_id
             AND x.property_definition_id = m.new_id
-            AND x.value = pv.value))
+            AND x.value IS NOT DISTINCT FROM pv.value))
     )
     SELECT coalesce(jsonb_agg(jsonb_build_object(
              'post_id', post_id, 'name', name, 'value', value)), '[]'::jsonb),

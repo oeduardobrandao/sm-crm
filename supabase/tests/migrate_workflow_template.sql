@@ -2,6 +2,7 @@
 -- Casos:
 --   (a) migração feliz: escada substituída, statuses derivados, workflow atualizado, audit_log gravado
 --   (b) remap de propriedade por nome+tipo (case-insensitive, trim), valor órfão apagado
+--   (b2) valor NULL migrado não aparece como perdido no snapshot (IS NOT DISTINCT FROM)
 --   (c) conflito UNIQUE(post_id, definition): valor já existente no destino vence
 --   (c2) duas definições de origem casando com a MESMA de destino: menor display_order vence,
 --        sem unique_violation (o INSERT+ON CONFLICT resolve; um UPDATE simples estouraria)
@@ -32,6 +33,7 @@ declare
   v_tpl_a bigint; v_tpl_b bigint;
   v_def_a_tema bigint; v_def_a_tema_dup bigint; v_def_a_briefing bigint; v_def_a_formato bigint;
   v_def_b_tema bigint; v_def_b_formato bigint;
+  v_def_a_nota bigint; v_def_b_nota bigint;
   v_post1 bigint; v_post2 bigint;
   v_new_etapas jsonb := jsonb_build_array(
     jsonb_build_object('nome','Roteiro','prazo_dias',2,'tipo_prazo','uteis','responsavel_id',null,'tipo','padrao','data_limite',null),
@@ -80,6 +82,10 @@ begin
   insert into template_property_definitions (template_id, conta_id, name, type, config, display_order)
     values (v_tpl_b, v_ws, 'Formato', 'select', '{"options":[{"id":"22222222-2222-2222-2222-222222222222","label":"Feed","color":"#000"}]}', 1)
     returning id into v_def_b_formato;
+  insert into template_property_definitions (template_id, conta_id, name, type, display_order)
+    values (v_tpl_a, v_ws, 'Nota', 'text', 4) returning id into v_def_a_nota;
+  insert into template_property_definitions (template_id, conta_id, name, type, display_order)
+    values (v_tpl_b, v_ws, 'Nota', 'text', 2) returning id into v_def_b_nota;
 
   insert into workflows (conta_id, user_id, cliente_id, titulo, template_id, status, etapa_atual, recorrente, modo_prazo)
     values (v_ws, v_owner, v_cli, 'Fluxo A', v_tpl_a, 'ativo', 0, false, 'padrao')
@@ -107,6 +113,9 @@ begin
   -- (c) post2 já tem valor na definição destino: o do destino vence
   insert into post_property_values (post_id, property_definition_id, value)
     values (v_post2, v_def_a_tema, '"origem"'), (v_post2, v_def_b_tema, '"destino"');
+  -- (b2) valor NULL em 'Nota' de A: deve migrar como NULL e NÃO como perdido
+  insert into post_property_values (post_id, property_definition_id, value)
+    values (v_post1, v_def_a_nota, null);
   -- (d) select option on-the-fly pendurada em definição do template origem
   insert into workflow_select_options (workflow_id, property_definition_id, conta_id, label)
     values (v_wf, v_def_a_formato, v_ws, 'Opcao X');
@@ -197,7 +206,7 @@ begin
   select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf;
   assert v_cnt = 1, 'escada antiga deve continuar intacta após falha';
   select count(*) into v_cnt from post_property_values where post_id = v_post1;
-  assert v_cnt = 4, 'valores intactos após falha';
+  assert v_cnt = 5, 'valores intactos após falha (inclui o valor NULL de Nota da fixture b2)';
 
   -- (a) migração feliz
   perform migrate_workflow_template(v_wf, v_tpl_b, v_new_etapas, 1, 'padrao', v_tpl_a);
@@ -221,6 +230,11 @@ begin
   assert v_cnt = 1, 'Tema de post1 deve migrar com o valor da def de menor display_order';
   select count(*) into v_cnt from post_property_values where property_definition_id = v_def_a_briefing;
   assert v_cnt = 0, 'Briefing (sem par) deve ser apagado';
+
+  -- (b2) valor NULL migrou e NÃO consta como perdido
+  select count(*) into v_cnt from post_property_values
+    where post_id = v_post1 and property_definition_id = v_def_b_nota and value is null;
+  assert v_cnt = 1, 'valor NULL deve migrar para a definição de B';
 
   -- (c) conflito: valor do destino vence, o de origem some
   select count(*) into v_cnt from post_property_values
@@ -246,6 +260,7 @@ begin
   assert v_meta is not null, 'audit_log deve registrar a migração';
   assert v_meta->'dropped_property_names' ? 'Briefing', 'metadata: nomes descartados';
   assert v_meta->'dropped_property_names' ? 'Formato', 'metadata: select descartada';
+  assert not (v_meta->'dropped_property_names' ? 'Nota'), 'valor NULL migrado nao pode constar como perdido';
   select count(*) into v_cnt from jsonb_array_elements(v_meta->'dropped_property_values') e
     where e->'value' = '"dup-perdedor"'::jsonb;
   assert v_cnt >= 1, 'metadata: valor perdedor do conflito (c2) preservado';
