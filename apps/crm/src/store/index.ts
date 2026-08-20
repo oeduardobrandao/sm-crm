@@ -6,6 +6,7 @@ export * from './team';
 export * from './integrations';
 export * from './leads';
 export * from './workflows';
+export * from './workflowMigration';
 export * from './posts';
 export * from './postStatuses';
 export * from './instagramAutomations';
