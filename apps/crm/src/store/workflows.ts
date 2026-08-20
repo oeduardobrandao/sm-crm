@@ -533,7 +533,7 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
  * Steps after anchor: walk forward adding prazo_dias.
  * Returns Map<ordem, ISO date string>.
  */
-function _computeDeliveryDeadlines(
+export function _computeDeliveryDeadlines(
   etapas: WorkflowEtapa[],
   deliveryDate: Date,
 ): Map<number, string> {
