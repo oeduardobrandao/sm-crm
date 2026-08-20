@@ -38,10 +38,16 @@ Migration nova (prefixo de versão único — conferir o tail de `origin/main:su
 | `ai_content` | jsonb | saída bruta do Gemini |
 | `status` | text CHECK | `pending\|generating\|ready\|failed` |
 | `generation_error` | text | |
+| `pdf_storage_path` | text | um objeto por documento, sobrescrito a cada export |
+| `pdf_generated_at` | timestamptz | comparado com `updated_at` para o cache do PDF |
 | `created_by` | uuid | |
-| `created_at` / `updated_at` | timestamptz | |
+| `created_at` / `updated_at` | timestamptz | `updated_at` mantido por trigger em todo UPDATE |
 
-RLS espelhando as políticas por operação de `analytics_reports` (`20260315_rls_security_audit.sql:371-390`): `conta_id IN (SELECT conta_id FROM profiles WHERE id = auth.uid())`.
+**RLS e privilégios** (a parte que define a superfície de escrita):
+
+- Políticas por operação no padrão real de `analytics_reports` (`20260315_rls_security_audit.sql:374-390`): `conta_id IN (SELECT public.get_my_conta_id())` — o modelo de isolamento é o workspace ativo, não `profiles.conta_id`.
+- **Só SELECT e UPDATE para `authenticated`**, e o UPDATE com **grant por coluna restrito a `(layout, title)`**. Criação, deleção, `status`, `data_snapshot`, `pdf_*` e campos de erro são exclusivos da edge function (service role): sem grant de INSERT/DELETE para `authenticated`, ninguém cria documento por fora do caminho de entitlement nem apaga sem limpar o PDF. Atenção ao gotcha conhecido: `REVOKE FROM PUBLIC` também derruba `service_role` — re-grant explícito.
+- Trigger `BEFORE INSERT OR UPDATE` valida a forma grosseira do `layout` (objeto com `version` inteiro, `blocks` array com limite de itens, `size` no enum) para que escrita direta via PostgREST não persista lixo.
 
 ### `report_templates`
 
@@ -51,10 +57,15 @@ RLS espelhando as políticas por operação de `analytics_reports` (`20260315_rl
 | `conta_id` | uuid NOT NULL | |
 | `name` | text NOT NULL | |
 | `layout` | jsonb NOT NULL | mesmo schema do documento, sem dados |
-| `is_default` | boolean | template padrão do workspace |
+| `is_default` | boolean NOT NULL DEFAULT false | template padrão do workspace |
 | `created_at` / `updated_at` | timestamptz | |
 
-RLS igual. **Sem coluna nova em `clientes`** — evita o allowlist de colunas (GRANT + views + `*_SAFE_COLUMNS`). Default por cliente fica para depois, se fizer falta.
+RLS igual (CRUD completo para `authenticated` — templates são conteúdo do usuário), com duas exceções:
+
+- Índice único parcial `(conta_id) WHERE is_default` + RPC atômica `set_default_report_template(id)` que zera o default anterior e marca o novo numa transação. Sem isso, CRUD direto permite dois defaults e a seleção fica não determinística.
+- O mesmo trigger de validação grosseira do `layout`.
+
+**Sem coluna nova em `clientes`** — evita o allowlist de colunas (GRANT + views + `*_SAFE_COLUMNS`). Default por cliente fica para depois, se fizer falta.
 
 ## 4. Schema do layout
 
@@ -76,23 +87,27 @@ RLS igual. **Sem coluna nova em `clientes`** — evita o allowlist de colunas (G
 - `version` permite migrações do schema de layout no cliente (funções puras, testadas).
 - Ordem do array = ordem no documento. O grid CSS acomoda `third`/`half`/`full` com quebra natural.
 - Template = mesmo objeto sem `text` preenchido de dados de relatório específico (blocos de texto no template guardam o texto do autor, exceto os blocos de IA, que são regenerados por relatório).
+- **Validação em três camadas**: (1) validador compartilhado (zod) em `packages/report-blocks` — tipos de bloco conhecidos, compatibilidade type↔config, limites por config (ex: `count` do grid de posts entre 1 e 12) — usado pelo editor antes de salvar; (2) trigger do banco com a checagem grosseira de forma (§3), já que o UPDATE é direto via PostgREST; (3) renderers defensivos — bloco de tipo desconhecido é ignorado no viewer/print e mostrado como "widget não suportado" no editor; `version` maior que a suportada bloqueia a edição com aviso, nunca sobrescreve.
 
 ## 5. Geração — síncrona, sem fila
 
-Edge function nova **`report-docs`** (JWT; ownership por `conta_id`; auth: service-role client + `getUser(token)`; CORS via `buildCorsHeaders(req)`):
+Edge function nova **`report-docs`** (auth: service-role client + `getUser(token)`; CORS via `buildCorsHeaders(req)`).
+
+**Ownership — regra geral da função**: como ela roda com service role (bypassa RLS), **todo ID que entra num request é resolvido contra o workspace ativo do usuário autenticado**: `clientId` → `clientes.conta_id`, `templateId` → `report_templates.conta_id`, documento `:id` → `report_documents.conta_id`, e a conta de Instagram derivada do cliente. IDs de FK sozinhos não garantem que cliente, conta IG e workspace pertencem uns aos outros; a checagem é explícita em cada rota, e falha = 404 genérico.
 
 - `POST /generate { clientId, month, templateId? }`
-  1. Valida entitlement `feature_analytics_reports` (`effectivePlanFeature`, `_shared/entitlements-rpc.ts`) e rate limit (padrão do gerador atual).
-  2. Roda as ~9 queries paralelas que o gerador v2 já faz (§2 de `instagram-report-generator-v2/index.ts` + `mappers.ts`) e monta o `data_snapshot`.
+  1. Valida ownership (acima), entitlement `feature_analytics_reports` (`effectivePlanFeature`, `_shared/entitlements-rpc.ts`) e rate limit (padrão do gerador atual).
+  2. Roda as ~9 queries paralelas que o gerador v2 já faz (§2 de `instagram-report-generator-v2/index.ts` + `mappers.ts`) e monta o `data_snapshot` — **incluindo o branding congelado** (nome do workspace, handle, URL do logo, URL do splash, accent via `resolveAccent`). Branding congelado dá estabilidade histórica ao documento e identidade estável ao PDF; `refresh-data` re-congela.
   3. Monta o `layout`: do `templateId` informado, senão do template `is_default` do workspace, senão o layout padrão do sistema (§7).
   4. Se `clientes.include_ai_analysis`: roda o Gemini (módulo `_shared/report-template/ai.ts` reutilizado) e preenche os blocos de IA como texto editável. Falha de IA nunca derruba a geração (fallback em bullets, como hoje).
   5. Grava `ready` e devolve o documento. Sem Gotenberg, sem worker, sem lock.
-- `POST /:id/pdf` — dispara Gotenberg `convert/url` na rota `/print` do Hub, salva o PDF em bucket privado, retorna signed URL. Cache por hash do layout; editar o relatório invalida e o próximo export regenera.
-- `POST /:id/refresh-data` — re-snapshot mantendo o layout.
+- `POST /:id/pdf` — dispara Gotenberg `convert/url` na rota `/print` do Hub (contrato de prontidão no §9), salva o PDF em `pdf_storage_path` (um objeto por documento, upsert) e retorna signed URL. **Cache**: serve o PDF existente apenas se `pdf_generated_at >= updated_at` E a versão do renderer não mudou; qualquer edição, `refresh-data` (que também toca `updated_at`) ou bump de renderer regenera. Hash só de layout seria errado: `refresh-data` troca o snapshot mantendo o layout.
+- `POST /:id/refresh-data` — re-snapshot (dados + branding) mantendo o layout; atualiza `updated_at`.
+- `DELETE /:id` — remove o objeto PDF do bucket e a linha. Deleção só por aqui (sem grant de DELETE via PostgREST), para não deixar PDF órfão. Órfãos residuais (crash entre os dois passos) ficam para uma varredura na iniciativa de deprecate.
 
-**Edição** = `UPDATE report_documents.layout` direto via PostgREST com RLS (autosave com debounce). Templates: CRUD direto via PostgREST.
+**Edição** = `UPDATE report_documents (layout, title)` direto via PostgREST com RLS + grant por coluna (§3), autosave com debounce. Templates: CRUD direto via PostgREST; default só pela RPC (§3).
 
-**Thumbnails:** o snapshot guarda URLs estáveis do cache público de thumbnails já existente (PR #200); a geração garante o cache dos top posts. Sem base64.
+**Thumbnails:** a geração roda `cachePostThumbnail` (`_shared/instagram-thumbnail-cache.ts`) para os top posts, mas **só congela URL que passe em `!isEphemeralInstagramUrl()`** — o fallback da função devolve a URL efêmera do CDN em caso de falha, e essa URL nunca entra no snapshot. Cache falhou = `thumbnail_url: null` no snapshot e o widget renderiza placeholder. Sem base64.
 
 ## 6. Pacote compartilhado `packages/report-blocks`
 
@@ -106,14 +121,27 @@ Componentes React por widget + renderer do grid + CSS print. Consumido por: edit
 
 | Categoria | Widgets |
 |---|---|
-| **Números** | 8 cards individuais, cada um com delta vs. mês anterior: novos seguidores, seguidores totais, alcance, taxa de engajamento, salvamentos, publicações, visitas ao perfil, cliques no link |
+| **Números** | 8 cards individuais: novos seguidores, seguidores totais, alcance, taxa de engajamento, salvamentos, publicações, visitas ao perfil, cliques no link. Delta vs. mês anterior **quando existe valor anterior na mesma base** (tabela abaixo) |
 | **Gráficos** | evolução de seguidores (linha), desempenho por formato (Reels/Carrossel/Imagem), melhores horários (heatmap) |
 | **Audiência** | gênero (donut), faixa etária (barras), cidades, países |
 | **Conteúdo** | grid de top posts (config: quantidade), lista compacta de posts, performance por tópico (tags) |
 | **Texto & IA** | texto rico (TipTap), resumo executivo (IA, editável), recomendações (IA, editável), metas (IA, editável) |
 | **Estrutura** | capa (marca + mês + splash do branding atual), cabeçalho de seção, divisor / quebra de página no PDF |
 
-Widget sem dados no snapshot (ex: demografia indisponível) renderiza um estado vazio claro no editor e é omitido no viewer/print.
+**Fonte e base de cada KPI.** O gerador v2 impõe uma invariante que o novo componente herda integralmente: valor, chip de delta e nota do mês anterior de um card são sempre a MESMA medida; sem valor anterior na mesma base, o card mostra só o valor (comentários em `instagram-report-generator-v2/index.ts:618-700` documentam cada guarda). O `ReportData` atual não tem KPI de seguidores totais, e engajamento/publicações não têm delta hoje — o snapshot novo define:
+
+| KPI | Valor | Anterior (delta) |
+|---|---|---|
+| Novos seguidores | ganho líquido close-to-close (`instagram_account_metrics_daily`) | ganho do mês anterior (precisa do 3º snapshot); retido se qualquer ganho for negativo ou faltar snapshot |
+| Seguidores totais | **novo**: close do mês (`followers_count` do snapshot); fallback = último ponto do `follower_history` dentro do mês, aí sem delta | close do mês anterior, só entre dois closes |
+| Alcance | soma dos posts do mês | soma dos posts do mês anterior (>0) |
+| Salvamentos | soma dos posts do mês | idem |
+| Taxa de engajamento | interações/alcance dos posts do mês | **novo**: mesma razão sobre os posts do mês anterior (mesma base month-sum; o v2 não fazia, mas `prevMonthPosts` já viabiliza), com alcance anterior >0 |
+| Publicações | contagem de posts do mês | **novo**: contagem do mês anterior, retido se o mês anterior não tiver posts (zero = sem dado, não colapso) |
+| Visitas ao perfil | snapshot 28d do próprio mês | snapshot 28d do mês anterior, só snapshot-a-snapshot |
+| Cliques no link | idem | idem |
+
+Widget sem dados no snapshot (ex: demografia indisponível, KPI sem snapshot) renderiza um estado vazio claro no editor e é omitido no viewer/print.
 
 **Layout padrão do sistema** reproduz a ordem do relatório atual: capa → resumo → KPIs → crescimento → formatos → posts → audiência → recomendações. Quem não editar nada recebe um relatório equivalente ao de hoje.
 
@@ -129,9 +157,10 @@ Widget sem dados no snapshot (ex: demografia indisponível) renderiza um estado 
 
 ## 9. Hub + PDF
 
-- Função nova **`hub-report-docs`** (auth por token do Hub, padrão de `hub-reports/index.ts`; deploy com `--no-verify-jwt`). A `hub-reports` atual fica intocada.
-- A lista de relatórios do Hub passa a mostrar também os novos documentos; documento novo abre em rota de visualização read-only renderizando os blocos (mesmo pacote), com o accent da marca.
-- Variante `/print` da mesma página (sem chrome, CSS print) é a fonte do PDF via Gotenberg `convert/url` (criar variante URL ao lado de `_shared/report-template/pdf.ts`, que hoje usa `convert/html`).
+- Função nova **`hub-report-docs`** (auth por token do Hub, padrão de `hub-reports/index.ts`; deploy com `--no-verify-jwt`). A `hub-reports` atual fica intocada. Em toda rota, a função valida a cadeia inteira: token → cliente do token → `report_documents.client_id` do documento pedido → `conta_id` coerente. Documento de outro cliente do mesmo workspace = 404.
+- **Contrato de lista**: os relatórios antigos são chaveados por mês (`HubReport.month`, rota `/relatorios/:month`) e os novos são UUIDs, com possivelmente vários por mês. A lista do Hub devolve uma união discriminada (`kind: 'legacy' | 'doc'`, com `month` + `id`/`title` conforme o tipo), e documento novo abre em rota própria sem colisão: `/relatorios/doc/:id`. A rota `:month` legada continua servindo só os antigos.
+- Variante `/relatorios/doc/:id/print` da mesma página (sem chrome, CSS print) é a fonte do PDF via Gotenberg `convert/url` (criar variante URL ao lado de `_shared/report-template/pdf.ts`, que hoje usa `convert/html`).
+- **Contrato de prontidão do print**: o Hub é uma SPA com fetch assíncrono; a página `/print` seta `window.__REPORT_READY = true` só depois de dados carregados, imagens resolvidas (`document.fonts.ready` + decode das imgs) e blocos renderizados. A `report-docs/:id/pdf` chama o Gotenberg com `waitForExpression: "window.__REPORT_READY === true"` (+ timeout), nunca com delay cego. A URL passada ao Gotenberg é a rota do Hub sob o token do cliente (que a `report-docs` lê do banco); é o mesmo token que o cliente já recebe no link do portal, sem credencial nova.
 
 ## 10. Fora da v1 (explícito)
 
@@ -149,8 +178,8 @@ Widget sem dados no snapshot (ex: demografia indisponível) renderiza um estado 
 
 ## 12. Verificação
 
-- **Vitest:** utils do schema de layout (layout padrão, aplicar template, versionamento), widgets renderizando de fixtures de snapshot, dialog de criação.
-- **Deno:** rotas de `report-docs` (generate, pdf, refresh-data) e `hub-report-docs`.
-- **SQL:** políticas RLS das tabelas novas na suíte `supabase/tests/entitlements/`.
+- **Vitest:** utils do schema de layout (layout padrão, aplicar template, versionamento, validador zod com rejeições), widgets renderizando de fixtures de snapshot (incluindo estados vazios e thumbnail null), dialog de criação.
+- **Deno:** rotas de `report-docs` (generate, pdf com regra de cache, refresh-data, delete) e `hub-report-docs` — incluindo os casos negativos de ownership (clientId/templateId/documento de outro workspace = 404) e a cadeia token→cliente→documento do Hub.
+- **SQL:** na suíte `supabase/tests/entitlements/`: políticas RLS das tabelas novas, grant de UPDATE restrito a `(layout, title)` (update de `status`/`data_snapshot` por `authenticated` falha), ausência de INSERT/DELETE para `authenticated`, índice único parcial do `is_default` e a RPC de default.
 - **Pré-push:** `npm run lint`, `npm run format:check`, os 4 `tsc`, `npm run test`, `npm run test:functions` (e `git checkout -- deno.lock` depois do deno).
 - **Browser:** fluxo completo — gerar → editar (arrastar, redimensionar, remover, adicionar, texto) → salvar template → aplicar em outro cliente → ver no Hub → exportar PDF.
