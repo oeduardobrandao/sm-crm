@@ -17,6 +17,8 @@ tokens, publicação, analytics) e pode oferecer isso nativamente.
 - **Fora do v1**: fluxos multi-etapa, botões/quick replies, follow-up após a DM
   (exigiria `instagram_business_manage_messages` e a janela de 24h de messaging),
   respostas a replies de comentários, superfície no Hub do cliente.
+  *Atualização 2026-08-19: botões de link saíram desta lista e foram entregues;
+  ver `2026-08-19-instagram-dm-link-buttons-design.md`.*
 
 ## Decisões
 

@@ -2,13 +2,14 @@
 // Bearer no header (nunca token em query string) e AbortSignal.timeout em TODA
 // chamada (um fetch pendurado seguraria o lock de 'processing' do envio).
 import { GRAPH_BASE } from "./instagram-graph.ts";
+import type { PrivateReplyMessage } from "./instagram-dm-payload.ts";
 
 export interface IgMessagingDeps {
   fetchFn?: typeof fetch;
   timeoutMs?: number;
 }
 
-type IgErrorKind = "transient" | "token_expired" | "already_replied" | "permanent" | "timeout";
+export type IgErrorKind = "transient" | "token_expired" | "already_replied" | "permanent" | "timeout";
 
 const TRANSIENT_GRAPH_CODES = new Set([1, 2, 4, 9, 17, 613]);
 // A Meta não documenta um código estável para "já existe private reply";
@@ -88,11 +89,11 @@ async function igRequest(
 
 export async function sendPrivateReply(
   deps: IgMessagingDeps,
-  args: { igUserId: string; token: string; commentId: string; text: string },
+  args: { igUserId: string; token: string; commentId: string; message: PrivateReplyMessage },
 ): Promise<void> {
   await igRequest(deps, "POST", `/${args.igUserId}/messages`, args.token, {
     recipient: { comment_id: args.commentId },
-    message: { text: args.text },
+    message: args.message,
   });
 }
 

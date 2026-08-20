@@ -25,6 +25,7 @@ vi.mock('@/store', () => ({
   getClientes: vi.fn(),
   getWorkspaceSlug: vi.fn(),
   getHubToken: vi.fn(),
+  getWorkflowTemplates: vi.fn(),
   // Consumed by the real advanceEtapa.ts (not mocked — the rearm decision
   // itself is covered by advanceEtapa.test.ts / KanbanRearm.test.tsx; this
   // suite pins that EntregasTab wires it exactly the same way).
@@ -143,6 +144,7 @@ import {
   getClientes,
   getWorkspaceSlug,
   getHubToken,
+  getWorkflowTemplates,
   completeEtapa,
   completeEtapaWithRearm,
   type Cliente,
@@ -176,6 +178,7 @@ const mockedGetWorkflowPostsWithProperties = vi.mocked(getWorkflowPostsWithPrope
 const mockedGetClientes = vi.mocked(getClientes);
 const mockedGetWorkspaceSlug = vi.mocked(getWorkspaceSlug);
 const mockedGetHubToken = vi.mocked(getHubToken);
+const mockedGetWorkflowTemplates = vi.mocked(getWorkflowTemplates);
 const mockedGetWorkflowCovers = vi.mocked(getWorkflowCovers);
 const mockedCompleteEtapa = vi.mocked(completeEtapa);
 const mockedCompleteEtapaWithRearm = vi.mocked(completeEtapaWithRearm);
@@ -287,6 +290,7 @@ describe('EntregasTab', () => {
       urgente: false,
     });
     mockedGetMembros.mockResolvedValue([]);
+    mockedGetWorkflowTemplates.mockResolvedValue([]);
     mockedGetConcludedWorkflowsByCliente.mockResolvedValue([]);
     mockedGetWorkflowPosts.mockResolvedValue([]);
     mockedGetWorkflowPostsWithProperties.mockResolvedValue([]);
@@ -475,6 +479,7 @@ describe('EntregasTab', () => {
           new Set([
             'workflowsByCliente',
             'membros',
+            'workflow-templates',
             'concluded-by-cliente',
             'concluded-summaries-cliente',
             'clientes',

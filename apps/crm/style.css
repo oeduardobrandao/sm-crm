@@ -8277,6 +8277,16 @@ a.mention-chip:hover {
   margin-left: auto;
 }
 
+/* ── Edit Workflow Modal toolbar (ações de navegação, abaixo do título) ─────── */
+.edit-modal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
 /* ── Edit Workflow Modal footer ─────────────────────────────────────────────── */
 .edit-modal-footer {
   display: flex;
@@ -8286,6 +8296,7 @@ a.mention-chip:hover {
 }
 .edit-modal-footer-secondary {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   order: 1;
 }
@@ -8304,6 +8315,9 @@ a.mention-chip:hover {
 @media (min-width: 640px) {
   .edit-modal-footer {
     flex-direction: row;
+    /* 5 botões + dica não cabem nos ~464px úteis do max-w-lg: sem wrap o
+       min-content alarga o conteúdo e cria scroll horizontal no dialog */
+    flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
   }

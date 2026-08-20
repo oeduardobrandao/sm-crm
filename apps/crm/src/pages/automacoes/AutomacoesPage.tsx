@@ -354,6 +354,11 @@ export default function AutomacoesPage() {
                               {k}
                             </Badge>
                           ))}
+                          {(a.dm_buttons ?? []).length > 0 && (
+                            <Badge variant="neutral" size="sm">
+                              {t('table.buttonsCount', { count: (a.dm_buttons ?? []).length })}
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>{a.dms_sent_count}</TableCell>
@@ -511,6 +516,11 @@ function SendsLog({
             <Badge variant={SEND_STATUS_VARIANT[s.status]} size="sm">
               {t(`sendStatus.${s.status}`)}
             </Badge>
+            {s.dm_kind === 'buttons_fallback_text' && (
+              <Badge variant="neutral" size="sm">
+                {t('sendStatus.buttons_fallback_text')}
+              </Badge>
+            )}
             <span style={{ fontWeight: 600 }}>
               @{s.commenter_username ?? t('unknownCommenter')}
             </span>

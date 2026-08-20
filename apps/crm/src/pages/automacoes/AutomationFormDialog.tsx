@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { AlertTriangle, Check, ExternalLink, Instagram, X } from 'lucide-react';
+import { AlertTriangle, Check, ExternalLink, Instagram, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -38,9 +38,12 @@ import {
   getClientePosts,
   getInstagramAccountStatuses,
   type ClientePost,
+  type DmButton,
   type InstagramCommentAutomation,
   type IgAccountStatus,
 } from '../../store';
+import DmPreview from './DmPreview';
+import { dmMessageLimit, MAX_BUTTON_TITLE, MAX_DM_BUTTONS, validateDmButtons } from './dmButtons';
 
 /**
  * Stacking for the copy opened from inside the Entregas drawer. The default
@@ -110,6 +113,7 @@ function emptyState() {
     keywords: [] as string[],
     keywordInput: '',
     dmMessage: '',
+    buttons: [] as DmButton[],
     publicReply: '',
   };
 }
@@ -403,6 +407,7 @@ export default function AutomationFormDialog({
         keywords: editing.keywords,
         keywordInput: '',
         dmMessage: editing.dm_message,
+        buttons: editing.dm_buttons ?? [],
         publicReply: editing.public_reply ?? '',
       });
     } else if (seed) {
@@ -448,6 +453,22 @@ export default function AutomationFormDialog({
   const selectedStatus =
     typeof form.clientId === 'number' ? statuses.get(form.clientId) : undefined;
   const canAutomate = selectedStatus?.canAutomate ?? false;
+  const selectedCliente =
+    typeof form.clientId === 'number' ? clientes.find((c) => c.id === form.clientId) : undefined;
+
+  const dmLimit = dmMessageLimit(form.buttons);
+  // Automação antiga pode ter até 1000 chars; ao adicionar um botão o limite
+  // cai para 640 e o contador fica vermelho -- maxLength não corta valor já
+  // digitado, então o bloqueio real é o validateDmButtons no submit.
+  const dmOverLimit = form.dmMessage.length > dmLimit;
+
+  const updateButton = (index: number, patch: Partial<DmButton>) =>
+    setForm((f) => ({
+      ...f,
+      buttons: f.buttons.map((b, i) => (i === index ? { ...b, ...patch } : b)),
+    }));
+  const removeButton = (index: number) =>
+    setForm((f) => ({ ...f, buttons: f.buttons.filter((_, i) => i !== index) }));
 
   const targetingPost = form.targetMode === 'post' && typeof form.clientId === 'number';
 
@@ -573,6 +594,7 @@ export default function AutomationFormDialog({
         ...target,
         keywords: form.keywords,
         dm_message: form.dmMessage.trim(),
+        dm_buttons: form.buttons.map((b) => ({ title: b.title.trim(), url: b.url.trim() })),
         public_reply: form.publicReply.trim() || null,
       };
       if (!editing) return createInstagramAutomation(payload);
@@ -667,177 +689,278 @@ export default function AutomationFormDialog({
       toast.error(t('form.validationDm'));
       return;
     }
+    const buttonsError = validateDmButtons(form.buttons, form.dmMessage);
+    if (buttonsError) {
+      toast.error(t(buttonsError));
+      return;
+    }
     saveMutation.mutate();
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={cn('max-w-xl', elevated && DRAWER_ELEVATED_Z)}
+        className={cn('max-w-3xl', elevated && DRAWER_ELEVATED_Z)}
         overlayClassName={elevated ? DRAWER_ELEVATED_Z : undefined}
         onConfirmClose={() => onOpenChange(false)}
         confirmClose={
-          form.name.trim() !== '' || form.keywords.length > 0 || form.dmMessage.trim() !== ''
+          form.name.trim() !== '' ||
+          form.keywords.length > 0 ||
+          form.dmMessage.trim() !== '' ||
+          form.buttons.length > 0
         }
       >
         <DialogHeader>
           <DialogTitle>{editing ? t('form.editTitle') : t('form.createTitle')}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium" htmlFor="automacao-nome">
-              {t('form.nameLabel')}
-            </label>
-            <Input
-              id="automacao-nome"
-              value={form.name}
-              maxLength={80}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder={t('form.namePlaceholder')}
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">{t('form.clientLabel')}</label>
-            <Select
-              disabled={clientLocked}
-              value={form.clientId === '' ? '' : String(form.clientId)}
-              onValueChange={(v) => {
-                setForm((f) => ({
-                  ...f,
-                  clientId: Number(v),
-                  targetMode: 'todos',
-                  targetSource: 'production',
-                  selectedPost: null,
-                }));
-                setPostsPage(1);
-                setProductionPage(1);
-                // A different client means a different list; the (now cleared)
-                // target has nothing left to seed.
-                productionPageSeededRef.current = true;
-              }}
-            >
-              {/* Radix mirrors the root's `disabled` onto the trigger, but
-                  saying it here too keeps the button's own disabled attribute
-                  independent of that plumbing. */}
-              <SelectTrigger aria-label={t('form.clientAria')} disabled={clientLocked}>
-                <SelectValue placeholder={t('form.clientPlaceholder')} />
-              </SelectTrigger>
-              <SelectContent>
-                {selectableClientes.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {form.clientId !== '' && !canAutomate && (
-              <div
-                className="flex items-center gap-2"
-                style={{
-                  marginTop: 8,
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: 8,
-                  background: 'rgba(245, 163, 66, 0.12)',
-                  color: 'var(--text-main)',
-                  fontSize: '0.8rem',
-                }}
-              >
-                <AlertTriangle
-                  className="h-4 w-4"
-                  style={{ color: 'var(--warning)', flexShrink: 0 }}
-                />
-                <span style={{ flex: 1 }}>{t('form.reconnectWarning')}</span>
-                <Button asChild size="sm" variant="outline">
-                  <Link to={`/clientes/${form.clientId}/redes-sociais`}>
-                    {t('form.reconnectCta')}
-                  </Link>
-                </Button>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">{t('form.targetLabel')}</label>
-            <div
-              role="radiogroup"
-              aria-label={t('form.targetAria')}
-              className="flex gap-4"
-              style={{ marginTop: 6 }}
-            >
-              <label className="flex items-center gap-2 text-sm" style={{ cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="automacao-alvo"
-                  value="todos"
-                  checked={form.targetMode === 'todos'}
-                  onChange={() =>
-                    setForm((f) => ({ ...f, targetMode: 'todos', selectedPost: null }))
-                  }
-                />
-                {t('form.targetAll')}
+        {/* Side-by-side no desktop: campos à esquerda, prévia fixa à direita
+            (sticky dentro do scroll do dialog). No mobile a grade colapsa e a
+            prévia vai para o fim. */}
+        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium" htmlFor="automacao-nome">
+                {t('form.nameLabel')}
               </label>
-              <label className="flex items-center gap-2 text-sm" style={{ cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="automacao-alvo"
-                  value="post"
-                  checked={form.targetMode === 'post'}
-                  onChange={() => setForm((f) => ({ ...f, targetMode: 'post' }))}
-                />
-                {t('form.targetPost')}
-              </label>
+              <Input
+                id="automacao-nome"
+                value={form.name}
+                maxLength={80}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder={t('form.namePlaceholder')}
+              />
             </div>
 
-            {form.targetMode === 'deleted' && (
-              <div
-                className="flex items-start gap-2"
-                style={{
-                  marginTop: 8,
-                  padding: '0.625rem 0.75rem',
-                  borderRadius: 8,
-                  background: 'rgba(245, 163, 66, 0.12)',
-                  color: 'var(--text-main)',
-                  fontSize: '0.8rem',
+            <div>
+              <label className="text-sm font-medium">{t('form.clientLabel')}</label>
+              <Select
+                disabled={clientLocked}
+                value={form.clientId === '' ? '' : String(form.clientId)}
+                onValueChange={(v) => {
+                  setForm((f) => ({
+                    ...f,
+                    clientId: Number(v),
+                    targetMode: 'todos',
+                    targetSource: 'production',
+                    selectedPost: null,
+                  }));
+                  setPostsPage(1);
+                  setProductionPage(1);
+                  // A different client means a different list; the (now cleared)
+                  // target has nothing left to seed.
+                  productionPageSeededRef.current = true;
                 }}
               >
-                <AlertTriangle
-                  className="h-4 w-4"
-                  style={{ color: 'var(--warning)', flexShrink: 0, marginTop: 2 }}
-                />
-                <span>{t('form.deletedTargetHint')}</span>
+                {/* Radix mirrors the root's `disabled` onto the trigger, but
+                    saying it here too keeps the button's own disabled attribute
+                    independent of that plumbing. */}
+                <SelectTrigger aria-label={t('form.clientAria')} disabled={clientLocked}>
+                  <SelectValue placeholder={t('form.clientPlaceholder')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectableClientes.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {form.clientId !== '' && !canAutomate && (
+                <div
+                  className="flex items-center gap-2"
+                  style={{
+                    marginTop: 8,
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: 8,
+                    background: 'rgba(245, 163, 66, 0.12)',
+                    color: 'var(--text-main)',
+                    fontSize: '0.8rem',
+                  }}
+                >
+                  <AlertTriangle
+                    className="h-4 w-4"
+                    style={{ color: 'var(--warning)', flexShrink: 0 }}
+                  />
+                  <span style={{ flex: 1 }}>{t('form.reconnectWarning')}</span>
+                  <Button asChild size="sm" variant="outline">
+                    <Link to={`/clientes/${form.clientId}/redes-sociais`}>
+                      {t('form.reconnectCta')}
+                    </Link>
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">{t('form.targetLabel')}</label>
+              <div
+                role="radiogroup"
+                aria-label={t('form.targetAria')}
+                className="flex gap-4"
+                style={{ marginTop: 6 }}
+              >
+                <label className="flex items-center gap-2 text-sm" style={{ cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="automacao-alvo"
+                    value="todos"
+                    checked={form.targetMode === 'todos'}
+                    onChange={() =>
+                      setForm((f) => ({ ...f, targetMode: 'todos', selectedPost: null }))
+                    }
+                  />
+                  {t('form.targetAll')}
+                </label>
+                <label className="flex items-center gap-2 text-sm" style={{ cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="automacao-alvo"
+                    value="post"
+                    checked={form.targetMode === 'post'}
+                    onChange={() => setForm((f) => ({ ...f, targetMode: 'post' }))}
+                  />
+                  {t('form.targetPost')}
+                </label>
               </div>
-            )}
 
-            {form.targetMode === 'post' &&
-              (form.clientId === '' ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 6 }}>
-                  {t('form.selectClientForPosts')}
-                </p>
-              ) : (
-                <div style={{ marginTop: 8 }}>
-                  <ToggleGroup
-                    type="single"
-                    aria-label={t('form.targetSourceLabel')}
-                    value={form.targetSource}
-                    onValueChange={(v) => {
-                      if (!v || v === form.targetSource) return;
-                      setForm((f) => ({ ...f, targetSource: v as TargetSource }));
-                    }}
-                    className="justify-start"
-                    style={{ marginBottom: 8 }}
-                  >
-                    <ToggleGroupItem value="production" size="sm">
-                      {t('form.targetSourceProduction')}
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="published" size="sm">
-                      {t('form.targetSourcePublished')}
-                    </ToggleGroupItem>
-                  </ToggleGroup>
+              {form.targetMode === 'deleted' && (
+                <div
+                  className="flex items-start gap-2"
+                  style={{
+                    marginTop: 8,
+                    padding: '0.625rem 0.75rem',
+                    borderRadius: 8,
+                    background: 'rgba(245, 163, 66, 0.12)',
+                    color: 'var(--text-main)',
+                    fontSize: '0.8rem',
+                  }}
+                >
+                  <AlertTriangle
+                    className="h-4 w-4"
+                    style={{ color: 'var(--warning)', flexShrink: 0, marginTop: 2 }}
+                  />
+                  <span>{t('form.deletedTargetHint')}</span>
+                </div>
+              )}
 
-                  {form.targetSource === 'production' ? (
-                    productionQuery.isLoading ? (
+              {form.targetMode === 'post' &&
+                (form.clientId === '' ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 6 }}>
+                    {t('form.selectClientForPosts')}
+                  </p>
+                ) : (
+                  <div style={{ marginTop: 8 }}>
+                    <ToggleGroup
+                      type="single"
+                      aria-label={t('form.targetSourceLabel')}
+                      value={form.targetSource}
+                      onValueChange={(v) => {
+                        if (!v || v === form.targetSource) return;
+                        setForm((f) => ({ ...f, targetSource: v as TargetSource }));
+                      }}
+                      className="justify-start"
+                      style={{ marginBottom: 8 }}
+                    >
+                      <ToggleGroupItem value="production" size="sm">
+                        {t('form.targetSourceProduction')}
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="published" size="sm">
+                        {t('form.targetSourcePublished')}
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+
+                    {form.targetSource === 'production' ? (
+                      productionQuery.isLoading ? (
+                        <div className="flex justify-center p-4">
+                          <Spinner size="sm" />
+                        </div>
+                      ) : (
+                        <>
+                          <div
+                            className="grid grid-cols-4 gap-2"
+                            style={{ maxHeight: 220, overflowY: 'auto' }}
+                          >
+                            {/* The pinned target only exists on page one, above the
+                                live list, and only while it is missing from it. */}
+                            {orphanTarget && safeProductionPage === 1 && (
+                              <ProductionCard
+                                titulo={orphanTarget.titulo}
+                                tipoLabel={null}
+                                imageUrl={null}
+                                selected
+                                onSelect={() => selectSeededTarget(orphanTarget)}
+                              />
+                            )}
+                            {pagedProductionPosts.map((post) => {
+                              const cover = covers?.get(post.id);
+                              return (
+                                <ProductionCard
+                                  key={post.id}
+                                  titulo={post.titulo}
+                                  tipoLabel={TIPO_LABELS[post.tipo]}
+                                  imageUrl={
+                                    cover?.kind === 'video'
+                                      ? (cover.thumbnail_url ?? null)
+                                      : (cover?.url ?? cover?.thumbnail_url ?? null)
+                                  }
+                                  selected={
+                                    form.selectedPost?.kind === 'production' &&
+                                    form.selectedPost.workflow_post_id === post.id
+                                  }
+                                  onSelect={() => selectProductionPost(post)}
+                                />
+                              );
+                            })}
+                            {productionPosts.length === 0 && !orphanTarget && (
+                              <p
+                                style={{
+                                  gridColumn: '1 / -1',
+                                  color: 'var(--text-muted)',
+                                  fontSize: '0.8rem',
+                                }}
+                              >
+                                {t('form.noProductionPosts')}
+                              </p>
+                            )}
+                          </div>
+                          {productionPageCount > 1 && (
+                            <div
+                              className="flex items-center justify-between"
+                              style={{ marginTop: 6 }}
+                            >
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={safeProductionPage <= 1}
+                                onClick={() => goToProductionPage(safeProductionPage - 1)}
+                              >
+                                {t('form.previous')}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={safeProductionPage >= productionPageCount}
+                                onClick={() => goToProductionPage(safeProductionPage + 1)}
+                              >
+                                {t('form.next')}
+                              </Button>
+                            </div>
+                          )}
+                          <p
+                            style={{
+                              color: 'var(--text-muted)',
+                              fontSize: '0.75rem',
+                              marginTop: 6,
+                            }}
+                          >
+                            {t('form.productionHint')}
+                          </p>
+                        </>
+                      )
+                    ) : postsQuery.isLoading ? (
                       <div className="flex justify-center p-4">
                         <Spinner size="sm" />
                       </div>
@@ -847,38 +970,33 @@ export default function AutomationFormDialog({
                           className="grid grid-cols-4 gap-2"
                           style={{ maxHeight: 220, overflowY: 'auto' }}
                         >
-                          {/* The pinned target only exists on page one, above the
-                              live list, and only while it is missing from it. */}
-                          {orphanTarget && safeProductionPage === 1 && (
-                            <ProductionCard
-                              titulo={orphanTarget.titulo}
-                              tipoLabel={null}
-                              imageUrl={null}
+                          {/* The pinned target sits above the synced feed on
+                              whatever page fails to show it. */}
+                          {publishedOrphanTarget && (
+                            <PublishedCard
+                              caption={publishedOrphanTarget.media_caption ?? t('viewPost')}
+                              thumbnailUrl={null}
+                              permalink={publishedOrphanTarget.media_permalink}
+                              permalinkLabel={t('viewPost')}
                               selected
-                              onSelect={() => selectSeededTarget(orphanTarget)}
+                              onSelect={() => selectSeededTarget(publishedOrphanTarget)}
                             />
                           )}
-                          {pagedProductionPosts.map((post) => {
-                            const cover = covers?.get(post.id);
-                            return (
-                              <ProductionCard
-                                key={post.id}
-                                titulo={post.titulo}
-                                tipoLabel={TIPO_LABELS[post.tipo]}
-                                imageUrl={
-                                  cover?.kind === 'video'
-                                    ? (cover.thumbnail_url ?? null)
-                                    : (cover?.url ?? cover?.thumbnail_url ?? null)
-                                }
-                                selected={
-                                  form.selectedPost?.kind === 'production' &&
-                                  form.selectedPost.workflow_post_id === post.id
-                                }
-                                onSelect={() => selectProductionPost(post)}
-                              />
-                            );
-                          })}
-                          {productionPosts.length === 0 && !orphanTarget && (
+                          {publishedPagePosts.map((post) => (
+                            <PublishedCard
+                              key={post.id}
+                              caption={null}
+                              thumbnailUrl={post.thumbnail_url ?? null}
+                              permalink={null}
+                              permalinkLabel={t('viewPost')}
+                              selected={
+                                form.selectedPost?.kind === 'published' &&
+                                form.selectedPost.ig_media_id === post.instagram_post_id
+                              }
+                              onSelect={() => selectPost(post)}
+                            />
+                          ))}
+                          {publishedPagePosts.length === 0 && !publishedOrphanTarget && (
                             <p
                               style={{
                                 gridColumn: '1 / -1',
@@ -886,187 +1004,187 @@ export default function AutomationFormDialog({
                                 fontSize: '0.8rem',
                               }}
                             >
-                              {t('form.noProductionPosts')}
+                              {t('form.noPostsSynced')}
                             </p>
                           )}
                         </div>
-                        {productionPageCount > 1 && (
-                          <div
-                            className="flex items-center justify-between"
-                            style={{ marginTop: 6 }}
+                        <div className="flex items-center justify-between" style={{ marginTop: 6 }}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={postsPage <= 1}
+                            onClick={() => setPostsPage((p) => p - 1)}
                           >
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              disabled={safeProductionPage <= 1}
-                              onClick={() => goToProductionPage(safeProductionPage - 1)}
-                            >
-                              {t('form.previous')}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              disabled={safeProductionPage >= productionPageCount}
-                              onClick={() => goToProductionPage(safeProductionPage + 1)}
-                            >
-                              {t('form.next')}
-                            </Button>
-                          </div>
-                        )}
-                        <p
-                          style={{
-                            color: 'var(--text-muted)',
-                            fontSize: '0.75rem',
-                            marginTop: 6,
-                          }}
-                        >
-                          {t('form.productionHint')}
-                        </p>
+                            {t('form.previous')}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={!hasMorePosts}
+                            onClick={() => setPostsPage((p) => p + 1)}
+                          >
+                            {t('form.next')}
+                          </Button>
+                        </div>
                       </>
-                    )
-                  ) : postsQuery.isLoading ? (
-                    <div className="flex justify-center p-4">
-                      <Spinner size="sm" />
-                    </div>
-                  ) : (
-                    <>
+                    )}
+                  </div>
+                ))}
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">{t('form.keywordsLabel')}</label>
+              <div className="flex flex-wrap gap-1.5" style={{ marginTop: 6, marginBottom: 6 }}>
+                {form.keywords.map((k) => (
+                  <Badge key={k} variant="outline" size="sm" className="flex items-center gap-1">
+                    {k}
+                    <button
+                      type="button"
+                      onClick={() => removeKeyword(k)}
+                      aria-label={t('form.keywordRemove', { keyword: k })}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+              <Input
+                value={form.keywordInput}
+                onChange={(e) => setForm((f) => ({ ...f, keywordInput: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addKeyword();
+                  }
+                }}
+                placeholder={t('form.keywordPlaceholder')}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium" htmlFor="automacao-dm">
+                {t('form.dmLabel')}
+              </label>
+              <Textarea
+                id="automacao-dm"
+                value={form.dmMessage}
+                maxLength={dmLimit}
+                rows={4}
+                onChange={(e) => setForm((f) => ({ ...f, dmMessage: e.target.value }))}
+                placeholder={t('form.dmPlaceholder')}
+              />
+              <div
+                style={{
+                  textAlign: 'right',
+                  fontSize: '0.7rem',
+                  color: dmOverLimit ? 'var(--danger-text)' : 'var(--text-muted)',
+                }}
+              >
+                {form.dmMessage.length}/{dmLimit}
+              </div>
+            </div>
+
+            <div>
+              <span className="text-sm font-medium">{t('form.buttonsLabel')}</span>
+              <p
+                style={{
+                  fontSize: '0.75rem',
+                  color: 'var(--text-muted)',
+                  margin: '0.1rem 0 0.5rem',
+                }}
+              >
+                {t('form.buttonsHelp')}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {form.buttons.map((b, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                    <div style={{ width: '38%' }}>
+                      <Input
+                        value={b.title}
+                        maxLength={MAX_BUTTON_TITLE}
+                        aria-label={t('form.buttonTitleLabel')}
+                        placeholder={t('form.buttonTitleLabel')}
+                        onChange={(e) => updateButton(i, { title: e.target.value })}
+                      />
                       <div
-                        className="grid grid-cols-4 gap-2"
-                        style={{ maxHeight: 220, overflowY: 'auto' }}
+                        style={{
+                          textAlign: 'right',
+                          fontSize: '0.65rem',
+                          color: 'var(--text-muted)',
+                        }}
                       >
-                        {/* The pinned target sits above the synced feed on
-                            whatever page fails to show it. */}
-                        {publishedOrphanTarget && (
-                          <PublishedCard
-                            caption={publishedOrphanTarget.media_caption ?? t('viewPost')}
-                            thumbnailUrl={null}
-                            permalink={publishedOrphanTarget.media_permalink}
-                            permalinkLabel={t('viewPost')}
-                            selected
-                            onSelect={() => selectSeededTarget(publishedOrphanTarget)}
-                          />
-                        )}
-                        {publishedPagePosts.map((post) => (
-                          <PublishedCard
-                            key={post.id}
-                            caption={null}
-                            thumbnailUrl={post.thumbnail_url ?? null}
-                            permalink={null}
-                            permalinkLabel={t('viewPost')}
-                            selected={
-                              form.selectedPost?.kind === 'published' &&
-                              form.selectedPost.ig_media_id === post.instagram_post_id
-                            }
-                            onSelect={() => selectPost(post)}
-                          />
-                        ))}
-                        {publishedPagePosts.length === 0 && !publishedOrphanTarget && (
-                          <p
-                            style={{
-                              gridColumn: '1 / -1',
-                              color: 'var(--text-muted)',
-                              fontSize: '0.8rem',
-                            }}
-                          >
-                            {t('form.noPostsSynced')}
-                          </p>
-                        )}
+                        {b.title.length}/{MAX_BUTTON_TITLE}
                       </div>
-                      <div className="flex items-center justify-between" style={{ marginTop: 6 }}>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={postsPage <= 1}
-                          onClick={() => setPostsPage((p) => p - 1)}
-                        >
-                          {t('form.previous')}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={!hasMorePosts}
-                          onClick={() => setPostsPage((p) => p + 1)}
-                        >
-                          {t('form.next')}
-                        </Button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">{t('form.keywordsLabel')}</label>
-            <div className="flex flex-wrap gap-1.5" style={{ marginTop: 6, marginBottom: 6 }}>
-              {form.keywords.map((k) => (
-                <Badge key={k} variant="outline" size="sm" className="flex items-center gap-1">
-                  {k}
-                  <button
+                    </div>
+                    <Input
+                      value={b.url}
+                      aria-label={t('form.buttonUrlLabel')}
+                      placeholder="https://..."
+                      onChange={(e) => updateButton(i, { url: e.target.value })}
+                      style={{ flex: 1 }}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t('form.removeButton')}
+                      onClick={() => removeButton(i)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                {form.buttons.length < MAX_DM_BUTTONS && (
+                  <Button
                     type="button"
-                    onClick={() => removeKeyword(k)}
-                    aria-label={t('form.keywordRemove', { keyword: k })}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      display: 'flex',
-                    }}
+                    variant="outline"
+                    size="sm"
+                    style={{ alignSelf: 'flex-start' }}
+                    onClick={() =>
+                      setForm((f) => ({ ...f, buttons: [...f.buttons, { title: '', url: '' }] }))
+                    }
                   >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
+                    <Plus className="h-4 w-4" style={{ marginRight: '0.35rem' }} />
+                    {t('form.addButton')}
+                  </Button>
+                )}
+              </div>
             </div>
-            <Input
-              value={form.keywordInput}
-              onChange={(e) => setForm((f) => ({ ...f, keywordInput: e.target.value }))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addKeyword();
-                }
-              }}
-              placeholder={t('form.keywordPlaceholder')}
-            />
-          </div>
 
-          <div>
-            <label className="text-sm font-medium" htmlFor="automacao-dm">
-              {t('form.dmLabel')}
-            </label>
-            <Textarea
-              id="automacao-dm"
-              value={form.dmMessage}
-              maxLength={1000}
-              rows={4}
-              onChange={(e) => setForm((f) => ({ ...f, dmMessage: e.target.value }))}
-              placeholder={t('form.dmPlaceholder')}
-            />
-            <div style={{ textAlign: 'right', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              {form.dmMessage.length}/1000
+            <div>
+              <label className="text-sm font-medium" htmlFor="automacao-reply">
+                {t('form.replyLabel')}
+              </label>
+              <Textarea
+                id="automacao-reply"
+                value={form.publicReply}
+                maxLength={500}
+                rows={2}
+                onChange={(e) => setForm((f) => ({ ...f, publicReply: e.target.value }))}
+                placeholder={t('form.replyPlaceholder')}
+              />
+              <div style={{ textAlign: 'right', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                {form.publicReply.length}/500
+              </div>
             </div>
           </div>
 
-          <div>
-            <label className="text-sm font-medium" htmlFor="automacao-reply">
-              {t('form.replyLabel')}
-            </label>
-            <Textarea
-              id="automacao-reply"
-              value={form.publicReply}
-              maxLength={500}
-              rows={2}
-              onChange={(e) => setForm((f) => ({ ...f, publicReply: e.target.value }))}
-              placeholder={t('form.replyPlaceholder')}
+          <div className="md:sticky md:top-0 self-start">
+            <DmPreview
+              clientName={selectedCliente?.nome ?? null}
+              clientSigla={selectedCliente?.sigla ?? null}
+              clientCor={selectedCliente?.cor ?? null}
+              text={form.dmMessage}
+              buttons={form.buttons}
             />
-            <div style={{ textAlign: 'right', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              {form.publicReply.length}/500
-            </div>
           </div>
         </div>
 

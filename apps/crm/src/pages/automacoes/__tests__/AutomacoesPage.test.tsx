@@ -90,6 +90,10 @@ const AUTOMATIONS = [
     pending_post_deleted_at: null,
     keywords: ['preco', 'valor'],
     dm_message: 'Segue o link!',
+    dm_buttons: [
+      { title: 'Agendar', url: 'https://agenda.x' },
+      { title: 'Site', url: 'https://site.x' },
+    ],
     public_reply: null,
     ativo: true,
     dms_sent_count: 12,
@@ -176,6 +180,7 @@ const SENDS = [
     skip_reason: null,
     error_code: null,
     dm_status: 'sent' as const,
+    dm_kind: 'buttons_fallback_text' as const,
     public_reply_status: null,
     attempts: 1,
     created_at: '2026-08-10T11:00:05.000Z',
@@ -223,6 +228,8 @@ describe('AutomacoesPage', () => {
     expect(screen.getByText('valor')).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
     expect(screen.getByRole('switch')).toBeChecked();
+    // chip de botões (t serializa vars: chave + JSON)
+    expect(screen.getByText('table.buttonsCount:{"count":2}')).toBeInTheDocument();
   });
 
   it('shows the empty state with the FeatureGate upsell when the flag is off and there are no automations', async () => {
@@ -259,6 +266,8 @@ describe('AutomacoesPage', () => {
 
     expect(await screen.findByText('@fulano')).toBeInTheDocument();
     expect(screen.getByText('sendStatus.sent')).toBeInTheDocument();
+    // dm_kind='buttons_fallback_text' ganha o badge "enviado como texto"
+    expect(screen.getByText('sendStatus.buttons_fallback_text')).toBeInTheDocument();
     await waitFor(() => expect(mockGetSends).toHaveBeenCalledWith('auto-1'));
   });
 
