@@ -91,7 +91,8 @@ migrate_workflow_template(
   - guarda de concorrência: `template_id` atual do fluxo deve ser
     `IS NOT DISTINCT FROM p_expected_template_id`, senão `workflow_changed`
     (duas migrações em sequência não se sobrescrevem em silêncio);
-  - template destino existe na mesma conta;
+  - template destino existe na mesma conta e é DIFERENTE do atual (`same_template`
+    barra o no-op destrutivo que apagaria os timestamps da escada sem migrar nada);
   - workflow com `status = 'ativo'` (não se migra concluído/arquivado);
   - `p_new_etapas` não-vazio; `p_active_ordem` dentro do range;
   - shape de cada etapa: `nome` não-vazio, `prazo_dias` inteiro >= 0,

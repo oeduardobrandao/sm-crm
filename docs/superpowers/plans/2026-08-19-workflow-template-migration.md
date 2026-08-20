@@ -28,7 +28,7 @@
 - Create: `supabase/migrations/20260819000001_workflow_template_migration.sql`
 
 **Interfaces:**
-- Produces: RPC `public.migrate_workflow_template(p_workflow_id bigint, p_template_id bigint, p_new_etapas jsonb, p_active_ordem integer, p_modo_prazo text, p_expected_template_id bigint) returns void`, executável por `authenticated`. Erros via `raise exception` com mensagens-código: `workspace_not_found`, `workflow_not_found`, `workflow_changed`, `workflow_not_active`, `template_not_found`, `invalid_modo_prazo`, `empty_etapas`, `invalid_active_ordem`, `invalid_etapa`, `invalid_responsavel`.
+- Produces: RPC `public.migrate_workflow_template(p_workflow_id bigint, p_template_id bigint, p_new_etapas jsonb, p_active_ordem integer, p_modo_prazo text, p_expected_template_id bigint) returns void`, executável por `authenticated`. Erros via `raise exception` com mensagens-código: `workspace_not_found`, `workflow_not_found`, `workflow_changed`, `workflow_not_active`, `same_template`, `template_not_found`, `invalid_modo_prazo`, `empty_etapas`, `invalid_active_ordem`, `invalid_etapa`, `invalid_responsavel`.
 - `p_expected_template_id`: guarda otimista de concorrência; é o `template_id` que o cliente estava vendo (null para adoção). Divergência = `workflow_changed`.
 - `p_new_etapas`: array jsonb de `{nome, prazo_dias, tipo_prazo, responsavel_id, tipo, data_limite}`. Statuses e `iniciado_em` são derivados server-side de `p_active_ordem` (anteriores `concluido` com datas nulas; ativa `ativo` com `iniciado_em = now()`; seguintes `pendente`). A etapa ativa é inserida `pendente` e ativada por UPDATE, para o trigger `notify_step_activated` (AFTER UPDATE) disparar.
 - Regras de remapeamento de propriedades: nome (lower/trim) + tipo iguais, MAS os tipos `select`, `multiselect` e `status` nunca casam (valores guardam ids de opção por template). Estratégia INSERT + ON CONFLICT DO NOTHING + DELETE (um UPDATE simples colide consigo mesmo quando duas definições de origem casam com a mesma de destino). Valores perdidos e `portal_approvals` legadas vão para o metadata do audit_log.
@@ -49,6 +49,8 @@ Criar `supabase/tests/migrate_workflow_template.sql`. O runner `scripts/test-ent
 --   (d) workflow_select_options do template origem são apagadas
 --   (e) isolamento: usuário de outra conta não migra
 --   (e2) guarda de concorrência: p_expected_template_id divergente = workflow_changed
+--   (e3) migrar para o próprio template = same_template (no-op destrutivo barrado)
+--   (e4) data_limite não-ISO = invalid_etapa (contrato de erro, não cast cru)
 --   (f) validação falha = rollback total (escada antiga intacta)
 --   (g) adoção: workflow com template_id null migra sem tocar em propriedades
 --   (h) portal_approvals legadas arquivadas no metadata antes da cascata
@@ -168,6 +170,28 @@ begin
     v_blocked := true;
   end;
   assert v_blocked, 'expected_template_id divergente deve falhar';
+
+  -- (e3) migrar para o próprio template é barrado
+  v_blocked := false;
+  begin
+    perform migrate_workflow_template(v_wf, v_tpl_a, v_new_etapas, 0, 'padrao', v_tpl_a);
+  exception when others then
+    assert sqlerrm like '%same_template%', format('esperava same_template, veio: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'migrar para o próprio template deve falhar';
+
+  -- (e4) data_limite não-ISO vira invalid_etapa, não erro cru de cast
+  v_blocked := false;
+  begin
+    perform migrate_workflow_template(v_wf, v_tpl_b,
+      jsonb_build_array(jsonb_build_object('nome','X','prazo_dias',1,'tipo_prazo','corridos','responsavel_id',null,'tipo','padrao','data_limite','data-invalida')),
+      0, 'padrao', v_tpl_a);
+  exception when others then
+    assert sqlerrm like '%invalid_etapa%', format('esperava invalid_etapa, veio: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'data_limite invalida deve falhar com codigo estavel';
 
   -- (f) validação falha = rollback total
   v_blocked := false;
@@ -358,6 +382,12 @@ BEGIN
   IF v_wf.status <> 'ativo' THEN RAISE EXCEPTION 'workflow_not_active'; END IF;
   v_old_template_id := v_wf.template_id;
 
+  -- migrar para o próprio template seria um no-op destrutivo (apagaria os
+  -- timestamps da escada sem mudar nada); a UI nem oferece, a RPC também barra
+  IF v_old_template_id IS NOT NULL AND p_template_id = v_old_template_id THEN
+    RAISE EXCEPTION 'same_template';
+  END IF;
+
   PERFORM 1 FROM workflow_templates WHERE id = p_template_id AND conta_id = v_conta;
   IF NOT FOUND THEN RAISE EXCEPTION 'template_not_found'; END IF;
 
@@ -365,8 +395,11 @@ BEGIN
     RAISE EXCEPTION 'invalid_modo_prazo';
   END IF;
 
+  IF p_new_etapas IS NULL OR jsonb_typeof(p_new_etapas) <> 'array' THEN
+    RAISE EXCEPTION 'empty_etapas';
+  END IF;
   v_n := jsonb_array_length(p_new_etapas);
-  IF v_n IS NULL OR v_n = 0 THEN RAISE EXCEPTION 'empty_etapas'; END IF;
+  IF v_n = 0 THEN RAISE EXCEPTION 'empty_etapas'; END IF;
   IF p_active_ordem < 0 OR p_active_ordem >= v_n THEN
     RAISE EXCEPTION 'invalid_active_ordem';
   END IF;
@@ -803,6 +836,7 @@ const MIGRATION_ERRORS: Record<string, string> = {
   workflow_not_found: 'Fluxo não encontrado neste workspace.',
   workflow_changed: 'Este fluxo foi alterado por outra pessoa. Recarregue a página e tente novamente.',
   workflow_not_active: 'Só é possível migrar fluxos ativos.',
+  same_template: 'O fluxo já usa este template.',
   template_not_found: 'Template não encontrado neste workspace.',
   invalid_modo_prazo: 'Dados de migração inválidos.',
   empty_etapas: 'O template de destino não tem etapas.',
