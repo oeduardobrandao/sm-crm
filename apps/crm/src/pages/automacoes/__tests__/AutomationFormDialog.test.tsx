@@ -10,6 +10,8 @@ const {
   mockGetClientes,
   mockGetStatuses,
   mockGetInstagramPosts,
+  mockGetClientePosts,
+  mockGetPostCovers,
   mockUseAuth,
 } = vi.hoisted(() => ({
   mockCreate: vi.fn(),
@@ -17,6 +19,8 @@ const {
   mockGetClientes: vi.fn(),
   mockGetStatuses: vi.fn(),
   mockGetInstagramPosts: vi.fn(),
+  mockGetClientePosts: vi.fn(),
+  mockGetPostCovers: vi.fn(),
   mockUseAuth: vi.fn(),
 }));
 
@@ -39,6 +43,7 @@ vi.mock('../../../store', async () => {
     updateInstagramAutomation: mockUpdate,
     getClientes: mockGetClientes,
     getInstagramAccountStatuses: mockGetStatuses,
+    getClientePosts: mockGetClientePosts,
   };
 });
 
@@ -49,6 +54,16 @@ vi.mock('../../../services/instagram', async () => {
   return {
     ...actual,
     getInstagramPosts: mockGetInstagramPosts,
+  };
+});
+
+vi.mock('../../../services/postMedia', async () => {
+  const actual = await vi.importActual<typeof import('../../../services/postMedia')>(
+    '../../../services/postMedia',
+  );
+  return {
+    ...actual,
+    getPostCovers: mockGetPostCovers,
   };
 });
 
@@ -154,9 +169,62 @@ vi.mock('@/components/ui/dialog', async () => {
   return { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle };
 });
 
+import { toast } from 'sonner';
 import AutomationFormDialog from '../AutomationFormDialog';
+import type { InstagramCommentAutomation } from '../../../store';
 
 const CLIENTES = [{ id: 7, nome: 'Clinica X', sigla: 'CX', cor: '#3ecf8e' }];
+
+function productionPost(over: Record<string, unknown>) {
+  return {
+    id: 0,
+    workflow_id: 9,
+    titulo: 'Sem titulo',
+    tipo: 'feed',
+    status: 'rascunho',
+    custom_status_id: null,
+    scheduled_at: null,
+    ordem: 1,
+    workflow_titulo: 'Agosto',
+    platform: 'instagram',
+    ...over,
+  };
+}
+
+// Two eligible, three that must never reach the grid.
+const PRODUCTION_POSTS = [
+  productionPost({ id: 501, titulo: 'Carrossel de agosto', tipo: 'carrossel' }),
+  // falha_publicacao still ships eventually -- it stays eligible.
+  productionPost({
+    id: 502,
+    titulo: 'Reels que falhou',
+    tipo: 'reels',
+    status: 'falha_publicacao',
+  }),
+  productionPost({ id: 601, titulo: 'Ja publicado', status: 'postado' }),
+  productionPost({ id: 602, titulo: 'Story do dia', tipo: 'stories' }),
+  productionPost({ id: 603, titulo: 'So no TikTok', platform: 'tiktok' }),
+];
+
+const EDITING_BASE: InstagramCommentAutomation = {
+  id: 'auto-1',
+  conta_id: 'w-1',
+  client_id: 7,
+  name: 'Automacao existente',
+  ig_media_id: null,
+  media_permalink: null,
+  media_caption: null,
+  workflow_post_id: null,
+  pending_post_deleted_at: null,
+  keywords: ['preco'],
+  dm_message: 'Segue o link!',
+  public_reply: null,
+  ativo: true,
+  dms_sent_count: 0,
+  last_triggered_at: null,
+  created_at: '2026-08-18T00:00:00.000Z',
+  updated_at: '2026-08-18T00:00:00.000Z',
+};
 
 const POST = {
   id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
@@ -172,15 +240,30 @@ const POST = {
   instagram_post_id: '17900000000000001',
 };
 
-function renderDialog(onSaved = vi.fn()) {
+function renderDialog(onSaved = vi.fn(), editing: InstagramCommentAutomation | null = null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <AutomationFormDialog open onOpenChange={vi.fn()} editing={null} onSaved={onSaved} />
+        <AutomationFormDialog open onOpenChange={vi.fn()} editing={editing} onSaved={onSaved} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+/** Fills the fields the submit validation requires, leaving the target alone. */
+async function fillRequiredFields() {
+  fireEvent.change(screen.getByLabelText('form.nameLabel'), {
+    target: { value: 'Minha automacao' },
+  });
+  fireEvent.click(await screen.findByRole('button', { name: 'Clinica X' }));
+  fireEvent.change(screen.getByPlaceholderText('form.keywordPlaceholder'), {
+    target: { value: 'preco' },
+  });
+  fireEvent.keyDown(screen.getByPlaceholderText('form.keywordPlaceholder'), { key: 'Enter' });
+  fireEvent.change(screen.getByLabelText('form.dmLabel'), {
+    target: { value: 'Segue o link!' },
+  });
 }
 
 describe('AutomationFormDialog', () => {
@@ -191,7 +274,11 @@ describe('AutomationFormDialog', () => {
       new Map([[7, { revoked: false, expired: false, canPublish: true, canAutomate: true }]]),
     );
     mockGetInstagramPosts.mockResolvedValue({ posts: [POST], total: 1 });
+    mockGetClientePosts.mockResolvedValue(PRODUCTION_POSTS);
+    // No covers -> every production card falls back to titulo + tipo.
+    mockGetPostCovers.mockResolvedValue(new Map());
     mockCreate.mockResolvedValue({ id: 'auto-new' });
+    mockUpdate.mockResolvedValue({ id: 'auto-1' });
     mockUseAuth.mockReturnValue({
       role: 'owner',
       profile: { id: 'user-1', conta_id: 'w-1', role: 'owner' },
@@ -209,9 +296,12 @@ describe('AutomationFormDialog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Clinica X' }));
 
     fireEvent.click(screen.getByRole('radio', { name: 'form.targetPost' }));
+    // "Em producao" is the default tab now -- the synced-feed grid lives behind
+    // the "Publicados" one.
+    fireEvent.click(screen.getByRole('radio', { name: 'form.targetSourcePublished' }));
 
-    // The post-grid button carries no accessible text (thumbnail alt=""); it's
-    // the only element with aria-pressed at this point in the tree.
+    // The published post-grid button carries no accessible text (thumbnail
+    // alt=""); it's the only element with aria-pressed at this point in the tree.
     const postButton = await screen.findByRole('button', { pressed: false });
     fireEvent.click(postButton);
 
@@ -228,8 +318,125 @@ describe('AutomationFormDialog', () => {
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
     expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ ig_media_id: '17900000000000001' }),
+      expect.objectContaining({ ig_media_id: '17900000000000001', workflow_post_id: null }),
     );
     expect(mockCreate).not.toHaveBeenCalledWith(expect.objectContaining({ ig_media_id: POST.id }));
+  });
+
+  it('lists only eligible posts under "Em producao" (no postado, stories or tiktok-only)', async () => {
+    renderDialog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Clinica X' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'form.targetPost' }));
+
+    expect(await screen.findByRole('button', { name: 'Carrossel de agosto' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reels que falhou' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ja publicado' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Story do dia' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'So no TikTok' })).toBeNull();
+    expect(screen.getByText('form.productionHint')).toBeTruthy();
+  });
+
+  it('saves a production post as workflow_post_id with a truncated titulo snapshot', async () => {
+    renderDialog();
+
+    await fillRequiredFields();
+    fireEvent.click(screen.getByRole('radio', { name: 'form.targetPost' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Carrossel de agosto' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflow_post_id: 501,
+        ig_media_id: null,
+        media_permalink: null,
+        media_caption: 'Carrossel de agosto',
+      }),
+    );
+  });
+
+  it('shows the empty state when the client has no eligible production posts', async () => {
+    mockGetClientePosts.mockResolvedValue([productionPost({ id: 601, status: 'postado' })]);
+    renderDialog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Clinica X' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'form.targetPost' }));
+
+    expect(await screen.findByText('form.noProductionPosts')).toBeTruthy();
+  });
+
+  it('seeds a pending automation into the production tab with its post selected', async () => {
+    renderDialog(vi.fn(), {
+      ...EDITING_BASE,
+      workflow_post_id: 501,
+      media_caption: 'Carrossel de agosto',
+    });
+
+    const card = await screen.findByRole('button', { name: 'Carrossel de agosto' });
+    expect(card.getAttribute('aria-pressed')).toBe('true');
+    expect(
+      (screen.getByRole('radio', { name: 'form.targetPost' }) as HTMLInputElement).checked,
+    ).toBe(true);
+  });
+
+  it('blocks submit on a tombstoned automation until a new target is picked', async () => {
+    renderDialog(vi.fn(), {
+      ...EDITING_BASE,
+      ativo: false,
+      pending_post_deleted_at: '2026-08-19T10:00:00.000Z',
+    });
+
+    expect(await screen.findByText('form.deletedTargetHint')).toBeTruthy();
+    // Neither radio is checked while the target is a tombstone.
+    expect(
+      (screen.getByRole('radio', { name: 'form.targetAll' }) as HTMLInputElement).checked,
+    ).toBe(false);
+    expect(
+      (screen.getByRole('radio', { name: 'form.targetPost' }) as HTMLInputElement).checked,
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('form.validationDeletedTarget'));
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('clears the tombstone (and never touches ativo) once a new target is chosen', async () => {
+    renderDialog(vi.fn(), {
+      ...EDITING_BASE,
+      ativo: false,
+      pending_post_deleted_at: '2026-08-19T10:00:00.000Z',
+    });
+
+    fireEvent.click(await screen.findByRole('radio', { name: 'form.targetAll' }));
+    fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+    const [id, patch] = mockUpdate.mock.calls[0];
+    expect(id).toBe('auto-1');
+    expect(patch).toMatchObject({
+      pending_post_deleted_at: null,
+      ig_media_id: null,
+      workflow_post_id: null,
+    });
+    // Reactivation stays a deliberate act on the listing toggle.
+    expect(patch).not.toHaveProperty('ativo');
+  });
+
+  it('leaves pending_post_deleted_at out of the patch for a plain published automation', async () => {
+    renderDialog(vi.fn(), {
+      ...EDITING_BASE,
+      ig_media_id: '17900000000000001',
+      media_permalink: 'https://instagram.com/p/teste',
+      media_caption: 'Post de teste',
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'form.save' }));
+
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+    const patch = mockUpdate.mock.calls[0][1];
+    expect(patch).not.toHaveProperty('pending_post_deleted_at');
+    expect(patch).toMatchObject({ ig_media_id: '17900000000000001', workflow_post_id: null });
   });
 });

@@ -17,6 +17,15 @@ export interface InstagramCommentAutomation {
   ig_media_id: string | null;
   media_permalink: string | null;
   media_caption: string | null;
+  /** Internal `workflow_posts.id` when the target is a post that has not been
+   * published yet. A DB trigger fills `ig_media_id` in once it publishes, so the
+   * "linked" state carries both. */
+  workflow_post_id: number | null;
+  /** Tombstone: set when the targeted production post was deleted before it ever
+   * published. The DB forces `ativo = false` alongside it and refuses to clear it
+   * unless the same write supplies a new target. Detect a tombstone by THIS field
+   * only, never by a null `ig_media_id`. */
+  pending_post_deleted_at: string | null;
   keywords: string[];
   dm_message: string;
   public_reply: string | null;
@@ -63,6 +72,7 @@ export async function createInstagramAutomation(
     | 'ig_media_id'
     | 'media_permalink'
     | 'media_caption'
+    | 'workflow_post_id'
     | 'keywords'
     | 'dm_message'
     | 'public_reply'
@@ -78,6 +88,12 @@ export async function createInstagramAutomation(
   return data;
 }
 
+/**
+ * Every field is optional, and omission is meaningful: `pending_post_deleted_at`
+ * belongs in the patch ONLY when clearing a tombstone (send `null` together with
+ * the new target). Sending it on an ordinary edit would resurrect an automation
+ * the DB deliberately parked.
+ */
 export async function updateInstagramAutomation(
   id: string,
   payload: Partial<
@@ -87,6 +103,8 @@ export async function updateInstagramAutomation(
       | 'ig_media_id'
       | 'media_permalink'
       | 'media_caption'
+      | 'workflow_post_id'
+      | 'pending_post_deleted_at'
       | 'keywords'
       | 'dm_message'
       | 'public_reply'

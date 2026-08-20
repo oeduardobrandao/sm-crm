@@ -37,6 +37,8 @@ const AUTOMATION = {
   ig_media_id: 'media-1',
   media_permalink: 'https://instagram.com/p/media-1',
   media_caption: 'Legenda do post',
+  workflow_post_id: null,
+  pending_post_deleted_at: null,
   keywords: ['quero', 'link'],
   dm_message: 'Oi! Aqui está o link.',
   public_reply: 'Te chamei no direct!',
@@ -105,6 +107,7 @@ describe('store instagram automations', () => {
       ig_media_id: 'media-1',
       media_permalink: 'https://instagram.com/p/media-1',
       media_caption: 'Legenda do post',
+      workflow_post_id: null,
       keywords: ['quero', 'link'],
       dm_message: 'Oi! Aqui está o link.',
       public_reply: 'Te chamei no direct!',
@@ -121,6 +124,32 @@ describe('store instagram automations', () => {
     });
   });
 
+  it('createInstagramAutomation carries workflow_post_id for a post still in production', async () => {
+    mockedSupabase.__queueSupabaseResult('instagram_comment_automations', 'insert', {
+      data: { ...AUTOMATION, ig_media_id: null, workflow_post_id: 501 },
+      error: null,
+    });
+
+    await store.createInstagramAutomation({
+      client_id: 1,
+      name: 'Aguardando publicação',
+      ig_media_id: null,
+      media_permalink: null,
+      media_caption: 'Carrossel de agosto',
+      workflow_post_id: 501,
+      keywords: ['quero'],
+      dm_message: 'Oi!',
+      public_reply: null,
+    });
+
+    const call = getCalls('instagram_comment_automations', 'insert').at(-1)!;
+    expect(call.payload).toMatchObject({
+      workflow_post_id: 501,
+      ig_media_id: null,
+      conta_id: 'conta-1',
+    });
+  });
+
   it('updateInstagramAutomation patches by id', async () => {
     mockedSupabase.__queueSupabaseResult('instagram_comment_automations', 'update', {
       data: { ...AUTOMATION, ativo: false },
@@ -132,6 +161,38 @@ describe('store instagram automations', () => {
     const call = getCalls('instagram_comment_automations', 'update').at(-1)!;
     expect(call.payload).toEqual({ ativo: false });
     expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 'auto-1'] });
+  });
+
+  it('updateInstagramAutomation forwards workflow_post_id and omits pending_post_deleted_at when not given', async () => {
+    mockedSupabase.__queueSupabaseResult('instagram_comment_automations', 'update', {
+      data: { ...AUTOMATION, workflow_post_id: 501 },
+      error: null,
+    });
+
+    await store.updateInstagramAutomation('auto-1', {
+      workflow_post_id: 501,
+      ig_media_id: null,
+    });
+
+    const call = getCalls('instagram_comment_automations', 'update').at(-1)!;
+    expect(call.payload).toEqual({ workflow_post_id: 501, ig_media_id: null });
+    expect(call.payload).not.toHaveProperty('pending_post_deleted_at');
+  });
+
+  it('updateInstagramAutomation can clear the tombstone when a new target is chosen', async () => {
+    mockedSupabase.__queueSupabaseResult('instagram_comment_automations', 'update', {
+      data: AUTOMATION,
+      error: null,
+    });
+
+    await store.updateInstagramAutomation('auto-1', {
+      workflow_post_id: null,
+      ig_media_id: null,
+      pending_post_deleted_at: null,
+    });
+
+    const call = getCalls('instagram_comment_automations', 'update').at(-1)!;
+    expect(call.payload).toMatchObject({ pending_post_deleted_at: null });
   });
 
   it('deleteInstagramAutomation deletes by id', async () => {

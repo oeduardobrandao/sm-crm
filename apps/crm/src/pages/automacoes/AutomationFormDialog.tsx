@@ -23,19 +23,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAuth } from '../../context/AuthContext';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
 import { getInstagramPosts, type InstagramPostSummary } from '../../services/instagram';
+import { getPostCovers } from '../../services/postMedia';
+import { TIPO_LABELS } from '../entregas/postLabels';
 import {
   createInstagramAutomation,
   updateInstagramAutomation,
   getClientes,
+  getClientePosts,
   getInstagramAccountStatuses,
+  type ClientePost,
   type InstagramCommentAutomation,
   type IgAccountStatus,
 } from '../../store';
 
 const POSTS_PAGE_SIZE = 10;
+/** The production list arrives unpaginated, so it is chunked client-side. */
+const PRODUCTION_PAGE_SIZE = 12;
 const MAX_KEYWORD_LENGTH = 40;
 
 // Stable identity for the "no data yet" fallback -- `?? new Map()` would
@@ -43,12 +50,35 @@ const MAX_KEYWORD_LENGTH = 40;
 // depends on it (react-hooks/exhaustive-deps caught this).
 const EMPTY_STATUSES: Map<number, IgAccountStatus> = new Map();
 
-type TargetMode = 'todos' | 'post';
+/** 'deleted' is not a choice the user makes: it is the seeded state of an
+ * automation whose production post was deleted before publishing. No radio is
+ * checked, and submitting is blocked until a real target replaces it. */
+type TargetMode = 'todos' | 'post' | 'deleted';
 
-interface SelectedPost {
-  ig_media_id: string;
-  media_permalink: string | null;
-  media_caption: string | null;
+/** Which grid the "post específico" panel is showing. */
+type TargetSource = 'production' | 'published';
+
+export type SelectedTarget =
+  | {
+      kind: 'published';
+      ig_media_id: string;
+      media_permalink: string | null;
+      media_caption: string | null;
+      /** Preserva o vínculo com o post interno no estado "ligado" (ambos setados). */
+      workflow_post_id: number | null;
+    }
+  | { kind: 'production'; workflow_post_id: number; titulo: string };
+
+/** A production post is a valid target only while it can still publish to
+ * Instagram: already-published posts belong to the "Publicados" grid, Stories
+ * expire, and TikTok-only posts never get an IG media id. `falha_publicacao`
+ * stays eligible because it is still going to publish. */
+function isEligibleProductionPost(post: ClientePost): boolean {
+  return (
+    post.status !== 'postado' &&
+    post.tipo !== 'stories' &&
+    (post.platform ?? 'instagram') !== 'tiktok'
+  );
 }
 
 function truncate(text: string, max: number): string {
@@ -60,12 +90,53 @@ function emptyState() {
     name: '',
     clientId: '' as number | '',
     targetMode: 'todos' as TargetMode,
-    selectedPost: null as SelectedPost | null,
+    targetSource: 'production' as TargetSource,
+    selectedPost: null as SelectedTarget | null,
     keywords: [] as string[],
     keywordInput: '',
     dmMessage: '',
     publicReply: '',
   };
+}
+
+/** Maps an automation being edited onto the target half of the form state.
+ * Order matters: the tombstone wins over everything, and `ig_media_id` wins over
+ * `workflow_post_id` so the "linked" state (both set) shows the live post while
+ * keeping the internal link intact. */
+function seedTarget(editing: InstagramCommentAutomation): {
+  targetMode: TargetMode;
+  targetSource: TargetSource;
+  selectedPost: SelectedTarget | null;
+} {
+  if (editing.pending_post_deleted_at != null) {
+    return { targetMode: 'deleted', targetSource: 'production', selectedPost: null };
+  }
+  if (editing.ig_media_id) {
+    return {
+      targetMode: 'post',
+      targetSource: 'published',
+      selectedPost: {
+        kind: 'published',
+        ig_media_id: editing.ig_media_id,
+        media_permalink: editing.media_permalink,
+        media_caption: editing.media_caption,
+        workflow_post_id: editing.workflow_post_id ?? null,
+      },
+    };
+  }
+  if (editing.workflow_post_id != null) {
+    return {
+      targetMode: 'post',
+      targetSource: 'production',
+      selectedPost: {
+        kind: 'production',
+        workflow_post_id: editing.workflow_post_id,
+        // media_caption holds the titulo snapshot taken when the target was picked.
+        titulo: editing.media_caption ?? '',
+      },
+    };
+  }
+  return { targetMode: 'todos', targetSource: 'production', selectedPost: null };
 }
 
 export default function AutomationFormDialog({
@@ -85,6 +156,7 @@ export default function AutomationFormDialog({
 
   const [form, setForm] = useState(emptyState);
   const [postsPage, setPostsPage] = useState(1);
+  const [productionPage, setProductionPage] = useState(1);
 
   // Re-seed the form only when the dialog transitions to open, from
   // `editing` (edit) or a blank slate (create) -- not on every render, or
@@ -95,14 +167,7 @@ export default function AutomationFormDialog({
       setForm({
         name: editing.name,
         clientId: editing.client_id,
-        targetMode: editing.ig_media_id ? 'post' : 'todos',
-        selectedPost: editing.ig_media_id
-          ? {
-              ig_media_id: editing.ig_media_id,
-              media_permalink: editing.media_permalink,
-              media_caption: editing.media_caption,
-            }
-          : null,
+        ...seedTarget(editing),
         keywords: editing.keywords,
         keywordInput: '',
         dmMessage: editing.dm_message,
@@ -112,6 +177,7 @@ export default function AutomationFormDialog({
       setForm(emptyState());
     }
     setPostsPage(1);
+    setProductionPage(1);
   }, [open, editing]);
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
@@ -142,12 +208,46 @@ export default function AutomationFormDialog({
     typeof form.clientId === 'number' ? statuses.get(form.clientId) : undefined;
   const canAutomate = selectedStatus?.canAutomate ?? false;
 
+  const targetingPost = form.targetMode === 'post' && typeof form.clientId === 'number';
+
   const postsQuery = useQuery({
     queryKey: ['instagram-posts-for-automation', form.clientId, postsPage],
     queryFn: () => getInstagramPosts(form.clientId as number, postsPage),
-    enabled: open && form.targetMode === 'post' && typeof form.clientId === 'number',
+    enabled: open && targetingPost && form.targetSource === 'published',
   });
   const hasMorePosts = postsPage * POSTS_PAGE_SIZE < (postsQuery.data?.total ?? 0);
+
+  // Shares ['clientePosts', clienteId] with the Entregas calendar/drawer, so an
+  // already-warm cache renders the grid without a round trip.
+  const productionQuery = useQuery({
+    queryKey: ['clientePosts', form.clientId],
+    queryFn: () => getClientePosts(form.clientId as number),
+    enabled: open && targetingPost && form.targetSource === 'production',
+  });
+  const productionPosts = useMemo(
+    () => (productionQuery.data ?? []).filter(isEligibleProductionPost),
+    [productionQuery.data],
+  );
+  // Clamp rather than reset from an effect: the list can shrink under a stale
+  // page (refetch, client switch) and an out-of-range page would render blank.
+  const productionPageCount = Math.max(1, Math.ceil(productionPosts.length / PRODUCTION_PAGE_SIZE));
+  const safeProductionPage = Math.min(productionPage, productionPageCount);
+  const pagedProductionPosts = productionPosts.slice(
+    (safeProductionPage - 1) * PRODUCTION_PAGE_SIZE,
+    safeProductionPage * PRODUCTION_PAGE_SIZE,
+  );
+
+  // react-query hashes the key structurally, so a fresh array each render is fine.
+  const productionIds = pagedProductionPosts.map((p) => p.id);
+  const coversQuery = useQuery({
+    queryKey: ['automation-production-covers', productionIds],
+    queryFn: () => getPostCovers(productionIds),
+    // The tab check matters: ['clientePosts', id] is shared with Entregas, so a
+    // warm cache would otherwise fetch covers for a grid nobody is looking at.
+    enabled:
+      open && targetingPost && form.targetSource === 'production' && productionIds.length > 0,
+  });
+  const covers = coversQuery.data;
 
   const onMutationError = (err: unknown, fallback: string) => {
     if (!handleEntitlementMutationError(err, profile?.conta_id ?? null)) toast.error(fallback);
@@ -155,21 +255,50 @@ export default function AutomationFormDialog({
 
   const saveMutation = useMutation({
     mutationFn: () => {
+      const sel = form.targetMode === 'post' ? form.selectedPost : null;
+      const target =
+        sel === null
+          ? {
+              ig_media_id: null,
+              media_permalink: null,
+              media_caption: null,
+              workflow_post_id: null,
+            }
+          : sel.kind === 'published'
+            ? {
+                ig_media_id: sel.ig_media_id,
+                media_permalink: sel.media_permalink,
+                media_caption: sel.media_caption,
+                workflow_post_id: sel.workflow_post_id,
+              }
+            : {
+                ig_media_id: null,
+                media_permalink: null,
+                // Snapshot of the titulo, so the listing can name the target
+                // before the post exists on Instagram.
+                media_caption: truncate(sel.titulo, 300),
+                workflow_post_id: sel.workflow_post_id,
+              };
+
       const payload = {
         client_id: form.clientId as number,
         name: form.name.trim(),
-        ig_media_id: form.targetMode === 'post' ? (form.selectedPost?.ig_media_id ?? null) : null,
-        media_permalink:
-          form.targetMode === 'post' ? (form.selectedPost?.media_permalink ?? null) : null,
-        media_caption:
-          form.targetMode === 'post' ? (form.selectedPost?.media_caption ?? null) : null,
+        ...target,
         keywords: form.keywords,
         dm_message: form.dmMessage.trim(),
         public_reply: form.publicReply.trim() || null,
       };
-      return editing
-        ? updateInstagramAutomation(editing.id, payload)
-        : createInstagramAutomation(payload);
+      if (!editing) return createInstagramAutomation(payload);
+
+      // Clearing the tombstone is the ONLY case where pending_post_deleted_at
+      // belongs in a patch, and it always travels with a fresh target. `ativo`
+      // is never sent: the DB parked this automation, and un-parking it stays a
+      // deliberate act on the listing toggle.
+      const patch =
+        editing.pending_post_deleted_at != null && form.targetMode !== 'deleted'
+          ? { ...payload, pending_post_deleted_at: null }
+          : payload;
+      return updateInstagramAutomation(editing.id, patch);
     },
     onSuccess: () => {
       toast.success(editing ? t('toastUpdated') : t('toastCreated'));
@@ -199,10 +328,20 @@ export default function AutomationFormDialog({
     setForm((f) => ({
       ...f,
       selectedPost: {
+        kind: 'published',
         ig_media_id: post.instagram_post_id,
         media_permalink: post.permalink,
         media_caption: post.caption ? truncate(post.caption, 300) : null,
+        // A freshly picked live post has no internal counterpart; the "linked"
+        // state only ever arrives pre-seeded from `editing`.
+        workflow_post_id: null,
       },
+    }));
+
+  const selectProductionPost = (post: ClientePost) =>
+    setForm((f) => ({
+      ...f,
+      selectedPost: { kind: 'production', workflow_post_id: post.id, titulo: post.titulo },
     }));
 
   const submit = () => {
@@ -212,6 +351,10 @@ export default function AutomationFormDialog({
     }
     if (!form.name.trim()) {
       toast.error(t('form.validationName'));
+      return;
+    }
+    if (form.targetMode === 'deleted') {
+      toast.error(t('form.validationDeletedTarget'));
       return;
     }
     if (form.targetMode === 'post' && !form.selectedPost) {
@@ -260,14 +403,17 @@ export default function AutomationFormDialog({
             <label className="text-sm font-medium">{t('form.clientLabel')}</label>
             <Select
               value={form.clientId === '' ? '' : String(form.clientId)}
-              onValueChange={(v) =>
+              onValueChange={(v) => {
                 setForm((f) => ({
                   ...f,
                   clientId: Number(v),
                   targetMode: 'todos',
+                  targetSource: 'production',
                   selectedPost: null,
-                }))
-              }
+                }));
+                setPostsPage(1);
+                setProductionPage(1);
+              }}
             >
               <SelectTrigger aria-label={t('form.clientAria')}>
                 <SelectValue placeholder={t('form.clientPlaceholder')} />
@@ -338,6 +484,26 @@ export default function AutomationFormDialog({
               </label>
             </div>
 
+            {form.targetMode === 'deleted' && (
+              <div
+                className="flex items-start gap-2"
+                style={{
+                  marginTop: 8,
+                  padding: '0.625rem 0.75rem',
+                  borderRadius: 8,
+                  background: 'rgba(245, 163, 66, 0.12)',
+                  color: 'var(--text-main)',
+                  fontSize: '0.8rem',
+                }}
+              >
+                <AlertTriangle
+                  className="h-4 w-4"
+                  style={{ color: 'var(--warning)', flexShrink: 0, marginTop: 2 }}
+                />
+                <span>{t('form.deletedTargetHint')}</span>
+              </div>
+            )}
+
             {form.targetMode === 'post' &&
               (form.clientId === '' ? (
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 6 }}>
@@ -345,7 +511,172 @@ export default function AutomationFormDialog({
                 </p>
               ) : (
                 <div style={{ marginTop: 8 }}>
-                  {postsQuery.isLoading ? (
+                  <ToggleGroup
+                    type="single"
+                    value={form.targetSource}
+                    onValueChange={(v) => {
+                      if (!v || v === form.targetSource) return;
+                      setForm((f) => ({ ...f, targetSource: v as TargetSource }));
+                    }}
+                    className="justify-start"
+                    style={{ marginBottom: 8 }}
+                  >
+                    <ToggleGroupItem value="production" size="sm">
+                      {t('form.targetSourceProduction')}
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="published" size="sm">
+                      {t('form.targetSourcePublished')}
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+
+                  {form.targetSource === 'production' ? (
+                    productionQuery.isLoading ? (
+                      <div className="flex justify-center p-4">
+                        <Spinner size="sm" />
+                      </div>
+                    ) : (
+                      <>
+                        <div
+                          className="grid grid-cols-4 gap-2"
+                          style={{ maxHeight: 220, overflowY: 'auto' }}
+                        >
+                          {pagedProductionPosts.map((post) => {
+                            const selected =
+                              form.selectedPost?.kind === 'production' &&
+                              form.selectedPost.workflow_post_id === post.id;
+                            const cover = covers?.get(post.id);
+                            const img =
+                              cover?.kind === 'video'
+                                ? (cover.thumbnail_url ?? null)
+                                : (cover?.url ?? cover?.thumbnail_url ?? null);
+                            return (
+                              <button
+                                key={post.id}
+                                type="button"
+                                onClick={() => selectProductionPost(post)}
+                                aria-pressed={selected}
+                                // The cover is decorative (alt=""), so the titulo
+                                // has to carry the accessible name either way.
+                                aria-label={post.titulo}
+                                style={{
+                                  position: 'relative',
+                                  aspectRatio: '1',
+                                  borderRadius: 8,
+                                  overflow: 'hidden',
+                                  border: selected
+                                    ? '2px solid var(--primary-color)'
+                                    : '1px solid var(--border-color)',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  background: 'var(--surface-1)',
+                                }}
+                              >
+                                {img ? (
+                                  <img
+                                    src={img}
+                                    alt=""
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  />
+                                ) : (
+                                  <span
+                                    className="flex flex-col justify-center h-full"
+                                    style={{
+                                      padding: '0.375rem',
+                                      gap: 2,
+                                      textAlign: 'left',
+                                      overflow: 'hidden',
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        fontSize: '0.7rem',
+                                        lineHeight: 1.2,
+                                        color: 'var(--text-main)',
+                                        display: '-webkit-box',
+                                        WebkitLineClamp: 3,
+                                        WebkitBoxOrient: 'vertical',
+                                        overflow: 'hidden',
+                                      }}
+                                    >
+                                      {post.titulo}
+                                    </span>
+                                    <span
+                                      style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}
+                                    >
+                                      {TIPO_LABELS[post.tipo]}
+                                    </span>
+                                  </span>
+                                )}
+                                {selected && (
+                                  <span
+                                    style={{
+                                      position: 'absolute',
+                                      top: 3,
+                                      right: 3,
+                                      background: 'var(--primary-color)',
+                                      borderRadius: '50%',
+                                      width: 16,
+                                      height: 16,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                    }}
+                                  >
+                                    <Check className="h-2.5 w-2.5" style={{ color: '#fff' }} />
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                          {productionPosts.length === 0 && (
+                            <p
+                              style={{
+                                gridColumn: '1 / -1',
+                                color: 'var(--text-muted)',
+                                fontSize: '0.8rem',
+                              }}
+                            >
+                              {t('form.noProductionPosts')}
+                            </p>
+                          )}
+                        </div>
+                        {productionPageCount > 1 && (
+                          <div
+                            className="flex items-center justify-between"
+                            style={{ marginTop: 6 }}
+                          >
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={safeProductionPage <= 1}
+                              onClick={() => setProductionPage(safeProductionPage - 1)}
+                            >
+                              {t('form.previous')}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={safeProductionPage >= productionPageCount}
+                              onClick={() => setProductionPage(safeProductionPage + 1)}
+                            >
+                              {t('form.next')}
+                            </Button>
+                          </div>
+                        )}
+                        <p
+                          style={{
+                            color: 'var(--text-muted)',
+                            fontSize: '0.75rem',
+                            marginTop: 6,
+                          }}
+                        >
+                          {t('form.productionHint')}
+                        </p>
+                      </>
+                    )
+                  ) : postsQuery.isLoading ? (
                     <div className="flex justify-center p-4">
                       <Spinner size="sm" />
                     </div>
@@ -357,7 +688,8 @@ export default function AutomationFormDialog({
                       >
                         {(postsQuery.data?.posts ?? []).map((post) => {
                           const selected =
-                            form.selectedPost?.ig_media_id === post.instagram_post_id;
+                            form.selectedPost?.kind === 'published' &&
+                            form.selectedPost.ig_media_id === post.instagram_post_id;
                           return (
                             <button
                               key={post.id}
