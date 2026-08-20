@@ -335,6 +335,7 @@ DECLARE
   v_nome text;
   v_prazo integer;
   v_resp bigint;
+  v_data_limite date;
   v_etapa_id bigint;
   v_active_id bigint;
   v_old_etapas jsonb;
@@ -481,6 +482,14 @@ BEGIN
       IF NOT FOUND THEN RAISE EXCEPTION 'invalid_responsavel'; END IF;
     END IF;
 
+    -- data_limite segue o mesmo contrato de erro dos demais campos (invalid_etapa,
+    -- nunca o erro cru de cast do Postgres)
+    BEGIN
+      v_data_limite := NULLIF(v_etapa->>'data_limite', '')::date;
+    EXCEPTION WHEN others THEN
+      RAISE EXCEPTION 'invalid_etapa';
+    END;
+
     -- a etapa ativa entra como 'pendente' e é ativada por UPDATE no fim do loop,
     -- para o trigger notify_step_activated (AFTER UPDATE) disparar
     INSERT INTO workflow_etapas
@@ -491,7 +500,7 @@ BEGIN
        coalesce(v_etapa->>'tipo', 'padrao'),
        CASE WHEN v_i < p_active_ordem THEN 'concluido' ELSE 'pendente' END,
        NULL, NULL,
-       NULLIF(v_etapa->>'data_limite', '')::date)
+       v_data_limite)
     RETURNING id INTO v_etapa_id;
     IF v_i = p_active_ordem THEN v_active_id := v_etapa_id; END IF;
     v_i := v_i + 1;
@@ -974,6 +983,34 @@ describe('MigrateTemplateDialog', () => {
     });
   });
 
+  it('duas definições de origem homônimas casando na mesma de destino viram aviso de conflito', async () => {
+    mockGetDefs.mockImplementation((tid: number) =>
+      Promise.resolve(
+        tid === 1
+          ? [
+              ...defA,
+              { id: 102, template_id: 1, name: 'tema', type: 'text', config: {}, portal_visible: false, display_order: 2 },
+            ]
+          : defB,
+      ),
+    );
+    mockGetPosts.mockResolvedValue([]);
+    render(
+      <MigrateTemplateDialog
+        workflow={workflow}
+        cliente={undefined}
+        templates={templates}
+        onClose={vi.fn()}
+        onMigrated={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole('combobox', { name: /template de destino/i }));
+    await userEvent.click(screen.getByRole('option', { name: 'Template B' }));
+    await waitFor(() => {
+      expect(screen.getAllByText(/um valor por post será mantido/i).length).toBeGreaterThan(0);
+    });
+  });
+
   it('confirmar dispara a RPC com o payload certo e chama onMigrated', async () => {
     const { onMigrated } = setup();
     await userEvent.click(screen.getByRole('combobox', { name: /template de destino/i }));
@@ -1038,6 +1075,7 @@ import {
   getPropertyDefinitions,
   getWorkflowPostsWithProperties,
   type Cliente,
+  type PropertyMatch,
   type Workflow,
   type WorkflowTemplate,
 } from '../../../store';
@@ -1085,6 +1123,18 @@ export function MigrateTemplateDialog({
   );
   const perdidas = matches.filter((m) => m.destino === null);
   const migram = matches.filter((m) => m.destino !== null);
+  // Duas definições de origem homônimas casando com a MESMA de destino: a RPC
+  // mantém só um valor por post (menor display_order vence). A prévia precisa
+  // dizer isso em vez de mostrar as duas como "preservadas".
+  const destinoConflitos = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const m of migram) {
+      const id = m.destino!.id!;
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    return counts;
+  }, [migram]);
+  const temConflito = (m: PropertyMatch) => (destinoConflitos.get(m.destino?.id ?? -1) ?? 0) > 1;
   const postsAfetados = (defId: number) =>
     posts.filter((p) => p.property_values.some((pv) => pv.property_definition_id === defId)).length;
 
@@ -1126,10 +1176,12 @@ export function MigrateTemplateDialog({
   //     (etapasNovas.map((e, i) => <SelectItem value={String(i)}>{i + 1}. {e.nome}</SelectItem>))
   //  3. prévia: lista das etapas novas (nome + prazo + data_limite quando houver,
   //     formatada pt-BR); bloco "Propriedades" com migram (verde: "Tema · valores
-  //     preservados") e perdidas (vermelho: "Briefing · valores de N post(s) serão
-  //     perdidos"); para perdidas dos tipos select/multiselect/status, sufixo
-  //     explicando: "opções de seleção não migram entre templates"; só renderiza
-  //     o bloco se defsOrigem.length > 0
+  //     preservados"; quando temConflito(m), âmbar em vez de verde:
+  //     "Tema · campos de origem com o mesmo nome: um valor por post será mantido,
+  //     os demais serão descartados") e perdidas (vermelho: "Briefing · valores de
+  //     N post(s) serão perdidos"); para perdidas dos tipos
+  //     select/multiselect/status, sufixo explicando: "opções de seleção não
+  //     migram entre templates"; só renderiza o bloco se defsOrigem.length > 0
   //  4. aviso fixo: "Os posts, aprovações e comentários deste fluxo não serão alterados.
   //     A troca de etapas não pode ser desfeita automaticamente."
   //  5. rodapé: Cancelar / botão "Migrar" (disabled sem destino) => abre AlertDialog
