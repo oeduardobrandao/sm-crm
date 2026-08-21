@@ -4,6 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
+import { makeBoundedFetch } from "./bounded-fetch.ts";
 import { parseClientId } from "./client-id.ts";
 import { GenerateError, generateReportDocument } from "./generate.ts";
 
@@ -21,7 +22,7 @@ Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get("Authorization");
     const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: authHeader ?? "" } },
+      global: { headers: { Authorization: authHeader ?? "" }, fetch: makeBoundedFetch() },
     });
     const token = authHeader?.replace(/^Bearer\s+/i, "");
     if (!token || token === "undefined" || token === "null") {
@@ -31,7 +32,12 @@ Deno.serve(async (req) => {
     const user = userRes.data?.user;
     if (userRes.error || !user) return json({ error: "Unauthorized" }, 401);
 
-    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    // Geração é síncrona, sem retry de fila (spec §5): uma query PostgREST
+    // travada no service client não pode segurar o request até o runtime
+    // matar a função -- ver bounded-fetch.ts.
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      global: { fetch: makeBoundedFetch() },
+    });
     const { data: profile } = await serviceClient
       .from("profiles").select("conta_id, active_workspace_id").eq("id", user.id).single();
     // Workspace ativo + membership: paridade com get_my_conta_id()/RLS (RLS em
