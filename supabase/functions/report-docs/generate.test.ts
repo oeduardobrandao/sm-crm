@@ -2,19 +2,24 @@ import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.t
 import { GenerateError, generateReportDocument } from "./generate.ts";
 
 // Fake db: responde por tabela; grava inserts e chamadas de rpc para asserção.
-function makeDb(rows: Record<string, unknown>, opts: { feature?: boolean } = {}) {
+// `errors` deixa uma tabela específica resolver { data: null, error } em vez
+// de { data: result, error: null } -- simula uma query obrigatória falhando.
+function makeDb(
+  rows: Record<string, unknown>,
+  opts: { feature?: boolean; errors?: Record<string, { message: string }> } = {},
+) {
   const inserts: Record<string, unknown>[] = [];
   const rpcCalls: { name: string; args: Record<string, unknown> }[] = [];
   // deno-lint-ignore no-explicit-any
-  const chain = (result: any): any => {
+  const chain = (result: any, error: { message: string } | null = null): any => {
     const c: Record<string, unknown> = {};
     for (const m of ["select", "eq", "gte", "lt", "order", "limit"]) {
-      c[m] = () => chain(result);
+      c[m] = () => chain(result, error);
     }
-    c.maybeSingle = () => Promise.resolve({ data: result, error: null });
-    c.single = () => Promise.resolve({ data: result, error: null });
+    c.maybeSingle = () => Promise.resolve({ data: error ? null : result, error });
+    c.single = () => Promise.resolve({ data: error ? null : result, error });
     c.then = (resolve: (v: unknown) => unknown) =>
-      Promise.resolve({ data: result, error: null }).then(resolve);
+      Promise.resolve({ data: error ? null : result, error }).then(resolve);
     return c;
   };
   return {
@@ -29,7 +34,7 @@ function makeDb(rows: Record<string, unknown>, opts: { feature?: boolean } = {})
           },
         };
       }
-      return chain(rows[table] ?? null);
+      return chain(rows[table] ?? null, opts.errors?.[table] ?? null);
     },
     rpc: (name: string, args: Record<string, unknown> = {}) => {
       rpcCalls.push({ name, args });
@@ -130,4 +135,30 @@ Deno.test("IA desejada mas GEMINI_API_KEY ausente: sem seção 'Próximos passos
     !row.layout.blocks.some((b) => b.config?.title === "Próximos passos"),
     "seção 'Próximos passos' não deveria existir sem nenhum bloco de conteúdo de IA embaixo",
   );
+});
+
+Deno.test("erro na query obrigatória de posts do mês: rejeita e não insere nada", async () => {
+  // instagram_posts é fonte OBRIGATÓRIA (o mês do relatório): um erro de
+  // banco transiente não pode virar "0 posts, KPIs zerados, ready" -- tem que
+  // derrubar a geração inteira, igual a workspace. Fontes opcionais (cache,
+  // best_times, snapshots de mês anterior) continuam degradando com log.
+  const db = makeDb(
+    {
+      clientes: { id: 1, conta_id: "c", nome: "X", especialidade: "Derma", include_ai_analysis: false },
+      instagram_accounts: { id: "ig-1", username: "dra.x", follower_count: 100 },
+      instagram_follower_history: [],
+      instagram_analytics_cache: null,
+      instagram_account_metrics_daily: [],
+      workspaces: { name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null },
+    },
+    { errors: { instagram_posts: { message: "boom" } } },
+  );
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07");
+  } catch (e) { err = e; }
+  // Erro genérico (não GenerateError): vira 500 via internalServerError no
+  // index.ts, mensagem nunca sai pro cliente.
+  assert(err instanceof Error && !(err instanceof GenerateError));
+  assertEquals(db.inserts.length, 0);
 });

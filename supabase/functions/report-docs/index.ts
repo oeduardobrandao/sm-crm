@@ -4,6 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
+import { parseClientId } from "./client-id.ts";
 import { GenerateError, generateReportDocument } from "./generate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -55,9 +56,9 @@ Deno.serve(async (req) => {
       } catch {
         return json({ error: "invalid_body" }, 400);
       }
-      const clientId = Number(body.clientId);
+      const clientId = parseClientId(body.clientId);
       const month = String(body.month ?? "");
-      if (!Number.isInteger(clientId) || clientId <= 0) return json({ error: "invalid_body" }, 400);
+      if (clientId === null) return json({ error: "invalid_body" }, 400);
 
       const result = await generateReportDocument(
         serviceClient,

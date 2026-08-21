@@ -114,17 +114,42 @@ export async function generateReportDocument(
       .gte("posted_at", prevW.start).lt("posted_at", prevW.endExclusive),
   ]);
 
+  // Fontes OBRIGATÓRIAS: erro aqui não é "sem dados", é geração inválida.
+  // As demais fontes degradam com log, como no gerador v2.
+  if (postsRes.error) throw new Error(`posts query failed: ${postsRes.error.message}`);
+  if (workspaceRes.error || !workspaceRes.data) {
+    throw new Error(`workspace query failed: ${workspaceRes.error?.message ?? "no row"}`);
+  }
+
+  // Fontes opcionais: erro degrada o relatório (essa parte fica de fora), não
+  // invalida a geração inteira. Log interno só -- nunca surfaced ao cliente
+  // (mesmo padrão do gerador v2, index.ts warnQueryError).
+  const warnQueryError = (label: string, error: unknown) => {
+    if (!error) return;
+    const msg = (error as { message?: string })?.message ?? String(error);
+    console.warn(`[report-docs] ${label} query failed: ${msg}`);
+  };
+  warnQueryError("follower history", followerHistoryRes.error);
+  warnQueryError("demographics cache", demographicsRes.error);
+  warnQueryError("best times cache", bestTimesRes.error);
+  warnQueryError("tag performance", tagPerformanceRes.error);
+  warnQueryError("prev-prev-month snapshot", prevPrevSnapRes.error);
+  warnQueryError("prev-month snapshot", prevSnapRes.error);
+  warnQueryError("report-month snapshot", currSnapRes.error);
+  warnQueryError("prev-month posts", prevMonthPostsRes.error);
+
   const posts: SnapshotPostRow[] = postsRes.data ?? [];
   const ws = workspaceRes.data;
 
   // Thumbnails: só dos candidatos a top post; URL efêmera cacheia ou vira null.
+  // Concorrente: pior caso ~15s (timeout por download), nunca 12x15 serial.
   const byReach = [...posts].sort(
     (a, b) => ((b as { reach: number | null }).reach ?? 0) - ((a as { reach: number | null }).reach ?? 0),
   ).slice(0, MAX_SNAPSHOT_POSTS);
   const stableThumbnails = new Map<string, string>();
-  for (const post of byReach) {
+  await Promise.all(byReach.map(async (post) => {
     const url = post.thumbnail_url;
-    if (!url || !isEphemeralInstagramUrl(url)) continue;
+    if (!url || !isEphemeralInstagramUrl(url)) return;
     const cached = await cachePostThumbnail(
       { fetch: deps.fetch, storage: deps.storage },
       igAccountId,
@@ -135,8 +160,10 @@ export async function generateReportDocument(
       url,
       null,
     );
+    // Map escrito por tasks concorrentes: seguro -- event loop single-thread,
+    // cada task escreve numa chave própria (a URL original do post).
     if (cached && !isEphemeralInstagramUrl(cached)) stableThumbnails.set(url, cached);
-  }
+  }));
 
   const snapshot = assembleSnapshot({
     month,
