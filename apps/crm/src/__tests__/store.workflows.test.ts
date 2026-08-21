@@ -113,13 +113,17 @@ describe('store workflow functions', () => {
         error: null,
       },
       {
-        data: [{ id: 111, ordem: 0, status: 'ativo' }],
+        data: [
+          { id: 111, ordem: 0, status: 'ativo' },
+          { id: 112, ordem: 1, status: 'pendente' },
+        ],
         error: null,
       },
     );
     mockedSupabase.__queueSupabaseResult(
       'workflow_etapas',
       'update',
+      { data: null, error: null },
       { data: null, error: null },
       { data: null, error: null },
     );
@@ -134,11 +138,15 @@ describe('store workflow functions', () => {
       { nome: 'Publicação', prazo_dias: 5, tipo_prazo: 'corridos', tipo: 'padrao' },
     ]);
 
-    // ordem 1 (status concluido) must never be touched — only ids 101 (pendente) and 111 (ativo).
+    // Both workflows already have a row for every template ordem — no inserts, only updates.
+    expect(getCalls('workflow_etapas', 'insert')).toHaveLength(0);
+    // ordem 1 (status concluido) on workflow 10 must never be touched — 3 rows survive the
+    // filter: id 101 (pendente), id 111 (ativo), id 112 (pendente).
     const updates = getCalls('workflow_etapas', 'update');
-    expect(updates).toHaveLength(2);
+    expect(updates).toHaveLength(3);
     expect(updates[0].payload).toMatchObject({ nome: 'Briefing atualizado', prazo_dias: 3 });
     expect(updates[1].payload).toMatchObject({ nome: 'Briefing atualizado', prazo_dias: 3 });
+    expect(updates[2].payload).toMatchObject({ nome: 'Publicação', prazo_dias: 5 });
     expect(updates[0].payload).not.toHaveProperty('status');
     expect(updates[1].payload).not.toHaveProperty('status');
     // id 101 is pendente — picks up the template's tipo change.
@@ -146,6 +154,48 @@ describe('store workflow functions', () => {
     // id 111 is ativo — an in-progress client-approval gate must never be added or
     // stripped by a template edit, so `tipo` is omitted from its update entirely.
     expect(updates[1].payload).not.toHaveProperty('tipo');
+    // id 112 is pendente (ordem 1) — picks up the template's tipo change too.
+    expect(updates[2].payload).toMatchObject({ tipo: 'padrao' });
+  });
+
+  it('backfills a missing step, as pendente, when the template gained one', async () => {
+    mockedSupabase.__queueSupabaseResult('workflows', 'select', {
+      data: [{ id: 20 }],
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('workflow_etapas', 'select', {
+      // Only 2 rows exist — the workflow was created before "Publicação" (ordem 2)
+      // was appended to the template.
+      data: [
+        { id: 201, ordem: 0, status: 'concluido' },
+        { id: 202, ordem: 1, status: 'ativo' },
+      ],
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('workflow_etapas', 'update', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('workflow_etapas', 'insert', {
+      data: { id: 203, ordem: 2, nome: 'Publicação', status: 'pendente' },
+      error: null,
+    });
+
+    await store.propagateTemplateToWorkflows(9, [
+      { nome: 'Redação', prazo_dias: 4, tipo_prazo: 'uteis', tipo: 'padrao' },
+      { nome: 'Design', prazo_dias: 2, tipo_prazo: 'uteis', tipo: 'padrao' },
+      { nome: 'Publicação', prazo_dias: 1, tipo_prazo: 'corridos', tipo: 'padrao' },
+    ]);
+
+    // ordem 0 is concluido — skipped entirely, no update.
+    expect(getCalls('workflow_etapas', 'update')).toHaveLength(1);
+    const inserts = getCalls('workflow_etapas', 'insert');
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].payload).toMatchObject({
+      workflow_id: 20,
+      ordem: 2,
+      nome: 'Publicação',
+      status: 'pendente',
+      iniciado_em: null,
+      concluido_em: null,
+    });
   });
 
   it('completes a step and activates the next workflow stage', async () => {
