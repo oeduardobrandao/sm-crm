@@ -2,6 +2,7 @@
 // síncrona. Seletor de template chega no PR 3, junto com a UI de templates.
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -31,6 +32,7 @@ export interface NewReportDialogProps {
 
 export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialogProps) {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [month, setMonth] = useState(previousMonth);
   const [generating, setGenerating] = useState(false);
 
@@ -40,6 +42,7 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
     try {
       const { id } = await generateReportDoc(clientId, month);
       toast.success('Relatório gerado.');
+      await qc.invalidateQueries({ queryKey: ['report-docs', clientId] });
       onOpenChange(false);
       navigate(`/relatorios/${id}`);
     } catch (err) {
