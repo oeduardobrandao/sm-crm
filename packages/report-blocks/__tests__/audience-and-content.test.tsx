@@ -50,6 +50,27 @@ describe('TopPostsBlock', () => {
   });
 });
 
+describe('PostListBlock', () => {
+  it('renderiza linhas compactas com rank, caption e alcance', () => {
+    render(<BlockRenderer layout={l([{ id: 'pl1', type: 'post_list', size: 'full', config: { count: 1 } }])} snapshot={makeSnapshotFixture()} mode="view" />);
+    expect(screen.getByText('Mitos sobre protetor solar')).toBeInTheDocument();
+    expect(screen.getByText('1º')).toBeInTheDocument();
+    expect(screen.getByText('9.800')).toBeInTheDocument();
+    expect(screen.queryByText('5 sinais de alerta na pele')).not.toBeInTheDocument();
+  });
+
+  it('sem posts: desaparece', () => {
+    const { container } = render(<BlockRenderer layout={l([{ id: 'pl1', type: 'post_list', size: 'full' }])} snapshot={makeSnapshotFixture({ top_posts: [] })} mode="view" />);
+    expect(container.querySelectorAll('[data-block-id]')[0]?.childNodes.length).toBe(0);
+  });
+
+  it('count fora dos limites: cai no padrão 12', () => {
+    render(<BlockRenderer layout={l([{ id: 'pl1', type: 'post_list', size: 'full', config: { count: 99 } }])} snapshot={makeSnapshotFixture()} mode="view" />);
+    expect(screen.getByText('Mitos sobre protetor solar')).toBeInTheDocument();
+    expect(screen.getByText('5 sinais de alerta na pele')).toBeInTheDocument();
+  });
+});
+
 describe('TagsTableBlock', () => {
   it('mostra a tabela de tópicos', () => {
     render(<BlockRenderer layout={l([{ id: 't1', type: 'tags_table', size: 'full' }])} snapshot={makeSnapshotFixture()} mode="view" />);
