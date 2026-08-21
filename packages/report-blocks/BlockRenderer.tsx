@@ -42,15 +42,16 @@ export function BlockRenderer({ layout, snapshot, mode }: BlockRendererProps) {
       {layout.blocks.map((block) => {
         const Component = BLOCK_COMPONENTS[block.type];
         if (!Component) return null;
-        const node = <Component block={block} snapshot={snapshot} />;
-        if (node === null) return null;
+        // Widget sem dados renderiza null; a célula vazia colapsa via
+        // [data-block-id]:empty no styles.css (JSX sempre gera um elemento
+        // aqui, então checar o retorno do componente não teria efeito).
         return (
           <div
             key={block.id}
             data-block-id={block.id}
             className={SIZE_CLASS[block.size] ?? 'rb-full'}
           >
-            {node}
+            <Component block={block} snapshot={snapshot} />
           </div>
         );
       })}

@@ -15,6 +15,10 @@
 .rb-full {
   grid-column: span 6;
 }
+/* Widget sem dados renderiza null; a célula vazia não reserva espaço no grid. */
+.rb-grid > [data-block-id]:empty {
+  display: none;
+}
 @media (max-width: 720px) {
   .rb-third,
   .rb-half {
