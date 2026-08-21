@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { BlockRenderer } from '../BlockRenderer';
+import { BlockRenderer, resolveLayoutAccent, SIZE_CLASS } from '../BlockRenderer';
 import { makeSnapshotFixture } from '../fixtures';
 import type { ReportLayout } from '../types';
 
@@ -77,7 +77,25 @@ describe('BlockRenderer', () => {
   });
 
   it('styles.css define a regra de colapso do wrapper vazio', () => {
-    const css = readFileSync(path.resolve(__dirname, '../styles.css'), 'utf-8');
+    const css = readFileSync(join(__dirname, '../styles.css'), 'utf-8');
     expect(css).toContain('[data-block-id]:empty');
+  });
+
+  it('resolveLayoutAccent prioriza layout.accent sobre a marca do snapshot', () => {
+    const snap = makeSnapshotFixture();
+    const base = resolveLayoutAccent({ version: 1, blocks: [] }, snap);
+    const overridden = resolveLayoutAccent({ version: 1, accent: '#0f766e', blocks: [] }, snap);
+    expect(base.acc).not.toBe(overridden.acc);
+    expect(overridden.acc.toLowerCase()).toBe('#0f766e');
+  });
+
+  it('SIZE_CLASS mapeia os três tamanhos', () => {
+    expect(SIZE_CLASS).toEqual({ third: 'rb-third', half: 'rb-half', full: 'rb-full' });
+  });
+
+  it('styles.css tem as regras de modo edição', () => {
+    const css = readFileSync(join(__dirname, '../styles.css'), 'utf-8');
+    expect(css).toContain('.rb-grid.rb-mode-edit > [data-block-id]:empty');
+    expect(css).toContain('Sem dados no período');
   });
 });

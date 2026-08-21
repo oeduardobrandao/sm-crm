@@ -48,3 +48,20 @@
     max-width: none;
   }
 }
+/* Modo edição (canvas do CRM): célula sem dados NÃO colapsa; mostra aviso. */
+.rb-grid.rb-mode-edit > [data-block-id]:empty {
+  display: block;
+  min-height: 56px;
+  border: 1px dashed rgba(0, 0, 0, 0.18);
+  border-radius: 12px;
+  position: relative;
+}
+.rb-grid.rb-mode-edit > [data-block-id]:empty::after {
+  content: 'Sem dados no período';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.78rem;
+  opacity: 0.55;
+}
