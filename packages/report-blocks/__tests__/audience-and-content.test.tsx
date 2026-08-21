@@ -23,14 +23,26 @@ describe('widgets de audiência', () => {
   });
 
   it('audience null: todos somem', () => {
-    const { container } = render(<BlockRenderer layout={l(allAudience)} snapshot={makeSnapshotFixture({ audience: null })} mode="view" />);
+    const { container } = render(
+      <BlockRenderer
+        layout={l(allAudience)}
+        snapshot={makeSnapshotFixture({ audience: null })}
+        mode="view"
+      />,
+    );
     expect(container.querySelectorAll('.rb-panel').length).toBe(0);
   });
 });
 
 describe('BestTimesBlock', () => {
   it('mostra o heatmap com os top horários', () => {
-    render(<BlockRenderer layout={l([{ id: 'h1', type: 'chart_best_times', size: 'full' }])} snapshot={makeSnapshotFixture()} mode="view" />);
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'h1', type: 'chart_best_times', size: 'full' }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
     expect(screen.getByText('Melhores horários para publicar')).toBeInTheDocument();
     expect(screen.getByText(/Qua · 19h/)).toBeInTheDocument();
   });
@@ -38,13 +50,25 @@ describe('BestTimesBlock', () => {
 
 describe('TopPostsBlock', () => {
   it('respeita config.count e mostra métricas', () => {
-    render(<BlockRenderer layout={l([{ id: 'p1', type: 'top_posts', size: 'full', config: { count: 1 } }])} snapshot={makeSnapshotFixture()} mode="view" />);
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'p1', type: 'top_posts', size: 'full', config: { count: 1 } }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
     expect(screen.getByText('Mitos sobre protetor solar')).toBeInTheDocument();
     expect(screen.queryByText('5 sinais de alerta na pele')).not.toBeInTheDocument();
   });
 
   it('sem thumbnail: placeholder, nunca img quebrada', () => {
-    const { container } = render(<BlockRenderer layout={l([{ id: 'p1', type: 'top_posts', size: 'full' }])} snapshot={makeSnapshotFixture()} mode="view" />);
+    const { container } = render(
+      <BlockRenderer
+        layout={l([{ id: 'p1', type: 'top_posts', size: 'full' }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
     expect(container.querySelectorAll('img').length).toBe(0);
     expect(container.querySelectorAll('.rb-thumb-placeholder').length).toBeGreaterThan(0);
   });
@@ -52,7 +76,13 @@ describe('TopPostsBlock', () => {
 
 describe('PostListBlock', () => {
   it('renderiza linhas compactas com rank, caption e alcance', () => {
-    render(<BlockRenderer layout={l([{ id: 'pl1', type: 'post_list', size: 'full', config: { count: 1 } }])} snapshot={makeSnapshotFixture()} mode="view" />);
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'pl1', type: 'post_list', size: 'full', config: { count: 1 } }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
     expect(screen.getByText('Mitos sobre protetor solar')).toBeInTheDocument();
     expect(screen.getByText('1º')).toBeInTheDocument();
     expect(screen.getByText('9.800')).toBeInTheDocument();
@@ -60,12 +90,24 @@ describe('PostListBlock', () => {
   });
 
   it('sem posts: desaparece', () => {
-    const { container } = render(<BlockRenderer layout={l([{ id: 'pl1', type: 'post_list', size: 'full' }])} snapshot={makeSnapshotFixture({ top_posts: [] })} mode="view" />);
+    const { container } = render(
+      <BlockRenderer
+        layout={l([{ id: 'pl1', type: 'post_list', size: 'full' }])}
+        snapshot={makeSnapshotFixture({ top_posts: [] })}
+        mode="view"
+      />,
+    );
     expect(container.querySelectorAll('[data-block-id]')[0]?.childNodes.length).toBe(0);
   });
 
   it('count fora dos limites: cai no padrão 12', () => {
-    render(<BlockRenderer layout={l([{ id: 'pl1', type: 'post_list', size: 'full', config: { count: 99 } }])} snapshot={makeSnapshotFixture()} mode="view" />);
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'pl1', type: 'post_list', size: 'full', config: { count: 99 } }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
     expect(screen.getByText('Mitos sobre protetor solar')).toBeInTheDocument();
     expect(screen.getByText('5 sinais de alerta na pele')).toBeInTheDocument();
   });
@@ -73,13 +115,25 @@ describe('PostListBlock', () => {
 
 describe('TagsTableBlock', () => {
   it('mostra a tabela de tópicos', () => {
-    render(<BlockRenderer layout={l([{ id: 't1', type: 'tags_table', size: 'full' }])} snapshot={makeSnapshotFixture()} mode="view" />);
+    render(
+      <BlockRenderer
+        layout={l([{ id: 't1', type: 'tags_table', size: 'full' }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
     expect(screen.getByText('Educativo')).toBeInTheDocument();
     expect(screen.getByText('5.100')).toBeInTheDocument();
   });
 
   it('sem tags: some', () => {
-    const { container } = render(<BlockRenderer layout={l([{ id: 't1', type: 'tags_table', size: 'full' }])} snapshot={makeSnapshotFixture({ tags_performance: [] })} mode="view" />);
+    const { container } = render(
+      <BlockRenderer
+        layout={l([{ id: 't1', type: 'tags_table', size: 'full' }])}
+        snapshot={makeSnapshotFixture({ tags_performance: [] })}
+        mode="view"
+      />,
+    );
     expect(container.querySelector('table')).toBeNull();
   });
 });

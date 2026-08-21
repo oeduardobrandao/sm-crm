@@ -7,18 +7,38 @@ type FormatKey = keyof typeof FORMAT_LABELS;
 export function FormatCardsBlock({ snapshot }: BlockProps) {
   const entries = (Object.keys(FORMAT_LABELS) as FormatKey[])
     .map((key) => ({ key, data: snapshot.content_breakdown[key] }))
-    .filter((e): e is { key: FormatKey; data: NonNullable<typeof e.data> } => Boolean(e.data && e.data.count > 0));
+    .filter((e): e is { key: FormatKey; data: NonNullable<typeof e.data> } =>
+      Boolean(e.data && e.data.count > 0),
+    );
   if (entries.length === 0) return null;
 
   const leader = entries.reduce((a, b) => (b.data.avg_reach > a.data.avg_reach ? b : a));
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${entries.length}, 1fr)`, gap: '0.75rem' }}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(${entries.length}, 1fr)`,
+        gap: '0.75rem',
+      }}
+    >
       {entries.map(({ key, data }) => (
-        <div key={key} style={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: 12, padding: '1rem' }}>
+        <div
+          key={key}
+          style={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: 12, padding: '1rem' }}
+        >
           <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600 }}>
             {FORMAT_LABELS[key]}
             {key === leader.key ? (
-              <span style={{ marginLeft: 8, fontSize: '0.68rem', color: 'var(--rb-accent)', border: '1px solid var(--rb-accent)', borderRadius: 999, padding: '0.1rem 0.5rem' }}>
+              <span
+                style={{
+                  marginLeft: 8,
+                  fontSize: '0.68rem',
+                  color: 'var(--rb-accent)',
+                  border: '1px solid var(--rb-accent)',
+                  borderRadius: 999,
+                  padding: '0.1rem 0.5rem',
+                }}
+              >
                 Formato líder
               </span>
             ) : null}

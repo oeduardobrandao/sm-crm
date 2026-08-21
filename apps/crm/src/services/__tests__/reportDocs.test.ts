@@ -31,7 +31,9 @@ describe('generateReportDoc', () => {
   });
 
   it('erro do servidor vira Error com mensagem amigável', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: 'feature_disabled' }), { status: 403 }));
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'feature_disabled' }), { status: 403 }),
+    );
     await expect(generateReportDoc(42, '2026-07')).rejects.toThrow();
   });
 });

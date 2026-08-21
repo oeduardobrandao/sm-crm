@@ -36,10 +36,7 @@ async function getAuthHeaders() {
   };
 }
 
-export async function generateReportDoc(
-  clientId: number,
-  month: string,
-): Promise<{ id: string }> {
+export async function generateReportDoc(clientId: number, month: string): Promise<{ id: string }> {
   const headers = await getAuthHeaders();
   const res = await fetch(`${EDGE_URL}/generate`, {
     method: 'POST',
