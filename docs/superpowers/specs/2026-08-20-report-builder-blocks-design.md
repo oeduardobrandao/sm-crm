@@ -18,6 +18,7 @@ Queremos o modelo do Reportei: o gestor tem controle fino, métrica a métrica, 
 4. **Blocos livres:** sim, texto rico (TipTap) em qualquer posição. A narrativa de IA preenche blocos de texto como rascunho editável.
 5. **Rollout:** componente novo e separado, convivendo com o relatório atual até o deprecate.
 6. **Arquitetura de render:** documento JSON (layout + snapshot de dados) renderizado no cliente por um pacote React compartilhado; PDF via Gotenberg em modo conversão por URL apontando para uma página de impressão.
+7. **Personalização visual (decisão de 2026-08-20, via visual companion):** nível B. O accent default vem do `brand_color` do workspace (congelado no snapshot), e o editor ganha um seletor de cor na barra superior: `layout.accent` (hex opcional) sobrescreve por relatório e viaja junto no template. Sem tema escuro e sem escolha de fonte na v1 (nível C descartado por ora). Todo accent, default ou override, passa por `resolveAccent`.
 
 ## 3. Modelo de dados
 
@@ -72,6 +73,7 @@ RLS igual (CRUD completo para `authenticated` — templates são conteúdo do us
 ```jsonc
 {
   "version": 1,
+  "accent": "#9f1239", // opcional: override da cor de destaque; ausente = brand_color do workspace (snapshot)
   "blocks": [
     {
       "id": "uuid",
@@ -87,7 +89,7 @@ RLS igual (CRUD completo para `authenticated` — templates são conteúdo do us
 - `version` permite migrações do schema de layout no cliente (funções puras, testadas).
 - Ordem do array = ordem no documento. O grid CSS acomoda `third`/`half`/`full` com quebra natural.
 - Template = mesmo objeto sem `text` preenchido de dados de relatório específico (blocos de texto no template guardam o texto do autor, exceto os blocos de IA, que são regenerados por relatório).
-- **Validação em três camadas**: (1) validador compartilhado (zod) em `packages/report-blocks` — tipos de bloco conhecidos, compatibilidade type↔config, limites por config (ex: `count` do grid de posts entre 1 e 12) — usado pelo editor antes de salvar; (2) trigger do banco com a checagem grosseira de forma (§3), já que o UPDATE é direto via PostgREST; (3) renderers defensivos — bloco de tipo desconhecido é ignorado no viewer/print e mostrado como "widget não suportado" no editor; `version` maior que a suportada bloqueia a edição com aviso, nunca sobrescreve.
+- **Validação em três camadas**: (1) validador compartilhado (zod) em `packages/report-blocks` — tipos de bloco conhecidos, compatibilidade type↔config, limites por config (ex: `count` do grid de posts entre 1 e 12), `accent` hex `#rrggbb` quando presente — usado pelo editor antes de salvar; (2) trigger do banco com a checagem grosseira de forma (§3), já que o UPDATE é direto via PostgREST; (3) renderers defensivos — bloco de tipo desconhecido é ignorado no viewer/print e mostrado como "widget não suportado" no editor; `version` maior que a suportada bloqueia a edição com aviso, nunca sobrescreve.
 
 ## 5. Geração — síncrona, sem fila
 
@@ -113,7 +115,7 @@ Edge function nova **`report-docs`** (auth: service-role client + `getUser(token
 
 Componentes React por widget + renderer do grid + CSS print. Consumido por: editor do CRM, viewer do Hub e página `/print`. **Implementação única por widget.**
 
-- Accent da marca via `resolveAccent` (`supabase/functions/_shared/report-template/theme.ts` — o CRM já importa esse módulo em `ReportPreview.tsx`).
+- Accent resolvido como `layout.accent ?? snapshot.branding.accent_color`, sempre via `resolveAccent` (`supabase/functions/_shared/report-template/theme.ts` — o CRM já importa esse módulo em `ReportPreview.tsx`).
 - Gráfico de linha portado de `_shared/report-template/charts.ts` para React/SVG.
 - Componentes recebem `{ block, snapshot, accent }` e são puros — testáveis com fixtures.
 
@@ -150,7 +152,7 @@ Widget sem dados no snapshot (ex: demografia indisponível, KPI sem snapshot) re
 - Rota nova `/relatorios/:id`. **Obrigatório** adicionar ao padrão nomeado do `vercel.json` E ao `APP_ROUTE_PREFIXES`, senão a rota dá 404 em produção.
 - **Canvas central:** o documento real em grid de blocos. Toolbar por bloco no hover: alça de arraste (dnd-kit, padrões existentes em `apps/crm/src/pages/cliente-detalhe/BriefingReorder.tsx` e `apps/crm/src/pages/entregas/components/SortableEtapaList.tsx`), botões −/+ de largura, lixeira.
 - **Drawer "Adicionar widget":** catálogo por categoria com miniatura; o widget entra preenchido do snapshot.
-- **Barra superior:** título, mês, "Salvar como template", "Aplicar template", "Exportar PDF", "Ver como cliente" (abre a visão do Hub).
+- **Barra superior:** título, mês, seletor de cor de destaque (override do `layout.accent`, com "usar cor da marca" como default), "Salvar como template", "Aplicar template", "Exportar PDF", "Ver como cliente" (abre a visão do Hub).
 - **Autosave** com debounce + indicador "Salvo".
 - **Entrada:** em `AnalyticsContaPage`, botão "Novo relatório" abre dialog com `MonthPicker` (`apps/crm/src/components/ui/month-picker.tsx`) + seletor de template; cria e navega para o editor. A lista de relatórios do cliente mostra os documentos novos ao lado dos antigos.
 - Copy sem travessões (regra da casa).

@@ -423,6 +423,12 @@ Deno.test("validateLayout rejeita mais de 200 blocos e ids duplicados", () => {
 Deno.test("catálogo tem os 25 tipos da spec", () => {
   assertEquals(BLOCK_TYPES.length, 25);
 });
+
+Deno.test("validateLayout: accent opcional precisa ser hex #rrggbb", () => {
+  assert(validateLayout({ version: LAYOUT_VERSION, accent: "#9f1239", blocks: [block()] }).ok);
+  assert(!validateLayout({ version: LAYOUT_VERSION, accent: "vermelho", blocks: [block()] }).ok);
+  assert(!validateLayout({ version: LAYOUT_VERSION, accent: "#fff", blocks: [block()] }).ok);
+});
 ```
 
 ```ts
@@ -513,6 +519,10 @@ export interface ReportBlock {
 
 export interface ReportLayout {
   version: number;
+  /** Override opcional da cor de destaque (#rrggbb); ausente = brand_color do
+   * workspace congelado no snapshot. Seletor no editor chega no PR 2; o schema
+   * e o renderer já nascem prontos (decisão B do visual companion). */
+  accent?: string;
   blocks: ReportBlock[];
 }
 
@@ -533,6 +543,12 @@ export function validateLayout(raw: unknown): ValidateLayoutResult {
   }
   if (!Array.isArray(raw.blocks)) return { ok: false, error: "blocks must be an array" };
   if (raw.blocks.length > MAX_BLOCKS) return { ok: false, error: "too many blocks" };
+  if (
+    raw.accent !== undefined &&
+    (typeof raw.accent !== "string" || !/^#[0-9a-fA-F]{6}$/.test(raw.accent))
+  ) {
+    return { ok: false, error: "invalid accent" };
+  }
 
   const seen = new Set<string>();
   for (const b of raw.blocks) {
@@ -2259,7 +2275,9 @@ export interface BlockRendererProps {
 }
 
 export function BlockRenderer({ layout, snapshot, mode }: BlockRendererProps) {
-  const { acc } = resolveAccent(snapshot.branding.accent_color);
+  // Override por relatório/template (layout.accent) com fallback na marca do
+  // workspace congelada no snapshot; resolveAccent trata inválido/claro demais.
+  const { acc } = resolveAccent(layout.accent ?? snapshot.branding.accent_color);
   return (
     <div
       className={`rb-grid rb-mode-${mode}`}
