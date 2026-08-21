@@ -65,11 +65,14 @@ export async function removeWorkflowTemplate(id: number): Promise<void> {
 }
 
 /**
- * Propagate template step changes (nome, prazo_dias, tipo_prazo, responsavel_id, tipo)
- * to `pendente` and `ativo` workflow_etapas belonging to active workflows that use this
+ * Propagate template step changes (nome, prazo_dias, tipo_prazo, responsavel_id) to
+ * `pendente` and `ativo` workflow_etapas belonging to active workflows that use this
  * template. `status`, `iniciado_em` and `concluido_em` are never touched, so an in-progress
  * step keeps its progress — only its label/prazo/owner catch up to the template. Steps that
  * are already `concluido` are left untouched (rewriting history serves no purpose).
+ * `tipo` (the client-approval flag) only syncs on `pendente` steps — an `ativo` step keeps
+ * whatever gate it started with, since Kanban reads it live to decide whether advancing
+ * needs client approval, and rewriting it mid-cycle could silently add or remove that gate.
  */
 export async function propagateTemplateToWorkflows(
   templateId: number,
@@ -97,16 +100,21 @@ export async function propagateTemplateToWorkflows(
       if (wfEtapa.status === 'concluido') continue;
       const tplEtapa = etapas[wfEtapa.ordem];
       if (!tplEtapa) continue;
-      await supabase
-        .from('workflow_etapas')
-        .update({
-          nome: tplEtapa.nome,
-          prazo_dias: tplEtapa.prazo_dias,
-          tipo_prazo: tplEtapa.tipo_prazo,
-          responsavel_id: tplEtapa.responsavel_id ?? null,
-          tipo: tplEtapa.tipo ?? 'padrao',
-        })
-        .eq('id', wfEtapa.id);
+      const payload: Record<string, unknown> = {
+        nome: tplEtapa.nome,
+        prazo_dias: tplEtapa.prazo_dias,
+        tipo_prazo: tplEtapa.tipo_prazo,
+        responsavel_id: tplEtapa.responsavel_id ?? null,
+      };
+      // `tipo` gates the Kanban's client-approval requirement on advance
+      // (KanbanView.executeForward reads workflow_etapas.tipo live). Syncing it
+      // on an `ativo` step could silently strip an in-progress approval gate —
+      // or add a surprise one — mid-cycle, so it only ever moves on `pendente`
+      // steps, which haven't started collecting approvals yet.
+      if (wfEtapa.status === 'pendente') {
+        payload.tipo = tplEtapa.tipo ?? 'padrao';
+      }
+      await supabase.from('workflow_etapas').update(payload).eq('id', wfEtapa.id);
     }
   }
 }

@@ -125,7 +125,12 @@ describe('store workflow functions', () => {
     );
 
     await store.propagateTemplateToWorkflows(5, [
-      { nome: 'Briefing atualizado', prazo_dias: 3, tipo_prazo: 'uteis', tipo: 'padrao' },
+      {
+        nome: 'Briefing atualizado',
+        prazo_dias: 3,
+        tipo_prazo: 'uteis',
+        tipo: 'aprovacao_cliente',
+      },
       { nome: 'Publicação', prazo_dias: 5, tipo_prazo: 'corridos', tipo: 'padrao' },
     ]);
 
@@ -136,6 +141,11 @@ describe('store workflow functions', () => {
     expect(updates[1].payload).toMatchObject({ nome: 'Briefing atualizado', prazo_dias: 3 });
     expect(updates[0].payload).not.toHaveProperty('status');
     expect(updates[1].payload).not.toHaveProperty('status');
+    // id 101 is pendente — picks up the template's tipo change.
+    expect(updates[0].payload).toMatchObject({ tipo: 'aprovacao_cliente' });
+    // id 111 is ativo — an in-progress client-approval gate must never be added or
+    // stripped by a template edit, so `tipo` is omitted from its update entirely.
+    expect(updates[1].payload).not.toHaveProperty('tipo');
   });
 
   it('completes a step and activates the next workflow stage', async () => {
