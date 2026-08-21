@@ -58,7 +58,7 @@ Deno.test("cliente de outro workspace: not_found", async () => {
   const db = makeDb({ clientes: { id: 1, conta_id: "OUTRA", include_ai_analysis: true } });
   let err: unknown;
   try {
-    await generateReportDocument(db, deps, "minha-conta", 1, "2026-07");
+    await generateReportDocument(db, deps, "minha-conta", 1, "2026-07", null);
   } catch (e) { err = e; }
   assert(err instanceof GenerateError && err.code === "not_found");
 });
@@ -67,7 +67,7 @@ Deno.test("mês futuro: bad_month", async () => {
   const db = makeDb({});
   let err: unknown;
   try {
-    await generateReportDocument(db, deps, "c", 1, "2999-01");
+    await generateReportDocument(db, deps, "c", 1, "2999-01", null);
   } catch (e) { err = e; }
   assert(err instanceof GenerateError && err.code === "bad_month");
 });
@@ -82,7 +82,7 @@ Deno.test("caminho feliz sem IA insere documento ready com layout válido", asyn
     instagram_account_metrics_daily: [],
     workspaces: { name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null },
   });
-  const { id } = await generateReportDocument(db, deps, "c", 1, "2026-07");
+  const { id } = await generateReportDocument(db, deps, "c", 1, "2026-07", null);
   assertEquals(id, "doc-1");
   assertEquals(db.inserts.length, 1);
   const row = db.inserts[0] as {
@@ -125,7 +125,7 @@ Deno.test("IA desejada mas GEMINI_API_KEY ausente: sem seção 'Próximos passos
     instagram_account_metrics_daily: [],
     workspaces: { name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null },
   });
-  await generateReportDocument(db, { ...deps, geminiKey: "" }, "c", 1, "2026-07");
+  await generateReportDocument(db, { ...deps, geminiKey: "" }, "c", 1, "2026-07", null);
   const row = db.inserts[0] as {
     layout: { blocks: { type: string; config?: { title?: string } }[] };
   };
@@ -155,10 +155,81 @@ Deno.test("erro na query obrigatória de posts do mês: rejeita e não insere na
   );
   let err: unknown;
   try {
-    await generateReportDocument(db, deps, "c", 1, "2026-07");
+    await generateReportDocument(db, deps, "c", 1, "2026-07", null);
   } catch (e) { err = e; }
   // Erro genérico (não GenerateError): vira 500 via internalServerError no
   // index.ts, mensagem nunca sai pro cliente.
   assert(err instanceof Error && !(err instanceof GenerateError));
   assertEquals(db.inserts.length, 0);
+});
+
+Deno.test("templateId de outro workspace: not_found", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "x" },
+    report_templates: { id: "t1", conta_id: "OUTRA", layout: { version: 1, blocks: [] } },
+    workspaces: { name: "W", logo_url: null, brand_color: "#111111", report_splash_url: null },
+  });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", "b3b2a6a0-1111-4222-8333-444455556666");
+  } catch (e) { err = e; }
+  assert(err instanceof GenerateError && err.code === "not_found");
+});
+
+Deno.test("templateId com layout inválido: invalid_template", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "x" },
+    report_templates: { id: "t1", conta_id: "c", layout: { version: 99, blocks: [] } },
+    workspaces: { name: "W", logo_url: null, brand_color: "#111111", report_splash_url: null },
+  });
+  let err: unknown;
+  try {
+    await generateReportDocument(db, deps, "c", 1, "2026-07", "b3b2a6a0-1111-4222-8333-444455556666");
+  } catch (e) { err = e; }
+  assert(err instanceof GenerateError && err.code === "invalid_template");
+});
+
+Deno.test("templateId válido: layout do documento nasce do template com IA preenchida", async () => {
+  const tplLayout = {
+    version: 1,
+    accent: "#9f1239",
+    blocks: [
+      { id: "c1", type: "cover", size: "full" },
+      { id: "s1", type: "ai_summary", size: "full" },
+      { id: "r1", type: "ai_recommendations", size: "full" },
+    ],
+  };
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "x" },
+    report_templates: { id: "t1", conta_id: "c", layout: tplLayout },
+    workspaces: { name: "W", logo_url: null, brand_color: "#111111", report_splash_url: null },
+    instagram_posts: [],
+    instagram_follower_history: [],
+  });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", "b3b2a6a0-1111-4222-8333-444455556666");
+  const inserted = db.inserts[0] as { layout: { accent?: string; blocks: Array<{ id: string; type: string; text?: unknown }> } };
+  assertEquals(inserted.layout.accent, "#9f1239");
+  const ids = inserted.layout.blocks.map((b) => b.id);
+  // sem IA (geminiKey vazio): ai_summary vira fallback COM texto; ai_recommendations é removido
+  assert(ids.includes("c1") && ids.includes("s1"));
+  assert(!ids.includes("r1"));
+  const summary = inserted.layout.blocks.find((b) => b.id === "s1");
+  assert(summary?.text !== undefined);
+});
+
+Deno.test("sem templateId e sem default: layout padrão do sistema", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "x" },
+    report_templates: null,
+    workspaces: { name: "W", logo_url: null, brand_color: "#111111", report_splash_url: null },
+    instagram_posts: [],
+    instagram_follower_history: [],
+  });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  const inserted = db.inserts[0] as { layout: { blocks: Array<{ type: string }> } };
+  assert(inserted.layout.blocks.some((b) => b.type === "cover"));
 });
