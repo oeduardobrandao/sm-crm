@@ -6,7 +6,10 @@ import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { makeBoundedFetch } from "./bounded-fetch.ts";
 import { parseGenerateBody } from "./client-id.ts";
+import { DocActionError } from "./errors.ts";
 import { GenerateError, generateReportDocument } from "./generate.ts";
+import { refreshReportDocument } from "./refresh.ts";
+import { deleteReportDocument } from "./delete-doc.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -77,12 +80,39 @@ Deno.serve(async (req) => {
       return json(result, 201);
     }
 
+    const docMatch = path.match(/^\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\/(pdf|refresh-data))?$/i);
+    if (docMatch) {
+      const docId = docMatch[1];
+      const action = docMatch[3];
+      if (req.method === "POST" && action === "refresh-data") {
+        const allowed = await checkRateLimit(serviceClient, `report-docs:${contaId}`, 20, 3600);
+        if (!allowed) return json({ error: "Rate limit exceeded" }, 429);
+        await refreshReportDocument(
+          serviceClient,
+          { fetch, storage: serviceClient.storage },
+          contaId,
+          docId,
+        );
+        return json({ ok: true });
+      }
+      if (req.method === "DELETE" && !action) {
+        await deleteReportDocument(serviceClient, serviceClient.storage, contaId, docId);
+        return json({ ok: true });
+      }
+      // POST /:id/pdf chega na Task 5.
+    }
+
     return new Response("Not Found", { status: 404, headers: corsHeaders });
   } catch (err) {
     if (err instanceof GenerateError) {
       if (err.code === "bad_month") return json({ error: "invalid_month" }, 400);
       if (err.code === "feature_disabled") return json({ error: "feature_disabled" }, 403);
       if (err.code === "invalid_template") return json({ error: "invalid_template" }, 400);
+      return json({ error: "not_found" }, 404);
+    }
+    if (err instanceof DocActionError) {
+      if (err.code === "pdf_not_configured") return json({ error: "pdf_not_configured" }, 503);
+      if (err.code === "pdf_failed") return json({ error: "pdf_failed" }, 502);
       return json({ error: "not_found" }, 404);
     }
     return internalServerError(json, "report-docs", err);
