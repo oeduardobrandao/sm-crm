@@ -36,7 +36,7 @@
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
     },
     {
-      "source": "/(login|configurar-senha|workspace-setup|comecar|conectar|oauth|dashboard|clientes|financeiro|contratos|leads|equipe|configuracao|calendario|entregas|tarefas|post-express|arquivos|analytics-fluxos|analytics|ideias|mensagens|automacoes|ajuda|importar)(/.*)?",
+      "source": "/(login|configurar-senha|workspace-setup|comecar|conectar|oauth|dashboard|clientes|financeiro|contratos|leads|equipe|configuracao|calendario|entregas|tarefas|post-express|arquivos|analytics-fluxos|analytics|relatorios|ideias|mensagens|automacoes|ajuda|importar)(/.*)?",
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
     },
     {
@@ -68,7 +68,7 @@
     { "source": "/termos-de-uso", "destination": "/termos-de-uso.html" },
     { "source": "/lgpd", "destination": "/lgpd.html" },
     {
-      "source": "/(login|configurar-senha|workspace-setup|comecar|conectar|oauth|dashboard|clientes|financeiro|contratos|leads|equipe|configuracao|calendario|entregas|tarefas|post-express|arquivos|analytics-fluxos|analytics|ideias|mensagens|automacoes|ajuda|importar)(/.*)?",
+      "source": "/(login|configurar-senha|workspace-setup|comecar|conectar|oauth|dashboard|clientes|financeiro|contratos|leads|equipe|configuracao|calendario|entregas|tarefas|post-express|arquivos|analytics-fluxos|analytics|relatorios|ideias|mensagens|automacoes|ajuda|importar)(/.*)?",
       "destination": "/app.html"
     }
   ],
