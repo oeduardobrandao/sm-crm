@@ -22,11 +22,26 @@ export function useLayoutAutosave(
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleDirty = useRef(false);
   const pendingLayout = useRef<ReportLayout | null>(null);
+  const docIdRef = useRef(docId);
+  const titleRef = useRef(title);
+
+  docIdRef.current = docId;
+  titleRef.current = title;
 
   useEffect(
     () => () => {
       if (layoutTimer.current) clearTimeout(layoutTimer.current);
       if (titleTimer.current) clearTimeout(titleTimer.current);
+      // Best-effort: edição pendente não morre com a navegação. Sem await
+      // (cleanup é síncrono); falha aqui é aceita — o gate de validade se mantém.
+      const pending = pendingLayout.current;
+      if (pending) {
+        const check = validateLayout(pending);
+        if (check.ok) void updateReportDoc(docIdRef.current, { layout: pending }).catch(() => {});
+      }
+      if (titleDirty.current) {
+        void updateReportDoc(docIdRef.current, { title: titleRef.current }).catch(() => {});
+      }
     },
     [],
   );
@@ -38,24 +53,28 @@ export function useLayoutAutosave(
     setSaving(true);
     if (layoutTimer.current) clearTimeout(layoutTimer.current);
     layoutTimer.current = setTimeout(async () => {
+      layoutTimer.current = null;
       const toSave = pendingLayout.current;
       pendingLayout.current = null;
-      if (!toSave) return;
+      if (!toSave) {
+        if (pendingLayout.current === null) setSaving(false);
+        return;
+      }
       const check = validateLayout(toSave);
       if (!check.ok) {
         // Bug de layoutOps se chegar aqui: nada de request com payload inválido.
         console.error('[relatorio-editor] layout inválido no autosave:', check.error);
         toast.error(SAVE_ERROR_MSG);
-        setSaving(false);
+        if (pendingLayout.current === null) setSaving(false);
         return;
       }
       try {
-        await updateReportDoc(docId, { layout: toSave });
+        await updateReportDoc(docIdRef.current, { layout: toSave });
       } catch (err) {
         console.error('[relatorio-editor] autosave falhou:', err);
         toast.error(SAVE_ERROR_MSG);
       } finally {
-        setSaving(false);
+        if (pendingLayout.current === null) setSaving(false);
       }
     }, LAYOUT_DEBOUNCE_MS);
   }
@@ -65,10 +84,11 @@ export function useLayoutAutosave(
     titleDirty.current = true;
     if (titleTimer.current) clearTimeout(titleTimer.current);
     titleTimer.current = setTimeout(async () => {
+      titleTimer.current = null;
       if (!titleDirty.current) return;
       titleDirty.current = false;
       try {
-        await updateReportDoc(docId, { title: next });
+        await updateReportDoc(docIdRef.current, { title: next });
       } catch (err) {
         console.error('[relatorio-editor] save de título falhou:', err);
         toast.error(SAVE_ERROR_MSG);

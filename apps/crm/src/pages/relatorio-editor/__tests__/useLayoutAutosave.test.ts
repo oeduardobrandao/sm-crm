@@ -113,4 +113,75 @@ describe('useLayoutAutosave', () => {
     });
     expect(updateMock).toHaveBeenCalledWith('doc-1', { title: 'Relatório de Abril' });
   });
+
+  it('terceira edição durante request em voo mantém saving true', async () => {
+    let resolveReq: ((value?: any) => void) | null = null;
+    updateMock.mockImplementationOnce(
+      () => new Promise((r) => {
+        resolveReq = r;
+      }),
+    );
+    const { result } = renderHook(() =>
+      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    );
+    const l1: ReportLayout = { ...baseLayout, accent: '#111111' };
+    const l3: ReportLayout = { ...baseLayout, accent: '#333333' };
+
+    // edit1 → saving=true, timer scheduled
+    act(() => result.current.applyLayout(l1));
+    expect(result.current.saving).toBe(true);
+
+    // advance 1500 → request starts
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(result.current.saving).toBe(true); // ainda true, request em voo
+
+    // edit3 durante request em voo → new timer, pendingLayout updated
+    act(() => result.current.applyLayout(l3));
+    expect(result.current.saving).toBe(true);
+
+    // resolve primeiro request
+    act(() => {
+      resolveReq?.();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // RACE CONDITION: antes do fix, saving zeraria aqui mesmo com edição pendente
+    expect(result.current.saving).toBe(true);
+
+    // advance próximos 1500ms → segundo request com l3
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(updateMock).toHaveBeenLastCalledWith('doc-1', { layout: l3 });
+    expect(result.current.saving).toBe(false);
+  });
+
+  it('unmount com edição pendente dá flush imediato', async () => {
+    const { result, unmount } = renderHook(() =>
+      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    );
+    const pending: ReportLayout = { ...baseLayout, accent: '#555555' };
+
+    // edição → debounce agendado mas não rodou
+    act(() => result.current.applyLayout(pending));
+    expect(updateMock).not.toHaveBeenCalled();
+
+    // unmount → deve dar flush da edição pendente sem esperar timer
+    unmount();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(updateMock).toHaveBeenCalledWith('doc-1', { layout: pending });
+  });
 });
