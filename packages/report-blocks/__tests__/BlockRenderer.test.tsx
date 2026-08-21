@@ -95,7 +95,7 @@ describe('BlockRenderer', () => {
 
   it('styles.css tem as regras de modo edição', () => {
     const css = readFileSync(join(__dirname, '../styles.css'), 'utf-8');
-    expect(css).toContain('.rb-grid.rb-mode-edit > [data-block-id]:empty');
+    expect(css).toContain('.rb-grid.rb-mode-edit .rb-edit-body:empty');
     expect(css).toContain('Sem dados no período');
   });
 });

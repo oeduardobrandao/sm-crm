@@ -51,7 +51,7 @@ describe('EditorCanvas', () => {
       version: 1,
       blocks: [{ id: 't', type: 'text', size: 'full', text: { type: 'doc', content: [] } }],
     };
-    render(
+    const { container } = render(
       <EditorCanvas
         layout={l}
         snapshot={makeSnapshotFixture()}
@@ -60,6 +60,27 @@ describe('EditorCanvas', () => {
       />,
     );
     expect(screen.getByTestId('tiptap-slot')).toBeInTheDocument();
+    // O slot substituído entra no MIOLO da célula (.rb-edit-body), nunca como
+    // filho direto de [data-block-id] -- senão a célula nunca fica :empty
+    // quando o widget não tem dados (ver teste do placeholder abaixo).
+    expect(
+      container.querySelector('.rb-edit-body [data-testid="tiptap-slot"]'),
+    ).toBeInTheDocument();
+  });
+
+  it('widget sem dados: .rb-edit-body existe mas fica vazio (placeholder aparece via CSS)', () => {
+    const snap = makeSnapshotFixture();
+    snap.kpis.profile_views = { value: null, unit: 'count', prev: null };
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 'k', type: 'kpi_profile_views', size: 'third' }],
+    };
+    const { container } = render(<EditorCanvas layout={l} snapshot={snap} onChange={() => {}} />);
+    const cell = container.querySelector('[data-block-id="k"]') as HTMLElement;
+    expect(cell).toBeInTheDocument();
+    const body = cell.querySelector('.rb-edit-body') as HTMLElement;
+    expect(body).toBeInTheDocument();
+    expect(body.childNodes.length).toBe(0);
   });
 
   it('bloco em highlight recebe a classe de destaque', () => {
