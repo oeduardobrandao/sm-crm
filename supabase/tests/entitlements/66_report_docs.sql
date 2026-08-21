@@ -91,6 +91,63 @@ begin
     if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
   end;
 
+  -- Hardening PR3: id duplicado é rejeitado.
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-03-01', '2026-03-31',
+        '{"version":1,"blocks":[{"id":"x","type":"text","size":"full"},{"id":"x","type":"divider","size":"full"}]}'::jsonb);
+    raise exception 'validate_report_layout aceitou id duplicado';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+
+  -- Hardening PR3: accent com alpha (#rrggbbaa) é rejeitado.
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-03-01', '2026-03-31',
+        '{"version":1,"accent":"#11223344","blocks":[]}'::jsonb);
+    raise exception 'validate_report_layout aceitou accent com alpha';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+
+  -- Hardening PR3: text em bloco não-textual é rejeitado.
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-03-01', '2026-03-31',
+        '{"version":1,"blocks":[{"id":"k1","type":"kpi_reach","size":"third","text":{}}]}'::jsonb);
+    raise exception 'validate_report_layout aceitou text em kpi';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+
+  -- Hardening PR3: layout válido COM accent e text em bloco ai_ passa.
+  insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+    values (v_ws_a, v_cli_a, '2026-02-01', '2026-02-28',
+      '{"version":1,"accent":"#9f1239","blocks":[{"id":"a1","type":"ai_summary","size":"full","text":{"type":"doc"}}]}'::jsonb);
+
+  -- Bump condicional: update de layout bumpa updated_at; update de pdf_* NÃO.
+  declare
+    v_t0 timestamptz; v_t1 timestamptz; v_t2 timestamptz;
+  begin
+    select updated_at into v_t0 from report_documents where id = v_doc_a;
+    perform pg_sleep(0.01);
+    update report_documents
+       set layout = '{"version":1,"blocks":[{"id":"b2","type":"divider","size":"full"}]}'::jsonb
+     where id = v_doc_a;
+    select updated_at into v_t1 from report_documents where id = v_doc_a;
+    if v_t1 <= v_t0 then
+      raise exception 'update de layout não bumpou updated_at';
+    end if;
+    update report_documents
+       set pdf_storage_path = 'docs/x/y.pdf', pdf_generated_at = now(), pdf_renderer_version = 1
+     where id = v_doc_a;
+    select updated_at into v_t2 from report_documents where id = v_doc_a;
+    if v_t2 <> v_t1 then
+      raise exception 'update de pdf_* bumpou updated_at (cache do PDF nasce inválido)';
+    end if;
+  end;
+
   insert into report_templates (conta_id, name, layout, is_default)
     values (v_ws_a, 'T1', v_layout, true) returning id into v_tpl_1;
   insert into report_templates (conta_id, name, layout)
