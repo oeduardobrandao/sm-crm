@@ -1,0 +1,46 @@
+/* Grid do documento de blocos. Importado pelo consumidor (CRM Task 9; Hub no PR 3). */
+.rb-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1rem;
+  max-width: 880px;
+  margin: 0 auto;
+}
+.rb-third {
+  grid-column: span 2;
+}
+.rb-half {
+  grid-column: span 3;
+}
+.rb-full {
+  grid-column: span 6;
+}
+@media (max-width: 720px) {
+  .rb-third,
+  .rb-half {
+    grid-column: span 6;
+  }
+}
+.rb-prose p {
+  margin: 0 0 0.6em;
+  line-height: 1.6;
+}
+.rb-prose h1,
+.rb-prose h2,
+.rb-prose h3,
+.rb-prose h4 {
+  margin: 0.8em 0 0.3em;
+}
+.rb-prose ul,
+.rb-prose ol {
+  padding-left: 1.2em;
+  margin: 0 0 0.6em;
+}
+@media print {
+  .rb-page-break {
+    break-after: page;
+  }
+  .rb-grid {
+    max-width: none;
+  }
+}
