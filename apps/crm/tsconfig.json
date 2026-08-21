@@ -5,6 +5,7 @@
       "@/*": ["./src/*"],
       "@mesaas/i18n": ["../../packages/i18n/index.ts"],
       "@mesaas/ui/*": ["../../packages/ui/*"],
+      "@mesaas/report-blocks/*": ["../../packages/report-blocks/*"],
       "@mesaas/import-parsers": ["../../packages/import-parsers/index.ts"],
       "@mesaas/app-lifecycle": ["../../packages/app-lifecycle/index.ts"]
     },
@@ -19,14 +20,10 @@
     "moduleDetection": "force",
     "noEmit": true,
     "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
     "strict": true,
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
-  "exclude": [
-    "src/**/__tests__/**",
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx",
-    "src/**/__mocks__/**"
-  ]
+  "exclude": ["src/**/__tests__/**", "src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__mocks__/**"]
 }

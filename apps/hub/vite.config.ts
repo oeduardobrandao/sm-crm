@@ -11,6 +11,7 @@ export default defineConfig(({ command }) => ({
       '@': path.resolve(__dirname, './src'),
       '@mesaas/i18n': path.resolve(__dirname, '../../packages/i18n/index.ts'),
       '@mesaas/ui': path.resolve(__dirname, '../../packages/ui'),
+      '@mesaas/report-blocks': path.resolve(__dirname, '../../packages/report-blocks'),
       '@mesaas/app-lifecycle': path.resolve(__dirname, '../../packages/app-lifecycle/index.ts'),
     },
   },

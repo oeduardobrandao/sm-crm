@@ -13,6 +13,7 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, './src'),
         '@mesaas/i18n': path.resolve(__dirname, '../../packages/i18n/index.ts'),
         '@mesaas/ui': path.resolve(__dirname, '../../packages/ui'),
+        '@mesaas/report-blocks': path.resolve(__dirname, '../../packages/report-blocks'),
         '@mesaas/import-parsers': path.resolve(__dirname, '../../packages/import-parsers/index.ts'),
         '@mesaas/app-lifecycle': path.resolve(__dirname, '../../packages/app-lifecycle/index.ts'),
       },
