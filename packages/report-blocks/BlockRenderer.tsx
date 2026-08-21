@@ -11,6 +11,14 @@ import { TextBlock } from './blocks/TextBlock';
 import { KpiCardBlock } from './blocks/KpiCardBlock';
 import { FollowerChartBlock } from './blocks/FollowerChartBlock';
 import { FormatCardsBlock } from './blocks/FormatCardsBlock';
+import { AudienceGenderBlock } from './blocks/AudienceGenderBlock';
+import { AudienceAgeBlock } from './blocks/AudienceAgeBlock';
+import { AudienceCitiesBlock } from './blocks/AudienceCitiesBlock';
+import { AudienceCountriesBlock } from './blocks/AudienceCountriesBlock';
+import { BestTimesBlock } from './blocks/BestTimesBlock';
+import { TopPostsBlock } from './blocks/TopPostsBlock';
+import { PostListBlock } from './blocks/PostListBlock';
+import { TagsTableBlock } from './blocks/TagsTableBlock';
 
 export interface BlockProps {
   block: ReportBlock;
@@ -35,6 +43,14 @@ export const BLOCK_COMPONENTS: Partial<Record<BlockType, FC<BlockProps>>> = {
   kpi_website_clicks: KpiCardBlock,
   chart_followers: FollowerChartBlock,
   chart_formats: FormatCardsBlock,
+  audience_gender: AudienceGenderBlock,
+  audience_age: AudienceAgeBlock,
+  audience_cities: AudienceCitiesBlock,
+  audience_countries: AudienceCountriesBlock,
+  chart_best_times: BestTimesBlock,
+  top_posts: TopPostsBlock,
+  post_list: PostListBlock,
+  tags_table: TagsTableBlock,
 };
 
 const SIZE_CLASS = { third: 'rb-third', half: 'rb-half', full: 'rb-full' } as const;
