@@ -184,7 +184,6 @@ export async function generateReportDocument(
       prevSnapshot: prevSnapRes.data?.[0] ?? null,
       prevPrevSnapshot: prevPrevSnapRes.data?.[0] ?? null,
       followerHistory: followerHistoryRes.data ?? [],
-      liveFollowerCount: account.follower_count ?? null,
     },
     followerTrend: (followerHistoryRes.data ?? []).map(
       (r: { date: string; follower_count: number }) => ({ date: r.date, count: r.follower_count }),

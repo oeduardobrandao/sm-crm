@@ -11,7 +11,6 @@ Deno.test("assembleSnapshot monta o documento congelado", () => {
       prevMonthPosts: [],
       currSnapshot: null, prevSnapshot: null, prevPrevSnapshot: null,
       followerHistory: [{ follower_count: 900 }],
-      liveFollowerCount: 950,
     },
     followerTrend: [{ date: "2026-07-01", count: 900 }],
     posts: [{
@@ -48,7 +47,7 @@ Deno.test("thumbnail estável (mapa) entra; carousel e image mapeiam certo", () 
     branding: { workspace_name: "W", logo_url: null, splash_url: null, accent_color: "#000" },
     kpiSources: {
       allPosts: [], prevMonthPosts: null, currSnapshot: null, prevSnapshot: null,
-      prevPrevSnapshot: null, followerHistory: [], liveFollowerCount: null,
+      prevPrevSnapshot: null, followerHistory: [],
     },
     followerTrend: [],
     posts: [

@@ -16,7 +16,6 @@ const base = (): KpiSources => ({
   },
   prevPrevSnapshot: { followers_count: 1050 },
   followerHistory: [{ follower_count: 1150 }],
-  liveFollowerCount: 1234,
 });
 
 Deno.test("caso completo: 8 KPIs com prev na mesma base", () => {
@@ -46,10 +45,13 @@ Deno.test("sem snapshots: followers_gained cai pro history (sem prev); followers
   s.currSnapshot = null;
   s.prevSnapshot = null;
   s.prevPrevSnapshot = null;
+  // Fallback usa só pontos DENTRO do mês (primeiro/último do history) -- não
+  // mais o live count, que incluiria crescimento pós-mês num mês histórico.
+  s.followerHistory = [{ follower_count: 1150 }, { follower_count: 1234 }];
   const k = computeKpis(s);
-  assertEquals(k.followers_gained.value, 84);  // live 1234 - primeiro history 1150
+  assertEquals(k.followers_gained.value, 84);  // último 1234 - primeiro 1150 do mês
   assertEquals(k.followers_gained.prev, null);
-  assertEquals(k.followers_total.value, 1150); // último ponto do history do mês
+  assertEquals(k.followers_total.value, 1234); // último ponto do history do mês
   assertEquals(k.followers_total.prev, null);
   assertEquals(k.profile_views.value, null);   // 28d sem snapshot do mês: some
   assertEquals(k.website_clicks.value, null);
@@ -105,7 +107,17 @@ Deno.test("sem nenhuma base: followers_gained fica null, nunca 0", () => {
   s.prevSnapshot = null;
   s.prevPrevSnapshot = null;
   s.followerHistory = [];
-  s.liveFollowerCount = null;
+  const k = computeKpis(s);
+  assertEquals(k.followers_gained.value, null);
+  assertEquals(k.followers_gained.prev, null);
+});
+
+Deno.test("um único ponto de history (sem snapshots): followers_gained fica null -- um ponto não mede ganho", () => {
+  const s = base();
+  s.currSnapshot = null;
+  s.prevSnapshot = null;
+  s.prevPrevSnapshot = null;
+  s.followerHistory = [{ follower_count: 1150 }];
   const k = computeKpis(s);
   assertEquals(k.followers_gained.value, null);
   assertEquals(k.followers_gained.prev, null);

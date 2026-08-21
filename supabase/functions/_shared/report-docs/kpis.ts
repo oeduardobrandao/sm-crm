@@ -39,7 +39,6 @@ export interface KpiSources {
   prevPrevSnapshot: MonthSnapshot | null;
   /** Pontos do mês do relatório, ordem cronológica. */
   followerHistory: { follower_count: number }[];
-  liveFollowerCount: number | null;
 }
 
 const sum = (posts: PostMetrics[], key: keyof PostMetrics) =>
@@ -72,8 +71,14 @@ export function computeKpis(s: KpiSources): Record<ReportKpiId, KpiEntry> {
       // -100 -> -50 daria "+50%" num mês de perda).
       if (gained > 0 && prevGain > 0) gainedPrev = prevGain;
     }
-  } else if (s.followerHistory.length > 0 && s.liveFollowerCount !== null) {
-    gained = s.liveFollowerCount - s.followerHistory[0].follower_count;
+  } else if (s.followerHistory.length >= 2) {
+    // Fallback usa só os DOIS PONTOS DENTRO DO MÊS (primeiro/último do
+    // history) -- nunca o live count. Para um mês histórico (gerar maio em
+    // agosto), o live já inclui crescimento posterior ao mês e o ganho
+    // ficaria errado. Um único ponto não mede ganho nenhum: fica null.
+    const first = s.followerHistory[0];
+    const last = s.followerHistory[s.followerHistory.length - 1];
+    gained = last.follower_count - first.follower_count;
   }
 
   // followers_total: close do mês; fallback = último ponto do history DO MÊS,
