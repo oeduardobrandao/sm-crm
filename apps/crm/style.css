@@ -11504,17 +11504,21 @@ body.landing-page #root {
   top: -14px;
   right: 10px;
   z-index: 5;
-  display: none;
+  display: flex;
   gap: 2px;
   align-items: center;
   background: var(--dark);
   color: #fff;
   border-radius: 8px;
   padding: 3px 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
 }
 .rb-edit-cell:hover .rb-edit-toolbar,
-.rb-edit-toolbar:focus-within {
-  display: flex;
+.rb-edit-cell:focus-within .rb-edit-toolbar {
+  opacity: 1;
+  pointer-events: auto;
 }
 .rb-edit-btn {
   display: flex;

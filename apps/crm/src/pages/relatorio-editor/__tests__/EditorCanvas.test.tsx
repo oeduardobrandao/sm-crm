@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { EditorCanvas } from '../EditorCanvas';
@@ -71,5 +73,14 @@ describe('EditorCanvas', () => {
     );
     const cell = container.querySelector('[data-block-id="b"]');
     expect(cell?.className).toContain('rb-edit-highlight');
+  });
+
+  it('toolbar do editor é alcançável por teclado (focus-within na célula, sem display none)', () => {
+    const css = readFileSync(join(__dirname, '../../../../style.css'), 'utf8');
+    expect(css.length).toBeGreaterThan(100000);
+    const block = css.slice(css.indexOf('.rb-edit-toolbar'));
+    expect(block).toContain('.rb-edit-cell:focus-within .rb-edit-toolbar');
+    const toolbarRule = block.slice(0, block.indexOf('}'));
+    expect(toolbarRule).not.toContain('display: none');
   });
 });
