@@ -8,6 +8,9 @@ import { CoverBlock } from './blocks/CoverBlock';
 import { SectionHeaderBlock } from './blocks/SectionHeaderBlock';
 import { DividerBlock } from './blocks/DividerBlock';
 import { TextBlock } from './blocks/TextBlock';
+import { KpiCardBlock } from './blocks/KpiCardBlock';
+import { FollowerChartBlock } from './blocks/FollowerChartBlock';
+import { FormatCardsBlock } from './blocks/FormatCardsBlock';
 
 export interface BlockProps {
   block: ReportBlock;
@@ -22,7 +25,16 @@ export const BLOCK_COMPONENTS: Partial<Record<BlockType, FC<BlockProps>>> = {
   ai_summary: TextBlock,
   ai_recommendations: TextBlock,
   ai_goals: TextBlock,
-  // Tasks 7-8 registram os demais widgets aqui.
+  kpi_followers_gained: KpiCardBlock,
+  kpi_followers_total: KpiCardBlock,
+  kpi_reach: KpiCardBlock,
+  kpi_engagement_rate: KpiCardBlock,
+  kpi_saves: KpiCardBlock,
+  kpi_posts_count: KpiCardBlock,
+  kpi_profile_views: KpiCardBlock,
+  kpi_website_clicks: KpiCardBlock,
+  chart_followers: FollowerChartBlock,
+  chart_formats: FormatCardsBlock,
 };
 
 const SIZE_CLASS = { third: 'rb-third', half: 'rb-half', full: 'rb-full' } as const;
