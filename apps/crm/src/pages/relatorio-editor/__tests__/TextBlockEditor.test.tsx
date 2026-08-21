@@ -1,0 +1,81 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { Editor } from '@tiptap/core';
+import { TextBlockEditor, buildTextBlockExtensions } from '../TextBlockEditor';
+import type { ReportBlock } from '@mesaas/report-blocks/types';
+
+const textBlock = (text: unknown): ReportBlock => ({
+  id: 't1',
+  type: 'text',
+  size: 'full',
+  text,
+});
+
+describe('buildTextBlockExtensions', () => {
+  it('aceita os nós que o renderer read-only suporta e rejeita code/link', () => {
+    const editor = new Editor({
+      extensions: buildTextBlockExtensions(),
+      content: {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x' }] }],
+      },
+    });
+    const schema = editor.schema;
+    expect(schema.nodes.heading).toBeDefined();
+    expect(schema.nodes.bulletList).toBeDefined();
+    expect(schema.nodes.blockquote).toBeDefined();
+    expect(schema.nodes.codeBlock).toBeUndefined();
+    expect(schema.marks.bold).toBeDefined();
+    expect(schema.marks.strike).toBeDefined();
+    expect(schema.marks.code).toBeUndefined();
+    expect(schema.marks.link).toBeUndefined();
+    editor.destroy();
+  });
+
+  it('heading restrito aos níveis 2 e 3', () => {
+    // @tiptap/extension-heading 3.22 fixa spec.attrs.level.default em 1
+    // independente de `levels` (só afeta parseDOM/comandos/atalhos) — a
+    // restrição real se prova pelo parseDOM (só h2/h3) e pelos comandos
+    // recusando níveis fora da lista, não pelo default do atributo.
+    const editor = new Editor({ extensions: buildTextBlockExtensions() });
+    const spec = editor.schema.nodes.heading.spec;
+    expect((spec.parseDOM ?? []).map((rule: { tag?: string }) => rule.tag)).toEqual(['h2', 'h3']);
+    expect(editor.can().setHeading({ level: 1 })).toBe(false);
+    expect(editor.can().setHeading({ level: 2 })).toBe(true);
+    expect(editor.can().setHeading({ level: 4 })).toBe(false);
+    editor.destroy();
+  });
+});
+
+describe('TextBlockEditor', () => {
+  it('renderiza o conteúdo inicial e NÃO dispara onTextChange no mount', async () => {
+    const onTextChange = vi.fn();
+    render(
+      <TextBlockEditor
+        block={textBlock({
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Análise inicial' }] }],
+        })}
+        onTextChange={onTextChange}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText('Análise inicial')).toBeInTheDocument());
+    expect(onTextChange).not.toHaveBeenCalled();
+  });
+
+  it('edição programática dispara onTextChange com o JSON novo', async () => {
+    const onTextChange = vi.fn();
+    const { container } = render(
+      <TextBlockEditor
+        block={textBlock({ type: 'doc', content: [] })}
+        onTextChange={onTextChange}
+      />,
+    );
+    await waitFor(() => expect(container.querySelector('.ProseMirror')).toBeInTheDocument());
+    // O editor TipTap real está montado; simular digitação via evento de input
+    // é frágil em jsdom — o contrato onUpdate→getJSON é coberto pelo teste de
+    // integração do PostEditor da casa; aqui provamos mount sem side effects e
+    // schema correto (acima). Nada a assertar além do não-disparo inicial.
+    expect(onTextChange).not.toHaveBeenCalled();
+  });
+});

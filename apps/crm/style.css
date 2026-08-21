@@ -11552,3 +11552,34 @@ body.landing-page #root {
   opacity: 0.85;
   pointer-events: none;
 }
+
+.rb-text-editor {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: var(--card-bg);
+}
+.rb-text-editor-content {
+  padding: 0.75rem 1rem;
+}
+.rb-text-editor-content .ProseMirror {
+  outline: none;
+  min-height: 64px;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-color);
+}
+.rb-text-editor-content .ProseMirror ul,
+.rb-text-editor-content .ProseMirror ol {
+  padding-left: 1.5em;
+  margin: 0.25em 0;
+}
+.rb-text-editor-content .ProseMirror li {
+  list-style: revert;
+}
+.rb-text-editor-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
