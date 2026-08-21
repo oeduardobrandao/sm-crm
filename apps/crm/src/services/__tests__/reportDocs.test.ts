@@ -12,7 +12,7 @@ vi.mock('../../lib/supabase', () => ({
   },
 }));
 
-import { generateReportDoc, listReportDocs } from '../reportDocs';
+import { generateReportDoc, listReportDocs, updateReportDoc } from '../reportDocs';
 
 beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
@@ -47,5 +47,23 @@ describe('listReportDocs', () => {
     const rows = await listReportDocs(42);
     expect(fromMock).toHaveBeenCalledWith('report_documents');
     expect(rows).toEqual([{ id: 'd1' }]);
+  });
+});
+
+describe('updateReportDoc', () => {
+  it('faz update apenas das colunas passadas, filtrado por id', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    fromMock.mockReturnValue({ update });
+    await updateReportDoc('doc-1', { title: 'Novo título' });
+    expect(fromMock).toHaveBeenCalledWith('report_documents');
+    expect(update).toHaveBeenCalledWith({ title: 'Novo título' });
+    expect(eq).toHaveBeenCalledWith('id', 'doc-1');
+  });
+
+  it('erro do PostgREST vira Error', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: { message: 'boom' } });
+    fromMock.mockReturnValue({ update: vi.fn().mockReturnValue({ eq }) });
+    await expect(updateReportDoc('doc-1', { title: 'x' })).rejects.toThrow('boom');
   });
 });

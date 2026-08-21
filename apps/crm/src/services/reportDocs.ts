@@ -73,3 +73,14 @@ export async function listReportDocs(clientId: number): Promise<ReportDocListIte
   if (error) throw new Error(error.message);
   return (data as ReportDocListItem[]) ?? [];
 }
+
+/** Atualiza as únicas colunas com grant de escrita para authenticated
+ * (layout, title — ver migration 20260820000010). Qualquer outra coluna
+ * falharia com insufficient_privilege. */
+export async function updateReportDoc(
+  id: string,
+  patch: { layout?: ReportLayout; title?: string },
+): Promise<void> {
+  const { error } = await supabase.from('report_documents').update(patch).eq('id', id);
+  if (error) throw new Error(error.message);
+}
