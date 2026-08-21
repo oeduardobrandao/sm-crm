@@ -10,10 +10,7 @@ const LAYOUT_DEBOUNCE_MS = 1500;
 const TITLE_DEBOUNCE_MS = 400;
 const SAVE_ERROR_MSG = 'Erro ao salvar o relatório';
 
-export function useLayoutAutosave(
-  docId: string,
-  initial: { layout: ReportLayout; title: string },
-) {
+export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout; title: string }) {
   const [layout, setLayout] = useState<ReportLayout>(initial.layout);
   const [title, setTitleState] = useState(initial.title);
   const [saving, setSaving] = useState(false);

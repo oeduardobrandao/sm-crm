@@ -11,7 +11,12 @@ export type WidgetCategory =
   | 'Estrutura';
 
 export const WIDGET_CATEGORIES: readonly WidgetCategory[] = [
-  'Números', 'Gráficos', 'Audiência', 'Conteúdo', 'Texto', 'Estrutura',
+  'Números',
+  'Gráficos',
+  'Audiência',
+  'Conteúdo',
+  'Texto',
+  'Estrutura',
 ];
 
 export interface WidgetCatalogEntry {
