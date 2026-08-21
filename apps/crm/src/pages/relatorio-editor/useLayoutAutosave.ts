@@ -13,6 +13,27 @@ const TITLE_DEBOUNCE_MS = 400;
 const RETRY_DEBOUNCE_MS = 5000;
 const SAVE_ERROR_MSG = 'Erro ao salvar o relatório';
 
+// Cadeia de save POR DOCUMENTO, viva no módulo e não na instância do hook:
+// a fila de uma instância desmontada e a da montagem seguinte do mesmo doc
+// precisam ser a MESMA, senão o flush de unmount corre com os saves da
+// remontagem e um request antigo pode sobrescrever edição mais nova.
+const docSaveChains = new Map<string, Promise<void>>();
+
+function appendToDocChain(docId: string, task: () => Promise<void>): void {
+  const prev = docSaveChains.get(docId) ?? Promise.resolve();
+  const next = prev
+    .then(task)
+    .catch((err) => {
+      // Defesa: um elo rejeitado quebraria a cadeia pra sempre — todo save
+      // futuro ficaria pendurado num .then() de uma promise já rejeitada.
+      console.error('[relatorio-editor] elo da cadeia de save falhou:', err);
+    })
+    .then(() => {
+      if (docSaveChains.get(docId) === next) docSaveChains.delete(docId);
+    });
+  docSaveChains.set(docId, next);
+}
+
 export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout; title: string }) {
   const qc = useQueryClient();
   const [layout, setLayout] = useState<ReportLayout>(initial.layout);
@@ -25,7 +46,6 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
   const pendingLayout = useRef<ReportLayout | null>(null);
   const docIdRef = useRef(docId);
   const titleRef = useRef(title);
-  const saveChain = useRef<Promise<void>>(Promise.resolve());
 
   docIdRef.current = docId;
   titleRef.current = title;
@@ -34,39 +54,42 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
     () => () => {
       if (layoutTimer.current) clearTimeout(layoutTimer.current);
       if (titleTimer.current) clearTimeout(titleTimer.current);
-      // Best-effort: edição pendente não morre com a navegação. Sem await
-      // (cleanup é síncrono); falha aqui é aceita — o gate de validade se mantém.
-      // Rotas também através da chain para não correr com um save em voo.
+      // Best-effort: edição pendente não morre com a navegação; falha aqui é
+      // aceita (sem retry pós-unmount) — o gate de validade se mantém.
+      // O cache é atualizado ANTES do request: uma remontagem imediata do
+      // mesmo doc lê a query (staleTime: Infinity) e precisa ver a edição em
+      // voo, senão o editor renasce PRÉ-edição e o próximo save a perde. Se o
+      // request falhar, o próximo save carrega o layout completo e cura.
       const pending = pendingLayout.current;
       if (pending) {
         const check = validateLayout(pending);
         if (check.ok) {
-          saveChain.current = saveChain.current
-            .then(async () => {
-              void updateReportDoc(docIdRef.current, { layout: pending })
-                .then(() => {
-                  qc.setQueryData(['report-doc', docIdRef.current], (old: unknown) =>
-                    old ? { ...(old as object), layout: pending } : old,
-                  );
-                })
-                .catch(() => {});
-            })
-            .catch(() => {});
+          const id = docIdRef.current;
+          qc.setQueryData(['report-doc', id], (old: unknown) =>
+            old ? { ...(old as object), layout: pending } : old,
+          );
+          appendToDocChain(id, async () => {
+            try {
+              await updateReportDoc(id, { layout: pending });
+            } catch (err) {
+              console.error('[relatorio-editor] flush de unmount falhou:', err);
+            }
+          });
         }
       }
       if (titleDirty.current) {
+        const id = docIdRef.current;
         const titleToSave = titleRef.current;
-        saveChain.current = saveChain.current
-          .then(async () => {
-            void updateReportDoc(docIdRef.current, { title: titleToSave })
-              .then(() => {
-                qc.setQueryData(['report-doc', docIdRef.current], (old: unknown) =>
-                  old ? { ...(old as object), title: titleToSave } : old,
-                );
-              })
-              .catch(() => {});
-          })
-          .catch(() => {});
+        qc.setQueryData(['report-doc', id], (old: unknown) =>
+          old ? { ...(old as object), title: titleToSave } : old,
+        );
+        appendToDocChain(id, async () => {
+          try {
+            await updateReportDoc(id, { title: titleToSave });
+          } catch (err) {
+            console.error('[relatorio-editor] flush de unmount falhou:', err);
+          }
+        });
       }
     },
     // qc: useQueryClient() é estável entre re-renders (mesmo QueryClient do
@@ -79,49 +102,42 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
     if (layoutTimer.current) clearTimeout(layoutTimer.current);
     layoutTimer.current = setTimeout(() => {
       layoutTimer.current = null;
-      saveChain.current = saveChain.current
-        .then(async () => {
-          const toSave = pendingLayout.current;
-          pendingLayout.current = null;
-          if (!toSave) {
-            if (pendingLayout.current === null) setSaving(false);
-            return;
+      appendToDocChain(docIdRef.current, async () => {
+        const toSave = pendingLayout.current;
+        pendingLayout.current = null;
+        if (!toSave) {
+          if (pendingLayout.current === null) setSaving(false);
+          return;
+        }
+        const check = validateLayout(toSave);
+        if (!check.ok) {
+          // Bug de layoutOps se chegar aqui: nada de request com payload inválido.
+          console.error('[relatorio-editor] layout inválido no autosave:', check);
+          toast.error(SAVE_ERROR_MSG);
+          if (pendingLayout.current === null) setSaving(false);
+          return;
+        }
+        try {
+          await updateReportDoc(docIdRef.current, { layout: toSave });
+          // Cache canônico pós-save: sem isso, uma reentrada na SPA dentro do
+          // gcTime serve o doc PRÉ-edição e o próximo save clobbera o que
+          // acabou de ser persistido (achado C1).
+          qc.setQueryData(['report-doc', docIdRef.current], (old: unknown) =>
+            old ? { ...(old as object), layout: toSave } : old,
+          );
+        } catch (err) {
+          console.error('[relatorio-editor] autosave falhou:', err);
+          toast.error(SAVE_ERROR_MSG);
+          // Retém o payload: navegação ainda flusha no unmount, e o retry tenta de
+          // novo. Edição mais nova que chegou durante o request tem prioridade.
+          if (pendingLayout.current === null) {
+            pendingLayout.current = toSave;
+            scheduleLayoutFlush(RETRY_DEBOUNCE_MS);
           }
-          const check = validateLayout(toSave);
-          if (!check.ok) {
-            // Bug de layoutOps se chegar aqui: nada de request com payload inválido.
-            console.error('[relatorio-editor] layout inválido no autosave:', check);
-            toast.error(SAVE_ERROR_MSG);
-            if (pendingLayout.current === null) setSaving(false);
-            return;
-          }
-          try {
-            await updateReportDoc(docIdRef.current, { layout: toSave });
-            // Cache canônico pós-save: sem isso, uma reentrada na SPA dentro do
-            // gcTime serve o doc PRÉ-edição e o próximo save clobbera o que
-            // acabou de ser persistido (achado C1).
-            qc.setQueryData(['report-doc', docIdRef.current], (old: unknown) =>
-              old ? { ...(old as object), layout: toSave } : old,
-            );
-          } catch (err) {
-            console.error('[relatorio-editor] autosave falhou:', err);
-            toast.error(SAVE_ERROR_MSG);
-            // Retém o payload: navegação ainda flusha no unmount, e o retry tenta de
-            // novo. Edição mais nova que chegou durante o request tem prioridade.
-            if (pendingLayout.current === null) {
-              pendingLayout.current = toSave;
-              scheduleLayoutFlush(RETRY_DEBOUNCE_MS);
-            }
-          } finally {
-            if (pendingLayout.current === null) setSaving(false);
-          }
-        })
-        .catch((err) => {
-          // Defesa extra: se o closure acima falhar fora do try/catch interno
-          // (não deveria, mas quebraria a chain pra sempre — todo save futuro
-          // ficaria pendurado num .then() de uma promise já rejeitada).
-          console.error('[relatorio-editor] elo da cadeia de save falhou:', err);
-        });
+        } finally {
+          if (pendingLayout.current === null) setSaving(false);
+        }
+      });
     }, delayMs);
   }
 
@@ -129,28 +145,24 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
     if (titleTimer.current) clearTimeout(titleTimer.current);
     titleTimer.current = setTimeout(() => {
       titleTimer.current = null;
-      saveChain.current = saveChain.current
-        .then(async () => {
-          if (!titleDirty.current) return;
-          titleDirty.current = false;
-          const toSave = titleRef.current;
-          try {
-            await updateReportDoc(docIdRef.current, { title: toSave });
-            // Cache canônico pós-save — mesmo racional do layout (achado C1).
-            qc.setQueryData(['report-doc', docIdRef.current], (old: unknown) =>
-              old ? { ...(old as object), title: toSave } : old,
-            );
-          } catch (err) {
-            console.error('[relatorio-editor] save de título falhou:', err);
-            toast.error(SAVE_ERROR_MSG);
-            // Retém a dirty flag: o retry tenta de novo.
-            titleDirty.current = true;
-            scheduleTitleFlush(RETRY_DEBOUNCE_MS);
-          }
-        })
-        .catch((err) => {
-          console.error('[relatorio-editor] elo da cadeia de save falhou:', err);
-        });
+      appendToDocChain(docIdRef.current, async () => {
+        if (!titleDirty.current) return;
+        titleDirty.current = false;
+        const toSave = titleRef.current;
+        try {
+          await updateReportDoc(docIdRef.current, { title: toSave });
+          // Cache canônico pós-save — mesmo racional do layout (achado C1).
+          qc.setQueryData(['report-doc', docIdRef.current], (old: unknown) =>
+            old ? { ...(old as object), title: toSave } : old,
+          );
+        } catch (err) {
+          console.error('[relatorio-editor] save de título falhou:', err);
+          toast.error(SAVE_ERROR_MSG);
+          // Retém a dirty flag: o retry tenta de novo.
+          titleDirty.current = true;
+          scheduleTitleFlush(RETRY_DEBOUNCE_MS);
+        }
+      });
     }, delayMs);
   }
 
