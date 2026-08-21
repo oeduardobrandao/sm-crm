@@ -1,10 +1,11 @@
 // instagram-automation-cron (Task 10) — cron de retry/manutenção: sends
-// inelegíveis, sweep de eventos órfãos, retries via executeSend, re-check
-// diário de assinaturas e purge. Estilo `instagram-webhook-process_test.ts`:
+// inelegíveis, sweep de eventos órfãos, sweep de convergência dos vínculos,
+// retries via executeSend, re-check diário de assinaturas e purge. Estilo
+// `instagram-webhook-process_test.ts`:
 // DI via InstagramAutomationCronDeps contra o supabaseMock compartilhado,
 // baseDeps com `unreachable` para asserção por omissão. `executeSend` e
-// `createProcessDelivery` são consumidos DIRETO (não mockados) — as fases 3 e
-// 4 são provadas observando as escritas que só eles produzem no mock de DB.
+// `createProcessDelivery` são consumidos DIRETO (não mockados) — as fases 4 e
+// 5 são provadas observando as escritas que só eles produzem no mock de DB.
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import type { QueryCall } from "../../../test/shared/supabaseMock.ts";
@@ -25,6 +26,7 @@ const AUTOMATION_ID = "aaaaaaa1-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const SEND_ID = "55555555-5555-5555-5555-555555555555";
 const ACCOUNT_ROW_ID = "acct-row-1";
 const ENCRYPTED_TOKEN = "enc-token-1";
+const MEDIA_ID = "media-1";
 
 function unreachable(label: string) {
   return () => {
@@ -64,11 +66,12 @@ function baseDeps(db: Db, overrides: Partial<InstagramAutomationCronDeps> = {}):
   };
 }
 
-// Fila padrão das 5 fases "vazias" (nada a fazer em nenhuma): usada pelo happy
+// Fila padrão das 6 fases "vazias" (nada a fazer em nenhuma): usada pelo happy
 // path e como base para os testes que só sobrescrevem UMA fase.
 function queueEmptyRun(db: Db) {
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
   db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
   db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queue("instagram_webhook_events", "delete", { data: null, error: null });
@@ -80,6 +83,7 @@ function claimedSendFixture(overrides: Record<string, unknown> = {}) {
     comment_id: "comment-1",
     automation_id: AUTOMATION_ID,
     conta_id: CONTA_ID,
+    media_id: MEDIA_ID,
     commenter_id: "commenter-1",
     comment_created_at: "2026-08-14T11:00:00.000Z",
     dm_status: null,
@@ -150,6 +154,7 @@ Deno.test("instagram-automation-cron: happy path chama as fases na ordem e retor
 
   const expectedSequence = [
     "rpc:fail_ineligible_automation_sends",
+    "rpc:sweep_pending_instagram_automation_links",
     "instagram_webhook_events:select",
     "rpc:claim_retryable_automation_sends",
     "instagram_comment_automations:select",
@@ -179,10 +184,11 @@ Deno.test("instagram-automation-cron: claim devolve 1 send -> executeSend é cha
   const db = createSupabaseQueryMock();
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
   db.queueRpc("claim_retryable_automation_sends", { data: [claimedSendFixture()], error: null });
   // 1ª resposta: revalidação da automação dentro de executeSend (não achou -> skipped/automation_inactive).
   db.queue("instagram_comment_automations", "select", { data: null, error: null });
-  // 2ª resposta: query da fase 5 (re-check), vazia.
+  // 2ª resposta: query da fase 6 (re-check), vazia.
   db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queue("instagram_automation_sends", "update", { data: null, error: null });
   db.queue("instagram_webhook_events", "delete", { data: null, error: null });
@@ -218,6 +224,7 @@ Deno.test("instagram-automation-cron: retries com 2 sends, 1 falha -> failed=1 e
   const db = createSupabaseQueryMock();
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
   db.queueRpc("claim_retryable_automation_sends", {
     data: [claimedSendFixture({ send_id: "send-a" }), claimedSendFixture({ send_id: "send-b" })],
     error: null,
@@ -226,7 +233,7 @@ Deno.test("instagram-automation-cron: retries com 2 sends, 1 falha -> failed=1 e
   db.queue("instagram_comment_automations", "select", { data: null, error: { message: "db indisponível" } });
   // send-b: automação não encontrada -> skipped/automation_inactive (sucesso).
   db.queue("instagram_comment_automations", "select", { data: null, error: null });
-  // Fase 5 (recheck), vazia.
+  // Fase 6 (recheck), vazia.
   db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queue("instagram_automation_sends", "update", { data: null, error: null });
   db.queue("instagram_webhook_events", "delete", { data: null, error: null });
@@ -250,6 +257,7 @@ Deno.test("instagram-automation-cron: assinatura caiu (sem 'comments') -> commen
   const db = createSupabaseQueryMock();
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
   db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
   db.queue("instagram_comment_automations", "select", {
     data: [{ client_id: CLIENT_ID, conta_id: CONTA_ID }],
@@ -295,6 +303,7 @@ Deno.test("instagram-automation-cron: assinatura confirmada ('comments' presente
   const db = createSupabaseQueryMock();
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
   db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
   db.queue("instagram_comment_automations", "select", {
     data: [{ client_id: CLIENT_ID, conta_id: CONTA_ID }],
@@ -346,6 +355,7 @@ Deno.test("instagram-automation-cron: re-check filtra authorization_status='acti
   const db = createSupabaseQueryMock();
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
   db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
   db.queue("instagram_comment_automations", "select", {
     data: [{ client_id: CLIENT_ID, conta_id: CONTA_ID }],
@@ -383,6 +393,7 @@ Deno.test("instagram-automation-cron: fail_ineligible_automation_sends com erro 
   const db = createSupabaseQueryMock();
   db.queueRpc("fail_ineligible_automation_sends", { data: null, error: { message: "rpc indisponível" } });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
   db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
   db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queue("instagram_webhook_events", "delete", { data: null, error: null });
@@ -406,7 +417,66 @@ Deno.test("instagram-automation-cron: fail_ineligible_automation_sends com erro 
   assertEquals(callsFor(db, "instagram_webhook_events", "delete").length, 1);
 });
 
-// ══════════════════════════════ Fase 3: sweep ══════════════════════════════
+// Contraparte POSITIVA do teste acima: prova que o `media_id` devolvido por
+// `claim_retryable_automation_sends` chega intacto até a revalidação de alvo.
+// Se ele se perdesse no caminho (chegando `undefined`), todo retry de automação
+// específica viraria skipped/target_changed sem nenhum teste ficar vermelho.
+Deno.test("instagram-automation-cron: retry claimado cujo media_id CASA o alvo específico -> prossegue e manda a DM", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("claim_retryable_automation_sends", {
+    data: [claimedSendFixture({ media_id: MEDIA_ID })],
+    error: null,
+  });
+  db.queue("instagram_comment_automations", "select", {
+    data: {
+      ativo: true,
+      dm_message: "msg",
+      public_reply: null,
+      client_id: CLIENT_ID,
+      ig_media_id: MEDIA_ID, // específica DO MESMO post do comentário
+      workflow_post_id: null,
+    },
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: ACCOUNT_ROW_ID }, error: null }); // aptidão
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 6 (re-check), vazia
+  db.queue("instagram_webhook_events", "delete", { data: null, error: null });
+
+  const dmCalls: string[] = [];
+  const fetchFn = (async (input: unknown, init?: RequestInit) => {
+    const url = String(input);
+    if ((init?.method ?? "GET").toUpperCase() !== "POST" || !url.includes("/messages")) {
+      throw new Error(`fetch não mapeado no teste: ${url}`);
+    }
+    dmCalls.push(url);
+    return new Response(JSON.stringify({ message_id: "m1" }), { status: 200 });
+  }) as unknown as typeof fetch;
+
+  const handler = createInstagramAutomationCronHandler(
+    baseDeps(db, { fetchFn, decryptToken: (t: string) => Promise.resolve(`plain:${t}`) }),
+  );
+  const response = await handler(
+    new Request("https://example.test/instagram-automation-cron", {
+      headers: { "x-cron-secret": CRON_SECRET },
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(await readJson(response), { ok: true, failed: 0 });
+
+  assertEquals(dmCalls.length, 1, "a DM do retry precisa sair quando o alvo casa");
+  assertEquals(rpcCallsFor(db, "mark_automation_dm_sent").length, 1);
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "sent" });
+});
+
+// ═══════════════════ Fase 4: sweep de eventos órfãos ══════════════════════
 
 Deno.test("instagram-automation-cron: sweep encontra evento órfão -> reprocessa via processDelivery (idempotente)", async () => {
   const db = createSupabaseQueryMock();
@@ -426,6 +496,7 @@ Deno.test("instagram-automation-cron: sweep encontra evento órfão -> reprocess
   // processDelivery: zero contas candidatas -> stamp processed direto.
   db.queue("instagram_accounts", "select", { data: [], error: null });
   db.queue("instagram_webhook_events", "update", { data: null, error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
   db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
   db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queue("instagram_webhook_events", "delete", { data: null, error: null });
@@ -468,7 +539,99 @@ Deno.test("instagram-automation-cron: sweep filtra processed_at IS NULL e receiv
   assert(hasModifier(sweepCalls[0], "limit", [50]));
 });
 
-// ══════════════════════════════ Fase 6: purge ══════════════════════════════
+// ═══════════════════ Fase 3: sweep de convergência dos vínculos ════════════
+
+Deno.test("instagram-automation-cron: sweep de convergência chama a RPC de vínculo e loga o count", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
+  db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: 3, error: null });
+  db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null });
+  db.queue("instagram_webhook_events", "delete", { data: null, error: null });
+
+  const handler = createInstagramAutomationCronHandler(baseDeps(db));
+  const response = await handler(
+    new Request("https://example.test/instagram-automation-cron", {
+      headers: { "x-cron-secret": CRON_SECRET },
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(await readJson(response), { ok: true, failed: 0 });
+  assertEquals(rpcCallsFor(db, "sweep_pending_instagram_automation_links").length, 1);
+});
+
+Deno.test("instagram-automation-cron: sweep de convergência com erro não aborta o run nem as fases seguintes", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
+  db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: null, error: { message: "rpc indisponível" } });
+  db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null });
+  db.queue("instagram_webhook_events", "delete", { data: null, error: null });
+  db.queue("cron_failures", "insert", { data: null, error: null });
+
+  const handler = createInstagramAutomationCronHandler(baseDeps(db));
+  const response = await handler(
+    new Request("https://example.test/instagram-automation-cron", {
+      headers: { "x-cron-secret": CRON_SECRET },
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  const body = await readJson(response);
+  assertEquals(body.ok, true);
+  assert(body.failed >= 1);
+
+  assertEquals(rpcCallsFor(db, "claim_retryable_automation_sends").length, 1);
+  assertEquals(callsFor(db, "instagram_webhook_events", "delete").length, 1);
+});
+
+Deno.test("instagram-automation-cron: retry claimado cuja automação trocou de alvo -> skipped/target_changed", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
+  db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  // O send foi claimado com a mídia do comentário original; a automação, nesse
+  // meio tempo, virou específica de OUTRO post.
+  db.queueRpc("claim_retryable_automation_sends", {
+    data: [claimedSendFixture({ media_id: "media-antiga" })],
+    error: null,
+  });
+  db.queue("instagram_comment_automations", "select", {
+    data: {
+      ativo: true,
+      dm_message: "msg",
+      public_reply: null,
+      client_id: CLIENT_ID,
+      ig_media_id: MEDIA_ID,
+      workflow_post_id: null,
+    },
+    error: null,
+  });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 6 (re-check), vazia
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+  db.queue("instagram_webhook_events", "delete", { data: null, error: null });
+
+  // fetchFn/decryptToken continuam `unreachable`: nenhuma DM pode sair aqui.
+  const handler = createInstagramAutomationCronHandler(baseDeps(db));
+  const response = await handler(
+    new Request("https://example.test/instagram-automation-cron", {
+      headers: { "x-cron-secret": CRON_SECRET },
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(await readJson(response), { ok: true, failed: 0 });
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "skipped", skip_reason: "target_changed" });
+  assert(hasModifier(sendUpdates[0], "eq", ["id", SEND_ID]));
+});
+
+// ══════════════════════════════ Fase 7: purge ══════════════════════════════
 
 Deno.test("instagram-automation-cron: purge apaga processed_at IS NOT NULL e received_at < now - 30 dias", async () => {
   const db = createSupabaseQueryMock();

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 const {
   mockGetAutomations,
@@ -85,6 +86,8 @@ const AUTOMATIONS = [
     ig_media_id: null,
     media_permalink: null,
     media_caption: null,
+    workflow_post_id: null,
+    pending_post_deleted_at: null,
     keywords: ['preco', 'valor'],
     dm_message: 'Segue o link!',
     dm_buttons: [
@@ -99,6 +102,66 @@ const AUTOMATIONS = [
     updated_at: '2026-08-01T09:00:00.000Z',
   },
 ];
+
+const AUTOMATION_PENDING = {
+  id: 'auto-pending',
+  conta_id: 'w-1',
+  client_id: 14,
+  name: 'Lançamento de sexta',
+  ig_media_id: null,
+  media_permalink: null,
+  media_caption: 'Chamada para o evento de sexta',
+  workflow_post_id: 501,
+  pending_post_deleted_at: null,
+  keywords: ['evento'],
+  dm_message: 'Segue o link!',
+  public_reply: null,
+  ativo: true,
+  dms_sent_count: 0,
+  last_triggered_at: null,
+  created_at: '2026-08-15T09:00:00.000Z',
+  updated_at: '2026-08-15T09:00:00.000Z',
+};
+
+const AUTOMATION_TOMBSTONE = {
+  id: 'auto-tombstone',
+  conta_id: 'w-1',
+  client_id: 14,
+  name: 'Promo antiga',
+  ig_media_id: null,
+  media_permalink: null,
+  media_caption: 'Promoção de julho',
+  workflow_post_id: null,
+  pending_post_deleted_at: '2026-08-16T10:00:00.000Z',
+  keywords: ['julho'],
+  dm_message: 'Segue o link!',
+  public_reply: null,
+  ativo: false,
+  dms_sent_count: 3,
+  last_triggered_at: '2026-07-20T12:00:00.000Z',
+  created_at: '2026-07-01T09:00:00.000Z',
+  updated_at: '2026-08-16T10:00:00.000Z',
+};
+
+const AUTOMATION_LINKED_NO_PERMALINK = {
+  id: 'auto-linked',
+  conta_id: 'w-1',
+  client_id: 14,
+  name: 'Reels recém-ligado',
+  ig_media_id: '17895695668004550',
+  media_permalink: null,
+  media_caption: 'Bastidores do lançamento',
+  workflow_post_id: null,
+  pending_post_deleted_at: null,
+  keywords: ['bastidores'],
+  dm_message: 'Segue o link!',
+  public_reply: null,
+  ativo: true,
+  dms_sent_count: 1,
+  last_triggered_at: null,
+  created_at: '2026-08-17T09:00:00.000Z',
+  updated_at: '2026-08-17T09:00:00.000Z',
+};
 
 const CLIENTES = [{ id: 14, nome: 'ACME', sigla: 'AC', cor: '#3ecf8e' }];
 
@@ -206,5 +269,53 @@ describe('AutomacoesPage', () => {
     // dm_kind='buttons_fallback_text' ganha o badge "enviado como texto"
     expect(screen.getByText('sendStatus.buttons_fallback_text')).toBeInTheDocument();
     await waitFor(() => expect(mockGetSends).toHaveBeenCalledWith('auto-1'));
+  });
+
+  it('shows the pending target (post title + badge) for an automation still awaiting publication, never "allPosts"', async () => {
+    mockGetAutomations.mockResolvedValue([AUTOMATION_PENDING]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Lançamento de sexta')).closest('tr')!;
+    expect(within(row).getByText('Chamada para o evento de sexta')).toBeInTheDocument();
+    expect(within(row).getByText('pendingBadge')).toBeInTheDocument();
+    expect(within(row).queryByText('allPosts')).not.toBeInTheDocument();
+  });
+
+  it('shows the deletedPostBadge and an off switch for a tombstoned automation', async () => {
+    mockGetAutomations.mockResolvedValue([AUTOMATION_TOMBSTONE]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Promo antiga')).closest('tr')!;
+    expect(within(row).getByText('deletedPostBadge')).toBeInTheDocument();
+    expect(within(row).getByRole('switch')).not.toBeChecked();
+  });
+
+  it('shows the caption without a link for a linked automation with no permalink yet, never "allPosts"', async () => {
+    mockGetAutomations.mockResolvedValue([AUTOMATION_LINKED_NO_PERMALINK]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Reels recém-ligado')).closest('tr')!;
+    expect(within(row).getByText('Bastidores do lançamento')).toBeInTheDocument();
+    expect(within(row).queryByText('allPosts')).not.toBeInTheDocument();
+    expect(within(row).queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('toggling a tombstoned automation shows the reactivateNeedsTarget toast instead of the generic error', async () => {
+    mockGetAutomations.mockResolvedValue([AUTOMATION_TOMBSTONE]);
+    mockUpdate.mockRejectedValueOnce({
+      code: '23514',
+      message:
+        'new row for relation "instagram_comment_automations" violates check constraint "ica_tombstone_inactive"',
+    });
+
+    renderPage();
+
+    const row = (await screen.findByText('Promo antiga')).closest('tr')!;
+    fireEvent.click(within(row).getByRole('switch'));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('reactivateNeedsTarget'));
   });
 });
