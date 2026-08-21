@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { computeKpis, type KpiSources } from "./kpis.ts";
 
 const post = (over: Partial<KpiSources["allPosts"][number]> = {}) => ({
@@ -97,4 +97,16 @@ Deno.test("mês sem posts: engagement value 0, reach 0", () => {
   assertEquals(k.reach.value, 0);
   assertEquals(k.engagement_rate.value, 0);
   assertEquals(k.posts_count.value, 0);
+});
+
+Deno.test("sem nenhuma base: followers_gained fica null, nunca 0", () => {
+  const s = base();
+  s.currSnapshot = null;
+  s.prevSnapshot = null;
+  s.prevPrevSnapshot = null;
+  s.followerHistory = [];
+  s.liveFollowerCount = null;
+  const k = computeKpis(s);
+  assertEquals(k.followers_gained.value, null);
+  assertEquals(k.followers_gained.prev, null);
 });

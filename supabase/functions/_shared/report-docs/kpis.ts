@@ -74,8 +74,6 @@ export function computeKpis(s: KpiSources): Record<ReportKpiId, KpiEntry> {
     }
   } else if (s.followerHistory.length > 0 && s.liveFollowerCount !== null) {
     gained = s.liveFollowerCount - s.followerHistory[0].follower_count;
-  } else {
-    gained = 0;
   }
 
   // followers_total: close do mês; fallback = último ponto do history DO MÊS,
