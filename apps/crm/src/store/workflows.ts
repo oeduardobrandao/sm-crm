@@ -66,8 +66,10 @@ export async function removeWorkflowTemplate(id: number): Promise<void> {
 
 /**
  * Propagate template step changes (nome, prazo_dias, tipo_prazo, responsavel_id, tipo)
- * to all `pendente` workflow_etapas belonging to active workflows that use this template.
- * Steps that are already `ativo` or `concluido` are left untouched.
+ * to `pendente` and `ativo` workflow_etapas belonging to active workflows that use this
+ * template. `status`, `iniciado_em` and `concluido_em` are never touched, so an in-progress
+ * step keeps its progress — only its label/prazo/owner catch up to the template. Steps that
+ * are already `concluido` are left untouched (rewriting history serves no purpose).
  */
 export async function propagateTemplateToWorkflows(
   templateId: number,
@@ -92,7 +94,7 @@ export async function propagateTemplateToWorkflows(
     if (!wfEtapas) continue;
 
     for (const wfEtapa of wfEtapas) {
-      if (wfEtapa.status !== 'pendente') continue;
+      if (wfEtapa.status === 'concluido') continue;
       const tplEtapa = etapas[wfEtapa.ordem];
       if (!tplEtapa) continue;
       await supabase
