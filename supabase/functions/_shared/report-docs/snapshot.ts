@@ -107,14 +107,19 @@ export function assembleSnapshot(input: SnapshotInput): ReportDocSnapshot {
     // avg_* acumulam somas aqui e viram médias no fim.
     bucket.count += 1;
     bucket.avg_reach += p.reach ?? 0;
-    bucket.avg_engagement += (p.likes ?? 0) + (p.comments ?? 0) + (p.saved ?? 0);
+    // Engagement rate per post: (likes + comments + saved + shares) / reach, or 0 if reach is 0 or missing
+    const reach = p.reach ?? 0;
+    const eng = reach > 0
+      ? ((p.likes ?? 0) + (p.comments ?? 0) + (p.saved ?? 0) + (p.shares ?? 0)) / reach
+      : 0;
+    bucket.avg_engagement += eng;
     breakdown[key] = bucket;
   }
   for (const key of ["reels", "carousels", "images"] as const) {
     const b = breakdown[key];
     if (b && b.count > 0) {
       b.avg_reach = Math.round(b.avg_reach / b.count);
-      b.avg_engagement = Math.round(b.avg_engagement / b.count);
+      b.avg_engagement = b.avg_engagement / b.count; // NO rounding for engagement rate
     }
   }
 

@@ -34,6 +34,8 @@ Deno.test("assembleSnapshot monta o documento congelado", () => {
   assertEquals(snap.top_posts[0].thumbnail_url, null);
   assert(snap.top_posts[0].caption_preview.length <= 140);
   assertEquals(snap.content_breakdown.reels?.count, 1);
+  // Engagement rate: (10 + 1 + 2 + 0) / 100 = 0.13
+  assertEquals(snap.content_breakdown.reels?.avg_engagement, 0.13);
 });
 
 Deno.test("thumbnail estável (mapa) entra; carousel e image mapeiam certo", () => {
