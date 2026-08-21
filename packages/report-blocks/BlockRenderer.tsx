@@ -53,7 +53,16 @@ export const BLOCK_COMPONENTS: Partial<Record<BlockType, FC<BlockProps>>> = {
   tags_table: TagsTableBlock,
 };
 
-const SIZE_CLASS = { third: 'rb-third', half: 'rb-half', full: 'rb-full' } as const;
+export const SIZE_CLASS = { third: 'rb-third', half: 'rb-half', full: 'rb-full' } as const;
+
+/** Accent efetivo do documento: override do layout com fallback na marca
+ * congelada no snapshot, sempre via resolveAccent (contraste garantido). */
+export function resolveLayoutAccent(
+  layout: ReportLayout,
+  snapshot: ReportDocSnapshot,
+): { acc: string; accFg: string } {
+  return resolveAccent(layout.accent ?? snapshot.branding.accent_color);
+}
 
 export interface BlockRendererProps {
   layout: ReportLayout;
@@ -64,7 +73,7 @@ export interface BlockRendererProps {
 export function BlockRenderer({ layout, snapshot, mode }: BlockRendererProps) {
   // Override por relatório/template (layout.accent) com fallback na marca do
   // workspace congelada no snapshot; resolveAccent trata inválido/claro demais.
-  const { acc, accFg } = resolveAccent(layout.accent ?? snapshot.branding.accent_color);
+  const { acc, accFg } = resolveLayoutAccent(layout, snapshot);
   return (
     <div
       className={`rb-grid rb-mode-${mode}`}
