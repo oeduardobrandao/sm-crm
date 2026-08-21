@@ -1,9 +1,10 @@
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { GenerateError, generateReportDocument } from "./generate.ts";
 
-// Fake db: responde por tabela; grava inserts para asserção.
+// Fake db: responde por tabela; grava inserts e chamadas de rpc para asserção.
 function makeDb(rows: Record<string, unknown>, opts: { feature?: boolean } = {}) {
   const inserts: Record<string, unknown>[] = [];
+  const rpcCalls: { name: string; args: Record<string, unknown> }[] = [];
   // deno-lint-ignore no-explicit-any
   const chain = (result: any): any => {
     const c: Record<string, unknown> = {};
@@ -18,6 +19,7 @@ function makeDb(rows: Record<string, unknown>, opts: { feature?: boolean } = {})
   };
   return {
     inserts,
+    rpcCalls,
     from: (table: string) => {
       if (table === "report_documents") {
         return {
@@ -29,10 +31,12 @@ function makeDb(rows: Record<string, unknown>, opts: { feature?: boolean } = {})
       }
       return chain(rows[table] ?? null);
     },
-    rpc: (name: string) =>
-      name === "effective_plan_feature"
+    rpc: (name: string, args: Record<string, unknown> = {}) => {
+      rpcCalls.push({ name, args });
+      return name === "effective_plan_feature"
         ? Promise.resolve({ data: opts.feature ?? true, error: null })
-        : Promise.resolve({ data: [], error: null }),
+        : Promise.resolve({ data: [], error: null });
+    },
     // deno-lint-ignore no-explicit-any
   } as any;
 }
@@ -82,4 +86,13 @@ Deno.test("caminho feliz sem IA insere documento ready com layout válido", asyn
   const types = row.layout.blocks.map((b) => b.type);
   assert(types.includes("cover"));
   assert(!types.includes("ai_recommendations")); // IA desligada no cliente
+
+  // get_tag_performance usa bound INCLUSIVO (paridade com o gerador v2): não
+  // pode ser a meia-noite exata do dia 1 do mês seguinte (endExclusive).
+  const tagCall = db.rpcCalls.find((c: { name: string }) => c.name === "get_tag_performance");
+  assert(tagCall, "esperava uma chamada a get_tag_performance");
+  assert(
+    (tagCall.args.p_month_end as string).endsWith("T23:59:59.999Z"),
+    `p_month_end deveria ser o instante inclusivo, veio ${tagCall.args.p_month_end}`,
+  );
 });

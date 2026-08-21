@@ -32,9 +32,18 @@ Deno.serve(async (req) => {
 
     const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: profile } = await serviceClient
-      .from("profiles").select("conta_id").eq("id", user.id).single();
-    const contaId = profile?.conta_id;
+      .from("profiles").select("conta_id, active_workspace_id").eq("id", user.id).single();
+    // Workspace ativo + membership: paridade com get_my_conta_id()/RLS (RLS em
+    // report_documents usa active_workspace_id + EXISTS workspace_members, não
+    // conta_id sozinho). conta_id legado só como fallback de leitura; um usuário
+    // removido do workspace ativo tem active_workspace_id/conta_id obsoletos que
+    // o RLS já esconde -- sem o check de membership esta function os serviria.
+    const contaId = profile?.active_workspace_id ?? profile?.conta_id;
     if (!contaId) return json({ error: "Unauthorized" }, 401);
+    const { data: membership } = await serviceClient
+      .from("workspace_members").select("user_id")
+      .eq("user_id", user.id).eq("workspace_id", contaId).maybeSingle();
+    if (!membership) return json({ error: "Unauthorized" }, 401);
 
     if (req.method === "POST" && path === "/generate") {
       const allowed = await checkRateLimit(serviceClient, `report-docs:${contaId}`, 20, 3600);

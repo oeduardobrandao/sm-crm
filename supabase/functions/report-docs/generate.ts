@@ -99,7 +99,10 @@ export async function generateReportDocument(
     Promise.resolve(db.rpc("get_tag_performance", {
       p_instagram_account_id: igAccountId,
       p_month_start: w.start,
-      p_month_end: w.endExclusive,
+      // `endInclusive`, not `endExclusive`: this RPC's body is not in this repo,
+      // so its bound semantics are left exactly as they were (parity with
+      // instagram-report-generator-v2/index.ts's own endInclusive derivation).
+      p_month_end: new Date(Date.parse(w.endExclusive) - 1).toISOString(),
     })).then((r: { data: TagPerformance[] | null }) => r).catch(() => ({ data: null })),
     db.from("workspaces").select("name, logo_url, brand_color, report_splash_url")
       .eq("id", contaId).single(),
