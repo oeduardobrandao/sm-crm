@@ -1,7 +1,7 @@
 // Núcleo da geração: recebe db (service client) e deps injetáveis, devolve o id
 // do documento criado. Síncrono, sem fila: spec §5.
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
-import { generateAINarrative } from "../_shared/report-template/ai.ts";
+import { generateAINarrative, type GenerateResult } from "../_shared/report-template/ai.ts";
 import { mapAudience, mapBestTimes } from "../instagram-report-generator-v2/mappers.ts";
 import {
   cachePostThumbnail, isEphemeralInstagramUrl, type ThumbnailStorage,
@@ -176,20 +176,42 @@ export async function generateReportDocument(
   let goalsDoc: unknown | null = null;
   const wantsAi = cliente.include_ai_analysis !== false;
   if (wantsAi && deps.geminiKey) {
-    const ai = await generateAINarrative(snapshotToReportData(snapshot), deps.geminiKey);
-    if (ai.status === "success" && ai.output) {
-      aiContent = ai.output;
-      summaryDoc = aiSummaryDoc(ai.output);
-      recsDoc = aiRecommendationsDoc(ai.output);
-      goalsDoc = aiGoalsDoc(ai.output);
-    } else {
-      console.warn(`[report-docs] AI falhou: ${"error" in ai ? ai.error : ai.status}`);
+    const AI_TIMEOUT_MS = 45_000;
+    // Gemini sem AbortSignal (módulo compartilhado com o pipeline legado,
+    // intocado): o bound fica aqui. Race resolve com falha e a geração segue
+    // com o fallback; o fetch órfão morre no timeout da plataforma.
+    let timer: number | undefined;
+    const timeoutPromise = new Promise<GenerateResult>((resolve) => {
+      timer = setTimeout(
+        () => resolve({ output: null, status: "generation_failed", error: "ai timeout" }),
+        AI_TIMEOUT_MS,
+      );
+    });
+    try {
+      const ai = await Promise.race([
+        generateAINarrative(snapshotToReportData(snapshot), deps.geminiKey),
+        timeoutPromise,
+      ]);
+      if (ai.status === "success" && ai.output) {
+        aiContent = ai.output;
+        summaryDoc = aiSummaryDoc(ai.output);
+        recsDoc = aiRecommendationsDoc(ai.output);
+        goalsDoc = aiGoalsDoc(ai.output);
+      } else {
+        console.warn(`[report-docs] AI falhou: ${"error" in ai ? ai.error : ai.status}`);
+      }
+    } finally {
+      clearTimeout(timer);
     }
   }
 
+  // hasAi é derivado do CONTEÚDO (recsDoc !== null), não da intenção
+  // (wantsAi): se a IA falhar ou GEMINI_API_KEY faltar, recsDoc/goalsDoc
+  // ficam null e fillAiBlocks remove os blocos -- usar wantsAi aqui deixaria
+  // um "Próximos passos" órfão, sem nenhum bloco de conteúdo embaixo.
   const layout = fillAiBlocks(
     buildDefaultLayout({
-      hasAi: wantsAi,
+      hasAi: recsDoc !== null,
       hasAudience: snapshot.audience !== null,
       hasBestTimes: snapshot.best_times.length > 0,
       hasTags: snapshot.tags_performance.length > 0,

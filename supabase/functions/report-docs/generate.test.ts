@@ -80,12 +80,19 @@ Deno.test("caminho feliz sem IA insere documento ready com layout válido", asyn
   const { id } = await generateReportDocument(db, deps, "c", 1, "2026-07");
   assertEquals(id, "doc-1");
   assertEquals(db.inserts.length, 1);
-  const row = db.inserts[0] as { status: string; layout: { blocks: { type: string }[] }; data_snapshot: { version: number } };
+  const row = db.inserts[0] as {
+    status: string;
+    layout: { blocks: { type: string; config?: { title?: string } }[] };
+    data_snapshot: { version: number };
+  };
   assertEquals(row.status, "ready");
   assertEquals(row.data_snapshot.version, 1);
   const types = row.layout.blocks.map((b) => b.type);
   assert(types.includes("cover"));
   assert(!types.includes("ai_recommendations")); // IA desligada no cliente
+  // hasAi é derivado do conteúdo (recsDoc), não da intenção: sem IA, a seção
+  // "Próximos passos" não deve sobrar órfã (sem os blocos de conteúdo).
+  assert(!row.layout.blocks.some((b) => b.config?.title === "Próximos passos"));
 
   // get_tag_performance usa bound INCLUSIVO (paridade com o gerador v2): não
   // pode ser a meia-noite exata do dia 1 do mês seguinte (endExclusive).
@@ -94,5 +101,33 @@ Deno.test("caminho feliz sem IA insere documento ready com layout válido", asyn
   assert(
     (tagCall.args.p_month_end as string).endsWith("T23:59:59.999Z"),
     `p_month_end deveria ser o instante inclusivo, veio ${tagCall.args.p_month_end}`,
+  );
+});
+
+Deno.test("IA desejada mas GEMINI_API_KEY ausente: sem seção 'Próximos passos' órfã", async () => {
+  // Cenário real do bug: cliente QUER IA (include_ai_analysis !== false), mas
+  // deps.geminiKey está vazio -- o mesmo `if (wantsAi && deps.geminiKey)` que
+  // protege a chamada ao Gemini também deixa recsDoc/goalsDoc null aqui, sem
+  // precisar mockar fetch/generateAINarrative. hasAi baseado em wantsAi (a
+  // intenção) adicionaria a section_header "Próximos passos" mesmo assim;
+  // hasAi baseado em recsDoc !== null (o conteúdo) não adiciona.
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: "Derma", include_ai_analysis: true },
+    instagram_accounts: { id: "ig-1", username: "dra.x", follower_count: 100 },
+    instagram_posts: [],
+    instagram_follower_history: [],
+    instagram_analytics_cache: null,
+    instagram_account_metrics_daily: [],
+    workspaces: { name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null },
+  });
+  await generateReportDocument(db, { ...deps, geminiKey: "" }, "c", 1, "2026-07");
+  const row = db.inserts[0] as {
+    layout: { blocks: { type: string; config?: { title?: string } }[] };
+  };
+  const types = row.layout.blocks.map((b) => b.type);
+  assert(!types.includes("ai_recommendations"));
+  assert(
+    !row.layout.blocks.some((b) => b.config?.title === "Próximos passos"),
+    "seção 'Próximos passos' não deveria existir sem nenhum bloco de conteúdo de IA embaixo",
   );
 });
