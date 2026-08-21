@@ -123,10 +123,26 @@ function automationRow(overrides: Record<string, unknown> = {}) {
     conta_id: CONTA_ID,
     client_id: CLIENT_ID,
     ig_media_id: null,
+    workflow_post_id: null,
     keywords: ["promo"],
     dm_message: "Aqui está o link da promo!",
     public_reply: "Verifique sua DM!",
     created_at: "2026-08-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+// Shape do SELECT de revalidação de `executeSend` (inclui o ALVO: ig_media_id +
+// workflow_post_id). O default é "todos os posts" (ambos nulos), que casa
+// qualquer mídia -- inclusive `media_id` nulo.
+function revalidatedAutomation(overrides: Record<string, unknown> = {}) {
+  return {
+    ativo: true,
+    dm_message: "msg",
+    public_reply: null,
+    client_id: CLIENT_ID,
+    ig_media_id: null,
+    workflow_post_id: null,
     ...overrides,
   };
 }
@@ -147,6 +163,7 @@ function baseClaimedSend(overrides: Partial<ClaimedSend> = {}): ClaimedSend {
     comment_id: COMMENT_ID,
     automation_id: AUTOMATION_ID,
     conta_id: CONTA_ID,
+    media_id: MEDIA_ID,
     commenter_id: "commenter-1",
     comment_created_at: COMMENT_ISO,
     dm_status: null,
@@ -260,7 +277,7 @@ Deno.test("processDelivery (c): match feliz -> claim, DM, mark_automation_dm_sen
   db.queue("instagram_comment_automations", "select", { data: [{ id: AUTOMATION_ID }], error: null }); // throttle: ids do cliente (sem filtro ativo)
   db.queue("instagram_automation_sends", "select", { data: null, error: null, count: 0 }); // throttle: contagem
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "Aqui está o link da promo!", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
+    data: revalidatedAutomation({ dm_message: "Aqui está o link da promo!", public_reply: "Verifique sua DM!" }),
     error: null,
   }); // revalidação (executeSend)
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null }); // aptidão (executeSend)
@@ -545,12 +562,92 @@ Deno.test("processDelivery: media.id ausente também no GET -> automação espec
   assertEquals(payload.p_automation_id, AUTOMATION_ID, "só a automação 'todos os posts' sobra no matching");
 });
 
+// ── Alvo em post interno: pendente nunca casa, ligada casa como específica ──
+
+Deno.test("processDelivery: automação pendente (workflow_post_id, sem ig_media_id) NÃO casa nem como 'todos os posts'", async () => {
+  const db = createSupabaseQueryMock();
+  const PENDING_AUTOMATION_ID = "aaaaaaa0-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+
+  db.queue("instagram_accounts", "select", { data: [accountRow()], error: null });
+  db.queue("instagram_comment_automations", "select", {
+    data: [
+      // Pendente E mais antiga E com id menor: venceria o desempate se
+      // entrasse no matching. Só fica de fora porque o alvo não casa.
+      automationRow({
+        id: PENDING_AUTOMATION_ID,
+        ig_media_id: null,
+        workflow_post_id: 77,
+        created_at: "2026-07-01T00:00:00.000Z",
+      }),
+      automationRow(), // "todos os posts" (ambos nulos)
+    ],
+    error: null,
+  });
+  db.queueRpc("claim_automation_send", { data: [{ send_id: null, outcome: "duplicate" }], error: null });
+  db.queue("instagram_webhook_events", "update", { data: null, error: null });
+
+  await createProcessDelivery(baseProcessDeps())(db as never, [eventRow()]);
+
+  const claimCalls = rpcCallsFor(db, "claim_automation_send");
+  assertEquals(claimCalls.length, 1);
+  assertEquals(
+    (claimCalls[0].payload as Record<string, unknown>).p_automation_id,
+    AUTOMATION_ID,
+    "a pendente aguarda a publicação do post interno; quem dispara é a 'todos os posts'",
+  );
+});
+
+Deno.test("processDelivery: automação pendente é a ÚNICA candidata -> nenhuma claim", async () => {
+  const db = createSupabaseQueryMock();
+
+  db.queue("instagram_accounts", "select", { data: [accountRow()], error: null });
+  db.queue("instagram_comment_automations", "select", {
+    data: [automationRow({ ig_media_id: null, workflow_post_id: 77 })],
+    error: null,
+  });
+  db.queue("instagram_webhook_events", "update", { data: null, error: null });
+
+  await createProcessDelivery(baseProcessDeps())(db as never, [eventRow()]);
+
+  assertEquals(rpcCallsFor(db, "claim_automation_send").length, 0);
+  assertEquals(callsFor(db, "instagram_webhook_events", "update").length, 1);
+});
+
+Deno.test("processDelivery: automação LIGADA (workflow_post_id + ig_media_id) vence a 'todos os posts' na mesma mídia", async () => {
+  const db = createSupabaseQueryMock();
+  const LINKED_AUTOMATION_ID = "aaaaaaa7-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+
+  db.queue("instagram_accounts", "select", { data: [accountRow()], error: null });
+  db.queue("instagram_comment_automations", "select", {
+    data: [
+      automationRow(), // "todos os posts", mais antiga
+      // Ligada na publicação: ig_media_id preenchido pelo trigger, ponteiro
+      // para o post interno preservado. Vale como específica no desempate.
+      automationRow({
+        id: LINKED_AUTOMATION_ID,
+        ig_media_id: MEDIA_ID,
+        workflow_post_id: 77,
+        created_at: "2026-08-05T00:00:00.000Z",
+      }),
+    ],
+    error: null,
+  });
+  db.queueRpc("claim_automation_send", { data: [{ send_id: null, outcome: "duplicate" }], error: null });
+  db.queue("instagram_webhook_events", "update", { data: null, error: null });
+
+  await createProcessDelivery(baseProcessDeps())(db as never, [eventRow()]);
+
+  const claimCalls = rpcCallsFor(db, "claim_automation_send");
+  assertEquals(claimCalls.length, 1);
+  assertEquals((claimCalls[0].payload as Record<string, unknown>).p_automation_id, LINKED_AUTOMATION_ID);
+});
+
 // ══════════════════════════════ executeSend ════════════════════════════════
 
 Deno.test("executeSend (f): token_expired -> conta marcada expired + notificação + failed, sem reply pública", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "Aqui está o link!", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
+    data: revalidatedAutomation({ dm_message: "Aqui está o link!", public_reply: "Verifique sua DM!" }),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -593,7 +690,7 @@ Deno.test("executeSend (f): token_expired -> conta marcada expired + notificaç�
 Deno.test("executeSend: DM usa professional_account_id no path quando presente (app-scoped só como fallback)", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: null, client_id: CLIENT_ID },
+    data: revalidatedAutomation(),
     error: null,
   });
   db.queue("instagram_accounts", "select", {
@@ -620,7 +717,7 @@ Deno.test("executeSend: DM usa professional_account_id no path quando presente (
 Deno.test("executeSend (g): erro transiente com attempts=0 -> retry com next_attempt_at +60s", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: "resposta", client_id: CLIENT_ID },
+    data: revalidatedAutomation({ public_reply: "resposta" }),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -644,7 +741,7 @@ Deno.test("executeSend (g): erro transiente com attempts=0 -> retry com next_att
 Deno.test("executeSend (h): retry com dm_status='sent' -> NÃO chama sendPrivateReply, só a reply pública", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
+    data: revalidatedAutomation({ public_reply: "Verifique sua DM!" }),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -672,7 +769,7 @@ Deno.test("executeSend (h): retry com dm_status='sent' -> NÃO chama sendPrivate
 Deno.test("executeSend (i-1): reply pública timeout + fetchReplies encontra -> sent com id, nunca reposta", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
+    data: revalidatedAutomation({ public_reply: "Verifique sua DM!" }),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -700,7 +797,7 @@ Deno.test("executeSend (i-1): reply pública timeout + fetchReplies encontra -> 
 Deno.test("executeSend (i-2): reply pública timeout + fetchReplies NÃO encontra -> unknown, sent_partial, nunca reposta", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
+    data: revalidatedAutomation({ public_reply: "Verifique sua DM!" }),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -729,7 +826,7 @@ Deno.test("executeSend (i-2): reply pública timeout + fetchReplies NÃO encontr
 Deno.test("executeSend: grava public_reply_status='unknown' ANTES de chamar replyToComment (ordem verificada)", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
+    data: revalidatedAutomation({ public_reply: "Verifique sua DM!" }),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -761,7 +858,7 @@ Deno.test("executeSend: grava public_reply_status='unknown' ANTES de chamar repl
 Deno.test("executeSend: reentrada com public_reply_status='unknown' -> NÃO chama replyToComment, só reconcilia; achou -> sent", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
+    data: revalidatedAutomation({ public_reply: "Verifique sua DM!" }),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -794,7 +891,7 @@ Deno.test("executeSend: reentrada com public_reply_status='unknown' -> NÃO cham
 Deno.test("executeSend: reentrada com 'unknown' e fetchReplies não encontra -> mantém unknown sem regravar, nunca reposta", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
+    data: revalidatedAutomation({ public_reply: "Verifique sua DM!" }),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -818,7 +915,7 @@ Deno.test("executeSend: reentrada com 'unknown' e fetchReplies não encontra -> 
 Deno.test("executeSend: erro permanente no DM -> failed/dm_permanent, sem retry", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: null, client_id: CLIENT_ID },
+    data: revalidatedAutomation(),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -838,7 +935,7 @@ Deno.test("executeSend: erro permanente no DM -> failed/dm_permanent, sem retry"
 Deno.test("executeSend: transiente com attempts>=5 -> failed/retry_exhausted em vez de retry", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: null, client_id: CLIENT_ID },
+    data: revalidatedAutomation(),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -858,7 +955,7 @@ Deno.test("executeSend: transiente com attempts>=5 -> failed/retry_exhausted em 
 Deno.test("executeSend: transiente com comentário criado há mais de 7 dias -> failed/retry_exhausted mesmo com attempts=0", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: null, client_id: CLIENT_ID },
+    data: revalidatedAutomation(),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -895,7 +992,7 @@ Deno.test("executeSend: automação excluída (sumiu) -> skipped/automation_inac
 Deno.test("executeSend: automação pausada (ativo=false) -> skipped/automation_inactive", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: false, dm_message: "msg", public_reply: null, client_id: CLIENT_ID },
+    data: revalidatedAutomation({ ativo: false }),
     error: null,
   });
   db.queue("instagram_automation_sends", "update", { data: null, error: null });
@@ -910,10 +1007,133 @@ Deno.test("executeSend: automação pausada (ativo=false) -> skipped/automation_
   assertEquals(sendUpdates[0].payload, { status: "skipped", skip_reason: "automation_inactive" });
 });
 
+// ── Revalidação de ALVO no envio ───────────────────────────────────────────
+// O matching roda ANTES do claim: uma automação "todos os posts" que ganhou um
+// send em retry e depois foi trocada para um alvo específico (ou para um post
+// interno ainda não publicado) mandaria a DM assim mesmo sem esta checagem.
+
+Deno.test("executeSend: alvo virou específico de OUTRA mídia e o DM não saiu -> skipped/target_changed", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ ig_media_id: "media-outra" }),
+    error: null,
+  });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  await executeSend(
+    baseSendCtx(db, { decryptToken: unreachable("decryptToken") as unknown as (t: string) => Promise<string> }),
+    baseClaimedSend(), // media_id = MEDIA_ID
+  );
+
+  assertEquals(callsFor(db, "instagram_accounts", "select").length, 0, "nem chega a checar aptidão da conta");
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "skipped", skip_reason: "target_changed" });
+});
+
+// Caso POSITIVO, e não é redundante com os de mismatch: sem ele, um
+// `send.media_id` chegando `undefined` (regressão na claim RPC ou no caminho
+// que monta o ClaimedSend) faria `targetMatches` devolver false para TODA
+// automação específica -- todo retry viraria skipped/target_changed em
+// silêncio, com a suíte inteira verde, porque os demais casos ou esperam skip
+// ou usam o default global (que casa qualquer coisa, inclusive undefined).
+Deno.test("executeSend: alvo específico que CASA o media_id do send -> prossegue e manda a DM", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ ig_media_id: MEDIA_ID }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  const { fetchFn, calls: fetchCalls } = routedFetch({
+    privateReply: () => ({ body: { message_id: "m1" } }),
+  });
+
+  await executeSend(baseSendCtx(db, { fetchFn }), baseClaimedSend({ media_id: MEDIA_ID }));
+
+  assertEquals(fetchCalls.filter((c) => c.method === "POST" && c.url.endsWith("/messages")).length, 1);
+  assertEquals(rpcCallsFor(db, "mark_automation_dm_sent").length, 1);
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(
+    sendUpdates.filter((c) => (c.payload as Record<string, unknown>).skip_reason === "target_changed").length,
+    0,
+    "alvo que casa NUNCA pode pular",
+  );
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "sent" });
+});
+
+Deno.test("executeSend: alvo virou PENDENTE (post interno não publicado) -> skipped/target_changed", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ ig_media_id: null, workflow_post_id: 77 }),
+    error: null,
+  });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  await executeSend(
+    baseSendCtx(db, { decryptToken: unreachable("decryptToken") as unknown as (t: string) => Promise<string> }),
+    baseClaimedSend(),
+  );
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "skipped", skip_reason: "target_changed" });
+});
+
+Deno.test("executeSend: send com media_id nulo + alvo específico -> skipped/target_changed", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ ig_media_id: MEDIA_ID }),
+    error: null,
+  });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  await executeSend(
+    baseSendCtx(db, { decryptToken: unreachable("decryptToken") as unknown as (t: string) => Promise<string> }),
+    baseClaimedSend({ media_id: null }),
+  );
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "skipped", skip_reason: "target_changed" });
+});
+
+Deno.test("executeSend: DM JÁ entregue (dm_status='sent') -> alvo trocado NÃO pula; completa a resposta pública", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ ig_media_id: "media-outra", public_reply: "Verifique sua DM!" }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // public_reply_status='unknown' (em voo)
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // public_reply sent
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  const { fetchFn, calls: fetchCalls } = routedFetch({
+    publicReply: () => ({ body: { id: "reply-1" } }),
+  });
+
+  await executeSend(baseSendCtx(db, { fetchFn }), baseClaimedSend({ dm_status: "sent" }));
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(
+    sendUpdates.filter((c) => (c.payload as Record<string, unknown>).skip_reason === "target_changed").length,
+    0,
+    "um DM já entregue não é des-entregável: o retry só completa o que falta",
+  );
+  assertEquals(fetchCalls.filter((c) => c.method === "POST" && c.url.includes("/replies")).length, 1);
+  assertEquals(sendUpdates.length, 3);
+  assertEquals(sendUpdates[2].payload, { status: "sent" });
+});
+
 Deno.test("executeSend: conta ficou inapta entre o claim e o envio -> failed/account_unauthorized", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: null, client_id: CLIENT_ID },
+    data: revalidatedAutomation(),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: null, error: null }); // não apta mais
@@ -932,7 +1152,7 @@ Deno.test("executeSend: conta ficou inapta entre o claim e o envio -> failed/acc
 Deno.test("executeSend: sem resposta pública configurada -> fecha 'sent' logo após a DM, sem chamar replyToComment", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: null, client_id: CLIENT_ID },
+    data: revalidatedAutomation(),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -953,7 +1173,7 @@ Deno.test("executeSend: sem resposta pública configurada -> fecha 'sent' logo a
 Deno.test("executeSend: erro não-timeout na resposta pública -> public_reply_status=failed, fecha sent_partial", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
+    data: revalidatedAutomation({ public_reply: "Verifique sua DM!" }),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -977,7 +1197,7 @@ Deno.test("executeSend: erro não-timeout na resposta pública -> public_reply_s
 Deno.test("executeSend: 'já existe private reply' (already_replied) -> auto-correção, mark_automation_dm_sent chamado", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: null, client_id: CLIENT_ID },
+    data: revalidatedAutomation(),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -1009,7 +1229,7 @@ Deno.test(
   async () => {
     const db = createSupabaseQueryMock();
     db.queue("instagram_comment_automations", "select", {
-      data: { ativo: true, dm_message: "msg", public_reply: null, client_id: CLIENT_ID },
+      data: revalidatedAutomation(),
       error: null,
     });
     db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -1041,7 +1261,7 @@ Deno.test(
   async () => {
     const db = createSupabaseQueryMock();
     db.queue("instagram_comment_automations", "select", {
-      data: { ativo: true, dm_message: "msg", public_reply: "Verifique sua DM!", client_id: CLIENT_ID },
+      data: revalidatedAutomation({ public_reply: "Verifique sua DM!" }),
       error: null,
     });
     db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
@@ -1090,15 +1310,12 @@ const TEMPLATE_BODY = {
   },
 };
 
+// Reusa `revalidatedAutomation` de propósito: o SELECT de revalidação traz o
+// ALVO junto (ig_media_id + workflow_post_id), e sem ele o send pararia em
+// `target_changed` antes de qualquer POST -- os botões nunca chegariam à Meta.
 function buttonsAutomationSelect(db: Db) {
   db.queue("instagram_comment_automations", "select", {
-    data: {
-      ativo: true,
-      dm_message: "Escolha:",
-      dm_buttons: BUTTONS_FIXTURE,
-      public_reply: null,
-      client_id: CLIENT_ID,
-    },
+    data: revalidatedAutomation({ dm_message: "Escolha:", dm_buttons: BUTTONS_FIXTURE }),
     error: null,
   });
 }
@@ -1211,7 +1428,7 @@ Deno.test("executeSend: transient no template -> retry SEM tentar o fallback (1 
 Deno.test("executeSend: sem dm_buttons -> body de texto puro e p_dm_kind='text'", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
-    data: { ativo: true, dm_message: "msg", public_reply: null, client_id: CLIENT_ID },
+    data: revalidatedAutomation(),
     error: null,
   });
   db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
