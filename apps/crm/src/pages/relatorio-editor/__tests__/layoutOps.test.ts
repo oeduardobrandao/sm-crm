@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  insertBlock, moveBlock, removeBlock, resizeBlock, setLayoutAccent,
-  SIZE_ORDER, updateBlockText,
+  insertBlock,
+  moveBlock,
+  removeBlock,
+  resizeBlock,
+  setLayoutAccent,
+  SIZE_ORDER,
+  updateBlockText,
 } from '../layoutOps';
 import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
 
@@ -76,7 +81,10 @@ describe('insertBlock', () => {
 
 describe('updateBlockText', () => {
   it('atualiza o text do bloco', () => {
-    const doc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x' }] }] };
+    const doc = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x' }] }],
+    };
     const next = updateBlockText(layout(), 'c', doc);
     expect(next.blocks[2].text).toEqual(doc);
   });

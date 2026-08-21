@@ -76,7 +76,10 @@ describe('useLayoutAutosave', () => {
     const { result } = renderHook(() =>
       useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
     );
-    const invalid = { version: 1, blocks: [{ id: '', type: 'cover', size: 'full' }] } as ReportLayout;
+    const invalid = {
+      version: 1,
+      blocks: [{ id: '', type: 'cover', size: 'full' }],
+    } as ReportLayout;
     act(() => result.current.applyLayout(invalid));
     await act(async () => {
       vi.advanceTimersByTime(1500);
@@ -117,9 +120,10 @@ describe('useLayoutAutosave', () => {
   it('terceira edição durante request em voo mantém saving true', async () => {
     let resolveReq: ((value?: any) => void) | null = null;
     updateMock.mockImplementationOnce(
-      () => new Promise((r) => {
-        resolveReq = r;
-      }),
+      () =>
+        new Promise((r) => {
+          resolveReq = r;
+        }),
     );
     const { result } = renderHook(() =>
       useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
