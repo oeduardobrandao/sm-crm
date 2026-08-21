@@ -4,6 +4,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeSnapshotFixture } from '@mesaas/report-blocks/fixtures';
+import { validateLayout } from '@mesaas/report-blocks/types';
+import { setLayoutAccent } from '../layoutOps';
 
 const { getReportDocMock, updateReportDocMock } = vi.hoisted(() => ({
   getReportDocMock: vi.fn(),
@@ -107,6 +109,20 @@ describe('RelatorioEditorPage (editor)', () => {
       expect(cells).toHaveLength(3);
       expect(cells[2].className).toContain('rb-edit-highlight');
     });
+  });
+
+  // Achado C2, camada 3 — round-trip: o ColorPicker desta página vai com
+  // allowAlpha={false}, mas o handler passa qualquer hex recebido por
+  // setLayoutAccent (camada 2 de defesa) antes de applyLayout. Prova que o
+  // resultado de setLayoutAccent para um accent de 8 dígitos (#rrggbbaa) —
+  // o que um swatch "recente" salvo por outra tela do Estúdio poderia colar
+  // aqui mesmo com allowAlpha={false} — nunca é o payload que o autosave
+  // manda ao PostgREST: ele já sai normalizado e passa no validateLayout
+  // estrito (#rrggbb).
+  it('setLayoutAccent com hex de 8 dígitos produz layout que passa no validateLayout', () => {
+    const withAlpha = setLayoutAccent(doc().layout, '#0f766eff');
+    expect(withAlpha.accent).toBe('#0f766e');
+    expect(validateLayout(withAlpha).ok).toBe(true);
   });
 
   it('documento inexistente mostra estado de não encontrado', async () => {

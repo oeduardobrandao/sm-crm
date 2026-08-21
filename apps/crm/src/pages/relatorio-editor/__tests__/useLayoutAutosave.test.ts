@@ -1,4 +1,6 @@
+import React from 'react';
 import { act, renderHook } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { updateMock, toastErrorMock } = vi.hoisted(() => ({
@@ -16,9 +18,19 @@ const baseLayout: ReportLayout = {
   blocks: [{ id: 'a', type: 'cover', size: 'full' }],
 };
 
+// Achado C1: o hook agora escreve de volta no cache via useQueryClient(), o
+// que exige um QueryClientProvider no contexto de TODO renderHook — sem ele
+// useQueryClient() lança. Um qc por teste (padrão de RelatorioEditorPage.
+// test.tsx), acessível pelos testes que verificam o write-back.
+let qc: QueryClient;
+function wrapper({ children }: { children: React.ReactNode }) {
+  return React.createElement(QueryClientProvider, { client: qc }, children);
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   updateMock.mockResolvedValue(undefined);
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -27,8 +39,9 @@ afterEach(() => {
 
 describe('useLayoutAutosave', () => {
   it('applyLayout: otimista na hora, persiste após 1500ms, saving liga e desliga', async () => {
-    const { result } = renderHook(() =>
-      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
     );
     const next: ReportLayout = { ...baseLayout, accent: '#0f766e' };
     act(() => result.current.applyLayout(next));
@@ -44,8 +57,9 @@ describe('useLayoutAutosave', () => {
   });
 
   it('duas edições dentro da janela: um único request com o estado final', async () => {
-    const { result } = renderHook(() =>
-      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
     );
     const l1: ReportLayout = { ...baseLayout, accent: '#111111' };
     const l2: ReportLayout = { ...baseLayout, accent: '#222222' };
@@ -63,8 +77,9 @@ describe('useLayoutAutosave', () => {
   });
 
   it('applyLayout com a MESMA referência: nenhum save agendado', () => {
-    const { result } = renderHook(() =>
-      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
     );
     act(() => result.current.applyLayout(result.current.layout));
     expect(result.current.saving).toBe(false);
@@ -73,8 +88,9 @@ describe('useLayoutAutosave', () => {
   });
 
   it('layout inválido no flush: toast de erro e NENHUM request', async () => {
-    const { result } = renderHook(() =>
-      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
     );
     const invalid = {
       version: 1,
@@ -91,8 +107,9 @@ describe('useLayoutAutosave', () => {
 
   it('falha do request: retém edição para retry, saving fica true', async () => {
     updateMock.mockRejectedValueOnce(new Error('rede'));
-    const { result } = renderHook(() =>
-      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
     );
     const layout = { ...baseLayout, accent: '#333333' };
     act(() => result.current.applyLayout(layout));
@@ -109,8 +126,9 @@ describe('useLayoutAutosave', () => {
   });
 
   it('setTitle persiste após 400ms com dirty ref', async () => {
-    const { result } = renderHook(() =>
-      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
     );
     act(() => result.current.setTitle('Relatório de Abril'));
     expect(result.current.title).toBe('Relatório de Abril');
@@ -129,8 +147,9 @@ describe('useLayoutAutosave', () => {
           resolveReq = r;
         }),
     );
-    const { result } = renderHook(() =>
-      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
     );
     const l1: ReportLayout = { ...baseLayout, accent: '#111111' };
     const l3: ReportLayout = { ...baseLayout, accent: '#333333' };
@@ -174,8 +193,9 @@ describe('useLayoutAutosave', () => {
   });
 
   it('unmount com edição pendente dá flush imediato', async () => {
-    const { result, unmount } = renderHook(() =>
-      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    const { result, unmount } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
     );
     const pending: ReportLayout = { ...baseLayout, accent: '#555555' };
 
@@ -210,8 +230,9 @@ describe('useLayoutAutosave', () => {
         }),
     );
 
-    const { result } = renderHook(() =>
-      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
     );
     const l1: ReportLayout = { ...baseLayout, accent: '#111111' };
     const l2: ReportLayout = { ...baseLayout, accent: '#222222' };
@@ -266,8 +287,9 @@ describe('useLayoutAutosave', () => {
   it('falha transitória não perde a edição: retém e re-tenta', async () => {
     updateMock.mockRejectedValueOnce(new Error('timeout'));
     updateMock.mockResolvedValueOnce(undefined);
-    const { result } = renderHook(() =>
-      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
     );
     const layout = { ...baseLayout, accent: '#444444' };
 
@@ -296,8 +318,9 @@ describe('useLayoutAutosave', () => {
 
   it('falha seguida de unmount ainda flusha o payload retido', async () => {
     updateMock.mockRejectedValueOnce(new Error('rede'));
-    const { result, unmount } = renderHook(() =>
-      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    const { result, unmount } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
     );
     const layout = { ...baseLayout, accent: '#666666' };
 
@@ -321,5 +344,38 @@ describe('useLayoutAutosave', () => {
     // Unmount flush chamado além do failed request
     expect(updateMock).toHaveBeenCalledTimes(2);
     expect(updateMock).toHaveBeenNthCalledWith(2, 'doc-1', { layout });
+  });
+
+  // Achado C1: sem write-back, uma reentrada na SPA dentro do gcTime (a
+  // query ['report-doc', id] usa staleTime: Infinity e nada mais escreve
+  // nela) serve o doc PRÉ-edição e o próximo save clobbera o que acabou de
+  // ser persistido. O fix: todo save bem-sucedido escreve o resultado de
+  // volta no cache — aqui provado seedando a query ANTES do render, como um
+  // segundo mount da página faria ao reaproveitar o cache do primeiro.
+  it('save bem-sucedido escreve de volta no cache ["report-doc", docId]', async () => {
+    qc.setQueryData(['report-doc', 'doc-1'], {
+      id: 'doc-1',
+      title: 'T',
+      layout: baseLayout,
+      status: 'ready',
+    });
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    const next: ReportLayout = { ...baseLayout, accent: '#0f766e' };
+    act(() => result.current.applyLayout(next));
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledWith('doc-1', { layout: next });
+    // toEqual, não toBe: o React Query aplica structural sharing no
+    // setQueryData e reconstrói o objeto reaproveitando sub-referências
+    // deep-equal do valor anterior (ex.: o array `blocks`, inalterado) — o
+    // que importa aqui é que o cache reflita o layout novo, não a
+    // identidade exata do objeto passado a applyLayout.
+    const cached = qc.getQueryData<{ layout: ReportLayout }>(['report-doc', 'doc-1']);
+    expect(cached?.layout).toEqual(next);
   });
 });

@@ -51,19 +51,31 @@ describe('listReportDocs', () => {
 });
 
 describe('updateReportDoc', () => {
-  it('faz update apenas das colunas passadas, filtrado por id', async () => {
-    const eq = vi.fn().mockResolvedValue({ error: null });
+  it('faz update apenas das colunas passadas, filtrado por id, confirmando a linha', async () => {
+    const select = vi.fn().mockResolvedValue({ data: [{ id: 'doc-1' }], error: null });
+    const eq = vi.fn().mockReturnValue({ select });
     const update = vi.fn().mockReturnValue({ eq });
     fromMock.mockReturnValue({ update });
     await updateReportDoc('doc-1', { title: 'Novo título' });
     expect(fromMock).toHaveBeenCalledWith('report_documents');
     expect(update).toHaveBeenCalledWith({ title: 'Novo título' });
     expect(eq).toHaveBeenCalledWith('id', 'doc-1');
+    expect(select).toHaveBeenCalledWith('id');
   });
 
   it('erro do PostgREST vira Error', async () => {
-    const eq = vi.fn().mockResolvedValue({ error: { message: 'boom' } });
+    const select = vi.fn().mockResolvedValue({ data: null, error: { message: 'boom' } });
+    const eq = vi.fn().mockReturnValue({ select });
     fromMock.mockReturnValue({ update: vi.fn().mockReturnValue({ eq }) });
     await expect(updateReportDoc('doc-1', { title: 'x' })).rejects.toThrow('boom');
+  });
+
+  it('0 linhas afetadas (RLS filtrou, ex.: workspace trocado) vira Error mesmo com error: null', async () => {
+    const select = vi.fn().mockResolvedValue({ data: [], error: null });
+    const eq = vi.fn().mockReturnValue({ select });
+    fromMock.mockReturnValue({ update: vi.fn().mockReturnValue({ eq }) });
+    await expect(updateReportDoc('doc-1', { title: 'x' })).rejects.toThrow(
+      'report_document não encontrado para atualização',
+    );
   });
 });
