@@ -64,7 +64,8 @@ BEGIN
     WHERE jsonb_typeof(b) <> 'object'
        OR jsonb_typeof(b -> 'id') IS DISTINCT FROM 'string'
        OR jsonb_typeof(b -> 'type') IS DISTINCT FROM 'string'
-       OR COALESCE(b ->> 'size', 'full') NOT IN ('third', 'half', 'full')
+       OR jsonb_typeof(b -> 'size') IS DISTINCT FROM 'string'
+       OR b ->> 'size' NOT IN ('third', 'half', 'full')
   ) THEN
     RAISE EXCEPTION 'INVALID_LAYOUT';
   END IF;

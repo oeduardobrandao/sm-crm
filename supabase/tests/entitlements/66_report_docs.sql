@@ -81,6 +81,16 @@ begin
     if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
   end;
 
+  -- Trigger de validação: block sem size é rejeitado — size é OBRIGATÓRIO
+  -- (diferente da lógica anterior que fazia COALESCE para 'full').
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-01-01', '2026-01-31', '{"version":1,"blocks":[{"id":"b1","type":"text"}]}'::jsonb);
+    raise exception 'validate_report_layout aceitou block sem size';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+
   insert into report_templates (conta_id, name, layout, is_default)
     values (v_ws_a, 'T1', v_layout, true) returning id into v_tpl_1;
   insert into report_templates (conta_id, name, layout)
