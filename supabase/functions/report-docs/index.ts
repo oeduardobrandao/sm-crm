@@ -5,7 +5,7 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { makeBoundedFetch } from "./bounded-fetch.ts";
-import { parseClientId } from "./client-id.ts";
+import { parseGenerateBody } from "./client-id.ts";
 import { GenerateError, generateReportDocument } from "./generate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -56,15 +56,15 @@ Deno.serve(async (req) => {
       const allowed = await checkRateLimit(serviceClient, `report-docs:${contaId}`, 20, 3600);
       if (!allowed) return json({ error: "Rate limit exceeded" }, 429);
 
-      let body: { clientId?: unknown; month?: unknown };
+      let body: unknown;
       try {
         body = await req.json();
       } catch {
         return json({ error: "invalid_body" }, 400);
       }
-      const clientId = parseClientId(body.clientId);
-      const month = String(body.month ?? "");
-      if (clientId === null) return json({ error: "invalid_body" }, 400);
+      const parsed = parseGenerateBody(body);
+      if (parsed === null) return json({ error: "invalid_body" }, 400);
+      const { clientId, month } = parsed;
 
       const result = await generateReportDocument(
         serviceClient,
