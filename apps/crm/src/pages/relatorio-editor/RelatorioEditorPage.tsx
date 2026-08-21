@@ -1,6 +1,6 @@
 // PR 2: o editor do relatório de blocos. Canvas dnd + drawer + TipTap +
 // autosave. View/print continuam no BlockRenderer do pacote (Hub, PR 3).
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
@@ -30,6 +30,19 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Nenhum dos dois timers sobrevive a um unmount: sem isso, um insert seguido
+  // de navegação dispara o callback depois que jsdom já derrubou a árvore
+  // (scrollIntoView é undefined lá) ou tenta setHighlightId num componente
+  // desmontado, vazando pro próximo arquivo de teste que rodar em seguida.
+  useEffect(
+    () => () => {
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+      if (scrollTimer.current) clearTimeout(scrollTimer.current);
+    },
+    [],
+  );
 
   function handleInsert(type: BlockType) {
     const { layout: next, newId } = insertBlock(layoutRef.current, type);
@@ -37,10 +50,14 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     setHighlightId(newId);
     if (highlightTimer.current) clearTimeout(highlightTimer.current);
     highlightTimer.current = setTimeout(() => setHighlightId(null), 2500);
-    setTimeout(() => {
+    if (scrollTimer.current) clearTimeout(scrollTimer.current);
+    scrollTimer.current = setTimeout(() => {
+      // jsdom não implementa scrollIntoView (undefined no protótipo do
+      // elemento) — o `?.()` opcional no MÉTODO, não só no querySelector,
+      // evita o TypeError que corrompe o próximo arquivo de teste.
       document
         .querySelector(`[data-block-id="${newId}"]`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        ?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
     }, 50);
   }
 
