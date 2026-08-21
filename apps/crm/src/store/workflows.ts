@@ -73,6 +73,14 @@ export async function removeWorkflowTemplate(id: number): Promise<void> {
  * `tipo` (the client-approval flag) only syncs on `pendente` steps — an `ativo` step keeps
  * whatever gate it started with, since Kanban reads it live to decide whether advancing
  * needs client approval, and rewriting it mid-cycle could silently add or remove that gate.
+ *
+ * Also backfills, as `pendente`, any template step whose `ordem` has no matching
+ * workflow_etapas row yet — this is what makes appending a new step to a template (e.g.
+ * adding "Publicação" after "Agendamento") actually reach workflows that were created
+ * before the edit. Without it those workflows just complete at their old final step and
+ * never surface the new one. Never assigns `data_limite` — same as the update path above,
+ * a deadline for the new step is left for the next cycle (data_entrega mode) or unset
+ * (padrao/data_fixa), since there's no delivery date to anchor it to mid-cycle.
  */
 export async function propagateTemplateToWorkflows(
   templateId: number,
@@ -96,6 +104,8 @@ export async function propagateTemplateToWorkflows(
     if (etErr) throw etErr;
     if (!wfEtapas) continue;
 
+    const existingOrdens = new Set(wfEtapas.map((e) => e.ordem));
+
     for (const wfEtapa of wfEtapas) {
       if (wfEtapa.status === 'concluido') continue;
       const tplEtapa = etapas[wfEtapa.ordem];
@@ -115,6 +125,23 @@ export async function propagateTemplateToWorkflows(
         payload.tipo = tplEtapa.tipo ?? 'padrao';
       }
       await supabase.from('workflow_etapas').update(payload).eq('id', wfEtapa.id);
+    }
+
+    for (let ordem = 0; ordem < etapas.length; ordem++) {
+      if (existingOrdens.has(ordem)) continue;
+      const tplEtapa = etapas[ordem];
+      await addWorkflowEtapa({
+        workflow_id: wf.id,
+        ordem,
+        nome: tplEtapa.nome,
+        prazo_dias: tplEtapa.prazo_dias,
+        tipo_prazo: tplEtapa.tipo_prazo,
+        responsavel_id: tplEtapa.responsavel_id ?? null,
+        tipo: tplEtapa.tipo ?? 'padrao',
+        status: 'pendente',
+        iniciado_em: null,
+        concluido_em: null,
+      });
     }
   }
 }
