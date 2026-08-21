@@ -184,4 +184,74 @@ describe('useLayoutAutosave', () => {
     expect(updateMock).toHaveBeenCalledTimes(1);
     expect(updateMock).toHaveBeenCalledWith('doc-1', { layout: pending });
   });
+
+  it('request antigo não sobrescreve edição nova (serialização)', async () => {
+    let resolveA: ((value?: any) => void) | null = null;
+    let resolveB: ((value?: any) => void) | null = null;
+    let callCount = 0;
+
+    updateMock.mockImplementation(
+      () =>
+        new Promise((r) => {
+          callCount++;
+          if (callCount === 1) {
+            resolveA = r;
+          } else if (callCount === 2) {
+            resolveB = r;
+          }
+        }),
+    );
+
+    const { result } = renderHook(() =>
+      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    );
+    const l1: ReportLayout = { ...baseLayout, accent: '#111111' };
+    const l2: ReportLayout = { ...baseLayout, accent: '#222222' };
+
+    // edit1 → timer scheduled
+    act(() => result.current.applyLayout(l1));
+
+    // advance 1500 → request A starts (held open)
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(updateMock).toHaveBeenNthCalledWith(1, 'doc-1', { layout: l1 });
+
+    // edit2 → reschedule timer
+    act(() => result.current.applyLayout(l2));
+
+    // advance 1500 → request B appends to chain (still waiting for A)
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+    });
+    // Chain: B hasn't executed yet because A is still in-flight
+    expect(updateMock).toHaveBeenCalledTimes(1);
+
+    // resolve A → chain moves to B
+    act(() => {
+      resolveA?.();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // NOW B fires with l2
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(updateMock).toHaveBeenNthCalledWith(2, 'doc-1', { layout: l2 });
+
+    // resolve B
+    act(() => {
+      resolveB?.();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Assert: last write is always the most recent edit
+    expect(updateMock.mock.calls.at(-1)?.[1].layout).toBe(l2);
+  });
 });
