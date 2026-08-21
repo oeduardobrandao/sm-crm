@@ -92,7 +92,11 @@ LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.layout IS NULL
      OR jsonb_typeof(NEW.layout) <> 'object'
-     OR jsonb_typeof(NEW.layout -> 'version') <> 'number'
+     -- Versão EXATA (jsonb 1): checar só 'number' aceitaria 1.5, que o
+     -- validateLayout TS rejeita, furando o guard em escrita direta via
+     -- PostgREST. IS DISTINCT FROM cobre a chave ausente (NULL). Um bump
+     -- futuro de LAYOUT_VERSION atualiza este trigger na própria migration.
+     OR (NEW.layout -> 'version') IS DISTINCT FROM to_jsonb(1)
      OR jsonb_typeof(NEW.layout -> 'blocks') <> 'array'
      OR jsonb_array_length(NEW.layout -> 'blocks') > 200 THEN
     RAISE EXCEPTION 'INVALID_LAYOUT';
@@ -239,11 +243,21 @@ begin
   insert into report_documents (conta_id, client_id, period_start, period_end, layout)
     values (v_ws_b, v_cli_b, '2026-07-01', '2026-07-31', v_layout) returning id into v_doc_b;
 
-  -- Trigger de validação: layout sem "version" numérica é rejeitado.
+  -- Trigger de validação: layout sem "version" é rejeitado.
   begin
     insert into report_documents (conta_id, client_id, period_start, period_end, layout)
       values (v_ws_a, v_cli_a, '2026-06-01', '2026-06-30', '{"blocks":[]}'::jsonb);
     raise exception 'validate_report_layout aceitou layout sem version';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+
+  -- Trigger de validação: version não inteira (1.5) é rejeitada — jsonb_typeof
+  -- diria 'number' e furaria o guard; o check é de igualdade exata com 1.
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-05-01', '2026-05-31', '{"version":1.5,"blocks":[]}'::jsonb);
+    raise exception 'validate_report_layout aceitou version 1.5';
   exception when others then
     if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
   end;
@@ -1039,7 +1053,7 @@ Deno.test("assembleSnapshot monta o documento congelado", () => {
     },
     followerTrend: [{ date: "2026-07-01", count: 900 }],
     posts: [{
-      media_type: "REEL", reach: 100, likes: 10, comments: 1, saved: 2,
+      media_type: "REEL", reach: 100, likes: 10, comments: 1, saved: 2, shares: 0,
       caption: "Legenda grande demais".repeat(20), posted_at: "2026-07-10T12:00:00Z",
       permalink: "https://instagram.com/p/x", thumbnail_url: "https://cdninstagram.com/x.jpg",
     }],
@@ -1071,8 +1085,8 @@ Deno.test("thumbnail estável (mapa) entra; carousel e image mapeiam certo", () 
     },
     followerTrend: [],
     posts: [
-      { media_type: "CAROUSEL_ALBUM", reach: 5, likes: 0, comments: 0, saved: 0, caption: "a", posted_at: null, permalink: null, thumbnail_url: "https://cdninstagram.com/a.jpg" },
-      { media_type: "IMAGE", reach: 3, likes: 0, comments: 0, saved: 0, caption: "b", posted_at: null, permalink: null, thumbnail_url: "https://supabase.co/storage/v1/object/public/instagram-posts/1/b.jpg" },
+      { media_type: "CAROUSEL_ALBUM", reach: 5, likes: 0, comments: 0, saved: 0, shares: 0, caption: "a", posted_at: null, permalink: null, thumbnail_url: "https://cdninstagram.com/a.jpg" },
+      { media_type: "IMAGE", reach: 3, likes: 0, comments: 0, saved: 0, shares: 0, caption: "b", posted_at: null, permalink: null, thumbnail_url: "https://supabase.co/storage/v1/object/public/instagram-posts/1/b.jpg" },
     ],
     stableThumbnails: new Map([["https://cdninstagram.com/a.jpg", "https://supabase.co/storage/cached-a.jpg"]]),
     audience: null, bestTimes: [], tagsPerformance: [],
@@ -1146,6 +1160,8 @@ export interface SnapshotPostRow {
   likes: number | null;
   comments: number | null;
   saved: number | null;
+  /** Exigido por KpiSources.allPosts (posts entram lá direto); vem no select("*"). */
+  shares: number | null;
   caption: string | null;
   posted_at: string | null;
   permalink: string | null;
@@ -1520,9 +1536,9 @@ Rode `npm run test:functions -- --filter "snapshotToReportData"` (FAIL antes, PA
 
 - [ ] **Step 2: Escrever `generate.ts` (núcleo com DI, testável) e o teste**
 
-Antes de escrever, ABRA e confirme dois pontos no código real (não confie neste plano):
-1. `supabase/functions/instagram-analytics/index.ts:913-974` — como a rota `/generate-report/:clientId` resolve o `instagram_account_id` a partir do `clientId` (nome exato das colunas/filtros de `instagram_accounts`). Replique o mesmo lookup.
-2. `supabase/functions/instagram-integration/index.ts:470-500` — os nomes de campo usados com `cachePostThumbnail` (id do post e URLs). As linhas de `instagram_posts` têm o mesmo shape.
+Dois fatos de schema já verificados na escrita do plano (fonte: `supabase/migrations/20260301_baseline_schema.sql:171-200`), embutidos no código abaixo:
+1. `instagram_accounts` NÃO tem coluna `conta_id` e tem `UNIQUE(client_id)` — o lookup é por `client_id` apenas; o ownership do workspace vem do check em `clientes` feito antes.
+2. O id do Graph API nas linhas de `instagram_posts` é a coluna `instagram_post_id` — a mesma chave que `instagram-integration` usa no path do cache de thumbnails.
 
 ```ts
 // supabase/functions/report-docs/generate.ts
@@ -1590,11 +1606,12 @@ export async function generateReportDocument(
     throw new GenerateError("feature_disabled");
   }
 
-  // Conta IG do cliente, presa ao workspace. (Confirmado contra o lookup de
-  // instagram-analytics /generate-report — ver Step 2 do plano.)
+  // Conta IG do cliente. instagram_accounts NÃO tem conta_id (baseline
+  // 20260301:171-188): o ownership do workspace já foi provado acima via
+  // clientes.conta_id, e client_id é UNIQUE na tabela — buscar só por ele.
   const { data: account } = await db.from("instagram_accounts")
     .select("*")
-    .eq("client_id", clientId).eq("conta_id", contaId).maybeSingle();
+    .eq("client_id", clientId).maybeSingle();
   if (!account) throw new GenerateError("not_found", "Conta Instagram não conectada");
 
   const igAccountId = account.id;
@@ -1652,9 +1669,10 @@ export async function generateReportDocument(
     const cached = await cachePostThumbnail(
       { fetch: deps.fetch, storage: deps.storage },
       igAccountId,
-      // Campo do id do post confirmado contra instagram-integration (Step 2).
-      (post as unknown as { post_id?: string; id?: string | number }).post_id ??
-        String((post as unknown as { id: string | number }).id),
+      // instagram_posts.instagram_post_id = id do Graph API (baseline
+      // 20260301:194) — a MESMA chave que instagram-integration usa no path do
+      // cache, então URLs já cacheadas são reutilizadas em vez de duplicadas.
+      (post as unknown as { instagram_post_id: string }).instagram_post_id,
       url,
       null,
     );
@@ -3584,4 +3602,5 @@ O review externo do Codex dispara sozinho no `gh pr create` — verificar os ach
 - **Cobertura da spec (escopo PR 1):** §3 modelo de dados → Task 1; §4 layout/validação em 3 camadas → Tasks 1 (trigger), 2 (validador TS), 6 (renderer tolerante); §5 geração/ownership/thumbnails/IA → Tasks 3-5; §6 pacote → Tasks 6-8; §7 catálogo + bases de KPI → Tasks 3, 7-8; §8 editor (parte read-only + rota + vercel) → Task 9-10. Fora do PR 1 por fase: §5 pdf/refresh/delete, §8 edição, §9 Hub/print, §3 RPC usada por UI (RPC já criada na Task 1 para o schema nascer completo).
 - **Divergência consciente da spec:** o dialog de criação do PR 1 não tem seletor de template (a UI de templates é PR 3; a tabela já existe). Registrado na Task 10.
 - **Consistência de tipos:** `ReportLayout/ReportBlock/BlockType/BlockSize` definidos uma vez (Task 2) e reexportados (Task 6); `KpiEntry.value: number | null` respeitado em kpis/snapshot/widgets/ai-input; `SnapshotTopPost.saves` (não `saved`) em todo o pacote; `assembleSnapshot` recebe `SnapshotPostRow[]` com `saved` (nome da coluna do banco) e converte.
-- **Pontos que o implementador DEVE verificar no código real (marcados nas tasks):** lookup de `instagram_accounts` por cliente (Task 5 Step 2), campos do `cachePostThumbnail` (Task 5 Step 2), mapeamento `media_type` (Task 4/snapshot), número livre do teste SQL (Task 1).
+- **Pontos que o implementador DEVE verificar no código real (marcados nas tasks):** mapeamento `media_type` (Task 4/snapshot, conferir contra `instagram-report-generator-v2/index.ts:828-861`), número livre do teste SQL (Task 1). O lookup de `instagram_accounts` (sem `conta_id`, por `client_id` único) e o id de thumbnail (`instagram_post_id`) já foram verificados contra `20260301_baseline_schema.sql` após o review externo do plano.
+- **Correções do review externo (Codex, 2026-08-20) já aplicadas:** trigger valida versão EXATA via `IS DISTINCT FROM to_jsonb(1)` (1.5 furava o guard); `SnapshotPostRow.shares` adicionado (KpiSources exigia e o código não compilava); lookup da conta IG sem o filtro `conta_id` inexistente.
