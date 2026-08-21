@@ -114,4 +114,78 @@ describe('RelatorioEditorPage (editor)', () => {
     renderPage();
     expect(await screen.findByText('Relatório não encontrado.')).toBeInTheDocument();
   });
+
+  // Regressão (defeito a): handleInsert arma um setTimeout de 50ms que chamava
+  // `elemento.scrollIntoView(...)` direto. jsdom não implementa esse método
+  // (fica undefined no protótipo) — o callback atrasado throwava um TypeError
+  // fora de qualquer act()/promise que o teste espera. Com timer REAL isso
+  // costuma passar batido em execução isolada (o elemento some antes dos
+  // 50ms, via cleanup() do RTL entre testes, e o `?.` já existente no
+  // querySelector mascara o throw); é só na suíte completa, com o worker do
+  // vitest processando outro arquivo bem nessa janela, que o TypeError
+  // "vaza" e derruba esse OUTRO arquivo (reproduzido: ExpressPostPage
+  // falhando ~3 de 4 execuções da suíte completa, sem nenhuma relação com
+  // relatórios). Fake timers tornam o defeito determinístico: o elemento
+  // segue montado quando avançamos o relógio, então o callback roda
+  // SINCRONAMENTE dentro do advanceTimersByTime, e um `.scrollIntoView`
+  // sem o `?.()` no método (não só no querySelector) propaga o throw pra
+  // fora da expectativa abaixo.
+  it('scroll do insert não lança no jsdom (sem scrollIntoView nativo)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    getReportDocMock.mockResolvedValue(doc());
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar widget' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Texto livre' }));
+    expect(() => vi.advanceTimersByTime(60)).not.toThrow();
+    vi.useRealTimers();
+  });
+
+  // Regressão (defeito b): nem o scrollTimer nem o highlightTimer eram
+  // limpos no unmount de EditorBody. Uma vez desmontado, o elemento já não
+  // existe (React remove a árvore de imediato), então o `?.` do querySelector
+  // por si só evita o TypeError do scroll neste cenário específico — mas o
+  // handle do setTimeout continua vivo no event loop até disparar sozinho,
+  // e o do highlight chamaria setHighlightId num componente desmontado.
+  // clearTimeout deve ser chamado pros dois assim que o componente some, não
+  // só na hora de um PRÓXIMO insert. Rastreia os IDs pelo delay exato de
+  // CADA um dos dois timers do handleInsert (50ms e 2500ms) em vez de contar
+  // todo clearTimeout que rola no unmount (outras libs no card — Radix
+  // Sheet, dnd-kit, TipTap — podem limpar as próprias, o que tornaria uma
+  // contagem simples frágil e não relacionada ao bug real).
+  it('desmontar após inserir limpa o timer de scroll (50ms) e o de highlight (2500ms)', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    const { unmount } = renderPage();
+    await screen.findByLabelText('Título do relatório');
+
+    const originalSetTimeout = window.setTimeout.bind(window);
+    const originalClearTimeout = window.clearTimeout.bind(window);
+    const armedByDelay = new Map<number, number>();
+    vi.spyOn(window, 'setTimeout').mockImplementation(((cb: TimerHandler, ms?: number) => {
+      const id = originalSetTimeout(cb as () => void, ms) as unknown as number;
+      armedByDelay.set(id, ms ?? 0);
+      return id as unknown as ReturnType<typeof setTimeout>;
+    }) as typeof window.setTimeout);
+    const clearedIds: unknown[] = [];
+    vi.spyOn(window, 'clearTimeout').mockImplementation(((
+      id: Parameters<typeof clearTimeout>[0],
+    ) => {
+      clearedIds.push(id);
+      return originalClearTimeout(id);
+    }) as typeof window.clearTimeout);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar widget' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Texto livre' }));
+
+    const ourTimerIds = [...armedByDelay.entries()]
+      .filter(([, ms]) => ms === 50 || ms === 2500)
+      .map(([id]) => id);
+    expect(ourTimerIds).toHaveLength(2); // scroll (50ms) + highlight (2500ms)
+
+    unmount();
+
+    for (const id of ourTimerIds) {
+      expect(clearedIds).toContain(id);
+    }
+  });
 });
