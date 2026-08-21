@@ -24,6 +24,7 @@ export function useLayoutAutosave(
   const pendingLayout = useRef<ReportLayout | null>(null);
   const docIdRef = useRef(docId);
   const titleRef = useRef(title);
+  const saveChain = useRef<Promise<void>>(Promise.resolve());
 
   docIdRef.current = docId;
   titleRef.current = title;
@@ -34,13 +35,24 @@ export function useLayoutAutosave(
       if (titleTimer.current) clearTimeout(titleTimer.current);
       // Best-effort: edição pendente não morre com a navegação. Sem await
       // (cleanup é síncrono); falha aqui é aceita — o gate de validade se mantém.
+      // Rotas também através da chain para não correr com um save em voo.
       const pending = pendingLayout.current;
       if (pending) {
         const check = validateLayout(pending);
-        if (check.ok) void updateReportDoc(docIdRef.current, { layout: pending }).catch(() => {});
+        if (check.ok) {
+          saveChain.current = saveChain.current
+            .then(async () => {
+              void updateReportDoc(docIdRef.current, { layout: pending }).catch(() => {});
+            })
+            .catch(() => {});
+        }
       }
       if (titleDirty.current) {
-        void updateReportDoc(docIdRef.current, { title: titleRef.current }).catch(() => {});
+        saveChain.current = saveChain.current
+          .then(async () => {
+            void updateReportDoc(docIdRef.current, { title: titleRef.current }).catch(() => {});
+          })
+          .catch(() => {});
       }
     },
     [],
@@ -52,30 +64,32 @@ export function useLayoutAutosave(
     pendingLayout.current = next;
     setSaving(true);
     if (layoutTimer.current) clearTimeout(layoutTimer.current);
-    layoutTimer.current = setTimeout(async () => {
+    layoutTimer.current = setTimeout(() => {
       layoutTimer.current = null;
-      const toSave = pendingLayout.current;
-      pendingLayout.current = null;
-      if (!toSave) {
-        if (pendingLayout.current === null) setSaving(false);
-        return;
-      }
-      const check = validateLayout(toSave);
-      if (!check.ok) {
-        // Bug de layoutOps se chegar aqui: nada de request com payload inválido.
-        console.error('[relatorio-editor] layout inválido no autosave:', check.error);
-        toast.error(SAVE_ERROR_MSG);
-        if (pendingLayout.current === null) setSaving(false);
-        return;
-      }
-      try {
-        await updateReportDoc(docIdRef.current, { layout: toSave });
-      } catch (err) {
-        console.error('[relatorio-editor] autosave falhou:', err);
-        toast.error(SAVE_ERROR_MSG);
-      } finally {
-        if (pendingLayout.current === null) setSaving(false);
-      }
+      saveChain.current = saveChain.current.then(async () => {
+        const toSave = pendingLayout.current;
+        pendingLayout.current = null;
+        if (!toSave) {
+          if (pendingLayout.current === null) setSaving(false);
+          return;
+        }
+        const check = validateLayout(toSave);
+        if (!check.ok) {
+          // Bug de layoutOps se chegar aqui: nada de request com payload inválido.
+          console.error('[relatorio-editor] layout inválido no autosave:', check);
+          toast.error(SAVE_ERROR_MSG);
+          if (pendingLayout.current === null) setSaving(false);
+          return;
+        }
+        try {
+          await updateReportDoc(docIdRef.current, { layout: toSave });
+        } catch (err) {
+          console.error('[relatorio-editor] autosave falhou:', err);
+          toast.error(SAVE_ERROR_MSG);
+        } finally {
+          if (pendingLayout.current === null) setSaving(false);
+        }
+      });
     }, LAYOUT_DEBOUNCE_MS);
   }
 
@@ -83,16 +97,19 @@ export function useLayoutAutosave(
     setTitleState(next);
     titleDirty.current = true;
     if (titleTimer.current) clearTimeout(titleTimer.current);
-    titleTimer.current = setTimeout(async () => {
+    titleTimer.current = setTimeout(() => {
       titleTimer.current = null;
-      if (!titleDirty.current) return;
-      titleDirty.current = false;
-      try {
-        await updateReportDoc(docIdRef.current, { title: next });
-      } catch (err) {
-        console.error('[relatorio-editor] save de título falhou:', err);
-        toast.error(SAVE_ERROR_MSG);
-      }
+      saveChain.current = saveChain.current.then(async () => {
+        if (!titleDirty.current) return;
+        titleDirty.current = false;
+        const toSave = titleRef.current;
+        try {
+          await updateReportDoc(docIdRef.current, { title: toSave });
+        } catch (err) {
+          console.error('[relatorio-editor] save de título falhou:', err);
+          toast.error(SAVE_ERROR_MSG);
+        }
+      });
     }, TITLE_DEBOUNCE_MS);
   }
 
