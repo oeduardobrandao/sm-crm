@@ -21,7 +21,7 @@ export function BestTimesBlock({ snapshot }: BlockProps) {
               borderRadius: 999,
               padding: '0.3rem 0.75rem',
               background: i === 0 ? 'var(--rb-accent)' : 'rgba(0,0,0,0.05)',
-              color: i === 0 ? '#fff' : 'inherit',
+              color: i === 0 ? 'var(--rb-accent-fg)' : 'inherit',
               fontWeight: 600,
             }}
           >

@@ -48,6 +48,7 @@ describe('BlockRenderer', () => {
     );
     const root = container.querySelector('.rb-grid') as HTMLElement;
     expect(root.style.getPropertyValue('--rb-accent')).not.toBe('');
+    expect(root.style.getPropertyValue('--rb-accent-fg')).not.toBe('');
   });
 
   it('widget sem dados: o wrapper existe mas fica vazio (colapsa via CSS)', () => {

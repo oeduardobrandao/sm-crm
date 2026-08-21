@@ -1,5 +1,5 @@
 import type { BlockProps } from '../BlockRenderer';
-import { fmtCount } from '../format';
+import { fmtCount, fmtPct } from '../format';
 
 export function TagsTableBlock({ snapshot }: BlockProps) {
   const rows = snapshot.tags_performance;
@@ -31,7 +31,7 @@ export function TagsTableBlock({ snapshot }: BlockProps) {
               <td style={{ padding: '0.35rem 0', fontWeight: 600 }}>{row.tag}</td>
               <td>{fmtCount(row.count)}</td>
               <td>{fmtCount(row.avg_reach)}</td>
-              <td>{fmtCount(row.avg_engagement)}</td>
+              <td>{fmtPct(row.avg_engagement)}</td>
             </tr>
           ))}
         </tbody>

@@ -124,6 +124,7 @@ describe('TagsTableBlock', () => {
     );
     expect(screen.getByText('Educativo')).toBeInTheDocument();
     expect(screen.getByText('5.100')).toBeInTheDocument();
+    expect(screen.getByText('4,2%')).toBeInTheDocument();
   });
 
   it('sem tags: some', () => {

@@ -64,9 +64,12 @@ export interface BlockRendererProps {
 export function BlockRenderer({ layout, snapshot, mode }: BlockRendererProps) {
   // Override por relatório/template (layout.accent) com fallback na marca do
   // workspace congelada no snapshot; resolveAccent trata inválido/claro demais.
-  const { acc } = resolveAccent(layout.accent ?? snapshot.branding.accent_color);
+  const { acc, accFg } = resolveAccent(layout.accent ?? snapshot.branding.accent_color);
   return (
-    <div className={`rb-grid rb-mode-${mode}`} style={{ ['--rb-accent' as string]: acc }}>
+    <div
+      className={`rb-grid rb-mode-${mode}`}
+      style={{ ['--rb-accent' as string]: acc, ['--rb-accent-fg' as string]: accFg }}
+    >
       {layout.blocks.map((block) => {
         const Component = BLOCK_COMPONENTS[block.type];
         if (!Component) return null;

@@ -7,7 +7,7 @@ export function CoverBlock({ snapshot }: BlockProps) {
       className="rb-cover"
       style={{
         background: 'var(--rb-accent)',
-        color: '#fff',
+        color: 'var(--rb-accent-fg)',
         borderRadius: 12,
         padding: '2.5rem 2rem',
       }}

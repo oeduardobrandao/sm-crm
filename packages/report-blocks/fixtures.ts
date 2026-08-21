@@ -34,9 +34,9 @@ export function makeSnapshotFixture(over: Partial<ReportDocSnapshot> = {}): Repo
       { date: '2026-07-31', count: 12450 },
     ],
     content_breakdown: {
-      reels: { count: 6, avg_reach: 5200, avg_engagement: 260 },
-      carousels: { count: 5, avg_reach: 2900, avg_engagement: 180 },
-      images: { count: 3, avg_reach: 1400, avg_engagement: 90 },
+      reels: { count: 6, avg_reach: 5200, avg_engagement: 0.05 },
+      carousels: { count: 5, avg_reach: 2900, avg_engagement: 0.062 },
+      images: { count: 3, avg_reach: 1400, avg_engagement: 0.064 },
     },
     top_posts: [
       {
@@ -80,7 +80,7 @@ export function makeSnapshotFixture(over: Partial<ReportDocSnapshot> = {}): Repo
       { day: 'Seg', hour: 12, avg_engagement: 210 },
       { day: 'Qua', hour: 19, avg_engagement: 260 },
     ],
-    tags_performance: [{ tag: 'Educativo', avg_engagement: 240, avg_reach: 5100, count: 6 }],
+    tags_performance: [{ tag: 'Educativo', avg_engagement: 4.2, avg_reach: 5100, count: 6 }],
     ...over,
   };
 }
