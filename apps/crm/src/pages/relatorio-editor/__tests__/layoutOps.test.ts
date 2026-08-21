@@ -101,4 +101,25 @@ describe('setLayoutAccent', () => {
   it('SIZE_ORDER é third < half < full', () => {
     expect(SIZE_ORDER).toEqual(['third', 'half', 'full']);
   });
+
+  // Achado C2: o ColorPicker compartilhado tem allowAlpha default true (e um
+  // clique num swatch recente do Estúdio pode injetar 8 dígitos mesmo com
+  // allowAlpha={false} nesta página). #rrggbbaa falha o validateLayout
+  // estrito e o autosave descarta sem retry — TODA edição seguinte falharia
+  // até reload. setLayoutAccent precisa blindar isso.
+  it('accent de 8 dígitos (#rrggbbaa): normaliza para 6 dígitos', () => {
+    const next = setLayoutAccent(layout(), '#0f766eff');
+    expect(next.accent).toBe('#0f766e');
+    expect(validateLayout(next).ok).toBe(true);
+  });
+
+  it('accent inválido (não-hex): layout devolvido é a MESMA referência', () => {
+    const l = layout();
+    expect(setLayoutAccent(l, 'vermelho')).toBe(l);
+  });
+
+  it('accent de 8 dígitos que não normaliza pra 6 hex válidos (garbage): layout inalterado', () => {
+    const l = layout();
+    expect(setLayoutAccent(l, '#zzzzzzzz')).toBe(l);
+  });
 });

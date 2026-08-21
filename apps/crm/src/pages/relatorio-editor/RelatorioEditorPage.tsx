@@ -101,6 +101,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
           value={layout.accent ?? snapshot.branding.accent_color}
           onChange={(hex) => applyLayout(setLayoutAccent(layoutRef.current, hex))}
           brandColors={[snapshot.branding.accent_color]}
+          allowAlpha={false}
           label="Cor"
         />
         {layout.accent && (

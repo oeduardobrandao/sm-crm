@@ -73,10 +73,21 @@ export function updateBlockText(layout: ReportLayout, id: string, text: unknown)
   return { ...layout, blocks };
 }
 
+const HEX8_RE = /^#[0-9a-fA-F]{8}$/;
+const HEX6_RE = /^#[0-9a-fA-F]{6}$/;
+
+// Blindagem defensiva: o ColorPicker compartilhado tem allowAlpha (default
+// true) e um clique num swatch "recente" salvo por outra tela (Estúdio) pode
+// injetar #rrggbbaa aqui mesmo com allowAlpha={false} nesta página. Um accent
+// que falha o validateLayout estrito de #rrggbb nunca deve ENTRAR no layout —
+// o autosave descarta o pending sem retry, e toda edição seguinte falharia
+// até reload (achado C2).
 export function setLayoutAccent(layout: ReportLayout, accent: string | undefined): ReportLayout {
   if (accent === undefined) {
     const { accent: _drop, ...rest } = layout;
     return rest as ReportLayout;
   }
-  return { ...layout, accent };
+  const normalized = HEX8_RE.test(accent) ? accent.slice(0, 7) : accent;
+  if (!HEX6_RE.test(normalized)) return layout;
+  return { ...layout, accent: normalized };
 }

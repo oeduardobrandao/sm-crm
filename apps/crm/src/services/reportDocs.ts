@@ -76,11 +76,24 @@ export async function listReportDocs(clientId: number): Promise<ReportDocListIte
 
 /** Atualiza as únicas colunas com grant de escrita para authenticated
  * (layout, title — ver migration 20260820000010). Qualquer outra coluna
- * falharia com insufficient_privilege. */
+ * falharia com insufficient_privilege.
+ *
+ * `.select('id')` + checagem de linhas é obrigatório: um `.update().eq()` sem
+ * `.select()` filtrado pela RLS (ex.: workspace ativo trocou em outra aba)
+ * devolve `error: null` com 0 linhas afetadas — um no-op silencioso que o
+ * indicador "Salvando…" reportaria como sucesso (achado I3). O throw aqui
+ * entra na mesma retenção-e-retry do useLayoutAutosave. */
 export async function updateReportDoc(
   id: string,
   patch: { layout?: ReportLayout; title?: string },
 ): Promise<void> {
-  const { error } = await supabase.from('report_documents').update(patch).eq('id', id);
+  const { data, error } = await supabase
+    .from('report_documents')
+    .update(patch)
+    .eq('id', id)
+    .select('id');
   if (error) throw new Error(error.message);
+  if (!data || data.length === 0) {
+    throw new Error('report_document não encontrado para atualização');
+  }
 }
