@@ -45,7 +45,7 @@ export async function verifyPrintToken(
   if (!sigBytes || sigBytes.length === 0) return false;
   const key = await hmacKey(secret, ["verify"]);
   // crypto.subtle.verify é comparação em tempo constante.
-  const ok = await crypto.subtle.verify("HMAC", key, sigBytes, enc.encode(payloadB64));
+  const ok = await crypto.subtle.verify("HMAC", key, sigBytes as BufferSource, enc.encode(payloadB64));
   if (!ok) return false;
   const payloadBytes = b64urlDecode(payloadB64);
   if (!payloadBytes) return false;
