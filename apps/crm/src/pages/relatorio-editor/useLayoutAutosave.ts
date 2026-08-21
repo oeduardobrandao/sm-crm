@@ -1,6 +1,7 @@
 // Autosave do editor de blocos, no padrão inline da casa (WorkflowDrawer:448):
 // otimista no estado, saving liga ANTES do debounce, clearTimeout do anterior,
 // validateLayout como gate final antes do PostgREST.
+// Em falha: retém o payload, re-tenta após 5s. Nova edição cancela o retry.
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
@@ -8,6 +9,7 @@ import { updateReportDoc } from '../../services/reportDocs';
 
 const LAYOUT_DEBOUNCE_MS = 1500;
 const TITLE_DEBOUNCE_MS = 400;
+const RETRY_DEBOUNCE_MS = 5000;
 const SAVE_ERROR_MSG = 'Erro ao salvar o relatório';
 
 export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout; title: string }) {
@@ -55,11 +57,7 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
     [],
   );
 
-  function applyLayout(next: ReportLayout) {
-    if (next === layout) return;
-    setLayout(next);
-    pendingLayout.current = next;
-    setSaving(true);
+  function scheduleLayoutFlush(delayMs: number) {
     if (layoutTimer.current) clearTimeout(layoutTimer.current);
     layoutTimer.current = setTimeout(() => {
       layoutTimer.current = null;
@@ -83,16 +81,20 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
         } catch (err) {
           console.error('[relatorio-editor] autosave falhou:', err);
           toast.error(SAVE_ERROR_MSG);
+          // Retém o payload: navegação ainda flusha no unmount, e o retry tenta de
+          // novo. Edição mais nova que chegou durante o request tem prioridade.
+          if (pendingLayout.current === null) {
+            pendingLayout.current = toSave;
+            scheduleLayoutFlush(RETRY_DEBOUNCE_MS);
+          }
         } finally {
           if (pendingLayout.current === null) setSaving(false);
         }
       });
-    }, LAYOUT_DEBOUNCE_MS);
+    }, delayMs);
   }
 
-  function setTitle(next: string) {
-    setTitleState(next);
-    titleDirty.current = true;
+  function scheduleTitleFlush(delayMs: number) {
     if (titleTimer.current) clearTimeout(titleTimer.current);
     titleTimer.current = setTimeout(() => {
       titleTimer.current = null;
@@ -105,9 +107,26 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
         } catch (err) {
           console.error('[relatorio-editor] save de título falhou:', err);
           toast.error(SAVE_ERROR_MSG);
+          // Retém a dirty flag: o retry tenta de novo.
+          titleDirty.current = true;
+          scheduleTitleFlush(RETRY_DEBOUNCE_MS);
         }
       });
-    }, TITLE_DEBOUNCE_MS);
+    }, delayMs);
+  }
+
+  function applyLayout(next: ReportLayout) {
+    if (next === layout) return;
+    setLayout(next);
+    pendingLayout.current = next;
+    setSaving(true);
+    scheduleLayoutFlush(LAYOUT_DEBOUNCE_MS);
+  }
+
+  function setTitle(next: string) {
+    setTitleState(next);
+    titleDirty.current = true;
+    scheduleTitleFlush(TITLE_DEBOUNCE_MS);
   }
 
   return { layout, applyLayout, title, setTitle, saving };

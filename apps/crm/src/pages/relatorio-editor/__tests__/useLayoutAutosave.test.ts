@@ -89,19 +89,23 @@ describe('useLayoutAutosave', () => {
     expect(toastErrorMock).toHaveBeenCalledWith('Erro ao salvar o relatório');
   });
 
-  it('falha do request: toast de erro e saving desliga', async () => {
+  it('falha do request: retém edição para retry, saving fica true', async () => {
     updateMock.mockRejectedValueOnce(new Error('rede'));
     const { result } = renderHook(() =>
       useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
     );
-    act(() => result.current.applyLayout({ ...baseLayout, accent: '#333333' }));
+    const layout = { ...baseLayout, accent: '#333333' };
+    act(() => result.current.applyLayout(layout));
     await act(async () => {
       vi.advanceTimersByTime(1500);
       await Promise.resolve();
       await Promise.resolve();
     });
     expect(toastErrorMock).toHaveBeenCalledWith('Erro ao salvar o relatório');
-    expect(result.current.saving).toBe(false);
+    // Payload retido → saving continua true até que o retry suceda
+    expect(result.current.saving).toBe(true);
+    // Retry agendado (5000ms)
+    expect(updateMock).toHaveBeenCalledTimes(1);
   });
 
   it('setTitle persiste após 400ms com dirty ref', async () => {
@@ -257,5 +261,65 @@ describe('useLayoutAutosave', () => {
 
     // Assert: last write is always the most recent edit
     expect(updateMock.mock.calls.at(-1)?.[1].layout).toBe(l2);
+  });
+
+  it('falha transitória não perde a edição: retém e re-tenta', async () => {
+    updateMock.mockRejectedValueOnce(new Error('timeout'));
+    updateMock.mockResolvedValueOnce(undefined);
+    const { result } = renderHook(() =>
+      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    );
+    const layout = { ...baseLayout, accent: '#444444' };
+
+    // edit → advance 1500 (request fails, toast)
+    act(() => result.current.applyLayout(layout));
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(toastErrorMock).toHaveBeenCalledWith('Erro ao salvar o relatório');
+    // Payload retido → saving continua true
+    expect(result.current.saving).toBe(true);
+
+    // advance 5000 (retry fires)
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(updateMock).toHaveBeenLastCalledWith('doc-1', { layout });
+    expect(result.current.saving).toBe(false);
+  });
+
+  it('falha seguida de unmount ainda flusha o payload retido', async () => {
+    updateMock.mockRejectedValueOnce(new Error('rede'));
+    const { result, unmount } = renderHook(() =>
+      useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+    );
+    const layout = { ...baseLayout, accent: '#666666' };
+
+    // edit → advance 1500 (request fails)
+    act(() => result.current.applyLayout(layout));
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(result.current.saving).toBe(true); // Payload retido
+
+    // unmount → appends flush through chain
+    unmount();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Unmount flush chamado além do failed request
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(updateMock).toHaveBeenNthCalledWith(2, 'doc-1', { layout });
   });
 });
