@@ -5,8 +5,9 @@ export type {
   BlockType,
   ReportBlock,
   ReportLayout,
+  ValidateLayoutResult,
 } from '../../supabase/functions/_shared/report-docs/layout';
-export { BLOCK_TYPES, TEXT_BLOCK_TYPES } from '../../supabase/functions/_shared/report-docs/layout';
+export { BLOCK_TYPES, TEXT_BLOCK_TYPES, validateLayout } from '../../supabase/functions/_shared/report-docs/layout';
 export type {
   ReportDocSnapshot,
   SnapshotBranding,
