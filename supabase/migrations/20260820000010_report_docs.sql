@@ -55,15 +55,15 @@ BEGIN
      -- PostgREST. IS DISTINCT FROM cobre a chave ausente (NULL). Um bump
      -- futuro de LAYOUT_VERSION atualiza este trigger na própria migration.
      OR (NEW.layout -> 'version') IS DISTINCT FROM to_jsonb(1)
-     OR jsonb_typeof(NEW.layout -> 'blocks') <> 'array'
+     OR jsonb_typeof(NEW.layout -> 'blocks') IS DISTINCT FROM 'array'
      OR jsonb_array_length(NEW.layout -> 'blocks') > 200 THEN
     RAISE EXCEPTION 'INVALID_LAYOUT';
   END IF;
   IF EXISTS (
     SELECT 1 FROM jsonb_array_elements(NEW.layout -> 'blocks') AS b
     WHERE jsonb_typeof(b) <> 'object'
-       OR jsonb_typeof(b -> 'id') <> 'string'
-       OR jsonb_typeof(b -> 'type') <> 'string'
+       OR jsonb_typeof(b -> 'id') IS DISTINCT FROM 'string'
+       OR jsonb_typeof(b -> 'type') IS DISTINCT FROM 'string'
        OR COALESCE(b ->> 'size', 'full') NOT IN ('third', 'half', 'full')
   ) THEN
     RAISE EXCEPTION 'INVALID_LAYOUT';

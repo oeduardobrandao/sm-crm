@@ -53,6 +53,34 @@ begin
     if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
   end;
 
+  -- Trigger de validação: blocks ausente é rejeitado — IS DISTINCT FROM
+  -- é NULL-safe, diferente de <>.
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-04-01', '2026-04-30', '{"version":1}'::jsonb);
+    raise exception 'validate_report_layout aceitou layout sem blocks';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+
+  -- Trigger de validação: block sem id é rejeitado.
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-03-01', '2026-03-31', '{"version":1,"blocks":[{"type":"text","size":"full"}]}'::jsonb);
+    raise exception 'validate_report_layout aceitou block sem id';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+
+  -- Trigger de validação: block sem type é rejeitado.
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-02-01', '2026-02-28', '{"version":1,"blocks":[{"id":"b1","size":"full"}]}'::jsonb);
+    raise exception 'validate_report_layout aceitou block sem type';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+
   insert into report_templates (conta_id, name, layout, is_default)
     values (v_ws_a, 'T1', v_layout, true) returning id into v_tpl_1;
   insert into report_templates (conta_id, name, layout)
