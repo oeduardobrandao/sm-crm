@@ -10,6 +10,8 @@ import { DocActionError } from "./errors.ts";
 import { GenerateError, generateReportDocument } from "./generate.ts";
 import { refreshReportDocument } from "./refresh.ts";
 import { deleteReportDocument } from "./delete-doc.ts";
+import { exportReportPdf } from "./pdf.ts";
+import { convertUrlToPdf } from "../_shared/report-template/pdf-url.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -99,7 +101,21 @@ Deno.serve(async (req) => {
         await deleteReportDocument(serviceClient, serviceClient.storage, contaId, docId);
         return json({ ok: true });
       }
-      // POST /:id/pdf chega na Task 5.
+      if (req.method === "POST" && action === "pdf") {
+        const allowed = await checkRateLimit(serviceClient, `report-docs-pdf:${contaId}`, 30, 3600);
+        if (!allowed) return json({ error: "Rate limit exceeded" }, 429);
+        const result = await exportReportPdf(serviceClient, {
+          convert: convertUrlToPdf,
+          storage: serviceClient.storage,
+          now: () => new Date(),
+          env: {
+            gotenbergUrl: Deno.env.get("GOTENBERG_URL") ?? "",
+            printBase: Deno.env.get("REPORT_PRINT_BASE") ?? "",
+            internalSecret: Deno.env.get("INTERNAL_FUNCTION_SECRET") ?? "",
+          },
+        }, contaId, docId);
+        return json(result);
+      }
     }
 
     return new Response("Not Found", { status: 404, headers: corsHeaders });
