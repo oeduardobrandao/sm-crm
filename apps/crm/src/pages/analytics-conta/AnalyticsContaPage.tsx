@@ -82,6 +82,7 @@ import {
   type AnalyticsReport,
 } from '../../services/analytics';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
+import { listReportDocs } from '../../services/reportDocs';
 import { openExternalUrl, sanitizeUrl } from '../../utils/security';
 import {
   formatRate,
@@ -92,6 +93,7 @@ import {
 } from '../../lib/ig-rates';
 import { captureEvent } from '@/lib/analytics';
 import { InstagramPostCarousel } from '@/components/instagram/InstagramPostCarousel';
+import { NewReportDialog } from './components/NewReportDialog';
 
 Chart.register(...registerables);
 
@@ -1012,6 +1014,7 @@ function AnalyticsContent({
   const [sendingEmail, setSendingEmail] = useState(false);
   const [generateIncludeAI, setGenerateIncludeAI] = useState(true);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [newReportOpen, setNewReportOpen] = useState(false);
   // Which report row is currently being downloaded, so only that row spins.
   const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
 
@@ -1064,6 +1067,10 @@ function AnalyticsContent({
       if (reports?.some((r) => r.status === 'pending' || r.status === 'generating')) return 10000;
       return false;
     },
+  });
+  const { data: reportDocs = [] } = useQuery({
+    queryKey: ['report-docs', clientId],
+    queryFn: () => listReportDocs(clientId),
   });
   const { data: demoRes } = useQuery({
     queryKey: ['analytics-demo', clientId],
@@ -2209,6 +2216,50 @@ function AnalyticsContent({
         </div>
       </div>
 
+      {/* Relatórios interativos (novo formato) */}
+      <div className="card animate-up">
+        <div
+          className="dashboard-hub-card-header"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+        >
+          <h3>Relatórios Interativos</h3>
+          <Button variant="outline" size="sm" onClick={() => setNewReportOpen(true)}>
+            <Plus className="h-3.5 w-3.5" /> Novo relatório
+          </Button>
+        </div>
+        <div style={{ marginTop: '1rem' }}>
+          {reportDocs.length === 0 && (
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              Nenhum relatório interativo ainda. Clique em "Novo relatório" para criar o primeiro.
+            </p>
+          )}
+          {reportDocs.map((doc) => (
+            <div
+              key={doc.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.5rem 0',
+                borderBottom: '1px solid var(--border-color,rgba(0,0,0,0.06))',
+              }}
+            >
+              <div>
+                <strong>{doc.title}</strong>
+                <span
+                  style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}
+                >
+                  {new Date(doc.created_at).toLocaleDateString('pt-BR')}
+                </span>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => navigate(`/relatorios/${doc.id}`)}>
+                Abrir
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Reports */}
       <div className="card animate-up">
         <div
@@ -2730,6 +2781,8 @@ function AnalyticsContent({
           </div>
         </SheetContent>
       </Sheet>
+
+      <NewReportDialog open={newReportOpen} onOpenChange={setNewReportOpen} clientId={clientId} />
     </div>
   );
 }
