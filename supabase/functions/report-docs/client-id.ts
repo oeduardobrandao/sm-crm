@@ -11,10 +11,23 @@ export function parseClientId(value: unknown): number | null {
 // externo do index.ts converte num 500 genérico em vez do 400 invalid_body
 // pretendido. Este guard centraliza o narrowing para não repetir a checagem
 // `typeof body !== "object" || body === null` em cada chamador.
-export function parseGenerateBody(raw: unknown): { clientId: number; month: string } | null {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function parseGenerateBody(
+  raw: unknown,
+): { clientId: number; month: string; templateId: string | null } | null {
   if (typeof raw !== "object" || raw === null) return null;
-  const { clientId, month } = raw as { clientId?: unknown; month?: unknown };
+  const { clientId, month, templateId } = raw as {
+    clientId?: unknown;
+    month?: unknown;
+    templateId?: unknown;
+  };
   const parsedClientId = parseClientId(clientId);
   if (parsedClientId === null) return null;
-  return { clientId: parsedClientId, month: String(month ?? "") };
+  let parsedTemplate: string | null = null;
+  if (templateId !== undefined && templateId !== null) {
+    if (typeof templateId !== "string" || !UUID_RE.test(templateId)) return null;
+    parsedTemplate = templateId;
+  }
+  return { clientId: parsedClientId, month: String(month ?? ""), templateId: parsedTemplate };
 }

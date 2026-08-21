@@ -17,18 +17,16 @@ import {
 } from "../_shared/report-docs/tiptap-doc.ts";
 import { snapshotToReportData } from "../_shared/report-docs/ai-input.ts";
 import type { TagPerformance } from "../_shared/report-template/types.ts";
+import { validateLayout, type ReportLayout } from "../_shared/report-docs/layout.ts";
+import { GenerateError } from "./errors.ts";
+
+export { GenerateError } from "./errors.ts";
 
 export interface GenerateDeps {
   fetch: typeof fetch;
   storage: ThumbnailStorage;
   geminiKey: string;
   userId: string;
-}
-
-export class GenerateError extends Error {
-  constructor(public code: "not_found" | "bad_month" | "feature_disabled", msg?: string) {
-    super(msg ?? code);
-  }
 }
 
 // deno-lint-ignore no-explicit-any
@@ -40,6 +38,7 @@ export async function generateReportDocument(
   contaId: string,
   clientId: number,
   month: string,
+  templateId: string | null,
 ): Promise<{ id: string }> {
   // Mês válido e não futuro.
   const now = new Date();
@@ -60,6 +59,28 @@ export async function generateReportDocument(
 
   if (!(await effectivePlanFeature(db, contaId, "feature_analytics_reports"))) {
     throw new GenerateError("feature_disabled");
+  }
+
+  // Layout base: template explícito > default do workspace > padrão do sistema
+  // (spec §5 passo 3). Template explícito inválido é erro do request; default
+  // inválido só degrada com warn (o usuário não pediu esse template pelo nome).
+  let templateLayout: ReportLayout | null = null;
+  if (templateId) {
+    const { data: tpl } = await db.from("report_templates")
+      .select("id, conta_id, layout").eq("id", templateId).maybeSingle();
+    if (!tpl || tpl.conta_id !== contaId) throw new GenerateError("not_found");
+    const check = validateLayout(tpl.layout);
+    if (!check.ok) throw new GenerateError("invalid_template");
+    templateLayout = check.layout;
+  } else {
+    const { data: tpl } = await db.from("report_templates")
+      .select("id, conta_id, layout").eq("conta_id", contaId)
+      .eq("is_default", true).maybeSingle();
+    if (tpl) {
+      const check = validateLayout(tpl.layout);
+      if (check.ok) templateLayout = check.layout;
+      else console.warn("[report-docs] template default com layout inválido; usando o padrão do sistema");
+    }
   }
 
   // Conta IG do cliente. instagram_accounts NÃO tem conta_id (baseline
@@ -235,15 +256,17 @@ export async function generateReportDocument(
   // (wantsAi): se a IA falhar ou GEMINI_API_KEY faltar, recsDoc/goalsDoc
   // ficam null e fillAiBlocks remove os blocos -- usar wantsAi aqui deixaria
   // um "Próximos passos" órfão, sem nenhum bloco de conteúdo embaixo.
-  const layout = fillAiBlocks(
-    buildDefaultLayout({
-      hasAi: recsDoc !== null,
-      hasAudience: snapshot.audience !== null,
-      hasBestTimes: snapshot.best_times.length > 0,
-      hasTags: snapshot.tags_performance.length > 0,
-    }),
-    { summary: summaryDoc, recommendations: recsDoc, goals: goalsDoc },
-  );
+  // Só entra no fallback do padrão do sistema quando não há template
+  // (explícito ou default) válido.
+  const baseLayout = templateLayout ?? buildDefaultLayout({
+    hasAi: recsDoc !== null,
+    hasAudience: snapshot.audience !== null,
+    hasBestTimes: snapshot.best_times.length > 0,
+    hasTags: snapshot.tags_performance.length > 0,
+  });
+  const layout = fillAiBlocks(baseLayout, {
+    summary: summaryDoc, recommendations: recsDoc, goals: goalsDoc,
+  });
 
   const { data: inserted, error: insertError } = await db.from("report_documents")
     .insert({
