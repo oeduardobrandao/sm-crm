@@ -122,16 +122,30 @@ begin
   end;
 
   -- Hardening PR3: layout válido COM accent e text em bloco ai_ passa.
-  insert into report_documents (conta_id, client_id, period_start, period_end, layout)
-    values (v_ws_a, v_cli_a, '2026-02-01', '2026-02-28',
-      '{"version":1,"accent":"#9f1239","blocks":[{"id":"a1","type":"ai_summary","size":"full","text":{"type":"doc"}}]}'::jsonb);
+  declare
+    v_doc_valid uuid;
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-02-01', '2026-02-28',
+        '{"version":1,"accent":"#9f1239","blocks":[{"id":"a1","type":"ai_summary","size":"full","text":{"type":"doc"}}]}'::jsonb)
+      returning id into v_doc_valid;
+    -- Cleanup: a inserção é prova de que accent+text passam; deletar antes das assertions de RLS
+    delete from report_documents where id = v_doc_valid;
+  end;
 
   -- Bump condicional: update de layout bumpa updated_at; update de pdf_* NÃO.
+  -- Postgres now() é transaction_timestamp() (congelado por transação), então não podemos
+  -- contar com tempo passando. Ao invés, movemos updated_at pra trás, verificamos o bump
+  -- forward no layout update, e verificamos igualdade exata no pdf_* update.
   declare
     v_t0 timestamptz; v_t1 timestamptz; v_t2 timestamptz;
   begin
+    -- Mover updated_at pra trás: o trigger condicional não sobrescreve porque
+    -- nenhuma coluna de conteúdo muda. (Isso é também uma prova extra de que o trigger funciona.)
+    update report_documents set updated_at = updated_at - interval '1 hour' where id = v_doc_a;
     select updated_at into v_t0 from report_documents where id = v_doc_a;
-    perform pg_sleep(0.01);
+
+    -- Update de layout: deve fazer bump
     update report_documents
        set layout = '{"version":1,"blocks":[{"id":"b2","type":"divider","size":"full"}]}'::jsonb
      where id = v_doc_a;
@@ -139,6 +153,8 @@ begin
     if v_t1 <= v_t0 then
       raise exception 'update de layout não bumpou updated_at';
     end if;
+
+    -- Update de pdf_*: não deve fazer bump (igualdade exata em transação)
     update report_documents
        set pdf_storage_path = 'docs/x/y.pdf', pdf_generated_at = now(), pdf_renderer_version = 1
      where id = v_doc_a;
