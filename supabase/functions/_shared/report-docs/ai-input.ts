@@ -19,7 +19,7 @@ export function snapshotToReportData(snap: ReportDocSnapshot): ReportData {
     top_posts: snap.top_posts.map((post) => ({
       type: post.type,
       reach: post.reach,
-      engagement: post.likes + post.comments + post.saves,
+      engagement: post.likes + post.comments + post.saves + post.shares,
       saves: post.saves,
       likes: post.likes,
       comments: post.comments,

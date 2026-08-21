@@ -15,7 +15,7 @@ Deno.test("assembleSnapshot monta o documento congelado", () => {
     },
     followerTrend: [{ date: "2026-07-01", count: 900 }],
     posts: [{
-      media_type: "REEL", reach: 100, likes: 10, comments: 1, saved: 2, shares: 0,
+      media_type: "REEL", reach: 100, likes: 10, comments: 1, saved: 2, shares: 4,
       caption: "Legenda grande demais".repeat(20), posted_at: "2026-07-10T12:00:00Z",
       permalink: "https://instagram.com/p/x", thumbnail_url: "https://cdninstagram.com/x.jpg",
     }],
@@ -30,12 +30,15 @@ Deno.test("assembleSnapshot monta o documento congelado", () => {
   assertEquals(snap.kpis.reach.value, 100);
   assertEquals(snap.top_posts.length, 1);
   assertEquals(snap.top_posts[0].type, "reel");
+  // shares flui de SnapshotPostRow pra SnapshotTopPost (não fica de fora, como
+  // acontecia antes do fix de paridade com o engagement agregado).
+  assertEquals(snap.top_posts[0].shares, 4);
   // URL efêmera do CDN NUNCA entra no snapshot (spec §5).
   assertEquals(snap.top_posts[0].thumbnail_url, null);
   assert(snap.top_posts[0].caption_preview.length <= 140);
   assertEquals(snap.content_breakdown.reels?.count, 1);
-  // Engagement rate: (10 + 1 + 2 + 0) / 100 = 0.13
-  assertEquals(snap.content_breakdown.reels?.avg_engagement, 0.13);
+  // Engagement rate: (10 + 1 + 2 + 4) / 100 = 0.17
+  assertEquals(snap.content_breakdown.reels?.avg_engagement, 0.17);
 });
 
 Deno.test("thumbnail estável (mapa) entra; carousel e image mapeiam certo", () => {

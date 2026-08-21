@@ -19,7 +19,7 @@ const snap: ReportDocSnapshot = {
   },
   follower_trend: [{ date: "2026-07-01", count: 990 }],
   content_breakdown: { reels: { count: 3, avg_reach: 100, avg_engagement: 10 } },
-  top_posts: [{ type: "reel", reach: 100, likes: 5, comments: 1, saves: 2, caption_preview: "c", date: null, permalink: null, thumbnail_url: "https://x/y.jpg" }],
+  top_posts: [{ type: "reel", reach: 100, likes: 5, comments: 1, saves: 2, shares: 3, caption_preview: "c", date: null, permalink: null, thumbnail_url: "https://x/y.jpg" }],
   audience: null,
   best_times: [],
   tags_performance: [],
@@ -33,6 +33,6 @@ Deno.test("snapshotToReportData traduz período, kpis e posts sem thumbnails", (
   assertEquals(rd.kpis.followers_gained.prev, 5);
   // KPI sem valor (null) fica de fora do prompt em vez de virar 0 falso.
   assert(!("profile_views" in rd.kpis));
-  assertEquals(rd.top_posts[0].engagement, 8); // likes+comments+saves
+  assertEquals(rd.top_posts[0].engagement, 11); // likes+comments+saves+shares
   assert(!("thumbnail_base64" in rd.top_posts[0]));
 });

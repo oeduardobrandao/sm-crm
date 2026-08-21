@@ -21,6 +21,7 @@ export interface SnapshotTopPost {
   likes: number;
   comments: number;
   saves: number;
+  shares: number;
   caption_preview: string;
   date: string | null;
   permalink: string | null;
@@ -132,6 +133,7 @@ export function assembleSnapshot(input: SnapshotInput): ReportDocSnapshot {
       likes: p.likes ?? 0,
       comments: p.comments ?? 0,
       saves: p.saved ?? 0,
+      shares: p.shares ?? 0,
       caption_preview: (p.caption ?? "").slice(0, CAPTION_PREVIEW_MAX),
       date: p.posted_at,
       permalink: p.permalink,
