@@ -378,4 +378,112 @@ describe('useLayoutAutosave', () => {
     const cached = qc.getQueryData<{ layout: ReportLayout }>(['report-doc', 'doc-1']);
     expect(cached?.layout).toEqual(next);
   });
+
+  // Achado externo P1 (review do PR): a cadeia de save era um useRef — morria
+  // com a instância. Navegar para fora (flush de unmount em voo) e reabrir o
+  // mesmo doc criava uma cadeia NOVA, e o save da remontagem corria com o
+  // flush antigo: o request antigo podia sobrescrever a edição mais nova.
+  // Fix: cadeia por documento no escopo do módulo — a remontagem herda a fila.
+  it('flush de unmount serializa com os saves da remontagem do mesmo doc', async () => {
+    let resolveA: ((value?: unknown) => void) | null = null;
+    let callCount = 0;
+    updateMock.mockImplementation(
+      () =>
+        new Promise((r) => {
+          callCount++;
+          if (callCount === 1) resolveA = r;
+          else r(undefined);
+        }),
+    );
+
+    // Instância A: edita e desmonta antes do debounce → flush em voo (aberto)
+    const first = renderHook(
+      () => useLayoutAutosave('doc-remount', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    const lA: ReportLayout = { ...baseLayout, accent: '#111111' };
+    act(() => first.result.current.applyLayout(lA));
+    first.unmount();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(updateMock).toHaveBeenNthCalledWith(1, 'doc-remount', { layout: lA });
+
+    // Instância B (remontagem imediata): edita → o save espera o flush de A
+    const second = renderHook(() => useLayoutAutosave('doc-remount', { layout: lA, title: 'T' }), {
+      wrapper,
+    });
+    const lB: ReportLayout = { ...baseLayout, accent: '#222222' };
+    act(() => second.result.current.applyLayout(lB));
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(1); // B enfileirado atrás de A
+
+    // A resolve → só então B dispara, com a edição mais nova por último
+    act(() => {
+      resolveA?.();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(updateMock).toHaveBeenLastCalledWith('doc-remount', { layout: lB });
+  });
+
+  // Mesma classe do achado: a remontagem lê a query ['report-doc', id]
+  // (staleTime: Infinity, sem refetch) DURANTE o flush em voo. Sem o write
+  // otimista no cleanup, o editor renasceria PRÉ-edição e o próximo save
+  // perderia o payload em voo mesmo com os requests em ordem.
+  it('unmount com edição pendente escreve layout e título no cache antes do request completar', async () => {
+    const resolvers: Array<(value?: unknown) => void> = [];
+    updateMock.mockImplementation(
+      () =>
+        new Promise((r) => {
+          resolvers.push(r);
+        }),
+    );
+    qc.setQueryData(['report-doc', 'doc-cache'], {
+      id: 'doc-cache',
+      title: 'T',
+      layout: baseLayout,
+      status: 'ready',
+    });
+    const { result, unmount } = renderHook(
+      () => useLayoutAutosave('doc-cache', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    const pending: ReportLayout = { ...baseLayout, accent: '#555555' };
+    act(() => {
+      result.current.applyLayout(pending);
+      result.current.setTitle('Relatório de Maio');
+    });
+    unmount();
+
+    // Sem resolver o request: o cache já reflete a edição — é o que uma
+    // remontagem imediata vai ler.
+    const cached = qc.getQueryData<{ layout: ReportLayout; title: string }>([
+      'report-doc',
+      'doc-cache',
+    ]);
+    expect(cached?.layout).toEqual(pending);
+    expect(cached?.title).toBe('Relatório de Maio');
+
+    // Drena a cadeia para não vazar request aberto para outros testes: o
+    // flush do layout está em voo; o do título entra na fila atrás dele.
+    await act(async () => {
+      resolvers.shift()?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      resolvers.shift()?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  });
 });
