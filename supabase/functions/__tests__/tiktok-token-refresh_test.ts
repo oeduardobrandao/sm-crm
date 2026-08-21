@@ -385,6 +385,165 @@ Deno.test("getFreshTikTokToken: lock is released via finally when the refresh ca
 // so the next refresh would present the now-dead old refresh token and get invalid_grant,
 // permanently bricking the account. This regression test locks in that persist errors reject.
 
+// ── 9. Prod-PostgREST or-filter + lock-ownership regressions ────────────────────
+//
+// Reproduced empirically against prod on 2026-08-20: prod's PostgREST resolves columns named
+// inside an `or=()` filter of an UPDATE against the `?select=` projection, so the claim's
+// `.or("refresh_lock_at...")` raised `42703 column tiktok_accounts.refresh_lock_at does not
+// exist` on EVERY refresh (staging's PostgREST version does not do this — which is why the
+// mocked suite alone can never catch it). The contract pinned here: the claim projection MUST
+// carry `refresh_lock_at`, and every lock write-back MUST be ownership-guarded on the exact
+// claim timestamp so a process that outlived the 60s stale window cannot null a newer claim.
+
+Deno.test("getFreshTikTokToken: claim projection includes refresh_lock_at (prod or-filter 42703)", async () => {
+  const db = createSupabaseQueryMock();
+  const encOldRefresh = await encryptTikTokToken("old-refresh-token", "refresh");
+  db.queue("tiktok_accounts", "select", {
+    data: {
+      id: ACCOUNT_ID,
+      tiktok_open_id: "open-1",
+      encrypted_access_token: "irrelevant",
+      access_token_expires_at: isoInMinutes(1),
+    },
+  });
+  db.queue("tiktok_accounts", "update", {
+    data: { id: ACCOUNT_ID, encrypted_refresh_token: encOldRefresh, tiktok_open_id: "open-1" },
+  });
+  db.queue("tiktok_accounts", "update", { data: null }); // persist
+
+  const f = stubSuccessfulRefresh();
+  try {
+    await getFreshTikTokToken(db as never, ACCOUNT_ID);
+    const claimCall = db.calls.filter((c) => c.table === "tiktok_accounts" && c.operation === "update")[0];
+    assert(
+      claimCall.modifiers.some((m) => m.method === "or"),
+      "claim must stay an atomic or-filtered UPDATE",
+    );
+    const projection = claimCall.selectArgs.flat().join(",");
+    assert(
+      projection.includes("refresh_lock_at"),
+      `claim .select() must project refresh_lock_at (prod PostgREST resolves or-filter columns against the projection); got: ${projection}`,
+    );
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("getFreshTikTokToken: finally release is ownership-guarded on the claim timestamp", async () => {
+  const db = createSupabaseQueryMock();
+  const encOldRefresh = await encryptTikTokToken("old-refresh-token", "refresh");
+  db.queue("tiktok_accounts", "select", {
+    data: {
+      id: ACCOUNT_ID,
+      tiktok_open_id: "open-1",
+      encrypted_access_token: "irrelevant",
+      access_token_expires_at: isoInMinutes(1),
+    },
+  });
+  db.queue("tiktok_accounts", "update", {
+    data: { id: ACCOUNT_ID, encrypted_refresh_token: encOldRefresh, tiktok_open_id: "open-1" },
+  });
+  db.queue("tiktok_accounts", "update", { data: null }); // finally's release
+
+  const f = stubFetch(() =>
+    Promise.resolve(
+      new Response(JSON.stringify({ error: "server_error", error_description: "boom", log_id: "log-3" }), {
+        status: 500,
+      }),
+    )
+  );
+  try {
+    await assertRejects(() => getFreshTikTokToken(db as never, ACCOUNT_ID), TikTokApiError);
+    const updateCalls = db.calls.filter((c) => c.table === "tiktok_accounts" && c.operation === "update");
+    assertEquals(updateCalls.length, 2, "claim update + finally release update");
+    const claimedAt = (updateCalls[0].payload as Record<string, unknown>).refresh_lock_at;
+    assert(typeof claimedAt === "string", "claim must stamp an ISO refresh_lock_at");
+    const releaseEqs = updateCalls[1].modifiers.filter((m) => m.method === "eq");
+    assert(
+      releaseEqs.some((m) => m.args[0] === "refresh_lock_at" && m.args[1] === claimedAt),
+      "release must be conditioned on the exact claim timestamp so it can never null a newer claim",
+    );
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("getFreshTikTokToken: invalid_grant expire write is ownership-guarded on the claim timestamp", async () => {
+  const db = createSupabaseQueryMock();
+  const encOldRefresh = await encryptTikTokToken("dead-refresh-token", "refresh");
+  db.queue("tiktok_accounts", "select", {
+    data: {
+      id: ACCOUNT_ID,
+      tiktok_open_id: "open-1",
+      encrypted_access_token: "irrelevant",
+      access_token_expires_at: isoInMinutes(1),
+    },
+  });
+  db.queue("tiktok_accounts", "update", {
+    data: { id: ACCOUNT_ID, encrypted_refresh_token: encOldRefresh, tiktok_open_id: "open-1" },
+  });
+  db.queue("tiktok_accounts", "update", { data: null }); // expire write
+
+  const f = stubFetch(() =>
+    Promise.resolve(
+      new Response(JSON.stringify({ error: "invalid_grant", error_description: "gone", log_id: "log-4" }), {
+        status: 400,
+      }),
+    )
+  );
+  try {
+    await assertRejects(() => getFreshTikTokToken(db as never, ACCOUNT_ID), TikTokApiError);
+    const updateCalls = db.calls.filter((c) => c.table === "tiktok_accounts" && c.operation === "update");
+    const claimedAt = (updateCalls[0].payload as Record<string, unknown>).refresh_lock_at;
+    const expireEqs = updateCalls[1].modifiers.filter((m) => m.method === "eq");
+    assert(
+      expireEqs.some((m) => m.args[0] === "refresh_lock_at" && m.args[1] === claimedAt),
+      "expire write must be conditioned on the claim timestamp (a lost lock means the new claimant marks expiry)",
+    );
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("getFreshTikTokToken: invalid_grant expire write FAILING still attempts the finally release", async () => {
+  const db = createSupabaseQueryMock();
+  const encOldRefresh = await encryptTikTokToken("dead-refresh-token", "refresh");
+  db.queue("tiktok_accounts", "select", {
+    data: {
+      id: ACCOUNT_ID,
+      tiktok_open_id: "open-1",
+      encrypted_access_token: "irrelevant",
+      access_token_expires_at: isoInMinutes(1),
+    },
+  });
+  db.queue("tiktok_accounts", "update", {
+    data: { id: ACCOUNT_ID, encrypted_refresh_token: encOldRefresh, tiktok_open_id: "open-1" },
+  });
+  db.queue("tiktok_accounts", "update", { data: null, error: { message: "expire write boom" } });
+  db.queue("tiktok_accounts", "update", { data: null }); // finally's release retry
+
+  const f = stubFetch(() =>
+    Promise.resolve(
+      new Response(JSON.stringify({ error: "invalid_grant", error_description: "gone", log_id: "log-5" }), {
+        status: 400,
+      }),
+    )
+  );
+  try {
+    const err = await assertRejects(() => getFreshTikTokToken(db as never, ACCOUNT_ID), TikTokApiError);
+    assertEquals((err as TikTokApiError).code, "TOKEN_EXPIRED", "the real condition must not be masked");
+    const updateCalls = db.calls.filter((c) => c.table === "tiktok_accounts" && c.operation === "update");
+    assertEquals(
+      updateCalls.length,
+      3,
+      "claim + failed expire write + finally release (a failed expire write must not strand the lock for the 60s stale window)",
+    );
+    assertEquals((updateCalls[2].payload as Record<string, unknown>).refresh_lock_at, null);
+  } finally {
+    f.restore();
+  }
+});
+
 Deno.test("getFreshTikTokToken: persist update failing (data:null, error set) rejects and does NOT return a token", async () => {
   const db = createSupabaseQueryMock();
   const encOldRefresh = await encryptTikTokToken("old-refresh-token", "refresh");

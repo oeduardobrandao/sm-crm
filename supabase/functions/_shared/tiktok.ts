@@ -192,6 +192,7 @@ interface TikTokAccountClaimRow {
   id: string;
   encrypted_refresh_token: string | null;
   tiktok_open_id: string;
+  refresh_lock_at: string | null;
 }
 
 interface TikTokRefreshSuccessBody {
@@ -273,12 +274,17 @@ export async function getFreshTikTokToken(
   // Access token is expiring — claim the per-account refresh lock atomically. Only the request
   // whose UPDATE matches a row (lock free or stale) performs the refresh-token rotation.
   const staleBefore = new Date(Date.now() - REFRESH_LOCK_STALE_MS).toISOString();
+  const lockClaimedAt = new Date().toISOString();
+  // `refresh_lock_at` MUST stay in the projection below: prod's PostgREST resolves columns
+  // named inside an or-filter of an UPDATE against the ?select= projection, and raises
+  // `42703 column tiktok_accounts.refresh_lock_at does not exist` when it is absent
+  // (reproduced against prod 2026-08-20; staging's PostgREST version does not do this).
   const { data: claimed, error: claimError } = await svc
     .from("tiktok_accounts")
-    .update({ refresh_lock_at: new Date().toISOString() })
+    .update({ refresh_lock_at: lockClaimedAt })
     .eq("id", accountId)
     .or(`refresh_lock_at.is.null,refresh_lock_at.lt.${staleBefore}`)
-    .select("id, encrypted_refresh_token, tiktok_open_id")
+    .select("id, encrypted_refresh_token, tiktok_open_id, refresh_lock_at")
     .maybeSingle();
 
   // A claim-read failure (PostgREST/network error) is NOT the same thing as losing the lock
@@ -295,14 +301,17 @@ export async function getFreshTikTokToken(
     return pollForRefreshedToken(svc, accountId, sleep);
   }
 
-  return refreshClaimedAccount(svc, accountId, claimed as TikTokAccountClaimRow);
+  return refreshClaimedAccount(svc, accountId, claimed as TikTokAccountClaimRow, lockClaimedAt);
 }
 
-/** Performs the refresh call for a claimed account and releases the lock on every exit path. */
+/** Performs the refresh call for a claimed account and releases the lock on every exit path.
+ * Every lock write-back filters on `lockClaimedAt` (the exact timestamp this claim stamped):
+ * a process that outlives the 60s stale window must never null a NEWER claimant's lock. */
 async function refreshClaimedAccount(
   svc: SupabaseClient,
   accountId: string,
   claimed: TikTokAccountClaimRow,
+  lockClaimedAt: string,
 ): Promise<{ accessToken: string; openId: string }> {
   let lockHeld = true;
   try {
@@ -330,19 +339,25 @@ async function refreshClaimedAccount(
     if ("error" in payload) {
       if (payload.error === "invalid_grant") {
         // Dead refresh token — flip the account to expired and release the lock in the SAME
-        // update (a re-auth is now required; nothing left for the lock to protect).
+        // update (a re-auth is now required; nothing left for the lock to protect). Guarded on
+        // the claim timestamp: if this claim was lost to the stale window, the new claimant
+        // will hit the same invalid_grant and mark expiry itself.
         const { error: markError } = await svc
           .from("tiktok_accounts")
           .update({ authorization_status: "expired", refresh_lock_at: null })
-          .eq("id", accountId);
+          .eq("id", accountId)
+          .eq("refresh_lock_at", lockClaimedAt);
         if (markError) {
           // The marker write failing must not mask the real condition (dead refresh token) —
-          // log and still throw TOKEN_EXPIRED below.
+          // log and still throw TOKEN_EXPIRED below. lockHeld stays true so the finally still
+          // attempts the (ownership-guarded, therefore safe) release instead of stranding the
+          // lock for the full stale window.
           console.error(
             `Failed to mark TikTok account ${accountId} as expired: ${markError.message}`,
           );
+        } else {
+          lockHeld = false;
         }
-        lockHeld = false;
         throw new TikTokApiError(
           payload.error_description || "TikTok refresh token is no longer valid",
           "TOKEN_EXPIRED",
@@ -359,6 +374,8 @@ async function refreshClaimedAccount(
     const now = Date.now();
 
     // Persist the rotated token (and clear the lock) in ONE update, BEFORE returning.
+    // Deliberately NOT ownership-guarded: the rotated refresh token is now the only live
+    // credential for this account — it must be written even if the claim was lost meanwhile.
     const { error: persistError } = await svc
       .from("tiktok_accounts")
       .update({
@@ -390,7 +407,8 @@ async function refreshClaimedAccount(
       const { error: releaseError } = await svc
         .from("tiktok_accounts")
         .update({ refresh_lock_at: null })
-        .eq("id", accountId);
+        .eq("id", accountId)
+        .eq("refresh_lock_at", lockClaimedAt);
       if (releaseError) {
         // Do NOT throw from finally — that would mask the in-flight error being propagated;
         // the 60s stale window (REFRESH_LOCK_STALE_MS) is the documented backstop for exactly this.
