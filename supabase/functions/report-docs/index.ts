@@ -12,6 +12,7 @@ import { refreshReportDocument } from "./refresh.ts";
 import { deleteReportDocument } from "./delete-doc.ts";
 import { exportReportPdf } from "./pdf.ts";
 import { convertUrlToPdf } from "../_shared/report-template/pdf-url.ts";
+import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -86,6 +87,18 @@ Deno.serve(async (req) => {
     if (docMatch) {
       const docId = docMatch[1];
       const action = docMatch[3];
+      // refresh-data e pdf disparam trabalho pago (bateria de queries do
+      // snapshot, narrativa AI, conversão Gotenberg) -- exigem a mesma
+      // entitlement de POST /generate, mesmo em cache hit do pdf (workspace
+      // rebaixado não deve seguir mintando signed URL via API). DELETE fica
+      // de fora de propósito: o usuário sempre pode apagar o próprio dado, e
+      // a rota já remove o PDF armazenado -- ela nunca deveria ficar presa
+      // atrás de um plano expirado.
+      if (action === "pdf" || action === "refresh-data") {
+        if (!(await effectivePlanFeature(serviceClient, contaId, "feature_analytics_reports"))) {
+          return json({ error: "feature_disabled" }, 403);
+        }
+      }
       if (req.method === "POST" && action === "refresh-data") {
         const allowed = await checkRateLimit(serviceClient, `report-docs:${contaId}`, 20, 3600);
         if (!allowed) return json({ error: "Rate limit exceeded" }, 429);
