@@ -3,8 +3,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { MoreHorizontal, Plus } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
 import { ColorPicker } from '@/components/shared/ColorPicker';
 import type { BlockType, ReportBlock } from '@mesaas/report-blocks/types';
@@ -14,7 +21,10 @@ import { useLayoutAutosave } from './useLayoutAutosave';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
 import { AddWidgetDrawer } from './AddWidgetDrawer';
+import { SaveTemplateDialog } from './SaveTemplateDialog';
+import { ApplyTemplateDialog } from './ApplyTemplateDialog';
 import { insertBlock, setLayoutAccent, updateBlockText } from './layoutOps';
+import { applyTemplateLayout } from './templateOps';
 
 function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const snapshot = doc.data_snapshot!;
@@ -28,6 +38,8 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   layoutRef.current = layout;
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [saveTplOpen, setSaveTplOpen] = useState(false);
+  const [applyTplOpen, setApplyTplOpen] = useState(false);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -116,6 +128,21 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         <Button size="sm" onClick={() => setDrawerOpen(true)}>
           <Plus className="h-3.5 w-3.5" /> Adicionar widget
         </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" aria-label="Ações do relatório">
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => setSaveTplOpen(true)}>
+              Salvar como template
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setApplyTplOpen(true)}>
+              Aplicar template
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </header>
 
       <EditorCanvas
@@ -133,6 +160,19 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       />
 
       <AddWidgetDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onInsert={handleInsert} />
+      <SaveTemplateDialog
+        open={saveTplOpen}
+        onOpenChange={setSaveTplOpen}
+        getLayout={() => layoutRef.current}
+      />
+      <ApplyTemplateDialog
+        open={applyTplOpen}
+        onOpenChange={setApplyTplOpen}
+        onApply={(tpl) => {
+          applyLayout(applyTemplateLayout(tpl.layout, layoutRef.current));
+          toast.success('Template aplicado.');
+        }}
+      />
     </div>
   );
 }
