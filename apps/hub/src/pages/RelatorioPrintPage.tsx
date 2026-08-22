@@ -4,7 +4,7 @@
 // própria por print token HMAC (?pt=); NUNCA token de portal.
 import { useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { focusManager, useQuery } from '@tanstack/react-query';
 import { BlockRenderer } from '@mesaas/report-blocks/BlockRenderer';
 import type { ReportDocSnapshot, ReportLayout } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
@@ -21,11 +21,28 @@ export function RelatorioPrintPage() {
   const [params] = useSearchParams();
   const pt = params.get('pt') ?? '';
 
+  // Esta página roda em contextos SEM foco: o Chromium headless do Gotenberg e
+  // abas em background reportam document.visibilityState === 'hidden'. O
+  // retryer do TanStack v5 exige focusManager.isFocused() para CONTINUAR entre
+  // tentativas — com retry: 1, uma primeira falha deixava a query pausada
+  // ('pending'/'paused') para sempre e a página em branco, em vez de terminar
+  // no grid ou no erro. Foco é uma otimização de UX interativa, sem sentido
+  // num alvo de print: enquanto esta página está montada, declaramos o
+  // contexto como focado. O cleanup volta ao padrão (derivar da visibilidade).
+  useEffect(() => {
+    focusManager.setFocused(true);
+    return () => focusManager.setFocused(undefined);
+  }, []);
+
   const { data, isError } = useQuery({
     queryKey: ['print-report-doc', docId],
     queryFn: () => fetchPrintReportDoc(docId ?? '', pt),
     enabled: !!docId && !!pt,
     retry: 1,
+    // networkMode 'online' pausaria o PRIMEIRO fetch se o Chromium headless
+    // reportar navigator.onLine === false (acontece em containers sem
+    // interface enumerável). O print sempre tenta e sempre termina.
+    networkMode: 'always',
   });
 
   const doc = data?.doc;
