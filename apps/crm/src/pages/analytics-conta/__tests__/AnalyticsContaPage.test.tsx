@@ -11,6 +11,7 @@ const {
   toastErrorMock,
   accountAIMock,
   chartCalls,
+  deleteReportDocMock,
 } = vi.hoisted(() => {
   const queryState: Record<string, { data?: unknown; isLoading?: boolean; error?: unknown }> = {};
   const chartCalls: Array<unknown[]> = [];
@@ -33,6 +34,7 @@ const {
     accountAIMock: vi.fn(),
     chartCalls,
     ChartMock,
+    deleteReportDocMock: vi.fn(),
   };
 });
 
@@ -103,6 +105,11 @@ vi.mock('../../../services/analytics', () => ({
   getAccountAIAnalysis: accountAIMock,
   upsertManualFollowerCount: vi.fn(),
   getClientRateBaseline: vi.fn(),
+}));
+
+vi.mock('../../../services/reportDocs', () => ({
+  listReportDocs: vi.fn(),
+  deleteReportDoc: deleteReportDocMock,
 }));
 
 vi.mock('@/components/ui/button', () => ({
@@ -414,6 +421,7 @@ beforeEach(() => {
   toastErrorMock.mockReset();
   accountAIMock.mockReset();
   queryClientMock.invalidateQueries.mockReset();
+  deleteReportDocMock.mockReset();
   mockedGetClientes.mockReset();
   mockedGetInstagramSummary.mockReset();
   mockedGetAnalyticsOverview.mockReset();
@@ -750,5 +758,85 @@ describe('AnalyticsContaPage', () => {
     expect((screen.getByRole('button', { name: 'Gerar' }) as HTMLButtonElement).disabled).toBe(
       false,
     );
+  });
+
+  it('Relatórios Interativos: excluir pede confirmação e, confirmado, chama deleteReportDoc, invalida a lista e mostra toast', async () => {
+    seedCommonAnalyticsData();
+    queryState['report-docs'] = {
+      data: [
+        {
+          id: 'doc-1',
+          title: 'Relatório de Julho',
+          period_start: '2026-07-01',
+          status: 'ready',
+          created_at: '2026-08-01T00:00:00Z',
+        },
+      ],
+    };
+    deleteReportDocMock.mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<AnalyticsContaPage />);
+    fireEvent.click(screen.getByLabelText('Excluir relatório'));
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'Excluir este relatório? O PDF exportado também é removido.',
+    );
+    await waitFor(() => expect(deleteReportDocMock).toHaveBeenCalledWith('doc-1'));
+    expect(queryClientMock.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['report-docs', 42],
+    });
+    expect(toastSuccessMock).toHaveBeenCalledWith('Relatório excluído.');
+  });
+
+  it('Relatórios Interativos: cancelar no confirm não exclui', async () => {
+    seedCommonAnalyticsData();
+    queryState['report-docs'] = {
+      data: [
+        {
+          id: 'doc-1',
+          title: 'Relatório de Julho',
+          period_start: '2026-07-01',
+          status: 'ready',
+          created_at: '2026-08-01T00:00:00Z',
+        },
+      ],
+    };
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    render(<AnalyticsContaPage />);
+    fireEvent.click(screen.getByLabelText('Excluir relatório'));
+
+    expect(deleteReportDocMock).not.toHaveBeenCalled();
+    expect(queryClientMock.invalidateQueries).not.toHaveBeenCalledWith({
+      queryKey: ['report-docs', 42],
+    });
+  });
+
+  it('Relatórios Interativos: erro ao excluir mostra toast e não invalida a lista', async () => {
+    seedCommonAnalyticsData();
+    queryState['report-docs'] = {
+      data: [
+        {
+          id: 'doc-1',
+          title: 'Relatório de Julho',
+          period_start: '2026-07-01',
+          status: 'ready',
+          created_at: '2026-08-01T00:00:00Z',
+        },
+      ],
+    };
+    deleteReportDocMock.mockRejectedValue(new Error('Erro ao excluir relatório (500)'));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<AnalyticsContaPage />);
+    fireEvent.click(screen.getByLabelText('Excluir relatório'));
+
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith('Erro ao excluir relatório (500)'),
+    );
+    expect(queryClientMock.invalidateQueries).not.toHaveBeenCalledWith({
+      queryKey: ['report-docs', 42],
+    });
   });
 });

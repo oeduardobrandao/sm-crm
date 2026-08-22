@@ -2,8 +2,8 @@
 // autosave. View/print continuam no BlockRenderer do pacote (Hub, PR 3).
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { MoreHorizontal, Plus } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Download, MoreHorizontal, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,7 +16,13 @@ import { Spinner } from '@/components/ui/spinner';
 import { ColorPicker } from '@/components/shared/ColorPicker';
 import type { BlockType, ReportBlock } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
-import { getReportDoc, type ReportDocumentRow } from '../../services/reportDocs';
+import {
+  exportReportPdf,
+  getReportDoc,
+  refreshReportDoc,
+  type ReportDocumentRow,
+} from '../../services/reportDocs';
+import { getHubToken, getWorkspaceSlug } from '../../store/hub';
 import { useLayoutAutosave } from './useLayoutAutosave';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
@@ -27,6 +33,7 @@ import { insertBlock, setLayoutAccent, updateBlockText } from './layoutOps';
 import { applyTemplateLayout } from './templateOps';
 
 function EditorBody({ doc }: { doc: ReportDocumentRow }) {
+  const qc = useQueryClient();
   const snapshot = doc.data_snapshot!;
   const { layout, applyLayout, title, setTitle, saving } = useLayoutAutosave(doc.id, {
     layout: doc.layout,
@@ -41,8 +48,48 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const [saveTplOpen, setSaveTplOpen] = useState(false);
   const [applyTplOpen, setApplyTplOpen] = useState(false);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Link "Ver como cliente": só existe quando o Hub tem um token ativo, não
+  // expirado, e o workspace tem slug. Mesma checagem de validade que o
+  // servidor faz em expires_at > now() (HubTab.tsx).
+  const { data: hubViewLink } = useQuery({
+    queryKey: ['hub-view-link', doc.client_id],
+    queryFn: async () => {
+      const [tok, slug] = await Promise.all([getHubToken(doc.client_id), getWorkspaceSlug()]);
+      return tok && slug && tok.is_active && tok.expires_at > new Date().toISOString()
+        ? { url: `${window.location.origin}/${slug}/hub/${tok.token}/relatorios/doc/${doc.id}` }
+        : null;
+    },
+  });
+
+  async function handleExportPdf() {
+    setExporting(true);
+    try {
+      const { url } = await exportReportPdf(doc.id);
+      window.open(url, '_blank', 'noopener');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao exportar PDF');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleRefreshData() {
+    setRefreshing(true);
+    try {
+      await refreshReportDoc(doc.id);
+      await qc.invalidateQueries({ queryKey: ['report-doc', doc.id] });
+      toast.success('Dados atualizados.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao atualizar dados');
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   // Nenhum dos dois timers sobrevive a um unmount: sem isso, um insert seguido
   // de navegação dispara o callback depois que jsdom já derrubou a árvore
@@ -128,6 +175,9 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         <Button size="sm" onClick={() => setDrawerOpen(true)}>
           <Plus className="h-3.5 w-3.5" /> Adicionar widget
         </Button>
+        <Button size="sm" disabled={exporting} onClick={handleExportPdf}>
+          {exporting ? <Spinner size="sm" /> : <Download className="h-3.5 w-3.5" />} Exportar PDF
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" aria-label="Ações do relatório">
@@ -141,6 +191,14 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
             <DropdownMenuItem onSelect={() => setApplyTplOpen(true)}>
               Aplicar template
             </DropdownMenuItem>
+            <DropdownMenuItem disabled={refreshing} onSelect={handleRefreshData}>
+              {refreshing ? 'Atualizando…' : 'Atualizar dados'}
+            </DropdownMenuItem>
+            {hubViewLink && (
+              <DropdownMenuItem onSelect={() => window.open(hubViewLink.url, '_blank', 'noopener')}>
+                Ver como cliente
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </header>

@@ -5,16 +5,68 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeSnapshotFixture } from '@mesaas/report-blocks/fixtures';
 import { validateLayout } from '@mesaas/report-blocks/types';
+import { toast } from 'sonner';
 import { setLayoutAccent } from '../layoutOps';
 
-const { getReportDocMock, updateReportDocMock } = vi.hoisted(() => ({
-  getReportDocMock: vi.fn(),
-  updateReportDocMock: vi.fn().mockResolvedValue(undefined),
-}));
+const { getReportDocMock, updateReportDocMock, exportReportPdfMock, refreshReportDocMock } =
+  vi.hoisted(() => ({
+    getReportDocMock: vi.fn(),
+    updateReportDocMock: vi.fn().mockResolvedValue(undefined),
+    exportReportPdfMock: vi.fn(),
+    refreshReportDocMock: vi.fn().mockResolvedValue(undefined),
+  }));
 vi.mock('../../../services/reportDocs', () => ({
   getReportDoc: getReportDocMock,
   updateReportDoc: updateReportDocMock,
+  exportReportPdf: exportReportPdfMock,
+  refreshReportDoc: refreshReportDocMock,
 }));
+
+const { getHubTokenMock, getWorkspaceSlugMock } = vi.hoisted(() => ({
+  getHubTokenMock: vi.fn().mockResolvedValue(null),
+  getWorkspaceSlugMock: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('../../../store/hub', () => ({
+  getHubToken: getHubTokenMock,
+  getWorkspaceSlug: getWorkspaceSlugMock,
+}));
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+// Mock do DropdownMenu (padrão da casa, ver ClientesPage.test.tsx): o Radix
+// real não abre com fireEvent puro no jsdom (precisa de pointer events
+// reais, e este repo não tem @testing-library/user-event instalado). Os
+// dois dialogs (Salvar/Aplicar template) continuam testados diretamente em
+// SaveTemplateDialog.test.tsx e ApplyTemplateDialog.test.tsx; este mock só
+// existe para exercitar "Atualizar dados" e "Ver como cliente", que são
+// itens de ação inline (sem dialog próprio).
+vi.mock('@/components/ui/dropdown-menu', () => {
+  function DropdownMenu({ children }: { children: React.ReactNode }) {
+    return <div>{children}</div>;
+  }
+  function DropdownMenuTrigger({ children }: { children: React.ReactNode }) {
+    return <>{children}</>;
+  }
+  function DropdownMenuContent({ children }: { children: React.ReactNode }) {
+    return <div>{children}</div>;
+  }
+  function DropdownMenuItem({
+    children,
+    onSelect,
+    disabled,
+  }: {
+    children: React.ReactNode;
+    onSelect?: () => void;
+    disabled?: boolean;
+  }) {
+    return (
+      <button type="button" disabled={disabled} onClick={() => onSelect?.()}>
+        {children}
+      </button>
+    );
+  }
+  return { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem };
+});
 
 import RelatorioEditorPage from '../RelatorioEditorPage';
 
@@ -24,6 +76,9 @@ import RelatorioEditorPage from '../RelatorioEditorPage';
 // padrão de useLayoutAutosave.test.ts:21.
 beforeEach(() => {
   updateReportDocMock.mockResolvedValue(undefined);
+  refreshReportDocMock.mockResolvedValue(undefined);
+  getHubTokenMock.mockResolvedValue(null);
+  getWorkspaceSlugMock.mockResolvedValue(null);
 });
 
 const doc = () => ({
@@ -48,17 +103,19 @@ const doc = () => ({
   updated_at: '2026-08-21T00:00:00Z',
 });
 
-function renderPage() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/relatorios/doc-1']}>
-        <Routes>
-          <Route path="/relatorios/:id" element={<RelatorioEditorPage />} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+function renderPage(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+  return {
+    qc,
+    ...render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/relatorios/doc-1']}>
+          <Routes>
+            <Route path="/relatorios/:id" element={<RelatorioEditorPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 describe('RelatorioEditorPage (editor)', () => {
@@ -71,10 +128,14 @@ describe('RelatorioEditorPage (editor)', () => {
     expect(screen.getByText('Julho de 2026')).toBeInTheDocument(); // period.label do fixture
     expect(screen.getByRole('button', { name: 'Adicionar widget' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cor' })).toBeInTheDocument();
-    // O DropdownMenu Radix não abre com fireEvent puro no jsdom (precisa de
-    // pointer events reais, e este repo não tem @testing-library/user-event
-    // instalado); os dois dialogs que o menu abre são testados diretamente
-    // em SaveTemplateDialog.test.tsx e ApplyTemplateDialog.test.tsx.
+    expect(screen.getByRole('button', { name: /Exportar PDF/ })).toBeInTheDocument();
+    // O DropdownMenu Radix real não abre com fireEvent puro no jsdom (precisa
+    // de pointer events reais, e este repo não tem @testing-library/user-event
+    // instalado); por isso @/components/ui/dropdown-menu é mockado no topo
+    // deste arquivo (padrão da casa, ver ClientesPage.test.tsx) para exercitar
+    // "Atualizar dados" e "Ver como cliente" abaixo. Os dois dialogs que o
+    // menu também abre continuam testados diretamente em
+    // SaveTemplateDialog.test.tsx e ApplyTemplateDialog.test.tsx.
     expect(screen.getByRole('button', { name: 'Ações do relatório' })).toBeInTheDocument();
   });
 
@@ -208,5 +269,108 @@ describe('RelatorioEditorPage (editor)', () => {
     for (const id of ourTimerIds) {
       expect(clearedIds).toContain(id);
     }
+  });
+
+  it('Exportar PDF chama exportReportPdf e abre a URL numa nova aba', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    getReportDocMock.mockResolvedValue(doc());
+    exportReportPdfMock.mockResolvedValue({ url: 'https://cdn.example.com/doc-1.pdf' });
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getByRole('button', { name: /Exportar PDF/ }));
+    await waitFor(() => expect(exportReportPdfMock).toHaveBeenCalledWith('doc-1'));
+    await waitFor(() =>
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://cdn.example.com/doc-1.pdf',
+        '_blank',
+        'noopener',
+      ),
+    );
+  });
+
+  it('Exportar PDF com erro mostra toast e não abre nada', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    getReportDocMock.mockResolvedValue(doc());
+    exportReportPdfMock.mockRejectedValue(
+      new Error('Export de PDF não configurado neste ambiente.'),
+    );
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getByRole('button', { name: /Exportar PDF/ }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Export de PDF não configurado neste ambiente.'),
+    );
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it('Atualizar dados chama refreshReportDoc, invalida a query do doc e mostra toast', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    renderPage(qc);
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar dados' }));
+    await waitFor(() => expect(refreshReportDocMock).toHaveBeenCalledWith('doc-1'));
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['report-doc', 'doc-1'] }),
+    );
+    expect(toast.success).toHaveBeenCalledWith('Dados atualizados.');
+  });
+
+  it('Atualizar dados com erro mostra toast e não invalida a query', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    refreshReportDocMock.mockRejectedValue(new Error('Erro ao atualizar dados (500)'));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    renderPage(qc);
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar dados' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Erro ao atualizar dados (500)'));
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['report-doc', 'doc-1'] });
+  });
+
+  it('Ver como cliente aparece com token ativo e slug, e abre a URL do Hub numa nova aba', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    getReportDocMock.mockResolvedValue(doc());
+    getHubTokenMock.mockResolvedValue({
+      id: 'tok-1',
+      token: 'abc123',
+      is_active: true,
+      expires_at: '2099-01-01T00:00:00Z',
+    });
+    getWorkspaceSlugMock.mockResolvedValue('acme');
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    const item = await screen.findByRole('button', { name: 'Ver como cliente' });
+    fireEvent.click(item);
+    expect(openSpy).toHaveBeenCalledWith(
+      `${window.location.origin}/acme/hub/abc123/relatorios/doc/doc-1`,
+      '_blank',
+      'noopener',
+    );
+  });
+
+  it('Ver como cliente NÃO aparece sem token ativo', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    getHubTokenMock.mockResolvedValue({
+      id: 'tok-1',
+      token: 'abc123',
+      is_active: false,
+      expires_at: '2099-01-01T00:00:00Z',
+    });
+    getWorkspaceSlugMock.mockResolvedValue('acme');
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    await waitFor(() => expect(getHubTokenMock).toHaveBeenCalledWith(42));
+    expect(screen.queryByRole('button', { name: 'Ver como cliente' })).not.toBeInTheDocument();
+  });
+
+  it('Ver como cliente NÃO aparece sem token nenhum', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    // getHubTokenMock/getWorkspaceSlugMock já resolvem null via beforeEach.
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    await waitFor(() => expect(getHubTokenMock).toHaveBeenCalledWith(42));
+    expect(screen.queryByRole('button', { name: 'Ver como cliente' })).not.toBeInTheDocument();
   });
 });

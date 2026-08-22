@@ -36,22 +36,69 @@ async function getAuthHeaders() {
   };
 }
 
-export async function generateReportDoc(clientId: number, month: string): Promise<{ id: string }> {
+export async function generateReportDoc(
+  clientId: number,
+  month: string,
+  templateId?: string,
+): Promise<{ id: string }> {
   const headers = await getAuthHeaders();
+  const body: { clientId: number; month: string; templateId?: string } = { clientId, month };
+  if (templateId) body.templateId = templateId;
   const res = await fetch(`${EDGE_URL}/generate`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ clientId, month }),
+    body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => null);
   if (!res.ok || !data?.id) {
     throw new Error(
       data?.error === 'feature_disabled'
         ? 'Seu plano não inclui relatórios.'
-        : `Erro ao gerar relatório (${res.status})`,
+        : data?.error === 'invalid_template'
+          ? 'Template inválido. Tente outro ou o layout padrão.'
+          : `Erro ao gerar relatório (${res.status})`,
     );
   }
   return data;
+}
+
+/** POST /:id/pdf (spec §5/§9). 503 quando o Gotenberg não está configurado
+ * neste ambiente (REPORT_PRINT_BASE/GOTENBERG_URL/INTERNAL_FUNCTION_SECRET
+ * ausentes); 502 quando a conversão falhou. */
+export async function exportReportPdf(id: string): Promise<{ url: string }> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${EDGE_URL}/${id}/pdf`, { method: 'POST', headers });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.url) {
+    throw new Error(
+      data?.error === 'pdf_not_configured'
+        ? 'Export de PDF não configurado neste ambiente.'
+        : data?.error === 'pdf_failed'
+          ? 'Não foi possível gerar o PDF. Tente novamente.'
+          : `Erro ao exportar PDF (${res.status})`,
+    );
+  }
+  return data;
+}
+
+/** POST /:id/refresh-data: re-gera o data_snapshot mantendo o layout em edição. */
+export async function refreshReportDoc(id: string): Promise<void> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${EDGE_URL}/${id}/refresh-data`, { method: 'POST', headers });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.ok) {
+    throw new Error(`Erro ao atualizar dados (${res.status})`);
+  }
+}
+
+/** DELETE /:id: remove o documento e o PDF exportado (edge function, spec §5). */
+export async function deleteReportDoc(id: string): Promise<void> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${EDGE_URL}/${id}`, { method: 'DELETE', headers });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.ok) {
+    throw new Error(`Erro ao excluir relatório (${res.status})`);
+  }
 }
 
 export async function getReportDoc(id: string): Promise<ReportDocumentRow | null> {
