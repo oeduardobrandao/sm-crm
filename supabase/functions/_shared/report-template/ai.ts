@@ -192,6 +192,7 @@ export function validateAIOutput(raw: unknown): ValidateResult {
 export async function generateAINarrative(
   data: ReportData,
   apiKey: string,
+  signal?: AbortSignal,
 ): Promise<GenerateResult> {
   const { systemPrompt, userPrompt } = buildAIPrompt(data);
 
@@ -213,10 +214,15 @@ export async function generateAINarrative(
               temperature: 0.3,
             },
           }),
+          signal,
         },
       );
     } catch (err) {
-      if (attempt === MAX_RETRIES) {
+      // Um abort explícito (caller venceu o próprio deadline) não deve
+      // esperar o backoff e tentar de novo -- a chamada já não interessa a
+      // ninguém, e um novo fetch com o signal já abortado rejeitaria na
+      // mesma hora mesmo assim.
+      if (signal?.aborted || attempt === MAX_RETRIES) {
         return {
           output: null,
           status: "generation_failed",

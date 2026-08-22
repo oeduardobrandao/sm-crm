@@ -89,19 +89,25 @@ export async function generateReportDocument(
   const wantsAi = cliente.include_ai_analysis !== false;
   if (wantsAi && deps.geminiKey) {
     const AI_TIMEOUT_MS = 45_000;
-    // Gemini sem AbortSignal (módulo compartilhado com o pipeline legado,
-    // intocado): o bound fica aqui. Race resolve com falha e a geração segue
-    // com o fallback; o fetch órfão morre no timeout da plataforma.
+    // Ao vencer o teto de 45s, aborta o fetch do Gemini em voo (achado de
+    // review externo: sem isso, o fetch perdedor do race seguia rodando
+    // órfão na isolate até a plataforma matá-lo). O signal é opcional em
+    // generateAINarrative -- o pipeline legado (instagram-report-generator-v2)
+    // não passa nada e continua idêntico.
+    const controller = new AbortController();
     let timer: number | undefined;
     const timeoutPromise = new Promise<GenerateResult>((resolve) => {
       timer = setTimeout(
-        () => resolve({ output: null, status: "generation_failed", error: "ai timeout" }),
+        () => {
+          controller.abort();
+          resolve({ output: null, status: "generation_failed", error: "ai timeout" });
+        },
         AI_TIMEOUT_MS,
       );
     });
     try {
       const ai = await Promise.race([
-        generateAINarrative(snapshotToReportData(snapshot), deps.geminiKey),
+        generateAINarrative(snapshotToReportData(snapshot), deps.geminiKey, controller.signal),
         timeoutPromise,
       ]);
       if (ai.status === "success" && ai.output) {

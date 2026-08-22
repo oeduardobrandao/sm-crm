@@ -1,4 +1,5 @@
-import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { assert, assertEquals, assertExists } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { FakeTime } from "https://deno.land/std@0.208.0/testing/time.ts";
 import { GenerateError, generateReportDocument } from "./generate.ts";
 
 // Fake db: responde por tabela; grava inserts e chamadas de rpc para asserção.
@@ -134,6 +135,60 @@ Deno.test("IA desejada mas GEMINI_API_KEY ausente: sem seção 'Próximos passos
   assert(
     !row.layout.blocks.some((b) => b.config?.title === "Próximos passos"),
     "seção 'Próximos passos' não deveria existir sem nenhum bloco de conteúdo de IA embaixo",
+  );
+});
+
+Deno.test("Gemini trava além do teto de 45s: race resolve com fallback e aborta o fetch em voo", async () => {
+  // Achado de review externo: o fetch do Gemini não tinha AbortSignal, então
+  // o perdedor do Promise.race ficava rodando órfão na isolate. Stub de
+  // fetch que nunca resolve sozinho -- só o abort (disparado pelo timeout em
+  // generate.ts) sinaliza que o generateAINarrative deveria desistir.
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: "Derma", include_ai_analysis: true },
+    instagram_accounts: { id: "ig-1", username: "dra.x", follower_count: 100 },
+    instagram_posts: [],
+    instagram_follower_history: [],
+    instagram_analytics_cache: null,
+    instagram_account_metrics_daily: [],
+    workspaces: { name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null },
+  });
+
+  const originalFetch = globalThis.fetch;
+  let capturedSignal: AbortSignal | undefined;
+  let aborted = false;
+  globalThis.fetch = ((input: unknown, init?: RequestInit) => {
+    if (typeof input === "string" && input.includes("generativelanguage.googleapis.com")) {
+      capturedSignal = init?.signal ?? undefined;
+      capturedSignal?.addEventListener("abort", () => { aborted = true; });
+      return new Promise<Response>(() => {}); // nunca resolve por si só
+    }
+    return originalFetch(input as Parameters<typeof fetch>[0], init);
+  }) as typeof fetch;
+
+  const time = new FakeTime();
+  try {
+    const resultPromise = generateReportDocument(
+      db, { ...deps, geminiKey: "fake-key" }, "c", 1, "2026-07", null,
+    );
+    await time.tickAsync(45_000);
+    const { id } = await resultPromise;
+    assertEquals(id, "doc-1");
+  } finally {
+    time.restore();
+    globalThis.fetch = originalFetch;
+  }
+
+  assertExists(capturedSignal, "generateAINarrative deveria ter recebido o AbortSignal do controller");
+  assertEquals(aborted, true, "o timeout deveria abortar o fetch em voo do Gemini");
+
+  const row = db.inserts[0] as {
+    layout: { blocks: { type: string; config?: { title?: string } }[] };
+  };
+  const types = row.layout.blocks.map((b) => b.type);
+  assert(!types.includes("ai_recommendations"));
+  assert(
+    !row.layout.blocks.some((b) => b.config?.title === "Próximos passos"),
+    "sem resposta a tempo, o layout deve cair no fallback sem seção órfã de IA",
   );
 });
 
