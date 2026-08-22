@@ -31,7 +31,15 @@ export async function listHandler(db: Db, hubToken: HubToken): Promise<HubReport
       .select("id, title, period_start, created_at")
       .eq("client_id", hubToken.cliente_id)
       .eq("conta_id", hubToken.conta_id)
-      .eq("status", "ready"),
+      .eq("status", "ready")
+      // Pino a ordem no banco (mais recente primeiro) pra dois docs do MESMO
+      // mês (period_start) terem uma ordem estável e significativa -- sem
+      // isso a ordem entre eles dependia da ordem física de retorno do
+      // Postgres, que não é garantida. O `.sort()` por mês abaixo (linha ~63)
+      // é estável (Array.prototype.sort, ES2019+), então essa ordenação do
+      // banco sobrevive intacta como desempate dentro de cada mês.
+      .order("period_start", { ascending: false })
+      .order("created_at", { ascending: false }),
   ]);
   const items: HubReportListItem[] = [
     ...(docs ?? []).map(

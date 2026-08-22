@@ -325,6 +325,28 @@ describe('RelatorioEditorPage (editor)', () => {
     );
   });
 
+  it('Exportar PDF com window.open bloqueado (popup) cai para um <a> clicado programaticamente', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    getReportDocMock.mockResolvedValue(doc());
+    exportReportPdfMock.mockResolvedValue({ url: 'https://cdn.example.com/doc-1.pdf' });
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getByRole('button', { name: /Exportar PDF/ }));
+    await waitFor(() => expect(exportReportPdfMock).toHaveBeenCalledWith('doc-1'));
+    await waitFor(() =>
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://cdn.example.com/doc-1.pdf',
+        '_blank',
+        'noopener',
+      ),
+    );
+    // window.open volta null (ativação transitória expirada pelo await de
+    // 10-60s do Gotenberg em cache-miss) -- o fallback cria um <a> real,
+    // clica nele e remove.
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+  });
+
   it('Exportar PDF com erro mostra toast e não abre nada', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
     getReportDocMock.mockResolvedValue(doc());

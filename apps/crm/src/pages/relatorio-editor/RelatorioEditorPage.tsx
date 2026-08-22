@@ -76,7 +76,21 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     setExporting(true);
     try {
       const { url } = await exportReportPdf(doc.id);
-      window.open(url, '_blank', 'noopener');
+      // A conversão pode levar 10-60s num cache-miss (Gotenberg): quando o
+      // await termina, a ativação transitória de usuário do clique original
+      // já pode ter expirado e o browser bloqueia o popup (window.open volta
+      // null). Mesmo fallback de AnalyticsContaPage.handleGenerateReport: um
+      // <a> clicado programaticamente não depende dessa ativação.
+      const win = window.open(url, '_blank', 'noopener');
+      if (!win) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao exportar PDF');
     } finally {

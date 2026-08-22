@@ -62,3 +62,18 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
+
+-- Hardening externo: report_templates não tinha NENHUMA restrição de
+-- superfície de escrita (a migration 20260820000010 só faz isso para
+-- report_documents). Sem ela, um UPDATE direto via PostgREST podia setar
+-- is_default = true furando o índice parcial report_templates_one_default
+-- (no máximo um default por workspace) por fora da RPC SECURITY DEFINER
+-- set_default_report_template, que faz a troca atômica (desmarca o antigo,
+-- marca o novo). name/layout continuam editáveis via UPDATE normal --
+-- conteúdo do usuário. INSERT/DELETE/SELECT ficam como já estavam (policies
+-- report_templates_insert/_delete/_select da migration 20260820000010);
+-- templates são conteúdo do usuário, não algo a trancar. REVOKE direcionado
+-- (NUNCA FROM public: isso derrubaria service_role, mesmo padrão do REVOKE
+-- ALL ON public.report_documents da migration 20260820000010).
+REVOKE UPDATE ON public.report_templates FROM anon, authenticated;
+GRANT UPDATE (name, layout) ON public.report_templates TO authenticated;
