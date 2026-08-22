@@ -3,7 +3,7 @@ import { PageHeader } from '../components/PageHeader';
 import { useNavigate, useParams } from 'react-router-dom';
 import { FileText, Download, ExternalLink } from 'lucide-react';
 import { useHub } from '../HubContext';
-import { fetchReports, fetchReportPdfUrl, type HubReport } from '../api';
+import { fetchReportList, fetchReportPdfUrl, type HubReportListItem } from '../api';
 
 function formatMonth(month: string): string {
   // month is in format "YYYY-MM"
@@ -14,7 +14,39 @@ function formatMonth(month: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-function ReportCard({ report, base }: { report: HubReport; base: string }) {
+type LegacyReport = Extract<HubReportListItem, { kind: 'legacy' }>;
+type DocReport = Extract<HubReportListItem, { kind: 'doc' }>;
+
+function DocCard({ doc, base }: { doc: DocReport; base: string }) {
+  const navigate = useNavigate();
+
+  return (
+    <div className="hub-card flex flex-col gap-4 p-5 sm:p-6">
+      <div className="flex items-start gap-3">
+        <span className="flex items-center justify-center w-10 h-10 rounded-xl hub-bg-soft hub-tx2 flex-shrink-0">
+          <FileText size={18} strokeWidth={1.75} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="font-medium hub-txt text-[15px] leading-tight">{doc.title}</p>
+          <p className="text-[11px] hub-tx3 mt-0.5">{formatMonth(doc.month)}</p>
+        </div>
+      </div>
+
+      <div className="flex gap-2 pt-1">
+        <button
+          type="button"
+          onClick={() => navigate(`${base}/relatorios/doc/${doc.id}`)}
+          className="flex items-center gap-1.5 text-[12px] font-medium hub-tx2 hub-action-pill transition-colors px-3 py-1.5 rounded-lg"
+        >
+          <ExternalLink size={13} strokeWidth={2} />
+          Abrir
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ReportCard({ report, base }: { report: LegacyReport; base: string }) {
   const navigate = useNavigate();
   const { token } = useHub();
 
@@ -101,11 +133,11 @@ export function RelatoriosPage() {
   const base = `/${workspace}/hub/${token}`;
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['hub-reports', token],
-    queryFn: () => fetchReports(token),
+    queryKey: ['hub-report-list', token],
+    queryFn: () => fetchReportList(token),
   });
 
-  const reports = data?.reports ?? [];
+  const items = data?.items ?? [];
 
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
@@ -117,13 +149,17 @@ export function RelatoriosPage() {
         </div>
       ) : isError ? (
         <div className="py-20 text-center text-sm hub-tx2">Erro ao carregar relatórios.</div>
-      ) : reports.length === 0 ? (
+      ) : items.length === 0 ? (
         <p className="text-sm hub-tx2">Nenhum relatório disponível ainda.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {reports.map((report) => (
-            <ReportCard key={report.month} report={report} base={base} />
-          ))}
+          {items.map((item) =>
+            item.kind === 'doc' ? (
+              <DocCard key={`doc-${item.id}`} doc={item} base={base} />
+            ) : (
+              <ReportCard key={`legacy-${item.month}`} report={item} base={base} />
+            ),
+          )}
         </div>
       )}
     </div>

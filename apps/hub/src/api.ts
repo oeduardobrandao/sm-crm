@@ -263,6 +263,33 @@ export function fetchReportPdfUrl(token: string, month: string) {
   return get<{ url: string }>('hub-reports/pdf-url/' + month, { token });
 }
 
+export type HubReportListItem =
+  | {
+      kind: 'legacy';
+      month: string;
+      status: string;
+      generated_at: string | null;
+      has_pdf: boolean;
+      has_html: boolean;
+    }
+  | { kind: 'doc'; id: string; title: string; month: string; generated_at: string };
+
+export function fetchReportList(token: string) {
+  return get<{ items: HubReportListItem[] }>('hub-report-docs/list', { token });
+}
+
+export interface HubReportDoc {
+  id: string;
+  title: string;
+  layout: unknown;
+  data_snapshot: unknown;
+  period_start: string;
+}
+
+export function fetchReportDoc(token: string, docId: string) {
+  return get<{ doc: HubReportDoc }>(`hub-report-docs/doc/${docId}`, { token });
+}
+
 export function fetchMensagens(token: string, cursor?: MensagensCursor) {
   return get<HubMensagensResponse>('hub-mensagens', {
     token,
