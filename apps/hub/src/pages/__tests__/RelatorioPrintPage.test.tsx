@@ -1,4 +1,9 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  focusManager,
+  onlineManager,
+} from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -38,7 +43,11 @@ beforeEach(() => {
   delete (window as { __REPORT_READY?: boolean }).__REPORT_READY;
 });
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  focusManager.setFocused(undefined);
+  onlineManager.setOnline(true);
+});
 
 describe('RelatorioPrintPage', () => {
   it('renders the print grid and marks window.__REPORT_READY after data + fonts + images resolve', async () => {
@@ -77,5 +86,47 @@ describe('RelatorioPrintPage', () => {
     ).toBeInTheDocument();
 
     expect(window.__REPORT_READY).not.toBe(true);
+  });
+
+  it('surfaces the error even in an unfocused/hidden context (Gotenberg headless, background tab)', async () => {
+    // Chromium headless e abas em background reportam visibilityState
+    // 'hidden'. Sem o override de foco da página, o retryer do TanStack v5
+    // pausa ENTRE as tentativas (canContinue exige isFocused) e a query fica
+    // 'pending'/'paused' para sempre: página em branco em vez do erro. Este
+    // teste reproduz o contexto sem foco; a página deve mesmo assim terminar.
+    focusManager.setFocused(false);
+    mockedFetchPrintReportDoc.mockRejectedValue(new Error('HTTP 404'));
+
+    renderPrintPage();
+
+    expect(
+      await screen.findByText('Não foi possível carregar o relatório.', {}, { timeout: 3000 }),
+    ).toBeInTheDocument();
+    expect(mockedFetchPrintReportDoc).toHaveBeenCalledTimes(2);
+    expect(window.__REPORT_READY).not.toBe(true);
+  });
+
+  it('still issues the fetch when the environment reports offline (networkMode always)', async () => {
+    // navigator.onLine === false em containers headless pausaria o PRIMEIRO
+    // fetch com o networkMode 'online' padrão — zero requests, print pendura.
+    onlineManager.setOnline(false);
+    mockedFetchPrintReportDoc.mockResolvedValue({
+      doc: {
+        id: 'doc-1',
+        title: 'Relatório de Julho',
+        layout,
+        data_snapshot: makeSnapshotFixture(),
+        period_start: '2026-07-01',
+      },
+    } as never);
+
+    const { container } = renderPrintPage();
+
+    await waitFor(() => {
+      expect(mockedFetchPrintReportDoc).toHaveBeenCalledWith('doc-1', 'tok-1');
+    });
+    await waitFor(() => {
+      expect(container.querySelector('.rb-grid.rb-mode-print')).not.toBeNull();
+    });
   });
 });
