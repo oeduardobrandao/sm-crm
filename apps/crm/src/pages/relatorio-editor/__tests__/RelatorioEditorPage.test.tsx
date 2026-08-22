@@ -71,6 +71,11 @@ describe('RelatorioEditorPage (editor)', () => {
     expect(screen.getByText('Julho de 2026')).toBeInTheDocument(); // period.label do fixture
     expect(screen.getByRole('button', { name: 'Adicionar widget' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cor' })).toBeInTheDocument();
+    // O DropdownMenu Radix não abre com fireEvent puro no jsdom (precisa de
+    // pointer events reais, e este repo não tem @testing-library/user-event
+    // instalado); os dois dialogs que o menu abre são testados diretamente
+    // em SaveTemplateDialog.test.tsx e ApplyTemplateDialog.test.tsx.
+    expect(screen.getByRole('button', { name: 'Ações do relatório' })).toBeInTheDocument();
   });
 
   it('canvas em modo edição: chrome presente nos blocos', async () => {
