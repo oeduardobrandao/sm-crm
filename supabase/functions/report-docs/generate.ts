@@ -58,8 +58,18 @@ export async function generateReportDocument(
   // Layout base: template explícito > default do workspace > padrão do sistema
   // (spec §5 passo 3). Template explícito inválido é erro do request; default
   // inválido só degrada com warn (o usuário não pediu esse template pelo nome).
+  //
+  // templateId === "system" é a sentinela explícita do "Padrão do sistema" no
+  // dialog do CRM (achado de review externo, PR #379): pula TANTO a busca do
+  // template explícito QUANTO o fallback do is_default do workspace, mesmo
+  // quando um default existe. `null`/ausente continua caindo no fallback do
+  // is_default -- outros clientes (ex.: automações) dependem desse
+  // comportamento omitido.
   let templateLayout: ReportLayout | null = null;
-  if (templateId) {
+  if (templateId === "system") {
+    // Nada a buscar: templateLayout permanece null e o layout nasce de
+    // buildDefaultLayout() abaixo, ignorando o is_default do workspace.
+  } else if (templateId) {
     const { data: tpl } = await db.from("report_templates")
       .select("id, conta_id, layout").eq("id", templateId).maybeSingle();
     if (!tpl || tpl.conta_id !== contaId) throw new GenerateError("not_found");

@@ -36,6 +36,11 @@ async function getAuthHeaders() {
   };
 }
 
+// 'system' é a sentinela explícita do "Padrão do sistema" (edge function
+// client-id.ts): generateReportDoc envia o literal no body em vez de omitir.
+// Omitido continua significando "usa o template is_default do workspace" --
+// o bug original (achado de review externo, PR #379) era o dialog omitir
+// para "Padrão do sistema" também, o que o servidor lia como "usa o default".
 export async function generateReportDoc(
   clientId: number,
   month: string,

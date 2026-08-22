@@ -134,7 +134,10 @@ describe('NewReportDialog', () => {
     expect(templateId).toBe('tpl-1');
   });
 
-  it('sem template default, a seleção inicial é "Padrão do sistema" e templateId não é enviado', async () => {
+  it('sem template default, a seleção inicial é "Padrão do sistema" e envia a sentinela "system"', async () => {
+    // Achado de review externo (PR #379): "Padrão do sistema" tem que ir
+    // verbatim como "system", nunca omitido -- omitir é o bug original, já
+    // que o servidor lê ausente como "usa o default do workspace".
     queryState['report-templates'] = {
       data: [{ id: 'tpl-2', name: 'Trimestral', layout: {}, is_default: false, created_at: 'x' }],
     };
@@ -143,7 +146,29 @@ describe('NewReportDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
     await waitFor(() => expect(generateMock).toHaveBeenCalled());
     const [, , templateId] = generateMock.mock.calls[0];
-    expect(templateId).toBeUndefined();
+    expect(templateId).toBe('system');
+  });
+
+  it('com um default presente, escolher "Padrão do sistema" explicitamente envia a sentinela "system" (não o uuid do default)', async () => {
+    // O bug real: workspace tem um template is_default, o dialog pré-seleciona
+    // ele, mas o usuário troca explicitamente para "Padrão do sistema" -- isso
+    // tem que gerar com o layout do sistema, não silenciosamente com o
+    // default que o usuário acabou de recusar.
+    queryState['report-templates'] = {
+      data: [
+        { id: 'tpl-1', name: 'Mensal padrão', layout: {}, is_default: true, created_at: 'x' },
+        { id: 'tpl-2', name: 'Trimestral', layout: {}, is_default: false, created_at: 'x' },
+      ],
+    };
+    generateMock.mockResolvedValue({ id: 'doc-9' });
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    await screen.findByRole('button', { name: /Mensal padrão · padrão/ });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Padrão do sistema' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+    await waitFor(() => expect(generateMock).toHaveBeenCalled());
+    const [, , templateId] = generateMock.mock.calls[0];
+    expect(templateId).toBe('system');
   });
 
   // Achado 3: a inicialização do template selecionado rodava em [open,

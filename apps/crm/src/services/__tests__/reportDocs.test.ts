@@ -50,6 +50,16 @@ describe('generateReportDoc', () => {
     expect(JSON.parse(init.body)).toEqual({ clientId: 42, month: '2026-07', templateId: 'tpl-1' });
   });
 
+  // Sentinela explícita do "Padrão do sistema" (achado de review externo, PR
+  // #379): tem que ir verbatim no body, nunca ser omitida -- omitir é o bug
+  // original, porque o servidor lê ausente como "usa o default do workspace".
+  it('com templateId "system", envia o literal no body (não omite)', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: 'doc-1' }), { status: 201 }));
+    await generateReportDoc(42, '2026-07', 'system');
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({ clientId: 42, month: '2026-07', templateId: 'system' });
+  });
+
   it('erro do servidor vira Error com mensagem amigável', async () => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ error: 'feature_disabled' }), { status: 403 }),

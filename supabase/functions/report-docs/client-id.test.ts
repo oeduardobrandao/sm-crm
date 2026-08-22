@@ -77,3 +77,28 @@ Deno.test("parseGenerateBody: templateId não-uuid rejeita o corpo", () => {
     null,
   );
 });
+
+// Sentinela explícita do "Padrão do sistema" (achado de review externo, PR
+// #379): omitido continua significando "usa o default do workspace"; "system"
+// é um valor DISTINTO que pede o layout padrão do sistema mesmo quando existe
+// default. Só o literal exato -- variações de caixa ou qualquer outra string
+// não-uuid continuam rejeitando o corpo, igual a outros templateId inválidos.
+Deno.test('parseGenerateBody: templateId "system" é aceito como sentinela distinta de ausente', () => {
+  const r = parseGenerateBody({ clientId: 1, month: "2026-07", templateId: "system" });
+  assertEquals(r, { clientId: 1, month: "2026-07", templateId: "system" });
+});
+
+Deno.test('parseGenerateBody: variações de "system" (caixa ou outra string não-uuid) continuam rejeitando', () => {
+  assertEquals(
+    parseGenerateBody({ clientId: 1, month: "2026-07", templateId: "System" }),
+    null,
+  );
+  assertEquals(
+    parseGenerateBody({ clientId: 1, month: "2026-07", templateId: "SYSTEM" }),
+    null,
+  );
+  assertEquals(
+    parseGenerateBody({ clientId: 1, month: "2026-07", templateId: "system-default" }),
+    null,
+  );
+});

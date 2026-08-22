@@ -75,10 +75,15 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
     if (generating || !month) return;
     setGenerating(true);
     try {
+      // "system" é a sentinela explícita do "Padrão do sistema": tem que ir
+      // verbatim, nunca ser omitida. Omitir (o bug original, achado de
+      // review externo em PR #379) faz o servidor usar o template is_default
+      // do workspace quando ele existe -- exatamente o layout que o usuário
+      // pediu para NÃO usar ao escolher "Padrão do sistema" explicitamente.
       const { id } = await generateReportDoc(
         clientId,
         month,
-        templateId !== SYSTEM_TEMPLATE ? templateId : undefined,
+        templateId === SYSTEM_TEMPLATE ? 'system' : templateId,
       );
       toast.success('Relatório gerado.');
       await qc.invalidateQueries({ queryKey: ['report-docs', clientId] });

@@ -275,6 +275,43 @@ Deno.test("templateId válido: layout do documento nasce do template com IA pree
   assert(summary?.text !== undefined);
 });
 
+Deno.test('templateId "system": ignora o default do workspace e usa o padrão do sistema', async () => {
+  // Achado de review externo (PR #379): "Padrão do sistema" no dialog do CRM
+  // omitia templateId, que o servidor trata como "usa o is_default do
+  // workspace" -- quando um default existe, a escolha explícita do sistema
+  // virava silenciosamente o layout do default. A sentinela "system" tem que
+  // pular TANTO a busca do template explícito QUANTO o fallback do
+  // is_default, mesmo com um default presente na tabela.
+  const tplLayout = {
+    version: 1,
+    accent: "#9f1239",
+    blocks: [{ id: "c1", type: "cover", size: "full" }],
+  };
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "x" },
+    // Default do workspace presente -- não pode vazar para o resultado.
+    report_templates: { id: "t1", conta_id: "c", is_default: true, layout: tplLayout },
+    workspaces: { name: "W", logo_url: null, brand_color: "#111111", report_splash_url: null },
+    instagram_posts: [],
+    instagram_follower_history: [],
+  });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", "system");
+  const inserted = db.inserts[0] as {
+    layout: { accent?: string; blocks: Array<{ type: string; size?: string }> };
+  };
+  // Marcador: o template do workspace tem accent "#9f1239" e um único bloco
+  // "cover"; o padrão do sistema (buildDefaultLayout) não tem `accent` e
+  // inclui os blocos fixos do sistema (ex.: os KPIs em "third").
+  assertEquals(inserted.layout.accent, undefined);
+  const types = inserted.layout.blocks.map((b) => b.type);
+  assert(types.includes("cover"));
+  assert(
+    inserted.layout.blocks.some((b) => b.type === "kpi_followers_gained" && b.size === "third"),
+    "layout deveria ser o padrão do sistema (buildDefaultLayout), não o template default do workspace",
+  );
+});
+
 Deno.test("sem templateId e sem default: layout padrão do sistema", async () => {
   const db = makeDb({
     clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
