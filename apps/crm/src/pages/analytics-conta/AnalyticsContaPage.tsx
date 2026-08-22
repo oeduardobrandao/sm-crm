@@ -21,6 +21,7 @@ import {
   MousePointerClick,
   Send,
   ChevronDown,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react';
 import { StatCard, type StatTone } from '@/components/StatCard';
@@ -82,7 +83,7 @@ import {
   type AnalyticsReport,
 } from '../../services/analytics';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
-import { listReportDocs } from '../../services/reportDocs';
+import { deleteReportDoc, listReportDocs } from '../../services/reportDocs';
 import { openExternalUrl, sanitizeUrl } from '../../utils/security';
 import {
   formatRate,
@@ -2252,9 +2253,35 @@ function AnalyticsContent({
                   {new Date(doc.created_at).toLocaleDateString('pt-BR')}
                 </span>
               </div>
-              <Button variant="outline" size="sm" onClick={() => navigate(`/relatorios/${doc.id}`)}>
-                Abrir
-              </Button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate(`/relatorios/${doc.id}`)}
+                >
+                  Abrir
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label="Excluir relatório"
+                  onClick={async () => {
+                    if (
+                      !window.confirm('Excluir este relatório? O PDF exportado também é removido.')
+                    )
+                      return;
+                    try {
+                      await deleteReportDoc(doc.id);
+                      qc.invalidateQueries({ queryKey: ['report-docs', clientId] });
+                      toast.success('Relatório excluído.');
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : 'Erro ao excluir relatório');
+                    }
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             </div>
           ))}
         </div>

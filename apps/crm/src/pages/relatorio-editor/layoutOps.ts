@@ -51,6 +51,19 @@ export function removeBlock(layout: ReportLayout, id: string): ReportLayout {
   return { ...layout, blocks };
 }
 
+/** Desfaz uma exclusão: reinsere o bloco na posição de origem (clampada).
+ * Id já presente = no-op com a MESMA referência (contrato do autosave). */
+export function restoreBlock(
+  layout: ReportLayout,
+  block: ReportBlock,
+  index: number,
+): ReportLayout {
+  if (layout.blocks.some((b) => b.id === block.id)) return layout;
+  const blocks = [...layout.blocks];
+  blocks.splice(Math.min(Math.max(index, 0), blocks.length), 0, block);
+  return { ...layout, blocks };
+}
+
 export function insertBlock(
   layout: ReportLayout,
   type: BlockType,

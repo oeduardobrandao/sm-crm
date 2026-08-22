@@ -32,6 +32,23 @@ describe('EditorCanvas', () => {
     expect(onChange.mock.calls[0][0].blocks.map((b: { id: string }) => b.id)).toEqual(['a']);
   });
 
+  it('com onRemoveBlock: excluir chama onRemoveBlock(id) e NÃO onChange', () => {
+    const onChange = vi.fn();
+    const onRemoveBlock = vi.fn();
+    render(
+      <EditorCanvas
+        layout={layout()}
+        snapshot={makeSnapshotFixture()}
+        onChange={onChange}
+        onRemoveBlock={onRemoveBlock}
+      />,
+    );
+    fireEvent.click(screen.getAllByLabelText('Excluir bloco')[1]);
+    expect(onRemoveBlock).toHaveBeenCalledTimes(1);
+    expect(onRemoveBlock).toHaveBeenCalledWith('b');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('aumentar largura chama onChange com o size seguinte', () => {
     const onChange = vi.fn();
     render(<EditorCanvas layout={layout()} snapshot={makeSnapshotFixture()} onChange={onChange} />);

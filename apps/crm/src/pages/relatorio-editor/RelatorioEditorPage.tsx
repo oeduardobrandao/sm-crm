@@ -2,21 +2,44 @@
 // autosave. View/print continuam no BlockRenderer do pacote (Hub, PR 3).
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Download, MoreHorizontal, Plus } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
 import { ColorPicker } from '@/components/shared/ColorPicker';
 import type { BlockType, ReportBlock } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
-import { getReportDoc, type ReportDocumentRow } from '../../services/reportDocs';
+import {
+  exportReportPdf,
+  getReportDoc,
+  refreshReportDoc,
+  type ReportDocumentRow,
+} from '../../services/reportDocs';
+import { getHubToken, getWorkspaceSlug } from '../../store/hub';
 import { useLayoutAutosave } from './useLayoutAutosave';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
 import { AddWidgetDrawer } from './AddWidgetDrawer';
-import { insertBlock, setLayoutAccent, updateBlockText } from './layoutOps';
+import { SaveTemplateDialog } from './SaveTemplateDialog';
+import { ApplyTemplateDialog } from './ApplyTemplateDialog';
+import {
+  insertBlock,
+  removeBlock,
+  restoreBlock,
+  setLayoutAccent,
+  updateBlockText,
+} from './layoutOps';
+import { applyTemplateLayout } from './templateOps';
 
 function EditorBody({ doc }: { doc: ReportDocumentRow }) {
+  const qc = useQueryClient();
   const snapshot = doc.data_snapshot!;
   const { layout, applyLayout, title, setTitle, saving } = useLayoutAutosave(doc.id, {
     layout: doc.layout,
@@ -28,9 +51,65 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   layoutRef.current = layout;
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [saveTplOpen, setSaveTplOpen] = useState(false);
+  const [applyTplOpen, setApplyTplOpen] = useState(false);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Link "Ver como cliente": só existe quando o Hub tem um token ativo, não
+  // expirado, e o workspace tem slug. Mesma checagem de validade que o
+  // servidor faz em expires_at > now() (HubTab.tsx).
+  const { data: hubViewLink } = useQuery({
+    queryKey: ['hub-view-link', doc.client_id],
+    queryFn: async () => {
+      const [tok, slug] = await Promise.all([getHubToken(doc.client_id), getWorkspaceSlug()]);
+      return tok && slug && tok.is_active && tok.expires_at > new Date().toISOString()
+        ? { url: `${window.location.origin}/${slug}/hub/${tok.token}/relatorios/doc/${doc.id}` }
+        : null;
+    },
+  });
+
+  async function handleExportPdf() {
+    setExporting(true);
+    try {
+      const { url } = await exportReportPdf(doc.id);
+      // A conversão pode levar 10-60s num cache-miss (Gotenberg): quando o
+      // await termina, a ativação transitória de usuário do clique original
+      // já pode ter expirado e o browser bloqueia o popup (window.open volta
+      // null). Mesmo fallback de AnalyticsContaPage.handleGenerateReport: um
+      // <a> clicado programaticamente não depende dessa ativação.
+      const win = window.open(url, '_blank', 'noopener');
+      if (!win) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao exportar PDF');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleRefreshData() {
+    setRefreshing(true);
+    try {
+      await refreshReportDoc(doc.id);
+      await qc.invalidateQueries({ queryKey: ['report-doc', doc.id] });
+      toast.success('Dados atualizados.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao atualizar dados');
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   // Nenhum dos dois timers sobrevive a um unmount: sem isso, um insert seguido
   // de navegação dispara o callback depois que jsdom já derrubou a árvore
@@ -43,6 +122,21 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     },
     [],
   );
+
+  // Exclusão com desfazer: o toast carrega a posição de origem (idx) — sem
+  // ela, "Desfazer" reinseriria sempre no fim, perdendo a ordem do usuário.
+  function handleRemoveBlock(id: string) {
+    const idx = layoutRef.current.blocks.findIndex((b) => b.id === id);
+    const block = layoutRef.current.blocks[idx];
+    if (!block) return;
+    applyLayout(removeBlock(layoutRef.current, id));
+    toast('Bloco excluído.', {
+      action: {
+        label: 'Desfazer',
+        onClick: () => applyLayout(restoreBlock(layoutRef.current, block, idx)),
+      },
+    });
+  }
 
   function handleInsert(type: BlockType) {
     const { layout: next, newId } = insertBlock(layoutRef.current, type);
@@ -116,12 +210,39 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         <Button size="sm" onClick={() => setDrawerOpen(true)}>
           <Plus className="h-3.5 w-3.5" /> Adicionar widget
         </Button>
+        <Button size="sm" disabled={exporting} onClick={handleExportPdf}>
+          {exporting ? <Spinner size="sm" /> : <Download className="h-3.5 w-3.5" />} Exportar PDF
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" aria-label="Ações do relatório">
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => setSaveTplOpen(true)}>
+              Salvar como template
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setApplyTplOpen(true)}>
+              Aplicar template
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={refreshing} onSelect={handleRefreshData}>
+              {refreshing ? 'Atualizando…' : 'Atualizar dados'}
+            </DropdownMenuItem>
+            {hubViewLink && (
+              <DropdownMenuItem onSelect={() => window.open(hubViewLink.url, '_blank', 'noopener')}>
+                Ver como cliente
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </header>
 
       <EditorCanvas
         layout={layout}
         snapshot={snapshot}
         onChange={applyLayout}
+        onRemoveBlock={handleRemoveBlock}
         highlightId={highlightId}
         renderTextBlock={(block: ReportBlock) => (
           <TextBlockEditor
@@ -133,6 +254,19 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       />
 
       <AddWidgetDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onInsert={handleInsert} />
+      <SaveTemplateDialog
+        open={saveTplOpen}
+        onOpenChange={setSaveTplOpen}
+        getLayout={() => layoutRef.current}
+      />
+      <ApplyTemplateDialog
+        open={applyTplOpen}
+        onOpenChange={setApplyTplOpen}
+        onApply={(tpl) => {
+          applyLayout(applyTemplateLayout(tpl.layout, layoutRef.current));
+          toast.success('Template aplicado.');
+        }}
+      />
     </div>
   );
 }

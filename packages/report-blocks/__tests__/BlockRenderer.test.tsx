@@ -81,6 +81,38 @@ describe('BlockRenderer', () => {
     expect(css).toContain('[data-block-id]:empty');
   });
 
+  it('bloco com type "__proto__" ou "constructor" não explode e não renderiza nada (guard de prototype-pollution)', () => {
+    // BLOCK_COMPONENTS é um objeto literal: sem o guard hasOwnProperty, o
+    // lookup ["__proto__"] resolveria para Object.prototype (herdado,
+    // truthy) e ["constructor"] resolveria para Object (também herdado,
+    // truthy) -- o React tentaria renderizar um desses como componente e
+    // explodiria, em vez de tratar o bloco como tipo desconhecido (mesmo
+    // caminho do teste "bloco desconhecido não renderiza nada e não
+    // explode" acima: nem o wrapper [data-block-id] chega a existir).
+    const hostileLayout: ReportLayout = {
+      version: 1,
+      blocks: [
+        { id: 'hostile-proto', type: '__proto__' as never, size: 'full' },
+        { id: 'hostile-ctor', type: 'constructor' as never, size: 'full' },
+        {
+          id: 'still-works',
+          type: 'text',
+          size: 'full',
+          text: {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'ok' }] }],
+          },
+        },
+      ],
+    };
+    const { container } = render(
+      <BlockRenderer layout={hostileLayout} snapshot={makeSnapshotFixture()} mode="view" />,
+    );
+    expect(container.querySelector('[data-block-id="hostile-proto"]')).toBeNull();
+    expect(container.querySelector('[data-block-id="hostile-ctor"]')).toBeNull();
+    expect(container.querySelector('[data-block-id="still-works"]')).toBeInTheDocument();
+  });
+
   it('resolveLayoutAccent prioriza layout.accent sobre a marca do snapshot', () => {
     const snap = makeSnapshotFixture();
     const base = resolveLayoutAccent({ version: 1, blocks: [] }, snap);

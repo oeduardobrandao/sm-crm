@@ -6,6 +6,11 @@ select et_grant_hosted_parity();
 revoke all on public.report_documents from anon, authenticated;
 grant select on public.report_documents to authenticated;
 grant update (layout, title) on public.report_documents to authenticated;
+-- Idem para report_templates (migration 20260821000010): a parity acima
+-- concede "grant all on table" pra TODAS as tabelas, o que reabriria o
+-- UPDATE sem restrição de coluna e destrancaria is_default de novo.
+revoke update on public.report_templates from anon, authenticated;
+grant update (name, layout) on public.report_templates to authenticated;
 do $$
 declare
   v_user uuid := gen_random_uuid();
@@ -91,6 +96,79 @@ begin
     if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
   end;
 
+  -- Hardening PR3: id duplicado é rejeitado.
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-03-01', '2026-03-31',
+        '{"version":1,"blocks":[{"id":"x","type":"text","size":"full"},{"id":"x","type":"divider","size":"full"}]}'::jsonb);
+    raise exception 'validate_report_layout aceitou id duplicado';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+
+  -- Hardening PR3: accent com alpha (#rrggbbaa) é rejeitado.
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-03-01', '2026-03-31',
+        '{"version":1,"accent":"#11223344","blocks":[]}'::jsonb);
+    raise exception 'validate_report_layout aceitou accent com alpha';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+
+  -- Hardening PR3: text em bloco não-textual é rejeitado.
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-03-01', '2026-03-31',
+        '{"version":1,"blocks":[{"id":"k1","type":"kpi_reach","size":"third","text":{}}]}'::jsonb);
+    raise exception 'validate_report_layout aceitou text em kpi';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+
+  -- Hardening PR3: layout válido COM accent e text em bloco ai_ passa.
+  declare
+    v_doc_valid uuid;
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-02-01', '2026-02-28',
+        '{"version":1,"accent":"#9f1239","blocks":[{"id":"a1","type":"ai_summary","size":"full","text":{"type":"doc"}}]}'::jsonb)
+      returning id into v_doc_valid;
+    -- Cleanup: a inserção é prova de que accent+text passam; deletar antes das assertions de RLS
+    delete from report_documents where id = v_doc_valid;
+  end;
+
+  -- Bump condicional: update de layout bumpa updated_at; update de pdf_* NÃO.
+  -- Postgres now() é transaction_timestamp() (congelado por transação), então não podemos
+  -- contar com tempo passando. Ao invés, movemos updated_at pra trás, verificamos o bump
+  -- forward no layout update, e verificamos igualdade exata no pdf_* update.
+  declare
+    v_t0 timestamptz; v_t1 timestamptz; v_t2 timestamptz;
+  begin
+    -- Mover updated_at pra trás: o trigger condicional não sobrescreve porque
+    -- nenhuma coluna de conteúdo muda. (Isso é também uma prova extra de que o trigger funciona.)
+    update report_documents set updated_at = updated_at - interval '1 hour' where id = v_doc_a;
+    select updated_at into v_t0 from report_documents where id = v_doc_a;
+
+    -- Update de layout: deve fazer bump
+    update report_documents
+       set layout = '{"version":1,"blocks":[{"id":"b2","type":"divider","size":"full"}]}'::jsonb
+     where id = v_doc_a;
+    select updated_at into v_t1 from report_documents where id = v_doc_a;
+    if v_t1 <= v_t0 then
+      raise exception 'update de layout não bumpou updated_at';
+    end if;
+
+    -- Update de pdf_*: não deve fazer bump (igualdade exata em transação)
+    update report_documents
+       set pdf_storage_path = 'docs/x/y.pdf', pdf_generated_at = now(), pdf_renderer_version = 1
+     where id = v_doc_a;
+    select updated_at into v_t2 from report_documents where id = v_doc_a;
+    if v_t2 <> v_t1 then
+      raise exception 'update de pdf_* bumpou updated_at (cache do PDF nasce inválido)';
+    end if;
+  end;
+
   insert into report_templates (conta_id, name, layout, is_default)
     values (v_ws_a, 'T1', v_layout, true) returning id into v_tpl_1;
   insert into report_templates (conta_id, name, layout)
@@ -146,6 +224,21 @@ begin
     raise exception 'authenticated conseguiu deletar report_document';
   exception when insufficient_privilege then null;
   end;
+
+  -- Achado externo (hardening): is_default só pode mudar pela RPC. Um UPDATE
+  -- direto via PostgREST em is_default fura o índice parcial
+  -- report_templates_one_default (um único default por workspace) por fora
+  -- da troca atômica que a RPC faz.
+  begin
+    update report_templates set is_default = true where id = v_tpl_2;
+    raise exception 'authenticated conseguiu escrever is_default direto em report_templates';
+  exception when insufficient_privilege then null;
+  end;
+
+  -- name/layout continuam editáveis via UPDATE direto (conteúdo do usuário).
+  update report_templates set name = 'T1 renomeado' where id = v_tpl_1;
+  get diagnostics v_rows = row_count;
+  assert v_rows = 1, 'update de name no proprio template falhou';
 
   -- RPC de default: troca atômica T1 -> T2.
   perform set_default_report_template(v_tpl_2);

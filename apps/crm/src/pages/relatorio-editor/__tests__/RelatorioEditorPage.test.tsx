@@ -1,20 +1,78 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeSnapshotFixture } from '@mesaas/report-blocks/fixtures';
 import { validateLayout } from '@mesaas/report-blocks/types';
+import { toast } from 'sonner';
 import { setLayoutAccent } from '../layoutOps';
 
-const { getReportDocMock, updateReportDocMock } = vi.hoisted(() => ({
-  getReportDocMock: vi.fn(),
-  updateReportDocMock: vi.fn().mockResolvedValue(undefined),
-}));
+const { getReportDocMock, updateReportDocMock, exportReportPdfMock, refreshReportDocMock } =
+  vi.hoisted(() => ({
+    getReportDocMock: vi.fn(),
+    updateReportDocMock: vi.fn().mockResolvedValue(undefined),
+    exportReportPdfMock: vi.fn(),
+    refreshReportDocMock: vi.fn().mockResolvedValue(undefined),
+  }));
 vi.mock('../../../services/reportDocs', () => ({
   getReportDoc: getReportDocMock,
   updateReportDoc: updateReportDocMock,
+  exportReportPdf: exportReportPdfMock,
+  refreshReportDoc: refreshReportDocMock,
 }));
+
+const { getHubTokenMock, getWorkspaceSlugMock } = vi.hoisted(() => ({
+  getHubTokenMock: vi.fn().mockResolvedValue(null),
+  getWorkspaceSlugMock: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('../../../store/hub', () => ({
+  getHubToken: getHubTokenMock,
+  getWorkspaceSlug: getWorkspaceSlugMock,
+}));
+
+// toast() (o call bare, usado pelo undo de exclusão via action) e
+// toast.success/.error (os já usados no resto da página) precisam do MESMO
+// mock: sonner exporta toast como uma função com métodos anexados.
+const { toastMock } = vi.hoisted(() => ({
+  toastMock: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
+}));
+vi.mock('sonner', () => ({ toast: toastMock }));
+
+// Mock do DropdownMenu (padrão da casa, ver ClientesPage.test.tsx): o Radix
+// real não abre com fireEvent puro no jsdom (precisa de pointer events
+// reais, e este repo não tem @testing-library/user-event instalado). Os
+// dois dialogs (Salvar/Aplicar template) continuam testados diretamente em
+// SaveTemplateDialog.test.tsx e ApplyTemplateDialog.test.tsx; este mock só
+// existe para exercitar "Atualizar dados" e "Ver como cliente", que são
+// itens de ação inline (sem dialog próprio).
+vi.mock('@/components/ui/dropdown-menu', () => {
+  function DropdownMenu({ children }: { children: React.ReactNode }) {
+    return <div>{children}</div>;
+  }
+  function DropdownMenuTrigger({ children }: { children: React.ReactNode }) {
+    return <>{children}</>;
+  }
+  function DropdownMenuContent({ children }: { children: React.ReactNode }) {
+    return <div>{children}</div>;
+  }
+  function DropdownMenuItem({
+    children,
+    onSelect,
+    disabled,
+  }: {
+    children: React.ReactNode;
+    onSelect?: () => void;
+    disabled?: boolean;
+  }) {
+    return (
+      <button type="button" disabled={disabled} onClick={() => onSelect?.()}>
+        {children}
+      </button>
+    );
+  }
+  return { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem };
+});
 
 import RelatorioEditorPage from '../RelatorioEditorPage';
 
@@ -24,6 +82,9 @@ import RelatorioEditorPage from '../RelatorioEditorPage';
 // padrão de useLayoutAutosave.test.ts:21.
 beforeEach(() => {
   updateReportDocMock.mockResolvedValue(undefined);
+  refreshReportDocMock.mockResolvedValue(undefined);
+  getHubTokenMock.mockResolvedValue(null);
+  getWorkspaceSlugMock.mockResolvedValue(null);
 });
 
 const doc = () => ({
@@ -48,17 +109,19 @@ const doc = () => ({
   updated_at: '2026-08-21T00:00:00Z',
 });
 
-function renderPage() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/relatorios/doc-1']}>
-        <Routes>
-          <Route path="/relatorios/:id" element={<RelatorioEditorPage />} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+function renderPage(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+  return {
+    qc,
+    ...render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/relatorios/doc-1']}>
+          <Routes>
+            <Route path="/relatorios/:id" element={<RelatorioEditorPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 describe('RelatorioEditorPage (editor)', () => {
@@ -71,6 +134,15 @@ describe('RelatorioEditorPage (editor)', () => {
     expect(screen.getByText('Julho de 2026')).toBeInTheDocument(); // period.label do fixture
     expect(screen.getByRole('button', { name: 'Adicionar widget' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cor' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Exportar PDF/ })).toBeInTheDocument();
+    // O DropdownMenu Radix real não abre com fireEvent puro no jsdom (precisa
+    // de pointer events reais, e este repo não tem @testing-library/user-event
+    // instalado); por isso @/components/ui/dropdown-menu é mockado no topo
+    // deste arquivo (padrão da casa, ver ClientesPage.test.tsx) para exercitar
+    // "Atualizar dados" e "Ver como cliente" abaixo. Os dois dialogs que o
+    // menu também abre continuam testados diretamente em
+    // SaveTemplateDialog.test.tsx e ApplyTemplateDialog.test.tsx.
+    expect(screen.getByRole('button', { name: 'Ações do relatório' })).toBeInTheDocument();
   });
 
   it('canvas em modo edição: chrome presente nos blocos', async () => {
@@ -96,6 +168,37 @@ describe('RelatorioEditorPage (editor)', () => {
       { timeout: 4000 },
     );
     vi.useRealTimers();
+  });
+
+  it('excluir um bloco mostra toast com ação de desfazer; acionar a action restaura o bloco na mesma posição', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+
+    // doc().layout.blocks = [a (divider), b (kpi_reach)] — exclui o segundo (b).
+    fireEvent.click(screen.getAllByLabelText('Excluir bloco')[1]);
+    expect(
+      [...document.querySelectorAll('[data-block-id]')].map((el) =>
+        el.getAttribute('data-block-id'),
+      ),
+    ).toEqual(['a']);
+
+    expect(toastMock).toHaveBeenCalledWith(
+      'Bloco excluído.',
+      expect.objectContaining({
+        action: expect.objectContaining({ label: 'Desfazer', onClick: expect.any(Function) }),
+      }),
+    );
+    const lastCall = toastMock.mock.calls.at(-1)!;
+    const { onClick } = (lastCall[1] as { action: { onClick: () => void } }).action;
+
+    act(() => onClick());
+    await waitFor(() => {
+      const ids = [...document.querySelectorAll('[data-block-id]')].map((el) =>
+        el.getAttribute('data-block-id'),
+      );
+      expect(ids).toEqual(['a', 'b']);
+    });
   });
 
   it('Adicionar widget insere no fim e destaca', async () => {
@@ -203,5 +306,130 @@ describe('RelatorioEditorPage (editor)', () => {
     for (const id of ourTimerIds) {
       expect(clearedIds).toContain(id);
     }
+  });
+
+  it('Exportar PDF chama exportReportPdf e abre a URL numa nova aba', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    getReportDocMock.mockResolvedValue(doc());
+    exportReportPdfMock.mockResolvedValue({ url: 'https://cdn.example.com/doc-1.pdf' });
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getByRole('button', { name: /Exportar PDF/ }));
+    await waitFor(() => expect(exportReportPdfMock).toHaveBeenCalledWith('doc-1'));
+    await waitFor(() =>
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://cdn.example.com/doc-1.pdf',
+        '_blank',
+        'noopener',
+      ),
+    );
+  });
+
+  it('Exportar PDF com window.open bloqueado (popup) cai para um <a> clicado programaticamente', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    getReportDocMock.mockResolvedValue(doc());
+    exportReportPdfMock.mockResolvedValue({ url: 'https://cdn.example.com/doc-1.pdf' });
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getByRole('button', { name: /Exportar PDF/ }));
+    await waitFor(() => expect(exportReportPdfMock).toHaveBeenCalledWith('doc-1'));
+    await waitFor(() =>
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://cdn.example.com/doc-1.pdf',
+        '_blank',
+        'noopener',
+      ),
+    );
+    // window.open volta null (ativação transitória expirada pelo await de
+    // 10-60s do Gotenberg em cache-miss) -- o fallback cria um <a> real,
+    // clica nele e remove.
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+  });
+
+  it('Exportar PDF com erro mostra toast e não abre nada', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    getReportDocMock.mockResolvedValue(doc());
+    exportReportPdfMock.mockRejectedValue(
+      new Error('Export de PDF não configurado neste ambiente.'),
+    );
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getByRole('button', { name: /Exportar PDF/ }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Export de PDF não configurado neste ambiente.'),
+    );
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it('Atualizar dados chama refreshReportDoc, invalida a query do doc e mostra toast', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    renderPage(qc);
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar dados' }));
+    await waitFor(() => expect(refreshReportDocMock).toHaveBeenCalledWith('doc-1'));
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['report-doc', 'doc-1'] }),
+    );
+    expect(toast.success).toHaveBeenCalledWith('Dados atualizados.');
+  });
+
+  it('Atualizar dados com erro mostra toast e não invalida a query', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    refreshReportDocMock.mockRejectedValue(new Error('Erro ao atualizar dados (500)'));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    renderPage(qc);
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar dados' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Erro ao atualizar dados (500)'));
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['report-doc', 'doc-1'] });
+  });
+
+  it('Ver como cliente aparece com token ativo e slug, e abre a URL do Hub numa nova aba', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    getReportDocMock.mockResolvedValue(doc());
+    getHubTokenMock.mockResolvedValue({
+      id: 'tok-1',
+      token: 'abc123',
+      is_active: true,
+      expires_at: '2099-01-01T00:00:00Z',
+    });
+    getWorkspaceSlugMock.mockResolvedValue('acme');
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    const item = await screen.findByRole('button', { name: 'Ver como cliente' });
+    fireEvent.click(item);
+    expect(openSpy).toHaveBeenCalledWith(
+      `${window.location.origin}/acme/hub/abc123/relatorios/doc/doc-1`,
+      '_blank',
+      'noopener',
+    );
+  });
+
+  it('Ver como cliente NÃO aparece sem token ativo', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    getHubTokenMock.mockResolvedValue({
+      id: 'tok-1',
+      token: 'abc123',
+      is_active: false,
+      expires_at: '2099-01-01T00:00:00Z',
+    });
+    getWorkspaceSlugMock.mockResolvedValue('acme');
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    await waitFor(() => expect(getHubTokenMock).toHaveBeenCalledWith(42));
+    expect(screen.queryByRole('button', { name: 'Ver como cliente' })).not.toBeInTheDocument();
+  });
+
+  it('Ver como cliente NÃO aparece sem token nenhum', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    // getHubTokenMock/getWorkspaceSlugMock já resolvem null via beforeEach.
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    await waitFor(() => expect(getHubTokenMock).toHaveBeenCalledWith(42));
+    expect(screen.queryByRole('button', { name: 'Ver como cliente' })).not.toBeInTheDocument();
   });
 });

@@ -4,6 +4,7 @@ import {
   moveBlock,
   removeBlock,
   resizeBlock,
+  restoreBlock,
   setLayoutAccent,
   SIZE_ORDER,
   updateBlockText,
@@ -51,6 +52,25 @@ describe('resizeBlock', () => {
 describe('removeBlock', () => {
   it('remove pelo id', () => {
     expect(removeBlock(layout(), 'b').blocks.map((b) => b.id)).toEqual(['a', 'c']);
+  });
+});
+
+describe('restoreBlock', () => {
+  it('restaura o bloco na posição de origem', () => {
+    const l = removeBlock(layout(), 'b');
+    const restored = restoreBlock(l, { id: 'b', type: 'kpi_reach', size: 'third' }, 1);
+    expect(restored.blocks.map((b) => b.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('index maior que o array clampa pro fim', () => {
+    const l = removeBlock(layout(), 'a');
+    const restored = restoreBlock(l, { id: 'a', type: 'cover', size: 'full' }, 99);
+    expect(restored.blocks.map((b) => b.id)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('id já presente: devolve a MESMA referência', () => {
+    const l = layout();
+    expect(restoreBlock(l, { id: 'a', type: 'cover', size: 'full' }, 0)).toBe(l);
   });
 });
 
