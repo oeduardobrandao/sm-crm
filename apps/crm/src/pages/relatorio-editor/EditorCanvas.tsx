@@ -118,6 +118,9 @@ export interface EditorCanvasProps {
   onChange: (next: ReportLayout) => void;
   highlightId?: string | null;
   renderTextBlock?: (block: ReportBlock) => ReactNode;
+  // Ausente = comportamento atual (onChange com o bloco removido). Presente =
+  // o chamador assume a exclusão inteira (ex.: undo via toast na página).
+  onRemoveBlock?: (id: string) => void;
 }
 
 export function EditorCanvas({
@@ -126,6 +129,7 @@ export function EditorCanvas({
   onChange,
   highlightId,
   renderTextBlock,
+  onRemoveBlock,
 }: EditorCanvasProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -171,7 +175,9 @@ export function EditorCanvas({
                 const next = resizeBlock(layout, block.id, delta);
                 if (next !== layout) onChange(next);
               }}
-              onRemove={() => onChange(removeBlock(layout, block.id))}
+              onRemove={() =>
+                onRemoveBlock ? onRemoveBlock(block.id) : onChange(removeBlock(layout, block.id))
+              }
               renderTextBlock={renderTextBlock}
             />
           ))}

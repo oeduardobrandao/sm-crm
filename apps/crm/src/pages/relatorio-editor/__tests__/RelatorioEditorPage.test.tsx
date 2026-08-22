@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -31,7 +31,13 @@ vi.mock('../../../store/hub', () => ({
   getWorkspaceSlug: getWorkspaceSlugMock,
 }));
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+// toast() (o call bare, usado pelo undo de exclusão via action) e
+// toast.success/.error (os já usados no resto da página) precisam do MESMO
+// mock: sonner exporta toast como uma função com métodos anexados.
+const { toastMock } = vi.hoisted(() => ({
+  toastMock: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
+}));
+vi.mock('sonner', () => ({ toast: toastMock }));
 
 // Mock do DropdownMenu (padrão da casa, ver ClientesPage.test.tsx): o Radix
 // real não abre com fireEvent puro no jsdom (precisa de pointer events
@@ -162,6 +168,37 @@ describe('RelatorioEditorPage (editor)', () => {
       { timeout: 4000 },
     );
     vi.useRealTimers();
+  });
+
+  it('excluir um bloco mostra toast com ação de desfazer; acionar a action restaura o bloco na mesma posição', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+
+    // doc().layout.blocks = [a (divider), b (kpi_reach)] — exclui o segundo (b).
+    fireEvent.click(screen.getAllByLabelText('Excluir bloco')[1]);
+    expect(
+      [...document.querySelectorAll('[data-block-id]')].map((el) =>
+        el.getAttribute('data-block-id'),
+      ),
+    ).toEqual(['a']);
+
+    expect(toastMock).toHaveBeenCalledWith(
+      'Bloco excluído.',
+      expect.objectContaining({
+        action: expect.objectContaining({ label: 'Desfazer', onClick: expect.any(Function) }),
+      }),
+    );
+    const lastCall = toastMock.mock.calls.at(-1)!;
+    const { onClick } = (lastCall[1] as { action: { onClick: () => void } }).action;
+
+    act(() => onClick());
+    await waitFor(() => {
+      const ids = [...document.querySelectorAll('[data-block-id]')].map((el) =>
+        el.getAttribute('data-block-id'),
+      );
+      expect(ids).toEqual(['a', 'b']);
+    });
   });
 
   it('Adicionar widget insere no fim e destaca', async () => {
