@@ -69,6 +69,12 @@ export const router = createBrowserRouter([
     ],
   },
   {
+    path: '/relatorios/print/:docId',
+    lazy: async () => ({
+      Component: (await import('./pages/RelatorioPrintPage')).RelatorioPrintPage,
+    }),
+  },
+  {
     path: '*',
     element: (
       <div
