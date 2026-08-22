@@ -1,6 +1,6 @@
 // Cria um relatório interativo: mês (default = mês anterior), template
 // opcional e geração síncrona.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -47,20 +47,29 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
   const [templateId, setTemplateId] = useState(SYSTEM_TEMPLATE);
   const [generating, setGenerating] = useState(false);
 
-  const { data: templates = [] } = useQuery({
+  const { data: templates = [], isLoading: templatesLoading } = useQuery({
     queryKey: ['report-templates'],
     queryFn: listReportTemplates,
     enabled: open,
   });
 
   // Default: o template is_default do workspace, se existir; senão "Padrão
-  // do sistema". Reaplica sempre que o dialog abre ou a lista de templates
-  // muda (ex.: primeira resolução da query).
+  // do sistema". Aplica só UMA vez por "sessão de abertura" -- na primeira
+  // resolução da query após o dialog abrir. Sem o guard appliedDefaultRef,
+  // qualquer refetch em segundo plano de ['report-templates'] (identidade
+  // nova do array) enquanto o dialog segue aberto reaplicava o efeito e
+  // jogava a escolha manual do usuário de volta pro default.
+  const appliedDefaultRef = useRef(false);
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      appliedDefaultRef.current = false;
+      return;
+    }
+    if (appliedDefaultRef.current || templatesLoading) return;
     const def = templates.find((t) => t.is_default);
     setTemplateId(def ? def.id : SYSTEM_TEMPLATE);
-  }, [open, templates]);
+    appliedDefaultRef.current = true;
+  }, [open, templatesLoading, templates]);
 
   const handleGenerate = async () => {
     if (generating || !month) return;

@@ -6,6 +6,11 @@ select et_grant_hosted_parity();
 revoke all on public.report_documents from anon, authenticated;
 grant select on public.report_documents to authenticated;
 grant update (layout, title) on public.report_documents to authenticated;
+-- Idem para report_templates (migration 20260821000010): a parity acima
+-- concede "grant all on table" pra TODAS as tabelas, o que reabriria o
+-- UPDATE sem restrição de coluna e destrancaria is_default de novo.
+revoke update on public.report_templates from anon, authenticated;
+grant update (name, layout) on public.report_templates to authenticated;
 do $$
 declare
   v_user uuid := gen_random_uuid();
@@ -219,6 +224,21 @@ begin
     raise exception 'authenticated conseguiu deletar report_document';
   exception when insufficient_privilege then null;
   end;
+
+  -- Achado externo (hardening): is_default só pode mudar pela RPC. Um UPDATE
+  -- direto via PostgREST em is_default fura o índice parcial
+  -- report_templates_one_default (um único default por workspace) por fora
+  -- da troca atômica que a RPC faz.
+  begin
+    update report_templates set is_default = true where id = v_tpl_2;
+    raise exception 'authenticated conseguiu escrever is_default direto em report_templates';
+  exception when insufficient_privilege then null;
+  end;
+
+  -- name/layout continuam editáveis via UPDATE direto (conteúdo do usuário).
+  update report_templates set name = 'T1 renomeado' where id = v_tpl_1;
+  get diagnostics v_rows = row_count;
+  assert v_rows = 1, 'update de name no proprio template falhou';
 
   -- RPC de default: troca atômica T1 -> T2.
   perform set_default_report_template(v_tpl_2);

@@ -13,7 +13,11 @@ function makeListDb(rows: { analytics_reports?: unknown[]; report_documents?: un
   // deno-lint-ignore no-explicit-any
   const chain = (result: unknown): any => {
     const c: Record<string, unknown> = {};
-    for (const m of ["select", "eq"]) c[m] = () => chain(result);
+    // "order" entrou junto com o pin de ordenação do banco (period_start
+    // desc, created_at desc) em listHandler -- o fake é argument-blind
+    // (não simula ORDER BY de verdade), então só precisa aceitar a chamada
+    // e devolver a mesma chain, como já faz para select/eq.
+    for (const m of ["select", "eq", "order"]) c[m] = () => chain(result);
     c.then = (resolve: (v: unknown) => unknown) =>
       Promise.resolve({ data: result }).then(resolve);
     return c;
@@ -88,6 +92,43 @@ Deno.test("uniao: 1 legado ready + 2 docs ready => 3 itens ordenados por month d
     has_html: true,
   });
   assertEquals(items[2].kind, "doc");
+});
+
+// Achado 4: dois docs do MESMO mês não tinham nenhuma ordem garantida entre
+// si -- a ordem dependia da ordem física de retorno do Postgres. A query
+// agora pina .order("period_start", {ascending:false}).order("created_at",
+// {ascending:false}) do lado do banco (ver handlers.ts). O fake acima é
+// argument-blind (não simula ORDER BY de verdade, só aceita a chamada e
+// devolve as linhas como foram alimentadas) -- então este teste alimenta as
+// linhas JÁ na ordem que o Postgres devolveria com esse ORDER BY (created_at
+// mais recente primeiro) e prova que listHandler não embaralha esse
+// desempate: o .sort() por mês (Array.prototype.sort, estável desde ES2019)
+// preserva a ordem relativa entre itens do mesmo mês.
+Deno.test("dois docs do mesmo mes: a ordem entre eles vem do banco (pin period_start/created_at desc), listHandler preserva", async () => {
+  const db = makeListDb({
+    analytics_reports: [],
+    report_documents: [
+      {
+        id: "doc-new",
+        title: "Julho v2",
+        period_start: "2026-07-15",
+        created_at: "2026-07-20T00:00:00Z",
+      },
+      {
+        id: "doc-old",
+        title: "Julho v1",
+        period_start: "2026-07-01",
+        created_at: "2026-07-02T00:00:00Z",
+      },
+    ],
+  });
+
+  const items = await listHandler(db, hubToken);
+
+  assertEquals(
+    items.map((i: HubReportListItem) => (i as { id: string }).id),
+    ["doc-new", "doc-old"],
+  );
 });
 
 Deno.test("docs nao-ready ficam de fora (query ja filtra status=ready)", async () => {

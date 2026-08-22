@@ -1,8 +1,13 @@
 // POST /:id/pdf (spec §5/§9). Cache: serve o PDF existente só se
 // pdf_generated_at >= updated_at E pdf_renderer_version bate -- updated_at NÃO
 // bumpa em escrita de pdf_* (trigger condicional da migration 20260821000010).
-// Janela aceita: edição DURANTE a conversão pode ficar fora do PDF até a
-// próxima edição (o updated_at dela é anterior ao pdf_generated_at gravado).
+// pdf_generated_at grava o horário de INÍCIO da conversão (nowMs, capturado
+// antes do await de convert), não o de término. Uma edição DURANTE a
+// conversão bumpa updated_at para um horário POSTERIOR a esse nowMs -- o
+// check de cache (pdf_generated_at >= updated_at) então dá falso na próxima
+// leitura, e o PDF recém-gerado (que não inclui essa edição) é tratado como
+// stale e reconvertido no próximo export. O residual é só uma conversão
+// desperdiçada; nenhum PDF desatualizado chega a ser servido como "fresh".
 import { DocActionError, PDF_BUCKET } from "./errors.ts";
 import { signPrintToken } from "../_shared/report-docs/print-token.ts";
 import { convertUrlToPdf } from "../_shared/report-template/pdf-url.ts";
