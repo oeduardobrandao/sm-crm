@@ -29,7 +29,13 @@ import { TextBlockEditor } from './TextBlockEditor';
 import { AddWidgetDrawer } from './AddWidgetDrawer';
 import { SaveTemplateDialog } from './SaveTemplateDialog';
 import { ApplyTemplateDialog } from './ApplyTemplateDialog';
-import { insertBlock, setLayoutAccent, updateBlockText } from './layoutOps';
+import {
+  insertBlock,
+  removeBlock,
+  restoreBlock,
+  setLayoutAccent,
+  updateBlockText,
+} from './layoutOps';
 import { applyTemplateLayout } from './templateOps';
 
 function EditorBody({ doc }: { doc: ReportDocumentRow }) {
@@ -102,6 +108,21 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     },
     [],
   );
+
+  // Exclusão com desfazer: o toast carrega a posição de origem (idx) — sem
+  // ela, "Desfazer" reinseriria sempre no fim, perdendo a ordem do usuário.
+  function handleRemoveBlock(id: string) {
+    const idx = layoutRef.current.blocks.findIndex((b) => b.id === id);
+    const block = layoutRef.current.blocks[idx];
+    if (!block) return;
+    applyLayout(removeBlock(layoutRef.current, id));
+    toast('Bloco excluído.', {
+      action: {
+        label: 'Desfazer',
+        onClick: () => applyLayout(restoreBlock(layoutRef.current, block, idx)),
+      },
+    });
+  }
 
   function handleInsert(type: BlockType) {
     const { layout: next, newId } = insertBlock(layoutRef.current, type);
@@ -207,6 +228,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         layout={layout}
         snapshot={snapshot}
         onChange={applyLayout}
+        onRemoveBlock={handleRemoveBlock}
         highlightId={highlightId}
         renderTextBlock={(block: ReportBlock) => (
           <TextBlockEditor

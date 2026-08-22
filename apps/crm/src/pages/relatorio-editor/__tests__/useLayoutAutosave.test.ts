@@ -102,7 +102,9 @@ describe('useLayoutAutosave', () => {
       await Promise.resolve();
     });
     expect(updateMock).not.toHaveBeenCalled();
-    expect(toastErrorMock).toHaveBeenCalledWith('Erro ao salvar o relatório');
+    expect(toastErrorMock).toHaveBeenCalledWith('Erro ao salvar o relatório', {
+      id: 'report-autosave-error',
+    });
   });
 
   it('falha do request: retém edição para retry, saving fica true', async () => {
@@ -118,7 +120,9 @@ describe('useLayoutAutosave', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(toastErrorMock).toHaveBeenCalledWith('Erro ao salvar o relatório');
+    expect(toastErrorMock).toHaveBeenCalledWith('Erro ao salvar o relatório', {
+      id: 'report-autosave-error',
+    });
     // Payload retido → saving continua true até que o retry suceda
     expect(result.current.saving).toBe(true);
     // Retry agendado (5000ms)
@@ -301,7 +305,9 @@ describe('useLayoutAutosave', () => {
       await Promise.resolve();
     });
     expect(updateMock).toHaveBeenCalledTimes(1);
-    expect(toastErrorMock).toHaveBeenCalledWith('Erro ao salvar o relatório');
+    expect(toastErrorMock).toHaveBeenCalledWith('Erro ao salvar o relatório', {
+      id: 'report-autosave-error',
+    });
     // Payload retido → saving continua true
     expect(result.current.saving).toBe(true);
 
@@ -484,6 +490,203 @@ describe('useLayoutAutosave', () => {
       resolvers.shift()?.();
       await Promise.resolve();
       await Promise.resolve();
+    });
+  });
+
+  // Backoff: RETRY_DELAYS_MS = [5000, 15000, 30000]. Cada falha consome um
+  // delay da lista; esgotada, o payload fica retido SEM novo timer (senão o
+  // editor bombardearia o backend pra sempre numa falha persistente).
+  it('três falhas seguidas agendam retries em 5s, 15s e 30s; esgotado o cap, para de tentar (saving retido)', async () => {
+    updateMock.mockRejectedValue(new Error('rede'));
+    const { result, unmount } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    const layout = { ...baseLayout, accent: '#777777' };
+    act(() => result.current.applyLayout(layout));
+
+    // request inicial, após o debounce de 1500ms
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+
+    // retry 1: 5000ms
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(2);
+
+    // retry 2: 15000ms
+    await act(async () => {
+      vi.advanceTimersByTime(15000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(3);
+
+    // retry 3: 30000ms
+    await act(async () => {
+      vi.advanceTimersByTime(30000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(4);
+    expect(result.current.saving).toBe(true);
+
+    // esgotado: nenhum novo timer, mesmo avançando bastante
+    await act(async () => {
+      vi.advanceTimersByTime(60000);
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(4);
+    expect(result.current.saving).toBe(true);
+
+    // O payload capped continua retido em pendingLayout: sem drenar aqui, o
+    // cleanup de unmount global (afterEach de vitest.setup.ts, que roda DEPOIS
+    // do vi.clearAllMocks() deste arquivo) dispararia um flush best-effort
+    // "por fora" da contagem deste teste, vazando 1 chamada pro PRÓXIMO teste
+    // que reusa 'doc-1'. Desmontar e drenar aqui mantém a poluição contida.
+    unmount();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  });
+
+  it('edição nova após esgotar os retries reinicia o ciclo de backoff', async () => {
+    updateMock.mockRejectedValue(new Error('rede'));
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    const layout1 = { ...baseLayout, accent: '#aaaaaa' };
+    act(() => result.current.applyLayout(layout1));
+    for (const delay of [1500, 5000, 15000, 30000]) {
+      await act(async () => {
+        vi.advanceTimersByTime(delay);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    }
+    expect(updateMock).toHaveBeenCalledTimes(4); // esgotado, sem 5º timer agendado
+
+    updateMock.mockResolvedValueOnce(undefined);
+    const layout2 = { ...baseLayout, accent: '#bbbbbb' };
+    act(() => result.current.applyLayout(layout2));
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(5);
+    expect(updateMock).toHaveBeenLastCalledWith('doc-1', { layout: layout2 });
+    expect(result.current.saving).toBe(false);
+  });
+
+  it('sucesso no retry zera o contador: falha seguinte volta a esperar 5s (não 15s)', async () => {
+    updateMock.mockRejectedValueOnce(new Error('rede')); // 1a falha
+    updateMock.mockResolvedValueOnce(undefined); // retry sucede
+    updateMock.mockRejectedValueOnce(new Error('rede')); // nova falha
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    act(() => result.current.applyLayout({ ...baseLayout, accent: '#dddddd' }));
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+
+    // retry sucede em 5000ms
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(result.current.saving).toBe(false);
+
+    // nova edição → nova falha
+    act(() => result.current.applyLayout({ ...baseLayout, accent: '#eeeeee' }));
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(3);
+
+    // se o contador não tivesse zerado, o próximo retry esperaria 15000ms;
+    // com o reset, 5000ms já é suficiente para disparar o 4º request
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('falha no save de título: toast com id de dedup e retry após 5s (mesmo tratamento do layout)', async () => {
+    updateMock.mockRejectedValueOnce(new Error('rede'));
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    act(() => result.current.setTitle('Relatório de Junho'));
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(toastErrorMock).toHaveBeenCalledWith('Erro ao salvar o relatório', {
+      id: 'report-autosave-error',
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(updateMock).toHaveBeenLastCalledWith('doc-1', { title: 'Relatório de Junho' });
+  });
+
+  describe('beforeunload', () => {
+    it('com edição pendente (debounce ainda não disparou), bloqueia o fechamento', () => {
+      const { result } = renderHook(
+        () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+        { wrapper },
+      );
+      act(() => result.current.applyLayout({ ...baseLayout, accent: '#123123' }));
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('sem pendência e sem request em voo, não bloqueia', () => {
+      renderHook(() => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }), { wrapper });
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('o listener sai no unmount: dispatch pós-unmount não é prevenido', () => {
+      const { result, unmount } = renderHook(
+        () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+        { wrapper },
+      );
+      act(() => result.current.applyLayout({ ...baseLayout, accent: '#456456' }));
+      unmount();
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
     });
   });
 });
