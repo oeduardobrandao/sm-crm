@@ -5,11 +5,13 @@ export function AudienceAgeBlock({ snapshot }: BlockProps) {
   if (rows.length === 0) return null;
   const max = Math.max(...rows.map((r) => r.pct), 1);
   return (
-    <div
-      className="rb-panel"
-      style={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: 12, padding: '1rem' }}
-    >
-      <p style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', fontWeight: 600 }}>Faixa etária</p>
+    <div className="rb-panel rb-card rb-card--pad">
+      <p
+        className="rb-card-title"
+        style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', fontWeight: 600 }}
+      >
+        Faixa etária
+      </p>
       {rows.map((row) => (
         <div
           key={row.range}

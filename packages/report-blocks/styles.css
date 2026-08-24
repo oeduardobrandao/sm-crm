@@ -25,6 +25,28 @@
     grid-column: span 6;
   }
 }
+/* Chrome de cartão centralizado: tokens com fallback IGUAL ao valor inline
+   que os widgets tinham — modo herdado renderiza byte-idêntico. Estilo
+   inline de chrome nos widgets é PROIBIDO daqui em diante (inline vence CSS
+   de tema; foi a classe de bug do padding no PR 381). */
+.rb-card {
+  background: var(--rb-surface, transparent);
+  border: 1px solid var(--rb-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--rb-radius, 12px);
+}
+.rb-card--pad {
+  padding: 1rem;
+}
+.rb-card--compact {
+  padding: 0.5rem 1rem;
+}
+.rb-card--flush {
+  padding: 0;
+  overflow: hidden;
+}
+.rb-card-title {
+  font-family: var(--rb-font-display, inherit);
+}
 .rb-prose p {
   margin: 0 0 0.6em;
   line-height: 1.6;

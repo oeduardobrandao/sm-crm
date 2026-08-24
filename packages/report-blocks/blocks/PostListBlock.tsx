@@ -7,7 +7,7 @@ export function PostListBlock({ block, snapshot }: BlockProps) {
   const posts = snapshot.top_posts.slice(0, count);
   if (posts.length === 0) return null;
   return (
-    <div style={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: 12, padding: '0.5rem 1rem' }}>
+    <div className="rb-card rb-card--compact">
       {posts.map((post, i) => (
         <div
           key={i}
