@@ -332,7 +332,9 @@ describe('buildGoogleFontsHref', () => {
   it('includeDefaults ausente ou false preserva o comportamento atual (sem regressao)', () => {
     expect(buildGoogleFontsHref('fraunces', 'instrument-sans')).toBeNull();
     expect(buildGoogleFontsHref('fraunces', 'instrument-sans', {})).toBeNull();
-    expect(buildGoogleFontsHref('fraunces', 'instrument-sans', { includeDefaults: false })).toBeNull();
+    expect(
+      buildGoogleFontsHref('fraunces', 'instrument-sans', { includeDefaults: false }),
+    ).toBeNull();
   });
 });
 
