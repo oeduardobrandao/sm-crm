@@ -6,11 +6,15 @@ export type {
   ReportBlock,
   ReportLayout,
   ValidateLayoutResult,
+  ReportThemeId,
+  ReportFontId,
 } from '../../supabase/functions/_shared/report-docs/layout';
 export {
   BLOCK_TYPES,
   TEXT_BLOCK_TYPES,
   validateLayout,
+  REPORT_THEME_IDS,
+  REPORT_FONT_IDS,
 } from '../../supabase/functions/_shared/report-docs/layout';
 export type {
   ReportDocSnapshot,

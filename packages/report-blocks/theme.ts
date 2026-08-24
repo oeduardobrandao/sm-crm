@@ -145,16 +145,9 @@ export interface ReportTheme {
 }
 
 export function resolveReportTheme(layout: ReportLayout, snapshot: ReportDocSnapshot): ReportTheme {
-  // TODO: Task 2 adicionará os campos theme e fonts ao ReportLayout.
-  // Até lá, lemos via type casting.
-  const layoutWithTheme = layout as ReportLayout & {
-    theme?: 'clean' | 'editorial' | 'bold';
-    fonts?: 'system' | 'fraunces' | 'grotesk' | 'playfair';
-  };
-
   const acc = clampAccent(layout.accent ?? snapshot.branding.accent_color);
-  const theme = layoutWithTheme.theme;
-  const fonts = layoutWithTheme.fonts;
+  const theme = layout.theme;
+  const fonts = layout.fonts;
 
   const vars: Record<string, string> = { '--rb-accent': acc };
 

@@ -25,6 +25,11 @@ export const BLOCK_TYPES = [
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
+export const REPORT_THEME_IDS = ["clean", "editorial", "bold"] as const;
+export type ReportThemeId = (typeof REPORT_THEME_IDS)[number];
+export const REPORT_FONT_IDS = ["system", "fraunces", "grotesk", "playfair"] as const;
+export type ReportFontId = (typeof REPORT_FONT_IDS)[number];
+
 export const TEXT_BLOCK_TYPES: readonly BlockType[] = [
   "text", "ai_summary", "ai_recommendations", "ai_goals",
 ];
@@ -48,6 +53,12 @@ export interface ReportLayout {
    * workspace congelado no snapshot. Seletor no editor chega no PR 2; o schema
    * e o renderer já nascem prontos (decisão B do visual companion). */
   accent?: string;
+  /** Tema visual. AUSENTE = modo herdado (só accent aplicado; fundo e
+   * superfícies herdam da página — Hub whitelabel incluso). */
+  theme?: ReportThemeId;
+  /** Dupla de fontes. AUSENTE = herdar da página; "system" é escolha
+   * explícita da pilha do sistema. */
+  fonts?: ReportFontId;
   blocks: ReportBlock[];
 }
 
@@ -73,6 +84,18 @@ export function validateLayout(raw: unknown): ValidateLayoutResult {
     (typeof raw.accent !== "string" || !/^#[0-9a-fA-F]{6}$/.test(raw.accent))
   ) {
     return { ok: false, error: "invalid accent" };
+  }
+  if (
+    raw.theme !== undefined &&
+    !(REPORT_THEME_IDS as readonly unknown[]).includes(raw.theme)
+  ) {
+    return { ok: false, error: "invalid theme" };
+  }
+  if (
+    raw.fonts !== undefined &&
+    !(REPORT_FONT_IDS as readonly unknown[]).includes(raw.fonts)
+  ) {
+    return { ok: false, error: "invalid fonts" };
   }
 
   const seen = new Set<string>();

@@ -56,10 +56,7 @@ describe('modo herdado (theme e fonts ausentes)', () => {
 
 describe('temas explícitos', () => {
   it('clean: bg branco, ink #12151a, radius 12px, classe rb-theme-clean', () => {
-    const t = resolveReportTheme(
-      layout({ theme: 'clean' } as Partial<ReportLayout>),
-      makeSnapshotFixture(),
-    );
+    const t = resolveReportTheme(layout({ theme: 'clean' }), makeSnapshotFixture());
     expect(t.vars['--rb-bg']).toBe('#ffffff');
     expect(t.vars['--rb-ink']).toBe('#12151a');
     expect(t.vars['--rb-radius']).toBe('12px');
@@ -67,10 +64,7 @@ describe('temas explícitos', () => {
     expect(t.themeClass).toBe('rb-theme-clean');
   });
   it('editorial: bg creme #faf6ee, ink #2a2118, radius 0, surface transparente', () => {
-    const t = resolveReportTheme(
-      layout({ theme: 'editorial' } as Partial<ReportLayout>),
-      makeSnapshotFixture(),
-    );
+    const t = resolveReportTheme(layout({ theme: 'editorial' }), makeSnapshotFixture());
     expect(t.vars['--rb-bg']).toBe('#faf6ee');
     expect(t.vars['--rb-ink']).toBe('#2a2118');
     expect(t.vars['--rb-radius']).toBe('0px');
@@ -78,7 +72,7 @@ describe('temas explícitos', () => {
   });
   it('bold: surface = soft (tint do accent), bg branco', () => {
     const t = resolveReportTheme(
-      layout({ theme: 'bold', accent: '#7c3aed' } as Partial<ReportLayout>),
+      layout({ theme: 'bold', accent: '#7c3aed' }),
       makeSnapshotFixture(),
     );
     expect(t.vars['--rb-surface']).toBe(t.vars['--rb-soft']);
@@ -87,20 +81,14 @@ describe('temas explícitos', () => {
   });
   it('ink sobre bg tem >= 4.5:1 nos tres temas (valores fixos)', () => {
     for (const theme of ['clean', 'editorial', 'bold'] as const) {
-      const t = resolveReportTheme(
-        layout({ theme } as Partial<ReportLayout>),
-        makeSnapshotFixture(),
-      );
+      const t = resolveReportTheme(layout({ theme }), makeSnapshotFixture());
       expect(contrastRatio(t.vars['--rb-ink'], t.vars['--rb-bg'])).toBeGreaterThanOrEqual(4.5);
     }
   });
   it('accent-text atinge >= 4.5:1 sobre o bg do tema para accents hostis', () => {
     for (const accent of ['#00ff00', '#808080', '#ffff00', '#ff69b4']) {
       for (const theme of ['clean', 'editorial', 'bold'] as const) {
-        const t = resolveReportTheme(
-          layout({ theme, accent } as Partial<ReportLayout>),
-          makeSnapshotFixture(),
-        );
+        const t = resolveReportTheme(layout({ theme, accent }), makeSnapshotFixture());
         expect(
           contrastRatio(t.vars['--rb-accent-text'], t.vars['--rb-bg']),
           `${accent} em ${theme}`,
@@ -112,27 +100,18 @@ describe('temas explícitos', () => {
 
 describe('fontes', () => {
   it('fonts ausente: nenhuma var de fonte, href nulo', () => {
-    const t = resolveReportTheme(
-      layout({ theme: 'clean' } as Partial<ReportLayout>),
-      makeSnapshotFixture(),
-    );
+    const t = resolveReportTheme(layout({ theme: 'clean' }), makeSnapshotFixture());
     expect(t.vars['--rb-font-display']).toBeUndefined();
     expect(t.fontHref).toBeNull();
   });
   it('system explicito: vars da pilha do sistema, href nulo', () => {
-    const t = resolveReportTheme(
-      layout({ fonts: 'system' } as Partial<ReportLayout>),
-      makeSnapshotFixture(),
-    );
+    const t = resolveReportTheme(layout({ fonts: 'system' }), makeSnapshotFixture());
     expect(t.vars['--rb-font-display']).toContain('-apple-system');
     expect(t.vars['--rb-font-body']).toContain('-apple-system');
     expect(t.fontHref).toBeNull();
   });
   it('fraunces: display serif, body Instrument Sans, href do Google Fonts', () => {
-    const t = resolveReportTheme(
-      layout({ fonts: 'fraunces' } as Partial<ReportLayout>),
-      makeSnapshotFixture(),
-    );
+    const t = resolveReportTheme(layout({ fonts: 'fraunces' }), makeSnapshotFixture());
     expect(t.vars['--rb-font-display']).toContain('Fraunces');
     expect(t.vars['--rb-font-body']).toContain('Instrument Sans');
     expect(t.fontHref).toContain('fonts.googleapis.com');
