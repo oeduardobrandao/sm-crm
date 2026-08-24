@@ -86,12 +86,24 @@ passam por ele):
 
 - estender o select de `workspaces` (linha ~130) com `hub_surface_theme,
   hub_font_display, hub_font_body, hub_radius, hub_card_style`;
-- resolver `effectivePlanFeature(db, contaId, "feature_brand_customization")`
-  (helper já importado no generate para `feature_analytics_reports`);
-- com entitlement: snapshot recebe os valores das colunas (com `??` para os
-  defaults); sem entitlement: recebe os defaults neutros (`neutral`, `fraunces`,
-  `instrument-sans`, `soft`, `filled`), espelhando o `NEUTRAL_HUB_THEME` do
-  hub-bootstrap. Fail closed.
+- resolver a entitlement num `try/catch` que degrada para `false` em qualquer
+  erro da RPC, **igual ao `hub-bootstrap/handler.ts:96-101`**
+  (`effectivePlanFeature` propaga erro de RPC via `throw`, sem proteção
+  própria; sem o catch aqui, uma soluço transitória na RPC de entitlements
+  derrubaria a geração/refresh inteira com 500 em vez de degradar para o
+  visual neutro — achado do review externo da spec):
+  ```ts
+  let brandCustomization = false;
+  try {
+    brandCustomization = await effectivePlanFeature(db, contaId, "feature_brand_customization");
+  } catch {
+    // fail closed — mesmo padrão do hub-bootstrap
+  }
+  ```
+- com entitlement: snapshot recebe os valores das colunas direto (elas têm
+  `NOT NULL DEFAULT` no schema, então nunca vêm null); sem entitlement: recebe
+  os defaults neutros (`neutral`, `fraunces`, `instrument-sans`, `soft`,
+  `filled`), espelhando o `NEUTRAL_HUB_THEME` do hub-bootstrap.
 
 Campos do whitelabel irrelevantes ao relatório NÃO entram no snapshot:
 `hub_logo_style`, `hub_logo_dark_url`, `hub_hide_branding`,
@@ -106,7 +118,26 @@ de entitlement) só chega ao documento via refresh-data ou geração nova.
 re-exportado por `packages/report-blocks/types.ts`). Em `resolveReportTheme`,
 ao lado dos `THEME_DEFS` fixos, o caminho `hub` deriva o def da config
 (`snapshot.branding.hub_theme`, com fallback para os defaults neutros quando o
-snapshot é antigo e não tem o campo):
+snapshot é antigo e não tem o campo).
+
+`data_snapshot` é JSON sem tipo em runtime: um snapshot persistido antes de um
+id de fonte ser removido do allowlist do Hub (ou qualquer valor fora dos 5
+mapas) não pode indexar direto. Cada lookup usa o MESMO padrão defensivo que
+`resolveHubTheme` já usa hoje (`PALETTES[config.surface] ?? PALETTES.neutral`,
+theme.ts:253) — indexação por chave desconhecida devolve `undefined` em JS, e
+o `??` cai no default. Nenhum dos 5 lookups abaixo indexa um mapa direto sem
+esse fallback:
+
+```ts
+const hubCfg = snapshot.branding.hub_theme;
+const surface = HUB_PALETTES[hubCfg?.surface ?? 'neutral']?.light ?? HUB_PALETTES.neutral.light;
+const fontDisplay = HUB_DISPLAY_FONTS[hubCfg?.font_display ?? ''] ?? HUB_DISPLAY_FONTS['fraunces'];
+const fontBody = HUB_BODY_FONTS[hubCfg?.font_body ?? ''] ?? HUB_BODY_FONTS['instrument-sans'];
+const radius = RADIUS_CARD[hubCfg?.radius ?? ''] ?? RADIUS_CARD.soft;
+// card_style não indexa um mapa de strings CSS (CARD_BG embute var(--hub-*),
+// inútil aqui) -- um switch/ternário com o mesmo fallback ('filled') resolve
+// direto para o hex da paleta, ver tabela abaixo.
+```
 
 | Token | Valor |
 |---|---|
@@ -138,6 +169,13 @@ Migration nova (prefixo de versão único; conferir
 `20260824000001_report_layout_theme_enums.sql`, com o enum de theme estendido
 para `('clean','editorial','bold','hub')` em `report_documents` E
 `report_templates`. Enum de fonts inalterado.
+
+Forward-only, mesmo padrão do resto do projeto: não há migration de downgrade
+neste repo (a própria `20260824000001`, já em prod, não tem uma). Uma vez
+aplicada, reverter o trigger para o enum anterior sem antes reescrever os
+layouts que já persistiram `theme: 'hub'` quebraria a validação da próxima
+escrita desses documentos — risco aceito, idêntico ao de qualquer enum
+aditivo anterior nesta tabela.
 
 ### 6. UI: popover Aparência
 
