@@ -17,13 +17,6 @@ function toHex(rgb: [number, number, number]): string {
   return `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
 }
 
-// Clamp LEGADO usa esta luminância barata (gamma, não linearizada) com o
-// mesmo limiar 0.85 — paridade visual com resolveAccent, de propósito.
-function legacyLuminance(hex: string): number {
-  const [r, g, b] = hexToRgb(hex).map((c) => c / 255);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
 function srgbToLinear(c: number): number {
   const s = c / 255;
   return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
@@ -47,24 +40,36 @@ function mixHex(a: string, b: string, t: number): string {
   return toHex([0, 1, 2].map((i) => ra[i] * (1 - t) + rb[i] * t) as [number, number, number]);
 }
 
+// Cor de marca CLARA é preservada de propósito (decisão 2026-08-24, revertendo
+// o clamp herdado do pipeline legado): a capa e os preenchimentos usam a cor
+// crua com o foreground de maior contraste por cima; só os usos como TEXTO
+// (--rb-accent-text) e como TRAÇO fino (--rb-accent-line) derivam tons
+// escurecidos até ficarem legíveis. Hex inválido segue caindo no neutro.
 function clampAccent(hex: string | null | undefined): string {
-  let acc = hex && HEX_RE.test(hex) ? hex : '#171717';
-  if (legacyLuminance(acc) > 0.85) acc = '#171717';
-  return acc;
+  return hex && HEX_RE.test(hex) ? hex : '#171717';
 }
 
 function pickAccentFg(acc: string, ink: string): string {
   return contrastRatio('#ffffff', acc) >= contrastRatio(ink, acc) ? '#ffffff' : ink;
 }
 
-/** Accent usável COMO TEXTO sobre bg: escurece em direção à tinta até 4.5:1;
- * fallback = a própria tinta. */
-function deriveAccentText(acc: string, bg: string, ink: string): string {
+/** Escurece o accent em direção à tinta até atingir `ratio` de contraste
+ * sobre bg; fallback = a própria tinta. 4.5 para texto (WCAG AA), 3.0 para
+ * traços/gráficos (WCAG 1.4.11, contraste não-textual). */
+function deriveVisible(acc: string, bg: string, ink: string, ratio: number): string {
   for (let t = 0; t <= 1.0001; t += 0.1) {
     const candidate = mixHex(acc, ink, t);
-    if (contrastRatio(candidate, bg) >= 4.5) return candidate;
+    if (contrastRatio(candidate, bg) >= ratio) return candidate;
   }
   return ink;
+}
+
+function deriveAccentText(acc: string, bg: string, ink: string): string {
+  return deriveVisible(acc, bg, ink, 4.5);
+}
+
+function deriveAccentLine(acc: string, bg: string, ink: string): string {
+  return deriveVisible(acc, bg, ink, 3.0);
 }
 
 export interface FontPairing {
@@ -158,6 +163,7 @@ export function resolveReportTheme(layout: ReportLayout, snapshot: ReportDocSnap
     const accentText = deriveAccentText(acc, def.bg, def.ink);
     vars['--rb-accent-fg'] = accentFg;
     vars['--rb-accent-text'] = accentText;
+    vars['--rb-accent-line'] = deriveAccentLine(acc, def.bg, def.ink);
     vars['--rb-bg'] = def.bg;
     vars['--rb-ink'] = def.ink;
     vars['--rb-ink-soft'] = def.inkSoft;
@@ -175,11 +181,14 @@ export function resolveReportTheme(layout: ReportLayout, snapshot: ReportDocSnap
       vars['--rb-section-title'] = accentText;
     }
   } else {
-    // Modo HERDADO: byte-idêntico ao pré-temas. accent-text = accent cru
-    // (o chip "Formato líder" usa a cor crua hoje; mudar seria regressão
-    // visual em doc legado).
+    // Modo HERDADO: para accent escuro/médio, idêntico ao pré-temas (as
+    // derivações devolvem a própria cor quando ela já contrasta). Para accent
+    // CLARO o comportamento mudou de propósito (2026-08-24): antes o clamp
+    // trocava tudo por #171717; agora a cor crua fica nos preenchimentos e
+    // texto/traço derivam tons legíveis contra o papel claro assumido.
     vars['--rb-accent-fg'] = pickAccentFg(acc, '#171717');
-    vars['--rb-accent-text'] = acc;
+    vars['--rb-accent-text'] = deriveAccentText(acc, '#ffffff', '#171717');
+    vars['--rb-accent-line'] = deriveAccentLine(acc, '#ffffff', '#171717');
   }
 
   let fontHref: string | null = null;

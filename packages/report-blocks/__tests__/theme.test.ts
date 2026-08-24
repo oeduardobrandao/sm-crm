@@ -20,23 +20,38 @@ describe('contrastRatio (WCAG real, luminância linearizada)', () => {
 });
 
 describe('modo herdado (theme e fonts ausentes)', () => {
-  it('emite SÓ accent, accent-fg e accent-text; nenhuma var de fundo/fonte', () => {
+  it('emite SÓ accent, accent-fg, accent-text e accent-line; nenhuma var de fundo/fonte', () => {
     const t = resolveReportTheme(layout(), makeSnapshotFixture());
     expect(Object.keys(t.vars).sort()).toEqual([
       '--rb-accent',
       '--rb-accent-fg',
+      '--rb-accent-line',
       '--rb-accent-text',
     ]);
     expect(t.themeClass).toBeNull();
     expect(t.fontHref).toBeNull();
   });
-  it('accent-text no herdado = o próprio accent (comportamento atual do chip)', () => {
+  it('accent escuro/médio: text e line devolvem a PRÓPRIA cor (identidade = docs legados intactos)', () => {
     const t = resolveReportTheme(layout({ accent: '#7c3aed' }), makeSnapshotFixture());
     expect(t.vars['--rb-accent-text']).toBe('#7c3aed');
+    expect(t.vars['--rb-accent-line']).toBe('#7c3aed');
   });
-  it('clamp de accent claro preservado: accent inválido ou claro demais vira #171717', () => {
+  it('accent CLARO é preservado nos preenchimentos (decisão 2026-08-24: sem clamp)', () => {
+    const t = resolveReportTheme(layout({ accent: '#ffdbc1' }), makeSnapshotFixture());
+    expect(t.vars['--rb-accent']).toBe('#ffdbc1');
+    // Capa clara pede texto escuro por cima.
+    expect(t.vars['--rb-accent-fg']).toBe('#171717');
+    // Texto e traço derivam tons legíveis contra papel claro.
+    expect(contrastRatio(t.vars['--rb-accent-text'], '#ffffff')).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(t.vars['--rb-accent-line'], '#ffffff')).toBeGreaterThanOrEqual(3.0);
+  });
+  it('branco puro: preservado, com derivados legíveis', () => {
     const t = resolveReportTheme(layout({ accent: '#ffffff' }), makeSnapshotFixture());
-    expect(t.vars['--rb-accent']).toBe('#171717');
+    expect(t.vars['--rb-accent']).toBe('#ffffff');
+    expect(t.vars['--rb-accent-fg']).toBe('#171717');
+    expect(contrastRatio(t.vars['--rb-accent-line'], '#ffffff')).toBeGreaterThanOrEqual(3.0);
+  });
+  it('hex inválido segue caindo no neutro #171717', () => {
     const t2 = resolveReportTheme(
       layout(),
       makeSnapshotFixture({
@@ -104,6 +119,21 @@ describe('temas explícitos', () => {
     expect(bold.vars['--rb-cover-bg']).toBe('#7c3aed');
     const clean = resolveReportTheme(layout({ theme: 'clean' }), makeSnapshotFixture());
     expect(clean.vars['--rb-cover-bg']).toBeUndefined();
+  });
+
+  it('bold com accent CLARO: capa fica com a cor crua e texto escuro; traços derivam', () => {
+    const t = resolveReportTheme(
+      layout({ theme: 'bold', accent: '#ffdbc1' }),
+      makeSnapshotFixture(),
+    );
+    expect(t.vars['--rb-cover-bg']).toBe('#ffdbc1');
+    expect(t.vars['--rb-cover-fg']).toBe('#12151a');
+    expect(contrastRatio(t.vars['--rb-accent-line'], t.vars['--rb-bg'])).toBeGreaterThanOrEqual(
+      3.0,
+    );
+    expect(contrastRatio(t.vars['--rb-section-title'], t.vars['--rb-bg'])).toBeGreaterThanOrEqual(
+      4.5,
+    );
   });
 });
 

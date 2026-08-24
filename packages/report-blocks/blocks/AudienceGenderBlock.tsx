@@ -28,7 +28,7 @@ export function AudienceGenderBlock({ snapshot }: BlockProps) {
             cy="21"
             r={r}
             fill="none"
-            stroke="var(--rb-accent)"
+            stroke="var(--rb-accent-line, var(--rb-accent))"
             strokeWidth="6"
             strokeDasharray={`${female} ${100 - female}`}
             strokeDashoffset="25"

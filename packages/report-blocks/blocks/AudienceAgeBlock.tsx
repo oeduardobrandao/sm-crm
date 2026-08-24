@@ -23,7 +23,7 @@ export function AudienceAgeBlock({ snapshot }: BlockProps) {
               style={{
                 width: `${(row.pct / max) * 100}%`,
                 height: '100%',
-                background: 'var(--rb-accent)',
+                background: 'var(--rb-accent-line, var(--rb-accent))',
                 borderRadius: 4,
               }}
             />

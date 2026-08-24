@@ -37,7 +37,7 @@ export function FormatCardsBlock({ snapshot }: BlockProps) {
                   marginLeft: 8,
                   fontSize: '0.68rem',
                   color: 'var(--rb-accent-text, var(--rb-accent))',
-                  border: '1px solid var(--rb-accent)',
+                  border: '1px solid var(--rb-accent-line, var(--rb-accent))',
                   borderRadius: 999,
                   padding: '0.1rem 0.5rem',
                 }}

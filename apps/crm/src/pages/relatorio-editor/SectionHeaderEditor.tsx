@@ -39,7 +39,7 @@ export function SectionHeaderEditor({ block, onConfigChange }: SectionHeaderEdit
         style={{
           width: 48,
           height: 3,
-          background: 'var(--rb-accent)',
+          background: 'var(--rb-accent-line, var(--rb-accent))',
           borderRadius: 2,
           marginTop: '0.4rem',
         }}

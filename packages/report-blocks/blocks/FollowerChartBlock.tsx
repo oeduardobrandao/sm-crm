@@ -42,7 +42,7 @@ export function FollowerChartBlock({ snapshot }: BlockProps) {
         <polyline
           points={coords}
           fill="none"
-          stroke="var(--rb-accent)"
+          stroke="var(--rb-accent-line, var(--rb-accent))"
           strokeWidth={2.5}
           strokeLinejoin="round"
           strokeLinecap="round"
