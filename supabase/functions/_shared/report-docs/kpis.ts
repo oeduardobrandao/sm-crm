@@ -9,6 +9,20 @@ export const KPI_IDS = [
 ] as const;
 export type ReportKpiId = (typeof KPI_IDS)[number];
 
+/** Labels pt-BR por KPI. Fonte ÚNICA: o card do pacote React e o bloco de
+ * metas da IA (tiptap-doc) leem daqui — id cru nunca chega ao cliente. */
+export const KPI_LABELS_PT: Record<ReportKpiId, string> = {
+  followers_gained: "Novos seguidores",
+  followers_total: "Seguidores totais",
+  reach: "Alcance",
+  views: "Visualizações",
+  engagement_rate: "Taxa de engajamento",
+  saves: "Salvamentos",
+  posts_count: "Publicações",
+  profile_views: "Visitas ao perfil",
+  website_clicks: "Cliques no link",
+};
+
 export interface KpiEntry {
   /** null = sem dado nessa base (o widget se omite no viewer/print). */
   value: number | null;

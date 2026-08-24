@@ -3,7 +3,7 @@
 // StarterKit do PR 2 entendem.
 import type { AIOutput } from "../report-template/types.ts";
 import type { ReportLayout } from "./layout.ts";
-import type { KpiEntry, ReportKpiId } from "./kpis.ts";
+import { KPI_LABELS_PT, type KpiEntry, type ReportKpiId } from "./kpis.ts";
 
 const p = (text: string) => ({
   type: "paragraph",
@@ -32,16 +32,27 @@ export function aiRecommendationsDoc(ai: AIOutput): unknown {
   return { type: "doc", content };
 }
 
+const fmt = new Intl.NumberFormat("pt-BR");
+
+// O prompt pede "metric_id from the provided data", então a IA devolve ids
+// crus (reach, followers_gained). O tratamento é AQUI, na renderização: id
+// conhecido vira o label pt-BR; texto livre da IA passa como veio. Target
+// só-dígitos ganha formato pt-BR ("7000" -> "7.000").
+function goalHeading(metric: string, target: string): string {
+  const label = (KPI_LABELS_PT as Record<string, string>)[metric] ?? metric;
+  const t = target.trim();
+  const formatted = /^\d+$/.test(t) ? fmt.format(Number(t)) : target;
+  return `${label}: ${formatted}`;
+}
+
 export function aiGoalsDoc(ai: AIOutput): unknown {
   const content: unknown[] = [];
   for (const goal of ai.suggested_goals) {
-    content.push(h3(`${goal.metric}: ${goal.target}`));
+    content.push(h3(goalHeading(goal.metric, goal.target)));
     content.push(p(goal.rationale));
   }
   return { type: "doc", content };
 }
-
-const fmt = new Intl.NumberFormat("pt-BR");
 
 export function fallbackSummaryParagraphs(
   kpis: Record<ReportKpiId, KpiEntry>,

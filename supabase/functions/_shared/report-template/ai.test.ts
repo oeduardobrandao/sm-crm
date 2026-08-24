@@ -38,6 +38,20 @@ Deno.test("buildAIPrompt includes system role and data payload", () => {
   assertEquals(userPrompt.includes("Maio 2026"), true);
 });
 
+Deno.test("buildAIPrompt: extraGuidance anexa ao system prompt; sem opts o prompt é byte-idêntico (paridade legado)", () => {
+  const plain = buildAIPrompt(fixture);
+  const withOpts = buildAIPrompt(fixture, {});
+  const guided = buildAIPrompt(fixture, { extraGuidance: "METRIC PRIORITY: views first." });
+  // O gerador legado chama com um argumento: nada pode mudar nesse caminho.
+  const legacy = buildAIPrompt(fixture);
+  if (plain.systemPrompt !== legacy.systemPrompt) throw new Error("legacy prompt drifted");
+  if (plain.systemPrompt !== withOpts.systemPrompt) throw new Error("empty opts changed prompt");
+  if (!guided.systemPrompt.endsWith("METRIC PRIORITY: views first.")) {
+    throw new Error("guidance not appended");
+  }
+  if (guided.userPrompt !== plain.userPrompt) throw new Error("guidance leaked into userPrompt");
+});
+
 Deno.test("buildAIPrompt strips base64 thumbnails from the data payload", () => {
   // Seen in prod: a media-heavy month put megabytes of base64 JPEG into the
   // prompt and Gemini rejected it with 400 INVALID_ARGUMENT (input token

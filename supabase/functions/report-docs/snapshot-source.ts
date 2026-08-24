@@ -29,12 +29,10 @@ type Db = any;
 type TagPerfResult = { data: TagPerformance[] | null; error?: { message?: string } | null };
 
 // Mesma dupla de chaves de instagram-analytics/index.ts (decryptToken):
-// HKDF com purpose primeiro, fallback legado com a chave crua padded. Lança
-// se TOKEN_ENCRYPTION_KEY faltar (regra da casa: sem fallback silencioso) —
-// o chamador degrada as views para null, nunca a geração inteira.
-async function decryptIgToken(encrypted: string): Promise<string> {
-  const secret = Deno.env.get("TOKEN_ENCRYPTION_KEY");
-  if (!secret) throw new Error("TOKEN_ENCRYPTION_KEY missing");
+// HKDF com purpose primeiro, fallback legado com a chave crua padded. O
+// segredo vem do CHAMADOR, que valida sua presença de forma síncrona e alta
+// — assim a falha de decrypt aqui é sempre dado (token), nunca config.
+async function decryptIgToken(encrypted: string, secret: string): Promise<string> {
   try {
     return await decryptText(encrypted, secret, "instagram-access-token");
   } catch {
@@ -74,13 +72,23 @@ export async function loadClientSnapshot(
   const prevW = monthWindow(prevMonthOf(month));
   const prevPrevW = monthWindow(prevMonthOf(prevMonthOf(month)));
 
+  // Regra da casa: TOKEN_ENCRYPTION_KEY é obrigatória, sem fallback. Config
+  // ausente falha a geração ALTO e síncrono AQUI (nunca some no catch de
+  // degradação abaixo, que existe para falha de DADO: token expirado, Graph
+  // fora). Guard síncrono também evita rejection órfã se um throw anterior
+  // abandonar a promise antes do await. Achado do review externo do PR #382.
+  const encryptionSecret = Deno.env.get("TOKEN_ENCRYPTION_KEY");
+  if (account.encrypted_access_token && !encryptionSecret) {
+    throw new Error("TOKEN_ENCRYPTION_KEY missing");
+  }
+
   // Views da conta: Graph ao vivo, em paralelo com as queries abaixo. Fonte
-  // OPCIONAL — qualquer falha (token ausente/expirado, Graph fora) degrada o
-  // card para null com log, nunca derruba a geração.
+  // OPCIONAL — falha de token/Graph degrada o card para null com log, nunca
+  // derruba a geração.
   const accountViewsPromise: Promise<{ value: number | null; prev: number | null }> =
     (async () => {
       if (!account.encrypted_access_token) return { value: null, prev: null };
-      const token = await decryptIgToken(account.encrypted_access_token);
+      const token = await decryptIgToken(account.encrypted_access_token, encryptionSecret!);
       return await fetchAccountViews(deps.fetch, token, month, Math.floor(Date.now() / 1000));
     })().catch((e) => {
       console.warn(

@@ -18,6 +18,7 @@ export function snapshotToReportData(snap: ReportDocSnapshot): ReportData {
     kpi_deltas: {},
     top_posts: snap.top_posts.map((post) => ({
       type: post.type,
+      views: post.views,
       reach: post.reach,
       engagement: post.likes + post.comments + post.saves + post.shares,
       saves: post.saves,

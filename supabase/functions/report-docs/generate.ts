@@ -116,8 +116,26 @@ export async function generateReportDocument(
       );
     });
     try {
+      // Visualizações são a métrica-guia do relatório de blocos (pedido
+      // 2026-08). O direcionamento só entra quando o dado existe — empurrar a
+      // IA para uma métrica ausente convida invenção que a DATA RULE proíbe.
+      const hasViews = snapshot.kpis.views?.value != null;
+      const promptOpts = hasViews
+        ? {
+          extraGuidance:
+            "METRIC PRIORITY: 'views' (visualizações) is the primary performance metric for " +
+            "this report. Lead the executive summary, analysis, recommendations and " +
+            "suggested_goals with views wherever the data provides them; treat reach as " +
+            "secondary context.",
+        }
+        : undefined;
       const ai = await Promise.race([
-        generateAINarrative(snapshotToReportData(snapshot), deps.geminiKey, controller.signal),
+        generateAINarrative(
+          snapshotToReportData(snapshot),
+          deps.geminiKey,
+          controller.signal,
+          promptOpts,
+        ),
         timeoutPromise,
       ]);
       if (ai.status === "success" && ai.output) {

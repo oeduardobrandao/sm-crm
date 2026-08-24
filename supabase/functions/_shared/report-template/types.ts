@@ -16,6 +16,9 @@ export interface KpiDeltas {
 
 export interface TopPost {
   type: "reel" | "carousel" | "image";
+  /** Views do post. Opcional e aditivo: só o pipeline de blocos preenche; o
+   * gerador legado nunca seta e segue byte-idêntico. */
+  views?: number;
   reach: number;
   engagement: number;
   saves: number;

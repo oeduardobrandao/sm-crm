@@ -1,18 +1,11 @@
 import type { BlockProps } from '../BlockRenderer';
 import type { KpiEntry, ReportKpiId } from '../types';
+import { KPI_LABELS_PT } from '../types';
 import { deltaPct, fmtCount, fmtPct } from '../format';
 
-export const KPI_LABELS: Record<ReportKpiId, string> = {
-  followers_gained: 'Novos seguidores',
-  followers_total: 'Seguidores totais',
-  reach: 'Alcance',
-  views: 'Visualizações',
-  engagement_rate: 'Taxa de engajamento',
-  saves: 'Salvamentos',
-  posts_count: 'Publicações',
-  profile_views: 'Visitas ao perfil',
-  website_clicks: 'Cliques no link',
-};
+// Fonte única em _shared/report-docs/kpis.ts (o bloco de metas da IA usa o
+// MESMO mapa); reexport mantém os consumidores existentes.
+export const KPI_LABELS: Record<ReportKpiId, string> = KPI_LABELS_PT;
 
 function kpiIdFromBlockType(type: string): ReportKpiId {
   return type.replace(/^kpi_/, '') as ReportKpiId;

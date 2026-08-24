@@ -1,5 +1,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { aiRecommendationsDoc, fallbackSummaryParagraphs, fillAiBlocks, textDoc } from "./tiptap-doc.ts";
+import {
+  aiGoalsDoc, aiRecommendationsDoc, fallbackSummaryParagraphs, fillAiBlocks, textDoc,
+} from "./tiptap-doc.ts";
 import { buildDefaultLayout } from "./default-layout.ts";
 import type { AIOutput } from "../report-template/types.ts";
 
@@ -16,6 +18,21 @@ Deno.test("textDoc gera doc TipTap com um paragraph por string", () => {
   const doc = textDoc(["a", "b"]) as { type: string; content: unknown[] };
   assertEquals(doc.type, "doc");
   assertEquals(doc.content.length, 2);
+});
+
+Deno.test("aiGoalsDoc: id de KPI vira label pt-BR e target numérico formata; texto livre passa como veio", () => {
+  const doc = aiGoalsDoc({
+    ...ai,
+    suggested_goals: [
+      { metric: "reach", target: "7000", rationale: "r1" },
+      { metric: "views", target: "60000", rationale: "r2" },
+      { metric: "alcance nos reels", target: "+10%", rationale: "r3" },
+    ],
+  }) as { content: { type: string; content: { text: string }[] }[] };
+  const headings = doc.content
+    .filter((n) => n.type === "heading")
+    .map((n) => n.content[0].text);
+  assertEquals(headings, ["Alcance: 7.000", "Visualizações: 60.000", "alcance nos reels: +10%"]);
 });
 
 Deno.test("aiRecommendationsDoc: heading + paragraph por recomendação", () => {
