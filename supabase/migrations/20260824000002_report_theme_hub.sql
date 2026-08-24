@@ -14,12 +14,14 @@ BEGIN
      OR jsonb_array_length(NEW.layout -> 'blocks') > 200 THEN
     RAISE EXCEPTION 'INVALID_LAYOUT';
   END IF;
+  -- accent, quando presente, é string #rrggbb exata.
   IF NEW.layout ? 'accent' AND (
        jsonb_typeof(NEW.layout -> 'accent') IS DISTINCT FROM 'string'
        OR NEW.layout ->> 'accent' !~ '^#[0-9a-fA-F]{6}$'
      ) THEN
     RAISE EXCEPTION 'INVALID_LAYOUT';
   END IF;
+  -- theme/fonts, quando presentes, sao strings dos enums fechados.
   IF NEW.layout ? 'theme' AND (
        jsonb_typeof(NEW.layout -> 'theme') IS DISTINCT FROM 'string'
        OR NEW.layout ->> 'theme' NOT IN ('clean', 'editorial', 'bold', 'hub')
@@ -40,11 +42,13 @@ BEGIN
        OR jsonb_typeof(b -> 'type') IS DISTINCT FROM 'string'
        OR jsonb_typeof(b -> 'size') IS DISTINCT FROM 'string'
        OR b ->> 'size' NOT IN ('third', 'half', 'full')
+       -- text só nos tipos textuais (subset estável; espelha TEXT_BLOCK_TYPES)
        OR (b ? 'text' AND b ->> 'type' NOT IN
            ('text', 'ai_summary', 'ai_recommendations', 'ai_goals'))
   ) THEN
     RAISE EXCEPTION 'INVALID_LAYOUT';
   END IF;
+  -- id duplicado
   IF (SELECT count(*) <> count(DISTINCT b ->> 'id')
         FROM jsonb_array_elements(NEW.layout -> 'blocks') AS b) THEN
     RAISE EXCEPTION 'INVALID_LAYOUT';
