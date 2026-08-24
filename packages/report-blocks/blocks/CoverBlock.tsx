@@ -6,8 +6,8 @@ export function CoverBlock({ snapshot }: BlockProps) {
     <header
       className="rb-cover"
       style={{
-        background: 'var(--rb-cover-bg, #12151a)',
-        color: 'var(--rb-cover-fg, #ffffff)',
+        background: 'var(--rb-cover-bg, var(--rb-accent))',
+        color: 'var(--rb-cover-fg, var(--rb-accent-fg))',
         borderRadius: 12,
         padding: '2.5rem 2rem',
       }}
