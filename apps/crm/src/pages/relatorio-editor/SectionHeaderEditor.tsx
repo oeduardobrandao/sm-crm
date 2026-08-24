@@ -25,6 +25,7 @@ export function SectionHeaderEditor({ block, onConfigChange }: SectionHeaderEdit
           fontWeight: 700,
           fontFamily: 'var(--rb-font-display, inherit)',
           color: 'var(--rb-section-title, inherit)',
+          letterSpacing: '-1px',
         }}
       />
       <input

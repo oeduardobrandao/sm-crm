@@ -38,6 +38,7 @@ export function CoverBlock({ snapshot }: BlockProps) {
           margin: '0.25rem 0 0',
           fontSize: '2rem',
           fontFamily: 'var(--rb-font-display, inherit)',
+          letterSpacing: '-1px',
         }}
       >
         {snapshot.period.label}

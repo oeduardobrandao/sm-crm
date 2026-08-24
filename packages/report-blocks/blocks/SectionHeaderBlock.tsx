@@ -12,6 +12,7 @@ export function SectionHeaderBlock({ block }: BlockProps) {
           fontSize: '1.15rem',
           fontFamily: 'var(--rb-font-display, inherit)',
           color: 'var(--rb-section-title, inherit)',
+          letterSpacing: '-1px',
         }}
       >
         {title}
