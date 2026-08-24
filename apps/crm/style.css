@@ -11583,3 +11583,166 @@ body.landing-page #root {
   float: left;
   height: 0;
 }
+
+/* ── Editor de relatório: seção fixa "Camadas" ─────────────────────────────
+   Painel ancorado à direita. Regra da casa (DESIGN_SYSTEM): UI fixa ancorada
+   fica display:none por padrão e só aparece via media query — abaixo do gate
+   não há espaço e sticky não funciona (overflow-x:hidden global). O conteúdo
+   do editor ganha padding-right no mesmo gate para o canvas não ficar por
+   baixo do painel. */
+.rb-layers-rail {
+  display: none;
+}
+/* Padding base do editor mora AQUI, não inline no componente: inline venceria
+   o padding-right do gate abaixo e o canvas ficaria por baixo do painel. */
+.rb-editor-with-rail {
+  padding: 1.5rem;
+}
+@media (min-width: 1280px) {
+  .rb-layers-rail {
+    display: block;
+    position: fixed;
+    top: calc(var(--topbar-height) + var(--banner-height) + 16px);
+    right: 16px;
+    width: 250px;
+    max-height: calc(100vh - var(--topbar-height) - var(--banner-height) - 32px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 0.75rem;
+  }
+  .rb-editor-with-rail {
+    padding-right: 298px;
+  }
+}
+.rb-layers-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.rb-layers-hint {
+  margin: 0.2rem 0 0.6rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.rb-layers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.3rem;
+}
+.rb-layers-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-main);
+  padding: 0.25rem 0.4rem;
+}
+.rb-layers-row-active {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 1px var(--primary-color);
+}
+.rb-layers-handle {
+  border: none;
+  background: transparent;
+  padding: 0.15rem;
+  display: flex;
+  color: var(--text-light);
+}
+.rb-layers-label {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 0.78rem;
+  color: var(--text-main);
+  cursor: pointer;
+  padding: 0.15rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.rb-layers-icon {
+  color: var(--text-light);
+  flex-shrink: 0;
+}
+.rb-layers-label-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rb-layers-item {
+  min-width: 0;
+}
+/* Hotspot de inserção entre camadas: zona fina que revela o "+" no hover da
+   própria zona ou no foco do botão (teclado). */
+.rb-layers-gap {
+  position: relative;
+  height: 0.3rem;
+  margin: 0 0 -0.3rem;
+}
+.rb-layers-add-between {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 1;
+}
+.rb-layers-gap:hover .rb-layers-add-between,
+.rb-layers-add-between:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.rb-layers-add-between:hover {
+  color: var(--text-main);
+  border-color: var(--text-light);
+}
+.rb-layers-add-end {
+  margin-top: 0.6rem;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  padding: 0.4rem;
+  cursor: pointer;
+}
+.rb-layers-add-end:hover {
+  color: var(--text-main);
+  border-color: var(--text-light);
+}
+.rb-layers-size {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.05rem 0.3rem;
+  flex-shrink: 0;
+}
