@@ -15,7 +15,9 @@ No schema migration needed. The Instagram API `views` metric is already stored i
 - Account-level: `instagram_accounts.impressions_28d` = views (28d), `instagram_accounts.reach_28d` = reach (28d)
 - Account-level live views come from `getAccountViews` (Graph API, capped at 90 days)
 
-**Unavailable views data:** When the Graph API does not return views for a post, `buildMetricFields` preserves the previous `impressions` value if one exists; it only writes `0` for a brand-new post with no prior sync. In either case, `"impressions"` is added to `unavailable_metrics`. To avoid silently dropping posts from rankings, queries must use `.or('impressions.gt.0,reach.gt.0')` instead of `.gt('impressions', 0)`. Posts rank on their last-known-good `impressions` value. This is correct: the sync runs regularly, and a preserved value is typically hours old, not stale. Surfacing unavailable-views indicators on post cards is a separate concern and out of scope for this change.
+**Unavailable views data (post-level):** When the Graph API does not return views for a post, `buildMetricFields` preserves the previous `impressions` value if one exists; it only writes `0` for a brand-new post with no prior sync. In either case, `"impressions"` is added to `unavailable_metrics`. To avoid silently dropping posts from rankings, queries must use `.or('impressions.gt.0,reach.gt.0')` instead of `.gt('impressions', 0)`. Posts rank on their last-known-good `impressions` value. The sync cron only refreshes posts from the last 30 days, so older posts retain stale values indefinitely — but this is identical to the current behavior for `reach`. Surfacing unavailable-views indicators on post cards is a separate concern and out of scope for this change.
+
+**Unavailable views data (account-level):** `impressions_28d` on `instagram_accounts` has a different risk: the sync cron initializes `totalImpressions = 0` and overwrites the DB value even when the Graph API returns no `views` insight, zeroing a previously healthy value with no availability marker. This is a pre-existing data-quality issue that affects `reach_28d` identically (same pattern at line 152). Fixing the sync cron's overwrite-with-zero behavior is out of scope — it would need a `COALESCE`-style guard on both metrics, which is a separate improvement.
 
 ## Changes
 
@@ -55,7 +57,7 @@ No schema migration needed. The Instagram API `views` metric is already stored i
 - Per-card metric label (lines 970, 1173): "Alcance" becomes "Visualizações"
 
 **KPI cards:**
-- "Alcance total (28d)" becomes "Visualizações totais" using `impressions_28d` summed across accounts
+- "Alcance total (28d)" becomes "Visualizações totais (28d)" using `impressions_28d` summed across accounts. The "(28d)" suffix stays because `impressions_28d` is always a fixed 28-day window, regardless of the page's period selector.
 - "Maior alcance" leader card changes to "Mais visualizações", sorted by `impressions_28d`
 - Sub-label (line 829): `alcance 28d` becomes `visualizações 28d`
 
