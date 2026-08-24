@@ -30,6 +30,7 @@ export default defineConfig({
       'apps/**/__tests__/**/*.test.{ts,tsx}',
       'apps/**/*.{test,spec}.{ts,tsx}',
       'packages/**/__tests__/**/*.test.{ts,tsx}',
+      'packages/**/*.{test,spec}.{ts,tsx}',
       'test/**/*.{test,spec}.{ts,tsx}',
       'scripts/**/*.test.mjs',
       // Scoped to e2e/screenshots/__tests__ today (safety.ts unit tests).

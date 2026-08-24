@@ -4,8 +4,16 @@
 // (_shared/report-template/theme.ts) segue intocado para o gerador v2; aqui
 // reproduzimos o clamp dele e trocamos a escolha de foreground por contraste
 // WCAG real (spec 2026-08-24 §Tokens).
-import type { ReportDocSnapshot, ReportLayout } from './types';
+import type { ReportDocSnapshot, ReportLayout, SnapshotHubTheme } from './types';
 import { REPORT_FONT_IDS, REPORT_THEME_IDS } from './types';
+import {
+  PALETTES,
+  RADIUS_CARD,
+  HUB_DISPLAY_FONTS,
+  HUB_BODY_FONTS,
+  buildGoogleFontsHref,
+} from '../hub-theme/theme';
+export { PALETTES } from '../hub-theme/theme';
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
@@ -150,6 +158,14 @@ export interface ReportTheme {
   fontHref: string | null;
 }
 
+const HUB_DEFAULT_THEME: SnapshotHubTheme = {
+  surface: 'neutral',
+  font_display: 'fraunces',
+  font_body: 'instrument-sans',
+  radius: 'soft',
+  card_style: 'filled',
+};
+
 export function resolveReportTheme(layout: ReportLayout, snapshot: ReportDocSnapshot): ReportTheme {
   const acc = clampAccent(layout.accent ?? snapshot.branding.accent_color);
   // Renderers são tolerantes (contrato da spec): valor persistido fora dos
@@ -164,8 +180,56 @@ export function resolveReportTheme(layout: ReportLayout, snapshot: ReportDocSnap
     : undefined;
 
   const vars: Record<string, string> = { '--rb-accent': acc };
+  let fontHref: string | null = null;
 
-  if (theme) {
+  if (theme === 'hub') {
+    // Deriva do Personalizar Hub do workspace (congelado no snapshot na
+    // geração/refresh, Task 4) em vez de um THEME_DEFS fixo -- branch próprio
+    // porque THEME_DEFS não tem entrada 'hub' e porque a fonte vem de um
+    // mapa de 6+5 opções, não de FONT_PAIRINGS. Cada lookup por id
+    // persistido cai no default quando o valor é desconhecido: data_snapshot
+    // é JSON sem tipo em runtime, e um documento antigo (ou uma fonte do
+    // Hub descontinuada) não pode quebrar a renderização.
+    const hubCfg = snapshot.branding.hub_theme ?? HUB_DEFAULT_THEME;
+    const palette = PALETTES[hubCfg.surface]?.light ?? PALETTES.neutral.light;
+    const bg = palette.bg;
+    const ink = palette.txt;
+    const border =
+      hubCfg.card_style === 'outline'
+        ? palette.bd2
+        : hubCfg.card_style === 'tonal'
+          ? 'transparent'
+          : palette.bd;
+    const radius = RADIUS_CARD[hubCfg.radius] ?? RADIUS_CARD.soft;
+    const surface =
+      hubCfg.card_style === 'outline'
+        ? 'transparent'
+        : hubCfg.card_style === 'tonal'
+          ? palette.soft
+          : palette.card;
+    const soft = mixHex(acc, bg, 0.9);
+    const accentFg = pickAccentFg(acc, ink);
+    const accentText = deriveAccentText(acc, bg, ink);
+    vars['--rb-accent-fg'] = accentFg;
+    vars['--rb-accent-text'] = accentText;
+    vars['--rb-accent-line'] = deriveAccentLine(acc, bg, ink);
+    vars['--rb-bg'] = bg;
+    vars['--rb-ink'] = ink;
+    vars['--rb-ink-soft'] = palette.tx2;
+    vars['--rb-border'] = border;
+    vars['--rb-radius'] = radius;
+    vars['--rb-soft'] = soft;
+    vars['--rb-surface'] = surface;
+    if (!fonts) {
+      const fontDisplay = HUB_DISPLAY_FONTS[hubCfg.font_display] ?? HUB_DISPLAY_FONTS.fraunces;
+      const fontBody = HUB_BODY_FONTS[hubCfg.font_body] ?? HUB_BODY_FONTS['instrument-sans'];
+      vars['--rb-font-display'] = fontDisplay.css;
+      vars['--rb-font-body'] = fontBody.css;
+      fontHref = buildGoogleFontsHref(hubCfg.font_display, hubCfg.font_body, {
+        includeDefaults: true,
+      });
+    }
+  } else if (theme) {
     const def = THEME_DEFS[theme];
     const soft = mixHex(acc, def.bg, 0.9);
     const accentFg = pickAccentFg(acc, def.ink);
@@ -200,7 +264,6 @@ export function resolveReportTheme(layout: ReportLayout, snapshot: ReportDocSnap
     vars['--rb-accent-line'] = deriveAccentLine(acc, '#ffffff', '#171717');
   }
 
-  let fontHref: string | null = null;
   if (fonts) {
     const pairing = FONT_PAIRINGS[fonts];
     vars['--rb-font-display'] = pairing.display;

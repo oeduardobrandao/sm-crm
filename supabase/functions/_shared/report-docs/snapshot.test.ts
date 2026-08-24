@@ -93,3 +93,29 @@ Deno.test("thumbnail estável (mapa) entra; carousel e image mapeiam certo", () 
   // Já estável (não é host do IG): passa direto.
   assert(snap.top_posts[1].thumbnail_url!.includes("instagram-posts/1/b.jpg"));
 });
+
+Deno.test("aceita branding.hub_theme opcional sem quebrar o assembleSnapshot", () => {
+  const snap = assembleSnapshot({
+    month: "2026-08",
+    account: { handle: "x", specialty: "" },
+    branding: {
+      workspace_name: "W", logo_url: null, splash_url: null, accent_color: "#000",
+      hub_theme: {
+        surface: "warm", font_display: "sora", font_body: "manrope",
+        radius: "pill", card_style: "outline",
+      },
+    },
+    kpiSources: {
+      allPosts: [], prevMonthPosts: null, currSnapshot: null, prevSnapshot: null,
+      prevPrevSnapshot: null, followerHistory: [], accountViews: null,
+    },
+    followerTrend: [],
+    posts: [],
+    stableThumbnails: new Map(),
+    audience: null,
+    bestTimes: [],
+    tagsPerformance: [],
+  });
+  assertEquals(snap.branding.hub_theme?.surface, "warm");
+  assertEquals(snap.branding.hub_theme?.card_style, "outline");
+});

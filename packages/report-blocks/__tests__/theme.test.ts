@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { FONT_PAIRINGS, contrastRatio, resolveReportTheme } from '../theme';
 import { makeSnapshotFixture } from '../fixtures';
-import type { ReportLayout } from '../types';
+import type { ReportLayout, SnapshotHubTheme } from '../types';
+import { REPORT_THEME_IDS } from '../types';
 
 const layout = (over: Partial<ReportLayout> = {}): ReportLayout => ({
   version: 1,
@@ -145,6 +146,10 @@ describe('temas explícitos', () => {
       4.5,
     );
   });
+
+  it('REPORT_THEME_IDS inclui hub ao lado dos temas fixos', () => {
+    expect([...REPORT_THEME_IDS]).toEqual(['clean', 'editorial', 'bold', 'hub']);
+  });
 });
 
 describe('fontes', () => {
@@ -176,5 +181,178 @@ describe('fontes', () => {
       expect(p.display).toMatch(/serif|sans-serif/);
       expect(p.body).toMatch(/serif|sans-serif/);
     }
+  });
+});
+
+describe('tema hub (deriva da config whitelabel do portal)', () => {
+  const hubSnapshot = (hub_theme: SnapshotHubTheme) =>
+    makeSnapshotFixture({
+      branding: {
+        workspace_name: 'W',
+        logo_url: null,
+        splash_url: null,
+        accent_color: '#7c3aed',
+        hub_theme,
+      },
+    });
+
+  it('mapeia superficie, radius e card style filled para os tokens do relatorio', () => {
+    const t = resolveReportTheme(
+      layout({ theme: 'hub' }),
+      hubSnapshot({
+        surface: 'neutral',
+        font_display: 'fraunces',
+        font_body: 'instrument-sans',
+        radius: 'soft',
+        card_style: 'filled',
+      }),
+    );
+    expect(t.vars['--rb-bg']).toBe('#FAFAFA');
+    expect(t.vars['--rb-ink']).toBe('#171717');
+    expect(t.vars['--rb-border']).toBe('rgba(0,0,0,.08)');
+    expect(t.vars['--rb-radius']).toBe('12px');
+    expect(t.vars['--rb-surface']).toBe('#FFFFFF');
+    expect(t.themeClass).toBe('rb-theme-hub');
+  });
+
+  it('card style outline usa a borda mais forte e superficie transparente', () => {
+    const t = resolveReportTheme(
+      layout({ theme: 'hub' }),
+      hubSnapshot({
+        surface: 'neutral',
+        font_display: 'fraunces',
+        font_body: 'instrument-sans',
+        radius: 'soft',
+        card_style: 'outline',
+      }),
+    );
+    expect(t.vars['--rb-border']).toBe('rgba(0,0,0,.2)');
+    expect(t.vars['--rb-surface']).toBe('transparent');
+  });
+
+  it('card style tonal usa o soft da paleta como superficie', () => {
+    const t = resolveReportTheme(
+      layout({ theme: 'hub' }),
+      hubSnapshot({
+        surface: 'warm',
+        font_display: 'fraunces',
+        font_body: 'instrument-sans',
+        radius: 'soft',
+        card_style: 'tonal',
+      }),
+    );
+    expect(t.vars['--rb-surface']).toBe('#F3EEE7');
+  });
+
+  it('card style tonal nao tem borda, igual ao portal', () => {
+    const t = resolveReportTheme(
+      layout({ theme: 'hub' }),
+      hubSnapshot({
+        surface: 'neutral',
+        font_display: 'fraunces',
+        font_body: 'instrument-sans',
+        radius: 'soft',
+        card_style: 'tonal',
+      }),
+    );
+    expect(t.vars['--rb-border']).toBe('transparent');
+  });
+
+  it('superficie warm e cool usam a paleta light correspondente', () => {
+    const warm = resolveReportTheme(
+      layout({ theme: 'hub' }),
+      hubSnapshot({
+        surface: 'warm',
+        font_display: 'fraunces',
+        font_body: 'instrument-sans',
+        radius: 'soft',
+        card_style: 'filled',
+      }),
+    );
+    expect(warm.vars['--rb-bg']).toBe('#FAF7F2');
+    const cool = resolveReportTheme(
+      layout({ theme: 'hub' }),
+      hubSnapshot({
+        surface: 'cool',
+        font_display: 'fraunces',
+        font_body: 'instrument-sans',
+        radius: 'soft',
+        card_style: 'filled',
+      }),
+    );
+    expect(cool.vars['--rb-bg']).toBe('#F7F9FB');
+  });
+
+  it('fontes do hub entram com includeDefaults quando layout.fonts esta ausente', () => {
+    const t = resolveReportTheme(
+      layout({ theme: 'hub' }),
+      hubSnapshot({
+        surface: 'neutral',
+        font_display: 'space-grotesk',
+        font_body: 'manrope',
+        radius: 'soft',
+        card_style: 'filled',
+      }),
+    );
+    expect(t.vars['--rb-font-display']).toContain('Space Grotesk');
+    expect(t.vars['--rb-font-body']).toContain('Manrope');
+    expect(t.fontHref).toContain('Space+Grotesk');
+  });
+
+  it('layout.fonts explicito vence a fonte do hub', () => {
+    const t = resolveReportTheme(
+      layout({ theme: 'hub', fonts: 'playfair' }),
+      hubSnapshot({
+        surface: 'neutral',
+        font_display: 'space-grotesk',
+        font_body: 'manrope',
+        radius: 'soft',
+        card_style: 'filled',
+      }),
+    );
+    expect(t.vars['--rb-font-display']).toContain('Playfair');
+  });
+
+  it('snapshot antigo sem hub_theme cai nos defaults neutros sem lancar', () => {
+    const t = resolveReportTheme(layout({ theme: 'hub' }), makeSnapshotFixture());
+    expect(t.vars['--rb-bg']).toBe('#FAFAFA');
+    expect(t.vars['--rb-radius']).toBe('12px');
+  });
+
+  it('ids desconhecidos persistidos (surface/fonte/radius) caem nos defaults sem lancar', () => {
+    const t = resolveReportTheme(
+      layout({ theme: 'hub' }),
+      hubSnapshot({
+        surface: 'galaxy',
+        font_display: 'comic-sans',
+        font_body: 'papyrus',
+        radius: 'huge',
+        card_style: 'glassy',
+      } as any),
+    );
+    expect(t.vars['--rb-bg']).toBe('#FAFAFA');
+    expect(t.vars['--rb-radius']).toBe('12px');
+    expect(t.vars['--rb-surface']).toBe('#FFFFFF');
+  });
+
+  it('accent deriva accent-text/accent-line contra o bg do hub, sem tokens de capa/secao', () => {
+    const t = resolveReportTheme(
+      layout({ theme: 'hub' }),
+      hubSnapshot({
+        surface: 'neutral',
+        font_display: 'fraunces',
+        font_body: 'instrument-sans',
+        radius: 'soft',
+        card_style: 'filled',
+      }),
+    );
+    expect(contrastRatio(t.vars['--rb-accent-text'], t.vars['--rb-bg'])).toBeGreaterThanOrEqual(
+      4.5,
+    );
+    expect(contrastRatio(t.vars['--rb-accent-line'], t.vars['--rb-bg'])).toBeGreaterThanOrEqual(
+      3.0,
+    );
+    expect(t.vars['--rb-cover-bg']).toBeUndefined();
+    expect(t.vars['--rb-section-title']).toBeUndefined();
   });
 });

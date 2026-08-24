@@ -316,6 +316,26 @@ describe('buildGoogleFontsHref', () => {
       'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap',
     );
   });
+
+  it('includeDefaults: true inclui as familias padrao mesmo quando sao as escolhidas', () => {
+    expect(buildGoogleFontsHref('fraunces', 'instrument-sans', { includeDefaults: true })).toBe(
+      'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600;700&display=swap',
+    );
+  });
+
+  it('includeDefaults: true com IDs desconhecidos ainda cai nos defaults e os inclui', () => {
+    expect(buildGoogleFontsHref('comic-sans', 'papyrus', { includeDefaults: true })).toBe(
+      'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600;700&display=swap',
+    );
+  });
+
+  it('includeDefaults ausente ou false preserva o comportamento atual (sem regressao)', () => {
+    expect(buildGoogleFontsHref('fraunces', 'instrument-sans')).toBeNull();
+    expect(buildGoogleFontsHref('fraunces', 'instrument-sans', {})).toBeNull();
+    expect(
+      buildGoogleFontsHref('fraunces', 'instrument-sans', { includeDefaults: false }),
+    ).toBeNull();
+  });
 });
 
 describe('font allowlist sync (mirrors supabase/migrations/20260731000001_hub_branding_columns.sql CHECK constraints)', () => {

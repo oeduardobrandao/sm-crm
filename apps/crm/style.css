@@ -11972,6 +11972,22 @@ body.landing-page #root {
   background: #7c3aed;
   border: 1px solid var(--border-color);
 }
+.rb-appearance-thumb-hub {
+  background: var(--rb-hub-thumb-bg, #fafafa);
+  border: 1px solid var(--border-color);
+  position: relative;
+  overflow: hidden;
+}
+.rb-appearance-thumb-hub::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--rb-hub-thumb-accent, #171717);
+}
 .rb-appearance-ag {
   flex-shrink: 0;
   width: 32px;
