@@ -228,7 +228,7 @@ export function CalendarView({
         {mode === 'entregas' ? (
           <div className="scheduled-panel">
             <div className="scheduled-header">
-              <h3>Entregas</h3>
+              <h3>Fluxos</h3>
               <p>
                 {selectedDay
                   ? `${selectedDay} de ${monthNames[month]}, ${year}`

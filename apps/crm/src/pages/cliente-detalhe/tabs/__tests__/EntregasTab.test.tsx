@@ -25,6 +25,7 @@ vi.mock('@/store', () => ({
   getClientes: vi.fn(),
   getWorkspaceSlug: vi.fn(),
   getHubToken: vi.fn(),
+  getWorkflowTemplates: vi.fn(),
   // Consumed by the real advanceEtapa.ts (not mocked — the rearm decision
   // itself is covered by advanceEtapa.test.ts / KanbanRearm.test.tsx; this
   // suite pins that EntregasTab wires it exactly the same way).
@@ -66,6 +67,8 @@ vi.mock('@/pages/entregas/components/WorkflowCard', () => ({
     onPostsClick,
     onForwardClick,
     onRevertClick,
+    postsCount,
+    clearedClienteCount,
   }: {
     card: { workflow: { id: number; titulo: string }; hubUrl?: string };
     onClick?: () => void;
@@ -73,10 +76,17 @@ vi.mock('@/pages/entregas/components/WorkflowCard', () => ({
     onPostsClick?: () => void;
     onForwardClick?: () => void;
     onRevertClick?: () => void;
+    postsCount?: number;
+    clearedClienteCount?: number;
   }) => (
     <div>
       <span>{card.workflow.titulo}</span>
       <span data-testid={`hub-url-${card.workflow.id}`}>{card.hubUrl ?? ''}</span>
+      {/* Renders the two counts handleForwardConfirm branches on, so tests can
+          wait for them instead of racing the queries that supply them. */}
+      <span data-testid={`counts-${card.workflow.id}`}>
+        {postsCount ?? 0}/{clearedClienteCount ?? 0}
+      </span>
       <button onClick={onClick}>open-card-{card.workflow.id}</button>
       <button onClick={onEditClick}>edit-card-{card.workflow.id}</button>
       <button onClick={onPostsClick}>posts-card-{card.workflow.id}</button>
@@ -134,6 +144,7 @@ import {
   getClientes,
   getWorkspaceSlug,
   getHubToken,
+  getWorkflowTemplates,
   completeEtapa,
   completeEtapaWithRearm,
   type Cliente,
@@ -167,6 +178,7 @@ const mockedGetWorkflowPostsWithProperties = vi.mocked(getWorkflowPostsWithPrope
 const mockedGetClientes = vi.mocked(getClientes);
 const mockedGetWorkspaceSlug = vi.mocked(getWorkspaceSlug);
 const mockedGetHubToken = vi.mocked(getHubToken);
+const mockedGetWorkflowTemplates = vi.mocked(getWorkflowTemplates);
 const mockedGetWorkflowCovers = vi.mocked(getWorkflowCovers);
 const mockedCompleteEtapa = vi.mocked(completeEtapa);
 const mockedCompleteEtapaWithRearm = vi.mocked(completeEtapaWithRearm);
@@ -239,6 +251,24 @@ function renderTab(cliente: Cliente = CLIENTE) {
   return { ...utils, queryClient, invalidateSpy };
 }
 
+/**
+ * Wait until the per-workflow count queries have actually landed in the card.
+ *
+ * handleForwardConfirm picks between the silent advance and the client-approval
+ * dialog by comparing postsCount with clearedClienteCount. Both arrive from
+ * queries that settle *after* the workflow list does, so clicking "Avançar" as
+ * soon as `forward-card-1` renders is a race: with the count maps still empty
+ * `total` is 0, `allCleared` is false, and the approval dialog opens instead of
+ * the path the test set up with mockCounts(). Any test that depends on the
+ * counts must await this first — it is the difference between a deterministic
+ * test and one that fails a few percent of the time under load.
+ */
+async function awaitCountsLoaded(total: number, cleared: number) {
+  await waitFor(() =>
+    expect(screen.getByTestId('counts-1')).toHaveTextContent(`${total}/${cleared}`),
+  );
+}
+
 /** cleared/total feed the historical "allCleared" branch in handleForwardConfirm. */
 function mockCounts(cleared: number) {
   mockedGetWorkflowPostsCounts.mockResolvedValue(new Map([[1, 2]]));
@@ -260,6 +290,7 @@ describe('EntregasTab', () => {
       urgente: false,
     });
     mockedGetMembros.mockResolvedValue([]);
+    mockedGetWorkflowTemplates.mockResolvedValue([]);
     mockedGetConcludedWorkflowsByCliente.mockResolvedValue([]);
     mockedGetWorkflowPosts.mockResolvedValue([]);
     mockedGetWorkflowPostsWithProperties.mockResolvedValue([]);
@@ -302,6 +333,7 @@ describe('EntregasTab', () => {
     it('silent all-cleared advance uses completeEtapaWithRearm and reports the re-arm', async () => {
       mockCounts(2); // cleared === total → no approval dialog, straight advance
       renderTab();
+      await awaitCountsLoaded(2, 2);
       fireEvent.click(await screen.findByText('forward-card-1'));
       fireEvent.click(await screen.findByText('Avançar'));
       await waitFor(() => expect(mockedCompleteEtapaWithRearm).toHaveBeenCalledWith(1, 11));
@@ -388,6 +420,7 @@ describe('EntregasTab', () => {
     });
     mockedGetWorkflowsByCliente.mockResolvedValue([workflow({ recorrente: true })]);
     renderTab();
+    await awaitCountsLoaded(2, 2);
     fireEvent.click(await screen.findByText('forward-card-1'));
     fireEvent.click(await screen.findByText('Avançar'));
     fireEvent.click(await screen.findByText('Criar Novo Ciclo'));
@@ -446,6 +479,7 @@ describe('EntregasTab', () => {
           new Set([
             'workflowsByCliente',
             'membros',
+            'workflow-templates',
             'concluded-by-cliente',
             'concluded-summaries-cliente',
             'clientes',

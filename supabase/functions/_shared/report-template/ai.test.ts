@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { buildAIPrompt, validateAIOutput } from "./ai.ts";
+import { buildAIPrompt, generateAINarrative, validateAIOutput } from "./ai.ts";
 import type { ReportData } from "./types.ts";
 
 const fixture: ReportData = {
@@ -36,6 +36,20 @@ Deno.test("buildAIPrompt includes system role and data payload", () => {
   assertEquals(systemPrompt.includes("ONLY use numbers from the provided data"), true);
   assertEquals(userPrompt.includes("@drajuliana"), true);
   assertEquals(userPrompt.includes("Maio 2026"), true);
+});
+
+Deno.test("buildAIPrompt: extraGuidance anexa ao system prompt; sem opts o prompt é byte-idêntico (paridade legado)", () => {
+  const plain = buildAIPrompt(fixture);
+  const withOpts = buildAIPrompt(fixture, {});
+  const guided = buildAIPrompt(fixture, { extraGuidance: "METRIC PRIORITY: views first." });
+  // O gerador legado chama com um argumento: nada pode mudar nesse caminho.
+  const legacy = buildAIPrompt(fixture);
+  if (plain.systemPrompt !== legacy.systemPrompt) throw new Error("legacy prompt drifted");
+  if (plain.systemPrompt !== withOpts.systemPrompt) throw new Error("empty opts changed prompt");
+  if (!guided.systemPrompt.endsWith("METRIC PRIORITY: views first.")) {
+    throw new Error("guidance not appended");
+  }
+  if (guided.userPrompt !== plain.userPrompt) throw new Error("guidance leaked into userPrompt");
 });
 
 Deno.test("buildAIPrompt strips base64 thumbnails from the data payload", () => {
@@ -81,6 +95,30 @@ Deno.test("validateAIOutput rejects missing fields", () => {
   const invalid = { executive_summary: "text" };
   const result = validateAIOutput(invalid);
   assertEquals(result.valid, false);
+});
+
+Deno.test("generateAINarrative: signal já abortado não reinsiste no backoff, falha na primeira tentativa", async () => {
+  // Hardening pedido em review externo: generateAINarrative aceita um
+  // AbortSignal opcional (compat -- callers legados como
+  // instagram-report-generator-v2 não passam nada e seguem idênticos). Um
+  // fetch que rejeita por abort não deve esperar os 2s/4s de backoff e tentar
+  // de novo -- a chamada já não interessa a ninguém.
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  globalThis.fetch = (() => {
+    callCount++;
+    return Promise.reject(new DOMException("The signal has been aborted", "AbortError"));
+  }) as typeof fetch;
+
+  try {
+    const controller = new AbortController();
+    controller.abort();
+    const result = await generateAINarrative(fixture, "fake-key", controller.signal);
+    assertEquals(result.status, "generation_failed");
+    assertEquals(callCount, 1, "não deveria reinsistir depois de um abort");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 Deno.test("validateAIOutput rejects too-short executive_summary", () => {

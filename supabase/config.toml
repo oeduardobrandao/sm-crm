@@ -165,6 +165,9 @@ verify_jwt = false
 [functions.hub-reports]
 verify_jwt = false
 
+[functions.hub-report-docs]
+verify_jwt = false
+
 [functions.instagram-report-generator-v2]
 verify_jwt = false
 

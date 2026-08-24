@@ -29,6 +29,21 @@ export interface AutomationCandidate {
   created_at: string;
 }
 
+export interface AutomationTarget {
+  ig_media_id: string | null;
+  workflow_post_id: number | null;
+}
+
+/**
+ * Específico/ligado (ig_media_id set) casa só a própria mídia; global exige
+ * AMBOS nulos; pendente (só workflow_post_id) nunca casa -- o vínculo com a
+ * mídia acontece na publicação (trigger z3 / sweep do cron).
+ */
+export function targetMatches(a: AutomationTarget, mediaId: string | null): boolean {
+  if (a.ig_media_id !== null) return a.ig_media_id === mediaId;
+  return a.workflow_post_id === null;
+}
+
 /** Específico > global, depois created_at ASC, id ASC (spec: "a mais antiga vence"). */
 export function pickWinner<T extends AutomationCandidate>(matched: T[]): T | null {
   if (matched.length === 0) return null;

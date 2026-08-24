@@ -1552,6 +1552,222 @@ body {
   border-bottom: none;
 }
 
+/* ===== Dashboard "Hoje" (role-aware agenda) ===== */
+.today-card {
+  padding: 1.25rem 1.5rem;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+}
+.today-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.today-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.today-cal-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.today-cal-link:hover {
+  color: var(--text-main);
+}
+.today-sub {
+  margin: 0.2rem 0 0.9rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.today-note {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.today-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+.today-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-hover);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.today-chip .today-chip-n {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+.today-chip[aria-pressed='true'] {
+  background: var(--text-main);
+  color: var(--card-bg);
+  border-color: var(--text-main);
+}
+.today-chip.is-danger[aria-pressed='true'] {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.today-chip.is-empty {
+  opacity: 0.55;
+}
+.today-group + .today-group {
+  margin-top: 0.9rem;
+}
+.today-group-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.today-group-label.is-danger {
+  color: var(--danger-text);
+}
+.today-group-count {
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  letter-spacing: 0;
+}
+.today-list {
+  display: flex;
+  flex-direction: column;
+}
+.today-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.5rem;
+  border-radius: 8px;
+  border-bottom: 1px solid var(--border-color);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.85rem;
+  transition: background 0.15s ease;
+}
+.today-row:last-child {
+  border-bottom: none;
+}
+.today-row:hover {
+  background: var(--surface-hover);
+}
+.today-row-check {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.today-row-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.today-row-title {
+  font-weight: 500;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.today-row-context {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 2;
+  min-width: 0;
+}
+.today-row-end {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+.today-row-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.today-row-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.today-more-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+}
+.today-more {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: pointer;
+}
+.today-more:hover {
+  color: var(--text-main);
+}
+@media (max-width: 640px) {
+  .today-row-who {
+    display: none;
+  }
+  .today-row-context {
+    display: none;
+  }
+}
+
 /* ===== Tables ===== */
 .table-container {
   margin-top: 2rem;
@@ -6427,6 +6643,384 @@ body.role-agent input[name='valor_total'] {
   border-color: rgba(234, 179, 8, 0.25);
 }
 
+/* Quieter sibling of .drawer-external-warning: states what the system will do
+   to this post on its own. Informational, not a warning, so it uses the muted
+   text ramp and surface tokens (theme-aware) rather than the amber alert skin.
+   Full width under the meta row — the sentence is far too long for the ~140px
+   status field it describes. */
+/* ── "Como funciona" explainer ──────────────────────────────────────────────
+   Always-reachable replacement for the one-shot tour's reach problem.
+
+   Built to be scanned: four bordered cards so the sections separate at a
+   glance, a nesting tree instead of a definition list, colour-coded columns
+   for automatic vs manual, and prose only where a sentence is genuinely
+   needed. Sits above the board permanently, so it stays on surface tokens
+   with a single accent hairline rather than a filled banner. */
+.ex-panel {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  border-top: 2px solid var(--primary-color);
+  padding: 1.15rem 1.35rem 1.35rem;
+}
+
+.ex-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.ex-head h2 {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.ex-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem;
+  cursor: pointer;
+  color: var(--text-light);
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.ex-close:hover {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+
+/* Exactly one or two columns, never three: there are four cards, and auto-fit
+   at a wide viewport produced a 3+1 orphan row.
+   Rows stretch (the grid default) so the two cards in a row share a bottom
+   edge — ragged card bottoms read as broken rather than airy. */
+.ex-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.85rem;
+}
+
+@media (min-width: 900px) {
+  .ex-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.ex-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0.9rem 1rem 1rem;
+}
+
+/* With rows stretched, the shorter card gains slack. Push a closing footnote to
+   the bottom edge so that slack collects above it — the footnotes then line up
+   across the row instead of floating mid-card. Higher specificity than the
+   `.ex-body + .ex-aside` spacing rules below, so it wins the margin-top. */
+.ex-card > .ex-aside:last-child {
+  margin-top: auto;
+}
+
+.ex-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0 0 0.7rem;
+}
+
+.ex-card h3 svg {
+  color: var(--primary-hover);
+  flex-shrink: 0;
+}
+
+.ex-body,
+.ex-aside {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.ex-body {
+  color: var(--text-muted);
+}
+
+.ex-body + .ex-aside,
+.ex-vis + .ex-aside,
+.ex-tree + .ex-aside {
+  margin-top: 0.7rem;
+}
+
+.ex-aside {
+  font-size: 0.73rem;
+  color: var(--text-light);
+  background: var(--surface-2);
+  border-radius: 7px;
+  padding: 0.5rem 0.6rem;
+}
+
+.ex-term {
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+/* ── Os objetos: containment as indentation ── */
+.ex-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ex-tree li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  padding: 0.4rem 0 0.4rem 0.65rem;
+  border-left: 2px solid var(--border-color);
+}
+
+.ex-tree-l1 {
+  margin-left: 0.9rem;
+}
+
+.ex-tree-l2 {
+  margin-left: 1.8rem;
+}
+
+.ex-tree .ex-term {
+  font-size: 0.8rem;
+}
+
+.ex-def {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* ── Dois trilhos ── */
+.ex-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.7rem;
+}
+
+.ex-track {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ex-track-obj {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-main);
+  min-width: 3.1rem;
+}
+
+.ex-track-verb {
+  font-size: 0.73rem;
+  color: var(--text-light);
+}
+
+.ex-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid transparent;
+}
+
+.ex-chip--etapa {
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
+  border-color: color-mix(in srgb, var(--teal) 30%, transparent);
+}
+
+.ex-chip--status {
+  color: var(--pink);
+  background: color-mix(in srgb, var(--pink) 14%, transparent);
+  border-color: color-mix(in srgb, var(--pink) 30%, transparent);
+}
+
+.ex-punch {
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0 0 0.3rem;
+}
+
+/* ── Automático vs manual ── */
+.ex-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+  gap: 0.75rem;
+}
+
+.ex-split-col h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin: 0 0 0.4rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ex-split-col--auto h4 {
+  color: var(--primary-hover);
+}
+
+.ex-split-col--manual h4 {
+  color: var(--text-muted);
+}
+
+.ex-split-col ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ex-split-col li {
+  position: relative;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  padding-left: 0.65rem;
+  margin-bottom: 0.3rem;
+}
+
+.ex-split-col li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.45em;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-light);
+}
+
+.ex-split-col--auto li::before {
+  background: var(--primary-color);
+}
+
+/* ── Quem vê o quê ── */
+.ex-vis {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ex-vis li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+}
+
+.ex-vis li.is-visible {
+  background: color-mix(in srgb, var(--teal) 9%, transparent);
+  border-color: color-mix(in srgb, var(--teal) 22%, transparent);
+}
+
+.ex-vis-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+  color: var(--text-light);
+}
+
+.ex-vis li.is-visible .ex-vis-icon {
+  color: var(--teal);
+}
+
+.ex-vis-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.ex-vis-text strong {
+  font-size: 0.78rem;
+  color: var(--text-main);
+}
+
+.ex-vis-list {
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.entregas-explainer-reopen {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.entregas-explainer-reopen:hover {
+  color: var(--text-main);
+}
+
+/* Client-visibility badge on every post row, collapsed included. Two states so
+   it reads as a scannable column rather than an occasional alert: the internal
+   eye-off sits in the muted ramp, the visible one takes the accent so
+   "the client can see this" is the state that draws the eye. */
+.drawer-post-visibility {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-light);
+  opacity: 0.65;
+}
+
+.drawer-post-visibility.is-visible {
+  color: var(--teal);
+  opacity: 1;
+}
+
+.drawer-status-hint {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.45rem 0.7rem;
+  margin: 0;
+}
+
 /* Comment thread */
 .drawer-approval-thread {
   display: flex;
@@ -7683,6 +8277,16 @@ a.mention-chip:hover {
   margin-left: auto;
 }
 
+/* ── Edit Workflow Modal toolbar (ações de navegação, abaixo do título) ─────── */
+.edit-modal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
 /* ── Edit Workflow Modal footer ─────────────────────────────────────────────── */
 .edit-modal-footer {
   display: flex;
@@ -7692,6 +8296,7 @@ a.mention-chip:hover {
 }
 .edit-modal-footer-secondary {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   order: 1;
 }
@@ -7710,6 +8315,9 @@ a.mention-chip:hover {
 @media (min-width: 640px) {
   .edit-modal-footer {
     flex-direction: row;
+    /* 5 botões + dica não cabem nos ~464px úteis do max-w-lg: sem wrap o
+       min-content alarga o conteúdo e cria scroll horizontal no dialog */
+    flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
   }
@@ -10050,6 +10658,49 @@ body.landing-page #root {
   gap: 0.75rem;
 }
 
+.instagram-overview__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.btn-instagram-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-main);
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.btn-instagram-action:hover {
+  background: var(--surface-hover);
+  border-color: var(--text-light);
+  color: var(--text-main);
+}
+.btn-instagram-action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.btn-instagram-action--danger {
+  color: var(--danger-text);
+  border-color: rgba(245, 90, 66, 0.3);
+}
+.btn-instagram-action--danger:hover {
+  background: rgba(245, 90, 66, 0.08);
+  color: var(--danger-text);
+  border-color: var(--danger);
+}
+
 .instagram-overview__token-badge {
   white-space: nowrap;
   min-height: 36px;
@@ -10079,14 +10730,21 @@ body.landing-page #root {
   }
 
   .instagram-overview__metadata {
-    grid-column: 1 / -1;
+    grid-column: 2;
+    grid-row: 1;
     min-width: 0;
   }
 
   .instagram-overview__actions {
-    grid-column: 2;
-    grid-row: 1;
-    justify-self: end;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: stretch;
+    margin-left: 0;
+    margin-top: 0.5rem;
+  }
+
+  .instagram-overview__actions .btn-instagram-action {
+    flex: 1 1 140px;
   }
 
   .instagram-overview__account-kpis .kpi-card {
@@ -10892,4 +11550,450 @@ body.landing-page #root {
 .pagarme-checkout-dialog,
 .pagarme-checkout-dialog > div {
   max-height: 94vh;
+}
+
+/* ===== Editor de relatório de blocos (PR 2) ===== */
+.rb-edit-cell {
+  position: relative;
+  border-radius: 12px;
+}
+.rb-edit-cell:hover {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+.rb-edit-toolbar {
+  position: absolute;
+  top: -14px;
+  right: 10px;
+  z-index: 5;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  background: var(--dark);
+  color: #fff;
+  border-radius: 8px;
+  padding: 3px 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+.rb-edit-cell:hover .rb-edit-toolbar,
+.rb-edit-cell:focus-within .rb-edit-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+.rb-edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.rb-edit-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.rb-edit-btn-danger:hover {
+  background: var(--danger);
+}
+.rb-edit-highlight {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  animation: rb-edit-pulse 1.2s ease-in-out 2;
+}
+@keyframes rb-edit-pulse {
+  50% {
+    outline-color: transparent;
+  }
+}
+.rb-edit-overlay {
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.rb-text-editor {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: var(--card-bg);
+}
+.rb-text-editor-content {
+  padding: 0.75rem 1rem;
+}
+.rb-text-editor-content .ProseMirror {
+  outline: none;
+  min-height: 64px;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-color);
+}
+.rb-text-editor-content .ProseMirror ul,
+.rb-text-editor-content .ProseMirror ol {
+  padding-left: 1.5em;
+  margin: 0.25em 0;
+}
+.rb-text-editor-content .ProseMirror li {
+  list-style: revert;
+}
+.rb-text-editor-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+/* ── Editor de relatório: seção fixa "Camadas" ─────────────────────────────
+   Painel ancorado à direita. Regra da casa (DESIGN_SYSTEM): UI fixa ancorada
+   fica display:none por padrão e só aparece via media query — abaixo do gate
+   não há espaço e sticky não funciona (overflow-x:hidden global). O conteúdo
+   do editor ganha padding-right no mesmo gate para o canvas não ficar por
+   baixo do painel. */
+.rb-layers-rail {
+  display: none;
+}
+/* Padding base do editor mora AQUI, não inline no componente: inline venceria
+   o padding-right do gate abaixo e o canvas ficaria por baixo do painel. */
+.rb-editor-with-rail {
+  padding: 1.5rem;
+}
+@media (min-width: 1280px) {
+  .rb-layers-rail {
+    display: block;
+    position: fixed;
+    top: calc(var(--topbar-height) + var(--banner-height) + 16px);
+    right: 16px;
+    width: 250px;
+    max-height: calc(100vh - var(--topbar-height) - var(--banner-height) - 32px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 0.75rem;
+  }
+  .rb-editor-with-rail {
+    padding-right: 298px;
+  }
+}
+.rb-layers-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.rb-layers-hint {
+  margin: 0.2rem 0 0.6rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.rb-layers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.3rem;
+}
+.rb-layers-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-main);
+  padding: 0.25rem 0.4rem;
+}
+.rb-layers-row-active {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 1px var(--primary-color);
+}
+.rb-layers-handle {
+  border: none;
+  background: transparent;
+  padding: 0.15rem;
+  display: flex;
+  color: var(--text-light);
+}
+.rb-layers-label {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 0.78rem;
+  color: var(--text-main);
+  cursor: pointer;
+  padding: 0.15rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.rb-layers-icon {
+  color: var(--text-light);
+  flex-shrink: 0;
+}
+.rb-layers-label-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rb-layers-item {
+  min-width: 0;
+}
+/* Hotspot de inserção entre camadas: zona fina que revela o "+" no hover da
+   própria zona ou no foco do botão (teclado). */
+.rb-layers-gap {
+  position: relative;
+  height: 0.3rem;
+  margin: 0 0 -0.3rem;
+}
+.rb-layers-add-between {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 1;
+}
+.rb-layers-gap:hover .rb-layers-add-between,
+.rb-layers-add-between:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.rb-layers-add-between:hover {
+  color: var(--text-main);
+  border-color: var(--text-light);
+}
+.rb-layers-add-end {
+  margin-top: 0.6rem;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  padding: 0.4rem;
+  cursor: pointer;
+}
+.rb-layers-add-end:hover {
+  color: var(--text-main);
+  border-color: var(--text-light);
+}
+.rb-layers-size {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.05rem 0.3rem;
+  flex-shrink: 0;
+}
+
+/* ── Editor de relatório: cabeçalho de seção editável e placeholder sem dados ── */
+.rb-section-input {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  outline: none;
+  padding: 0;
+  font-family: inherit;
+}
+.rb-section-input::placeholder {
+  color: var(--text-light);
+  opacity: 0.7;
+}
+.rb-edit-nodata {
+  border: 1px dashed var(--border-color);
+  border-radius: 12px;
+  padding: 1rem;
+  background: var(--surface-hover);
+}
+.rb-edit-nodata-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.rb-edit-nodata-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-light);
+}
+
+/* ── Editor de relatório: toolbar de formatação dos blocos de texto ── */
+.rb-text-toolbar {
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.25rem;
+  margin-bottom: 0.35rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-main);
+}
+.rb-text-editor:focus-within .rb-text-toolbar {
+  display: flex;
+}
+.rb-text-toolbar-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border-color);
+  margin: 0 0.2rem;
+}
+.rb-text-toolbar-color {
+  position: relative;
+}
+.rb-text-swatches {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+.rb-text-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.rb-text-swatch-clear {
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+
+/* Popover "Aparência" (Task 6): tema, fontes e cor de destaque. */
+.rb-appearance {
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.rb-appearance-label {
+  margin: 0.5rem 0 0.15rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.rb-appearance-label:first-child {
+  margin-top: 0;
+}
+.rb-appearance-themes,
+.rb-appearance > [role='radiogroup'] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.rb-appearance-theme,
+.rb-appearance-font {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-main);
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+.rb-appearance-theme:hover,
+.rb-appearance-font:hover {
+  background: var(--surface-hover);
+}
+.rb-appearance-selected {
+  border-color: var(--primary-color);
+  background: var(--surface-hover);
+}
+.rb-appearance-theme small,
+.rb-appearance-font small {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.rb-appearance-thumb {
+  flex-shrink: 0;
+  width: 40px;
+  height: 24px;
+  border-radius: 4px;
+}
+.rb-appearance-thumb-default {
+  background: transparent;
+  border: 1px dashed var(--border-color);
+}
+.rb-appearance-thumb-clean {
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+}
+.rb-appearance-thumb-editorial {
+  background: #faf6ee;
+  border: 1px solid var(--border-color);
+}
+.rb-appearance-thumb-bold {
+  background: #7c3aed;
+  border: 1px solid var(--border-color);
+}
+.rb-appearance-ag {
+  flex-shrink: 0;
+  width: 32px;
+  font-size: 18px;
+  line-height: 1;
+  text-align: center;
+}
+.rb-appearance-accent {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.rb-appearance-reset {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.rb-appearance-reset:hover {
+  color: var(--text-main);
 }

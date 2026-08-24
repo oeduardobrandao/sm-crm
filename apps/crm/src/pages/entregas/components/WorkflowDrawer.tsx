@@ -11,6 +11,8 @@ import {
   MessageSquare,
   GripVertical,
   ImageIcon,
+  Eye,
+  EyeOff,
   Calendar as CalendarIcon,
   LayoutGrid,
   Maximize2,
@@ -96,6 +98,7 @@ import { InstagramCaptionField } from './InstagramCaptionField';
 import { PlatformSelector } from './PlatformSelector';
 import { TikTokSettingsPanel } from './TikTokSettingsPanel';
 import { ScheduleButton } from './ScheduleButton';
+import { PostAutomationSection } from './PostAutomationSection';
 import { PublishErrorBlock } from './PublishErrorBlock';
 import { shouldShowPublishErrorBlock } from './publishErrorBlockVisibility';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
@@ -107,9 +110,18 @@ import { DiffView } from './DiffView';
 import { ReadOnlyTipTap } from './ReadOnlyTipTap';
 import { computeWordDiff } from '@/utils/textDiff';
 import { computeTipTapDiff } from '@/utils/tiptapDiff';
-import { TIPO_LABELS, getPostPublishState, buildTipoDayMarkers, TIPO_LEGEND } from '../postLabels';
+import {
+  TIPO_LABELS,
+  getPostPublishState,
+  getStatusAutomationHint,
+  isVisibleToClient,
+  buildTipoDayMarkers,
+  TIPO_LEGEND,
+  VISIBILITY_BADGE_LABEL,
+  VISIBILITY_OPTION_SUFFIX,
+} from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
-import { statusKeyToPatch, type StatusKey } from '../statusRegistry';
+import { groupOptionsByOwner, statusKeyToPatch, type StatusKey } from '../statusRegistry';
 import { PostStatusChip } from './PostStatusChip';
 import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 
@@ -1149,15 +1161,12 @@ function SortablePostItem({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const isExternallyVisible =
-    post.status === 'enviado_cliente' ||
-    post.status === 'aprovado_cliente' ||
-    post.status === 'correcao_cliente' ||
-    post.status === 'agendado' ||
-    post.status === 'postado' ||
-    post.status === 'falha_publicacao';
+  const isExternallyVisible = isVisibleToClient(post.status);
   const isScheduleLocked = post.status === 'agendado';
   const isStoryPost = post.tipo === 'stories';
+  // One sentence on what the system will do to this post without being asked;
+  // null for the statuses that just sit there waiting on a person.
+  const statusAutomationHint = getStatusAutomationHint(post);
 
   // Publish date shown in the collapsed row: once a post is actually live the real
   // published_at wins, otherwise fall back to the scheduled "Data de postagem".
@@ -1187,6 +1196,21 @@ function SortablePostItem({
             <ChevronRight className="h-4 w-4 drawer-post-chevron" />
           )}
           <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
+          <span
+            className={`drawer-post-visibility${isExternallyVisible ? ' is-visible' : ''}`}
+            title={
+              isExternallyVisible ? VISIBILITY_BADGE_LABEL.visible : VISIBILITY_BADGE_LABEL.internal
+            }
+            aria-label={
+              isExternallyVisible ? VISIBILITY_BADGE_LABEL.visible : VISIBILITY_BADGE_LABEL.internal
+            }
+          >
+            {isExternallyVisible ? (
+              <Eye className="h-3.5 w-3.5" />
+            ) : (
+              <EyeOff className="h-3.5 w-3.5" />
+            )}
+          </span>
           <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
           {hasMedia && (
             <span className="drawer-post-media-badge" title="Mídia anexada">
@@ -1279,10 +1303,18 @@ function SortablePostItem({
                 value={statusRegistry.resolve(post).key}
                 onChange={(e) => onFieldChange('status', e.target.value)}
               >
-                {statusRegistry.options.map((o) => (
-                  <option key={o.key} value={o.key}>
-                    {o.kind === 'custom' ? `· ${o.label}` : o.label}
-                  </option>
+                {groupOptionsByOwner(statusRegistry.options).map((group) => (
+                  <optgroup key={group.owner} label={group.label}>
+                    {group.options.map((o) => (
+                      <option key={o.key} value={o.key}>
+                        {o.kind === 'custom' ? `· ${o.label}` : o.label}
+                        {' — '}
+                        {isVisibleToClient(o.canonical)
+                          ? VISIBILITY_OPTION_SUFFIX.visible
+                          : VISIBILITY_OPTION_SUFFIX.internal}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
@@ -1318,6 +1350,8 @@ function SortablePostItem({
               />
             </div>
           </div>
+
+          {statusAutomationHint && <p className="drawer-status-hint">{statusAutomationHint}</p>}
 
           {shouldShowPublishErrorBlock(post) && (
             <PublishErrorBlock post={post} clienteId={clienteId} onStatusChange={onRefresh} />
@@ -1477,6 +1511,15 @@ function SortablePostItem({
             tiktokSettingsComplete={tiktokSettingsComplete}
             onTikTokUnaudited={() => setTiktokTestModeBanner(true)}
             onStatusChange={onRefresh}
+          />
+
+          {/* Self-gating: renders nothing without the plan feature, an Instagram
+              account, or on a post comments can never reach (stories, TikTok-only). */}
+          <PostAutomationSection
+            post={post}
+            clienteId={clienteId}
+            currentUserRole={currentUserRole}
+            hasInstagramAccount={hasInstagramAccount}
           />
 
           <PostCommentSummary

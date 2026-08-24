@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Trash2, Edit2, FileText, Settings } from 'lucide-react';
+import { Trash2, Edit2, FileText, Settings, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -50,6 +50,7 @@ import {
   type TemplatePropertyDefinition,
 } from '../../../store';
 import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
+import { MigrateTemplateDialog } from './MigrateTemplateDialog';
 import {
   SortableEtapaList,
   defaultEtapa,
@@ -73,6 +74,7 @@ export function EditWorkflowModal({
   card,
   membros,
   clientes,
+  templates,
   onClose,
   onSaved,
   onDeleted,
@@ -81,6 +83,7 @@ export function EditWorkflowModal({
   card: BoardCard;
   membros: Membro[];
   clientes: Cliente[];
+  templates: WorkflowTemplate[];
   onClose: () => void;
   onSaved: () => void;
   onDeleted: () => void;
@@ -91,6 +94,7 @@ export function EditWorkflowModal({
   const modoPrazo: ModoPrazo = (w.modo_prazo as ModoPrazo) || 'padrao';
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [migrateOpen, setMigrateOpen] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [fTitulo, setFTitulo] = useState(w.titulo);
   const [fClienteId, setFClienteId] = useState(String(w.cliente_id));
@@ -160,6 +164,26 @@ export function EditWorkflowModal({
           <DialogHeader>
             <DialogTitle>Editar Fluxo</DialogTitle>
           </DialogHeader>
+          <div className="edit-modal-toolbar">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setMigrateOpen(true)}
+              disabled={isDirty}
+            >
+              <ArrowRightLeft className="h-4 w-4" /> Migrar template
+            </Button>
+            {onOpenPosts && (
+              <Button variant="outline" size="sm" onClick={onOpenPosts}>
+                <FileText className="h-4 w-4" /> Posts
+              </Button>
+            )}
+            {isDirty && (
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                Salve as alterações antes de migrar.
+              </span>
+            )}
+          </div>
           <div className="space-y-3">
             <div className="space-y-1">
               <Label>Título *</Label>
@@ -334,11 +358,6 @@ export function EditWorkflowModal({
               >
                 <Trash2 className="h-4 w-4" /> Excluir
               </Button>
-              {onOpenPosts && (
-                <Button variant="outline" onClick={onOpenPosts}>
-                  <FileText className="h-4 w-4" /> Posts
-                </Button>
-              )}
             </div>
             <div className="edit-modal-footer-primary">
               <Button variant="outline" onClick={onClose}>
@@ -363,6 +382,18 @@ export function EditWorkflowModal({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {migrateOpen && (
+        <MigrateTemplateDialog
+          workflow={w}
+          cliente={card.cliente}
+          templates={templates}
+          onClose={() => setMigrateOpen(false)}
+          onMigrated={() => {
+            onSaved();
+            onClose();
+          }}
+        />
+      )}
     </>
   );
 }

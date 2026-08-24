@@ -48,6 +48,21 @@ describe('vercel.json routing contract', () => {
     expect(noindexSources).toContain('/:workspace/hub/:token/(.*)');
   });
 
+  test('print do relatorio reescreve para o hub ANTES do app-shell (que captura relatorios/*)', () => {
+    const printIdx = rewrites.findIndex((r) => r.source === '/relatorios/print/:docId');
+    const appShellIdx = rewrites.findIndex((r) => r.destination === '/app.html');
+    expect(printIdx).toBeGreaterThanOrEqual(0);
+    expect(rewrites[printIdx].destination).toBe('/hub/index.html');
+    expect(printIdx).toBeLessThan(appShellIdx);
+  });
+
+  test('print do relatorio carrega noindex', () => {
+    const noindexSources = headers
+      .filter((h) => h.headers.some((x) => x.key === 'X-Robots-Tag' && /noindex/.test(x.value)))
+      .map((h) => h.source);
+    expect(noindexSources).toContain('/relatorios/print/:docId');
+  });
+
   test('blog index and post rewrites exist', () => {
     expect(rewrites).toContainEqual({ source: '/blog', destination: '/blog.html' });
     expect(rewrites).toContainEqual({ source: '/blog/:slug', destination: '/blog/:slug.html' });

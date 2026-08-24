@@ -5,12 +5,13 @@
       "@/*": ["./src/*"],
       "@mesaas/i18n": ["../../packages/i18n/index.ts"],
       "@mesaas/ui/*": ["../../packages/ui/*"],
+      "@mesaas/report-blocks/*": ["../../packages/report-blocks/*"],
       "@mesaas/app-lifecycle": ["../../packages/app-lifecycle/index.ts"]
     },
-    "target": "ES2020",
+    "target": "ES2021",
     "useDefineForClassFields": true,
     "module": "ESNext",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],
     "jsx": "react-jsx",
     "skipLibCheck": true,
@@ -19,13 +20,10 @@
     "moduleDetection": "force",
     "noEmit": true,
     "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
     "strict": true,
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
-  "exclude": [
-    "src/**/__tests__/**",
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx"
-  ]
+  "exclude": ["src/**/__tests__/**", "src/**/*.test.ts", "src/**/*.test.tsx"]
 }

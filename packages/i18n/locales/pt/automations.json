@@ -12,17 +12,29 @@
     "keywords": "Palavras-chave",
     "dmsSent": "DMs enviados",
     "lastTriggered": "Último disparo",
-    "active": "Ativa"
+    "active": "Ativa",
+    "buttonsCount_one": "{{count}} botão",
+    "buttonsCount_other": "{{count}} botões"
   },
   "emptyNone": "Nenhuma automação ainda.",
   "emptyForClient": "Nenhuma automação para este cliente.",
   "clientRemoved": "Cliente removido",
   "viewPost": "Ver post",
   "allPosts": "Todos os posts",
+  "pendingBadge": "Aguardando publicação",
+  "deletedPostBadge": "Alvo indisponível",
+  "reactivateNeedsTarget": "Escolha um novo alvo antes de reativar: o alvo desta automação não está mais disponível.",
   "neverTriggered": "Nunca disparou",
   "status": {
     "active": "Ativa",
     "inactive": "Inativa"
+  },
+  "postSection": {
+    "title": "Automação de comentários",
+    "createForPost": "Criar automação para este post",
+    "emptyHint": "Nenhuma automação para este post ainda.",
+    "loading": "Carregando automações...",
+    "loadError": "Não foi possível carregar as automações deste post."
   },
   "switchActivate": "Ativar automação",
   "switchDeactivate": "Desativar automação",
@@ -38,7 +50,8 @@
     "failed": "Falhou",
     "skipped": "Ignorado",
     "retry": "Tentando de novo",
-    "processing": "Processando"
+    "processing": "Processando",
+    "buttons_fallback_text": "enviado como texto"
   },
   "sendsLoadError": "Não foi possível carregar os envios.",
   "sendsEmpty": "Nenhum envio registrado ainda.",
@@ -63,8 +76,15 @@
     "targetAria": "Alvo da automação",
     "targetAll": "Todos os posts",
     "targetPost": "Post específico",
+    "targetSourceLabel": "Origem do post",
+    "targetSourceProduction": "Em produção",
+    "targetSourcePublished": "Publicados",
     "selectClientForPosts": "Selecione um cliente para ver os posts.",
     "noPostsSynced": "Nenhum post sincronizado ainda.",
+    "noProductionPosts": "Nenhum post em produção para este cliente.",
+    "productionHint": "A automação começa a valer quando o post for publicado.",
+    "deletedTargetHint": "O post desta automação não está mais disponível. Escolha um novo alvo; ela continuará pausada até você reativá-la.",
+    "validationDeletedTarget": "Escolha um novo alvo para esta automação.",
     "previous": "Anterior",
     "next": "Próxima",
     "keywordsLabel": "Palavras-chave *",
@@ -80,6 +100,22 @@
     "validationName": "Dê um nome à automação",
     "validationPost": "Escolha um post",
     "validationKeyword": "Adicione ao menos uma palavra-chave",
-    "validationDm": "Escreva a mensagem do direct"
+    "validationDm": "Escreva a mensagem do direct",
+    "buttonsLabel": "Botões (opcional)",
+    "buttonsHelp": "Até 3 botões que abrem um link. Com botões, o texto da DM vai até 640 caracteres.",
+    "addButton": "Adicionar botão",
+    "buttonTitleLabel": "Título do botão",
+    "buttonUrlLabel": "URL do botão",
+    "removeButton": "Remover botão",
+    "validationButtonTitle": "Cada botão precisa de um título de 1 a 20 caracteres.",
+    "validationButtonUrl": "A URL do botão precisa começar com https:// e ter no máximo 500 caracteres.",
+    "validationButtonsMax": "No máximo 3 botões por automação.",
+    "validationDmWithButtons": "Com botões, a mensagem da DM vai até 640 caracteres. Encurte o texto ou remova os botões.",
+    "previewTitle": "Prévia da DM",
+    "previewAccount": "Sua conta",
+    "previewEmpty": "Sua mensagem aparece aqui.",
+    "previewDesktopNote": "Botões aparecem no app do Instagram. No Instagram web podem não ser exibidos.",
+    "previewNow": "Agora",
+    "previewComposer": "Responder..."
   }
 }

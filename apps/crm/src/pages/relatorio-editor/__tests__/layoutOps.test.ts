@@ -1,0 +1,219 @@
+import { describe, expect, it } from 'vitest';
+import {
+  insertBlock,
+  insertBlockAt,
+  moveBlock,
+  removeBlock,
+  resizeBlock,
+  restoreBlock,
+  setLayoutAccent,
+  setLayoutFonts,
+  setLayoutTheme,
+  SIZE_ORDER,
+  updateBlockConfig,
+  updateBlockText,
+} from '../layoutOps';
+import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
+
+const layout = (): ReportLayout => ({
+  version: 1,
+  blocks: [
+    { id: 'a', type: 'cover', size: 'full' },
+    { id: 'b', type: 'kpi_reach', size: 'third' },
+    { id: 'c', type: 'text', size: 'full', text: { type: 'doc', content: [] } },
+  ],
+});
+
+describe('moveBlock', () => {
+  it('move a antes de c quando arrastado sobre c', () => {
+    const next = moveBlock(layout(), 'a', 'c');
+    expect(next.blocks.map((b) => b.id)).toEqual(['b', 'c', 'a']);
+  });
+  it('id inexistente: retorna a MESMA referência', () => {
+    const l = layout();
+    expect(moveBlock(l, 'zzz', 'a')).toBe(l);
+  });
+  it('não muta o original', () => {
+    const l = layout();
+    moveBlock(l, 'a', 'c');
+    expect(l.blocks[0].id).toBe('a');
+  });
+});
+
+describe('resizeBlock', () => {
+  it('third +1 vira half; half +1 vira full; full satura', () => {
+    let l = resizeBlock(layout(), 'b', 1);
+    expect(l.blocks[1].size).toBe('half');
+    l = resizeBlock(l, 'b', 1);
+    expect(l.blocks[1].size).toBe('full');
+    expect(resizeBlock(l, 'b', 1).blocks[1].size).toBe('full');
+  });
+  it('third -1 satura em third', () => {
+    expect(resizeBlock(layout(), 'b', -1).blocks[1].size).toBe('third');
+  });
+});
+
+describe('removeBlock', () => {
+  it('remove pelo id', () => {
+    expect(removeBlock(layout(), 'b').blocks.map((b) => b.id)).toEqual(['a', 'c']);
+  });
+});
+
+describe('restoreBlock', () => {
+  it('restaura o bloco na posição de origem', () => {
+    const l = removeBlock(layout(), 'b');
+    const restored = restoreBlock(l, { id: 'b', type: 'kpi_reach', size: 'third' }, 1);
+    expect(restored.blocks.map((b) => b.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('index maior que o array clampa pro fim', () => {
+    const l = removeBlock(layout(), 'a');
+    const restored = restoreBlock(l, { id: 'a', type: 'cover', size: 'full' }, 99);
+    expect(restored.blocks.map((b) => b.id)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('id já presente: devolve a MESMA referência', () => {
+    const l = layout();
+    expect(restoreBlock(l, { id: 'a', type: 'cover', size: 'full' }, 0)).toBe(l);
+  });
+});
+
+describe('insertBlock', () => {
+  it('insere no fim com defaults por tipo e id novo', () => {
+    let n = 0;
+    const { layout: next, newId } = insertBlock(layout(), 'top_posts', () => `n${++n}`);
+    const added = next.blocks[next.blocks.length - 1];
+    expect(newId).toBe('n1');
+    expect(added).toEqual({ id: 'n1', type: 'top_posts', size: 'full', config: { count: 6 } });
+  });
+  it('kpi entra como third; texto entra como full com doc vazio', () => {
+    const kpi = insertBlock(layout(), 'kpi_saves', () => 'k').layout.blocks.at(-1)!;
+    expect(kpi.size).toBe('third');
+    const txt = insertBlock(layout(), 'text', () => 't').layout.blocks.at(-1)!;
+    expect(txt.size).toBe('full');
+    expect(txt.text).toEqual({ type: 'doc', content: [{ type: 'paragraph', content: [] }] });
+  });
+  it('section_header entra com config.title vazio editável', () => {
+    const sh = insertBlock(layout(), 'section_header', () => 's').layout.blocks.at(-1)!;
+    expect(sh.config).toEqual({ title: 'Nova seção' });
+  });
+  it('todo insert produz layout que passa no validateLayout', () => {
+    const { layout: next } = insertBlock(layout(), 'audience_gender');
+    expect(validateLayout(next).ok).toBe(true);
+  });
+});
+
+describe('updateBlockConfig', () => {
+  it('faz merge raso preservando as chaves existentes', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 's', type: 'section_header', size: 'full', config: { title: 'A', x: 1 } }],
+    };
+    const next = updateBlockConfig(l, 's', { title: 'Novo título' });
+    expect(next.blocks[0].config).toEqual({ title: 'Novo título', x: 1 });
+    expect(l.blocks[0].config?.title).toBe('A'); // imutável
+  });
+
+  it('bloco sem config: cria; id inexistente: MESMA referência', () => {
+    const l = layout();
+    const next = updateBlockConfig(l, 'a', { title: 'T' });
+    expect(next.blocks[0].config).toEqual({ title: 'T' });
+    expect(updateBlockConfig(l, 'zzz', { title: 'T' })).toBe(l);
+  });
+});
+
+describe('updateBlockText', () => {
+  it('atualiza o text do bloco', () => {
+    const doc = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x' }] }],
+    };
+    const next = updateBlockText(layout(), 'c', doc);
+    expect(next.blocks[2].text).toEqual(doc);
+  });
+});
+
+describe('setLayoutAccent', () => {
+  it('define e remove o accent', () => {
+    const on = setLayoutAccent(layout(), '#0f766e');
+    expect(on.accent).toBe('#0f766e');
+    const off = setLayoutAccent(on, undefined);
+    expect('accent' in off).toBe(false);
+    expect(validateLayout(on).ok).toBe(true);
+  });
+  it('SIZE_ORDER é third < half < full', () => {
+    expect(SIZE_ORDER).toEqual(['third', 'half', 'full']);
+  });
+
+  // Achado C2: o ColorPicker compartilhado tem allowAlpha default true (e um
+  // clique num swatch recente do Estúdio pode injetar 8 dígitos mesmo com
+  // allowAlpha={false} nesta página). #rrggbbaa falha o validateLayout
+  // estrito e o autosave descarta sem retry — TODA edição seguinte falharia
+  // até reload. setLayoutAccent precisa blindar isso.
+  it('accent de 8 dígitos (#rrggbbaa): normaliza para 6 dígitos', () => {
+    const next = setLayoutAccent(layout(), '#0f766eff');
+    expect(next.accent).toBe('#0f766e');
+    expect(validateLayout(next).ok).toBe(true);
+  });
+
+  it('accent inválido (não-hex): layout devolvido é a MESMA referência', () => {
+    const l = layout();
+    expect(setLayoutAccent(l, 'vermelho')).toBe(l);
+  });
+
+  it('accent de 8 dígitos que não normaliza pra 6 hex válidos (garbage): layout inalterado', () => {
+    const l = layout();
+    expect(setLayoutAccent(l, '#zzzzzzzz')).toBe(l);
+  });
+});
+
+describe('setLayoutTheme / setLayoutFonts', () => {
+  it('define, troca e remove com undefined', () => {
+    let l = setLayoutTheme(layout(), 'editorial');
+    expect(l.theme).toBe('editorial');
+    l = setLayoutFonts(l, 'fraunces');
+    expect(l.fonts).toBe('fraunces');
+    const off = setLayoutTheme(l, undefined);
+    expect('theme' in off).toBe(false);
+    expect(off.fonts).toBe('fraunces');
+  });
+  it('mesmo valor devolve a MESMA referencia (contrato do autosave)', () => {
+    const l = setLayoutTheme(layout(), 'bold');
+    expect(setLayoutTheme(l, 'bold')).toBe(l);
+    const base = layout();
+    expect(setLayoutTheme(base, undefined)).toBe(base);
+  });
+  it('setLayoutFonts: mesma referência quando o valor não muda', () => {
+    const l = setLayoutFonts(layout(), 'grotesk');
+    expect(setLayoutFonts(l, 'grotesk')).toBe(l);
+    const base = layout();
+    expect(setLayoutFonts(base, undefined)).toBe(base);
+  });
+});
+
+describe('insertBlockAt', () => {
+  const base: ReportLayout = {
+    version: 1,
+    blocks: [
+      { id: 'a', type: 'cover', size: 'full' },
+      { id: 'b', type: 'divider', size: 'full' },
+    ],
+  };
+
+  it('insere na posição pedida', () => {
+    const { layout, newId } = insertBlockAt(base, 'kpi_reach', 1, () => 'novo');
+    expect(newId).toBe('novo');
+    expect(layout.blocks.map((b) => b.id)).toEqual(['a', 'novo', 'b']);
+    expect(base.blocks).toHaveLength(2);
+  });
+
+  it('clampa índice fora do array (negativo vira início, excesso vira fim)', () => {
+    expect(insertBlockAt(base, 'kpi_reach', -5, () => 'x').layout.blocks[0].id).toBe('x');
+    expect(insertBlockAt(base, 'kpi_reach', 99, () => 'y').layout.blocks[2].id).toBe('y');
+  });
+
+  it('insertBlock continua anexando no fim (delegação)', () => {
+    const { layout } = insertBlock(base, 'kpi_reach', () => 'fim');
+    expect(layout.blocks[2].id).toBe('fim');
+  });
+});

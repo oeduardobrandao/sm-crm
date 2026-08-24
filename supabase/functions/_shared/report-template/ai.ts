@@ -21,7 +21,14 @@ export type GenerateResult =
 // buildAIPrompt
 // ---------------------------------------------------------------------------
 
-export function buildAIPrompt(data: ReportData): AIPrompt {
+export interface AIPromptOpts {
+  /** Linhas extras anexadas ao system prompt. Opcional e aditivo — o pipeline
+   * legado (instagram-report-generator-v2) não passa nada e o prompt segue
+   * byte-idêntico (mesmo contrato do `signal` em generateAINarrative). */
+  extraGuidance?: string;
+}
+
+export function buildAIPrompt(data: ReportData, opts?: AIPromptOpts): AIPrompt {
   const systemPrompt = `You are a social media analytics specialist writing a monthly performance report for a client of a Brazilian social media agency.
 
 LANGUAGE: Write entirely in Brazilian Portuguese (pt-BR). All text, including labels and section headers, must be in pt-BR.
@@ -57,7 +64,9 @@ OUTPUT FORMAT: Respond with ONLY valid JSON matching this exact structure:
   ]
 }
 
-Provide exactly 3-5 recommendations and 2-3 suggested_goals.`;
+Provide exactly 3-5 recommendations and 2-3 suggested_goals.${
+    opts?.extraGuidance ? `\n\n${opts.extraGuidance}` : ""
+  }`;
 
   // Strip binary payloads before serialising: top_posts carry base64 JPEG
   // thumbnails for the PDF renderer. They are useless to the model and big
@@ -192,8 +201,10 @@ export function validateAIOutput(raw: unknown): ValidateResult {
 export async function generateAINarrative(
   data: ReportData,
   apiKey: string,
+  signal?: AbortSignal,
+  promptOpts?: AIPromptOpts,
 ): Promise<GenerateResult> {
-  const { systemPrompt, userPrompt } = buildAIPrompt(data);
+  const { systemPrompt, userPrompt } = buildAIPrompt(data, promptOpts);
 
   const MAX_RETRIES = 2;
   let response: Response | null = null;
@@ -213,10 +224,15 @@ export async function generateAINarrative(
               temperature: 0.3,
             },
           }),
+          signal,
         },
       );
     } catch (err) {
-      if (attempt === MAX_RETRIES) {
+      // Um abort explícito (caller venceu o próprio deadline) não deve
+      // esperar o backoff e tentar de novo -- a chamada já não interessa a
+      // ninguém, e um novo fetch com o signal já abortado rejeitaria na
+      // mesma hora mesmo assim.
+      if (signal?.aborted || attempt === MAX_RETRIES) {
         return {
           output: null,
           status: "generation_failed",

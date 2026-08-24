@@ -15,11 +15,42 @@ fakeFetch.last = null as any;
 
 Deno.test("sendPrivateReply: POST /messages com Bearer e recipient.comment_id", async () => {
   const fetchFn = fakeFetch(200, { message_id: "m1" });
-  await sendPrivateReply({ fetchFn }, { igUserId: "17840001", token: "tk", commentId: "c1", text: "oi" });
+  await sendPrivateReply(
+    { fetchFn },
+    { igUserId: "17840001", token: "tk", commentId: "c1", message: { text: "oi" } },
+  );
   assert(fakeFetch.last.url.endsWith("/17840001/messages"));
   assertEquals(fakeFetch.last.init.headers["Authorization"], "Bearer tk");
   assertEquals(JSON.parse(fakeFetch.last.init.body), {
     recipient: { comment_id: "c1" }, message: { text: "oi" },
+  });
+});
+
+Deno.test("sendPrivateReply: aceita button template e envia o attachment inteiro", async () => {
+  const fetchFn = fakeFetch(200, { message_id: "m2" });
+  const message = {
+    attachment: {
+      type: "template" as const,
+      payload: {
+        template_type: "button" as const,
+        text: "Escolha:",
+        buttons: [{ type: "web_url" as const, url: "https://agenda.x", title: "Agendar" }],
+      },
+    },
+  };
+  await sendPrivateReply({ fetchFn }, { igUserId: "17840001", token: "tk", commentId: "c1", message });
+  assertEquals(JSON.parse(fakeFetch.last.init.body), {
+    recipient: { comment_id: "c1" },
+    message: {
+      attachment: {
+        type: "template",
+        payload: {
+          template_type: "button",
+          text: "Escolha:",
+          buttons: [{ type: "web_url", url: "https://agenda.x", title: "Agendar" }],
+        },
+      },
+    },
   });
 });
 
@@ -33,7 +64,7 @@ Deno.test("erro 190 vira kind token_expired; 4/9/17/613 viram transient", async 
   for (const [code, kind] of [[190, "token_expired"], [4, "transient"], [613, "transient"]] as const) {
     const fetchFn = fakeFetch(400, { error: { message: "x", code } });
     try {
-      await sendPrivateReply({ fetchFn }, { igUserId: "1", token: "t", commentId: "c", text: "y" });
+      await sendPrivateReply({ fetchFn }, { igUserId: "1", token: "t", commentId: "c", message: { text: "y" } });
       assert(false, "devia lançar");
     } catch (e) {
       assert(e instanceof IgApiError);

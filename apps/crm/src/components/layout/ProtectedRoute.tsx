@@ -10,6 +10,7 @@ const AGENT_BLOCKED = ['/financeiro', '/contratos', '/leads', '/equipe'];
 const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
   '/analytics': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
   '/analytics-fluxos': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
+  '/relatorios': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
   '/leads': { flag: 'feature_leads', label: 'Leads' },
   '/financeiro': { flag: 'feature_financial', label: 'Financeiro' },
   '/contratos': { flag: 'feature_contracts', label: 'Contratos' },

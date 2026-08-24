@@ -151,5 +151,42 @@
       "filtered": "Nenhum cliente neste filtro."
     },
     "error": "Não foi possível carregar a saúde dos clientes."
+  },
+  "today": {
+    "title": "Hoje",
+    "calendar": "Calendário",
+    "summary": "{{overdue}} atrasados, {{today}} para hoje",
+    "mine": "atribuídos a você",
+    "buckets": {
+      "atrasado": "Atrasado",
+      "hoje": "Hoje",
+      "proximos": "Próximos 7 dias"
+    },
+    "more": "Mostrar mais {{count}} · {{remaining}} restantes",
+    "empty": "Nada para hoje.",
+    "emptyMine": "Nada para hoje. Bom trabalho!",
+    "emptyAction": "Ver calendário",
+    "roleError": "Não foi possível carregar seu papel neste workspace. Recarregue a página.",
+    "taskDone": "Tarefa concluída",
+    "taskDoneUndo": "Desfazer",
+    "taskDoneError": "Não foi possível concluir a tarefa.",
+    "markDone": "Concluir tarefa",
+    "less": "Mostrar menos",
+    "labels": {
+      "hoje": "Hoje",
+      "amanha": "Amanhã",
+      "overdueDays_one": "1 dia de atraso",
+      "overdueDays_other": "{{count}} dias de atraso",
+      "inDays_one": "{{count}} dia",
+      "inDays_other": "{{count}} dias",
+      "agendado": "Agendado",
+      "naoAprovado": "Não aprovado",
+      "publicaAs": "Publica {{time}}",
+      "aguardandoCliente": "Aguardando cliente",
+      "aguardandoClienteHa": "Aguardando cliente há {{days}}d",
+      "aguardando": "Aguardando",
+      "semResposta": "{{days}}d sem resposta"
+    },
+    "noMembership": "Você não tem mais acesso a este workspace. Troque de workspace ou peça a um administrador para convidar você de novo."
   }
 }

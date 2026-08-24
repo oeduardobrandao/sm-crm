@@ -152,7 +152,7 @@ describe('CalendarView', () => {
     expect(onCardClick).toHaveBeenCalledWith(cardLater);
   });
 
-  it('renders the Publicações panel in publicacoes mode and toggles back via the Entregas button', () => {
+  it('renders the Publicações panel in publicacoes mode and toggles back via the Fluxos button', () => {
     const onModeChange = vi.fn();
     render(
       <Wrapper>
@@ -169,8 +169,8 @@ describe('CalendarView', () => {
     // The PublicacoesPanel heading must be present
     expect(screen.getByRole('heading', { name: 'Publicações' })).toBeInTheDocument();
 
-    // Clicking the "Entregas" toggle calls onModeChange with 'entregas'
-    fireEvent.click(screen.getByRole('button', { name: 'Entregas' }));
+    // The 'entregas' mode is labelled "Fluxos"; the value it emits is unchanged.
+    fireEvent.click(screen.getByRole('button', { name: 'Fluxos' }));
     expect(onModeChange).toHaveBeenCalledWith('entregas');
   });
 
