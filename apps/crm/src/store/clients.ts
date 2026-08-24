@@ -20,6 +20,7 @@ export interface Cliente {
   data_aniversario?: string | null;
   send_report_email?: boolean;
   include_ai_analysis?: boolean;
+  foto_url?: string | null;
 }
 
 export interface ClienteEndereco {
@@ -56,7 +57,7 @@ export interface ClienteData {
  * read — it falls back to a `GenericStringError` result type.
  */
 const CLIENTE_SAFE_COLUMNS =
-  'id, user_id, conta_id, nome, sigla, cor, plano, email, telefone, status, created_at, notion_page_url, data_pagamento, especialidade, data_aniversario, dia_entrega, auto_publish_on_approval, send_report_email, include_ai_analysis';
+  'id, user_id, conta_id, nome, sigla, cor, plano, email, telefone, status, created_at, notion_page_url, data_pagamento, especialidade, data_aniversario, dia_entrega, auto_publish_on_approval, send_report_email, include_ai_analysis, foto_url';
 
 // Supabase's REST layer applies a project-level max-rows cap (commonly 1000), so
 // an unbounded `.select('*')` is silently truncated once a workspace has more

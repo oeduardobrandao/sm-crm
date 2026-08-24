@@ -10126,6 +10126,68 @@ body.landing-page #root {
   font-weight: 700;
 }
 
+.cliente-avatar-upload {
+  position: relative;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+}
+
+.cliente-avatar-upload__trigger {
+  position: relative;
+  display: block;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.cliente-avatar-upload__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.cliente-avatar-upload__trigger:hover .cliente-avatar-upload__overlay,
+.cliente-avatar-upload__trigger:focus-visible .cliente-avatar-upload__overlay {
+  opacity: 1;
+}
+
+.cliente-avatar-upload__remove {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--card-bg);
+  background: var(--danger);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
+}
+
+.cliente-avatar-upload__remove:hover,
+.cliente-avatar-upload__remove:focus-visible {
+  opacity: 1;
+}
+
 .cliente-detalhe-header__text {
   min-width: 0;
 }

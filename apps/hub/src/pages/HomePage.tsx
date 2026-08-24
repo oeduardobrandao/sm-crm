@@ -13,6 +13,7 @@ import { useHub } from '../HubContext';
 import { fetchPosts } from '../api';
 import { PostCalendar } from '../components/PostCalendar';
 import { DashboardSection } from '../components/dashboard/DashboardSection';
+import { ClientAvatar } from '../components/ClientAvatar';
 
 const RESOURCE_LINKS = [
   { label: 'Marca', icon: Palette, path: '/marca' },
@@ -92,7 +93,12 @@ export function HomePage() {
   return (
     <div className="hub-fade-up flex flex-col gap-6">
       <section>
-        <p className="text-[13px] font-medium hub-tx3 mb-1.5">{bootstrap.workspace.name}</p>
+        <ClientAvatar
+          name={bootstrap.cliente_nome}
+          photoUrl={bootstrap.cliente_foto_url}
+          size={128}
+        />
+        <p className="text-[13px] font-medium hub-tx3 mb-1.5 mt-4">{bootstrap.workspace.name}</p>
         <h1 className="font-display font-medium text-[clamp(2rem,5vw,3rem)] leading-[1.04] tracking-tight hub-txt mb-1.5">
           Olá, <em className="italic font-normal">{firstName}</em> 👋
         </h1>
