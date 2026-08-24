@@ -36,6 +36,7 @@ export const APP_ROUTE_PREFIXES = [
   'arquivos',
   'analytics-fluxos',
   'analytics',
+  'relatorios',
   'ideias',
   'mensagens',
   'automacoes',
