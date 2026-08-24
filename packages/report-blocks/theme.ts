@@ -239,12 +239,20 @@ export function resolveReportTheme(layout: ReportLayout, snapshot: ReportDocSnap
     vars['--rb-soft'] = soft;
     vars['--rb-surface'] =
       def.surface === 'white' ? '#ffffff' : def.surface === 'transparent' ? 'transparent' : soft;
+    // Destaque preenchido é SÓ capa e cabeçalho de seção, e SÓ no bold (spec,
+    // mapa visual por bloco) — clean/editorial/herdado usam os fallbacks
+    // inline dos componentes (visual atual, sem cor de marca na capa).
     if (theme === 'bold') {
       vars['--rb-cover-bg'] = acc;
       vars['--rb-cover-fg'] = accentFg;
       vars['--rb-section-title'] = accentText;
     }
   } else {
+    // Modo HERDADO: para accent escuro/médio, idêntico ao pré-temas (as
+    // derivações devolvem a própria cor quando ela já contrasta). Para accent
+    // CLARO o comportamento mudou de propósito (2026-08-24): antes o clamp
+    // trocava tudo por #171717; agora a cor crua fica nos preenchimentos e
+    // texto/traço derivam tons legíveis contra o papel claro assumido.
     vars['--rb-accent-fg'] = pickAccentFg(acc, '#171717');
     vars['--rb-accent-text'] = deriveAccentText(acc, '#ffffff', '#171717');
     vars['--rb-accent-line'] = deriveAccentLine(acc, '#ffffff', '#171717');
