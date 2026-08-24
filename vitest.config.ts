@@ -10,7 +10,6 @@ export default defineConfig({
       '@mesaas/i18n': path.resolve(__dirname, 'packages/i18n/index.ts'),
       '@mesaas/ui': path.resolve(__dirname, 'packages/ui'),
       '@mesaas/report-blocks': path.resolve(__dirname, 'packages/report-blocks'),
-      '@mesaas/hub-theme': path.resolve(__dirname, 'packages/hub-theme'),
       '@mesaas/import-parsers': path.resolve(__dirname, 'packages/import-parsers/index.ts'),
       '@mesaas/app-lifecycle': path.resolve(__dirname, 'packages/app-lifecycle/index.ts'),
       '@shared': path.resolve(__dirname, 'supabase/functions/_shared'),
