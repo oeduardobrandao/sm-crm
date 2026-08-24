@@ -13,6 +13,11 @@ Deno.test("layout padrão completo passa no validador e começa com capa", () =>
   assert(types.includes("top_posts"));
   assert(types.includes("audience_gender"));
   assert(types.includes("ai_recommendations"));
+  // Views (2026-08) fecham a linha de terços com visitas ao perfil e cliques.
+  assert(types.includes("kpi_views"));
+  for (const t of ["kpi_views", "kpi_profile_views", "kpi_website_clicks"] as const) {
+    assertEquals(l.blocks.find((b) => b.type === t)?.size, "third");
+  }
 });
 
 Deno.test("sem audiência/horários/tags/IA os blocos correspondentes somem", () => {

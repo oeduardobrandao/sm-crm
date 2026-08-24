@@ -29,6 +29,7 @@ Deno.test("fallbackSummaryParagraphs cita o mês e não inventa base ausente", (
     followers_gained: { value: 10, unit: "count", prev: null },
     followers_total: { value: null, unit: "count", prev: null },
     reach: { value: 1000, unit: "count", prev: null },
+    views: { value: null, unit: "count", prev: null },
     engagement_rate: { value: 3.2, unit: "pct", prev: null },
     saves: { value: 5, unit: "count", prev: null },
     posts_count: { value: 8, unit: "count", prev: null },

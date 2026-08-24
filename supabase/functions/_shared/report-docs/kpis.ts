@@ -4,7 +4,7 @@
 // instagram-report-generator-v2/index.ts §5-6.
 
 export const KPI_IDS = [
-  "followers_gained", "followers_total", "reach", "engagement_rate",
+  "followers_gained", "followers_total", "reach", "views", "engagement_rate",
   "saves", "posts_count", "profile_views", "website_clicks",
 ] as const;
 export type ReportKpiId = (typeof KPI_IDS)[number];
@@ -39,6 +39,9 @@ export interface KpiSources {
   prevPrevSnapshot: MonthSnapshot | null;
   /** Pontos do mês do relatório, ordem cronológica. */
   followerHistory: { follower_count: number }[];
+  /** Views da conta no mês (Graph API ao vivo, resolvido pelo chamador).
+   * null = fetch indisponível/falhou -> o card se omite (value null). */
+  accountViews: { value: number | null; prev: number | null } | null;
 }
 
 const sum = (posts: PostMetrics[], key: keyof PostMetrics) =>
@@ -116,10 +119,14 @@ export function computeKpis(s: KpiSources): Record<ReportKpiId, KpiEntry> {
   const wcPrev = wc !== null && typeof s.prevSnapshot?.website_clicks_28d === "number"
     ? s.prevSnapshot.website_clicks_28d : null;
 
+  const views = s.accountViews?.value ?? null;
+  const viewsPrev = views !== null ? (s.accountViews?.prev ?? null) : null;
+
   return {
     followers_gained: { value: gained, unit: "count", prev: gainedPrev },
     followers_total: { value: total, unit: "count", prev: totalPrev },
     reach: { value: totalReach, unit: "count", prev: reachPrev },
+    views: { value: views, unit: "count", prev: viewsPrev },
     engagement_rate: { value: engagement, unit: "pct", prev: engagementPrev },
     saves: { value: totalSaved, unit: "count", prev: savesPrev },
     posts_count: { value: s.allPosts.length, unit: "count", prev: postsPrev },

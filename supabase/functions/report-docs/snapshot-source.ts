@@ -2,9 +2,11 @@
 // compartilhado com POST /:id/refresh-data (spec §5). Puro quanto a decisões:
 // quem chama já validou ownership do cliente e entitlement.
 import { mapAudience, mapBestTimes } from "../instagram-report-generator-v2/mappers.ts";
+import { decryptText } from "../_shared/crypto.ts";
 import {
   cachePostThumbnail, isEphemeralInstagramUrl, type ThumbnailStorage,
 } from "../_shared/instagram-thumbnail-cache.ts";
+import { fetchAccountViews } from "./account-views.ts";
 import { monthWindow, prevMonthOf } from "../_shared/report-docs/month-window.ts";
 import {
   assembleSnapshot, MAX_SNAPSHOT_POSTS, type ReportDocSnapshot, type SnapshotPostRow,
@@ -26,6 +28,31 @@ type Db = any;
 // muda, só a inferência de tipo do resultado combinado.
 type TagPerfResult = { data: TagPerformance[] | null; error?: { message?: string } | null };
 
+// Mesma dupla de chaves de instagram-analytics/index.ts (decryptToken):
+// HKDF com purpose primeiro, fallback legado com a chave crua padded. Lança
+// se TOKEN_ENCRYPTION_KEY faltar (regra da casa: sem fallback silencioso) —
+// o chamador degrada as views para null, nunca a geração inteira.
+async function decryptIgToken(encrypted: string): Promise<string> {
+  const secret = Deno.env.get("TOKEN_ENCRYPTION_KEY");
+  if (!secret) throw new Error("TOKEN_ENCRYPTION_KEY missing");
+  try {
+    return await decryptText(encrypted, secret, "instagram-access-token");
+  } catch {
+    const combined = Uint8Array.from(atob(encrypted), (c) => c.charCodeAt(0));
+    const iv = combined.slice(0, 12);
+    const data = combined.slice(12);
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret.padEnd(32, "0").slice(0, 32)),
+      { name: "AES-GCM" },
+      false,
+      ["decrypt"],
+    );
+    const buf = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
+    return new TextDecoder().decode(buf);
+  }
+}
+
 export async function loadClientSnapshot(
   db: Db,
   deps: SnapshotDeps,
@@ -46,6 +73,21 @@ export async function loadClientSnapshot(
   const igAccountId = account.id;
   const prevW = monthWindow(prevMonthOf(month));
   const prevPrevW = monthWindow(prevMonthOf(prevMonthOf(month)));
+
+  // Views da conta: Graph ao vivo, em paralelo com as queries abaixo. Fonte
+  // OPCIONAL — qualquer falha (token ausente/expirado, Graph fora) degrada o
+  // card para null com log, nunca derruba a geração.
+  const accountViewsPromise: Promise<{ value: number | null; prev: number | null }> =
+    (async () => {
+      if (!account.encrypted_access_token) return { value: null, prev: null };
+      const token = await decryptIgToken(account.encrypted_access_token);
+      return await fetchAccountViews(deps.fetch, token, month, Math.floor(Date.now() / 1000));
+    })().catch((e) => {
+      console.warn(
+        `[report-docs] account views fetch failed: ${(e as Error)?.message ?? String(e)}`,
+      );
+      return { value: null, prev: null };
+    });
 
   const lastSnapshotOfMonth = (win: typeof w) =>
     db.from("instagram_account_metrics_daily").select("*")
@@ -116,11 +158,14 @@ export async function loadClientSnapshot(
 
   // Thumbnails: só dos candidatos a top post; URL efêmera cacheia ou vira null.
   // Concorrente: pior caso ~15s (timeout por download), nunca 12x15 serial.
-  const byReach = [...posts].sort(
-    (a, b) => ((b as { reach: number | null }).reach ?? 0) - ((a as { reach: number | null }).reach ?? 0),
+  // MESMA ordenação do assembleSnapshot (views desc, empate reach) — senão os
+  // candidatos cacheados divergem dos posts que o widget de fato mostra.
+  const byViews = [...posts].sort(
+    (a, b) =>
+      ((b.impressions ?? 0) - (a.impressions ?? 0)) || ((b.reach ?? 0) - (a.reach ?? 0)),
   ).slice(0, MAX_SNAPSHOT_POSTS);
   const stableThumbnails = new Map<string, string>();
-  await Promise.all(byReach.map(async (post) => {
+  await Promise.all(byViews.map(async (post) => {
     const url = post.thumbnail_url;
     if (!url || !isEphemeralInstagramUrl(url)) return;
     const cached = await cachePostThumbnail(
@@ -137,6 +182,8 @@ export async function loadClientSnapshot(
     // cada task escreve numa chave própria (a URL original do post).
     if (cached && !isEphemeralInstagramUrl(cached)) stableThumbnails.set(url, cached);
   }));
+
+  const accountViews = await accountViewsPromise;
 
   const snapshot = assembleSnapshot({
     month,
@@ -157,6 +204,7 @@ export async function loadClientSnapshot(
       prevSnapshot: prevSnapRes.data?.[0] ?? null,
       prevPrevSnapshot: prevPrevSnapRes.data?.[0] ?? null,
       followerHistory: followerHistoryRes.data ?? [],
+      accountViews,
     },
     followerTrend: (followerHistoryRes.data ?? []).map(
       (r: { date: string; follower_count: number }) => ({ date: r.date, count: r.follower_count }),

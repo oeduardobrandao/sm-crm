@@ -31,8 +31,11 @@ export function buildDefaultLayout(opts: DefaultLayoutOpts): ReportLayout {
   add("section_header", "full", { title: "Crescimento e formatos" });
   add("chart_followers", "full");
   add("chart_formats", "full");
-  add("kpi_profile_views", "half");
-  add("kpi_website_clicks", "half");
+  // Três terços equilibrados: views entrou (2026-08) e as duas metades viraram
+  // terços para a linha fechar.
+  add("kpi_views", "third");
+  add("kpi_profile_views", "third");
+  add("kpi_website_clicks", "third");
 
   add("section_header", "full", { title: "Publicações" });
   add("top_posts", "full", { count: 6 });
