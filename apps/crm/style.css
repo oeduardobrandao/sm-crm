@@ -11489,3 +11489,97 @@ body.landing-page #root {
 .pagarme-checkout-dialog > div {
   max-height: 94vh;
 }
+
+/* ===== Editor de relatório de blocos (PR 2) ===== */
+.rb-edit-cell {
+  position: relative;
+  border-radius: 12px;
+}
+.rb-edit-cell:hover {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+.rb-edit-toolbar {
+  position: absolute;
+  top: -14px;
+  right: 10px;
+  z-index: 5;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  background: var(--dark);
+  color: #fff;
+  border-radius: 8px;
+  padding: 3px 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+.rb-edit-cell:hover .rb-edit-toolbar,
+.rb-edit-cell:focus-within .rb-edit-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+.rb-edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.rb-edit-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.rb-edit-btn-danger:hover {
+  background: var(--danger);
+}
+.rb-edit-highlight {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  animation: rb-edit-pulse 1.2s ease-in-out 2;
+}
+@keyframes rb-edit-pulse {
+  50% {
+    outline-color: transparent;
+  }
+}
+.rb-edit-overlay {
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.rb-text-editor {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: var(--card-bg);
+}
+.rb-text-editor-content {
+  padding: 0.75rem 1rem;
+}
+.rb-text-editor-content .ProseMirror {
+  outline: none;
+  min-height: 64px;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-color);
+}
+.rb-text-editor-content .ProseMirror ul,
+.rb-text-editor-content .ProseMirror ol {
+  padding-left: 1.5em;
+  margin: 0.25em 0;
+}
+.rb-text-editor-content .ProseMirror li {
+  list-style: revert;
+}
+.rb-text-editor-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}

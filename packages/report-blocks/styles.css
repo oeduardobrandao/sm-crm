@@ -48,3 +48,23 @@
     max-width: none;
   }
 }
+/* Modo edição (canvas do CRM): célula sem dados NÃO colapsa; mostra aviso.
+   Alvo é .rb-edit-body (o miolo da célula, sem a toolbar), não o
+   [data-block-id] em si -- a toolbar do editor é sempre um filho da célula,
+   então a célula em si nunca fica :empty; ver EditorCanvas.tsx. */
+.rb-grid.rb-mode-edit .rb-edit-body:empty {
+  display: block;
+  min-height: 56px;
+  border: 1px dashed rgba(0, 0, 0, 0.18);
+  border-radius: 12px;
+  position: relative;
+}
+.rb-grid.rb-mode-edit .rb-edit-body:empty::after {
+  content: 'Sem dados no período';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.78rem;
+  opacity: 0.55;
+}
