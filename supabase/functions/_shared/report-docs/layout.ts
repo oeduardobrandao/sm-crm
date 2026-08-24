@@ -25,7 +25,7 @@ export const BLOCK_TYPES = [
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
-export const REPORT_THEME_IDS = ["clean", "editorial", "bold"] as const;
+export const REPORT_THEME_IDS = ["clean", "editorial", "bold", "hub"] as const;
 export type ReportThemeId = (typeof REPORT_THEME_IDS)[number];
 export const REPORT_FONT_IDS = ["system", "fraunces", "grotesk", "playfair"] as const;
 export type ReportFontId = (typeof REPORT_FONT_IDS)[number];

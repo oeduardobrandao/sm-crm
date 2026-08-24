@@ -21,6 +21,7 @@ export type {
   SnapshotBranding,
   SnapshotContentBreakdown,
   SnapshotFormatStats,
+  SnapshotHubTheme,
   SnapshotTopPost,
 } from '../../supabase/functions/_shared/report-docs/snapshot';
 export type { KpiEntry, ReportKpiId } from '../../supabase/functions/_shared/report-docs/kpis';

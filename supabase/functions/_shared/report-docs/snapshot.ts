@@ -10,11 +10,20 @@ import { isEphemeralInstagramUrl } from "../instagram-thumbnail-cache.ts";
 import { computeKpis, type KpiEntry, type KpiSources, type ReportKpiId } from "./kpis.ts";
 import { monthWindow } from "./month-window.ts";
 
+export interface SnapshotHubTheme {
+  surface: "neutral" | "warm" | "cool";
+  font_display: string;
+  font_body: string;
+  radius: "square" | "soft" | "pill";
+  card_style: "filled" | "outline" | "tonal";
+}
+
 export interface SnapshotBranding {
   workspace_name: string;
   logo_url: string | null;
   splash_url: string | null;
   accent_color: string;
+  hub_theme?: SnapshotHubTheme;
 }
 
 export interface SnapshotTopPost {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FONT_PAIRINGS, contrastRatio, resolveReportTheme } from '../theme';
 import { makeSnapshotFixture } from '../fixtures';
 import type { ReportLayout } from '../types';
+import { REPORT_THEME_IDS } from '../types';
 
 const layout = (over: Partial<ReportLayout> = {}): ReportLayout => ({
   version: 1,
@@ -144,6 +145,10 @@ describe('temas explícitos', () => {
     expect(contrastRatio(t.vars['--rb-section-title'], t.vars['--rb-bg'])).toBeGreaterThanOrEqual(
       4.5,
     );
+  });
+
+  it('REPORT_THEME_IDS inclui hub ao lado dos temas fixos', () => {
+    expect([...REPORT_THEME_IDS]).toEqual(['clean', 'editorial', 'bold', 'hub']);
   });
 });
 
