@@ -12,7 +12,13 @@ export function FormatCardsBlock({ snapshot }: BlockProps) {
     );
   if (entries.length === 0) return null;
 
-  const leader = entries.reduce((a, b) => (b.data.avg_reach > a.data.avg_reach ? b : a));
+  // Formato líder decidido por visualizações médias (pedido 2026-08). Snapshot
+  // antigo sem avg_views degrada para o critério anterior (alcance médio).
+  const hasViews = entries.every((e) => typeof e.data.avg_views === 'number');
+  const leader = entries.reduce((a, b) => {
+    const metric = (d: (typeof a)['data']) => (hasViews ? d.avg_views : d.avg_reach);
+    return metric(b.data) > metric(a.data) ? b : a;
+  });
   return (
     <div
       style={{
@@ -44,7 +50,9 @@ export function FormatCardsBlock({ snapshot }: BlockProps) {
             ) : null}
           </p>
           <p style={{ margin: '0.35rem 0 0', fontSize: '0.78rem', opacity: 0.75 }}>
-            {fmtCount(data.count)} publicações · alcance médio {fmtCount(data.avg_reach)}
+            {hasViews
+              ? `${fmtCount(data.count)} publicações · média de ${fmtCount(data.avg_views)} visualizações`
+              : `${fmtCount(data.count)} publicações · alcance médio ${fmtCount(data.avg_reach)}`}
           </p>
         </div>
       ))}

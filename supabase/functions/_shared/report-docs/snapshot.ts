@@ -1,8 +1,10 @@
 // Montagem PURA do data_snapshot: recebe resultados de query já buscados,
 // devolve o documento congelado. Toda entrada suja (rows any do PostgREST) é
-// normalizada aqui. Ordenação dos top posts: reach desc.
+// normalizada aqui. Ordenação dos top posts: views desc, empate por reach —
+// views por post = instagram_posts.impressions (mesma base da página de
+// Analytics); tudo zerado degrada naturalmente para a ordem por reach.
 import type {
-  AudienceData, BestTimeSlot, ContentBreakdown, FollowerTrendPoint, TagPerformance,
+  AudienceData, BestTimeSlot, FollowerTrendPoint, TagPerformance,
 } from "../report-template/types.ts";
 import { isEphemeralInstagramUrl } from "../instagram-thumbnail-cache.ts";
 import { computeKpis, type KpiEntry, type KpiSources, type ReportKpiId } from "./kpis.ts";
@@ -17,6 +19,9 @@ export interface SnapshotBranding {
 
 export interface SnapshotTopPost {
   type: "reel" | "carousel" | "image";
+  /** Views do post (instagram_posts.impressions). Snapshots antigos não têm o
+   * campo — widgets leem com guard e caem no reach. */
+  views: number;
   reach: number;
   likes: number;
   comments: number;
@@ -28,6 +33,20 @@ export interface SnapshotTopPost {
   thumbnail_url: string | null;
 }
 
+/** Breakdown próprio do snapshot (não o ContentBreakdown legado): soma
+ * avg_views para o líder de formato ser decidido por visualizações. */
+export interface SnapshotFormatStats {
+  count: number;
+  avg_reach: number;
+  avg_engagement: number;
+  avg_views: number;
+}
+export type SnapshotContentBreakdown = {
+  reels?: SnapshotFormatStats;
+  carousels?: SnapshotFormatStats;
+  images?: SnapshotFormatStats;
+};
+
 export interface ReportDocSnapshot {
   version: 1;
   period: { month: string; label: string; start: string; endExclusive: string };
@@ -35,7 +54,7 @@ export interface ReportDocSnapshot {
   branding: SnapshotBranding;
   kpis: Record<ReportKpiId, KpiEntry>;
   follower_trend: FollowerTrendPoint[];
-  content_breakdown: ContentBreakdown;
+  content_breakdown: SnapshotContentBreakdown;
   top_posts: SnapshotTopPost[];
   audience: AudienceData | null;
   best_times: BestTimeSlot[];
@@ -44,6 +63,8 @@ export interface ReportDocSnapshot {
 
 export interface SnapshotPostRow {
   media_type: string | null;
+  /** Views do post; a coluna chama impressions (baseline 20260301:203). */
+  impressions: number | null;
   reach: number | null;
   likes: number | null;
   comments: number | null;
@@ -97,17 +118,19 @@ function stableThumb(
 export function assembleSnapshot(input: SnapshotInput): ReportDocSnapshot {
   const w = monthWindow(input.month);
 
-  const breakdown: ContentBreakdown = {};
+  const breakdown: SnapshotContentBreakdown = {};
   for (const p of input.posts) {
     const key = postType(p.media_type) === "reel"
       ? "reels"
       : postType(p.media_type) === "carousel"
       ? "carousels"
       : "images";
-    const bucket = breakdown[key] ?? { count: 0, avg_reach: 0, avg_engagement: 0 };
+    const bucket = breakdown[key] ??
+      { count: 0, avg_reach: 0, avg_engagement: 0, avg_views: 0 };
     // avg_* acumulam somas aqui e viram médias no fim.
     bucket.count += 1;
     bucket.avg_reach += p.reach ?? 0;
+    bucket.avg_views += p.impressions ?? 0;
     // Engagement rate per post: (likes + comments + saved + shares) / reach, or 0 if reach is 0 or missing
     const reach = p.reach ?? 0;
     const eng = reach > 0
@@ -120,15 +143,19 @@ export function assembleSnapshot(input: SnapshotInput): ReportDocSnapshot {
     const b = breakdown[key];
     if (b && b.count > 0) {
       b.avg_reach = Math.round(b.avg_reach / b.count);
+      b.avg_views = Math.round(b.avg_views / b.count);
       b.avg_engagement = b.avg_engagement / b.count; // NO rounding for engagement rate
     }
   }
 
   const topPosts = [...input.posts]
-    .sort((a, b) => (b.reach ?? 0) - (a.reach ?? 0))
+    .sort((a, b) =>
+      (b.impressions ?? 0) - (a.impressions ?? 0) || (b.reach ?? 0) - (a.reach ?? 0)
+    )
     .slice(0, MAX_SNAPSHOT_POSTS)
     .map((p): SnapshotTopPost => ({
       type: postType(p.media_type),
+      views: p.impressions ?? 0,
       reach: p.reach ?? 0,
       likes: p.likes ?? 0,
       comments: p.comments ?? 0,

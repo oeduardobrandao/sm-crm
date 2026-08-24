@@ -36,6 +36,7 @@ import {
   removeBlock,
   restoreBlock,
   setLayoutAccent,
+  updateBlockConfig,
   updateBlockText,
 } from './layoutOps';
 import { applyTemplateLayout } from './templateOps';
@@ -264,6 +265,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         snapshot={snapshot}
         onChange={applyLayout}
         onRemoveBlock={handleRemoveBlock}
+        onConfigChange={(id, patch) => applyLayout(updateBlockConfig(layoutRef.current, id, patch))}
         highlightId={highlightId}
         renderTextBlock={(block: ReportBlock) => (
           <TextBlockEditor

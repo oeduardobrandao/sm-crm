@@ -5,6 +5,13 @@ const W = 640;
 const H = 180;
 const PAD = 12;
 
+// follower_history.date é TEXT YYYY-MM-DD; split evita o pisão de timezone do
+// Date.parse (um new Date('2026-07-01') em UTC-3 imprimiria 30/06).
+function fmtDay(date: string): string {
+  const [, m, d] = date.split('-');
+  return m && d ? `${d}/${m}` : date;
+}
+
 export function FollowerChartBlock({ snapshot }: BlockProps) {
   const points = snapshot.follower_trend;
   if (points.length === 0) return null;
@@ -48,6 +55,19 @@ export function FollowerChartBlock({ snapshot }: BlockProps) {
       >
         <span>{fmtCount(points[0].count)}</span>
         <span>{fmtCount(points[points.length - 1].count)}</span>
+      </div>
+      <div
+        className="rb-chart-dates"
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          fontSize: '0.68rem',
+          opacity: 0.55,
+          marginTop: '0.1rem',
+        }}
+      >
+        <span>{fmtDay(points[0].date)}</span>
+        {points.length > 1 ? <span>{fmtDay(points[points.length - 1].date)}</span> : null}
       </div>
     </div>
   );

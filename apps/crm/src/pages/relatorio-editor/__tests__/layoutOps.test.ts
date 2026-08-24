@@ -8,6 +8,7 @@ import {
   restoreBlock,
   setLayoutAccent,
   SIZE_ORDER,
+  updateBlockConfig,
   updateBlockText,
 } from '../layoutOps';
 import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
@@ -97,6 +98,25 @@ describe('insertBlock', () => {
   it('todo insert produz layout que passa no validateLayout', () => {
     const { layout: next } = insertBlock(layout(), 'audience_gender');
     expect(validateLayout(next).ok).toBe(true);
+  });
+});
+
+describe('updateBlockConfig', () => {
+  it('faz merge raso preservando as chaves existentes', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 's', type: 'section_header', size: 'full', config: { title: 'A', x: 1 } }],
+    };
+    const next = updateBlockConfig(l, 's', { title: 'Novo título' });
+    expect(next.blocks[0].config).toEqual({ title: 'Novo título', x: 1 });
+    expect(l.blocks[0].config?.title).toBe('A'); // imutável
+  });
+
+  it('bloco sem config: cria; id inexistente: MESMA referência', () => {
+    const l = layout();
+    const next = updateBlockConfig(l, 'a', { title: 'T' });
+    expect(next.blocks[0].config).toEqual({ title: 'T' });
+    expect(updateBlockConfig(l, 'zzz', { title: 'T' })).toBe(l);
   });
 });
 

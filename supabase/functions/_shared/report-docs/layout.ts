@@ -13,7 +13,7 @@ export const BLOCK_TYPES = [
   // Texto & IA (todos renderizam `text` TipTap JSON)
   "text", "ai_summary", "ai_recommendations", "ai_goals",
   // Números
-  "kpi_followers_gained", "kpi_followers_total", "kpi_reach",
+  "kpi_followers_gained", "kpi_followers_total", "kpi_reach", "kpi_views",
   "kpi_engagement_rate", "kpi_saves", "kpi_posts_count",
   "kpi_profile_views", "kpi_website_clicks",
   // Gráficos

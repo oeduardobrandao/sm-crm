@@ -11746,3 +11746,90 @@ body.landing-page #root {
   padding: 0.05rem 0.3rem;
   flex-shrink: 0;
 }
+
+/* ── Editor de relatório: cabeçalho de seção editável e placeholder sem dados ── */
+.rb-section-input {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  outline: none;
+  padding: 0;
+  font-family: inherit;
+}
+.rb-section-input::placeholder {
+  color: var(--text-light);
+  opacity: 0.7;
+}
+.rb-edit-nodata {
+  border: 1px dashed var(--border-color);
+  border-radius: 12px;
+  padding: 1rem;
+  background: var(--surface-hover);
+}
+.rb-edit-nodata-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.rb-edit-nodata-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-light);
+}
+
+/* ── Editor de relatório: toolbar de formatação dos blocos de texto ── */
+.rb-text-toolbar {
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.25rem;
+  margin-bottom: 0.35rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-main);
+}
+.rb-text-editor:focus-within .rb-text-toolbar {
+  display: flex;
+}
+.rb-text-toolbar-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border-color);
+  margin: 0 0.2rem;
+}
+.rb-text-toolbar-color {
+  position: relative;
+}
+.rb-text-swatches {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+.rb-text-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.rb-text-swatch-clear {
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}

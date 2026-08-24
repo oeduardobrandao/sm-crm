@@ -4,10 +4,24 @@
 // instagram-report-generator-v2/index.ts §5-6.
 
 export const KPI_IDS = [
-  "followers_gained", "followers_total", "reach", "engagement_rate",
+  "followers_gained", "followers_total", "reach", "views", "engagement_rate",
   "saves", "posts_count", "profile_views", "website_clicks",
 ] as const;
 export type ReportKpiId = (typeof KPI_IDS)[number];
+
+/** Labels pt-BR por KPI. Fonte ÚNICA: o card do pacote React e o bloco de
+ * metas da IA (tiptap-doc) leem daqui — id cru nunca chega ao cliente. */
+export const KPI_LABELS_PT: Record<ReportKpiId, string> = {
+  followers_gained: "Novos seguidores",
+  followers_total: "Seguidores totais",
+  reach: "Alcance",
+  views: "Visualizações",
+  engagement_rate: "Taxa de engajamento",
+  saves: "Salvamentos",
+  posts_count: "Publicações",
+  profile_views: "Visitas ao perfil",
+  website_clicks: "Cliques no link",
+};
 
 export interface KpiEntry {
   /** null = sem dado nessa base (o widget se omite no viewer/print). */
@@ -39,6 +53,9 @@ export interface KpiSources {
   prevPrevSnapshot: MonthSnapshot | null;
   /** Pontos do mês do relatório, ordem cronológica. */
   followerHistory: { follower_count: number }[];
+  /** Views da conta no mês (Graph API ao vivo, resolvido pelo chamador).
+   * null = fetch indisponível/falhou -> o card se omite (value null). */
+  accountViews: { value: number | null; prev: number | null } | null;
 }
 
 const sum = (posts: PostMetrics[], key: keyof PostMetrics) =>
@@ -116,10 +133,14 @@ export function computeKpis(s: KpiSources): Record<ReportKpiId, KpiEntry> {
   const wcPrev = wc !== null && typeof s.prevSnapshot?.website_clicks_28d === "number"
     ? s.prevSnapshot.website_clicks_28d : null;
 
+  const views = s.accountViews?.value ?? null;
+  const viewsPrev = views !== null ? (s.accountViews?.prev ?? null) : null;
+
   return {
     followers_gained: { value: gained, unit: "count", prev: gainedPrev },
     followers_total: { value: total, unit: "count", prev: totalPrev },
     reach: { value: totalReach, unit: "count", prev: reachPrev },
+    views: { value: views, unit: "count", prev: viewsPrev },
     engagement_rate: { value: engagement, unit: "pct", prev: engagementPrev },
     saves: { value: totalSaved, unit: "count", prev: savesPrev },
     posts_count: { value: s.allPosts.length, unit: "count", prev: postsPrev },

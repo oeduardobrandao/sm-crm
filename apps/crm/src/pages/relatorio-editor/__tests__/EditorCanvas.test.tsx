@@ -85,7 +85,7 @@ describe('EditorCanvas', () => {
     ).toBeInTheDocument();
   });
 
-  it('widget sem dados: .rb-edit-body existe mas fica vazio (placeholder aparece via CSS)', () => {
+  it('widget sem dados: placeholder nomeia o widget e explica a omissão', () => {
     const snap = makeSnapshotFixture();
     snap.kpis.profile_views = { value: null, unit: 'count', prev: null };
     const l: ReportLayout = {
@@ -94,10 +94,43 @@ describe('EditorCanvas', () => {
     };
     const { container } = render(<EditorCanvas layout={l} snapshot={snap} onChange={() => {}} />);
     const cell = container.querySelector('[data-block-id="k"]') as HTMLElement;
-    expect(cell).toBeInTheDocument();
-    const body = cell.querySelector('.rb-edit-body') as HTMLElement;
-    expect(body).toBeInTheDocument();
-    expect(body.childNodes.length).toBe(0);
+    const nodata = cell.querySelector('.rb-edit-nodata') as HTMLElement;
+    expect(nodata).toBeInTheDocument();
+    expect(nodata).toHaveTextContent('Visitas ao perfil');
+    expect(nodata).toHaveTextContent('Sem dados neste período');
+  });
+
+  it('cabeçalho de seção com onConfigChange: inputs editáveis de título e subtítulo', () => {
+    const onConfigChange = vi.fn();
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 's', type: 'section_header', size: 'full', config: { title: 'Métricas' } }],
+    };
+    render(
+      <EditorCanvas
+        layout={l}
+        snapshot={makeSnapshotFixture()}
+        onChange={() => {}}
+        onConfigChange={onConfigChange}
+      />,
+    );
+    const title = screen.getByRole('textbox', { name: 'Título da seção' });
+    expect(title).toHaveValue('Métricas');
+    fireEvent.change(title, { target: { value: 'Números do mês' } });
+    expect(onConfigChange).toHaveBeenCalledWith('s', { title: 'Números do mês' });
+    const subtitle = screen.getByRole('textbox', { name: 'Subtítulo da seção' });
+    fireEvent.change(subtitle, { target: { value: 'Julho' } });
+    expect(onConfigChange).toHaveBeenCalledWith('s', { subtitle: 'Julho' });
+  });
+
+  it('sem onConfigChange o cabeçalho segue estático (view do widget)', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 's', type: 'section_header', size: 'full', config: { title: 'Métricas' } }],
+    };
+    render(<EditorCanvas layout={l} snapshot={makeSnapshotFixture()} onChange={() => {}} />);
+    expect(screen.queryByRole('textbox', { name: 'Título da seção' })).not.toBeInTheDocument();
+    expect(screen.getByText('Métricas')).toBeInTheDocument();
   });
 
   it('bloco em highlight recebe a classe de destaque', () => {

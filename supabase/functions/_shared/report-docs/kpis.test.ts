@@ -16,10 +16,13 @@ const base = (): KpiSources => ({
   },
   prevPrevSnapshot: { followers_count: 1050 },
   followerHistory: [{ follower_count: 1150 }],
+  accountViews: { value: 8000, prev: 6500 },
 });
 
-Deno.test("caso completo: 8 KPIs com prev na mesma base", () => {
+Deno.test("caso completo: 9 KPIs com prev na mesma base", () => {
   const k = computeKpis(base());
+  assertEquals(k.views.value, 8000);
+  assertEquals(k.views.prev, 6500);
   assertEquals(k.followers_gained.value, 100);          // 1200 - 1100
   assertEquals(k.followers_gained.prev, 50);            // 1100 - 1050
   assertEquals(k.followers_total.value, 1200);
@@ -55,6 +58,22 @@ Deno.test("sem snapshots: followers_gained cai pro history (sem prev); followers
   assertEquals(k.followers_total.prev, null);
   assertEquals(k.profile_views.value, null);   // 28d sem snapshot do mês: some
   assertEquals(k.website_clicks.value, null);
+});
+
+Deno.test("accountViews null (fetch indisponível): views some, nunca 0", () => {
+  const s = base();
+  s.accountViews = null;
+  const k = computeKpis(s);
+  assertEquals(k.views.value, null);
+  assertEquals(k.views.prev, null);
+});
+
+Deno.test("accountViews com value null: prev suprimido (invariante uma-base-por-card)", () => {
+  const s = base();
+  s.accountViews = { value: null, prev: 6500 };
+  const k = computeKpis(s);
+  assertEquals(k.views.value, null);
+  assertEquals(k.views.prev, null);
 });
 
 Deno.test("ganho negativo em qualquer mês retém o prev de followers_gained", () => {

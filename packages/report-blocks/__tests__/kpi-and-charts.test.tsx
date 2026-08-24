@@ -52,6 +52,48 @@ describe('KpiCardBlock', () => {
     expect(screen.queryByText('Visitas ao perfil')).not.toBeInTheDocument();
     expect(screen.getByText('Salvamentos')).toBeInTheDocument();
     expect(container.querySelector('.rb-kpi-delta')).toBeNull();
+    expect(container.querySelector('.rb-kpi-prev')).toBeNull();
+  });
+
+  it('valor do período anterior aparece por extenso (padrão da página de Analytics)', () => {
+    render(
+      <BlockRenderer
+        layout={l([
+          { id: 'k1', type: 'kpi_reach', size: 'third' },
+          { id: 'k2', type: 'kpi_engagement_rate', size: 'third' },
+        ])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('Anterior: 39.800')).toBeInTheDocument();
+    expect(screen.getByText('Anterior: 4,1%')).toBeInTheDocument();
+  });
+
+  it('kpi_views renderiza com label Visualizações e delta', () => {
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'k1', type: 'kpi_views', size: 'third' }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('Visualizações')).toBeInTheDocument();
+    expect(screen.getByText('88.400')).toBeInTheDocument();
+    expect(screen.getByText('Anterior: 74.100')).toBeInTheDocument();
+  });
+
+  it('snapshot antigo sem a chave views: kpi_views some sem quebrar', () => {
+    const snap = makeSnapshotFixture();
+    delete (snap.kpis as Partial<typeof snap.kpis>).views;
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'k1', type: 'kpi_views', size: 'third' }])}
+        snapshot={snap}
+        mode="view"
+      />,
+    );
+    expect(screen.queryByText('Visualizações')).not.toBeInTheDocument();
   });
 });
 
@@ -67,6 +109,18 @@ describe('FollowerChartBlock', () => {
     expect(container.querySelector('polyline')).not.toBeNull();
     expect(screen.getByText('12.320')).toBeInTheDocument();
     expect(screen.getByText('12.450')).toBeInTheDocument();
+  });
+
+  it('mostra as datas do primeiro e do último ponto (dd/mm, sem pisão de timezone)', () => {
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'c1', type: 'chart_followers', size: 'full' }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('01/07')).toBeInTheDocument();
+    expect(screen.getByText('31/07')).toBeInTheDocument();
   });
 
   it('série vazia: bloco some', () => {
@@ -94,5 +148,43 @@ describe('FormatCardsBlock', () => {
     expect(screen.getByText('Carrosséis')).toBeInTheDocument();
     expect(screen.getByText('Imagens')).toBeInTheDocument();
     expect(screen.getByText('Formato líder')).toBeInTheDocument();
+  });
+
+  it('líder decidido por visualizações médias, não por alcance', () => {
+    const snap = makeSnapshotFixture({
+      content_breakdown: {
+        // Alcance elegeria reels; views elegem carrosséis.
+        reels: { count: 4, avg_reach: 9000, avg_engagement: 0.05, avg_views: 3000 },
+        carousels: { count: 4, avg_reach: 2000, avg_engagement: 0.05, avg_views: 7000 },
+      },
+    });
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'f1', type: 'chart_formats', size: 'full' }])}
+        snapshot={snap}
+        mode="view"
+      />,
+    );
+    const carousels = screen.getByText('Carrosséis');
+    expect(carousels.parentElement).toHaveTextContent('Formato líder');
+    expect(screen.getByText(/média de 7\.000 visualizações/)).toBeInTheDocument();
+  });
+
+  it('snapshot antigo sem avg_views: líder e texto caem no alcance médio', () => {
+    const snap = makeSnapshotFixture();
+    snap.content_breakdown = {
+      reels: { count: 4, avg_reach: 9000, avg_engagement: 0.05 },
+      carousels: { count: 4, avg_reach: 2000, avg_engagement: 0.05 },
+    } as typeof snap.content_breakdown;
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'f1', type: 'chart_formats', size: 'full' }])}
+        snapshot={snap}
+        mode="view"
+      />,
+    );
+    const reels = screen.getByText('Reels');
+    expect(reels.parentElement).toHaveTextContent('Formato líder');
+    expect(screen.getByText(/alcance médio 9\.000/)).toBeInTheDocument();
   });
 });

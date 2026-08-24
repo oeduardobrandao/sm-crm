@@ -36,6 +36,7 @@ export const BLOCK_COMPONENTS: Partial<Record<BlockType, FC<BlockProps>>> = {
   kpi_followers_gained: KpiCardBlock,
   kpi_followers_total: KpiCardBlock,
   kpi_reach: KpiCardBlock,
+  kpi_views: KpiCardBlock,
   kpi_engagement_rate: KpiCardBlock,
   kpi_saves: KpiCardBlock,
   kpi_posts_count: KpiCardBlock,

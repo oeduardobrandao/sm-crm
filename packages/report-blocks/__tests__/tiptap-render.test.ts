@@ -50,4 +50,44 @@ describe('tiptapToHtml', () => {
       ),
     ).toContain('<p>ok</p>');
   });
+
+  it('underline vira <u>', () => {
+    const html = tiptapToHtml(
+      doc([{ type: 'paragraph', content: [text('sub', [{ type: 'underline' }])] }]),
+    );
+    expect(html).toContain('<u>sub</u>');
+  });
+
+  it('cor de texto: só #rrggbb estrito entra no style', () => {
+    const colored = (color: unknown) =>
+      tiptapToHtml(
+        doc([
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'c', marks: [{ type: 'textStyle', attrs: { color } }] },
+            ],
+          },
+        ]),
+      );
+    expect(colored('#dc2626')).toContain('<span style="color: #dc2626">c</span>');
+    // Qualquer outra forma descarta a mark: nome, rgb(), 8 dígitos, injeção.
+    expect(colored('red')).toBe('<p>c</p>');
+    expect(colored('rgb(1,2,3)')).toBe('<p>c</p>');
+    expect(colored('#dc2626ff')).toBe('<p>c</p>');
+    expect(colored('#fff" onmouseover="x')).toBe('<p>c</p>');
+  });
+
+  it('alinhamento: center/right/justify viram style; left e lixo não emitem atributo', () => {
+    const aligned = (textAlign: unknown) =>
+      tiptapToHtml(doc([{ type: 'paragraph', attrs: { textAlign }, content: [text('a')] }]));
+    expect(aligned('center')).toBe('<p style="text-align: center">a</p>');
+    expect(aligned('right')).toBe('<p style="text-align: right">a</p>');
+    expect(aligned('left')).toBe('<p>a</p>');
+    expect(aligned('start"><script>')).toBe('<p>a</p>');
+    const heading = tiptapToHtml(
+      doc([{ type: 'heading', attrs: { level: 2, textAlign: 'center' }, content: [text('t')] }]),
+    );
+    expect(heading).toBe('<h2 style="text-align: center">t</h2>');
+  });
 });

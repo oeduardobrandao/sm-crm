@@ -1,5 +1,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { aiRecommendationsDoc, fallbackSummaryParagraphs, fillAiBlocks, textDoc } from "./tiptap-doc.ts";
+import {
+  aiGoalsDoc, aiRecommendationsDoc, fallbackSummaryParagraphs, fillAiBlocks, textDoc,
+} from "./tiptap-doc.ts";
 import { buildDefaultLayout } from "./default-layout.ts";
 import type { AIOutput } from "../report-template/types.ts";
 
@@ -18,6 +20,27 @@ Deno.test("textDoc gera doc TipTap com um paragraph por string", () => {
   assertEquals(doc.content.length, 2);
 });
 
+Deno.test("aiGoalsDoc: id de KPI vira label pt-BR e target numérico formata; texto livre passa como veio", () => {
+  const doc = aiGoalsDoc({
+    ...ai,
+    suggested_goals: [
+      { metric: "reach", target: "7000", rationale: "r1" },
+      { metric: "views", target: "60000", rationale: "r2" },
+      { metric: "engagement_rate", target: "11.5%", rationale: "r3" },
+      { metric: "alcance nos reels", target: "+10%", rationale: "r4" },
+    ],
+  }) as { content: { type: string; content: { text: string }[] }[] };
+  const headings = doc.content
+    .filter((n) => n.type === "heading")
+    .map((n) => n.content[0].text);
+  assertEquals(headings, [
+    "Alcance: 7.000",
+    "Visualizações: 60.000",
+    "Taxa de engajamento: 11,5%",
+    "alcance nos reels: +10%",
+  ]);
+});
+
 Deno.test("aiRecommendationsDoc: heading + paragraph por recomendação", () => {
   const doc = aiRecommendationsDoc(ai) as { content: { type: string }[] };
   assertEquals(doc.content[0].type, "heading");
@@ -29,6 +52,7 @@ Deno.test("fallbackSummaryParagraphs cita o mês e não inventa base ausente", (
     followers_gained: { value: 10, unit: "count", prev: null },
     followers_total: { value: null, unit: "count", prev: null },
     reach: { value: 1000, unit: "count", prev: null },
+    views: { value: null, unit: "count", prev: null },
     engagement_rate: { value: 3.2, unit: "pct", prev: null },
     saves: { value: 5, unit: "count", prev: null },
     posts_count: { value: 8, unit: "count", prev: null },
