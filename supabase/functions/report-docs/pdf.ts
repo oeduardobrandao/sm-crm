@@ -12,7 +12,10 @@ import { DocActionError, PDF_BUCKET } from "./errors.ts";
 import { signPrintToken } from "../_shared/report-docs/print-token.ts";
 import { convertUrlToPdf } from "../_shared/report-template/pdf-url.ts";
 
-export const PDF_RENDERER_VERSION = 1;
+// v2 (2026-08-24): margens do Gotenberg zeradas + inset via @page + temas e
+// fontes na página de impressão. Bump invalida qualquer PDF cacheado com a
+// geometria antiga (a regra de cache exige a versão igual).
+export const PDF_RENDERER_VERSION = 2;
 const PRINT_TOKEN_TTL_S = 600;
 const SIGNED_URL_TTL_S = 3600;
 
