@@ -126,6 +126,37 @@ begin
     if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
   end;
 
+  -- Task 3 (spec 2026-08-24): theme fora do enum fechado é rejeitado.
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-03-01', '2026-03-31',
+        '{"version":1,"theme":"dark","blocks":[]}'::jsonb);
+    raise exception 'validate_report_layout aceitou theme fora do enum';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+
+  -- Task 3 (spec 2026-08-24): fonts fora do tipo string (número) é rejeitado.
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-03-01', '2026-03-31',
+        '{"version":1,"fonts":42,"blocks":[]}'::jsonb);
+    raise exception 'validate_report_layout aceitou fonts fora do enum';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+
+  -- Task 3 (spec 2026-08-24): layout válido COM theme e fonts nos enums passa.
+  declare
+    v_doc_theme uuid;
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-03-01', '2026-03-31',
+        '{"version":1,"theme":"clean","fonts":"fraunces","blocks":[]}'::jsonb)
+      returning id into v_doc_theme;
+    delete from report_documents where id = v_doc_theme;
+  end;
+
   -- Hardening PR3: layout válido COM accent e text em bloco ai_ passa.
   declare
     v_doc_valid uuid;
@@ -173,6 +204,34 @@ begin
     values (v_ws_a, 'T1', v_layout, true) returning id into v_tpl_1;
   insert into report_templates (conta_id, name, layout)
     values (v_ws_a, 'T2', v_layout) returning id into v_tpl_2;
+
+  -- Task 3 (spec 2026-08-24): validate_report_layout é compartilhada com
+  -- report_templates — mesmo par de casos, provado na outra tabela.
+  begin
+    insert into report_templates (conta_id, name, layout)
+      values (v_ws_a, 'T-theme-invalido',
+        '{"version":1,"theme":"dark","blocks":[]}'::jsonb);
+    raise exception 'validate_report_layout aceitou theme fora do enum em report_templates';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+  begin
+    insert into report_templates (conta_id, name, layout)
+      values (v_ws_a, 'T-fonts-invalido',
+        '{"version":1,"fonts":42,"blocks":[]}'::jsonb);
+    raise exception 'validate_report_layout aceitou fonts fora do enum em report_templates';
+  exception when others then
+    if sqlerrm not like '%INVALID_LAYOUT%' then raise; end if;
+  end;
+  declare
+    v_tpl_theme uuid;
+  begin
+    insert into report_templates (conta_id, name, layout)
+      values (v_ws_a, 'T-theme-valido',
+        '{"version":1,"theme":"clean","fonts":"fraunces","blocks":[]}'::jsonb)
+      returning id into v_tpl_theme;
+    delete from report_templates where id = v_tpl_theme;
+  end;
 
   -- Índice parcial: segundo default direto no mesmo workspace falha.
   begin
