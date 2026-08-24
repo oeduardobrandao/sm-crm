@@ -18,6 +18,7 @@ import {
   List,
   MapPin,
   MousePointerClick,
+  Play,
   SeparatorHorizontal,
   Shapes,
   Sparkles,
@@ -43,6 +44,8 @@ export const WIDGET_ICONS: Record<BlockType, LucideIcon> = {
   kpi_followers_gained: UserPlus,
   kpi_followers_total: Users,
   kpi_reach: Eye,
+  // Play espelha o card "Visualizações" da página de Analytics.
+  kpi_views: Play,
   kpi_engagement_rate: Heart,
   kpi_saves: Bookmark,
   kpi_posts_count: Images,

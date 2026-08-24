@@ -27,9 +27,33 @@ import {
   SIZE_CLASS,
   resolveLayoutAccent,
 } from '@mesaas/report-blocks/BlockRenderer';
-import type { ReportBlock, ReportDocSnapshot, ReportLayout } from '@mesaas/report-blocks/types';
+import { WIDGET_CATALOG } from '@mesaas/report-blocks/catalog';
+import { blockHasData } from '@mesaas/report-blocks/data-presence';
+import type {
+  BlockType,
+  ReportBlock,
+  ReportDocSnapshot,
+  ReportLayout,
+} from '@mesaas/report-blocks/types';
 import { TEXT_BLOCK_TYPES } from '@mesaas/report-blocks/types';
 import { moveBlock, removeBlock, resizeBlock } from './layoutOps';
+import { SectionHeaderEditor } from './SectionHeaderEditor';
+
+// Placeholder do modo edição para widget sem dado no snapshot: a view/print
+// omite o bloco (guard de cada widget), mas no editor uma célula vazia parece
+// bug e esconde o próprio widget que o usuário acabou de adicionar.
+function NoDataPlaceholder({ type }: { type: BlockType }) {
+  const label = WIDGET_CATALOG.find((w) => w.type === type)?.label ?? type;
+  return (
+    <div className="rb-edit-nodata">
+      <p className="rb-edit-nodata-title">{label}</p>
+      <p className="rb-edit-nodata-hint">
+        Sem dados neste período. Este widget não aparece na visão do cliente; use Atualizar dados se
+        a conta tiver sincronizado depois da geração.
+      </p>
+    </div>
+  );
+}
 
 interface SortableCellProps {
   block: ReportBlock;
@@ -38,6 +62,7 @@ interface SortableCellProps {
   onResize: (delta: 1 | -1) => void;
   onRemove: () => void;
   renderTextBlock?: (block: ReportBlock) => ReactNode;
+  onConfigChange?: (id: string, patch: Record<string, unknown>) => void;
 }
 
 function SortableCell({
@@ -47,6 +72,7 @@ function SortableCell({
   onResize,
   onRemove,
   renderTextBlock,
+  onConfigChange,
 }: SortableCellProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: block.id,
@@ -67,6 +93,10 @@ function SortableCell({
   const body =
     isText && renderTextBlock ? (
       renderTextBlock(block)
+    ) : block.type === 'section_header' && onConfigChange ? (
+      <SectionHeaderEditor block={block} onConfigChange={onConfigChange} />
+    ) : Component && !blockHasData(block, snapshot) ? (
+      <NoDataPlaceholder type={block.type} />
     ) : Component ? (
       <Component block={block} snapshot={snapshot} />
     ) : null;
@@ -127,6 +157,8 @@ export interface EditorCanvasProps {
   // Ausente = comportamento atual (onChange com o bloco removido). Presente =
   // o chamador assume a exclusão inteira (ex.: undo via toast na página).
   onRemoveBlock?: (id: string) => void;
+  /** Habilita a edição inline de config (cabeçalho de seção). */
+  onConfigChange?: (id: string, patch: Record<string, unknown>) => void;
 }
 
 export function EditorCanvas({
@@ -136,6 +168,7 @@ export function EditorCanvas({
   highlightId,
   renderTextBlock,
   onRemoveBlock,
+  onConfigChange,
 }: EditorCanvasProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -188,6 +221,7 @@ export function EditorCanvas({
                 onRemoveBlock ? onRemoveBlock(block.id) : onChange(removeBlock(layout, block.id))
               }
               renderTextBlock={renderTextBlock}
+              onConfigChange={onConfigChange}
             />
           ))}
         </div>

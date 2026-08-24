@@ -6,6 +6,7 @@ export const KPI_LABELS: Record<ReportKpiId, string> = {
   followers_gained: 'Novos seguidores',
   followers_total: 'Seguidores totais',
   reach: 'Alcance',
+  views: 'Visualizações',
   engagement_rate: 'Taxa de engajamento',
   saves: 'Salvamentos',
   posts_count: 'Publicações',
@@ -45,6 +46,14 @@ export function KpiCardBlock({ block, snapshot }: BlockProps) {
           }}
         >
           {`${delta >= 0 ? '+' : '-'}${Math.abs(delta).toFixed(1).replace('.', ',')}%`}
+        </p>
+      ) : null}
+      {entry.prev !== null ? (
+        <p
+          className="rb-kpi-prev"
+          style={{ margin: '0.15rem 0 0', fontSize: '0.72rem', opacity: 0.6 }}
+        >
+          {`Anterior: ${fmtValue({ ...entry, value: entry.prev })}`}
         </p>
       ) : null}
     </div>

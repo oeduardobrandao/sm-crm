@@ -11,6 +11,7 @@ const DEFAULT_SIZE: Partial<Record<BlockType, BlockSize>> = {
   kpi_followers_gained: 'third',
   kpi_followers_total: 'third',
   kpi_reach: 'third',
+  kpi_views: 'third',
   kpi_engagement_rate: 'third',
   kpi_saves: 'third',
   kpi_posts_count: 'third',
@@ -89,6 +90,20 @@ export function insertBlock(
   makeId: () => string = () => crypto.randomUUID(),
 ): { layout: ReportLayout; newId: string } {
   return insertBlockAt(layout, type, layout.blocks.length, makeId);
+}
+
+/** Merge raso no config do bloco (título/subtítulo do cabeçalho de seção,
+ * count dos widgets de posts). Id inexistente = MESMA referência. */
+export function updateBlockConfig(
+  layout: ReportLayout,
+  id: string,
+  patch: Record<string, unknown>,
+): ReportLayout {
+  const idx = layout.blocks.findIndex((b) => b.id === id);
+  if (idx < 0) return layout;
+  const blocks = [...layout.blocks];
+  blocks[idx] = { ...blocks[idx], config: { ...blocks[idx].config, ...patch } };
+  return { ...layout, blocks };
 }
 
 export function updateBlockText(layout: ReportLayout, id: string, text: unknown): ReportLayout {

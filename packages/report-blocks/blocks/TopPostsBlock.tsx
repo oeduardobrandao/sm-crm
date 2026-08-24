@@ -9,16 +9,28 @@ const TYPE_LABELS: Record<SnapshotTopPost['type'], string> = {
 };
 const DEFAULT_COUNT = 6;
 
+// Contagem PAR em bloco de largura cheia: linhas equilibradas (6 -> 2x3,
+// 8 -> 2x4, 12 -> 3x4). Preferência de divisor 4, 3, 5, 2; ímpar (linha
+// final incompleta de qualquer forma) e larguras menores mantêm o auto-fill.
+export function balancedColumns(n: number): number | null {
+  if (n < 2 || n % 2 !== 0) return null;
+  for (const c of [4, 3, 5, 2]) if (n % c === 0) return c;
+  return null;
+}
+
 export function TopPostsBlock({ block, snapshot }: BlockProps) {
   const raw = block.config?.count;
   const count = typeof raw === 'number' && raw >= 1 && raw <= 12 ? raw : DEFAULT_COUNT;
   const posts = snapshot.top_posts.slice(0, count);
   if (posts.length === 0) return null;
+  const cols = block.size === 'full' ? balancedColumns(posts.length) : null;
   return (
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+        gridTemplateColumns: cols
+          ? `repeat(${cols}, minmax(0, 1fr))`
+          : 'repeat(auto-fill, minmax(180px, 1fr))',
         gap: '0.75rem',
       }}
     >
@@ -67,7 +79,9 @@ export function TopPostsBlock({ block, snapshot }: BlockProps) {
               {post.caption_preview}
             </p>
             <p style={{ margin: '0.4rem 0 0', fontSize: '0.72rem', opacity: 0.75 }}>
-              {`Alc. ${fmtCount(post.reach)} · ♥ ${fmtCount(post.likes)} · Com. ${fmtCount(post.comments)} · Salv. ${fmtCount(post.saves)}`}
+              {typeof post.views === 'number'
+                ? `Vis. ${fmtCount(post.views)} · ♥ ${fmtCount(post.likes)} · Com. ${fmtCount(post.comments)} · Salv. ${fmtCount(post.saves)}`
+                : `Alc. ${fmtCount(post.reach)} · ♥ ${fmtCount(post.likes)} · Com. ${fmtCount(post.comments)} · Salv. ${fmtCount(post.saves)}`}
             </p>
           </div>
         </article>

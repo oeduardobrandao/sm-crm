@@ -21,6 +21,7 @@ export function makeSnapshotFixture(over: Partial<ReportDocSnapshot> = {}): Repo
       followers_gained: { value: 132, unit: 'count', prev: 98 },
       followers_total: { value: 12450, unit: 'count', prev: 12318 },
       reach: { value: 45200, unit: 'count', prev: 39800 },
+      views: { value: 88400, unit: 'count', prev: 74100 },
       engagement_rate: { value: 4.7, unit: 'pct', prev: 4.1 },
       saves: { value: 310, unit: 'count', prev: 265 },
       posts_count: { value: 14, unit: 'count', prev: 12 },
@@ -34,13 +35,14 @@ export function makeSnapshotFixture(over: Partial<ReportDocSnapshot> = {}): Repo
       { date: '2026-07-31', count: 12450 },
     ],
     content_breakdown: {
-      reels: { count: 6, avg_reach: 5200, avg_engagement: 0.05 },
-      carousels: { count: 5, avg_reach: 2900, avg_engagement: 0.062 },
-      images: { count: 3, avg_reach: 1400, avg_engagement: 0.064 },
+      reels: { count: 6, avg_reach: 5200, avg_engagement: 0.05, avg_views: 9100 },
+      carousels: { count: 5, avg_reach: 2900, avg_engagement: 0.062, avg_views: 4300 },
+      images: { count: 3, avg_reach: 1400, avg_engagement: 0.064, avg_views: 2050 },
     },
     top_posts: [
       {
         type: 'reel',
+        views: 18400,
         reach: 9800,
         likes: 540,
         comments: 44,
@@ -53,6 +55,7 @@ export function makeSnapshotFixture(over: Partial<ReportDocSnapshot> = {}): Repo
       },
       {
         type: 'carousel',
+        views: 9700,
         reach: 6200,
         likes: 380,
         comments: 21,

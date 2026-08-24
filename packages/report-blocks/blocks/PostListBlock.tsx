@@ -31,7 +31,9 @@ export function PostListBlock({ block, snapshot }: BlockProps) {
           >
             {post.caption_preview}
           </span>
-          <span style={{ fontSize: '0.75rem', opacity: 0.75 }}>{fmtCount(post.reach)}</span>
+          <span style={{ fontSize: '0.75rem', opacity: 0.75 }}>
+            {fmtCount(typeof post.views === 'number' ? post.views : post.reach)}
+          </span>
         </div>
       ))}
     </div>

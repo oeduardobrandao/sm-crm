@@ -59,6 +59,52 @@ describe('TopPostsBlock', () => {
     );
     expect(screen.getByText('Mitos sobre protetor solar')).toBeInTheDocument();
     expect(screen.queryByText('5 sinais de alerta na pele')).not.toBeInTheDocument();
+    // Métrica principal do card = visualizações (Vis.), não alcance.
+    expect(screen.getByText(/Vis\. 18\.400/)).toBeInTheDocument();
+  });
+
+  it('snapshot antigo (posts sem views): métrica cai no alcance (Alc.)', () => {
+    const snap = makeSnapshotFixture();
+    for (const post of snap.top_posts) {
+      delete (post as Partial<(typeof snap.top_posts)[number]>).views;
+    }
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'p1', type: 'top_posts', size: 'full', config: { count: 1 } }])}
+        snapshot={snap}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText(/Alc\. 9\.800/)).toBeInTheDocument();
+  });
+
+  it('contagem par em largura cheia: colunas equilibradas (6->3, 8->4, 12->4; ímpar mantém auto-fill)', () => {
+    const post = makeSnapshotFixture().top_posts[0];
+    const grid = (n: number, size: 'full' | 'half' = 'full') => {
+      const snap = makeSnapshotFixture({
+        top_posts: Array.from({ length: n }, (_, i) => ({
+          ...post,
+          caption_preview: `post ${i}`,
+        })),
+      });
+      const { container, unmount } = render(
+        <BlockRenderer
+          layout={l([{ id: 'p1', type: 'top_posts', size, config: { count: n } }])}
+          snapshot={snap}
+          mode="view"
+        />,
+      );
+      const style = (container.querySelector('article')?.parentElement as HTMLElement).style
+        .gridTemplateColumns;
+      unmount();
+      return style;
+    };
+    expect(grid(6)).toBe('repeat(3, minmax(0, 1fr))');
+    expect(grid(8)).toBe('repeat(4, minmax(0, 1fr))');
+    expect(grid(12)).toBe('repeat(4, minmax(0, 1fr))');
+    expect(grid(5)).toBe('repeat(auto-fill, minmax(180px, 1fr))');
+    // Meia largura não força colunas fixas: auto-fill se adapta ao espaço.
+    expect(grid(6, 'half')).toBe('repeat(auto-fill, minmax(180px, 1fr))');
   });
 
   it('sem thumbnail: placeholder, nunca img quebrada', () => {
@@ -75,7 +121,7 @@ describe('TopPostsBlock', () => {
 });
 
 describe('PostListBlock', () => {
-  it('renderiza linhas compactas com rank, caption e alcance', () => {
+  it('renderiza linhas compactas com rank, caption e visualizações', () => {
     render(
       <BlockRenderer
         layout={l([{ id: 'pl1', type: 'post_list', size: 'full', config: { count: 1 } }])}
@@ -85,8 +131,23 @@ describe('PostListBlock', () => {
     );
     expect(screen.getByText('Mitos sobre protetor solar')).toBeInTheDocument();
     expect(screen.getByText('1º')).toBeInTheDocument();
-    expect(screen.getByText('9.800')).toBeInTheDocument();
+    expect(screen.getByText('18.400')).toBeInTheDocument();
     expect(screen.queryByText('5 sinais de alerta na pele')).not.toBeInTheDocument();
+  });
+
+  it('snapshot antigo (sem views): linha cai no alcance', () => {
+    const snap = makeSnapshotFixture();
+    for (const post of snap.top_posts) {
+      delete (post as Partial<(typeof snap.top_posts)[number]>).views;
+    }
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'pl1', type: 'post_list', size: 'full', config: { count: 1 } }])}
+        snapshot={snap}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('9.800')).toBeInTheDocument();
   });
 
   it('sem posts: desaparece', () => {

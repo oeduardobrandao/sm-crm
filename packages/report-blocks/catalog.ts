@@ -29,6 +29,7 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
   { type: 'kpi_followers_gained', label: 'Novos seguidores', category: 'Números' },
   { type: 'kpi_followers_total', label: 'Seguidores totais', category: 'Números' },
   { type: 'kpi_reach', label: 'Alcance', category: 'Números' },
+  { type: 'kpi_views', label: 'Visualizações', category: 'Números' },
   { type: 'kpi_engagement_rate', label: 'Taxa de engajamento', category: 'Números' },
   { type: 'kpi_saves', label: 'Salvamentos', category: 'Números' },
   { type: 'kpi_posts_count', label: 'Publicações', category: 'Números' },
