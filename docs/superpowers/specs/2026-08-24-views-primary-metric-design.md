@@ -5,7 +5,7 @@
 
 ## Summary
 
-Replace "alcance" (reach) with "visualizações" (views) as the primary performance metric across all analytics surfaces: portfolio analytics, per-account analytics, Hub client portal, and AI analysis prompts. Engagement rate formula stays unchanged (`interactions / reach * 100`). Reach is demoted, not removed.
+Replace "alcance" (reach) with "visualizações" (views) as the primary performance metric across all analytics surfaces: portfolio analytics, per-account analytics (including content table and print report), Hub client portal, and AI analysis prompts. Engagement rate formula stays unchanged (`interactions / reach * 100`). Reach is demoted, not removed.
 
 ## Data Model
 
@@ -15,21 +15,26 @@ No schema migration needed. The Instagram API `views` metric is already stored i
 - Account-level: `instagram_accounts.impressions_28d` = views (28d), `instagram_accounts.reach_28d` = reach (28d)
 - Account-level live views come from `getAccountViews` (Graph API, capped at 90 days)
 
+**Unavailable views data:** When the Graph API does not return views for a post, `buildMetricFields` writes `0` to `impressions` and adds `"impressions"` to `unavailable_metrics`. To avoid silently dropping these posts from rankings, queries must use `.or('impressions.gt.0,reach.gt.0')` instead of `.gt('impressions', 0)`. Posts with `impressions = 0` but valid `reach` remain rankable — they sort to the bottom of views-based rankings naturally.
+
 ## Changes
 
 ### 1. Service Layer (`apps/crm/src/services/analytics.ts`)
 
 **`getPortfolioSummary`:**
-- Supabase query: `.gt('reach', 0).order('reach', { ascending: false })` becomes `.gt('impressions', 0).order('impressions', { ascending: false })`
+- Supabase query filter: `.gt('reach', 0)` becomes `.or('impressions.gt.0,reach.gt.0')`
+- Supabase query order: `.order('reach', { ascending: false })` becomes `.order('impressions', { ascending: false })`
 - JS sort: `b.reach - a.reach` becomes `b.views - a.views`
 
 **`getPostsAnalytics`:**
-- Add `'views'` as a valid sort column alias mapping to `'impressions'` in the DB query
-- Keep `'reach'` as a valid column
+- The DB query always orders by `posted_at`; sorting is JS-side via `validCols` + `.sort()`. Add `'views'` to `validCols`. The sort comparator already reads `(a as any)[col]` — since enriched posts have a `views` property (aliased from `impressions`), the `'views'` column works without extra mapping.
+- Keep `'reach'` and `'impressions'` as valid columns too.
 
 ### 2. Hub Backend (`supabase/functions/hub-dashboard/handler.ts`)
 
-- Post query: `.gt("reach", 0).order("reach", { ascending: false })` becomes `.gt("impressions", 0).order("impressions", { ascending: false })`
+- Post query filter: `.gt("reach", 0)` becomes `.or('impressions.gt.0,reach.gt.0')`
+- Post query order: `.order("reach", { ascending: false })` becomes `.order("impressions", { ascending: false })`
+- Remove the secondary `.sort()` by `engagementRate` + `.slice(0, 5)`. Instead, the top 5 posts are ranked by views (impressions), matching the CRM. The engagement rate is still displayed on each card but is not the ranking criterion.
 
 ### 3. CRM Portfolio Page (`apps/crm/src/pages/analytics/AnalyticsPage.tsx`)
 
@@ -47,6 +52,7 @@ No schema migration needed. The Instagram API `views` metric is already stored i
 
 **Drawer:**
 - Default `drawerOrderBy` changes from `'reach'` to `'views'`
+- The drawer close handler reset (`setDrawerOrderBy('reach')` at line 1617) also changes to `'views'`
 - Add `'views'` sort case mapping to `post.views`
 
 **Accounts table:**
@@ -64,13 +70,29 @@ No schema migration needed. The Instagram API `views` metric is already stored i
 - Leading metric label from "Alcance" to "Visualizações"
 - Value from `post.reach` to `post.views`
 
-**KPI cards:**
-- Visualizações already first — no label change
-- Alcance moves from position 4 to position 5 (after engagement rate)
+**KPI cards (complete order after change):**
+1. Visualizações (already first, no change)
+2. Seguidores
+3. Engajamento
+4. Contas engajadas (swaps with Alcance)
+5. Alcance (demoted from position 4 to 5)
+6. Cliques no link
+7. Taxa de salvamentos
+8. Posts publicados
+
+**Content table (line 1753):**
+- Move "Impressões" column before "Alcance" and rename to "Visualizações"
+- Keep "Alcance" as a secondary column
+
+**Print report (line 3091):**
+- Add "Visualizações" KPI card using `impressions` data
+- Demote "Alcance" KPI card to secondary position
+- In the per-post table, add a "Visualizações" column before "Alcance"
 
 **Drawer sort:**
 - Add `'views'` sort case mapping to `post.views`
 - Default sort changes from `'reach'` to `'views'`
+- Any drawer reset/close handlers that set sort to `'reach'` must change to `'views'`
 
 ### 5. Hub Client Portal
 
@@ -85,12 +107,12 @@ No schema migration needed. The Instagram API `views` metric is already stored i
 
 **Per-account AI prompt:**
 - Add `views` (from `impressions`) to the post summary object alongside `reach`
-- Update benchmark text to include views reference
+- Remove the reach-percentage benchmark ("Alcance medio por post: 20-40% dos seguidores"). Views can legitimately exceed follower count (repeat exposures), so a percentage-of-followers benchmark does not apply. Instead, frame the directive qualitatively: "Visualizações é a métrica principal de distribuição. Compare os posts entre si, identifique quais tiveram distribuição acima ou abaixo da média do perfil."
 - System prompt frames views as the primary performance signal, reach as secondary
 
 **Portfolio AI prompt:**
 - Add `impressions_28d` to each account's summary data
-- Update prompt to reference views as primary metric for comparing accounts
+- Update prompt to reference views as primary metric for comparing accounts, same qualitative framing
 
 **`report-docs/generate.ts`:**
 - No changes — already has views-first AI directive
