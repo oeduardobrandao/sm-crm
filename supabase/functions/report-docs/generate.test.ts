@@ -7,7 +7,12 @@ import { GenerateError, generateReportDocument } from "./generate.ts";
 // de { data: result, error: null } -- simula uma query obrigatória falhando.
 function makeDb(
   rows: Record<string, unknown>,
-  opts: { feature?: boolean; errors?: Record<string, { message: string }> } = {},
+  opts: {
+    feature?: boolean;
+    errors?: Record<string, { message: string }>;
+    featureByKey?: Record<string, boolean>;
+    featureErrors?: Record<string, { message: string }>;
+  } = {},
 ) {
   const inserts: Record<string, unknown>[] = [];
   const rpcCalls: { name: string; args: Record<string, unknown> }[] = [];
@@ -39,9 +44,14 @@ function makeDb(
     },
     rpc: (name: string, args: Record<string, unknown> = {}) => {
       rpcCalls.push({ name, args });
-      return name === "effective_plan_feature"
-        ? Promise.resolve({ data: opts.feature ?? true, error: null })
-        : Promise.resolve({ data: [], error: null });
+      if (name === "effective_plan_feature") {
+        const key = args.feature_key as string;
+        if (opts.featureErrors?.[key]) {
+          return Promise.resolve({ data: null, error: opts.featureErrors[key] });
+        }
+        return Promise.resolve({ data: opts.featureByKey?.[key] ?? opts.feature ?? true, error: null });
+      }
+      return Promise.resolve({ data: [], error: null });
     },
     // deno-lint-ignore no-explicit-any
   } as any;
@@ -324,4 +334,72 @@ Deno.test("sem templateId e sem default: layout padrão do sistema", async () =>
   await generateReportDocument(db, deps, "c", 1, "2026-07", null);
   const inserted = db.inserts[0] as { layout: { blocks: Array<{ type: string }> } };
   assert(inserted.layout.blocks.some((b) => b.type === "cover"));
+});
+
+Deno.test("com feature_brand_customization ativa, o snapshot carrega hub_theme das colunas do workspace", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: "Derma", include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "dra.x", follower_count: 100 },
+    instagram_posts: [],
+    instagram_follower_history: [],
+    instagram_analytics_cache: null,
+    instagram_account_metrics_daily: [],
+    workspaces: {
+      name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null,
+      hub_surface_theme: "warm", hub_font_display: "sora", hub_font_body: "manrope",
+      hub_radius: "pill", hub_card_style: "outline",
+    },
+  }, { featureByKey: { feature_analytics_reports: true, feature_brand_customization: true } });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as { data_snapshot: { branding: { hub_theme?: unknown } } };
+  assertEquals(row.data_snapshot.branding.hub_theme, {
+    surface: "warm", font_display: "sora", font_body: "manrope",
+    radius: "pill", card_style: "outline",
+  });
+});
+
+Deno.test("sem feature_brand_customization, o snapshot usa os defaults neutros mesmo com colunas customizadas", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: "Derma", include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "dra.x", follower_count: 100 },
+    instagram_posts: [],
+    instagram_follower_history: [],
+    instagram_analytics_cache: null,
+    instagram_account_metrics_daily: [],
+    workspaces: {
+      name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null,
+      hub_surface_theme: "warm", hub_font_display: "sora", hub_font_body: "manrope",
+      hub_radius: "pill", hub_card_style: "outline",
+    },
+  }, { featureByKey: { feature_analytics_reports: true, feature_brand_customization: false } });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as { data_snapshot: { branding: { hub_theme?: unknown } } };
+  assertEquals(row.data_snapshot.branding.hub_theme, {
+    surface: "neutral", font_display: "fraunces", font_body: "instrument-sans",
+    radius: "soft", card_style: "filled",
+  });
+});
+
+Deno.test("erro na RPC de feature_brand_customization degrada para os defaults neutros, sem lançar", async () => {
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: "Derma", include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "dra.x", follower_count: 100 },
+    instagram_posts: [],
+    instagram_follower_history: [],
+    instagram_analytics_cache: null,
+    instagram_account_metrics_daily: [],
+    workspaces: {
+      name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null,
+      hub_surface_theme: "warm", hub_font_display: "sora", hub_font_body: "manrope",
+      hub_radius: "pill", hub_card_style: "outline",
+    },
+  }, {
+    featureByKey: { feature_analytics_reports: true },
+    featureErrors: { feature_brand_customization: { message: "rpc indisponivel" } },
+  });
+  const { id } = await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  assertEquals(id, "doc-1");
+  const row = db.inserts[0] as { status: string; data_snapshot: { branding: { hub_theme?: { surface?: string } } } };
+  assertEquals(row.status, "ready");
+  assertEquals(row.data_snapshot.branding.hub_theme?.surface, "neutral");
 });

@@ -9,10 +9,12 @@ import {
 import { fetchAccountViews } from "./account-views.ts";
 import { monthWindow, prevMonthOf } from "../_shared/report-docs/month-window.ts";
 import {
-  assembleSnapshot, MAX_SNAPSHOT_POSTS, type ReportDocSnapshot, type SnapshotPostRow,
+  assembleSnapshot, MAX_SNAPSHOT_POSTS, type ReportDocSnapshot, type SnapshotHubTheme,
+  type SnapshotPostRow,
 } from "../_shared/report-docs/snapshot.ts";
 import type { TagPerformance } from "../_shared/report-template/types.ts";
 import { GenerateError } from "./errors.ts";
+import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 
 export interface SnapshotDeps {
   fetch: typeof fetch;
@@ -127,8 +129,10 @@ export async function loadClientSnapshot(
       // instagram-report-generator-v2/index.ts's own endInclusive derivation).
       p_month_end: new Date(Date.parse(w.endExclusive) - 1).toISOString(),
     })).then((r: TagPerfResult) => r).catch((): TagPerfResult => ({ data: null })),
-    db.from("workspaces").select("name, logo_url, brand_color, report_splash_url")
-      .eq("id", contaId).single(),
+    db.from("workspaces").select(
+      "name, logo_url, brand_color, report_splash_url, hub_surface_theme, " +
+        "hub_font_display, hub_font_body, hub_radius, hub_card_style",
+    ).eq("id", contaId).single(),
     lastSnapshotOfMonth(prevPrevW),
     lastSnapshotOfMonth(prevW),
     lastSnapshotOfMonth(w),
@@ -163,6 +167,29 @@ export async function loadClientSnapshot(
 
   const posts: SnapshotPostRow[] = postsRes.data ?? [];
   const ws = workspaceRes.data;
+
+  // Fail closed, mesmo padrão de defesa em profundidade de
+  // hub-bootstrap/handler.ts:94-101: uma soluco na RPC de entitlements nunca
+  // pode fazer a geracao do relatorio falhar -- so degrada o visual para o
+  // neutro.
+  let hubBrandCustomization = false;
+  try {
+    hubBrandCustomization = await effectivePlanFeature(db, contaId, "feature_brand_customization");
+  } catch {
+    // fail closed
+  }
+  const hubTheme: SnapshotHubTheme = hubBrandCustomization
+    ? {
+      surface: ws?.hub_surface_theme ?? "neutral",
+      font_display: ws?.hub_font_display ?? "fraunces",
+      font_body: ws?.hub_font_body ?? "instrument-sans",
+      radius: ws?.hub_radius ?? "soft",
+      card_style: ws?.hub_card_style ?? "filled",
+    }
+    : {
+      surface: "neutral", font_display: "fraunces", font_body: "instrument-sans",
+      radius: "soft", card_style: "filled",
+    };
 
   // Thumbnails: só dos candidatos a top post; URL efêmera cacheia ou vira null.
   // Concorrente: pior caso ~15s (timeout por download), nunca 12x15 serial.
@@ -204,6 +231,7 @@ export async function loadClientSnapshot(
       logo_url: ws?.logo_url ?? null,
       splash_url: ws?.report_splash_url ?? null,
       accent_color: ws?.brand_color ?? "#171717",
+      hub_theme: hubTheme,
     },
     kpiSources: {
       allPosts: posts,
