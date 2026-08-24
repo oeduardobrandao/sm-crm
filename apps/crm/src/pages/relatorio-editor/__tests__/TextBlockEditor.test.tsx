@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { TextBlockEditor, buildTextBlockExtensions } from '../TextBlockEditor';
@@ -29,6 +29,31 @@ describe('buildTextBlockExtensions', () => {
     expect(schema.marks.strike).toBeDefined();
     expect(schema.marks.code).toBeUndefined();
     expect(schema.marks.link).toBeUndefined();
+    // Formatação rica (2026-08): tudo aqui tem contraparte no renderer
+    // compartilhado — schema e tiptap-render.ts andam JUNTOS.
+    expect(schema.marks.underline).toBeDefined();
+    expect(schema.marks.textStyle).toBeDefined();
+    editor.destroy();
+  });
+
+  it('cor e alinhamento produzem exatamente o JSON que o renderer sanitiza', () => {
+    const editor = new Editor({
+      extensions: buildTextBlockExtensions(),
+      content: {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'abc' }] }],
+      },
+    });
+    editor.chain().selectAll().setColor('#dc2626').setTextAlign('center').run();
+    const json = editor.getJSON() as {
+      content: {
+        attrs?: { textAlign?: string };
+        content: { marks?: { type: string; attrs?: { color?: string } }[] }[];
+      }[];
+    };
+    expect(json.content[0].attrs?.textAlign).toBe('center');
+    const marks = json.content[0].content[0].marks ?? [];
+    expect(marks.some((m) => m.type === 'textStyle' && m.attrs?.color === '#dc2626')).toBe(true);
     editor.destroy();
   });
 
@@ -61,6 +86,47 @@ describe('TextBlockEditor', () => {
     );
     await waitFor(() => expect(screen.getByText('Análise inicial')).toBeInTheDocument());
     expect(onTextChange).not.toHaveBeenCalled();
+  });
+
+  it('toolbar expõe título, marcas, cor, alinhamento e listas', async () => {
+    render(
+      <TextBlockEditor block={textBlock({ type: 'doc', content: [] })} onTextChange={vi.fn()} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('toolbar', { name: 'Formatação do texto' })).toBeInTheDocument(),
+    );
+    for (const label of [
+      'Título',
+      'Subtítulo',
+      'Negrito',
+      'Itálico',
+      'Sublinhado',
+      'Tachado',
+      'Cor do texto',
+      'Centralizar',
+      'Alinhar à direita',
+      'Lista',
+      'Lista numerada',
+      'Citação',
+    ]) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
+    }
+  });
+
+  it('paleta de cores abre com as 7 cores e a opção de remover', async () => {
+    // O ciclo clique -> mark ativa depende de seleção/storedMarks reais, que o
+    // jsdom não sustenta (mesma razão do comentário sobre digitação acima);
+    // os comandos estão provados no nível do Editor no describe anterior, e o
+    // ciclo completo se verifica no browser.
+    render(
+      <TextBlockEditor block={textBlock({ type: 'doc', content: [] })} onTextChange={vi.fn()} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Cor do texto' })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Cor do texto' }));
+    expect(screen.getAllByRole('button', { name: /^Cor / })).toHaveLength(8); // 7 + o gatilho
+    expect(screen.getByRole('button', { name: 'Remover cor' })).toBeInTheDocument();
   });
 
   it('edição programática dispara onTextChange com o JSON novo', async () => {
