@@ -2,6 +2,7 @@
 // (decisão do visual companion 2026-08-24: popover, não drawer). Toda mudança
 // flui por onChange -> applyLayout -> autosave; preview é imediato porque os
 // tokens são CSS vars no canvas (Task 5).
+import type { CSSProperties } from 'react';
 import { Palette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -21,6 +22,7 @@ const THEME_OPTIONS: { id: ReportThemeId | undefined; label: string; hint: strin
   { id: 'clean', label: 'Clean', hint: 'claro e neutro' },
   { id: 'editorial', label: 'Editorial', hint: 'creme, serifa' },
   { id: 'bold', label: 'Bold', hint: 'marca em tudo' },
+  { id: 'hub', label: 'Hub', hint: 'igual ao portal' },
 ];
 
 export interface AppearancePopoverProps {
@@ -49,7 +51,14 @@ export function AppearancePopover({ layout, snapshot, onChange }: AppearancePopo
               className={`rb-appearance-theme${layout.theme === opt.id ? ' rb-appearance-selected' : ''}`}
               onClick={() => onChange(setLayoutTheme(layout, opt.id))}
             >
-              <span className={`rb-appearance-thumb rb-appearance-thumb-${opt.id ?? 'default'}`} />
+              <span
+                className={`rb-appearance-thumb rb-appearance-thumb-${opt.id ?? 'default'}`}
+                style={
+                  opt.id === 'hub'
+                    ? ({ '--rb-hub-thumb-accent': snapshot.branding.accent_color } as CSSProperties)
+                    : undefined
+                }
+              />
               <span>
                 {opt.label}
                 <small>{opt.hint}</small>
