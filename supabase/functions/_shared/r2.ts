@@ -67,8 +67,17 @@ export async function headObject(key: string): Promise<{ contentLength: number; 
 export async function trashObject(key: string): Promise<void> {
   // Presign + plain fetch, same as deleteObject above: the SDK's own transport
   // is the documented edge-runtime hang path, and this function sits on the
-  // deletion drains — a hang here stalls every queue. The presigner keeps
-  // x-amz-copy-source as a signed header, so the fetch must send it verbatim.
+  // deletion drains — a hang here stalls every queue.
+  //
+  // Do NOT also set x-amz-copy-source as a request header: getSignedUrl hoists
+  // it into the presigned URL's query string (X-Amz-SignedHeaders ends up
+  // "host" only — copy-source is never a signed header for this presigner).
+  // Sending it again as a header duplicates a value R2 never signed, and R2
+  // rejects that mismatch with 403 SignatureDoesNotMatch — confirmed via a
+  // response-body capture against prod (this was the entire root cause of the
+  // 2026-08 deletion-drain incident: every trashObject() call failed at 100%
+  // from the day the vault feature shipped). The query string alone is what
+  // AWS's own presigning contract expects the receiver to read.
   const copySource = `${getBucket()}/${encodeURIComponent(key).replace(/%2F/g, "/")}`;
   const cmd = new CopyObjectCommand({
     Bucket: getBucket(),
@@ -78,10 +87,8 @@ export async function trashObject(key: string): Promise<void> {
   const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
   const res = await fetch(url, {
     method: "PUT",
-    headers: { "x-amz-copy-source": copySource },
     signal: AbortSignal.timeout(30_000),
   });
-  await res.body?.cancel();
   // 404 = the source is already gone — either a previous attempt moved it to
   // trash/ before a downstream step failed, or the object never existed. In
   // both cases there is nothing left to preserve, so the retry must proceed
@@ -89,8 +96,13 @@ export async function trashObject(key: string): Promise<void> {
   // successful drain row retries into a copy-404 forever, exhausts its
   // attempts, and the Stream delete behind it is never reached.
   if (!res.ok && res.status !== 404) {
-    throw new Error(`r2 trash copy failed: ${res.status}`);
+    // Diagnostic: R2's XML error body names the actual rejection (e.g.
+    // SignatureDoesNotMatch vs AccessDenied) that a bare status code can't
+    // distinguish — surfaced via file_deletions.last_error for the next failure.
+    const bodyText = await res.text().catch(() => "");
+    throw new Error(`r2 trash copy failed: ${res.status}${bodyText ? ` ${bodyText.slice(0, 300)}` : ""}`);
   }
+  await res.body?.cancel();
   await deleteObject(key);
 }
 
