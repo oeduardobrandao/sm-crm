@@ -96,6 +96,15 @@ describe('temas explícitos', () => {
       }
     }
   });
+  it('bold emite cover tokens; demais temas nao', () => {
+    const bold = resolveReportTheme(
+      layout({ theme: 'bold', accent: '#7c3aed' }),
+      makeSnapshotFixture(),
+    );
+    expect(bold.vars['--rb-cover-bg']).toBe('#7c3aed');
+    const clean = resolveReportTheme(layout({ theme: 'clean' }), makeSnapshotFixture());
+    expect(clean.vars['--rb-cover-bg']).toBeUndefined();
+  });
 });
 
 describe('fontes', () => {

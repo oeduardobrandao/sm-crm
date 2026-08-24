@@ -154,8 +154,10 @@ export function resolveReportTheme(layout: ReportLayout, snapshot: ReportDocSnap
   if (theme) {
     const def = THEME_DEFS[theme];
     const soft = mixHex(acc, def.bg, 0.9);
-    vars['--rb-accent-fg'] = pickAccentFg(acc, def.ink);
-    vars['--rb-accent-text'] = deriveAccentText(acc, def.bg, def.ink);
+    const accentFg = pickAccentFg(acc, def.ink);
+    const accentText = deriveAccentText(acc, def.bg, def.ink);
+    vars['--rb-accent-fg'] = accentFg;
+    vars['--rb-accent-text'] = accentText;
     vars['--rb-bg'] = def.bg;
     vars['--rb-ink'] = def.ink;
     vars['--rb-ink-soft'] = def.inkSoft;
@@ -164,6 +166,14 @@ export function resolveReportTheme(layout: ReportLayout, snapshot: ReportDocSnap
     vars['--rb-soft'] = soft;
     vars['--rb-surface'] =
       def.surface === 'white' ? '#ffffff' : def.surface === 'transparent' ? 'transparent' : soft;
+    // Destaque preenchido é SÓ capa e cabeçalho de seção, e SÓ no bold (spec,
+    // mapa visual por bloco) — clean/editorial/herdado usam os fallbacks
+    // inline dos componentes (visual atual, sem cor de marca na capa).
+    if (theme === 'bold') {
+      vars['--rb-cover-bg'] = acc;
+      vars['--rb-cover-fg'] = accentFg;
+      vars['--rb-section-title'] = accentText;
+    }
   } else {
     // Modo HERDADO: byte-idêntico ao pré-temas. accent-text = accent cru
     // (o chip "Formato líder" usa a cor crua hoje; mudar seria regressão

@@ -1,10 +1,15 @@
-/* Grid do documento de blocos. Importado pelo consumidor (CRM Task 9; Hub no PR 3). */
+/* Grid do documento de blocos. Importado pelo consumidor (CRM Task 9; Hub no PR 3).
+   Fundo do documento: transparente no modo herdado (a página decide), token
+   nos temas explícitos. */
 .rb-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 1rem;
   max-width: 880px;
   margin: 0 auto;
+  background: var(--rb-bg, transparent);
+  color: var(--rb-ink, inherit);
+  font-family: var(--rb-font-body, inherit);
 }
 .rb-third {
   grid-column: span 2;
@@ -46,6 +51,22 @@
 }
 .rb-card-title {
   font-family: var(--rb-font-display, inherit);
+}
+/* Editorial: cartões viram linhas — só borda na base, sem caixa. */
+.rb-theme-editorial .rb-card {
+  border: 0;
+  border-bottom: 1px solid var(--rb-border);
+  border-radius: 0;
+  background: transparent;
+}
+.rb-theme-editorial .rb-card--flush {
+  border-bottom: 0;
+}
+/* Bold: destaque preenchido SÓ em capa e cabeçalho de seção (spec, mapa
+   visual). Os componentes cover/section_header usam os tokens direto; aqui
+   só o que é CSS puro. */
+.rb-theme-bold .rb-card-title {
+  color: var(--rb-accent-text);
 }
 .rb-prose p {
   margin: 0 0 0.6em;

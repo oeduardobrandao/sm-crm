@@ -6,7 +6,16 @@ export function SectionHeaderBlock({ block }: BlockProps) {
   if (!title) return null;
   return (
     <div style={{ marginTop: '1rem' }}>
-      <h2 style={{ margin: 0, fontSize: '1.15rem' }}>{title}</h2>
+      <h2
+        style={{
+          margin: 0,
+          fontSize: '1.15rem',
+          fontFamily: 'var(--rb-font-display, inherit)',
+          color: 'var(--rb-section-title, inherit)',
+        }}
+      >
+        {title}
+      </h2>
       {subtitle ? (
         <p style={{ margin: '0.15rem 0 0', opacity: 0.7, fontSize: '0.85rem' }}>{subtitle}</p>
       ) : null}

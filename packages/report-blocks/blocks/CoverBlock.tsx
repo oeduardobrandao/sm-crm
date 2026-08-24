@@ -6,8 +6,8 @@ export function CoverBlock({ snapshot }: BlockProps) {
     <header
       className="rb-cover"
       style={{
-        background: 'var(--rb-accent)',
-        color: 'var(--rb-accent-fg)',
+        background: 'var(--rb-cover-bg, #12151a)',
+        color: 'var(--rb-cover-fg, #ffffff)',
         borderRadius: 12,
         padding: '2.5rem 2rem',
       }}
@@ -33,7 +33,15 @@ export function CoverBlock({ snapshot }: BlockProps) {
       >
         Relatório mensal · Instagram
       </p>
-      <h1 style={{ margin: '0.25rem 0 0', fontSize: '2rem' }}>{snapshot.period.label}</h1>
+      <h1
+        style={{
+          margin: '0.25rem 0 0',
+          fontSize: '2rem',
+          fontFamily: 'var(--rb-font-display, inherit)',
+        }}
+      >
+        {snapshot.period.label}
+      </h1>
       <p style={{ margin: '0.25rem 0 0', opacity: 0.9 }}>
         @{snapshot.account.handle}
         {snapshot.account.specialty ? ` · ${snapshot.account.specialty}` : ''}

@@ -1,9 +1,10 @@
 // Renderer do documento de blocos: layout + snapshot -> grid. Widget de tipo
 // desconhecido ou sem dados rende null (spec §4/§7). Nada de '@/' aqui: este
 // pacote é compartilhado CRM+Hub (bug documentado em packages/ui/index.ts).
-import type { FC } from 'react';
+import type { CSSProperties, FC } from 'react';
 import type { BlockType, ReportBlock, ReportDocSnapshot, ReportLayout } from './types';
-import { resolveAccent } from '../../supabase/functions/_shared/report-template/theme';
+import { resolveReportTheme } from './theme';
+import { ReportFonts } from './ReportFonts';
 import { CoverBlock } from './blocks/CoverBlock';
 import { SectionHeaderBlock } from './blocks/SectionHeaderBlock';
 import { DividerBlock } from './blocks/DividerBlock';
@@ -56,15 +57,6 @@ export const BLOCK_COMPONENTS: Partial<Record<BlockType, FC<BlockProps>>> = {
 
 export const SIZE_CLASS = { third: 'rb-third', half: 'rb-half', full: 'rb-full' } as const;
 
-/** Accent efetivo do documento: override do layout com fallback na marca
- * congelada no snapshot, sempre via resolveAccent (contraste garantido). */
-export function resolveLayoutAccent(
-  layout: ReportLayout,
-  snapshot: ReportDocSnapshot,
-): { acc: string; accFg: string } {
-  return resolveAccent(layout.accent ?? snapshot.branding.accent_color);
-}
-
 export interface BlockRendererProps {
   layout: ReportLayout;
   snapshot: ReportDocSnapshot;
@@ -72,36 +64,39 @@ export interface BlockRendererProps {
 }
 
 export function BlockRenderer({ layout, snapshot, mode }: BlockRendererProps) {
-  // Override por relatório/template (layout.accent) com fallback na marca do
-  // workspace congelada no snapshot; resolveAccent trata inválido/claro demais.
-  const { acc, accFg } = resolveLayoutAccent(layout, snapshot);
+  // Tema/fontes/accent do documento: fonte única, compartilhada com o editor
+  // (EditorCanvas) e o print. Modo herdado emite só accent (byte-idêntico).
+  const theme = resolveReportTheme(layout, snapshot);
   return (
-    <div
-      className={`rb-grid rb-mode-${mode}`}
-      style={{ ['--rb-accent' as string]: acc, ['--rb-accent-fg' as string]: accFg }}
-    >
-      {layout.blocks.map((block) => {
-        // hasOwnProperty (não Object.hasOwn: fora do lib target ES2021 do
-        // tsconfig) evita que um block.type tipo "__proto__" ou
-        // "constructor" resolva para um valor herdado de Object.prototype
-        // (truthy, mas não um componente) e derrube o React ao renderizar.
-        const Component = Object.prototype.hasOwnProperty.call(BLOCK_COMPONENTS, block.type)
-          ? BLOCK_COMPONENTS[block.type]
-          : undefined;
-        if (!Component) return null;
-        // Widget sem dados renderiza null; a célula vazia colapsa via
-        // [data-block-id]:empty no styles.css (JSX sempre gera um elemento
-        // aqui, então checar o retorno do componente não teria efeito).
-        return (
-          <div
-            key={block.id}
-            data-block-id={block.id}
-            className={SIZE_CLASS[block.size] ?? 'rb-full'}
-          >
-            <Component block={block} snapshot={snapshot} />
-          </div>
-        );
-      })}
-    </div>
+    <>
+      <ReportFonts layout={layout} snapshot={snapshot} />
+      <div
+        className={`rb-grid rb-mode-${mode}${theme.themeClass ? ` ${theme.themeClass}` : ''}`}
+        style={theme.vars as CSSProperties}
+      >
+        {layout.blocks.map((block) => {
+          // hasOwnProperty (não Object.hasOwn: fora do lib target ES2021 do
+          // tsconfig) evita que um block.type tipo "__proto__" ou
+          // "constructor" resolva para um valor herdado de Object.prototype
+          // (truthy, mas não um componente) e derrube o React ao renderizar.
+          const Component = Object.prototype.hasOwnProperty.call(BLOCK_COMPONENTS, block.type)
+            ? BLOCK_COMPONENTS[block.type]
+            : undefined;
+          if (!Component) return null;
+          // Widget sem dados renderiza null; a célula vazia colapsa via
+          // [data-block-id]:empty no styles.css (JSX sempre gera um elemento
+          // aqui, então checar o retorno do componente não teria efeito).
+          return (
+            <div
+              key={block.id}
+              data-block-id={block.id}
+              className={SIZE_CLASS[block.size] ?? 'rb-full'}
+            >
+              <Component block={block} snapshot={snapshot} />
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
