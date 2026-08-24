@@ -235,14 +235,21 @@ export const HUB_FONT_PAIRINGS: { display: string; body: string; label: string }
 const DEFAULT_DISPLAY_ID = 'fraunces';
 const DEFAULT_BODY_ID = 'instrument-sans';
 
-export function buildGoogleFontsHref(displayId: string, bodyId: string): string | null {
+export function buildGoogleFontsHref(
+  displayId: string,
+  bodyId: string,
+  opts?: { includeDefaults?: boolean },
+): string | null {
+  const includeDefaults = opts?.includeDefaults ?? false;
   const gfs: string[] = [];
 
-  const display = HUB_DISPLAY_FONTS[displayId];
-  if (displayId !== DEFAULT_DISPLAY_ID && display) gfs.push(display.gf);
+  const display = HUB_DISPLAY_FONTS[displayId] ?? HUB_DISPLAY_FONTS[DEFAULT_DISPLAY_ID];
+  const displayKnown = displayId in HUB_DISPLAY_FONTS;
+  if ((displayKnown && displayId !== DEFAULT_DISPLAY_ID) || includeDefaults) gfs.push(display.gf);
 
-  const body = HUB_BODY_FONTS[bodyId];
-  if (bodyId !== DEFAULT_BODY_ID && body) gfs.push(body.gf);
+  const body = HUB_BODY_FONTS[bodyId] ?? HUB_BODY_FONTS[DEFAULT_BODY_ID];
+  const bodyKnown = bodyId in HUB_BODY_FONTS;
+  if ((bodyKnown && bodyId !== DEFAULT_BODY_ID) || includeDefaults) gfs.push(body.gf);
 
   if (gfs.length === 0) return null;
 
