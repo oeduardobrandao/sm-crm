@@ -11593,6 +11593,11 @@ body.landing-page #root {
 .rb-layers-rail {
   display: none;
 }
+/* Padding base do editor mora AQUI, não inline no componente: inline venceria
+   o padding-right do gate abaixo e o canvas ficaria por baixo do painel. */
+.rb-editor-with-rail {
+  padding: 1.5rem;
+}
 @media (min-width: 1280px) {
   .rb-layers-rail {
     display: block;

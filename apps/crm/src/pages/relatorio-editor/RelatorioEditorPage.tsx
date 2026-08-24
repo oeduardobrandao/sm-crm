@@ -173,8 +173,11 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     highlightAndScroll(newId);
   }
 
+  // Padding vive em .rb-editor-with-rail (style.css): inline aqui
+  // sobrescreveria o padding-right do gate ≥1280px que reserva o espaço do
+  // painel de camadas.
   return (
-    <div className="rb-editor-with-rail" style={{ padding: '1.5rem' }}>
+    <div className="rb-editor-with-rail">
       <header
         style={{
           maxWidth: 880,
