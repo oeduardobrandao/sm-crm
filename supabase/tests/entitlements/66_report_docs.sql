@@ -157,6 +157,17 @@ begin
     delete from report_documents where id = v_doc_theme;
   end;
 
+  -- Task hub (spec 2026-08-24): theme 'hub' e aceito em report_documents.
+  declare
+    v_doc_hub uuid;
+  begin
+    insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-03-01', '2026-03-31',
+        '{"version":1,"theme":"hub","blocks":[]}'::jsonb)
+      returning id into v_doc_hub;
+    delete from report_documents where id = v_doc_hub;
+  end;
+
   -- Hardening PR3: layout válido COM accent e text em bloco ai_ passa.
   declare
     v_doc_valid uuid;
@@ -231,6 +242,17 @@ begin
         '{"version":1,"theme":"clean","fonts":"fraunces","blocks":[]}'::jsonb)
       returning id into v_tpl_theme;
     delete from report_templates where id = v_tpl_theme;
+  end;
+
+  -- Task hub (spec 2026-08-24): theme 'hub' e aceito em report_templates.
+  declare
+    v_tpl_hub uuid;
+  begin
+    insert into report_templates (conta_id, name, layout)
+      values (v_ws_a, 'T-hub',
+        '{"version":1,"theme":"hub","blocks":[]}'::jsonb)
+      returning id into v_tpl_hub;
+    delete from report_templates where id = v_tpl_hub;
   end;
 
   -- Índice parcial: segundo default direto no mesmo workspace falha.
