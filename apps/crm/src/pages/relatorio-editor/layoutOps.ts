@@ -2,7 +2,14 @@
 // inexistente devolve a MESMA referência (o autosave usa igualdade referencial
 // para saber se algo mudou). Todo output é válido por construção; o gate
 // validateLayout roda no save (useLayoutAutosave), não aqui.
-import type { BlockSize, BlockType, ReportBlock, ReportLayout } from '@mesaas/report-blocks/types';
+import type {
+  BlockSize,
+  BlockType,
+  ReportBlock,
+  ReportFontId,
+  ReportLayout,
+  ReportThemeId,
+} from '@mesaas/report-blocks/types';
 import { TEXT_BLOCK_TYPES } from '@mesaas/report-blocks/types';
 
 export const SIZE_ORDER: readonly BlockSize[] = ['third', 'half', 'full'];
@@ -131,4 +138,34 @@ export function setLayoutAccent(layout: ReportLayout, accent: string | undefined
   const normalized = HEX8_RE.test(accent) ? accent.slice(0, 7) : accent;
   if (!HEX6_RE.test(normalized)) return layout;
   return { ...layout, accent: normalized };
+}
+
+/** Tema visual do relatório. `undefined` REMOVE a chave (modo herdado — só
+ * accent aplicado). Mesmo valor devolve a MESMA referência (contrato do
+ * autosave: só persiste quando algo de fato mudou). */
+export function setLayoutTheme(
+  layout: ReportLayout,
+  theme: ReportThemeId | undefined,
+): ReportLayout {
+  if (layout.theme === theme) return layout;
+  if (theme === undefined) {
+    const { theme: _drop, ...rest } = layout;
+    return rest as ReportLayout;
+  }
+  return { ...layout, theme };
+}
+
+/** Dupla de fontes do relatório. Mesma semântica de setLayoutTheme:
+ * `undefined` remove a chave (herda a fonte da página), mesmo valor = MESMA
+ * referência. */
+export function setLayoutFonts(
+  layout: ReportLayout,
+  fonts: ReportFontId | undefined,
+): ReportLayout {
+  if (layout.fonts === fonts) return layout;
+  if (fonts === undefined) {
+    const { fonts: _drop, ...rest } = layout;
+    return rest as ReportLayout;
+  }
+  return { ...layout, fonts };
 }

@@ -125,7 +125,7 @@ function renderPage(qc = new QueryClient({ defaultOptions: { queries: { retry: f
 }
 
 describe('RelatorioEditorPage (editor)', () => {
-  it('renderiza topbar de edição: título editável, mês, Cor e Adicionar widget', async () => {
+  it('renderiza topbar de edição: título editável, mês, Aparência e Adicionar widget', async () => {
     getReportDocMock.mockResolvedValue(doc());
     renderPage();
     expect(await screen.findByLabelText('Título do relatório')).toHaveValue(
@@ -133,7 +133,7 @@ describe('RelatorioEditorPage (editor)', () => {
     );
     expect(screen.getByText('Julho de 2026')).toBeInTheDocument(); // period.label do fixture
     expect(screen.getByRole('button', { name: 'Adicionar widget' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cor' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Aparência/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Exportar PDF/ })).toBeInTheDocument();
     // O DropdownMenu Radix real não abre com fireEvent puro no jsdom (precisa
     // de pointer events reais, e este repo não tem @testing-library/user-event

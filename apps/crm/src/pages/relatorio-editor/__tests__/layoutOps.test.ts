@@ -7,6 +7,8 @@ import {
   resizeBlock,
   restoreBlock,
   setLayoutAccent,
+  setLayoutFonts,
+  setLayoutTheme,
   SIZE_ORDER,
   updateBlockConfig,
   updateBlockText,
@@ -162,6 +164,30 @@ describe('setLayoutAccent', () => {
   it('accent de 8 dígitos que não normaliza pra 6 hex válidos (garbage): layout inalterado', () => {
     const l = layout();
     expect(setLayoutAccent(l, '#zzzzzzzz')).toBe(l);
+  });
+});
+
+describe('setLayoutTheme / setLayoutFonts', () => {
+  it('define, troca e remove com undefined', () => {
+    let l = setLayoutTheme(layout(), 'editorial');
+    expect(l.theme).toBe('editorial');
+    l = setLayoutFonts(l, 'fraunces');
+    expect(l.fonts).toBe('fraunces');
+    const off = setLayoutTheme(l, undefined);
+    expect('theme' in off).toBe(false);
+    expect(off.fonts).toBe('fraunces');
+  });
+  it('mesmo valor devolve a MESMA referencia (contrato do autosave)', () => {
+    const l = setLayoutTheme(layout(), 'bold');
+    expect(setLayoutTheme(l, 'bold')).toBe(l);
+    const base = layout();
+    expect(setLayoutTheme(base, undefined)).toBe(base);
+  });
+  it('setLayoutFonts: mesma referência quando o valor não muda', () => {
+    const l = setLayoutFonts(layout(), 'grotesk');
+    expect(setLayoutFonts(l, 'grotesk')).toBe(l);
+    const base = layout();
+    expect(setLayoutFonts(base, undefined)).toBe(base);
   });
 });
 
