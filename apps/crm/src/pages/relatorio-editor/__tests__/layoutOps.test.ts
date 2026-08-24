@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   insertBlock,
+  insertBlockAt,
   moveBlock,
   removeBlock,
   resizeBlock,
@@ -141,5 +142,32 @@ describe('setLayoutAccent', () => {
   it('accent de 8 dígitos que não normaliza pra 6 hex válidos (garbage): layout inalterado', () => {
     const l = layout();
     expect(setLayoutAccent(l, '#zzzzzzzz')).toBe(l);
+  });
+});
+
+describe('insertBlockAt', () => {
+  const base: ReportLayout = {
+    version: 1,
+    blocks: [
+      { id: 'a', type: 'cover', size: 'full' },
+      { id: 'b', type: 'divider', size: 'full' },
+    ],
+  };
+
+  it('insere na posição pedida', () => {
+    const { layout, newId } = insertBlockAt(base, 'kpi_reach', 1, () => 'novo');
+    expect(newId).toBe('novo');
+    expect(layout.blocks.map((b) => b.id)).toEqual(['a', 'novo', 'b']);
+    expect(base.blocks).toHaveLength(2);
+  });
+
+  it('clampa índice fora do array (negativo vira início, excesso vira fim)', () => {
+    expect(insertBlockAt(base, 'kpi_reach', -5, () => 'x').layout.blocks[0].id).toBe('x');
+    expect(insertBlockAt(base, 'kpi_reach', 99, () => 'y').layout.blocks[2].id).toBe('y');
+  });
+
+  it('insertBlock continua anexando no fim (delegação)', () => {
+    const { layout } = insertBlock(base, 'kpi_reach', () => 'fim');
+    expect(layout.blocks[2].id).toBe('fim');
   });
 });

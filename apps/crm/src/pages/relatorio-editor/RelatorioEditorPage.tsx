@@ -27,10 +27,12 @@ import { useLayoutAutosave } from './useLayoutAutosave';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
 import { AddWidgetDrawer } from './AddWidgetDrawer';
+import { LayersPanel } from './LayersPanel';
 import { SaveTemplateDialog } from './SaveTemplateDialog';
 import { ApplyTemplateDialog } from './ApplyTemplateDialog';
 import {
-  insertBlock,
+  insertBlockAt,
+  moveBlock,
   removeBlock,
   restoreBlock,
   setLayoutAccent,
@@ -51,6 +53,9 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   layoutRef.current = layout;
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Posição de inserção do próximo widget: null = fim do documento. Setada
+  // pelos pontos de inserção do painel de camadas antes de abrir o drawer.
+  const [insertAt, setInsertAt] = useState<number | null>(null);
   const [saveTplOpen, setSaveTplOpen] = useState(false);
   const [applyTplOpen, setApplyTplOpen] = useState(false);
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -138,10 +143,8 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     });
   }
 
-  function handleInsert(type: BlockType) {
-    const { layout: next, newId } = insertBlock(layoutRef.current, type);
-    applyLayout(next);
-    setHighlightId(newId);
+  function highlightAndScroll(id: string) {
+    setHighlightId(id);
     if (highlightTimer.current) clearTimeout(highlightTimer.current);
     highlightTimer.current = setTimeout(() => setHighlightId(null), 2500);
     if (scrollTimer.current) clearTimeout(scrollTimer.current);
@@ -150,13 +153,28 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       // elemento) — o `?.()` opcional no MÉTODO, não só no querySelector,
       // evita o TypeError que corrompe o próximo arquivo de teste.
       document
-        .querySelector(`[data-block-id="${newId}"]`)
+        .querySelector(`[data-block-id="${id}"]`)
         ?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
     }, 50);
   }
 
+  function openWidgetDrawer(at: number | null) {
+    setInsertAt(at);
+    setDrawerOpen(true);
+  }
+
+  function handleInsert(type: BlockType) {
+    const { layout: next, newId } = insertBlockAt(
+      layoutRef.current,
+      type,
+      insertAt ?? layoutRef.current.blocks.length,
+    );
+    applyLayout(next);
+    highlightAndScroll(newId);
+  }
+
   return (
-    <div style={{ padding: '1.5rem' }}>
+    <div className="rb-editor-with-rail" style={{ padding: '1.5rem' }}>
       <header
         style={{
           maxWidth: 880,
@@ -207,7 +225,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
             Usar cor da marca
           </Button>
         )}
-        <Button size="sm" onClick={() => setDrawerOpen(true)}>
+        <Button size="sm" onClick={() => openWidgetDrawer(null)}>
           <Plus className="h-3.5 w-3.5" /> Adicionar widget
         </Button>
         <Button size="sm" disabled={exporting} onClick={handleExportPdf}>
@@ -251,6 +269,17 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
             onTextChange={(id, json) => applyLayout(updateBlockText(layoutRef.current, id, json))}
           />
         )}
+      />
+
+      <LayersPanel
+        layout={layout}
+        highlightId={highlightId}
+        onReorder={(activeId, overId) =>
+          applyLayout(moveBlock(layoutRef.current, activeId, overId))
+        }
+        onLocate={highlightAndScroll}
+        onAddAt={openWidgetDrawer}
+        onAddEnd={() => openWidgetDrawer(null)}
       />
 
       <AddWidgetDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onInsert={handleInsert} />

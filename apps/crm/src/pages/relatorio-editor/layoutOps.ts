@@ -64,9 +64,12 @@ export function restoreBlock(
   return { ...layout, blocks };
 }
 
-export function insertBlock(
+/** Insere um bloco novo na POSIÇÃO dada (clampada ao array). Usado pelos
+ * pontos de inserção do painel de camadas; insertBlock delega para cá. */
+export function insertBlockAt(
   layout: ReportLayout,
   type: BlockType,
+  index: number,
   makeId: () => string = () => crypto.randomUUID(),
 ): { layout: ReportLayout; newId: string } {
   const newId = makeId();
@@ -75,7 +78,17 @@ export function insertBlock(
   if (type === 'post_list') block.config = { count: 12 };
   if (type === 'section_header') block.config = { title: 'Nova seção' };
   if (TEXT_BLOCK_TYPES.includes(type)) block.text = structuredClone(EMPTY_TEXT_DOC);
-  return { layout: { ...layout, blocks: [...layout.blocks, block] }, newId };
+  const blocks = [...layout.blocks];
+  blocks.splice(Math.min(Math.max(index, 0), blocks.length), 0, block);
+  return { layout: { ...layout, blocks }, newId };
+}
+
+export function insertBlock(
+  layout: ReportLayout,
+  type: BlockType,
+  makeId: () => string = () => crypto.randomUUID(),
+): { layout: ReportLayout; newId: string } {
+  return insertBlockAt(layout, type, layout.blocks.length, makeId);
 }
 
 export function updateBlockText(layout: ReportLayout, id: string, text: unknown): ReportLayout {
