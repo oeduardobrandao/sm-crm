@@ -83,6 +83,7 @@
   margin: 0.8em 0 0.3em;
   font-weight: 700;
   line-height: 1.3;
+  font-family: var(--rb-font-display, inherit);
 }
 .rb-prose h1 {
   font-size: 1.45em;

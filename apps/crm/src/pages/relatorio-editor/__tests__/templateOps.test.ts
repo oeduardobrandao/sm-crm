@@ -89,4 +89,16 @@ describe('applyTemplateLayout', () => {
     const out = applyTemplateLayout(template, { ...current, accent: '#ff0000' });
     expect(out.accent).toBeUndefined();
   });
+
+  it('aplica template com theme e fonts, preservando ambos', () => {
+    const template: ReportLayout = {
+      version: 1,
+      theme: 'editorial',
+      fonts: 'fraunces',
+      blocks: [{ id: 'x', type: 'divider', size: 'full' }],
+    };
+    const out = applyTemplateLayout(template, current);
+    expect(out.theme).toBe('editorial');
+    expect(out.fonts).toBe('fraunces');
+  });
 });

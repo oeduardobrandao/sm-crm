@@ -11853,7 +11853,6 @@ body.landing-page #root {
   margin-top: 0;
 }
 .rb-appearance-themes,
-.rb-appearance[role='radiogroup'],
 .rb-appearance > [role='radiogroup'] {
   display: flex;
   flex-direction: column;

@@ -33,7 +33,7 @@ export function AppearancePopover({ layout, snapshot, onChange }: AppearancePopo
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button size="sm" className="rb-appearance-trigger">
+        <Button size="sm">
           <Palette className="h-3.5 w-3.5" /> Aparência
         </Button>
       </PopoverTrigger>
