@@ -51,6 +51,16 @@ describe('modo herdado (theme e fonts ausentes)', () => {
     expect(t.vars['--rb-accent-fg']).toBe('#171717');
     expect(contrastRatio(t.vars['--rb-accent-line'], '#ffffff')).toBeGreaterThanOrEqual(3.0);
   });
+  it('theme/fonts persistidos fora dos enums degradam para herdado, sem crash', () => {
+    const t = resolveReportTheme(
+      layout({ theme: 'dark', fonts: 'comic-sans' } as unknown as Partial<ReportLayout>),
+      makeSnapshotFixture(),
+    );
+    expect(t.themeClass).toBeNull();
+    expect(t.fontHref).toBeNull();
+    expect(t.vars['--rb-bg']).toBeUndefined();
+    expect(t.vars['--rb-font-display']).toBeUndefined();
+  });
   it('hex inválido segue caindo no neutro #171717', () => {
     const t2 = resolveReportTheme(
       layout(),

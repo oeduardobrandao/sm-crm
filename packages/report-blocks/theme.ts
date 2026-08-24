@@ -5,6 +5,7 @@
 // reproduzimos o clamp dele e trocamos a escolha de foreground por contraste
 // WCAG real (spec 2026-08-24 §Tokens).
 import type { ReportDocSnapshot, ReportLayout } from './types';
+import { REPORT_FONT_IDS, REPORT_THEME_IDS } from './types';
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
@@ -151,8 +152,16 @@ export interface ReportTheme {
 
 export function resolveReportTheme(layout: ReportLayout, snapshot: ReportDocSnapshot): ReportTheme {
   const acc = clampAccent(layout.accent ?? snapshot.branding.accent_color);
-  const theme = layout.theme;
-  const fonts = layout.fonts;
+  // Renderers são tolerantes (contrato da spec): valor persistido fora dos
+  // enums (possível em row anterior ao trigger de 20260824000001) degrada
+  // para o modo herdado em vez de indexar THEME_DEFS/FONT_PAIRINGS com
+  // undefined e derrubar o documento inteiro.
+  const theme = (REPORT_THEME_IDS as readonly unknown[]).includes(layout.theme)
+    ? layout.theme
+    : undefined;
+  const fonts = (REPORT_FONT_IDS as readonly unknown[]).includes(layout.fonts)
+    ? layout.fonts
+    : undefined;
 
   const vars: Record<string, string> = { '--rb-accent': acc };
 

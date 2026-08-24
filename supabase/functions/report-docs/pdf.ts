@@ -12,10 +12,11 @@ import { DocActionError, PDF_BUCKET } from "./errors.ts";
 import { signPrintToken } from "../_shared/report-docs/print-token.ts";
 import { convertUrlToPdf } from "../_shared/report-template/pdf-url.ts";
 
-// v2 (2026-08-24): margens do Gotenberg zeradas + inset via @page + temas e
-// fontes na página de impressão. Bump invalida qualquer PDF cacheado com a
-// geometria antiga (a regra de cache exige a versão igual).
-export const PDF_RENDERER_VERSION = 2;
+// v3 (2026-08-24): override do pin de overflow do style.css na página de
+// impressão — sem ele o Chromium imprimia UMA página só (caixa de rolagem
+// monolítica) e descartava o resto do relatório. v2 no mesmo dia: margens
+// zeradas + @page + temas. Bump invalida PDFs cacheados da geometria antiga.
+export const PDF_RENDERER_VERSION = 3;
 const PRINT_TOKEN_TTL_S = 600;
 const SIGNED_URL_TTL_S = 3600;
 
