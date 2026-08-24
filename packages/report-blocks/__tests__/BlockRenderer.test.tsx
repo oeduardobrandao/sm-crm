@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { BlockRenderer, resolveLayoutAccent, SIZE_CLASS } from '../BlockRenderer';
+import { BlockRenderer, SIZE_CLASS } from '../BlockRenderer';
 import { makeSnapshotFixture } from '../fixtures';
 import type { ReportLayout } from '../types';
 
@@ -113,12 +113,44 @@ describe('BlockRenderer', () => {
     expect(container.querySelector('[data-block-id="still-works"]')).toBeInTheDocument();
   });
 
-  it('resolveLayoutAccent prioriza layout.accent sobre a marca do snapshot', () => {
-    const snap = makeSnapshotFixture();
-    const base = resolveLayoutAccent({ version: 1, blocks: [] }, snap);
-    const overridden = resolveLayoutAccent({ version: 1, accent: '#0f766e', blocks: [] }, snap);
-    expect(base.acc).not.toBe(overridden.acc);
-    expect(overridden.acc.toLowerCase()).toBe('#0f766e');
+  it('tema explicito: container ganha classe e vars de tema', () => {
+    const { container } = render(
+      <BlockRenderer
+        layout={{ version: 1, theme: 'editorial', blocks: [] }}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    const grid = container.querySelector('.rb-grid') as HTMLElement;
+    expect(grid.classList.contains('rb-theme-editorial')).toBe(true);
+    expect(grid.style.getPropertyValue('--rb-bg')).toBe('#faf6ee');
+  });
+
+  it('modo herdado: sem classe de tema, sem var de fundo (byte-identico)', () => {
+    const { container } = render(
+      <BlockRenderer
+        layout={{ version: 1, blocks: [] }}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    const grid = container.querySelector('.rb-grid') as HTMLElement;
+    expect(grid.className).not.toContain('rb-theme-');
+    expect(grid.style.getPropertyValue('--rb-bg')).toBe('');
+    expect(grid.style.getPropertyValue('--rb-accent')).toBe('#7c3aed');
+  });
+
+  it('fonts definido: link do Google Fonts renderizado; ausente: nenhum link', () => {
+    render(
+      <BlockRenderer
+        layout={{ version: 1, fonts: 'fraunces', blocks: [] }}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(
+      document.querySelector('link[href*="fonts.googleapis.com"][href*="Fraunces"]'),
+    ).not.toBeNull();
   });
 
   it('SIZE_CLASS mapeia os três tamanhos', () => {

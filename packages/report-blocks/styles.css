@@ -1,10 +1,15 @@
-/* Grid do documento de blocos. Importado pelo consumidor (CRM Task 9; Hub no PR 3). */
+/* Grid do documento de blocos. Importado pelo consumidor (CRM Task 9; Hub no PR 3).
+   Fundo do documento: transparente no modo herdado (a página decide), token
+   nos temas explícitos. */
 .rb-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 1rem;
   max-width: 880px;
   margin: 0 auto;
+  background: var(--rb-bg, transparent);
+  color: var(--rb-ink, inherit);
+  font-family: var(--rb-font-body, inherit);
 }
 .rb-third {
   grid-column: span 2;
@@ -25,6 +30,44 @@
     grid-column: span 6;
   }
 }
+/* Chrome de cartão centralizado: tokens com fallback IGUAL ao valor inline
+   que os widgets tinham — modo herdado renderiza byte-idêntico. Estilo
+   inline de chrome nos widgets é PROIBIDO daqui em diante (inline vence CSS
+   de tema; foi a classe de bug do padding no PR 381). */
+.rb-card {
+  background: var(--rb-surface, transparent);
+  border: 1px solid var(--rb-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--rb-radius, 12px);
+}
+.rb-card--pad {
+  padding: 1rem;
+}
+.rb-card--compact {
+  padding: 0.5rem 1rem;
+}
+.rb-card--flush {
+  padding: 0;
+  overflow: hidden;
+}
+.rb-card-title {
+  font-family: var(--rb-font-display, inherit);
+}
+/* Editorial: cartões viram linhas — só borda na base, sem caixa. */
+.rb-theme-editorial .rb-card {
+  border: 0;
+  border-bottom: 1px solid var(--rb-border);
+  border-radius: 0;
+  background: transparent;
+}
+.rb-theme-editorial .rb-card--flush {
+  border-bottom: 0;
+}
+/* Bold: destaque preenchido SÓ em capa e cabeçalho de seção (spec, mapa
+   visual). Os componentes cover/section_header usam os tokens direto; aqui
+   só o que é CSS puro. */
+.rb-theme-bold .rb-card-title {
+  color: var(--rb-accent-text);
+}
 .rb-prose p {
   margin: 0 0 0.6em;
   line-height: 1.6;
@@ -40,6 +83,13 @@
   margin: 0.8em 0 0.3em;
   font-weight: 700;
   line-height: 1.3;
+  font-family: var(--rb-font-display, inherit);
+}
+/* Tracking apertado nos títulos (pedido 2026-08-24); h4 fica de fora. */
+.rb-prose h1,
+.rb-prose h2,
+.rb-prose h3 {
+  letter-spacing: -1px;
 }
 .rb-prose h1 {
   font-size: 1.45em;

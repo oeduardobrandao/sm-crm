@@ -1,7 +1,7 @@
 // Canvas de edição do relatório de blocos: o MESMO grid/widgets do pacote, com
 // células sortable (dnd-kit) e toolbar de chrome por bloco. O BlockRenderer do
 // pacote fica para view/print; aqui as células nunca colapsam (rb-mode-edit).
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useState } from 'react';
 import { GripVertical, Minus, Plus, Trash2 } from 'lucide-react';
 import {
@@ -22,11 +22,9 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import {
-  BLOCK_COMPONENTS,
-  SIZE_CLASS,
-  resolveLayoutAccent,
-} from '@mesaas/report-blocks/BlockRenderer';
+import { BLOCK_COMPONENTS, SIZE_CLASS } from '@mesaas/report-blocks/BlockRenderer';
+import { ReportFonts } from '@mesaas/report-blocks/ReportFonts';
+import { resolveReportTheme } from '@mesaas/report-blocks/theme';
 import { WIDGET_CATALOG } from '@mesaas/report-blocks/catalog';
 import { blockHasData } from '@mesaas/report-blocks/data-presence';
 import type {
@@ -175,7 +173,7 @@ export function EditorCanvas({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const [activeId, setActiveId] = useState<string | null>(null);
-  const { acc, accFg } = resolveLayoutAccent(layout, snapshot);
+  const theme = resolveReportTheme(layout, snapshot);
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
@@ -202,10 +200,11 @@ export function EditorCanvas({
       onDragCancel={() => setActiveId(null)}
       onDragEnd={handleDragEnd}
     >
+      <ReportFonts layout={layout} snapshot={snapshot} />
       <SortableContext items={layout.blocks.map((b) => b.id)} strategy={rectSortingStrategy}>
         <div
-          className="rb-grid rb-mode-edit"
-          style={{ ['--rb-accent' as string]: acc, ['--rb-accent-fg' as string]: accFg }}
+          className={`rb-grid rb-mode-edit${theme.themeClass ? ` ${theme.themeClass}` : ''}`}
+          style={theme.vars as CSSProperties}
         >
           {layout.blocks.map((block) => (
             <SortableCell

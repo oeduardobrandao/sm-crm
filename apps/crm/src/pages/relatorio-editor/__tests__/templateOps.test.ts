@@ -27,6 +27,20 @@ describe('stripAiTextForTemplate', () => {
     // imutável: entrada intacta
     expect(layout.blocks[1].text).toEqual(doc('ia'));
   });
+
+  it('stripAiTextForTemplate preserva theme, fonts e accent (aparencia e parte do template)', () => {
+    const layout: ReportLayout = {
+      version: 1,
+      accent: '#7c3aed',
+      theme: 'editorial',
+      fonts: 'fraunces',
+      blocks: [{ id: 'a', type: 'ai_summary', size: 'full', text: { type: 'doc', content: [] } }],
+    };
+    const stripped = stripAiTextForTemplate(layout);
+    expect(stripped.theme).toBe('editorial');
+    expect(stripped.fonts).toBe('fraunces');
+    expect(stripped.accent).toBe('#7c3aed');
+  });
 });
 
 describe('applyTemplateLayout', () => {
@@ -74,5 +88,17 @@ describe('applyTemplateLayout', () => {
     };
     const out = applyTemplateLayout(template, { ...current, accent: '#ff0000' });
     expect(out.accent).toBeUndefined();
+  });
+
+  it('aplica template com theme e fonts, preservando ambos', () => {
+    const template: ReportLayout = {
+      version: 1,
+      theme: 'editorial',
+      fonts: 'fraunces',
+      blocks: [{ id: 'x', type: 'divider', size: 'full' }],
+    };
+    const out = applyTemplateLayout(template, current);
+    expect(out.theme).toBe('editorial');
+    expect(out.fonts).toBe('fraunces');
   });
 });

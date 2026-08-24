@@ -35,10 +35,7 @@ export function TopPostsBlock({ block, snapshot }: BlockProps) {
       }}
     >
       {posts.map((post, i) => (
-        <article
-          key={i}
-          style={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: 12, overflow: 'hidden' }}
-        >
+        <article key={i} className="rb-card rb-card--flush">
           {post.thumbnail_url ? (
             <img
               src={post.thumbnail_url}

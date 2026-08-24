@@ -28,19 +28,16 @@ export function FormatCardsBlock({ snapshot }: BlockProps) {
       }}
     >
       {entries.map(({ key, data }) => (
-        <div
-          key={key}
-          style={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: 12, padding: '1rem' }}
-        >
-          <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600 }}>
+        <div key={key} className="rb-card rb-card--pad">
+          <p className="rb-card-title" style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600 }}>
             {FORMAT_LABELS[key]}
             {key === leader.key ? (
               <span
                 style={{
                   marginLeft: 8,
                   fontSize: '0.68rem',
-                  color: 'var(--rb-accent)',
-                  border: '1px solid var(--rb-accent)',
+                  color: 'var(--rb-accent-text, var(--rb-accent))',
+                  border: '1px solid var(--rb-accent-line, var(--rb-accent))',
                   borderRadius: 999,
                   padding: '0.1rem 0.5rem',
                 }}

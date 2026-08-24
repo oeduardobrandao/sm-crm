@@ -26,8 +26,11 @@ export function FollowerChartBlock({ snapshot }: BlockProps) {
   const coords = points.map((p, i) => `${x(i).toFixed(1)},${y(p.count).toFixed(1)}`).join(' ');
 
   return (
-    <div style={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: 12, padding: '1rem' }}>
-      <p style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', fontWeight: 600 }}>
+    <div className="rb-card rb-card--pad">
+      <p
+        className="rb-card-title"
+        style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', fontWeight: 600 }}
+      >
         Evolução de seguidores
       </p>
       <svg
@@ -39,7 +42,7 @@ export function FollowerChartBlock({ snapshot }: BlockProps) {
         <polyline
           points={coords}
           fill="none"
-          stroke="var(--rb-accent)"
+          stroke="var(--rb-accent-line, var(--rb-accent))"
           strokeWidth={2.5}
           strokeLinejoin="round"
           strokeLinecap="round"

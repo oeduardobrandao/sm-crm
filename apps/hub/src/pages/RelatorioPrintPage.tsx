@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { focusManager, useQuery } from '@tanstack/react-query';
 import { BlockRenderer } from '@mesaas/report-blocks/BlockRenderer';
+import { resolveReportTheme } from '@mesaas/report-blocks/theme';
 import type { ReportDocSnapshot, ReportLayout } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
 import { fetchPrintReportDoc } from '../api';
@@ -71,8 +72,17 @@ export function RelatorioPrintPage() {
     );
   }
   if (!doc || doc.data_snapshot == null) return null;
+  const theme = resolveReportTheme(
+    doc.layout as ReportLayout,
+    doc.data_snapshot as ReportDocSnapshot,
+  );
   return (
-    <div style={{ background: '#ffffff', padding: '0' }}>
+    <div style={{ background: theme.vars['--rb-bg'] ?? '#ffffff', minHeight: '100vh' }}>
+      {/* Inset por página via @page (repete em TODA página, ao contrário de
+          padding de wrapper); 10mm = o default do Gotenberg que as margens
+          zeradas da requisição substituem. O fundo do body propaga para o
+          canvas da folha inteira, margens incluídas. */}
+      <style>{`@page { margin: 10mm; } body { background: ${theme.vars['--rb-bg'] ?? '#ffffff'}; }`}</style>
       <BlockRenderer
         layout={doc.layout as ReportLayout}
         snapshot={doc.data_snapshot as ReportDocSnapshot}

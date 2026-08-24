@@ -87,12 +87,17 @@ fonte (herança da página preservada nos dois eixos). Com tema explícito:
 | `--rb-font-display` | pela dupla | idem | idem |
 | `--rb-font-body` | pela dupla | idem | idem |
 
-Regras de derivação (honestas quanto ao resolver atual):
+Regras de derivação (REVISADAS 2026-08-24, decisão do usuário pós-implementação):
 
-- O `resolveAccent` existente NÃO preserva accent claro trocando só o
-  foreground: ele SUBSTITUI qualquer cor com luminância > 0.85 por `#171717`
-  (clamp). Esse clamp é mantido (comportamento shipped, coerente com o Hub) e
-  as derivações partem do accent JÁ clampado.
+- **O clamp de luminância CAIU no pipeline de blocos.** Cor de marca clara é
+  preservada nos PREENCHIMENTOS (capa, chips, tints do bold) com o foreground
+  de maior contraste por cima; hex inválido segue caindo no neutro `#171717`.
+  O `resolveAccent` legado (gerador A4) mantém o clamp, intocado.
+- Usos como TRAÇO fino (barra de seção, linhas de gráfico, donut, barras de
+  progresso, borda do chip de líder) migram para **`--rb-accent-line`**:
+  accent escurecido em direção à tinta até ≥ 3:1 sobre o fundo (WCAG 1.4.11,
+  contraste não-textual). Accent escuro/médio = identidade (docs existentes
+  não mudam); só claro deriva.
 - O foreground sobre o accent passa a ser escolhido por **razão de contraste
   WCAG real** (luminância relativa linearizada, não a heurística linear
   atual): entre `#ffffff` e a tinta do tema, vence o de maior razão. Garantia

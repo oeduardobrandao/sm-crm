@@ -22,10 +22,7 @@ export function KpiCardBlock({ block, snapshot }: BlockProps) {
 
   const delta = entry.prev !== null ? deltaPct(entry.value, entry.prev) : null;
   return (
-    <div
-      className="rb-kpi"
-      style={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: 12, padding: '1rem' }}
-    >
+    <div className="rb-kpi rb-card rb-card--pad">
       <p style={{ margin: 0, fontSize: '0.78rem', opacity: 0.7 }}>{KPI_LABELS[id]}</p>
       <p style={{ margin: '0.2rem 0 0', fontSize: '1.5rem', fontWeight: 700 }}>{fmtValue(entry)}</p>
       {delta !== null ? (

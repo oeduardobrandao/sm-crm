@@ -70,6 +70,21 @@ describe('KpiCardBlock', () => {
     expect(screen.getByText('Anterior: 4,1%')).toBeInTheDocument();
   });
 
+  it('KPI usa .rb-card com padding padrao e sem chrome inline', () => {
+    const { container } = render(
+      <BlockRenderer
+        layout={l([{ id: 'k1', type: 'kpi_reach', size: 'third' }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    const card = container.querySelector('.rb-kpi') as HTMLElement;
+    expect(card.classList.contains('rb-card')).toBe(true);
+    expect(card.classList.contains('rb-card--pad')).toBe(true);
+    expect(card.style.border).toBe('');
+    expect(card.style.borderRadius).toBe('');
+  });
+
   it('kpi_views renderiza com label Visualizações e delta', () => {
     render(
       <BlockRenderer

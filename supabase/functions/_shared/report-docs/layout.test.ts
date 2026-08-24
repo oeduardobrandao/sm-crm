@@ -48,3 +48,15 @@ Deno.test("validateLayout: accent opcional precisa ser hex #rrggbb", () => {
   assert(!validateLayout({ version: LAYOUT_VERSION, accent: "vermelho", blocks: [block()] }).ok);
   assert(!validateLayout({ version: LAYOUT_VERSION, accent: "#fff", blocks: [block()] }).ok);
 });
+
+Deno.test("theme e fonts: enums estritos; ausencia ok", () => {
+  const base = { version: LAYOUT_VERSION, blocks: [] };
+  assert(validateLayout(base).ok);
+  assert(validateLayout({ ...base, theme: "clean" }).ok);
+  assert(validateLayout({ ...base, theme: "editorial", fonts: "fraunces" }).ok);
+  assert(validateLayout({ ...base, fonts: "system" }).ok);
+  assert(!validateLayout({ ...base, theme: "dark" }).ok);
+  assert(!validateLayout({ ...base, theme: 1 }).ok);
+  assert(!validateLayout({ ...base, fonts: "comic-sans" }).ok);
+  assert(!validateLayout({ ...base, fonts: "" }).ok);
+});

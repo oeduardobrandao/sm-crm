@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
-import { ColorPicker } from '@/components/shared/ColorPicker';
 import type { BlockType, ReportBlock } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
 import {
@@ -30,12 +29,12 @@ import { AddWidgetDrawer } from './AddWidgetDrawer';
 import { LayersPanel } from './LayersPanel';
 import { SaveTemplateDialog } from './SaveTemplateDialog';
 import { ApplyTemplateDialog } from './ApplyTemplateDialog';
+import { AppearancePopover } from './AppearancePopover';
 import {
   insertBlockAt,
   moveBlock,
   removeBlock,
   restoreBlock,
-  setLayoutAccent,
   updateBlockConfig,
   updateBlockText,
 } from './layoutOps';
@@ -200,6 +199,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
               background: 'transparent',
               fontSize: '1.35rem',
               fontWeight: 700,
+              letterSpacing: '-1px',
               color: 'var(--text-main)',
               outline: 'none',
             }}
@@ -213,22 +213,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
             )}
           </p>
         </div>
-        <ColorPicker
-          value={layout.accent ?? snapshot.branding.accent_color}
-          onChange={(hex) => applyLayout(setLayoutAccent(layoutRef.current, hex))}
-          brandColors={[snapshot.branding.accent_color]}
-          allowAlpha={false}
-          label="Cor"
-        />
-        {layout.accent && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => applyLayout(setLayoutAccent(layoutRef.current, undefined))}
-          >
-            Usar cor da marca
-          </Button>
-        )}
+        <AppearancePopover layout={layout} snapshot={snapshot} onChange={applyLayout} />
         <Button size="sm" onClick={() => openWidgetDrawer(null)}>
           <Plus className="h-3.5 w-3.5" /> Adicionar widget
         </Button>

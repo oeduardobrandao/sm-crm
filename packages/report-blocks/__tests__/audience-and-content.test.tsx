@@ -118,6 +118,19 @@ describe('TopPostsBlock', () => {
     expect(container.querySelectorAll('img').length).toBe(0);
     expect(container.querySelectorAll('.rb-thumb-placeholder').length).toBeGreaterThan(0);
   });
+
+  it('top posts: article e rb-card--flush (thumbnail encosta na borda)', () => {
+    const { container } = render(
+      <BlockRenderer
+        layout={l([{ id: 'p1', type: 'top_posts', size: 'full', config: { count: 1 } }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    const article = container.querySelector('article') as HTMLElement;
+    expect(article.classList.contains('rb-card')).toBe(true);
+    expect(article.classList.contains('rb-card--flush')).toBe(true);
+  });
 });
 
 describe('PostListBlock', () => {
@@ -171,6 +184,17 @@ describe('PostListBlock', () => {
     );
     expect(screen.getByText('Mitos sobre protetor solar')).toBeInTheDocument();
     expect(screen.getByText('5 sinais de alerta na pele')).toBeInTheDocument();
+  });
+
+  it('lista de publicacoes: rb-card--compact', () => {
+    const { container } = render(
+      <BlockRenderer
+        layout={l([{ id: 'pl', type: 'post_list', size: 'full' }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(container.querySelector('.rb-card.rb-card--compact')).not.toBeNull();
   });
 });
 

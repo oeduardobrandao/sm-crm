@@ -20,7 +20,13 @@ export function SectionHeaderEditor({ block, onConfigChange }: SectionHeaderEdit
         placeholder="Título da seção"
         onChange={(e) => onConfigChange(block.id, { title: e.target.value })}
         className="rb-section-input"
-        style={{ fontSize: '1.15rem', fontWeight: 700 }}
+        style={{
+          fontSize: '1.15rem',
+          fontWeight: 700,
+          fontFamily: 'var(--rb-font-display, inherit)',
+          color: 'var(--rb-section-title, inherit)',
+          letterSpacing: '-1px',
+        }}
       />
       <input
         aria-label="Subtítulo da seção"
@@ -34,7 +40,7 @@ export function SectionHeaderEditor({ block, onConfigChange }: SectionHeaderEdit
         style={{
           width: 48,
           height: 3,
-          background: 'var(--rb-accent)',
+          background: 'var(--rb-accent-line, var(--rb-accent))',
           borderRadius: 2,
           marginTop: '0.4rem',
         }}

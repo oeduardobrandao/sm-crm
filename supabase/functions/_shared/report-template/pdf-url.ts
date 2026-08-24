@@ -14,10 +14,14 @@ export function buildGotenbergUrlRequest(
   // legado (ver _shared/report-template/pdf.ts para aquela história).
   formData.append("paperWidth", "8.27");
   formData.append("paperHeight", "11.7");
-  formData.append("marginTop", "0.4");
-  formData.append("marginBottom", "0.4");
-  formData.append("marginLeft", "0.35");
-  formData.append("marginRight", "0.35");
+  // Margens da folha ficam a cargo do @page{margin} da própria página de
+  // impressão: padding de wrapper contínuo não se repete após quebra de
+  // página, @page sim. Zerado aqui para TODOS os temas (a edge function não
+  // conhece o layout, e não precisa).
+  formData.append("marginTop", "0");
+  formData.append("marginBottom", "0");
+  formData.append("marginLeft", "0");
+  formData.append("marginRight", "0");
   return { url, formData };
 }
 
