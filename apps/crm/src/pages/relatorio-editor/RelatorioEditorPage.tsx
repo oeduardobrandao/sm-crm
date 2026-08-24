@@ -199,6 +199,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
               background: 'transparent',
               fontSize: '1.35rem',
               fontWeight: 700,
+              letterSpacing: '-1px',
               color: 'var(--text-main)',
               outline: 'none',
             }}
