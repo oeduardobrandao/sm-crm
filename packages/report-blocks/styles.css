@@ -29,16 +29,50 @@
   margin: 0 0 0.6em;
   line-height: 1.6;
 }
+/* O preflight do Tailwind (@tailwind base no CRM, herdado pelo Hub) zera
+   peso/tamanho de heading e os marcadores de lista — sem estas regras, os
+   títulos que a IA gera nas metas/recomendações viram texto comum. O editor
+   compartilha a classe (EditorContent leva rb-prose). */
 .rb-prose h1,
 .rb-prose h2,
 .rb-prose h3,
 .rb-prose h4 {
   margin: 0.8em 0 0.3em;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.rb-prose h1 {
+  font-size: 1.45em;
+}
+.rb-prose h2 {
+  font-size: 1.3em;
+}
+.rb-prose h3 {
+  font-size: 1.12em;
+}
+.rb-prose > :first-child {
+  margin-top: 0;
 }
 .rb-prose ul,
 .rb-prose ol {
   padding-left: 1.2em;
   margin: 0 0 0.6em;
+}
+.rb-prose ul {
+  list-style: disc;
+}
+.rb-prose ol {
+  list-style: decimal;
+}
+.rb-prose blockquote {
+  border-left: 3px solid rgba(0, 0, 0, 0.15);
+  margin: 0 0 0.6em;
+  padding-left: 0.8em;
+}
+.rb-prose hr {
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
+  margin: 1em 0;
 }
 @media print {
   .rb-page-break {

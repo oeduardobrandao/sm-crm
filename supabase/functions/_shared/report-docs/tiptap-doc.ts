@@ -37,11 +37,16 @@ const fmt = new Intl.NumberFormat("pt-BR");
 // O prompt pede "metric_id from the provided data", então a IA devolve ids
 // crus (reach, followers_gained). O tratamento é AQUI, na renderização: id
 // conhecido vira o label pt-BR; texto livre da IA passa como veio. Target
-// só-dígitos ganha formato pt-BR ("7000" -> "7.000").
+// só-dígitos ganha formato pt-BR ("7000" -> "7.000"); percentual com ponto
+// vira vírgula ("11.5%" -> "11,5%").
 function goalHeading(metric: string, target: string): string {
   const label = (KPI_LABELS_PT as Record<string, string>)[metric] ?? metric;
   const t = target.trim();
-  const formatted = /^\d+$/.test(t) ? fmt.format(Number(t)) : target;
+  const formatted = /^\d+$/.test(t)
+    ? fmt.format(Number(t))
+    : /^\d+([.,]\d+)?%$/.test(t)
+    ? t.replace(".", ",")
+    : target;
   return `${label}: ${formatted}`;
 }
 

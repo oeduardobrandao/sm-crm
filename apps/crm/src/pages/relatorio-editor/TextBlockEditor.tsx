@@ -263,7 +263,9 @@ export function TextBlockEditor({ block, onTextChange }: TextBlockEditorProps) {
   return (
     <div className="rb-text-editor">
       {editor && <Toolbar editor={editor} />}
-      <EditorContent editor={editor} className="rb-text-editor-content" />
+      {/* rb-prose: a MESMA tipografia do TextBlock renderizado (headings,
+          listas, citação) — o preflight do Tailwind achata tudo sem ela. */}
+      <EditorContent editor={editor} className="rb-text-editor-content rb-prose" />
     </div>
   );
 }
