@@ -36,17 +36,19 @@ com o layout, então templates capturam e reaplicam o visual.
 
 ```ts
 theme?: "clean" | "editorial" | "bold";   // ausente = modo herdado (ver abaixo)
-fonts?: "system" | "fraunces" | "grotesk" | "playfair"; // ausente = system
+fonts?: "system" | "fraunces" | "grotesk" | "playfair"; // ausente = HERDAR (não "system")
 ```
 
-- **`theme` ausente = modo HERDADO, não clean.** É o comportamento de hoje:
-  só os tokens de accent são aplicados; fundo, superfícies e tinta herdam da
-  página em volta (no Hub, o whitelabel — inclusive paletas escuras — decide).
-  Isso torna "byte-idêntico para docs existentes" verdadeiro de fato: um Hub
-  escuro continua exibindo relatórios antigos como hoje. Escolher QUALQUER
-  tema explícito (inclusive `clean`) fixa a aparência completa nas três
-  superfícies. O layout padrão do sistema NÃO seta `theme` (docs novos nascem
-  no modo herdado).
+- **Ausente = HERDADO, para AMBAS as chaves.** É o comportamento de hoje: com
+  `theme` ausente, só os tokens de accent são aplicados; fundo, superfícies e
+  tinta herdam da página em volta (no Hub, o whitelabel — inclusive paletas
+  escuras — decide). Com `fonts` ausente, NENHUMA var de fonte é emitida — no
+  Hub o relatório continua herdando a Instrument Sans do `.hub-root`, como
+  hoje; `"system"` explícito é uma ESCOLHA (pilha do sistema), distinta de
+  ausente. Isso torna "byte-idêntico para docs existentes" verdadeiro de
+  fato. Escolher QUALQUER tema/dupla explícitos (inclusive `clean`/`system`)
+  fixa a aparência nas três superfícies. O layout padrão do sistema NÃO seta
+  `theme` nem `fonts` (docs novos nascem no modo herdado).
 - `validateLayout` (TS) valida os enums de forma ESTRITA, como já faz com
   `accent`.
 - **Migration de trigger obrigatória (sem coluna nova):** o layout é gravável
@@ -66,14 +68,15 @@ Novo módulo no pacote compartilhado (`packages/report-blocks/theme.ts`),
 substituindo o atual `resolveLayoutAccent` (que vira chamada interna).
 Devolve o conjunto de CSS vars que o container do documento aplica inline
 (editor, Hub e print usam o MESMO resolvedor). **No modo herdado** (`theme`
-ausente) devolve SÓ `--rb-accent`/`--rb-accent-fg` e as fontes — sem tokens
-de fundo/superfície/tinta, preservando a herança da página. Com tema
-explícito:
+ausente) devolve SÓ `--rb-accent`, `--rb-accent-fg` e `--rb-accent-text` —
+sem tokens de fundo/superfície/tinta; com `fonts` ausente, nenhuma var de
+fonte (herança da página preservada nos dois eixos). Com tema explícito:
 
 | Token | clean | editorial | bold |
 |---|---|---|---|
 | `--rb-accent` | cor escolhida | idem | idem |
 | `--rb-accent-fg` | contraste sobre accent (resolveAccent, existente) | idem | idem |
+| `--rb-accent-text` | accent escurecido até ≥ 4.5:1 sobre `--rb-bg` (uso como TEXTO) | idem, sobre o creme | idem clean |
 | `--rb-soft` | tint claro do accent (~92% de mistura com branco) | tint sobre o creme | idem clean |
 | `--rb-bg` | `#ffffff` | `#faf6ee` (creme) | `#ffffff` |
 | `--rb-surface` | `#ffffff` | transparente | `--rb-soft` nos cartões de KPI |
@@ -98,6 +101,14 @@ Regras de derivação (honestas quanto ao resolver atual):
   fg com 4.5:1 — o teste cobre o caso e aceita o máximo disponível).
 - Tints derivam do accent clampado por mistura sRGB (mesma técnica de
   `resolveHubTheme` em `apps/hub/src/theme.ts`).
+- **`--rb-accent-text` (novo, background-aware):** a cor da marca usada COMO
+  TEXTO (título de cabeçalho de seção no bold, chip "Formato líder") não pode
+  ser o accent cru — `#00ff00` passa pelo clamp de luminância e tem 1,37:1
+  sobre branco. O token escurece o accent progressivamente (mistura com a
+  tinta do tema) até atingir ≥ 4.5:1 contra `--rb-bg`, com fallback final na
+  própria tinta. Todo uso de accent-como-texto no pacote migra para este
+  token; `--rb-accent` fica para preenchimentos e traços (com
+  `--rb-accent-fg` por cima).
 - Cores de delta (verde/vermelho) continuam fixas por tema (par claro no
   clean/bold; par terroso no editorial) — não derivam do accent, legibilidade
   de sinal vem antes de branding.
@@ -113,11 +124,17 @@ armadilha do fix de padding do PR #381). Por isso o chrome visual sai dos
 widgets:
 
 - Nova classe compartilhada **`.rb-card`** em `packages/report-blocks/styles.css`
-  concentra o chrome dos cartões (surface, borda, raio, padding), lendo os
-  tokens via `var(--rb-*)` com fallback nos valores atuais. Os widgets
-  REMOVEM `border`, `borderRadius`, `background` e `padding` de cartão do
-  estilo inline e usam a classe (conteúdo interno — tamanhos de fonte,
-  espaçamentos internos — pode seguir inline).
+  concentra o chrome dos cartões (surface, borda, raio), lendo os tokens via
+  `var(--rb-*)` com fallback nos valores atuais. Os widgets REMOVEM `border`,
+  `borderRadius` e `background` de cartão do estilo inline e usam a classe
+  (conteúdo interno — tamanhos de fonte, espaçamentos internos — pode seguir
+  inline).
+- **Padding por modificador, não único** (os widgets hoje divergem de
+  propósito): `.rb-card--pad` (1rem — KPIs, painéis de chart/audiência),
+  `.rb-card--compact` (0.5rem 1rem — lista de publicações) e
+  `.rb-card--flush` (0 — cards de top posts, onde a thumbnail encosta na
+  borda com `overflow: hidden`). Cada widget declara o seu; os valores são os
+  atuais, sem mudança visual.
 - Variantes de tema restilizam `.rb-card` por classe no container
   (`rb-theme-editorial .rb-card { border: 0; border-bottom: 1px solid
   var(--rb-border); border-radius: 0; background: transparent; }`) — sem
@@ -136,7 +153,7 @@ tokens e fontes:
 | Bloco(s) | Fonte display | `.rb-card`? | No tema bold |
 |---|---|---|---|
 | `cover` | título e mês | não (chrome próprio) | fundo `--rb-accent`, texto `--rb-accent-fg` |
-| `section_header` | título | não | título e barra em `--rb-accent` |
+| `section_header` | título | não | título em `--rb-accent-text`, barra em `--rb-accent` |
 | `kpi_*` (9) | não (números na body, consistência tabular) | sim | surface = `--rb-soft` |
 | `chart_followers`, `chart_formats`, `chart_best_times` | título do painel | sim | surface branco, linha/realces no accent |
 | `audience_*` (4) | título do painel | sim | idem charts |
@@ -182,16 +199,18 @@ preenchido foi descartado: regra uniforme, sem card "especial" arbitrário).
 - **Hub**: a página do relatório aplica tokens no container `.rb-*`; o layout
   do Hub em volta (chrome whitelabel) segue com `--hub-*` intocado. Tema
   editorial muda o fundo SÓ dentro do container do documento.
-- **Print/PDF**: o wrapper da página de impressão hoje é `background:#ffffff`
-  fixo (RelatorioPrintPage.tsx) — passa a pintar `--rb-bg` do
-  `resolveReportTheme` com `min-height:100vh`. O `printBackground=true` já
-  está ligado no Gotenberg, então fundos imprimem. Para o fundo do editorial
-  cobrir a FOLHA (não só a área útil), a requisição do Gotenberg zera as
-  margens (`marginTop/Bottom/Left/Right: 0`) quando `--rb-bg` ≠ branco, e o
-  wrapper compensa com padding interno equivalente — atenção à geometria já
-  mapeada do Gotenberg (folha travada em pontos A4; full-bleed exige a conta
-  de página exata). Modo herdado e clean mantêm as margens atuais. Cache de
-  PDF invalida sozinho: mudar aparência muda `layout` → `updated_at` sobe
+- **Print/PDF (mecanismo paginado, sem condicional na edge function)**:
+  padding de wrapper contínuo NÃO se repete após quebra de página — páginas
+  2+ colariam na borda da folha. O mecanismo correto é por CSS de página:
+  a requisição do Gotenberg zera as margens INCONDICIONALMENTE (a edge
+  function não lê layout nem tema — `pdf.ts` nem seleciona `layout` hoje, e
+  não precisa passar a fazê-lo); a página de impressão define
+  `@page { margin: 10mm }` (o mesmo inset do default atual do Gotenberg,
+  repetido em TODA página pela engine) e pinta `--rb-bg` no `body` — o
+  background do body propaga para o canvas da página e cobre a folha inteira,
+  margens incluídas, em todas as páginas (`printBackground=true` já ligado).
+  Modo herdado imprime idêntico ao atual (fundo branco, mesmo inset). Cache
+  de PDF invalida sozinho: mudar aparência muda `layout` → `updated_at` sobe
   (trigger condicional existente).
 - Snapshots e documentos antigos: sem `theme`/`fonts`, modo herdado — idêntico
   a hoje nas três superfícies, incluindo Hub com paleta escura.
@@ -207,7 +226,9 @@ preenchido foi descartado: regra uniforme, sem card "especial" arbitrário).
 ## Verificação
 
 - Unit (Vitest): derivação de paleta (tints, escolha de fg por contraste WCAG,
-  extremos: branco/preto/amarelo/cinza médio), `FONT_PAIRINGS` completo,
+  `--rb-accent-text` atinge ≥ 4.5:1 sobre o `--rb-bg` de cada tema para
+  accents hostis — `#00ff00`, `#808080`, amarelo puro), `FONT_PAIRINGS`
+  completo,
   popover (render, seleção, "usar cor da marca"), widgets usam `.rb-card`
   (presença estrutural), validateLayout (enums estritos, ausência = ok).
   Limite conhecido do jsdom: ele não resolve `var()`/layout — jsdom prova
@@ -220,4 +241,6 @@ preenchido foi descartado: regra uniforme, sem card "especial" arbitrário).
   (sem theme) antes/depois no editor E no Hub — incluindo um Hub de paleta
   escura — confirmando modo herdado idêntico; trocar tema/fonte/cor com
   preview ao vivo e autosave; screenshot por tema; exportar 1 PDF por tema e
-  conferir fontes e fundo (editorial: fundo cobrindo a folha).
+  conferir fontes e fundo — incluindo um relatório LONGO (várias páginas) no
+  editorial, verificando fundo e inset repetidos nas páginas 2+ (o mecanismo
+  `@page` existe exatamente para isso).
