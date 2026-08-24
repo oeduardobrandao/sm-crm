@@ -80,7 +80,13 @@ export function BlockRenderer({ layout, snapshot, mode }: BlockRendererProps) {
       style={{ ['--rb-accent' as string]: acc, ['--rb-accent-fg' as string]: accFg }}
     >
       {layout.blocks.map((block) => {
-        const Component = BLOCK_COMPONENTS[block.type];
+        // hasOwnProperty (não Object.hasOwn: fora do lib target ES2021 do
+        // tsconfig) evita que um block.type tipo "__proto__" ou
+        // "constructor" resolva para um valor herdado de Object.prototype
+        // (truthy, mas não um componente) e derrube o React ao renderizar.
+        const Component = Object.prototype.hasOwnProperty.call(BLOCK_COMPONENTS, block.type)
+          ? BLOCK_COMPONENTS[block.type]
+          : undefined;
         if (!Component) return null;
         // Widget sem dados renderiza null; a célula vazia colapsa via
         // [data-block-id]:empty no styles.css (JSX sempre gera um elemento

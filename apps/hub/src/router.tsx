@@ -51,6 +51,12 @@ export const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import('./pages/Relatorios')).RelatoriosPage }),
       },
       {
+        path: 'relatorios/doc/:docId',
+        lazy: async () => ({
+          Component: (await import('./pages/RelatorioDocPage')).RelatorioDocPage,
+        }),
+      },
+      {
         path: 'relatorios/:month',
         lazy: async () => ({
           Component: (await import('./pages/RelatorioView')).RelatorioViewPage,
@@ -61,6 +67,12 @@ export const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import('./pages/MensagensPage')).MensagensPage }),
       },
     ],
+  },
+  {
+    path: '/relatorios/print/:docId',
+    lazy: async () => ({
+      Component: (await import('./pages/RelatorioPrintPage')).RelatorioPrintPage,
+    }),
   },
   {
     path: '*',

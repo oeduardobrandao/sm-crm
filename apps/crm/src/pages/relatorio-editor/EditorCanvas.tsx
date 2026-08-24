@@ -56,7 +56,13 @@ function SortableCell({
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
-  const Component = BLOCK_COMPONENTS[block.type];
+  // hasOwnProperty (não Object.hasOwn: fora do lib target ES2021 do
+  // tsconfig) evita que um block.type tipo "__proto__" ou "constructor"
+  // resolva para um valor herdado de Object.prototype (truthy, mas não um
+  // componente) e derrube o React ao renderizar.
+  const Component = Object.prototype.hasOwnProperty.call(BLOCK_COMPONENTS, block.type)
+    ? BLOCK_COMPONENTS[block.type]
+    : undefined;
   const isText = TEXT_BLOCK_TYPES.includes(block.type);
   const body =
     isText && renderTextBlock ? (
@@ -118,6 +124,9 @@ export interface EditorCanvasProps {
   onChange: (next: ReportLayout) => void;
   highlightId?: string | null;
   renderTextBlock?: (block: ReportBlock) => ReactNode;
+  // Ausente = comportamento atual (onChange com o bloco removido). Presente =
+  // o chamador assume a exclusão inteira (ex.: undo via toast na página).
+  onRemoveBlock?: (id: string) => void;
 }
 
 export function EditorCanvas({
@@ -126,6 +135,7 @@ export function EditorCanvas({
   onChange,
   highlightId,
   renderTextBlock,
+  onRemoveBlock,
 }: EditorCanvasProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -146,7 +156,10 @@ export function EditorCanvas({
   }
 
   const activeBlock = activeId ? layout.blocks.find((b) => b.id === activeId) : null;
-  const ActiveComponent = activeBlock ? BLOCK_COMPONENTS[activeBlock.type] : null;
+  const ActiveComponent =
+    activeBlock && Object.prototype.hasOwnProperty.call(BLOCK_COMPONENTS, activeBlock.type)
+      ? BLOCK_COMPONENTS[activeBlock.type]
+      : null;
 
   return (
     <DndContext
@@ -171,7 +184,9 @@ export function EditorCanvas({
                 const next = resizeBlock(layout, block.id, delta);
                 if (next !== layout) onChange(next);
               }}
-              onRemove={() => onChange(removeBlock(layout, block.id))}
+              onRemove={() =>
+                onRemoveBlock ? onRemoveBlock(block.id) : onChange(removeBlock(layout, block.id))
+              }
               renderTextBlock={renderTextBlock}
             />
           ))}

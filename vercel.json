@@ -50,11 +50,16 @@
     {
       "source": "/:workspace/hub/:token/(.*)",
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
+    },
+    {
+      "source": "/relatorios/print/:docId",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
     }
   ],
   "rewrites": [
     { "source": "/:workspace/hub/:token/(.*)", "destination": "/hub/index.html" },
     { "source": "/:workspace/hub/:token", "destination": "/hub/index.html" },
+    { "source": "/relatorios/print/:docId", "destination": "/hub/index.html" },
     { "source": "/admin/(.*)", "destination": "/admin/index.html" },
     { "source": "/precos", "destination": "/precos.html" },
     { "source": "/sobre", "destination": "/sobre.html" },

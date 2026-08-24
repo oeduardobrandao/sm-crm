@@ -157,6 +157,11 @@ Monorepo with npm workspaces:
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` -- Cloudflare R2
 - `CRON_SECRET` -- Shared secret for cron function authentication
 - `GEMINI_API_KEY` -- Google Gemini key for AI narrative generation in analytics reports (instagram-analytics, instagram-report-generator-v2). Optional, no default -- AI narrative is skipped when unset
+- `REPORT_PRINT_BASE` -- origem pública que serve a página de print do relatório
+  de blocos (ex.: https://mesaas.com.br). Usada por report-docs POST /:id/pdf
+  para montar a URL que o Gotenberg imprime. Opcional: sem ela (ou sem
+  GOTENBERG_URL / INTERNAL_FUNCTION_SECRET) o export responde 503
+  pdf_not_configured; as demais rotas seguem normais
 - `STRIPE_SECRET_KEY` -- Stripe API secret key. REQUIRED by billing functions, no default -- throw if missing. Also used (optionally) by billing-downgrade-cron for the switch's leg D enforcement; absent, that leg is skipped with `switchSkipped: true`
 - `STRIPE_WEBHOOK_SECRET` -- Stripe webhook signing secret. REQUIRED by stripe-webhook, no default -- throw if missing
 - `PAGARME_SECRET_KEY` -- Pagar.me v5 API secret for 12x installment billing (pagarme-client). No default; shared client throws on first call when missing

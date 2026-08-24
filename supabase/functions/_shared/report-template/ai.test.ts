@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { buildAIPrompt, validateAIOutput } from "./ai.ts";
+import { buildAIPrompt, generateAINarrative, validateAIOutput } from "./ai.ts";
 import type { ReportData } from "./types.ts";
 
 const fixture: ReportData = {
@@ -81,6 +81,30 @@ Deno.test("validateAIOutput rejects missing fields", () => {
   const invalid = { executive_summary: "text" };
   const result = validateAIOutput(invalid);
   assertEquals(result.valid, false);
+});
+
+Deno.test("generateAINarrative: signal já abortado não reinsiste no backoff, falha na primeira tentativa", async () => {
+  // Hardening pedido em review externo: generateAINarrative aceita um
+  // AbortSignal opcional (compat -- callers legados como
+  // instagram-report-generator-v2 não passam nada e seguem idênticos). Um
+  // fetch que rejeita por abort não deve esperar os 2s/4s de backoff e tentar
+  // de novo -- a chamada já não interessa a ninguém.
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  globalThis.fetch = (() => {
+    callCount++;
+    return Promise.reject(new DOMException("The signal has been aborted", "AbortError"));
+  }) as typeof fetch;
+
+  try {
+    const controller = new AbortController();
+    controller.abort();
+    const result = await generateAINarrative(fixture, "fake-key", controller.signal);
+    assertEquals(result.status, "generation_failed");
+    assertEquals(callCount, 1, "não deveria reinsistir depois de um abort");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 Deno.test("validateAIOutput rejects too-short executive_summary", () => {

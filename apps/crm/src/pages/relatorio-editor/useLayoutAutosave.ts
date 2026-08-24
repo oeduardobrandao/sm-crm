@@ -1,7 +1,9 @@
 // Autosave do editor de blocos, no padrão inline da casa (WorkflowDrawer:448):
 // otimista no estado, saving liga ANTES do debounce, clearTimeout do anterior,
 // validateLayout como gate final antes do PostgREST.
-// Em falha: retém o payload, re-tenta após 5s. Nova edição cancela o retry.
+// Em falha: retém o payload, re-tenta com backoff (5s, 15s, 30s). Esgotado o
+// cap, para de tentar (payload continua retido, sem novo timer) até que uma
+// edição nova ou o unmount reabram o ciclo. Nova edição zera o contador.
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -10,8 +12,12 @@ import { updateReportDoc } from '../../services/reportDocs';
 
 const LAYOUT_DEBOUNCE_MS = 1500;
 const TITLE_DEBOUNCE_MS = 400;
-const RETRY_DEBOUNCE_MS = 5000;
+const RETRY_DELAYS_MS = [5000, 15000, 30000];
 const SAVE_ERROR_MSG = 'Erro ao salvar o relatório';
+// Mesmo id em toda falha de autosave: sonner substitui o toast existente em
+// vez de empilhar um novo a cada retry (uma falha persistente não deve virar
+// uma pilha de toasts idênticos na tela).
+const SAVE_ERROR_TOAST = { id: 'report-autosave-error' };
 
 // Cadeia de save POR DOCUMENTO, viva no módulo e não na instância do hook:
 // a fila de uma instância desmontada e a da montagem seguinte do mesmo doc
@@ -46,9 +52,23 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
   const pendingLayout = useRef<ReportLayout | null>(null);
   const docIdRef = useRef(docId);
   const titleRef = useRef(title);
+  // Índice em RETRY_DELAYS_MS: quantas tentativas já falharam desde a última
+  // edição (ou o último sucesso). Zera em applyLayout/setTitle (edição nova) e
+  // em todo save bem-sucedido.
+  const retryCount = useRef(0);
+  const titleRetryCount = useRef(0);
+  // Espelha `saving` de forma síncrona: o guard de beforeunload lê pela ref
+  // (não pode depender de fechamento de render) pra saber, no exato instante
+  // do evento, se um request está em voo.
+  const savingRef = useRef(false);
 
   docIdRef.current = docId;
   titleRef.current = title;
+
+  function setSavingState(value: boolean) {
+    savingRef.current = value;
+    setSaving(value);
+  }
 
   useEffect(
     () => () => {
@@ -106,15 +126,15 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
         const toSave = pendingLayout.current;
         pendingLayout.current = null;
         if (!toSave) {
-          if (pendingLayout.current === null) setSaving(false);
+          if (pendingLayout.current === null) setSavingState(false);
           return;
         }
         const check = validateLayout(toSave);
         if (!check.ok) {
           // Bug de layoutOps se chegar aqui: nada de request com payload inválido.
           console.error('[relatorio-editor] layout inválido no autosave:', check);
-          toast.error(SAVE_ERROR_MSG);
-          if (pendingLayout.current === null) setSaving(false);
+          toast.error(SAVE_ERROR_MSG, SAVE_ERROR_TOAST);
+          if (pendingLayout.current === null) setSavingState(false);
           return;
         }
         try {
@@ -125,17 +145,25 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
           qc.setQueryData(['report-doc', docIdRef.current], (old: unknown) =>
             old ? { ...(old as object), layout: toSave } : old,
           );
+          retryCount.current = 0;
         } catch (err) {
           console.error('[relatorio-editor] autosave falhou:', err);
-          toast.error(SAVE_ERROR_MSG);
-          // Retém o payload: navegação ainda flusha no unmount, e o retry tenta de
-          // novo. Edição mais nova que chegou durante o request tem prioridade.
-          if (pendingLayout.current === null) {
+          toast.error(SAVE_ERROR_MSG, SAVE_ERROR_TOAST);
+          // Retém o payload: navegação ainda flusha no unmount. Se ainda houver
+          // delay no backoff, agenda o próximo retry; esgotado, retém SEM
+          // agendar (para de bombardear o backend até uma edição nova ou o
+          // unmount). Edição mais nova que já chegou durante o request tem
+          // prioridade sobre os dois casos (não mexe no pendingLayout dela).
+          const delay = RETRY_DELAYS_MS[retryCount.current];
+          if (delay !== undefined && pendingLayout.current === null) {
+            retryCount.current += 1;
             pendingLayout.current = toSave;
-            scheduleLayoutFlush(RETRY_DEBOUNCE_MS);
+            scheduleLayoutFlush(delay);
+          } else if (pendingLayout.current === null) {
+            pendingLayout.current = toSave;
           }
         } finally {
-          if (pendingLayout.current === null) setSaving(false);
+          if (pendingLayout.current === null) setSavingState(false);
         }
       });
     }, delayMs);
@@ -155,12 +183,18 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
           qc.setQueryData(['report-doc', docIdRef.current], (old: unknown) =>
             old ? { ...(old as object), title: toSave } : old,
           );
+          titleRetryCount.current = 0;
         } catch (err) {
           console.error('[relatorio-editor] save de título falhou:', err);
-          toast.error(SAVE_ERROR_MSG);
-          // Retém a dirty flag: o retry tenta de novo.
+          toast.error(SAVE_ERROR_MSG, SAVE_ERROR_TOAST);
+          // Mesmo tratamento do layout: retenta com backoff até esgotar
+          // RETRY_DELAYS_MS, depois retém a dirty flag sem novo timer.
           titleDirty.current = true;
-          scheduleTitleFlush(RETRY_DEBOUNCE_MS);
+          const delay = RETRY_DELAYS_MS[titleRetryCount.current];
+          if (delay !== undefined) {
+            titleRetryCount.current += 1;
+            scheduleTitleFlush(delay);
+          }
         }
       });
     }, delayMs);
@@ -170,15 +204,32 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
     if (next === layout) return;
     setLayout(next);
     pendingLayout.current = next;
-    setSaving(true);
+    retryCount.current = 0;
+    setSavingState(true);
     scheduleLayoutFlush(LAYOUT_DEBOUNCE_MS);
   }
 
   function setTitle(next: string) {
     setTitleState(next);
     titleDirty.current = true;
+    titleRetryCount.current = 0;
     scheduleTitleFlush(TITLE_DEBOUNCE_MS);
   }
+
+  // Guarda contra fechar/navegar para fora com edição não persistida: registra
+  // uma vez (refs são estáveis, sem dependência de closure) e lê o estado mais
+  // recente via ref no momento do evento, não do render em que foi montado.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (pendingLayout.current !== null || titleDirty.current || savingRef.current) {
+        e.preventDefault();
+        // Exigido por navegadores legados para mostrar o prompt nativo.
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, []);
 
   return { layout, applyLayout, title, setTitle, saving };
 }

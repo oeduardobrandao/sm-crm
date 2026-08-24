@@ -50,6 +50,10 @@ vi.mock('../pages/MensagensPage', () => ({
   MensagensPage: () => <div>Mensagens page</div>,
 }));
 
+vi.mock('../pages/RelatorioPrintPage', () => ({
+  RelatorioPrintPage: () => <div>Relatório print page</div>,
+}));
+
 import { router } from '../router';
 
 describe('hub router', () => {
@@ -86,5 +90,18 @@ describe('hub router', () => {
     render(<RouterProvider router={router} />);
 
     expect(await screen.findByText('Mensagens page')).toBeInTheDocument();
+  });
+
+  it('renders the top-level print route outside the hub shell', async () => {
+    // Rota lazy de topo (fora do HubShell): a config REAL do router precisa
+    // resolver o chunk e renderizar a página no URL de print — era exatamente
+    // o buraco de cobertura quando o print em branco foi investigado.
+    await router.navigate('/relatorios/print/doc-1?pt=tok');
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByText('Relatório print page')).toBeInTheDocument();
+    expect(screen.queryByText('Hub shell')).not.toBeInTheDocument();
+    expect(screen.queryByText('Link inválido.')).not.toBeInTheDocument();
   });
 });

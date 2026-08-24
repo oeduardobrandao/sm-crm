@@ -1,8 +1,8 @@
-// Cria um relatório interativo: mês (default = mês anterior) e geração
-// síncrona. Seletor de template chega no PR 3, junto com a UI de templates.
-import { useState } from 'react';
+// Cria um relatório interativo: mês (default = mês anterior), template
+// opcional e geração síncrona.
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -15,7 +15,17 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { MonthPicker } from '@/components/ui/month-picker';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { generateReportDoc } from '../../../services/reportDocs';
+import { listReportTemplates } from '../../../services/reportTemplates';
+
+const SYSTEM_TEMPLATE = '__system';
 
 function previousMonth(): string {
   const now = new Date();
@@ -34,13 +44,47 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [month, setMonth] = useState(previousMonth);
+  const [templateId, setTemplateId] = useState(SYSTEM_TEMPLATE);
   const [generating, setGenerating] = useState(false);
+
+  const { data: templates = [], isLoading: templatesLoading } = useQuery({
+    queryKey: ['report-templates'],
+    queryFn: listReportTemplates,
+    enabled: open,
+  });
+
+  // Default: o template is_default do workspace, se existir; senão "Padrão
+  // do sistema". Aplica só UMA vez por "sessão de abertura" -- na primeira
+  // resolução da query após o dialog abrir. Sem o guard appliedDefaultRef,
+  // qualquer refetch em segundo plano de ['report-templates'] (identidade
+  // nova do array) enquanto o dialog segue aberto reaplicava o efeito e
+  // jogava a escolha manual do usuário de volta pro default.
+  const appliedDefaultRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      appliedDefaultRef.current = false;
+      return;
+    }
+    if (appliedDefaultRef.current || templatesLoading) return;
+    const def = templates.find((t) => t.is_default);
+    setTemplateId(def ? def.id : SYSTEM_TEMPLATE);
+    appliedDefaultRef.current = true;
+  }, [open, templatesLoading, templates]);
 
   const handleGenerate = async () => {
     if (generating || !month) return;
     setGenerating(true);
     try {
-      const { id } = await generateReportDoc(clientId, month);
+      // "system" é a sentinela explícita do "Padrão do sistema": tem que ir
+      // verbatim, nunca ser omitida. Omitir (o bug original, achado de
+      // review externo em PR #379) faz o servidor usar o template is_default
+      // do workspace quando ele existe -- exatamente o layout que o usuário
+      // pediu para NÃO usar ao escolher "Padrão do sistema" explicitamente.
+      const { id } = await generateReportDoc(
+        clientId,
+        month,
+        templateId === SYSTEM_TEMPLATE ? 'system' : templateId,
+      );
       toast.success('Relatório gerado.');
       await qc.invalidateQueries({ queryKey: ['report-docs', clientId] });
       onOpenChange(false);
@@ -70,6 +114,23 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
         <div className="space-y-1">
           <Label>Mês do relatório</Label>
           <MonthPicker value={month} onChange={setMonth} clearable={false} />
+        </div>
+        <div className="space-y-1" style={{ marginTop: '0.75rem' }}>
+          <Label>Modelo</Label>
+          <Select value={templateId} onValueChange={setTemplateId} disabled={generating}>
+            <SelectTrigger aria-label="Modelo do relatório">
+              <SelectValue placeholder="Padrão do sistema" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={SYSTEM_TEMPLATE}>Padrão do sistema</SelectItem>
+              {templates.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                  {t.is_default ? ' · padrão' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <DialogFooter>
           <Button variant="outline" disabled={generating} onClick={() => onOpenChange(false)}>

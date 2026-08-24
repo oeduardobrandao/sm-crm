@@ -48,6 +48,57 @@ Deno.test("parseGenerateBody aceita objeto com clientId válido e normaliza mont
   assertEquals(parseGenerateBody({ clientId: 5, month: "2026-08" }), {
     clientId: 5,
     month: "2026-08",
+    templateId: null,
   });
-  assertEquals(parseGenerateBody({ clientId: 5 }), { clientId: 5, month: "" });
+  assertEquals(parseGenerateBody({ clientId: 5 }), { clientId: 5, month: "", templateId: null });
+});
+
+Deno.test("parseGenerateBody: templateId ausente vira null", () => {
+  const r = parseGenerateBody({ clientId: 1, month: "2026-07" });
+  assertEquals(r, { clientId: 1, month: "2026-07", templateId: null });
+});
+
+Deno.test("parseGenerateBody: templateId uuid válido passa", () => {
+  const r = parseGenerateBody({
+    clientId: 1,
+    month: "2026-07",
+    templateId: "b3b2a6a0-1111-4222-8333-444455556666",
+  });
+  assertEquals(r?.templateId, "b3b2a6a0-1111-4222-8333-444455556666");
+});
+
+Deno.test("parseGenerateBody: templateId não-uuid rejeita o corpo", () => {
+  assertEquals(
+    parseGenerateBody({ clientId: 1, month: "2026-07", templateId: "abc" }),
+    null,
+  );
+  assertEquals(
+    parseGenerateBody({ clientId: 1, month: "2026-07", templateId: 42 }),
+    null,
+  );
+});
+
+// Sentinela explícita do "Padrão do sistema" (achado de review externo, PR
+// #379): omitido continua significando "usa o default do workspace"; "system"
+// é um valor DISTINTO que pede o layout padrão do sistema mesmo quando existe
+// default. Só o literal exato -- variações de caixa ou qualquer outra string
+// não-uuid continuam rejeitando o corpo, igual a outros templateId inválidos.
+Deno.test('parseGenerateBody: templateId "system" é aceito como sentinela distinta de ausente', () => {
+  const r = parseGenerateBody({ clientId: 1, month: "2026-07", templateId: "system" });
+  assertEquals(r, { clientId: 1, month: "2026-07", templateId: "system" });
+});
+
+Deno.test('parseGenerateBody: variações de "system" (caixa ou outra string não-uuid) continuam rejeitando', () => {
+  assertEquals(
+    parseGenerateBody({ clientId: 1, month: "2026-07", templateId: "System" }),
+    null,
+  );
+  assertEquals(
+    parseGenerateBody({ clientId: 1, month: "2026-07", templateId: "SYSTEM" }),
+    null,
+  );
+  assertEquals(
+    parseGenerateBody({ clientId: 1, month: "2026-07", templateId: "system-default" }),
+    null,
+  );
 });
