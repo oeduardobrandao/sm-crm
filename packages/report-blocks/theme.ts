@@ -13,6 +13,7 @@ import {
   HUB_BODY_FONTS,
   buildGoogleFontsHref,
 } from '../hub-theme/theme';
+export { PALETTES } from '../hub-theme/theme';
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
@@ -193,7 +194,12 @@ export function resolveReportTheme(layout: ReportLayout, snapshot: ReportDocSnap
     const palette = PALETTES[hubCfg.surface]?.light ?? PALETTES.neutral.light;
     const bg = palette.bg;
     const ink = palette.txt;
-    const border = hubCfg.card_style === 'outline' ? palette.bd2 : palette.bd;
+    const border =
+      hubCfg.card_style === 'outline'
+        ? palette.bd2
+        : hubCfg.card_style === 'tonal'
+          ? 'transparent'
+          : palette.bd;
     const radius = RADIUS_CARD[hubCfg.radius] ?? RADIUS_CARD.soft;
     const surface =
       hubCfg.card_style === 'outline'

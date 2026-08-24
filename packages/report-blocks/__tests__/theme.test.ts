@@ -244,6 +244,20 @@ describe('tema hub (deriva da config whitelabel do portal)', () => {
     expect(t.vars['--rb-surface']).toBe('#F3EEE7');
   });
 
+  it('card style tonal nao tem borda, igual ao portal', () => {
+    const t = resolveReportTheme(
+      layout({ theme: 'hub' }),
+      hubSnapshot({
+        surface: 'neutral',
+        font_display: 'fraunces',
+        font_body: 'instrument-sans',
+        radius: 'soft',
+        card_style: 'tonal',
+      }),
+    );
+    expect(t.vars['--rb-border']).toBe('transparent');
+  });
+
   it('superficie warm e cool usam a paleta light correspondente', () => {
     const warm = resolveReportTheme(
       layout({ theme: 'hub' }),

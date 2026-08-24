@@ -157,7 +157,7 @@ begin
     delete from report_documents where id = v_doc_theme;
   end;
 
-  -- Task hub (spec 2026-08-24): theme 'hub' e aceito em report_documents.
+  -- Task 6 (spec 2026-08-24): theme 'hub' é aceito em report_documents.
   declare
     v_doc_hub uuid;
   begin
@@ -244,7 +244,7 @@ begin
     delete from report_templates where id = v_tpl_theme;
   end;
 
-  -- Task hub (spec 2026-08-24): theme 'hub' e aceito em report_templates.
+  -- Task 6 (spec 2026-08-24): theme 'hub' é aceito em report_templates.
   declare
     v_tpl_hub uuid;
   begin

@@ -11911,7 +11911,7 @@ body.landing-page #root {
   border: 1px solid var(--border-color);
 }
 .rb-appearance-thumb-hub {
-  background: #fafafa;
+  background: var(--rb-hub-thumb-bg, #fafafa);
   border: 1px solid var(--border-color);
   position: relative;
   overflow: hidden;

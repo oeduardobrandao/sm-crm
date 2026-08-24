@@ -243,6 +243,8 @@ export function buildGoogleFontsHref(
   const includeDefaults = opts?.includeDefaults ?? false;
   const gfs: string[] = [];
 
+  // `in` distingue "id desconhecido" de "id igual ao default": sem essa checagem, um id
+  // desconhecido com includeDefaults false emitiria a família default em vez de null.
   const display = HUB_DISPLAY_FONTS[displayId] ?? HUB_DISPLAY_FONTS[DEFAULT_DISPLAY_ID];
   const displayKnown = displayId in HUB_DISPLAY_FONTS;
   if ((displayKnown && displayId !== DEFAULT_DISPLAY_ID) || includeDefaults) gfs.push(display.gf);

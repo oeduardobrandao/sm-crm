@@ -1,6 +1,7 @@
 // Snapshot de dados de um cliente/mês: extraído de generate.ts para ser
-// compartilhado com POST /:id/refresh-data (spec §5). Puro quanto a decisões:
-// quem chama já validou ownership do cliente e entitlement.
+// compartilhado com POST /:id/refresh-data (spec §5). Quem chama já validou
+// ownership do cliente; este arquivo resolve por conta própria o entitlement
+// feature_brand_customization (fail-closed) para a config whitelabel do Hub.
 import { mapAudience, mapBestTimes } from "../instagram-report-generator-v2/mappers.ts";
 import { decryptText } from "../_shared/crypto.ts";
 import {
