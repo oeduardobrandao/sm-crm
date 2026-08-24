@@ -99,6 +99,9 @@ describe('RelatorioPrintPage', () => {
     // editorial theme resolves --rb-bg to #faf6ee (theme.ts THEME_DEFS).
     const styleTag = container.querySelector('style');
     expect(styleTag?.textContent).toContain('@page { margin: 10mm; }');
+    // O pin global de overflow do style.css do CRM colapsa a impressão em
+    // UMA página (caixa de rolagem monolítica); o override é o antídoto.
+    expect(styleTag?.textContent).toContain('overflow: visible !important');
     expect(styleTag?.textContent).toContain('background: #faf6ee');
   });
 

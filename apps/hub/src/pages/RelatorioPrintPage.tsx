@@ -81,8 +81,13 @@ export function RelatorioPrintPage() {
       {/* Inset por página via @page (repete em TODA página, ao contrário de
           padding de wrapper); 10mm = o default do Gotenberg que as margens
           zeradas da requisição substituem. O fundo do body propaga para o
-          canvas da folha inteira, margens incluídas. */}
-      <style>{`@page { margin: 10mm; } body { background: ${theme.vars['--rb-bg'] ?? '#ffffff'}; }`}</style>
+          canvas da folha inteira, margens incluídas.
+          O override de overflow desfaz o pin global do style.css do CRM
+          (html/body/#root com overflow-x hidden !important): com o pin, o
+          Chromium trata o documento como caixa de rolagem monolítica e
+          IMPRIME UMA PÁGINA SÓ, descartando o resto — provado por bissecção
+          A/B em headless Chrome (2026-08-24). */}
+      <style>{`@page { margin: 10mm; } body { background: ${theme.vars['--rb-bg'] ?? '#ffffff'}; } html, body, #root, .app-container { overflow: visible !important; max-width: none !important; }`}</style>
       <BlockRenderer
         layout={doc.layout as ReportLayout}
         snapshot={doc.data_snapshot as ReportDocSnapshot}
