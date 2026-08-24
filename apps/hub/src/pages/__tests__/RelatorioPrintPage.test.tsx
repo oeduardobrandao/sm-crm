@@ -74,6 +74,55 @@ describe('RelatorioPrintPage', () => {
     expect(mockedFetchPrintReportDoc).toHaveBeenCalledWith('doc-1', 'tok-1');
   });
 
+  it('themes the sheet background via @page + body style when the layout carries a theme', async () => {
+    const themedLayout: ReportLayout = {
+      version: 1,
+      theme: 'editorial',
+      blocks: [{ id: 'b1', type: 'cover', size: 'full' }],
+    };
+    mockedFetchPrintReportDoc.mockResolvedValue({
+      doc: {
+        id: 'doc-1',
+        title: 'Relatório de Julho',
+        layout: themedLayout,
+        data_snapshot: makeSnapshotFixture(),
+        period_start: '2026-07-01',
+      },
+    } as never);
+
+    const { container } = renderPrintPage();
+
+    await waitFor(() => {
+      expect(container.querySelector('.rb-grid.rb-mode-print')).not.toBeNull();
+    });
+
+    // editorial theme resolves --rb-bg to #faf6ee (theme.ts THEME_DEFS).
+    const styleTag = container.querySelector('style');
+    expect(styleTag?.textContent).toContain('@page { margin: 10mm; }');
+    expect(styleTag?.textContent).toContain('background: #faf6ee');
+  });
+
+  it('falls back to a white sheet background in legacy (theme-less) docs', async () => {
+    mockedFetchPrintReportDoc.mockResolvedValue({
+      doc: {
+        id: 'doc-1',
+        title: 'Relatório de Julho',
+        layout,
+        data_snapshot: makeSnapshotFixture(),
+        period_start: '2026-07-01',
+      },
+    } as never);
+
+    const { container } = renderPrintPage();
+
+    await waitFor(() => {
+      expect(container.querySelector('.rb-grid.rb-mode-print')).not.toBeNull();
+    });
+
+    const styleTag = container.querySelector('style');
+    expect(styleTag?.textContent).toContain('background: #ffffff');
+  });
+
   it('never sets window.__REPORT_READY and shows the error message when the fetch fails', async () => {
     mockedFetchPrintReportDoc.mockRejectedValue(new Error('HTTP 404'));
 

@@ -12,3 +12,11 @@ Deno.test("convert/url: endpoint, url alvo e waitForExpression de prontidão", (
   assertEquals(formData.get("paperHeight"), "11.7");
   assert(formData.get("marginTop") !== null);
 });
+
+Deno.test("convert/url: margens zeradas incondicionalmente (inset vem do @page da pagina)", () => {
+  const { formData } = buildGotenbergUrlRequest("https://x.test/relatorios/print/d1?pt=t", "https://g.test");
+  assertEquals(formData.get("marginTop"), "0");
+  assertEquals(formData.get("marginBottom"), "0");
+  assertEquals(formData.get("marginLeft"), "0");
+  assertEquals(formData.get("marginRight"), "0");
+});
