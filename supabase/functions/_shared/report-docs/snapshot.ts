@@ -59,7 +59,16 @@ export type SnapshotContentBreakdown = {
 export interface ReportDocSnapshot {
   version: 1;
   period: { month: string; label: string; start: string; endExclusive: string };
-  account: { handle: string; specialty: string };
+  account: {
+    handle: string;
+    specialty: string;
+    /** URL estável (cacheada no momento da geração; ver snapshot-source.ts).
+     * Ausente/null = sem foto de perfil disponível. */
+    profile_picture_url?: string | null;
+    /** Nome do cliente (clientes.nome), pro fallback de iniciais do avatar da
+     * capa. Ausente = snapshot gerado antes deste campo existir. */
+    client_name?: string;
+  };
   branding: SnapshotBranding;
   kpis: Record<ReportKpiId, KpiEntry>;
   follower_trend: FollowerTrendPoint[];
@@ -88,7 +97,16 @@ export interface SnapshotPostRow {
 
 export interface SnapshotInput {
   month: string;
-  account: { handle: string; specialty: string };
+  account: {
+    handle: string;
+    specialty: string;
+    /** URL estável (cacheada no momento da geração; ver snapshot-source.ts).
+     * Ausente/null = sem foto de perfil disponível. */
+    profile_picture_url?: string | null;
+    /** Nome do cliente (clientes.nome), pro fallback de iniciais do avatar da
+     * capa. Ausente = snapshot gerado antes deste campo existir. */
+    client_name?: string;
+  };
   branding: SnapshotBranding;
   kpiSources: KpiSources;
   followerTrend: FollowerTrendPoint[];
