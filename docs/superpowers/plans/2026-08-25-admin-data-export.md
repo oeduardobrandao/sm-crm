@@ -36,7 +36,7 @@
 | `supabase/functions/platform-admin/index.ts` | Modify: remove the two inline handlers, import from `mrr.ts` |
 | `supabase/functions/__tests__/platform-admin-mrr_test.ts` | Deno tests proving the handlers attach `owner_*` fields |
 | `apps/admin/src/lib/api.ts` | Modify: `PayingWorkspace`/`TrialWorkspace` gain `owner_*` fields |
-| `apps/admin/src/lib/csv-export.ts` | New: `sanitizeCell`, `toCSV`, `downloadCSV`, `toMonthlyCents`, `centsToReais` |
+| `apps/admin/src/lib/csv-export.ts` | New: `sanitizeCell`, `toCSV`, `downloadCSV`, `toMonthlyCents`, `centsToReais`, `isoDate` |
 | `apps/admin/src/lib/__tests__/csv-export.test.ts` | Vitest tests for the above |
 | `apps/admin/src/pages/workspaces-export.ts` | New: Workspaces-export column defs + row-mapping (annual normalization) |
 | `apps/admin/src/pages/__tests__/workspaces-export.test.ts` | Vitest tests for the row-mapping (including the odd-cents rounding case) |
@@ -1052,7 +1052,7 @@ git commit -m "feat(admin): extract handleGetMrr/handleGetTrials, attach owner c
 
 **Interfaces:**
 - Consumes: nothing from other tasks.
-- Produces: `CsvColumn` (`{ key: string; label: string }`), `sanitizeCell(value: string): string`, `toCSV(rows: Record<string, unknown>[], columns: CsvColumn[]): string`, `downloadCSV(filename: string, csvText: string): void`, `toMonthlyCents(interval: string | null | undefined, amountCents: number | null | undefined): number | null`, `centsToReais(cents: number | null | undefined): number | string`. Tasks 5 and 6 import all of these except `sanitizeCell` (used internally by `toCSV`).
+- Produces: `CsvColumn` (`{ key: string; label: string }`), `sanitizeCell(value: string): string`, `toCSV(rows: Record<string, unknown>[], columns: CsvColumn[]): string`, `downloadCSV(filename: string, csvText: string): void`, `toMonthlyCents(interval: string | null | undefined, amountCents: number | null | undefined): number | null`, `centsToReais(cents: number | null | undefined): number | string`, `isoDate(value: string | null | undefined): string`. Tasks 5 and 6 import all of these except `sanitizeCell` (used internally by `toCSV`).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1060,7 +1060,7 @@ Create `apps/admin/src/lib/__tests__/csv-export.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { centsToReais, sanitizeCell, toCSV, toMonthlyCents } from '../csv-export';
+import { centsToReais, isoDate, sanitizeCell, toCSV, toMonthlyCents } from '../csv-export';
 
 describe('sanitizeCell', () => {
   it('prefixes values starting with =, +, -, @, tab, or CR with a leading quote', () => {
@@ -1145,6 +1145,17 @@ describe('centsToReais', () => {
   it('returns an empty string for null/undefined', () => {
     expect(centsToReais(null)).toBe('');
     expect(centsToReais(undefined)).toBe('');
+  });
+});
+
+describe('isoDate', () => {
+  it('truncates an ISO timestamp to its date portion', () => {
+    expect(isoDate('2026-01-15T10:00:00Z')).toBe('2026-01-15');
+  });
+
+  it('returns an empty string for null/undefined', () => {
+    expect(isoDate(null)).toBe('');
+    expect(isoDate(undefined)).toBe('');
   });
 });
 ```
@@ -1236,6 +1247,11 @@ export function toMonthlyCents(
 export function centsToReais(cents: number | null | undefined): number | string {
   return cents == null ? '' : cents / 100;
 }
+
+/** ISO-8601 timestamp -> plain YYYY-MM-DD, for spreadsheet-sortable date columns. */
+export function isoDate(value: string | null | undefined): string {
+  return value ? value.slice(0, 10) : '';
+}
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
@@ -1262,7 +1278,7 @@ git commit -m "feat(admin): add CSV export utility with formula-injection neutra
 - Modify: `apps/admin/src/pages/WorkspacesPage.tsx`
 
 **Interfaces:**
-- Consumes: `toCSV`, `downloadCSV`, `toMonthlyCents`, `centsToReais`, `CsvColumn` (Task 4); `WorkspaceSummary`, `listWorkspaces` (existing, `apps/admin/src/lib/api.ts`); `statusMeta` (existing, `apps/admin/src/lib/subscription.ts`).
+- Consumes: `toCSV`, `downloadCSV`, `toMonthlyCents`, `centsToReais`, `isoDate`, `CsvColumn` (Task 4); `WorkspaceSummary`, `listWorkspaces` (existing, `apps/admin/src/lib/api.ts`); `statusMeta` (existing, `apps/admin/src/lib/subscription.ts`).
 - Produces: `WORKSPACE_EXPORT_COLUMNS: CsvColumn[]`, `buildWorkspaceExportRows(workspaces: WorkspaceSummary[]): Record<string, string | number>[]` — used only by `WorkspacesPage.tsx` in this task.
 
 - [ ] **Step 1: Write the failing tests for the row-mapping function**
@@ -1367,7 +1383,7 @@ Create `apps/admin/src/pages/workspaces-export.ts`:
 
 ```ts
 import type { WorkspaceSummary } from '../lib/api';
-import { centsToReais, toMonthlyCents, type CsvColumn } from '../lib/csv-export';
+import { centsToReais, isoDate, toMonthlyCents, type CsvColumn } from '../lib/csv-export';
 import { statusMeta } from '../lib/subscription';
 
 export const WORKSPACE_EXPORT_COLUMNS: CsvColumn[] = [
@@ -1388,10 +1404,6 @@ export const WORKSPACE_EXPORT_COLUMNS: CsvColumn[] = [
   { key: 'created_at', label: 'Created' },
   { key: 'last_activity_at', label: 'Last Activity' },
 ];
-
-function isoDate(value: string | null | undefined): string {
-  return value ? value.slice(0, 10) : '';
-}
 
 /** Flattens WorkspaceSummary rows into the CSV shape for WORKSPACE_EXPORT_COLUMNS. */
 export function buildWorkspaceExportRows(
@@ -1590,7 +1602,7 @@ git commit -m "feat(admin): add Export CSV to the Workspaces list"
 - Modify: `apps/admin/src/pages/DashboardPage.tsx`
 
 **Interfaces:**
-- Consumes: `toCSV`, `downloadCSV`, `centsToReais`, `CsvColumn` (Task 4); `PayingWorkspace`, `TrialWorkspace` with their `owner_*` fields (Task 3); `statusMeta` (existing).
+- Consumes: `toCSV`, `downloadCSV`, `centsToReais`, `isoDate`, `CsvColumn` (Task 4); `PayingWorkspace`, `TrialWorkspace` with their `owner_*` fields (Task 3); `statusMeta` (existing).
 - Produces: `PAYING_WORKSPACE_EXPORT_COLUMNS`, `buildPayingWorkspaceExportRows`, `TRIAL_EXPORT_COLUMNS`, `buildTrialExportRows` — used only by `DashboardPage.tsx` in this task.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1689,7 +1701,7 @@ Create `apps/admin/src/pages/dashboard-export.ts`:
 
 ```ts
 import type { PayingWorkspace, TrialWorkspace } from '../lib/api';
-import { centsToReais, type CsvColumn } from '../lib/csv-export';
+import { centsToReais, isoDate, type CsvColumn } from '../lib/csv-export';
 import { statusMeta } from '../lib/subscription';
 
 export const PAYING_WORKSPACE_EXPORT_COLUMNS: CsvColumn[] = [
@@ -1735,10 +1747,6 @@ export const TRIAL_EXPORT_COLUMNS: CsvColumn[] = [
   { key: 'trial_ends_at', label: 'Trial Ends' },
   { key: 'monthly_amount_brl', label: 'Expected Monthly Amount (R$)' },
 ];
-
-function isoDate(value: string | null | undefined): string {
-  return value ? value.slice(0, 10) : '';
-}
 
 export function buildTrialExportRows(
   trials: TrialWorkspace[],
