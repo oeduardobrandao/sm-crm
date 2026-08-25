@@ -182,6 +182,7 @@ export default function ArquivosPage() {
     blur_data_url: f.blur_data_url,
     url: f.url,
     thumbnail_url: f.thumbnail_url,
+    media_lost_at: f.media_lost_at ?? null,
     playback: f.playback ?? null,
   }));
 

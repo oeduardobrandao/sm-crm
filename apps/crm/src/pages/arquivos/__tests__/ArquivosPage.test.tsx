@@ -239,4 +239,35 @@ describe('ArquivosPage', () => {
       });
     });
   });
+
+  describe('lightbox media_lost_at mapping', () => {
+    it('carries the media_lost_at field from FileRecord into the lightbox, showing the unavailable placeholder', async () => {
+      mockedGetFolderContents.mockResolvedValue(
+        makeFolderContents({
+          files: [
+            makeFile({
+              id: 200,
+              name: 'perdido.png',
+              kind: 'image',
+              url: undefined,
+              thumbnail_url: null,
+              media_lost_at: '2026-08-14T03:00:00.000Z',
+            }),
+          ],
+        }),
+      );
+
+      render(<ArquivosPage />, { wrapper: createWrapper() });
+
+      await waitFor(() => {
+        expect(screen.getByText('perdido.png')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('perdido.png'));
+
+      await waitFor(() => {
+        expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
+      });
+    });
+  });
 });

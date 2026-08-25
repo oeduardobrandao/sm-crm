@@ -120,6 +120,29 @@ describe('FilePickerModal', () => {
     expect(screen.getByText('image2.jpg')).toBeInTheDocument();
   });
 
+  it('shows the file-type icon instead of a broken image for a permanently lost file', async () => {
+    mockedGetFolderContents.mockResolvedValue(
+      makeFolderContents({
+        files: [
+          makeFile({
+            id: 200,
+            name: 'perdido.png',
+            url: undefined,
+            thumbnail_url: null,
+            media_lost_at: '2026-08-14T03:00:00.000Z',
+          }),
+        ],
+      }),
+    );
+    render(<FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />, {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => {
+      expect(screen.getAllByRole('button').length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
   it('shows empty state when no files or folders', async () => {
     mockedGetFolderContents.mockResolvedValue(makeFolderContents());
 
