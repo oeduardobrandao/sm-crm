@@ -59,7 +59,8 @@ no passo 1 do assistente de novo fluxo, e o pill de reentrada "Guia".
 ### Tela inicial (home)
 
 - Título "Bem-vindo ao Mesaas", subtítulo prometendo que fechar não perde progresso.
-- Barra de progresso geral fina (amarela `--primary-color`) + contador "N de 15 páginas".
+- Barra de progresso geral fina (amarela `--primary-color`) + contador "N de M
+  páginas" (M = total pós-filtro de entitlement, ver §Trilhas).
 - Três cards de trilha: ícone, título numerado, uma linha de resumo + contagem de
   páginas/tempo, botão Começar/Continuar (ink no próximo passo sugerido, outline nos
   demais). Card 1 leva o badge amarelo "Dica: comece com o seu próprio Instagram".
@@ -91,7 +92,7 @@ IDs estáveis (persistidos no localStorage). Sinais de conclusão em §Arquitetu
 | `t1p5` | Primeiro cliente pronto (recap) | — | vista | — |
 | `t2p1` | Membro é uma coisa, acesso é outra | — | vista | — |
 | `t2p2` | Três papéis de acesso | — | vista | — |
-| `t2p3` | Convide alguém da equipe | `/equipe?novo=1` | `membros > 0` | — |
+| `t2p3` | Adicione alguém da equipe | `/equipe?novo=1` | `membros > 0` | — |
 | `t2p4` | O dia a dia vive nas Tarefas (ponte) | — | vista | — |
 | `t3p1` | Fluxo, etapas e posts | — | vista | — |
 | `t3p2` | Crie o primeiro fluxo | `/entregas?novo-fluxo=1` | `workflows > 0` | — |
@@ -100,6 +101,14 @@ IDs estáveis (persistidos no localStorage). Sinais de conclusão em §Arquitetu
 | `t3p5` | Regras de agendamento | — | vista | — |
 | `t3p6` | Pronto para rodar (conclusão) | — | vista | — |
 
+- **Todos os contadores derivam das páginas filtradas**: o total da home ("N de M
+  páginas"), a barra geral, os segmentos por trilha, o "Página N de M" do header, o
+  contador do pill e a regra de 100%/conclusão usam sempre o conjunto pós-filtro de
+  entitlement — nunca o literal 15. Um plano sem Hub tem 14 páginas e conclui aos 14.
+- **`t2p3` comprova "criar membro", não "enviar convite"**: o `EquipePage` cria o
+  registro de membro primeiro e o convite é uma segunda operação não-atômica e
+  opcional (o toggle nasce desligado). A página ensina onde o convite mora, mas o
+  passo — título e sinal (`membros > 0`) — é adicionar alguém à equipe.
 - Páginas com flag de entitlement seguem o precedente do `OnboardingBanner`: quando
   `hasFeature` é falso, a página **sai da trilha** (a contagem encolhe) — nunca
   oferecer um passo paywalled que impediria o guia de chegar a 100%. `hasFeature` é
@@ -115,11 +124,14 @@ IDs estáveis (persistidos no localStorage). Sinais de conclusão em §Arquitetu
 
 ### Pill de reentrada
 
-- Fixed no canto inferior direito: "Guia · N de 15" + ponto amarelo de pendência.
+- Fixed no canto inferior direito: "Guia · N de M" + ponto amarelo de pendência.
 - **`display: none` por padrão; visível só dentro de `@media (min-width: 1101px)`**
   (regra dura do layout do CRM para UI fixa ancorada — abaixo disso a sidebar vira
-  drawer). Abaixo de 1101px a reentrada é um item "Guia de primeiros passos" na
-  sidebar (drawer), com o mesmo ponto de pendência.
+  drawer).
+- Reentrada fora do desktop (abaixo de 1101px não há sidebar estática, e no telefone
+  quem existe é o `MobileNav`, não a sidebar): item "Guia de primeiros passos" com o
+  mesmo ponto de pendência em **dois** lugares — na sidebar em modo drawer (faixa
+  tablet) e no sheet "Mais" do `MobileNav` (telefones, via `getMoreSheetGroups`).
 - Visível para donos enquanto o guia não estiver concluído. Some quando: (a) o
   usuário clica "Concluir guia" na t3p6, (b) todas as páginas estão concluídas, ou
   (c) todos os sinais de ação (clientes, IG, hub, membros, fluxos) já são verdadeiros
@@ -183,13 +195,17 @@ Queries próprias (o guia é global; não herda as do dashboard), `staleTime` cu
 | Sinal | Fonte |
 |---|---|
 | `hasCliente` | `getClientes()` count > 0 (store) |
-| `hasInstagram` | `getPortfolioAccounts()` length > 0 (`services/analytics`, mesma fonte do banner) |
+| `hasInstagram` | `getPortfolioSummary().accounts.length > 0` (`services/analytics.ts:243`, query key `['portfolioSummary']` — a mesma fonte que o dashboard passa ao banner; considera só clientes ativos, o que serve: o guia cria clientes ativos) |
 | `hasHubToken` | novo helper `hasAnyHubToken()` em `store/hub.ts`: `select count` em `client_hub_tokens` do workspace (RLS já escopa) |
 | `hasMembro` | `getMembros()` count > 0 |
 | `hasWorkflow` | `getWorkflows()` count > 0 |
 
 Página com `signal` conclui quando o sinal fica verdadeiro (mesmo com o guia
 fechado); página sem `signal` conclui ao ser vista.
+
+**Erros são inconclusivos.** Uma query em erro nunca vira "zero": não marca nem
+desmarca página, não conta para a regra de auto-conclusão do pill, e usa o retry
+padrão do TanStack Query. `data ?? []` como fallback é proibido nos sinais.
 
 ### Auto-abertura (gating)
 
@@ -200,9 +216,11 @@ as condições valem:
   helper estrito: `membershipResolved !== false && workspaceRole === 'owner'`).
 - Rota atual é `/dashboard`.
 - Storage sem `autoOpenedAt`, `dismissedAt` e `concludedAt`.
-- Queries de `hasCliente` e `hasWorkflow` **resolvidas** e ambas zero (padrão
-  `TrialNudgeCard`: nunca decidir sobre dados parciais — sem flash para workspace
-  ativo, sem flash para agente).
+- Queries de `hasCliente` e `hasWorkflow` com **`status === 'success'`** e ambas
+  zero (padrão `TrialNudgeCard`: nunca decidir sobre dados parciais — sem flash para
+  workspace ativo, sem flash para agente). Erro de query **não** conta como zero:
+  sem sucesso explícito não há auto-abertura; se o retry padrão resolver depois e as
+  condições valerem, aí sim abre.
 
 Sem auto-abertura, a entrada é o pill/item de sidebar (mesmas regras de visibilidade
 do §Pill). Fechar o modal (X, overlay, "Fechar por enquanto") grava `dismissedAt` e
@@ -213,14 +231,23 @@ mantém o progresso.
 Fluxo: fecha o modal → `navigate(to)` → grava `lastPageId`. Reabrir pelo pill volta
 direto em `lastPageId`. O modal **não** reaparece sozinho depois da ação.
 
-Alterações nas páginas alvo (efeito on-mount que lê o param, abre o dialog e o
-remove via `setSearchParams(..., { replace: true })`):
+Alterações nas páginas alvo — **efeito reativo ao parâmetro** (dependência em
+`searchParams`), nunca on-mount: se o usuário já está em `/clientes`, `/equipe` ou
+`/entregas`, a navegação só troca a query string e a página não remonta. O efeito lê
+o param, abre o dialog e o remove via `setSearchParams(..., { replace: true })`:
 
 | Rota | Param | Abre |
 |---|---|---|
 | `/clientes` | `?novo=1` | dialog de novo cliente (`ClientesPage`) |
 | `/equipe` | `?novo=1` | dialog de novo membro (`EquipePage`) |
 | `/entregas` | `?novo-fluxo=1` | `NewWorkflowWizard` (`EntregasPage`) |
+
+**Caso especial `EntregasPage`:** a página parseia a URL exatamente uma vez no mount
+(`initialQuery` em `useRef`) e um efeito serializador reescreve a URL a partir do
+estado, **descartando deliberadamente params transitórios** (é assim que `?drawer=`
+e `?post=` já funcionam: um efeito dedicado os consome antes). `?novo-fluxo=1` entra
+nesse mesmo padrão — consumido por um efeito próprio (seta `newWorkflowOpen`) antes
+de o sincronizador reescrever a URL; jamais no parse do mount.
 
 `/clientes/:id/redes-sociais` e `/clientes/:id/hub` já são rotas — sem param, só
 navegação (id = cliente mais recente). Nenhuma rota nova → **sem mudança no
@@ -252,9 +279,13 @@ navegação (id = cliente mais recente). Nenhuma rota nova → **sem mudança no
 - Gating de auto-abertura: dono vs. agente, membership não resolvida, workspace com
   dados, queries pendentes (não abre antes de resolver), abre uma vez só.
 - `guideContent`: ids únicos, sinais válidos, filtro por entitlement encolhe a trilha.
-- Deep links: cada página alvo abre o dialog com o param e o remove da URL. Lição do
-  flake da `ImportarPage`: nunca esperar por heading que renderiza antes dos dados;
-  interagir só depois de o controle estar habilitado.
+- Deep links: cada página alvo abre o dialog com o param e o remove da URL; caso
+  "já estou na página" (só a query muda, sem remount) coberto por teste; no
+  `EntregasPage`, teste de que o serializador de URL não engole `?novo-fluxo=1`
+  antes de o efeito consumi-lo. Lição do flake da `ImportarPage`: nunca esperar por
+  heading que renderiza antes dos dados; interagir só depois de o controle estar
+  habilitado.
+- Gating com query em erro: sem auto-abertura; sinais em erro não marcam páginas.
 - Dashboard sem o banner: testes existentes atualizados.
 - Pill/media query: jsdom não avalia `@media` — visibilidade responsiva é verificada
   no browser, não em teste unitário.
@@ -271,3 +302,6 @@ navegação (id = cliente mais recente). Nenhuma rota nova → **sem mudança no
   pode demorar alguns segundos ao voltar — o texto do guia não promete instantâneo.
 - Nomes reais dos status padrão de post devem ser lidos do código na implementação
   antes de escrever a cópia final de `t3p4`.
+- **Serializador de URL do `EntregasPage`** reescreve a query a partir do estado e
+  descarta o que não conhece — qualquer param transitório novo precisa ser consumido
+  por efeito próprio (padrão `?drawer=`/`?post=`) ou some antes de agir.
