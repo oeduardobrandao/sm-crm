@@ -6,6 +6,8 @@ import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import Link from '@tiptap/extension-link';
 import { CalloutExtension } from './CalloutExtension';
+import { CommentHighlight } from './CommentHighlight';
+import { InlineImageReadonly } from './InlineImageReadonly';
 import { MentionNode } from '@/components/mentions/MentionNode';
 
 interface ReadOnlyTipTapProps {
@@ -13,6 +15,9 @@ interface ReadOnlyTipTapProps {
   className?: string;
 }
 
+// Must stay a superset of the marks/nodes the editable PostEditor can persist into
+// `conteudo`, or TipTap silently drops the ENTIRE document on read (same invariant as the
+// hub's richTextExtensions in apps/hub/src/components/RichTextContent.tsx).
 export const readOnlyTipTapExtensions = [
   StarterKit,
   UnderlineExt,
@@ -21,6 +26,8 @@ export const readOnlyTipTapExtensions = [
   Highlight.configure({ multicolor: true }),
   Link.configure({ openOnClick: true, autolink: false }),
   CalloutExtension,
+  CommentHighlight,
+  InlineImageReadonly,
   MentionNode,
 ];
 
