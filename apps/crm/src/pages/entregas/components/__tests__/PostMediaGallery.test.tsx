@@ -426,3 +426,19 @@ describe('PostMediaGallery auto-clean placeholder', () => {
     expect(screen.queryByText('Mídia removida para liberar espaço')).toBeNull();
   });
 });
+
+describe('PostMediaGallery permanently lost media', () => {
+  it('shows the unavailable placeholder instead of a broken image for a permanently lost tile', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce([
+      {
+        ...makeMedia(1)[0],
+        url: undefined,
+        thumbnail_url: null,
+        media_lost_at: '2026-08-14T03:00:00.000Z',
+      },
+    ]);
+    renderGallery();
+    expect(await screen.findByText('Mídia indisponível')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+});

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CalendarPostDetailPanel } from '../CalendarPostDetailPanel';
@@ -133,5 +133,35 @@ describe('CalendarPostDetailPanel', () => {
     renderPanel({ isCurrentWorkflow: true, isLocked: false, dayMarkers: markers });
     fireEvent.click(screen.getByRole('button', { name: /jul 2026|Selecionar data e hora/i }));
     expect(await screen.findByTitle('1 Feed')).toBeInTheDocument();
+  });
+
+  it('falls back to the empty-thumbnail icon instead of a broken image when the cover is permanently lost (no source change — the component already treats a null thumbnail_url/url as no cover)', async () => {
+    mockMedia.mockResolvedValue([
+      {
+        id: 1,
+        post_id: 1,
+        conta_id: 'c',
+        r2_key: 'img/1.jpg',
+        thumbnail_r2_key: null,
+        kind: 'image',
+        mime_type: 'image/jpeg',
+        size_bytes: 1000,
+        original_filename: 'img.jpg',
+        width: 1080,
+        height: 1080,
+        duration_seconds: null,
+        is_cover: true,
+        sort_order: 0,
+        uploaded_by: null,
+        created_at: '2026-01-01T00:00:00Z',
+        url: null,
+        thumbnail_url: null,
+        media_lost_at: '2026-08-14T03:00:00.000Z',
+      } as never,
+    ]);
+    renderPanel();
+    await waitFor(() => {
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    });
   });
 });

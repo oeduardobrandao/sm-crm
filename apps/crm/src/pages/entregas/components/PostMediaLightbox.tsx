@@ -3,6 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { ChevronLeft, ChevronRight, Download, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
+import { MediaUnavailable } from '@/components/MediaUnavailable';
 import type { PostMedia } from '../../../store';
 import { downloadMedia } from '@/utils/downloadMedia';
 
@@ -79,7 +80,9 @@ export function PostMediaLightbox({
           </DialogPrimitive.Title>
 
           <div className="flex items-center justify-center max-h-[85vh] max-w-[90vw] touch-none pointer-events-auto">
-            {current.kind === 'image' ? (
+            {current.media_lost_at ? (
+              <MediaUnavailable size="full" className="max-h-[85vh] max-w-[90vw] aspect-square" />
+            ) : current.kind === 'image' ? (
               <img
                 src={current.url}
                 alt={current.original_filename}
