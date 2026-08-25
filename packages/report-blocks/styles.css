@@ -124,12 +124,31 @@
   border-top: 1px solid rgba(0, 0, 0, 0.12);
   margin: 1em 0;
 }
+.rb-cover {
+  min-height: 80vh;
+}
+.rb-cover-splash {
+  max-height: 320px;
+}
 @media print {
   .rb-page-break {
     break-after: page;
   }
   .rb-grid {
     max-width: none;
+  }
+  .rb-cover {
+    /* Área útil do A4 com as margens de 10mm que o Gotenberg já usa
+       (RelatorioPrintPage.tsx: `@page { margin: 10mm; }`). */
+    min-height: 277mm;
+    break-after: page;
+  }
+  .rb-cover-splash {
+    /* Acompanha o teto de tela: garante que kicker+título+subtítulo+logo+splash
+       cabem em 277mm mesmo com logoSize no máximo (achado de review externo
+       2026-08-25 — sem isso o break-after não impede a PRÓPRIA capa de invadir
+       a página 2). */
+    max-height: 100mm;
   }
 }
 /* Modo edição (canvas do CRM): célula sem dados NÃO colapsa; mostra aviso.

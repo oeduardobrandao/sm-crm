@@ -58,7 +58,7 @@ function clampAccent(hex: string | null | undefined): string {
   return hex && HEX_RE.test(hex) ? hex : '#171717';
 }
 
-function pickAccentFg(acc: string, ink: string): string {
+export function pickAccentFg(acc: string, ink: string): string {
   return contrastRatio('#ffffff', acc) >= contrastRatio(ink, acc) ? '#ffffff' : ink;
 }
 

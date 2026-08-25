@@ -162,4 +162,16 @@ describe('BlockRenderer', () => {
     expect(css).toContain('.rb-grid.rb-mode-edit .rb-edit-body:empty');
     expect(css).toContain('Sem dados no período');
   });
+
+  it('cover com size persistido != full: renderiza como largura cheia mesmo assim (defesa contra dado antigo/inválido)', () => {
+    const badLayout: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 'c', type: 'cover', size: 'third' }],
+    };
+    const { container } = render(
+      <BlockRenderer layout={badLayout} snapshot={makeSnapshotFixture()} mode="view" />,
+    );
+    const wrapper = container.querySelector('[data-block-id="c"]') as HTMLElement;
+    expect(wrapper.className).toBe('rb-full');
+  });
 });
