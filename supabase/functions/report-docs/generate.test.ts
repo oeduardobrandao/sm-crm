@@ -403,3 +403,53 @@ Deno.test("erro na RPC de feature_brand_customization degrada para os defaults n
   assertEquals(row.status, "ready");
   assertEquals(row.data_snapshot.branding.hub_theme?.surface, "neutral");
 });
+
+Deno.test("generate: cacheia a foto de perfil e propaga client_name no snapshot", async () => {
+  const uploaded: { path: string; contentType: string }[] = [];
+  const storage = {
+    from: (bucket: string) => ({
+      upload: async (path: string, _body: unknown, opts: { contentType: string }) => {
+        uploaded.push({ path, contentType: opts.contentType });
+        return { error: null };
+      },
+      getPublicUrl: (path: string) => ({
+        data: { publicUrl: `https://cdn.example/${bucket}/${path}` },
+      }),
+    }),
+    createBucket: async () => ({}),
+  };
+  const fetchMock = (async (url: string) => {
+    if (url === "https://cdninstagram.com/raw.jpg") {
+      return new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { "content-type": "image/jpeg" },
+      });
+    }
+    return new Response("{}", { status: 200 });
+  }) as typeof fetch;
+  const testDeps = { ...deps, fetch: fetchMock, storage };
+
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "Dra. X", especialidade: "Derma", include_ai_analysis: false },
+    instagram_accounts: {
+      id: "ig-1", username: "dra.x", follower_count: 100,
+      profile_picture_url: "https://cdninstagram.com/raw.jpg",
+    },
+    instagram_posts: [],
+    instagram_follower_history: [],
+    instagram_analytics_cache: null,
+    instagram_account_metrics_daily: [],
+    workspaces: { name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null },
+  });
+  await generateReportDocument(db, testDeps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as {
+    data_snapshot: { account: { client_name: string; profile_picture_url: string | null } };
+  };
+  assertEquals(row.data_snapshot.account.client_name, "Dra. X");
+  assertEquals(
+    row.data_snapshot.account.profile_picture_url,
+    "https://cdn.example/instagram-posts/ig-1/avatar.jpg",
+  );
+  assertEquals(uploaded.length, 1);
+  assertEquals(uploaded[0].path, "ig-1/avatar.jpg");
+});

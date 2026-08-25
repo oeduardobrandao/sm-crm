@@ -88,7 +88,9 @@ export async function generateReportDocument(
   }
 
   const { snapshot, igAccountId } = await loadClientSnapshot(
-    db, deps, contaId, { id: cliente.id, especialidade: cliente.especialidade }, month,
+    db, deps, contaId,
+    { id: cliente.id, especialidade: cliente.especialidade, nome: cliente.nome },
+    month,
   );
 
   // IA: nunca derruba a geração (padrão do v2, index.ts:987-1017).

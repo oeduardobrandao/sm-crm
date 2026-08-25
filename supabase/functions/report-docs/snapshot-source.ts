@@ -58,7 +58,7 @@ export async function loadClientSnapshot(
   db: Db,
   deps: SnapshotDeps,
   contaId: string,
-  cliente: { id: number; especialidade: string | null },
+  cliente: { id: number; especialidade: string | null; nome: string },
   month: string,
 ): Promise<{ snapshot: ReportDocSnapshot; igAccountId: string }> {
   const w = monthWindow(month);
@@ -99,6 +99,21 @@ export async function loadClientSnapshot(
       );
       return { value: null, prev: null };
     });
+
+  // Foto do cliente: cacheada no MESMO bucket/mecanismo dos thumbnails de post
+  // (achado de review externo 2026-08-25) -- instagram_accounts.profile_picture_url
+  // NÃO é garantidamente estável: a conexão inicial grava a URL efêmera crua do
+  // Graph (instagram-integration/index.ts:382), só os crons de sync recacheiam
+  // depois. O data_snapshot é congelado para sempre, então precisa da MESMA
+  // blindagem que os thumbnails de post já têm -- sem isso a foto quebraria
+  // quando a URL efêmera expirasse, sem chance de autocorrigir depois.
+  const avatarUrlPromise: Promise<string | null> = cachePostThumbnail(
+    { fetch: deps.fetch, storage: deps.storage },
+    igAccountId,
+    "avatar",
+    account.profile_picture_url ?? null,
+    null,
+  );
 
   const lastSnapshotOfMonth = (win: typeof w) =>
     db.from("instagram_account_metrics_daily").select("*")
@@ -220,12 +235,15 @@ export async function loadClientSnapshot(
   }));
 
   const accountViews = await accountViewsPromise;
+  const avatarUrl = await avatarUrlPromise;
 
   const snapshot = assembleSnapshot({
     month,
     account: {
       handle: account.username ?? account.handle ?? "",
       specialty: [cliente.especialidade].filter(Boolean).join(" · "),
+      profile_picture_url: avatarUrl,
+      client_name: cliente.nome,
     },
     branding: {
       workspace_name: ws?.name ?? "Mesaas",
