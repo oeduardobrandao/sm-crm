@@ -43,6 +43,23 @@ begin
   assert v_owner ->> 'email' = 'early-owner@example.com',
     'owner email must match the earliest-joined_at row';
 
+  -- Now make v_late (the LATER-joined member) the workspace's creator. The
+  -- creator-first leg of the tie-break must now override joined_at ordering.
+  update workspaces set created_by = v_late where id = v_ws;
+
+  execute 'set local role service_role';
+  v_result := admin_list_workspaces(null, null, 0, 50);
+  execute 'reset role';
+
+  select w -> 'owner' into v_owner
+    from jsonb_array_elements(v_result -> 'workspaces') w
+   where (w ->> 'id')::uuid = v_ws;
+
+  assert v_owner ->> 'name' = 'Late Owner',
+    format('expected the workspace creator to win the tie-break, got %s', v_owner ->> 'name');
+  assert v_owner ->> 'email' = 'late-owner@example.com',
+    'owner email must match the workspace creator once created_by is set';
+
   raise notice 'PASS 67_admin_list_workspaces_owner_tiebreak';
 end $$;
 rollback;

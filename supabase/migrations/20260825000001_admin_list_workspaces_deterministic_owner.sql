@@ -3,9 +3,14 @@
 -- more than one role='owner' row (an existing owner can promote another member to 'owner'
 -- via manage-workspace-user's update-role action), and the previous version's `own` LATERAL
 -- picked one with an unordered LIMIT 1, i.e. an arbitrary row. Ties are now broken by
--- joined_at (earliest wins), then user_id -- the same rule the platform-admin
--- fetchOwnerContacts helper (supabase/functions/platform-admin/owner-contact.ts) uses for
--- the MRR/Trials owner enrichment, so both paths agree on "the owner" for a given workspace.
+-- preferring the owner-role member who is also the workspace's creator (workspaces.created_by),
+-- falling back to earliest joined_at then user_id when the creator isn't among the owner-role
+-- rows (or created_by is null) -- the same convention already used in
+-- 20260803000004_loops_sync_rpcs.sql, 20260730000001_lifecycle_emails.sql and
+-- 20260730000003_thankyou_candidates_plan_info.sql for the Loops marketing-email pipeline, and
+-- mirrored by the platform-admin fetchOwnerContacts helper
+-- (supabase/functions/platform-admin/owner-contact.ts) for the MRR/Trials owner enrichment, so
+-- all paths agree on "the owner" for a given workspace.
 CREATE OR REPLACE FUNCTION admin_list_workspaces(
   p_search  text DEFAULT NULL,
   p_plan_id text DEFAULT NULL,
@@ -22,7 +27,7 @@ WITH default_plan AS (
   SELECT id, name FROM plans WHERE is_default = true LIMIT 1
 ),
 filtered AS (
-  SELECT w.id, w.name, w.logo_url, w.created_at, w.plan_id
+  SELECT w.id, w.name, w.logo_url, w.created_at, w.plan_id, w.created_by
     FROM workspaces w
    WHERE (p_search IS NULL OR w.name ILIKE '%' || p_search || '%')
      AND (p_plan_id IS NULL
@@ -65,7 +70,7 @@ enriched AS (
       LEFT JOIN profiles pr ON pr.id = m.user_id
       LEFT JOIN auth.users u ON u.id = m.user_id
      WHERE m.workspace_id = p.id AND m.role = 'owner'
-     ORDER BY m.joined_at ASC, m.user_id ASC
+     ORDER BY (m.user_id = p.created_by) DESC, m.joined_at ASC, m.user_id ASC
      LIMIT 1
   ) own ON true
   LEFT JOIN LATERAL (

@@ -62,8 +62,8 @@ export default function WorkspacesPage() {
       downloadCSV(`workspaces-${new Date().toISOString().slice(0, 10)}.csv`, csv);
 
       if (total > MAX_ROWS) {
-        toast.error(
-          `Exported the first ${MAX_ROWS} of ${total} matching workspaces — narrow your search or plan filter to export the rest.`,
+        toast.warning(
+          `Exported the first ${MAX_ROWS} of ${total} matching workspaces. Narrow your search or plan filter to export the rest.`,
         );
       }
     } catch (err) {

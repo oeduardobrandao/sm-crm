@@ -1,6 +1,6 @@
 import type { WorkspaceSummary } from '../lib/api';
 import { centsToReais, isoDate, toMonthlyCents, type CsvColumn } from '../lib/csv-export';
-import { statusMeta } from '../lib/subscription';
+import { statusMeta, hasSubscription } from '../lib/subscription';
 
 export const WORKSPACE_EXPORT_COLUMNS: CsvColumn[] = [
   { key: 'workspace_name', label: 'Workspace' },
@@ -27,6 +27,7 @@ export function buildWorkspaceExportRows(
 ): Record<string, string | number>[] {
   return workspaces.map((ws) => {
     const sub = ws.subscription;
+    const hasSub = hasSubscription(sub);
     return {
       workspace_name: ws.name,
       owner_name: ws.owner?.name ?? '',
@@ -34,13 +35,13 @@ export function buildWorkspaceExportRows(
       owner_telefone: ws.owner?.telefone ?? '',
       owner_marketing_opt_in: ws.owner?.marketing_opt_in ? 'yes' : 'no',
       plan_name: ws.plan_name ?? '',
-      subscription_status: sub ? statusMeta(sub.status).label : '',
-      billing_interval: sub?.interval ?? '',
-      subscription_amount_brl: centsToReais(sub?.amount_cents ?? null),
-      monthly_amount_brl: centsToReais(
-        toMonthlyCents(sub?.interval ?? null, sub?.amount_cents ?? null),
-      ),
-      discount_label: sub?.discount_label ?? '',
+      subscription_status: hasSub ? statusMeta(sub.status).label : '',
+      billing_interval: hasSub ? (sub.interval ?? '') : '',
+      subscription_amount_brl: hasSub ? centsToReais(sub.amount_cents ?? null) : '',
+      monthly_amount_brl: hasSub
+        ? centsToReais(toMonthlyCents(sub.interval ?? null, sub.amount_cents ?? null))
+        : '',
+      discount_label: hasSub ? (sub.discount_label ?? '') : '',
       client_count: ws.client_count,
       member_count: ws.member_count,
       has_overrides: ws.has_overrides ? 'yes' : 'no',

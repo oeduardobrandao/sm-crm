@@ -13,13 +13,19 @@ interface Profile {
   telefone: string | null;
   marketing_opt_in: boolean | null;
 }
+interface Workspace {
+  id: string;
+  created_by: string | null;
+}
 
 function makeFakeSvc(opts: {
   members: Member[];
   profiles: Profile[];
   getUserById: (id: string) => Promise<{ data: { user: { id: string; email: string } | null } }>;
+  workspaces?: Workspace[];
   membersError?: Error;
   profilesError?: Error;
+  workspacesError?: Error;
 }) {
   const db = {
     from(table: string) {
@@ -66,6 +72,21 @@ function makeFakeSvc(opts: {
           }),
         };
       }
+      if (table === "workspaces") {
+        return {
+          select: () => ({
+            in: (_col: string, ids: string[]) => {
+              if (opts.workspacesError) {
+                return Promise.resolve({ data: null, error: opts.workspacesError });
+              }
+              return Promise.resolve({
+                data: (opts.workspaces ?? []).filter((w) => ids.includes(w.id)),
+                error: null,
+              });
+            },
+          }),
+        };
+      }
       throw new Error(`unexpected table ${table}`);
     },
     auth: { admin: { getUserById: (id: string) => opts.getUserById(id) } },
@@ -93,6 +114,64 @@ Deno.test("picks the earliest-joined_at owner when a workspace has two owner row
     telefone: null,
     marketing_opt_in: true,
   });
+});
+
+Deno.test("prefers the workspace creator over the earliest-joined_at owner", async () => {
+  const svc = makeFakeSvc({
+    members: [
+      { workspace_id: "ws-1", user_id: "user-early", joined_at: "2026-01-01T00:00:00Z" },
+      { workspace_id: "ws-1", user_id: "user-late", joined_at: "2026-02-01T00:00:00Z" },
+    ],
+    profiles: [
+      { id: "user-early", nome: "Early Owner", telefone: null, marketing_opt_in: false },
+      { id: "user-late", nome: "Late Owner", telefone: null, marketing_opt_in: true },
+    ],
+    workspaces: [{ id: "ws-1", created_by: "user-late" }],
+    getUserById: (id) => Promise.resolve({ data: { user: { id, email: `${id}@example.com` } } }),
+  });
+
+  const result = await fetchOwnerContacts(svc, ["ws-1"]);
+  assertEquals(result.get("ws-1"), {
+    name: "Late Owner",
+    email: "user-late@example.com",
+    telefone: null,
+    marketing_opt_in: true,
+  });
+});
+
+Deno.test("falls back to earliest-joined_at when created_by is null or not an owner", async () => {
+  const svcNullCreator = makeFakeSvc({
+    members: [
+      { workspace_id: "ws-1", user_id: "user-late", joined_at: "2026-02-01T00:00:00Z" },
+      { workspace_id: "ws-1", user_id: "user-early", joined_at: "2026-01-01T00:00:00Z" },
+    ],
+    profiles: [
+      { id: "user-late", nome: "Late Owner", telefone: null, marketing_opt_in: false },
+      { id: "user-early", nome: "Early Owner", telefone: null, marketing_opt_in: true },
+    ],
+    workspaces: [{ id: "ws-1", created_by: null }],
+    getUserById: (id) => Promise.resolve({ data: { user: { id, email: `${id}@example.com` } } }),
+  });
+
+  const resultNullCreator = await fetchOwnerContacts(svcNullCreator, ["ws-1"]);
+  assertEquals(resultNullCreator.get("ws-1")?.name, "Early Owner");
+
+  const svcNonOwnerCreator = makeFakeSvc({
+    members: [
+      { workspace_id: "ws-1", user_id: "user-late", joined_at: "2026-02-01T00:00:00Z" },
+      { workspace_id: "ws-1", user_id: "user-early", joined_at: "2026-01-01T00:00:00Z" },
+    ],
+    profiles: [
+      { id: "user-late", nome: "Late Owner", telefone: null, marketing_opt_in: false },
+      { id: "user-early", nome: "Early Owner", telefone: null, marketing_opt_in: true },
+    ],
+    // created_by points at a user who has no owner-role row for this workspace at all.
+    workspaces: [{ id: "ws-1", created_by: "user-not-a-member" }],
+    getUserById: (id) => Promise.resolve({ data: { user: { id, email: `${id}@example.com` } } }),
+  });
+
+  const resultNonOwnerCreator = await fetchOwnerContacts(svcNonOwnerCreator, ["ws-1"]);
+  assertEquals(resultNonOwnerCreator.get("ws-1")?.name, "Early Owner");
 });
 
 Deno.test("a workspace with no owner-role row has no entry in the result map", async () => {
@@ -166,6 +245,24 @@ Deno.test("workspace_members query failure propagates instead of being swallowed
     assertEquals((err as Error).message, "db down");
   }
   assert(threw, "expected fetchOwnerContacts to throw on a membership-query failure");
+});
+
+Deno.test("workspaces query failure propagates instead of being swallowed", async () => {
+  const svc = makeFakeSvc({
+    members: [{ workspace_id: "ws-1", user_id: "user-1", joined_at: "2026-01-01T00:00:00Z" }],
+    profiles: [{ id: "user-1", nome: "Alice", telefone: null, marketing_opt_in: false }],
+    getUserById: () => Promise.resolve({ data: { user: null } }),
+    workspacesError: new Error("workspaces down"),
+  });
+
+  let threw = false;
+  try {
+    await fetchOwnerContacts(svc, ["ws-1"]);
+  } catch (err) {
+    threw = true;
+    assertEquals((err as Error).message, "workspaces down");
+  }
+  assert(threw, "expected fetchOwnerContacts to throw on a workspaces-query failure");
 });
 
 Deno.test("profiles query failure propagates instead of being swallowed", async () => {

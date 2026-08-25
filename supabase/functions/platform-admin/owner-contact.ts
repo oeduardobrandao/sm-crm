@@ -14,9 +14,12 @@ export interface OwnerContact {
 /**
  * Resolves the "owner" of each given workspace for admin display/export purposes.
  * workspace_members only constrains UNIQUE(user_id, workspace_id) -- more than one
- * role='owner' row per workspace is possible -- so ties are broken by earliest
- * joined_at, then user_id. This must match the tie-break admin_list_workspaces uses
- * (migration 20260825000001) so both paths agree on "the owner" for the same workspace.
+ * role='owner' row per workspace is possible -- so ties are broken by preferring the
+ * owner-role member who is also the workspace's creator (workspaces.created_by),
+ * falling back to earliest joined_at then user_id when the creator isn't among the
+ * owner-role rows (or created_by is null). This must match the tie-break
+ * admin_list_workspaces uses (migration 20260825000001) so both paths agree on "the
+ * owner" for the same workspace.
  *
  * A workspace with no owner-role row has no entry in the returned map -- callers must
  * treat a missing entry as "no owner", not an error.
@@ -37,11 +40,36 @@ export async function fetchOwnerContacts(
     .order("user_id", { ascending: true });
   if (membersError) throw membersError;
 
-  const ownerByWorkspace = new Map<string, string>();
+  const { data: workspaces, error: workspacesError } = await svc
+    .from("workspaces")
+    .select("id, created_by")
+    .in("id", workspaceIds);
+  if (workspacesError) throw workspacesError;
+
+  const createdByByWorkspace = new Map(
+    ((workspaces ?? []) as Array<{ id: string; created_by: string | null }>).map((w) => [
+      w.id,
+      w.created_by,
+    ]),
+  );
+
+  // Group the already joined_at/user_id-sorted owner-role user_ids by workspace,
+  // preserving sort order within each group.
+  const ownerUserIdsByWorkspace = new Map<string, string[]>();
   for (const m of (members ?? []) as Array<{ workspace_id: string; user_id: string }>) {
-    if (!ownerByWorkspace.has(m.workspace_id)) {
-      ownerByWorkspace.set(m.workspace_id, m.user_id);
+    const list = ownerUserIdsByWorkspace.get(m.workspace_id);
+    if (list) {
+      list.push(m.user_id);
+    } else {
+      ownerUserIdsByWorkspace.set(m.workspace_id, [m.user_id]);
     }
+  }
+
+  const ownerByWorkspace = new Map<string, string>();
+  for (const [workspaceId, userIds] of ownerUserIdsByWorkspace) {
+    const createdBy = createdByByWorkspace.get(workspaceId) ?? null;
+    const creatorIsOwner = createdBy !== null && userIds.includes(createdBy);
+    ownerByWorkspace.set(workspaceId, creatorIsOwner ? createdBy : userIds[0]);
   }
 
   const ownerUserIds = [...new Set(ownerByWorkspace.values())];

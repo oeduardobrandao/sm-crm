@@ -97,6 +97,31 @@ describe('buildWorkspaceExportRows', () => {
     expect(rows[0].monthly_amount_brl).toBe('');
   });
 
+  it('blanks all five subscription columns for a bare-customer row (status: null), not just a null subscription', () => {
+    // A workspace_subscriptions row can exist (a Stripe customer with no real
+    // subscription yet) with status: null. hasSubscription() gates on a truthy
+    // status, not just on the object being non-null -- this must not export a
+    // populated-looking row for a workspace that has no actual subscription.
+    const rows = buildWorkspaceExportRows([
+      baseWorkspace({
+        subscription: {
+          status: null,
+          plan_name: null,
+          billing_interval: null,
+          amount_cents: null,
+          currency: null,
+          interval: null,
+          discount_label: null,
+        },
+      }),
+    ]);
+    expect(rows[0].subscription_status).toBe('');
+    expect(rows[0].billing_interval).toBe('');
+    expect(rows[0].subscription_amount_brl).toBe('');
+    expect(rows[0].monthly_amount_brl).toBe('');
+    expect(rows[0].discount_label).toBe('');
+  });
+
   it('formats created/last-activity as plain ISO dates, not locale strings', () => {
     const rows = buildWorkspaceExportRows([baseWorkspace()]);
     expect(rows[0].created_at).toBe('2026-01-15');
