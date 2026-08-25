@@ -30,6 +30,18 @@
 -- can never be in the future, so `created_at <= COALESCE(p_as_of, now())` is always true for
 -- existing rows and changes nothing observable for a single, non-paginated-across-calls read.
 --
+-- Known residual gap: p_as_of only pins created_at, which is immutable once a row exists.
+-- name and plan_id are still read live, so a workspace matching the export's search/plan
+-- filter can still enter or leave the filtered set mid-export if it's renamed or its plan is
+-- reassigned between two page calls -- same duplicate/omit symptom as the created_at race
+-- above, just triggered by an edit instead of a new signup. Closing this fully needs real
+-- cursor pagination (compute the matching id set once, paginate a fixed list across calls,
+-- since each RPC call is its own transaction with no way to hold one Postgres snapshot open
+-- across them) -- a bigger redesign than this migration, and not pursued here: the exposure
+-- is narrower than the created_at race (it needs an admin plan reassignment or a rename, not
+-- just organic signups, to land in the same few-second export window). Accepted as a known
+-- limitation; revisit with real cursor-based pagination if it ever causes a problem in practice.
+--
 -- This changes the function's signature (4 params -> 5), which CREATE OR REPLACE does not
 -- retarget -- Postgres would otherwise leave the old 4-arg overload in place, ungoverned by
 -- this file's REVOKE/GRANT block below, and ambiguous against callers that omit p_as_of. The
