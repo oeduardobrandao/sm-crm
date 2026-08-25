@@ -85,25 +85,32 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
 
   async function handleExportPdf() {
     setExporting(true);
+    // A conversão pode levar 10-60s num cache-miss (Gotenberg) -- sem
+    // feedback claro disso, o usuário não sabia se o clique tinha
+    // funcionado (achado do usuário 2026-08-25). O spinner no botão sozinho
+    // é fácil de não notar numa espera dessa duração.
+    const toastId = toast.loading('Gerando PDF... isso pode levar até um minuto.');
     try {
       const { url } = await exportReportPdf(doc.id);
-      // A conversão pode levar 10-60s num cache-miss (Gotenberg): quando o
-      // await termina, a ativação transitória de usuário do clique original
-      // já pode ter expirado e o browser bloqueia o popup (window.open volta
-      // null). Mesmo fallback de AnalyticsContaPage.handleGenerateReport: um
-      // <a> clicado programaticamente não depende dessa ativação.
-      const win = window.open(url, '_blank', 'noopener');
-      if (!win) {
-        const a = document.createElement('a');
-        a.href = url;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      }
+      // Um <a> clicado programaticamente é o ÚNICO mecanismo usado aqui, não
+      // um fallback condicional a window.open: depois do await acima, a
+      // ativação transitória do clique original já pode ter expirado, e
+      // nesse ponto o retorno de window.open() deixa de ser um sinal
+      // confiável de sucesso entre browsers -- podia disparar o fallback
+      // JUNTO com uma abertura que na verdade tinha dado certo, abrindo duas
+      // abas idênticas (achado do usuário 2026-08-25). O clique num <a> não
+      // depende dessa ativação (mesmo racional do fallback que existia
+      // antes, só que agora é o caminho único, não condicional).
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success('PDF gerado.', { id: toastId });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao exportar PDF');
+      toast.error(err instanceof Error ? err.message : 'Erro ao exportar PDF', { id: toastId });
     } finally {
       setExporting(false);
     }

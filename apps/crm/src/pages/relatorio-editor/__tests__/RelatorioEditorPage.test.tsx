@@ -47,7 +47,7 @@ vi.mock('../../../store/hub', () => ({
 // toast.success/.error (os já usados no resto da página) precisam do MESMO
 // mock: sonner exporta toast como uma função com métodos anexados.
 const { toastMock } = vi.hoisted(() => ({
-  toastMock: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
+  toastMock: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), loading: vi.fn() }),
 }));
 vi.mock('sonner', () => ({ toast: toastMock }));
 
@@ -97,6 +97,7 @@ beforeEach(() => {
   refreshReportDocMock.mockResolvedValue(undefined);
   getHubTokenMock.mockResolvedValue(null);
   getWorkspaceSlugMock.mockResolvedValue(null);
+  toastMock.loading.mockReturnValue('export-toast-id');
 });
 
 const doc = () => ({
@@ -320,24 +321,14 @@ describe('RelatorioEditorPage (editor)', () => {
     }
   });
 
-  it('Exportar PDF chama exportReportPdf e abre a URL numa nova aba', async () => {
-    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
-    getReportDocMock.mockResolvedValue(doc());
-    exportReportPdfMock.mockResolvedValue({ url: 'https://cdn.example.com/doc-1.pdf' });
-    renderPage();
-    await screen.findByLabelText('Título do relatório');
-    fireEvent.click(screen.getByRole('button', { name: /Exportar PDF/ }));
-    await waitFor(() => expect(exportReportPdfMock).toHaveBeenCalledWith('doc-1'));
-    await waitFor(() =>
-      expect(openSpy).toHaveBeenCalledWith(
-        'https://cdn.example.com/doc-1.pdf',
-        '_blank',
-        'noopener',
-      ),
-    );
-  });
-
-  it('Exportar PDF com window.open bloqueado (popup) cai para um <a> clicado programaticamente', async () => {
+  it('Exportar PDF: mostra toast de carregamento, chama exportReportPdf e abre a URL num <a> clicado (nunca window.open)', async () => {
+    // Achado do usuário 2026-08-25: window.open() depois de um await de
+    // 10-60s (cache-miss do Gotenberg) não é um sinal confiável de sucesso
+    // entre browsers -- podia abrir a aba E disparar um fallback condicional
+    // ao mesmo tempo, resultando em duas abas idênticas. O <a> clicado
+    // programaticamente passou a ser o ÚNICO mecanismo, não mais um
+    // fallback -- por isso este teste também trava que window.open nunca é
+    // chamado neste fluxo.
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     getReportDocMock.mockResolvedValue(doc());
@@ -345,22 +336,16 @@ describe('RelatorioEditorPage (editor)', () => {
     renderPage();
     await screen.findByLabelText('Título do relatório');
     fireEvent.click(screen.getByRole('button', { name: /Exportar PDF/ }));
+    expect(toastMock.loading).toHaveBeenCalledWith('Gerando PDF... isso pode levar até um minuto.');
     await waitFor(() => expect(exportReportPdfMock).toHaveBeenCalledWith('doc-1'));
-    await waitFor(() =>
-      expect(openSpy).toHaveBeenCalledWith(
-        'https://cdn.example.com/doc-1.pdf',
-        '_blank',
-        'noopener',
-      ),
-    );
-    // window.open volta null (ativação transitória expirada pelo await de
-    // 10-60s do Gotenberg em cache-miss) -- o fallback cria um <a> real,
-    // clica nele e remove.
     await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith('PDF gerado.', { id: 'export-toast-id' });
   });
 
-  it('Exportar PDF com erro mostra toast e não abre nada', async () => {
+  it('Exportar PDF com erro atualiza o toast de carregamento pra erro e não abre nada', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     getReportDocMock.mockResolvedValue(doc());
     exportReportPdfMock.mockRejectedValue(
       new Error('Export de PDF não configurado neste ambiente.'),
@@ -369,9 +354,12 @@ describe('RelatorioEditorPage (editor)', () => {
     await screen.findByLabelText('Título do relatório');
     fireEvent.click(screen.getByRole('button', { name: /Exportar PDF/ }));
     await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith('Export de PDF não configurado neste ambiente.'),
+      expect(toast.error).toHaveBeenCalledWith('Export de PDF não configurado neste ambiente.', {
+        id: 'export-toast-id',
+      }),
     );
     expect(openSpy).not.toHaveBeenCalled();
+    expect(clickSpy).not.toHaveBeenCalled();
   });
 
   it('Atualizar dados chama refreshReportDoc, invalida a query do doc e mostra toast', async () => {
