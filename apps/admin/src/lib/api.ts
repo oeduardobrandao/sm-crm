@@ -310,6 +310,10 @@ export interface PayingWorkspace {
   discount_label: string | null;
   /** Whether monthly_cents came from live Stripe or the plan's catalog price. */
   amount_source: 'stripe' | 'pagarme' | 'catalog' | null;
+  owner_name: string | null;
+  owner_email: string | null;
+  owner_telefone: string | null;
+  owner_marketing_opt_in: boolean;
 }
 
 export interface MrrSummary {
@@ -336,6 +340,10 @@ export interface TrialWorkspace {
   trial_ends_at: string | null;
   /** Expected monthly contribution once converted (catalog price, annual→monthly). Null if unpriced. */
   monthly_cents: number | null;
+  owner_name: string | null;
+  owner_email: string | null;
+  owner_telefone: string | null;
+  owner_marketing_opt_in: boolean;
 }
 
 export interface TrialsSummary {
