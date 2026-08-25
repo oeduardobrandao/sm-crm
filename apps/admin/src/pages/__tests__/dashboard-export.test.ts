@@ -41,6 +41,8 @@ describe('buildPayingWorkspaceExportRows', () => {
     const rows = buildPayingWorkspaceExportRows([payingWorkspace()]);
     expect(rows[0].workspace_name).toBe('Acme');
     expect(rows[0].owner_name).toBe('Ana');
+    expect(rows[0].owner_email).toBe('ana@example.com');
+    expect(rows[0].owner_telefone).toBe('11999999999');
     expect(rows[0].owner_marketing_opt_in).toBe('yes');
     expect(rows[0].monthly_amount_brl).toBe(99);
   });
@@ -59,6 +61,9 @@ describe('buildTrialExportRows', () => {
   it('maps owner contact/consent and formats trial_ends_at as a plain ISO date', () => {
     const rows = buildTrialExportRows([trialWorkspace()]);
     expect(rows[0].workspace_name).toBe('Beta');
+    expect(rows[0].owner_name).toBe('Bruno');
+    expect(rows[0].owner_email).toBe('bruno@example.com');
+    expect(rows[0].owner_telefone).toBe('');
     expect(rows[0].owner_marketing_opt_in).toBe('no');
     expect(rows[0].trial_ends_at).toBe('2026-09-05');
     expect(rows[0].monthly_amount_brl).toBe(82.5);
