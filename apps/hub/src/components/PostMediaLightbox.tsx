@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
 import type { HubPostMedia } from '../types';
+import { MediaUnavailable } from './MediaUnavailable';
 
 interface PostMediaLightboxProps {
   media: HubPostMedia[];
@@ -132,9 +133,11 @@ export function PostMediaLightbox({
         className="flex items-center justify-center max-h-[85vh] max-w-[90vw] touch-none"
         onClick={(e) => e.stopPropagation()}
       >
-        {current.kind === 'image' ? (
+        {current.media_lost_at ? (
+          <MediaUnavailable size="full" className="max-h-[85vh] max-w-[90vw] aspect-square" />
+        ) : current.kind === 'image' ? (
           <img
-            src={current.url}
+            src={current.url ?? ''}
             alt=""
             draggable={false}
             onError={() => onStaleUrl?.()}
@@ -144,7 +147,7 @@ export function PostMediaLightbox({
           <VideoPlayer
             key={current.id}
             hlsSrc={current.playback?.hls}
-            src={current.url}
+            src={current.url ?? ''}
             poster={current.thumbnail_url ?? undefined}
             controls
             preload="auto"

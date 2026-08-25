@@ -5,6 +5,7 @@ import { formatDate, PlatformBadge } from './PostCard';
 import { PostMediaLightbox } from './PostMediaLightbox';
 import { OptimizedImage } from './OptimizedImage';
 import { VideoPrewarm } from './VideoPrewarm';
+import { MediaUnavailable } from './MediaUnavailable';
 import type { HubPost, PostApproval, InstagramProfile } from '../types';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 
@@ -118,9 +119,11 @@ export function StoryPostCard({
             onClick={() => setLightboxIdx(currentSlide)}
             className="absolute inset-0 w-full h-full z-0"
           >
-            {currentMedia.kind === 'image' ? (
+            {currentMedia.media_lost_at ? (
+              <MediaUnavailable size="full" />
+            ) : currentMedia.kind === 'image' ? (
               <OptimizedImage
-                src={currentMedia.url}
+                src={currentMedia.url ?? ''}
                 alt=""
                 width={currentMedia.width ?? undefined}
                 height={currentMedia.height ?? undefined}
@@ -142,7 +145,7 @@ export function StoryPostCard({
           </button>
         )}
 
-        {currentMedia?.kind === 'video' && (
+        {currentMedia?.kind === 'video' && !currentMedia.media_lost_at && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
             <div className="w-14 h-14 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="white">

@@ -34,7 +34,7 @@ export interface HubPostMedia {
   post_id: number;
   kind: 'image' | 'video';
   mime_type: string;
-  url: string;
+  url: string | null;
   thumbnail_url: string | null;
   width: number | null;
   height: number | null;
@@ -43,6 +43,11 @@ export interface HubPostMedia {
   sort_order: number;
   blur_data_url?: string | null;
   playback?: { hls: string; expires_at: string } | null;
+  /** ISO timestamp when this file was permanently lost (Aug 2026 R2 incident and any
+   * future reconciliation); null when the file is fine. Optional only because a
+   * response cached before this field shipped omits the key — check the value,
+   * never key presence. */
+  media_lost_at?: string | null;
 }
 
 export interface HubPost {

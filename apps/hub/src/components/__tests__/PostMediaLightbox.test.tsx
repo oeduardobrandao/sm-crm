@@ -301,4 +301,11 @@ describe('PostMediaLightbox', () => {
 
     expect(onStaleUrl).toHaveBeenCalledTimes(1);
   });
+
+  it('shows the unavailable placeholder instead of a broken image for a permanently lost item', () => {
+    const media = [makeMedia({ id: 1, media_lost_at: '2026-08-14T03:00:00.000Z', url: null })];
+    render(<PostMediaLightbox media={media} initialIndex={0} onClose={vi.fn()} />);
+    expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
+    expect(document.body.querySelector('img')).not.toBeInTheDocument();
+  });
 });
