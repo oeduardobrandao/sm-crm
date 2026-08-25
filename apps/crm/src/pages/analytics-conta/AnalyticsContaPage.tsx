@@ -281,7 +281,7 @@ function RankedPostCard({ post, tone }: { post: PostAnalytics; tone: 'best' | 'w
           {formatPostDate(post.posted_at)}
         </span>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Alcance</span>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Visualizações</span>
           <span
             style={{
               fontSize: '0.7rem',
@@ -290,7 +290,7 @@ function RankedPostCard({ post, tone }: { post: PostAnalytics; tone: 'best' | 'w
               color: reachColor,
             }}
           >
-            {formatNumber(post.reach)}
+            {formatNumber(post.views)}
           </span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -390,6 +390,7 @@ function RankedPostsSection(props: RankedPostsSectionProps) {
 type RankedDrawerMode = 'best' | 'worst';
 type RankedPostOrderBy =
   | 'engagement'
+  | 'views'
   | 'reach'
   | 'likes'
   | 'comments'
@@ -1006,7 +1007,7 @@ function AnalyticsContent({
   const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
   const [manualCount, setManualCount] = useState('');
   const [rankedDrawer, setRankedDrawer] = useState<RankedDrawerMode | null>(null);
-  const [rankedOrderBy, setRankedOrderBy] = useState<RankedPostOrderBy>('reach');
+  const [rankedOrderBy, setRankedOrderBy] = useState<RankedPostOrderBy>('views');
   const [rankedAsc, setRankedAsc] = useState(false);
   const [rankedFormatFilter, setRankedFormatFilter] = useState('all');
   const [rankedDateFrom, setRankedDateFrom] = useState('');
@@ -1091,12 +1092,12 @@ function AnalyticsContent({
   const bestTimesData: BestPostingTimes | null = onlineRes?.data || null;
 
   const topSaved = [...posts].sort((a, b) => b.saved - a.saved).slice(0, 5);
-  const rankedPosts = useMemo(() => [...posts].sort((a, b) => b.reach - a.reach), [posts]);
+  const rankedPosts = useMemo(() => [...posts].sort((a, b) => b.views - a.views), [posts]);
   const matureRankedPosts = useMemo(() => {
     const cutoff48h = Date.now() - 48 * 60 * 60 * 1000;
     return [...posts]
       .filter((p) => new Date(p.posted_at).getTime() < cutoff48h)
-      .sort((a, b) => a.reach - b.reach);
+      .sort((a, b) => a.views - b.views);
   }, [posts]);
   const rankedPostFormats = useMemo(
     () => Array.from(new Set(posts.map((p) => p.media_type))).sort(),
@@ -1122,6 +1123,9 @@ function AnalyticsContent({
     switch (rankedOrderBy) {
       case 'engagement':
         next.sort((a, b) => (a.engagement_rate - b.engagement_rate) * dir);
+        break;
+      case 'views':
+        next.sort((a, b) => (a.views - b.views) * dir);
         break;
       case 'reach':
         next.sort((a, b) => (a.reach - b.reach) * dir);
@@ -1294,7 +1298,7 @@ function AnalyticsContent({
 
   const resetRankedDrawer = () => {
     setRankedDrawer(null);
-    setRankedOrderBy('reach');
+    setRankedOrderBy('views');
     setRankedAsc(false);
     setRankedFormatFilter('all');
     setRankedDateFrom('');
@@ -1303,7 +1307,7 @@ function AnalyticsContent({
 
   const openRankedDrawer = (mode: RankedDrawerMode) => {
     setRankedDrawer(mode);
-    setRankedOrderBy('reach');
+    setRankedOrderBy('views');
     setRankedAsc(mode === 'worst');
     setRankedFormatFilter('all');
     setRankedDateFrom('');
@@ -1611,6 +1615,14 @@ function AnalyticsContent({
           prevFormatted={overview.engagement.previous.toFixed(2) + '%'}
         />
         <KpiCard
+          label="Contas engajadas"
+          icon={Zap}
+          tone="amber"
+          value={overview.profileViews.current.toLocaleString('pt-BR')}
+          delta={overview.profileViews}
+          period="28d fixo"
+        />
+        <KpiCard
           label="Alcance"
           icon={Eye}
           tone="violet"
@@ -1618,14 +1630,6 @@ function AnalyticsContent({
           delta={overview.reach}
           period={periodTag}
           prevFormatted={overview.reach.previous.toLocaleString('pt-BR')}
-        />
-        <KpiCard
-          label="Contas engajadas"
-          icon={Zap}
-          tone="amber"
-          value={overview.profileViews.current.toLocaleString('pt-BR')}
-          delta={overview.profileViews}
-          period="28d fixo"
         />
         <KpiCard
           label="Cliques no link"
@@ -1707,7 +1711,7 @@ function AnalyticsContent({
 
       <RankedPostsSection
         title="Melhores Posts"
-        description={`Top posts por alcance neste período (${periodTag}).`}
+        description={`Top posts por visualizações neste período (${periodTag}).`}
         icon={<Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} />}
         posts={rankedPosts.slice(0, 5)}
         tone="best"
@@ -1717,7 +1721,7 @@ function AnalyticsContent({
 
       <RankedPostsSection
         title="Precisam de Atenção"
-        description="Posts com pelo menos 48h de publicação e menor alcance no período."
+        description="Posts com pelo menos 48h de publicação e menos visualizações no período."
         icon={<AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} />}
         posts={matureRankedPosts.slice(0, 5)}
         tone="worst"
@@ -1753,8 +1757,8 @@ function AnalyticsContent({
                   {[
                     { col: 'posted_at', label: 'Data' },
                     { col: null, label: 'Tipo' },
+                    { col: 'impressions', label: 'Visualizações' },
                     { col: 'reach', label: 'Alcance' },
-                    { col: 'impressions', label: 'Impressões' },
                     { col: 'engagement_rate', label: 'Eng.' },
                     { col: 'ig_score', label: 'IG Score' },
                     { col: 'likes', label: 'Curtidas' },
@@ -1822,10 +1826,8 @@ function AnalyticsContent({
                       <td data-label="Tipo">
                         <span className="badge badge-info">{formatMediaType(p.media_type)}</span>
                       </td>
+                      <td data-label="Visualizações">{p.views.toLocaleString('pt-BR')}</td>
                       <td data-label="Alcance">{p.reach.toLocaleString('pt-BR')}</td>
-                      <td data-label="Impressões">
-                        {(p.impressions || 0).toLocaleString('pt-BR')}
-                      </td>
                       <td data-label="Eng.">
                         <span
                           className={`badge ${p.engagement_rate >= 5 ? 'badge-success' : p.engagement_rate >= 2 ? 'badge-warning' : 'badge-neutral'}`}
@@ -1932,7 +1934,7 @@ function AnalyticsContent({
                               ↗ Ver no Instagram
                             </a>
                             <span style={{ color: 'var(--text-muted)' }}>
-                              Impressões: {p.impressions.toLocaleString('pt-BR')}
+                              Visualizações: {p.views.toLocaleString('pt-BR')}
                             </span>
                             <span style={{ color: 'var(--text-muted)' }}>
                               Curtidas: {p.likes.toLocaleString('pt-BR')}
@@ -2578,6 +2580,7 @@ function AnalyticsContent({
                   fontSize: '0.85rem',
                 }}
               >
+                <option value="views">Visualizações</option>
                 <option value="reach">Alcance</option>
                 <option value="engagement">Engajamento</option>
                 <option value="likes">Curtidas</option>
@@ -2753,11 +2756,11 @@ function AnalyticsContent({
                     >
                       <span>{formatMediaType(post.media_type)}</span>
                       <span>
-                        Alcance{' '}
+                        Visualizações{' '}
                         <strong
                           style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
                         >
-                          {formatNumber(post.reach)}
+                          {formatNumber(post.views)}
                         </strong>
                       </span>
                       <span>
@@ -3021,7 +3024,8 @@ function buildReportHtml(data: {
       <tr>
         <td style="font-size:12px;">${new Date(p.posted_at).toLocaleDateString('pt-BR')}</td>
         <td style="font-size:12px;">${escHtml(p.media_type === 'VIDEO' ? 'Reel' : p.media_type === 'CAROUSEL_ALBUM' ? 'Carrossel' : 'Imagem')}</td>
-        <td style="font-weight:600;">${fmtN(p.reach)}</td>
+        <td style="font-weight:600;">${fmtN(p.views)}</td>
+        <td>${fmtN(p.reach)}</td>
         <td style="color:${p.engagement_rate >= 3 ? '#16a34a' : p.engagement_rate > 1.5 ? '#eab308' : '#64748b'}; font-weight:bold;">${p.engagement_rate.toFixed(1)}%</td>
         <td>${p.saved}</td>
         <td>${p.comments}</td>
@@ -3088,6 +3092,7 @@ function buildReportHtml(data: {
           <div class="kpi-grid">
             ${kpiCard('Seguidores', fmtN(ov.followerCount), ov.followers, '')}
             ${kpiCard('Engajamento', fmtP(ov.engagement?.current), ov.engagement, '')}
+            ${kpiCard('Visualizações', fmtN(ov.impressions?.current), ov.impressions, '')}
             ${kpiCard('Alcance', fmtN(ov.reach?.current), ov.reach, '')}
             ${kpiCard('Contas Engajadas', fmtN(ov.profileViews?.current), null, '', true)}
             ${kpiCard('Cliques no Link', fmtN(ov.websiteClicks?.current), null, '', true)}
@@ -3103,7 +3108,7 @@ function buildReportHtml(data: {
 
           <h2 class="section-title">Performance de Conteúdo</h2>
           <table class="data-table">
-            <thead><tr><th>Data</th><th>Tipo</th><th>Alcance</th><th>Engaj.</th><th>Salvos</th><th>Coment.</th><th>Compart.</th></tr></thead>
+            <thead><tr><th>Data</th><th>Tipo</th><th>Visualizações</th><th>Alcance</th><th>Engaj.</th><th>Salvos</th><th>Coment.</th><th>Compart.</th></tr></thead>
             <tbody>${perfRows}</tbody>
           </table>
 

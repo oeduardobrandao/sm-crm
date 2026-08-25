@@ -309,6 +309,7 @@ function seedCommonAnalyticsData() {
       media_type: 'VIDEO',
       reach: 2500,
       impressions: 4000,
+      views: 4000,
       engagement_rate: 7.2,
       likes: 320,
       saved: 48,
@@ -326,6 +327,7 @@ function seedCommonAnalyticsData() {
       media_type: 'IMAGE',
       reach: 3000,
       impressions: 2100,
+      views: 2100,
       engagement_rate: 4.6,
       likes: 180,
       saved: 36,
@@ -476,7 +478,7 @@ describe('AnalyticsContaPage', () => {
     const labels = Array.from(container.querySelectorAll('.kpi-label')).map((el) => el.textContent);
     expect(labels[0]).toBe('Visualizações');
     expect(labels[1]).toBe('Seguidores');
-    const card = screen.getByText('Visualizações').closest('.kpi-card');
+    const card = container.querySelector('.kpi-card');
     expect(card?.textContent).toContain((45678).toLocaleString('pt-BR'));
     expect(card?.textContent).toContain('vs período anterior');
   });
@@ -488,9 +490,9 @@ describe('AnalyticsContaPage', () => {
       isLoading: false,
     };
 
-    render(<AnalyticsContaPage />);
+    const { container } = render(<AnalyticsContaPage />);
 
-    const card = screen.getByText('Visualizações').closest('.kpi-card');
+    const card = container.querySelector('.kpi-card');
     expect(card?.textContent).toContain((999999).toLocaleString('pt-BR'));
     expect(card?.textContent).not.toContain('vs período anterior');
   });
@@ -570,8 +572,8 @@ describe('AnalyticsContaPage', () => {
       within(bestPostsRegion)
         .getAllByText(/Post em reels com alta performance|Conteúdo institucional/)
         .map((item) => item.textContent),
-    ).toEqual(['Conteúdo institucional', 'Post em reels com alta performance']);
-    expect(screen.getByText(/Top posts por alcance/i)).toBeTruthy();
+    ).toEqual(['Post em reels com alta performance', 'Conteúdo institucional']);
+    expect(screen.getByText(/Top posts por visualizações/i)).toBeTruthy();
     expect(screen.getByText('Relatórios Gerados')).toBeTruthy();
     expect(screen.getByText('Abr 2026')).toBeTruthy();
     await waitFor(() => {
@@ -665,6 +667,7 @@ describe('AnalyticsContaPage', () => {
           media_type: index % 2 === 0 ? 'VIDEO' : 'IMAGE',
           reach: 1000 + index * 100,
           impressions: 1400 + index * 120,
+          views: 1400 + index * 120,
           engagement_rate: 6 - index,
           likes: 100 - index,
           saved: 20 + index,
