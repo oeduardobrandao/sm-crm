@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Search, ArrowRight } from 'lucide-react';
+import { Search, ArrowRight, Download } from 'lucide-react';
+import { toast } from 'sonner';
 import { listWorkspaces, listPlans, type WorkspaceSummary } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
 import {
@@ -13,6 +14,8 @@ import {
 } from '../lib/subscription';
 import { describeActivity, type ActivityTone } from './workspace-activity';
 import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip';
+import { toCSV, downloadCSV } from '../lib/csv-export';
+import { WORKSPACE_EXPORT_COLUMNS, buildWorkspaceExportRows } from './workspaces-export';
 
 const ACTIVITY_TONE_CLASS: Record<ActivityTone, string> = {
   active: 'text-foreground',
@@ -29,6 +32,46 @@ export default function WorkspacesPage() {
   const [planFilter, setPlanFilter] = useState('');
   const [page, setPage] = useState(0);
   const limit = 20;
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExportCsv() {
+    setExporting(true);
+    try {
+      const PAGE_SIZE = 200;
+      const MAX_ROWS = 2000;
+      const all: WorkspaceSummary[] = [];
+      let total = Infinity;
+      for (let offset = 0; offset < Math.min(total, MAX_ROWS); offset += PAGE_SIZE) {
+        const page = await listWorkspaces({
+          search: search || undefined,
+          plan_id: planFilter || undefined,
+          offset,
+          limit: PAGE_SIZE,
+        });
+        total = page.total;
+        all.push(...page.workspaces);
+      }
+
+      if (all.length === 0) {
+        toast.error('Nothing to export');
+        return;
+      }
+
+      const rows = all.slice(0, MAX_ROWS);
+      const csv = toCSV(buildWorkspaceExportRows(rows), WORKSPACE_EXPORT_COLUMNS);
+      downloadCSV(`workspaces-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+
+      if (total > MAX_ROWS) {
+        toast.error(
+          `Exported the first ${MAX_ROWS} of ${total} matching workspaces — narrow your search or plan filter to export the rest.`,
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'workspaces', { search, plan_id: planFilter, offset: page * limit, limit }],
@@ -87,6 +130,14 @@ export default function WorkspacesPage() {
             </option>
           ))}
         </select>
+        <button
+          onClick={handleExportCsv}
+          disabled={exporting}
+          className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-card border border-border text-sm text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
+        >
+          <Download size={16} />
+          {exporting ? 'Exporting…' : 'Export CSV'}
+        </button>
       </div>
 
       <div className="bg-card border border-border rounded-2xl p-5">
