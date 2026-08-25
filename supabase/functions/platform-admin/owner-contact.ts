@@ -18,7 +18,7 @@ export interface OwnerContact {
  * owner-role member who is also the workspace's creator (workspaces.created_by),
  * falling back to earliest joined_at then user_id when the creator isn't among the
  * owner-role rows (or created_by is null). This must match the tie-break
- * admin_list_workspaces uses (migration 20260825000001) so both paths agree on "the
+ * admin_list_workspaces uses (migration 20260825000010) so both paths agree on "the
  * owner" for the same workspace.
  *
  * A workspace with no owner-role row has no entry in the returned map -- callers must
