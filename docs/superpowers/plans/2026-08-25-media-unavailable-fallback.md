@@ -1876,16 +1876,17 @@ git commit -m "feat(crm): show a Mídia indisponível placeholder for permanentl
 
 ---
 
-## Task 6: CRM Arquivos frontend — type only + regression tests
+## Task 6: CRM Arquivos frontend — type + lightbox fix + regression tests
 
-No render-site source changes in this task — `FileGrid.tsx`, `FilePickerModal.tsx`, `MobileArquivosView.tsx`, and `PostChip.tsx` all already fall back to a neutral `<FileIcon>` (or, for `PostChip`, simply render nothing in that slot) whenever `thumbnail_url ?? url` is falsy. Once Task 3's backend change makes that genuinely `null` for a lost file (instead of a dead signed URL), these sites already degrade correctly. This task adds the type field and locks the two sites that already have test infrastructure with a regression test; `PostChip.tsx` and `MobileArquivosView.tsx` don't have existing test scaffolding for this and are covered by Task 7's manual browser check instead of new from-scratch test infrastructure (YAGNI — building that scaffolding isn't proportionate to a component that already provably degrades gracefully by inspection).
+**Correction found auditing the original 16-site enumeration (before this task was dispatched):** `FileGrid.tsx`, `FilePickerModal.tsx`, `MobileArquivosView.tsx`, and `PostChip.tsx` all already fall back to a neutral `<FileIcon>` (or, for `PostChip`, simply render nothing in that slot) whenever `thumbnail_url ?? url` is falsy — those genuinely need no source change, only regression tests (Steps 4-9 below). But `apps/crm/src/pages/arquivos/ArquivosPage.tsx` reuses the SAME `entregas/components/PostMediaLightbox` that Task 5 already fixed with a `media_lost_at` guard, via its own `lightboxMedia: PostMedia[]` mapping (current lines 165-186) — and that mapping does NOT forward `media_lost_at`, so a file opened from Arquivos never trips the guard Task 5 added, even after this task types the field. This is a real 17th render site the original spec's 16-site count missed (a data-adapter gap, not a rendering gap) — Steps 1-3 below fix it.
 
 **Files:**
 - Modify: `apps/crm/src/pages/arquivos/types.ts` (`FileRecord` — additive, non-breaking)
-- Test: `apps/crm/src/pages/arquivos/__tests__/FileGrid.test.tsx`, `FilePickerModal.test.tsx`
+- Modify: `apps/crm/src/pages/arquivos/ArquivosPage.tsx:165-186` (`lightboxMedia` mapping)
+- Test: `apps/crm/src/pages/arquivos/__tests__/ArquivosPage.test.tsx`, `FileGrid.test.tsx`, `FilePickerModal.test.tsx`
 
 **Interfaces:**
-- Consumes: Task 3's `file-manage` response shape (`FileRecord.media_lost_at`, already on the wire, now typed).
+- Consumes: Task 3's `file-manage` response shape (`FileRecord.media_lost_at`, already on the wire, now typed) and Task 5's `PostMediaLightbox` guard (already checks `current.media_lost_at` — this task's job is only to make sure that field actually reaches it via this one adapter).
 
 - [ ] **Step 1: Add `media_lost_at` to `FileRecord`**
 
@@ -1961,7 +1962,105 @@ export interface FileRecord {
 Run: `npx tsc -p apps/crm/tsconfig.json --noEmit`
 Expected: PASS, zero errors — additive field, no consumer needs a change.
 
-- [ ] **Step 3: Write the `FileGrid` regression test**
+- [ ] **Step 3: Fix the `ArquivosPage.tsx` lightbox mapping and add a covering test (TDD)**
+
+First, write the failing test. In `apps/crm/src/pages/arquivos/__tests__/ArquivosPage.test.tsx`, add a new `describe` block after the existing `describe('lightbox playback mapping', ...)` block, following that block's exact pattern (`mockedGetFolderContents.mockResolvedValue(makeFolderContents({ files: [...] }))`, render, wait for the filename, click it, wait for the lightbox content):
+
+```tsx
+  describe('lightbox media_lost_at mapping', () => {
+    it('carries the media_lost_at field from FileRecord into the lightbox, showing the unavailable placeholder', async () => {
+      mockedGetFolderContents.mockResolvedValue(
+        makeFolderContents({
+          files: [
+            makeFile({
+              id: 200,
+              name: 'perdido.png',
+              kind: 'image',
+              url: undefined,
+              thumbnail_url: null,
+              media_lost_at: '2026-08-14T03:00:00.000Z',
+            }),
+          ],
+        }),
+      );
+
+      render(<ArquivosPage />, { wrapper: createWrapper() });
+
+      await waitFor(() => {
+        expect(screen.getByText('perdido.png')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('perdido.png'));
+
+      await waitFor(() => {
+        expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
+      });
+    });
+  });
+```
+
+Run: `npx vitest run apps/crm/src/pages/arquivos/__tests__/ArquivosPage.test.tsx --testNamePattern "media_lost_at mapping"`
+Expected: FAIL — the lightbox tries to render `<img src={null}>` (or nothing) instead of the placeholder, because `lightboxMedia` never set `media_lost_at` on the mapped object, so `PostMediaLightbox`'s `current.media_lost_at` guard sees `undefined` and takes the wrong branch.
+
+Now fix it. In `apps/crm/src/pages/arquivos/ArquivosPage.tsx`, replace (current lines 165-186):
+
+```tsx
+  const lightboxMedia: PostMedia[] = mediaFiles.map((f) => ({
+    id: f.id,
+    post_id: 0,
+    conta_id: f.conta_id,
+    r2_key: f.r2_key,
+    thumbnail_r2_key: f.thumbnail_r2_key,
+    kind: f.kind as 'image' | 'video',
+    mime_type: f.mime_type,
+    size_bytes: f.size_bytes,
+    original_filename: f.name,
+    width: f.width,
+    height: f.height,
+    duration_seconds: f.duration_seconds,
+    is_cover: false,
+    sort_order: 0,
+    uploaded_by: f.uploaded_by,
+    created_at: f.created_at,
+    blur_data_url: f.blur_data_url,
+    url: f.url,
+    thumbnail_url: f.thumbnail_url,
+    playback: f.playback ?? null,
+  }));
+```
+
+with:
+
+```tsx
+  const lightboxMedia: PostMedia[] = mediaFiles.map((f) => ({
+    id: f.id,
+    post_id: 0,
+    conta_id: f.conta_id,
+    r2_key: f.r2_key,
+    thumbnail_r2_key: f.thumbnail_r2_key,
+    kind: f.kind as 'image' | 'video',
+    mime_type: f.mime_type,
+    size_bytes: f.size_bytes,
+    original_filename: f.name,
+    width: f.width,
+    height: f.height,
+    duration_seconds: f.duration_seconds,
+    is_cover: false,
+    sort_order: 0,
+    uploaded_by: f.uploaded_by,
+    created_at: f.created_at,
+    blur_data_url: f.blur_data_url,
+    url: f.url,
+    thumbnail_url: f.thumbnail_url,
+    media_lost_at: f.media_lost_at ?? null,
+    playback: f.playback ?? null,
+  }));
+```
+
+Run: `npx vitest run apps/crm/src/pages/arquivos/__tests__/ArquivosPage.test.tsx`
+Expected: PASS — every test in the file, including the new one and the pre-existing `"lightbox playback mapping"` test (proves the `playback` field's mapping is untouched).
+
+- [ ] **Step 4: Write the `FileGrid` regression test**
 
 In `apps/crm/src/pages/arquivos/__tests__/FileGrid.test.tsx`, add inside `describe('grid mode', ...)`, after the existing `"renders file cards with size info"` test:
 
@@ -1987,12 +2086,12 @@ In `apps/crm/src/pages/arquivos/__tests__/FileGrid.test.tsx`, add inside `descri
     });
 ```
 
-- [ ] **Step 4: Run it and confirm it already passes**
+- [ ] **Step 5: Run it and confirm it already passes**
 
 Run: `npx vitest run apps/crm/src/pages/arquivos/__tests__/FileGrid.test.tsx`
-Expected: PASS immediately — no production code in this task, this is a characterization test proving existing behavior, not new-feature TDD. If it fails, `FileGrid.tsx`'s existing `(file.kind === 'image' || file.kind === 'video') && (file.thumbnail_url ?? file.url)` fallback (around line 602) has changed since this plan was written — stop and re-investigate before continuing.
+Expected: PASS immediately — no production code needed for this one (unlike Step 3), this is a characterization test proving existing behavior, not new-feature TDD. If it fails, `FileGrid.tsx`'s existing `(file.kind === 'image' || file.kind === 'video') && (file.thumbnail_url ?? file.url)` fallback (around line 602) has changed since this plan was written — stop and re-investigate before continuing.
 
-- [ ] **Step 5: Write the `FilePickerModal` regression test**
+- [ ] **Step 6: Write the `FilePickerModal` regression test**
 
 In `apps/crm/src/pages/arquivos/__tests__/FilePickerModal.test.tsx`, add inside the top-level `describe(...)`, after the existing `"shows folders and files"` test:
 
@@ -2021,16 +2120,16 @@ In `apps/crm/src/pages/arquivos/__tests__/FilePickerModal.test.tsx`, add inside 
   });
 ```
 
-- [ ] **Step 6: Run it and confirm it already passes**
+- [ ] **Step 7: Run it and confirm it already passes**
 
 Run: `npx vitest run apps/crm/src/pages/arquivos/__tests__/FilePickerModal.test.tsx`
-Expected: PASS immediately, same reasoning as Step 4.
+Expected: PASS immediately, same reasoning as Step 5.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add apps/crm/src/pages/arquivos/types.ts apps/crm/src/pages/arquivos/__tests__/FileGrid.test.tsx apps/crm/src/pages/arquivos/__tests__/FilePickerModal.test.tsx
-git commit -m "test(crm): lock the Arquivos file-icon fallback for permanently lost files"
+git add apps/crm/src/pages/arquivos/types.ts apps/crm/src/pages/arquivos/ArquivosPage.tsx apps/crm/src/pages/arquivos/__tests__/ArquivosPage.test.tsx apps/crm/src/pages/arquivos/__tests__/FileGrid.test.tsx apps/crm/src/pages/arquivos/__tests__/FilePickerModal.test.tsx
+git commit -m "fix(crm): forward media_lost_at through the Arquivos lightbox mapping, lock Arquivos file-icon fallback"
 ```
 
 ---
