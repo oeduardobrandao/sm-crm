@@ -469,7 +469,7 @@ describe('AnalyticsPage', () => {
 
     expect(screen.getByText('Contas conectadas')).toBeInTheDocument();
     expect(getKpiCard('Contas conectadas')).toHaveTextContent('3 / 3');
-    expect(screen.getByText('24.000')).toBeInTheDocument();
+    expect(screen.getByText('34.900')).toBeInTheDocument();
     expect(screen.getByText('2,60%')).toBeInTheDocument();
     expect(screen.getByText(/Contas silenciosas/)).toBeInTheDocument();
     expect(screen.getByText('1 conta sem postar no período')).toBeInTheDocument();
@@ -482,14 +482,15 @@ describe('AnalyticsPage', () => {
     expect(within(rows[3]).getByText('Alpha Studio')).toBeInTheDocument();
   });
 
-  it('ranks best and attention posts by reach while keeping engagement visible', () => {
+  it('ranks best and attention posts by views while keeping engagement visible', () => {
     const accounts = buildBaseAccounts();
     const posts = Array.from({ length: 6 }, (_, index) =>
       makeRankedPost({
         id: index + 1,
         client_id: index + 1,
-        client_name: `Reach Client ${index + 1}`,
+        client_name: `Views Client ${index + 1}`,
         reach: 1000 + index * 100,
+        views: 1000 + index * 100,
         engagement_rate: 6 - index,
         likes: 20 + index,
         comments: 3 + index,
@@ -502,15 +503,15 @@ describe('AnalyticsPage', () => {
     renderPage();
 
     const bestSection = screen.getByText('Melhores Posts').closest('.card') as HTMLElement;
-    expect(within(bestSection).getAllByText(/Reach Client/)[0]).toHaveTextContent('Reach Client 6');
+    expect(within(bestSection).getAllByText(/Views Client/)[0]).toHaveTextContent('Views Client 6');
     expect(within(bestSection).getByText('1.500')).toBeInTheDocument();
     expect(within(bestSection).getByText('1,00%')).toBeInTheDocument();
 
     const attentionSection = screen
       .getByText('Precisam de Atenção')
       .closest('.card') as HTMLElement;
-    expect(within(attentionSection).getAllByText(/Reach Client/)[0]).toHaveTextContent(
-      'Reach Client 1',
+    expect(within(attentionSection).getAllByText(/Views Client/)[0]).toHaveTextContent(
+      'Views Client 1',
     );
     expect(within(attentionSection).getByText('1.000')).toBeInTheDocument();
     expect(within(attentionSection).getByText('6,00%')).toBeInTheDocument();
@@ -519,7 +520,7 @@ describe('AnalyticsPage', () => {
 
     const drawer = screen.getByText('6 de 6 posts').closest('aside');
     expect(drawer).toBeTruthy();
-    expect(within(drawer!).getAllByRole('link')[0]).toHaveTextContent('Reach Client 6');
+    expect(within(drawer!).getAllByRole('link')[0]).toHaveTextContent('Views Client 6');
   });
 
   it('supports sorting, filtering, and day-range changes', async () => {
@@ -568,7 +569,7 @@ describe('AnalyticsPage', () => {
     fireEvent.change(selects[0], { target: { value: '2' } });
 
     expect(getKpiCard('Seguidores totais')).toHaveTextContent('2.500');
-    expect(getKpiCard('Alcance total (28d)')).toHaveTextContent('12.000');
+    expect(getKpiCard('Visualizações totais (28d)')).toHaveTextContent('16.800');
     expect(screen.getAllByRole('row')).toHaveLength(2);
 
     fireEvent.change(selects[1], { target: { value: '7' } });
@@ -774,7 +775,7 @@ describe('AnalyticsPage', () => {
     const orderSelect = within(drawer).getAllByRole('combobox')[0];
     fireEvent.change(orderSelect, { target: { value: 'share_rate' } });
     expect(
-      within(drawer).getByText('Top 200 por alcance, reordenado por taxa'),
+      within(drawer).getByText('Top 200 por visualizações, reordenado por taxa'),
     ).toBeInTheDocument();
     expect(within(drawer).getByText('5,0%')).toBeInTheDocument(); // Bravo's share_rate 0.05 rendered
   });
