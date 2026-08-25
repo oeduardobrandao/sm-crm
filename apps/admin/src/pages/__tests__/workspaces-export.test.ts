@@ -52,6 +52,29 @@ describe('buildWorkspaceExportRows', () => {
     expect(rows[0].monthly_amount_brl).toBe(150);
   });
 
+  it('keys billing_interval and amount fields off subscription.interval, not subscription.billing_interval', () => {
+    // billing_interval and interval deliberately disagree here. If the mapping
+    // function ever reads sub.billing_interval instead of sub.interval, this
+    // test must fail -- unlike the other fixtures, which always set both
+    // fields to the same value and so can't tell the two apart.
+    const rows = buildWorkspaceExportRows([
+      baseWorkspace({
+        subscription: {
+          status: 'active',
+          plan_name: 'Pro',
+          billing_interval: 'month',
+          amount_cents: 120000,
+          currency: 'brl',
+          interval: 'year',
+          discount_label: null,
+        },
+      }),
+    ]);
+    expect(rows[0].billing_interval).toBe('year');
+    expect(rows[0].subscription_amount_brl).toBe(1200);
+    expect(rows[0].monthly_amount_brl).toBe(100);
+  });
+
   it('keeps a monthly subscription amount equal to its normalized monthly amount', () => {
     const rows = buildWorkspaceExportRows([baseWorkspace()]);
     expect(rows[0].subscription_amount_brl).toBe(99);
