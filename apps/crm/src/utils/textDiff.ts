@@ -29,21 +29,36 @@ export function diffWords(text1: string, text2: string): [number, string][] {
   const tokenToCode = new Map<string, number>();
   const tokenArray: string[] = [];
 
-  function encode(text: string): string {
+  // String.fromCharCode wraps at 65536 (String.fromCharCode(65536) === String.fromCharCode(0)),
+  // so a document with more than 65536 distinct tokens would silently collide token codes and
+  // corrupt the diff. Bail out the same way diff-match-patch's own diff_linesToChars_ does:
+  // fold every remaining token in that text into one final token once the budget runs out.
+  // text1 and text2 get different budgets (mirroring diff_linesToChars_'s 40000/65535 split)
+  // so their two bail-out tokens can never land on the same code.
+  function encode(text: string, maxTokens: number): string {
+    const tokens = text.match(TOKEN_RE) ?? [];
     let chars = '';
-    for (const token of text.match(TOKEN_RE) ?? []) {
+    for (let i = 0; i < tokens.length; i++) {
+      let token = tokens[i];
       let code = tokenToCode.get(token);
       if (code === undefined) {
-        code = tokenArray.length;
-        tokenArray.push(token);
-        tokenToCode.set(token, code);
+        if (tokenArray.length >= maxTokens) {
+          token = tokens.slice(i).join('');
+          i = tokens.length - 1;
+          code = tokenToCode.get(token);
+        }
+        if (code === undefined) {
+          code = tokenArray.length;
+          tokenArray.push(token);
+          tokenToCode.set(token, code);
+        }
       }
       chars += String.fromCharCode(code);
     }
     return chars;
   }
 
-  const diffs = dmp.diff_main(encode(text1), encode(text2), false);
+  const diffs = dmp.diff_main(encode(text1, 40000), encode(text2, 65535), false);
   dmp.diff_cleanupSemantic(diffs);
 
   for (const diff of diffs) {
