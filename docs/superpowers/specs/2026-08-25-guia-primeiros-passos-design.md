@@ -134,8 +134,10 @@ IDs estáveis (persistidos no localStorage). Sinais de conclusão em §Arquitetu
   tablet) e no sheet "Mais" do `MobileNav` (telefones, via `getMoreSheetGroups`).
 - Visível para donos enquanto o guia não estiver concluído. Some quando: (a) o
   usuário clica "Concluir guia" na t3p6, (b) todas as páginas estão concluídas, ou
-  (c) todos os sinais de ação (clientes, IG, hub, membros, fluxos) já são verdadeiros
-  — workspace claramente ativo, guia irrelevante (espelha o auto-dismiss do banner).
+  (c) todos os sinais de ação **das páginas presentes na trilha filtrada** já são
+  verdadeiros — workspace claramente ativo, guia irrelevante (espelha o auto-dismiss
+  do banner). Num plano sem Hub, o sinal de token de hub **não** entra na regra;
+  exigi-lo tornaria a auto-conclusão inalcançável.
 
 ### Peças permanentes
 
@@ -207,6 +209,15 @@ fechado); página sem `signal` conclui ao ser vista.
 desmarca página, não conta para a regra de auto-conclusão do pill, e usa o retry
 padrão do TanStack Query. `data ?? []` como fallback é proibido nos sinais.
 
+**Query keys:** os sinais reusam as chaves que o app já usa — `['clientes']`,
+`['membros']`, `['workflows']`, `['portfolioSummary']` — para herdar de graça as
+invalidações existentes (ex.: `EquipePage` invalida `['membros']` ao salvar). A
+única chave nova é a do hub: `['hub-token-any']`. Como o `HubTab` hoje invalida
+apenas `['hub-token', clienteId]`, **as mutações de token do `HubTab` (gerar,
+ativar/desativar, renovar, girar) passam a invalidar também `['hub-token-any']`** —
+sem isso o sinal ficaria eternamente stale na mesma aba (a ação acontece dentro da
+SPA; `refetchOnWindowFocus` não cobre).
+
 ### Auto-abertura (gating)
 
 Abre sozinho no máximo **uma vez por workspace** (grava `autoOpenedAt`), quando TODAS
@@ -249,6 +260,13 @@ e `?post=` já funcionam: um efeito dedicado os consome antes). `?novo-fluxo=1` 
 nesse mesmo padrão — consumido por um efeito próprio (seta `newWorkflowOpen`) antes
 de o sincronizador reescrever a URL; jamais no parse do mount.
 
+**Colisão com o tour do driver.js:** o tour das Entregas auto-inicia na primeira
+visita com o board de exemplo (`activeWorkflows.length === 0`) — exatamente o estado
+em que `t3p2` chega. O efeito de auto-start do tour passa a **não disparar enquanto
+`newWorkflowOpen` for true** (o wizard aberto pelo deep link suprime o tour naquela
+visita; o tour continua disponível no replay manual). Regression test obrigatório:
+`?novo-fluxo=1` em workspace vazio abre só o wizard, nunca os dois overlays.
+
 `/clientes/:id/redes-sociais` e `/clientes/:id/hub` já são rotas — sem param, só
 navegação (id = cliente mais recente). Nenhuma rota nova → **sem mudança no
 `vercel.json`**.
@@ -261,9 +279,12 @@ navegação (id = cliente mais recente). Nenhuma rota nova → **sem mudança no
 
 ### Analytics (`captureEvent`)
 
-`guide_opened` `{source: 'auto'|'pill'|'sidebar'}` · `guide_closed` `{page}` ·
-`guide_page_viewed` `{page}` · `guide_action_clicked` `{page}` ·
+`guide_opened` `{source: 'auto'|'pill'|'sidebar'|'mobile_nav'}` · `guide_closed`
+`{page}` · `guide_page_viewed` `{page}` · `guide_action_clicked` `{page}` ·
 `guide_trail_completed` `{trail}` · `guide_completed` `{via: 'cta'|'signals'}`.
+
+Os seis nomes entram no union fechado `AnalyticsEvent` em `lib/analytics.ts` — o
+union é deliberadamente fechado e o typecheck falha sem isso.
 
 ## Acessibilidade
 
@@ -286,6 +307,11 @@ navegação (id = cliente mais recente). Nenhuma rota nova → **sem mudança no
   heading que renderiza antes dos dados; interagir só depois de o controle estar
   habilitado.
 - Gating com query em erro: sem auto-abertura; sinais em erro não marcam páginas.
+- `?novo-fluxo=1` em workspace vazio: abre o wizard e **suprime** o auto-start do
+  tour driver.js (regression do overlay duplo).
+- Item do guia no sheet "Mais" do `MobileNav`: renderiza para dono com guia pendente
+  e abre o modal.
+- Invalidação de `['hub-token-any']` disparada pelas mutações de token do `HubTab`.
 - Dashboard sem o banner: testes existentes atualizados.
 - Pill/media query: jsdom não avalia `@media` — visibilidade responsiva é verificada
   no browser, não em teste unitário.
