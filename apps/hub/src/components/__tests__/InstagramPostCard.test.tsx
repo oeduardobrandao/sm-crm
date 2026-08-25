@@ -363,12 +363,10 @@ describe('InstagramPostCard', () => {
         onApprovalSubmitted={vi.fn()}
       />,
     );
-    // The carousel slide renders MediaUnavailable in compact mode (tight tile) --
-    // icon only, no text label, per MediaUnavailable's own contract. Scoped to
-    // the slide button itself since the card header always renders its own
-    // (unrelated) profile-picture <img>.
+    expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
+    // Scoped to the slide button itself since the card header always renders
+    // its own (unrelated) profile-picture <img>.
     const slideButton = screen.getByRole('button', { name: /abrir mídia 1/i });
-    expect(slideButton.querySelector('.lucide-image-off')).toBeInTheDocument();
     expect(slideButton.querySelector('img')).not.toBeInTheDocument();
   });
 });

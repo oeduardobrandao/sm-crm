@@ -357,7 +357,7 @@ export function InstagramPostCard({
               className="relative flex-none w-full h-full"
             >
               {m.media_lost_at ? (
-                <MediaUnavailable size="compact" />
+                <MediaUnavailable size="full" />
               ) : m.kind === 'image' ? (
                 <OptimizedImage
                   src={m.url ?? ''}
