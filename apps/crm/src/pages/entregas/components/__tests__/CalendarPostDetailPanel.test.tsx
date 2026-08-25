@@ -159,9 +159,41 @@ describe('CalendarPostDetailPanel', () => {
         media_lost_at: '2026-08-14T03:00:00.000Z',
       } as never,
     ]);
-    renderPanel();
+    const { container } = renderPanel();
+    await waitFor(() => expect(mockMedia).toHaveBeenCalled());
     await waitFor(() => {
-      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+      expect(container.querySelector('.calendar-detail-thumb--empty')).toBeInTheDocument();
     });
+  });
+
+  it('renders the real cover image when media is healthy (control case for the test above)', async () => {
+    mockMedia.mockResolvedValue([
+      {
+        id: 1,
+        post_id: 1,
+        conta_id: 'c',
+        r2_key: 'img/1.jpg',
+        thumbnail_r2_key: null,
+        kind: 'image',
+        mime_type: 'image/jpeg',
+        size_bytes: 1000,
+        original_filename: 'img.jpg',
+        width: 1080,
+        height: 1080,
+        duration_seconds: null,
+        is_cover: true,
+        sort_order: 0,
+        uploaded_by: null,
+        created_at: '2026-01-01T00:00:00Z',
+        url: 'https://media.test/cover.jpg',
+        thumbnail_url: null,
+        media_lost_at: null,
+      } as never,
+    ]);
+    const { container } = renderPanel();
+    await waitFor(() => {
+      expect(container.querySelector('img.calendar-detail-thumb')).toBeInTheDocument();
+    });
+    expect(container.querySelector('.calendar-detail-thumb--empty')).not.toBeInTheDocument();
   });
 });

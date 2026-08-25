@@ -9,7 +9,8 @@ export interface MediaUnavailableProps {
 export function MediaUnavailable({ size = 'full', className = '' }: MediaUnavailableProps) {
   return (
     <div
-      className={`flex h-full w-full flex-col items-center justify-center gap-1.5 hub-bg-soft hub-tx3 ${className}`}
+      className={`flex h-full w-full flex-col items-center justify-center gap-1.5 ${className}`}
+      style={{ background: 'var(--hub-soft)', color: 'var(--hub-tx3)' }}
     >
       <ImageOff
         className={size === 'compact' ? 'h-4 w-4 opacity-60' : 'h-6 w-6 opacity-60'}
