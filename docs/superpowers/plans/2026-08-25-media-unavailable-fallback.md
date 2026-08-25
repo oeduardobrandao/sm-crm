@@ -1430,7 +1430,7 @@ with:
 
 ```tsx
       {m.media_lost_at ? (
-        <MediaUnavailable size="compact" />
+        <MediaUnavailable size="full" />
       ) : m.kind === 'image' ? (
         <OptimizedImage
           src={m.url ?? ''}
@@ -1454,6 +1454,8 @@ with:
         />
       )}
 ```
+
+Note `size="full"`, not `"compact"`, even though this tile is small on screen: the spec's own size policy explicitly lists "tile de galeria" (this exact gallery grid) as a `full` context, alongside the lightbox and Arquivos grid cells — `compact` is reserved for genuinely tiny contexts like the kanban cover circle (Step 8, 32px) and carousel thumbnail strips, not this grid.
 
 - [ ] **Step 7: Fix CRM `PostMediaLightbox.tsx`**
 
@@ -1718,12 +1720,18 @@ function makeCard(): BoardCard {
 
 describe('WorkflowCard post covers', () => {
   it('shows the unavailable placeholder instead of a broken image for a permanently lost cover', () => {
-    render(
+    const { container } = render(
       <MemoryRouter>
         <WorkflowCard card={makeCard()} />
       </MemoryRouter>,
     );
-    expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
+    // The kanban cover circle is a genuinely tight 32px space, so it renders
+    // MediaUnavailable in "compact" mode — icon only, no visible text label
+    // (unlike the gallery tile and lightbox, which use "full"). lucide-react
+    // renders each icon with a `lucide-<name>` class, which is what this
+    // asserts instead of the (absent-by-design) text.
+    expect(container.querySelector('.lucide-image-off')).toBeInTheDocument();
+    expect(container.querySelector('img')).not.toBeInTheDocument();
   });
 });
 ```
