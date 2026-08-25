@@ -132,6 +132,32 @@ export function validateLayout(raw: unknown): ValidateLayoutResult {
         }
       }
     }
+    if (b.type === "cover") {
+      if (b.size !== "full") {
+        return { ok: false, error: "cover must be full width" };
+      }
+      const coverCfg = b.config as Record<string, unknown> | undefined;
+      if (coverCfg?.color !== undefined) {
+        if (
+          typeof coverCfg.color !== "string" ||
+          !/^#[0-9a-fA-F]{6}$/.test(coverCfg.color)
+        ) {
+          return { ok: false, error: "invalid cover color" };
+        }
+      }
+      if (coverCfg?.logoSize !== undefined) {
+        const logoSize = coverCfg.logoSize;
+        // Bounds espelhados em apps/crm/src/pages/relatorio-editor/layoutOps.ts
+        // (COVER_LOGO_MIN/MAX) -- mudar um dos dois lados sem o outro quebra a
+        // consistência entre o que o stepper produz e o que o backend aceita.
+        if (
+          typeof logoSize !== "number" || !Number.isInteger(logoSize) ||
+          logoSize < 20 || logoSize > 68
+        ) {
+          return { ok: false, error: "cover logoSize out of bounds" };
+        }
+      }
+    }
   }
   return { ok: true, layout: raw as unknown as ReportLayout };
 }

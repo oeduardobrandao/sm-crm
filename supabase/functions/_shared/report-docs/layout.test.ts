@@ -60,3 +60,26 @@ Deno.test("theme e fonts: enums estritos; ausencia ok", () => {
   assert(!validateLayout({ ...base, fonts: "comic-sans" }).ok);
   assert(!validateLayout({ ...base, fonts: "" }).ok);
 });
+
+Deno.test("validateLayout: cover deve ser size full", () => {
+  const cover = (over: Record<string, unknown> = {}) => block({ type: "cover", ...over });
+  assert(validateLayout(layout([cover()])).ok);
+  assert(!validateLayout(layout([cover({ size: "third" })])).ok);
+  assert(!validateLayout(layout([cover({ size: "half" })])).ok);
+});
+
+Deno.test("validateLayout: cover.config.color precisa ser hex #rrggbb", () => {
+  const cover = (config: Record<string, unknown>) => block({ type: "cover", config });
+  assert(validateLayout(layout([cover({ color: "#0f766e" })])).ok);
+  assert(!validateLayout(layout([cover({ color: "vermelho" })])).ok);
+  assert(!validateLayout(layout([cover({ color: "#fff" })])).ok);
+});
+
+Deno.test("validateLayout: cover.config.logoSize entre 20 e 68", () => {
+  const cover = (config: Record<string, unknown>) => block({ type: "cover", config });
+  assert(validateLayout(layout([cover({ logoSize: 20 })])).ok);
+  assert(validateLayout(layout([cover({ logoSize: 68 })])).ok);
+  assert(!validateLayout(layout([cover({ logoSize: 19 })])).ok);
+  assert(!validateLayout(layout([cover({ logoSize: 69 })])).ok);
+  assert(!validateLayout(layout([cover({ logoSize: 40.5 })])).ok);
+});
