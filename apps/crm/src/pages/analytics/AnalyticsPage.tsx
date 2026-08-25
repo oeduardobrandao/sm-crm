@@ -391,6 +391,7 @@ type SortCol =
   | 'client_name'
   | 'follower_count'
   | 'engagement_rate_avg'
+  | 'impressions_28d'
   | 'reach_28d'
   | 'alcance_seg'
   | 'posts_last_30d'
@@ -411,7 +412,7 @@ export default function AnalyticsPage() {
   const [days, setDays] = useState<number>(28);
   const [clienteFilter, setClienteFilter] = useState<string>('all');
   const [drawerSort, setDrawerSort] = useState<'best' | 'worst' | null>(null);
-  const [drawerOrderBy, setDrawerOrderBy] = useState<string>('reach');
+  const [drawerOrderBy, setDrawerOrderBy] = useState<string>('views');
   const [drawerAsc, setDrawerAsc] = useState(false);
   const [drawerClientFilter, setDrawerClientFilter] = useState<string>('all');
   const [drawerFormatFilter, setDrawerFormatFilter] = useState<string>('all');
@@ -428,20 +429,20 @@ export default function AnalyticsPage() {
     return [...names].sort();
   }, [data?.allRankedPosts]);
 
-  const reachRankedPosts = useMemo(() => {
-    return [...(data?.allRankedPosts ?? [])].sort((a, b) => b.reach - a.reach);
+  const viewsRankedPosts = useMemo(() => {
+    return [...(data?.allRankedPosts ?? [])].sort((a, b) => b.views - a.views);
   }, [data?.allRankedPosts]);
 
-  const matureReachRankedPosts = useMemo(() => {
+  const matureViewsRankedPosts = useMemo(() => {
     const cutoff48h = Date.now() - 48 * 60 * 60 * 1000;
     return [...(data?.allRankedPosts ?? [])]
       .filter((p) => new Date(p.posted_at).getTime() < cutoff48h)
-      .sort((a, b) => a.reach - b.reach);
+      .sort((a, b) => a.views - b.views);
   }, [data?.allRankedPosts]);
 
   const drawerPosts = useMemo(() => {
     let posts =
-      drawerSort === 'worst' ? [...matureReachRankedPosts] : [...(data?.allRankedPosts ?? [])];
+      drawerSort === 'worst' ? [...matureViewsRankedPosts] : [...(data?.allRankedPosts ?? [])];
 
     if (drawerClientFilter !== 'all') {
       posts = posts.filter((p) => p.client_name === drawerClientFilter);
@@ -487,6 +488,9 @@ export default function AnalyticsPage() {
         });
         break;
       }
+      case 'views':
+        posts.sort((a, b) => (a.views - b.views) * dir);
+        break;
       case 'reach':
         posts.sort((a, b) => (a.reach - b.reach) * dir);
         break;
@@ -507,7 +511,7 @@ export default function AnalyticsPage() {
     drawerDateFrom,
     drawerDateTo,
     drawerSort,
-    matureReachRankedPosts,
+    matureViewsRankedPosts,
   ]);
 
   const handleSyncAll = async () => {
@@ -566,14 +570,16 @@ export default function AnalyticsPage() {
   });
 
   // Leader cards share the KPI block, so these are hoisted out of the JSX
-  const bestByReach = [...filteredAccounts].sort((a, b) => b.reach_28d - a.reach_28d)[0];
+  const bestByViews = [...filteredAccounts].sort(
+    (a, b) => (b.impressions_28d || 0) - (a.impressions_28d || 0),
+  )[0];
   const mostPosts = [...filteredAccounts].sort((a, b) => b.posts_last_30d - a.posts_last_30d)[0];
   const mostFollowers = [...filteredAccounts].sort(
     (a, b) => b.follower_count - a.follower_count,
   )[0];
 
   const totalFollowers = filteredAccounts.reduce((s, a) => s + a.follower_count, 0);
-  const totalReach = filteredAccounts.reduce((s, a) => s + a.reach_28d, 0);
+  const totalViews = filteredAccounts.reduce((s, a) => s + (a.impressions_28d || 0), 0);
   const avgEngagement =
     filteredAccounts.length > 0
       ? filteredAccounts.reduce((s, a) => s + a.engagement_rate_avg, 0) / filteredAccounts.length
@@ -777,10 +783,10 @@ export default function AnalyticsPage() {
           sub={`${summary.declining} em declínio`}
         />
         <StatCard
-          label="Alcance total (28d)"
+          label="Visualizações totais (28d)"
           icon={Eye}
           tone="violet"
-          value={formatNumber(totalReach)}
+          value={formatNumber(totalViews)}
           sub="Soma de todas as contas"
         />
         <StatCard
@@ -819,14 +825,14 @@ export default function AnalyticsPage() {
               sub={`+${formatNumber(summary.mostImproved.follower_delta)} seguidores`}
             />
           )}
-        {bestByReach && bestByReach.reach_28d > 0 && (
+        {bestByViews && (bestByViews.impressions_28d || 0) > 0 && (
           <StatCard
-            label="Maior alcance"
+            label="Mais visualizações"
             icon={Eye}
             tone="blue"
             compactValue
-            value={bestByReach.client_name}
-            sub={`${formatNumber(bestByReach.reach_28d)} alcance 28d`}
+            value={bestByViews.client_name}
+            sub={`${formatNumber(bestByViews.impressions_28d || 0)} visualizações 28d`}
           />
         )}
         {mostFollowers && (
@@ -852,15 +858,15 @@ export default function AnalyticsPage() {
       </StatCardGrid>
 
       {/* Top posts */}
-      {reachRankedPosts.length > 0 && (
+      {viewsRankedPosts.length > 0 && (
         <div className="card animate-up">
           <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} />
               Melhores Posts
-              <HelpTooltip content="Top 5 posts com maior alcance no período selecionado." />
+              <HelpTooltip content="Top 5 posts com mais visualizações no período selecionado." />
             </h3>
-            {reachRankedPosts.length > 5 && (
+            {viewsRankedPosts.length > 5 && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -875,7 +881,7 @@ export default function AnalyticsPage() {
             )}
           </div>
           <div className="analytics-posts-row">
-            {reachRankedPosts.slice(0, 5).map((post) => (
+            {viewsRankedPosts.slice(0, 5).map((post) => (
               <a
                 key={post.id}
                 href={sanitizeUrl(post.permalink)}
@@ -967,7 +973,9 @@ export default function AnalyticsPage() {
                     {format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })}
                   </span>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Alcance</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                      Visualizações
+                    </span>
                     <span
                       style={{
                         fontSize: '0.7rem',
@@ -976,7 +984,7 @@ export default function AnalyticsPage() {
                         color: 'var(--success)',
                       }}
                     >
-                      {formatNumber(post.reach)}
+                      {formatNumber(post.views)}
                     </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -1053,16 +1061,16 @@ export default function AnalyticsPage() {
 
       {/* Worst posts */}
       {(() => {
-        if (matureReachRankedPosts.length === 0) return null;
+        if (matureViewsRankedPosts.length === 0) return null;
         return (
           <div className="card animate-up">
             <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} />
                 Precisam de Atenção
-                <HelpTooltip content="Posts com pelo menos 48h desde a publicação e menor alcance no período." />
+                <HelpTooltip content="Posts com pelo menos 48h desde a publicação e menos visualizações no período." />
               </h3>
-              {matureReachRankedPosts.length > 5 && (
+              {matureViewsRankedPosts.length > 5 && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1077,7 +1085,7 @@ export default function AnalyticsPage() {
               )}
             </div>
             <div className="analytics-posts-row">
-              {matureReachRankedPosts.slice(0, 5).map((post) => (
+              {matureViewsRankedPosts.slice(0, 5).map((post) => (
                 <a
                   key={post.id}
                   href={sanitizeUrl(post.permalink)}
@@ -1170,7 +1178,7 @@ export default function AnalyticsPage() {
                     </span>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                        Alcance
+                        Visualizações
                       </span>
                       <span
                         style={{
@@ -1180,7 +1188,7 @@ export default function AnalyticsPage() {
                           color: 'var(--danger)',
                         }}
                       >
-                        {formatNumber(post.reach)}
+                        {formatNumber(post.views)}
                       </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -1279,6 +1287,7 @@ export default function AnalyticsPage() {
                   {renderSortableHead('client_name', 'Cliente')}
                   {renderSortableHead('follower_count', 'Seguidores')}
                   {renderSortableHead('engagement_rate_avg', 'Engajamento')}
+                  {renderSortableHead('impressions_28d', 'Visualizações (28d)')}
                   {renderSortableHead('reach_28d', 'Alcance (28d)')}
                   {renderSortableHead('alcance_seg', 'Alcance / Seg.')}
                   {renderSortableHead('posts_last_30d', 'Posts (30d)')}
@@ -1362,6 +1371,9 @@ export default function AnalyticsPage() {
                           {formatPct(a.engagement_rate_avg)}
                         </Badge>
                       </TableCell>
+                      <TableCell data-label="Visualizações (28d)">
+                        {formatNumber(a.impressions_28d || 0)}
+                      </TableCell>
                       <TableCell data-label="Alcance (28d)">{formatNumber(a.reach_28d)}</TableCell>
                       <TableCell data-label="Alcance / Seg.">
                         {a.follower_count > 0
@@ -1430,6 +1442,7 @@ export default function AnalyticsPage() {
                 <DropdownMenuRadioItem value="engagement_rate_avg">
                   Engajamento
                 </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="impressions_28d">Visualizações</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="reach_28d">Alcance</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="posts_last_30d">Posts (30d)</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="last_post_at">Último Post</DropdownMenuRadioItem>
@@ -1525,7 +1538,7 @@ export default function AnalyticsPage() {
                         </span>
                       )}
                       <span>&bull;</span>
-                      <span>{formatNumber(a.reach_28d)} alcance</span>
+                      <span>{formatNumber(a.impressions_28d || 0)} visualizações</span>
                       <span>&bull;</span>
                       {daysSince !== null ? (
                         <span style={{ color: isSilent ? 'var(--danger)' : undefined }}>
@@ -1614,7 +1627,7 @@ export default function AnalyticsPage() {
         onOpenChange={(open) => {
           if (!open) {
             setDrawerSort(null);
-            setDrawerOrderBy('reach');
+            setDrawerOrderBy('views');
             setDrawerAsc(false);
             setDrawerClientFilter('all');
             setDrawerFormatFilter('all');
@@ -1640,7 +1653,7 @@ export default function AnalyticsPage() {
             <SheetDescription>
               {drawerPosts.length} de{' '}
               {drawerSort === 'worst'
-                ? matureReachRankedPosts.length
+                ? matureViewsRankedPosts.length
                 : (data?.allRankedPosts?.length ?? 0)}{' '}
               posts
               {['share_rate', 'like_rate', 'save_rate', 'comment_rate'].includes(drawerOrderBy) && (
@@ -1652,7 +1665,7 @@ export default function AnalyticsPage() {
                     marginTop: 2,
                   }}
                 >
-                  Top 200 por alcance, reordenado por taxa
+                  Top 200 por visualizações, reordenado por taxa
                 </span>
               )}
             </SheetDescription>
@@ -1665,6 +1678,7 @@ export default function AnalyticsPage() {
                   <SelectValue placeholder="Ordenar por" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="views">Visualizações</SelectItem>
                   <SelectItem value="reach">Alcance</SelectItem>
                   <SelectItem value="engagement">Engajamento</SelectItem>
                   <SelectItem value="likes">Curtidas</SelectItem>
@@ -1847,9 +1861,9 @@ export default function AnalyticsPage() {
                     }}
                   >
                     <span>
-                      Alcance{' '}
+                      Visualizações{' '}
                       <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
-                        {formatNumber(post.reach)}
+                        {formatNumber(post.views)}
                       </strong>
                     </span>
                     <span>

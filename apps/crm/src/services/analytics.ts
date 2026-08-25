@@ -426,8 +426,8 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
     )
     .in('instagram_account_id', accountIds)
     .gte('posted_at', periodAgo)
-    .gt('reach', 0)
-    .order('reach', { ascending: false })
+    .or('impressions.gt.0,reach.gt.0')
+    .order('impressions', { ascending: false })
     .limit(200);
 
   const accountToClient: Record<number, { client_name: string; client_id: number }> = {};
@@ -462,7 +462,7 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
         client_id: info?.client_id || 0,
       };
     })
-    .sort((a, b) => b.reach - a.reach);
+    .sort((a, b) => b.views - a.views);
 
   const topPosts = allRankedPosts.slice(0, 5);
   const worstPosts = allRankedPosts.length > 5 ? allRankedPosts.slice(-5).reverse() : [];
@@ -517,7 +517,7 @@ export async function getAnalyticsOverview(
   // Posts for current and previous periods + follower history — all in parallel
   const currentPostsQuery = supabase
     .from('instagram_posts')
-    .select('likes, comments, saved, shares, reach')
+    .select('likes, comments, saved, shares, reach, impressions')
     .eq('instagram_account_id', account.id)
     .gte('posted_at', periodStart);
   if (periodEnd) currentPostsQuery.lte('posted_at', periodEnd);
@@ -536,7 +536,7 @@ export async function getAnalyticsOverview(
       currentPostsQuery,
       supabase
         .from('instagram_posts')
-        .select('likes, comments, saved, shares, reach')
+        .select('likes, comments, saved, shares, reach, impressions')
         .eq('instagram_account_id', account.id)
         .gte('posted_at', prevStart)
         .lt('posted_at', periodStart),
@@ -715,6 +715,7 @@ export async function getPostsAnalytics(
     'posted_at',
     'reach',
     'impressions',
+    'views',
     'engagement_rate',
     'saves_rate',
     'saved',

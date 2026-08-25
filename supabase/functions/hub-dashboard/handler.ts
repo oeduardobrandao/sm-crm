@@ -78,9 +78,10 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
       .select("instagram_post_id, thumbnail_url, media_type, permalink, posted_at, likes, comments, reach, impressions, saved, shares")
       .eq("instagram_account_id", igAccount.id)
       .gte("posted_at", cutoff)
-      .gt("reach", 0)
-      .order("reach", { ascending: false })
-      .limit(20);
+      .or('impressions.gt.0,reach.gt.0')
+      .order("impressions", { ascending: false })
+      .order("posted_at", { ascending: false })
+      .limit(5);
 
     const topPosts = (topPostsRaw ?? [])
       .map((p: any) => ({
@@ -102,11 +103,7 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
           shares: p.shares ?? 0,
           reach: p.reach ?? 0,
         }),
-      }))
-      .sort((a: { engagementRate: number }, b: { engagementRate: number }) =>
-        b.engagementRate - a.engagementRate,
-      )
-      .slice(0, 5);
+      }));
 
     if (topPosts.length > 0 && igAccount.encrypted_access_token) {
       try {

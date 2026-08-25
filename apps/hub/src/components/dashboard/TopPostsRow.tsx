@@ -132,9 +132,11 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
               </div>
               <div className="p-3 space-y-1">
                 <div className="flex justify-between">
-                  <span className="text-[11px] text-stone-500 dark:text-stone-400">Alcance</span>
+                  <span className="text-[11px] text-stone-500 dark:text-stone-400">
+                    Visualizações
+                  </span>
                   <span className="text-[11px] font-bold text-stone-900 dark:text-stone-100">
-                    {formatNumber(post.reach)}
+                    {formatNumber(post.impressions)}
                   </span>
                 </div>
                 <div className="flex justify-between">
