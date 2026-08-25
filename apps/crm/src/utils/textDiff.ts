@@ -7,9 +7,13 @@ export interface DiffSegment {
 
 const dmp = new DiffMatchPatch();
 
-// Runs of Unicode letters/digits, and runs of everything else (whitespace, punctuation,
-// symbols). Every character belongs to exactly one token, so tokens.join('') === input.
-const TOKEN_RE = /[\p{L}\p{N}]+|[^\p{L}\p{N}]+/gu;
+// Runs of Unicode letters/digits/combining marks, and runs of everything else (whitespace,
+// punctuation, symbols). \p{M} (combining marks) rides along with \p{L}/\p{N} so a base
+// letter stays in the same token as its own accent in decomposed Unicode (NFD) text -- e.g.
+// pasted "ã" (a + combining tilde) is one token, not "a" split from the accent that
+// renders on top of it. Every character belongs to exactly one token, so
+// tokens.join('') === input.
+const TOKEN_RE = /[\p{L}\p{N}\p{M}]+|[^\p{L}\p{N}\p{M}]+/gu;
 
 /**
  * Word-level diff, built on diff-match-patch's own line-mode trick (see diff_lineMode_ in

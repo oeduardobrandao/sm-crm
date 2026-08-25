@@ -64,4 +64,24 @@ describe('computeWordDiff', () => {
       { type: 'insert', text: 'La Roche' },
     ]);
   });
+
+  it('keeps a decomposed-Unicode accent attached to its base letter', () => {
+    // NFD (decomposed) text -- common in pasted content -- spells the "a with tilde" sound as
+    // base letter "a" (U+0061) plus a separate combining tilde (U+0303), instead of the
+    // single precomposed character (U+00E3). Built via String.fromCharCode so the test
+    // doesn't depend on which form a literal accented character in this source file would be
+    // saved as. Without \p{M} in the token class, that combining mark falls into the
+    // "everything else" bucket, splitting the base letter from its own accent and
+    // reproducing the mid-word chopping this function exists to avoid.
+    const combiningTilde = String.fromCharCode(0x0303);
+    const original = `a${combiningTilde}e`;
+    const suggested = `a${combiningTilde}os`;
+    expect(original.normalize('NFC')).not.toBe(original); // sanity-check: really is decomposed
+
+    const result = computeWordDiff(original, suggested);
+    expect(result).toEqual([
+      { type: 'delete', text: original },
+      { type: 'insert', text: suggested },
+    ]);
+  });
 });
