@@ -18,7 +18,7 @@ const STRIPE_CONCURRENCY = 8;
  * until the edge runtime kills the isolate. The underlying promise stays handled after the race
  * is lost (its late settle hits the no-op resolve/reject), so no unhandled rejection escapes.
  */
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
     p.then(

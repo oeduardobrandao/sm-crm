@@ -1,8 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { Download } from 'lucide-react';
+import { toast } from 'sonner';
 import { listWorkspaces, listPlans, getMrr, getTrials } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
 import { formatMoney, intervalLabel, statusMeta, toneBadgeClass } from '../lib/subscription';
+import { toCSV, downloadCSV } from '../lib/csv-export';
+import {
+  PAYING_WORKSPACE_EXPORT_COLUMNS,
+  buildPayingWorkspaceExportRows,
+  TRIAL_EXPORT_COLUMNS,
+  buildTrialExportRows,
+} from './dashboard-export';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -30,6 +39,26 @@ export default function DashboardPage() {
     queryKey: ['admin', 'trials'],
     queryFn: getTrials,
   });
+
+  function exportPayingWorkspacesCsv() {
+    const workspaces = mrrData?.workspaces ?? [];
+    if (workspaces.length === 0) {
+      toast.error('Nothing to export');
+      return;
+    }
+    const csv = toCSV(buildPayingWorkspaceExportRows(workspaces), PAYING_WORKSPACE_EXPORT_COLUMNS);
+    downloadCSV(`paying-workspaces-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  }
+
+  function exportTrialsCsv() {
+    const trials = trialsData?.trials ?? [];
+    if (trials.length === 0) {
+      toast.error('Nothing to export');
+      return;
+    }
+    const csv = toCSV(buildTrialExportRows(trials), TRIAL_EXPORT_COLUMNS);
+    downloadCSV(`trials-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  }
 
   const totalWorkspaces = workspacesData?.total ?? 0;
   const activePlans = plansData?.plans?.length ?? 0;
@@ -105,11 +134,20 @@ export default function DashboardPage() {
       <div className="glass-surface bg-card border border-border rounded-2xl p-5 mb-8">
         <div className="flex items-baseline justify-between mb-4 gap-3">
           <h2 className="font-semibold">Paying Workspaces</h2>
-          <span className="text-sm text-muted-foreground">
-            {mrrLoading
-              ? '—'
-              : `${mrrData?.paying_count ?? 0} · ${formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency)}/mês`}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">
+              {mrrLoading
+                ? '—'
+                : `${mrrData?.paying_count ?? 0} · ${formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency)}/mês`}
+            </span>
+            <button
+              onClick={exportPayingWorkspacesCsv}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Download size={14} />
+              Export CSV
+            </button>
+          </div>
         </div>
 
         {/* Desktop table header */}
@@ -208,11 +246,20 @@ export default function DashboardPage() {
       <div className="glass-surface bg-card border border-border rounded-2xl p-5 mb-8">
         <div className="flex items-baseline justify-between mb-4 gap-3">
           <h2 className="font-semibold">Trials</h2>
-          <span className="text-sm text-muted-foreground">
-            {trialsLoading
-              ? '—'
-              : `${trialsData?.trial_count ?? 0} · ${formatMoney(trialMrrCents, currency)}/mês`}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">
+              {trialsLoading
+                ? '—'
+                : `${trialsData?.trial_count ?? 0} · ${formatMoney(trialMrrCents, currency)}/mês`}
+            </span>
+            <button
+              onClick={exportTrialsCsv}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Download size={14} />
+              Export CSV
+            </button>
+          </div>
         </div>
 
         {/* Desktop table header */}

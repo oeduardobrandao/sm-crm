@@ -5,11 +5,10 @@ import { handleCreatePlan, handleUpdatePlan } from "./plan-mutations.ts";
 import { handleGetWorkspaceInvites, handleAdminCancelInvite, handleAdminResendInvite, handleAdminCreateInvite } from "./invite-handlers.ts";
 import { handleListWorkspaces } from "./list-workspaces.ts";
 import { handleListWorkspaceEvents } from "./event-history.ts";
+import { handleGetMrr, handleGetTrials } from "./mrr.ts";
 // Single source of truth for plan columns (includes max_mcp_keys / feature_mcp).
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
-import { aggregateMrr, toMonthlyCents } from "../_shared/billing-logic.ts";
 import { buildAmountColumns, fetchStripeAmount } from "../_shared/stripe-amount.ts";
-import { priceSubscriptionRows } from "./pricing.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -547,151 +546,6 @@ async function handleListPlans(
   );
 
   return new Response(JSON.stringify({ plans: enriched }), { status: 200, headers });
-}
-
-/**
- * Monthly recurring revenue + the paying-workspace breakdown behind it, driven by the Stripe
- * subscription mirror (workspace_subscriptions), NOT by plan-assignment counts — so comped/manual
- * plan grants (which have no subscription row) never inflate it. Only in-force paid subscriptions
- * count (active/past_due). Each is priced from its live Stripe amount, net of coupons; if Stripe
- * is unreachable it falls back to the plan's catalog price. Annual is normalized to monthly, and
- * the total is the exact sum of the per-workspace monthly amounts returned in `workspaces`.
- */
-async function handleGetMrr(
-  svc: ReturnType<typeof createClient>,
-  headers: Record<string, string>,
-) {
-  const { data: subs, error: subsError } = await svc
-    .from("workspace_subscriptions")
-    .select(
-      "workspace_id, provider, status, plan_id, billing_interval, stripe_subscription_id, amount_cents, currency, amount_interval, discount_label",
-    )
-    .in("status", ["active", "past_due"]);
-  if (subsError) throw subsError;
-
-  const rows = subs ?? [];
-  const wsIds = rows.map((s) => s.workspace_id);
-  const planIds = [...new Set(rows.map((s) => s.plan_id).filter(Boolean))] as string[];
-
-  const nameByWs = new Map<string, string>();
-  if (wsIds.length) {
-    const { data: wsRows } = await svc.from("workspaces").select("id, name").in("id", wsIds);
-    for (const w of wsRows ?? []) nameByWs.set(w.id, w.name);
-  }
-
-  const planById = new Map<
-    string,
-    { name: string; price_brl: number | null; price_brl_annual: number | null }
-  >();
-  if (planIds.length) {
-    const { data: planRows } = await svc
-      .from("plans")
-      .select("id, name, price_brl, price_brl_annual")
-      .in("id", planIds);
-    for (const p of planRows ?? []) {
-      planById.set(p.id, {
-        name: p.name,
-        price_brl: p.price_brl ?? null,
-        price_brl_annual: p.price_brl_annual ?? null,
-      });
-    }
-  }
-
-  const priceable = await priceSubscriptionRows(svc, rows, nameByWs, planById);
-
-  const { mrr_cents, paying_count, priced } = aggregateMrr(priceable);
-  const workspaces = priced
-    .map((r) => ({
-      workspace_id: r.workspace_id,
-      name: r.name,
-      plan_name: r.plan_name,
-      status: r.status,
-      interval: r.interval,
-      monthly_cents: r.monthly_cents,
-      discount_label: r.discount_label,
-      amount_source: r.amount_source,
-    }))
-    .sort((a, b) => b.monthly_cents - a.monthly_cents);
-
-  return new Response(JSON.stringify({ mrr_cents, paying_count, currency: "brl", workspaces }), {
-    status: 200,
-    headers,
-  });
-}
-
-/**
- * Workspaces on a Stripe trial. Trials are `workspace_subscriptions.status = 'trialing'` (the
- * app-level workspaces.trial_ends_at column was dropped as unreferenced), and for a trialing
- * subscription `current_period_end` is the trial-end date.
- *
- * Each trial carries its EXPECTED monthly contribution (`monthly_cents`) priced from the LIVE
- * Stripe amount, net of coupons (catalog price only as a fallback), so it matches the exact
- * per-subscription amounts the Workspaces list shows — including per-trial discounts, which a flat
- * catalog price cannot represent. `trial_mrr_cents` is the sum. Sorted soonest-ending first.
- */
-async function handleGetTrials(
-  svc: ReturnType<typeof createClient>,
-  headers: Record<string, string>,
-) {
-  const { data: subs, error } = await svc
-    .from("workspace_subscriptions")
-    .select(
-      "workspace_id, provider, plan_id, billing_interval, stripe_subscription_id, current_period_end, amount_cents, currency, amount_interval, discount_label",
-    )
-    .eq("status", "trialing");
-  if (error) throw error;
-
-  const rows = subs ?? [];
-  const wsIds = rows.map((s) => s.workspace_id);
-  const planIds = [...new Set(rows.map((s) => s.plan_id).filter(Boolean))] as string[];
-
-  const nameByWs = new Map<string, string>();
-  if (wsIds.length) {
-    const { data: wsRows } = await svc.from("workspaces").select("id, name").in("id", wsIds);
-    for (const w of wsRows ?? []) nameByWs.set(w.id, w.name);
-  }
-
-  const planById = new Map<
-    string,
-    { name: string; price_brl: number | null; price_brl_annual: number | null }
-  >();
-  if (planIds.length) {
-    const { data: planRows } = await svc
-      .from("plans")
-      .select("id, name, price_brl, price_brl_annual")
-      .in("id", planIds);
-    for (const p of planRows ?? []) {
-      planById.set(p.id, {
-        name: p.name,
-        price_brl: p.price_brl ?? null,
-        price_brl_annual: p.price_brl_annual ?? null,
-      });
-    }
-  }
-
-  const priced = await priceSubscriptionRows(svc, rows, nameByWs, planById);
-  const trials = priced
-    .map((r) => ({
-      workspace_id: r.workspace_id,
-      name: r.name,
-      plan_name: r.plan_name,
-      interval: r.interval,
-      trial_ends_at: r.current_period_end ?? null,
-      monthly_cents: toMonthlyCents(r.interval, r.amount_cents),
-    }))
-    .sort((a, b) => {
-      // Soonest-ending first; rows with no known end date go last.
-      if (!a.trial_ends_at) return 1;
-      if (!b.trial_ends_at) return -1;
-      return a.trial_ends_at < b.trial_ends_at ? -1 : a.trial_ends_at > b.trial_ends_at ? 1 : 0;
-    });
-
-  const trial_mrr_cents = trials.reduce((sum, t) => sum + (t.monthly_cents ?? 0), 0);
-
-  return new Response(
-    JSON.stringify({ trials, trial_count: trials.length, trial_mrr_cents, currency: "brl" }),
-    { status: 200, headers },
-  );
 }
 
 async function handleDeletePlan(
