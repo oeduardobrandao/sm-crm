@@ -107,13 +107,10 @@ export async function loadClientSnapshot(
   // depois. O data_snapshot é congelado para sempre, então precisa da MESMA
   // blindagem que os thumbnails de post já têm -- sem isso a foto quebraria
   // quando a URL efêmera expirasse, sem chance de autocorrigir depois.
-  const avatarUrlPromise: Promise<string | null> = cachePostThumbnail(
-    { fetch: deps.fetch, storage: deps.storage },
-    igAccountId,
-    "avatar",
-    account.profile_picture_url ?? null,
-    null,
-  );
+  const rawAvatar = account.profile_picture_url ?? null;
+  const avatarUrlPromise: Promise<string | null> = isEphemeralInstagramUrl(rawAvatar)
+    ? cachePostThumbnail({ fetch: deps.fetch, storage: deps.storage }, igAccountId, "avatar", rawAvatar, null)
+    : Promise.resolve(rawAvatar);
 
   const lastSnapshotOfMonth = (win: typeof w) =>
     db.from("instagram_account_metrics_daily").select("*")

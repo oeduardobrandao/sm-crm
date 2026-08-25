@@ -453,3 +453,47 @@ Deno.test("generate: cacheia a foto de perfil e propaga client_name no snapshot"
   assertEquals(uploaded.length, 1);
   assertEquals(uploaded[0].path, "ig-1/avatar.jpg");
 });
+
+Deno.test("generate: avatar já estável não é recacheado (sem upload/download)", async () => {
+  // instagram_accounts.profile_picture_url já pode ser uma URL estável (o
+  // sync/refresh cron recacheia essa coluna depois da conexão inicial) --
+  // recachear de novo a cada geração seria custo de rede/storage sem fim,
+  // igual ao guard que os thumbnails de post já usam 30 linhas abaixo.
+  const uploaded: { path: string; contentType: string }[] = [];
+  const storage = {
+    from: (bucket: string) => ({
+      upload: async (path: string, _body: unknown, opts: { contentType: string }) => {
+        uploaded.push({ path, contentType: opts.contentType });
+        return { error: null };
+      },
+      getPublicUrl: (path: string) => ({
+        data: { publicUrl: `https://cdn.example/${bucket}/${path}` },
+      }),
+    }),
+    createBucket: async () => ({}),
+  };
+  const fetchMock = (async () => {
+    return new Response("{}", { status: 200 });
+  }) as typeof fetch;
+  const testDeps = { ...deps, fetch: fetchMock, storage };
+  const stableAvatar = "https://cdn.example/instagram-posts/ig-1/avatar.jpg";
+
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "Dra. X", especialidade: "Derma", include_ai_analysis: false },
+    instagram_accounts: {
+      id: "ig-1", username: "dra.x", follower_count: 100,
+      profile_picture_url: stableAvatar,
+    },
+    instagram_posts: [],
+    instagram_follower_history: [],
+    instagram_analytics_cache: null,
+    instagram_account_metrics_daily: [],
+    workspaces: { name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null },
+  });
+  await generateReportDocument(db, testDeps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as {
+    data_snapshot: { account: { profile_picture_url: string | null } };
+  };
+  assertEquals(row.data_snapshot.account.profile_picture_url, stableAvatar);
+  assertEquals(uploaded.length, 0);
+});
