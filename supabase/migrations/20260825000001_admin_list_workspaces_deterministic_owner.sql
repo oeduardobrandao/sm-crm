@@ -11,6 +11,14 @@
 -- mirrored by the platform-admin fetchOwnerContacts helper
 -- (supabase/functions/platform-admin/owner-contact.ts) for the MRR/Trials owner enrichment, so
 -- all paths agree on "the owner" for a given workspace.
+--
+-- Also adds `id` as a secondary sort key to the pagination and final-aggregation ORDER BYs,
+-- which previously ordered by created_at alone. created_at has no uniqueness guarantee (two
+-- workspaces can be created in the same instant, e.g. bulk seeding), so ties made pagination
+-- non-deterministic across separate offset/limit calls -- harmless for a human clicking through
+-- one page at a time, but a real correctness risk for the new admin Workspaces CSV export
+-- (apps/admin/src/pages/WorkspacesPage.tsx), which assembles a full export from several
+-- sequential offset/limit calls and needs every row counted exactly once.
 CREATE OR REPLACE FUNCTION admin_list_workspaces(
   p_search  text DEFAULT NULL,
   p_plan_id text DEFAULT NULL,
@@ -34,7 +42,7 @@ filtered AS (
           OR COALESCE(w.plan_id, (SELECT id FROM default_plan)) = p_plan_id)
 ),
 page AS (
-  SELECT * FROM filtered ORDER BY created_at DESC OFFSET p_offset LIMIT p_limit
+  SELECT * FROM filtered ORDER BY created_at DESC, id ASC OFFSET p_offset LIMIT p_limit
 ),
 enriched AS (
   SELECT
@@ -113,7 +121,7 @@ SELECT jsonb_build_object(
                                  AND (o.resource_overrides IS NOT NULL
                                       OR o.feature_overrides IS NOT NULL))),
   'workspaces',          COALESCE(
-    (SELECT jsonb_agg(to_jsonb(e) ORDER BY e.created_at DESC) FROM enriched e),
+    (SELECT jsonb_agg(to_jsonb(e) ORDER BY e.created_at DESC, e.id ASC) FROM enriched e),
     '[]'::jsonb)
 );
 $$;
