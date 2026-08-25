@@ -47,7 +47,7 @@ export async function generateReportDocument(
 
   // Ownership explícito de TODO id: service role bypassa RLS (spec §5).
   const { data: cliente } = await db.from("clientes")
-    .select("id, conta_id, nome, especialidade, include_ai_analysis")
+    .select("id, conta_id, nome, especialidade, include_ai_analysis, foto_url")
     .eq("id", clientId).maybeSingle();
   if (!cliente || cliente.conta_id !== contaId) throw new GenerateError("not_found");
 
@@ -89,7 +89,7 @@ export async function generateReportDocument(
 
   const { snapshot, igAccountId } = await loadClientSnapshot(
     db, deps, contaId,
-    { id: cliente.id, especialidade: cliente.especialidade, nome: cliente.nome },
+    { id: cliente.id, especialidade: cliente.especialidade, nome: cliente.nome, foto_url: cliente.foto_url },
     month,
   );
 

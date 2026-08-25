@@ -18,7 +18,7 @@ export async function refreshReportDocument(
   if (!doc || doc.conta_id !== contaId) throw new DocActionError("not_found");
 
   const { data: cliente } = await db.from("clientes")
-    .select("id, conta_id, especialidade, nome")
+    .select("id, conta_id, especialidade, nome, foto_url")
     .eq("id", doc.client_id).maybeSingle();
   if (!cliente || cliente.conta_id !== contaId) throw new DocActionError("not_found");
 
@@ -27,7 +27,10 @@ export async function refreshReportDocument(
   try {
     ({ snapshot } = await loadClientSnapshot(
       db, deps, contaId,
-      { id: cliente.id, especialidade: cliente.especialidade, nome: cliente.nome },
+      {
+        id: cliente.id, especialidade: cliente.especialidade, nome: cliente.nome,
+        foto_url: cliente.foto_url,
+      },
       month,
     ));
   } catch (err) {

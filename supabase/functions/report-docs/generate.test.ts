@@ -565,3 +565,49 @@ Deno.test("generate: falha no cache do avatar vira null, não a URL efêmera cru
   };
   assertEquals(row.data_snapshot.account.profile_picture_url, null);
 });
+
+Deno.test("generate: foto manual (clientes.foto_url) tem prioridade sobre a do Instagram, mesma cadeia do hub-bootstrap", async () => {
+  // Achado do usuário 2026-08-25 ("onde estão as fotos dos clientes?"): a
+  // capa só olhava pra instagram_accounts.profile_picture_url e ignorava o
+  // upload manual em clientes.foto_url, que hub-bootstrap/handler.ts já
+  // prioriza primeiro. clientes.foto_url é estável por construção (upload
+  // direto pro storage) -- não deve disparar nenhum cache/download.
+  const uploaded: { path: string; contentType: string }[] = [];
+  const storage = {
+    from: (bucket: string) => ({
+      upload: async (path: string, _body: unknown, opts: { contentType: string }) => {
+        uploaded.push({ path, contentType: opts.contentType });
+        return { error: null };
+      },
+      getPublicUrl: (path: string) => ({
+        data: { publicUrl: `https://cdn.example/${bucket}/${path}` },
+      }),
+    }),
+    createBucket: async () => ({}),
+  };
+  const fetchMock = (async () => new Response("{}", { status: 200 })) as typeof fetch;
+  const testDeps = { ...deps, fetch: fetchMock, storage };
+  const manualFoto = "https://cdn.example/clientes-fotos/1.png";
+
+  const db = makeDb({
+    clientes: {
+      id: 1, conta_id: "c", nome: "Dra. X", especialidade: "Derma",
+      include_ai_analysis: false, foto_url: manualFoto,
+    },
+    instagram_accounts: {
+      id: "ig-1", username: "dra.x", follower_count: 100,
+      profile_picture_url: "https://cdninstagram.com/raw.jpg",
+    },
+    instagram_posts: [],
+    instagram_follower_history: [],
+    instagram_analytics_cache: null,
+    instagram_account_metrics_daily: [],
+    workspaces: { name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null },
+  });
+  await generateReportDocument(db, testDeps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as {
+    data_snapshot: { account: { profile_picture_url: string | null } };
+  };
+  assertEquals(row.data_snapshot.account.profile_picture_url, manualFoto);
+  assertEquals(uploaded.length, 0);
+});
