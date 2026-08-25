@@ -4,6 +4,11 @@
 begin;
 do $$
 declare
+  -- now() is transaction_timestamp() under the hood: it returns the SAME value for every
+  -- call within this one transaction, it does not advance between statements. So "before"
+  -- and "after" the snapshot can't be expressed by just calling now() twice -- they have to
+  -- be explicit offsets from one frozen capture instead.
+  v_now timestamptz := now();
   v_as_of timestamptz;
   v_ws_a uuid;
   v_ws_b uuid;
@@ -13,14 +18,14 @@ begin
   -- workspace B is created after it (like a signup landing mid-export). Scoped by a unique
   -- name prefix (via p_search) so pre-existing workspaces can't interfere with the total
   -- assertions below.
-  insert into workspaces (name, plan_id, plan_source)
-    values ('ET snapshot test A', 'max', 'manual')
+  insert into workspaces (name, plan_id, plan_source, created_at)
+    values ('ET snapshot test A', 'max', 'manual', v_now - interval '1 minute')
     returning id into v_ws_a;
 
-  v_as_of := now();
+  v_as_of := v_now - interval '30 seconds';
 
-  insert into workspaces (name, plan_id, plan_source)
-    values ('ET snapshot test B', 'max', 'manual')
+  insert into workspaces (name, plan_id, plan_source, created_at)
+    values ('ET snapshot test B', 'max', 'manual', v_now)
     returning id into v_ws_b;
 
   execute 'set local role service_role';
