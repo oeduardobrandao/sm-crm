@@ -3,6 +3,8 @@ import {
   insertBlock,
   insertBlockAt,
   moveBlock,
+  normalizeCoverColorPatch,
+  normalizeCoverSize,
   removeBlock,
   resizeBlock,
   restoreBlock,
@@ -10,6 +12,7 @@ import {
   setLayoutFonts,
   setLayoutTheme,
   SIZE_ORDER,
+  stepCoverLogoSize,
   updateBlockConfig,
   updateBlockText,
 } from '../layoutOps';
@@ -215,5 +218,65 @@ describe('insertBlockAt', () => {
   it('insertBlock continua anexando no fim (delegação)', () => {
     const { layout } = insertBlock(base, 'kpi_reach', () => 'fim');
     expect(layout.blocks[2].id).toBe('fim');
+  });
+});
+
+describe('normalizeCoverColorPatch', () => {
+  it('cor válida de 6 dígitos: patch com a mesma cor', () => {
+    expect(normalizeCoverColorPatch('#0f766e')).toEqual({ color: '#0f766e' });
+  });
+  it('cor de 8 dígitos: normaliza para 6', () => {
+    expect(normalizeCoverColorPatch('#0f766eff')).toEqual({ color: '#0f766e' });
+  });
+  it('cor inválida (não-hex): patch vazio', () => {
+    expect(normalizeCoverColorPatch('vermelho')).toEqual({});
+  });
+  it('cor de 8 dígitos que não normaliza pra 6 hex válidos: patch vazio', () => {
+    expect(normalizeCoverColorPatch('#zzzzzzzz')).toEqual({});
+  });
+  it('undefined: patch remove a chave (herda o accent)', () => {
+    expect(normalizeCoverColorPatch(undefined)).toEqual({ color: undefined });
+  });
+});
+
+describe('stepCoverLogoSize', () => {
+  it('sem valor atual: parte do default (36) e soma o passo', () => {
+    expect(stepCoverLogoSize(undefined, 1)).toBe(44);
+    expect(stepCoverLogoSize(undefined, -1)).toBe(28);
+  });
+  it('clampa no teto (68) e no piso (20)', () => {
+    expect(stepCoverLogoSize(68, 1)).toBe(68);
+    expect(stepCoverLogoSize(20, -1)).toBe(20);
+  });
+  it('soma/subtrai 8px a partir do valor atual', () => {
+    expect(stepCoverLogoSize(44, 1)).toBe(52);
+    expect(stepCoverLogoSize(44, -1)).toBe(36);
+  });
+});
+
+describe('normalizeCoverSize', () => {
+  it('corrige um bloco cover com size != full para full', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 'c', type: 'cover', size: 'third' }],
+    };
+    const next = normalizeCoverSize(l);
+    expect(next.blocks[0].size).toBe('full');
+  });
+
+  it('cover já full: devolve a MESMA referência (no-op)', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 'c', type: 'cover', size: 'full' }],
+    };
+    expect(normalizeCoverSize(l)).toBe(l);
+  });
+
+  it('não mexe em blocos que não são cover', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 'k', type: 'kpi_reach', size: 'third' }],
+    };
+    expect(normalizeCoverSize(l)).toBe(l);
   });
 });

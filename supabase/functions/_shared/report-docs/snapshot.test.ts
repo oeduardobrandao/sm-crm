@@ -119,3 +119,46 @@ Deno.test("aceita branding.hub_theme opcional sem quebrar o assembleSnapshot", (
   assertEquals(snap.branding.hub_theme?.surface, "warm");
   assertEquals(snap.branding.hub_theme?.card_style, "outline");
 });
+
+Deno.test("assembleSnapshot repassa profile_picture_url e client_name do account", () => {
+  const snap = assembleSnapshot({
+    month: "2026-07",
+    account: {
+      handle: "dra.exemplo", specialty: "Dermatologia",
+      profile_picture_url: "https://x/avatar.jpg", client_name: "Dra. Exemplo",
+    },
+    branding: { workspace_name: "DK", logo_url: null, splash_url: null, accent_color: "#123456" },
+    kpiSources: {
+      allPosts: [], prevMonthPosts: null, currSnapshot: null, prevSnapshot: null,
+      prevPrevSnapshot: null, followerHistory: [], accountViews: null,
+    },
+    followerTrend: [],
+    posts: [],
+    stableThumbnails: new Map(),
+    audience: null,
+    bestTimes: [],
+    tagsPerformance: [],
+  });
+  assertEquals(snap.account.profile_picture_url, "https://x/avatar.jpg");
+  assertEquals(snap.account.client_name, "Dra. Exemplo");
+});
+
+Deno.test("assembleSnapshot: account sem profile_picture_url/client_name continua válido (compat)", () => {
+  const snap = assembleSnapshot({
+    month: "2026-07",
+    account: { handle: "h", specialty: "" },
+    branding: { workspace_name: "W", logo_url: null, splash_url: null, accent_color: "#000" },
+    kpiSources: {
+      allPosts: [], prevMonthPosts: null, currSnapshot: null, prevSnapshot: null,
+      prevPrevSnapshot: null, followerHistory: [], accountViews: null,
+    },
+    followerTrend: [],
+    posts: [],
+    stableThumbnails: new Map(),
+    audience: null,
+    bestTimes: [],
+    tagsPerformance: [],
+  });
+  assertEquals(snap.account.profile_picture_url, undefined);
+  assertEquals(snap.account.client_name, undefined);
+});

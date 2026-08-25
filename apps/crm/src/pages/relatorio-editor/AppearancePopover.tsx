@@ -1,29 +1,15 @@
-// Popover "Aparência": tema, dupla de fontes e cor de destaque num lugar só
+// Popover "Aparência": dupla de fontes e cor de destaque num lugar só
 // (decisão do visual companion 2026-08-24: popover, não drawer). Toda mudança
 // flui por onChange -> applyLayout -> autosave; preview é imediato porque os
 // tokens são CSS vars no canvas (Task 5).
-import type { CSSProperties } from 'react';
 import { Palette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ColorPicker } from '@/components/shared/ColorPicker';
-import { FONT_PAIRINGS, PALETTES } from '@mesaas/report-blocks/theme';
-import type {
-  ReportDocSnapshot,
-  ReportFontId,
-  ReportLayout,
-  ReportThemeId,
-} from '@mesaas/report-blocks/types';
+import { FONT_PAIRINGS } from '@mesaas/report-blocks/theme';
+import type { ReportDocSnapshot, ReportFontId, ReportLayout } from '@mesaas/report-blocks/types';
 import { REPORT_FONT_IDS } from '@mesaas/report-blocks/types';
-import { setLayoutAccent, setLayoutFonts, setLayoutTheme } from './layoutOps';
-
-const THEME_OPTIONS: { id: ReportThemeId | undefined; label: string; hint: string }[] = [
-  { id: undefined, label: 'Padrão', hint: 'segue a página' },
-  { id: 'clean', label: 'Clean', hint: 'claro e neutro' },
-  { id: 'editorial', label: 'Editorial', hint: 'creme, serifa' },
-  { id: 'bold', label: 'Bold', hint: 'marca em tudo' },
-  { id: 'hub', label: 'Hub', hint: 'igual ao portal' },
-];
+import { setLayoutAccent, setLayoutFonts } from './layoutOps';
 
 export interface AppearancePopoverProps {
   layout: ReportLayout;
@@ -32,10 +18,6 @@ export interface AppearancePopoverProps {
 }
 
 export function AppearancePopover({ layout, snapshot, onChange }: AppearancePopoverProps) {
-  const hubSurfaceBg =
-    PALETTES[snapshot.branding.hub_theme?.surface ?? 'neutral']?.light.bg ??
-    PALETTES.neutral.light.bg;
-
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -44,35 +26,6 @@ export function AppearancePopover({ layout, snapshot, onChange }: AppearancePopo
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="rb-appearance">
-        <p className="rb-appearance-label">Tema</p>
-        <div className="rb-appearance-themes" role="radiogroup" aria-label="Tema do relatório">
-          {THEME_OPTIONS.map((opt) => (
-            <button
-              key={opt.label}
-              type="button"
-              role="radio"
-              aria-checked={layout.theme === opt.id}
-              className={`rb-appearance-theme${layout.theme === opt.id ? ' rb-appearance-selected' : ''}`}
-              onClick={() => onChange(setLayoutTheme(layout, opt.id))}
-            >
-              <span
-                className={`rb-appearance-thumb rb-appearance-thumb-${opt.id ?? 'default'}`}
-                style={
-                  opt.id === 'hub'
-                    ? ({
-                        '--rb-hub-thumb-accent': layout.accent ?? snapshot.branding.accent_color,
-                        '--rb-hub-thumb-bg': hubSurfaceBg,
-                      } as CSSProperties)
-                    : undefined
-                }
-              />
-              <span>
-                {opt.label}
-                <small>{opt.hint}</small>
-              </span>
-            </button>
-          ))}
-        </div>
         <p className="rb-appearance-label">Fontes</p>
         <div role="radiogroup" aria-label="Fontes do relatório">
           {REPORT_FONT_IDS.map((id: ReportFontId) => (

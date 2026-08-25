@@ -90,7 +90,7 @@ export function BlockRenderer({ layout, snapshot, mode }: BlockRendererProps) {
             <div
               key={block.id}
               data-block-id={block.id}
-              className={SIZE_CLASS[block.size] ?? 'rb-full'}
+              className={block.type === 'cover' ? 'rb-full' : (SIZE_CLASS[block.size] ?? 'rb-full')}
             >
               <Component block={block} snapshot={snapshot} />
             </div>

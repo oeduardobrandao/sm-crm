@@ -11896,7 +11896,7 @@ body.landing-page #root {
   place-items: center;
 }
 
-/* Popover "Aparência" (Task 6): tema, fontes e cor de destaque. */
+/* Popover "Aparência" (Task 6): fontes e cor de destaque. */
 .rb-appearance {
   width: 280px;
   display: flex;
@@ -11914,13 +11914,11 @@ body.landing-page #root {
 .rb-appearance-label:first-child {
   margin-top: 0;
 }
-.rb-appearance-themes,
 .rb-appearance > [role='radiogroup'] {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
 }
-.rb-appearance-theme,
 .rb-appearance-font {
   display: flex;
   align-items: center;
@@ -11935,7 +11933,6 @@ body.landing-page #root {
   text-align: left;
   cursor: pointer;
 }
-.rb-appearance-theme:hover,
 .rb-appearance-font:hover {
   background: var(--surface-hover);
 }
@@ -11943,50 +11940,11 @@ body.landing-page #root {
   border-color: var(--primary-color);
   background: var(--surface-hover);
 }
-.rb-appearance-theme small,
 .rb-appearance-font small {
   display: block;
   font-size: 0.7rem;
   font-weight: 400;
   color: var(--text-muted);
-}
-.rb-appearance-thumb {
-  flex-shrink: 0;
-  width: 40px;
-  height: 24px;
-  border-radius: 4px;
-}
-.rb-appearance-thumb-default {
-  background: transparent;
-  border: 1px dashed var(--border-color);
-}
-.rb-appearance-thumb-clean {
-  background: #ffffff;
-  border: 1px solid var(--border-color);
-}
-.rb-appearance-thumb-editorial {
-  background: #faf6ee;
-  border: 1px solid var(--border-color);
-}
-.rb-appearance-thumb-bold {
-  background: #7c3aed;
-  border: 1px solid var(--border-color);
-}
-.rb-appearance-thumb-hub {
-  background: var(--rb-hub-thumb-bg, #fafafa);
-  border: 1px solid var(--border-color);
-  position: relative;
-  overflow: hidden;
-}
-.rb-appearance-thumb-hub::after {
-  content: '';
-  position: absolute;
-  right: 4px;
-  bottom: 4px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--rb-hub-thumb-accent, #171717);
 }
 .rb-appearance-ag {
   flex-shrink: 0;

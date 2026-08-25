@@ -10,7 +10,7 @@ import {
   fillAiBlocks, textDoc,
 } from "../_shared/report-docs/tiptap-doc.ts";
 import { snapshotToReportData } from "../_shared/report-docs/ai-input.ts";
-import { validateLayout, type ReportLayout } from "../_shared/report-docs/layout.ts";
+import { normalizeCoverSize, validateLayout, type ReportLayout } from "../_shared/report-docs/layout.ts";
 import { GenerateError } from "./errors.ts";
 import { loadClientSnapshot } from "./snapshot-source.ts";
 
@@ -47,7 +47,7 @@ export async function generateReportDocument(
 
   // Ownership explícito de TODO id: service role bypassa RLS (spec §5).
   const { data: cliente } = await db.from("clientes")
-    .select("id, conta_id, nome, especialidade, include_ai_analysis")
+    .select("id, conta_id, nome, especialidade, include_ai_analysis, foto_url")
     .eq("id", clientId).maybeSingle();
   if (!cliente || cliente.conta_id !== contaId) throw new GenerateError("not_found");
 
@@ -73,7 +73,7 @@ export async function generateReportDocument(
     const { data: tpl } = await db.from("report_templates")
       .select("id, conta_id, layout").eq("id", templateId).maybeSingle();
     if (!tpl || tpl.conta_id !== contaId) throw new GenerateError("not_found");
-    const check = validateLayout(tpl.layout);
+    const check = validateLayout(normalizeCoverSize(tpl.layout));
     if (!check.ok) throw new GenerateError("invalid_template");
     templateLayout = check.layout;
   } else {
@@ -81,14 +81,16 @@ export async function generateReportDocument(
       .select("id, conta_id, layout").eq("conta_id", contaId)
       .eq("is_default", true).maybeSingle();
     if (tpl) {
-      const check = validateLayout(tpl.layout);
+      const check = validateLayout(normalizeCoverSize(tpl.layout));
       if (check.ok) templateLayout = check.layout;
       else console.warn("[report-docs] template default com layout inválido; usando o padrão do sistema");
     }
   }
 
   const { snapshot, igAccountId } = await loadClientSnapshot(
-    db, deps, contaId, { id: cliente.id, especialidade: cliente.especialidade }, month,
+    db, deps, contaId,
+    { id: cliente.id, especialidade: cliente.especialidade, nome: cliente.nome, foto_url: cliente.foto_url },
+    month,
   );
 
   // IA: nunca derruba a geração (padrão do v2, index.ts:987-1017).

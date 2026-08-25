@@ -58,7 +58,7 @@ export async function loadClientSnapshot(
   db: Db,
   deps: SnapshotDeps,
   contaId: string,
-  cliente: { id: number; especialidade: string | null },
+  cliente: { id: number; especialidade: string | null; nome: string; foto_url: string | null },
   month: string,
 ): Promise<{ snapshot: ReportDocSnapshot; igAccountId: string }> {
   const w = monthWindow(month);
@@ -99,6 +99,28 @@ export async function loadClientSnapshot(
       );
       return { value: null, prev: null };
     });
+
+  // Foto do cliente: MESMA prioridade do hub-bootstrap/handler.ts (upload manual
+  // em clientes.foto_url primeiro, Instagram como fallback) -- achado do usuário
+  // 2026-08-25, "onde estão as fotos dos clientes?": a capa só olhava pra
+  // instagram_accounts.profile_picture_url e ignorava clientes.foto_url, então um
+  // cliente com foto manual cadastrada mas sem foto de perfil sincronizada do
+  // Instagram caía no fallback de iniciais à toa. Cacheada no MESMO
+  // bucket/mecanismo dos thumbnails de post (achado de review externo 2026-08-25)
+  // -- instagram_accounts.profile_picture_url NÃO é garantidamente estável: a
+  // conexão inicial grava a URL efêmera crua do Graph
+  // (instagram-integration/index.ts:382), só os crons de sync recacheiam depois.
+  // clientes.foto_url já é estável por construção (upload direto pro storage,
+  // nunca uma URL da CDN do Instagram) -- isEphemeralInstagramUrl nunca a
+  // classifica como efêmera, então ela nunca entra no caminho de cache abaixo.
+  // O data_snapshot é congelado para sempre, então precisa da MESMA blindagem
+  // que os thumbnails de post já têm -- sem isso a foto quebraria quando a URL
+  // efêmera expirasse, sem chance de autocorrigir depois.
+  const rawAvatar = cliente.foto_url || account.profile_picture_url || null;
+  const avatarUrlPromise: Promise<string | null> = isEphemeralInstagramUrl(rawAvatar)
+    ? cachePostThumbnail({ fetch: deps.fetch, storage: deps.storage }, igAccountId, "avatar", rawAvatar, null)
+      .then((cached) => (cached && !isEphemeralInstagramUrl(cached) ? cached : null))
+    : Promise.resolve(rawAvatar);
 
   const lastSnapshotOfMonth = (win: typeof w) =>
     db.from("instagram_account_metrics_daily").select("*")
@@ -220,12 +242,15 @@ export async function loadClientSnapshot(
   }));
 
   const accountViews = await accountViewsPromise;
+  const avatarUrl = await avatarUrlPromise;
 
   const snapshot = assembleSnapshot({
     month,
     account: {
       handle: account.username ?? account.handle ?? "",
       specialty: [cliente.especialidade].filter(Boolean).join(" · "),
+      profile_picture_url: avatarUrl,
+      client_name: cliente.nome,
     },
     branding: {
       workspace_name: ws?.name ?? "Mesaas",

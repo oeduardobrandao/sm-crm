@@ -124,12 +124,36 @@
   border-top: 1px solid rgba(0, 0, 0, 0.12);
   margin: 1em 0;
 }
+.rb-cover {
+  min-height: 80vh;
+}
+/* .rb-cover-splash na tela: quadrado, sem teto de altura (pedido 2026-08-25,
+   revisão) -- o próprio aspect-ratio 1/1 + width 100% já limita a altura à
+   largura disponível dentro do grid (max-width: 880px do .rb-grid), então a
+   imagem fica grande e protagonista sem precisar de um teto artificial aqui. */
 @media print {
   .rb-page-break {
     break-after: page;
   }
   .rb-grid {
     max-width: none;
+  }
+  .rb-cover {
+    /* Área útil do A4 com as margens de 10mm que o Gotenberg já usa
+       (RelatorioPrintPage.tsx: `@page { margin: 10mm; }`). */
+    min-height: 277mm;
+    break-after: page;
+  }
+  .rb-cover-splash {
+    /* Quadrado em largura cheia (~173mm de conteúdo dentro dos 190mm da folha
+       A4 menos as margens de 10mm) cabe com folga dentro do orçamento de
+       277mm da página (achado de review externo 2026-08-25 continua valendo:
+       kicker+título+subtítulo+logo+splash somam ~75mm fora do splash, sobrando
+       ~200mm). 190mm é o teto de segurança -- raramente o valor que realmente
+       aplica, mas segue protegendo a página única se o texto crescer (ex.:
+       subtítulo com quebra de linha) ou o logoSize estiver no máximo. Sem
+       isso o break-after não impede a PRÓPRIA capa de invadir a página 2. */
+    max-height: 190mm;
   }
 }
 /* Modo edição (canvas do CRM): célula sem dados NÃO colapsa; mostra aviso.

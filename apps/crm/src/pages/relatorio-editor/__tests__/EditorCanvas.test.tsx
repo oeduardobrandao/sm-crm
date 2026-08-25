@@ -19,8 +19,10 @@ describe('EditorCanvas', () => {
     render(<EditorCanvas layout={layout()} snapshot={makeSnapshotFixture()} onChange={() => {}} />);
     expect(screen.getByText('DK Marketing')).toBeInTheDocument();
     expect(screen.getAllByLabelText('Reordenar bloco')).toHaveLength(2);
-    expect(screen.getAllByLabelText('Aumentar largura')).toHaveLength(2);
-    expect(screen.getAllByLabelText('Diminuir largura')).toHaveLength(2);
+    // A capa é sempre largura cheia (spec 2026-08-25): só o kpi_reach (block 'b')
+    // tem os botões de largura.
+    expect(screen.getAllByLabelText('Aumentar largura')).toHaveLength(1);
+    expect(screen.getAllByLabelText('Diminuir largura')).toHaveLength(1);
     expect(screen.getAllByLabelText('Excluir bloco')).toHaveLength(2);
   });
 
@@ -52,14 +54,14 @@ describe('EditorCanvas', () => {
   it('aumentar largura chama onChange com o size seguinte', () => {
     const onChange = vi.fn();
     render(<EditorCanvas layout={layout()} snapshot={makeSnapshotFixture()} onChange={onChange} />);
-    fireEvent.click(screen.getAllByLabelText('Aumentar largura')[1]);
+    fireEvent.click(screen.getAllByLabelText('Aumentar largura')[0]);
     expect(onChange.mock.calls[0][0].blocks[1].size).toBe('half');
   });
 
   it('diminuir largura em third não dispara onChange (no-op preservado)', () => {
     const onChange = vi.fn();
     render(<EditorCanvas layout={layout()} snapshot={makeSnapshotFixture()} onChange={onChange} />);
-    fireEvent.click(screen.getAllByLabelText('Diminuir largura')[1]);
+    fireEvent.click(screen.getAllByLabelText('Diminuir largura')[0]);
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -153,5 +155,22 @@ describe('EditorCanvas', () => {
     expect(block).toContain('.rb-edit-cell:focus-within .rb-edit-toolbar');
     const toolbarRule = block.slice(0, block.indexOf('}'));
     expect(toolbarRule).not.toContain('display: none');
+  });
+
+  it('capa com onConfigChange: usa o CoverEditor e some com os botões de largura', () => {
+    const onConfigChange = vi.fn();
+    const l: ReportLayout = { version: 1, blocks: [{ id: 'c', type: 'cover', size: 'full' }] };
+    render(
+      <EditorCanvas
+        layout={l}
+        snapshot={makeSnapshotFixture()}
+        onChange={() => {}}
+        onConfigChange={onConfigChange}
+      />,
+    );
+    const title = screen.getByRole('textbox', { name: 'Título da capa' });
+    fireEvent.change(title, { target: { value: 'Julho especial' } });
+    expect(onConfigChange).toHaveBeenCalledWith('c', { title: 'Julho especial' });
+    expect(screen.queryByLabelText('Aumentar largura')).not.toBeInTheDocument();
   });
 });

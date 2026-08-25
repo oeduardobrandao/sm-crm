@@ -1,4 +1,9 @@
-import { resolveAccent } from '../../../../../supabase/functions/_shared/report-template/theme';
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { CoverBlock } from '@mesaas/report-blocks/blocks/CoverBlock';
+import { makeSnapshotFixture } from '@mesaas/report-blocks/fixtures';
+import { resolveReportTheme } from '@mesaas/report-blocks/theme';
+import type { ReportBlock, ReportLayout } from '@mesaas/report-blocks/types';
+import '@mesaas/report-blocks/styles.css';
 
 interface ReportPreviewProps {
   accentColor: string;
@@ -7,22 +12,25 @@ interface ReportPreviewProps {
   workspaceName: string;
 }
 
-// Mirror the real report's --ink / --paper tokens (source of truth:
-// supabase/functions/_shared/report-template/template-string.ts). If that
-// template is re-themed, update these two constants to match.
-const INK = '#1C1917';
-const PAPER = '#FAFAF7';
+// Cover renders at its real (rem-based) size, meant for the ~880px editor
+// canvas; NATURAL_WIDTH/SCALE shrink it into the settings sidebar via CSS
+// transform (rem doesn't respond to an ancestor's font-size, only to the
+// root's) while keeping every size/spacing proportion identical to the
+// genuine block. Height is measured, not assumed: min-height:80vh in
+// styles.css means the unscaled box is tall even with little content.
+const NATURAL_WIDTH = 520;
+const PREVIEW_WIDTH = 240;
+const SCALE = PREVIEW_WIDTH / NATURAL_WIDTH;
+
+const PREVIEW_BLOCK: ReportBlock = { id: 'settings-preview-cover', type: 'cover', size: 'full' };
+const PREVIEW_LAYOUT: ReportLayout = { version: 1, blocks: [PREVIEW_BLOCK] };
 
 /**
- * Pure presentational miniature of the v2 monthly report: an ink cover
- * (logo plate + workspace name + serif handle + optional splash art + a
- * teaser metrics row) followed by a light paper strip (takeaway dash +
- * rank chip + KPI row). No data fetching, no state — everything comes
- * from props so the settings page can preview edits live.
- *
- * The accent colour tints ONLY structural marks (takeaway dash, rank
- * chip) — never the chart/KPI marks — matching the promise made in the
- * settings helper copy ("nunca nos gráficos de dados").
+ * Live miniature of the report-blocks cover (packages/report-blocks/blocks/
+ * CoverBlock.tsx) — the SAME component the editor, Hub viewer and PDF render,
+ * scaled down. Renders it directly instead of hand-copying its markup so this
+ * preview can never drift from the real cover again (it already had once,
+ * still showing a 21:9 splash crop after the cover moved to 1:1 square).
  */
 export function ReportPreview({
   accentColor,
@@ -30,172 +38,56 @@ export function ReportPreview({
   logoUrl,
   workspaceName,
 }: ReportPreviewProps) {
-  // Same resolution the real PDF uses (theme.ts): a too-pale accent is
-  // replaced with near-black, and the on-accent text colour is picked by
-  // luminance — otherwise the preview lies about what the client gets.
-  const { acc, accFg } = resolveAccent(accentColor);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [naturalHeight, setNaturalHeight] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      setNaturalHeight(entries[0].contentRect.height);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const snapshot = useMemo(
+    () =>
+      makeSnapshotFixture({
+        account: { handle: 'seucliente', specialty: '' },
+        branding: {
+          workspace_name: workspaceName,
+          logo_url: logoUrl,
+          splash_url: splashUrl,
+          accent_color: accentColor,
+        },
+      }),
+    [accentColor, splashUrl, logoUrl, workspaceName],
+  );
+  const theme = useMemo(() => resolveReportTheme(PREVIEW_LAYOUT, snapshot), [snapshot]);
 
   return (
     <div
       style={{
-        width: 240,
+        width: PREVIEW_WIDTH,
+        height: naturalHeight ? naturalHeight * SCALE : undefined,
         borderRadius: 12,
         overflow: 'hidden',
         border: '1px solid var(--border-color)',
-        fontFamily: "'DM Sans', 'Helvetica Neue', Arial, sans-serif",
       }}
     >
-      {/* Cover */}
       <div
-        style={{
-          background: INK,
-          color: '#F5F5F4',
-          padding: '14px 14px 12px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-        }}
+        ref={innerRef}
+        style={
+          {
+            width: NATURAL_WIDTH,
+            transform: `scale(${SCALE})`,
+            transformOrigin: 'top left',
+            ...theme.vars,
+          } as CSSProperties
+        }
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {logoUrl && (
-            <div
-              style={{
-                background: PAPER,
-                borderRadius: 6,
-                padding: 3,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <img
-                data-testid="preview-logo"
-                src={logoUrl}
-                alt=""
-                style={{ width: 18, height: 18, objectFit: 'contain', display: 'block' }}
-              />
-            </div>
-          )}
-          <div
-            style={{
-              fontSize: '0.6rem',
-              fontWeight: 600,
-              letterSpacing: '0.5px',
-              textTransform: 'uppercase',
-              opacity: 0.75,
-            }}
-          >
-            {workspaceName}
-          </div>
-        </div>
-
-        <div
-          style={{
-            fontFamily: 'Georgia, serif',
-            fontSize: '1.15rem',
-            lineHeight: 1.2,
-          }}
-        >
-          @seucliente
-        </div>
-
-        {splashUrl && (
-          <img
-            data-testid="preview-splash"
-            src={splashUrl}
-            alt=""
-            style={{
-              width: '100%',
-              // Same 21:9 band the real cover crops to (report-template
-              // .cover-art), so the preview shows the actual crop.
-              aspectRatio: '21 / 9',
-              objectFit: 'cover',
-              borderRadius: 6,
-              display: 'block',
-            }}
-          />
-        )}
-
-        <div style={{ display: 'flex', gap: 10 }} data-testid="preview-teaser-row">
-          {['24,8K', '142K', '4,6%'].map((value) => (
-            <div key={value} style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>{value}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Paper strip */}
-      <div
-        style={{
-          background: PAPER,
-          color: '#1C1917',
-          padding: '12px 14px 14px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div
-            style={{
-              width: 3,
-              height: 22,
-              borderRadius: 2,
-              background: acc,
-              flexShrink: 0,
-            }}
-          />
-          <div style={{ fontSize: '0.65rem', lineHeight: 1.4, color: '#57534E' }}>
-            Engajamento cresceu <strong>12,4%</strong> este mês.
-          </div>
-          <div
-            data-testid="preview-rank-chip"
-            style={{
-              marginLeft: 'auto',
-              fontSize: '0.6rem',
-              fontWeight: 700,
-              color: accFg,
-              backgroundColor: acc,
-              borderRadius: 999,
-              padding: '2px 8px',
-              flexShrink: 0,
-            }}
-          >
-            #1
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8 }} data-testid="preview-kpi-row">
-          {[
-            { label: 'Seguidores', value: '24,8K' },
-            { label: 'Alcance', value: '142K' },
-            { label: 'Impressões', value: '389K' },
-          ].map((kpi) => (
-            <div
-              key={kpi.label}
-              style={{
-                flex: 1,
-                background: '#fff',
-                border: '1px solid rgba(28,25,23,0.08)',
-                borderRadius: 8,
-                padding: '6px 8px',
-              }}
-            >
-              <div style={{ fontSize: '0.5rem', color: '#78716C', textTransform: 'uppercase' }}>
-                {kpi.label}
-              </div>
-              <div data-testid="preview-kpi-value" style={{ fontSize: '0.7rem', fontWeight: 700 }}>
-                {kpi.value}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ fontSize: '0.55rem', color: '#A8A29E', textAlign: 'center' }}>
-          Pré-visualização · fontes ilustrativas
-        </div>
+        <CoverBlock block={PREVIEW_BLOCK} snapshot={snapshot} />
       </div>
     </div>
   );

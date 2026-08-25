@@ -228,8 +228,7 @@ export default function RelatoriosTab() {
                   src={splashUrl}
                   alt="Arte da capa"
                   style={{
-                    width: 168,
-                    maxWidth: '100%',
+                    width: 72,
                     height: 72,
                     objectFit: 'cover',
                     borderRadius: 8,
@@ -260,8 +259,8 @@ export default function RelatoriosTab() {
               )}
             </div>
             <p style={HINT}>
-              Formato paisagem (cerca de 21:9), JPEG, PNG ou WebP, até 4MB. Salva assim que você
-              envia. Sem arte, a capa fica apenas tipográfica.
+              Formato quadrado (1:1), JPEG, PNG ou WebP, até 4MB. Salva assim que você envia. Sem
+              arte, a capa fica apenas tipográfica.
             </p>
             <input
               ref={splashInputRef}
