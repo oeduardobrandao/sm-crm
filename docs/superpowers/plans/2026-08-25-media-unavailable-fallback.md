@@ -2113,8 +2113,12 @@ In `apps/crm/src/pages/arquivos/__tests__/FilePickerModal.test.tsx`, add inside 
     render(<FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />, {
       wrapper: createWrapper(),
     });
+    // Wait for the specific file to render, not just "some button exists" —
+    // the modal's breadcrumb and footer buttons render unconditionally
+    // before the folder-contents promise resolves, so a generic button-count
+    // check would pass vacuously without ever mounting the file row.
     await waitFor(() => {
-      expect(screen.getAllByRole('button').length).toBeGreaterThan(0);
+      expect(screen.getByText('perdido.png')).toBeInTheDocument();
     });
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
