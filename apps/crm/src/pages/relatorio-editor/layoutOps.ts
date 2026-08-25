@@ -169,3 +169,27 @@ export function setLayoutFonts(
   }
   return { ...layout, fonts };
 }
+
+export const COVER_LOGO_MIN = 20;
+export const COVER_LOGO_MAX = 68;
+export const COVER_LOGO_DEFAULT = 36;
+const COVER_LOGO_STEP = 8;
+
+/** Cor de fundo própria da capa (bloco `cover`): mesma blindagem hex8->hex6 de
+ * setLayoutAccent (achado C2) acima, só que por bloco em vez de por layout.
+ * `undefined` produz o patch que remove a chave (herda o accent do relatório). Cor
+ * inválida devolve patch vazio -- o chamador deve tratar `{}` como "nada a
+ * fazer" e pular o onConfigChange. */
+export function normalizeCoverColorPatch(color: string | undefined): Record<string, unknown> {
+  if (color === undefined) return { color: undefined };
+  const normalized = HEX8_RE.test(color) ? color.slice(0, 7) : color;
+  if (!HEX6_RE.test(normalized)) return {};
+  return { color: normalized };
+}
+
+/** Próximo logoSize da capa dado o atual (ausente = COVER_LOGO_DEFAULT), clamped a
+ * [COVER_LOGO_MIN, COVER_LOGO_MAX] em passos de COVER_LOGO_STEP px. */
+export function stepCoverLogoSize(current: number | undefined, delta: 1 | -1): number {
+  const base = typeof current === 'number' ? current : COVER_LOGO_DEFAULT;
+  return Math.min(Math.max(base + delta * COVER_LOGO_STEP, COVER_LOGO_MIN), COVER_LOGO_MAX);
+}
