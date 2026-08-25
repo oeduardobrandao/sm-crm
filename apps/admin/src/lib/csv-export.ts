@@ -37,9 +37,7 @@ function quoteField(value: string): string {
 /** Serializes rows to RFC 4180 CSV text with a UTF-8 BOM, ready for Excel. */
 export function toCSV(rows: Record<string, unknown>[], columns: CsvColumn[]): string {
   const header = columns.map((c) => quoteField(c.label)).join(',');
-  const lines = rows.map((row) =>
-    columns.map((c) => quoteField(formatCell(row[c.key]))).join(','),
-  );
+  const lines = rows.map((row) => columns.map((c) => quoteField(formatCell(row[c.key]))).join(','));
   return '﻿' + [header, ...lines].join('\r\n');
 }
 
