@@ -129,7 +129,7 @@ export function CoverEditor({ block, snapshot, onConfigChange }: CoverEditorProp
           style={{
             marginTop: '1.5rem',
             width: '100%',
-            aspectRatio: '21 / 9',
+            aspectRatio: '1 / 1',
             objectFit: 'cover',
             borderRadius: 8,
           }}

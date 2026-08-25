@@ -137,7 +137,7 @@ export function CoverBlock({ block, snapshot }: BlockProps) {
           style={{
             marginTop: '1.5rem',
             width: '100%',
-            aspectRatio: '21 / 9',
+            aspectRatio: '1 / 1',
             objectFit: 'cover',
             borderRadius: 8,
           }}
