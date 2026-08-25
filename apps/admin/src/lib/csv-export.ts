@@ -14,14 +14,17 @@ export interface CsvColumn {
 
 /**
  * Neutralizes CSV formula injection: a cell opened in Excel/Sheets that starts
- * with =, +, -, @, a tab, or a carriage return can be interpreted as a formula.
+ * with =, +, -, @, a tab, a carriage return, or a line feed can be
+ * interpreted as a formula -- some spreadsheet import paths trim leading
+ * line breaks before evaluating a cell, so a value like "\n=HYPERLINK(...)"
+ * is not safe to leave unprefixed just because it doesn't start with "=".
  * Prefixing a leading ' forces the cell to be read as literal text without
  * changing how it displays -- the convention StepCommit.tsx's csvCell() already
- * uses in this repo (that one covers =/+/-/@; this adds tab/CR too, per the
+ * uses in this repo (that one covers =/+/-/@; this adds tab/CR/LF too, per the
  * broader OWASP CSV-injection character set).
  */
 export function sanitizeCell(value: string): string {
-  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return /^[=+\-@\t\r\n]/.test(value) ? `'${value}` : value;
 }
 
 function formatCell(value: unknown): string {

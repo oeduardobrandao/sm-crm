@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { centsToReais, isoDate, sanitizeCell, toCSV, toMonthlyCents } from '../csv-export';
 
 describe('sanitizeCell', () => {
-  it('prefixes values starting with =, +, -, @, tab, or CR with a leading quote', () => {
+  it('prefixes values starting with =, +, -, @, tab, CR, or LF with a leading quote', () => {
     expect(sanitizeCell('=cmd|calc')).toBe("'=cmd|calc");
     expect(sanitizeCell('+1234')).toBe("'+1234");
     expect(sanitizeCell('-1234')).toBe("'-1234");
     expect(sanitizeCell('@SUM(A1)')).toBe("'@SUM(A1)");
     expect(sanitizeCell('\tdanger')).toBe("'\tdanger");
     expect(sanitizeCell('\rdanger')).toBe("'\rdanger");
+    expect(sanitizeCell('\n=HYPERLINK(evil)')).toBe("'\n=HYPERLINK(evil)");
   });
 
   it('leaves a value that only contains, but does not start with, a risky character alone', () => {
