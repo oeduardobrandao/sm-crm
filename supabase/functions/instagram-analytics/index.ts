@@ -1017,7 +1017,7 @@ Deno.serve(async (req) => {
         type: p.media_type,
         caption: (p.caption || '').slice(0, 120),
         likes: p.likes, comments: p.comments, saved: p.saved, shares: p.shares,
-        reach: p.reach, date: p.posted_at?.split('T')[0],
+        views: p.impressions, reach: p.reach, date: p.posted_at?.split('T')[0],
         engRate: p.reach > 0 ? (((p.likes||0)+(p.comments||0)+(p.saved||0)+(p.shares||0)) / p.reach * 100).toFixed(2) + '%' : '0%',
       }));
 
@@ -1056,7 +1056,7 @@ BENCHMARKS DE REFERÊNCIA (contas de saúde 5k-50k seguidores):
 - Taxa de engajamento saudável: 3-6%
 - Proporção ideal Reels/Carrossel/Imagem: 40/40/20
 - Crescimento orgânico bom: 2-5% ao mês
-- Alcance médio por post: 20-40% da base de seguidores
+- Visualizações é a métrica principal de distribuição. Compare os posts entre si, identifique quais tiveram distribuição acima ou abaixo da média do perfil.
 Ajuste esses benchmarks proporcionalmente se a conta estiver fora dessa faixa de seguidores.
 
 DADOS INCOMPLETOS:
@@ -1177,7 +1177,7 @@ O campo actionPlan deve ter entre 3 e 5 ações. Pelo menos 1 deve ser uma açã
       const clientIds = clients.map(c => c.id);
       const { data: accounts } = await serviceClient
         .from('instagram_accounts')
-        .select('id, client_id, username, follower_count, profile_views_28d, reach_28d')
+        .select('id, client_id, username, follower_count, profile_views_28d, reach_28d, impressions_28d')
         .in('client_id', clientIds);
 
       if (!accounts || accounts.length === 0) {
@@ -1215,7 +1215,7 @@ O campo actionPlan deve ter entre 3 e 5 ações. Pelo menos 1 deve ser uma açã
 
         return {
           name: client?.nome, specialty: client?.especialidade, username: acc.username,
-          followers: acc.follower_count, reach28d: acc.reach_28d || 0,
+          followers: acc.follower_count, views28d: acc.impressions_28d || 0, reach28d: acc.reach_28d || 0,
           posts30d: posts.length, avgEngagement: avgEng + '%',
           lastPost, followerDelta,
         };
@@ -1237,7 +1237,7 @@ FORMATO DE ESCRITA:
 BENCHMARKS DE REFERÊNCIA (contas de saúde 5k-50k seguidores):
 - Taxa de engajamento saudável: 3-6%
 - Crescimento orgânico bom: 2-5% ao mês
-- Alcance médio por post: 20-40% da base de seguidores
+- Visualizações é a métrica principal de distribuição. Compare as contas entre si e identifique quais tiveram distribuição acima ou abaixo da média do portfólio.
 Ajuste proporcionalmente para contas fora dessa faixa.
 
 DADOS INCOMPLETOS:
