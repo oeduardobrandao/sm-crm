@@ -24,7 +24,7 @@ function extFromMime(mime: string): string {
 function toLegacy(
   link: any,
   file: any,
-  url: string,
+  url: string | null,
   thumbnailUrl: string | null,
   playback: { hls: string; expires_at: string } | null,
 ) {
@@ -49,6 +49,7 @@ function toLegacy(
     uploaded_by: file.uploaded_by,
     created_at: file.created_at,
     blur_data_url: file.blur_data_url ?? null,
+    media_lost_at: file.media_lost_at ?? null,
     url,
     thumbnail_url: thumbnailUrl,
     playback,
@@ -62,6 +63,16 @@ async function resolvePlayback(
   return file.stream_uid && file.stream_status === "ready" && deps.signPlayback
     ? await deps.signPlayback(file.stream_uid)
     : null;
+}
+
+async function signIfPresent(
+  file: any,
+  deps: Pick<PostMediaManageDeps, "signUrl">,
+): Promise<{ url: string | null; thumbnailUrl: string | null }> {
+  if (file.media_lost_at) return { url: null, thumbnailUrl: null };
+  const url = await deps.signUrl(file.r2_key);
+  const thumbnailUrl = file.thumbnail_r2_key ? await deps.signUrl(file.thumbnail_r2_key) : null;
+  return { url, thumbnailUrl };
 }
 
 export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
@@ -127,8 +138,7 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
           workflow_id,
           media: await Promise.all(links.map(async (l: any) => {
             const f = l.files;
-            const u = await deps.signUrl(f.r2_key);
-            const tu = f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null;
+            const { url: u, thumbnailUrl: tu } = await signIfPresent(f, deps);
             const playback = await resolvePlayback(f, deps);
             return toLegacy(l, f, u, tu, playback);
           })),
@@ -164,8 +174,7 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
 
         const covers = await Promise.all(Array.from(coverByPost.values()).map(async (l: any) => {
           const f = l.files;
-          const u = await deps.signUrl(f.r2_key);
-          const tu = f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null;
+          const { url: u, thumbnailUrl: tu } = await signIfPresent(f, deps);
           const playback = await resolvePlayback(f, deps);
           return { post_id: l.post_id, media: toLegacy(l, f, u, tu, playback) };
         }));
@@ -186,8 +195,7 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
 
       const media = await Promise.all((links ?? []).map(async (l: any) => {
         const f = l.files;
-        const u = await deps.signUrl(f.r2_key);
-        const tu = f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null;
+        const { url: u, thumbnailUrl: tu } = await signIfPresent(f, deps);
         const playback = await resolvePlayback(f, deps);
         return toLegacy(l, f, u, tu, playback);
       }));
@@ -227,8 +235,7 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
 
       const { data: updatedLink } = await svc.from("post_file_links").select("*, files(*)").eq("id", linkId).single();
       const uf = (updatedLink as any).files;
-      const u = await deps.signUrl(uf.r2_key);
-      const tu = uf.thumbnail_r2_key ? await deps.signUrl(uf.thumbnail_r2_key) : null;
+      const { url: u, thumbnailUrl: tu } = await signIfPresent(uf, deps);
       const playback = await resolvePlayback(uf, deps);
       return json(toLegacy(updatedLink, uf, u, tu, playback));
     }
