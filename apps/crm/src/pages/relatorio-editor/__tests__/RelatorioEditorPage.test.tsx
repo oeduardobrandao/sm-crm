@@ -432,4 +432,31 @@ describe('RelatorioEditorPage (editor)', () => {
     await waitFor(() => expect(getHubTokenMock).toHaveBeenCalledWith(42));
     expect(screen.queryByRole('button', { name: 'Ver como cliente' })).not.toBeInTheDocument();
   });
+
+  it('doc com cover salvo com size != full: corrige em memória e a próxima edição já persiste corrigido', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    getReportDocMock.mockResolvedValue({
+      ...doc(),
+      layout: {
+        version: 1,
+        blocks: [
+          { id: 'c', type: 'cover', size: 'third' },
+          { id: 'b', type: 'kpi_reach', size: 'third' },
+        ],
+      },
+    });
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getAllByLabelText('Excluir bloco')[1]);
+    await waitFor(
+      () =>
+        expect(updateReportDocMock).toHaveBeenCalledWith('doc-1', {
+          layout: expect.objectContaining({
+            blocks: [expect.objectContaining({ id: 'c', size: 'full' })],
+          }),
+        }),
+      { timeout: 4000 },
+    );
+    vi.useRealTimers();
+  });
 });

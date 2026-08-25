@@ -33,6 +33,7 @@ import { AppearancePopover } from './AppearancePopover';
 import {
   insertBlockAt,
   moveBlock,
+  normalizeCoverSize,
   removeBlock,
   restoreBlock,
   updateBlockConfig,
@@ -44,7 +45,12 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const qc = useQueryClient();
   const snapshot = doc.data_snapshot!;
   const { layout, applyLayout, title, setTitle, saving } = useLayoutAutosave(doc.id, {
-    layout: doc.layout,
+    // Defesa contra um layout persistido com um cover de size != full (achado de
+    // review externo 2026-08-25): corrige em memória ANTES do estado inicial do
+    // autosave existir. Sem isso, a primeira edição seguinte (de QUALQUER bloco)
+    // trava o autosave pra sempre -- validateLayout rejeita o layout inteiro e
+    // não há retry para esse caso.
+    layout: normalizeCoverSize(doc.layout),
     title: doc.title,
   });
   // renderTextBlock/insert leem o layout por ref: o closure do canvas pode ser

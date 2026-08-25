@@ -35,6 +35,7 @@ import type {
 } from '@mesaas/report-blocks/types';
 import { TEXT_BLOCK_TYPES } from '@mesaas/report-blocks/types';
 import { moveBlock, removeBlock, resizeBlock } from './layoutOps';
+import { CoverEditor } from './CoverEditor';
 import { SectionHeaderEditor } from './SectionHeaderEditor';
 
 // Placeholder do modo edição para widget sem dado no snapshot: a view/print
@@ -91,6 +92,8 @@ function SortableCell({
   const body =
     isText && renderTextBlock ? (
       renderTextBlock(block)
+    ) : block.type === 'cover' && onConfigChange ? (
+      <CoverEditor block={block} snapshot={snapshot} onConfigChange={onConfigChange} />
     ) : block.type === 'section_header' && onConfigChange ? (
       <SectionHeaderEditor block={block} onConfigChange={onConfigChange} />
     ) : Component && !blockHasData(block, snapshot) ? (
@@ -104,7 +107,7 @@ function SortableCell({
       ref={setNodeRef}
       style={style}
       data-block-id={block.id}
-      className={`${SIZE_CLASS[block.size] ?? 'rb-full'} rb-edit-cell${highlighted ? ' rb-edit-highlight' : ''}`}
+      className={`${block.type === 'cover' ? 'rb-full' : (SIZE_CLASS[block.size] ?? 'rb-full')} rb-edit-cell${highlighted ? ' rb-edit-highlight' : ''}`}
     >
       <div className="rb-edit-toolbar">
         <button
@@ -116,22 +119,26 @@ function SortableCell({
         >
           <GripVertical className="h-3.5 w-3.5" />
         </button>
-        <button
-          type="button"
-          className="rb-edit-btn"
-          aria-label="Diminuir largura"
-          onClick={() => onResize(-1)}
-        >
-          <Minus className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          className="rb-edit-btn"
-          aria-label="Aumentar largura"
-          onClick={() => onResize(1)}
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
+        {block.type !== 'cover' && (
+          <>
+            <button
+              type="button"
+              className="rb-edit-btn"
+              aria-label="Diminuir largura"
+              onClick={() => onResize(-1)}
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className="rb-edit-btn"
+              aria-label="Aumentar largura"
+              onClick={() => onResize(1)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </>
+        )}
         <button
           type="button"
           className="rb-edit-btn rb-edit-btn-danger"

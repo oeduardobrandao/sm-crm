@@ -4,6 +4,7 @@ import {
   insertBlockAt,
   moveBlock,
   normalizeCoverColorPatch,
+  normalizeCoverSize,
   removeBlock,
   resizeBlock,
   restoreBlock,
@@ -250,5 +251,32 @@ describe('stepCoverLogoSize', () => {
   it('soma/subtrai 8px a partir do valor atual', () => {
     expect(stepCoverLogoSize(44, 1)).toBe(52);
     expect(stepCoverLogoSize(44, -1)).toBe(36);
+  });
+});
+
+describe('normalizeCoverSize', () => {
+  it('corrige um bloco cover com size != full para full', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 'c', type: 'cover', size: 'third' }],
+    };
+    const next = normalizeCoverSize(l);
+    expect(next.blocks[0].size).toBe('full');
+  });
+
+  it('cover já full: devolve a MESMA referência (no-op)', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 'c', type: 'cover', size: 'full' }],
+    };
+    expect(normalizeCoverSize(l)).toBe(l);
+  });
+
+  it('não mexe em blocos que não são cover', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 'k', type: 'kpi_reach', size: 'third' }],
+    };
+    expect(normalizeCoverSize(l)).toBe(l);
   });
 });
