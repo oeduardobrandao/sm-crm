@@ -37,6 +37,18 @@ describe('computeTipTapDiff', () => {
     expect(result).toEqual(original);
   });
 
+  it('replaces the whole word when only part of it changed, instead of chopping mid-word', () => {
+    const original = doc(p('Sabonete acneico.'));
+    const suggested = doc(p('Sabonete antiacne.'));
+    const result = computeTipTapDiff(original, suggested) as any;
+
+    const content = result.content[0].content;
+    const deleted = content.find((n: any) => n.marks?.some((m: any) => m.type === 'strike'));
+    const inserted = content.find((n: any) => n.marks?.some((m: any) => m.type === 'highlight'));
+    expect(deleted.text).toBe('acneico');
+    expect(inserted.text).toBe('antiacne');
+  });
+
   it('marks text changes within a paragraph', () => {
     const original = doc(p('Suco de caixinha'));
     const suggested = doc(p('Refrigerante com açúcar'));

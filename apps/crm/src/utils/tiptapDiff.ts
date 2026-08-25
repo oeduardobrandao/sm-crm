@@ -1,6 +1,4 @@
-import DiffMatchPatch from 'diff-match-patch';
-
-const dmp = new DiffMatchPatch();
+import { diffWords } from './textDiff';
 
 interface TipTapNode {
   type: string;
@@ -112,8 +110,7 @@ function diffNodes(orig: TipTapNode, sugg: TipTapNode): TipTapNode[] {
 
     if (origText === suggText) return [{ ...sugg }];
 
-    const diffs = dmp.diff_main(origText, suggText);
-    dmp.diff_cleanupSemantic(diffs);
+    const diffs = diffWords(origText, suggText);
 
     return [{ ...sugg, content: diffsToTextNodes(diffs) }];
   }
