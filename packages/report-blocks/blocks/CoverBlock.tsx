@@ -75,12 +75,13 @@ export function CoverBlock({ block, snapshot }: BlockProps) {
   const logoSize = config.logoSize ?? LOGO_SIZE_DEFAULT;
   const clientName = snapshot.account.client_name ?? snapshot.account.handle;
 
-  const colorStyle = config.color
-    ? { background: config.color, color: pickAccentFg(config.color, COVER_INK_FALLBACK) }
-    : {
-        background: 'var(--rb-cover-bg, var(--rb-accent))',
-        color: 'var(--rb-cover-fg, var(--rb-accent-fg))',
-      };
+  const colorStyle =
+    typeof config.color === 'string'
+      ? { background: config.color, color: pickAccentFg(config.color, COVER_INK_FALLBACK) }
+      : {
+          background: 'var(--rb-cover-bg, var(--rb-accent))',
+          color: 'var(--rb-cover-fg, var(--rb-accent-fg))',
+        };
 
   return (
     <header

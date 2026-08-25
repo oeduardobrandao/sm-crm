@@ -110,6 +110,7 @@ export async function loadClientSnapshot(
   const rawAvatar = account.profile_picture_url ?? null;
   const avatarUrlPromise: Promise<string | null> = isEphemeralInstagramUrl(rawAvatar)
     ? cachePostThumbnail({ fetch: deps.fetch, storage: deps.storage }, igAccountId, "avatar", rawAvatar, null)
+      .then((cached) => (cached && !isEphemeralInstagramUrl(cached) ? cached : null))
     : Promise.resolve(rawAvatar);
 
   const lastSnapshotOfMonth = (win: typeof w) =>

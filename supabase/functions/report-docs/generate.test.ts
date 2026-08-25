@@ -524,3 +524,44 @@ Deno.test("generate: avatar já estável não é recacheado (sem upload/download
   assertEquals(row.data_snapshot.account.profile_picture_url, stableAvatar);
   assertEquals(uploaded.length, 0);
 });
+
+Deno.test("generate: falha no cache do avatar vira null, não a URL efêmera crua", async () => {
+  // cachePostThumbnail's documented contract: "On any failure returns cdnUrl"
+  // (o mesmo raw da Graph). Congelar esse valor no snapshot travaria uma URL
+  // que VAI expirar (dias) sem chance de autocorreção -- achado de review
+  // externo 2026-08-25. O loop de thumbnails de post (30 linhas abaixo) já se
+  // protege com `if (cached && !isEphemeralInstagramUrl(cached))`; o avatar
+  // precisa do mesmo guard.
+  const storage = {
+    from: () => ({
+      upload: async () => ({ error: null }),
+      getPublicUrl: () => ({ data: { publicUrl: "unused" } }),
+    }),
+    createBucket: async () => ({}),
+  };
+  const fetchMock = (async (url: string) => {
+    if (url === "https://cdninstagram.com/raw.jpg") {
+      return new Response("erro", { status: 500 });
+    }
+    return new Response("{}", { status: 200 });
+  }) as typeof fetch;
+  const testDeps = { ...deps, fetch: fetchMock, storage };
+
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "Dra. X", especialidade: "Derma", include_ai_analysis: false },
+    instagram_accounts: {
+      id: "ig-1", username: "dra.x", follower_count: 100,
+      profile_picture_url: "https://cdninstagram.com/raw.jpg",
+    },
+    instagram_posts: [],
+    instagram_follower_history: [],
+    instagram_analytics_cache: null,
+    instagram_account_metrics_daily: [],
+    workspaces: { name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null },
+  });
+  await generateReportDocument(db, testDeps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as {
+    data_snapshot: { account: { profile_picture_url: string | null } };
+  };
+  assertEquals(row.data_snapshot.account.profile_picture_url, null);
+});

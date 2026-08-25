@@ -62,6 +62,17 @@ describe('CoverBlock', () => {
     expect(header.style.color).toBe('rgb(255, 255, 255)');
   });
 
+  it('cover.config.color não-string (dado corrompido): não quebra, usa o fallback do tema', () => {
+    const { container } = render(
+      <CoverBlock
+        block={coverBlock({ color: 42 as unknown as string })}
+        snapshot={makeSnapshotFixture()}
+      />,
+    );
+    const header = container.querySelector('.rb-cover') as HTMLElement;
+    expect(header.style.background).toBe('var(--rb-cover-bg, var(--rb-accent))');
+  });
+
   it('logoSize aplica na altura da logo', () => {
     const snap = makeSnapshotFixture({
       branding: {
