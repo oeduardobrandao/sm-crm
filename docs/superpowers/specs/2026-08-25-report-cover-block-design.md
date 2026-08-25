@@ -151,6 +151,17 @@ A regra também fica no `validateLayout` (TS) e reforçada na UI (esconder os bo
 de largura — ver Edição abaixo), pelas mesmas razões de defesa em profundidade já
 usadas em todo o resto do arquivo.
 
+**Adendo (achado durante a execução do plano, 2026-08-25):** a validação acima só
+rejeita ESCRITAS novas. Nada corrige um `cover` que porventura já esteja salvo com
+`size != full` (de antes desta regra existir). Sem uma correção em memória, o
+autosave de um documento assim ficaria travado para sempre na PRÓXIMA edição
+(qualquer edição, não só na própria capa) — `validateLayout` rejeita o layout
+inteiro e não há retry para esse caso. A implementação (plano de 2026-08-25)
+adiciona: (1) `BlockRenderer.tsx` e `EditorCanvas.tsx` ignoram o `size` persistido
+para blocos `cover` e sempre renderizam largura cheia; (2) `normalizeCoverSize()`
+corrige o layout em memória assim que ele entra no editor, antes de virar o estado
+inicial do autosave — a próxima edição já persiste a versão corrigida.
+
 ## Contraste (`packages/report-blocks/theme.ts`)
 
 `pickAccentFg(acc, ink)` já existe e já resolve exatamente este problema para o
