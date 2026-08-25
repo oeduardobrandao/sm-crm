@@ -762,6 +762,8 @@ git commit -m "feat(relatorios): cacheia foto do cliente e propaga nome no snaps
 - Modify: `packages/report-blocks/theme.ts`
 - Modify: `packages/report-blocks/blocks/CoverBlock.tsx`
 - Modify: `packages/report-blocks/styles.css`
+- Modify: `packages/report-blocks/BlockRenderer.tsx`
+- Modify: `packages/report-blocks/__tests__/BlockRenderer.test.tsx`
 - Create: `packages/report-blocks/__tests__/CoverBlock.test.tsx`
 
 **Interfaces:**
@@ -1101,18 +1103,59 @@ por:
 }
 ```
 
-- [ ] **Step 6: Rodar e ver passar**
+- [ ] **Step 6: Defesa em profundidade no `BlockRenderer` contra um cover persistido com size != full**
 
-Run: `npx vitest run packages/report-blocks/__tests__/CoverBlock.test.tsx`
+**Por que este passo existe:** achado de review externo (2026-08-25). Depois das
+Tasks 1-2, `validateLayout` e o trigger SQL passam a REJEITAR qualquer escrita de um
+`cover` com `size` diferente de `full` — mas nenhuma delas corrige um valor que já
+possa estar salvo (de antes desta validação existir, ou de qualquer bug futuro).
+Sem essa defesa, um documento assim renderizaria a capa de página inteira numa
+coluna estreita (`rb-third`/`rb-half`), um bug visual puro nesta task; a Task 5
+resolve a consequência mais grave (autosave travado) na ponta do editor do CRM. Os
+dois consumidores READ-ONLY deste pacote (Hub viewer e print/PDF) passam só por
+`BlockRenderer`, então a defesa aqui cobre os dois de uma vez.
+
+Em `packages/report-blocks/BlockRenderer.tsx`, troque:
+
+```tsx
+              className={SIZE_CLASS[block.size] ?? 'rb-full'}
+```
+
+por:
+
+```tsx
+              className={block.type === 'cover' ? 'rb-full' : (SIZE_CLASS[block.size] ?? 'rb-full')}
+```
+
+Em `packages/report-blocks/__tests__/BlockRenderer.test.tsx`, adicione ao final do
+`describe('BlockRenderer', ...)` (antes do `});` que fecha o describe):
+
+```tsx
+  it('cover com size persistido != full: renderiza como largura cheia mesmo assim (defesa contra dado antigo/inválido)', () => {
+    const badLayout: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 'c', type: 'cover', size: 'third' }],
+    };
+    const { container } = render(
+      <BlockRenderer layout={badLayout} snapshot={makeSnapshotFixture()} mode="view" />,
+    );
+    const wrapper = container.querySelector('[data-block-id="c"]') as HTMLElement;
+    expect(wrapper.className).toBe('rb-full');
+  });
+```
+
+- [ ] **Step 7: Rodar e ver passar**
+
+Run: `npx vitest run packages/report-blocks/__tests__/CoverBlock.test.tsx packages/report-blocks/__tests__/BlockRenderer.test.tsx`
 Expected: PASS em todos os testes.
 
 Run também (garante que nada mais quebrou):
 `npx vitest run packages/report-blocks/`
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add packages/report-blocks/theme.ts packages/report-blocks/blocks/CoverBlock.tsx packages/report-blocks/styles.css packages/report-blocks/__tests__/CoverBlock.test.tsx
+git add packages/report-blocks/theme.ts packages/report-blocks/blocks/CoverBlock.tsx packages/report-blocks/styles.css packages/report-blocks/BlockRenderer.tsx packages/report-blocks/__tests__/CoverBlock.test.tsx packages/report-blocks/__tests__/BlockRenderer.test.tsx
 git commit -m "feat(relatorios): capa em pagina inteira com foto do cliente e cor propria"
 ```
 
@@ -1125,13 +1168,18 @@ git commit -m "feat(relatorios): capa em pagina inteira com foto do cliente e co
 - Create: `apps/crm/src/pages/relatorio-editor/__tests__/CoverEditor.test.tsx`
 - Modify: `apps/crm/src/pages/relatorio-editor/EditorCanvas.tsx`
 - Modify: `apps/crm/src/pages/relatorio-editor/__tests__/EditorCanvas.test.tsx`
+- Modify: `apps/crm/src/pages/relatorio-editor/layoutOps.ts`
+- Modify: `apps/crm/src/pages/relatorio-editor/__tests__/layoutOps.test.ts`
+- Modify: `apps/crm/src/pages/relatorio-editor/RelatorioEditorPage.tsx`
+- Modify: `apps/crm/src/pages/relatorio-editor/__tests__/RelatorioEditorPage.test.tsx`
 
 **Interfaces:**
 - Consumes: `normalizeCoverColorPatch`, `stepCoverLogoSize` (Task 1, de
   `./layoutOps`); `CoverAvatar`, `CoverConfig`, `pickAccentFg` (Task 4, de
   `@mesaas/report-blocks/blocks/CoverBlock` e `@mesaas/report-blocks/theme`).
 - Produces: `CoverEditor({ block, snapshot, onConfigChange }): JSX.Element`, usado
-  por `EditorCanvas.tsx`.
+  por `EditorCanvas.tsx`. `normalizeCoverSize(layout: ReportLayout): ReportLayout`
+  (novo, em `./layoutOps`, usado por `RelatorioEditorPage.tsx`).
 
 - [ ] **Step 1: Escrever os testes que falham para `CoverEditor`**
 
@@ -1574,12 +1622,205 @@ por:
         )}
 ```
 
+4. Troque (mesma linha usada para toda célula do grid, não só a capa):
+
+```tsx
+      className={`${SIZE_CLASS[block.size] ?? 'rb-full'} rb-edit-cell${highlighted ? ' rb-edit-highlight' : ''}`}
+```
+
+por:
+
+```tsx
+      className={`${block.type === 'cover' ? 'rb-full' : (SIZE_CLASS[block.size] ?? 'rb-full')} rb-edit-cell${highlighted ? ' rb-edit-highlight' : ''}`}
+```
+
+(Esta é a MESMA defesa da Task 4 em `BlockRenderer.tsx` — achado de review externo
+2026-08-25 — só que para o canvas de edição. `SIZE_CLASS` já está importado no topo
+do arquivo, nenhum import novo necessário.)
+
 - [ ] **Step 9: Rodar e ver passar**
 
 Run: `npx vitest run apps/crm/src/pages/relatorio-editor/__tests__/EditorCanvas.test.tsx`
 Expected: PASS em todos os testes.
 
-- [ ] **Step 10: Rodar a suíte inteira do editor + typecheck**
+- [ ] **Step 10: `normalizeCoverSize` — repara em memória um cover persistido com size != full**
+
+**Por que este passo existe:** achado de review externo (2026-08-25). Depois das
+Tasks 1-2, `validateLayout` (cliente) e o trigger SQL rejeitam QUALQUER escrita de
+layout que contenha um `cover` com `size` diferente de `full` — incluindo a escrita
+de uma edição totalmente não relacionada num documento que porventura já tenha essa
+capa salva com um `size` antigo/inválido. Sem correção, o autosave desse documento
+fica preso pra sempre: `useLayoutAutosave.ts` chama `validateLayout(toSave)` antes de
+CADA save e, se falhar, descarta o payload sem retry (mesmo comportamento já
+documentado para o accent inválido); como nenhuma operação de `layoutOps.ts` toca o
+`size` do cover, o valor ruim nunca se autocorrige sozinho, e a MESMA falha se repete
+em toda edição seguinte, mesmo após reload (o valor ruim continua vindo do banco).
+A correção: normalizar o layout assim que ele entra em memória no editor, ANTES de
+virar o estado inicial do autosave — daí em diante toda edição (de qualquer bloco)
+persiste a versão já corrigida.
+
+Escreva primeiro o teste que falha. Em
+`apps/crm/src/pages/relatorio-editor/__tests__/layoutOps.test.ts`, adicione ao final
+do arquivo:
+
+```ts
+describe('normalizeCoverSize', () => {
+  it('corrige um bloco cover com size != full para full', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 'c', type: 'cover', size: 'third' }],
+    };
+    const next = normalizeCoverSize(l);
+    expect(next.blocks[0].size).toBe('full');
+  });
+
+  it('cover já full: devolve a MESMA referência (no-op)', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 'c', type: 'cover', size: 'full' }],
+    };
+    expect(normalizeCoverSize(l)).toBe(l);
+  });
+
+  it('não mexe em blocos que não são cover', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 'k', type: 'kpi_reach', size: 'third' }],
+    };
+    expect(normalizeCoverSize(l)).toBe(l);
+  });
+});
+```
+
+Adicione `normalizeCoverSize` ao import existente do topo do arquivo (a mesma linha
+que já importa `normalizeCoverColorPatch, stepCoverLogoSize` da Task 1 — inclua o
+nome novo nessa lista).
+
+Run: `npx vitest run apps/crm/src/pages/relatorio-editor/__tests__/layoutOps.test.ts`
+Expected: FAIL (`normalizeCoverSize` ainda não existe).
+
+Implemente em `apps/crm/src/pages/relatorio-editor/layoutOps.ts`, adicionando ao
+final do arquivo:
+
+```ts
+/** Corrige qualquer bloco cover com size != full para full -- defesa contra um
+ * documento cujo layout persistido tenha ficado com um valor antigo/inválido
+ * (achado de review externo 2026-08-25): sem isso, o autosave trava pra sempre na
+ * primeira edição seguinte, porque validateLayout rejeita o layout inteiro e não
+ * há retry para esse caso. Mesma referência se nada precisar mudar. */
+export function normalizeCoverSize(layout: ReportLayout): ReportLayout {
+  let changed = false;
+  const blocks = layout.blocks.map((b) => {
+    if (b.type === 'cover' && b.size !== 'full') {
+      changed = true;
+      return { ...b, size: 'full' as const };
+    }
+    return b;
+  });
+  return changed ? { ...layout, blocks } : layout;
+}
+```
+
+Run: `npx vitest run apps/crm/src/pages/relatorio-editor/__tests__/layoutOps.test.ts`
+Expected: PASS em todos os testes.
+
+- [ ] **Step 11: Aplicar `normalizeCoverSize` em `RelatorioEditorPage.tsx`**
+
+Escreva primeiro o teste que falha. Em
+`apps/crm/src/pages/relatorio-editor/__tests__/RelatorioEditorPage.test.tsx`, o
+helper `doc()` no topo do arquivo já devolve um documento com `layout.blocks =
+[{id:'a',type:'divider',...}, {id:'b',type:'kpi_reach',...}]` (sem cover, de
+propósito, pois o CoverBlock também renderiza `snapshot.period.label` e colidiria
+com o texto do topbar). Adicione ao final do `describe('RelatorioEditorPage
+(editor)', ...)` (antes do `});` que fecha o describe):
+
+```tsx
+  it('doc com cover salvo com size != full: corrige em memória e a próxima edição já persiste corrigido', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    getReportDocMock.mockResolvedValue({
+      ...doc(),
+      layout: {
+        version: 1,
+        blocks: [
+          { id: 'c', type: 'cover', size: 'third' },
+          { id: 'b', type: 'kpi_reach', size: 'third' },
+        ],
+      },
+    });
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getAllByLabelText('Excluir bloco')[1]);
+    await waitFor(
+      () =>
+        expect(updateReportDocMock).toHaveBeenCalledWith('doc-1', {
+          layout: expect.objectContaining({
+            blocks: [expect.objectContaining({ id: 'c', size: 'full' })],
+          }),
+        }),
+      { timeout: 4000 },
+    );
+    vi.useRealTimers();
+  });
+```
+
+Run: `npx vitest run apps/crm/src/pages/relatorio-editor/__tests__/RelatorioEditorPage.test.tsx`
+Expected: FAIL (o doc ainda entra no estado do editor sem correção).
+
+Implemente em `apps/crm/src/pages/relatorio-editor/RelatorioEditorPage.tsx`. Troque
+o import existente:
+
+```tsx
+import {
+  insertBlockAt,
+  moveBlock,
+  removeBlock,
+  restoreBlock,
+  updateBlockConfig,
+  updateBlockText,
+} from './layoutOps';
+```
+
+por (adiciona `normalizeCoverSize`, mantendo ordem alfabética):
+
+```tsx
+import {
+  insertBlockAt,
+  moveBlock,
+  normalizeCoverSize,
+  removeBlock,
+  restoreBlock,
+  updateBlockConfig,
+  updateBlockText,
+} from './layoutOps';
+```
+
+E troque:
+
+```tsx
+  const { layout, applyLayout, title, setTitle, saving } = useLayoutAutosave(doc.id, {
+    layout: doc.layout,
+    title: doc.title,
+  });
+```
+
+por:
+
+```tsx
+  const { layout, applyLayout, title, setTitle, saving } = useLayoutAutosave(doc.id, {
+    // Defesa contra um layout persistido com um cover de size != full (achado de
+    // review externo 2026-08-25): corrige em memória ANTES do estado inicial do
+    // autosave existir. Sem isso, a primeira edição seguinte (de QUALQUER bloco)
+    // trava o autosave pra sempre -- validateLayout rejeita o layout inteiro e
+    // não há retry para esse caso.
+    layout: normalizeCoverSize(doc.layout),
+    title: doc.title,
+  });
+```
+
+Run: `npx vitest run apps/crm/src/pages/relatorio-editor/__tests__/RelatorioEditorPage.test.tsx`
+Expected: PASS em todos os testes.
+
+- [ ] **Step 12: Rodar a suíte inteira do editor + typecheck**
 
 Run: `npx vitest run apps/crm/src/pages/relatorio-editor/`
 Expected: PASS em tudo.
@@ -1587,11 +1828,11 @@ Expected: PASS em tudo.
 Run: `npx tsc -p apps/crm/tsconfig.json --noEmit`
 Expected: sem erros.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 13: Commit**
 
 ```bash
-git add apps/crm/src/pages/relatorio-editor/EditorCanvas.tsx apps/crm/src/pages/relatorio-editor/__tests__/EditorCanvas.test.tsx
-git commit -m "feat(relatorios): capa usa CoverEditor no canvas e esconde botoes de largura"
+git add apps/crm/src/pages/relatorio-editor/EditorCanvas.tsx apps/crm/src/pages/relatorio-editor/__tests__/EditorCanvas.test.tsx apps/crm/src/pages/relatorio-editor/layoutOps.ts apps/crm/src/pages/relatorio-editor/__tests__/layoutOps.test.ts apps/crm/src/pages/relatorio-editor/RelatorioEditorPage.tsx apps/crm/src/pages/relatorio-editor/__tests__/RelatorioEditorPage.test.tsx
+git commit -m "feat(relatorios): capa usa CoverEditor no canvas, esconde botoes de largura e repara size persistido invalido"
 ```
 
 ---
