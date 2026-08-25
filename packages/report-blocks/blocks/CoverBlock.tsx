@@ -66,11 +66,12 @@ export interface CoverConfig {
 export function CoverBlock({ block, snapshot }: BlockProps) {
   const b = snapshot.branding;
   const config = (block.config ?? {}) as CoverConfig;
-  const kicker = config.kicker ?? KICKER_DEFAULT;
-  const title = config.title ?? snapshot.period.label;
+  const kicker = typeof config.kicker === 'string' ? config.kicker : KICKER_DEFAULT;
+  const title = typeof config.title === 'string' ? config.title : snapshot.period.label;
   const subtitle =
-    config.subtitle ??
-    `@${snapshot.account.handle}${snapshot.account.specialty ? ` · ${snapshot.account.specialty}` : ''}`;
+    typeof config.subtitle === 'string'
+      ? config.subtitle
+      : `@${snapshot.account.handle}${snapshot.account.specialty ? ` · ${snapshot.account.specialty}` : ''}`;
   const logoSize = config.logoSize ?? LOGO_SIZE_DEFAULT;
   const clientName = snapshot.account.client_name ?? snapshot.account.handle;
 

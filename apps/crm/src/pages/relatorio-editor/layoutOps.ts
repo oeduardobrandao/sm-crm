@@ -194,19 +194,9 @@ export function stepCoverLogoSize(current: number | undefined, delta: 1 | -1): n
   return Math.min(Math.max(base + delta * COVER_LOGO_STEP, COVER_LOGO_MIN), COVER_LOGO_MAX);
 }
 
-/** Corrige qualquer bloco cover com size != full para full -- defesa contra um
- * documento cujo layout persistido tenha ficado com um valor antigo/inválido
- * (achado de review externo 2026-08-25): sem isso, o autosave trava pra sempre na
- * primeira edição seguinte, porque validateLayout rejeita o layout inteiro e não
- * há retry para esse caso. Mesma referência se nada precisar mudar. */
-export function normalizeCoverSize(layout: ReportLayout): ReportLayout {
-  let changed = false;
-  const blocks = layout.blocks.map((b) => {
-    if (b.type === 'cover' && b.size !== 'full') {
-      changed = true;
-      return { ...b, size: 'full' as const };
-    }
-    return b;
-  });
-  return changed ? { ...layout, blocks } : layout;
-}
+// Implementação real vive no arquivo compartilhado Deno+frontend (mesmo lugar
+// que validateLayout): a geração de relatório a partir de template roda em
+// Deno e precisa da MESMA função (achado de review externo 2026-08-25). Todo
+// chamador existente aqui continua importando de './layoutOps' -- este
+// re-export mantém isso funcionando sem tocar em nenhum call site.
+export { normalizeCoverSize } from '@mesaas/report-blocks/types';

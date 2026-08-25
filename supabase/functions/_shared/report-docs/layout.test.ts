@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { BLOCK_TYPES, LAYOUT_VERSION, validateLayout } from "./layout.ts";
+import { BLOCK_TYPES, LAYOUT_VERSION, normalizeCoverSize, validateLayout } from "./layout.ts";
 
 const block = (over: Record<string, unknown> = {}) => ({
   id: "b1", type: "text", size: "full", ...over,
@@ -82,4 +82,17 @@ Deno.test("validateLayout: cover.config.logoSize entre 20 e 68", () => {
   assert(!validateLayout(layout([cover({ logoSize: 19 })])).ok);
   assert(!validateLayout(layout([cover({ logoSize: 69 })])).ok);
   assert(!validateLayout(layout([cover({ logoSize: 40.5 })])).ok);
+});
+
+Deno.test("normalizeCoverSize: corrige um cover com size != full para full", () => {
+  const l = layout([block({ type: "cover", size: "third" })]);
+  const next = normalizeCoverSize(l);
+  assertEquals(next.blocks[0].size, "full");
+});
+
+Deno.test("normalizeCoverSize: cover já full ou sem cover -- mesma referência (no-op)", () => {
+  const withFullCover = layout([block({ type: "cover", size: "full" })]);
+  assertEquals(normalizeCoverSize(withFullCover), withFullCover);
+  const withoutCover = layout([block({ type: "kpi_reach", size: "third" })]);
+  assertEquals(normalizeCoverSize(withoutCover), withoutCover);
 });

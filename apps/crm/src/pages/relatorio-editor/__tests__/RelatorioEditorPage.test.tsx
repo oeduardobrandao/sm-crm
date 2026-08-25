@@ -1,12 +1,24 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeSnapshotFixture } from '@mesaas/report-blocks/fixtures';
 import { validateLayout } from '@mesaas/report-blocks/types';
 import { toast } from 'sonner';
+import type { ReportTemplateRow } from '../../../services/reportTemplates';
 import { setLayoutAccent } from '../layoutOps';
+
+// Mesmo padrão de mock de ApplyTemplateDialog.test.tsx: o dialog real (Radix,
+// não mockado aqui) chama listReportTemplates via useQuery.
+const { listReportTemplatesMock } = vi.hoisted(() => ({
+  listReportTemplatesMock: vi.fn(),
+}));
+vi.mock('../../../services/reportTemplates', () => ({
+  listReportTemplates: listReportTemplatesMock,
+  deleteReportTemplate: vi.fn(),
+  setDefaultReportTemplate: vi.fn(),
+}));
 
 const { getReportDocMock, updateReportDocMock, exportReportPdfMock, refreshReportDocMock } =
   vi.hoisted(() => ({
@@ -431,6 +443,42 @@ describe('RelatorioEditorPage (editor)', () => {
     await screen.findByLabelText('Título do relatório');
     await waitFor(() => expect(getHubTokenMock).toHaveBeenCalledWith(42));
     expect(screen.queryByRole('button', { name: 'Ver como cliente' })).not.toBeInTheDocument();
+  });
+
+  it('aplicar template com cover size != full: normaliza antes de aplicar/persistir', async () => {
+    // Fix 1 (review final do report-cover-block): applyTemplateLayout troca o
+    // layout inteiro pelo do template escolhido -- um template legado salvo
+    // antes da regra "cover deve ser full" existir carrega esse defeito para
+    // o documento aberto. Mesma proteção que já existe para doc.layout no
+    // carregamento inicial (teste "doc com cover salvo..." abaixo), agora no
+    // fluxo de aplicar template.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    getReportDocMock.mockResolvedValue(doc());
+    const template: ReportTemplateRow = {
+      id: 'tpl-1',
+      name: 'Modelo com capa antiga',
+      layout: { version: 1, blocks: [{ id: 'c', type: 'cover', size: 'third' }] },
+      is_default: false,
+      created_at: '2026-08-01T00:00:00Z',
+    };
+    listReportTemplatesMock.mockResolvedValue([template]);
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar template' }));
+    const row = (await screen.findByText('Modelo com capa antiga')).closest(
+      '[data-testid="template-row"]',
+    ) as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: 'Aplicar' }));
+    await waitFor(
+      () =>
+        expect(updateReportDocMock).toHaveBeenCalledWith('doc-1', {
+          layout: expect.objectContaining({
+            blocks: [expect.objectContaining({ id: 'c', size: 'full' })],
+          }),
+        }),
+      { timeout: 4000 },
+    );
+    vi.useRealTimers();
   });
 
   it('doc com cover salvo com size != full: corrige em memória e a próxima edição já persiste corrigido', async () => {

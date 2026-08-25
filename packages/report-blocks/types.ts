@@ -13,6 +13,7 @@ export {
   BLOCK_TYPES,
   TEXT_BLOCK_TYPES,
   validateLayout,
+  normalizeCoverSize,
   REPORT_THEME_IDS,
   REPORT_FONT_IDS,
 } from '../../supabase/functions/_shared/report-docs/layout';

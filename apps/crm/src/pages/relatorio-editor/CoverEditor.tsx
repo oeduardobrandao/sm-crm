@@ -23,11 +23,12 @@ export interface CoverEditorProps {
 export function CoverEditor({ block, snapshot, onConfigChange }: CoverEditorProps) {
   const b = snapshot.branding;
   const config = (block.config ?? {}) as CoverConfig;
-  const kicker = config.kicker ?? KICKER_DEFAULT;
-  const title = config.title ?? snapshot.period.label;
+  const kicker = typeof config.kicker === 'string' ? config.kicker : KICKER_DEFAULT;
+  const title = typeof config.title === 'string' ? config.title : snapshot.period.label;
   const subtitle =
-    config.subtitle ??
-    `@${snapshot.account.handle}${snapshot.account.specialty ? ` · ${snapshot.account.specialty}` : ''}`;
+    typeof config.subtitle === 'string'
+      ? config.subtitle
+      : `@${snapshot.account.handle}${snapshot.account.specialty ? ` · ${snapshot.account.specialty}` : ''}`;
   const logoSize = config.logoSize ?? LOGO_SIZE_DEFAULT;
   const clientName = snapshot.account.client_name ?? snapshot.account.handle;
   const accentColor = snapshot.branding.accent_color;
@@ -145,6 +146,7 @@ export function CoverEditor({ block, snapshot, onConfigChange }: CoverEditorProp
           <button
             type="button"
             className="rb-appearance-reset"
+            style={{ color: 'inherit' }}
             onClick={() => onConfigChange(block.id, { color: undefined })}
           >
             usar cor de destaque

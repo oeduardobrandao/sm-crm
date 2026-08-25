@@ -161,3 +161,22 @@ export function validateLayout(raw: unknown): ValidateLayoutResult {
   }
   return { ok: true, layout: raw as unknown as ReportLayout };
 }
+
+/** Corrige qualquer bloco cover com size != full para full -- defesa contra um
+ * layout persistido (documento OU template) que tenha ficado com um valor
+ * antigo/inválido de antes desta validação existir (achado de review externo
+ * 2026-08-25): sem isso, tanto o autosave do editor do CRM quanto a geração de
+ * relatório a partir de um template legado ficam travados, porque
+ * validateLayout rejeita o layout inteiro e não há retry para esse caso.
+ * Mesma referência se nada precisar mudar. */
+export function normalizeCoverSize(layout: ReportLayout): ReportLayout {
+  let changed = false;
+  const blocks = layout.blocks.map((b) => {
+    if (b.type === "cover" && b.size !== "full") {
+      changed = true;
+      return { ...b, size: "full" as const };
+    }
+    return b;
+  });
+  return changed ? { ...layout, blocks } : layout;
+}

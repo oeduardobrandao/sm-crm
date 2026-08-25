@@ -17,6 +17,12 @@ describe('CoverBlock', () => {
     expect(screen.getByText('@dra.exemplo · Dermatologia · São Paulo')).toBeInTheDocument();
   });
 
+  it('config.title não-string: cai no default computado em vez de renderizar o valor cru', () => {
+    render(<CoverBlock block={coverBlock({ title: 42 })} snapshot={makeSnapshotFixture()} />);
+    expect(screen.getByText('Julho de 2026')).toBeInTheDocument();
+    expect(screen.queryByText('42')).not.toBeInTheDocument();
+  });
+
   it('config presente: sobrescreve kicker, título e subtítulo', () => {
     render(
       <CoverBlock

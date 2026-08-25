@@ -285,6 +285,33 @@ Deno.test("templateId válido: layout do documento nasce do template com IA pree
   assert(summary?.text !== undefined);
 });
 
+Deno.test("templateId com cover size != full (template legado, pré-validação): normaliza para full em vez de invalid_template", async () => {
+  // Achado de review externo 2026-08-25: um template salvo antes da regra
+  // "cover deve ser full" existir pode ter ficado com size 'third'/'half'.
+  // Sem normalizeCoverSize ANTES de validateLayout, essa geração falharia com
+  // invalid_template para sempre -- não há como o usuário corrigir um
+  // template pela UI que nunca abre por causa do mesmo gate.
+  const tplLayout = {
+    version: 1,
+    blocks: [{ id: "c", type: "cover", size: "third" }],
+  };
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "x" },
+    report_templates: { id: "t1", conta_id: "c", layout: tplLayout },
+    workspaces: { name: "W", logo_url: null, brand_color: "#111111", report_splash_url: null },
+    instagram_posts: [],
+    instagram_follower_history: [],
+  });
+  const { id } = await generateReportDocument(
+    db, deps, "c", 1, "2026-07", "b3b2a6a0-1111-4222-8333-444455556666",
+  );
+  assertEquals(id, "doc-1");
+  const inserted = db.inserts[0] as { layout: { blocks: Array<{ id: string; size: string }> } };
+  const cover = inserted.layout.blocks.find((b) => b.id === "c");
+  assertEquals(cover?.size, "full");
+});
+
 Deno.test('templateId "system": ignora o default do workspace e usa o padrão do sistema', async () => {
   // Achado de review externo (PR #379): "Padrão do sistema" no dialog do CRM
   // omitia templateId, que o servidor trata como "usa o is_default do

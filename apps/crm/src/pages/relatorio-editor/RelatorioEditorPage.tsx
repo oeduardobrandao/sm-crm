@@ -288,7 +288,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         open={applyTplOpen}
         onOpenChange={setApplyTplOpen}
         onApply={(tpl) => {
-          applyLayout(applyTemplateLayout(tpl.layout, layoutRef.current));
+          applyLayout(normalizeCoverSize(applyTemplateLayout(tpl.layout, layoutRef.current)));
           toast.success('Template aplicado.');
         }}
       />
