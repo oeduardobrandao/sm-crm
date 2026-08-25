@@ -45,6 +45,25 @@ Deno.test("list-workspaces delegates to admin_list_workspaces and passes filters
     p_plan_id: "pro",
     p_offset: 20,
     p_limit: 20,
+    p_as_of: null,
+  });
+});
+
+Deno.test("list-workspaces forwards as_of as the RPC's snapshot timestamp", async () => {
+  const { db, rpcCalls } = makeFakeRpcDb({ total: 0, workspaces: [] });
+
+  await handleListWorkspaces(
+    db as unknown as SupabaseClient,
+    { as_of: "2026-01-01T00:00:00.000Z" },
+    HEADERS,
+  );
+
+  assertEquals(rpcCalls[0].params, {
+    p_search: null,
+    p_plan_id: null,
+    p_offset: 0,
+    p_limit: 20,
+    p_as_of: "2026-01-01T00:00:00.000Z",
   });
 });
 
@@ -60,7 +79,13 @@ Deno.test("list-workspaces defaults offset 0 / limit 20 and null filters", async
     total_clients: 0,
     total_with_overrides: 0,
   });
-  assertEquals(rpcCalls[0].params, { p_search: null, p_plan_id: null, p_offset: 0, p_limit: 20 });
+  assertEquals(rpcCalls[0].params, {
+    p_search: null,
+    p_plan_id: null,
+    p_offset: 0,
+    p_limit: 20,
+    p_as_of: null,
+  });
 });
 
 Deno.test("list-workspaces tolerates a null RPC payload", async () => {

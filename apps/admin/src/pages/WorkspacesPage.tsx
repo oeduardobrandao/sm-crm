@@ -39,6 +39,10 @@ export default function WorkspacesPage() {
     try {
       const PAGE_SIZE = 200;
       const MAX_ROWS = 2000;
+      // Freezes the filtered set to this instant, so a workspace created while this export is
+      // mid-flight (which would otherwise shift every existing row's position, since newest
+      // sorts first) can't duplicate or drop a row across two of the calls below.
+      const asOf = new Date().toISOString();
       const all: WorkspaceSummary[] = [];
       let total = Infinity;
       for (let offset = 0; offset < Math.min(total, MAX_ROWS); offset += PAGE_SIZE) {
@@ -47,6 +51,7 @@ export default function WorkspacesPage() {
           plan_id: planFilter || undefined,
           offset,
           limit: PAGE_SIZE,
+          as_of: asOf,
         });
         total = page.total;
         all.push(...page.workspaces);

@@ -276,6 +276,10 @@ export function listWorkspaces(params?: {
   plan_id?: string;
   offset?: number;
   limit?: number;
+  /** Freezes the filtered set to how it looked at this instant (ISO timestamp), so a multi-call
+   * paginated export can't have its result set shift underneath it from concurrent signups.
+   * Omit for normal single-call browsing -- it behaves exactly as before. */
+  as_of?: string;
 }) {
   return adminApi<{
     workspaces: WorkspaceSummary[];

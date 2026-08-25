@@ -19,11 +19,29 @@
 -- one page at a time, but a real correctness risk for the new admin Workspaces CSV export
 -- (apps/admin/src/pages/WorkspacesPage.tsx), which assembles a full export from several
 -- sequential offset/limit calls and needs every row counted exactly once.
+--
+-- Finally, adds an optional p_as_of snapshot timestamp. Without it, a workspace created
+-- between two of the export's sequential offset/limit calls shifts every existing row's
+-- position (newest-first ordering), which can duplicate a row across pages even with the id
+-- tiebreaker above -- the *set* changed mid-export, not just a tie within it. Passing the
+-- export's start time as p_as_of freezes the filtered set to "as it existed at that instant"
+-- for every page of that one export, so later signups can't perturb it. Omitting p_as_of (all
+-- existing callers -- the on-screen Workspaces table, the Dashboard) is unaffected: created_at
+-- can never be in the future, so `created_at <= COALESCE(p_as_of, now())` is always true for
+-- existing rows and changes nothing observable for a single, non-paginated-across-calls read.
+--
+-- This changes the function's signature (4 params -> 5), which CREATE OR REPLACE does not
+-- retarget -- Postgres would otherwise leave the old 4-arg overload in place, ungoverned by
+-- this file's REVOKE/GRANT block below, and ambiguous against callers that omit p_as_of. The
+-- DROP below removes it explicitly.
+DROP FUNCTION IF EXISTS admin_list_workspaces(text, text, int, int);
+
 CREATE OR REPLACE FUNCTION admin_list_workspaces(
   p_search  text DEFAULT NULL,
   p_plan_id text DEFAULT NULL,
   p_offset  int  DEFAULT 0,
-  p_limit   int  DEFAULT 20
+  p_limit   int  DEFAULT 20,
+  p_as_of   timestamptz DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE sql
@@ -40,6 +58,7 @@ filtered AS (
    WHERE (p_search IS NULL OR w.name ILIKE '%' || p_search || '%')
      AND (p_plan_id IS NULL
           OR COALESCE(w.plan_id, (SELECT id FROM default_plan)) = p_plan_id)
+     AND w.created_at <= COALESCE(p_as_of, now())
 ),
 page AS (
   SELECT * FROM filtered ORDER BY created_at DESC, id ASC OFFSET p_offset LIMIT p_limit
@@ -126,7 +145,7 @@ SELECT jsonb_build_object(
 );
 $$;
 
-REVOKE ALL ON FUNCTION admin_list_workspaces(text, text, int, int) FROM PUBLIC;
-REVOKE ALL ON FUNCTION admin_list_workspaces(text, text, int, int) FROM anon;
-REVOKE ALL ON FUNCTION admin_list_workspaces(text, text, int, int) FROM authenticated;
-GRANT EXECUTE ON FUNCTION admin_list_workspaces(text, text, int, int) TO service_role;
+REVOKE ALL ON FUNCTION admin_list_workspaces(text, text, int, int, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION admin_list_workspaces(text, text, int, int, timestamptz) FROM anon;
+REVOKE ALL ON FUNCTION admin_list_workspaces(text, text, int, int, timestamptz) FROM authenticated;
+GRANT EXECUTE ON FUNCTION admin_list_workspaces(text, text, int, int, timestamptz) TO service_role;

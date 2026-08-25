@@ -9,15 +9,16 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
  */
 export async function handleListWorkspaces(
   svc: SupabaseClient,
-  body: { search?: string; plan_id?: string; offset?: number; limit?: number },
+  body: { search?: string; plan_id?: string; offset?: number; limit?: number; as_of?: string },
   headers: Record<string, string>,
 ) {
-  const { search, plan_id, offset = 0, limit = 20 } = body;
+  const { search, plan_id, offset = 0, limit = 20, as_of } = body;
   const { data, error } = await svc.rpc("admin_list_workspaces", {
     p_search: search ?? null,
     p_plan_id: plan_id ?? null,
     p_offset: offset,
     p_limit: limit,
+    p_as_of: as_of ?? null,
   });
   if (error) throw error;
   const payload = (data ?? {}) as {
