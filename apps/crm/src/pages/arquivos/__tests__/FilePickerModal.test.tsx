@@ -138,7 +138,7 @@ describe('FilePickerModal', () => {
       wrapper: createWrapper(),
     });
     await waitFor(() => {
-      expect(screen.getAllByRole('button').length).toBeGreaterThan(0);
+      expect(screen.getByText('perdido.png')).toBeInTheDocument();
     });
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
