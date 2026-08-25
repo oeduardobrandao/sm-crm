@@ -11,39 +11,13 @@ const layout = (over: Partial<ReportLayout> = {}): ReportLayout => ({
 });
 
 describe('AppearancePopover', () => {
-  it('abre com temas, fontes e cor; seleciona tema', () => {
+  it('abre com fontes e cor', () => {
     const onChange = vi.fn();
     render(
       <AppearancePopover layout={layout()} snapshot={makeSnapshotFixture()} onChange={onChange} />,
     );
     fireEvent.click(screen.getByRole('button', { name: /Aparência/ }));
-    fireEvent.click(screen.getByRole('radio', { name: /Editorial/ }));
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ theme: 'editorial' }));
-  });
-
-  it('clicar num tema não selecionado nunca remove a chave (theme sempre presente após o clique)', () => {
-    const onChange = vi.fn();
-    render(
-      <AppearancePopover layout={layout()} snapshot={makeSnapshotFixture()} onChange={onChange} />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Aparência/ }));
-    fireEvent.click(screen.getByRole('radio', { name: /Bold/ }));
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ theme: 'bold' }));
-  });
-
-  it('clicar em "Padrão" remove o tema (volta a herdar)', () => {
-    const onChange = vi.fn();
-    render(
-      <AppearancePopover
-        layout={layout({ theme: 'clean' })}
-        snapshot={makeSnapshotFixture()}
-        onChange={onChange}
-      />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Aparência/ }));
-    fireEvent.click(screen.getByRole('radio', { name: /Padrão/ }));
-    const next = onChange.mock.calls[0][0];
-    expect('theme' in next).toBe(false);
+    expect(screen.getByRole('radiogroup', { name: /Fontes do relatório/ })).toBeInTheDocument();
   });
 
   it('clicar na fonte ja selecionada volta a herdar (remove a chave)', () => {
@@ -97,32 +71,5 @@ describe('AppearancePopover', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /Aparência/ }));
     expect(screen.queryByRole('button', { name: 'usar cor da marca' })).not.toBeInTheDocument();
-  });
-
-  it('clicar em "Hub" seleciona o tema hub', () => {
-    const onChange = vi.fn();
-    render(
-      <AppearancePopover layout={layout()} snapshot={makeSnapshotFixture()} onChange={onChange} />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Aparência/ }));
-    fireEvent.click(screen.getByRole('radio', { name: /Hub/ }));
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ theme: 'hub' }));
-  });
-
-  it('a miniatura do Hub carrega accent e bg de superfície nas custom properties', () => {
-    const onChange = vi.fn();
-    render(
-      <AppearancePopover
-        layout={layout({ accent: '#123456' })}
-        snapshot={makeSnapshotFixture()}
-        onChange={onChange}
-      />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Aparência/ }));
-    const thumb = screen
-      .getByRole('radio', { name: /Hub/ })
-      .querySelector('.rb-appearance-thumb') as HTMLElement;
-    expect(thumb.style.getPropertyValue('--rb-hub-thumb-accent')).toBe('#123456');
-    expect(thumb.style.getPropertyValue('--rb-hub-thumb-bg')).toBe('#FAFAFA');
   });
 });
