@@ -240,6 +240,19 @@ export interface AnalyticsReport {
 
 // ---- Service Functions (Direct Supabase Queries) ----
 
+/** Sinal do guia de primeiros passos: existe QUALQUER conta de Instagram no
+ *  workspace? Lança em erro (sinal inconclusivo) — ao contrário de
+ *  getPortfolioSummary, que engole falhas e devolveria um falso confirmado.
+ *  Linhas de contas desconectadas contam: para onboarding, "já conectou uma
+ *  vez" é o passo cumprido (mesma semântica do summary, sem o filtro ativo). */
+export async function hasAnyInstagramAccount(): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('instagram_accounts')
+    .select('id', { count: 'exact', head: true });
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
 export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> {
   // Get active clients — use RLS-filtered query (same pattern as store.ts getClientes)
   // Not capability-gated: this reads Instagram accounts/posts/growth counters only,
