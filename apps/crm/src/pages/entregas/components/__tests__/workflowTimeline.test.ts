@@ -346,5 +346,26 @@ describe('buildWorkflowTimeline', () => {
         expect(node.tone).toBe(tone);
       }
     });
+
+    it('falls back to neutral for an unknown/future event type', () => {
+      const [node] = buildWorkflowTimeline([
+        ev({ event_type: 'evento_futuro' as unknown as WorkflowEvent['event_type'] }),
+      ]);
+      expect(node.tone).toBe('neutral');
+    });
+  });
+
+  describe('diffs — tipo field (etapa client-approval gate)', () => {
+    it('renders tipo as Padrão/Aprovação do cliente with the Portuguese field label', () => {
+      const [node] = buildWorkflowTimeline([
+        ev({
+          event_type: 'etapa_editada',
+          metadata: {
+            changes: [{ field: 'tipo', from: 'padrao', to: 'aprovacao_cliente' }],
+          },
+        }),
+      ]);
+      expect(node.diffs).toEqual(['Tipo: Padrão → Aprovação do cliente']);
+    });
   });
 });

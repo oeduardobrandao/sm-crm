@@ -42,7 +42,10 @@ const EVENT_TYPE_ICONS: Record<WorkflowEvent['event_type'], typeof Plus> = {
 };
 
 function EventTypeIcon({ eventType }: { eventType: WorkflowEvent['event_type'] }) {
-  const Icon = EVENT_TYPE_ICONS[eventType];
+  // Forward-compat: an event_type the frontend doesn't yet know how to
+  // iconify falls back to a generic icon rather than crashing (mirrors
+  // labelFor's fallback in workflowTimeline.ts).
+  const Icon = EVENT_TYPE_ICONS[eventType] ?? Pencil;
   return <Icon className="h-3 w-3" />;
 }
 

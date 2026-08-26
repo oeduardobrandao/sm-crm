@@ -1,10 +1,7 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Clock } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { getWorkflowEvents } from '../../../store';
-import { buildWorkflowTimeline } from './workflowTimeline';
-import { WorkflowHistoryList } from './WorkflowHistoryView';
+import { WorkflowHistoryView } from './WorkflowHistoryView';
 
 interface WorkflowTimelinePopoverProps {
   workflowId: number;
@@ -12,11 +9,6 @@ interface WorkflowTimelinePopoverProps {
 
 export function WorkflowTimelinePopover({ workflowId }: WorkflowTimelinePopoverProps) {
   const [open, setOpen] = useState(false);
-  const { data: events } = useQuery({
-    queryKey: ['workflow-events', workflowId],
-    queryFn: () => getWorkflowEvents(workflowId),
-    enabled: open,
-  });
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -37,7 +29,7 @@ export function WorkflowTimelinePopover({ workflowId }: WorkflowTimelinePopoverP
         onClick={(e) => e.stopPropagation()}
       >
         <div className="post-timeline-title">Histórico</div>
-        <WorkflowHistoryList nodes={buildWorkflowTimeline(events ?? [])} />
+        {open && <WorkflowHistoryView workflowId={workflowId} />}
       </PopoverContent>
     </Popover>
   );

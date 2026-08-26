@@ -45,6 +45,7 @@ const FIELD_LABELS: Record<string, string> = {
   tipo_prazo: 'Tipo de prazo',
   data_limite: 'Data limite',
   responsavel_id: 'Responsável',
+  tipo: 'Tipo',
 };
 
 // The "start anchor" event types for tempo-na-etapa math. etapa_iniciada is
@@ -111,6 +112,11 @@ function formatChangeValue(field: string, value: unknown): string {
   }
   if (field === 'tipo_prazo') {
     return value === 'uteis' ? 'úteis' : String(value);
+  }
+  if (field === 'tipo') {
+    if (value === 'padrao') return 'Padrão';
+    if (value === 'aprovacao_cliente') return 'Aprovação do cliente';
+    return String(value);
   }
   return String(value);
 }
@@ -188,7 +194,10 @@ export function buildWorkflowTimeline(events: WorkflowEvent[]): WorkflowTimeline
     detail: detailFor(ev, sorted, index),
     at: ev.created_at,
     actorLabel: actorLabelFor(ev),
-    tone: TONE_BY_EVENT_TYPE[ev.event_type],
+    // Runtime guard alongside the exhaustive Record: a future/unknown
+    // event_type still degrades gracefully (matches labelFor's fallback)
+    // instead of rendering a `history-step-icon--undefined` class.
+    tone: TONE_BY_EVENT_TYPE[ev.event_type] ?? 'neutral',
     diffs: diffsFor(ev),
     eventType: ev.event_type,
   }));

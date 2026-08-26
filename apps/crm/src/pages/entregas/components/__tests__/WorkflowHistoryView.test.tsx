@@ -67,6 +67,23 @@ describe('WorkflowHistoryList', () => {
     expect(screen.getByText('Ana Costa')).toBeInTheDocument();
     expect(screen.getByText('Título: Antigo → Novo')).toBeInTheDocument();
   });
+
+  it('renders a fallback icon instead of crashing for an unknown/future event type', () => {
+    const nodes: WorkflowTimelineNode[] = [
+      {
+        key: 'event-1',
+        label: 'evento_futuro',
+        detail: null,
+        at: '2026-06-01T10:00:00Z',
+        actorLabel: 'Eduardo Souza',
+        tone: 'neutral',
+        diffs: [],
+        eventType: 'evento_futuro' as unknown as WorkflowEvent['event_type'],
+      },
+    ];
+    expect(() => render(<WorkflowHistoryList nodes={nodes} />)).not.toThrow();
+    expect(screen.getByText('evento_futuro')).toBeInTheDocument();
+  });
 });
 
 describe('WorkflowHistoryView', () => {

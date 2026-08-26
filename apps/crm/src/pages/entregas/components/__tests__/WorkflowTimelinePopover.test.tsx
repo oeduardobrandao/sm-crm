@@ -48,4 +48,17 @@ describe('WorkflowTimelinePopover', () => {
       expect(screen.getByText('Histórico')).toBeInTheDocument();
     });
   });
+
+  it('shows the empty state instead of a blank box when the workflow has no history yet', async () => {
+    // No backfill ships with this feature, so every pre-existing workflow
+    // has zero events on day one — this must read as "no history yet", not
+    // as a broken/empty popover.
+    render(<WorkflowTimelinePopover workflowId={42} />);
+
+    fireEvent.click(screen.getByTitle('Histórico do fluxo'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Nenhum evento registrado ainda.')).toBeInTheDocument();
+    });
+  });
 });
