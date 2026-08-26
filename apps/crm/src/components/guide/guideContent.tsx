@@ -289,7 +289,7 @@ export const GUIDE_TRAILS: GuideTrail[] = [
               }}
             >
               <GuideStatusPill>Rascunho</GuideStatusPill>
-              <GuideStatusPill>Revisão interna</GuideStatusPill>
+              <GuideStatusPill>Em revisão</GuideStatusPill>
               <GuideStatusPill>Enviado ao cliente</GuideStatusPill>
               <GuideStatusPill tone="success">Aprovado pelo cliente</GuideStatusPill>
               <GuideStatusPill tone="warning">Agendado</GuideStatusPill>

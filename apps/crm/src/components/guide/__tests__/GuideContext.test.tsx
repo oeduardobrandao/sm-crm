@@ -2,7 +2,7 @@ import React from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadGuideProgress } from '../guideStorage';
+import { EMPTY_PROGRESS, loadGuideProgress, saveGuideProgress } from '../guideStorage';
 import type { GuideSignals } from '../useGuideSignals';
 
 const {
@@ -124,5 +124,14 @@ describe('GuideProvider', () => {
     renderProvider();
     await waitFor(() => expect(loadGuideProgress('ws-1').concludedAt).toBeTruthy());
     expect(captureEventMock).toHaveBeenCalledWith('guide_completed', { via: 'signals' });
+  });
+
+  it('não recomputa sinais quando o guia já foi concluído no storage', () => {
+    saveGuideProgress('ws-1', {
+      ...EMPTY_PROGRESS,
+      concludedAt: '2026-08-01T00:00:00.000Z',
+    });
+    renderProvider();
+    expect(useGuideSignalsMock).toHaveBeenCalledWith(false);
   });
 });

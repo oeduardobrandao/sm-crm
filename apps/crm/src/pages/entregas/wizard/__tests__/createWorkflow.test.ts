@@ -55,7 +55,7 @@ describe('createWorkflowFromWizard', () => {
       baseInput({ saveAsTemplate: true, templateName: 'Meu template' }),
     );
     expect(result.workflow).toEqual({ id: 42 });
-    expect(result.warning).toBe('O fluxo será criado, mas não foi possível salvar o template.');
+    expect(result.warning).toBe('O fluxo será criado, mas não foi possível salvar o modelo.');
     expect(store.addWorkflow).toHaveBeenCalledWith(expect.objectContaining({ template_id: null }));
   });
 

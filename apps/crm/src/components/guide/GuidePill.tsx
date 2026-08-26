@@ -36,6 +36,7 @@ export function GuideNavItem({
       <span>
         Guia de primeiros passos · {g.totals.done} de {g.totals.total}
       </span>
+      <span className="guide-pill-dot" aria-hidden="true" />
     </button>
   );
 }

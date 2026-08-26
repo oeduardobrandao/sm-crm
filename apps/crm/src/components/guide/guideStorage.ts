@@ -46,5 +46,10 @@ export function loadGuideProgress(contaId: string): GuideProgress {
 }
 
 export function saveGuideProgress(contaId: string, p: GuideProgress): void {
-  localStorage.setItem(guideStorageKey(contaId), JSON.stringify(p));
+  // Progresso é best-effort; quota estourada ou Safari private mode não pode derrubar o app.
+  try {
+    localStorage.setItem(guideStorageKey(contaId), JSON.stringify(p));
+  } catch {
+    /* best effort */
+  }
 }

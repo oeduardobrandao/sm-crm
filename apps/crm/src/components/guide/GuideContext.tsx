@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -15,6 +16,7 @@ import { captureEvent } from '../../lib/analytics';
 import { useGuideSignals, type GuideSignals } from './useGuideSignals';
 import { useGuideProgress, type GuideView } from './useGuideProgress';
 import { shouldAutoOpenGuide } from './guideGating';
+import { loadGuideProgress } from './guideStorage';
 
 export type GuideOpenSource = 'auto' | 'pill' | 'sidebar' | 'mobile_nav';
 
@@ -45,17 +47,32 @@ export function GuideProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   const contaId = profile?.conta_id ?? null;
-  const signals = useGuideSignals(isOwner);
+
+  // Sinais rodam para sempre por padrão (5 queries por dono, em toda página) até que o guia
+  // seja concluído — a partir daí não há mais razão para recomputá-los a cada navegação.
+  const initiallyConcluded = useMemo(
+    () => (contaId ? Boolean(loadGuideProgress(contaId).concludedAt) : false),
+    [contaId],
+  );
+  const [concludedGate, setConcludedGate] = useState(initiallyConcluded);
+
+  const signals = useGuideSignals(isOwner && !concludedGate);
   const view = useGuideProgress(contaId, signals, hasFeature);
+
+  useEffect(() => {
+    if (!concludedGate && view.progress.concludedAt) setConcludedGate(true);
+  }, [concludedGate, view.progress.concludedAt]);
 
   const [isOpen, setIsOpen] = useState(false);
   const [currentPageId, setCurrentPageId] = useState<string | null>(null);
 
   const open = useCallback(
     (source: GuideOpenSource) => {
-      setCurrentPageId(source === 'auto' ? null : (view.progress.lastPageId ?? null));
+      const landingPageId = source === 'auto' ? null : (view.progress.lastPageId ?? null);
+      setCurrentPageId(landingPageId);
       setIsOpen(true);
       captureEvent('guide_opened', { source });
+      if (landingPageId != null) captureEvent('guide_page_viewed', { page: landingPageId });
     },
     [view.progress.lastPageId],
   );

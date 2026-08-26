@@ -804,13 +804,13 @@ describe('NewWorkflowWizard — steps 4 & 5', () => {
   it('surfaces the template warning as a separate toast', async () => {
     createWorkflowFromWizardMock.mockResolvedValue({
       workflow: { id: 1 },
-      warning: 'O fluxo será criado, mas não foi possível salvar o template.',
+      warning: 'O fluxo será criado, mas não foi possível salvar o modelo.',
     });
     renderWizardThroughReview();
     fireEvent.click(screen.getByText('✓ Criar Fluxo'));
     await waitFor(() =>
       expect(toast.warning).toHaveBeenCalledWith(
-        expect.stringMatching(/não foi possível salvar o template/i),
+        expect.stringMatching(/não foi possível salvar o modelo/i),
       ),
     );
     expect(toast.success).toHaveBeenCalledWith('Fluxo criado com sucesso!');

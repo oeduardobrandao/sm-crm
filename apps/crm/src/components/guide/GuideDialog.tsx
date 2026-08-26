@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { captureEvent } from '../../lib/analytics';
 import { useGuide } from './GuideContext';
-import type { GuidePage, GuideTrail } from './guideContent';
+import { requiredSignals, type GuidePage, type GuideTrail } from './guideContent';
 
 const seg = (on: boolean): React.CSSProperties => ({
   flex: 1,
@@ -66,6 +66,7 @@ export default function GuideDialog() {
             }}
             onAction={() => runAction(page)}
             signalValues={g.signalValues}
+            trails={g.trails}
           />
         ) : (
           <HomeView
@@ -220,6 +221,7 @@ function PageView({
   onNext,
   onAction,
   signalValues,
+  trails,
 }: {
   page: GuidePage;
   trail: GuideTrail;
@@ -228,8 +230,12 @@ function PageView({
   onNext(): void;
   onAction(): void;
   signalValues: Partial<Record<string, boolean>>;
+  trails: GuideTrail[];
 }) {
   const idx = trail.pages.findIndex((p) => p.id === page.id);
+  // Só recapitula sinais de páginas que de fato existem no plano do workspace: um t1p4
+  // (Hub) removido por entitlement não deve deixar rastro no fechamento da trilha t1.
+  const availableSignals = new Set(requiredSignals(trail ? trails : []));
   return (
     <div>
       <div
@@ -281,33 +287,35 @@ function PageView({
       {page.body}
       {page.recap && (
         <ul style={{ listStyle: 'none', padding: 0, margin: '14px 0 0', display: 'grid', gap: 9 }}>
-          {page.recap.map((r) => {
-            const ok = signalValues[r.signal] === true;
-            return (
-              <li
-                key={r.signal}
-                style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: '0.82rem' }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: '50%',
-                    background: ok ? 'rgba(62,207,142,0.18)' : 'var(--surface-2, #f1f5f9)',
-                    color: ok ? '#15803d' : 'var(--text-muted)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flex: 'none',
-                  }}
+          {page.recap
+            .filter((r) => availableSignals.has(r.signal))
+            .map((r) => {
+              const ok = signalValues[r.signal] === true;
+              return (
+                <li
+                  key={r.signal}
+                  style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: '0.82rem' }}
                 >
-                  <Check className="h-3 w-3" />
-                </span>
-                {r.label}
-              </li>
-            );
-          })}
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      background: ok ? 'rgba(62,207,142,0.18)' : 'var(--surface-2, #f1f5f9)',
+                      color: ok ? 'var(--success)' : 'var(--text-muted)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flex: 'none',
+                    }}
+                  >
+                    <Check className="h-3 w-3" />
+                  </span>
+                  {r.label}
+                </li>
+              );
+            })}
         </ul>
       )}
       {page.action && (

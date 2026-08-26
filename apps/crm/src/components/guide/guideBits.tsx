@@ -116,7 +116,7 @@ export function GuideCheckList({ items }: { items: ReactNode[] }) {
               height: 20,
               borderRadius: '50%',
               background: 'rgba(62,207,142,0.18)',
-              color: '#15803d',
+              color: 'var(--success)',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -134,6 +134,12 @@ export function GuideCheckList({ items }: { items: ReactNode[] }) {
   );
 }
 
+const STATUS_PILL_CLASS = {
+  neutral: 'badge badge-neutral',
+  success: 'badge badge-success',
+  warning: 'badge badge-warning',
+} as const;
+
 export function GuideStatusPill({
   children,
   tone = 'neutral',
@@ -141,23 +147,8 @@ export function GuideStatusPill({
   children: ReactNode;
   tone?: 'neutral' | 'success' | 'warning';
 }) {
-  const tones = {
-    neutral: { bg: 'var(--surface-2, #f1f5f9)', fg: 'var(--text-muted)' },
-    success: { bg: 'rgba(62,207,142,0.16)', fg: '#15803d' },
-    warning: { bg: 'rgba(255,191,48,0.2)', fg: '#a16207' },
-  } as const;
-  const t = tones[tone];
   return (
-    <span
-      style={{
-        fontSize: '0.7rem',
-        padding: '2px 9px',
-        borderRadius: 999,
-        background: t.bg,
-        color: t.fg,
-        whiteSpace: 'nowrap',
-      }}
-    >
+    <span className={STATUS_PILL_CLASS[tone]} style={{ fontSize: '0.7rem' }}>
       {children}
     </span>
   );

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   EMPTY_PROGRESS,
   guideStorageKey,
@@ -69,5 +69,16 @@ describe('guideStorage', () => {
     p1.pagesSeen.push('leaked-item');
     expect(EMPTY_PROGRESS.pagesSeen).toEqual([]);
     expect(p2.pagesSeen).toEqual([]);
+  });
+
+  describe('saveGuideProgress com storage indisponível', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('não propaga o erro quando localStorage.setItem lança (quota/Safari private mode)', () => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('QuotaExceededError');
+      });
+      expect(() => saveGuideProgress('ws-1', { ...EMPTY_PROGRESS })).not.toThrow();
+    });
   });
 });
