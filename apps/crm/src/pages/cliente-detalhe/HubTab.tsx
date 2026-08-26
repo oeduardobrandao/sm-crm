@@ -80,6 +80,7 @@ import {
   setHubTokenActive,
   extendHubToken,
   rotateHubToken,
+  invalidateHubTokenQueries,
   getHubBrand,
   upsertHubBrand,
   getHubPages,
@@ -220,7 +221,7 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
   async function toggleActive() {
     if (!tokenData) return;
     await setHubTokenActive(tokenData.id, !tokenData.is_active);
-    qc.invalidateQueries({ queryKey: ['hub-token', clienteId] });
+    invalidateHubTokenQueries(qc, clienteId);
     toast.success(tokenData.is_active ? 'Acesso desativado.' : 'Acesso reativado.');
   }
 
@@ -235,7 +236,7 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
     setExtending(true);
     try {
       await extendHubToken(tokenData.id);
-      qc.invalidateQueries({ queryKey: ['hub-token', clienteId] });
+      invalidateHubTokenQueries(qc, clienteId);
       toast.success('Link renovado por mais 1 ano.');
     } catch (e: any) {
       toast.error(mapTokenError(e));
@@ -249,7 +250,7 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
     setRotating(true);
     try {
       await rotateHubToken(tokenData.id);
-      qc.invalidateQueries({ queryKey: ['hub-token', clienteId] });
+      invalidateHubTokenQueries(qc, clienteId);
       toast.success('Novo link gerado. Envie-o ao cliente — o anterior parou de funcionar.');
     } catch (e: any) {
       toast.error(mapTokenError(e));
@@ -396,7 +397,7 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
                 onClick={async () => {
                   try {
                     await createHubToken(clienteId, contaId);
-                    qc.invalidateQueries({ queryKey: ['hub-token', clienteId] });
+                    invalidateHubTokenQueries(qc, clienteId);
                     toast.success('Link gerado!');
                   } catch (e: any) {
                     // Entitlements can go stale between load and click — fall back to the

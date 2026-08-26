@@ -1,3 +1,4 @@
+import type { QueryClient } from '@tanstack/react-query';
 import { supabase, getContaId, getUserId } from './core';
 
 export interface HubBrandRow {
@@ -89,6 +90,23 @@ export async function getHubToken(clienteId: number) {
     .limit(1)
     .maybeSingle();
   return data as HubTokenRow | null;
+}
+
+/** Sinal do guia de primeiros passos: existe QUALQUER token de hub no workspace?
+ *  Lança em erro para a query ficar inconclusiva (nunca tratar erro como zero). */
+export async function hasAnyHubToken(): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('client_hub_tokens')
+    .select('id', { count: 'exact', head: true });
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
+/** Toda mutação de token do HubTab passa por aqui: sem a chave agregada, o
+ *  sinal do guia ficaria stale na mesma aba (a ação acontece dentro da SPA). */
+export function invalidateHubTokenQueries(qc: QueryClient, clienteId: number): void {
+  qc.invalidateQueries({ queryKey: ['hub-token', clienteId] });
+  qc.invalidateQueries({ queryKey: ['hub-token-any'] });
 }
 
 export async function createHubToken(clienteId: number, contaId: string) {
