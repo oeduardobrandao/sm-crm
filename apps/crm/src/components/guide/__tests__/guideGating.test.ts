@@ -26,24 +26,20 @@ describe('shouldAutoOpenGuide', () => {
   });
 
   it('abre no máximo uma vez: autoOpenedAt, dismissedAt ou concludedAt bloqueiam', () => {
-    expect(
-      shouldAutoOpenGuide({ ...OK, progress: { ...OK.progress, autoOpenedAt: 'x' } }),
-    ).toBe(false);
-    expect(
-      shouldAutoOpenGuide({ ...OK, progress: { ...OK.progress, dismissedAt: 'x' } }),
-    ).toBe(false);
-    expect(
-      shouldAutoOpenGuide({ ...OK, progress: { ...OK.progress, concludedAt: 'x' } }),
-    ).toBe(false);
+    expect(shouldAutoOpenGuide({ ...OK, progress: { ...OK.progress, autoOpenedAt: 'x' } })).toBe(
+      false,
+    );
+    expect(shouldAutoOpenGuide({ ...OK, progress: { ...OK.progress, dismissedAt: 'x' } })).toBe(
+      false,
+    );
+    expect(shouldAutoOpenGuide({ ...OK, progress: { ...OK.progress, concludedAt: 'x' } })).toBe(
+      false,
+    );
   });
 
   it('erro ou pending NUNCA conta como vazio', () => {
-    expect(
-      shouldAutoOpenGuide({ ...OK, clientes: { status: 'error', count: 0 } }),
-    ).toBe(false);
-    expect(
-      shouldAutoOpenGuide({ ...OK, workflows: { status: 'pending', count: 0 } }),
-    ).toBe(false);
+    expect(shouldAutoOpenGuide({ ...OK, clientes: { status: 'error', count: 0 } })).toBe(false);
+    expect(shouldAutoOpenGuide({ ...OK, workflows: { status: 'pending', count: 0 } })).toBe(false);
   });
 
   it('workspace com dados não abre', () => {
