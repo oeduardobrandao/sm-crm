@@ -80,4 +80,47 @@ describe('useGuideProgress', () => {
     act(() => result.current.markSeen('t1p1'));
     expect(loadGuideProgress('unknown').pagesSeen).toEqual(['t1p1']);
   });
+
+  it('contaId null -> id depois do mount ressincroniza com o progresso salvo e não sobrescreve', () => {
+    saveGuideProgress('ws-1', {
+      ...EMPTY_PROGRESS,
+      pagesSeen: ['t1p1'],
+      dismissedAt: '2026-08-01T00:00:00.000Z',
+    });
+    const { result, rerender } = renderHook(
+      ({ contaId }: { contaId: string | null }) => useGuideProgress(contaId, NO_SIGNALS, ALL_ON),
+      { initialProps: { contaId: null as string | null } },
+    );
+    expect(result.current.totals.done).toBe(0);
+
+    rerender({ contaId: 'ws-1' });
+
+    expect(result.current.doneIds.has('t1p1')).toBe(true);
+    expect(result.current.progress.dismissedAt).toBeTruthy();
+
+    act(() => result.current.markSeen('t2p1'));
+
+    const stored = loadGuideProgress('ws-1');
+    expect(stored.pagesSeen).toEqual(expect.arrayContaining(['t1p1', 't2p1']));
+    expect(stored.dismissedAt).toBeTruthy();
+  });
+
+  it('troca de contaId entre workspaces troca o estado e isola o storage', () => {
+    saveGuideProgress('ws-1', { ...EMPTY_PROGRESS, pagesSeen: ['t1p1'] });
+    const { result, rerender } = renderHook(
+      ({ contaId }: { contaId: string | null }) => useGuideProgress(contaId, NO_SIGNALS, ALL_ON),
+      { initialProps: { contaId: 'ws-1' as string | null } },
+    );
+    expect(result.current.doneIds.has('t1p1')).toBe(true);
+
+    rerender({ contaId: 'ws-2' });
+
+    expect(result.current.doneIds.has('t1p1')).toBe(false);
+    expect(result.current.totals.done).toBe(0);
+
+    act(() => result.current.markSeen('t1p1'));
+
+    expect(loadGuideProgress('ws-2').pagesSeen).toEqual(['t1p1']);
+    expect(loadGuideProgress('ws-1').pagesSeen).toEqual(['t1p1']);
+  });
 });

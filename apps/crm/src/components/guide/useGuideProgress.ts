@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  EMPTY_PROGRESS,
+  emptyProgress,
   loadGuideProgress,
   saveGuideProgress,
   type GuideProgress,
@@ -29,8 +29,19 @@ export function useGuideProgress(
   hasFeature: (flag: string) => boolean,
 ): GuideView {
   const [progress, setProgress] = useState<GuideProgress>(() =>
-    contaId ? loadGuideProgress(contaId) : { ...EMPTY_PROGRESS },
+    contaId ? loadGuideProgress(contaId) : emptyProgress(),
   );
+
+  // Reflete mudanças de contaId depois do mount (ex.: refetchProfile resolve
+  // null -> id sem remontar o provider). Sem isso o hook mantém o estado
+  // vazio do primeiro mount e o próximo patch() sobrescreve o progresso já
+  // salvo do workspace real.
+  const loadedForRef = useRef(contaId);
+  useEffect(() => {
+    if (loadedForRef.current === contaId) return;
+    loadedForRef.current = contaId;
+    setProgress(contaId ? loadGuideProgress(contaId) : emptyProgress());
+  }, [contaId]);
 
   const patch = useCallback(
     (updater: (prev: GuideProgress) => GuideProgress) => {

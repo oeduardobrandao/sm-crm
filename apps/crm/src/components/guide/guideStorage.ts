@@ -18,7 +18,7 @@ export const EMPTY_PROGRESS: GuideProgress = {
   trailsCompleted: [],
 };
 
-const emptyProgress = (): GuideProgress => ({
+export const emptyProgress = (): GuideProgress => ({
   pagesSeen: [],
   pagesDone: [],
   trailsCompleted: [],
