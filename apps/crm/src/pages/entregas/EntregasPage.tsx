@@ -161,8 +161,11 @@ export default function EntregasPage() {
 
   // Auto-start once on the first visit that shows the example board. Suppressed while the
   // new-workflow wizard is open (?novo-fluxo=1 deep link) so the two onboarding overlays
-  // never stack.
+  // never stack. Reads the URL param directly (not just newWorkflowOpen state) because on a
+  // warm TanStack Query cache this effect and useOpenParam's setNewWorkflowOpen(true) can fire
+  // in the same effects flush, and this effect would otherwise still see the stale `false`.
   const autoStarted = useRef(false);
+  const wizardOpenForTour = newWorkflowOpen || searchParams.get('novo-fluxo') === '1';
   useEffect(() => {
     if (
       !shouldAutoStartTour({
@@ -170,13 +173,13 @@ export default function EntregasPage() {
         alreadyStarted: autoStarted.current,
         tourDone,
         showExample,
-        wizardOpen: newWorkflowOpen,
+        wizardOpen: wizardOpenForTour,
       })
     )
       return;
     autoStarted.current = true;
     launchTour();
-  }, [isLoading, tourDone, showExample, newWorkflowOpen, launchTour]);
+  }, [isLoading, tourDone, showExample, wizardOpenForTour, launchTour]);
 
   const handleReplay = () => {
     setReplayActive(true); // forces the example board back if the board is empty
