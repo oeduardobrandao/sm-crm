@@ -174,7 +174,9 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
         </div>
 
         <div className="sidebar-bottom">
-          {isDrawer && <GuideNavItem source="sidebar" className="sidebar-guide-item" />}
+          {isDrawer && (
+            <GuideNavItem source="sidebar" className="sidebar-guide-item" onBeforeOpen={onClose} />
+          )}
           <div
             className="sidebar-user-menu"
             id="user-menu-wrap"

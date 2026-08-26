@@ -65,4 +65,17 @@ describe('GuidePill / GuideNavItem', () => {
     fireEvent.click(screen.getByRole('button'));
     expect(a.open).toHaveBeenCalledWith('mobile_nav');
   });
+
+  it('nav item chama onBeforeOpen antes de abrir', () => {
+    const a = api({});
+    const onBeforeOpen = vi.fn();
+    render(
+      <GuideContext.Provider value={a}>
+        <GuideNavItem source="sidebar" onBeforeOpen={onBeforeOpen} />
+      </GuideContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole('button'));
+    expect(onBeforeOpen).toHaveBeenCalled();
+    expect(a.open).toHaveBeenCalledWith('sidebar');
+  });
 });

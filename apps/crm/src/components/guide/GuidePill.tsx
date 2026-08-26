@@ -24,14 +24,23 @@ export function GuidePill() {
 export function GuideNavItem({
   source,
   className,
+  onBeforeOpen,
 }: {
   source: Extract<GuideOpenSource, 'sidebar' | 'mobile_nav'>;
   className?: string;
+  onBeforeOpen?: () => void;
 }) {
   const g = useGuide();
   if (!g || !g.showEntryPoint) return null;
   return (
-    <button type="button" className={className} onClick={() => g.open(source)}>
+    <button
+      type="button"
+      className={className}
+      onClick={() => {
+        onBeforeOpen?.();
+        g.open(source);
+      }}
+    >
       <Compass size={18} aria-hidden="true" />
       <span>
         Guia de primeiros passos · {g.totals.done} de {g.totals.total}
