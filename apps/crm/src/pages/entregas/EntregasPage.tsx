@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useAuth } from '@/context/AuthContext';
 import { startEntregasTour, tourStorageKey } from './tour/entregasTour';
+import { shouldAutoStartTour } from './tour/tourGating';
 import { ComoFuncionaPanel, explainerStorageKey } from './components/ComoFuncionaPanel';
 import { useEntregasData, type BoardCard } from './hooks/useEntregasData';
 import { EntregasFilters, type FilterState, type StatusFilter } from './components/EntregasFilters';
@@ -36,6 +37,7 @@ import { WorkflowDrawer } from './components/WorkflowDrawer';
 import { ModeToggle, type EntregasMode } from './components/ModeToggle';
 import { VistasTabs } from './components/VistasTabs';
 import { useActivePosts } from './hooks/useActivePosts';
+import { useOpenParam } from '../../hooks/useOpenParam';
 import { matchesEtapaPrazo } from './etapaPrazo';
 import { parseEntregasQuery, serializeEntregasQuery, type ActiveView } from './viewQuery';
 import { postMatchesStatusFilter } from './statusRegistry';
@@ -63,6 +65,8 @@ export default function EntregasPage() {
     direction: 'asc',
   });
   const [newWorkflowOpen, setNewWorkflowOpen] = useState(false);
+  // Deep link do guia de primeiros passos: ?novo-fluxo=1 abre o wizard direto.
+  useOpenParam('novo-fluxo', () => setNewWorkflowOpen(true));
   // Template preselected by the board's quick-add button; null = normal wizard.
   const [quickAddTemplateId, setQuickAddTemplateId] = useState<number | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -155,13 +159,24 @@ export default function EntregasPage() {
     );
   }, [markTourDone]);
 
-  // Auto-start once on the first visit that shows the example board.
+  // Auto-start once on the first visit that shows the example board. Suppressed while the
+  // new-workflow wizard is open (?novo-fluxo=1 deep link) so the two onboarding overlays
+  // never stack.
   const autoStarted = useRef(false);
   useEffect(() => {
-    if (isLoading || autoStarted.current || tourDone || !showExample) return;
+    if (
+      !shouldAutoStartTour({
+        isLoading,
+        alreadyStarted: autoStarted.current,
+        tourDone,
+        showExample,
+        wizardOpen: newWorkflowOpen,
+      })
+    )
+      return;
     autoStarted.current = true;
     launchTour();
-  }, [isLoading, tourDone, showExample, launchTour]);
+  }, [isLoading, tourDone, showExample, newWorkflowOpen, launchTour]);
 
   const handleReplay = () => {
     setReplayActive(true); // forces the example board back if the board is empty
