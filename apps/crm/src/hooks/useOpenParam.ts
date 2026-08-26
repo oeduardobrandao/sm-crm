@@ -14,11 +14,13 @@ export function useOpenParam(param: string, onOpen: () => void): void {
   const present = searchParams.get(param) === '1';
   const onOpenRef = useRef(onOpen);
   onOpenRef.current = onOpen;
+  const setSearchParamsRef = useRef(setSearchParams);
+  setSearchParamsRef.current = setSearchParams;
 
   useEffect(() => {
     if (!present) return;
     onOpenRef.current();
-    setSearchParams(
+    setSearchParamsRef.current(
       (prev) => {
         const next = new URLSearchParams(prev);
         next.delete(param);
@@ -26,5 +28,5 @@ export function useOpenParam(param: string, onOpen: () => void): void {
       },
       { replace: true },
     );
-  }, [present, param, setSearchParams]);
+  }, [present, param]);
 }
