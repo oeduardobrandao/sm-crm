@@ -200,8 +200,15 @@ begin
   insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, status, iniciado_em)
     values (v_wf_d, 1, 'Etapa D1', 1, 'uteis', 'ativo', now()) returning id into v_etapa_d1;
 
-  -- write #1 (revertEtapa): ativo -> pendente na etapa 1. Nao deve emitir nada.
+  -- write #1 (revertEtapa): ativo -> pendente na etapa 1. Nao deve emitir NENHUM evento
+  -- (de nenhum tipo -- nao so etapa_revertida; guarda contra um futuro etapa_editada
+  -- vazando se status/iniciado_em/concluido_em algum dia entrarem no diff observado).
+  select count(*) into v_cnt_before from workflow_events where workflow_id = v_wf_d;
   update workflow_etapas set status = 'pendente', iniciado_em = null where id = v_etapa_d1;
+  select count(*) into v_cnt_after from workflow_events where workflow_id = v_wf_d;
+  assert v_cnt_after = v_cnt_before,
+    format('primeira escrita do revert nao deve gerar nenhum evento de nenhum tipo, gerou %s', v_cnt_after - v_cnt_before);
+
   -- write #2: concluido -> ativo na etapa 0, com o pai ainda 'ativo'. Deve emitir etapa_revertida.
   update workflow_etapas set status = 'ativo', concluido_em = null where id = v_etapa_d0;
 
@@ -222,8 +229,15 @@ begin
   insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, status, concluido_em)
     values (v_wf_e, 1, 'Etapa E1', 1, 'uteis', 'concluido', now()) returning id into v_etapa_e1;
 
-  -- write #1 (reopenWorkflow): concluido -> ativo na etapa, com o pai AINDA 'concluido'. Nada emitido.
+  -- write #1 (reopenWorkflow): concluido -> ativo na etapa, com o pai AINDA 'concluido'. Nada
+  -- emitido (de nenhum tipo -- mesma guarda total-delta do caso (d), nao so os tipos
+  -- etapa_revertida/etapa_iniciada/etapa_concluida checados abaixo).
+  select count(*) into v_cnt_before from workflow_events where workflow_id = v_wf_e;
   update workflow_etapas set status = 'ativo', concluido_em = null, iniciado_em = now() where id = v_etapa_e1;
+  select count(*) into v_cnt_after from workflow_events where workflow_id = v_wf_e;
+  assert v_cnt_after = v_cnt_before,
+    format('a escrita no nivel de etapa do reopen nao deve gerar nenhum evento de nenhum tipo, gerou %s', v_cnt_after - v_cnt_before);
+
   -- write #2: workflow concluido -> ativo. Deve emitir fluxo_reaberto ancorado na etapa reativada.
   update workflows set status = 'ativo', etapa_atual = 1 where id = v_wf_e;
 
@@ -318,6 +332,15 @@ begin
   -- now() (= transaction_timestamp()) e identico para TODAS as linhas de workflow_events
   -- do arquivo -- o desempate por id e a unica coisa que pode provar a ordem real.
   update workflows set status = 'arquivado', titulo = 'Fluxo H Novo' where id = v_wf_h;
+
+  -- Prova que a colisao de created_at realmente acontece antes de confiar no desempate
+  -- por id abaixo -- sem isso, "assert v_id1 < v_id2" seria tautologico (id ja ordena
+  -- corretamente sozinho, colisao ou nao, entao a asserção passaria mesmo se o
+  -- desempate por id no indice (workflow_id, created_at, id) estivesse quebrado).
+  select count(distinct created_at) into v_cnt from workflow_events
+    where workflow_id = v_wf_h and event_type in ('fluxo_arquivado', 'fluxo_editado');
+  assert v_cnt = 1,
+    'os dois eventos precisam compartilhar o mesmo created_at para o teste de desempate por id ser significativo';
 
   select id, event_type into v_id1, v_type1 from workflow_events
     where workflow_id = v_wf_h and event_type in ('fluxo_arquivado', 'fluxo_editado')
