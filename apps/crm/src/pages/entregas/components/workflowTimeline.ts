@@ -12,6 +12,7 @@ export interface WorkflowTimelineNode {
   actorLabel: string;
   tone: WorkflowTimelineTone;
   diffs: string[];
+  eventType: WorkflowEvent['event_type'];
 }
 
 // Exhaustive (not defaulted) on purpose: a new event_type added to the union
@@ -189,5 +190,6 @@ export function buildWorkflowTimeline(events: WorkflowEvent[]): WorkflowTimeline
     actorLabel: actorLabelFor(ev),
     tone: TONE_BY_EVENT_TYPE[ev.event_type],
     diffs: diffsFor(ev),
+    eventType: ev.event_type,
   }));
 }
