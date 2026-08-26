@@ -34,8 +34,12 @@ const MCP_URL = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1/m
 const MESAAS_LOGO_URL = 'https://www.mesaas.com.br/mesaas-icon-256.png';
 const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
 
-const codexCmd = (token: string) =>
-  `codex mcp add mesaas -- npx -y mcp-remote ${MCP_URL} --header "Authorization: Bearer ${token}"`;
+const codexConfigToml = (token: string) =>
+  `[mcp_servers.mesaas]
+url = "${MCP_URL}"
+
+[mcp_servers.mesaas.http_headers]
+Authorization = "Bearer ${token}"`;
 
 type McpClient = 'claude' | 'chatgpt' | 'codex';
 
@@ -80,34 +84,12 @@ function ConnectSnippets({
           <code>claude_desktop_config.json</code>
           ), cole o bloco, salve e reinicie o app.
         </p>
-        <div style={{ position: 'relative', minWidth: 0 }}>
-          <pre
-            style={{
-              background: 'var(--surface-darker)',
-              padding: '0.75rem',
-              borderRadius: '8px',
-              overflowX: 'auto',
-              maxWidth: '100%',
-              fontSize: '0.7rem',
-              fontFamily: 'var(--font-mono)',
-              margin: 0,
-            }}
-          >
-            {desktopConfig}
-          </pre>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => copy(desktopConfig, `${idPrefix}-desktop`)}
-            style={{ position: 'absolute', top: '0.4rem', right: '0.4rem' }}
-          >
-            {copiedKey === `${idPrefix}-desktop` ? (
-              <Check className="h-4 w-4" />
-            ) : (
-              <Copy className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
+        <CopyBlock
+          value={desktopConfig}
+          copyKey={`${idPrefix}-desktop`}
+          copy={copy}
+          copiedKey={copiedKey}
+        />
       </div>
 
       <div className="space-y-1 min-w-0">
@@ -135,27 +117,57 @@ function ConnectSnippets({
 
       <div className="space-y-1 min-w-0">
         <Label>Codex CLI</Label>
-        <p className="text-xs text-muted-foreground">Rode este comando no terminal.</p>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', minWidth: 0 }}>
-          <Input
-            readOnly
-            value={codexCmd(token)}
-            style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', flex: 1, minWidth: 0 }}
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => copy(codexCmd(token), `${idPrefix}-codex`)}
-          >
-            {copiedKey === `${idPrefix}-codex` ? (
-              <Check className="h-4 w-4" />
-            ) : (
-              <Copy className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
+        <p className="text-xs text-muted-foreground">
+          Adicione este bloco ao arquivo <code>~/.codex/config.toml</code>.
+        </p>
+        <CopyBlock
+          value={codexConfigToml(token)}
+          copyKey={`${idPrefix}-codex`}
+          copy={copy}
+          copiedKey={copiedKey}
+        />
       </div>
     </>
+  );
+}
+
+/** Multi-line copy block for config snippets, shared by the connection guides. */
+function CopyBlock({
+  value,
+  copyKey,
+  copy,
+  copiedKey,
+}: {
+  value: string;
+  copyKey: string;
+  copy: (text: string, key: string) => void;
+  copiedKey: string | null;
+}) {
+  return (
+    <div style={{ position: 'relative', minWidth: 0 }}>
+      <pre
+        style={{
+          background: 'var(--surface-darker)',
+          padding: '0.75rem',
+          borderRadius: '8px',
+          overflowX: 'auto',
+          maxWidth: '100%',
+          fontSize: '0.7rem',
+          fontFamily: 'var(--font-mono)',
+          margin: 0,
+        }}
+      >
+        {value}
+      </pre>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => copy(value, copyKey)}
+        style={{ position: 'absolute', top: '0.4rem', right: '0.4rem' }}
+      >
+        {copiedKey === copyKey ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+      </Button>
+    </div>
   );
 }
 
@@ -348,24 +360,22 @@ export default function IntegracoesClaudePage() {
           {client === 'chatgpt' && (
             <div className="space-y-3 min-w-0">
               <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
-                Sem chave: a conexão usa OAuth. Requer o modo de desenvolvedor, disponível nos
-                planos pagos do ChatGPT.
+                Sem chave: a conexão usa OAuth. Requer o modo de desenvolvedor do ChatGPT (não exige
+                plano pago).
               </p>
               <ol className="mcp-steps">
                 <li>
                   <span>
-                    No ChatGPT, abra{' '}
-                    <strong>
-                      Configurações → Aplicativos e conectores → Configurações avançadas
-                    </strong>{' '}
-                    e ative o <strong>Modo de desenvolvedor</strong>.
+                    No ChatGPT, abra <strong>Configurações → Security and login</strong> e ative o{' '}
+                    <strong>Developer mode</strong> (opção marcada como "elevated risk"; também
+                    acessível em <strong>Configurações → Plugins</strong>).
                   </span>
                 </li>
                 <li>
                   <span>
-                    De volta em <strong>Aplicativos e conectores</strong>, clique em{' '}
-                    <strong>Criar</strong>, dê o nome "Mesaas", cole a URL abaixo em{' '}
-                    <strong>MCP server URL</strong> e escolha <strong>OAuth</strong> como
+                    Abra <strong>chatgpt.com/plugins</strong>, clique no botão <strong>+</strong> e,
+                    no diálogo <strong>New Plugin</strong>, dê o nome "Mesaas", cole a URL abaixo em{' '}
+                    <strong>MCP Server URL</strong> e escolha <strong>OAuth</strong> como
                     autenticação.
                   </span>
                 </li>
@@ -380,20 +390,21 @@ export default function IntegracoesClaudePage() {
                     >
                       baixe a logo do Mesaas (PNG)
                     </a>{' '}
-                    e envie no campo <strong>Icon</strong>. O ícone só pode ser definido nesse passo
-                    de criação.
+                    e envie no campo <strong>Icon</strong>. O ícone só pode ser definido nesse
+                    passo: depois de criado o conector, não dá para trocar.
                   </span>
                 </li>
                 <li>
                   <span>
-                    Faça login no Mesaas, escolha o workspace e as permissões e clique em{' '}
-                    <strong>Autorizar</strong>.
+                    Marque a confirmação de risco, clique em <strong>Create</strong> e depois em{' '}
+                    <strong>Sign in with Mesaas</strong>: faça login, escolha o workspace e as
+                    permissões e clique em <strong>Autorizar</strong>.
                   </span>
                 </li>
                 <li>
                   <span>
-                    Na conversa, ative o conector Mesaas em{' '}
-                    <strong>Ferramentas → Modo de desenvolvedor</strong>.
+                    Na conversa, clique no botão <strong>+</strong> do campo de mensagem e ative o{' '}
+                    <strong>Mesaas</strong>.
                   </span>
                 </li>
               </ol>
@@ -404,7 +415,8 @@ export default function IntegracoesClaudePage() {
           {client === 'codex' && (
             <div className="space-y-3 min-w-0">
               <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
-                O Codex CLI conecta com uma chave de API deste workspace.
+                O Codex CLI conecta com uma chave de API deste workspace, direto via HTTP (sem
+                dependências extras).
               </p>
               <ol className="mcp-steps">
                 <li>
@@ -415,8 +427,8 @@ export default function IntegracoesClaudePage() {
                 </li>
                 <li>
                   <span>
-                    Rode o comando abaixo no terminal, trocando <code>SUA_CHAVE</code> pela chave
-                    copiada.
+                    Adicione o bloco abaixo ao arquivo <code>~/.codex/config.toml</code>, trocando{' '}
+                    <code>SUA_CHAVE</code> pela chave copiada.
                   </span>
                 </li>
                 <li>
@@ -426,12 +438,16 @@ export default function IntegracoesClaudePage() {
                   </span>
                 </li>
               </ol>
-              <CopyField
-                value={codexCmd('SUA_CHAVE')}
-                copyKey="codex-cmd"
+              <CopyBlock
+                value={codexConfigToml('SUA_CHAVE')}
+                copyKey="codex-toml"
                 copy={copy}
                 copiedKey={copiedKey}
               />
+              <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
+                Use <code>http_headers</code> como no bloco: o campo <code>bearer_token</code> não é
+                aceito para servidores HTTP.
+              </p>
             </div>
           )}
 
