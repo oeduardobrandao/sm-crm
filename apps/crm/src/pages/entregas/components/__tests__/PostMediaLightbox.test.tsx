@@ -157,3 +157,13 @@ describe('PostMediaLightbox video playback', () => {
     expect(video).toHaveAttribute('src', 'https://media.test/video/1.mp4');
   });
 });
+
+describe('PostMediaLightbox permanently lost media', () => {
+  it('shows the unavailable placeholder instead of a broken image for a permanently lost item', () => {
+    const media = [
+      { ...makeMedia(1)[0], media_lost_at: '2026-08-14T03:00:00.000Z', url: undefined },
+    ];
+    render(<PostMediaLightbox media={media} initialIndex={0} open onOpenChange={vi.fn()} />);
+    expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
+  });
+});

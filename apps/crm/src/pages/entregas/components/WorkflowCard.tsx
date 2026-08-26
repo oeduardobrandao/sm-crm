@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { MediaUnavailable } from '@/components/MediaUnavailable';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { updateWorkflowEtapa, type Membro } from '../../../store';
 import { sanitizeUrl } from '@/utils/security';
@@ -609,13 +610,17 @@ export function WorkflowCard({
                 zIndex: card.postCovers!.length - i,
               }}
             >
-              <img
-                src={media.thumbnail_url ?? media.url}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              />
+              {media.media_lost_at ? (
+                <MediaUnavailable size="compact" />
+              ) : (
+                <img
+                  src={media.thumbnail_url ?? media.url}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+              )}
             </div>
           ))}
           {card.postCovers.length > 5 && (

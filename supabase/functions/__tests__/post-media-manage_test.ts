@@ -157,6 +157,30 @@ Deno.test("post-media-manage: GET with post_id returns media in legacy format", 
   assertEquals(body.media[0].origin, "manual");
 });
 
+Deno.test("post-media-manage: GET with post_id omits signed URL and returns media_lost_at for a permanently lost file", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "select", {
+    data: [{ ...sampleLink, files: { ...sampleFile, media_lost_at: "2026-08-14T03:00:00.000Z" } }],
+    error: null,
+  });
+  let signCalls = 0;
+  const handler = makeHandler(db, {
+    signUrl: async (key) => {
+      signCalls++;
+      return `https://signed.example.com/${key}`;
+    },
+  });
+  const res = await handler(req("GET", "?post_id=50"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.media[0].url, null);
+  assertEquals(body.media[0].thumbnail_url, null);
+  assertEquals(body.media[0].media_lost_at, "2026-08-14T03:00:00.000Z");
+  assertEquals(signCalls, 0);
+});
+
 Deno.test("post-media-manage: GET without post_id or workflow_ids returns 400", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);

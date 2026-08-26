@@ -103,4 +103,18 @@ describe('StoryPostCard', () => {
 
     expect(screen.getByText('Instagram + TikTok')).toBeInTheDocument();
   });
+
+  it('shows the unavailable placeholder instead of a broken image for a permanently lost story', () => {
+    render(
+      <StoryPostCard
+        post={makePost({
+          media: [makeMedia({ id: 1, media_lost_at: '2026-08-14T03:00:00.000Z', url: null })],
+        })}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+      />,
+    );
+    expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
+  });
 });

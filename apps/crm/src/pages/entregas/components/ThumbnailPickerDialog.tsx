@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { MediaUnavailable } from '@/components/MediaUnavailable';
 import { captureFrameFromElement } from '../../../utils/videoFrame';
 import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
 import { updateVideoThumbnail } from '../../../services/postMedia';
@@ -93,16 +94,20 @@ export function ThumbnailPickerDialog({ media, onClose, onUpdated }: ThumbnailPi
         </DialogHeader>
         {media && (
           <div className="space-y-3">
-            <video
-              ref={videoRef}
-              src={media.url ?? undefined}
-              poster={media.thumbnail_url ?? undefined}
-              crossOrigin="anonymous"
-              controls
-              muted
-              playsInline
-              className="w-full max-h-64 rounded-xl bg-black"
-            />
+            {media.media_lost_at ? (
+              <MediaUnavailable size="full" className="w-full aspect-video rounded-xl" />
+            ) : (
+              <video
+                ref={videoRef}
+                src={media.url ?? undefined}
+                poster={media.thumbnail_url ?? undefined}
+                crossOrigin="anonymous"
+                controls
+                muted
+                playsInline
+                className="w-full max-h-64 rounded-xl bg-black"
+              />
+            )}
             <div className="flex items-center gap-2">
               <button
                 type="button"

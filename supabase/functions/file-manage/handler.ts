@@ -154,10 +154,11 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
         const signedFiles = await Promise.all((files ?? []).map(async (f: any) => {
           const { stream_uid, stream_status, ...pub } = f;
+          const lost = !!f.media_lost_at;
           return {
             ...pub,
-            url: f.kind !== "document" ? await deps.signUrl(f.r2_key) : null,
-            thumbnail_url: f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null,
+            url: lost || f.kind === "document" ? null : await deps.signUrl(f.r2_key),
+            thumbnail_url: lost || !f.thumbnail_r2_key ? null : await deps.signUrl(f.thumbnail_r2_key),
             playback: stream_uid && stream_status === "ready" && deps.signPlayback
               ? await deps.signPlayback(stream_uid)
               : null,
@@ -568,12 +569,13 @@ export function createFileManageHandler(deps: FileManageDeps) {
         const withUrls = await Promise.all((links ?? []).map(async (l: any) => {
           const f = l.files;
           const { stream_uid, stream_status, ...pub } = f;
+          const lost = !!f.media_lost_at;
           return {
             ...l,
             files: {
               ...pub,
-              url: f.kind !== "document" ? await deps.signUrl(f.r2_key) : null,
-              thumbnail_url: f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null,
+              url: lost || f.kind === "document" ? null : await deps.signUrl(f.r2_key),
+              thumbnail_url: lost || !f.thumbnail_r2_key ? null : await deps.signUrl(f.thumbnail_r2_key),
             },
           };
         }));

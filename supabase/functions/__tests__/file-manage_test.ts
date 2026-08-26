@@ -154,6 +154,75 @@ Deno.test("file-manage: GET /folders signs documents as url:null", async () => {
   assertEquals(body.files[0].url, null);
 });
 
+Deno.test("file-manage: GET /folders omits signed URL for a permanently lost file", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: [], error: null });
+  db.queue("files", "select", {
+    data: [{
+      id: 10,
+      name: "lost.png",
+      kind: "image",
+      r2_key: "contas/conta-1/files/lost.png",
+      thumbnail_r2_key: "contas/conta-1/files/lost.thumb.webp",
+      media_lost_at: "2026-08-14T03:00:00.000Z",
+    }],
+    error: null,
+  });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 5000 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 1000000, error: null });
+  let signCalls = 0;
+  const handler = makeHandler(db, {
+    signUrl: async (key) => {
+      signCalls++;
+      return `https://signed.example.com/${key}`;
+    },
+  });
+  const res = await handler(req("GET", "/folders"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.files[0].url, null);
+  assertEquals(body.files[0].thumbnail_url, null);
+  assertEquals(body.files[0].media_lost_at, "2026-08-14T03:00:00.000Z");
+  assertEquals(signCalls, 0);
+});
+
+Deno.test("file-manage: GET /links omits signed URL for a permanently lost file", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("post_file_links", "select", {
+    data: [{
+      id: 1,
+      post_id: 50,
+      conta_id: "conta-1",
+      is_cover: true,
+      sort_order: 0,
+      files: {
+        id: 10,
+        name: "lost.png",
+        kind: "image",
+        r2_key: "contas/conta-1/files/lost.png",
+        thumbnail_r2_key: null,
+        media_lost_at: "2026-08-14T03:00:00.000Z",
+      },
+    }],
+    error: null,
+  });
+  let signCalls = 0;
+  const handler = makeHandler(db, {
+    signUrl: async (key) => {
+      signCalls++;
+      return `https://signed.example.com/${key}`;
+    },
+  });
+  const res = await handler(req("GET", "/links?post_id=50"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.links[0].files.url, null);
+  assertEquals(body.links[0].files.media_lost_at, "2026-08-14T03:00:00.000Z");
+  assertEquals(signCalls, 0);
+});
+
 // ─── FOLDERS: GET playback (Cloudflare Stream) ─────────────────
 
 Deno.test("file-manage: GET /folders includes signed playback for a ready streamed video and strips stream_* keys", async () => {

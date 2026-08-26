@@ -163,6 +163,82 @@ Deno.test("hub-posts returns flattened post data with signed media URLs", async 
   assertEquals(body.posts[0].cover_media.playback, null);
 });
 
+Deno.test("hub-posts omits signed URLs and returns media_lost_at for a permanently lost file", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [{ id: 7 }], error: null });
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 99,
+        titulo: "Post com mídia perdida",
+        tipo: "feed",
+        status: "enviado_cliente",
+        ordem: 0,
+        conteudo_plain: "Legenda",
+        scheduled_at: "2026-04-20T10:00:00.000Z",
+        platform: "instagram",
+        workflow_id: 7,
+        workflows: { titulo: "Calendário Abril" },
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", {
+    data: [
+      {
+        id: 1,
+        post_id: 99,
+        is_cover: true,
+        sort_order: 0,
+        files: {
+          id: 10,
+          kind: "image",
+          mime_type: "image/png",
+          r2_key: "contas/1/lost.png",
+          thumbnail_r2_key: "contas/1/lost.thumb.webp",
+          width: 1080,
+          height: 1350,
+          duration_seconds: null,
+          blur_data_url: null,
+          media_lost_at: "2026-08-14T03:00:00.000Z",
+        },
+      },
+    ],
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", {
+    data: { username: "studio_marca", profile_picture_url: "https://cdn.ig/pic.jpg" },
+    error: null,
+  });
+
+  let signCalls = 0;
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => {
+      signCalls++;
+      return `https://signed.mesaas.com/${key}`;
+    },
+  });
+
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.posts[0].cover_media.url, null);
+  assertEquals(body.posts[0].cover_media.thumbnail_url, null);
+  assertEquals(body.posts[0].cover_media.media_lost_at, "2026-08-14T03:00:00.000Z");
+  assertEquals(signCalls, 0);
+});
+
 function queueHubPostsVideoFixture(
   db: ReturnType<typeof createSupabaseQueryMock>,
   file: { stream_uid: string | null; stream_status: string | null },

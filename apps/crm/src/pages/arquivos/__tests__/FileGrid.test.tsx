@@ -129,6 +129,26 @@ describe('FileGrid', () => {
       expect(screen.getByText('15.0 MB')).toBeInTheDocument();
     });
 
+    it('shows the file-type icon instead of a broken image when a file is permanently lost', () => {
+      render(
+        <FileGrid
+          files={[
+            makeFile({
+              id: 200,
+              name: 'perdido.png',
+              url: undefined,
+              thumbnail_url: null,
+              media_lost_at: '2026-08-14T03:00:00.000Z',
+            }),
+          ]}
+          subfolders={[]}
+          {...defaultProps}
+        />,
+      );
+      expect(screen.getByText('perdido.png')).toBeInTheDocument();
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    });
+
     it('clicking folder calls onOpenFolder', () => {
       const onOpenFolder = vi.fn();
       render(

@@ -198,7 +198,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     const { data: mediaLinks } = postIds.length > 0
       ? await db
           .from("post_file_links")
-          .select("id, post_id, is_cover, sort_order, files(id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, blur_data_url, stream_uid, stream_status)")
+          .select("id, post_id, is_cover, sort_order, files(id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, blur_data_url, stream_uid, stream_status, media_lost_at)")
           .in("post_id", postIds)
           .order("sort_order", { ascending: true })
           .order("id", { ascending: true })
@@ -206,6 +206,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
 
     const mediaWithUrls = await Promise.all((mediaLinks ?? []).map(async (link: any) => {
       const f = link.files;
+      const lost = !!f.media_lost_at;
       return {
         id: link.id,
         post_id: link.post_id,
@@ -217,8 +218,9 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         is_cover: link.is_cover,
         sort_order: link.sort_order,
         blur_data_url: f.blur_data_url ?? null,
-        url: await deps.signGetUrl(f.r2_key, 3600),
-        thumbnail_url: f.thumbnail_r2_key ? await deps.signGetUrl(f.thumbnail_r2_key, 3600) : null,
+        url: lost ? null : await deps.signGetUrl(f.r2_key, 3600),
+        thumbnail_url: lost || !f.thumbnail_r2_key ? null : await deps.signGetUrl(f.thumbnail_r2_key, 3600),
+        media_lost_at: f.media_lost_at ?? null,
         playback: f.stream_uid && f.stream_status === "ready" && deps.signPlayback
           ? await deps.signPlayback(f.stream_uid)
           : null,

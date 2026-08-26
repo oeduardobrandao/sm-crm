@@ -357,6 +357,22 @@ describe('PostCard', () => {
 
     expect(screen.getByText('Instagram')).toBeInTheDocument();
   });
+
+  it('shows the unavailable placeholder instead of a broken image for a permanently lost cover', () => {
+    render(
+      <PostCard
+        post={makePost({
+          media: [makeMedia({ id: 1, media_lost_at: '2026-08-14T03:00:00.000Z', url: null })],
+        })}
+        token="token-publico"
+        approvals={[]}
+        propertyValues={[]}
+        workflowSelectOptions={[]}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
+  });
 });
 
 describe('PlatformBadge', () => {

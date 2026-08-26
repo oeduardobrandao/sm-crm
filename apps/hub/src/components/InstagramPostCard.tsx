@@ -5,6 +5,7 @@ import { formatDate, PlatformBadge } from './PostCard';
 import { PostMediaLightbox } from './PostMediaLightbox';
 import { OptimizedImage } from './OptimizedImage';
 import { VideoPrewarm } from './VideoPrewarm';
+import { MediaUnavailable } from './MediaUnavailable';
 import type { HubPost, PostApproval, InstagramProfile } from '../types';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 import { resolveTarget, applyEdgeResistance, crossedDragThreshold } from '../lib/carouselGesture';
@@ -355,9 +356,11 @@ export function InstagramPostCard({
               draggable={false}
               className="relative flex-none w-full h-full"
             >
-              {m.kind === 'image' ? (
+              {m.media_lost_at ? (
+                <MediaUnavailable size="full" />
+              ) : m.kind === 'image' ? (
                 <OptimizedImage
-                  src={m.url}
+                  src={m.url ?? ''}
                   alt=""
                   width={m.width ?? undefined}
                   height={m.height ?? undefined}
@@ -378,7 +381,7 @@ export function InstagramPostCard({
                   className="w-full h-full object-cover pointer-events-none"
                 />
               )}
-              {m.kind === 'video' && (
+              {m.kind === 'video' && !m.media_lost_at && (
                 <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <span className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="white">

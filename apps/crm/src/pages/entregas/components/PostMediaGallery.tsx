@@ -42,6 +42,7 @@ import { ThumbnailPickerDialog } from './ThumbnailPickerDialog';
 import { useTranslation } from 'react-i18next';
 import type { PostMedia } from '../../../store';
 import { OptimizedImage } from '../../../components/OptimizedImage';
+import { MediaUnavailable } from '../../../components/MediaUnavailable';
 import { PostMediaLightbox } from './PostMediaLightbox';
 import { FilePickerModal } from '../../arquivos/components/FilePickerModal';
 import { linkFileToPost, unlinkFileFromPost } from '../../../services/fileService';
@@ -499,7 +500,9 @@ export function PostMediaGallery({
                 onOpen={() => setLightboxIndex(i)}
                 onSetCover={() => handleSetCover(m.id)}
                 onDelete={() => handleDelete(m.id)}
-                onEditThumbnail={m.kind === 'video' ? () => setEditingMedia(m) : undefined}
+                onEditThumbnail={
+                  m.kind === 'video' && !m.media_lost_at ? () => setEditingMedia(m) : undefined
+                }
               />
             ))}
             {!effectiveDisabled && !atLimit && (
@@ -685,7 +688,9 @@ function SortableMediaTile({
       onClick={onOpen}
       className="relative aspect-square overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200/80 group cursor-grab active:cursor-grabbing touch-none"
     >
-      {m.kind === 'image' ? (
+      {m.media_lost_at ? (
+        <MediaUnavailable size="full" />
+      ) : m.kind === 'image' ? (
         <OptimizedImage
           src={m.url ?? ''}
           alt={m.original_filename}

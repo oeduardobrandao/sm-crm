@@ -5,6 +5,7 @@ import type { HubPost, PostApproval, HubPostProperty, HubSelectOption } from '..
 import { PostMediaLightbox } from './PostMediaLightbox';
 import { OptimizedImage } from './OptimizedImage';
 import { RichTextContent } from './RichTextContent';
+import { MediaUnavailable } from './MediaUnavailable';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 import { sanitizeExternalUrl } from '../lib/security';
 import { StatusPill } from './StatusPill';
@@ -273,9 +274,11 @@ export function PostCard({
           }}
           className="relative block w-full aspect-[4/3] overflow-hidden hub-bg-soft"
         >
-          {displayCover.kind === 'image' ? (
+          {displayCover.media_lost_at ? (
+            <MediaUnavailable size="full" />
+          ) : displayCover.kind === 'image' ? (
             <OptimizedImage
-              src={displayCover.url}
+              src={displayCover.url ?? ''}
               alt=""
               width={displayCover.width ?? undefined}
               height={displayCover.height ?? undefined}
@@ -417,9 +420,11 @@ export function PostCard({
                   onClick={() => setLightboxIdx(i)}
                   className="shrink-0 w-20 h-20 rounded-lg overflow-hidden hub-bg-soft ring-1 ring-[var(--hub-bd)] hover:ring-[var(--hub-bd2)] transition-all"
                 >
-                  {m.kind === 'image' ? (
+                  {m.media_lost_at ? (
+                    <MediaUnavailable size="compact" />
+                  ) : m.kind === 'image' ? (
                     <OptimizedImage
-                      src={m.thumbnail_url ?? m.url}
+                      src={m.thumbnail_url ?? m.url ?? ''}
                       alt=""
                       width={80}
                       height={80}

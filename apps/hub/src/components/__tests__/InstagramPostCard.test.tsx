@@ -348,4 +348,25 @@ describe('InstagramPostCard', () => {
 
     expect(screen.getByText('Instagram')).toBeInTheDocument();
   });
+
+  it('shows the unavailable placeholder instead of a broken image for a permanently lost slide', () => {
+    render(
+      <InstagramPostCard
+        post={makePost({
+          media: [makeMedia({ id: 1, media_lost_at: '2026-08-14T03:00:00.000Z', url: null })],
+        })}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+        isSelected={false}
+        onToggleSelect={vi.fn()}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
+    // Scoped to the slide button itself since the card header always renders
+    // its own (unrelated) profile-picture <img>.
+    const slideButton = screen.getByRole('button', { name: /abrir mídia 1/i });
+    expect(slideButton.querySelector('img')).not.toBeInTheDocument();
+  });
 });

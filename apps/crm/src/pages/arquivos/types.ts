@@ -38,6 +38,11 @@ export interface FileRecord {
   created_at: string;
   url?: string;
   thumbnail_url?: string | null;
+  /** ISO timestamp when this file was permanently lost (Aug 2026 R2 incident and any
+   * future reconciliation); null when the file is fine. Optional only because a
+   * response cached before this field shipped omits the key — check the value,
+   * never key presence. */
+  media_lost_at?: string | null;
   /** Cloudflare Stream HLS manifest, when the video has one. Optional — cached
    * pre-deploy responses omit it, same convention as in store/posts.ts's PostMedia. */
   playback?: { hls: string; expires_at: string } | null;
