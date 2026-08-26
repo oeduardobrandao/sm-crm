@@ -398,6 +398,7 @@ DECLARE
   v_etapa record;
   v_tpl_etapa jsonb;
   v_updated_count integer;
+  v_rows integer;
 BEGIN
   IF v_conta IS NULL THEN
     RAISE EXCEPTION 'workspace_not_found';
@@ -441,6 +442,13 @@ BEGIN
         CONTINUE;
       END IF;
 
+      -- TOCTOU guard: the outer cursor's SELECT snapshotted `status` when
+      -- the loop started. A concurrent write (e.g. the frontend completing
+      -- this exact etapa) between that read and this UPDATE must not be
+      -- silently overwritten, so the WHERE clause re-checks status = the
+      -- value this iteration actually read, making the write a no-op if it
+      -- changed. v_rows (via GET DIAGNOSTICS) reflects the real outcome,
+      -- not an unconditional per-iteration increment.
       IF v_etapa.status = 'pendente' THEN
         UPDATE workflow_etapas
         SET nome = v_tpl_etapa->>'nome',
@@ -448,7 +456,7 @@ BEGIN
             tipo_prazo = v_tpl_etapa->>'tipo_prazo',
             responsavel_id = NULLIF(v_tpl_etapa->>'responsavel_id', '')::bigint,
             tipo = coalesce(v_tpl_etapa->>'tipo', 'padrao')
-        WHERE id = v_etapa.id;
+        WHERE id = v_etapa.id AND status = v_etapa.status;
       ELSE
         -- 'ativo': never touch tipo (in-progress approval gate).
         UPDATE workflow_etapas
@@ -456,10 +464,11 @@ BEGIN
             prazo_dias = (v_tpl_etapa->>'prazo_dias')::integer,
             tipo_prazo = v_tpl_etapa->>'tipo_prazo',
             responsavel_id = NULLIF(v_tpl_etapa->>'responsavel_id', '')::bigint
-        WHERE id = v_etapa.id;
+        WHERE id = v_etapa.id AND status = v_etapa.status;
       END IF;
+      GET DIAGNOSTICS v_rows = ROW_COUNT;
 
-      v_updated_count := v_updated_count + 1;
+      v_updated_count := v_updated_count + v_rows;
     END LOOP;
 
     -- Step 6: one template_propagado event per workflow actually touched,
