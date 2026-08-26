@@ -90,7 +90,8 @@ export const GUIDE_TRAILS: GuideTrail[] = [
         lead: 'Só o nome é obrigatório. E-mail, telefone e valores podem esperar.',
         action: {
           label: 'Fazer agora',
-          caption: 'Abre seus clientes com o cadastro pronto para preencher. O guia continua de onde parou.',
+          caption:
+            'Abre seus clientes com o cadastro pronto para preencher. O guia continua de onde parou.',
           to: () => '/clientes?novo=1',
         },
         signal: 'hasCliente',

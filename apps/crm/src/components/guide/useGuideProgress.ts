@@ -91,7 +91,9 @@ export function useGuideProgress(
 
   const conclude = useCallback(
     () =>
-      patch((prev) => (prev.concludedAt ? prev : { ...prev, concludedAt: new Date().toISOString() })),
+      patch((prev) =>
+        prev.concludedAt ? prev : { ...prev, concludedAt: new Date().toISOString() },
+      ),
     [patch],
   );
 

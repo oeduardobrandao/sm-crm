@@ -72,7 +72,9 @@ export function GuideOption({
   children?: ReactNode;
 }) {
   return (
-    <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, padding: '12px 14px' }}>
+    <div
+      style={{ border: '1px solid var(--border-color)', borderRadius: 10, padding: '12px 14px' }}
+    >
       <p
         style={{
           margin: 0,
@@ -87,7 +89,14 @@ export function GuideOption({
         {title}
       </p>
       {children && (
-        <p style={{ margin: '6px 0 0', fontSize: '0.76rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        <p
+          style={{
+            margin: '6px 0 0',
+            fontSize: '0.76rem',
+            color: 'var(--text-muted)',
+            lineHeight: 1.5,
+          }}
+        >
           {children}
         </p>
       )}

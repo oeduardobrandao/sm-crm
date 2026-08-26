@@ -38,7 +38,10 @@ export function useGuideSignals(enabled: boolean): GuideSignals {
 
   const latestClienteId =
     clientesQ.status === 'success' && clientesQ.data.length > 0
-      ? clientesQ.data.reduce<number>((max, c) => (c.id! > max ? c.id! : max), clientesQ.data[0]!.id!)
+      ? clientesQ.data.reduce<number>(
+          (max, c) => (c.id! > max ? c.id! : max),
+          clientesQ.data[0]!.id!,
+        )
       : null;
 
   return {
