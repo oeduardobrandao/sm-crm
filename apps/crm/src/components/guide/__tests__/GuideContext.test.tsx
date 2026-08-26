@@ -134,4 +134,39 @@ describe('GuideProvider', () => {
     renderProvider();
     expect(useGuideSignalsMock).toHaveBeenCalledWith(false);
   });
+
+  it('não mostra entrada enquanto os sinais estão pendentes num workspace sem progresso', () => {
+    useGuideSignalsMock.mockReturnValue({
+      values: {},
+      latestClienteId: null,
+      clientes: { status: 'pending', count: 0 },
+      workflows: { status: 'pending', count: 0 },
+    });
+    renderProvider();
+    expect(screen.getByTestId('entry').textContent).toBe('false');
+  });
+
+  it('mostra entrada quando algum sinal resolve como falso', () => {
+    useGuideSignalsMock.mockReturnValue({
+      ...EMPTY_SIGNALS,
+      values: { hasCliente: false },
+    });
+    renderProvider();
+    expect(screen.getByTestId('entry').textContent).toBe('true');
+  });
+
+  it('mostra entrada quando há progresso salvo mesmo com sinais pendentes', () => {
+    saveGuideProgress('ws-1', {
+      ...EMPTY_PROGRESS,
+      pagesSeen: ['t1p1'],
+    });
+    useGuideSignalsMock.mockReturnValue({
+      values: {},
+      latestClienteId: null,
+      clientes: { status: 'pending', count: 0 },
+      workflows: { status: 'pending', count: 0 },
+    });
+    renderProvider();
+    expect(screen.getByTestId('entry').textContent).toBe('true');
+  });
 });

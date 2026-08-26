@@ -16,6 +16,7 @@ import { captureEvent } from '../../lib/analytics';
 import { useGuideSignals, type GuideSignals } from './useGuideSignals';
 import { useGuideProgress, type GuideView } from './useGuideProgress';
 import { shouldAutoOpenGuide } from './guideGating';
+import { requiredSignals } from './guideContent';
 import { loadGuideProgress } from './guideStorage';
 
 export type GuideOpenSource = 'auto' | 'pill' | 'sidebar' | 'mobile_nav';
@@ -143,13 +144,25 @@ export function GuideProvider({ children }: { children: ReactNode }) {
     }
   }, [view]);
 
+  // Pill/entradas só aparecem com evidência positiva de guia pendente: nunca
+  // durante o "ainda não sei" das queries (padrão TrialNudgeCard). Sem isso, um
+  // workspace ativo mostra o pill até os sinais resolverem e o guia se
+  // auto-concluir, sumindo na frente do usuário.
+  const required = requiredSignals(view.trails);
+  const anySignalKnownFalse = required.some((s) => signals.values[s] === false);
+  const hasStoredActivity =
+    view.progress.pagesSeen.length > 0 ||
+    Boolean(view.progress.autoOpenedAt) ||
+    Boolean(view.progress.dismissedAt) ||
+    Boolean(view.progress.lastPageId);
+
   const api: GuideApi = {
     ...view,
     isOpen,
     currentPageId,
     latestClienteId: signals.latestClienteId,
     signalValues: signals.values,
-    showEntryPoint: isOwner && !view.isConcluded,
+    showEntryPoint: isOwner && !view.isConcluded && (anySignalKnownFalse || hasStoredActivity),
     open,
     close,
     closeForAction,
