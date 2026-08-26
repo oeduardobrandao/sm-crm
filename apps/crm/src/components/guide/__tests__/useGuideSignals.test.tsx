@@ -7,13 +7,13 @@ const {
   getClientesMock,
   getMembrosMock,
   getWorkflowsMock,
-  getPortfolioSummaryMock,
+  hasAnyInstagramAccountMock,
   hasAnyHubTokenMock,
 } = vi.hoisted(() => ({
   getClientesMock: vi.fn(),
   getMembrosMock: vi.fn(),
   getWorkflowsMock: vi.fn(),
-  getPortfolioSummaryMock: vi.fn(),
+  hasAnyInstagramAccountMock: vi.fn(),
   hasAnyHubTokenMock: vi.fn(),
 }));
 
@@ -22,7 +22,9 @@ vi.mock('../../../store', () => ({
   getMembros: getMembrosMock,
   getWorkflows: getWorkflowsMock,
 }));
-vi.mock('../../../services/analytics', () => ({ getPortfolioSummary: getPortfolioSummaryMock }));
+vi.mock('../../../services/analytics', () => ({
+  hasAnyInstagramAccount: hasAnyInstagramAccountMock,
+}));
 vi.mock('../../../store/hub', () => ({ hasAnyHubToken: hasAnyHubTokenMock }));
 
 import { useGuideSignals } from '../useGuideSignals';
@@ -35,10 +37,12 @@ function wrapper({ children }: { children: React.ReactNode }) {
 describe('useGuideSignals', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Ordenado newest-first (created_at desc, id desc), como getClientes() real —
+    // um cliente importado/backfilled pode ter id maior porém created_at mais antigo.
     getClientesMock.mockResolvedValue([{ id: 3 }, { id: 9 }]);
     getMembrosMock.mockResolvedValue([]);
     getWorkflowsMock.mockResolvedValue([{ id: 1 }]);
-    getPortfolioSummaryMock.mockResolvedValue({ accounts: [] });
+    hasAnyInstagramAccountMock.mockResolvedValue(false);
     hasAnyHubTokenMock.mockResolvedValue(true);
   });
 
@@ -52,9 +56,25 @@ describe('useGuideSignals', () => {
     expect(result.current.clientes).toEqual({ status: 'success', count: 2 });
   });
 
-  it('pega o cliente mais recente pelo maior id', async () => {
+  it('hasInstagram reflete o resultado de hasAnyInstagramAccount quando bem-sucedida', async () => {
+    hasAnyInstagramAccountMock.mockResolvedValue(true);
     const { result } = renderHook(() => useGuideSignals(true), { wrapper });
-    await waitFor(() => expect(result.current.latestClienteId).toBe(9));
+    await waitFor(() => expect(result.current.values.hasInstagram).toBe(true));
+  });
+
+  it('hasInstagram fica INCONCLUSIVO (chave ausente) quando a query falha — nunca falso confirmado', async () => {
+    hasAnyInstagramAccountMock.mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(() => useGuideSignals(true), { wrapper });
+    await waitFor(() => expect(result.current.values.hasCliente).toBe(true));
+    expect('hasInstagram' in result.current.values).toBe(false);
+  });
+
+  it('latestClienteId é o PRIMEIRO da lista (mais recente), não o maior id', async () => {
+    // getClientes() ordena created_at desc — data[0] é o mais recente mesmo que
+    // um cliente importado mais antigo carregue um id numericamente maior (data[1] = 9).
+    const { result } = renderHook(() => useGuideSignals(true), { wrapper });
+    await waitFor(() => expect(result.current.clientes.status).toBe('success'));
+    expect(result.current.latestClienteId).toBe(3);
   });
 
   it('query em erro fica INCONCLUSIVA: chave ausente, nunca false', async () => {
