@@ -712,8 +712,8 @@ describe('NewWorkflowWizard — steps 4 & 5', () => {
 
   it('warns instead of silently skipping the template when the name is cleared', () => {
     renderWizardThroughReview();
-    fireEvent.change(screen.getByLabelText(/nome do template/i), { target: { value: '  ' } });
-    expect(screen.getByText(/dê um nome ao template/i)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/nome do modelo/i), { target: { value: '  ' } });
+    expect(screen.getByText(/dê um nome ao modelo/i)).toBeTruthy();
   });
 
   it('never stores the __auto__ sentinel in wizard state', () => {
@@ -796,7 +796,7 @@ describe('NewWorkflowWizard — steps 4 & 5', () => {
 
   it('prefills the template name from the source preset and the client', () => {
     renderWizardThroughReview();
-    expect((screen.getByLabelText(/nome do template/i) as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText(/nome do modelo/i) as HTMLInputElement).value).toBe(
       'Posts mensais — Aurora',
     );
   });

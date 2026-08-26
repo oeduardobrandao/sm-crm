@@ -17,19 +17,24 @@ export function StepTemplate({
 }) {
   return (
     <div>
-      <p
+      <div
         style={{
           fontSize: '0.8rem',
           color: 'var(--text-muted)',
           background: 'var(--surface-2, #f8fafc)',
-          borderRadius: 8,
-          padding: '0.5rem 0.75rem',
+          border: '1px solid var(--border-color)',
+          borderRadius: 10,
+          padding: '0.6rem 0.85rem',
           marginBottom: '1rem',
+          lineHeight: 1.7,
         }}
       >
-        💡 Um <b>fluxo</b> é um ciclo de trabalho para um cliente (ex.: posts de agosto). Um{' '}
-        <b>template</b> é a receita reutilizável de etapas.
-      </p>
+        <b>Fluxo</b> · o ciclo de trabalho de um cliente (ex.: posts de agosto)
+        <br />
+        <b>Modelo</b> · a receita reutilizável de etapas que cria fluxos
+        <br />
+        <b>Post</b> · o conteúdo dentro do fluxo, cada um com o próprio status
+      </div>
       <div
         style={{
           display: 'grid',
@@ -102,7 +107,7 @@ export function StepTemplate({
             marginBottom: 6,
           }}
         >
-          Seus templates
+          Seus modelos
         </h5>
         {/* A template without an id cannot be selected as a source — don't render a dead row. */}
         {templates
