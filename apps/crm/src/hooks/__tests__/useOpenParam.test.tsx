@@ -16,35 +16,6 @@ function Page({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-function PageWithSiblingEffect({ onOpen }: { onOpen: () => void }) {
-  const [searchParams, setSearchParams] = useSearchParams();
-  useOpenParam('novo', onOpen);
-
-  // Sibling effect that mutates an unrelated param (simulating another feature on the same page)
-  useEffect(() => {
-    const initialRenderRef = React.useRef(true);
-    if (!initialRenderRef.current) return;
-    initialRenderRef.current = false;
-
-    // Mutate a different param on initial render
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.set('outro', 'x');
-        return next;
-      },
-      { replace: true },
-    );
-  }, [setSearchParams]);
-
-  return (
-    <div>
-      <span data-testid="qs">{searchParams.toString()}</span>
-      <button onClick={() => navigate('/page?novo=1&filtro=ativos')}>self-nav</button>
-    </div>
-  );
-}
-
 function PageWithSiblingEffect_Navigated({ onOpen }: { onOpen: () => void }) {
   const [searchParams, setSearchParams] = useSearchParams();
   useOpenParam('novo', onOpen);
@@ -62,7 +33,7 @@ function PageWithSiblingEffect_Navigated({ onOpen }: { onOpen: () => void }) {
       },
       { replace: true },
     );
-  }, []); // Empty deps to only run once
+  }, [setSearchParams]); // setSearchParams is stable, but included for lint compliance
 
   return (
     <div>
