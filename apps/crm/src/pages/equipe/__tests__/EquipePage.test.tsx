@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // jsdom has no scrollIntoView; Radix's Select calls it when committing a
@@ -80,9 +81,11 @@ function renderPage() {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
-    <QueryClientProvider client={queryClient}>
-      <EquipePage />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <EquipePage />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
   return { queryClient };
 }

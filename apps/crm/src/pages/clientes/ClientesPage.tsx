@@ -82,6 +82,7 @@ import {
 import { sanitizeUrl } from '../../utils/security';
 import { supabase } from '../../lib/supabase';
 import { useEntitlements } from '../../hooks/useEntitlements';
+import { useOpenParam } from '../../hooks/useOpenParam';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
 import { captureEvent } from '@/lib/analytics';
 import { useAuth } from '../../context/AuthContext';
@@ -217,6 +218,8 @@ export default function ClientesPage() {
     });
     setModalOpen(true);
   };
+
+  useOpenParam('novo', openAdd);
 
   const openEdit = (c: Cliente) => {
     setEditing(c);
