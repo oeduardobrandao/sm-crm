@@ -424,6 +424,26 @@ BEGIN
       AND conta_id = v_conta
       AND status = 'ativo'
   LOOP
+    -- Re-validate under a row lock: a concurrent migrate_workflow_template
+    -- could have changed this workflow's template_id/status (and replaced
+    -- its etapas entirely) between the outer cursor's snapshot above and
+    -- this iteration -- READ COMMITTED means the inner etapa SELECT below
+    -- gets its OWN fresh snapshot, not the outer cursor's, so it could see
+    -- a freshly-migrated, different-template-shaped ladder while this
+    -- iteration still writes p_template_id's field values onto it.
+    -- migrate_workflow_template takes FOR UPDATE on this same workflows
+    -- row before any destructive work, so this lock genuinely serializes
+    -- against it: if a migration is concurrently in flight, this blocks
+    -- until it commits, then re-checks the LATEST row version and skips
+    -- (CONTINUE) if template_id/status no longer match; if we get here
+    -- first, a concurrent migration blocks on this row until we're done.
+    PERFORM 1 FROM workflows
+      WHERE id = v_wf.id AND template_id = p_template_id AND conta_id = v_conta AND status = 'ativo'
+      FOR UPDATE;
+    IF NOT FOUND THEN
+      CONTINUE;
+    END IF;
+
     v_updated_count := 0;
 
     -- Step 5: per-etapa propagation, scoped to this conta-and-template
