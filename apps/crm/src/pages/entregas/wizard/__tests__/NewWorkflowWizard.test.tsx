@@ -712,8 +712,8 @@ describe('NewWorkflowWizard — steps 4 & 5', () => {
 
   it('warns instead of silently skipping the template when the name is cleared', () => {
     renderWizardThroughReview();
-    fireEvent.change(screen.getByLabelText(/nome do template/i), { target: { value: '  ' } });
-    expect(screen.getByText(/dê um nome ao template/i)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/nome do modelo/i), { target: { value: '  ' } });
+    expect(screen.getByText(/dê um nome ao modelo/i)).toBeTruthy();
   });
 
   it('never stores the __auto__ sentinel in wizard state', () => {
@@ -796,7 +796,7 @@ describe('NewWorkflowWizard — steps 4 & 5', () => {
 
   it('prefills the template name from the source preset and the client', () => {
     renderWizardThroughReview();
-    expect((screen.getByLabelText(/nome do template/i) as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText(/nome do modelo/i) as HTMLInputElement).value).toBe(
       'Posts mensais — Aurora',
     );
   });
@@ -804,13 +804,13 @@ describe('NewWorkflowWizard — steps 4 & 5', () => {
   it('surfaces the template warning as a separate toast', async () => {
     createWorkflowFromWizardMock.mockResolvedValue({
       workflow: { id: 1 },
-      warning: 'O fluxo será criado, mas não foi possível salvar o template.',
+      warning: 'O fluxo será criado, mas não foi possível salvar o modelo.',
     });
     renderWizardThroughReview();
     fireEvent.click(screen.getByText('✓ Criar Fluxo'));
     await waitFor(() =>
       expect(toast.warning).toHaveBeenCalledWith(
-        expect.stringMatching(/não foi possível salvar o template/i),
+        expect.stringMatching(/não foi possível salvar o modelo/i),
       ),
     );
     expect(toast.success).toHaveBeenCalledWith('Fluxo criado com sucesso!');

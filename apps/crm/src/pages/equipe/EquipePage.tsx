@@ -95,6 +95,7 @@ import { InviteSection } from './InviteSection';
 import { computeSeatState, derivePendingInvites, membroInviteErrorMessage } from './inviteSupport';
 import { inviteUser } from '../../services/invite';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
+import { useOpenParam } from '../../hooks/useOpenParam';
 import { inviteSuccessMessage } from '../configuracao/inviteHelpers';
 import { supabase } from '../../lib/supabase';
 import { captureEvent } from '@/lib/analytics';
@@ -194,6 +195,8 @@ export default function EquipePage() {
     form.reset(MEMBRO_FORM_DEFAULTS);
     setModalOpen(true);
   };
+
+  useOpenParam('novo', openAdd);
 
   const openEdit = (m: Membro) => {
     setEditing(m);

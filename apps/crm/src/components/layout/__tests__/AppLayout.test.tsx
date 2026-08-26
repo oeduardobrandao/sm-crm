@@ -61,6 +61,26 @@ vi.mock('../../help/ContextHelpLinks', () => ({
   ContextHelpLinks: () => null,
 }));
 
+// The guide feature has its own dedicated test suites (GuideContext,
+// GuideDialog, GuidePill, useGuideSignals, useGuideProgress, guideGating).
+// Its real GuideProvider needs a QueryClientProvider (useGuideSignals runs
+// useQueries) and the real AuthContext (useIsWorkspaceOwner reads it via
+// useContext), neither of which this file's shell-focused mocks provide.
+// Mocking it here -- same technique already used for every other child of
+// AppLayout above -- keeps this suite scoped to AppLayout's own layout/guard
+// logic instead of re-exercising the guide's wiring.
+vi.mock('../../guide/GuideContext', () => ({
+  GuideProvider: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+}));
+
+vi.mock('../../guide/GuidePill', () => ({
+  GuidePill: () => null,
+}));
+
+vi.mock('../../guide/GuideDialog', () => ({
+  default: () => null,
+}));
+
 import { useAuth } from '../../../context/AuthContext';
 import AppLayout from '../AppLayout';
 

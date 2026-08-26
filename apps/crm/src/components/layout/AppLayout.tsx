@@ -9,8 +9,11 @@ import { useAuth } from '../../context/AuthContext';
 import type { FinancialAccess } from '../../lib/financialAccess';
 import FinancialRestrictionScreen from './FinancialRestrictionScreen';
 import { Spinner } from '../ui/spinner';
+import { GuideProvider } from '../guide/GuideContext';
+import { GuidePill } from '../guide/GuidePill';
 
 const GlobalBannerContainer = lazy(() => import('./GlobalBannerContainer'));
+const GuideDialog = lazy(() => import('../guide/GuideDialog'));
 
 export const FINANCIAL_PATHS = ['/financeiro', '/contratos'];
 
@@ -98,39 +101,45 @@ export default function AppLayout() {
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
   return (
-    <div className="app-container">
-      {!isMobile && (
-        <TopBar
-          showHamburger={isTablet}
-          isDrawerOpen={drawerOpen}
-          onHamburgerClick={() => setDrawerOpen((v) => !v)}
-        />
-      )}
-
-      <Suspense fallback={null}>
-        <GlobalBannerContainer>
-          <DunningBanner />
-        </GlobalBannerContainer>
-      </Suspense>
-
-      <Sidebar isDrawer={isTablet} isOpen={drawerOpen} onClose={closeDrawer} />
-
-      {isTablet && drawerOpen && (
-        <div className="tablet-drawer-backdrop visible" onClick={closeDrawer} />
-      )}
-
-      <main className="main-content" id="app">
-        <ContextHelpLinks />
-        {outcome === 'content' && <Outlet />}
-        {outcome === 'loading' && (
-          <div style={{ padding: '3rem', textAlign: 'center' }}>
-            <Spinner size="lg" />
-          </div>
+    <GuideProvider>
+      <div className="app-container">
+        {!isMobile && (
+          <TopBar
+            showHamburger={isTablet}
+            isDrawerOpen={drawerOpen}
+            onHamburgerClick={() => setDrawerOpen((v) => !v)}
+          />
         )}
-        {outcome === 'denied' && <FinancialRestrictionScreen />}
-      </main>
 
-      <MobileNav />
-    </div>
+        <Suspense fallback={null}>
+          <GlobalBannerContainer>
+            <DunningBanner />
+          </GlobalBannerContainer>
+        </Suspense>
+
+        <Sidebar isDrawer={isTablet} isOpen={drawerOpen} onClose={closeDrawer} />
+
+        {isTablet && drawerOpen && (
+          <div className="tablet-drawer-backdrop visible" onClick={closeDrawer} />
+        )}
+
+        <main className="main-content" id="app">
+          <ContextHelpLinks />
+          {outcome === 'content' && <Outlet />}
+          {outcome === 'loading' && (
+            <div style={{ padding: '3rem', textAlign: 'center' }}>
+              <Spinner size="lg" />
+            </div>
+          )}
+          {outcome === 'denied' && <FinancialRestrictionScreen />}
+        </main>
+
+        <MobileNav />
+        <GuidePill />
+        <Suspense fallback={null}>
+          <GuideDialog />
+        </Suspense>
+      </div>
+    </GuideProvider>
   );
 }

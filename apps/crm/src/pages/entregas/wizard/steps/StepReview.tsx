@@ -103,7 +103,7 @@ export function StepReview({
           }
         />
         <span>
-          <b>Salvar estas etapas como template</b>
+          <b>Salvar estas etapas como modelo</b>
           <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
             A receita fica disponível no passo 1 para os próximos fluxos.
           </span>
@@ -112,7 +112,7 @@ export function StepReview({
 
       {state.saveAsTemplate && (
         <div className="space-y-1">
-          <Label htmlFor="wizard-template-nome">Nome do template</Label>
+          <Label htmlFor="wizard-template-nome">Nome do modelo</Label>
           <Input
             id="wizard-template-nome"
             value={state.templateName}
@@ -122,7 +122,7 @@ export function StepReview({
               than dropping the request without a word. */}
           {!state.templateName.trim() && (
             <p role="alert" style={{ fontSize: '0.7rem', color: 'var(--danger)', margin: 0 }}>
-              Dê um nome ao template — sem nome, o fluxo é criado mas o template não é salvo.
+              Dê um nome ao modelo: sem nome, o fluxo é criado mas o modelo não é salvo.
             </p>
           )}
         </div>

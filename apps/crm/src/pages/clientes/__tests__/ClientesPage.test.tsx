@@ -1,6 +1,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockNavigate, openCSVSelectorMock, toastSuccessMock, toastErrorMock, mockUseAuth } =
@@ -434,9 +435,11 @@ function createTestQueryClient() {
 function renderPage() {
   const queryClient = createTestQueryClient();
   render(
-    <QueryClientProvider client={queryClient}>
-      <ClientesPage />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <ClientesPage />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
   return { queryClient };
 }

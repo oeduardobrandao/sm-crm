@@ -2,20 +2,8 @@ import { useEffect } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import {
-  getDashboardStats,
-  getClientes,
-  getMembros,
-  getWorkflows,
-  getLeads,
-  type Membro,
-  type Cliente,
-  type Workflow,
-  type Lead,
-} from '../../store';
-import { getPortfolioSummary, type PortfolioSummary } from '../../services/analytics';
+import { getDashboardStats, getClientes, type Cliente } from '../../store';
 import { useAuth } from '../../context/AuthContext';
-import { OnboardingBanner } from '../../components/OnboardingBanner';
 import { ImportBanner } from '../../components/import/ImportBanner';
 import { TrialNudgeCard } from '../../components/billing/TrialNudgeCard';
 import { WhatsAppSupportCard } from '@/components/support/WhatsAppSupportCard';
@@ -69,25 +57,12 @@ export default function DashboardPage() {
         queryFn: () => getDashboardStats(canSeeFinancials),
         retry: 1,
       },
-      { queryKey: ['membros'], queryFn: getMembros, retry: 1 },
       { queryKey: ['clientes'], queryFn: getClientes, retry: 1 },
-      { queryKey: ['workflows'], queryFn: getWorkflows, retry: 1 },
-      { queryKey: ['leads'], queryFn: getLeads, retry: 1 },
-      {
-        queryKey: ['portfolioSummary'],
-        queryFn: () => getPortfolioSummary(),
-        retry: 1,
-        enabled: !isAgent,
-      },
     ],
   });
-  const [statsRes, membrosRes, clientesRes, workflowsRes, leadsRes, portfolioRes] = results;
+  const [statsRes, clientesRes] = results;
   const stats = statsRes.data ?? null;
-  const membros: Membro[] = membrosRes.data ?? [];
   const clientes: Cliente[] = clientesRes.data ?? [];
-  const workflows: Workflow[] = workflowsRes.data ?? [];
-  const leads: Lead[] = leadsRes.data ?? [];
-  const portfolio: PortfolioSummary | undefined = portfolioRes.data;
 
   // ---- finance figures ----
   const transacoes = stats?.transacoes ?? [];
@@ -104,15 +79,6 @@ export default function DashboardPage() {
 
       {!isAgent && <TrialNudgeCard />}
       {!isAgent && <WhatsAppSupportCard />}
-      {!isAgent && (
-        <OnboardingBanner
-          clientes={clientes}
-          leads={leads}
-          membros={membros}
-          portfolioAccounts={portfolio?.accounts ?? []}
-          workflows={workflows}
-        />
-      )}
 
       {/* Agents see their own pending work where managers see client health. */}
       {isAgent ? <AgentPendingSection /> : <ClientHealthMonitor />}

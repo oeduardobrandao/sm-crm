@@ -87,8 +87,8 @@ export async function createWorkflowFromWizard(
       // of a generic failure the user can't act on.
       const entitlement = mapEntitlementError(err);
       warning = entitlement
-        ? `O fluxo será criado, mas o template não foi salvo: ${entitlementMessage(entitlement).replace(/^Você/, 'você')}`
-        : 'O fluxo será criado, mas não foi possível salvar o template.';
+        ? `O fluxo será criado, mas o modelo não foi salvo: ${entitlementMessage(entitlement).replace(/^Você/, 'você')}`
+        : 'O fluxo será criado, mas não foi possível salvar o modelo.';
     }
   }
 

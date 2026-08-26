@@ -8,7 +8,6 @@ const {
   useQueriesMock,
   useQueryMock,
   useQueryClientMock,
-  onboardingBannerMock,
   toastSuccessMock,
   toastErrorMock,
 } = vi.hoisted(() => ({
@@ -16,7 +15,6 @@ const {
   useQueriesMock: vi.fn(),
   useQueryMock: vi.fn(),
   useQueryClientMock: vi.fn(),
-  onboardingBannerMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
 }));
@@ -35,22 +33,11 @@ vi.mock('../../../context/AuthContext', () => ({
   useAuth: useAuthMock,
 }));
 
-vi.mock('../../../components/OnboardingBanner', () => ({
-  OnboardingBanner: onboardingBannerMock,
-}));
-
 vi.mock('../../../store', () => ({
   getDashboardStats: vi.fn(),
-  getLeads: vi.fn(),
-  getMembros: vi.fn(),
   getClientes: vi.fn(),
-  getWorkflows: vi.fn(),
   formatBRL: (value: number) => `R$ ${Number(value).toLocaleString('pt-BR')}`,
   formatDate: (value: string) => value,
-}));
-
-vi.mock('../../../services/analytics', () => ({
-  getPortfolioSummary: vi.fn(),
 }));
 
 // Mock ClientHealthMonitor so DashboardPage tests aren't coupled to its internals
@@ -74,7 +61,6 @@ const mockedUseAuth = vi.mocked(useAuthMock);
 const mockedUseQueries = vi.mocked(useQueriesMock);
 const mockedUseQuery = vi.mocked(useQueryMock);
 const mockedUseQueryClient = vi.mocked(useQueryClientMock);
-const mockedOnboardingBanner = vi.mocked(onboardingBannerMock);
 
 const frozenNow = new Date('2026-04-18T12:00:00-03:00');
 
@@ -96,17 +82,13 @@ function makeQueryResult<T>(data: T, isLoading = false) {
   return { data, isLoading };
 }
 
-// New useQueries order: [statsRes, membrosRes, clientesRes, workflowsRes, leadsRes, portfolioRes]
+// useQueries order: [statsRes, clientesRes]
 function makeDefaultUseQueries(
   overrides: Partial<Record<number, ReturnType<typeof makeQueryResult<unknown>>>> = {},
 ) {
   const defaults = [
     makeQueryResult(null), // 0: dashboardStats
-    makeQueryResult([]), // 1: membros
-    makeQueryResult([]), // 2: clientes
-    makeQueryResult([]), // 3: workflows
-    makeQueryResult([]), // 4: leads
-    makeQueryResult({ accounts: [], summary: {} }), // 5: portfolioSummary
+    makeQueryResult([]), // 1: clientes
   ];
   return Object.entries(overrides).reduce((acc, [idx, val]) => {
     acc[Number(idx)] = val;
@@ -123,7 +105,6 @@ describe('DashboardPage', () => {
     mockedUseQueries.mockReset();
     mockedUseQuery.mockReset();
     mockedUseQueryClient.mockReset();
-    mockedOnboardingBanner.mockReset();
 
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
@@ -132,7 +113,6 @@ describe('DashboardPage', () => {
     mockedUseAuth.mockReturnValue({ role: 'admin', canSeeFinancials: true } as never);
     mockedUseQueries.mockReturnValue(makeDefaultUseQueries() as never);
     mockedUseQuery.mockImplementation(() => makeQueryResult([]));
-    mockedOnboardingBanner.mockImplementation(() => <div data-testid="onboarding-banner" />);
   });
 
   it('always renders ClientHealthMonitor and TodayCard regardless of loading state', () => {
@@ -156,7 +136,7 @@ describe('DashboardPage', () => {
     expect(today.compareDocumentPosition(health) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('renders the agent branch without onboarding banner or finance strip', () => {
+  it('renders the agent branch without finance strip', () => {
     mockedUseAuth.mockReturnValue({
       role: 'agent',
       workspaceRole: 'agent',
@@ -181,9 +161,6 @@ describe('DashboardPage', () => {
           clientes: [],
         }),
         1: makeQueryResult([
-          { id: 'mem-1', nome: 'Membro 1', tipo: 'clt', custo_mensal: 5000, data_pagamento: 18 },
-        ]),
-        2: makeQueryResult([
           {
             id: 'cli-1',
             nome: 'Cliente 1',
@@ -193,16 +170,12 @@ describe('DashboardPage', () => {
             data_aniversario: '04-18',
           },
         ]),
-        3: makeQueryResult([]),
-        4: makeQueryResult([]),
-        5: makeQueryResult({ accounts: [], summary: {} }),
       }) as never,
     );
 
     renderDashboardPage();
 
-    // Agent: no onboarding, no finance strip
-    expect(screen.queryByTestId('onboarding-banner')).not.toBeInTheDocument();
+    // Agent: no finance strip
     expect(screen.queryByText('A receber')).not.toBeInTheDocument();
     expect(screen.queryByText('Receita mensal')).not.toBeInTheDocument();
     // Agent sees their pending-work section INSTEAD of the health monitor
@@ -240,7 +213,7 @@ describe('DashboardPage', () => {
     expect(screen.queryByTestId('agent-pending-section')).not.toBeInTheDocument();
   });
 
-  it('shows onboarding, today card, and finance KPIs for non-agent', () => {
+  it('shows today card and finance KPIs for non-agent', () => {
     mockedUseQueries.mockReturnValue(
       makeDefaultUseQueries({
         0: makeQueryResult({
@@ -268,9 +241,6 @@ describe('DashboardPage', () => {
           clientes: [{ id: 'cli-1' }, { id: 'cli-2' }],
         }),
         1: makeQueryResult([
-          { id: 'mem-1', nome: 'Ana', tipo: 'clt', custo_mensal: 5000, data_pagamento: 18 },
-        ]),
-        2: makeQueryResult([
           {
             id: 'cli-1',
             nome: 'Cliente Hoje',
@@ -288,16 +258,10 @@ describe('DashboardPage', () => {
             data_aniversario: '01-01',
           },
         ]),
-        3: makeQueryResult([]),
-        4: makeQueryResult([]),
-        5: makeQueryResult({ accounts: [], summary: {} }),
       }) as never,
     );
 
     renderDashboardPage();
-
-    // Onboarding banner present for non-agent
-    expect(screen.getByTestId('onboarding-banner')).toBeInTheDocument();
 
     // Health monitor always present
     expect(screen.getByTestId('client-health-monitor')).toBeInTheDocument();
