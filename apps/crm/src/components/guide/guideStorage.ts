@@ -18,6 +18,12 @@ export const EMPTY_PROGRESS: GuideProgress = {
   trailsCompleted: [],
 };
 
+const emptyProgress = (): GuideProgress => ({
+  pagesSeen: [],
+  pagesDone: [],
+  trailsCompleted: [],
+});
+
 export function guideStorageKey(contaId: string): string {
   return `guia_v1_${contaId}`;
 }
@@ -25,17 +31,17 @@ export function guideStorageKey(contaId: string): string {
 export function loadGuideProgress(contaId: string): GuideProgress {
   try {
     const raw = localStorage.getItem(guideStorageKey(contaId));
-    if (!raw) return { ...EMPTY_PROGRESS };
+    if (!raw) return emptyProgress();
     const parsed = JSON.parse(raw) as Partial<GuideProgress>;
     return {
-      ...EMPTY_PROGRESS,
+      ...emptyProgress(),
       ...parsed,
       pagesSeen: Array.isArray(parsed.pagesSeen) ? parsed.pagesSeen : [],
       pagesDone: Array.isArray(parsed.pagesDone) ? parsed.pagesDone : [],
       trailsCompleted: Array.isArray(parsed.trailsCompleted) ? parsed.trailsCompleted : [],
     };
   } catch {
-    return { ...EMPTY_PROGRESS };
+    return emptyProgress();
   }
 }
 

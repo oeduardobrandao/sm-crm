@@ -46,4 +46,28 @@ describe('guideStorage', () => {
     saveGuideProgress('ws-1', { ...EMPTY_PROGRESS, pagesSeen: ['t1p1'] });
     expect(loadGuideProgress('ws-2')).toEqual(EMPTY_PROGRESS);
   });
+
+  it('loadGuideProgress não compartilha array references com EMPTY_PROGRESS', () => {
+    // Duas chamadas consecutivas sem dados salvos devem retornar objetos com arrays
+    // que NÃO são a mesma referência entre si, nem com EMPTY_PROGRESS
+    const p1 = loadGuideProgress('ws-1');
+    const p2 = loadGuideProgress('ws-1');
+
+    expect(p1.pagesSeen).not.toBe(EMPTY_PROGRESS.pagesSeen);
+    expect(p2.pagesSeen).not.toBe(EMPTY_PROGRESS.pagesSeen);
+    expect(p1.pagesSeen).not.toBe(p2.pagesSeen);
+
+    expect(p1.pagesDone).not.toBe(EMPTY_PROGRESS.pagesDone);
+    expect(p2.pagesDone).not.toBe(EMPTY_PROGRESS.pagesDone);
+    expect(p1.pagesDone).not.toBe(p2.pagesDone);
+
+    expect(p1.trailsCompleted).not.toBe(EMPTY_PROGRESS.trailsCompleted);
+    expect(p2.trailsCompleted).not.toBe(EMPTY_PROGRESS.trailsCompleted);
+    expect(p1.trailsCompleted).not.toBe(p2.trailsCompleted);
+
+    // Verificar que mutação em-place não vaza estado
+    p1.pagesSeen.push('leaked-item');
+    expect(EMPTY_PROGRESS.pagesSeen).toEqual([]);
+    expect(p2.pagesSeen).toEqual([]);
+  });
 });
