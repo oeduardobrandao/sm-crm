@@ -14,6 +14,7 @@ import { useMensagensUnread } from '../../hooks/useMensagensUnread';
 import { FlagIcon } from '@mesaas/ui/FlagIcon';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { switchWorkspace } from '@/store/workspace';
+import { GuideNavItem } from '../guide/GuidePill';
 
 interface SidebarProps {
   isDrawer?: boolean;
@@ -173,6 +174,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
         </div>
 
         <div className="sidebar-bottom">
+          {isDrawer && <GuideNavItem source="sidebar" className="sidebar-guide-item" />}
           <div
             className="sidebar-user-menu"
             id="user-menu-wrap"

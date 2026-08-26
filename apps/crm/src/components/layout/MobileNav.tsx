@@ -6,10 +6,11 @@ import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { useEffectiveNavFeatures } from '../../hooks/useEffectiveNavFeatures';
 import { useMensagensUnread } from '../../hooks/useMensagensUnread';
 import { getMoreSheetGroups } from './nav-data';
-import { Search, MessageCircle } from 'lucide-react';
+import { Search, MessageCircle, Compass } from 'lucide-react';
 import { CommandDialog, CommandInput, CommandList, CommandEmpty } from '@/components/ui/command';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { useGuide } from '../guide/GuideContext';
 
 declare global {
   interface Window {
@@ -36,6 +37,7 @@ export default function MobileNav() {
   const { features: rawFeatures } = useWorkspaceLimits();
   const features = useEffectiveNavFeatures(rawFeatures as Record<string, boolean> | null);
   const mensagensUnread = useMensagensUnread();
+  const guide = useGuide();
   const { t } = useTranslation();
   const [moreOpen, setMoreOpen] = useState(false);
   const [isDark, setIsDark] = useState(
@@ -167,6 +169,22 @@ export default function MobileNav() {
             </div>
             <span>Buscar</span>
           </button>
+
+          {guide?.showEntryPoint && (
+            <button
+              className="mobile-more-item"
+              type="button"
+              onClick={() => {
+                setMoreOpen(false);
+                guide.open('mobile_nav');
+              }}
+            >
+              <div className="mobile-more-item-icon">
+                <Compass size={18} />
+              </div>
+              <span>Guia de primeiros passos</span>
+            </button>
+          )}
 
           <button
             className="mobile-more-item"
