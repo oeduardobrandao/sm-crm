@@ -27,6 +27,7 @@ export interface GuideApi extends GuideView {
   showEntryPoint: boolean;
   open(source: GuideOpenSource): void;
   close(): void;
+  closeForAction(): void;
   goTo(pageId: string | null): void;
   concludeGuide(): void;
 }
@@ -65,15 +66,18 @@ export function GuideProvider({ children }: { children: ReactNode }) {
     captureEvent('guide_closed', { page: currentPageId });
   }, [view, currentPageId]);
 
+  const closeForAction = useCallback(() => setIsOpen(false), []);
+
   const goTo = useCallback((pageId: string | null) => {
     setCurrentPageId(pageId);
     if (pageId) captureEvent('guide_page_viewed', { page: pageId });
   }, []);
 
   const concludeGuide = useCallback(() => {
+    const alreadyConcluded = Boolean(view.progress.concludedAt);
     view.conclude();
     setIsOpen(false);
-    captureEvent('guide_completed', { via: 'cta' });
+    if (!alreadyConcluded) captureEvent('guide_completed', { via: 'cta' });
   }, [view]);
 
   // Auto-abertura: uma vez por workspace, condições da spec.
@@ -131,6 +135,7 @@ export function GuideProvider({ children }: { children: ReactNode }) {
     showEntryPoint: isOwner && !view.isConcluded,
     open,
     close,
+    closeForAction,
     goTo,
     concludeGuide,
   };
