@@ -31,6 +31,7 @@ import { listOAuthGrants, revokeOAuthGrant, type OAuthGrant } from '@/services/m
 import { SCOPE_OPTIONS, AGENT_PRESET } from '@/lib/mcp-scopes';
 
 const MCP_URL = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1/mcp';
+const MESAAS_LOGO_URL = 'https://www.mesaas.com.br/mesaas-icon-256.png';
 const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
 
 const codexCmd = (token: string) =>
@@ -366,6 +367,21 @@ export default function IntegracoesClaudePage() {
                     <strong>Criar</strong>, dê o nome "Mesaas", cole a URL abaixo em{' '}
                     <strong>MCP server URL</strong> e escolha <strong>OAuth</strong> como
                     autenticação.
+                  </span>
+                </li>
+                <li>
+                  <span>
+                    Opcional: para o conector aparecer com a nossa marca,{' '}
+                    <a
+                      href={MESAAS_LOGO_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline text-primary"
+                    >
+                      baixe a logo do Mesaas (PNG)
+                    </a>{' '}
+                    e envie no campo <strong>Icon</strong>. O ícone só pode ser definido nesse passo
+                    de criação.
                   </span>
                 </li>
                 <li>
