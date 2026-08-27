@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -10,9 +10,12 @@ import {
   ExternalLink,
   Info,
   Instagram,
+  Link2,
+  MessageCircle,
   MoreVertical,
   Pencil,
   Plus,
+  Reply,
   Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -51,7 +54,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
+import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
 import { useAuth } from '../../context/AuthContext';
+import { useEntitlements } from '../../hooks/useEntitlements';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
 import { sanitizeUrl } from '@/utils/security';
@@ -62,11 +67,13 @@ import {
   getInstagramAutomationSends,
   getClientes,
   getInitials,
+  hasAutomationReadyAccount,
   type InstagramCommentAutomation,
   type InstagramAutomationSend,
   type Cliente,
 } from '../../store';
 import AutomationFormDialog from './AutomationFormDialog';
+import AutomacoesChecklist from './AutomacoesChecklist';
 
 /** Module-level so other surfaces (e.g. useEffectiveNavFeatures' sibling
  * count query) can invalidate the same cache entry after a write. */
@@ -118,10 +125,12 @@ export default function AutomacoesPage() {
   const [editing, setEditing] = useState<InstagramCommentAutomation | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InstagramCommentAutomation | null>(null);
 
-  const { data: automations = [], isLoading } = useQuery({
+  const automationsQuery = useQuery({
     queryKey: AUTOMATIONS_KEY,
     queryFn: getInstagramAutomations,
   });
+  const automations = useMemo(() => automationsQuery.data ?? [], [automationsQuery.data]);
+  const isLoading = automationsQuery.isLoading;
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
 
   const clientesById = useMemo(() => {
@@ -199,6 +208,69 @@ export default function AutomacoesPage() {
 
   const columnCount = isAgent ? 8 : 9;
 
+  const { hasFeature, isLoading: entLoading } = useEntitlements();
+  const canCreate = !entLoading && hasFeature('feature_instagram_automation');
+  const flagOff = !entLoading && !hasFeature('feature_instagram_automation');
+
+  const readyQuery = useQuery({
+    queryKey: ['ig-automation-ready-account'],
+    queryFn: hasAutomationReadyAccount,
+    staleTime: 60_000,
+  });
+
+  const dismissKey = `automacoes_checklist_dismissed:${profile?.conta_id ?? ''}`;
+  const [checklistDismissed, setChecklistDismissed] = useState(false);
+  useEffect(() => {
+    setChecklistDismissed(localStorage.getItem(dismissKey) === '1');
+  }, [dismissKey]);
+  const dismissChecklist = () => {
+    localStorage.setItem(dismissKey, '1');
+    setChecklistDismissed(true);
+  };
+
+  if (flagOff && automationsQuery.isPending) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+  if (flagOff && automationsQuery.isError) {
+    return (
+      <div style={{ padding: '4rem', textAlign: 'center' }}>
+        <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>{t('loadError')}</p>
+        <Button variant="outline" onClick={() => automationsQuery.refetch()}>
+          {t('retry')}
+        </Button>
+      </div>
+    );
+  }
+  if (flagOff && automations.length === 0) {
+    return (
+      <UpgradeLockedScreen featureLabel={t('featureLabel')} feature="feature_instagram_automation">
+        <p className="text-sm max-w-md" style={{ color: 'var(--text-muted)' }}>
+          {t('locked.pitch')}
+        </p>
+        <div className="flex flex-wrap justify-center gap-2.5 my-2">
+          {[
+            { icon: MessageCircle, label: t('locked.cardKeyword') },
+            { icon: Link2, label: t('locked.cardButtons') },
+            { icon: Reply, label: t('locked.cardReply') },
+          ].map(({ icon: Icon, label }) => (
+            <div
+              key={label}
+              className="rounded-xl border px-4 py-3 text-xs max-w-[180px] flex flex-col items-center gap-1.5"
+              style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </div>
+          ))}
+        </div>
+      </UpgradeLockedScreen>
+    );
+  }
+
   return (
     <div style={{ padding: '1.5rem' }}>
       <div className="header">
@@ -226,6 +298,17 @@ export default function AutomacoesPage() {
         <Info className="h-3.5 w-3.5" style={{ flexShrink: 0 }} />
         {t('tiebreakHint')}
       </p>
+
+      {!checklistDismissed && automationsQuery.isSuccess && readyQuery.isSuccess && (
+        <AutomacoesChecklist
+          accountReady={readyQuery.data === true}
+          hasAutomation={automations.length > 0}
+          hasFirstDm={automations.some((a) => a.dms_sent_count > 0)}
+          canCreate={canCreate && !isAgent}
+          onCreate={openCreate}
+          onDismiss={dismissChecklist}
+        />
+      )}
 
       {clientesComAutomacao.length > 0 && (
         <div style={{ marginBottom: '1rem', maxWidth: 260 }}>

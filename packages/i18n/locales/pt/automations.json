@@ -118,6 +118,14 @@
     "previewNow": "Agora",
     "previewComposer": "Responder..."
   },
+  "locked": {
+    "pitch": "Responda comentários do Instagram com uma DM automática: palavra-chave no comentário, mensagem (com botões de link) na caixa de entrada do seguidor.",
+    "cardKeyword": "Palavra-chave no comentário dispara a DM",
+    "cardButtons": "Até 3 botões de link na mensagem",
+    "cardReply": "Resposta pública automática opcional"
+  },
+  "loadError": "Não foi possível carregar as automações.",
+  "retry": "Tentar de novo",
   "checklist": {
     "title": "Comece por aqui",
     "subtitle": "3 passos para a primeira DM automática",

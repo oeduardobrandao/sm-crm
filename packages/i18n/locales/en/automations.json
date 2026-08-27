@@ -118,6 +118,14 @@
     "previewNow": "Now",
     "previewComposer": "Reply..."
   },
+  "locked": {
+    "pitch": "Reply to Instagram comments with an automatic DM: keyword in the comment, message (with link buttons) in the follower's inbox.",
+    "cardKeyword": "A keyword in the comment triggers the DM",
+    "cardButtons": "Up to 3 link buttons in the message",
+    "cardReply": "Optional automatic public reply"
+  },
+  "loadError": "Could not load automations.",
+  "retry": "Try again",
   "checklist": {
     "title": "Start here",
     "subtitle": "3 steps to your first automatic DM",
