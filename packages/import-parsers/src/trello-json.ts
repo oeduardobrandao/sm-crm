@@ -1,3 +1,4 @@
+import { ImportParseError } from './errors';
 import type { ImportCollection, ImportRow } from './types';
 
 interface TrelloList {
@@ -24,7 +25,16 @@ interface TrelloChecklist {
 }
 
 export function parseTrelloJson(fileName: string, text: string): ImportCollection {
-  const board = JSON.parse(text) as {
+  const parsed: unknown = JSON.parse(text);
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    Array.isArray(parsed) ||
+    !Array.isArray((parsed as Record<string, unknown>).cards)
+  ) {
+    throw new ImportParseError('trello-not-a-board');
+  }
+  const board = parsed as {
     name?: string;
     lists?: TrelloList[];
     cards?: TrelloCard[];

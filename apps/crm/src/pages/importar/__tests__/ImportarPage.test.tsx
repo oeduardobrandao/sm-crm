@@ -567,10 +567,21 @@ describe('ImportarPage', () => {
     });
 
     await screen.findByText(
-      'Não conseguimos ler este arquivo — confira o passo a passo de exportação acima.',
+      'Não conseguimos ler o arquivo "quebrado.csv". Confira o passo a passo de exportação acima.',
     );
     expect(screen.getByLabelText('Arquivos de exportação')).toBeInTheDocument();
     await waitFor(() => expect(mockedAnalyze).not.toHaveBeenCalled());
+  });
+
+  test('MCP callout is visible on step 1 with links to /configuracao/mcp and the KB article', async () => {
+    renderPage();
+    expect(
+      await screen.findByText('O jeito mais completo de migrar: peça para um agente de IA'),
+    ).toBeInTheDocument();
+    const mcpLink = screen.getByText('Conectar um agente');
+    expect(mcpLink.closest('a')).toHaveAttribute('href', '/configuracao/mcp');
+    const howLink = screen.getByText('Como funciona');
+    expect(howLink.closest('a')).toHaveAttribute('href', '/ajuda/como-conectar-o-claude-mcp');
   });
 
   // An unresolved or failed clientes list silently resolves every referenced

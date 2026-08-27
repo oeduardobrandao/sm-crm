@@ -1,7 +1,10 @@
+import { Bot } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import type { SourceKind } from '@mesaas/import-parsers';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { SOURCE_GUIDES, sourceGuide } from '../sourceGuides';
+import SourceGuideCard from './SourceGuideCard';
 
 export default function StepOrigem({
   source,
@@ -15,9 +18,34 @@ export default function StepOrigem({
   const guide = source ? sourceGuide(source) : null;
   return (
     <div className="space-y-6">
+      <Card className="border-primary/30 bg-primary/5">
+        <CardContent className="pt-6">
+          <h2 className="mb-2 flex items-center gap-2 text-base font-semibold">
+            <Bot aria-hidden className="h-5 w-5 text-primary" />O jeito mais completo de migrar:
+            peça para um agente de IA
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Conecte o Claude ou o ChatGPT ao seu Mesaas via MCP e peça algo como "migre meus
+            clientes e o calendário do Notion para o Mesaas". O agente lê os dados direto na outra
+            ferramenta e cria clientes, posts e tarefas por aqui, sem você precisar exportar
+            arquivos.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3 text-sm">
+            <Link to="/configuracao/mcp" className="font-medium text-primary hover:underline">
+              Conectar um agente
+            </Link>
+            <Link
+              to="/ajuda/como-conectar-o-claude-mcp"
+              className="font-medium text-primary hover:underline"
+            >
+              Como funciona
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+
       <p className="text-sm text-muted-foreground">
-        Traga seus clientes, calendário de conteúdo, entregas e ideias de outra ferramenta. Nada é
-        publicado e nada é apagado: você confere tudo antes de importar e pode desfazer depois.
+        Prefere fazer você mesmo? Escolha de onde vêm os dados:
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -53,21 +81,7 @@ export default function StepOrigem({
         })}
       </div>
 
-      {guide && (
-        <Card>
-          <CardContent className="pt-6">
-            <h2 className="mb-3 flex items-center gap-2 text-base font-semibold">
-              <guide.icon aria-hidden="true" className="h-4 w-4 text-primary" />
-              Como exportar do {guide.label}
-            </h2>
-            <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-              {guide.steps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-          </CardContent>
-        </Card>
-      )}
+      {guide && <SourceGuideCard guide={guide} />}
 
       <div className="flex justify-end">
         <Button disabled={!source} onClick={onNext}>

@@ -1,4 +1,5 @@
 export * from './src/types';
+export { ImportParseError, type ImportParseIssue } from './src/errors';
 export { parseCsv } from './src/csv';
 export { parseGenericCsv } from './src/generic-csv';
 export { parseTrelloJson } from './src/trello-json';
