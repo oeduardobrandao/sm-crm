@@ -117,5 +117,16 @@
     "previewDesktopNote": "Buttons show in the Instagram app. On Instagram web they may not be displayed.",
     "previewNow": "Now",
     "previewComposer": "Reply..."
+  },
+  "checklist": {
+    "title": "Start here",
+    "subtitle": "3 steps to your first automatic DM",
+    "dismiss": "Dismiss",
+    "step1": "Reconnect the client's Instagram",
+    "step1Cta": "View clients",
+    "step2": "Create your first automation",
+    "step2Cta": "Create",
+    "step3": "Test it with a comment",
+    "step3Hint": "Comment the keyword on a post and watch the DM arrive."
   }
 }
