@@ -245,6 +245,9 @@ export interface HubPostsResponse {
   workflowSelectOptions: HubSelectOption[];
   instagramProfile: InstagramProfile | null;
   autoPublishOnApproval?: boolean;
+  /** Workflows mid dual-approval: a later client-approval etapa is still open,
+   * so approving now will NOT auto-schedule (mirrors hub-approve's guard). */
+  autoPublishSuspendedWorkflowIds?: number[];
 }
 
 export interface DashboardTopPost {

@@ -11,6 +11,7 @@ import { InstagramGridPreview } from '../components/InstagramGridPreview';
 import { formatDate } from '../components/PostCard';
 import { SharePostButton } from '../components/SharePostButton';
 import { OpenPostLink } from '../components/OpenPostLink';
+import { isAutoPublishActive } from '../lib/autoPublish';
 
 export function AprovacoesPage() {
   const { token, bootstrap } = useHub();
@@ -119,7 +120,7 @@ export function AprovacoesPage() {
                       onToggleSelect={handleToggleSelect}
                       onApprovalSubmitted={handleInvalidate}
                       priority={i === 0}
-                      autoPublishOnApproval={data?.autoPublishOnApproval ?? false}
+                      autoPublishOnApproval={isAutoPublishActive(data, post.workflow_id)}
                     />
                   </div>
                 ))}
