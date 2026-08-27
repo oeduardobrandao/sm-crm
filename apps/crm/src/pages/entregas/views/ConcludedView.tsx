@@ -106,6 +106,7 @@ export function ConcludedView() {
       qc.invalidateQueries({ queryKey: ['concluded-summaries'] });
       qc.invalidateQueries({ queryKey: ['workflows'] });
       qc.invalidateQueries({ queryKey: ['all-active-etapas'] });
+      qc.invalidateQueries({ queryKey: ['workflow-events'] });
     } catch {
       toast.error('Erro ao reabrir fluxo.');
     }

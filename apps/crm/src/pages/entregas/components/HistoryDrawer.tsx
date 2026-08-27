@@ -7,6 +7,7 @@ import {
   getPostApprovals,
   getMembros,
   getPostCommentThreads,
+  getWorkflowEvents,
   type Workflow,
   type WorkflowEtapa,
   type WorkflowPost,
@@ -18,6 +19,8 @@ import { computeDeadlineDate } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
 import PostCommentSummary from './PostCommentSummary';
+import { WorkflowHistoryList } from './WorkflowHistoryView';
+import { buildWorkflowTimeline } from './workflowTimeline';
 import { TIPO_LABELS } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { PostStatusChip } from './PostStatusChip';
@@ -108,6 +111,12 @@ export function HistoryDrawer({ workflow, clienteName, onClose }: HistoryDrawerP
     enabled: postIds.length > 0,
   });
 
+  const { data: events = [] } = useQuery({
+    queryKey: ['workflow-events', workflowId],
+    queryFn: () => getWorkflowEvents(workflowId),
+  });
+  const historyNodes = buildWorkflowTimeline(events);
+
   const compliance = computeCompliance(etapas, membros);
   const statusRegistry = useStatusRegistry();
 
@@ -181,6 +190,13 @@ export function HistoryDrawer({ workflow, clienteName, onClose }: HistoryDrawerP
               </div>
             </div>
           </div>
+
+          {historyNodes.length > 0 && (
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div className="history-section-title">Histórico</div>
+              <WorkflowHistoryList nodes={historyNodes} />
+            </div>
+          )}
 
           <div>
             <div className="history-section-title">Posts ({posts.length})</div>

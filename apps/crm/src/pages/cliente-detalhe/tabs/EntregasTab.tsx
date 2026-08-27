@@ -388,6 +388,7 @@ export default function EntregasTab() {
     queryClient.invalidateQueries({ queryKey: ['workflow-covers'] });
     queryClient.invalidateQueries({ queryKey: ['concluded-by-cliente', clienteId] });
     queryClient.invalidateQueries({ queryKey: ['concluded-summaries-cliente'] });
+    queryClient.invalidateQueries({ queryKey: ['workflow-events'] });
     refreshPostCalendar();
   };
 

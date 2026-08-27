@@ -17,6 +17,7 @@ import {
   LayoutGrid,
   Maximize2,
   Minimize2,
+  History,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -105,6 +106,7 @@ import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { supabase } from '@/lib/supabase';
 import { WorkflowCalendarView } from './WorkflowCalendarView';
 import { WorkflowGridView } from './WorkflowGridView';
+import { WorkflowHistoryView } from './WorkflowHistoryView';
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import { DiffView } from './DiffView';
 import { ReadOnlyTipTap } from './ReadOnlyTipTap';
@@ -170,7 +172,7 @@ export function WorkflowDrawer({
   const [pendingRejectSuggestionId, setPendingRejectSuggestionId] = useState<number | null>(null);
   const [editorVersions, setEditorVersions] = useState<Record<number, number>>({});
   const statusRegistry = useStatusRegistry();
-  const [drawerView, setDrawerView] = useState<'posts' | 'calendar' | 'grid'>('posts');
+  const [drawerView, setDrawerView] = useState<'posts' | 'calendar' | 'grid' | 'history'>('posts');
   const [isFullscreen, setIsFullscreen] = useState(
     () => localStorage.getItem('workflow-drawer-fullscreen') === '1',
   );
@@ -206,6 +208,7 @@ export function WorkflowDrawer({
       try {
         const result = await completeEtapaForAdvance(workflowId, approvalEtapa.id!);
         toast.success('Todos os posts aprovados — etapa concluída!');
+        qc.invalidateQueries({ queryKey: ['workflow-events', workflowId] });
         notifyRearmOutcome(result);
         onRefresh();
       } catch {
@@ -332,6 +335,7 @@ export function WorkflowDrawer({
     qc.invalidateQueries({ queryKey: ['post-comment-threads'] });
     qc.invalidateQueries({ queryKey: ['post-edit-suggestions'] });
     qc.invalidateQueries({ queryKey: ['post-status-events'] });
+    qc.invalidateQueries({ queryKey: ['workflow-events', workflowId] });
     // Field changes (incl. scheduled_at, tipo) must also refresh the day-dot markers other
     // rows' date pickers derive from this same client-wide query — see the ['clientePosts',
     // clienteId] useQuery above. WorkflowCalendarView's own reschedule path already
@@ -736,6 +740,14 @@ export function WorkflowDrawer({
                 <CalendarIcon className="h-3.5 w-3.5" />
                 Calendário
               </button>
+              <button
+                className={`drawer-calendar-btn${drawerView === 'history' ? ' active' : ''}`}
+                onClick={() => setDrawerView('history')}
+                title="Ver histórico do fluxo"
+              >
+                <History className="h-3.5 w-3.5" />
+                Histórico
+              </button>
             </div>
             <button
               className="drawer-close-btn drawer-fullscreen-btn"
@@ -768,6 +780,8 @@ export function WorkflowDrawer({
             />
           ) : drawerView === 'grid' ? (
             <WorkflowGridView clienteId={clienteId} clienteNome={card.cliente?.nome || '—'} />
+          ) : drawerView === 'history' ? (
+            <WorkflowHistoryView workflowId={workflowId} />
           ) : (
             <>
               <div className="drawer-section-header">

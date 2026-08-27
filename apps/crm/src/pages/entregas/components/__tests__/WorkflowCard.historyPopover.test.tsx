@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render as rtlRender } from '@testing-library/react';
+import { render as rtlRender, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -56,45 +56,16 @@ function makeCard(): BoardCard {
     deadline: { diasRestantes: 5, horasRestantes: 0, estourado: false, urgente: false },
     totalEtapas: 1,
     etapaIdx: 0,
-    postCovers: [
-      {
-        id: 1,
-        post_id: 1,
-        conta_id: 'c',
-        r2_key: 'img/1.png',
-        thumbnail_r2_key: null,
-        kind: 'image',
-        mime_type: 'image/png',
-        size_bytes: 1000,
-        original_filename: 'lost.png',
-        width: 1080,
-        height: 1080,
-        duration_seconds: null,
-        is_cover: true,
-        sort_order: 0,
-        uploaded_by: null,
-        created_at: '2026-01-01T00:00:00Z',
-        url: null,
-        thumbnail_url: null,
-        media_lost_at: '2026-08-14T03:00:00.000Z',
-      },
-    ],
   } as unknown as BoardCard;
 }
 
-describe('WorkflowCard post covers', () => {
-  it('shows the unavailable placeholder instead of a broken image for a permanently lost cover', () => {
-    const { container } = render(
+describe('WorkflowCard history popover trigger', () => {
+  it('renders the "Histórico do fluxo" clock trigger in the action row', () => {
+    render(
       <MemoryRouter>
-        <WorkflowCard card={makeCard()} />
+        <WorkflowCard card={makeCard()} postsCount={0} />
       </MemoryRouter>,
     );
-    // The kanban cover circle is a genuinely tight 32px space, so it renders
-    // MediaUnavailable in "compact" mode — icon only, no visible text label
-    // (unlike the gallery tile and lightbox, which use "full"). lucide-react
-    // renders each icon with a `lucide-<name>` class, which is what this
-    // asserts instead of the (absent-by-design) text.
-    expect(container.querySelector('.lucide-image-off')).toBeInTheDocument();
-    expect(container.querySelector('img')).not.toBeInTheDocument();
+    expect(screen.getByTitle('Histórico do fluxo')).toBeInTheDocument();
   });
 });

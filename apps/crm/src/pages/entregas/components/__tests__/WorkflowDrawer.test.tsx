@@ -141,6 +141,11 @@ vi.mock('@/components/ui/date-time-picker', () => ({
 vi.mock('@/pages/entregas/components/WorkflowCalendarView', () => ({
   WorkflowCalendarView: () => <div data-testid="workflow-calendar-view-stub" />,
 }));
+vi.mock('@/pages/entregas/components/WorkflowHistoryView', () => ({
+  WorkflowHistoryView: ({ workflowId }: { workflowId: number }) => (
+    <div data-testid="workflow-history-view-stub">history-{workflowId}</div>
+  ),
+}));
 vi.mock('@/components/CopyPostLinkButton', () => ({
   CopyPostLinkButton: () => <div data-testid="copy-post-link-stub" />,
 }));
@@ -355,5 +360,37 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
 
     await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
     expect(mockSyncMentions).not.toHaveBeenCalled();
+  });
+});
+
+describe('WorkflowDrawer Histórico tab', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([
+      {
+        id: 1,
+        workflow_id: 10,
+        titulo: 'Post A',
+        conteudo: null,
+        conteudo_plain: '',
+        tipo: 'feed',
+        ordem: 0,
+        status: 'rascunho',
+        responsavel_id: null,
+        scheduled_at: null,
+        ig_caption: null,
+        platform: 'instagram',
+      } as never,
+    ]);
+  });
+
+  it('renders WorkflowHistoryView with the workflow id when the Histórico toggle is clicked', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByDisplayValue('Feed');
+    fireEvent.click(screen.getByRole('button', { name: /Histórico/i }));
+
+    expect(await screen.findByTestId('workflow-history-view-stub')).toHaveTextContent('history-10');
   });
 });
