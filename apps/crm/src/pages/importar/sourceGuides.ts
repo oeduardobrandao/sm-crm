@@ -17,47 +17,60 @@ export interface SourceGuide {
    */
   icon: LucideIcon;
   steps: string[];
+  notes?: string[];
 }
 
-/** Export instructions per source. Static copy: no screenshots, no links out. */
+/** Export instructions per source. Static copy: no links OUT (external); internal KB links are fine. */
 export const SOURCE_GUIDES: SourceGuide[] = [
   {
     id: 'notion',
     label: 'Notion',
     accept: '.zip,.csv',
-    hint: 'Exportação em Markdown & CSV (.zip) ou um CSV isolado',
+    hint: 'Um único export "Markdown & CSV" (.zip) da página que lista seus clientes',
     icon: FileText,
     steps: [
-      'Abra a página ou a base de dados no Notion.',
-      'Clique em ••• (canto superior direito) e escolha "Exportar".',
+      'No Notion, abra a página mais de cima que contém a lista de clientes (a que mostra todos eles, não a página de um cliente só).',
+      'Clique em ••• no canto superior direito e escolha "Exportar".',
       'Em "Formato de exportação", escolha "Markdown & CSV".',
-      'Marque "Incluir subpáginas" e confirme a exportação.',
-      'Envie aqui o .zip que o Notion disponibiliza (ou o .csv, se exportou uma base só).',
+      'Marque "Incluir subpáginas": é isso que traz as bases de dados que estão dentro da página.',
+      'Se aparecer a opção de incluir arquivos e imagens, escolha não incluir. O zip fica menor e o limite aqui é de 20 MB por arquivo.',
+      'Envie aqui o .zip gerado (ou o .csv, se exportou uma base só).',
+    ],
+    notes: [
+      'Exporte uma vez só, a partir da página de cima. Não é preciso exportar cliente por cliente.',
+      'Só tabelas e bases de dados (arquivos CSV) são importadas. Textos de páginas e briefings não entram nesta importação.',
     ],
   },
   {
     id: 'trello',
     label: 'Trello',
     accept: '.json',
-    hint: 'Exportação do quadro em JSON',
+    hint: 'Um arquivo .json por quadro',
     icon: SquareKanban,
     steps: [
-      'Abra o quadro no Trello.',
+      'A exportação do Trello é feita quadro a quadro. Abra o quadro que quer trazer.',
       'Vá em Menu → Mais → Imprimir e exportar → "Exportar como JSON".',
-      'Salve o arquivo .json e envie aqui.',
+      'Salve o arquivo .json. Repita para cada quadro (até 5 por importação).',
+      'Envie aqui os arquivos .json.',
+    ],
+    notes: [
+      'Tem mais de 5 quadros? Importe os 5 primeiros e repita o assistente para os demais.',
+      'Se você tem o export em CSV do Trello Premium, use a origem "Planilha (CSV)".',
     ],
   },
   {
     id: 'clickup',
     label: 'ClickUp',
     accept: '.csv',
-    hint: 'Exportação de Lista ou Espaço em CSV',
+    hint: 'Exportação da Lista em CSV, um arquivo por lista',
     icon: ListChecks,
     steps: [
-      'No ClickUp, abra a Lista ou o Espaço que quer trazer.',
-      'Clique em ••• → "Baixar" (ou "Exportar") → CSV.',
-      'Envie aqui o arquivo .csv.',
+      'No ClickUp, abra a Lista (ou o Espaço) que quer trazer.',
+      'Clique em ••• → "Baixar" (ou "Exportar") e escolha CSV, não XLSX.',
+      'Repita para cada lista (até 5 por importação).',
+      'Envie aqui os arquivos .csv.',
     ],
+    notes: ['O formato Excel (.xlsx) não é aceito. Na hora de exportar, escolha CSV.'],
   },
   {
     id: 'csv',

@@ -5,6 +5,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import type { SourceGuide } from '../sourceGuides';
 import { MAX_FILES, MAX_ROWS, totalRows } from '../parseFiles';
+import SourceGuideCard from './SourceGuideCard';
+
+export interface UploadError {
+  message: string;
+  details: string[];
+}
 
 export default function StepUpload({
   guide,
@@ -17,7 +23,7 @@ export default function StepUpload({
 }: {
   guide: SourceGuide;
   bundle: ImportBundle | null;
-  error: string | null;
+  error: UploadError | null;
   busy: boolean;
   onFiles: (files: File[]) => void;
   onBack: () => void;
@@ -28,6 +34,8 @@ export default function StepUpload({
 
   return (
     <div className="space-y-6">
+      <SourceGuideCard guide={guide} collapsible />
+
       <Card>
         <CardContent className="space-y-3 pt-6">
           <label htmlFor="import-files" className="block text-sm font-semibold">
@@ -72,9 +80,18 @@ export default function StepUpload({
       )}
 
       {error && (
-        <div className="flex gap-2 rounded-xl border border-danger/40 bg-danger/5 p-4 text-sm text-danger">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          <p>{error}</p>
+        <div className="rounded-xl border border-danger/40 bg-danger/5 p-4 text-sm text-danger">
+          <div className="flex gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <p>{error.message}</p>
+          </div>
+          {error.details.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-9 text-xs">
+              {error.details.map((d) => (
+                <li key={d}>{d}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 

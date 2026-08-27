@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { ImportParseError } from '../src/errors';
 import { parseTrelloJson } from '../src/trello-json';
 
 const raw = readFileSync(join(__dirname, 'fixtures', 'trello-board.json'), 'utf8');
@@ -32,5 +33,34 @@ describe('parseTrelloJson', () => {
 
   test('actions[] content never leaks into the bundle', () => {
     expect(JSON.stringify(col)).not.toContain('should never appear');
+  });
+
+  test('throws trello-not-a-board for a workspace-style JSON (object without cards)', () => {
+    expect(() =>
+      parseTrelloJson('workspace.json', JSON.stringify({ name: 'My Workspace' })),
+    ).toThrow(ImportParseError);
+    try {
+      parseTrelloJson('workspace.json', JSON.stringify({ name: 'My Workspace' }));
+    } catch (err) {
+      expect((err as ImportParseError).issue).toBe('trello-not-a-board');
+    }
+  });
+
+  test('throws trello-not-a-board for a bare JSON array', () => {
+    expect(() => parseTrelloJson('array.json', JSON.stringify([1, 2, 3]))).toThrow(
+      ImportParseError,
+    );
+    try {
+      parseTrelloJson('array.json', JSON.stringify([1, 2, 3]));
+    } catch (err) {
+      expect((err as ImportParseError).issue).toBe('trello-not-a-board');
+    }
+  });
+
+  test('does not throw for an empty board (cards: [])', () => {
+    const emptyBoard = JSON.stringify({ name: 'Empty', cards: [], lists: [] });
+    const result = parseTrelloJson('empty.json', emptyBoard);
+    expect(result.rows).toHaveLength(0);
+    expect(result.name).toBe('Empty');
   });
 });
