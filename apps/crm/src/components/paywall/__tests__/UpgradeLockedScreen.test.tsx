@@ -33,8 +33,16 @@ import { UpgradeLockedScreen } from '../UpgradeLockedScreen';
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedReport = vi.mocked(reportPaywallHit);
 
-function setRole(role: 'owner' | 'admin' | 'agent', contaId: string | null = 'ws-1') {
-  mockedUseAuth.mockReturnValue({ role, profile: contaId ? { conta_id: contaId } : null } as never);
+function setAuth(
+  role: 'owner' | 'admin' | 'agent',
+  workspaceRole: 'owner' | 'admin' | 'agent' | null,
+  contaId: string | null = 'ws-1',
+) {
+  mockedUseAuth.mockReturnValue({
+    role,
+    workspaceRole,
+    profile: contaId ? { conta_id: contaId } : null,
+  } as never);
 }
 
 function renderScreen(featureLabel = 'Relatórios', feature?: string) {
@@ -52,7 +60,7 @@ beforeEach(() => {
 
 describe('UpgradeLockedScreen', () => {
   it('shows the upgrade CTA for owners and navigates to billing', () => {
-    setRole('owner');
+    setAuth('owner', 'owner');
     renderScreen('Relatórios');
 
     expect(screen.getByText('Relatórios não está no seu plano')).toBeInTheDocument();
@@ -64,7 +72,7 @@ describe('UpgradeLockedScreen', () => {
   });
 
   it('shows the contact-owner message for non-owners and no upgrade CTA', () => {
-    setRole('agent');
+    setAuth('agent', 'agent');
     renderScreen('Relatórios');
 
     expect(
@@ -75,6 +83,40 @@ describe('UpgradeLockedScreen', () => {
       screen.queryByText('Faça upgrade para desbloquear este recurso.'),
     ).not.toBeInTheDocument();
   });
+
+  it('decide owner pelo workspaceRole, não pelo role de profiles', () => {
+    // owner em profiles mas agent no workspace ativo: NÃO pode ver botão de compra
+    setAuth('owner', 'agent');
+    renderScreen('Relatórios');
+    expect(screen.queryByRole('button', { name: 'Fazer upgrade' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Fale com o dono do workspace para liberar este recurso.'),
+    ).toBeInTheDocument();
+  });
+
+  it('workspaceRole null (não resolvido) trata como não-owner', () => {
+    setAuth('owner', null);
+    renderScreen('Relatórios');
+    expect(screen.queryByRole('button', { name: 'Fazer upgrade' })).not.toBeInTheDocument();
+  });
+
+  it('workspaceRole owner vê o CTA mesmo com role de profiles desatualizado', () => {
+    setAuth('agent', 'owner');
+    renderScreen('Relatórios');
+    expect(screen.getByRole('button', { name: 'Fazer upgrade' })).toBeInTheDocument();
+  });
+
+  it('renderiza children entre o título e o CTA', () => {
+    setAuth('owner', 'owner');
+    render(
+      <MemoryRouter>
+        <UpgradeLockedScreen featureLabel="Automações">
+          <p data-testid="pitch">pitch aqui</p>
+        </UpgradeLockedScreen>
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('pitch')).toBeInTheDocument();
+  });
 });
 
 // ProtectedRoute redirects a user whose flag is off to this screen BEFORE they
@@ -84,14 +126,14 @@ describe('UpgradeLockedScreen', () => {
 // of the six trigger-gated features silently stop reporting again.
 describe('UpgradeLockedScreen paywall reporting', () => {
   it('reports the denial on render when a feature flag is supplied', () => {
-    setRole('owner');
+    setAuth('owner', 'owner');
     renderScreen('Ideias', 'feature_ideas');
 
     expect(mockedReport).toHaveBeenCalledWith({ workspaceId: 'ws-1', feature: 'feature_ideas' });
   });
 
   it('reports for non-owners too, who see no CTA at all', () => {
-    setRole('agent');
+    setAuth('agent', 'agent');
     renderScreen('Financeiro', 'feature_financial');
 
     expect(mockedReport).toHaveBeenCalledWith({
@@ -101,7 +143,7 @@ describe('UpgradeLockedScreen paywall reporting', () => {
   });
 
   it('sends the higher-intent click signal when the CTA is pressed', () => {
-    setRole('owner');
+    setAuth('owner', 'owner');
     renderScreen('Contratos', 'feature_contracts');
     mockedReport.mockClear();
 
@@ -116,12 +158,12 @@ describe('UpgradeLockedScreen paywall reporting', () => {
   });
 
   it('reports nothing without a workspace id, and nothing without a feature', () => {
-    setRole('owner', null);
+    setAuth('owner', 'owner', null);
     renderScreen('Leads', 'feature_leads');
     expect(mockedReport).not.toHaveBeenCalled();
 
     mockedReport.mockClear();
-    setRole('owner');
+    setAuth('owner', 'owner');
     renderScreen('Leads');
     expect(mockedReport).not.toHaveBeenCalled();
   });
