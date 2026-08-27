@@ -29,7 +29,7 @@ sinais do workspace:
 | # | Passo | Sinal de conclusão | CTA |
 |---|---|---|---|
 | 1 | Reconecte o Instagram do cliente | ≥1 `instagram_accounts` do workspace com `authorization_status='active'`, `permissions` contendo `instagram_business_manage_comments` **e** `instagram_business_manage_messages`, e `comments_subscribed_at IS NOT NULL` (a mesma elegibilidade tripla do processador) | link para a lista de clientes (`/clientes`) |
-| 2 | Crie sua primeira automação | `automations.length > 0` (dados que a página já busca) | botão "Criar →" que abre o dialog Nova automação existente (continua atrás do `FeatureGate` de criação) |
+| 2 | Crie sua primeira automação | `automations.length > 0` (dados que a página já busca) | botão "Criar →" que abre o dialog Nova automação existente. **O CTA só renderiza quando `hasFeature('feature_instagram_automation')` (useEntitlements)** — o `FeatureGate` atual cobre só o botão do header e o dialog vive fora dele, então um CTA sem esse check abriria o formulário para workspace legado com flag desligada (a criação só falharia no trigger do banco). Sem entitlement, o passo mostra o texto sem botão |
 | 3 | Teste com um comentário | algum `dms_sent_count > 0` na lista já buscada | nenhum CTA; texto explicativo curto ("Comente a palavra-chave num post e veja a DM chegar.") |
 
 **Copy aprovada (pt):** título "Comece por aqui", subtítulo "3 passos para a primeira DM
@@ -79,6 +79,14 @@ viram ponto ou dois-pontos aqui e no pitch da tela bloqueada.
 Nota consciente: links de banner abrem com `target="_blank"` (comportamento do
 `GlobalBannerContainer`) — o CTA abre nova aba do app. Aceito; não vale mudança de código.
 
+**Limitação aceita — targeting por plano ≠ entitlement efetivo:** `global_banners` segmenta
+por `workspaces.plan_id` e ignora `workspace_plan_overrides.feature_overrides`. Um
+Start/Free com override `true` receberia o upsell; um Pro/Max com override `false`
+receberia o anúncio. Decisão: aceitável como segmentação de marketing — hoje o único
+override de `feature_instagram_automation` é o do workspace DK (plano `lifetime`, fora dos
+dois targetings), então não há mistarget real; o pior caso futuro é um banner dismissível
+levemente errado. Não construir segmentação por feature efetiva para isso.
+
 ## 3. Nav com cadeado + página bloqueada (Start/Free)
 
 **Hoje:** `getNavGroups` *remove* o item `automacoes` quando
@@ -87,8 +95,9 @@ Nota consciente: links de banner abrem com `target="_blank"` (comportamento do
 
 **Novo comportamento:** em vez de remover, o item fica **visível, esmaecido, com ícone
 `Lock`** (lucide) à direita — novo campo opcional `showLockedWhenGated: true` na definição
-do item de nav, irmão do `comingSoon` existente; só `automacoes` o declara. O item
-continua clicável e navega para `/automacoes`.
+do item de nav, irmão do campo **`disabled`** existente (o estado inerte "em breve" do
+TikTok; não existe campo `comingSoon`); só `automacoes` declara o novo campo, e os dois
+campos não se combinam. O item continua clicável e navega para `/automacoes`.
 
 - Sidebar **e** MobileNav (as duas superfícies consomem `getNavGroups`).
 - `getNavGroups` passa a devolver o item com um marcador `locked: true` (em vez de
@@ -110,13 +119,31 @@ em página cheia a `UpgradeLockedScreen` enriquecida com o pitch aprovado:
   `UpgradeLockedScreen` já tem).
 - Telemetria `reportPaywallHit` (render + clique) que a tela já dispara — sem mudança.
 
-**Mecânica:** `UpgradeLockedScreen` ganha uma prop opcional `children` (renderizada entre o
-título/pitch e o botão), retrocompatível com os callers atuais. A `AutomacoesPage` decide:
-flag off e sem automações → `UpgradeLockedScreen` com o pitch; caso contrário → página
-normal (o botão "Nova automação" continua individualmente gateado pelo `FeatureGate`, que
-cobre a janela de entitlement obsoleto). Verificar na implementação se a rota já passa por
-`ProtectedRoute` com feature — se sim, o gate de página vive lá e recebe o pitch; a regra
-"legadas continuam acessando" tem de ser preservada onde quer que o gate esteja.
+**Mecânica — o gate vive NA PÁGINA, nunca no `ProtectedRoute`:** `/automacoes` hoje não
+está no `FEATURE_GATED` do `ProtectedRoute` e **não deve entrar lá** — aquele mapa gateia
+pela flag pura e bloquearia indevidamente workspaces com automações legadas (o
+`ProtectedRoute` não conhece a query de automações). A decisão é da `AutomacoesPage`, que
+combina flag bruta + resultado da query:
+
+- flag off **e** query de automações **concluída com sucesso** retornando 0 →
+  `UpgradeLockedScreen` com o pitch;
+- flag off + query ainda carregando → spinner (nunca decidir o paywall antes da resposta);
+- flag off + query em erro → estado de erro/retry da página, **não** o paywall (erro não é
+  evidência de ausência de automações; a página hoje defaulta a query para `[]`, e esse
+  default não pode alimentar a decisão);
+- caso contrário → página normal (o botão "Nova automação" continua individualmente
+  gateado pelo `FeatureGate`, que cobre a janela de entitlement obsoleto).
+
+`UpgradeLockedScreen` ganha uma prop opcional `children` (renderizada entre o título/pitch
+e o botão), retrocompatível com os callers atuais.
+
+**Correção compartilhada embutida:** `UpgradeLockedScreen` decide "owner" por
+`role === 'owner'` (campo de `profiles`, que o próprio `AuthContext` documenta como
+obsoleto após troca de workspace). Trocar para `workspaceRole === 'owner'` (o padrão
+já usado nos indicadores de uso de plano); `workspaceRole === null` (não resolvido) trata
+como não-owner — mostra a mensagem "fale com o dono", nunca um botão de compra indevido.
+Vale para todos os callers da tela; é alinhamento com o contrato documentado, não mudança
+de comportamento intencional.
 
 ## Dados / backend
 
@@ -125,7 +152,8 @@ Nenhuma migration, nenhuma edge function. Tudo é frontend + dois registros de b
 ## Testes
 
 - `AutomacoesChecklist` (unit): 3 combinações de sinais (0/3, 1/3 com passo atual certo,
-  3/3 → não renderiza), dismiss chama callback, estados visuais por classe.
+  3/3 → não renderiza), dismiss chama callback, estados visuais por classe, **CTA do passo
+  2 ausente quando o entitlement é falso** (workspace legado).
 - Página: dismiss persistido por workspace no localStorage; checklist não aparece
   dispensado; reaparece em outro workspace.
 - `getNavGroups`/`buildEffectiveNavFeatures`: flag off + `showLockedWhenGated` → item
@@ -134,16 +162,19 @@ Nenhuma migration, nenhuma edge function. Tudo é frontend + dois registros de b
   Sidebar/MobileNav que hoje esperam ocultação.**
 - Sidebar/MobileNav (render): item locked esmaecido com ícone de cadeado e href ativo.
 - `UpgradeLockedScreen`: com `children` renderiza o pitch; sem, comportamento atual
-  (callers existentes não quebram).
-- Página bloqueada: flag off + 0 automações → locked screen; flag off + automações
-  legadas → página normal.
+  (callers existentes não quebram); **owner decidido por `workspaceRole`** — owner em
+  `profiles.role` mas agent no workspace ativo NÃO vê o botão de upgrade;
+  `workspaceRole === null` → mensagem de não-owner.
+- Página bloqueada: flag off + 0 automações (query sucesso) → locked screen; flag off +
+  automações legadas → página normal; **flag off + query carregando → spinner, não
+  paywall; flag off + query em erro → estado de erro, não paywall**.
 
 ## Riscos e decisões registradas
 
 - **Sinal 1 é por workspace, não por cliente:** basta UMA conta reconectada para o passo
   contar como feito. Simples e suficiente para a primeira DM; refinamento por cliente só
   se houver demanda.
-- **`comingSoon` (TikTok) e `locked` são campos distintos** — inerte vs. clicável — e não
-  se combinam.
+- **`disabled` (o "em breve" do TikTok) e `showLockedWhenGated` são campos distintos** —
+  inerte vs. clicável — e não se combinam.
 - O checklist reusa a estética dos `guideBits` mas **não** importa o sistema do guia
   (trilhas/sinais/storage próprios); é um componente local da página.
