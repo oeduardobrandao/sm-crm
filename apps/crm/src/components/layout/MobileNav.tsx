@@ -222,6 +222,24 @@ export default function MobileNav() {
                     </div>
                   );
                 }
+                if (item.locked) {
+                  return (
+                    <button
+                      key={item.id}
+                      className="mobile-more-item mobile-more-item--locked"
+                      onClick={() => go(item.route)}
+                      type="button"
+                      data-testid={`mobile-nav-locked-${item.id}`}
+                      title={t('sidebar.upgradeToUnlock', 'Disponível nos planos Pro e Max')}
+                    >
+                      <div className="mobile-more-item-icon">
+                        <i className={`ph ${item.icon}`} />
+                      </div>
+                      <span>{t(item.labelKey, item.label)}</span>
+                      <i className="ph ph-lock nav-lock-icon" aria-hidden="true" />
+                    </button>
+                  );
+                }
                 const isActive = location.pathname.startsWith(item.route);
                 return (
                   <button
