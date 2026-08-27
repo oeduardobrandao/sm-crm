@@ -365,6 +365,16 @@ describe('AutomacoesPage', () => {
       expect(await screen.findByText('title')).toBeInTheDocument();
       expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
     });
+
+    it('query ainda pendente → spinner, NUNCA paywall', async () => {
+      mockGetAutomations.mockReturnValue(new Promise(() => {}));
+      const { container } = renderPage();
+
+      await waitFor(() => {
+        expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
+    });
   });
 
   describe('checklist', () => {
@@ -378,9 +388,27 @@ describe('AutomacoesPage', () => {
       expect(localStorage.getItem('automacoes_checklist_dismissed:w-1')).toBe('1');
     });
 
-    it('não aparece antes das duas queries de sinal resolverem', () => {
+    it('não aparece enquanto a query de automações nunca resolve (nenhum dos dois sinais pronto)', async () => {
       mockGetAutomations.mockReturnValue(new Promise(() => {}));
       renderPage();
+
+      // Ponto estável pós-primeira-renderização: título sempre aparece na
+      // página normal (flag ON), independente do estado das queries de
+      // sinal -- sem isso o assert abaixo passaria trivialmente mesmo que a
+      // guarda `isSuccess && isSuccess` não existisse.
+      await screen.findByText('title');
+      expect(screen.queryByTestId('automacoes-checklist')).not.toBeInTheDocument();
+    });
+
+    it('não aparece com automações resolvidas mas o sinal de conta pronta ainda pendente', async () => {
+      mockGetAutomations.mockResolvedValue([]);
+      mockHasReadyAccount.mockReturnValue(new Promise(() => {}));
+      renderPage();
+
+      // Aguarda a query de automações assentar (isSuccess) antes de
+      // verificar -- caso genuinamente independente do anterior, onde
+      // ambos os sinais ficavam pendentes ao mesmo tempo.
+      expect(await screen.findByText('emptyNone')).toBeInTheDocument();
       expect(screen.queryByTestId('automacoes-checklist')).not.toBeInTheDocument();
     });
   });
