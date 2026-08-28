@@ -327,19 +327,26 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     // does not promise "aprovar = agendar" during an earlier approval cycle.
     let autoPublishSuspendedWorkflowIds: number[] = [];
     if (autoPublishOnApproval) {
-      const { data: etapas } = await db
+      const { data: etapas, error: etapasError } = await db
         .from("workflow_etapas")
         .select("workflow_id, tipo, status")
         .in("workflow_id", workflowIds)
         .eq("tipo", "aprovacao_cliente");
-      const openByWorkflow = new Map<number, number>();
-      for (const e of (etapas ?? []) as { workflow_id: number; status?: string | null }[]) {
-        if (e.status === "concluido") continue;
-        openByWorkflow.set(e.workflow_id, (openByWorkflow.get(e.workflow_id) ?? 0) + 1);
+      if (etapasError) {
+        // Fail closed: without the etapa picture, suspend every workflow rather
+        // than promise a scheduling that hub-approve's own guard may refuse.
+        console.error("[hub-posts] etapa lookup failed:", etapasError);
+        autoPublishSuspendedWorkflowIds = workflowIds;
+      } else {
+        const openByWorkflow = new Map<number, number>();
+        for (const e of (etapas ?? []) as { workflow_id: number; status?: string | null }[]) {
+          if (e.status === "concluido") continue;
+          openByWorkflow.set(e.workflow_id, (openByWorkflow.get(e.workflow_id) ?? 0) + 1);
+        }
+        autoPublishSuspendedWorkflowIds = [...openByWorkflow.entries()]
+          .filter(([, open]) => open >= 2)
+          .map(([workflowId]) => workflowId);
       }
-      autoPublishSuspendedWorkflowIds = [...openByWorkflow.entries()]
-        .filter(([, open]) => open >= 2)
-        .map(([workflowId]) => workflowId);
     }
 
     return json({
