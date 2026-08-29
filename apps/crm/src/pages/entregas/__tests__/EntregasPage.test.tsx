@@ -10,15 +10,64 @@ vi.mock('../hooks/useActivePosts', () => ({
   useActivePosts: vi.fn(() => ({ posts: [], isLoading: false })),
 }));
 
-vi.mock('../../../store', () => ({
+const storeMocks = vi.hoisted(() => ({
   duplicateWorkflow: vi.fn(),
+  getStandalonePost: vi.fn(),
 }));
+vi.mock('../../../store', () => storeMocks);
 
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
   },
+}));
+
+// Real DropdownMenu needs Radix portal/pointer-capture machinery jsdom doesn't
+// implement; render it flat (same pattern as LeadsPage.atlimit.test.tsx) so the
+// Novo dropdown's items are directly clickable without opening anything first.
+vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuItem: ({
+    children,
+    onClick,
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+  }) => (
+    <button type="button" onClick={onClick}>
+      {children}
+    </button>
+  ),
+}));
+
+vi.mock('../components/NewAvulsoDialog', () => ({
+  NewAvulsoDialog: ({
+    open,
+    onClose,
+    onCreated,
+  }: {
+    open: boolean;
+    onClose: () => void;
+    onCreated: (post: { id: number }) => void;
+  }) =>
+    open ? (
+      <div>
+        <div>NewAvulsoDialogMock</div>
+        <button
+          onClick={() => {
+            // Mirrors the real dialog's submit flow: onCreated then onClose.
+            onCreated({ id: 77 });
+            onClose();
+          }}
+        >
+          Create avulso post
+        </button>
+        <button onClick={onClose}>Close avulso dialog</button>
+      </div>
+    ) : null,
 }));
 
 vi.mock('../components/EntregasFilters', () => ({
@@ -177,8 +226,19 @@ vi.mock('../views/ConcludedView', () => ({
 }));
 
 vi.mock('../views/PostsKanbanView', () => ({
-  PostsKanbanView: ({ posts }: { posts: unknown[] }) => (
-    <div>Posts kanban view: {posts.length}</div>
+  PostsKanbanView: ({
+    posts,
+    onPostClick,
+  }: {
+    posts: unknown[];
+    onPostClick: (post: { id: number; workflow_id: number | null }) => void;
+  }) => (
+    <div>
+      Posts kanban view: {posts.length}
+      <button onClick={() => onPostClick({ id: 999, workflow_id: null })}>
+        Open avulso post from kanban
+      </button>
+    </div>
   ),
 }));
 
@@ -292,13 +352,14 @@ vi.mock('../components/WorkflowModals', () => ({
 
 import { useEntregasData } from '../hooks/useEntregasData';
 import { useActivePosts } from '../hooks/useActivePosts';
-import { duplicateWorkflow } from '../../../store';
+import { duplicateWorkflow, getStandalonePost } from '../../../store';
 import { toast } from 'sonner';
 import EntregasPage from '../EntregasPage';
 
 const mockedUseEntregasData = vi.mocked(useEntregasData);
 const mockedUseActivePosts = vi.mocked(useActivePosts);
 const mockedDuplicateWorkflow = vi.mocked(duplicateWorkflow);
+const mockedGetStandalonePost = vi.mocked(getStandalonePost);
 const mockedToast = vi.mocked(toast);
 
 function makeCard(overrides: Record<string, unknown> = {}) {
@@ -330,7 +391,10 @@ function PathProbe() {
 function DeepLinkProbe() {
   const navigate = useNavigate();
   return (
-    <button onClick={() => navigate('/entregas?drawer=2&post=5')}>Deep link from search</button>
+    <>
+      <button onClick={() => navigate('/entregas?drawer=2&post=5')}>Deep link from search</button>
+      <button onClick={() => navigate('/entregas?post=5')}>Deep link to bare post</button>
+    </>
   );
 }
 
@@ -371,6 +435,7 @@ const wfFixture = { id: 1 };
 describe('EntregasPage', () => {
   beforeEach(() => {
     mockedDuplicateWorkflow.mockReset();
+    mockedGetStandalonePost.mockReset();
     mockedToast.success.mockReset();
     mockedToast.error.mockReset();
     tourMock.startEntregasTour.mockReset();
@@ -449,10 +514,52 @@ describe('EntregasPage', () => {
     fireEvent.click(screen.getByText('Refresh templates'));
     expect(refresh).toHaveBeenCalled();
 
-    fireEvent.click(screen.getByText('Novo Fluxo'));
+    // "Novo" is now a dropdown with "Novo fluxo" and "Post avulso" items.
+    fireEvent.click(screen.getByText('Novo fluxo'));
     expect(screen.getByText('WizardMock')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Created workflow'));
     expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens the Post avulso dialog from the Novo dropdown and switches into Publicações after creating one', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    expect(screen.getByText(/^kanban view:/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Post avulso'));
+    expect(screen.getByText('NewAvulsoDialogMock')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Create avulso post'));
+    // The kanban view has no Publicações mode of its own in this suite's mock (it
+    // only reads `cards`), so the switch is observed via the real PostsKanbanView
+    // mock rendering instead of the KanbanView mock.
+    expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
+    expect(screen.queryByText('NewAvulsoDialogMock')).not.toBeInTheDocument();
+  });
+
+  it('keeps the current view when creating a post avulso from an already-Publicações kanban/lista', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    fireEvent.click(screen.getByText('Lista'));
+    fireEvent.click(screen.getByText('Publicações'));
+    expect(screen.getByText('Posts list view: 0')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Post avulso'));
+    fireEvent.click(screen.getByText('Create avulso post'));
+
+    expect(screen.getByText('Posts list view: 0')).toBeInTheDocument();
+  });
+
+  it('switches from a non-kanban/lista view (calendar) to kanban Publicações after creating a post avulso', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    fireEvent.click(screen.getByText('Calendário'));
+    expect(screen.getByText(/^calendar view:/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Post avulso'));
+    fireEvent.click(screen.getByText('Create avulso post'));
+
+    expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
   });
 
   it('switches views and hides filters in the concluded view', () => {
@@ -590,6 +697,90 @@ describe('EntregasPage', () => {
     expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
   });
 
+  describe('bare ?post= deep link (no ?drawer=)', () => {
+    it('resolves to a post avulso: opens the standalone slot and closes an already-open workflow drawer', async () => {
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [{ id: 10, nome: 'Clínica Aurora' }],
+        membros: [{ id: 7, nome: 'Ana' }],
+        templates: [],
+        cards: [
+          makeCard({
+            workflow: { id: 2, titulo: 'Fluxo Profundo', cliente_id: 10, status: 'ativo' },
+          }),
+        ],
+        activeWorkflows: [{ id: 2 }],
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      mockedGetStandalonePost.mockResolvedValue({
+        id: 5,
+        workflow_id: null,
+        cliente_nome: 'Clínica Aurora',
+      } as never);
+
+      renderPage('/entregas?drawer=2');
+      expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Deep link to bare post'));
+
+      await waitFor(() => {
+        expect(screen.queryByText('Workflow drawer: Fluxo Profundo')).not.toBeInTheDocument();
+      });
+      expect(mockedGetStandalonePost).toHaveBeenCalledWith(5);
+      expect(mockedToast.error).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+      });
+    });
+
+    it('resolves to an attached post: falls back to the same card-lookup drawer as ?drawer=', async () => {
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [{ id: 10, nome: 'Clínica Aurora' }],
+        membros: [{ id: 7, nome: 'Ana' }],
+        templates: [],
+        cards: [
+          makeCard({
+            workflow: { id: 2, titulo: 'Fluxo Profundo', cliente_id: 10, status: 'ativo' },
+          }),
+        ],
+        activeWorkflows: [{ id: 2 }],
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      mockedGetStandalonePost.mockResolvedValue({
+        id: 7,
+        workflow_id: 2,
+        cliente_nome: 'Clínica Aurora',
+      } as never);
+
+      renderPage('/entregas?post=7');
+
+      expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('7');
+      expect(mockedGetStandalonePost).toHaveBeenCalledWith(7);
+    });
+
+    it('shows a not-found toast when the post no longer exists', async () => {
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [],
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      mockedGetStandalonePost.mockResolvedValue(null);
+
+      renderPage('/entregas?post=404');
+
+      await waitFor(() => {
+        expect(mockedToast.error).toHaveBeenCalledWith('Post não encontrado');
+      });
+      expect(screen.queryByText(/Workflow drawer/)).not.toBeInTheDocument();
+    });
+  });
+
   it('duplicates recurring workflows and refreshes on success', async () => {
     const refresh = vi.fn();
     mockedDuplicateWorkflow.mockResolvedValue(undefined as never);
@@ -707,6 +898,18 @@ describe('EntregasPage', () => {
     expect(screen.getByText(/^kanban view:/i)).toBeInTheDocument();
   });
 
+  it('clicking a post avulso from the Publicações kanban closes an already-open workflow drawer', async () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    fireEvent.click(screen.getByText('Open drawer from card'));
+    expect(await screen.findByText('Workflow drawer: Fluxo Editorial')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Open avulso post from kanban'));
+
+    expect(screen.queryByText('Workflow drawer: Fluxo Editorial')).not.toBeInTheDocument();
+  });
+
   it('toggles the lista into Publicações mode independently of the kanban mode', () => {
     renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
@@ -774,6 +977,48 @@ describe('EntregasPage', () => {
     expect(screen.getByTestId('current-path')).toHaveTextContent(
       '/entregas?view=list&mode=publicacoes',
     );
+  });
+
+  describe('mode seeding: URL vs persisted last-mode preference', () => {
+    it('an explicit ?mode= wins over a persisted preference for the named view', () => {
+      localStorage.setItem('entregas_last_mode_conta-1', 'entregas');
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [makeCard()],
+        activeWorkflows: [wfFixture],
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas?mode=publicacoes');
+
+      expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
+    });
+
+    it('with no ?mode= param at all, every one of the three modeful views seeds from the persisted preference', () => {
+      localStorage.setItem('entregas_last_mode_conta-1', 'publicacoes');
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+      // Kanban seeded straight into Publicações...
+      expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
+      // ...and so does Lista, independently of any URL param.
+      fireEvent.click(screen.getByText('Lista'));
+      expect(screen.getByText('Posts list view: 0')).toBeInTheDocument();
+    });
+
+    it('with no ?mode= param and no persisted preference, every view defaults to Fluxos/Entregas', () => {
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+      expect(screen.getByText(/^kanban view:/i)).toBeInTheDocument();
+    });
+
+    it('persists the active mode per conta whenever it changes', () => {
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+      fireEvent.click(screen.getByText('Publicações'));
+
+      expect(localStorage.getItem('entregas_last_mode_conta-1')).toBe('publicacoes');
+    });
   });
 
   it('opens the whole workflow card from a fluxo tag click', async () => {

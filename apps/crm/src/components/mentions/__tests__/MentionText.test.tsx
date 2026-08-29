@@ -36,10 +36,12 @@ describe('MentionText', () => {
     );
   });
 
-  it('renders an unlinked chip for a post mention without a parentId', () => {
+  it('renders a linked chip for a post mention without a parentId via the universal ?post= form', () => {
     renderText('Veja @[Post sem workflow](post:2)');
-    expect(screen.queryByRole('link')).toBeNull();
-    expect(screen.getByText(/@Post sem workflow/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /@Post sem workflow/ })).toHaveAttribute(
+      'href',
+      '/entregas?post=2',
+    );
   });
 
   it('does not wrap output in an extra block element', () => {

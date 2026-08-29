@@ -14,7 +14,7 @@ interface PostsListViewProps {
   posts: ActivePost[];
   isLoading: boolean;
   openableWorkflowIds: Set<number>;
-  onPostClick: (workflowId: number, postId: number) => void;
+  onPostClick: (post: ActivePost) => void;
   /** Fluxo tag click — opens the whole workflow card (not a single post). */
   onFluxoClick: (workflowId: number) => void;
   /** Unfiltered board cards keyed by workflow id — source of the workflow's
@@ -190,16 +190,16 @@ export function PostsListView({
         <tbody>
           {sorted.map((p) => {
             const workflowId = p.workflow_id;
-            const openable = workflowId != null && openableWorkflowIds.has(workflowId);
+            // A post avulso (no workflow) is always openable -- only a wired post
+            // depends on its workflow still being an active, loaded card.
+            const openable = workflowId == null || openableWorkflowIds.has(workflowId);
             const card = cardOf(p);
             const prazo = card ? formatEtapaPrazo(card.deadline) : null;
             const prazoDate = card ? etapaDeadlineDate(card) : null;
             return (
               <tr
                 key={p.id}
-                onClick={
-                  openable && workflowId != null ? () => onPostClick(workflowId, p.id) : undefined
-                }
+                onClick={openable ? () => onPostClick(p) : undefined}
                 style={{
                   cursor: openable ? 'pointer' : 'default',
                   borderBottom: '1px solid var(--border-color)',

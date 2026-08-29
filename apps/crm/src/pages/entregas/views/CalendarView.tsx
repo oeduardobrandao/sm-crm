@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { isSameDay } from 'date-fns';
+import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { computeDeadlineDate, computeWorkflowDeadlineDate } from '../hooks/useEntregasData';
 import { MonthGrid } from '@/components/ui/month-grid';
@@ -17,7 +18,7 @@ interface CalendarViewProps {
   mode: CalendarMode;
   onModeChange: (mode: CalendarMode) => void;
   openableWorkflowIds: Set<number>;
-  onPostClick: (workflowId: number, postId: number) => void;
+  onPostClick: (post: ActivePost) => void;
 }
 
 interface CalendarEvent {

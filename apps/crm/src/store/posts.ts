@@ -1181,7 +1181,10 @@ export async function getPostStatusEvents(postIds: number[]): Promise<PostStatus
 
 export async function replyToPostApproval(
   postId: number,
-  _workflowId: number,
+  /** Unused: post_approvals keys on post_id alone, so replying to a post
+   *  avulso (workflow_id null) works the same way. Kept as a parameter for
+   *  callers that still pass the post's workflow context along. */
+  _workflowId: number | null,
   comentario: string,
 ): Promise<void> {
   const author_user_id = await getUserId();

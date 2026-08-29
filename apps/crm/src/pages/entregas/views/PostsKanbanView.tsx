@@ -41,10 +41,16 @@ interface PostsKanbanViewProps {
   posts: ActivePost[];
   isLoading: boolean;
   openableWorkflowIds: Set<number>;
-  onPostClick: (workflowId: number, postId: number) => void;
+  onPostClick: (post: ActivePost) => void;
   /** Unfiltered board cards keyed by workflow id — source of the workflow's
    *  cliente (avatar/cor), current etapa, its responsible and its deadline. */
   cardsByWorkflowId: Map<number, BoardCard>;
+}
+
+/** A post avulso (no workflow) is always openable -- only a wired post depends
+ *  on its workflow still being an active, loaded card. */
+function isPostOpenable(post: ActivePost, openableWorkflowIds: Set<number>): boolean {
+  return post.workflow_id == null || openableWorkflowIds.has(post.workflow_id);
 }
 
 function getInitials(name: string): string {
@@ -172,7 +178,7 @@ function PostBoardCard({
   registry: StatusRegistry;
   card: BoardCard | undefined;
   openable: boolean;
-  onPostClick: (workflowId: number, postId: number) => void;
+  onPostClick: (post: ActivePost) => void;
 }) {
   const opt = registry.resolve(post);
   const locked = LOCKED_STATUSES.has(opt.canonical);
@@ -185,7 +191,6 @@ function PostBoardCard({
     id: String(post.id),
     disabled: locked,
   });
-  const workflowId = post.workflow_id;
 
   return (
     <div
@@ -195,7 +200,7 @@ function PostBoardCard({
         cursor: locked ? (openable ? 'pointer' : 'default') : 'grab',
         opacity: isDragging ? 0.4 : 1,
       }}
-      onClick={openable && workflowId != null ? () => onPostClick(workflowId, post.id) : undefined}
+      onClick={openable ? () => onPostClick(post) : undefined}
       {...listeners}
     >
       <PostBoardCardContent post={post} registry={registry} card={card} />
@@ -219,7 +224,7 @@ function PostBoardColumn({
   posts: ActivePost[];
   registry: StatusRegistry;
   openableWorkflowIds: Set<number>;
-  onPostClick: (workflowId: number, postId: number) => void;
+  onPostClick: (post: ActivePost) => void;
   cardsByWorkflowId: Map<number, BoardCard>;
   isDragActive: boolean;
 }) {
@@ -260,7 +265,7 @@ function PostBoardColumn({
               post={p}
               registry={registry}
               card={p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined}
-              openable={p.workflow_id != null && openableWorkflowIds.has(p.workflow_id)}
+              openable={isPostOpenable(p, openableWorkflowIds)}
               onPostClick={onPostClick}
             />
           ))

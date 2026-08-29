@@ -282,10 +282,26 @@ describe('PostsListView', () => {
     render(<PostsListView {...baseProps} posts={posts} onPostClick={onPostClick} />);
 
     fireEvent.click(screen.getByText('Openable'));
-    expect(onPostClick).toHaveBeenCalledWith(10, 100);
+    expect(onPostClick).toHaveBeenCalledWith(posts[0]);
 
     onPostClick.mockClear();
     fireEvent.click(screen.getByText('Locked'));
     expect(onPostClick).not.toHaveBeenCalled();
+  });
+
+  it('a post avulso (workflow_id null) is always openable, regardless of openableWorkflowIds', () => {
+    const onPostClick = vi.fn();
+    const posts = [makePost({ id: 102, workflow_id: null, titulo: 'Post avulso' })];
+    render(
+      <PostsListView
+        {...baseProps}
+        posts={posts}
+        onPostClick={onPostClick}
+        openableWorkflowIds={new Set()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Post avulso'));
+    expect(onPostClick).toHaveBeenCalledWith(posts[0]);
   });
 });
