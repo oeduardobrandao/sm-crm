@@ -12,12 +12,20 @@
 
 -- ============================================================
 -- 1) claim_posts_for_publishing
--- Canonica: 20260807000002_claim_skip_nonretryable.sql. Unica troca: o SELECT
--- final perde "JOIN workflows w / JOIN clientes c" e passa a achar a conta IG
--- por "JOIN instagram_accounts ia ON ia.client_id = u.cliente_id", devolvendo
--- u.cliente_id AS client_id. As CTEs claimed/updated (carimbam
--- publish_processing_at) ficam intactas -- e exatamente o join que, sem esta
--- troca, descartaria um post avulso preso em 'agendado' para sempre.
+-- Canonica: origin/main:supabase/migrations/20260829000001_ig_trial_reels.sql
+-- (superou 20260807000002_claim_skip_nonretryable.sql depois de escrito o
+-- copy-forward original desta migration -- main mesclou o reel de teste com
+-- a coluna ig_trial_strategy e o codigo TRIAL_INELIGIBLE antes deste branch
+-- mesclar; como 20260830 > 20260829, sem este rebase nosso copy-forward
+-- aplicaria por cima e reverteria silenciosamente o trial). Reconferido
+-- verbatim contra a canonica: CASE p_phase, CTEs claimed/updated,
+-- publish_processing_at, RETURNS TABLE (agora com ig_trial_strategy no
+-- final), o DROP FUNCTION (mudanca de shape exige) e o NOT IN do retry (agora
+-- com 'TRIAL_INELIGIBLE') ficam intactos. Unica troca: o SELECT final perde
+-- "JOIN workflows w / JOIN clientes c" e passa a achar a conta IG por "JOIN
+-- instagram_accounts ia ON ia.client_id = u.cliente_id", devolvendo
+-- u.cliente_id AS client_id -- exatamente o join que, sem esta troca,
+-- descartaria um post avulso preso em 'agendado' para sempre.
 -- ============================================================
 DROP FUNCTION IF EXISTS claim_posts_for_publishing(text, integer);
 CREATE OR REPLACE FUNCTION claim_posts_for_publishing(
@@ -36,7 +44,8 @@ RETURNS TABLE (
   story_segments jsonb,
   encrypted_access_token text,
   instagram_user_id text,
-  client_id bigint
+  client_id bigint,
+  ig_trial_strategy text
 ) LANGUAGE sql SECURITY DEFINER AS $$
   WITH claimed AS (
     SELECT wp.id
@@ -82,7 +91,7 @@ RETURNS TABLE (
           AND wp.instagram_media_id IS NULL
           AND (wp.publish_error_code IS NULL
                OR wp.publish_error_code NOT IN
-                 ('TOKEN_EXPIRED','MEDIA_TOO_LARGE','CAROUSEL_LIMIT','NO_MEDIA','MEDIA_UNSUPPORTED'))
+                 ('TOKEN_EXPIRED','MEDIA_TOO_LARGE','CAROUSEL_LIMIT','NO_MEDIA','MEDIA_UNSUPPORTED','TRIAL_INELIGIBLE'))
       END
       AND (wp.publish_processing_at IS NULL
            OR wp.publish_processing_at < now() - interval '10 minutes')
@@ -107,7 +116,8 @@ RETURNS TABLE (
     u.story_segments,
     ia.encrypted_access_token,
     ia.instagram_user_id,
-    u.cliente_id AS client_id
+    u.cliente_id AS client_id,
+    u.ig_trial_strategy
   FROM updated u
   JOIN instagram_accounts ia ON ia.client_id = u.cliente_id;
 $$;
