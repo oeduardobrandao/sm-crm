@@ -24,6 +24,9 @@ function toWorkflowPost(p: ScheduledPost): WorkflowPost {
   return {
     id: p.id,
     workflow_id: p.workflow_id,
+    // Inert filler: ScheduleButton never reads cliente_id (see the comment
+    // above), it only exists here to satisfy WorkflowPost's shape.
+    cliente_id: p.cliente_id ?? 0,
     titulo: p.titulo,
     conteudo: null,
     conteudo_plain: '',
@@ -72,7 +75,8 @@ export function PublicacoesPanel({
           </div>
         ) : (
           posts.map((p) => {
-            const openable = openableWorkflowIds.has(p.workflow_id);
+            const workflowId = p.workflow_id;
+            const openable = workflowId != null && openableWorkflowIds.has(workflowId);
             const igStatus = p.cliente_id != null ? (igStatuses.get(p.cliente_id) ?? null) : null;
             const hasInstagramAccount = igStatus != null;
             const safePermalink =
@@ -84,7 +88,9 @@ export function PublicacoesPanel({
                 key={p.id}
                 className="scheduled-item"
                 style={{ cursor: openable ? 'pointer' : 'default' }}
-                onClick={openable ? () => onPostClick(p.workflow_id, p.id) : undefined}
+                onClick={
+                  openable && workflowId != null ? () => onPostClick(workflowId, p.id) : undefined
+                }
               >
                 <div className="item-top">
                   <span className="post-tipo-badge">{TIPO_LABELS[p.tipo]}</span>

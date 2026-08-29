@@ -68,18 +68,25 @@ export function PostsListView({
   });
   const statusRegistry = useStatusRegistry();
 
-  const cardOf = (p: ActivePost) => cardsByWorkflowId.get(p.workflow_id);
+  // A post avulso has no workflow_id to look up -- undefined here means the same
+  // "no card" state every caller below already treats as "no etapa/prazo/fluxo".
+  const cardOf = (p: ActivePost) =>
+    p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined;
   const membroNome = (p: ActivePost) => cardOf(p)?.membro?.nome || '';
 
   const sorted = useMemo(() => {
     const dir = sort.direction === 'asc' ? 1 : -1;
     const column = sort.column;
-    const nome = (p: ActivePost) => cardsByWorkflowId.get(p.workflow_id)?.membro?.nome || '';
-    const etapaNome = (p: ActivePost) => cardsByWorkflowId.get(p.workflow_id)?.etapa.nome || '';
+    // A post avulso has no workflow_id to look up -- undefined here sinks it to
+    // the end of the etapa/prazo sorts and empties its responsável, same as any
+    // other workflow with no matching card.
+    const cardForSort = (p: ActivePost) =>
+      p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined;
+    const nome = (p: ActivePost) => cardForSort(p)?.membro?.nome || '';
+    const etapaNome = (p: ActivePost) => cardForSort(p)?.etapa.nome || '';
     // Sort key for the etapa deadline: overdue first, then soonest; posts whose
     // workflow has no card/deadline sink to the end in BOTH directions.
-    const prazoDias = (p: ActivePost) =>
-      cardsByWorkflowId.get(p.workflow_id)?.deadline.diasRestantes;
+    const prazoDias = (p: ActivePost) => cardForSort(p)?.deadline.diasRestantes;
     return [...posts].sort((a, b) => {
       switch (column) {
         case 'titulo':
@@ -87,7 +94,7 @@ export function PostsListView({
         case 'cliente':
           return dir * a.cliente_nome.localeCompare(b.cliente_nome);
         case 'fluxo':
-          return dir * a.workflow_titulo.localeCompare(b.workflow_titulo);
+          return dir * (a.workflow_titulo ?? '').localeCompare(b.workflow_titulo ?? '');
         case 'tipo':
           return dir * TIPO_LABELS[a.tipo].localeCompare(TIPO_LABELS[b.tipo]);
         case 'status':
@@ -182,14 +189,17 @@ export function PostsListView({
         </thead>
         <tbody>
           {sorted.map((p) => {
-            const openable = openableWorkflowIds.has(p.workflow_id);
+            const workflowId = p.workflow_id;
+            const openable = workflowId != null && openableWorkflowIds.has(workflowId);
             const card = cardOf(p);
             const prazo = card ? formatEtapaPrazo(card.deadline) : null;
             const prazoDate = card ? etapaDeadlineDate(card) : null;
             return (
               <tr
                 key={p.id}
-                onClick={openable ? () => onPostClick(p.workflow_id, p.id) : undefined}
+                onClick={
+                  openable && workflowId != null ? () => onPostClick(workflowId, p.id) : undefined
+                }
                 style={{
                   cursor: openable ? 'pointer' : 'default',
                   borderBottom: '1px solid var(--border-color)',
@@ -235,7 +245,7 @@ export function PostsListView({
                       className="post-fluxo-tag"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onFluxoClick(p.workflow_id);
+                        if (workflowId != null) onFluxoClick(workflowId);
                       }}
                       title={`Abrir fluxo: ${p.workflow_titulo}`}
                     >

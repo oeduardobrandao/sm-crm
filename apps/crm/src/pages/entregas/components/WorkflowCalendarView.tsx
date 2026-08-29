@@ -87,7 +87,7 @@ export function WorkflowCalendarView({
   );
 
   const invalidateQueries = useCallback(
-    (workflowId?: number) => {
+    (workflowId?: number | null) => {
       qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
       qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', currentWorkflowId] });
       if (workflowId != null && workflowId !== currentWorkflowId) {

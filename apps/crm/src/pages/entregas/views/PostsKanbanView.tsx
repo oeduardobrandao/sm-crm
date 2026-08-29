@@ -185,6 +185,7 @@ function PostBoardCard({
     id: String(post.id),
     disabled: locked,
   });
+  const workflowId = post.workflow_id;
 
   return (
     <div
@@ -194,7 +195,7 @@ function PostBoardCard({
         cursor: locked ? (openable ? 'pointer' : 'default') : 'grab',
         opacity: isDragging ? 0.4 : 1,
       }}
-      onClick={openable ? () => onPostClick(post.workflow_id, post.id) : undefined}
+      onClick={openable && workflowId != null ? () => onPostClick(workflowId, post.id) : undefined}
       {...listeners}
     >
       <PostBoardCardContent post={post} registry={registry} card={card} />
@@ -258,8 +259,8 @@ function PostBoardColumn({
               key={p.id}
               post={p}
               registry={registry}
-              card={cardsByWorkflowId.get(p.workflow_id)}
-              openable={openableWorkflowIds.has(p.workflow_id)}
+              card={p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined}
+              openable={p.workflow_id != null && openableWorkflowIds.has(p.workflow_id)}
               onPostClick={onPostClick}
             />
           ))
@@ -398,7 +399,11 @@ export function PostsKanbanView({
               <PostBoardCardContent
                 post={activePost}
                 registry={registry}
-                card={cardsByWorkflowId.get(activePost.workflow_id)}
+                card={
+                  activePost.workflow_id != null
+                    ? cardsByWorkflowId.get(activePost.workflow_id)
+                    : undefined
+                }
               />
             </div>
           )}

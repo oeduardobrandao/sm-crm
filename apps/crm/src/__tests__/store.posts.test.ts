@@ -421,40 +421,70 @@ describe('store workflow posts', () => {
     expect(call.modifiers).toContainEqual({ method: 'in', args: ['post_id', [100, 101]] });
   });
 
-  it('getScheduledPosts maps nested workflow/client and filters by range', async () => {
-    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
-      data: [
-        {
-          id: 1,
-          workflow_id: 5,
-          titulo: 'Post A',
-          tipo: 'feed',
-          status: 'aprovado_cliente',
-          scheduled_at: '2026-06-16T17:00:00.000Z',
-          published_at: null,
-          ig_caption: 'Legenda',
-          instagram_permalink: null,
-          publish_error: null,
-          ordem: 0,
-          responsavel_id: 10,
-          workflows: {
-            titulo: 'Posts Junho',
-            cliente_id: 7,
-            status: 'ativo',
-            clientes: { nome: 'Yasmin' },
+  it('getScheduledPosts merges the wired arm with the avulso arm and re-sorts by scheduled_at', async () => {
+    // Two-query merge (Promise.all): the FIRST 'workflow_posts' select call is the
+    // wired (workflows!inner) arm, the SECOND is the avulso (.is('workflow_id', null))
+    // arm -- see the shared supabaseMock's per-table/operation FIFO queue.
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_posts',
+      'select',
+      {
+        data: [
+          {
+            id: 1,
+            workflow_id: 5,
+            titulo: 'Post A',
+            tipo: 'feed',
+            status: 'aprovado_cliente',
+            scheduled_at: '2026-06-16T17:00:00.000Z',
+            published_at: null,
+            ig_caption: 'Legenda',
+            instagram_permalink: null,
+            publish_error: null,
+            ordem: 0,
+            responsavel_id: 10,
+            workflows: {
+              titulo: 'Posts Junho',
+              cliente_id: 7,
+              status: 'ativo',
+              clientes: { nome: 'Yasmin' },
+            },
           },
-        },
-      ],
-      error: null,
-    });
+        ],
+        error: null,
+      },
+      {
+        data: [
+          {
+            id: 2,
+            workflow_id: null,
+            cliente_id: 9,
+            titulo: 'Post avulso',
+            tipo: 'feed',
+            status: 'rascunho',
+            scheduled_at: '2026-06-10T12:00:00.000Z',
+            published_at: null,
+            ig_caption: null,
+            instagram_permalink: null,
+            publish_error: null,
+            ordem: 0,
+            responsavel_id: null,
+            clientes: { nome: 'Beto' },
+          },
+        ],
+        error: null,
+      },
+    );
 
     const result = await store.getScheduledPosts(
       '2026-06-01T03:00:00.000Z',
       '2026-07-01T03:00:00.000Z',
     );
 
-    expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({
+    expect(result).toHaveLength(2);
+    // The avulso post (06-10) sorts before the wired one (06-16) after the merge.
+    expect(result.map((p) => p.id)).toEqual([2, 1]);
+    expect(result[1]).toMatchObject({
       id: 1,
       workflow_id: 5,
       cliente_id: 7,
@@ -463,20 +493,53 @@ describe('store workflow posts', () => {
       status: 'aprovado_cliente',
       scheduled_at: '2026-06-16T17:00:00.000Z',
     });
-    const call = getCalls('workflow_posts', 'select').at(-1)!;
-    expect(call.modifiers).toContainEqual({ method: 'eq', args: ['workflows.status', 'ativo'] });
-    expect(call.modifiers).toContainEqual({
+    expect(result[0]).toMatchObject({
+      id: 2,
+      workflow_id: null,
+      cliente_id: 9,
+      cliente_nome: 'Beto',
+      workflow_titulo: null,
+      status: 'rascunho',
+      scheduled_at: '2026-06-10T12:00:00.000Z',
+    });
+
+    const calls = getCalls('workflow_posts', 'select');
+    expect(calls).toHaveLength(2);
+    const [wiredCall, avulsoCall] = calls;
+
+    expect(wiredCall.modifiers).toContainEqual({
+      method: 'eq',
+      args: ['workflows.status', 'ativo'],
+    });
+    expect(wiredCall.modifiers).toContainEqual({
       method: 'gte',
       args: ['scheduled_at', '2026-06-01T03:00:00.000Z'],
     });
-    expect(call.modifiers).toContainEqual({
+    expect(wiredCall.modifiers).toContainEqual({
       method: 'lt',
       args: ['scheduled_at', '2026-07-01T03:00:00.000Z'],
     });
-    expect(call.modifiers).toContainEqual({ method: 'not', args: ['scheduled_at', 'is', null] });
-    expect(call.modifiers).toContainEqual({
+    expect(wiredCall.modifiers).toContainEqual({
+      method: 'not',
+      args: ['scheduled_at', 'is', null],
+    });
+    expect(wiredCall.modifiers).toContainEqual({
       method: 'order',
       args: ['scheduled_at', { ascending: true }],
+    });
+
+    expect(avulsoCall.modifiers).toContainEqual({ method: 'is', args: ['workflow_id', null] });
+    expect(avulsoCall.modifiers).toContainEqual({
+      method: 'gte',
+      args: ['scheduled_at', '2026-06-01T03:00:00.000Z'],
+    });
+    expect(avulsoCall.modifiers).toContainEqual({
+      method: 'lt',
+      args: ['scheduled_at', '2026-07-01T03:00:00.000Z'],
+    });
+    expect(avulsoCall.modifiers).toContainEqual({
+      method: 'not',
+      args: ['scheduled_at', 'is', null],
     });
   });
 });
@@ -566,5 +629,296 @@ describe('getPostStatusEvents', () => {
     const result = await store.getPostStatusEvents([]);
     expect(result).toEqual([]);
     expect(getCalls('post_status_events')).toHaveLength(0);
+  });
+});
+
+describe('posts avulsos', () => {
+  beforeEach(() => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo Souza',
+      role: 'owner',
+      conta_id: 'conta-1',
+    });
+  });
+
+  it('createAvulsoPost inserts a workflow-less post with the fixed defaults + conta_id', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'insert', {
+      data: {
+        id: 200,
+        workflow_id: null,
+        cliente_id: 9,
+        titulo: 'Post avulso',
+        conta_id: 'conta-1',
+      },
+      error: null,
+    });
+
+    const result = await store.createAvulsoPost({
+      cliente_id: 9,
+      titulo: 'Post avulso',
+      tipo: 'feed',
+    });
+
+    expect(result).toMatchObject({ id: 200, titulo: 'Post avulso' });
+    const call = getCalls('workflow_posts', 'insert').at(-1)!;
+    expect(call.payload).toEqual({
+      cliente_id: 9,
+      titulo: 'Post avulso',
+      tipo: 'feed',
+      is_express: false,
+      workflow_id: null,
+      status: 'rascunho',
+      ordem: 0,
+      conteudo: null,
+      conteudo_plain: '',
+      conta_id: 'conta-1',
+    });
+  });
+
+  it('createAvulsoPost honors an explicit is_express', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'insert', {
+      data: { id: 201 },
+      error: null,
+    });
+
+    await store.createAvulsoPost({
+      cliente_id: 9,
+      titulo: 'Post expresso',
+      tipo: 'reels',
+      is_express: true,
+    });
+
+    const call = getCalls('workflow_posts', 'insert').at(-1)!;
+    expect(call.payload).toMatchObject({ is_express: true });
+  });
+
+  it('getStandalonePost selects the post with its client name and maps cliente_nome', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
+      data: {
+        id: 300,
+        workflow_id: null,
+        cliente_id: 9,
+        titulo: 'Post avulso',
+        conteudo: null,
+        conteudo_plain: '',
+        tipo: 'feed',
+        ordem: 0,
+        status: 'rascunho',
+        clientes: { nome: 'Beto' },
+      },
+      error: null,
+    });
+
+    const result = await store.getStandalonePost(300);
+
+    expect(result).toMatchObject({ id: 300, titulo: 'Post avulso', cliente_nome: 'Beto' });
+    expect((result as { clientes?: unknown }).clientes).toBeUndefined();
+    const call = getCalls('workflow_posts', 'select').at(-1)!;
+    expect(call.selectArgs).toContainEqual(['*, clientes(nome)']);
+    expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 300] });
+    expect(call.modifiers).toContainEqual({ method: 'maybeSingle', args: [] });
+  });
+
+  it('getStandalonePost returns null when the post is gone', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
+      data: null,
+      error: null,
+    });
+
+    expect(await store.getStandalonePost(999)).toBeNull();
+  });
+
+  it('detachPostsFromWorkflow calls the RPC with the post ids and the archive flag', async () => {
+    mockedSupabase.__queueSupabaseRpc('detach_posts_from_flow', {
+      data: { ok: true, detached: 2, archived_workflow_ids: [] },
+      error: null,
+    });
+
+    const result = await store.detachPostsFromWorkflow([10, 11]);
+
+    expect(result).toEqual({ ok: true, detached: 2, archived_workflow_ids: [] });
+    const call = getCalls('rpc:detach_posts_from_flow', 'rpc').at(-1)!;
+    expect(call.payload).toEqual({ p_post_ids: [10, 11], p_archive_empty_flow: false });
+  });
+
+  it('detachPostsFromWorkflow forwards an explicit archiveEmptyFlow', async () => {
+    mockedSupabase.__queueSupabaseRpc('detach_posts_from_flow', {
+      data: { ok: true, detached: 1, archived_workflow_ids: [5] },
+      error: null,
+    });
+
+    await store.detachPostsFromWorkflow([10], true);
+
+    const call = getCalls('rpc:detach_posts_from_flow', 'rpc').at(-1)!;
+    expect(call.payload).toEqual({ p_post_ids: [10], p_archive_empty_flow: true });
+  });
+
+  it('attachPostToWorkflow calls the RPC with a single-element post id array', async () => {
+    mockedSupabase.__queueSupabaseRpc('attach_posts_to_flow', {
+      data: { ok: true, attached: 1 },
+      error: null,
+    });
+
+    const result = await store.attachPostToWorkflow(10, 5);
+
+    expect(result).toEqual({ ok: true, attached: 1 });
+    const call = getCalls('rpc:attach_posts_to_flow', 'rpc').at(-1)!;
+    expect(call.payload).toEqual({ p_post_ids: [10], p_workflow_id: 5 });
+  });
+
+  it('detachPostsFromWorkflow retries once on a 40P01 deadlock and succeeds', async () => {
+    mockedSupabase.__queueSupabaseRpc(
+      'detach_posts_from_flow',
+      { data: null, error: { code: '40P01', message: 'deadlock detected' } },
+      { data: { ok: true, detached: 1, archived_workflow_ids: [] }, error: null },
+    );
+
+    const result = await store.detachPostsFromWorkflow([10]);
+
+    expect(result).toEqual({ ok: true, detached: 1, archived_workflow_ids: [] });
+    expect(getCalls('rpc:detach_posts_from_flow', 'rpc')).toHaveLength(2);
+  });
+
+  it('attachPostToWorkflow retries once on a 40P01 deadlock and succeeds', async () => {
+    mockedSupabase.__queueSupabaseRpc(
+      'attach_posts_to_flow',
+      { data: null, error: { code: '40P01', message: 'deadlock detected' } },
+      { data: { ok: true, attached: 1 }, error: null },
+    );
+
+    const result = await store.attachPostToWorkflow(10, 5);
+
+    expect(result).toEqual({ ok: true, attached: 1 });
+    expect(getCalls('rpc:attach_posts_to_flow', 'rpc')).toHaveLength(2);
+  });
+
+  it('detachPostsFromWorkflow does not retry more than once and throws the second error', async () => {
+    mockedSupabase.__queueSupabaseRpc(
+      'detach_posts_from_flow',
+      { data: null, error: { code: '40P01', message: 'deadlock detected' } },
+      { data: null, error: { code: '40P01', message: 'deadlock detected again' } },
+    );
+
+    await expect(store.detachPostsFromWorkflow([10])).rejects.toMatchObject({ code: '40P01' });
+    expect(getCalls('rpc:detach_posts_from_flow', 'rpc')).toHaveLength(2);
+  });
+
+  it('detachPostsFromWorkflow does not retry a non-deadlock error', async () => {
+    mockedSupabase.__queueSupabaseRpc('detach_posts_from_flow', {
+      data: null,
+      error: { code: 'P0001', message: 'post_not_found' },
+    });
+
+    await expect(store.detachPostsFromWorkflow([10])).rejects.toMatchObject({ code: 'P0001' });
+    expect(getCalls('rpc:detach_posts_from_flow', 'rpc')).toHaveLength(1);
+  });
+
+  it('getActivePosts includes avulso posts (any status) merged with wired active-workflow posts', async () => {
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_posts',
+      'select',
+      {
+        data: [
+          {
+            id: 1,
+            workflow_id: 5,
+            titulo: 'Post no fluxo',
+            tipo: 'feed',
+            status: 'aprovado_cliente',
+            scheduled_at: '2026-06-16T17:00:00.000Z',
+            ordem: 0,
+            workflows: {
+              titulo: 'Fluxo A',
+              cliente_id: 7,
+              status: 'ativo',
+              clientes: { nome: 'Yasmin' },
+            },
+          },
+        ],
+        error: null,
+      },
+      {
+        data: [
+          {
+            id: 2,
+            workflow_id: null,
+            cliente_id: 9,
+            titulo: 'Post avulso postado',
+            tipo: 'feed',
+            status: 'postado',
+            scheduled_at: null,
+            ordem: 0,
+            clientes: { nome: 'Beto' },
+          },
+        ],
+        error: null,
+      },
+    );
+
+    const result = await store.getActivePosts();
+
+    expect(result).toHaveLength(2);
+    const avulso = result.find((p) => p.id === 2)!;
+    expect(avulso).toMatchObject({
+      workflow_id: null,
+      workflow_titulo: null,
+      cliente_id: 9,
+      cliente_nome: 'Beto',
+      status: 'postado',
+    });
+
+    const calls = getCalls('workflow_posts', 'select');
+    expect(calls).toHaveLength(2);
+    expect(calls[1].modifiers).toContainEqual({ method: 'is', args: ['workflow_id', null] });
+    // The avulso arm has no status filter -- "ativo" for an avulso post means
+    // simply "exists", any status.
+    expect(calls[1].modifiers).not.toContainEqual(
+      expect.objectContaining({ method: 'eq', args: expect.arrayContaining(['status']) }),
+    );
+  });
+
+  it('getClientePosts filters the avulso arm by cliente_id and workflow_id null', async () => {
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_posts',
+      'select',
+      { data: [], error: null },
+      {
+        data: [
+          {
+            id: 3,
+            workflow_id: null,
+            titulo: 'Post avulso',
+            tipo: 'feed',
+            status: 'rascunho',
+            scheduled_at: null,
+            ordem: 0,
+          },
+        ],
+        error: null,
+      },
+    );
+
+    const result = await store.getClientePosts(9);
+
+    expect(result).toEqual([
+      {
+        id: 3,
+        workflow_id: null,
+        titulo: 'Post avulso',
+        tipo: 'feed',
+        status: 'rascunho',
+        custom_status_id: null,
+        scheduled_at: null,
+        ordem: 0,
+        workflow_titulo: null,
+        platform: undefined,
+      },
+    ]);
+
+    const calls = getCalls('workflow_posts', 'select');
+    expect(calls[1].modifiers).toContainEqual({ method: 'eq', args: ['cliente_id', 9] });
+    expect(calls[1].modifiers).toContainEqual({ method: 'is', args: ['workflow_id', null] });
   });
 });

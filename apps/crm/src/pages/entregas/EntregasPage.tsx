@@ -41,7 +41,7 @@ import { useOpenParam } from '../../hooks/useOpenParam';
 import { matchesEtapaPrazo } from './etapaPrazo';
 import { parseEntregasQuery, serializeEntregasQuery, type ActiveView } from './viewQuery';
 import { postMatchesStatusFilter } from './statusRegistry';
-import { duplicateWorkflow } from '../../store';
+import { duplicateWorkflow, type ActivePost } from '../../store';
 import { captureEvent } from '@/lib/analytics';
 
 const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
@@ -302,6 +302,11 @@ export default function EntregasPage() {
   // workflow-shaped filters (status, membros, etapas, templates) are not read here
   // but stay in state so flipping back to Entregas restores them.
   const filteredPosts = useMemo(() => {
+    // A post avulso has no workflow_id to look up -- undefined here means the same
+    // "no card" state matchesEtapaPrazo and the membro/etapa filters below already
+    // treat as "excluded while that filter is active".
+    const cardOfPost = (p: ActivePost) =>
+      p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined;
     let ps = activePosts;
     if (filters.filterSearch) {
       const q = filters.filterSearch.toLowerCase();
@@ -313,13 +318,13 @@ export default function EntregasPage() {
     // dimension the posts views display — not the post-level responsavel_id.
     if (filters.filterMembros.length)
       ps = ps.filter((p) => {
-        const respId = cardsByWorkflowId.get(p.workflow_id)?.etapa.responsavel_id;
+        const respId = cardOfPost(p)?.etapa.responsavel_id;
         return respId != null && filters.filterMembros.includes(respId);
       });
     // A post "is in" its workflow's current etapa.
     if (filters.filterEtapas.length)
       ps = ps.filter((p) => {
-        const etapaNome = cardsByWorkflowId.get(p.workflow_id)?.etapa.nome;
+        const etapaNome = cardOfPost(p)?.etapa.nome;
         return etapaNome != null && filters.filterEtapas.includes(etapaNome);
       });
     if (filters.filterTipos.length) ps = ps.filter((p) => filters.filterTipos.includes(p.tipo));
@@ -327,7 +332,7 @@ export default function EntregasPage() {
       ps = ps.filter((p) => postMatchesStatusFilter(p, filters.filterPostStatus));
     ps = ps.filter((p) =>
       matchesEtapaPrazo(
-        cardsByWorkflowId.get(p.workflow_id),
+        cardOfPost(p),
         filters.filterPrazo,
         filters.filterPrazoFrom,
         filters.filterPrazoTo,
