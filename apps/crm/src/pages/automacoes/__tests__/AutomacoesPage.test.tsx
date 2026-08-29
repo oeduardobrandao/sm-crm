@@ -278,19 +278,15 @@ describe('AutomacoesPage', () => {
     expect(screen.queryByRole('button', { name: /newAutomation/ })).not.toBeInTheDocument();
   });
 
-  it('hides mutation controls (create button, switch, edit/delete menu) for the agent role', async () => {
+  it('shows mutation controls (create button, switch, edit/delete menu) for the agent role too', async () => {
     setAuth({ role: 'agent', profile: { id: 'user-1', conta_id: 'w-1', role: 'agent' } });
 
     renderPage();
 
     expect(await screen.findByText('Promo de agosto')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /newAutomation/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /rowActions/ })).not.toBeInTheDocument();
-    // Read-only status still communicated via a badge instead of the switch
-    // (scoped to <tbody>; the column header uses table.active).
-    const tbody = document.querySelector('tbody')!;
-    expect(within(tbody).getByText('status.active')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /newAutomation/ })).toBeInTheDocument();
+    expect(screen.getByRole('switch')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /rowActions/ })).toBeInTheDocument();
   });
 
   it('expands a row to load and show its sends log', async () => {
