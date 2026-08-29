@@ -1,7 +1,7 @@
 # Instagram Trial Reels ("Reel de teste") — Design
 
 **Date:** 2026-08-28
-**Status:** Approved (rev. 2 — external review folded in)
+**Status:** Approved (rev. 3 — two external review rounds folded in)
 
 ## Summary
 
@@ -89,8 +89,11 @@ and add `TRIAL_INELIGIBLE` to the retry phase's non-retryable `NOT IN` list
 **Deployment order:** (1) migration (column + trigger + RPC redefinition),
 (2) edge functions, (3) CRM/Hub frontends. Code that selects
 `ig_trial_strategy` against the old schema fails at PostgREST, so the migration
-always ships first. Rollback is the reverse: remove all code and RPC references
-before dropping the column.
+always ships first. Rollback is the reverse and must be ordered inside the
+database too: (1) drop the trigger AND its trigger function first (a plpgsql
+body referencing `NEW.ig_trial_strategy` fails at runtime once the column is
+gone), (2) redefine the claim RPC without the column, (3) remove code
+references, (4) drop the column last.
 
 ## CRM UX (WorkflowDrawer)
 
@@ -133,12 +136,27 @@ targets Instagram (`(post.platform ?? 'instagram')` is `'instagram'` or
   reopen it.
 - `createContainerForPost` gains an optional trial option (from the post row's
   `ig_trial_strategy`) and threads it into `createVideoContainer`.
-- **Publish-time guard:** `trial_params` is attached only when
-  `tipo === 'reels'` AND the post is the single-video path. The single-video
-  route currently builds a REELS container without checking `tipo` (a
-  single-video `feed` post publishes as a reel today); trial must not piggyback
-  on that — it is keyed on `tipo === 'reels'` explicitly. For stories,
-  carousels, and single-image posts the flag is ignored, never an error.
+- **Media-shape rule (blocking, not silent):** a trial post must be
+  `tipo === 'reels'` with exactly one video. A post labeled "Teste" must never
+  quietly publish as a normal post, because the client approved a trial.
+  Enforced at two layers:
+  1. **Validation** — `validateForScheduling` (which runs for both `schedule`
+     and `publish-now`, handler lines ~84/~179) adds an error when
+     `ig_trial_strategy` is set and the post is not exactly one video with
+     `tipo = 'reels'`: "Reel de teste exige exatamente um vídeo. Ajuste a
+     mídia ou desligue o Reel de teste." Scheduling/publish-now is blocked
+     up front.
+  2. **Container creation** — if the flag is still set but the path is not
+     single-video reels (media edited after scheduling), `createContainerForPost`
+     THROWS with that same message instead of silently omitting `trial_params`.
+     The message is a deterministic classifier pattern for `TRIAL_INELIGIBLE`
+     (non-retryable), so the post lands in `falha_publicacao` with actionable
+     copy rather than publishing to all followers.
+  Note the single-video route currently builds a REELS container without
+  checking `tipo` (a single-video `feed` post publishes as a reel today); trial
+  is keyed on `tipo === 'reels'` explicitly and must not piggyback on that.
+  The WorkflowDrawer additionally shows an inline hint when the switch is on
+  but the current media does not qualify.
 - **All three container-creation paths carry it:**
   1. `instagram-publish` (publish-now) initial container.
   2. `instagram-publish` immediate coverless retry — this path calls
@@ -157,34 +175,58 @@ targets Instagram (`(post.platform ?? 'instagram')` is `'instagram'` or
   window, so auto-retry only burns Graph calls. Mirrored in the three canonical
   places, all already touched by this change:
   1. `_shared/publish-error-codes.ts`: enum value, `NON_RETRYABLE_CODES`,
-     classifier rule, and PT copy ("Conta não elegível para Reel de teste" +
-     action: fix the account or turn the trial switch off and republish).
+     classifier rules, and the PT copy defined below.
   2. `apps/crm/src/pages/entregas/publishErrorCopy.ts`: same copy,
      `acao: 'retry'` semantics per the existing map, `mostrarDetalhes: false`.
   3. The claim RPC's retry-phase `NOT IN` list (same migration that redefines
      it for the new column).
-- Classifier rule: match Meta's documented error subcode/message for trial
-  ineligibility; the exact patterns are confirmed against the real staging
-  error during verification. Until a pattern matches, such errors fall to
-  `UNKNOWN` (existing behavior: 3 retries + raw detail in the CRM-internal
-  "Detalhes técnicos" expander). Shipping the feature includes confirming the
-  pattern on staging.
-- Daily trial cap (~20/day): Meta rate-limit errors already classify as
-  `RATE_LIMIT` via graph codes 4/9/17/32/613, which is retryable with the
-  existing cadence — acceptable for a daily cap. If staging shows a distinct
-  trial-cap subcode outside those, add it to the `RATE_LIMIT` rule.
+- Classifier rules for `TRIAL_INELIGIBLE`, in two tiers:
+  1. **Deterministic, ships day one:** our own media-shape guard message
+     ("reel de teste exige exatamente um vídeo"), thrown by
+     `createContainerForPost` (see Media-shape rule). Fully under our control
+     and unit-testable immediately — the code is implementable without waiting
+     on Meta.
+  2. **Meta account ineligibility (under 1,000 followers, non-public or
+     non-professional account, collaborators):** the pattern is added only
+     from a captured real error. Concrete gate: record the exact Graph
+     `code`, `error_subcode`, and normalized message in the implementation PR
+     (or a follow-up PR) from a staging/prod publish attempt on an ineligible
+     account. Until captured, Meta-side ineligibility falls to `UNKNOWN` —
+     the defined interim behavior: 3 retries, generic copy, raw detail only
+     in the CRM-internal "Detalhes técnicos" expander. Implementers must not
+     invent regexes for Meta's wording.
+- `TRIAL_INELIGIBLE` copy covers both tiers: "Reel de teste não aceito"
+  ("O post precisa de exatamente um vídeo e a conta precisa ser profissional,
+  pública e ter 1.000+ seguidores. Ajuste o post ou a conta, ou desligue o
+  Reel de teste, e tente novamente.").
+- **Daily trial cap (~20/day) — defined outcome:** classifies as `RATE_LIMIT`
+  (Meta rate-limit graph codes 4/9/17/32/613). The cron will burn its up-to-3
+  minute-scale retries without the quota recovering, then park the post in
+  `falha_publicacao` with the existing "Tentar novamente" button — the user
+  retries the next day. This matches how the ordinary IG daily publish cap
+  already behaves platform-wide; a delayed-retry/reset scheduler is explicitly
+  out of scope for this feature. If a distinct trial-cap subcode shows up in
+  practice, revisit with its own copy.
 - Client-facing copy stays mapped; raw Meta details remain in internal logs and
   the CRM-internal technical-details expander only (existing pattern).
 
 ## Hub
 
 - `hub-posts` payload includes `ig_trial_strategy`.
-- The "Reel de teste" chip renders next to the tipo label in **both card
-  variants**: `apps/hub/src/components/PostCard.tsx` (line ~333) and
-  `apps/hub/src/components/TextPostCard.tsx` (line ~115) — these are the
-  approval surfaces. The compact surfaces (PostCalendar day detail,
-  HubPostChip in mensagens) intentionally do not carry it. No graduation
-  detail is shown to the client.
+- The chip renders in **both card variants the pages actually mount**
+  (`pickPostCardKind` in `apps/hub/src/lib/postView.ts` routes every
+  non-story post with media to `InstagramPostCard`, and media-less posts to
+  `TextPostCard`; these are what PostagensPage, AprovacoesPage and
+  PostagemFocoPage render):
+  - `apps/hub/src/components/InstagramPostCard.tsx` — next to its status
+    chip (the card has no tipo label today; the trial chip is added
+    standalone).
+  - `apps/hub/src/components/TextPostCard.tsx` (line ~115) — next to the
+    existing tipo label.
+  - `PostCard.tsx` is NOT a target: no page mounts it as a card (it only
+    exports shared helpers like `TIPO_LABEL`). Do not add the badge there.
+  The compact surfaces (PostCalendar day detail, HubPostChip in mensagens)
+  intentionally do not carry it. No graduation detail is shown to the client.
 
 ## Out of scope (v1)
 
@@ -200,12 +242,17 @@ targets Instagram (`(post.platform ?? 'instagram')` is `'instagram'` or
 
 - **Deno** (`supabase/functions/__tests__/`):
   - container body includes stringified `trial_params` for a single-video
-    reels post with the flag; omits it when the flag is NULL; ignores it on
-    carousel/stories/single-image paths and on a single-video non-reels tipo;
+    reels post with the flag, and omits it when the flag is NULL;
+  - `createContainerForPost` THROWS the media-shape message when the flag is
+    set on carousel/stories/single-image paths or a single-video non-reels
+    tipo (never silently drops trial);
+  - `validateForScheduling` returns the media-shape error for a flagged post
+    that is not exactly one video;
   - the publish-now immediate coverless retry preserves `trial_params`;
   - the cron's deferred coverless rebuild preserves `trial_params`;
-  - `classifyPublishError` returns `TRIAL_INELIGIBLE` for the staging-confirmed
-    pattern and it is non-retryable.
+  - `classifyPublishError` returns `TRIAL_INELIGIBLE` for the media-shape
+    guard message (deterministic tier) and it is in `NON_RETRYABLE_CODES`;
+    the Meta-pattern tier gets a test when its pattern is captured.
 - **SQL** (entitlement/trigger suite or migration test): the trigger nulls
   `ig_trial_strategy` on tipo change away from `reels` and on platform
   `tiktok`; keeps it for `instagram`/`both`/NULL platform.
