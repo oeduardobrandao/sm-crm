@@ -6,6 +6,7 @@ do $$
 declare v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_wf bigint; v_post bigint; v_s text;
 begin
   v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_uid);
   insert into clientes (user_id, conta_id, nome, sigla, cor)
     values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
   insert into workflows (user_id, conta_id, cliente_id, titulo, status)
@@ -38,6 +39,12 @@ begin
     values (v_wf, v_ws, 'P2', 'feed', 'auto') returning id into v_post;
   select ig_trial_strategy into v_s from workflow_posts where id = v_post;
   assert v_s is null, 'flag must clear at insert on non-reels tipo';
+
+  -- insert reels but tiktok-only is cleared at insert
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo, platform, ig_trial_strategy)
+    values (v_wf, v_ws, 'P3', 'reels', 'tiktok', 'auto') returning id into v_post;
+  select ig_trial_strategy into v_s from workflow_posts where id = v_post;
+  assert v_s is null, 'flag must clear at insert on tiktok-only platform';
 
   raise notice 'PASS 30_ig_trial_strategy';
 end $$;

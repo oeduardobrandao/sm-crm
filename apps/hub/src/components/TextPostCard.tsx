@@ -116,7 +116,7 @@ export function TextPostCard({
             </span>
             {post.ig_trial_strategy && (
               <span
-                className="text-[11px] font-semibold px-2 py-0.5 rounded-full border"
+                className="shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full border"
                 style={{ color: 'var(--hub-acc)', borderColor: 'var(--hub-acc)' }}
               >
                 Reel de teste

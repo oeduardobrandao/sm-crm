@@ -7233,8 +7233,14 @@ body.role-agent input[name='valor_total'] {
 /* Reel de teste (Instagram trial reel) marker, next to the tipo badge. Reuses
    the reels tipo color (#e1306c) at reduced emphasis, not a new tipo color. */
 .post-tipo-badge--trial {
-  background: #e1306c25;
-  color: #e1306c;
+  --badge-bg: #e1306c25;
+  --badge-fg: #e1306c;
+  --badge-border: #e1306c40;
+}
+[data-theme='dark'] .post-tipo-badge--trial {
+  --badge-bg: rgba(225, 48, 108, 0.18);
+  --badge-fg: #e96491;
+  --badge-border: rgba(225, 48, 108, 0.32);
 }
 
 .post-status--rascunho {
