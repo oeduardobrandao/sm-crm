@@ -1,7 +1,7 @@
 # Instagram Trial Reels ("Reel de teste") — Design
 
 **Date:** 2026-08-28
-**Status:** Approved
+**Status:** Approved (rev. 2 — external review folded in)
 
 ## Summary
 
@@ -51,38 +51,73 @@ ALTER TABLE workflow_posts
 - `'manual'` = trial reel, MANUAL graduation.
 - `'auto'` = trial reel, SS_PERFORMANCE graduation.
 - No change to the `tipo` CHECK constraint.
-- Migration version prefix must be re-verified against `origin/main`'s tail at
-  PR-open time (migration-version-guard).
 
-The column must be added to every explicit select list that feeds a surface
-showing or publishing the flag:
+**Server-side invariant (authoritative, not just UI self-heal).** UI field
+updates are independent writes, so rapid or concurrent edits can strand a
+strategy on a post that is no longer a trial candidate. The same migration adds
+a `BEFORE INSERT OR UPDATE` trigger on `workflow_posts` that nulls
+`ig_trial_strategy` whenever the row stops satisfying the predicate:
+
+```
+tipo = 'reels' AND COALESCE(platform, 'instagram') IN ('instagram', 'both')
+```
+
+The "exactly one video" half of the trial predicate lives at publish time (media
+links are a separate table; the trigger stays row-local).
+
+**Claim RPC.** The cron does NOT read `workflow_posts` directly for its post
+shape — it calls `claim_posts_for_publishing` (canonical definition:
+`20260807000002_claim_skip_nonretryable.sql`). The same migration redefines the
+RPC: add `ig_trial_strategy text` to `RETURNS TABLE` and the final `SELECT`,
+and add `TRIAL_INELIGIBLE` to the retry phase's non-retryable `NOT IN` list
+(see Errors below). The redefinition must retain the existing
+`REVOKE ALL ... FROM public` + `GRANT EXECUTE ... TO service_role` pair
+(REVOKE FROM PUBLIC strips service_role too).
+
+**Explicit selects that must gain the column:**
 
 - CRM: `apps/crm/src/store/posts.ts` (the two select strings, `WorkflowPost`
   type, and the mapper).
-- Edge: `fetchPostForPublish` in
-  `supabase/functions/_shared/instagram-publish-utils.ts` (line ~74), plus the
-  post selects in `instagram-publish` and `instagram-publish-cron` if they
-  select fields independently.
+- Edge: `validateForScheduling`'s post select in
+  `supabase/functions/_shared/instagram-publish-utils.ts` (line ~74) if the
+  flag is needed there; the `ClaimedPost` interface in
+  `instagram-publish-cron/index.ts`; and `instagram-publish/handler.ts`'s post
+  fetch.
 - Hub: `supabase/functions/hub-posts/handler.ts` select (line ~136) and the Hub
   app's post type.
+
+**Deployment order:** (1) migration (column + trigger + RPC redefinition),
+(2) edge functions, (3) CRM/Hub frontends. Code that selects
+`ig_trial_strategy` against the old schema fails at PostgREST, so the migration
+always ships first. Rollback is the reverse: remove all code and RPC references
+before dropping the column.
 
 ## CRM UX (WorkflowDrawer)
 
 Visibility rule: the section renders only when `tipo === 'reels'` AND the post
-targets Instagram (`platform` is `'instagram'` or `'both'` or null-default).
+targets Instagram (`(post.platform ?? 'instagram')` is `'instagram'` or
+`'both'`).
 
 - **Switch:** "Reel de teste" with description
   "Publica como teste, visível só para quem não segue a conta."
 - **When on, radio pair** (writes `ig_trial_strategy`):
   - `auto`: "Compartilhar com todos automaticamente se performar bem"
   - `manual`: "Eu decido manualmente no app do Instagram"
-  - Default when switching on: `auto` (matches Meta's SS_PERFORMANCE showcase
-    and requires no follow-up action from the user).
+  - Default when switching on: `auto` (requires no follow-up action from the
+    user).
 - **Helper text:** "Exige conta profissional pública com pelo menos 1.000
   seguidores. Não funciona com colaboradores no post."
-- **Self-heal:** if `tipo` changes away from `reels` or the platform drops
-  Instagram, the flag resets to NULL (same pattern PlatformSelector uses to heal
-  `tiktok`/`both` on stories posts).
+- **Locked while scheduled:** the switch and radio are disabled when
+  `isScheduleLocked` (`status === 'agendado'`), exactly like the date and
+  caption. Rationale: the cron creates the Instagram container up to 1 hour
+  before `scheduled_at`; a strategy change after container creation cannot
+  reach the already-created container. Canceling the schedule unlocks it (the
+  existing cancel path already clears `instagram_container_id`). Note: `tipo`
+  and `platform` remain editable while `agendado` today; that pre-existing
+  container-desync window is out of scope here and tracked separately.
+- **Self-heal (UX nicety, not the invariant):** if `tipo` changes away from
+  `reels` or the platform drops Instagram, the UI clears the flag in the same
+  update. The DB trigger above is the authority.
 - **Badge:** a small "Teste" chip next to the existing tipo badge in the
   entregas list view and the calendar post detail panel. No new tipo color;
   reuse the reels color at reduced emphasis.
@@ -90,31 +125,66 @@ targets Instagram (`platform` is `'instagram'` or `'both'` or null-default).
 
 ## Publish pipeline
 
-- `createContainerForPost` gains an optional trial parameter (from the post
-  row's `ig_trial_strategy`) and threads it into `createVideoContainer`, which
-  adds to the container body:
-  `trial_params: JSON.stringify({ graduation_strategy: 'MANUAL' | 'SS_PERFORMANCE' })`
-  (Graph API accepts stringified nested params; verify empirically on staging
-  whether the raw object also works and prefer whichever succeeds).
-- **Server-side guard:** trial applies only on the single-video reels path.
-  For stories, carousels, and single-image posts the flag is ignored (never an
-  error): the container is built as today.
-- Both callers pass it: `instagram-publish` (publish-now) and
-  `instagram-publish-cron` (scheduled, including the deferred coverless retry
-  path, which must preserve `trial_params` when rebuilding the container).
+- **Wire format (decided):** `trial_params` is sent as a JSON-encoded string in
+  the container body:
+  `trial_params: JSON.stringify({ graduation_strategy: "MANUAL" | "SS_PERFORMANCE" })`.
+  Graph API parses string-encoded structured params in JSON bodies; this is the
+  documented cURL form. Staging validation verifies this choice; it does not
+  reopen it.
+- `createContainerForPost` gains an optional trial option (from the post row's
+  `ig_trial_strategy`) and threads it into `createVideoContainer`.
+- **Publish-time guard:** `trial_params` is attached only when
+  `tipo === 'reels'` AND the post is the single-video path. The single-video
+  route currently builds a REELS container without checking `tipo` (a
+  single-video `feed` post publishes as a reel today); trial must not piggyback
+  on that — it is keyed on `tipo === 'reels'` explicitly. For stories,
+  carousels, and single-image posts the flag is ignored, never an error.
+- **All three container-creation paths carry it:**
+  1. `instagram-publish` (publish-now) initial container.
+  2. `instagram-publish` immediate coverless retry — this path calls
+     `createVideoContainer` DIRECTLY (handler.ts line ~288), bypassing
+     `createContainerForPost`; it must pass `trial_params` explicitly or trial
+     is dropped precisely when a cover fails.
+  3. `instagram-publish-cron` Phase 1 container creation, including the
+     deferred coverless retry on later cycles.
 - TikTok side of a `both` post is unaffected; trial is Instagram-only.
-- **Errors** (e.g., account under 1,000 followers, daily trial cap): surface
-  through the existing `falha_publicacao` flow with the raw-classified message.
-  No new `publish_error_code` enum value in v1 (that enum is mirrored in three
-  places; only add one if a distinct, documented Meta subcode for trial
-  ineligibility shows up in practice).
+
+### Errors
+
+- New `publish_error_code`: **`TRIAL_INELIGIBLE`**, non-retryable. The account
+  not meeting trial requirements (under 1,000 followers, non-public or
+  non-professional account, collaborators) never self-heals within the 3-retry
+  window, so auto-retry only burns Graph calls. Mirrored in the three canonical
+  places, all already touched by this change:
+  1. `_shared/publish-error-codes.ts`: enum value, `NON_RETRYABLE_CODES`,
+     classifier rule, and PT copy ("Conta não elegível para Reel de teste" +
+     action: fix the account or turn the trial switch off and republish).
+  2. `apps/crm/src/pages/entregas/publishErrorCopy.ts`: same copy,
+     `acao: 'retry'` semantics per the existing map, `mostrarDetalhes: false`.
+  3. The claim RPC's retry-phase `NOT IN` list (same migration that redefines
+     it for the new column).
+- Classifier rule: match Meta's documented error subcode/message for trial
+  ineligibility; the exact patterns are confirmed against the real staging
+  error during verification. Until a pattern matches, such errors fall to
+  `UNKNOWN` (existing behavior: 3 retries + raw detail in the CRM-internal
+  "Detalhes técnicos" expander). Shipping the feature includes confirming the
+  pattern on staging.
+- Daily trial cap (~20/day): Meta rate-limit errors already classify as
+  `RATE_LIMIT` via graph codes 4/9/17/32/613, which is retryable with the
+  existing cadence — acceptable for a daily cap. If staging shows a distinct
+  trial-cap subcode outside those, add it to the `RATE_LIMIT` rule.
+- Client-facing copy stays mapped; raw Meta details remain in internal logs and
+  the CRM-internal technical-details expander only (existing pattern).
 
 ## Hub
 
 - `hub-posts` payload includes `ig_trial_strategy`.
-- The client-facing post detail shows a "Reel de teste" chip next to the tipo
-  label so the client knows what they are approving. No graduation detail shown
-  to the client.
+- The "Reel de teste" chip renders next to the tipo label in **both card
+  variants**: `apps/hub/src/components/PostCard.tsx` (line ~333) and
+  `apps/hub/src/components/TextPostCard.tsx` (line ~115) — these are the
+  approval surfaces. The compact surfaces (PostCalendar day detail,
+  HubPostChip in mensagens) intentionally do not carry it. No graduation
+  detail is shown to the client.
 
 ## Out of scope (v1)
 
@@ -123,15 +193,25 @@ targets Instagram (`platform` is `'instagram'` or `'both'` or null-default).
 - Trial-specific analytics/insights.
 - In-app graduation (impossible via API).
 - Pre-validating the 1,000-follower requirement client-side.
+- Locking `tipo`/`platform` while `agendado` (pre-existing desync window,
+  tracked separately).
 
 ## Testing
 
-- **Deno** (`supabase/functions/__tests__/`): container body includes
-  `trial_params` for a single-video reels post with the flag; omits it when the
-  flag is NULL; ignores it on carousel/stories/single-image paths; the
-  coverless-retry rebuild preserves it.
-- **Vitest**: toggle visibility rules (reels + Instagram only), self-heal on
-  tipo/platform change, badge rendering.
+- **Deno** (`supabase/functions/__tests__/`):
+  - container body includes stringified `trial_params` for a single-video
+    reels post with the flag; omits it when the flag is NULL; ignores it on
+    carousel/stories/single-image paths and on a single-video non-reels tipo;
+  - the publish-now immediate coverless retry preserves `trial_params`;
+  - the cron's deferred coverless rebuild preserves `trial_params`;
+  - `classifyPublishError` returns `TRIAL_INELIGIBLE` for the staging-confirmed
+    pattern and it is non-retryable.
+- **SQL** (entitlement/trigger suite or migration test): the trigger nulls
+  `ig_trial_strategy` on tipo change away from `reels` and on platform
+  `tiktok`; keeps it for `instagram`/`both`/NULL platform.
+- **Vitest**: toggle visibility rules (reels + Instagram only), disabled state
+  while `agendado`, self-heal on tipo/platform change, badge rendering (CRM
+  and both Hub card variants).
 - Contract sweep: grep `apps/**/__tests__` and `supabase/functions/__tests__`
-  for post-select shape assertions before changing the select strings
+  for post-select and claim-RPC shape assertions before changing them
   (house rule: contract changes break existing tests in both suites).
