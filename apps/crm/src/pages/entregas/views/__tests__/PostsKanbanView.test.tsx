@@ -133,6 +133,8 @@ const baseProps = {
   openableWorkflowIds: new Set([10]),
   onPostClick: vi.fn(),
   cardsByWorkflowId: new Map([[10, makeBoardCard()]]),
+  filtersActive: true,
+  onCreateAvulso: vi.fn(),
 };
 
 describe('PostsKanbanView', () => {
@@ -141,9 +143,25 @@ describe('PostsKanbanView', () => {
     expect(container.querySelector('.board-container')).toBeNull();
   });
 
-  it('renders the global empty state when there are no posts', () => {
-    renderWithQuery(<PostsKanbanView {...baseProps} posts={[]} />);
+  it('renders the filtered empty state when a filter narrows the board to nothing', () => {
+    renderWithQuery(<PostsKanbanView {...baseProps} posts={[]} filtersActive />);
     expect(screen.getByText('Nenhum post encontrado. Ajuste os filtros.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar post avulso' })).toBeNull();
+  });
+
+  it('renders a "Criar post avulso" CTA when the board is empty with no filters active', () => {
+    const onCreateAvulso = vi.fn();
+    renderWithQuery(
+      <PostsKanbanView
+        {...baseProps}
+        posts={[]}
+        filtersActive={false}
+        onCreateAvulso={onCreateAvulso}
+      />,
+    );
+    expect(screen.queryByText('Nenhum post encontrado. Ajuste os filtros.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Criar post avulso' }));
+    expect(onCreateAvulso).toHaveBeenCalledTimes(1);
   });
 
   it('renders all 9 status columns in pipeline order with counts', () => {

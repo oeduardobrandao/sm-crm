@@ -501,6 +501,20 @@ export default function EntregasPage() {
     filters.filterPrazoTo,
   ]);
 
+  // Mirrors exactly the fields filteredPosts reads above -- a post-mode filter
+  // this omits would silently show "Ajuste os filtros" instead of the create-avulso
+  // empty state (or vice versa) despite `posts` really being filtered by it.
+  const postsFiltersActive =
+    !!filters.filterSearch ||
+    filters.filterClientes.length > 0 ||
+    filters.filterMembros.length > 0 ||
+    filters.filterEtapas.length > 0 ||
+    filters.filterTipos.length > 0 ||
+    filters.filterPostStatus.length > 0 ||
+    filters.filterPrazo.length > 0 ||
+    !!filters.filterPrazoFrom ||
+    !!filters.filterPrazoTo;
+
   // Apply filters
   let filteredCards = cards;
   if (filters.filterSearch) {
@@ -749,6 +763,8 @@ export default function EntregasPage() {
             openableWorkflowIds={openableWorkflowIds}
             onPostClick={handlePostClick}
             cardsByWorkflowId={cardsByWorkflowId}
+            filtersActive={postsFiltersActive}
+            onCreateAvulso={() => setNewAvulsoOpen(true)}
           />
         ))}
       {activeView === 'chart' && <ChartView cards={filteredCards} />}
@@ -778,6 +794,8 @@ export default function EntregasPage() {
             onPostClick={handlePostClick}
             onFluxoClick={handleFluxoClick}
             cardsByWorkflowId={cardsByWorkflowId}
+            filtersActive={postsFiltersActive}
+            onCreateAvulso={() => setNewAvulsoOpen(true)}
           />
         ))}
       {activeView === 'concluded' && <ConcludedView />}

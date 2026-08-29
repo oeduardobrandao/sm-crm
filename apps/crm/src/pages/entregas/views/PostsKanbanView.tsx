@@ -12,9 +12,10 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { Lock } from 'lucide-react';
+import { Lock, Plus } from 'lucide-react';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
+import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import {
@@ -45,6 +46,11 @@ interface PostsKanbanViewProps {
   /** Unfiltered board cards keyed by workflow id — source of the workflow's
    *  cliente (avatar/cor), current etapa, its responsible and its deadline. */
   cardsByWorkflowId: Map<number, BoardCard>;
+  /** True while any Publicações filter (busca, cliente, etc.) narrows `posts` --
+   *  the empty state only offers "Criar post avulso" once it's genuinely empty. */
+  filtersActive: boolean;
+  /** Opens NewAvulsoDialog from the unfiltered empty state's CTA. */
+  onCreateAvulso: () => void;
 }
 
 /** A post avulso (no workflow) is always openable -- only a wired post depends
@@ -291,6 +297,8 @@ export function PostsKanbanView({
   openableWorkflowIds,
   onPostClick,
   cardsByWorkflowId,
+  filtersActive,
+  onCreateAvulso,
 }: PostsKanbanViewProps) {
   const registry = useStatusRegistry();
   const updateStatus = useUpdatePostStatus();
@@ -373,7 +381,17 @@ export function PostsKanbanView({
         className="card animate-up"
         style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
       >
-        <p>Nenhum post encontrado. Ajuste os filtros.</p>
+        {filtersActive ? (
+          <p>Nenhum post encontrado. Ajuste os filtros.</p>
+        ) : (
+          <>
+            <p>Nenhum post por aqui ainda.</p>
+            <Button type="button" onClick={onCreateAvulso} style={{ marginTop: '1rem' }}>
+              <Plus className="h-4 w-4" />
+              Criar post avulso
+            </Button>
+          </>
+        )}
       </div>
     );
   }

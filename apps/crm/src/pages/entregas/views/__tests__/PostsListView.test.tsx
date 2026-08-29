@@ -56,6 +56,8 @@ const baseProps = {
   onPostClick: vi.fn(),
   onFluxoClick: vi.fn(),
   cardsByWorkflowId: new Map([[10, makeBoardCard()]]),
+  filtersActive: true,
+  onCreateAvulso: vi.fn(),
 };
 
 function getRenderedTitles(container: HTMLElement) {
@@ -65,9 +67,25 @@ function getRenderedTitles(container: HTMLElement) {
 }
 
 describe('PostsListView', () => {
-  it('renders the empty state when no posts match', () => {
-    render(<PostsListView {...baseProps} posts={[]} />);
+  it('renders the filtered empty state when a filter narrows the list to nothing', () => {
+    render(<PostsListView {...baseProps} posts={[]} filtersActive />);
     expect(screen.getByText('Nenhum post encontrado. Ajuste os filtros.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar post avulso' })).toBeNull();
+  });
+
+  it('renders a "Criar post avulso" CTA when the list is empty with no filters active', () => {
+    const onCreateAvulso = vi.fn();
+    render(
+      <PostsListView
+        {...baseProps}
+        posts={[]}
+        filtersActive={false}
+        onCreateAvulso={onCreateAvulso}
+      />,
+    );
+    expect(screen.queryByText('Nenhum post encontrado. Ajuste os filtros.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Criar post avulso' }));
+    expect(onCreateAvulso).toHaveBeenCalledTimes(1);
   });
 
   it('renders all columns including Etapa atual, Responsável and Prazo da etapa', () => {

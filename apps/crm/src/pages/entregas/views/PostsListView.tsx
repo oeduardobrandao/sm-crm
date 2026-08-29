@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { ChevronUp, ChevronDown } from 'lucide-react';
+import { ChevronUp, ChevronDown, Plus } from 'lucide-react';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
+import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { formatPostDate } from '@/utils/postDate';
@@ -20,6 +21,11 @@ interface PostsListViewProps {
   /** Unfiltered board cards keyed by workflow id — source of the workflow's
    *  cliente (avatar/cor), current etapa, its responsible and its deadline. */
   cardsByWorkflowId: Map<number, BoardCard>;
+  /** True while any Publicações filter (busca, cliente, etc.) narrows `posts` --
+   *  the empty state only offers "Criar post avulso" once it's genuinely empty. */
+  filtersActive: boolean;
+  /** Opens NewAvulsoDialog from the unfiltered empty state's CTA. */
+  onCreateAvulso: () => void;
 }
 
 type Column = { key: string; label: string };
@@ -61,6 +67,8 @@ export function PostsListView({
   onPostClick,
   onFluxoClick,
   cardsByWorkflowId,
+  filtersActive,
+  onCreateAvulso,
 }: PostsListViewProps) {
   const [sort, setSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
     column: 'agendado',
@@ -140,7 +148,17 @@ export function PostsListView({
         className="card animate-up"
         style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
       >
-        <p>Nenhum post encontrado. Ajuste os filtros.</p>
+        {filtersActive ? (
+          <p>Nenhum post encontrado. Ajuste os filtros.</p>
+        ) : (
+          <>
+            <p>Nenhum post por aqui ainda.</p>
+            <Button type="button" onClick={onCreateAvulso} style={{ marginTop: '1rem' }}>
+              <Plus className="h-4 w-4" />
+              Criar post avulso
+            </Button>
+          </>
+        )}
       </div>
     );
   }

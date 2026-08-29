@@ -6891,6 +6891,10 @@ body.role-agent input[name='valor_total'] {
   margin-top: 0.7rem;
 }
 
+.ex-aside + .ex-aside {
+  margin-top: 0.5rem;
+}
+
 .ex-aside {
   font-size: 0.73rem;
   color: var(--text-light);
