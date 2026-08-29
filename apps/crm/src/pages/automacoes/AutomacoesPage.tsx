@@ -486,7 +486,10 @@ export default function AutomacoesPage() {
                           onCheckedChange={(ativo) => toggleMutation.mutate({ id: a.id, ativo })}
                         />
                       </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right' }}>
+                      <TableCell
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ textAlign: 'right' }}
+                      >
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
