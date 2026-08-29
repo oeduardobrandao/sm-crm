@@ -484,5 +484,12 @@ describe('AutomacoesPage', () => {
       fireEvent.click(screen.getByRole('button', { name: /newAutomation/ }));
       expect(screen.getByTestId('automation-dialog')).toHaveAttribute('data-tour-step', '');
     });
+
+    it('link da checklist reinicia o tour mesmo com a chave gravada', async () => {
+      localStorage.setItem(tourSeenKey('w-1'), '1');
+      renderPage();
+      fireEvent.click(await screen.findByText('checklist.seeTour'));
+      expect(await screen.findByText('tour.step1Title')).toBeInTheDocument();
+    });
   });
 });

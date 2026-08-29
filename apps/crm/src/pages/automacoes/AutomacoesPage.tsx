@@ -330,6 +330,7 @@ export default function AutomacoesPage() {
           canCreate={canCreate && !isAgent}
           onCreate={openCreate}
           onDismiss={dismissChecklist}
+          onStartTour={canCreate && !isAgent ? tour.start : undefined}
         />
       )}
 

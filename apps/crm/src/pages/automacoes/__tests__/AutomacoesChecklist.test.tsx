@@ -63,4 +63,16 @@ describe('AutomacoesChecklist', () => {
     fireEvent.click(screen.getByRole('button', { name: 'checklist.dismiss' }));
     expect(onDismiss).toHaveBeenCalled();
   });
+
+  it('mostra "Ver passo a passo" quando onStartTour é passado e chama ao clicar', () => {
+    const onStartTour = vi.fn();
+    renderChecklist({ onStartTour });
+    fireEvent.click(screen.getByText('checklist.seeTour'));
+    expect(onStartTour).toHaveBeenCalledOnce();
+  });
+
+  it('sem onStartTour, o link não renderiza', () => {
+    renderChecklist();
+    expect(screen.queryByText('checklist.seeTour')).not.toBeInTheDocument();
+  });
 });

@@ -12,8 +12,7 @@ describe('useAutomationTour', () => {
 
   const render = (eligible: boolean) =>
     renderHook(
-      ({ e }: { e: boolean }) =>
-        useAutomationTour({ contaId: CONTA, eligibleForAutoStart: e }),
+      ({ e }: { e: boolean }) => useAutomationTour({ contaId: CONTA, eligibleForAutoStart: e }),
       { initialProps: { e: eligible } },
     );
 
