@@ -114,6 +114,14 @@ export function TextPostCard({
             <span className="text-[11px] font-semibold hub-btn-primary px-2 py-0.5 rounded">
               {TIPO_LABEL[post.tipo] ?? post.tipo}
             </span>
+            {post.ig_trial_strategy && (
+              <span
+                className="text-[11px] font-semibold px-2 py-0.5 rounded-full border"
+                style={{ color: 'var(--hub-acc)', borderColor: 'var(--hub-acc)' }}
+              >
+                Reel de teste
+              </span>
+            )}
             <span
               className={`text-[11px] font-semibold ${STATUS_TEXT_COLOR[post.status] ?? 'hub-tx2'}`}
             >

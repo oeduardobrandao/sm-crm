@@ -314,6 +314,14 @@ export function InstagramPostCard({
           {displayName}
         </span>
         <PlatformBadge platform={post.platform} />
+        {post.ig_trial_strategy && (
+          <span
+            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border shrink-0"
+            style={{ color: 'var(--hub-acc)', borderColor: 'var(--hub-acc)' }}
+          >
+            Reel de teste
+          </span>
+        )}
         {!onToggleSelect && (
           <svg
             className="ml-auto text-[#262626] dark:text-[#f5f5f5]"
