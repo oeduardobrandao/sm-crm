@@ -98,6 +98,7 @@ import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { InstagramCaptionField } from './InstagramCaptionField';
 import { PlatformSelector } from './PlatformSelector';
 import { TikTokSettingsPanel } from './TikTokSettingsPanel';
+import { TrialReelPanel } from './TrialReelPanel';
 import { ScheduleButton } from './ScheduleButton';
 import { PostAutomationSection } from './PostAutomationSection';
 import { PublishErrorBlock } from './PublishErrorBlock';
@@ -1297,7 +1298,13 @@ function SortablePostItem({
               <select
                 className="drawer-select"
                 value={post.tipo}
-                onChange={(e) => onFieldChange('tipo', e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value as WorkflowPost['tipo'];
+                  onFieldChange('tipo', v);
+                  if (v !== 'reels' && post.ig_trial_strategy) {
+                    onFieldChange('ig_trial_strategy', null);
+                  }
+                }}
                 disabled={isScheduleLocked}
                 title={isScheduleLocked ? 'Cancelar agendamento para editar' : undefined}
               >
@@ -1314,7 +1321,12 @@ function SortablePostItem({
               tiktokFeatureEnabled={features?.feature_tiktok === true}
               hasActiveTikTokAccount={hasActiveTikTokAccount}
               disabled={isScheduleLocked}
-              onChange={(platform) => onFieldChange('platform', platform)}
+              onChange={(platform) => {
+                onFieldChange('platform', platform);
+                if (platform === 'tiktok' && post.ig_trial_strategy) {
+                  onFieldChange('ig_trial_strategy', null);
+                }
+              }}
             />
             <div className="drawer-post-field">
               <label>Status</label>
@@ -1512,6 +1524,15 @@ function SortablePostItem({
               'tiktok'/'both' on a stories post — PlatformSelector self-heals that case).
               `onCompletenessChange`/`showTestModeBanner` wire into the sibling ScheduleButton
               below via the local state declared above (Task C3). */}
+          {hasInstagramAccount && (
+            <TrialReelPanel
+              post={post}
+              media={postMedia ?? []}
+              disabled={isScheduleLocked}
+              onFieldChange={onFieldChange}
+            />
+          )}
+
           {(post.platform === 'tiktok' || post.platform === 'both') && (
             <TikTokSettingsPanel
               clientId={clienteId}

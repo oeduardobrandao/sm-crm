@@ -43,6 +43,7 @@ interface ClaimedPost {
   instagram_user_id: string;
   client_id: number;
   story_segments: Array<{ file_id: number; container_id: string | null; media_id: string | null }> | null;
+  ig_trial_strategy: string | null;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -148,6 +149,7 @@ async function processContainerCreation(
     caption: post.ig_caption,
     useCover: post.publish_retry_count === 0,
     tipo: post.tipo,
+    trialStrategy: post.ig_trial_strategy,
   });
 
   await db.from("workflow_posts").update({

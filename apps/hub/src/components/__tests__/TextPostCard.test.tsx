@@ -119,6 +119,32 @@ describe('TextPostCard', () => {
 
     expect(screen.getByText('Instagram')).toBeInTheDocument();
   });
+
+  it('mostra o chip Reel de teste quando ig_trial_strategy está definido', () => {
+    render(
+      <TextPostCard
+        post={makePost({ tipo: 'reels', ig_trial_strategy: 'auto' })}
+        token="token-publico"
+        approvals={[]}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Reel de teste')).toBeTruthy();
+  });
+
+  it('não mostra o chip em post normal', () => {
+    render(
+      <TextPostCard
+        post={makePost()}
+        token="token-publico"
+        approvals={[]}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText('Reel de teste')).toBeNull();
+  });
 });
 
 // Storage auto-clean placeholder (spec 2026-08-10): a published post whose

@@ -133,7 +133,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
 
     const { data: posts } = await db
       .from("workflow_posts")
-      .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, tiktok_post_url, published_at, publish_error, platform, media_autocleaned_at, workflow_id, workflows(titulo, created_at)")
+      .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, tiktok_post_url, published_at, publish_error, platform, ig_trial_strategy, media_autocleaned_at, workflow_id, workflows(titulo, created_at)")
       .in("workflow_id", workflowIds)
       .order("scheduled_at", { ascending: true });
 

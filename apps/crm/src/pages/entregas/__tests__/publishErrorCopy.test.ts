@@ -11,6 +11,7 @@ const ALL_CODES: PublishErrorCode[] = [
   'CAROUSEL_LIMIT',
   'NO_MEDIA',
   'MEDIA_UNSUPPORTED',
+  'TRIAL_INELIGIBLE',
   'CONTAINER_EXPIRED',
   'RATE_LIMIT',
   'IG_TRANSIENT',
@@ -49,5 +50,11 @@ describe('publishErrorCopy', () => {
 
   it('TOKEN_EXPIRED direciona para reconexão', () => {
     expect(PUBLISH_ERROR_COPY.TOKEN_EXPIRED.acao).toBe('reconnect');
+  });
+
+  it('TRIAL_INELIGIBLE esconde o detalhe cru e oferece retry', () => {
+    const d = PUBLISH_ERROR_COPY.TRIAL_INELIGIBLE;
+    expect(d.acao).toBe('retry');
+    expect(d.mostrarDetalhes).toBe(false);
   });
 });

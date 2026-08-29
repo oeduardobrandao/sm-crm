@@ -252,6 +252,9 @@ export function PostsListView({
                 </td>
                 <td style={{ padding: '0.6rem 1rem' }}>
                   <span className="post-tipo-badge">{TIPO_LABELS[p.tipo]}</span>
+                  {p.ig_trial_strategy && (
+                    <span className="post-tipo-badge post-tipo-badge--trial">Teste</span>
+                  )}
                 </td>
                 <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>
                   <PostStatusChip post={p} registry={statusRegistry} />

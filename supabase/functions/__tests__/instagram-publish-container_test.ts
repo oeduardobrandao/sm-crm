@@ -1,4 +1,5 @@
 import { assert, assertEquals } from "./assert.ts";
+import { TRIAL_MEDIA_SHAPE_ERROR } from "../_shared/publish-error-codes.ts";
 
 // signGetUrl presigns locally (no network) but reads R2 env lazily — give it dummy
 // creds so createContainerForPost can build media URLs under test.
@@ -200,4 +201,81 @@ Deno.test("createContainerForPost: >10 media → throws before any Graph call", 
   } finally {
     f.restore();
   }
+});
+
+Deno.test("createContainerForPost: trial 'auto' single video reels → trial_params SS_PERFORMANCE", async () => {
+  const f = stubFetch();
+  try {
+    await createContainerForPost(dbWithMedia([{ kind: "video", r2_key: "v.mp4" }]), {
+      ...base, tipo: "reels", trialStrategy: "auto", useCover: false,
+    });
+    assertEquals(
+      f.calls[0].body.trial_params,
+      JSON.stringify({ graduation_strategy: "SS_PERFORMANCE" }),
+    );
+  } finally { f.restore(); }
+});
+
+Deno.test("createContainerForPost: trial 'manual' → trial_params MANUAL", async () => {
+  const f = stubFetch();
+  try {
+    await createContainerForPost(dbWithMedia([{ kind: "video", r2_key: "v.mp4" }]), {
+      ...base, tipo: "reels", trialStrategy: "manual", useCover: false,
+    });
+    assertEquals(
+      f.calls[0].body.trial_params,
+      JSON.stringify({ graduation_strategy: "MANUAL" }),
+    );
+  } finally { f.restore(); }
+});
+
+Deno.test("createContainerForPost: sem trial → sem trial_params", async () => {
+  const f = stubFetch();
+  try {
+    await createContainerForPost(dbWithMedia([{ kind: "video", r2_key: "v.mp4" }]), {
+      ...base, tipo: "reels", useCover: false,
+    });
+    assert(!("trial_params" in f.calls[0].body), "trial_params must be absent");
+  } finally { f.restore(); }
+});
+
+Deno.test("createContainerForPost: trial em carrossel → lança TRIAL_MEDIA_SHAPE_ERROR", async () => {
+  const f = stubFetch();
+  try {
+    let threw = "";
+    try {
+      await createContainerForPost(
+        dbWithMedia([{ kind: "image", r2_key: "a.jpg" }, { kind: "image", r2_key: "b.jpg" }]),
+        { ...base, tipo: "reels", trialStrategy: "auto", useCover: false },
+      );
+    } catch (e) { threw = (e as Error).message; }
+    assertEquals(threw, TRIAL_MEDIA_SHAPE_ERROR);
+    assertEquals(f.calls.length, 0, "must throw before any Graph call");
+  } finally { f.restore(); }
+});
+
+Deno.test("createContainerForPost: trial em imagem única → lança", async () => {
+  const f = stubFetch();
+  try {
+    let threw = "";
+    try {
+      await createContainerForPost(dbWithMedia([{ kind: "image", r2_key: "a.jpg" }]), {
+        ...base, tipo: "reels", trialStrategy: "auto", useCover: false,
+      });
+    } catch (e) { threw = (e as Error).message; }
+    assertEquals(threw, TRIAL_MEDIA_SHAPE_ERROR);
+  } finally { f.restore(); }
+});
+
+Deno.test("createContainerForPost: trial com tipo feed (vídeo único) → lança", async () => {
+  const f = stubFetch();
+  try {
+    let threw = "";
+    try {
+      await createContainerForPost(dbWithMedia([{ kind: "video", r2_key: "v.mp4" }]), {
+        ...base, tipo: "feed", trialStrategy: "auto", useCover: false,
+      });
+    } catch (e) { threw = (e as Error).message; }
+    assertEquals(threw, TRIAL_MEDIA_SHAPE_ERROR);
+  } finally { f.restore(); }
 });

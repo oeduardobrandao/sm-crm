@@ -1,5 +1,5 @@
-import { assertEquals } from "./assert.ts";
-import { classifyPublishError, NON_RETRYABLE_CODES } from "../_shared/publish-error-codes.ts";
+import { assertEquals, assert } from "./assert.ts";
+import { classifyPublishError, NON_RETRYABLE_CODES, PUBLISH_ERROR_COPY } from "../_shared/publish-error-codes.ts";
 
 function graphErr(message: string, graphCode?: number): Error {
   const e = new Error(message) as Error & { graphCode?: number };
@@ -96,9 +96,21 @@ Deno.test("classify: fallback UNKNOWN", () => {
   assertEquals(classifyPublishError("string solta"), "UNKNOWN");
 });
 
-Deno.test("NON_RETRYABLE_CODES: exatamente os 5 códigos que o cron não deve reprocessar", () => {
+Deno.test("NON_RETRYABLE_CODES: exatamente os 6 códigos que o cron não deve reprocessar", () => {
   assertEquals(
     [...NON_RETRYABLE_CODES].sort(),
-    ["CAROUSEL_LIMIT", "MEDIA_TOO_LARGE", "MEDIA_UNSUPPORTED", "NO_MEDIA", "TOKEN_EXPIRED"],
+    ["CAROUSEL_LIMIT", "MEDIA_TOO_LARGE", "MEDIA_UNSUPPORTED", "NO_MEDIA", "TOKEN_EXPIRED", "TRIAL_INELIGIBLE"],
   );
+});
+
+Deno.test("classifyPublishError: media-shape trial error → TRIAL_INELIGIBLE", () => {
+  const code = classifyPublishError(
+    new Error("Reel de teste exige exatamente um vídeo. Ajuste a mídia ou desligue o Reel de teste."),
+  );
+  assertEquals(code, "TRIAL_INELIGIBLE");
+});
+
+Deno.test("TRIAL_INELIGIBLE is non-retryable and has copy", () => {
+  assert(NON_RETRYABLE_CODES.includes("TRIAL_INELIGIBLE"));
+  assert(PUBLISH_ERROR_COPY.TRIAL_INELIGIBLE.titulo.length > 0);
 });
