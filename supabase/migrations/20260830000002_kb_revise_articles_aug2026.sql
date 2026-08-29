@@ -463,6 +463,56 @@ SELECT _kb_rv_upsert(
   34
 );
 
+-- Como conectar o Instagram: o fluxo real hoje e o login empresarial do
+-- Instagram (instagram.com) com UMA tela de consentimento -- nao existe mais
+-- o passo no Facebook nem o seletor de paginas que o texto descrevia
+-- (verificado num connect real em 2026-08-29; capturas do proprio fluxo).
+-- Re-declaracao completa; a secao do link de autoconexao continua vindo do
+-- append logo abaixo.
+SELECT _kb_rv_upsert(
+  'aaaaaaaa-0009-4000-a000-000000000009',
+  'Como conectar o Instagram',
+  'como-conectar-o-instagram',
+  'Conecte contas profissionais do Instagram para analytics, agendamento, publicação e Post Express.',
+  _kb_rv_doc(
+    _kb_rv_h(2, 'Pré-requisitos'),
+    _kb_rv_ul(ARRAY[
+      'A conta do Instagram deve ser Profissional, Business ou Creator',
+      'Quem autoriza precisa do login da própria conta do Instagram; se a conta é do cliente, você pode pedir que ele autorize pelo link de conexão, descrito abaixo',
+      'Permissões de leitura alimentam Analytics; a permissão de publicação libera agendar, publicar agora e Post Express'
+    ]),
+    _kb_rv_h(2, 'Conectando a conta'),
+    _kb_rv_ol_shots(
+      ARRAY[
+        'Abra o cliente e vá até a aba Redes sociais',
+        'Clique em Conectar Instagram; se a conexão expirou, o aviso na mesma aba traz o botão Reconectar',
+        'Entre com a conta do Instagram do cliente na tela da Meta',
+        'Revise as permissões solicitadas e confirme em Permitir'
+      ],
+      ARRAY[
+        NULL,
+        _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-conectar-o-instagram/02-reconectar-redes-sociais.png', 'Aba Redes sociais com o aviso de autorização expirada e a reconexão em andamento.', 1440, 900),
+        NULL,
+        _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-conectar-o-instagram/04-permissoes-instagram.png', 'Tela de autorização do Instagram com as permissões solicitadas pelo Mesaas e o botão Permitir.', 1440, 900)
+      ]::jsonb[]
+    ),
+    _kb_rv_callout('⚠️', 'orange', 'Mantenha a permissão de publicar conteúdo ligada na tela de autorização. Sem ela a conta conecta, os analytics funcionam, e o agendamento falha depois. É a causa mais comum de falha de publicação.'),
+    _kb_rv_p('A tela de autorização aparece no idioma configurado na conta do Instagram, então pode estar em inglês, como no exemplo acima.'),
+    _kb_rv_h(2, 'Solução de problemas'),
+    _kb_rv_ul(ARRAY[
+      'Token expirado - a Meta exige renovação periódica da conexão. Reconecte a conta pela aba Redes sociais',
+      'Permissões revogadas - a autorização foi desfeita do lado do Instagram, geralmente após troca de senha ou revisão de segurança. Conecte novamente',
+      'Sem permissão de publicação - a permissão de publicar conteúdo foi desligada na tela de autorização. Reconecte mantendo todas as permissões ligadas',
+      'Conta desconectada - revise o status na aba Redes sociais antes de tentar publicar'
+    ]),
+    _kb_rv_h(2, 'Depois de conectar'),
+    _kb_rv_p('A conta passa a alimentar Analytics, relatórios por conta, seleção de cliente no Post Express, agendamento de posts e a experiência de performance no Hub quando disponível.')
+  ),
+  'instagram-e-analytics',
+  ARRAY['instagram', 'conexao', 'oauth', 'sync', 'permissoes', 'publicacao'],
+  50
+);
+
 -- =======================================================================
 -- 2. APPENDS IDEMPOTENTES (preservam capturas e conteudo existente)
 -- =======================================================================
@@ -602,12 +652,22 @@ SELECT _kb_rv_replace_text('como-configurar-o-hub-do-cliente',
   'Seção Hub do Cliente na página do cliente.',
   'Aba Hub na página do cliente.');
 
-SELECT _kb_rv_replace_text('como-conectar-o-instagram',
-  'Na seção Instagram, clique em Conectar Instagram',
-  'Na aba Redes sociais, clique em Conectar Instagram');
-SELECT _kb_rv_replace_text('como-conectar-o-instagram',
-  'Seção Instagram com o botão Conectar com o Instagram.',
-  'Aba Redes sociais com o botão Conectar com o Instagram.');
+-- No guia de primeiro post, os passos de conexão descreviam o fluxo antigo
+-- via Facebook (autorizar + seletor de páginas); o fluxo real é o login do
+-- Instagram com uma tela de consentimento, e a exigência de Página do
+-- Facebook não existe mais nesse caminho.
+SELECT _kb_rv_replace_text('como-agendar-seu-primeiro-post',
+  'A conta precisa ser profissional, comercial ou de criador, e estar vinculada a uma página do Facebook.',
+  'A conta precisa ser profissional, comercial ou de criador.');
+SELECT _kb_rv_replace_text('como-agendar-seu-primeiro-post',
+  'Autorize o acesso na tela do Facebook',
+  'Entre com a conta do Instagram do cliente');
+SELECT _kb_rv_replace_text('como-agendar-seu-primeiro-post',
+  'Escolha a página vinculada à conta do cliente',
+  'Revise as permissões solicitadas na tela do Instagram');
+SELECT _kb_rv_replace_text('como-agendar-seu-primeiro-post',
+  'Confirme as permissões, incluindo a de publicação',
+  'Confirme em Permitir, mantendo a permissão de publicação ligada');
 
 -- =======================================================================
 -- 4. Context links: artigo orfao ganha rotas
