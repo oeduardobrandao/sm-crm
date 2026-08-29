@@ -8,6 +8,7 @@ export type PublishErrorCode =
   | 'CAROUSEL_LIMIT'
   | 'NO_MEDIA'
   | 'MEDIA_UNSUPPORTED'
+  | 'TRIAL_INELIGIBLE'
   | 'CONTAINER_EXPIRED'
   | 'RATE_LIMIT'
   | 'IG_TRANSIENT'
@@ -59,6 +60,13 @@ export const PUBLISH_ERROR_COPY: Record<PublishErrorCode, PublishErrorDisplay> =
       'O arquivo tem formato, proporção ou duração que o Instagram não aceita. Confira a mídia na galeria e tente novamente.',
     acao: 'media',
     mostrarDetalhes: true,
+  },
+  TRIAL_INELIGIBLE: {
+    titulo: 'Reel de teste não aceito',
+    explicacao:
+      'O post precisa de exatamente um vídeo e a conta precisa ser profissional, pública e ter 1.000+ seguidores. Ajuste o post ou a conta, ou desligue o Reel de teste, e tente novamente.',
+    acao: 'retry',
+    mostrarDetalhes: false,
   },
   CONTAINER_EXPIRED: {
     titulo: 'Publicação preparada expirou no Instagram',
