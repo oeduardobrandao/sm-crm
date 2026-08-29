@@ -24,7 +24,15 @@
 --       por chamada (nenhum ruido de trigger de linha vaza)
 --   (m) integracao com propagate_template_to_workflows: 1 'template_propagado' por
 --       workflow tocado (nao por etapa); etapa concluida intocada; tipo so sincroniza em
---       'pendente'; fluxo de outro tenant com template_id coincidente nao e tocado
+--       'pendente'; fluxo de outro tenant com template_id coincidente nao e tocado;
+--       backfill: ordens do template sem linha no fluxo sao inseridas como 'pendente'
+--       (nome/prazo/tipo copiados, data_limite/iniciado_em/concluido_em NULL) e contam
+--       em metadata.etapas_criadas
+--   (n) backfill puro: fluxo cuja unica etapa e 'concluido' recebe SO as ordens que
+--       faltam (a concluida nunca duplica), emite evento mesmo com 0 updates
+--       (etapas_atualizadas=0, etapas_criadas>0); tipo_prazo/tipo ausentes no jsonb
+--       caem nos defaults 'corridos'/'padrao'; segunda chamada nao insere de novo
+--       (idempotente por ordem)
 --
 -- Estrutural: tanto migrate_workflow_template quanto propagate_template_to_workflows
 -- fazem set_config('app.suppress_workflow_events', '1', true) e NUNCA resetam para '0'
@@ -65,6 +73,8 @@ declare
   v_wf_m_ativo bigint; v_etapa_m_ativo bigint;
   v_wf_m_mixed bigint; v_etapa_m_concl bigint; v_etapa_m_mixed1 bigint; v_etapa_m_mixed2 bigint;
   v_wf_poison_prop bigint; v_etapa_poison_prop bigint;
+
+  v_tpl_n bigint; v_wf_n bigint; v_etapa_n_concl bigint;
 
   v_snap_concl_nome text; v_snap_concl_prazo int; v_snap_concl_tp text; v_snap_concl_tipo text;
   v_snap_concl_resp bigint; v_snap_concl_status text;
@@ -616,6 +626,108 @@ begin
   assert r.nome = v_snap_poison_nome and r.prazo_dias = v_snap_poison_prazo and r.tipo_prazo = v_snap_poison_tp
      and r.tipo = v_snap_poison_tipo and r.responsavel_id is not distinct from v_snap_poison_resp,
     'etapa do fluxo envenenado deve ficar byte-identica apos a propagacao de outro tenant';
+
+  -- (m-5) backfill: template tem 3 etapas e o Fluxo M Pendente tinha so a
+  -- ordem 0 -- as ordens 1 e 2 devem ter sido inseridas copiando o template
+  select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf_m_pend;
+  assert v_cnt = 3, format('fluxo pendente deve terminar com 3 etapas (1 antiga + 2 backfilladas), veio %s', v_cnt);
+
+  select * into r from workflow_etapas where workflow_id = v_wf_m_pend and ordem = 1;
+  assert found, 'backfill deve inserir a ordem 1 no fluxo pendente';
+  assert r.nome = 'T1' and r.prazo_dias = 4 and r.tipo_prazo = 'uteis' and r.tipo = 'padrao',
+    format('ordem 1 backfillada deve copiar nome/prazo/tipo_prazo/tipo do template, veio %s/%s/%s/%s',
+           r.nome, r.prazo_dias, r.tipo_prazo, r.tipo);
+  assert r.status = 'pendente' and r.iniciado_em is null and r.concluido_em is null
+     and r.data_limite is null and r.responsavel_id is null,
+    'ordem 1 backfillada deve nascer pendente, sem timestamps, sem data_limite e sem responsavel';
+
+  select * into r from workflow_etapas where workflow_id = v_wf_m_pend and ordem = 2;
+  assert found, 'backfill deve inserir a ordem 2 no fluxo pendente';
+  assert r.nome = 'T2' and r.prazo_dias = 5 and r.status = 'pendente' and r.data_limite is null,
+    'ordem 2 backfillada deve copiar o template e nascer pendente sem data_limite';
+
+  select metadata into v_meta from workflow_events
+    where workflow_id = v_wf_m_pend and event_type = 'template_propagado';
+  assert (v_meta->>'etapas_atualizadas')::int = 1,
+    format('fluxo pendente: etapas_atualizadas deve ser 1 (so a ordem 0), veio %s', v_meta->>'etapas_atualizadas');
+  assert (v_meta->>'etapas_criadas')::int = 2,
+    format('fluxo pendente: etapas_criadas deve ser 2 (ordens 1 e 2), veio %s', v_meta->>'etapas_criadas');
+
+  -- escada ja completa (3 ordens) nao recebe backfill
+  select metadata into v_meta from workflow_events
+    where workflow_id = v_wf_m_mixed and event_type = 'template_propagado';
+  assert (v_meta->>'etapas_criadas')::int = 0,
+    format('fluxo misto ja tem as 3 ordens: etapas_criadas deve ser 0, veio %s', v_meta->>'etapas_criadas');
+
+  -- tenant isolation vale para o backfill tambem: o fluxo envenenado de
+  -- outro tenant nao ganha as etapas novas do template
+  select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf_poison_prop;
+  assert v_cnt = 1, format('fluxo envenenado deve continuar com 1 etapa (sem backfill cross-tenant), veio %s', v_cnt);
+
+  -- ---------------------------------------------------------------------
+  -- (n) backfill puro: fluxo que ja completou a antiga etapa final
+  -- ---------------------------------------------------------------------
+  insert into workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
+    values (v_ws, v_owner, 'Template N', jsonb_build_array(
+      jsonb_build_object('nome', 'N0', 'prazo_dias', 2, 'tipo_prazo', 'uteis', 'responsavel_id', null, 'tipo', 'padrao'),
+      -- sem tipo_prazo nem tipo: o backfill deve aplicar os defaults 'corridos'/'padrao'
+      jsonb_build_object('nome', 'N1', 'prazo_dias', 7, 'responsavel_id', null)
+    ), 'padrao') returning id into v_tpl_n;
+
+  insert into workflows (conta_id, user_id, cliente_id, titulo, template_id, status, etapa_atual, recorrente, modo_prazo)
+    values (v_ws, v_owner, v_cli1, 'Fluxo N Backfill Puro', v_tpl_n, 'ativo', 0, false, 'padrao')
+    returning id into v_wf_n;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em, concluido_em)
+    values (v_wf_n, 0, 'AntigaFinal', 1, 'uteis', 'padrao', 'concluido', '2026-02-01 10:00+00', '2026-02-02 10:00+00')
+    returning id into v_etapa_n_concl;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+  perform propagate_template_to_workflows(v_tpl_n);
+  perform set_config('app.suppress_workflow_events', '0', true);
+
+  -- a concluida na ordem 0 conta como existente: nunca duplicar
+  select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf_n and ordem = 0;
+  assert v_cnt = 1, format('ordem 0 (concluida) nao pode ser duplicada pelo backfill, veio %s linhas', v_cnt);
+  select * into r from workflow_etapas where id = v_etapa_n_concl;
+  assert r.nome = 'AntigaFinal' and r.status = 'concluido', 'etapa concluida segue intocada no backfill puro';
+
+  -- so a ordem 1 e inserida; defaults aplicam quando o jsonb omite as chaves
+  select * into r from workflow_etapas where workflow_id = v_wf_n and ordem = 1;
+  assert found, 'backfill puro deve inserir a ordem 1';
+  assert r.nome = 'N1' and r.prazo_dias = 7 and r.status = 'pendente',
+    format('ordem 1 deve copiar nome/prazo e nascer pendente, veio %s/%s/%s', r.nome, r.prazo_dias, r.status);
+  assert r.tipo_prazo = 'corridos' and r.tipo = 'padrao',
+    format('tipo_prazo/tipo ausentes no template devem cair nos defaults corridos/padrao, veio %s/%s', r.tipo_prazo, r.tipo);
+  assert r.data_limite is null and r.iniciado_em is null and r.concluido_em is null,
+    'ordem 1 backfillada nao pode ganhar data_limite nem timestamps';
+
+  -- 0 updates + 1 insert ainda emite exatamente 1 evento
+  select count(*) into v_cnt from workflow_events
+    where workflow_id = v_wf_n and event_type = 'template_propagado';
+  assert v_cnt = 1, format('backfill puro deve emitir exatamente 1 template_propagado, veio %s', v_cnt);
+  select metadata into v_meta from workflow_events
+    where workflow_id = v_wf_n and event_type = 'template_propagado';
+  assert (v_meta->>'etapas_atualizadas')::int = 0 and (v_meta->>'etapas_criadas')::int = 1,
+    format('backfill puro: metadata deve registrar 0 atualizadas / 1 criada, veio %s/%s',
+           v_meta->>'etapas_atualizadas', v_meta->>'etapas_criadas');
+
+  -- nenhum ruido de trigger de linha durante o backfill
+  select count(*) into v_cnt from workflow_events
+    where workflow_id = v_wf_n
+      and event_type in ('etapa_editada', 'etapa_iniciada', 'etapa_concluida', 'etapa_revertida', 'fluxo_editado');
+  assert v_cnt = 0, 'insert de backfill nao pode vazar evento de trigger de linha';
+
+  -- segunda chamada: idempotente por ordem -- nada novo inserido
+  perform propagate_template_to_workflows(v_tpl_n);
+  perform set_config('app.suppress_workflow_events', '0', true);
+
+  select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf_n;
+  assert v_cnt = 2, format('segunda propagacao nao pode inserir de novo (2 etapas), veio %s', v_cnt);
+  select metadata into v_meta from workflow_events
+    where workflow_id = v_wf_n and event_type = 'template_propagado'
+    order by id desc limit 1;
+  assert (v_meta->>'etapas_criadas')::int = 0,
+    format('segunda propagacao deve registrar etapas_criadas=0, veio %s', v_meta->>'etapas_criadas');
 
   raise notice 'PASS workflow_events';
 end $$;
