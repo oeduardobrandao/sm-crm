@@ -61,18 +61,13 @@ export default function TourOverlay({
     let boundW = window.innerWidth;
     let boundH = window.innerHeight;
     if (step.surface === 'dialog') {
-      // Sem um Content real por perto (ex.: unidade de teste que monta a
-      // âncora direto no body), cai para a origem da viewport em vez de
-      // deixar o card órfão -- em produção o overlay sempre monta dentro do
-      // DialogContent do Radix, então este ramo tem o Content de verdade.
       const content = rootRef.current?.closest<HTMLElement>('[role="dialog"]');
-      if (content) {
-        const cRect = content.getBoundingClientRect();
-        originTop = cRect.top;
-        originLeft = cRect.left;
-        boundW = cRect.width;
-        boundH = cRect.height;
-      }
+      if (!content) return false;
+      const cRect = content.getBoundingClientRect();
+      originTop = cRect.top;
+      originLeft = cRect.left;
+      boundW = cRect.width;
+      boundH = cRect.height;
     }
     const spot = {
       top: rect.top - originTop,

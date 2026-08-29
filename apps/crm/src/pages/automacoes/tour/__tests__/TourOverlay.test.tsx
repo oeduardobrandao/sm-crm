@@ -28,6 +28,31 @@ function mountAnchor(anchor: string): () => void {
   return () => el.remove();
 }
 
+/**
+ * Para passos `surface: 'dialog'`, `measure()` só resolve dentro de um
+ * ancestral real com `role="dialog"` (o Radix DialogContent em produção) --
+ * sem isso o overlay não deve resolver o layout, é assim que o fail-safe
+ * evita coordenadas erradas se o dialog ainda estiver montando. Este helper
+ * cria esse wrapper no body com a âncora dentro dele e devolve o container
+ * para `render(ui, { container })`: o `TourOverlay` monta como descendente
+ * do wrapper, então `rootRef.current.closest('[role="dialog"]')` encontra
+ * um ancestral de verdade, igual ao caso de produção.
+ */
+function mountDialogAnchor(anchor: string): { container: HTMLElement; cleanup: () => void } {
+  const dialog = document.createElement('div');
+  dialog.setAttribute('role', 'dialog');
+  document.body.appendChild(dialog);
+  const el = document.createElement('div');
+  el.setAttribute('data-tour', anchor);
+  dialog.appendChild(el);
+  // Container de render separado da âncora: o React (createRoot) limpa
+  // qualquer filho pré-existente do nó em que monta, o que apagaria a
+  // âncora se ela estivesse no mesmo container passado a `render()`.
+  const renderContainer = document.createElement('div');
+  dialog.appendChild(renderContainer);
+  return { container: renderContainer, cleanup: () => dialog.remove() };
+}
+
 describe('TourOverlay', () => {
   let cleanup: (() => void) | null = null;
   beforeEach(() => {
@@ -47,18 +72,23 @@ describe('TourOverlay', () => {
   });
 
   it('passo 2 (índice 1): Próximo sem Voltar', () => {
-    cleanup = mountAnchor(TOUR_STEPS[1].anchor);
-    render(<TourOverlay {...baseProps} step={TOUR_STEPS[1]} index={1} />);
+    const dialog = mountDialogAnchor(TOUR_STEPS[1].anchor);
+    cleanup = dialog.cleanup;
+    render(<TourOverlay {...baseProps} step={TOUR_STEPS[1]} index={1} />, {
+      container: dialog.container,
+    });
     expect(screen.getByText('tour.next')).toBeInTheDocument();
     expect(screen.queryByText('tour.back')).not.toBeInTheDocument();
   });
 
   it('passo intermediário: Voltar + Próximo, callbacks corretos', () => {
-    cleanup = mountAnchor(TOUR_STEPS[4].anchor);
+    const dialog = mountDialogAnchor(TOUR_STEPS[4].anchor);
+    cleanup = dialog.cleanup;
     const onNext = vi.fn();
     const onBack = vi.fn();
     render(
       <TourOverlay {...baseProps} step={TOUR_STEPS[4]} index={4} onNext={onNext} onBack={onBack} />,
+      { container: dialog.container },
     );
     fireEvent.click(screen.getByText('tour.next'));
     fireEvent.click(screen.getByText('tour.back'));
@@ -67,18 +97,24 @@ describe('TourOverlay', () => {
   });
 
   it('último passo: Concluir chama onFinish', () => {
-    cleanup = mountAnchor(TOUR_STEPS[7].anchor);
+    const dialog = mountDialogAnchor(TOUR_STEPS[7].anchor);
+    cleanup = dialog.cleanup;
     const onFinish = vi.fn();
-    render(<TourOverlay {...baseProps} step={TOUR_STEPS[7]} index={7} onFinish={onFinish} />);
+    render(<TourOverlay {...baseProps} step={TOUR_STEPS[7]} index={7} onFinish={onFinish} />, {
+      container: dialog.container,
+    });
     fireEvent.click(screen.getByText('tour.finish'));
     expect(onFinish).toHaveBeenCalledOnce();
     expect(screen.queryByText('tour.next')).not.toBeInTheDocument();
   });
 
   it('"Pular tour" chama onSkip em qualquer passo', () => {
-    cleanup = mountAnchor(TOUR_STEPS[2].anchor);
+    const dialog = mountDialogAnchor(TOUR_STEPS[2].anchor);
+    cleanup = dialog.cleanup;
     const onSkip = vi.fn();
-    render(<TourOverlay {...baseProps} step={TOUR_STEPS[2]} index={2} onSkip={onSkip} />);
+    render(<TourOverlay {...baseProps} step={TOUR_STEPS[2]} index={2} onSkip={onSkip} />, {
+      container: dialog.container,
+    });
     fireEvent.click(screen.getByText('tour.skip'));
     expect(onSkip).toHaveBeenCalledOnce();
   });
