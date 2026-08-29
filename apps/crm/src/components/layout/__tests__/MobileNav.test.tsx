@@ -292,6 +292,32 @@ describe('MobileNav', () => {
     expect(items).toContain('Contratos');
   });
 
+  it('renders Automações dimmed with a lock icon in the more sheet when the feature flag is false', () => {
+    setAuth();
+    setLimits({ features: { feature_instagram_automation: false } });
+    renderMobileNav('/dashboard');
+    fireEvent.click(document.getElementById('mobile-more-btn')!);
+
+    const locked = screen.getByTestId('mobile-nav-locked-automacoes');
+    expect(locked).toBeInTheDocument();
+    expect(locked.querySelector('.ph-lock')).not.toBeNull();
+    expect(locked).toHaveClass('mobile-more-item--locked');
+    expect(locked.textContent).toContain('Automações');
+  });
+
+  it('navigates to /automacoes when the locked item in the more sheet is clicked', async () => {
+    setAuth();
+    setLimits({ features: { feature_instagram_automation: false } });
+    renderMobileNav('/dashboard');
+    fireEvent.click(document.getElementById('mobile-more-btn')!);
+
+    fireEvent.click(screen.getByTestId('mobile-nav-locked-automacoes'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('path').textContent).toBe('/automacoes');
+    });
+  });
+
   it('renders the Mensagens unread badge in the more sheet when count > 0', () => {
     setAuth();
     setLimits({ features: { feature_mensagens: true } });

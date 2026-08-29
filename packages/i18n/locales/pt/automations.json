@@ -117,5 +117,24 @@
     "previewDesktopNote": "Botões aparecem no app do Instagram. No Instagram web podem não ser exibidos.",
     "previewNow": "Agora",
     "previewComposer": "Responder..."
+  },
+  "locked": {
+    "pitch": "Responda comentários do Instagram com uma DM automática: palavra-chave no comentário, mensagem (com botões de link) na caixa de entrada do seguidor.",
+    "cardKeyword": "Palavra-chave no comentário dispara a DM",
+    "cardButtons": "Até 3 botões de link na mensagem",
+    "cardReply": "Resposta pública automática opcional"
+  },
+  "loadError": "Não foi possível carregar as automações.",
+  "retry": "Tentar de novo",
+  "checklist": {
+    "title": "Comece por aqui",
+    "subtitle": "3 passos para a primeira DM automática",
+    "dismiss": "Dispensar",
+    "step1": "Reconecte o Instagram do cliente",
+    "step1Cta": "Ver clientes",
+    "step2": "Crie sua primeira automação",
+    "step2Cta": "Criar",
+    "step3": "Teste com um comentário",
+    "step3Hint": "Comente a palavra-chave num post e veja a DM chegar."
   }
 }

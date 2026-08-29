@@ -344,6 +344,19 @@ body {
   pointer-events: none;
 }
 
+.sidebar-sub-link--locked,
+.mobile-more-item--locked {
+  opacity: 0.55;
+}
+.sidebar-sub-link--locked:hover {
+  opacity: 0.8;
+}
+.nav-lock-icon {
+  margin-left: auto;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
 /* "Coming soon" pill for nav rows that are visible but not yet functional.
    Shared by the desktop sidebar and the mobile "Mais" sheet. */
 .nav-badge {

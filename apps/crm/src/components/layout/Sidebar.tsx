@@ -123,6 +123,21 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                   <span>{t(item.labelKey, item.label)}</span>
                   <span className="nav-badge">{t('sidebar.comingSoon', 'Em breve')}</span>
                 </div>
+              ) : item.locked ? (
+                <a
+                  className="sidebar-sub-link sidebar-sub-link--locked"
+                  href={`#${item.route}`}
+                  data-testid={`nav-locked-${item.id}`}
+                  title={t('sidebar.upgradeToUnlock', 'Disponível nos planos Pro e Max')}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleNavClick(item.route);
+                  }}
+                >
+                  <i className={`ph ${item.icon}`} />
+                  <span>{t(item.labelKey, item.label)}</span>
+                  <i className="ph ph-lock nav-lock-icon" aria-hidden="true" />
+                </a>
               ) : item.newTab ? (
                 <a
                   className="sidebar-sub-link"

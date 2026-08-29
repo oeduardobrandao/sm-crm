@@ -282,6 +282,32 @@ describe('Sidebar', () => {
     expect(screen.getByText('Contratos')).toBeInTheDocument();
   });
 
+  it('renders Automações dimmed with a lock icon when the feature flag is false', () => {
+    setAuth();
+    setLimits({ features: { feature_instagram_automation: false } });
+
+    renderSidebar('/dashboard');
+
+    const locked = screen.getByTestId('nav-locked-automacoes');
+    expect(locked).toBeInTheDocument();
+    expect(locked.querySelector('.ph-lock')).not.toBeNull();
+    expect(locked).toHaveClass('sidebar-sub-link--locked');
+    expect(screen.getByText('Automações')).toBeInTheDocument();
+  });
+
+  it('navigates to /automacoes when the locked item is clicked', async () => {
+    setAuth();
+    setLimits({ features: { feature_instagram_automation: false } });
+
+    renderSidebar('/dashboard');
+
+    fireEvent.click(screen.getByTestId('nav-locked-automacoes'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('current-path')).toHaveTextContent('/automacoes');
+    });
+  });
+
   it('renders the Mensagens unread badge when count > 0', () => {
     setAuth();
     setLimits({ features: { feature_mensagens: true } });

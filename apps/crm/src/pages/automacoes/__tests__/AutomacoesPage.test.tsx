@@ -13,6 +13,8 @@ const {
   mockDelete,
   hasFeatureMock,
   mockUseAuth,
+  mockHasReadyAccount,
+  entitlementsMock,
 } = vi.hoisted(() => ({
   mockGetAutomations: vi.fn(),
   mockGetClientes: vi.fn(),
@@ -21,6 +23,8 @@ const {
   mockDelete: vi.fn().mockResolvedValue(undefined),
   hasFeatureMock: vi.fn(() => true),
   mockUseAuth: vi.fn(),
+  mockHasReadyAccount: vi.fn(),
+  entitlementsMock: vi.fn(),
 }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -44,10 +48,21 @@ vi.mock('../../../store', async () => {
     getInstagramAutomationSends: mockGetSends,
     updateInstagramAutomation: mockUpdate,
     deleteInstagramAutomation: mockDelete,
+    hasAutomationReadyAccount: mockHasReadyAccount,
   };
 });
 
 vi.mock('../../../context/AuthContext', () => ({ useAuth: mockUseAuth }));
+
+vi.mock('../../../hooks/useEntitlements', () => ({
+  useEntitlements: () => entitlementsMock(),
+}));
+
+vi.mock('@/components/paywall/UpgradeLockedScreen', () => ({
+  UpgradeLockedScreen: ({ children }: { children?: ReactNode }) => (
+    <div data-testid="upgrade-locked-screen">{children}</div>
+  ),
+}));
 
 // FeatureGate normally reads the live entitlements query (a real fetch); a
 // controllable stub lets the "flag off" test drive it directly without
@@ -209,12 +224,15 @@ function setAuth(overrides: Record<string, unknown> = {}) {
 describe('AutomacoesPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     hasFeatureMock.mockReturnValue(true);
     mockGetAutomations.mockResolvedValue(AUTOMATIONS);
     mockGetClientes.mockResolvedValue(CLIENTES);
     mockGetSends.mockResolvedValue(SENDS);
     mockUpdate.mockResolvedValue(undefined);
     mockDelete.mockResolvedValue(undefined);
+    entitlementsMock.mockReturnValue({ isLoading: false, hasFeature: () => true });
+    mockHasReadyAccount.mockResolvedValue(false);
     setAuth();
   });
 
@@ -317,5 +335,81 @@ describe('AutomacoesPage', () => {
     fireEvent.click(within(row).getByRole('switch'));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('reactivateNeedsTarget'));
+  });
+
+  describe('gate de página (flag off)', () => {
+    beforeEach(() => {
+      entitlementsMock.mockReturnValue({
+        isLoading: false,
+        hasFeature: (f: string) => f !== 'feature_instagram_automation',
+      });
+    });
+
+    it('0 automações (sucesso) → paywall com pitch', async () => {
+      mockGetAutomations.mockResolvedValue([]);
+      renderPage();
+      expect(await screen.findByTestId('upgrade-locked-screen')).toBeInTheDocument();
+      expect(screen.getByText('locked.pitch')).toBeInTheDocument();
+    });
+
+    it('query em erro → estado de erro com retry, NUNCA paywall', async () => {
+      mockGetAutomations.mockRejectedValue(new Error('boom'));
+      renderPage();
+      expect(await screen.findByText('loadError')).toBeInTheDocument();
+      expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
+    });
+
+    it('automações legadas → página normal, sem paywall', async () => {
+      mockGetAutomations.mockResolvedValue(AUTOMATIONS);
+      renderPage();
+      expect(await screen.findByText('title')).toBeInTheDocument();
+      expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
+    });
+
+    it('query ainda pendente → spinner, NUNCA paywall', async () => {
+      mockGetAutomations.mockReturnValue(new Promise(() => {}));
+      const { container } = renderPage();
+
+      await waitFor(() => {
+        expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('checklist', () => {
+    it('aparece com passos incompletos e some ao dispensar (persistido por workspace)', async () => {
+      mockGetAutomations.mockResolvedValue([]);
+      mockHasReadyAccount.mockResolvedValue(true);
+      renderPage(); // flag ON (default)
+      expect(await screen.findByTestId('automacoes-checklist')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'checklist.dismiss' }));
+      expect(screen.queryByTestId('automacoes-checklist')).not.toBeInTheDocument();
+      expect(localStorage.getItem('automacoes_checklist_dismissed:w-1')).toBe('1');
+    });
+
+    it('não aparece enquanto a query de automações nunca resolve (nenhum dos dois sinais pronto)', async () => {
+      mockGetAutomations.mockReturnValue(new Promise(() => {}));
+      renderPage();
+
+      // Ponto estável pós-primeira-renderização: título sempre aparece na
+      // página normal (flag ON), independente do estado das queries de
+      // sinal -- sem isso o assert abaixo passaria trivialmente mesmo que a
+      // guarda `isSuccess && isSuccess` não existisse.
+      await screen.findByText('title');
+      expect(screen.queryByTestId('automacoes-checklist')).not.toBeInTheDocument();
+    });
+
+    it('não aparece com automações resolvidas mas o sinal de conta pronta ainda pendente', async () => {
+      mockGetAutomations.mockResolvedValue([]);
+      mockHasReadyAccount.mockReturnValue(new Promise(() => {}));
+      renderPage();
+
+      // Aguarda a query de automações assentar (isSuccess) antes de
+      // verificar -- caso genuinamente independente do anterior, onde
+      // ambos os sinais ficavam pendentes ao mesmo tempo.
+      expect(await screen.findByText('emptyNone')).toBeInTheDocument();
+      expect(screen.queryByTestId('automacoes-checklist')).not.toBeInTheDocument();
+    });
   });
 });
