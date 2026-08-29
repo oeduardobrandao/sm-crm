@@ -727,6 +727,237 @@ Deno.test("hub-approve still skips auto-publish for a non-express post without a
   assertEquals(rpcCall, undefined);
 });
 
+Deno.test("hub-approve does not auto-schedule while a later client-approval etapa is still open", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", is_express: false },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: { cliente_id: 14 }, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  // Dual-approval fluxo mid-first-cycle: the copy-approval etapa is active and the
+  // design-approval etapa still lies ahead.
+  db.queue("workflow_etapas", "select", {
+    data: [
+      { tipo: "padrao", status: "concluido" },
+      { tipo: "aprovacao_cliente", status: "ativo" },
+      { tipo: "padrao", status: "pendente" },
+      { tipo: "aprovacao_cliente", status: "pendente" },
+    ],
+    error: null,
+  });
+  // A fully schedulable post: without the etapa guard, validation passes and the
+  // post would be wrongly scheduled on this first approval.
+  queueValidateForScheduling(db, {
+    id: 99,
+    scheduled_at: "2030-01-01T10:00:00.000Z",
+    ig_caption: "legenda",
+    workflow_id: 7,
+    tipo: "feed",
+  });
+
+  const handler = createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+
+  assertEquals(response.status, 200);
+  const body = await readJson(response);
+  assertEquals(body.ok, true);
+  assertEquals(body.scheduled, false);
+  const rpcCall = db.calls.find((c: { table: string }) => c.table === "rpc:record_post_status_change");
+  assertEquals(rpcCall, undefined);
+});
+
+Deno.test("hub-approve auto-schedules on the final client-approval etapa of a dual-approval fluxo", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", is_express: false },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: { cliente_id: 14 }, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  // Second cycle: the copy-approval etapa is done; only the design-approval etapa
+  // remains open. The legacy null-tipo row must not count as an approval etapa.
+  db.queue("workflow_etapas", "select", {
+    data: [
+      { tipo: "aprovacao_cliente", status: "concluido" },
+      { tipo: null, status: "concluido" },
+      { tipo: "aprovacao_cliente", status: "ativo" },
+    ],
+    error: null,
+  });
+  queueValidateForScheduling(db, {
+    id: 99,
+    scheduled_at: "2030-01-01T10:00:00.000Z",
+    ig_caption: "legenda",
+    workflow_id: 7,
+    tipo: "feed",
+  });
+
+  const handler = createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals((await readJson(response)).scheduled, true);
+  const rpcCall = db.calls.find((c: { table: string }) => c.table === "rpc:record_post_status_change");
+  assert(rpcCall, "status change RPC should be called on the final approval");
+  assertEquals(rpcCall.payload, {
+    p_post_id: 99,
+    p_new_status: "agendado",
+    p_source: "system",
+  });
+});
+
+Deno.test("hub-approve fails closed when the etapa lookup errors: approval stands, no auto-schedule", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", is_express: false },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: { cliente_id: 14 }, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  // A failed lookup must not read as "zero open approval etapas": that would
+  // auto-schedule mid dual-approval, the exact outcome the guard prevents.
+  db.queue("workflow_etapas", "select", { data: null, error: { message: "db offline" } });
+  // Schedulable post: proves the skip comes from the failed lookup, not validation.
+  queueValidateForScheduling(db, {
+    id: 99,
+    scheduled_at: "2030-01-01T10:00:00.000Z",
+    ig_caption: "legenda",
+    workflow_id: 7,
+    tipo: "feed",
+  });
+
+  const handler = createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+
+  assertEquals(response.status, 200);
+  const body = await readJson(response);
+  assertEquals(body.ok, true);
+  assertEquals(body.scheduled, false);
+  const rpcCall = db.calls.find((c: { table: string }) => c.table === "rpc:record_post_status_change");
+  assertEquals(rpcCall, undefined);
+});
+
+Deno.test("hub-posts suspends every workflow when the etapa lookup errors", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [{ id: 7 }, { id: 8 }], error: null });
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  // Without the etapa picture the portal must not promise "aprovar = agendar".
+  db.queue("workflow_etapas", "select", { data: null, error: { message: "db offline" } });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key: string) => `https://cdn.test/${key}`,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.autoPublishOnApproval, true);
+  assertEquals(body.autoPublishSuspendedWorkflowIds, [7, 8]);
+});
+
+Deno.test("hub-posts flags workflows whose auto-publish is suspended by a later approval etapa", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [{ id: 7 }, { id: 8 }], error: null });
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  // Workflow 7 still has two open approval etapas (dual approval, first cycle);
+  // workflow 8 is on its final approval cycle.
+  db.queue("workflow_etapas", "select", {
+    data: [
+      { workflow_id: 7, tipo: "aprovacao_cliente", status: "ativo" },
+      { workflow_id: 7, tipo: "aprovacao_cliente", status: "pendente" },
+      { workflow_id: 8, tipo: "aprovacao_cliente", status: "concluido" },
+      { workflow_id: 8, tipo: "aprovacao_cliente", status: "ativo" },
+    ],
+    error: null,
+  });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key: string) => `https://cdn.test/${key}`,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.autoPublishOnApproval, true);
+  assertEquals(body.autoPublishSuspendedWorkflowIds, [7]);
+});
+
+Deno.test("hub-posts skips the etapa lookup when auto-publish is off", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [{ id: 7 }], error: null });
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key: string) => `https://cdn.test/${key}`,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.autoPublishOnApproval, false);
+  assertEquals(body.autoPublishSuspendedWorkflowIds, []);
+  const etapaCall = db.calls.find((c: { table: string }) => c.table === "workflow_etapas");
+  assertEquals(etapaCall, undefined);
+});
+
 Deno.test("hub-brand returns client brand assets from the same workspace", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", {

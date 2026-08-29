@@ -319,6 +319,35 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       .select("auto_publish_on_approval")
       .eq("id", hubToken.cliente_id)
       .single();
+    const autoPublishOnApproval = clienteRow?.auto_publish_on_approval ?? false;
+
+    // Dual-approval fluxos: hub-approve only auto-schedules on the FINAL
+    // client-approval etapa (see isFinalApprovalCycle there). Workflows with two
+    // or more aprovacao_cliente etapas still open are reported so the portal
+    // does not promise "aprovar = agendar" during an earlier approval cycle.
+    let autoPublishSuspendedWorkflowIds: number[] = [];
+    if (autoPublishOnApproval) {
+      const { data: etapas, error: etapasError } = await db
+        .from("workflow_etapas")
+        .select("workflow_id, tipo, status")
+        .in("workflow_id", workflowIds)
+        .eq("tipo", "aprovacao_cliente");
+      if (etapasError) {
+        // Fail closed: without the etapa picture, suspend every workflow rather
+        // than promise a scheduling that hub-approve's own guard may refuse.
+        console.error("[hub-posts] etapa lookup failed:", etapasError);
+        autoPublishSuspendedWorkflowIds = workflowIds;
+      } else {
+        const openByWorkflow = new Map<number, number>();
+        for (const e of (etapas ?? []) as { workflow_id: number; status?: string | null }[]) {
+          if (e.status === "concluido") continue;
+          openByWorkflow.set(e.workflow_id, (openByWorkflow.get(e.workflow_id) ?? 0) + 1);
+        }
+        autoPublishSuspendedWorkflowIds = [...openByWorkflow.entries()]
+          .filter(([, open]) => open >= 2)
+          .map(([workflowId]) => workflowId);
+      }
+    }
 
     return json({
       posts: postsWithResolvedContent,
@@ -328,7 +357,8 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       instagramProfile: igAccount
         ? { username: igAccount.username, profilePictureUrl: igAccount.profile_picture_url }
         : null,
-      autoPublishOnApproval: clienteRow?.auto_publish_on_approval ?? false,
+      autoPublishOnApproval,
+      autoPublishSuspendedWorkflowIds,
     });
   };
 }
