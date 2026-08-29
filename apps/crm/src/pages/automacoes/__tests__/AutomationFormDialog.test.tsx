@@ -166,7 +166,12 @@ vi.mock('@/components/ui/dialog', async () => {
     const { open } = ReactModule.useContext(DialogContext);
     return open ? (
       <div role="dialog" className={className} data-overlay-class={overlayClassName}>
-        {children}
+        {/* Mirrors dialog.tsx's real scroll wrapper -- TourOverlay's
+         * measure() (surface: 'dialog') looks up its containing block via
+         * `closest('[data-dialog-scroll]')`, so this mock needs the same
+         * marker or every dialog-surface tour step silently fails to
+         * resolve its layout in this suite. */}
+        <div data-dialog-scroll>{children}</div>
       </div>
     ) : null;
   }

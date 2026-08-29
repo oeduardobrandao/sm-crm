@@ -53,15 +53,21 @@ export default function TourOverlay({
     if (!anchor) return false;
     const rect = anchor.getBoundingClientRect();
     // Sistema de coordenadas (ver spec): página = viewport; dialog = local ao
-    // Radix Content, que tem transform (containing block de fixed) e
-    // overflow-hidden (o recorte da sombra é o visual desejado, o
-    // DialogOverlay já escurece o resto).
+    // wrapper com scroll interno do DialogContent (`[data-dialog-scroll]`,
+    // ver dialog.tsx). Precisa ser ESSE wrapper -- não o Radix Content mais
+    // externo -- porque ele é o containing block real do overlay
+    // `position: absolute`: mesmo o Content tendo `transform` (containing
+    // block "formal" de um `position: fixed` descendente), o navegador ainda
+    // desloca visualmente um `position: absolute` junto com o scroll do
+    // ancestral rolável mais próximo quando esse ancestral é `position:
+    // static` -- o que dobraria o delta de scroll se o overlay não estivesse
+    // no MESMO containing block que a âncora.
     let originTop = 0;
     let originLeft = 0;
     let boundW = window.innerWidth;
     let boundH = window.innerHeight;
     if (step.surface === 'dialog') {
-      const content = rootRef.current?.closest<HTMLElement>('[role="dialog"]');
+      const content = rootRef.current?.closest<HTMLElement>('[data-dialog-scroll]');
       if (!content) return false;
       const cRect = content.getBoundingClientRect();
       originTop = cRect.top;

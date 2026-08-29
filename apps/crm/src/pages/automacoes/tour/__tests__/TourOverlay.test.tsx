@@ -30,17 +30,24 @@ function mountAnchor(anchor: string): () => void {
 
 /**
  * Para passos `surface: 'dialog'`, `measure()` só resolve dentro de um
- * ancestral real com `role="dialog"` (o Radix DialogContent em produção) --
- * sem isso o overlay não deve resolver o layout, é assim que o fail-safe
- * evita coordenadas erradas se o dialog ainda estiver montando. Este helper
- * cria esse wrapper no body com a âncora dentro dele e devolve o container
- * para `render(ui, { container })`: o `TourOverlay` monta como descendente
- * do wrapper, então `rootRef.current.closest('[role="dialog"]')` encontra
- * um ancestral de verdade, igual ao caso de produção.
+ * ancestral real com `[data-dialog-scroll]` (o wrapper de scroll interno do
+ * Radix DialogContent em produção, ver dialog.tsx) -- sem isso o overlay não
+ * deve resolver o layout, é assim que o fail-safe evita coordenadas erradas
+ * se o dialog ainda estiver montando. Este helper cria esse wrapper no body
+ * com a âncora dentro dele e devolve o container para `render(ui,
+ * { container })`: o `TourOverlay` monta como descendente do wrapper, então
+ * `rootRef.current.closest('[data-dialog-scroll]')` encontra um ancestral de
+ * verdade, igual ao caso de produção.
+ *
+ * Em produção `role="dialog"` fica no Radix Content e `data-dialog-scroll`
+ * no `<div>` filho dele (o wrapper com scroll); aqui os dois atributos vão
+ * no mesmo elemento porque é só isso que o seletor que `measure()` de fato
+ * usa hoje precisa satisfazer.
  */
 function mountDialogAnchor(anchor: string): { container: HTMLElement; cleanup: () => void } {
   const dialog = document.createElement('div');
   dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('data-dialog-scroll', '');
   document.body.appendChild(dialog);
   const el = document.createElement('div');
   el.setAttribute('data-tour', anchor);
