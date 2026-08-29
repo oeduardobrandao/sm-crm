@@ -167,4 +167,78 @@ describe('TourOverlay', () => {
       removeSpy.mockRestore();
     });
   });
+
+  describe('measure() soma o scroll do wrapper na primeira medição (bug 3: scrollIntoView + measure no mesmo tick)', () => {
+    // jsdom não faz layout de verdade: getBoundingClientRect sempre devolve
+    // zeros e scrollIntoView não move nada. Para provar que a fórmula agora
+    // inclui content.scrollTop/scrollLeft, mockamos getBoundingClientRect do
+    // wrapper `[data-dialog-scroll]` e da âncora com retângulos fixos e
+    // diferentes, e setamos scrollTop/scrollLeft do wrapper manualmente --
+    // exatamente o estado em que measure() roda hoje, já que
+    // scrollIntoView() (chamado antes, no mesmo tick síncrono) pode ter
+    // deixado o wrapper com scroll != 0 antes da primeira (e única) medição
+    // daquele passo.
+    it('spot.top/left incluem content.scrollTop/scrollLeft quando o wrapper já rolou antes da medição', () => {
+      const dialog = document.createElement('div');
+      dialog.setAttribute('role', 'dialog');
+      dialog.setAttribute('data-dialog-scroll', '');
+      document.body.appendChild(dialog);
+
+      const anchorEl = document.createElement('div');
+      anchorEl.setAttribute('data-tour', TOUR_STEPS[1].anchor);
+      dialog.appendChild(anchorEl);
+
+      // Container de render separado da âncora (mesmo motivo do
+      // mountDialogAnchor acima: createRoot limpa filhos pré-existentes).
+      const renderContainer = document.createElement('div');
+      dialog.appendChild(renderContainer);
+
+      // Wrapper já rolado (o que scrollIntoView teria feito antes desta
+      // medição). jsdom permite setar scrollTop/scrollLeft direto, sem scroll
+      // real.
+      dialog.scrollTop = 396;
+      dialog.scrollLeft = 15;
+
+      const dialogRect = {
+        top: 50,
+        left: 20,
+        width: 300,
+        height: 400,
+        right: 320,
+        bottom: 450,
+        x: 20,
+        y: 50,
+        toJSON: () => ({}),
+      } as DOMRect;
+      const anchorRect = {
+        top: 200,
+        left: 60,
+        width: 100,
+        height: 30,
+        right: 160,
+        bottom: 230,
+        x: 60,
+        y: 200,
+        toJSON: () => ({}),
+      } as DOMRect;
+      vi.spyOn(dialog, 'getBoundingClientRect').mockReturnValue(dialogRect);
+      vi.spyOn(anchorEl, 'getBoundingClientRect').mockReturnValue(anchorRect);
+
+      render(<TourOverlay {...baseProps} step={TOUR_STEPS[1]} index={1} />, {
+        container: renderContainer,
+      });
+
+      const overlay = screen.getByTestId('tour-overlay');
+      const spotlight = overlay.firstElementChild as HTMLElement;
+      // Fórmula esperada: rect.top - cRect.top + content.scrollTop (e o
+      // análogo para left) -- ou seja, 200 - 50 + 396 = 546 e 60 - 20 + 15 = 55.
+      // A fórmula antiga (sem o termo de scroll) daria 150 / 40.
+      expect(spotlight.style.top).toBe('546px');
+      expect(spotlight.style.left).toBe('55px');
+      expect(spotlight.style.width).toBe('100px');
+      expect(spotlight.style.height).toBe('30px');
+
+      dialog.remove();
+    });
+  });
 });

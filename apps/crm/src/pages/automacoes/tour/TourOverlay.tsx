@@ -70,8 +70,18 @@ export default function TourOverlay({
       const content = rootRef.current?.closest<HTMLElement>('[data-dialog-scroll]');
       if (!content) return false;
       const cRect = content.getBoundingClientRect();
-      originTop = cRect.top;
-      originLeft = cRect.left;
+      // O containing block do overlay É o próprio wrapper que rola, então um
+      // `top`/`left` absoluto nele é interpretado como coordenada de
+      // CONTEÚDO (como se scrollTop/scrollLeft fossem 0), não como posição
+      // relativa ao trecho atualmente visível. `scrollIntoView()` (chamado
+      // antes desta medição, no mesmo tick, ver loop `tick()` abaixo) já pode
+      // ter deixado o wrapper com scroll diferente de zero -- sem subtrair
+      // esse scroll do origin aqui, o spot nasce deslocado por exatamente
+      // esse valor na primeira medição de cada passo.
+      originTop = cRect.top - content.scrollTop;
+      originLeft = cRect.left - content.scrollLeft;
+      // boundW/boundH usam o tamanho VISÍVEL do wrapper (não o scroll total)
+      // -- isso decide se o card cabe abaixo do spot e faz o clamp horizontal.
       boundW = cRect.width;
       boundH = cRect.height;
     }
