@@ -505,5 +505,48 @@ describe('AutomacoesPage', () => {
       fireEvent.click(await screen.findByText('checklist.seeTour'));
       expect(await screen.findByText('tour.step1Title')).toBeInTheDocument();
     });
+
+    it('abrir um dialog não relacionado (editar linha existente) desmonta o overlay de página', async () => {
+      // Automação existente com dms_sent_count 0 -- o auto-início do tour
+      // exige automations.length === 0, então essa visita não auto-inicia;
+      // o tour é reaberto manualmente pelo link da checklist, elegível
+      // independente de haver automações (achado 1 do review final). Manter
+      // dms_sent_count 0 evita que hasFirstDm derrube a checklist inteira
+      // (accountReady && hasAutomation && hasFirstDm -> null).
+      mockGetAutomations.mockResolvedValue([{ ...AUTOMATIONS[0], dms_sent_count: 0 }]);
+      mockGetClientes.mockResolvedValue(CLIENTES);
+      renderPage();
+
+      fireEvent.click(await screen.findByText('checklist.seeTour'));
+      expect(await screen.findByText('tour.step1Title')).toBeInTheDocument();
+
+      // Caminho completamente diferente do botão "Nova automação" ou do CTA
+      // do tour: abre o menu de ações da linha e clica em "Editar".
+      // Radix DropdownMenuTrigger abre no onPointerDown, e jsdom não tem
+      // window.PointerEvent -- fireEvent.pointerDown vira um Event genérico
+      // sem `button`, então o handler do Radix nunca dispara. onKeyDown
+      // (Enter) é o caminho alternativo suportado pelo próprio Radix e
+      // funciona normalmente em jsdom.
+      fireEvent.keyDown(screen.getByRole('button', { name: /rowActions/ }), { key: 'Enter' });
+      fireEvent.click(await screen.findByText('edit'));
+
+      const dialog = await screen.findByTestId('automation-dialog');
+      // O tour não avança nesse caminho (não é surface "dialog" que o
+      // acompanha) -- o ponto do teste é que o overlay de página some assim
+      // que QUALQUER dialog abre, não que o tour avançou.
+      expect(dialog).toHaveAttribute('data-tour-step', '');
+      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
+    });
+
+    it('CTA "Criar" da checklist também abre o dialog e avança o tour', async () => {
+      renderPage();
+      await screen.findByText('tour.step1Title');
+
+      fireEvent.click(await screen.findByText('checklist.step2Cta'));
+
+      const dialog = await screen.findByTestId('automation-dialog');
+      expect(dialog).toHaveAttribute('data-tour-step', TOUR_STEPS[1].id);
+      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
+    });
   });
 });

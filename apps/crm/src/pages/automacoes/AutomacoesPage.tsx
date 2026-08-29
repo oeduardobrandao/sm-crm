@@ -208,6 +208,15 @@ export default function AutomacoesPage() {
     setEditing(a);
     setFormOpen(true);
   };
+  // Abre o formulário de criação e avança o tour quando o overlay do passo 1
+  // (surface "page") está ativo. Usada por todo botão/CTA de "criar" que pode
+  // ser clicado enquanto esse overlay está montado -- o botão real do
+  // header, o CTA do próprio TourOverlay e o CTA "Criar" da checklist -- para
+  // não depender de cada ponto de entrada reimplementar a mesma guarda.
+  const openCreateAndAdvanceTour = () => {
+    openCreate();
+    if (tour.activeStep?.surface === 'page') tour.next();
+  };
 
   const columnCount = isAgent ? 8 : 9;
 
@@ -306,19 +315,7 @@ export default function AutomacoesPage() {
         {!isAgent && (
           <div className="header-actions">
             <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
-              <Button
-                onClick={() => {
-                  openCreate();
-                  // O spotlight do passo 1 do tour deixa este botão real
-                  // clicável por baixo do overlay (pointer-events: none,
-                  // "interação livre") -- se o usuário clicar nele em vez do
-                  // CTA "Abrir formulário" do card, o índice do tour precisa
-                  // avançar aqui também, senão o TourOverlay de página fica
-                  // preso no passo 1, sobreposto ao dialog recém-aberto.
-                  if (tour.activeStep?.surface === 'page') tour.next();
-                }}
-                data-tour="nova-automacao"
-              >
+              <Button onClick={openCreateAndAdvanceTour} data-tour="nova-automacao">
                 <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newAutomation')}
               </Button>
             </FeatureGate>
@@ -340,7 +337,7 @@ export default function AutomacoesPage() {
           hasAutomation={automations.length > 0}
           hasFirstDm={automations.some((a) => a.dms_sent_count > 0)}
           canCreate={canCreate && !isAgent}
-          onCreate={openCreate}
+          onCreate={openCreateAndAdvanceTour}
           onDismiss={dismissChecklist}
           onStartTour={canCreate && !isAgent ? tour.start : undefined}
         />
@@ -554,7 +551,15 @@ export default function AutomacoesPage() {
         </div>
       )}
 
-      {tour.activeStep?.surface === 'page' && (
+      {/* Sem !formOpen aqui, o overlay de página ficaria preso por cima de
+          QUALQUER dialog aberto enquanto o tour segue no passo de página --
+          o botão real, o CTA do card, a checklist, editar uma linha
+          existente, ou qualquer botão futuro que abra o formulário. O tour
+          pode continuar no índice 0 até o dialog fechar (handleDialogClose
+          só encerra passos de surface "dialog"); ao fechar um dialog não
+          relacionado ao tour, o card "Comece por aqui" reaparece, o que é
+          aceitável. */}
+      {tour.activeStep?.surface === 'page' && !formOpen && (
         <TourOverlay
           step={tour.activeStep}
           index={tour.activeIndex ?? 0}
@@ -563,10 +568,7 @@ export default function AutomacoesPage() {
           onBack={tour.back}
           onSkip={tour.skip}
           onFinish={tour.finish}
-          onCta={() => {
-            openCreate();
-            tour.next();
-          }}
+          onCta={openCreateAndAdvanceTour}
         />
       )}
 
