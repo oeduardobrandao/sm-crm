@@ -18,6 +18,7 @@ import {
   Maximize2,
   Minimize2,
   History,
+  MoreVertical,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -29,6 +30,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   DndContext,
   closestCenter,
@@ -68,6 +77,7 @@ import {
   rejectEditSuggestion,
   getClientePosts,
   syncMentions,
+  detachPostsFromWorkflow,
   type WorkflowPost,
   type PostApproval,
   type PostStatusEvent,
@@ -101,6 +111,24 @@ import { PostStatusChip } from './PostStatusChip';
 import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 import { PostEditorBody } from './PostEditorBody';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
+
+/** Maps detach_posts_from_flow's identifier-style RPC errors (see
+ *  supabase/migrations/20260830000004_post_detach_attach_rpcs.sql) to PT copy.
+ *  `post_not_found` is the only identifier that can realistically surface here
+ *  (a post selected in this very drawer got deleted from another tab/session
+ *  between render and confirm) -- everything else (post_ids_required,
+ *  workspace_not_found) can't happen from this call site, so they fall back
+ *  to the generic message rather than getting their own copy. */
+function getDetachErrorToast(err: unknown): string {
+  const message =
+    err && typeof err === 'object' && 'message' in err
+      ? (err as { message?: unknown }).message
+      : undefined;
+  if (message === 'post_not_found') {
+    return 'Um ou mais posts não foram encontrados.';
+  }
+  return 'Erro ao desmembrar posts';
+}
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -152,6 +180,15 @@ export function WorkflowDrawer({
     () => localStorage.getItem('workflow-drawer-fullscreen') === '1',
   );
 
+  // Desmembrar do fluxo: multi-select + confirm. `detachTarget` holds the ids
+  // pending confirmation (set either from the selection bar's bulk action or
+  // from a single post's kebab menu) -- the archive checkbox in the confirm
+  // dialog only ever shows when that batch covers every post of this workflow.
+  const [selectedPostIds, setSelectedPostIds] = useState<Set<number>>(new Set());
+  const [detachTarget, setDetachTarget] = useState<number[] | null>(null);
+  const [archiveEmptyFlow, setArchiveEmptyFlow] = useState(false);
+  const [isDetaching, setIsDetaching] = useState(false);
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   // ── Data queries ──────────────────────────────────────────────────────────
@@ -194,6 +231,24 @@ export function WorkflowDrawer({
     // on their identity would risk a duplicate completion.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posts, isLoading]);
+
+  // Drops any selected id that no longer belongs to this workflow's post list --
+  // e.g. the post was removed (trash icon) or detached from another tab while
+  // still checked here. Otherwise the selection bar's count would keep a ghost
+  // entry no row exists for.
+  useEffect(() => {
+    setSelectedPostIds((prev) => {
+      if (prev.size === 0) return prev;
+      const validIds = new Set(posts.map((p) => p.id).filter((id): id is number => id != null));
+      let changed = false;
+      const next = new Set<number>();
+      prev.forEach((id) => {
+        if (validIds.has(id)) next.add(id);
+        else changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [posts]);
 
   // Local ordered list for optimistic DnD reordering
   const [localOrder, setLocalOrder] = useState<number[] | null>(null);
@@ -269,6 +324,11 @@ export function WorkflowDrawer({
     // clienteId] useQuery above. WorkflowCalendarView's own reschedule path already
     // invalidates this key; this drawer is otherwise the only path that doesn't.
     qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
+    // Desmembrar do fluxo changes a post's workflow_id -> NULL, which every
+    // Publicações surface reads via ['active-posts'] (useActivePosts) --
+    // without this the post keeps showing under its old workflow there until
+    // an unrelated refetch happens to fire.
+    qc.invalidateQueries({ queryKey: ['active-posts'] });
   }, [qc, workflowId, clienteId]);
 
   const handleDragEnd = useCallback(
@@ -488,6 +548,61 @@ export function WorkflowDrawer({
     }
   };
 
+  // ── Selection / desmembrar do fluxo ───────────────────────────────────────
+
+  const toggleSelectPost = useCallback((id: number, checked: boolean) => {
+    setSelectedPostIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const selectAllPosts = useCallback(() => {
+    setSelectedPostIds(new Set(posts.map((p) => p.id!).filter((id) => id != null)));
+  }, [posts]);
+
+  const clearSelection = useCallback(() => setSelectedPostIds(new Set()), []);
+
+  const openDetachConfirm = useCallback((ids: number[]) => {
+    setArchiveEmptyFlow(false);
+    setDetachTarget(ids);
+  }, []);
+
+  const handleConfirmDetach = async () => {
+    if (!detachTarget) return;
+    const ids = detachTarget;
+    // Total selection: every post currently in this workflow is part of this
+    // batch -- only then does archiving the now-empty flow make sense, so
+    // only then does the confirm dialog even offer the checkbox.
+    const isTotalSelection = ids.length === posts.length;
+    const archive = isTotalSelection && archiveEmptyFlow;
+    setIsDetaching(true);
+    try {
+      const result = await detachPostsFromWorkflow(ids, archive);
+      const n = result.detached;
+      toast.success(`${n} post${n === 1 ? '' : 's'} desmembrado${n === 1 ? '' : 's'}`);
+      setSelectedPostIds(new Set());
+      setDetachTarget(null);
+      setArchiveEmptyFlow(false);
+      if (archive) {
+        // The flow itself got archived along with the last posts leaving it --
+        // this drawer no longer has anything left to show, so close it instead
+        // of refreshing its own (now pointless) queries.
+        onRefresh();
+        onClose();
+      } else {
+        refresh();
+        onRefresh();
+      }
+    } catch (err) {
+      toast.error(getDetachErrorToast(err));
+    } finally {
+      setIsDetaching(false);
+    }
+  };
+
   // ── Edit suggestion handlers ──────────────────────────────────────────────
 
   const handleAcceptSuggestion = useCallback(
@@ -610,6 +725,10 @@ export function WorkflowDrawer({
   ).length;
   const readyToSend = orderedPosts.filter((p) => p.status === 'aprovado_interno').length;
 
+  // The archive-empty-flow checkbox in the detach confirm dialog only shows when the
+  // pending batch covers every post currently in this workflow.
+  const isTotalDetachSelection = !!detachTarget && detachTarget.length === posts.length;
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -721,6 +840,38 @@ export function WorkflowDrawer({
                 </button>
               </div>
 
+              {selectedPostIds.size > 0 && (
+                <div className="drawer-selection-bar" data-testid="drawer-selection-bar">
+                  <span className="drawer-selection-bar-count">
+                    {selectedPostIds.size} selecionado{selectedPostIds.size === 1 ? '' : 's'}
+                  </span>
+                  <span aria-hidden="true">&middot;</span>
+                  <button
+                    type="button"
+                    className="drawer-selection-bar-link"
+                    onClick={selectAllPosts}
+                  >
+                    Selecionar todos
+                  </button>
+                  <div className="drawer-selection-bar-actions">
+                    <button
+                      type="button"
+                      className="drawer-selection-bar-btn"
+                      onClick={() => openDetachConfirm(Array.from(selectedPostIds))}
+                    >
+                      Desmembrar do fluxo
+                    </button>
+                    <button
+                      type="button"
+                      className="drawer-selection-bar-btn drawer-selection-bar-btn--ghost"
+                      onClick={clearSelection}
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {isLoading ? (
                 <div className="drawer-empty">Carregando...</div>
               ) : posts.length === 0 ? (
@@ -766,6 +917,9 @@ export function WorkflowDrawer({
                           igAccountStatus={igAccountStatus}
                           hasActiveTikTokAccount={hasActiveTikTokAccount}
                           ttAccountStatus={ttAccountStatus}
+                          isSelected={selectedPostIds.has(post.id!)}
+                          onSelectChange={(checked) => toggleSelectPost(post.id!, checked)}
+                          onDetachRequest={() => openDetachConfirm([post.id!])}
                           onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
                           onDelete={() => handleDeletePost(post.id!)}
                           onFieldChange={(field, value) =>
@@ -885,6 +1039,54 @@ export function WorkflowDrawer({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Confirmation dialog for desmembrar do fluxo (single post or bulk selection) */}
+      <AlertDialog
+        open={!!detachTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetachTarget(null);
+            setArchiveEmptyFlow(false);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desmembrar do fluxo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Os posts selecionados viram publicações avulsas de {card.cliente?.nome || '—'}. Eles
+              continuam no quadro de Publicações e no portal do cliente, mas saem deste fluxo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {isTotalDetachSelection && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="detach-archive-empty-flow"
+                checked={archiveEmptyFlow}
+                onCheckedChange={(checked) => setArchiveEmptyFlow(checked === true)}
+                aria-label="Arquivar o fluxo depois de desmembrar"
+              />
+              <Label htmlFor="detach-archive-empty-flow">
+                Arquivar o fluxo depois de desmembrar
+              </Label>
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setDetachTarget(null);
+                setArchiveEmptyFlow(false);
+              }}
+              disabled={isDetaching}
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDetach} disabled={isDetaching}>
+              {isDetaching ? 'Desmembrando...' : 'Desmembrar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -915,6 +1117,9 @@ interface SortablePostItemProps {
   igAccountStatus: { revoked: boolean; expired: boolean; canPublish: boolean } | null;
   hasActiveTikTokAccount: boolean;
   ttAccountStatus: { revoked: boolean; expired: boolean } | null;
+  isSelected: boolean;
+  onSelectChange: (checked: boolean) => void;
+  onDetachRequest: () => void;
   onToggle: () => void;
   onDelete: () => void;
   onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
@@ -957,6 +1162,9 @@ function SortablePostItem({
   igAccountStatus,
   hasActiveTikTokAccount,
   ttAccountStatus,
+  isSelected,
+  onSelectChange,
+  onDetachRequest,
   onToggle,
   onDelete,
   onFieldChange,
@@ -1002,6 +1210,13 @@ function SortablePostItem({
       {/* Accordion trigger */}
       <div className="drawer-post-trigger" onClick={onToggle}>
         <div className="drawer-post-trigger-left">
+          <Checkbox
+            className="drawer-post-select-checkbox"
+            checked={isSelected}
+            onCheckedChange={(checked) => onSelectChange(checked === true)}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Selecionar ${post.titulo || 'post sem título'}`}
+          />
           <span
             className="drawer-drag-handle"
             {...attributes}
@@ -1070,6 +1285,16 @@ function SortablePostItem({
           <button className="drawer-delete-btn" onClick={onDelete} title="Remover post">
             <Trash2 className="h-3.5 w-3.5" />
           </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="drawer-kebab-btn" title="Mais ações">
+                <MoreVertical className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onDetachRequest}>Desmembrar do fluxo</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

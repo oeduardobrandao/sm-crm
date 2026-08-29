@@ -6402,6 +6402,76 @@ body.role-agent input[name='valor_total'] {
   color: var(--primary-color);
 }
 
+/* Bulk selection bar (desmembrar do fluxo) */
+.drawer-selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.drawer-selection-bar-count {
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.drawer-selection-bar-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--primary-color);
+  cursor: pointer;
+}
+
+.drawer-selection-bar-link:hover {
+  text-decoration: underline;
+}
+
+.drawer-selection-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.drawer-selection-bar-btn {
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  color: var(--text-color);
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.drawer-selection-bar-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.drawer-selection-bar-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+.drawer-selection-bar-btn--ghost:hover {
+  color: var(--text-color);
+  border-color: var(--border-color);
+}
+
 .drawer-empty {
   text-align: center;
   color: var(--text-muted);
@@ -6549,6 +6619,29 @@ body.role-agent input[name='valor_total'] {
 .drawer-delete-btn:hover {
   color: var(--danger, #ef4444);
   background: rgba(239, 68, 68, 0.08);
+}
+
+.drawer-kebab-btn {
+  display: flex;
+  align-items: center;
+  padding: 0.25rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 4px;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.drawer-kebab-btn:hover {
+  color: var(--text-color);
+  background: var(--surface-2);
+}
+
+.drawer-post-select-checkbox {
+  flex-shrink: 0;
 }
 
 /* Accordion content */
