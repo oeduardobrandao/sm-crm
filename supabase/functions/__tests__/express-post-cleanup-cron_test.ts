@@ -328,6 +328,29 @@ Deno.test("pass3: keeps a file the avulso draft shared with something else", asy
   assertEquals(tables.files.length, 1);
 });
 
+Deno.test("pass3: counts avulso_failed and leaves the drafts + file in place when the bulk delete errors", async () => {
+  const { db, tables } = makeFakeDb(
+    {
+      workflow_posts: [
+        { id: 30, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+      ],
+      post_file_links: [{ post_id: 30, file_id: 200 }],
+      files: [{ id: 200, reference_count: 0 }],
+    },
+    (table, op) => (table === "workflow_posts" && op === "delete" ? { message: "db down" } : null),
+  );
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.avulso_deleted, 0);
+  assertEquals(result.avulso_failed, 1);
+  assertEquals(tables.workflow_posts.length, 1, "failed delete must not remove the draft");
+  assertEquals(tables.files.length, 1, "no file sweep should run when the delete itself failed");
+  // Passes 1-2 are untouched by a pass 3 failure: no throw, no shared state.
+  assertEquals(result.concluded, 0);
+  assertEquals(result.deleted, 0);
+  assertEquals(result.skipped, 0);
+  assertEquals(result.failed, 0);
+});
+
 Deno.test("pass3: leaves an avulso express draft younger than the cutoff untouched", async () => {
   const { db, tables } = makeFakeDb({
     workflow_posts: [

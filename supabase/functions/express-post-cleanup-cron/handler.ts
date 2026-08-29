@@ -70,6 +70,7 @@ export interface ExpressPostCleanupCronResult {
   failed: number;
   concluded: number;
   avulso_deleted: number;
+  avulso_failed: number;
 }
 
 /**
@@ -224,6 +225,14 @@ export async function runExpressPostCleanupCron(
   // themselves are the unit of deletion, so this deletes workflow_posts
   // directly rather than relying on a workflow's cascade.
   let avulsoDeleted = 0;
+  // Counts drafts that SHOULD have been deleted but weren't (the bulk delete
+  // errored). Kept separate from pass 2's `failed` -- that one counts
+  // workflows, this one counts posts, and conflating the units would make
+  // either count meaningless. Without this, a failed bulk delete only
+  // surfaced via `console.error`, so cron monitoring (which reads the
+  // response JSON) would see a "clean" run while the abandoned avulso
+  // drafts silently stuck around forever.
+  let avulsoFailed = 0;
 
   const { data: avulsoDrafts, error: avulsoErr } = await db
     .from("workflow_posts")
@@ -251,6 +260,7 @@ export async function runExpressPostCleanupCron(
 
     if (delErr) {
       console.error("Failed to delete avulso express drafts:", delErr.message);
+      avulsoFailed = avulsoPostIds.length;
     } else {
       avulsoDeleted = avulsoPostIds.length;
       if (fileIds.length > 0) {
@@ -259,5 +269,12 @@ export async function runExpressPostCleanupCron(
     }
   }
 
-  return { deleted, skipped, failed, concluded, avulso_deleted: avulsoDeleted };
+  return {
+    deleted,
+    skipped,
+    failed,
+    concluded,
+    avulso_deleted: avulsoDeleted,
+    avulso_failed: avulsoFailed,
+  };
 }
