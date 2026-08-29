@@ -1291,10 +1291,15 @@ function SortablePostItem({
             </div>
             <div className="drawer-post-field">
               <label>Tipo</label>
+              {/* Locked while agendado: the publish cron builds the Instagram container up
+                  to 1h before scheduled_at, so a tipo/platform change after that leaves a
+                  container in the old format — the publish phase then posts the wrong thing. */}
               <select
                 className="drawer-select"
                 value={post.tipo}
                 onChange={(e) => onFieldChange('tipo', e.target.value)}
+                disabled={isScheduleLocked}
+                title={isScheduleLocked ? 'Cancelar agendamento para editar' : undefined}
               >
                 {(['feed', 'reels', 'stories', 'carrossel'] as const).map((t) => (
                   <option key={t} value={t}>
@@ -1308,6 +1313,7 @@ function SortablePostItem({
               tipo={post.tipo}
               tiktokFeatureEnabled={features?.feature_tiktok === true}
               hasActiveTikTokAccount={hasActiveTikTokAccount}
+              disabled={isScheduleLocked}
               onChange={(platform) => onFieldChange('platform', platform)}
             />
             <div className="drawer-post-field">
@@ -1374,7 +1380,7 @@ function SortablePostItem({
           {isExternallyVisible && (
             <div className="drawer-external-warning">
               {isScheduleLocked
-                ? '⚠ Este post está agendado para publicação. Data e legenda do Instagram estão travadas — cancele o agendamento para editá-las.'
+                ? '⚠ Este post está agendado para publicação. Data, tipo, plataforma e legenda do Instagram estão travados: cancele o agendamento para editá-los.'
                 : '⚠ Este post já está visível no portal do cliente. Alterações serão refletidas imediatamente.'}
             </div>
           )}
