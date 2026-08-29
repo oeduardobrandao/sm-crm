@@ -92,6 +92,13 @@ export function AttachToFluxoDialog({
       qc.invalidateQueries({ queryKey: ['active-posts'] });
       qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', selectedId] });
       qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
+      // The board's per-workflow status counts (kanban column headers) read the
+      // post's new workflow too -- without these the target fluxo's counts stay
+      // stale until some other action happens to invalidate them.
+      qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
+      qc.invalidateQueries({ queryKey: ['workflow-cleared-cliente-counts'] });
+      qc.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
+      qc.invalidateQueries({ queryKey: ['workflow-awaiting-cliente-counts'] });
       qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
       onAttached(selectedId, postId);
       onClose();
