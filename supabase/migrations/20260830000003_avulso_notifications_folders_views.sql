@@ -14,9 +14,17 @@
 -- cliente/conta do workflow, pela invariante da 20260830000001); post avulso
 -- deixa de ser descartado pelo JOIN / de virar link morto.
 --
+-- Itens: 1) create_post_approval_notification + trg_notify_post_approval;
+-- 2) create_edit_suggestion_notification; 3) trg_notify_post_assigned;
+-- 4) trg_notify_post_publish_failed; 5) trg_notify_mention;
+-- 5b) run_post_status_automations (achado critico pos-review -- faltava no
+-- escopo original do brief, mesmo padrao de reforma dos demais trg_notify_*
+-- acima); 6) folder_sync_post; 7) get_client_health_aggregates;
+-- 8) mensagens (get_mensagens_feed/unread/conversas).
+--
 -- Item 9 do brief (Estudio: create_design/attach_design lendo cliente via
 -- JOIN workflows, canonica citada 20260706000002_design_import_media_hold.sql)
--- NAO e aplicado nesta migration -- ver nota grande antes da secao 8.
+-- NAO e aplicado nesta migration -- ver nota grande no final do arquivo.
 
 -- ============================================================
 -- 1) create_post_approval_notification + trg_notify_post_approval
@@ -475,6 +483,167 @@ BEGIN
   END;
   RETURN NEW;
 END;
+$$;
+
+-- ============================================================
+-- 5b) run_post_status_automations
+-- Canonica: 20260805000002_post_status_automations.sql (unico CREATE OR
+-- REPLACE, confirmado via grep). Faltava no escopo original do brief --
+-- achado critico de review pos-implementacao: o action `notify` (fase 2 do
+-- loop abaixo) tinha os mesmos dois problemas dos demais trg_notify_* desta
+-- migration -- resolvia o cliente via JOIN workflows/clientes e montava o
+-- link concatenando workflow_id sem CASE (text || NULL = NULL, entao a
+-- notificacao de um avulso saia com link NULL). Duas trocas, ambas dentro
+-- do bloco de notify:
+--  - nome do cliente: "select c.nome from workflows w left join clientes c
+--    on c.id = w.cliente_id where w.id = new.workflow_id" vira
+--    "select nome from clientes where id = new.cliente_id".
+--  - link: "'/entregas?drawer=' || new.workflow_id" vira o CASE null-safe
+--    padrao desta migration.
+-- Fase 1 (assign_responsavel), a resolucao de v_targets/v_status_label e o
+-- corpo do EXCEPTION ficam byte-identicos a canonica. A trigger
+-- workflow_posts_z2_status_automations NAO e recriada -- CREATE OR REPLACE
+-- preserva o binding existente.
+-- ============================================================
+create or replace function run_post_status_automations()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  r                 record;
+  v_targets         uuid[];
+  v_membro_id       bigint;
+  v_meta            jsonb;
+  v_status_label    text;
+  v_client_name     text;
+  v_status_changed  boolean := (new.status is distinct from old.status);
+  v_custom_changed  boolean := (new.custom_status_id is distinct from old.custom_status_id);
+begin
+  -- config is user-shaped jsonb with no CHECK on its shape: every read of
+  -- membro_id below guards the cast with a digits-only regex so a malformed
+  -- rule degrades to a no-op instead of aborting the status transition that
+  -- fired the trigger.
+  if pg_trigger_depth() > 1 then
+    return new;
+  end if;
+  if not (v_status_changed or v_custom_changed) then
+    return new;
+  end if;
+
+  -- Phase 1: assign_responsavel — pure NEW mutation, cannot recurse. The
+  -- membro must belong to the post's workspace: config is user data and a
+  -- foreign id would leak a cross-tenant notification via
+  -- notify_post_assigned.
+  for r in
+    select a.* from post_status_automations a
+     where a.conta_id = new.conta_id
+       and a.ativo
+       and a.action_type = 'assign_responsavel'
+       and (
+         -- Canonical rule: fires when the canonical column changed, and
+         -- also when the post entered a custom status behaving as it
+         -- (custom-only move, canonical unchanged) -- the UI promises the
+         -- equivalent standard-status rules fire too. Detaching back to
+         -- the plain canonical (pointer -> null, e.g. archive mass-detach)
+         -- is NOT an entry and must not re-fire.
+         (a.trigger_status = new.status
+            and (v_status_changed
+              or (v_custom_changed and new.custom_status_id is not null)))
+         or (v_custom_changed and a.trigger_custom_status_id = new.custom_status_id)
+       )
+     order by a.created_at -- deterministic: the newest matching rule wins
+  loop
+    v_membro_id := case
+      when r.config->>'membro_id' ~ '^\d+$' then (r.config->>'membro_id')::bigint
+      else null
+    end;
+    if v_membro_id is not null and exists (
+      select 1 from membros m where m.id = v_membro_id and m.conta_id = new.conta_id
+    ) then
+      new.responsavel_id := v_membro_id;
+    end if;
+  end loop;
+
+  -- Phase 2: notify — best-effort per RULE (a notification failure must
+  -- never roll back the status change, and one malformed rule must not
+  -- suppress the valid rules after it). Runs after phase 1 so target
+  -- 'responsavel' sees a just-assigned responsavel.
+  for r in
+      select a.* from post_status_automations a
+       where a.conta_id = new.conta_id
+         and a.ativo
+         and a.action_type = 'notify'
+         and (
+           (a.trigger_status = new.status
+              and (v_status_changed
+                or (v_custom_changed and new.custom_status_id is not null)))
+           or (v_custom_changed and a.trigger_custom_status_id = new.custom_status_id)
+         )
+  loop
+    begin
+      v_targets := case r.config->>'target'
+        when 'member' then
+          coalesce((
+            select case when m.crm_user_id is null then '{}'::uuid[]
+                        else array[m.crm_user_id] end
+              from membros m
+             where (r.config->>'membro_id') ~ '^\d+$'
+               and m.id = (r.config->>'membro_id')::bigint
+               and m.conta_id = new.conta_id
+          ), '{}'::uuid[])
+        when 'responsavel' then
+          resolve_notification_targets(new.conta_id, new.responsavel_id, null)
+        when 'roles' then
+          resolve_notification_targets(new.conta_id, null, (
+            select coalesce(array_agg(x), '{}'::text[])
+              from jsonb_array_elements_text(
+                case when jsonb_typeof(r.config->'roles') = 'array'
+                     then r.config->'roles' else '[]'::jsonb end) x
+              where x in ('owner', 'admin')
+          ))
+        else '{}'::uuid[]
+      end;
+
+      if v_targets is null or array_length(v_targets, 1) is null then
+        continue;
+      end if;
+
+      select coalesce(
+               (select nome from post_status_definitions where id = new.custom_status_id),
+               new.status)
+        into v_status_label;
+      select nome into v_client_name from clientes where id = new.cliente_id;
+
+      v_meta := jsonb_build_object(
+        'post_title', new.titulo,
+        'post_id', new.id,
+        'workflow_id', new.workflow_id,
+        'client_name', v_client_name,
+        'status_key', coalesce('custom:' || new.custom_status_id::text, new.status),
+        'status_label', v_status_label
+      );
+
+      perform insert_notification_batch(
+        new.conta_id,
+        v_targets,
+        'post_status_automation',
+        case when new.workflow_id is null
+          then '/entregas?post=' || new.id
+          else '/entregas?drawer=' || new.workflow_id
+        end,
+        v_meta,
+        auth.uid()
+      );
+    exception when others then
+      raise warning 'run_post_status_automations notify rule % failed for post %: %',
+        r.id, new.id, sqlerrm;
+    end;
+  end loop;
+
+  return new;
+end;
 $$;
 
 -- ============================================================
