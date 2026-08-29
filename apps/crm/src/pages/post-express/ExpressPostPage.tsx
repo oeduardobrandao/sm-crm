@@ -19,12 +19,9 @@ import {
 import { supabase } from '@/lib/supabase';
 import {
   getClientes,
-  addWorkflow,
-  addWorkflowEtapa,
-  addWorkflowPost,
+  createAvulsoPost,
   updateWorkflowPost,
-  updateWorkflow,
-  removeWorkflow,
+  removeWorkflowPost,
   getHubToken,
   type PostMedia,
 } from '../../store';
@@ -33,7 +30,6 @@ import { publishInstagramPostNow } from '../../services/instagram';
 import { PostMediaGallery } from '../entregas/components/PostMediaGallery';
 
 interface DraftState {
-  workflowId: number;
   postId: number;
 }
 
@@ -290,39 +286,14 @@ export default function ExpressPostPage() {
       const now = new Date();
       const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
 
-      const workflow = await addWorkflow({
+      const post = await createAvulsoPost({
         cliente_id: clientId,
         titulo: `Post Express - ${clientName} - ${dateStr}`,
-        status: 'ativo',
-        etapa_atual: 0,
-        recorrente: false,
-        modo_prazo: 'padrao',
-      });
-
-      await addWorkflowEtapa({
-        workflow_id: workflow.id!,
-        ordem: 0,
-        nome: 'Publicação',
-        prazo_dias: 0,
-        tipo_prazo: 'corridos',
-        tipo: 'padrao',
-        status: 'concluido',
-        iniciado_em: now.toISOString(),
-        responsavel_id: null,
-      });
-
-      const post = await addWorkflowPost({
-        workflow_id: workflow.id!,
-        status: 'rascunho',
         tipo: 'feed',
-        titulo: 'Post Express',
-        conteudo: null,
-        conteudo_plain: '',
-        ordem: 0,
         is_express: true,
       });
 
-      setDraft({ workflowId: workflow.id!, postId: post.id! });
+      setDraft({ postId: post.id! });
     } catch (err: unknown) {
       toast.error(
         t('toast.draftError', { error: err instanceof Error ? err.message : String(err) }),
@@ -332,9 +303,9 @@ export default function ExpressPostPage() {
     }
   }
 
-  async function deleteDraft(wfId: number) {
+  async function deleteDraft(postId: number) {
     try {
-      await removeWorkflow(wfId);
+      await removeWorkflowPost(postId);
     } catch {
       /* fire-and-forget */
     }
@@ -342,7 +313,7 @@ export default function ExpressPostPage() {
 
   async function handleClientChange(clientId: number | null) {
     if (draft) {
-      await deleteDraft(draft.workflowId);
+      await deleteDraft(draft.postId);
       setDraft(null);
     }
     setCaption('');
@@ -359,7 +330,7 @@ export default function ExpressPostPage() {
     return () => {
       const d = draftRef.current;
       if (d && mediaCountRef.current === 0 && !captionRef.current.trim()) {
-        removeWorkflow(d.workflowId).catch(() => {});
+        removeWorkflowPost(d.postId).catch(() => {});
       }
     };
   }, []);
@@ -399,8 +370,6 @@ export default function ExpressPostPage() {
       await new Promise((r) => setTimeout(r, 600));
       setConfirmOpen(false);
 
-      await updateWorkflow(draft.workflowId, { status: 'concluido' });
-
       if (result.status === 'postado') {
         toast.success(t('toast.published'), {
           action: { label: t('toast.viewPost'), onClick: () => navigate('/entregas') },
@@ -424,8 +393,8 @@ export default function ExpressPostPage() {
   };
 
   // Approval mode: the post goes to the client's Hub instead of publishing.
-  // The workflow stays "ativo" so the approval notification's drawer link and
-  // the manual-publish path keep working.
+  // It has no workflow to update; the post's own status is the only signal
+  // the approval notification's deep link and the manual-publish path need.
   const handleSendForApproval = async () => {
     if (!draft || !effectiveType || !selectedClientId) return;
 
