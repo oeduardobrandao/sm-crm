@@ -118,16 +118,25 @@ export default function TourOverlay({
     return () => cancelAnimationFrame(raf);
   }, [step, measure]);
 
-  // Captura pega o scroll interno do dialog, não só o da janela.
+  // O listener de scroll só é necessário (e correto) para o passo de página:
+  // as coordenadas ali são relativas ao viewport (`position: fixed`,
+  // originTop/Left = 0), então um scroll da PRÓPRIA página pode mover o botão
+  // real. Para o passo de dialog, o containing block do overlay É o wrapper
+  // que rola (`[data-dialog-scroll]`, ver dialog.tsx e measure() acima), e o
+  // navegador já acompanha esse scroll sozinho via CSS -- recalcular aqui
+  // aplicaria o deslocamento uma SEGUNDA vez, reintroduzindo o desalinhamento
+  // que a correção do containing block já eliminou.
   useEffect(() => {
     const handler = () => void measure();
     window.addEventListener('resize', handler);
-    document.addEventListener('scroll', handler, true);
+    if (step.surface === 'page') {
+      document.addEventListener('scroll', handler, true);
+    }
     return () => {
       window.removeEventListener('resize', handler);
-      document.removeEventListener('scroll', handler, true);
+      if (step.surface === 'page') document.removeEventListener('scroll', handler, true);
     };
-  }, [measure]);
+  }, [measure, step.surface]);
 
   const isFirst = index === 0;
   const isLast = index === total - 1;

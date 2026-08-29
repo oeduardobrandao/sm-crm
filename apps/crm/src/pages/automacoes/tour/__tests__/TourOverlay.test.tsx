@@ -130,4 +130,41 @@ describe('TourOverlay', () => {
     render(<TourOverlay {...baseProps} step={TOUR_STEPS[3]} index={3} />);
     expect(screen.queryByTestId('tour-card')).not.toBeInTheDocument();
   });
+
+  describe('listener de scroll (regressão do fix de containing block)', () => {
+    // Para `surface: 'dialog'` o containing block do overlay já é o wrapper
+    // que rola (ver dialog.tsx `data-dialog-scroll` + measure() em
+    // TourOverlay.tsx), então recalcular measure() no evento de scroll
+    // aplicaria o deslocamento uma SEGUNDA vez. O listener de scroll só deve
+    // ser registrado para `surface: 'page'`, onde as coordenadas são
+    // relativas ao viewport.
+    it('passo de página: registra e remove o listener de scroll', () => {
+      cleanup = mountAnchor(TOUR_STEPS[0].anchor);
+      const addSpy = vi.spyOn(document, 'addEventListener');
+      const removeSpy = vi.spyOn(document, 'removeEventListener');
+      const { unmount } = render(
+        <TourOverlay {...baseProps} step={TOUR_STEPS[0]} index={0} onCta={noop} />,
+      );
+      expect(addSpy).toHaveBeenCalledWith('scroll', expect.any(Function), true);
+      unmount();
+      expect(removeSpy).toHaveBeenCalledWith('scroll', expect.any(Function), true);
+      addSpy.mockRestore();
+      removeSpy.mockRestore();
+    });
+
+    it('passo de dialog: NÃO registra listener de scroll', () => {
+      const dialog = mountDialogAnchor(TOUR_STEPS[1].anchor);
+      cleanup = dialog.cleanup;
+      const addSpy = vi.spyOn(document, 'addEventListener');
+      const removeSpy = vi.spyOn(document, 'removeEventListener');
+      const { unmount } = render(<TourOverlay {...baseProps} step={TOUR_STEPS[1]} index={1} />, {
+        container: dialog.container,
+      });
+      expect(addSpy).not.toHaveBeenCalledWith('scroll', expect.any(Function), true);
+      unmount();
+      expect(removeSpy).not.toHaveBeenCalledWith('scroll', expect.any(Function), true);
+      addSpy.mockRestore();
+      removeSpy.mockRestore();
+    });
+  });
 });
