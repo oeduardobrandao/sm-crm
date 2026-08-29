@@ -21,20 +21,10 @@ import {
   injectSignedUrls,
 } from '../lib/inline-image';
 import { ArticleEditor } from '../components/editor/ArticleEditor';
-
-const CATEGORIES: Record<string, string> = {
-  'primeiros-passos': 'Getting Started',
-  clientes: 'Clients',
-  equipe: 'Team',
-  'entregas-e-fluxos': 'Deliveries & Flows',
-  'hub-do-cliente': 'Client Hub',
-  'instagram-e-analytics': 'Instagram & Analytics',
-  'post-express': 'Post Express',
-  financeiro: 'Financial',
-  arquivos: 'Files',
-};
-
-const ALL_CATEGORIES = Object.keys(CATEGORIES);
+import {
+  KB_CATEGORIES as CATEGORIES,
+  ALL_KB_CATEGORIES as ALL_CATEGORIES,
+} from '../lib/kb-categories';
 
 const CRM_ROUTES = [
   { value: '/dashboard', label: 'Dashboard' },
