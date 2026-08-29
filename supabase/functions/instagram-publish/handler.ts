@@ -59,7 +59,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
     // Verify post exists and user has access (via RLS)
     const { data: post } = await userDb
       .from("workflow_posts")
-      .select("id, status, workflow_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count, tipo")
+      .select("id, status, workflow_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count, tipo, ig_trial_strategy")
       .eq("id", postId)
       .single();
 
@@ -115,6 +115,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
             caption: post.ig_caption ?? "",
             useCover: post.publish_retry_count === 0,
             tipo: post.tipo,
+            trialStrategy: post.ig_trial_strategy,
           });
           await svcDb.from("workflow_posts").update({
             instagram_container_id: containerId,
@@ -271,6 +272,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           caption: post.ig_caption ?? "",
           useCover: true,
           tipo: post.tipo,
+          trialStrategy: post.ig_trial_strategy,
         });
         let containerId = created.containerId;
         const coverVideoUrl = created.coverVideoUrl; // set only when a cover was used
@@ -285,7 +287,12 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         // processing (the Graph cover detail is not exposed). Retry once without
         // the cover so the Reel still publishes with Instagram's auto-cover.
         if (containerStatus === "ERROR" && coverVideoUrl) {
-          const retry = await createVideoContainer(igUserId, token, coverVideoUrl, post.ig_caption);
+          const trial = post.ig_trial_strategy === "manual" || post.ig_trial_strategy === "auto"
+            ? post.ig_trial_strategy
+            : null;
+          const retry = await createVideoContainer(
+            igUserId, token, coverVideoUrl, post.ig_caption, undefined, trial,
+          );
           containerId = retry.id;
           await svcDb.from("workflow_posts").update({
             instagram_container_id: containerId,
