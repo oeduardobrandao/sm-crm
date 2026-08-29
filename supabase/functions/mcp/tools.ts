@@ -181,9 +181,10 @@ export function registerTools(server: any, deps: Deps): void {
     (a) => ({ client_id: a.client_id, titulo: a.titulo, template_id: a.template_id }));
 
   register(server, deps, "create_post", "posts:write",
-    "Cria um post em rascunho dentro de um fluxo ativo. O agente nunca publica nem envia ao cliente.",
+    "Cria um post em rascunho: dentro de um fluxo ativo (workflow_id) ou avulso, preso direto a um cliente (cliente_id). Informe exatamente um dos dois. O agente nunca publica nem envia ao cliente.",
     {
-      workflow_id: z.number().int().positive(),
+      workflow_id: z.number().int().positive().optional(),
+      cliente_id: z.number().int().positive().optional(),
       titulo: z.string().trim().min(1).max(200),
       tipo: z.enum(["feed", "reels", "stories", "carrossel"]).optional(),
       body: z.string().max(10000).optional(),
@@ -191,7 +192,7 @@ export function registerTools(server: any, deps: Deps): void {
     },
     (a) => createPost(deps, a),
     (a) => ({
-      workflow_id: a.workflow_id, tipo: a.tipo, titulo: a.titulo,
+      workflow_id: a.workflow_id, cliente_id: a.cliente_id, tipo: a.tipo, titulo: a.titulo,
       has_body: !!a.body, body_len: a.body?.length ?? 0,
       has_ig_caption: !!a.ig_caption, ig_caption_len: a.ig_caption?.length ?? 0,
     }));
