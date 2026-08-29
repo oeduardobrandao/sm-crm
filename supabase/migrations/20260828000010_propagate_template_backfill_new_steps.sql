@@ -41,6 +41,21 @@
 -- 'etapas_atualizadas' (o frontend renderiza so template_nome, entao a chave
 -- nova e aditiva e nao quebra eventos antigos).
 --
+-- Limitacao conhecida (herdada do modelo posicional, nao introduzida aqui):
+-- toda a propagacao casa por indice 0-based, e etapas 'concluido' sao
+-- deliberadamente congeladas. Inserir uma etapa nova NO MEIO do template
+-- resolve certo quando as posicoes seguintes do fluxo sao pendente/ativo (o
+-- loop de UPDATE as renomeia posicionalmente e o backfill anexa o fim), mas
+-- quando ha etapa concluida na posicao de insercao ou depois dela, a
+-- concluida nao pode ser renomeada e o backfill insere o conteudo errado no
+-- fim (ex.: fluxo A ativo / B concluido, template A->[A,C,B]: nasce um
+-- segundo B e C nunca aparece). O mesmo desalinhamento ja acontece hoje no
+-- caminho de UPDATE ao reordenar etapas do template sobre um fluxo com
+-- concluidas -- sem identidade estavel por etapa no jsonb do template, o
+-- servidor nao consegue distinguir "inseriu C no meio" de "renomeou B para
+-- C". Corrigir de verdade exige ids estaveis por etapa (mudanca de
+-- schema/produto, fora do escopo deste port).
+--
 -- Fora o backfill, o corpo abaixo e identico ao de
 -- 20260826000002_workflow_events_rpc_integration.sql (Part B) com os dois
 -- fixes de TOCTOU ja aplicados; o comentario-spec da Part B continua valendo,
