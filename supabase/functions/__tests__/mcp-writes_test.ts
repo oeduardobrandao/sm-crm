@@ -118,12 +118,15 @@ Deno.test("createPost: missing/inactive fluxo -> McpInputError, no insert", asyn
   assert(!calls.some((c) => c.table === "workflow_posts" && c.method === "insert"), "no post insert");
 });
 
+const EXACTLY_ONE_OF_MSG = "Informe exatamente um entre workflow_id (fluxo) ou cliente_id (post avulso).";
+
 Deno.test("createPost: neither workflow_id nor cliente_id -> McpInputError, no db access", async () => {
   const { db, calls } = makeFakeDb({});
   const deps = { db, ctx: CTX } as unknown as Deps;
   let err: unknown;
   try { await createPost(deps, { titulo: "T" }); } catch (e) { err = e; }
   assert(err instanceof McpInputError, "throws McpInputError");
+  assertEquals((err as McpInputError).message, EXACTLY_ONE_OF_MSG);
   assert(!calls.some((c) => c.table === "workflow_posts" || c.table === "workflows" || c.table === "clientes"), "no db access at all");
 });
 
@@ -133,6 +136,7 @@ Deno.test("createPost: both workflow_id and cliente_id -> McpInputError, no db a
   let err: unknown;
   try { await createPost(deps, { workflow_id: 99, cliente_id: 5, titulo: "T" }); } catch (e) { err = e; }
   assert(err instanceof McpInputError, "throws McpInputError");
+  assertEquals((err as McpInputError).message, EXACTLY_ONE_OF_MSG);
   assert(!calls.some((c) => c.table === "workflow_posts" || c.table === "workflows" || c.table === "clientes"), "no db access at all");
 });
 
@@ -412,7 +416,10 @@ Deno.test("setPostProperty: post avulso (workflow_id null) -> clear McpInputErro
   let err: unknown;
   try { await setPostProperty(deps, { post_id: 7, property_id: 45, value: "x" }); } catch (e) { err = e; }
   assert(err instanceof McpInputError, "throws McpInputError");
-  assert((err as McpInputError).message.includes("avulso"), "error names the avulso post explicitly");
+  assertEquals(
+    (err as McpInputError).message,
+    "Post avulso não pertence a um fluxo; propriedades personalizadas pertencem ao modelo do fluxo.",
+  );
   assert(!calls.some((c) => c.table === "template_property_definitions"), "never looks up the property def");
   assert(!calls.some((c) => c.table === "post_property_values" && c.method === "upsert"), "no upsert");
 });
