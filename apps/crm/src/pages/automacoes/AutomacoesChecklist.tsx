@@ -13,7 +13,7 @@ export interface AutomacoesChecklistProps {
   onCreate: () => void;
   onDismiss: () => void;
   /** Quando presente, mostra "Ver passo a passo" no cabeçalho. A página só
-   * passa quando canCreate && !isAgent (o tour precisa do botão-âncora). */
+   * passa quando canCreate (o tour precisa do botão-âncora). */
   onStartTour?: () => void;
 }
 

@@ -701,9 +701,9 @@ begin
 end $$;
 rollback;
 
--- 12. O tombstone do DELETE vale para QUALQUER papel: o z4 e SECURITY DEFINER,
---     entao um agent -- que pela RLS nem consegue dar UPDATE na automacao --
---     ainda tombstona ao excluir o post.
+-- 12. O tombstone do DELETE vale para QUALQUER papel: mesmo um agent (que
+--     desde 20260829000001 tem RLS de escrita completa na automacao, igual
+--     owner/admin) aciona o z4 (SECURITY DEFINER) ao excluir o post alvo.
 begin;
 select et_grant_hosted_parity();
 do $$
@@ -742,12 +742,7 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_agent, 'role', 'authenticated')::text, true);
 
-  -- o agent nao consegue mexer na automacao pela RLS (ica_update e owner/admin)
-  update instagram_comment_automations set ativo = false where id = v_auto;
-  get diagnostics v_rows = row_count;
-  assert v_rows = 0, format('agent nao pode dar UPDATE na automacao, afetou %s', v_rows);
-
-  -- mas excluir o post e permitido para ele, e o z4 tombstona mesmo assim
+  -- excluir o post e permitido para o agent, e o z4 tombstona a automacao
   delete from workflow_posts where id = v_post;
   get diagnostics v_rows = row_count;
   assert v_rows = 1, format('agent deve conseguir excluir o post, afetou %s', v_rows);

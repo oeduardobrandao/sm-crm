@@ -118,8 +118,7 @@ function isTombstoneCheckViolation(err: unknown): boolean {
 
 export default function AutomacoesPage() {
   const { t, i18n } = useTranslation('automations');
-  const { role, profile } = useAuth();
-  const isAgent = role === 'agent';
+  const { profile } = useAuth();
   const qc = useQueryClient();
 
   const [clientFilter, setClientFilter] = useState<number | 'todos'>('todos');
@@ -218,7 +217,7 @@ export default function AutomacoesPage() {
     if (tour.activeStep?.surface === 'page') tour.next();
   };
 
-  const columnCount = isAgent ? 8 : 9;
+  const columnCount = 9;
 
   const { hasFeature, isLoading: entLoading } = useEntitlements();
   const canCreate = !entLoading && hasFeature('feature_instagram_automation');
@@ -247,8 +246,7 @@ export default function AutomacoesPage() {
       readyQuery.isSuccess &&
       readyQuery.data === true &&
       automations.length === 0 &&
-      canCreate &&
-      !isAgent,
+      canCreate,
   });
 
   // Encerramento por fechamento do dialog: observa a TRANSIÇÃO de formOpen,
@@ -312,15 +310,13 @@ export default function AutomacoesPage() {
         >
           <h1>{t('title')}</h1>
         </div>
-        {!isAgent && (
-          <div className="header-actions">
-            <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
-              <Button onClick={openCreateAndAdvanceTour} data-tour="nova-automacao">
-                <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newAutomation')}
-              </Button>
-            </FeatureGate>
-          </div>
-        )}
+        <div className="header-actions">
+          <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
+            <Button onClick={openCreateAndAdvanceTour} data-tour="nova-automacao">
+              <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newAutomation')}
+            </Button>
+          </FeatureGate>
+        </div>
       </div>
 
       <p
@@ -336,10 +332,10 @@ export default function AutomacoesPage() {
           accountReady={readyQuery.data === true}
           hasAutomation={automations.length > 0}
           hasFirstDm={automations.some((a) => a.dms_sent_count > 0)}
-          canCreate={canCreate && !isAgent}
+          canCreate={canCreate}
           onCreate={openCreateAndAdvanceTour}
           onDismiss={dismissChecklist}
-          onStartTour={canCreate && !isAgent ? tour.start : undefined}
+          onStartTour={canCreate ? tour.start : undefined}
         />
       )}
 
@@ -381,7 +377,7 @@ export default function AutomacoesPage() {
                 <TableHead>{t('table.dmsSent')}</TableHead>
                 <TableHead>{t('table.lastTriggered')}</TableHead>
                 <TableHead>{t('table.active')}</TableHead>
-                {!isAgent && <TableHead style={{ width: 60 }} />}
+                <TableHead style={{ width: 60 }} />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -484,50 +480,42 @@ export default function AutomacoesPage() {
                           : t('neverTriggered')}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        {isAgent ? (
-                          <Badge variant={a.ativo ? 'success' : 'neutral'} size="sm">
-                            {a.ativo ? t('status.active') : t('status.inactive')}
-                          </Badge>
-                        ) : (
-                          <Switch
-                            checked={a.ativo}
-                            aria-label={a.ativo ? t('switchDeactivate') : t('switchActivate')}
-                            onCheckedChange={(ativo) => toggleMutation.mutate({ id: a.id, ativo })}
-                          />
-                        )}
+                        <Switch
+                          checked={a.ativo}
+                          aria-label={a.ativo ? t('switchDeactivate') : t('switchActivate')}
+                          onCheckedChange={(ativo) => toggleMutation.mutate({ id: a.id, ativo })}
+                        />
                       </TableCell>
-                      {!isAgent && (
-                        <TableCell
-                          onClick={(e) => e.stopPropagation()}
-                          style={{ textAlign: 'right' }}
-                        >
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                aria-label={t('rowActions', { name: a.name })}
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openEdit(a)}>
-                                <Pencil className="h-3.5 w-3.5" style={{ marginRight: '0.5rem' }} />
-                                {t('edit')}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => setDeleteTarget(a)}
-                                className="text-destructive"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" style={{ marginRight: '0.5rem' }} />
-                                {t('delete')}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      )}
+                      <TableCell
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ textAlign: 'right' }}
+                      >
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              aria-label={t('rowActions', { name: a.name })}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEdit(a)}>
+                              <Pencil className="h-3.5 w-3.5" style={{ marginRight: '0.5rem' }} />
+                              {t('edit')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setDeleteTarget(a)}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" style={{ marginRight: '0.5rem' }} />
+                              {t('delete')}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
                     </TableRow>
                     {expanded && (
                       <TableRow>
