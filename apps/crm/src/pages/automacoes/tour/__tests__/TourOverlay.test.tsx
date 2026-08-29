@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import TourOverlay from '../TourOverlay';
 import { TOUR_STEPS } from '../tourSteps';
 
@@ -239,6 +239,63 @@ describe('TourOverlay', () => {
       expect(spotlight.style.height).toBe('30px');
 
       dialog.remove();
+    });
+  });
+
+  describe('modo folha mobile (bug 4: position fixed para não sumir ao rolar o dialog)', () => {
+    // Abaixo de SHEET_BREAKPOINT (640px) measure() deixa layout.card null e o
+    // card vira a "folha" fixada no rodapé (bottom/left/right: 0). Com
+    // position:absolute essa folha herda o wrapper `[data-dialog-scroll]`
+    // como containing block e bottom:0 é lido como coordenada de CONTEÚDO
+    // (fim do scroll), não do fundo visível -- a folha some ao rolar (bug
+    // relatado + confirmado empiricamente pelo controlador num navegador
+    // real). position:fixed escapa desse scroll porque o
+    // DialogPrimitive.Content (que tem transform) vira o containing block de
+    // descendentes fixed. jsdom não faz layout de verdade, então o teste só
+    // pode provar a propriedade CSS aplicada, não o alinhamento visual.
+    let originalInnerWidth: number;
+
+    beforeEach(() => {
+      originalInnerWidth = window.innerWidth;
+    });
+
+    afterEach(() => {
+      Object.defineProperty(window, 'innerWidth', {
+        value: originalInnerWidth,
+        configurable: true,
+        writable: true,
+      });
+    });
+
+    it('passo de dialog em viewport estreito: card usa position fixed', () => {
+      Object.defineProperty(window, 'innerWidth', {
+        value: 375,
+        configurable: true,
+        writable: true,
+      });
+      const dialog = mountDialogAnchor(TOUR_STEPS[1].anchor);
+      cleanup = dialog.cleanup;
+      render(<TourOverlay {...baseProps} step={TOUR_STEPS[1]} index={1} />, {
+        container: dialog.container,
+      });
+      const card = screen.getByTestId('tour-card');
+      expect(card.style.position).toBe('fixed');
+      expect(card.style.bottom).toBe('0px');
+      expect(card.style.left).toBe('0px');
+      expect(card.style.right).toBe('0px');
+    });
+
+    it('passo de página em viewport estreito: card mantém position absolute (root já é fixed)', () => {
+      Object.defineProperty(window, 'innerWidth', {
+        value: 375,
+        configurable: true,
+        writable: true,
+      });
+      cleanup = mountAnchor(TOUR_STEPS[0].anchor);
+      render(<TourOverlay {...baseProps} step={TOUR_STEPS[0]} index={0} onCta={noop} />);
+      const card = screen.getByTestId('tour-card');
+      expect(card.style.position).toBe('absolute');
+      expect(card.style.bottom).toBe('0px');
     });
   });
 });

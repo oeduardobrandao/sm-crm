@@ -195,7 +195,26 @@ export default function TourOverlay({
               boxShadow: '0 12px 32px rgba(10, 12, 15, 0.25)',
               ...(layout.card
                 ? { top: layout.card.top, left: layout.card.left, width: CARD_WIDTH }
-                : { bottom: 0, left: 0, right: 0 }),
+                : {
+                    // Modo folha (mobile): position:absolute herda o wrapper
+                    // rolável [data-dialog-scroll] como containing block, e
+                    // bottom:0 vira coordenada de CONTEÚDO (fim do scroll),
+                    // não do fundo visível do dialog -- a folha some ao
+                    // rolar. position:fixed escapa desse scroll porque o
+                    // DialogPrimitive.Content (que tem transform) vira o
+                    // containing block de descendentes fixed, ancorando a
+                    // folha ao próprio dialog em vez do viewport inteiro. Só
+                    // para 'dialog': a chave 'position' só entra no objeto
+                    // quando precisa mudar -- incluí-la com valor undefined
+                    // para 'page' sobrescreveria (e apagaria) o
+                    // position:'absolute' do style base acima, já que numa
+                    // mesma literal de objeto a última ocorrência de uma
+                    // chave vence mesmo quando o valor é undefined.
+                    ...(step.surface === 'dialog' ? { position: 'fixed' as const } : {}),
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                  }),
             }}
           >
             <div
