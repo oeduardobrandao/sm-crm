@@ -40,10 +40,30 @@
 -- workflow FOR SHARE antes do INSERT do post). Detach trava SO os posts;
 -- mais tarde, so no bloco de arquivamento (apos a UPDATE que zera
 -- workflow_id), trava os workflows de origem que ficaram vazios -- ordem
--- post-entao-workflow ali, oposta a do attach, mas os dois lados nunca
--- competem pelas MESMAS linhas de post e workflow ao mesmo tempo em uso
--- normal (attach exige avulso; detach so mexe em quem ja estava anexado), e
--- e a ordem explicitamente pedida pela spec desta task.
+-- post-entao-workflow ali, oposta a do attach.
+--
+-- Deadlock entre as DUAS RPCs (achado de revisao pos-implementacao,
+-- confirmado): attach trava (workflow W -> seus posts); detach com
+-- p_archive_empty_flow trava (posts -> W, so no arquivamento). Interleaving
+-- concreto: attach mirando W trava em P1 (ainda anexado a W, presente no
+-- array pedido -- attach trava os posts antes de checar se sao avulsos);
+-- detach concorrente de P1 com arquivamento trava P1, desanexa, e trava em W
+-- para arquivar -- espera circular, so resolvida pelo detector de deadlock
+-- do Postgres (40P01). Corrigido com um advisory lock dedicado por conta
+-- (':post_move', chave diferente da ':max_posts_per_workflow' do limitador,
+-- outra preocupacao) tomado no TOPO das duas RPCs, antes de qualquer lock de
+-- linha -- ver "PASSO 0" em cada funcao abaixo. Com as duas RPCs serializadas
+-- por conta, elas nunca mais interleiam entre si, entao a ordem relativa dos
+-- locks de linha de uma contra a outra deixa de importar.
+--
+-- Caso residual aceito (nao coberto pelo lock acima, pois nao e uma chamada
+-- desta RPC): o trigger de mover cliente do workflow inteiro
+-- (workflows_sync_posts_cliente/propagate_workflow_cliente_to_posts,
+-- 20260830000001 -- workflow -> seus posts) ainda pode, em tese, formar
+-- deadlock contra o passo de arquivamento do detach (posts -> workflow). E
+-- raro, autorrecuperavel via 40P01, e o chamador (store do CRM) faz uma
+-- retentativa -- aceito e anotado no plano, nao corrigido estruturalmente
+-- aqui.
 
 -- ============================================================
 -- detach_posts_from_flow: desanexa posts de seus fluxos (workflow_id -> NULL).
@@ -71,6 +91,15 @@ BEGIN
   IF v_conta IS NULL THEN
     RAISE EXCEPTION 'workspace_not_found' USING ERRCODE = 'P0001';
   END IF;
+
+  -- PASSO 0: advisory lock por conta, ANTES de qualquer lock de linha.
+  -- Serializa esta RPC contra attach_posts_to_flow na MESMA conta -- sem
+  -- isso, as duas ordens de lock de linha (detach: posts, depois workflow no
+  -- arquivamento; attach: workflow, depois posts) podem formar um ciclo de
+  -- espera circular (ver nota grande no topo do arquivo). Chave dedicada
+  -- (':post_move'), distinta da ':max_posts_per_workflow' do limitador de
+  -- plano -- outra preocupacao, outro lock.
+  PERFORM pg_advisory_xact_lock(hashtext(v_conta::text || ':post_move'));
 
   -- Dedupe + descarta NULLs; array vazio (ou so NULLs) e erro -- nao ha
   -- "nada para desanexar" silencioso.
@@ -193,6 +222,14 @@ BEGIN
   IF v_conta IS NULL THEN
     RAISE EXCEPTION 'workspace_not_found' USING ERRCODE = 'P0001';
   END IF;
+
+  -- PASSO 0: mesmo advisory lock por conta de detach_posts_from_flow,
+  -- ANTES de qualquer lock de linha -- serializa as duas RPCs entre si na
+  -- mesma conta (ver nota grande no topo do arquivo). Chave dedicada
+  -- (':post_move'), distinta da ':max_posts_per_workflow' usada mais abaixo
+  -- para o limitador de plano -- outra preocupacao, outro lock, mantido no
+  -- lugar onde estava.
+  PERFORM pg_advisory_xact_lock(hashtext(v_conta::text || ':post_move'));
 
   -- Dedupe + descarta NULLs; array vazio (ou so NULLs) e erro.
   SELECT coalesce(array_agg(DISTINCT x), '{}')

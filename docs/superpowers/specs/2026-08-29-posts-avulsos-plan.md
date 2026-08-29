@@ -410,6 +410,9 @@ nos consumidores (a UX refinada vem nas Tasks 13-16).
    - `detachPostsFromWorkflow(postIds, archiveEmptyFlow = false)`:
      `rpc('detach_posts_from_flow', {p_post_ids, p_archive_empty_flow})`.
    - `attachPostToWorkflow(postId, workflowId)`: `rpc('attach_posts_to_flow', ...)`.
+   - Ambas com retry único quando o Postgres devolve deadlock (`error.code === '40P01'`):
+     janela residual rara entre detach-arquivando e o trigger de mover fluxo de cliente,
+     documentada na migration 20260830000004.
    - `getStandalonePost(postId)`: `select('*, clientes(nome)') .eq('id', postId)
      .maybeSingle()` mapeado com `cliente_nome`.
    - `updateWorkflowPost`: Omit ganha `cliente_id` (além de workflow_id).
