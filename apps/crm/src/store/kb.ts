@@ -46,15 +46,22 @@ export async function getArticleBySlug(slug: string): Promise<KbArticle | null> 
   return data as KbArticle | null;
 }
 
-export async function getContextLinksForRoute(route: string): Promise<KbContextLink[]> {
+/**
+ * Fetches context links for several candidate routes in one query and returns
+ * the links of the FIRST candidate that has any. Callers pass candidates from
+ * most to least specific (e.g. ['/configuracao/mcp', '/configuracao']), so a
+ * page with its own links never shows the parent's generic ones.
+ */
+export async function getContextLinksForRoutes(routes: string[]): Promise<KbContextLink[]> {
+  if (routes.length === 0) return [];
   const { data, error } = await supabase
     .from('kb_context_links')
     .select('*, article:kb_articles!article_id(*)')
-    .eq('route_pattern', route)
+    .in('route_pattern', routes)
     .order('display_order');
   if (error) throw error;
 
-  return ((data ?? []) as (KbContextLink & { article: KbArticle | null })[])
+  const valid = ((data ?? []) as (KbContextLink & { article: KbArticle | null })[])
     .filter((link) => link.article && link.article.status === 'published')
     .map((link) => ({
       id: link.id,
@@ -64,4 +71,10 @@ export async function getContextLinksForRoute(route: string): Promise<KbContextL
       display_order: link.display_order,
       article: link.article ?? undefined,
     }));
+
+  for (const route of routes) {
+    const matches = valid.filter((link) => link.route_pattern === route);
+    if (matches.length > 0) return matches;
+  }
+  return [];
 }

@@ -6,13 +6,19 @@ import { listKbArticles, type KbArticle } from '../lib/api';
 
 const CATEGORIES: Record<string, string> = {
   'primeiros-passos': 'Getting Started',
+  'claude-e-ia': 'Claude & AI',
   clientes: 'Clients',
   equipe: 'Team',
+  tarefas: 'Tasks',
   'entregas-e-fluxos': 'Deliveries & Flows',
   'hub-do-cliente': 'Client Hub',
+  mensagens: 'Messages',
   'instagram-e-analytics': 'Instagram & Analytics',
+  relatorios: 'Reports',
   'post-express': 'Post Express',
+  automacoes: 'Automations',
   financeiro: 'Financial',
+  cobranca: 'Billing & Plan',
   arquivos: 'Files',
 };
 

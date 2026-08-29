@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { BookOpen, ChevronRight } from 'lucide-react';
-import { getContextLinksForRoute, type KbContextLink } from '@/store/kb';
+import { getContextLinksForRoutes, type KbContextLink } from '@/store/kb';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -50,13 +50,20 @@ export function ContextHelpLinks() {
   const { pathname } = useLocation();
   const isPhone = usePhoneViewport();
 
-  const baseRoute = '/' + pathname.split('/').filter(Boolean)[0];
+  // Candidate routes from most to least specific: '/configuracao/mcp' has its
+  // own kb_context_links rows, so a two-segment match must win over the
+  // '/configuracao' fallback (matching only the first segment left those rows
+  // permanently unreachable).
+  const segments = pathname.split('/').filter(Boolean);
+  const baseRoute = segments.length > 0 ? '/' + segments[0] : '/';
+  const candidateRoutes =
+    segments.length > 1 ? [`/${segments[0]}/${segments[1]}`, baseRoute] : [baseRoute];
 
   const { data: links = [] } = useQuery({
-    queryKey: ['kb-context-links', baseRoute],
-    queryFn: () => getContextLinksForRoute(baseRoute),
+    queryKey: ['kb-context-links', ...candidateRoutes],
+    queryFn: () => getContextLinksForRoutes(candidateRoutes),
     staleTime: 5 * 60 * 1000,
-    enabled: !!baseRoute && baseRoute !== '/',
+    enabled: baseRoute !== '/',
   });
 
   const validLinks = links.filter((link) => {
