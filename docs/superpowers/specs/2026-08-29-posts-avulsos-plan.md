@@ -143,6 +143,12 @@ padrão:
    `get_mensagens_conversas` (canônica `20260731000007`, NÃO a 000005): nos branches de
    `post_approvals`/`post_edit_suggestions`, trocar o `JOIN workflows` por
    `wp.cliente_id`/`wp.conta_id`.
+9. Estúdio (canônica `20260706000002_design_import_media_hold.sql`): as duas funções cujo
+   corpo faz `FROM workflow_posts p JOIN workflows w ON w.id = p.workflow_id` para derivar
+   o cliente (criação/import de design ~linha 47 e attach de design ~linha 174): trocar
+   por `SELECT p.status, p.cliente_id ...` (e `p.tipo` onde houver) direto de
+   `workflow_posts`, copy-forward completo. Sem isso, criar/anexar design num avulso
+   daria `post_not_found`.
 
 ## Task 4: Migration A4 — RPCs detach/attach
 
@@ -211,6 +217,7 @@ Cobrir:
 9. Notificações: update que dispara `trg_notify_post_publish_failed` em avulso gera
    notification com link `/entregas?post=<id>` e client_name preenchido; menção
    (`mencoes`) em post avulso gera notificação com link `?post=`.
+10. Estúdio: attach de design a post avulso funciona (não dá `post_not_found`).
 
 Rodar localmente se o Docker/colima estiver disponível (`colima status`; a suíte roda via
 `bash scripts/test-entitlements.sh` com Supabase local; worktrees disputam portas, então se
@@ -435,14 +442,20 @@ produtores de link (`components/layout/GlobalSearchTrigger.tsx`,
    effect quando o modo ativo muda (views kanban/list/calendar).
 4. Deep link `?post=<id>` sem `drawer=`: no effect de parse, quando só `post` presente,
    `pendingDeepLink = {workflowId: null, postId}`; resolver assíncrono via
-   `getStandalonePost`: `workflow_id === null` → `setStandalonePostId`;
-   `workflow_id != null` → cair no lookup de card existente com esse workflow;
-   não encontrado → toast "Post não encontrado".
+   `getStandalonePost`: `workflow_id === null` → `setStandalonePostId` (fechando o
+   WorkflowDrawer aberto, se houver); `workflow_id != null` → cair no lookup de card
+   existente com esse workflow; não encontrado → toast "Post não encontrado".
 5. Produtores: helper local nos que têm vários pontos
    (`postHref(p) => p.workflow_id != null ? '/entregas?drawer=' + p.workflow_id +
    '&post=' + p.id : '/entregas?post=' + p.id`); atualizar os 5 arquivos; em
    `mentionHref.ts`, migrar o href de post para a forma `?post=` universal.
    `GlobalSearchTrigger` rotula "Avulso" quando não há workflow.
+   **Mensagens**: `PostChip.tsx` passa a aceitar `workflowId: number | null` e monta o
+   link com o mesmo padrão (`?post=` quando null); `ConversationThread.tsx` troca o
+   gating `m.post_id != null && m.workflow_id != null` por só `m.post_id != null`
+   (linha ~182) e qualquer affordance de resposta condicionada a `workflow_id` passa a
+   depender de `post_id` (grep por `workflow_id` no diretório de mensagens): respostas em
+   posts avulsos continuam suportadas.
 6. Filtros (`filteredPosts`): membros com fallback
    `p.workflow_id != null ? card?.etapa.responsavel_id : p.responsavel_id`;
    etapa/prazo mantêm exclusão de avulsos quando ativos (comentário explicando;
@@ -535,6 +548,10 @@ Arquivos: `views/PostsListView.tsx`, `views/PostsKanbanView.tsx`,
    `post.workflow_titulo ?? 'Avulso'`; sufixo "(outro workflow)" vira "(avulso)" quando
    `workflow_id === null`; desagendar avulso: manter o reject de `calendarDrop.ts` com
    copy própria no branch de reject ("Post avulso: desagende pela publicação").
+   `CalendarPostDetailPanel`: o botão "Abrir post completo" é `isCurrentWorkflow`-only;
+   para avulso (`workflow_id === null`), mostrar botão "Abrir publicação" que navega para
+   `/entregas?post=<id>` (o resolver da Task 13 abre o drawer avulso e fecha o atual).
+   Reagendar avulso por drag continua permitido.
 5. Testes: fixtures atualizadas em `PostsListView.test.tsx`, `PostsKanbanView.test.tsx`,
    `PublicacoesPanel.test.tsx`, `CalendarGrid.test.tsx`, `WorkflowCalendarView.test.tsx`;
    caso novo `workflow_id: null` em `calendarDrop.test.ts`. `npm run test` + tsc verdes.
