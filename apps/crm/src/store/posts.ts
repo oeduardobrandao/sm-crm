@@ -61,6 +61,11 @@ export interface WorkflowPost {
   /** Post Express marker. hub-approve skips the min-future date check and
    * self-schedules on approval when the client's auto-publish is on. */
   is_express?: boolean;
+  /** Reel de teste (Instagram trial reel). NULL/undefined = post normal.
+   * 'auto' = SS_PERFORMANCE (graduação automática), 'manual' = graduação no
+   * app. Só válido em tipo 'reels' mirando Instagram; o trigger
+   * workflow_posts_z5_clear_ig_trial limpa fora disso. */
+  ig_trial_strategy?: 'manual' | 'auto' | null;
 }
 
 export interface ClientePost {
@@ -75,13 +80,14 @@ export interface ClientePost {
   workflow_titulo: string;
   /** Target platform; absent on legacy rows (treat as 'instagram', the DB default). */
   platform?: WorkflowPost['platform'];
+  ig_trial_strategy?: 'manual' | 'auto' | null;
 }
 
 export async function getClientePosts(clienteId: number): Promise<ClientePost[]> {
   const { data, error } = await supabase
     .from('workflow_posts')
     .select(
-      'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, platform, workflows!inner(titulo, status)',
+      'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, platform, ig_trial_strategy, workflows!inner(titulo, status)',
     )
     .eq('workflows.cliente_id', clienteId)
     .eq('workflows.status', 'ativo')
@@ -98,6 +104,7 @@ export async function getClientePosts(clienteId: number): Promise<ClientePost[]>
     ordem: row.ordem,
     workflow_titulo: row.workflows.titulo,
     platform: row.platform ?? undefined,
+    ig_trial_strategy: row.ig_trial_strategy ?? null,
   }));
 }
 
@@ -182,6 +189,7 @@ export interface ScheduledPost {
   tiktok_publish_error: string | null;
   tiktok_post_url: string | null;
   instagram_media_id: string | null;
+  ig_trial_strategy: 'manual' | 'auto' | null;
 }
 
 /**
@@ -195,7 +203,7 @@ export interface ScheduledPost {
  * Instagram for every post (see toWorkflowPost in PublicacoesPanel.tsx).
  */
 const POST_CONTEXT_COLUMNS =
-  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id';
+  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id, ig_trial_strategy';
 
 function mapPostContextRow(row: any): ActivePost {
   return {
@@ -221,6 +229,7 @@ function mapPostContextRow(row: any): ActivePost {
     tiktok_publish_error: row.tiktok_publish_error ?? null,
     tiktok_post_url: row.tiktok_post_url ?? null,
     instagram_media_id: row.instagram_media_id ?? null,
+    ig_trial_strategy: row.ig_trial_strategy ?? null,
   };
 }
 
