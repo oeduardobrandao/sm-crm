@@ -553,8 +553,9 @@ Deno.test("hub-approve rejects invalid approval actions", async () => {
 });
 
 // validateForScheduling internals (fed through the same queue, in call order):
-// workflow_posts → post_file_links → workflows → instagram_accounts. An empty
-// encrypted_access_token skips the decrypt step, so no crypto env is needed.
+// workflow_posts → post_file_links → instagram_accounts (by the post's own
+// cliente_id — no workflow join). An empty encrypted_access_token skips the
+// decrypt step, so no crypto env is needed.
 function queueValidateForScheduling(
   db: ReturnType<typeof createSupabaseQueryMock>,
   post: Record<string, unknown>,
@@ -576,7 +577,6 @@ function queueValidateForScheduling(
     }],
     error: null,
   });
-  db.queue("workflows", "select", { data: { cliente_id: 14 }, error: null });
   db.queue("instagram_accounts", "select", {
     data: {
       encrypted_access_token: "",
@@ -602,6 +602,7 @@ Deno.test("hub-approve auto-schedules an approved express post despite the missi
     scheduled_at: null,
     ig_caption: "legenda",
     workflow_id: 7,
+    cliente_id: 14,
     tipo: "feed",
   });
 
@@ -642,6 +643,7 @@ Deno.test("hub-approve reports scheduled: false when the status RPC fails", asyn
     scheduled_at: null,
     ig_caption: "legenda",
     workflow_id: 7,
+    cliente_id: 14,
     tipo: "feed",
   });
   db.queueRpc("record_post_status_change", { data: null, error: { message: "db offline" } });
@@ -705,6 +707,7 @@ Deno.test("hub-approve still skips auto-publish for a non-express post without a
     scheduled_at: null,
     ig_caption: "legenda",
     workflow_id: 7,
+    cliente_id: 14,
     tipo: "feed",
   });
 
@@ -740,6 +743,7 @@ Deno.test("hub-approve approves an avulso post (workflow_id null) via cliente_id
     scheduled_at: null,
     ig_caption: "legenda",
     workflow_id: null,
+    cliente_id: 14,
     tipo: "feed",
   });
 

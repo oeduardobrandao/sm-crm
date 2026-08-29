@@ -59,7 +59,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
     // Verify post exists and user has access (via RLS)
     const { data: post } = await userDb
       .from("workflow_posts")
-      .select("id, status, workflow_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count, tipo")
+      .select("id, status, workflow_id, cliente_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count, tipo")
       .eq("id", postId)
       .single();
 
@@ -373,9 +373,8 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
 
         if (errorCode === 'TOKEN_EXPIRED') {
           try {
-            const { data: wf } = await svcDb.from("workflows").select("cliente_id").eq("id", post.workflow_id).single();
-            if (wf?.cliente_id) {
-              await svcDb.from("instagram_accounts").update({ authorization_status: "expired" }).eq("client_id", wf.cliente_id);
+            if (post.cliente_id) {
+              await svcDb.from("instagram_accounts").update({ authorization_status: "expired" }).eq("client_id", post.cliente_id);
             }
           } catch (_) { /* best-effort */ }
         }

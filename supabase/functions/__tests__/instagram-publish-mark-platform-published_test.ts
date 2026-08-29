@@ -107,6 +107,7 @@ Deno.test("instagram-publish publish-now (feed): success calls mark_platform_pub
     id: 1,
     status: "aprovado_cliente",
     workflow_id: 9,
+    cliente_id: 5,
     scheduled_at: "2030-01-01T12:00:00Z",
     ig_caption: "legenda",
     instagram_container_id: null,
@@ -127,7 +128,6 @@ Deno.test("instagram-publish publish-now (feed): success calls mark_platform_pub
     },
   }];
   db.queue("post_file_links", "select", { data: links, error: null }); // validateForScheduling
-  db.queue("workflows", "select", { data: { cliente_id: 5 }, error: null });
   db.queue("instagram_accounts", "select", {
     data: {
       encrypted_access_token: encToken,
@@ -189,6 +189,7 @@ Deno.test("instagram-publish publish-now (stories): allDone calls mark_platform_
     id: 1,
     status: "aprovado_cliente",
     workflow_id: 9,
+    cliente_id: 5,
     scheduled_at: "2030-01-01T12:00:00Z",
     ig_caption: null,
     instagram_container_id: null,
@@ -209,7 +210,6 @@ Deno.test("instagram-publish publish-now (stories): allDone calls mark_platform_
     },
   }];
   db.queue("post_file_links", "select", { data: storyLinks, error: null }); // validateForScheduling
-  db.queue("workflows", "select", { data: { cliente_id: 5 }, error: null });
   db.queue("instagram_accounts", "select", {
     data: {
       encrypted_access_token: encToken,

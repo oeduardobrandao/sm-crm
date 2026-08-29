@@ -71,7 +71,7 @@ export async function validateForScheduling(
 
   const { data: post } = await db
     .from("workflow_posts")
-    .select("id, scheduled_at, ig_caption, workflow_id, tipo")
+    .select("id, scheduled_at, ig_caption, workflow_id, cliente_id, tipo")
     .eq("id", postId)
     .single();
   if (!post) return { ok: false, errors: ["Post não encontrado."] };
@@ -111,18 +111,10 @@ export async function validateForScheduling(
     for (const e of mediaErrors) errors.push(e.message);
   }
 
-  const { data: workflow } = await db
-    .from("workflows")
-    .select("cliente_id")
-    .eq("id", post.workflow_id)
-    .single();
-
-  if (!workflow) return { ok: false, errors: ["Workflow não encontrado."] };
-
   const { data: account } = await db
     .from("instagram_accounts")
     .select("encrypted_access_token, instagram_user_id, token_expires_at, authorization_status")
-    .eq("client_id", workflow.cliente_id)
+    .eq("client_id", post.cliente_id)
     .maybeSingle();
 
   if (!account) {
