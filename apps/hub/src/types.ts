@@ -57,6 +57,9 @@ export interface HubPost {
   /** Target platform(s) for publishing. Absent on stale/pre-migration cached payloads —
    * treat as 'instagram' (mirrors the DB default). */
   platform?: 'instagram' | 'tiktok' | 'both';
+  /** Reel de teste (Instagram trial reel): publicado só para não-seguidores até
+   * a graduação. Absent em payloads antigos em cache — tratar como null. */
+  ig_trial_strategy?: 'manual' | 'auto' | null;
   status:
     | 'rascunho'
     | 'revisao_interna'
@@ -247,6 +250,9 @@ export interface HubPostsResponse {
   workflowSelectOptions: HubSelectOption[];
   instagramProfile: InstagramProfile | null;
   autoPublishOnApproval?: boolean;
+  /** Workflows mid dual-approval: a later client-approval etapa is still open,
+   * so approving now will NOT auto-schedule (mirrors hub-approve's guard). */
+  autoPublishSuspendedWorkflowIds?: number[];
 }
 
 export interface DashboardTopPost {

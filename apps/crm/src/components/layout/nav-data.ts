@@ -10,6 +10,11 @@ export interface NavItem {
   newTab?: boolean;
   /** Renders as an inert row with a "coming soon" badge instead of a working link. */
   disabled?: boolean;
+  /** Flag off: em vez de sumir, renderiza esmaecido com cadeado, clicável
+   * (a página destino mostra o paywall). Não combinar com `disabled`. */
+  showLockedWhenGated?: boolean;
+  /** Saída de getNavGroups; nunca declarar estaticamente. */
+  locked?: boolean;
 }
 export interface NavGroup {
   id: string;
@@ -106,6 +111,7 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         label: 'Automações',
         labelKey: 'nav.automacoes',
         icon: 'ph-robot',
+        showLockedWhenGated: true,
       },
       {
         id: 'arquivos',
@@ -284,15 +290,19 @@ export function getNavGroups(
       .filter((g) => g.items.length > 0);
   }
 
-  // Hide feature-gated nav items when the flag is explicitly false.
+  // Hide feature-gated nav items when the flag is explicitly false, unless
+  // the item opts into staying visible-but-locked.
   if (features) {
     groups = groups
       .map((g) => ({
         ...g,
-        items: g.items.filter((i) => {
-          const flag = NAV_FEATURE[i.id];
-          return !flag || features[flag] !== false;
-        }),
+        items: g.items
+          .map((i) => {
+            const flag = NAV_FEATURE[i.id];
+            if (!flag || features[flag] !== false) return i;
+            return i.showLockedWhenGated ? { ...i, locked: true } : null;
+          })
+          .filter((i): i is NavItem => i !== null),
       }))
       .filter((g) => g.items.length > 0);
   }

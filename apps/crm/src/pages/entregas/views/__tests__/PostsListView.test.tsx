@@ -35,6 +35,7 @@ function makePost(overrides: Partial<ActivePost> = {}): ActivePost {
     tiktok_publish_error: null,
     tiktok_post_url: null,
     instagram_media_id: null,
+    ig_trial_strategy: null,
     ...overrides,
   };
 }
@@ -368,5 +369,20 @@ describe('PostsListView', () => {
 
     fireEvent.click(screen.getByText('Fluxo'));
     expect(getRenderedTitles(container)).toEqual(['Post B', 'Post A', 'Avulso 1', 'Avulso 2']);
+  });
+
+  it('mostra o selo Teste em reels de teste', () => {
+    render(
+      <PostsListView
+        {...baseProps}
+        posts={[makePost({ tipo: 'reels', ig_trial_strategy: 'auto' })]}
+      />,
+    );
+    expect(screen.getByText('Teste')).toBeTruthy();
+  });
+
+  it('não mostra o selo em post normal', () => {
+    render(<PostsListView {...baseProps} posts={[makePost({ ig_trial_strategy: null })]} />);
+    expect(screen.queryByText('Teste')).toBeNull();
   });
 });

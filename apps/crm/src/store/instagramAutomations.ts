@@ -185,3 +185,22 @@ export async function countInstagramAutomations(): Promise<number> {
   if (error) throw error;
   return count ?? 0;
 }
+
+/** Sinal do checklist de primeiros passos: TRUE quando pelo menos uma conta IG
+ * do workspace satisfaz a elegibilidade tripla do processador de automações
+ * (active + os dois escopos + subscription de comentários) — o mesmo trio de
+ * condições da claim RPC (migration 20260815000007). RLS limita ao workspace. */
+export async function hasAutomationReadyAccount(): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('instagram_accounts')
+    .select('id')
+    .eq('authorization_status', 'active')
+    .contains('permissions', [
+      'instagram_business_manage_comments',
+      'instagram_business_manage_messages',
+    ])
+    .not('comments_subscribed_at', 'is', null)
+    .limit(1);
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}

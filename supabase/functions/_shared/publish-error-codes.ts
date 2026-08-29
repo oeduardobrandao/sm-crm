@@ -8,6 +8,7 @@ export type PublishErrorCode =
   | "CAROUSEL_LIMIT"
   | "NO_MEDIA"
   | "MEDIA_UNSUPPORTED"
+  | "TRIAL_INELIGIBLE"
   | "CONTAINER_EXPIRED"
   | "RATE_LIMIT"
   | "IG_TRANSIENT"
@@ -21,7 +22,14 @@ export const NON_RETRYABLE_CODES: readonly PublishErrorCode[] = [
   "CAROUSEL_LIMIT",
   "NO_MEDIA",
   "MEDIA_UNSUPPORTED",
+  "TRIAL_INELIGIBLE",
 ] as const;
+
+/** Lançada pelos guards de publicação quando um post com Reel de teste não é
+ * exatamente um vídeo com tipo reels. O classificador abaixo casa com ela —
+ * não reformular sem atualizar o padrão. */
+export const TRIAL_MEDIA_SHAPE_ERROR =
+  "Reel de teste exige exatamente um vídeo. Ajuste a mídia ou desligue o Reel de teste.";
 
 const RATE_LIMIT_GRAPH_CODES = new Set([4, 9, 17, 32, 613]);
 // 2207026 = formato de vídeo não suportado pela Meta.
@@ -54,6 +62,11 @@ export function classifyPublishError(err: unknown): PublishErrorCode {
     msg.includes("falhou no processamento do instagram") ||
     (typeof e.graphSubcode === "number" && MEDIA_UNSUPPORTED_SUBCODES.has(e.graphSubcode))
   ) return "MEDIA_UNSUPPORTED";
+  // Tier 1 (determinístico): nossa própria guarda de formato de mídia.
+  // Tier 2 (Meta: conta <1.000 seguidores etc.) só entra quando o erro real
+  // for capturado em staging/prod — não inventar regex para wording da Meta;
+  // até lá cai em UNKNOWN (comportamento definido no spec).
+  if (msg.includes("reel de teste exige exatamente um vídeo")) return "TRIAL_INELIGIBLE";
   if (msg.includes("does not exist, cannot be loaded due to missing permissions")) {
     return "CONTAINER_EXPIRED";
   }
@@ -108,6 +121,11 @@ export const PUBLISH_ERROR_COPY: Record<PublishErrorCode, PublishErrorDisplay> =
     titulo: "Instagram não conseguiu processar a mídia",
     explicacao:
       "O arquivo tem formato, proporção ou duração que o Instagram não aceita. Confira a mídia na galeria e tente novamente.",
+  },
+  TRIAL_INELIGIBLE: {
+    titulo: "Reel de teste não aceito",
+    explicacao:
+      "O post precisa de exatamente um vídeo e a conta precisa ser profissional, pública e ter 1.000+ seguidores. Ajuste o post ou a conta, ou desligue o Reel de teste, e tente novamente.",
   },
   CONTAINER_EXPIRED: {
     titulo: "Publicação preparada expirou no Instagram",

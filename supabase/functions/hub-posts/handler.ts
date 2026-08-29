@@ -108,7 +108,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
 
     const { data: posts } = await db
       .from("workflow_posts")
-      .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, tiktok_post_url, published_at, publish_error, platform, media_autocleaned_at, workflow_id, workflows(titulo, created_at)")
+      .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, tiktok_post_url, published_at, publish_error, platform, ig_trial_strategy, media_autocleaned_at, workflow_id, workflows(titulo, created_at)")
       .eq("conta_id", hubToken.conta_id)
       .eq("cliente_id", hubToken.cliente_id)
       .order("scheduled_at", { ascending: true });
@@ -300,6 +300,38 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       .select("auto_publish_on_approval")
       .eq("id", hubToken.cliente_id)
       .single();
+    const autoPublishOnApproval = clienteRow?.auto_publish_on_approval ?? false;
+
+    // Dual-approval fluxos: hub-approve only auto-schedules on the FINAL
+    // client-approval etapa (see isFinalApprovalCycle there). Workflows with two
+    // or more aprovacao_cliente etapas still open are reported so the portal
+    // does not promise "aprovar = agendar" during an earlier approval cycle.
+    let autoPublishSuspendedWorkflowIds: number[] = [];
+    // workflowIds can be [] for an avulso-only client (no posts attached to any
+    // workflow): skip the query entirely rather than call .in() with an empty
+    // array, matching the workflowSelectOptions guard above.
+    if (autoPublishOnApproval && workflowIds.length > 0) {
+      const { data: etapas, error: etapasError } = await db
+        .from("workflow_etapas")
+        .select("workflow_id, tipo, status")
+        .in("workflow_id", workflowIds)
+        .eq("tipo", "aprovacao_cliente");
+      if (etapasError) {
+        // Fail closed: without the etapa picture, suspend every workflow rather
+        // than promise a scheduling that hub-approve's own guard may refuse.
+        console.error("[hub-posts] etapa lookup failed:", etapasError);
+        autoPublishSuspendedWorkflowIds = workflowIds;
+      } else {
+        const openByWorkflow = new Map<number, number>();
+        for (const e of (etapas ?? []) as { workflow_id: number; status?: string | null }[]) {
+          if (e.status === "concluido") continue;
+          openByWorkflow.set(e.workflow_id, (openByWorkflow.get(e.workflow_id) ?? 0) + 1);
+        }
+        autoPublishSuspendedWorkflowIds = [...openByWorkflow.entries()]
+          .filter(([, open]) => open >= 2)
+          .map(([workflowId]) => workflowId);
+      }
+    }
 
     return json({
       posts: postsWithResolvedContent,
@@ -309,7 +341,8 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       instagramProfile: igAccount
         ? { username: igAccount.username, profilePictureUrl: igAccount.profile_picture_url }
         : null,
-      autoPublishOnApproval: clienteRow?.auto_publish_on_approval ?? false,
+      autoPublishOnApproval,
+      autoPublishSuspendedWorkflowIds,
     });
   };
 }

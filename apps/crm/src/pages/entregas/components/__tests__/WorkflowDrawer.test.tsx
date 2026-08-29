@@ -149,7 +149,9 @@ vi.mock('@/pages/entregas/components/InstagramCaptionField', () => ({
   InstagramCaptionField: () => <div data-testid="ig-caption-stub" />,
 }));
 vi.mock('@/pages/entregas/components/PlatformSelector', () => ({
-  PlatformSelector: () => <div data-testid="platform-selector-stub" />,
+  PlatformSelector: ({ disabled }: { disabled?: boolean }) => (
+    <div data-testid="platform-selector-stub" data-disabled={disabled ? 'true' : 'false'} />
+  ),
 }));
 vi.mock('@/pages/entregas/components/TikTokSettingsPanel', () => ({
   TikTokSettingsPanel: () => <div data-testid="tiktok-settings-stub" />,
@@ -387,6 +389,72 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
 
     await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
     expect(mockSyncMentions).not.toHaveBeenCalled();
+  });
+});
+
+describe('WorkflowDrawer schedule lock (status agendado)', () => {
+  // The publish cron builds the Instagram container up to 1h before scheduled_at.
+  // A tipo/platform change after that leaves the container in the old format, so
+  // both controls must be locked alongside the date and caption while armed.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([
+      {
+        id: 1,
+        workflow_id: 10,
+        titulo: 'Post A',
+        conteudo: null,
+        conteudo_plain: '',
+        tipo: 'feed',
+        ordem: 0,
+        status: 'agendado',
+        responsavel_id: null,
+        scheduled_at: '2099-01-01T12:00:00Z',
+        ig_caption: null,
+        platform: 'instagram',
+      } as never,
+    ]);
+    mockGetEditSuggestions.mockResolvedValue([] as never);
+    mockUpdate.mockResolvedValue({} as never);
+  });
+
+  it('disables the tipo select and the PlatformSelector, and the warning names them', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    const tipoSelect = (await screen.findByDisplayValue('Feed')) as HTMLSelectElement;
+    expect(tipoSelect.disabled).toBe(true);
+
+    expect(screen.getByTestId('platform-selector-stub').getAttribute('data-disabled')).toBe('true');
+
+    expect(screen.getByText(/Data, tipo, plataforma e legenda do Instagram/)).toBeTruthy();
+  });
+
+  it('keeps both editable while the post is not agendado', async () => {
+    mockGetPosts.mockResolvedValue([
+      {
+        id: 1,
+        workflow_id: 10,
+        titulo: 'Post A',
+        conteudo: null,
+        conteudo_plain: '',
+        tipo: 'feed',
+        ordem: 0,
+        status: 'aprovado_cliente',
+        responsavel_id: null,
+        scheduled_at: '2099-01-01T12:00:00Z',
+        ig_caption: null,
+        platform: 'instagram',
+      } as never,
+    ]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    const tipoSelect = (await screen.findByDisplayValue('Feed')) as HTMLSelectElement;
+    expect(tipoSelect.disabled).toBe(false);
+    expect(screen.getByTestId('platform-selector-stub').getAttribute('data-disabled')).toBe(
+      'false',
+    );
   });
 });
 

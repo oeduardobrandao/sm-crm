@@ -11,6 +11,7 @@ import { PageHeader } from '../components/PageHeader';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
 import type { HubPost } from '../types';
 import { VISIBLE_STATUSES } from '../lib/postView';
+import { isAutoPublishActive } from '../lib/autoPublish';
 import { SharePostButton } from '../components/SharePostButton';
 import { OpenPostLink } from '../components/OpenPostLink';
 
@@ -289,7 +290,7 @@ export function PostagensPage() {
                           isSelected={selectedIds.has(post.id)}
                           onToggleSelect={instagramProfile ? handleToggleSelect : undefined}
                           priority={i === 0}
-                          autoPublishOnApproval={data?.autoPublishOnApproval ?? false}
+                          autoPublishOnApproval={isAutoPublishActive(data, post.workflow_id)}
                         />
                       </div>
                     ))}

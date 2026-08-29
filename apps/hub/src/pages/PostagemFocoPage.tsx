@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useHub } from '../HubContext';
 import { fetchPosts } from '../api';
 import { isClientVisible, pickPostCardKind } from '../lib/postView';
+import { isAutoPublishActive } from '../lib/autoPublish';
 import { InstagramPostCard } from '../components/InstagramPostCard';
 import { StoryPostCard } from '../components/StoryPostCard';
 import { TextPostCard } from '../components/TextPostCard';
@@ -80,7 +81,7 @@ export function PostagemFocoPage() {
             instagramProfile={data?.instagramProfile ?? null}
             workspaceName={bootstrap.workspace.name}
             onApprovalSubmitted={onApprovalSubmitted}
-            autoPublishOnApproval={data?.autoPublishOnApproval ?? false}
+            autoPublishOnApproval={isAutoPublishActive(data, post.workflow_id)}
           />
         )}
         {kind === 'story' && (

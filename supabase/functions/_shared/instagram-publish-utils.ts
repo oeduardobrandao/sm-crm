@@ -2,6 +2,7 @@ import { signGetUrl } from "./r2.ts";
 import { CAROUSEL_MAX_ITEMS, validateMedia } from "./instagram-limits.ts";
 import type { MediaFile, ValidationError } from "./instagram-limits.ts";
 import { GRAPH_BASE, throwGraphError } from "./instagram-graph.ts";
+import { TRIAL_MEDIA_SHAPE_ERROR } from "./publish-error-codes.ts";
 
 export { CAROUSEL_MAX_ITEMS, validateMedia };
 export type { MediaFile, ValidationError };
@@ -55,6 +56,8 @@ export async function decryptToken(encryptedBase64: string): Promise<string> {
 
 type DbClient = { from: (table: string) => any };
 
+export type IgTrialStrategy = "manual" | "auto";
+
 export interface ScheduleValidationResult {
   ok: boolean;
   errors: string[];
@@ -71,7 +74,7 @@ export async function validateForScheduling(
 
   const { data: post } = await db
     .from("workflow_posts")
-    .select("id, scheduled_at, ig_caption, workflow_id, cliente_id, tipo")
+    .select("id, scheduled_at, ig_caption, workflow_id, cliente_id, tipo, ig_trial_strategy")
     .eq("id", postId)
     .single();
   if (!post) return { ok: false, errors: ["Post não encontrado."] };
@@ -111,6 +114,15 @@ export async function validateForScheduling(
     for (const e of mediaErrors) errors.push(e.message);
   }
 
+  // Reel de teste: formato obrigatório (spec 2026-08-28). Com 0 mídias o
+  // erro NO_MEDIA acima já cobre; o check roda só quando há mídia.
+  if (post.ig_trial_strategy && mediaFiles.length > 0) {
+    const isSingleVideo = mediaFiles.length === 1 && mediaFiles[0].kind === "video";
+    if (post.tipo !== "reels" || !isSingleVideo) errors.push(TRIAL_MEDIA_SHAPE_ERROR);
+  }
+
+  // No workflow lookup: post.cliente_id (selected above) is authoritative for
+  // both attached and avulso posts, so a workflow row is never required here.
   const { data: account } = await db
     .from("instagram_accounts")
     .select("encrypted_access_token, instagram_user_id, token_expires_at, authorization_status")
@@ -174,6 +186,7 @@ export async function createVideoContainer(
   videoUrl: string,
   caption: string,
   coverUrl?: string,
+  trialStrategy?: IgTrialStrategy | null,
 ): Promise<{ id: string }> {
   const body: Record<string, string> = {
     video_url: videoUrl,
@@ -182,6 +195,11 @@ export async function createVideoContainer(
     access_token: token,
   };
   if (coverUrl) body.cover_url = coverUrl;
+  if (trialStrategy) {
+    body.trial_params = JSON.stringify({
+      graduation_strategy: trialStrategy === "auto" ? "SS_PERFORMANCE" : "MANUAL",
+    });
+  }
   const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -451,10 +469,27 @@ export interface ContainerCreationResult {
  */
 export async function createContainerForPost(
   db: DbClient,
-  opts: { igUserId: string; token: string; postId: number; caption: string; useCover: boolean; tipo?: string },
+  opts: {
+    igUserId: string;
+    token: string;
+    postId: number;
+    caption: string;
+    useCover: boolean;
+    tipo?: string;
+    trialStrategy?: string | null;
+  },
 ): Promise<ContainerCreationResult> {
   const { igUserId, token, postId, caption, useCover, tipo } = opts;
   const media = await fetchPostMedia(db, postId);
+
+  // Reel de teste nunca degrada em silêncio para post normal: o cliente
+  // aprovou um teste. Fora do formato exato (reels + 1 vídeo), falha alto —
+  // a mensagem classifica como TRIAL_INELIGIBLE (não-retryable).
+  const trial: IgTrialStrategy | null =
+    opts.trialStrategy === "manual" || opts.trialStrategy === "auto" ? opts.trialStrategy : null;
+  if (trial && (tipo !== "reels" || media.length !== 1 || media[0].kind !== "video")) {
+    throw new Error(TRIAL_MEDIA_SHAPE_ERROR);
+  }
 
   if (tipo === "stories") {
     if (media.length !== 1) throw new Error("Stories require exactly one media file");
@@ -493,7 +528,7 @@ export async function createContainerForPost(
     const url = await signGetUrl(media[0].r2_key, 7200);
     const thumbKey = useCover ? media[0].thumbnail_r2_key : null;
     const coverUrl = thumbKey ? await signGetUrl(thumbKey, 7200) : undefined;
-    const container = await createVideoContainer(igUserId, token, url, caption, coverUrl);
+    const container = await createVideoContainer(igUserId, token, url, caption, coverUrl, trial);
     return { containerId: container.id, coverVideoUrl: coverUrl ? url : undefined };
   }
 

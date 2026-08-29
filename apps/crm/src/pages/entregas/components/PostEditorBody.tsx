@@ -26,6 +26,7 @@ import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { InstagramCaptionField } from './InstagramCaptionField';
 import { PlatformSelector } from './PlatformSelector';
 import { TikTokSettingsPanel } from './TikTokSettingsPanel';
+import { TrialReelPanel } from './TrialReelPanel';
 import { ScheduleButton } from './ScheduleButton';
 import { PostAutomationSection } from './PostAutomationSection';
 import { PublishErrorBlock } from './PublishErrorBlock';
@@ -294,10 +295,21 @@ export function PostEditorBody({
         </div>
         <div className="drawer-post-field">
           <label>Tipo</label>
+          {/* Locked while agendado: the publish cron builds the Instagram container up
+              to 1h before scheduled_at, so a tipo/platform change after that leaves a
+              container in the old format — the publish phase then posts the wrong thing. */}
           <select
             className="drawer-select"
             value={post.tipo}
-            onChange={(e) => onFieldChange('tipo', e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value as WorkflowPost['tipo'];
+              onFieldChange('tipo', v);
+              if (v !== 'reels' && post.ig_trial_strategy) {
+                onFieldChange('ig_trial_strategy', null);
+              }
+            }}
+            disabled={isScheduleLocked}
+            title={isScheduleLocked ? 'Cancelar agendamento para editar' : undefined}
           >
             {(['feed', 'reels', 'stories', 'carrossel'] as const).map((t) => (
               <option key={t} value={t}>
@@ -311,7 +323,13 @@ export function PostEditorBody({
           tipo={post.tipo}
           tiktokFeatureEnabled={features?.feature_tiktok === true}
           hasActiveTikTokAccount={hasActiveTikTokAccount}
-          onChange={(platform) => onFieldChange('platform', platform)}
+          disabled={isScheduleLocked}
+          onChange={(platform) => {
+            onFieldChange('platform', platform);
+            if (platform === 'tiktok' && post.ig_trial_strategy) {
+              onFieldChange('ig_trial_strategy', null);
+            }
+          }}
         />
         <div className="drawer-post-field">
           <label>Status</label>
@@ -377,7 +395,7 @@ export function PostEditorBody({
       {isExternallyVisible && (
         <div className="drawer-external-warning">
           {isScheduleLocked
-            ? '⚠ Este post está agendado para publicação. Data e legenda do Instagram estão travadas — cancele o agendamento para editá-las.'
+            ? '⚠ Este post está agendado para publicação. Data, tipo, plataforma e legenda do Instagram estão travados: cancele o agendamento para editá-los.'
             : '⚠ Este post já está visível no portal do cliente. Alterações serão refletidas imediatamente.'}
         </div>
       )}
@@ -500,6 +518,15 @@ export function PostEditorBody({
           lockedMessage="Cancelar agendamento para editar"
         />
       ) : null}
+
+      {hasInstagramAccount && (
+        <TrialReelPanel
+          post={post}
+          media={postMedia ?? []}
+          disabled={isScheduleLocked}
+          onFieldChange={onFieldChange}
+        />
+      )}
 
       {/* TikTok settings panel (Task C2) — audit-mandated creator_info compliance UI.
           Mounted whenever this post targets TikTok, mirroring PlatformSelector's own

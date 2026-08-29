@@ -914,6 +914,7 @@ describe('posts avulsos', () => {
         ordem: 0,
         workflow_titulo: null,
         platform: undefined,
+        ig_trial_strategy: null,
       },
     ]);
 

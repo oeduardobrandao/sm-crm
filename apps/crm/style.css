@@ -344,6 +344,19 @@ body {
   pointer-events: none;
 }
 
+.sidebar-sub-link--locked,
+.mobile-more-item--locked {
+  opacity: 0.55;
+}
+.sidebar-sub-link--locked:hover {
+  opacity: 0.8;
+}
+.nav-lock-icon {
+  margin-left: auto;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
 /* "Coming soon" pill for nav rows that are visible but not yet functional.
    Shared by the desktop sidebar and the mobile "Mais" sheet. */
 .nav-badge {
@@ -7343,6 +7356,19 @@ body.role-agent input[name='valor_total'] {
   --badge-bg: #1e2430;
   --badge-fg: #cbd5e1;
   --badge-border: #2a3140;
+}
+
+/* Reel de teste (Instagram trial reel) marker, next to the tipo badge. Reuses
+   the reels tipo color (#e1306c) at reduced emphasis, not a new tipo color. */
+.post-tipo-badge--trial {
+  --badge-bg: #e1306c25;
+  --badge-fg: #e1306c;
+  --badge-border: #e1306c40;
+}
+[data-theme='dark'] .post-tipo-badge--trial {
+  --badge-bg: rgba(225, 48, 108, 0.18);
+  --badge-fg: #e96491;
+  --badge-border: rgba(225, 48, 108, 0.32);
 }
 
 .post-status--rascunho {

@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -10,9 +10,12 @@ import {
   ExternalLink,
   Info,
   Instagram,
+  Link2,
+  MessageCircle,
   MoreVertical,
   Pencil,
   Plus,
+  Reply,
   Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -51,7 +54,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
+import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
 import { useAuth } from '../../context/AuthContext';
+import { useEntitlements } from '../../hooks/useEntitlements';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
 import { sanitizeUrl } from '@/utils/security';
@@ -62,11 +67,16 @@ import {
   getInstagramAutomationSends,
   getClientes,
   getInitials,
+  hasAutomationReadyAccount,
   type InstagramCommentAutomation,
   type InstagramAutomationSend,
   type Cliente,
 } from '../../store';
 import AutomationFormDialog from './AutomationFormDialog';
+import AutomacoesChecklist from './AutomacoesChecklist';
+import TourOverlay from './tour/TourOverlay';
+import { useAutomationTour } from './tour/useAutomationTour';
+import { TOUR_STEPS } from './tour/tourSteps';
 
 /** Module-level so other surfaces (e.g. useEffectiveNavFeatures' sibling
  * count query) can invalidate the same cache entry after a write. */
@@ -108,8 +118,7 @@ function isTombstoneCheckViolation(err: unknown): boolean {
 
 export default function AutomacoesPage() {
   const { t, i18n } = useTranslation('automations');
-  const { role, profile } = useAuth();
-  const isAgent = role === 'agent';
+  const { profile } = useAuth();
   const qc = useQueryClient();
 
   const [clientFilter, setClientFilter] = useState<number | 'todos'>('todos');
@@ -118,10 +127,12 @@ export default function AutomacoesPage() {
   const [editing, setEditing] = useState<InstagramCommentAutomation | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InstagramCommentAutomation | null>(null);
 
-  const { data: automations = [], isLoading } = useQuery({
+  const automationsQuery = useQuery({
     queryKey: AUTOMATIONS_KEY,
     queryFn: getInstagramAutomations,
   });
+  const automations = useMemo(() => automationsQuery.data ?? [], [automationsQuery.data]);
+  const isLoading = automationsQuery.isLoading;
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
 
   const clientesById = useMemo(() => {
@@ -196,8 +207,99 @@ export default function AutomacoesPage() {
     setEditing(a);
     setFormOpen(true);
   };
+  // Abre o formulário de criação e avança o tour quando o overlay do passo 1
+  // (surface "page") está ativo. Usada por todo botão/CTA de "criar" que pode
+  // ser clicado enquanto esse overlay está montado -- o botão real do
+  // header, o CTA do próprio TourOverlay e o CTA "Criar" da checklist -- para
+  // não depender de cada ponto de entrada reimplementar a mesma guarda.
+  const openCreateAndAdvanceTour = () => {
+    openCreate();
+    if (tour.activeStep?.surface === 'page') tour.next();
+  };
 
-  const columnCount = isAgent ? 8 : 9;
+  const columnCount = 9;
+
+  const { hasFeature, isLoading: entLoading } = useEntitlements();
+  const canCreate = !entLoading && hasFeature('feature_instagram_automation');
+  const flagOff = !entLoading && !hasFeature('feature_instagram_automation');
+
+  const readyQuery = useQuery({
+    queryKey: ['ig-automation-ready-account'],
+    queryFn: hasAutomationReadyAccount,
+    staleTime: 60_000,
+  });
+
+  const dismissKey = `automacoes_checklist_dismissed:${profile?.conta_id ?? ''}`;
+  const [checklistDismissed, setChecklistDismissed] = useState(false);
+  useEffect(() => {
+    setChecklistDismissed(localStorage.getItem(dismissKey) === '1');
+  }, [dismissKey]);
+  const dismissChecklist = () => {
+    localStorage.setItem(dismissKey, '1');
+    setChecklistDismissed(true);
+  };
+
+  const tour = useAutomationTour({
+    contaId: profile?.conta_id ?? null,
+    eligibleForAutoStart:
+      automationsQuery.isSuccess &&
+      readyQuery.isSuccess &&
+      readyQuery.data === true &&
+      automations.length === 0 &&
+      canCreate,
+  });
+
+  // Encerramento por fechamento do dialog: observa a TRANSIÇÃO de formOpen,
+  // não onOpenChange, porque salvar fecha via onSaved -> setFormOpen(false)
+  // sem passar por onOpenChange (decisão do spec).
+  const prevFormOpenRef = useRef(formOpen);
+  useEffect(() => {
+    if (prevFormOpenRef.current && !formOpen) tour.handleDialogClose();
+    prevFormOpenRef.current = formOpen;
+  }, [formOpen, tour]);
+
+  if (flagOff && automationsQuery.isPending) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+  if (flagOff && automationsQuery.isError) {
+    return (
+      <div style={{ padding: '4rem', textAlign: 'center' }}>
+        <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>{t('loadError')}</p>
+        <Button variant="outline" onClick={() => automationsQuery.refetch()}>
+          {t('retry')}
+        </Button>
+      </div>
+    );
+  }
+  if (flagOff && automations.length === 0) {
+    return (
+      <UpgradeLockedScreen featureLabel={t('featureLabel')} feature="feature_instagram_automation">
+        <p className="text-sm max-w-md" style={{ color: 'var(--text-muted)' }}>
+          {t('locked.pitch')}
+        </p>
+        <div className="flex flex-wrap justify-center gap-2.5 my-2">
+          {[
+            { icon: MessageCircle, label: t('locked.cardKeyword') },
+            { icon: Link2, label: t('locked.cardButtons') },
+            { icon: Reply, label: t('locked.cardReply') },
+          ].map(({ icon: Icon, label }) => (
+            <div
+              key={label}
+              className="rounded-xl border px-4 py-3 text-xs max-w-[180px] flex flex-col items-center gap-1.5"
+              style={{ background: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </div>
+          ))}
+        </div>
+      </UpgradeLockedScreen>
+    );
+  }
 
   return (
     <div style={{ padding: '1.5rem' }}>
@@ -208,15 +310,13 @@ export default function AutomacoesPage() {
         >
           <h1>{t('title')}</h1>
         </div>
-        {!isAgent && (
-          <div className="header-actions">
-            <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
-              <Button onClick={openCreate}>
-                <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newAutomation')}
-              </Button>
-            </FeatureGate>
-          </div>
-        )}
+        <div className="header-actions">
+          <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
+            <Button onClick={openCreateAndAdvanceTour} data-tour="nova-automacao">
+              <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newAutomation')}
+            </Button>
+          </FeatureGate>
+        </div>
       </div>
 
       <p
@@ -226,6 +326,18 @@ export default function AutomacoesPage() {
         <Info className="h-3.5 w-3.5" style={{ flexShrink: 0 }} />
         {t('tiebreakHint')}
       </p>
+
+      {!checklistDismissed && automationsQuery.isSuccess && readyQuery.isSuccess && (
+        <AutomacoesChecklist
+          accountReady={readyQuery.data === true}
+          hasAutomation={automations.length > 0}
+          hasFirstDm={automations.some((a) => a.dms_sent_count > 0)}
+          canCreate={canCreate}
+          onCreate={openCreateAndAdvanceTour}
+          onDismiss={dismissChecklist}
+          onStartTour={canCreate ? tour.start : undefined}
+        />
+      )}
 
       {clientesComAutomacao.length > 0 && (
         <div style={{ marginBottom: '1rem', maxWidth: 260 }}>
@@ -265,7 +377,7 @@ export default function AutomacoesPage() {
                 <TableHead>{t('table.dmsSent')}</TableHead>
                 <TableHead>{t('table.lastTriggered')}</TableHead>
                 <TableHead>{t('table.active')}</TableHead>
-                {!isAgent && <TableHead style={{ width: 60 }} />}
+                <TableHead style={{ width: 60 }} />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -368,50 +480,42 @@ export default function AutomacoesPage() {
                           : t('neverTriggered')}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        {isAgent ? (
-                          <Badge variant={a.ativo ? 'success' : 'neutral'} size="sm">
-                            {a.ativo ? t('status.active') : t('status.inactive')}
-                          </Badge>
-                        ) : (
-                          <Switch
-                            checked={a.ativo}
-                            aria-label={a.ativo ? t('switchDeactivate') : t('switchActivate')}
-                            onCheckedChange={(ativo) => toggleMutation.mutate({ id: a.id, ativo })}
-                          />
-                        )}
+                        <Switch
+                          checked={a.ativo}
+                          aria-label={a.ativo ? t('switchDeactivate') : t('switchActivate')}
+                          onCheckedChange={(ativo) => toggleMutation.mutate({ id: a.id, ativo })}
+                        />
                       </TableCell>
-                      {!isAgent && (
-                        <TableCell
-                          onClick={(e) => e.stopPropagation()}
-                          style={{ textAlign: 'right' }}
-                        >
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                aria-label={t('rowActions', { name: a.name })}
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openEdit(a)}>
-                                <Pencil className="h-3.5 w-3.5" style={{ marginRight: '0.5rem' }} />
-                                {t('edit')}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => setDeleteTarget(a)}
-                                className="text-destructive"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" style={{ marginRight: '0.5rem' }} />
-                                {t('delete')}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      )}
+                      <TableCell
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ textAlign: 'right' }}
+                      >
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              aria-label={t('rowActions', { name: a.name })}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEdit(a)}>
+                              <Pencil className="h-3.5 w-3.5" style={{ marginRight: '0.5rem' }} />
+                              {t('edit')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setDeleteTarget(a)}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" style={{ marginRight: '0.5rem' }} />
+                              {t('delete')}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
                     </TableRow>
                     {expanded && (
                       <TableRow>
@@ -435,10 +539,44 @@ export default function AutomacoesPage() {
         </div>
       )}
 
+      {/* Sem !formOpen aqui, o overlay de página ficaria preso por cima de
+          QUALQUER dialog aberto enquanto o tour segue no passo de página --
+          o botão real, o CTA do card, a checklist, editar uma linha
+          existente, ou qualquer botão futuro que abra o formulário. O tour
+          pode continuar no índice 0 até o dialog fechar (handleDialogClose
+          só encerra passos de surface "dialog"); ao fechar um dialog não
+          relacionado ao tour, o card "Comece por aqui" reaparece, o que é
+          aceitável. */}
+      {tour.activeStep?.surface === 'page' && !formOpen && (
+        <TourOverlay
+          step={tour.activeStep}
+          index={tour.activeIndex ?? 0}
+          total={TOUR_STEPS.length}
+          onNext={tour.next}
+          onBack={tour.back}
+          onSkip={tour.skip}
+          onFinish={tour.finish}
+          onCta={openCreateAndAdvanceTour}
+        />
+      )}
+
       <AutomationFormDialog
         open={formOpen}
         onOpenChange={setFormOpen}
         editing={editing}
+        tour={
+          tour.activeStep?.surface === 'dialog'
+            ? {
+                step: tour.activeStep,
+                index: tour.activeIndex ?? 0,
+                total: TOUR_STEPS.length,
+                onNext: tour.next,
+                onBack: tour.back,
+                onSkip: tour.skip,
+                onFinish: tour.finish,
+              }
+            : undefined
+        }
         onSaved={() => {
           setFormOpen(false);
           invalidate();

@@ -369,4 +369,36 @@ describe('InstagramPostCard', () => {
     const slideButton = screen.getByRole('button', { name: /abrir mídia 1/i });
     expect(slideButton.querySelector('img')).not.toBeInTheDocument();
   });
+
+  it('mostra o chip Reel de teste quando ig_trial_strategy está definido', () => {
+    render(
+      <InstagramPostCard
+        post={makePost({ media: [makeMedia()], tipo: 'reels', ig_trial_strategy: 'auto' })}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+        isSelected={false}
+        onToggleSelect={vi.fn()}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Reel de teste')).toBeTruthy();
+  });
+
+  it('não mostra o chip em post normal', () => {
+    render(
+      <InstagramPostCard
+        post={makePost()}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+        isSelected={false}
+        onToggleSelect={vi.fn()}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText('Reel de teste')).toBeNull();
+  });
 });

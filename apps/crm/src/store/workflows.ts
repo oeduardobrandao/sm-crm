@@ -66,8 +66,10 @@ export async function removeWorkflowTemplate(id: number): Promise<void> {
 
 /**
  * Propagate template step changes to `pendente`/`ativo` workflow_etapas of active workflows
- * using this template. Server-side now — see `propagate_template_to_workflows` in
- * supabase/migrations/20260826000002_workflow_events_rpc_integration.sql for the full
+ * using this template, and backfill (as `pendente`) any template step whose `ordem` has no
+ * workflow_etapas row yet — appending a new step to a template reaches workflows created
+ * before the edit. Server-side now — see `propagate_template_to_workflows` in
+ * supabase/migrations/20260828000010_propagate_template_backfill_new_steps.sql for the full
  * behavioral spec (it reads the template's `etapas` jsonb directly, so the caller no longer
  * passes it).
  */

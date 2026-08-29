@@ -98,3 +98,36 @@ describe('getNavGroups financial capability', () => {
     expect(ids(getMoreSheetGroups('admin', null, false, 'admin'))).not.toContain('financeiro');
   });
 });
+
+describe('locked nav items (showLockedWhenGated)', () => {
+  const FEATURES_OFF = { feature_instagram_automation: false };
+
+  it('flag false: automacoes fica visível com locked=true em vez de sumir', () => {
+    const items = getNavGroups('owner', FEATURES_OFF, true, 'owner').flatMap((g) => g.items);
+    const auto = items.find((i) => i.id === 'automacoes');
+    expect(auto).toBeDefined();
+    expect(auto?.locked).toBe(true);
+  });
+
+  it('flag true: item normal, sem locked', () => {
+    const items = getNavGroups(
+      'owner',
+      { feature_instagram_automation: true },
+      true,
+      'owner',
+    ).flatMap((g) => g.items);
+    expect(items.find((i) => i.id === 'automacoes')?.locked).toBeUndefined();
+  });
+
+  it('itens gateados SEM showLockedWhenGated continuam sendo escondidos', () => {
+    const items = getNavGroups('owner', { feature_leads: false }, true, 'owner').flatMap(
+      (g) => g.items,
+    );
+    expect(items.find((i) => i.id === 'leads')).toBeUndefined();
+  });
+
+  it('features null (carregando/ilimitado) não marca nada', () => {
+    const items = getNavGroups('owner', null, true, 'owner').flatMap((g) => g.items);
+    expect(items.find((i) => i.id === 'automacoes')?.locked).toBeUndefined();
+  });
+});

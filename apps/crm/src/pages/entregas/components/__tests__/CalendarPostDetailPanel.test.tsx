@@ -235,4 +235,14 @@ describe('CalendarPostDetailPanel', () => {
     });
     expect(container.querySelector('.calendar-detail-thumb--empty')).not.toBeInTheDocument();
   });
+
+  it('mostra o selo Teste em reels de teste', () => {
+    renderPanel({ post: { ...post, tipo: 'reels', ig_trial_strategy: 'auto' } });
+    expect(screen.getByText('Teste')).toBeTruthy();
+  });
+
+  it('não mostra o selo em post normal', () => {
+    renderPanel();
+    expect(screen.queryByText('Teste')).toBeNull();
+  });
 });

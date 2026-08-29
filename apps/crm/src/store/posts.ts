@@ -97,6 +97,11 @@ export interface WorkflowPost {
   /** Post Express marker. hub-approve skips the min-future date check and
    * self-schedules on approval when the client's auto-publish is on. */
   is_express?: boolean;
+  /** Reel de teste (Instagram trial reel). NULL/undefined = post normal.
+   * 'auto' = SS_PERFORMANCE (graduação automática), 'manual' = graduação no
+   * app. Só válido em tipo 'reels' mirando Instagram; o trigger
+   * workflow_posts_z5_clear_ig_trial limpa fora disso. */
+  ig_trial_strategy?: 'manual' | 'auto' | null;
 }
 
 export interface ClientePost {
@@ -113,10 +118,11 @@ export interface ClientePost {
   workflow_titulo: string | null;
   /** Target platform; absent on legacy rows (treat as 'instagram', the DB default). */
   platform?: WorkflowPost['platform'];
+  ig_trial_strategy?: 'manual' | 'auto' | null;
 }
 
 const CLIENTE_POST_COLUMNS =
-  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, platform';
+  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, platform, ig_trial_strategy';
 
 function mapClientePostRow(row: any): ClientePost {
   return {
@@ -130,6 +136,7 @@ function mapClientePostRow(row: any): ClientePost {
     ordem: row.ordem,
     workflow_titulo: row.workflows?.titulo ?? null,
     platform: row.platform ?? undefined,
+    ig_trial_strategy: row.ig_trial_strategy ?? null,
   };
 }
 
@@ -248,6 +255,7 @@ export interface ScheduledPost {
   tiktok_publish_error: string | null;
   tiktok_post_url: string | null;
   instagram_media_id: string | null;
+  ig_trial_strategy: 'manual' | 'auto' | null;
 }
 
 /**
@@ -267,7 +275,7 @@ export interface ScheduledPost {
  * already exists; do not reorder that deploy sequence.
  */
 const POST_CONTEXT_COLUMNS =
-  'id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id';
+  'id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id, ig_trial_strategy';
 
 /**
  * Maps a workflow_posts row that may come from either arm of a wired/avulso
@@ -299,6 +307,7 @@ function mapPostContextRow(row: any): ActivePost {
     tiktok_publish_error: row.tiktok_publish_error ?? null,
     tiktok_post_url: row.tiktok_post_url ?? null,
     instagram_media_id: row.instagram_media_id ?? null,
+    ig_trial_strategy: row.ig_trial_strategy ?? null,
   };
 }
 

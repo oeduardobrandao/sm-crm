@@ -7,10 +7,12 @@
 -- row, never a plan pick.
 --
 -- 1-3. instagram_comment_automations: flag-off blocks INSERT; flag-on lets
---      owner/admin write while agent only reads (intentional deviation from
---      post_status_automations, documented in the migration); downgrade
---      (flag back off) keeps the existing row editable/deletable but blocks
---      new INSERTs (block-new/keep-existing, same policy as 06).
+--      any workspace member (owner/admin/agent) write, same conta_id-only
+--      RLS shape as workflow_posts_all (20260402) -- migration 20260829000001
+--      dropped the owner/admin-only INSERT/UPDATE/DELETE restriction from
+--      20260815000002; downgrade (flag back off) keeps the existing row
+--      editable/deletable but blocks new INSERTs (block-new/keep-existing,
+--      same policy as 06).
 -- 4. Structural tenant-safety: the composite FKs ica_client_same_tenant and
 --    ias_automation_same_tenant reject cross-workspace pointers even for a
 --    caller that bypasses RLS entirely (table owner, standing in for the
@@ -24,8 +26,8 @@
 --    different comment, same commenter -- the in-flight 'processing' row
 --    reserves it) -> duplicate (re-claiming the first comment again).
 
--- 1-3. Feature gate (off -> on -> downgrade) + RLS (owner/admin write, agent
---      read-only)
+-- 1-3. Feature gate (off -> on -> downgrade) + RLS (any workspace member
+--      writes, including agent)
 begin;
 select et_grant_hosted_parity();
 do $$
@@ -35,6 +37,7 @@ declare
   v_agent uuid := gen_random_uuid();
   v_cli bigint;
   v_auto uuid;
+  v_auto_by_agent uuid;
   v_seen bigint;
   v_rows bigint;
   v_rejected boolean;
@@ -80,32 +83,27 @@ begin
     values (v_ws, v_cli, 'Promo', array['preco'], 'Chama no DM que te mando o link!')
     returning id into v_auto;
 
-  -- agent SELECT sees the automation (intentional read access, spec deviation)
+  -- agent SELECT sees the automation
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_agent, 'role', 'authenticated')::text, true);
   select count(*) into v_seen from instagram_comment_automations where conta_id = v_ws;
   assert v_seen = 1, format('agent should read the automation, saw %s', v_seen);
 
-  -- agent INSERT rejected by RLS WITH CHECK
-  v_rejected := false;
-  begin
-    insert into instagram_comment_automations
-      (conta_id, client_id, name, keywords, dm_message)
-      values (v_ws, v_cli, 'Hack', array['x'], 'y');
-  exception when sqlstate '42501' then
-    v_rejected := true;
-  end;
-  assert v_rejected, 'agent INSERT must be rejected by RLS';
+  -- agent INSERT allowed (full CRUD, same as owner/admin)
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message)
+    values (v_ws, v_cli, 'Agent-made', array['x'], 'y')
+    returning id into v_auto_by_agent;
 
-  -- agent UPDATE silently filtered by RLS USING (0 rows)
+  -- agent UPDATE allowed on any automation in the workspace
   update instagram_comment_automations set ativo = false where id = v_auto;
   get diagnostics v_rows = row_count;
-  assert v_rows = 0, format('agent UPDATE must affect 0 rows, affected %s', v_rows);
+  assert v_rows = 1, format('agent UPDATE must affect 1 row, affected %s', v_rows);
 
-  -- agent DELETE silently filtered by RLS USING (0 rows)
-  delete from instagram_comment_automations where id = v_auto;
+  -- agent DELETE allowed on any automation in the workspace
+  delete from instagram_comment_automations where id = v_auto_by_agent;
   get diagnostics v_rows = row_count;
-  assert v_rows = 0, format('agent DELETE must affect 0 rows, affected %s', v_rows);
+  assert v_rows = 1, format('agent DELETE must affect 1 row, affected %s', v_rows);
 
   reset role;
 

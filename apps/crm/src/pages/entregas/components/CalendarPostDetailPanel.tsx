@@ -92,6 +92,9 @@ export function CalendarPostDetailPanel({
         <div className="calendar-detail-head-info">
           <span className="calendar-detail-eyebrow">Detalhes do post</span>
           <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
+          {post.ig_trial_strategy && (
+            <span className="post-tipo-badge post-tipo-badge--trial">Teste</span>
+          )}
           <h3 className="calendar-detail-title">{post.titulo || 'Post sem título'}</h3>
         </div>
         <button

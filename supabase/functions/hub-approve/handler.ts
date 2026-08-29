@@ -7,6 +7,35 @@ type DbClient = {
   rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
 };
 
+// Dual-approval fluxos (e.g. copy approval → design → design approval) must not
+// auto-schedule on the first approval: the post still has production stages and
+// another client approval ahead, and once `agendado` the re-arm on etapa
+// completion (resetApprovedPostsForNextCycle) deliberately never touches it, so
+// it would publish without the later deliverables. With two or more
+// aprovacao_cliente etapas still open, this approval belongs to an earlier
+// cycle; only when at most one remains open is the approval final. Workflows
+// without approval etapas (express, legacy) keep today's behavior.
+async function isFinalApprovalCycle(db: DbClient, workflowId: number | null): Promise<boolean> {
+  // An avulso post (workflow_id null) has no workflow etapas at all, so there is
+  // no approval cycle to be mid-way through: it behaves as final, same as a
+  // workflow with no aprovacao_cliente etapas.
+  if (workflowId == null) return true;
+  const { data: etapas, error } = await db
+    .from("workflow_etapas")
+    .select("tipo, status")
+    .eq("workflow_id", workflowId);
+  if (error) {
+    // Fail closed: without the etapa picture a later approval cycle cannot be
+    // ruled out, so the auto-publish is skipped (the agency schedules manually,
+    // same as a failed validation) instead of risking a premature publish.
+    console.error("[hub-approve] etapa lookup failed:", error);
+    return false;
+  }
+  const openApprovalEtapas = ((etapas ?? []) as { tipo?: string | null; status?: string | null }[])
+    .filter((e) => e.tipo === "aprovacao_cliente" && e.status !== "concluido").length;
+  return openApprovalEtapas < 2;
+}
+
 interface HubApproveHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
@@ -79,7 +108,7 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
         .eq("id", post.cliente_id)
         .single();
 
-      if (client?.auto_publish_on_approval) {
+      if (client?.auto_publish_on_approval && (await isFinalApprovalCycle(db, post.workflow_id))) {
         // Express posts have no scheduled_at: approval IS the publish moment, so the
         // min-future date check is skipped and the post is stamped to publish now.
         const isExpress = post.is_express === true;
