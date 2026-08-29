@@ -729,7 +729,10 @@ describe('AutomationFormDialog', () => {
     renderDialog();
 
     const content = await screen.findByRole('dialog');
-    expect(content.className).not.toContain('z-[');
+    // Base DialogContent now carries z-[9011] by default (dialogs always sit
+    // above the Entregas drawer); the assertion pins only that no per-instance
+    // elevation override is applied here.
+    expect(content.className).not.toContain('z-[9005]');
     expect(content.getAttribute('data-overlay-class')).toBeNull();
   });
 
