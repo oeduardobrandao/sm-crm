@@ -32,17 +32,17 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
 
     const { data: post } = await db
       .from("workflow_posts")
-      .select("id, workflow_id, status, is_express")
+      .select("id, workflow_id, status, is_express, cliente_id, conta_id")
       .eq("id", post_id)
       .maybeSingle();
     if (!post) return json({ error: "Post não encontrado." }, 404);
 
-    const { data: workflow } = await db
-      .from("workflows")
-      .select("cliente_id")
-      .eq("id", post.workflow_id)
-      .single();
-    if (workflow?.cliente_id !== hubToken.cliente_id) return json({ error: "Não autorizado." }, 403);
+    // Ownership is the post's own cliente_id/conta_id, not a workflow lookup: an
+    // avulso post (workflow_id null) has no workflow to authorize through, and
+    // every post — attached or not — carries its own client and workspace.
+    if (post.cliente_id !== hubToken.cliente_id || post.conta_id !== hubToken.conta_id) {
+      return json({ error: "Não autorizado." }, 403);
+    }
 
     if (action === "mensagem") {
       // Message-only: no status change, keep the plain insert.
@@ -76,7 +76,7 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
       const { data: client } = await db
         .from("clientes")
         .select("auto_publish_on_approval")
-        .eq("id", workflow.cliente_id)
+        .eq("id", post.cliente_id)
         .single();
 
       if (client?.auto_publish_on_approval) {

@@ -70,10 +70,10 @@ export function createHubEditSuggestionHandler(deps: HubEditSuggestionHandlerDep
       return json({ error: "Link inválido." }, 404);
     }
 
-    // Verify post exists and get its workflow
+    // Verify post exists and belongs to this token's client/workspace
     const { data: post } = await db
       .from("workflow_posts")
-      .select("id, workflow_id, status, conteudo, conta_id")
+      .select("id, workflow_id, status, conteudo, conta_id, cliente_id")
       .eq("id", post_id)
       .maybeSingle();
 
@@ -84,14 +84,9 @@ export function createHubEditSuggestionHandler(deps: HubEditSuggestionHandlerDep
       return json({ error: "Post não está aguardando aprovação." }, 409);
     }
 
-    // Verify ownership: post's workflow belongs to this client
-    const { data: workflow } = await db
-      .from("workflows")
-      .select("cliente_id")
-      .eq("id", post.workflow_id)
-      .single();
-
-    if (workflow?.cliente_id !== hubToken.cliente_id) {
+    // Verify ownership via the post's own cliente_id/conta_id: an avulso post
+    // (workflow_id null) has no workflow to authorize through.
+    if (post.cliente_id !== hubToken.cliente_id || post.conta_id !== hubToken.conta_id) {
       return json({ error: "Não autorizado." }, 403);
     }
 

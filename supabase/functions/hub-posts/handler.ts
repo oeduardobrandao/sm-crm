@@ -106,41 +106,22 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       return json(data ?? { ok: true }, 200);
     }
 
-    const { data: workflows } = await db
-      .from("workflows")
-      .select("id")
-      .eq("cliente_id", hubToken.cliente_id)
-      .eq("conta_id", hubToken.conta_id);
-
-    const workflowIds = (workflows ?? []).map((workflow: { id: number }) => workflow.id);
-    if (workflowIds.length === 0) {
-      const { data: igAccount } = await db
-        .from("instagram_accounts")
-        .select("username, profile_picture_url")
-        .eq("client_id", hubToken.cliente_id)
-        .maybeSingle();
-
-      return json({
-        posts: [],
-        postApprovals: [],
-        propertyValues: [],
-        workflowSelectOptions: [],
-        instagramProfile: igAccount
-          ? { username: igAccount.username, profilePictureUrl: igAccount.profile_picture_url }
-          : null,
-      });
-    }
-
     const { data: posts } = await db
       .from("workflow_posts")
       .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, tiktok_post_url, published_at, publish_error, platform, media_autocleaned_at, workflow_id, workflows(titulo, created_at)")
-      .in("workflow_id", workflowIds)
+      .eq("conta_id", hubToken.conta_id)
+      .eq("cliente_id", hubToken.cliente_id)
       .order("scheduled_at", { ascending: true });
 
+    // A post with no workflow_id is avulso (never attached to a flow): the embed
+    // resolves to null and the flattened row carries null, not "", so the Hub
+    // frontend can tell "no workflow" apart from "workflow with an empty titulo".
     const flatPosts = (posts ?? []).map((post: any) => {
       const { workflows: workflow, ...rest } = post;
-      return { ...rest, workflow_titulo: workflow?.titulo ?? "", workflow_created_at: workflow?.created_at ?? "" };
+      return { ...rest, workflow_titulo: workflow?.titulo ?? null, workflow_created_at: workflow?.created_at ?? null };
     });
+
+    const workflowIds = [...new Set(flatPosts.map((post: any) => post.workflow_id).filter(Boolean))];
 
     const postIds = flatPosts.map((post: { id: number }) => post.id);
 
@@ -188,7 +169,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
           .order("template_property_definitions(display_order)", { ascending: true })
       : { data: [] };
 
-    const { data: workflowSelectOptions } = postIds.length > 0
+    const { data: workflowSelectOptions } = postIds.length > 0 && workflowIds.length > 0
       ? await db
           .from("workflow_select_options")
           .select("workflow_id, property_definition_id, option_id, label, color")
