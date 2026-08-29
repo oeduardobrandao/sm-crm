@@ -1,6 +1,6 @@
 -- Posts avulsos (fora de fluxo): notificacoes, pastas, health e mensagens.
 -- Task 3 do plano .superpowers/sdd/2026-08-29-posts-avulsos-plan. Depende da
--- 20260829000001 (workflow_posts.cliente_id/conta_id sempre presentes; iguais
+-- 20260830000001 (workflow_posts.cliente_id/conta_id sempre presentes; iguais
 -- ao workflow enquanto anexado; workflow_id agora nullable para o avulso).
 --
 -- Copy-forward: cada funcao abaixo e a definicao completa da sua canonica,
@@ -11,7 +11,7 @@
 --        ELSE '/entregas?drawer=' || v_workflow_id END
 -- (mantendo "&post=<id>" nos casos em que a canonica ja o inclui). Nenhuma
 -- mudanca de comportamento para post anexado (cliente_id/conta_id ==
--- cliente/conta do workflow, pela invariante da 20260829000001); post avulso
+-- cliente/conta do workflow, pela invariante da 20260830000001); post avulso
 -- deixa de ser descartado pelo JOIN / de virar link morto.
 --
 -- Item 9 do brief (Estudio: create_design/attach_design lendo cliente via

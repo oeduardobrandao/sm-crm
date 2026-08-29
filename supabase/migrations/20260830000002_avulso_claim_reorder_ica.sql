@@ -1,5 +1,5 @@
 -- Posts avulsos (fora de fluxo): claim, reorder e familia ICA. Task 2 do plano
--- .superpowers/sdd/2026-08-29-posts-avulsos-plan. Depende da 20260829000001
+-- .superpowers/sdd/2026-08-29-posts-avulsos-plan. Depende da 20260830000001
 -- (workflow_posts.cliente_id sempre presente; igual ao cliente do workflow
 -- enquanto anexado; workflow_id agora nullable para o post avulso).
 --
@@ -7,7 +7,7 @@
 -- com APENAS a troca de "achar o cliente via JOIN workflows/clientes" por
 -- "ler cliente_id direto de workflow_posts". Nenhuma mudanca de
 -- comportamento para post anexado (cliente_id == cliente do workflow, pela
--- invariante da 20260829000001); post avulso deixa de ser descartado pelo
+-- invariante da 20260830000001); post avulso deixa de ser descartado pelo
 -- JOIN. Mensagens de erro e RETURNS TABLE identicos as canonicas.
 
 -- ============================================================
@@ -111,7 +111,11 @@ RETURNS TABLE (
   FROM updated u
   JOIN instagram_accounts ia ON ia.client_id = u.cliente_id;
 $$;
-REVOKE ALL ON FUNCTION claim_posts_for_publishing(text, int) FROM public;
+-- service_role only; FROM public sozinho nao basta em hosted Supabase, onde os
+-- default privileges concedem EXECUTE direto a anon/authenticated (mesmo
+-- gotcha documentado no bloco do sweep mais abaixo, 20260806000002) -- e o
+-- DROP+CREATE acima reseta a ACL desta funcao para esses defaults.
+REVOKE ALL ON FUNCTION claim_posts_for_publishing(text, int) FROM public, anon, authenticated;
 GRANT EXECUTE ON FUNCTION claim_posts_for_publishing(text, int) TO service_role;
 
 -- ============================================================
@@ -192,7 +196,11 @@ RETURNS TABLE (
   FROM updated u
   JOIN tiktok_accounts ta ON ta.client_id = u.cliente_id AND ta.authorization_status = 'active';
 $$;
-REVOKE ALL ON FUNCTION claim_posts_for_tiktok_publishing(text, int) FROM public;
+-- service_role only; FROM public sozinho nao basta em hosted Supabase, onde os
+-- default privileges concedem EXECUTE direto a anon/authenticated (mesmo
+-- gotcha documentado no bloco do sweep mais abaixo, 20260806000002) -- e a ACL
+-- ja existente em prod para esta funcao carrega esses grants diretos.
+REVOKE ALL ON FUNCTION claim_posts_for_tiktok_publishing(text, int) FROM public, anon, authenticated;
 GRANT EXECUTE ON FUNCTION claim_posts_for_tiktok_publishing(text, int) TO service_role;
 
 -- ============================================================
