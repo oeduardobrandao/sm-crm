@@ -44,6 +44,7 @@ import {
 } from '../../store';
 import DmPreview from './DmPreview';
 import { dmMessageLimit, MAX_BUTTON_TITLE, MAX_DM_BUTTONS, validateDmButtons } from './dmButtons';
+import TourOverlay, { type TourOverlayProps } from './tour/TourOverlay';
 
 /**
  * Stacking for the copy opened from inside the Entregas drawer. The default
@@ -362,6 +363,7 @@ export default function AutomationFormDialog({
   initialTarget,
   elevated,
   onSaved,
+  tour,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -374,6 +376,11 @@ export default function AutomationFormDialog({
    * out-stacks the dialog's default z-50. See DRAWER_ELEVATED_Z. */
   elevated?: boolean;
   onSaved: () => void;
+  /** Passo ativo do tour guiado quando ele está num passo interno (2 a 8).
+   * A página é dona do estado; o dialog só monta o overlay dentro do
+   * DialogContent, onde o focus-trap e o stacking do Radix o enxergam como
+   * conteúdo próprio. */
+  tour?: Omit<TourOverlayProps, 'onCta'>;
 }) {
   const { t } = useTranslation('automations');
   const { profile } = useAuth();
@@ -719,7 +726,7 @@ export default function AutomationFormDialog({
             prévia vai para o fim. */}
         <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_280px]">
           <div className="space-y-4">
-            <div>
+            <div data-tour="campo-nome">
               <label className="text-sm font-medium" htmlFor="automacao-nome">
                 {t('form.nameLabel')}
               </label>
@@ -732,7 +739,7 @@ export default function AutomationFormDialog({
               />
             </div>
 
-            <div>
+            <div data-tour="campo-cliente">
               <label className="text-sm font-medium">{t('form.clientLabel')}</label>
               <Select
                 disabled={clientLocked}
@@ -792,7 +799,7 @@ export default function AutomationFormDialog({
               )}
             </div>
 
-            <div>
+            <div data-tour="campo-alvo">
               <label className="text-sm font-medium">{t('form.targetLabel')}</label>
               <div
                 role="radiogroup"
@@ -1034,7 +1041,7 @@ export default function AutomationFormDialog({
                 ))}
             </div>
 
-            <div>
+            <div data-tour="campo-palavras">
               <label className="text-sm font-medium">{t('form.keywordsLabel')}</label>
               <div className="flex flex-wrap gap-1.5" style={{ marginTop: 6, marginBottom: 6 }}>
                 {form.keywords.map((k) => (
@@ -1069,7 +1076,7 @@ export default function AutomationFormDialog({
               />
             </div>
 
-            <div>
+            <div data-tour="campo-dm">
               <label className="text-sm font-medium" htmlFor="automacao-dm">
                 {t('form.dmLabel')}
               </label>
@@ -1092,7 +1099,7 @@ export default function AutomationFormDialog({
               </div>
             </div>
 
-            <div>
+            <div data-tour="campo-botoes">
               <span className="text-sm font-medium">{t('form.buttonsLabel')}</span>
               <p
                 style={{
@@ -1159,7 +1166,7 @@ export default function AutomationFormDialog({
               </div>
             </div>
 
-            <div>
+            <div data-tour="campo-resposta">
               <label className="text-sm font-medium" htmlFor="automacao-reply">
                 {t('form.replyLabel')}
               </label>
@@ -1196,6 +1203,8 @@ export default function AutomationFormDialog({
             {saveMutation.isPending && <Spinner size="sm" />} {t('form.save')}
           </Button>
         </DialogFooter>
+
+        {tour && <TourOverlay {...tour} />}
       </DialogContent>
     </Dialog>
   );

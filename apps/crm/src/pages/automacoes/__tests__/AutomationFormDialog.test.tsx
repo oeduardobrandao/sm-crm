@@ -186,6 +186,8 @@ vi.mock('@/components/ui/dialog', async () => {
 
 import { toast } from 'sonner';
 import AutomationFormDialog, { type SelectedTarget } from '../AutomationFormDialog';
+import type { TourOverlayProps } from '../tour/TourOverlay';
+import { TOUR_STEPS } from '../tour/tourSteps';
 import type { InstagramCommentAutomation } from '../../../store';
 
 const CLIENTES = [{ id: 7, nome: 'Clinica X', sigla: 'CX', cor: '#3ecf8e' }];
@@ -267,6 +269,7 @@ function renderDialog(
   editing: InstagramCommentAutomation | null = null,
   initialTarget?: { clientId: number; target: SelectedTarget },
   elevated?: boolean,
+  tour?: Omit<TourOverlayProps, 'onCta'>,
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return {
@@ -281,6 +284,7 @@ function renderDialog(
             initialTarget={initialTarget}
             elevated={elevated}
             onSaved={onSaved}
+            tour={tour}
           />
         </MemoryRouter>
       </QueryClientProvider>,
@@ -768,5 +772,46 @@ describe('AutomationFormDialog', () => {
     const patch = mockUpdate.mock.calls[0][1];
     expect(patch).not.toHaveProperty('pending_post_deleted_at');
     expect(patch).toMatchObject({ ig_media_id: '17900000000000001', workflow_post_id: null });
+  });
+
+  // ── Tour guiado ──────────────────────────────────────────────────────────
+
+  describe('tour', () => {
+    it('expõe as âncoras data-tour dos 7 campos', async () => {
+      renderDialog();
+      await screen.findByLabelText('form.nameLabel');
+      for (const anchor of [
+        'campo-nome',
+        'campo-cliente',
+        'campo-alvo',
+        'campo-palavras',
+        'campo-dm',
+        'campo-botoes',
+        'campo-resposta',
+      ]) {
+        expect(document.querySelector(`[data-tour="${anchor}"]`)).not.toBeNull();
+      }
+    });
+
+    it('renderiza o TourOverlay quando a prop tour está presente', async () => {
+      const step = TOUR_STEPS[1]; // campo-nome
+      renderDialog(vi.fn(), null, undefined, undefined, {
+        step,
+        index: 1,
+        total: TOUR_STEPS.length,
+        onNext: vi.fn(),
+        onBack: vi.fn(),
+        onSkip: vi.fn(),
+        onFinish: vi.fn(),
+      });
+      expect(await screen.findByTestId('tour-overlay')).toBeInTheDocument();
+      expect(screen.getByText('tour.step2Title')).toBeInTheDocument();
+    });
+
+    it('sem a prop tour, nenhum overlay', async () => {
+      renderDialog();
+      await screen.findByLabelText('form.nameLabel');
+      expect(screen.queryByTestId('tour-overlay')).not.toBeInTheDocument();
+    });
   });
 });
