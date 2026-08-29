@@ -46,6 +46,15 @@ export function useUpdatePostStatus() {
       return { previous };
     },
 
+    // Known, accepted race: each mutation snapshots `previous` at its own
+    // onMutate. If the same card is dragged again before the first write
+    // settles, and that FIRST write is the one that fails, this restores the
+    // pre-first-drag snapshot, transiently reverting past the second
+    // (in-flight or already-applied) optimistic move. It self-heals as soon
+    // as onSettled's invalidateQueries below refetches, and it is the same
+    // per-mutation snapshot/restore shape already used elsewhere in the
+    // codebase (see markAsRead in apps/crm/src/hooks/useNotifications.ts), so
+    // this is not being special-cased here.
     onError: (_err, _vars, context) => {
       if (context?.previous) qc.setQueryData(ACTIVE_POSTS_KEY, context.previous);
       toast.error('Erro ao atualizar status');
