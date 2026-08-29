@@ -96,7 +96,7 @@ import {
   VISIBILITY_BADGE_LABEL,
 } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
-import { statusKeyToPatch, type StatusKey } from '../statusRegistry';
+import { statusChangeNeedsConfirm, statusKeyToPatch, type StatusKey } from '../statusRegistry';
 import { PostStatusChip } from './PostStatusChip';
 import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 import { PostEditorBody } from './PostEditorBody';
@@ -340,12 +340,7 @@ export function WorkflowDrawer({
       // The select emits a StatusKey (canonical status or 'custom:<uuid>').
       const key = value as StatusKey;
       const post = posts.find((p) => p.id === id);
-      const isApproved = post?.status === 'aprovado_interno' || post?.status === 'aprovado_cliente';
-      // Only guard when the effective canonical status would change: moving an
-      // approved post into a custom status that behaves as the same canonical
-      // keeps the approval intact, so no confirmation is needed.
-      const nextCanonical = statusRegistry.byKey.get(key)?.canonical ?? post?.status;
-      if (isApproved && post && nextCanonical !== post.status) {
+      if (statusChangeNeedsConfirm(post, key, statusRegistry)) {
         setPendingStatusChange({ id, newStatusKey: key });
         return;
       }

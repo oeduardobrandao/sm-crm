@@ -5476,6 +5476,22 @@ body.role-agent input[name='valor_total'] {
   font-size: 0.42rem;
 }
 
+/* Publicações kanban drag-and-drop: dims a column while a card is being
+   dragged, when that column's status is system-driven (agendado/postado/falha
+   de publicação) and therefore an invalid drop target. The drop still fires
+   there (so the handler can toast why), this is purely the visual cue. */
+.board-column--drag-invalid {
+  opacity: 0.35;
+  transition: opacity 0.15s;
+}
+
+/* The dragged card's floating clone in DragOverlay. */
+.board-post-card--overlay {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  cursor: grabbing;
+  pointer-events: none;
+}
+
 /* ===== Vistas salvas (Notion-style tabs, Entregas) ===== */
 .vista-tabs {
   display: flex;

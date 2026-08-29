@@ -120,6 +120,29 @@ export function statusKeyToPatch(
 }
 
 /**
+ * Whether picking `key` for `post` needs the "post aprovado" confirm dialog
+ * first. Only approved posts (`aprovado_interno`/`aprovado_cliente`) guard at
+ * all, and only when the pick actually changes the effective canonical status
+ * — moving an approved post into a custom status that behaves as the same
+ * canonical keeps the approval intact, so no confirmation is needed there.
+ *
+ * Single source for the guard: WorkflowDrawer's status picker and the
+ * Publicações kanban's drag-and-drop both call this instead of re-deriving
+ * "is this an approval-invalidating move" on their own.
+ */
+export function statusChangeNeedsConfirm(
+  post: ResolvablePost | null | undefined,
+  key: StatusKey,
+  registry: StatusRegistry,
+): boolean {
+  if (!post) return false;
+  const isApproved = post.status === 'aprovado_interno' || post.status === 'aprovado_cliente';
+  if (!isApproved) return false;
+  const nextCanonical = registry.byKey.get(key)?.canonical ?? post.status;
+  return nextCanonical !== post.status;
+}
+
+/**
  * Filter predicate for the "Status do post" multi-select. A canonical key
  * matches on the canonical column (so posts sitting in a custom status that
  * behaves as it are included — canonical is the DB truth); a custom key

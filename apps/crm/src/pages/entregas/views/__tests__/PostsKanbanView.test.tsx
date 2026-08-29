@@ -1,5 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { describe, expect, it, vi, beforeAll, beforeEach } from 'vitest';
+import { toast } from 'sonner';
 
 // Canonical-only registry (what the real hook returns while definitions load),
 // without dragging TanStack Query / the supabase client into this test.
@@ -8,10 +10,84 @@ vi.mock('@/hooks/useStatusRegistry', async () => {
   return { useStatusRegistry: () => buildStatusRegistry([]) };
 });
 
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+
+vi.mock('@/store', () => ({ updateWorkflowPost: vi.fn() }));
+
+// Mock dnd-kit so tests don't need to simulate real pointer/touch events in
+// jsdom (same approach as WorkflowCalendarView.test.tsx / CalendarGrid.test.tsx):
+// capture the handlers DndContext is given, and record what each card's
+// useDraggable was called with so "is this card's drag disabled" is assertable.
+const dndHandlers = vi.hoisted(() => ({
+  onDragEnd: undefined as ((e: unknown) => void) | undefined,
+  onDragStart: undefined as ((e: unknown) => void) | undefined,
+}));
+const draggableCalls = vi.hoisted(() => new Map<string, { disabled?: boolean }>());
+
+vi.mock('@dnd-kit/core', () => ({
+  DndContext: ({
+    children,
+    onDragEnd,
+    onDragStart,
+  }: {
+    children: React.ReactNode;
+    onDragEnd?: (e: unknown) => void;
+    onDragStart?: (e: unknown) => void;
+  }) => {
+    dndHandlers.onDragEnd = onDragEnd;
+    dndHandlers.onDragStart = onDragStart;
+    return <>{children}</>;
+  },
+  DragOverlay: ({ children }: { children?: React.ReactNode }) => <>{children ?? null}</>,
+  PointerSensor: class {},
+  TouchSensor: class {},
+  useSensor: () => ({}),
+  useSensors: (...sensors: unknown[]) => sensors,
+  useDraggable: (opts: { id: string; disabled?: boolean }) => {
+    draggableCalls.set(opts.id, opts);
+    return {
+      listeners: opts.disabled ? undefined : {},
+      setNodeRef: () => {},
+      isDragging: false,
+    };
+  },
+  useDroppable: () => ({ setNodeRef: () => {}, isOver: false }),
+}));
+
 import { PostsKanbanView } from '../PostsKanbanView';
 import { POST_STATUS_ORDER, STATUS_LABELS } from '../../postLabels';
+import { updateWorkflowPost } from '@/store';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../../hooks/useEntregasData';
+
+const mockUpdate = vi.mocked(updateWorkflowPost);
+
+beforeAll(() => {
+  (Element.prototype as unknown as { hasPointerCapture: () => boolean }).hasPointerCapture = () =>
+    false;
+  (Element.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = () => {};
+});
+
+beforeEach(() => {
+  draggableCalls.clear();
+  dndHandlers.onDragEnd = undefined;
+  dndHandlers.onDragStart = undefined;
+  mockUpdate.mockReset();
+  vi.mocked(toast.error).mockClear();
+});
+
+function renderWithQuery(ui: React.ReactElement) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const result = render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+  return {
+    ...result,
+    qc,
+    rerender: (nextUi: React.ReactElement) =>
+      result.rerender(<QueryClientProvider client={qc}>{nextUi}</QueryClientProvider>),
+  };
+}
 
 let nextId = 1;
 function makePost(overrides: Partial<ActivePost> = {}): ActivePost {
@@ -24,6 +100,7 @@ function makePost(overrides: Partial<ActivePost> = {}): ActivePost {
     titulo: 'Post Base',
     tipo: 'feed',
     status: 'rascunho',
+    custom_status_id: null,
     scheduled_at: null,
     published_at: null,
     ig_caption: null,
@@ -60,12 +137,12 @@ const baseProps = {
 
 describe('PostsKanbanView', () => {
   it('shows a spinner while loading', () => {
-    const { container } = render(<PostsKanbanView {...baseProps} posts={[]} isLoading />);
+    const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={[]} isLoading />);
     expect(container.querySelector('.board-container')).toBeNull();
   });
 
   it('renders the global empty state when there are no posts', () => {
-    render(<PostsKanbanView {...baseProps} posts={[]} />);
+    renderWithQuery(<PostsKanbanView {...baseProps} posts={[]} />);
     expect(screen.getByText('Nenhum post encontrado. Ajuste os filtros.')).toBeInTheDocument();
   });
 
@@ -75,7 +152,7 @@ describe('PostsKanbanView', () => {
       makePost({ status: 'rascunho', titulo: 'Draft B' }),
       makePost({ status: 'postado', titulo: 'Published', scheduled_at: '2026-07-01T12:00:00Z' }),
     ];
-    const { container } = render(<PostsKanbanView {...baseProps} posts={posts} />);
+    const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
 
     const titles = Array.from(container.querySelectorAll('.board-column-title')).map(
       (el) => el.textContent,
@@ -97,7 +174,7 @@ describe('PostsKanbanView', () => {
       makePost({ id: 100, workflow_id: 10, titulo: 'Openable' }),
       makePost({ id: 101, workflow_id: 99, titulo: 'Concluded WF post' }),
     ];
-    render(<PostsKanbanView {...baseProps} posts={posts} onPostClick={onPostClick} />);
+    renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} onPostClick={onPostClick} />);
 
     fireEvent.click(screen.getByText('Openable'));
     expect(onPostClick).toHaveBeenCalledWith(10, 100);
@@ -115,7 +192,7 @@ describe('PostsKanbanView', () => {
       makePost({ status: 'agendado', titulo: 'Not due', scheduled_at: future }),
       makePost({ status: 'rascunho', titulo: 'Draft' }),
     ];
-    const { container } = render(<PostsKanbanView {...baseProps} posts={posts} />);
+    const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
 
     const chips = Array.from(container.querySelectorAll('.post-status-chip')).map(
       (el) => el.textContent,
@@ -130,7 +207,7 @@ describe('PostsKanbanView', () => {
     const withAvatar = new Map([
       [10, makeBoardCard({ clienteAvatarUrl: 'https://cdn.example/avatar.jpg' })],
     ]);
-    const { container, rerender } = render(
+    const { container, rerender } = renderWithQuery(
       <PostsKanbanView {...baseProps} posts={[makePost()]} cardsByWorkflowId={withAvatar} />,
     );
     expect(container.querySelector('img.board-post-cliente-avatar')).toHaveAttribute(
@@ -151,14 +228,14 @@ describe('PostsKanbanView', () => {
   });
 
   it('shows the etapa responsible with the etapa deadline, colored by urgency', () => {
-    render(<PostsKanbanView {...baseProps} posts={[makePost()]} />);
+    renderWithQuery(<PostsKanbanView {...baseProps} posts={[makePost()]} />);
     expect(screen.getByText('Ana')).toBeInTheDocument();
     expect(screen.getByText('AS')).toBeInTheDocument();
     expect(screen.getByText('2d')).toBeInTheDocument();
   });
 
   it('shows which etapa the post is in', () => {
-    const { container } = render(<PostsKanbanView {...baseProps} posts={[makePost()]} />);
+    const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={[makePost()]} />);
     expect(container.querySelector('.board-post-etapa')?.textContent).toBe('Design');
   });
 
@@ -171,13 +248,15 @@ describe('PostsKanbanView', () => {
         }),
       ],
     ]);
-    render(<PostsKanbanView {...baseProps} posts={[makePost()]} cardsByWorkflowId={overdue} />);
+    renderWithQuery(
+      <PostsKanbanView {...baseProps} posts={[makePost()]} cardsByWorkflowId={overdue} />,
+    );
     const prazo = screen.getByText('3d atr.');
     expect(prazo).toHaveStyle({ color: '#ef4444' });
   });
 
   it('falls back for missing titulo, date and workflow card', () => {
-    render(
+    renderWithQuery(
       <PostsKanbanView
         {...baseProps}
         posts={[makePost({ titulo: '', workflow_id: 99, cliente_id: null, scheduled_at: null })]}
@@ -186,5 +265,103 @@ describe('PostsKanbanView', () => {
     );
     expect(screen.getByText('Post sem título')).toBeInTheDocument();
     expect(screen.getByText('Sem data')).toBeInTheDocument();
+  });
+
+  describe('drag-and-drop', () => {
+    it('disables dragging and shows the lock icon for a card in a locked (system) status', () => {
+      const posts = [makePost({ id: 501, status: 'postado', titulo: 'Published' })];
+      const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      expect(draggableCalls.get('501')?.disabled).toBe(true);
+      expect(container.querySelector('.lucide-lock')).toBeInTheDocument();
+    });
+
+    it('leaves an unlocked card draggable', () => {
+      const posts = [makePost({ id: 502, status: 'rascunho', titulo: 'Draft' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      expect(draggableCalls.get('502')?.disabled).toBeFalsy();
+    });
+
+    it('same-column drop is a no-op', () => {
+      const posts = [makePost({ id: 503, status: 'rascunho', titulo: 'Draft' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '503' }, over: { id: 'col:rascunho' } });
+
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('rejects a drop onto a system column with a toast, without writing', () => {
+      const posts = [makePost({ id: 504, status: 'rascunho', titulo: 'Draft' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '504' }, over: { id: 'col:agendado' } });
+
+      expect(toast.error).toHaveBeenCalledWith(
+        'Post já agendado no Instagram — cancele o agendamento para mover',
+      );
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('writes the target status when dropping an unapproved post on an unlocked column', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 505, status: 'rascunho', titulo: 'Draft' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '505' }, over: { id: 'col:revisao_interna' } });
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(505, {
+          status: 'revisao_interna',
+          custom_status_id: null,
+        }),
+      );
+    });
+
+    it('confirms before moving an approved post to a different status, and writes only after confirming', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 506, status: 'aprovado_interno', titulo: 'Approved' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '506' }, over: { id: 'col:rascunho' } });
+
+      expect(await screen.findByText('Post aprovado')).toBeInTheDocument();
+      expect(mockUpdate).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(506, {
+          status: 'rascunho',
+          custom_status_id: null,
+        }),
+      );
+    });
+
+    it('cancelling the confirm dialog never writes', async () => {
+      const posts = [makePost({ id: 507, status: 'aprovado_cliente', titulo: 'Approved' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '507' }, over: { id: 'col:correcao_cliente' } });
+
+      expect(await screen.findByText('Post aprovado')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+      expect(mockUpdate).not.toHaveBeenCalled();
+      await waitFor(() => expect(screen.queryByText('Post aprovado')).toBeNull());
+    });
+
+    it('rolls back the optimistic move and toasts on a failed write', async () => {
+      mockUpdate.mockRejectedValue(new Error('boom'));
+      const posts = [makePost({ id: 508, status: 'rascunho', titulo: 'Draft' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '508' }, over: { id: 'col:revisao_interna' } });
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Erro ao atualizar status'));
+    });
   });
 });

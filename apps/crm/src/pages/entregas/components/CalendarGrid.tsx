@@ -7,14 +7,11 @@ import { GripVertical, Lock, Folder } from 'lucide-react';
 import { MonthGrid } from '@/components/ui/month-grid';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import type { ClientePost } from '@/store/posts';
-import { TIPO_LABELS, TIPO_COLORS } from '../postLabels';
+import { TIPO_LABELS, TIPO_COLORS, LOCKED_STATUSES, LOCKED_TOOLTIPS } from '../postLabels';
 
-export const LOCKED_STATUSES = new Set(['agendado', 'postado', 'falha_publicacao']);
-export const LOCKED_TOOLTIPS: Record<string, string> = {
-  agendado: 'Post já agendado no Instagram — cancele o agendamento para mover',
-  postado: 'Post já publicado',
-  falha_publicacao: 'Post com falha de publicação — resolva o erro antes de reagendar',
-};
+// Re-exported for existing consumers (UnscheduledPostsSidebar, WorkflowCalendarView) —
+// postLabels.ts is the single source now, shared with the Publicações kanban's drag guard.
+export { LOCKED_STATUSES, LOCKED_TOOLTIPS };
 
 interface CalendarGridProps {
   currentMonth: Date;

@@ -1,15 +1,41 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { toast } from 'sonner';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import { Lock } from 'lucide-react';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { formatPostDate } from '@/utils/postDate';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { formatEtapaPrazo } from '../etapaPrazo';
-import { TIPO_LABELS } from '../postLabels';
+import { TIPO_LABELS, LOCKED_STATUSES, LOCKED_TOOLTIPS } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
-import type { StatusKey } from '../statusRegistry';
+import type { StatusKey, StatusOption, StatusRegistry } from '../statusRegistry';
+import { COL_PREFIX, resolvePostsKanbanDrop } from '../postsKanbanDrop';
 import { PostStatusChip } from '../components/PostStatusChip';
+import { useUpdatePostStatus } from '../hooks/useUpdatePostStatus';
 
 interface PostsKanbanViewProps {
   posts: ActivePost[];
@@ -30,11 +56,224 @@ function getInitials(name: string): string {
     .toUpperCase();
 }
 
+/** Card guts shared by the real card and its DragOverlay clone. */
+function PostBoardCardContent({
+  post,
+  registry,
+  card,
+}: {
+  post: ActivePost;
+  registry: StatusRegistry;
+  card: BoardCard | undefined;
+}) {
+  const opt = registry.resolve(post);
+  const locked = LOCKED_STATUSES.has(opt.canonical);
+  const membro = card?.membro;
+  const prazo = card ? formatEtapaPrazo(card.deadline) : null;
+
+  return (
+    <>
+      <div className="item-top">
+        <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+          <PostStatusChip post={post} registry={registry} />
+          {locked && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Lock
+                    className="h-3 w-3"
+                    style={{ color: 'var(--text-light)' }}
+                    aria-hidden="true"
+                  />
+                </TooltipTrigger>
+                <TooltipContent>{LOCKED_TOOLTIPS[opt.canonical]}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </span>
+      </div>
+      <div className="item-title">{post.titulo || 'Post sem título'}</div>
+      {card && <div className="board-post-etapa">{card.etapa.nome}</div>}
+      <div className="item-meta board-post-footer">
+        <span className="board-post-footer-left">
+          {post.cliente_id != null && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {card?.clienteAvatarUrl ? (
+                    <img
+                      src={card.clienteAvatarUrl}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="board-post-cliente-avatar"
+                    />
+                  ) : (
+                    <span
+                      className="board-post-cliente-avatar board-post-cliente-avatar--initials"
+                      style={{
+                        background: card?.cliente?.cor || 'var(--surface-hover)',
+                      }}
+                    >
+                      {getInitials(post.cliente_nome || '?')}
+                    </span>
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>{post.cliente_nome || '—'}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          <span>{post.scheduled_at ? formatPostDate(post.scheduled_at) : 'Sem data'}</span>
+        </span>
+        {card && (membro || prazo) && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="board-post-assignee">
+                  {membro && (
+                    <>
+                      <span
+                        className={`avatar board-post-assignee-avatar ${avatarColorClass(membro.id ?? membro.nome)}`}
+                      >
+                        {getInitials(membro.nome)}
+                      </span>
+                      {membro.nome.split(' ')[0]}
+                    </>
+                  )}
+                  {prazo && (
+                    <span className="board-post-prazo" style={{ color: prazo.color }}>
+                      {prazo.shortLabel}
+                    </span>
+                  )}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {`${card.etapa.nome}${membro ? `: ${membro.nome}` : ''}${prazo ? ` · ${prazo.label}` : ''}`}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
+    </>
+  );
+}
+
+/** Draggable card wrapper: click still opens the drawer (openable posts only,
+ *  regardless of drag lock); dragging is disabled only for a locked source. */
+function PostBoardCard({
+  post,
+  registry,
+  card,
+  openable,
+  onPostClick,
+}: {
+  post: ActivePost;
+  registry: StatusRegistry;
+  card: BoardCard | undefined;
+  openable: boolean;
+  onPostClick: (workflowId: number, postId: number) => void;
+}) {
+  const opt = registry.resolve(post);
+  const locked = LOCKED_STATUSES.has(opt.canonical);
+  // Attributes (role/aria/tabIndex) are deliberately omitted, same call as
+  // CalendarGrid's PostPill: this card owns its own click semantics, and
+  // dnd-kit's activation-constraint click-swallow only engages once an actual
+  // drag crosses the distance/delay threshold, so a plain click still reaches
+  // onClick untouched.
+  const { listeners, setNodeRef, isDragging } = useDraggable({
+    id: String(post.id),
+    disabled: locked,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="scheduled-item board-post-card"
+      style={{
+        cursor: locked ? (openable ? 'pointer' : 'default') : 'grab',
+        opacity: isDragging ? 0.4 : 1,
+      }}
+      onClick={openable ? () => onPostClick(post.workflow_id, post.id) : undefined}
+      {...listeners}
+    >
+      <PostBoardCardContent post={post} registry={registry} card={card} />
+    </div>
+  );
+}
+
+/** Column: droppable body, dimmed while a drag is active if its canonical
+ *  status is system-driven (an invalid drop target — the drop still fires, so
+ *  the drag-end handler can toast the reason, but never writes). */
+function PostBoardColumn({
+  option,
+  posts,
+  registry,
+  openableWorkflowIds,
+  onPostClick,
+  cardsByWorkflowId,
+  isDragActive,
+}: {
+  option: StatusOption;
+  posts: ActivePost[];
+  registry: StatusRegistry;
+  openableWorkflowIds: Set<number>;
+  onPostClick: (workflowId: number, postId: number) => void;
+  cardsByWorkflowId: Map<number, BoardCard>;
+  isDragActive: boolean;
+}) {
+  const isLockedColumn = LOCKED_STATUSES.has(option.canonical);
+  const { setNodeRef } = useDroppable({ id: `${COL_PREFIX}${option.key}` });
+
+  return (
+    <div
+      className={`board-column${isDragActive && isLockedColumn ? ' board-column--drag-invalid' : ''}`}
+    >
+      <div className="board-column-header">
+        <span className="board-column-title">
+          {option.kind === 'custom' && (
+            <span
+              aria-hidden
+              style={{
+                display: 'inline-block',
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: option.color,
+                marginRight: 6,
+                verticalAlign: 'middle',
+              }}
+            />
+          )}
+          {option.label}
+        </span>
+        <span className="board-column-count">{posts.length}</span>
+      </div>
+      <div ref={setNodeRef} className="board-column-body">
+        {posts.length === 0 ? (
+          <div className="board-empty">Nenhum post</div>
+        ) : (
+          posts.map((p) => (
+            <PostBoardCard
+              key={p.id}
+              post={p}
+              registry={registry}
+              card={cardsByWorkflowId.get(p.workflow_id)}
+              openable={openableWorkflowIds.has(p.workflow_id)}
+              onPostClick={onPostClick}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
- * Read-only kanban of every post across active workflows, one column per post
- * status in pipeline order. Clicking a post opens its workflow drawer focused on
- * it — status changes happen there, not by dragging (agendado/postado/falha are
- * system-driven).
+ * Draggable kanban of every post across active workflows, one column per post
+ * status in pipeline order. Dragging a card writes its status (system-driven
+ * columns and cards are locked); clicking a post still opens its workflow
+ * drawer focused on it.
  */
 export function PostsKanbanView({
   posts,
@@ -44,6 +283,12 @@ export function PostsKanbanView({
   cardsByWorkflowId,
 }: PostsKanbanViewProps) {
   const registry = useStatusRegistry();
+  const updateStatus = useUpdatePostStatus();
+  const [activeId, setActiveId] = useState<number | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<{ post: ActivePost; key: StatusKey } | null>(
+    null,
+  );
+
   const byStatus = useMemo(() => {
     const map = new Map<StatusKey, ActivePost[]>(registry.options.map((o) => [o.key, []]));
     // Input arrives ordered scheduled_at asc nulls-last from the query.
@@ -52,6 +297,55 @@ export function PostsKanbanView({
     for (const p of posts) map.get(registry.resolve(p).key)?.push(p);
     return map;
   }, [posts, registry]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  );
+
+  const activePost = activeId != null ? posts.find((p) => p.id === activeId) : undefined;
+
+  const applyStatusChange = (post: ActivePost, key: StatusKey) => {
+    const canonical = registry.byKey.get(key)?.canonical ?? post.status;
+    updateStatus.mutate({ id: post.id, workflowId: post.workflow_id, key, canonical });
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(Number(event.active.id));
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveId(null);
+    const { active, over } = event;
+    const post = posts.find((p) => p.id === Number(active.id));
+    const result = resolvePostsKanbanDrop({
+      post,
+      overId: over ? String(over.id) : undefined,
+      registry,
+    });
+
+    switch (result.kind) {
+      case 'noop':
+      case 'invalid':
+        return;
+      case 'locked-column':
+        toast.error(result.message);
+        return;
+      case 'confirm':
+        if (post) setPendingConfirm({ post, key: result.key });
+        return;
+      case 'write':
+        if (post) applyStatusChange(post, result.key);
+        return;
+    }
+  };
+
+  const handleConfirmStatusChange = () => {
+    if (!pendingConfirm) return;
+    const { post, key } = pendingConfirm;
+    setPendingConfirm(null);
+    applyStatusChange(post, key);
+  };
 
   if (isLoading) {
     return (
@@ -75,128 +369,60 @@ export function PostsKanbanView({
   }
 
   return (
-    <div className="board-rows-wrapper animate-up">
-      <div className="board-container">
-        {registry.options.map((option) => {
-          const columnPosts = byStatus.get(option.key) ?? [];
-          return (
-            <div key={option.key} className="board-column">
-              <div className="board-column-header">
-                <span className="board-column-title">
-                  {option.kind === 'custom' && (
-                    <span
-                      aria-hidden
-                      style={{
-                        display: 'inline-block',
-                        width: 8,
-                        height: 8,
-                        borderRadius: '50%',
-                        background: option.color,
-                        marginRight: 6,
-                        verticalAlign: 'middle',
-                      }}
-                    />
-                  )}
-                  {option.label}
-                </span>
-                <span className="board-column-count">{columnPosts.length}</span>
-              </div>
-              <div className="board-column-body">
-                {columnPosts.length === 0 ? (
-                  <div className="board-empty">Nenhum post</div>
-                ) : (
-                  columnPosts.map((p) => {
-                    const openable = openableWorkflowIds.has(p.workflow_id);
-                    const card = cardsByWorkflowId.get(p.workflow_id);
-                    const membro = card?.membro;
-                    const prazo = card ? formatEtapaPrazo(card.deadline) : null;
-                    return (
-                      <div
-                        key={p.id}
-                        className="scheduled-item board-post-card"
-                        style={{ cursor: openable ? 'pointer' : 'default' }}
-                        onClick={openable ? () => onPostClick(p.workflow_id, p.id) : undefined}
-                      >
-                        <div className="item-top">
-                          <span className="post-tipo-badge">{TIPO_LABELS[p.tipo]}</span>
-                          <PostStatusChip post={p} registry={registry} />
-                        </div>
-                        <div className="item-title">{p.titulo || 'Post sem título'}</div>
-                        {card && <div className="board-post-etapa">{card.etapa.nome}</div>}
-                        <div className="item-meta board-post-footer">
-                          <span className="board-post-footer-left">
-                            {p.cliente_id != null && (
-                              <TooltipProvider delayDuration={200}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    {card?.clienteAvatarUrl ? (
-                                      <img
-                                        src={card.clienteAvatarUrl}
-                                        alt=""
-                                        loading="lazy"
-                                        decoding="async"
-                                        className="board-post-cliente-avatar"
-                                      />
-                                    ) : (
-                                      <span
-                                        className="board-post-cliente-avatar board-post-cliente-avatar--initials"
-                                        style={{
-                                          background: card?.cliente?.cor || 'var(--surface-hover)',
-                                        }}
-                                      >
-                                        {getInitials(p.cliente_nome || '?')}
-                                      </span>
-                                    )}
-                                  </TooltipTrigger>
-                                  <TooltipContent>{p.cliente_nome || '—'}</TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                            <span>
-                              {p.scheduled_at ? formatPostDate(p.scheduled_at) : 'Sem data'}
-                            </span>
-                          </span>
-                          {card && (membro || prazo) && (
-                            <TooltipProvider delayDuration={200}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="board-post-assignee">
-                                    {membro && (
-                                      <>
-                                        <span
-                                          className={`avatar board-post-assignee-avatar ${avatarColorClass(membro.id ?? membro.nome)}`}
-                                        >
-                                          {getInitials(membro.nome)}
-                                        </span>
-                                        {membro.nome.split(' ')[0]}
-                                      </>
-                                    )}
-                                    {prazo && (
-                                      <span
-                                        className="board-post-prazo"
-                                        style={{ color: prazo.color }}
-                                      >
-                                        {prazo.shortLabel}
-                                      </span>
-                                    )}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {`${card.etapa.nome}${membro ? `: ${membro.nome}` : ''}${prazo ? ` · ${prazo.label}` : ''}`}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+    <>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveId(null)}
+      >
+        <div className="board-rows-wrapper animate-up">
+          <div className="board-container">
+            {registry.options.map((option) => (
+              <PostBoardColumn
+                key={option.key}
+                option={option}
+                posts={byStatus.get(option.key) ?? []}
+                registry={registry}
+                openableWorkflowIds={openableWorkflowIds}
+                onPostClick={onPostClick}
+                cardsByWorkflowId={cardsByWorkflowId}
+                isDragActive={activeId != null}
+              />
+            ))}
+          </div>
+        </div>
+        <DragOverlay>
+          {activePost && (
+            <div className="scheduled-item board-post-card board-post-card--overlay">
+              <PostBoardCardContent
+                post={activePost}
+                registry={registry}
+                card={cardsByWorkflowId.get(activePost.workflow_id)}
+              />
             </div>
-          );
-        })}
-      </div>
-    </div>
+          )}
+        </DragOverlay>
+      </DndContext>
+      <AlertDialog
+        open={!!pendingConfirm}
+        onOpenChange={(open) => {
+          if (!open) setPendingConfirm(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Post aprovado</AlertDialogTitle>
+            <AlertDialogDescription>
+              Este post foi aprovado. Alterar o status vai invalidar a aprovação. Deseja continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingConfirm(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmStatusChange}>Confirmar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
