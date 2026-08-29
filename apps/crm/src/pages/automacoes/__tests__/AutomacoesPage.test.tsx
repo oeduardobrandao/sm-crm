@@ -454,11 +454,10 @@ describe('AutomacoesPage', () => {
       expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
     });
 
-    it('agente não vê o tour', async () => {
+    it('agente também vê o tour (mesma paridade de owner/admin)', async () => {
       setAuth({ role: 'agent', profile: { id: 'user-1', conta_id: 'w-1', role: 'agent' } });
       renderPage();
-      expect(await screen.findByTestId('automacoes-checklist')).toBeInTheDocument();
-      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
+      expect(await screen.findByText('tour.step1Title')).toBeInTheDocument();
     });
 
     it('CTA do passo 1 abre o dialog e avança para o passo 2', async () => {
