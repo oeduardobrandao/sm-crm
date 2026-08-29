@@ -1,5 +1,5 @@
 -- =====================================================================
--- 20260828000010_ig_trial_reels.sql
+-- 20260829000001_ig_trial_reels.sql
 -- Reel de teste (Instagram Trial Reels).
 -- 1) Coluna workflow_posts.ig_trial_strategy (NULL = post normal).
 -- 2) Trigger que limpa a flag quando o post deixa de ser reels ou deixa
