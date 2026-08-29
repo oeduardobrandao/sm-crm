@@ -12,8 +12,8 @@ Plano-fonte aprovado: `~/.claude/plans/muitos-usu-rios-ainda-tem-cuddly-sedgewic
   principal (`/Users/eduardosouza/Projects/sm-crm/...` sem o sufixo do worktree).
 - **Sem em-dash (—) em qualquer copy de produto** (strings PT-BR visíveis ao usuário).
   Use "·", ":" ou reestruture a frase.
-- **Migrations**: prefixo de versão `202608290000NN` (tail do main: `20260826000003`;
-  NUNCA usar `20260828000001`). Reescritas de função SQL são copy-forward: a migration nova
+- **Migrations**: prefixo de versão `202608300000NN` (o main já tomou `20260829000001`;
+  re-verificar o tail do main a cada nova migration e no PR). Reescritas de função SQL são copy-forward: a migration nova
   contém a definição COMPLETA da função, e reemite os REVOKE/GRANT da canônica anterior
   (inclusive `GRANT ... TO service_role`).
 - **Edge functions**: Deno, `buildCorsHeaders(req)` (nunca `*`), erros genéricos ao cliente
@@ -31,7 +31,7 @@ Plano-fonte aprovado: `~/.claude/plans/muitos-usu-rios-ainda-tem-cuddly-sedgewic
 
 ## Task 1: Migration A1 — cliente_id, triggers e limites
 
-Criar `supabase/migrations/20260829000001_workflow_posts_cliente_id.sql`:
+Criar `supabase/migrations/20260830000001_workflow_posts_cliente_id.sql`:
 
 1. `ALTER TABLE workflow_posts ADD COLUMN cliente_id bigint;`
 2. Backfill: `UPDATE workflow_posts wp SET cliente_id = w.cliente_id FROM workflows w
@@ -77,7 +77,7 @@ essencial é revisar o SQL contra as canônicas citadas (ler 20260402_workflow_p
 
 ## Task 2: Migration A2 — claim, reorder e família ICA
 
-Criar `supabase/migrations/20260829000002_avulso_claim_reorder_ica.sql` (copy-forward,
+Criar `supabase/migrations/20260830000002_avulso_claim_reorder_ica.sql` (copy-forward,
 definição completa + REVOKE/GRANT de cada função):
 
 1. `claim_posts_for_publishing` (canônica em `20260807000002_claim_skip_nonretryable.sql`):
@@ -109,7 +109,7 @@ No-ops verificados (NÃO tocar): `record_post_status_change`, `mark_platform_pub
 
 ## Task 3: Migration A3 — notificações, pastas, health e mensagens
 
-Criar `supabase/migrations/20260829000003_avulso_notifications_folders_views.sql`
+Criar `supabase/migrations/20260830000003_avulso_notifications_folders_views.sql`
 (copy-forward). Contrato de deep link: avulso = `/entregas?post=<id>`; com fluxo =
 `/entregas?drawer=<wf>` (mantendo `&post=<id>` onde a canônica já o inclui). Expressão
 padrão:
@@ -143,16 +143,10 @@ padrão:
    `get_mensagens_conversas` (canônica `20260731000007`, NÃO a 000005): nos branches de
    `post_approvals`/`post_edit_suggestions`, trocar o `JOIN workflows` por
    `wp.cliente_id`/`wp.conta_id`.
-9. Estúdio (canônica `20260706000002_design_import_media_hold.sql`): as duas funções cujo
-   corpo faz `FROM workflow_posts p JOIN workflows w ON w.id = p.workflow_id` para derivar
-   o cliente (criação/import de design ~linha 47 e attach de design ~linha 174): trocar
-   por `SELECT p.status, p.cliente_id ...` (e `p.tipo` onde houver) direto de
-   `workflow_posts`, copy-forward completo. Sem isso, criar/anexar design num avulso
-   daria `post_not_found`.
 
 ## Task 4: Migration A4 — RPCs detach/attach
 
-Criar `supabase/migrations/20260829000004_post_detach_attach_rpcs.sql`. Modelo:
+Criar `supabase/migrations/20260830000004_post_detach_attach_rpcs.sql`. Modelo:
 `migrate_workflow_template` em `20260826000002` (SECURITY DEFINER,
 `v_conta := public.get_my_conta_id()`, `SET search_path = public, pg_temp`,
 `REVOKE ... FROM public, anon; GRANT EXECUTE ... TO authenticated, service_role`).
@@ -220,7 +214,10 @@ Cobrir:
 9. Notificações: update que dispara `trg_notify_post_publish_failed` em avulso gera
    notification com link `/entregas?post=<id>` e client_name preenchido; menção
    (`mencoes`) em post avulso gera notificação com link `?post=`.
-10. Estúdio: attach de design a post avulso funciona (não dá `post_not_found`).
+10. ACL: `has_function_privilege` para `anon` e `authenticated` em
+    `claim_posts_for_publishing` e `claim_posts_for_tiktok_publishing` deve ser false
+    (pina o fix do REVOKE forte; regressão do buraco pré-existente de default
+    privileges em ambiente hospedado).
 
 Rodar localmente se o Docker/colima estiver disponível (`colima status`; a suíte roda via
 `bash scripts/test-entitlements.sh` com Supabase local; worktrees disputam portas, então se
