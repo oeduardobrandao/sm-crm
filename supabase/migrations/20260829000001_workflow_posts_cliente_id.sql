@@ -13,10 +13,18 @@ ALTER TABLE workflow_posts ADD COLUMN cliente_id bigint;
 
 -- 2) Backfill: todo post hoje pertence a um workflow, entao cliente_id vem do
 -- workflow apontado.
+-- Suprime workflow_posts_updated_at (20260402_workflow_posts.sql) so para este
+-- UPDATE: e um BEFORE UPDATE incondicional que grava NEW.updated_at = now(), e
+-- sem a supressao o backfill carimbaria todo post historico como recem-editado,
+-- corrompendo ordenacao por recencia e semantica de auditoria. Precedente:
+-- 20260425000003_file_system_backfill.sql (DISABLE/ENABLE TRIGGER ao redor de
+-- um backfill em massa, mesma transacao que ja detem a tabela).
+ALTER TABLE workflow_posts DISABLE TRIGGER workflow_posts_updated_at;
 UPDATE workflow_posts wp
    SET cliente_id = w.cliente_id
   FROM workflows w
  WHERE w.id = wp.workflow_id;
+ALTER TABLE workflow_posts ENABLE TRIGGER workflow_posts_updated_at;
 
 -- 3) FK composta tenant-safe (precedente: clientes_id_conta_uq, 20260815000002).
 -- Garante estruturalmente que cliente_id e conta_id do post apontam para o
@@ -53,9 +61,19 @@ DECLARE
   v_conta_id   uuid;
 BEGIN
   IF NEW.workflow_id IS NOT NULL THEN
+    -- FOR SHARE serializa contra workflows_sync_posts_cliente (que faz UPDATE
+    -- na linha do workflow): sem o lock, um INSERT concorrente pode ler o
+    -- cliente ANTIGO enquanto uma troca de cliente do workflow commita no
+    -- meio, e o sync do mover nao enxerga a linha ainda nao commitada deste
+    -- INSERT -- o post fica preso permanentemente com o cliente errado. Com
+    -- FOR SHARE, quem chegar depois espera e re-le a versao mais recente da
+    -- linha (comportamento padrao de locking read em READ COMMITTED); FOR
+    -- SHARE (nao FOR UPDATE) porque e auto-compativel, entao INSERTs
+    -- concorrentes no MESMO workflow continuam em paralelo entre si.
     SELECT w.cliente_id, w.conta_id INTO v_cliente_id, v_conta_id
       FROM workflows w
-     WHERE w.id = NEW.workflow_id;
+     WHERE w.id = NEW.workflow_id
+       FOR SHARE;
 
     IF NOT FOUND THEN
       RAISE EXCEPTION 'workflow not found for post';
