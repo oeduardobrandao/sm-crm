@@ -306,7 +306,19 @@ export default function AutomacoesPage() {
         {!isAgent && (
           <div className="header-actions">
             <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
-              <Button onClick={openCreate} data-tour="nova-automacao">
+              <Button
+                onClick={() => {
+                  openCreate();
+                  // O spotlight do passo 1 do tour deixa este botão real
+                  // clicável por baixo do overlay (pointer-events: none,
+                  // "interação livre") -- se o usuário clicar nele em vez do
+                  // CTA "Abrir formulário" do card, o índice do tour precisa
+                  // avançar aqui também, senão o TourOverlay de página fica
+                  // preso no passo 1, sobreposto ao dialog recém-aberto.
+                  if (tour.activeStep?.surface === 'page') tour.next();
+                }}
+                data-tour="nova-automacao"
+              >
                 <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newAutomation')}
               </Button>
             </FeatureGate>

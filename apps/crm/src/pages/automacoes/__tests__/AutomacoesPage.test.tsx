@@ -473,6 +473,20 @@ describe('AutomacoesPage', () => {
       expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
     });
 
+    it('clicar direto no botão real "Nova automação" (spotlight do passo 1) também avança o tour', async () => {
+      renderPage();
+      await screen.findByText('tour.step1Title');
+      // O spotlight destaca o botão real com pointer-events: none no overlay
+      // ("interação livre") -- clicar nele em vez do CTA "Abrir formulário"
+      // do card é o caminho natural. O dialog deve abrir E o tour deve
+      // avançar para o passo 2, senão o overlay de página fica preso por
+      // cima do dialog recém-aberto.
+      fireEvent.click(screen.getByRole('button', { name: /newAutomation/ }));
+      const dialog = await screen.findByTestId('automation-dialog');
+      expect(dialog).toHaveAttribute('data-tour-step', TOUR_STEPS[1].id);
+      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
+    });
+
     it('salvar com sucesso (onSaved) encerra o tour', async () => {
       renderPage();
       fireEvent.click(await screen.findByText('tour.step1Cta'));
