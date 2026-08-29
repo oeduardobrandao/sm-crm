@@ -12,6 +12,10 @@ interface PlatformSelectorProps {
    * selector is hidden (not merely disabled), matching the rest of the TikTok surface. */
   tiktokFeatureEnabled: boolean;
   hasActiveTikTokAccount: boolean;
+  /** Schedule lock (post.status === 'agendado'): the publish cron may already have built
+   * the Instagram container, so retargeting the platform would desync it. Disables the
+   * whole group and suspends the stories self-heal (no writes to a locked post). */
+  disabled?: boolean;
   /** Writes through the same optimistic-update path `tipo` already uses
    * (WorkflowDrawer's onFieldChange -> updateWorkflowPost) — no dedicated save button. */
   onChange: (platform: Platform) => void;
@@ -33,6 +37,7 @@ export function PlatformSelector({
   tipo,
   tiktokFeatureEnabled,
   hasActiveTikTokAccount,
+  disabled = false,
   onChange,
 }: PlatformSelectorProps) {
   const isStories = tipo === 'stories';
@@ -43,7 +48,9 @@ export function PlatformSelector({
   // double-invoke and slow round-trips make an explicit guard worth the extra safety.
   const revertingRef = useRef(false);
   useEffect(() => {
-    if (isStories && value !== 'instagram') {
+    // While schedule-locked, the self-heal must not write either — it re-runs (and
+    // heals if still needed) once the lock lifts, via `disabled` in the deps.
+    if (isStories && value !== 'instagram' && !disabled) {
       if (!revertingRef.current) {
         revertingRef.current = true;
         onChange('instagram');
@@ -56,7 +63,7 @@ export function PlatformSelector({
     // passes an inline closure, but re-running only on isStories/value change is the
     // whole point of this guard — including onChange would defeat it).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isStories, value]);
+  }, [isStories, value, disabled]);
 
   if (!tiktokFeatureEnabled) return null;
 
@@ -68,19 +75,26 @@ export function PlatformSelector({
   const tiktokDisabled = disabledReason !== null;
 
   const handleValueChange = (next: string) => {
+    if (disabled) return;
     if (!next || next === value) return;
     if ((next === 'tiktok' || next === 'both') && tiktokDisabled) return;
     onChange(next as Platform);
   };
 
   return (
-    <div className="drawer-post-field drawer-post-field--platform">
+    <div
+      className="drawer-post-field drawer-post-field--platform"
+      title={disabled ? 'Cancelar agendamento para editar' : undefined}
+    >
       <label>Plataforma</label>
+      {/* Radix propagates root `disabled` to every item, so the schedule lock greys the
+          whole group without touching the per-item TikTok gating below. */}
       <ToggleGroup
         type="single"
         value={value}
         onValueChange={handleValueChange}
         className="justify-start"
+        disabled={disabled}
       >
         <ToggleGroupItem value="instagram" aria-label="Instagram">
           Instagram

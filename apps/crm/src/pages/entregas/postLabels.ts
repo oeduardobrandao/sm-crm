@@ -207,8 +207,8 @@ export const STATUS_OWNER_LABELS: Record<StatusOwner, string> = {
  * Rendered as the status chip's tooltip and as help text under the picker, so
  * the automatic transitions stop being folklore. Keep these claims true — each
  * one describes real behaviour:
- *  - `agendado`   → the publish cron fires at `scheduled_at`; date and caption
- *                   are locked while it is armed (see `isScheduleLocked`).
+ *  - `agendado`   → the publish cron fires at `scheduled_at`; date, tipo, platform
+ *                   and caption are locked while it is armed (see `isScheduleLocked`).
  *  - `publicando` → derived state, the cron has the post in hand right now.
  *  - `enviado_cliente` → visible in the Hub; the client's verdict writes the status.
  *  - `falha_publicacao` → retried automatically while `publish_retry_count < 3`,
@@ -226,8 +226,8 @@ export function getStatusAutomationHint(p: {
       return 'Publicando agora. O status vira "Postado" sozinho assim que a rede confirmar.';
     case 'agendado':
       return p.scheduled_at
-        ? `Publica sozinho em ${formatPostDateFull(p.scheduled_at)}. Data e legenda ficam travadas até você cancelar o agendamento.`
-        : 'Publica sozinho na data agendada. Data e legenda ficam travadas até você cancelar o agendamento.';
+        ? `Publica sozinho em ${formatPostDateFull(p.scheduled_at)}. Data, tipo, plataforma e legenda ficam travados até você cancelar o agendamento.`
+        : 'Publica sozinho na data agendada. Data, tipo, plataforma e legenda ficam travados até você cancelar o agendamento.';
     case 'enviado_cliente':
       return 'Visível para o cliente no portal. O status muda sozinho quando ele aprovar ou pedir correção.';
     case 'aprovado_cliente':
