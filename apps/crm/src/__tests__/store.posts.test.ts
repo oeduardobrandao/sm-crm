@@ -921,4 +921,123 @@ describe('posts avulsos', () => {
     expect(calls[1].modifiers).toContainEqual({ method: 'eq', args: ['cliente_id', 9] });
     expect(calls[1].modifiers).toContainEqual({ method: 'is', args: ['workflow_id', null] });
   });
+
+  it('getAssignedPendingPosts merges the wired arm with the avulso arm, sorted by created_at across both', async () => {
+    // Two-query merge (Promise.all): the FIRST 'workflow_posts' select call is the
+    // wired (workflows!inner) arm, the SECOND is the avulso (.is('workflow_id', null))
+    // arm -- see the shared supabaseMock's per-table/operation FIFO queue.
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_posts',
+      'select',
+      {
+        data: [
+          {
+            id: 1,
+            workflow_id: 5,
+            titulo: 'A',
+            status: 'rascunho',
+            custom_status_id: null,
+            created_at: '2026-08-01T10:00:00Z',
+            workflows: { titulo: 'Fluxo A', status: 'ativo', clientes: { nome: 'Yasmin' } },
+          },
+          {
+            id: 2,
+            workflow_id: 5,
+            titulo: 'B',
+            status: 'revisao_interna',
+            custom_status_id: null,
+            created_at: '2026-08-03T10:00:00Z',
+            workflows: { titulo: 'Fluxo A', status: 'ativo', clientes: { nome: 'Yasmin' } },
+          },
+        ],
+        error: null,
+      },
+      {
+        data: [
+          {
+            id: 3,
+            workflow_id: null,
+            titulo: 'C avulso',
+            status: 'correcao_cliente',
+            custom_status_id: null,
+            // Sits BETWEEN the two wired rows' created_at -- proves the merge
+            // sort interleaves across arms instead of just concatenating them.
+            created_at: '2026-08-02T10:00:00Z',
+            clientes: { nome: 'Beto' },
+          },
+        ],
+        error: null,
+      },
+    );
+
+    const rows = await store.getAssignedPendingPosts(42);
+
+    expect(rows.map((r) => r.id)).toEqual([1, 3, 2]);
+    expect(rows).toEqual([
+      {
+        id: 1,
+        workflow_id: 5,
+        titulo: 'A',
+        status: 'rascunho',
+        custom_status_id: null,
+        workflow_titulo: 'Fluxo A',
+        cliente_nome: 'Yasmin',
+      },
+      {
+        id: 3,
+        workflow_id: null,
+        titulo: 'C avulso',
+        status: 'correcao_cliente',
+        custom_status_id: null,
+        workflow_titulo: null,
+        cliente_nome: 'Beto',
+      },
+      {
+        id: 2,
+        workflow_id: 5,
+        titulo: 'B',
+        status: 'revisao_interna',
+        custom_status_id: null,
+        workflow_titulo: 'Fluxo A',
+        cliente_nome: 'Yasmin',
+      },
+    ]);
+    // created_at is selected only to drive the merge sort -- never part of the
+    // returned AssignedPendingPost shape.
+    for (const r of rows) expect(r).not.toHaveProperty('created_at');
+
+    const calls = getCalls('workflow_posts', 'select');
+    expect(calls).toHaveLength(2);
+    const [wiredCall, avulsoCall] = calls;
+
+    expect(wiredCall.modifiers).toContainEqual({
+      method: 'eq',
+      args: ['workflows.status', 'ativo'],
+    });
+    expect(wiredCall.modifiers).toContainEqual({ method: 'eq', args: ['responsavel_id', 42] });
+    expect(wiredCall.modifiers).toContainEqual({
+      method: 'in',
+      args: ['status', store.ASSIGNEE_PENDING_POST_STATUSES],
+    });
+    expect(wiredCall.modifiers).toContainEqual({
+      method: 'order',
+      args: ['created_at', { ascending: true }],
+    });
+
+    expect(avulsoCall.modifiers).toContainEqual({ method: 'is', args: ['workflow_id', null] });
+    expect(avulsoCall.modifiers).toContainEqual({ method: 'eq', args: ['responsavel_id', 42] });
+    expect(avulsoCall.modifiers).toContainEqual({
+      method: 'in',
+      args: ['status', store.ASSIGNEE_PENDING_POST_STATUSES],
+    });
+    expect(avulsoCall.modifiers).toContainEqual({
+      method: 'order',
+      args: ['created_at', { ascending: true }],
+    });
+    // No workflow-status gate on the avulso arm -- there is no workflow to be
+    // "ativo" for a post with no workflow.
+    expect(avulsoCall.modifiers).not.toContainEqual(
+      expect.objectContaining({ method: 'eq', args: expect.arrayContaining(['workflows.status']) }),
+    );
+  });
 });
