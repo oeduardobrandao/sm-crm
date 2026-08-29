@@ -158,6 +158,56 @@ describe('PlatformSelector', () => {
     expect(toast.info).not.toHaveBeenCalled();
   });
 
+  // ─── Schedule lock (disabled prop) ──────────────────────────
+
+  it('disables all three options when disabled (post agendado), with the lock tooltip', () => {
+    render(<PlatformSelector value="instagram" tipo="feed" {...defaultProps} disabled />);
+    for (const label of ['Instagram', 'TikTok', 'Ambas']) {
+      expect(screen.getByText(label).closest('button')!.hasAttribute('disabled')).toBe(true);
+    }
+    expect(screen.getByText('Instagram').closest('.drawer-post-field')?.getAttribute('title')).toBe(
+      'Cancelar agendamento para editar',
+    );
+  });
+
+  it('never calls onChange while disabled', () => {
+    const onChange = vi.fn();
+    render(
+      <PlatformSelector
+        value="instagram"
+        tipo="feed"
+        {...defaultProps}
+        disabled
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByText('TikTok'));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('suspends the stories self-heal while disabled, then heals once re-enabled', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <PlatformSelector
+        value="tiktok"
+        tipo="stories"
+        {...defaultProps}
+        disabled
+        onChange={onChange}
+      />,
+    );
+    // Locked: no writes to an agendado post, even to fix a bad combination.
+    expect(onChange).not.toHaveBeenCalled();
+    expect(toast.info).not.toHaveBeenCalled();
+
+    // Lock lifted (agendamento cancelado) with the combination still bad — heal now.
+    rerender(
+      <PlatformSelector value="tiktok" tipo="stories" {...defaultProps} onChange={onChange} />,
+    );
+    expect(onChange).toHaveBeenCalledWith('instagram');
+    expect(toast.info).toHaveBeenCalledTimes(1);
+  });
+
   it('does not re-fire the revert if the value prop has not yet caught up on re-render', () => {
     const onChange = vi.fn();
     const { rerender } = render(
