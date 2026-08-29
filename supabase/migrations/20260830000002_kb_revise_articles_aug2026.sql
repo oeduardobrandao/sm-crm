@@ -7,9 +7,11 @@
 --
 -- Tres tecnicas, nesta ordem:
 --   1. Re-declaracao completa (_kb_rv_upsert) para artigos com mudanca
---      estrutural. ATENCAO: como-usar-o-post-express perde de proposito as 6
---      capturas antigas -- elas mostravam o layout anterior a reforma do
---      stepper (PR #330); recapturar via e2e/screenshots/post-express.spec.ts.
+--      estrutural. como-usar-o-post-express troca as 6 capturas antigas (do
+--      layout anterior a reforma do stepper, PR #330) por 6 novas, tiradas
+--      via e2e/screenshots/post-express.spec.ts e hospedadas no bucket
+--      publico kb-images; o Calendario ganha a captura da aba Datas
+--      Comemorativas (e2e/screenshots/kb-agosto.spec.ts).
 --   2. Append idempotente (_kb_rv_append, padrao do 20260826000003) para
 --      artigos que so ganham secoes novas -- preserva as capturas existentes.
 --      O marcador e um trecho unico do conteudo novo: presente no
@@ -56,6 +58,36 @@ CREATE OR REPLACE FUNCTION _kb_rv_ul(items text[]) RETURNS jsonb AS $$
   SELECT jsonb_build_object('type', 'bulletList', 'content',
     (SELECT jsonb_agg(
       jsonb_build_object('type', 'listItem', 'content', jsonb_build_array(_kb_rv_p(items[i])))
+      ORDER BY i
+    ) FROM generate_subscripts(items, 1) AS i));
+$$ LANGUAGE sql IMMUTABLE;
+
+-- inlineImage com r2Key NULL + URL publica permanente do bucket kb-images
+-- (ver o cabecalho de 20260717000003 para o porque do r2Key nulo).
+CREATE OR REPLACE FUNCTION _kb_rv_img(src text, alt text, w int, h int) RETURNS jsonb AS $$
+  SELECT jsonb_build_object('type', 'inlineImage', 'attrs', jsonb_build_object(
+    'r2Key', NULL,
+    'src', src,
+    'alt', alt,
+    'width', w,
+    'height', h,
+    'blurSrc', NULL,
+    'displayWidth', NULL,
+    'loading', false
+  ));
+$$ LANGUAGE sql IMMUTABLE;
+
+-- orderedList onde o passo i carrega uma captura opcional abaixo do texto.
+-- images[i] pode ser NULL; SEMPRE passar o array com cast ::jsonb[] (um array
+-- todo-NULL sem cast vira text[] e o call quebra com 42883).
+CREATE OR REPLACE FUNCTION _kb_rv_ol_shots(items text[], images jsonb[]) RETURNS jsonb AS $$
+  SELECT jsonb_build_object('type', 'orderedList', 'attrs', jsonb_build_object('start', 1), 'content',
+    (SELECT jsonb_agg(
+      jsonb_build_object('type', 'listItem', 'content',
+        CASE WHEN images[i] IS NULL
+             THEN jsonb_build_array(_kb_rv_p(items[i]))
+             ELSE jsonb_build_array(_kb_rv_p(items[i]), images[i])
+        END)
       ORDER BY i
     ) FROM generate_subscripts(items, 1) AS i));
 $$ LANGUAGE sql IMMUTABLE;
@@ -164,13 +196,22 @@ SELECT _kb_rv_upsert(
     _kb_rv_p('A lista mostra clientes com conta de Instagram conectada. Se um cliente não aparece, revise a conexão, o status da autorização e as permissões de publicação.'),
     _kb_rv_h(2, 'Publicando em cinco etapas'),
     _kb_rv_p('A página guia você por cinco etapas, de cima para baixo:'),
-    _kb_rv_ol(ARRAY[
-      'Formato - escolha entre Publicação (feed, carrossel ou reels, detectado pela mídia) e Stories',
-      'Cliente - selecione um cliente com Instagram conectado',
-      'Mídia - envie as imagens ou o vídeo do post',
-      'Legenda do Instagram - escreva a legenda, com o limite de 2.200 caracteres do Instagram',
-      'Envio - escolha o modo de envio, confira o preview e confirme'
-    ]),
+    _kb_rv_ol_shots(
+      ARRAY[
+        'Formato - escolha entre Publicação (feed, carrossel ou reels, detectado pela mídia) e Stories',
+        'Cliente - selecione um cliente com Instagram conectado',
+        'Mídia - envie as imagens ou o vídeo do post',
+        'Legenda do Instagram - escreva a legenda, com o limite de 2.200 caracteres do Instagram',
+        'Envio - escolha o modo de envio, confira o preview e confirme'
+      ],
+      ARRAY[
+        _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-usar-o-post-express/01-etapa-formato.png', 'Post Express recém-aberto, com o passo a passo em cinco etapas e o formato Publicação selecionado.', 1440, 900),
+        _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-usar-o-post-express/02-selecionar-cliente.png', 'Etapa Cliente com um cliente selecionado no seletor.', 1440, 900),
+        _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-usar-o-post-express/03-enviar-midia.png', 'Etapa Mídia com uma imagem enviada e marcada como capa.', 1440, 900),
+        _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-usar-o-post-express/04-escrever-legenda.png', 'Etapa Legenda do Instagram com o texto preenchido e o contador de caracteres.', 1440, 900),
+        _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-usar-o-post-express/05-modo-de-envio.png', 'Etapa Envio com o modo Publicar agora selecionado e o preview do post.', 1440, 900)
+      ]::jsonb[]
+    ),
     _kb_rv_callout('💡', 'blue', 'O tipo é detectado pela mídia: várias imagens viram carrossel, vídeo tende a Reels e imagem única vira Feed. Vídeos podem exigir thumbnail para publicação.'),
     _kb_rv_h(2, 'Publicar agora ou enviar para aprovação'),
     _kb_rv_p('Na etapa de Envio, o campo Modo de envio tem duas opções:'),
@@ -179,6 +220,7 @@ SELECT _kb_rv_upsert(
       'Aprovação do cliente - nada é publicado agora. O post é enviado para o portal do cliente, que aprova ou pede correção por lá, como em qualquer post de fluxo'
     ]),
     _kb_rv_p('No modo de aprovação, se o cliente tiver a publicação automática ligada, o post é publicado sozinho assim que ele aprovar. A tela avisa se o cliente ainda não tem um link ativo do portal: nesse caso, crie ou reative o link na página do cliente antes de enviar.'),
+    _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-usar-o-post-express/06-aprovacao-do-cliente.png', 'Modo Aprovação do cliente selecionado, com a confirmação de link do portal ativo para o cliente.', 1440, 900),
     _kb_rv_callout('✅', 'green', 'Use a aprovação do cliente quando o combinado exige o aval dele, mas a peça não precisa de um fluxo inteiro de produção. O feedback aparece no post e no feed de Mensagens.'),
     _kb_rv_h(2, 'O que acontece nos bastidores'),
     _kb_rv_p('O CRM cria um registro operacional para manter histórico da publicação. Se você abandonar um rascunho vazio, ele pode ser limpo automaticamente. Quando a publicação termina, o post fica registrado como concluído ou com erro para acompanhamento.'),
@@ -371,6 +413,7 @@ SELECT _kb_rv_upsert(
     ]),
     _kb_rv_h(2, 'A aba Datas Comemorativas'),
     _kb_rv_p('Além dos eventos dos seus clientes, o Calendário tem a aba Datas Comemorativas: um banco de datas relevantes para pautas de conteúdo, organizado por nicho. Escolha entre Médico, Jurídico, Varejo, Beleza e Estética ou Gastronomia no seletor, e o calendário mostra as datas daquele mercado no mês, prontas para virarem ideia de post.'),
+    _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/usando-o-calendario-para-financas-prazos-e-datas-importantes/01-datas-comemorativas.png', 'Aba Datas Comemorativas com o seletor de nicho, os filtros por categoria e as datas do mês.', 1440, 900),
     _kb_rv_p('A escolha do nicho fica memorizada para a próxima visita. As datas são uma referência global do sistema, iguais para todos os workspaces, e não se misturam com os eventos dos seus clientes.'),
     _kb_rv_callout('📌', 'orange', 'Agentes podem ter acesso limitado a eventos financeiros. Para confirmar pagamentos, use um perfil com permissão adequada.')
   ),
@@ -431,7 +474,7 @@ SELECT _kb_rv_append('como-criar-e-gerenciar-fluxos', 'feed do Instagram em trê
   _kb_rv_p('Com um fluxo aberto, alterne entre Posts, Calendário e Grade. A Grade mostra os posts do cliente como um feed do Instagram em três colunas, misturando o que já está publicado com o que está em produção, cada um na posição da data planejada.'),
   _kb_rv_p('Arraste um post para trocar a posição com outro: as datas de agendamento trocam junto. Posts já publicados são âncoras fixas, e um post agendado só aceita cair em uma posição futura. É a forma mais rápida de conferir a harmonia do feed antes de aprovar o mês.'),
   _kb_rv_h(2, 'Status personalizados no kanban'),
-  _kb_rv_p('Além dos status padrão, o workspace pode ter status personalizados de posts, por exemplo Em design ou Em revisão de texto, criados em Configuração, na aba Status de posts. Eles aparecem como colunas e etiquetas próprias no kanban. O artigo Templates, prazos e propriedades de fluxos explica como criá-los.'),
+  _kb_rv_p('Além dos status padrão, o workspace pode ter status personalizados de posts, por exemplo Em design ou Em revisão de texto, criados em Configurações, na aba Status de posts. Eles aparecem como colunas e etiquetas próprias no kanban. O artigo Templates, prazos e propriedades de fluxos explica como criá-los.'),
   _kb_rv_h(2, 'Entenda a página pelo painel Como funciona'),
   _kb_rv_p('Na primeira visita, a página de Entregas mostra o painel Como funciona, um resumo visual de quem faz o quê: o que é ação da equipe (criar posts, avançar etapas, enviar ao cliente), o que chega do portal (aprovação do cliente) e o que é automático (post agendado publica na data, status vira Postado ou Falha, fluxo recorrente gera o próximo ciclo). Feche quando quiser; dá para reabrir pelo botão Como funciona.')
 );
@@ -450,7 +493,7 @@ SELECT _kb_rv_append('templates-prazos-e-propriedades-de-fluxos', 'Template de d
   ]),
   _kb_rv_p('Os posts e todo o conteúdo permanecem; as etapas passam a ser as do template novo, com o fluxo posicionado na etapa que você indicou. Antes de confirmar, o diálogo avisa o que acontece com as propriedades personalizadas: valores de propriedades que não existem no template de destino são perdidos na migração, e o aviso lista quais. Se nada se perde, ele diz isso explicitamente.'),
   _kb_rv_h(2, 'Status personalizados de posts'),
-  _kb_rv_p('Os status padrão dos posts cobrem o essencial, mas cada agência tem seu vocabulário. Em Configuração, na aba Status de posts, você cria status próprios, por exemplo Em design:'),
+  _kb_rv_p('Os status padrão dos posts cobrem o essencial, mas cada agência tem seu vocabulário. Em Configurações, na aba Status de posts, você cria status próprios, por exemplo Em design:'),
   _kb_rv_ol(ARRAY[
     'Dê o nome do status e escolha em qual status padrão ele se comporta: isso define o que o sistema faz com o post, inclusive se o cliente o vê no portal',
     'Reordene com Subir e Descer para controlar a ordem das colunas no kanban',
@@ -461,11 +504,11 @@ SELECT _kb_rv_append('templates-prazos-e-propriedades-de-fluxos', 'Template de d
 
 -- Como configurar o Hub do Cliente: aba Mensagens e personalizacao visual
 -- (PRs #364, #279).
-SELECT _kb_rv_append('como-configurar-o-hub-do-cliente', 'Personalizar Hub',
+SELECT _kb_rv_append('como-configurar-o-hub-do-cliente', 'Deixando o Hub com a cara da agência',
   _kb_rv_h(2, 'A aba Mensagens'),
   _kb_rv_p('O Hub também tem a aba Mensagens: o canal direto entre o cliente e a agência. O que ele escreve ali aparece para a equipe na página Mensagens do CRM, junto com o feedback deixado nos posts. Veja o artigo Mensagens: as conversas com cada cliente em um só lugar.'),
   _kb_rv_h(2, 'Deixando o Hub com a cara da agência'),
-  _kb_rv_p('Em Configuração, na aba Personalizar Hub, você controla o visual do portal que todos os seus clientes veem:'),
+  _kb_rv_p('Em Configurações, na aba Hub, você controla o visual do portal que todos os seus clientes veem:'),
   _kb_rv_ul(ARRAY[
     'Cor da marca - aplicada a botões, navegação ativa e calendário, com contraste garantido automaticamente',
     'Logo no hub - a marca da agência dentro do portal, com variante própria para o modo escuro',
@@ -490,7 +533,7 @@ SELECT _kb_rv_append('como-o-cliente-aprova-posts-pelo-hub', 'Post Express no mo
 SELECT _kb_rv_append('como-organizar-e-reutilizar-arquivos', 'Limpeza automática de mídia publicada',
   _kb_rv_h(2, 'Limpeza automática de mídia publicada'),
   _kb_rv_p('Depois que um post é publicado no Instagram, a mídia dele já cumpriu o papel, mas continua ocupando o armazenamento do plano. A limpeza automática resolve isso: ela remove a mídia de posts já publicados depois de um prazo que você escolhe.'),
-  _kb_rv_p('Em Configuração, na aba Armazenamento, o dono do workspace define:'),
+  _kb_rv_p('Em Configurações, na aba Armazenamento, o dono do workspace define:'),
   _kb_rv_ul(ARRAY[
     'Quando remover a mídia após a publicação - Imediatamente, 7 dias, 30 dias ou 90 dias, contados a partir da publicação do post',
     'Limiar de uso - escolha entre Sempre ou Somente quando o uso passar de um percentual do plano, para a limpeza só agir quando o espaço aperta'
@@ -582,6 +625,8 @@ DROP FUNCTION IF EXISTS _kb_rv_replace_text(text, text, text);
 DROP FUNCTION IF EXISTS _kb_rv_append(text, text, VARIADIC jsonb[]);
 DROP FUNCTION IF EXISTS _kb_rv_upsert(uuid, text, text, text, jsonb, text, text[], integer);
 DROP FUNCTION IF EXISTS _kb_rv_plain(jsonb);
+DROP FUNCTION IF EXISTS _kb_rv_ol_shots(text[], jsonb[]);
+DROP FUNCTION IF EXISTS _kb_rv_img(text, text, int, int);
 DROP FUNCTION IF EXISTS _kb_rv_doc(VARIADIC jsonb[]);
 DROP FUNCTION IF EXISTS _kb_rv_ul(text[]);
 DROP FUNCTION IF EXISTS _kb_rv_ol(text[]);

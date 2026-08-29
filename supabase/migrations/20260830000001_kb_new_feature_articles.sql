@@ -11,8 +11,11 @@
 -- depende de aprovacao de permissoes pela Meta e esta liberado para um unico
 -- workspace. Publicar pelo admin quando abrir para todos.
 --
--- Texto puro (sem imagens). Se no futuro forem adicionadas imagens via
--- inlineImage, usar o cast ::jsonb[] no array de images (ver 20260806000003).
+-- Tres artigos carregam capturas reais (assinatura 12x, uso do plano e
+-- notificacoes), tiradas do workspace de captura via e2e/screenshots/
+-- kb-agosto.spec.ts e hospedadas no bucket publico kb-images com r2Key NULL
+-- (padrao de 20260717000003). Ao adicionar imagens em listas, usar o cast
+-- ::jsonb[] no array de images (ver 20260806000003).
 
 -- -----------------------------------------------------------------------
 -- Helpers (prefixo _kb_nf_), dropados no fim
@@ -52,6 +55,22 @@ CREATE OR REPLACE FUNCTION _kb_nf_ul(items text[]) RETURNS jsonb AS $$
       jsonb_build_object('type', 'listItem', 'content', jsonb_build_array(_kb_nf_p(items[i])))
       ORDER BY i
     ) FROM generate_subscripts(items, 1) AS i));
+$$ LANGUAGE sql IMMUTABLE;
+
+-- inlineImage com r2Key NULL + URL publica permanente do bucket kb-images:
+-- com r2Key nulo o leitor nao tenta assinar nada e a URL renderiza para
+-- sempre (ver o cabecalho de 20260717000003 para o porque).
+CREATE OR REPLACE FUNCTION _kb_nf_img(src text, alt text, w int, h int) RETURNS jsonb AS $$
+  SELECT jsonb_build_object('type', 'inlineImage', 'attrs', jsonb_build_object(
+    'r2Key', NULL,
+    'src', src,
+    'alt', alt,
+    'width', w,
+    'height', h,
+    'blurSrc', NULL,
+    'displayWidth', NULL,
+    'loading', false
+  ));
 $$ LANGUAGE sql IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION _kb_nf_plain(doc jsonb) RETURNS text AS $$
@@ -220,10 +239,11 @@ SELECT _kb_nf_upsert(
       '12x no cartão de crédito, sem juros - o valor da parcela aparece no card do plano',
       'À vista - pagamento único com desconto sobre o total'
     ]),
-    _kb_nf_p('O plano mensal continua existindo como terceira opção, com cobrança mês a mês. Os valores de cada modalidade aparecem em Configuração, na aba do plano, e também na página de preços.'),
+    _kb_nf_p('O plano mensal continua existindo como terceira opção, com cobrança mês a mês. Os valores de cada modalidade aparecem em Configurações, na aba Plano & Cobrança, e também na página de preços.'),
+    _kb_nf_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/assinatura-anual-em-12x/01-aba-do-plano.png', 'Aba Plano & Cobrança em Configurações, com o painel Uso do plano e os cards de plano.', 1440, 900),
     _kb_nf_h(2, 'Assinando em 12x'),
     _kb_nf_ol(ARRAY[
-      'Abra Configuração no menu lateral e vá até a aba do plano',
+      'Abra Configurações e vá até a aba Plano & Cobrança',
       'Escolha o plano e clique no botão de assinatura',
       'Preencha os dados do cartão: número, nome impresso, validade e CVV',
       'Informe CPF ou CNPJ, celular e o endereço de cobrança',
@@ -236,7 +256,7 @@ SELECT _kb_nf_upsert(
     _kb_nf_p('As 12 parcelas são cobradas no cartão, uma por mês. É um parcelamento de verdade: você não paga o ano inteiro de uma vez, e cada parcela aparece separadamente na fatura do cartão.'),
     _kb_nf_p('Se uma cobrança falhar, por exemplo por cartão vencido ou limite, você recebe um aviso por e-mail com o link para atualizar o cartão. O acesso não é cortado de imediato: há um período de recuperação antes de qualquer bloqueio.'),
     _kb_nf_h(2, 'Gerenciando a assinatura'),
-    _kb_nf_p('Tudo fica em Configuração, na aba do plano, pelo botão Gerenciar assinatura:'),
+    _kb_nf_p('Tudo fica em Configurações, na aba Plano & Cobrança, pelo botão Gerenciar assinatura:'),
     _kb_nf_ul(ARRAY[
       'Atualizar cartão - cadastre um cartão novo a qualquer momento. A próxima cobrança já usa o novo cartão',
       'Cancelar assinatura - durante o teste grátis, o cancelamento é imediato e sem cobrança. Com a assinatura ativa, você mantém o acesso até o fim do período já pago'
@@ -267,7 +287,7 @@ SELECT _kb_nf_upsert(
     ]),
     _kb_nf_h(2, 'Fazendo a troca'),
     _kb_nf_ol(ARRAY[
-      'Abra Configuração no menu lateral e vá até a aba do plano',
+      'Abra Configurações e vá até a aba Plano & Cobrança',
       'No card do plano anual, clique em Trocar para o anual em 12x',
       'Preencha os dados do cartão de crédito e o endereço de cobrança',
       'Clique em Confirmar troca'
@@ -277,7 +297,7 @@ SELECT _kb_nf_upsert(
     _kb_nf_h(2, 'Desfazendo a troca'),
     _kb_nf_p('Mudou de ideia? Enquanto a troca estiver agendada, ou seja, antes da primeira parcela do 12x ser cobrada, dá para voltar atrás:'),
     _kb_nf_ol(ARRAY[
-      'Abra Configuração e vá até a aba do plano',
+      'Abra Configurações e vá até a aba Plano & Cobrança',
       'No card com a Troca agendada, clique em Desfazer a troca'
     ]),
     _kb_nf_p('Seu plano mensal continua como estava e o 12x agendado é cancelado sem nenhuma cobrança. Depois que a primeira parcela do anual é cobrada, a troca está concluída e o caminho passa a ser o cancelamento normal da assinatura anual.'),
@@ -304,7 +324,7 @@ SELECT _kb_nf_upsert(
   'O painel Uso do plano mostra quanto do limite de clientes, equipe, armazenamento e outros recursos você já consumiu, e o que acontece ao chegar no teto.',
   _kb_nf_doc(
     _kb_nf_h(2, 'Onde ver o uso'),
-    _kb_nf_p('Em Configuração, na aba do plano, o painel Uso do plano mostra um medidor para cada limite do seu plano:'),
+    _kb_nf_p('Em Configurações, na aba Plano & Cobrança, o painel Uso do plano mostra um medidor para cada limite do seu plano:'),
     _kb_nf_ul(ARRAY[
       'Clientes',
       'Contas de Instagram',
@@ -316,6 +336,7 @@ SELECT _kb_nf_upsert(
       'Armazenamento'
     ]),
     _kb_nf_p('Cada medidor mostra o consumo atual sobre o limite, por exemplo 7 de 10. Recursos ilimitados no seu plano aparecem sem barra de limite. O armazenamento também aparece como medidor na barra lateral da página Arquivos.'),
+    _kb_nf_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/entendendo-o-uso-do-plano/01-painel-uso-do-plano.png', 'Painel Uso do plano com os medidores de clientes, equipe, armazenamento e demais limites.', 1440, 900),
     _kb_nf_h(2, 'Como ler os medidores'),
     _kb_nf_p('A barra fica verde enquanto há folga. Quando o uso passa de 75%, o dono do workspace começa a ver o aviso de upgrade, e a barra muda de cor conforme se aproxima do teto. A ideia é avisar antes de travar: com o aviso aparecendo, ainda há espaço para agir com calma.'),
     _kb_nf_callout('💡', 'blue', 'As vagas de equipe contam convites pendentes: um convite enviado e ainda não aceito já ocupa uma vaga. Se um convite antigo não vai ser aceito, cancele-o para liberar o espaço.'),
@@ -324,7 +345,7 @@ SELECT _kb_nf_upsert(
     _kb_nf_p('Para voltar a criar, os caminhos são:'),
     _kb_nf_ul(ARRAY[
       'Liberar espaço - arquivar ou excluir itens que não usa mais. No caso do armazenamento, a limpeza automática de mídia publicada ajuda bastante, veja Como organizar e reutilizar arquivos',
-      'Fazer upgrade - na mesma aba do plano, compare os planos e troque para um com limites maiores'
+      'Fazer upgrade - na mesma aba Plano & Cobrança, compare os planos e troque para um com limites maiores'
     ]),
     _kb_nf_h(2, 'Quem vê o quê'),
     _kb_nf_p('Todos os usuários do workspace veem os medidores. O aviso com o botão de upgrade aparece só para o dono do workspace, que é quem pode mudar o plano.'),
@@ -363,7 +384,7 @@ SELECT _kb_nf_upsert(
     _kb_nf_p('Do lado do cliente, a conversa aparece na aba Mensagens do Hub. Ele lê e responde por lá, sem precisar de login: o acesso é pelo link do portal, como nas demais abas do Hub.'),
     _kb_nf_callout('💡', 'blue', 'Quando uma mensagem do feed se refere a um post, ela vem com um atalho do post. Clique nele para abrir o post direto, já no contexto da conversa.'),
     _kb_nf_h(2, 'Como saber que chegou mensagem'),
-    _kb_nf_p('Mensagens novas do cliente geram notificação no sino do CRM. Se quiser receber também por e-mail, ative o tipo Mensagem do cliente em Configuração, na aba Notificações. O artigo Notificações por e-mail explica como funciona o resumo por e-mail.'),
+    _kb_nf_p('Mensagens novas do cliente geram notificação no sino do CRM. Se quiser receber também por e-mail, ative o tipo Mensagem do cliente em Configurações, na aba Notificações. O artigo Notificações por e-mail explica como funciona o resumo por e-mail.'),
     _kb_nf_p('No Hub, o cliente vê o indicador de novas mensagens ao abrir o portal.'),
     _kb_nf_h(2, 'Boas práticas'),
     _kb_nf_ul(ARRAY[
@@ -402,7 +423,7 @@ SELECT _kb_nf_upsert(
       'Se a tarefa tem etapas menores, adicione subtarefas'
     ]),
     _kb_nf_p('Só o título é obrigatório. O responsável é um membro da Equipe, o que permite atribuir tarefas até para quem não tem login no CRM. Se a pessoa tem login e o membro está vinculado ao usuário dela, a tarefa aparece nas pendências dela no Dashboard.'),
-    _kb_nf_callout('💡', 'blue', 'Uma tarefa atribuída a alguém com login gera notificação no sino e, se a pessoa quiser, por e-mail: é o tipo Tarefa atribuída a você, em Configuração, na aba Notificações.'),
+    _kb_nf_callout('💡', 'blue', 'Uma tarefa atribuída a alguém com login gera notificação no sino e, se a pessoa quiser, por e-mail: é o tipo Tarefa atribuída a você, em Configurações, na aba Notificações.'),
     _kb_nf_h(2, 'As quatro visualizações'),
     _kb_nf_p('Use as abas no topo para trocar de visão:'),
     _kb_nf_ul(ARRAY[
@@ -487,7 +508,8 @@ SELECT _kb_nf_upsert(
     _kb_nf_p('Tudo que acontece no workspace e diz respeito a você aparece no sino do CRM. O e-mail é uma camada extra, pensada para o que não pode esperar você abrir o sistema: uma publicação que falhou, um cliente pedindo correção, uma tarefa nova no seu nome.'),
     _kb_nf_p('Nem todo aviso do sino vira e-mail. Só os tipos de maior urgência têm envio por e-mail, e cada pessoa escolhe os seus.'),
     _kb_nf_h(2, 'Os tipos disponíveis'),
-    _kb_nf_p('Em Configuração, na aba Notificações, a seção Notificações por e-mail lista os tipos que você pode ligar ou desligar:'),
+    _kb_nf_p('Em Configurações, na aba Notificações, a seção Notificações por e-mail lista os tipos que você pode ligar ou desligar:'),
+    _kb_nf_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/notificacoes-por-email/01-aba-notificacoes.png', 'Aba Notificações em Configurações, com a chave de pausa geral e os tipos de e-mail.', 1440, 900),
     _kb_nf_ul(ARRAY[
       'Falha ao publicar - um post agendado não conseguiu ser publicado',
       'Correção do cliente - o cliente pediu ajustes em um post pelo Hub',
@@ -541,6 +563,7 @@ SELECT _kb_nf_link('/automacoes', 'automacoes-de-comentario-para-dm', NULL, 0);
 DROP FUNCTION IF EXISTS _kb_nf_link(text, text, text, integer);
 DROP FUNCTION IF EXISTS _kb_nf_upsert(uuid, text, text, text, jsonb, text, text[], integer, text);
 DROP FUNCTION IF EXISTS _kb_nf_plain(jsonb);
+DROP FUNCTION IF EXISTS _kb_nf_img(text, text, int, int);
 DROP FUNCTION IF EXISTS _kb_nf_doc(VARIADIC jsonb[]);
 DROP FUNCTION IF EXISTS _kb_nf_ul(text[]);
 DROP FUNCTION IF EXISTS _kb_nf_ol(text[]);
