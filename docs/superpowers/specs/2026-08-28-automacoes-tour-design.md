@@ -42,16 +42,22 @@ Superfície `page` = página; `dialog` = dentro do formulário.
 | 7 | dialog | `campo-botoes` | Inclua botões de link | Opcional: até 3 botões levam a pessoa ao seu site, checkout ou material. Com botões, a mensagem pode ter até 640 caracteres. |
 | 8 | dialog | `campo-resposta` | Responda no comentário e salve | A resposta pública é opcional e mostra que o perfil é ativo. Pronto: revise e toque em Salvar para ativar. |
 
-Botões do card: passo 1 tem CTA único "Abrir formulário"; passos 2 a 7 têm
-"Voltar" (ghost) + "Próximo" (primário); passo 8 tem "Voltar" + "Concluir".
-"Concluir" só fecha o tour: NÃO submete o formulário. Todos os passos têm
-"Pular tour" no cabeçalho do card. Sem travessão em nenhuma copy (regra da
-casa); todas as strings em pt + en via i18n (`automations.json`, chaves
-`tour.*`).
+Botões do card: passo 1 tem CTA único "Abrir formulário"; o passo 2 tem só
+"Próximo" (voltar ao passo 1 exigiria fechar o dialog por baixo do guard de
+alterações não salvas, e rever "clique neste botão" não vale essa
+complexidade); passos 3 a 7 têm "Voltar" (ghost) + "Próximo" (primário); o
+passo 8 tem "Voltar" + "Concluir". "Voltar" nunca sai do dialog: o piso é o
+passo 2. "Concluir" só fecha o tour: NÃO submete o formulário. Todos os
+passos têm "Pular tour" no cabeçalho do card. Sem travessão em nenhuma copy
+(regra da casa); todas as strings em pt + en via i18n (`automations.json`,
+chaves `tour.*`).
 
-"Voltar" no passo 2 volta ao passo 1 e FECHA o dialog (via `onOpenChange(false)`,
-suprimindo o encerramento do tour descrito em Comportamento) para que o passo 1
-possa destacar o botão da página novamente.
+**Copy do passo 3 vs comportamento do Select:** o formulário lista qualquer
+cliente com registro em `instagram_accounts`, inclusive conexão revogada ou
+expirada (que aparece com aviso de reconexão e atalho). Decisão: preservar o
+comportamento (esconder quem precisa reconectar seria pior) e manter a copy
+aprovada; "com Instagram conectado" descreve o vínculo no nível de abstração
+do tooltip, e a segunda frase já cobre o caso de quem falta.
 
 ## Comportamento
 
@@ -60,7 +66,13 @@ possa destacar o botão da página novamente.
   true` (conta pronta para automação), `automations.length === 0`, `canCreate
   && !isAgent` (o botão-âncora do passo 1 só existe nesse caso), e a chave de
   persistência ausente. Ao auto-iniciar, grava a chave imediatamente: dispensar
-  sem ler não faz o tour reaparecer sozinho.
+  sem ler não faz o tour reaparecer sozinho. `isAgent` aqui é EXATAMENTE a
+  derivação existente da página (`role === 'agent'` via `useAuth`), nunca uma
+  nova: a elegibilidade do tour tem de espelhar a condição de render do
+  botão-âncora, ou o tour aponta para um elemento ausente. A página inteira
+  gateia por `role` (que o `AuthContext` documenta como potencialmente
+  obsoleto frente a `workspaceRole`); migrar isso é um débito pré-existente da
+  página toda (botão, menu de ações, switch), fora do escopo do tour.
 - **Persistência.** `localStorage`, chave
   `automacoes_tour_seen:${profile?.conta_id ?? ''}` (mesmo padrão de
   `automacoes_checklist_dismissed`). Escrita best-effort (try/catch como em
@@ -74,9 +86,11 @@ possa destacar o botão da página novamente.
 - **Passo 1 → 2.** O CTA chama `openCreate()` da página e avança o índice. O
   tour espera o dialog montar e ancorar (`data-tour="campo-nome"` presente no
   DOM) antes de posicionar o card do passo 2.
-- **Encerramento.** "Pular tour", "Concluir", ou fechar o dialog no meio
-  (qualquer caminho que dispare `onOpenChange(false)` durante um passo interno,
-  exceto o "Voltar" do passo 2) encerram silenciosamente. Nada reaparece
+- **Encerramento.** "Pular tour", "Concluir", ou o dialog fechar no meio de
+  um passo interno encerram silenciosamente. "Fechar no meio" é observado pela
+  TRANSIÇÃO de `formOpen` para false na página (efeito), não por
+  `onOpenChange`: salvar com sucesso fecha via `onSaved → setFormOpen(false)`
+  sem passar por `onOpenChange`, e também encerra o tour. Nada reaparece
   sozinho depois. Encerrar NUNCA fecha o dialog por conta própria: quem fechou
   foi o usuário ou o fluxo normal.
 - **Interação livre.** O campo destacado continua editável durante o tour
@@ -126,17 +140,38 @@ export function useAutomationTour(opts: {
 
 O hook é dono de: índice ativo, auto-início (efeito que roda quando
 `eligibleForAutoStart` vira true e a chave está ausente), persistência da
-chave e limites de navegação. Ele NÃO conhece dialog nem DOM: a página conecta
-`next()` do passo 1 a `openCreate()`, e o "Voltar" do passo 2 a
-`setFormOpen(false)` + retrocesso, marcando a transição para que o
-`handleDialogClose` resultante não encerre o tour.
+chave e limites de navegação. `back()` tem piso no passo 2: nunca retorna ao
+passo 1 (ver decisão de copy dos botões). Ele NÃO conhece dialog nem DOM: a
+página conecta `next()` do passo 1 a `openCreate()`, e chama
+`handleDialogClose()` de um efeito que observa `formOpen` virar false com o
+tour em passo interno (cobre fechar, Esc, clicar fora E salvar com sucesso).
 
 ### `TourOverlay.tsx` (apresentação)
 
 Props: `{ step, index, total, onNext, onBack, onSkip, onCta }`. Responsável
 por: localizar o elemento `[data-tour="${step.anchor}"]` no DOM, rolar até ele
 (`scrollIntoView({ block: 'center' })`), medir com `getBoundingClientRect` e
-renderizar:
+renderizar spotlight + card.
+
+**Sistema de coordenadas (a parte que dá errado se improvisada):** o
+`DialogContent` compartilhado tem `transform: translate(-50%,-50%)` e
+`overflow-hidden`. O transform faz do Content o containing block de qualquer
+descendente `position: fixed`, então `fixed` + coordenadas de viewport ficam
+DESLOCADOS dentro do dialog; e o `overflow-hidden` recorta qualquer sombra
+que tente escurecer além da caixa do dialog. Portanto:
+
+- **Passo de página:** overlay `position: fixed`, coordenadas de viewport
+  direto do `getBoundingClientRect()`. Simples.
+- **Passo de dialog:** overlay `position: absolute` DENTRO do Content, com
+  coordenadas locais (`rect do alvo - rect do Content`). O recorte pelo
+  `overflow-hidden` é o visual desejado, não um bug: o `DialogOverlay` do
+  próprio Radix já escurece o resto do viewport (`bg-black/80`); o spotlight
+  do tour só precisa escurecer o INTERIOR do dialog menos o campo alvo, que é
+  exatamente o que o mockup aprovado mostra. Nunca usar `fixed` em passo de
+  dialog, nem tentar portal acima do dialog (perderia o focus-trap e clicar
+  no card dispararia `onInteractOutside`, fechando o dialog).
+
+Elementos:
 
 - **Spotlight:** um `div` posicionado sobre o rect do alvo com
   `box-shadow: 0 0 0 9999px rgba(10, 12, 15, 0.6)` (mesmo valor nos dois
@@ -147,9 +182,12 @@ renderizar:
   de graça. Reposiciona em `resize` e `scroll` (captura, para pegar o scroll
   interno do dialog).
 - **Card:** contador "N de 8", "Pular tour", título, texto, dots, botões.
-  Posicionado abaixo do alvo, flip para cima se estourar o viewport, clamp
-  horizontal. Em viewport < 640px o card vira folha fixa no rodapé
-  (`position: fixed; bottom: 0`) mantendo o spotlight.
+  Posicionado abaixo do alvo, flip para cima se estourar o contêiner de
+  referência (viewport no passo de página; caixa do Content nos passos de
+  dialog), clamp horizontal dentro do mesmo contêiner. Em viewport < 640px o
+  card vira folha no rodapé mantendo o spotlight: `position: fixed; bottom: 0`
+  no passo de página, `position: absolute; bottom: 0` da caixa do Content nos
+  passos de dialog (mesma razão do transform acima).
 - **Âncora ausente** (ex.: dialog ainda montando): renderiza nada e re-tenta
   via `requestAnimationFrame` por até ~1s; se o alvo nunca aparece, encerra o
   tour silenciosamente (fail-safe, nunca um card órfão no meio da tela).
@@ -164,7 +202,8 @@ renderizar:
   abaixo da faixa 9000+ dos drawers, que não estão abertos nesse momento).
 - **Passo de dialog:** `AutomationFormDialog` ganha prop opcional
   `tour?: { step, index, total, onNext, onBack, onSkip }` e renderiza
-  `<TourOverlay>` como último filho do `DialogContent`. Dentro do portal do
+  `<TourOverlay>` como último filho do `DialogContent`, posicionado em
+  coordenadas locais (ver sistema de coordenadas acima). Dentro do portal do
   dialog, o stacking é herdado e o focus-trap do Radix enxerga o card como
   conteúdo do próprio dialog: os botões do card são focáveis sem briga.
 - **`data-tour` nos alvos:** `nova-automacao` no `<Button>` de criar da
@@ -194,17 +233,20 @@ verificados manualmente no browser (regra da casa para UI responsiva).
 - `useAutomationTour.test.ts` (renderHook): auto-inicia quando elegível e sem
   chave; grava a chave ao auto-iniciar; NÃO auto-inicia com chave presente,
   nem quando `eligibleForAutoStart` é false; `start()` manual funciona mesmo
-  com chave; `next`/`back` respeitam limites; `skip`/`finish` encerram e
-  persistem; `handleDialogClose` encerra; localStorage lançando exceção não
-  quebra (espelho do padrão best-effort).
+  com chave; `next`/`back` respeitam limites e `back` tem piso no passo 2
+  (nunca retorna ao passo 1); `skip`/`finish` encerram e persistem;
+  `handleDialogClose` encerra; localStorage lançando exceção não quebra
+  (espelho do padrão best-effort).
 - `TourOverlay.test.tsx` (com âncora fake no DOM): título/texto/contador do
-  passo; passo 1 mostra só o CTA; passo intermediário mostra Voltar+Próximo;
-  passo 8 mostra Concluir; "Pular tour" chama `onSkip`; âncora ausente
-  renderiza nada.
+  passo; passo 1 mostra só o CTA; passo 2 mostra só Próximo (sem Voltar);
+  passo intermediário mostra Voltar+Próximo; passo 8 mostra Concluir; "Pular
+  tour" chama `onSkip`; âncora ausente renderiza nada.
 - `AutomacoesPage.test.tsx` (integração, casos novos): visita elegível
   auto-inicia no passo 1; CTA do passo 1 abre o dialog e avança; fechar o
-  dialog no meio encerra; link "Ver passo a passo" aparece na checklist quando
-  `canCreate` e reinicia o tour; agente/flag off não veem tour nem link.
+  dialog no meio encerra; salvar com sucesso (caminho `onSaved`, que não passa
+  por `onOpenChange`) também encerra; link "Ver passo a passo" aparece na
+  checklist quando `canCreate` e reinicia o tour; agente/flag off não veem
+  tour nem link.
 
 ## Fora de escopo
 
