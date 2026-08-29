@@ -304,4 +304,51 @@ describe('PostsListView', () => {
     fireEvent.click(screen.getByText('Post avulso'));
     expect(onPostClick).toHaveBeenCalledWith(posts[0]);
   });
+
+  it('shows the discreet "Avulso" tag (not a clickable fluxo button) in the Fluxo cell for a post avulso', () => {
+    const onFluxoClick = vi.fn();
+    render(
+      <PostsListView
+        {...baseProps}
+        posts={[makePost({ workflow_id: null, workflow_titulo: null, titulo: 'Post avulso' })]}
+        onFluxoClick={onFluxoClick}
+      />,
+    );
+
+    const tag = screen.getByText('Avulso');
+    expect(tag).toHaveClass('post-fluxo-tag');
+    expect(tag).toHaveClass('post-fluxo-tag--avulso');
+    expect(screen.queryByRole('button', { name: 'Avulso' })).toBeNull();
+    fireEvent.click(tag);
+    expect(onFluxoClick).not.toHaveBeenCalled();
+  });
+
+  it('leaves Etapa atual and Prazo da etapa blank for a post avulso', () => {
+    const posts = [
+      makePost({ id: 103, workflow_id: null, workflow_titulo: null, titulo: 'Post avulso' }),
+    ];
+    render(<PostsListView {...baseProps} posts={posts} />);
+
+    const row = screen.getByText('Post avulso').closest('tr')!;
+    const cells = Array.from(row.querySelectorAll('td')).map((td) => td.textContent);
+    // Columns: Título, Cliente, Fluxo, Etapa atual, Tipo, Status, Responsável, Prazo da etapa, Agendado para
+    expect(cells[3]).toBe('—'); // Etapa atual
+    expect(cells[7]).toBe('—'); // Prazo da etapa
+  });
+
+  it('groups posts avulsos together when sorting by Fluxo, in both directions', () => {
+    const posts = [
+      makePost({ titulo: 'Avulso 1', workflow_id: null, workflow_titulo: null }),
+      makePost({ titulo: 'Avulso 2', workflow_id: null, workflow_titulo: null }),
+      makePost({ titulo: 'Post A', workflow_id: 10, workflow_titulo: 'Fluxo A' }),
+      makePost({ titulo: 'Post B', workflow_id: 11, workflow_titulo: 'Fluxo B' }),
+    ];
+    const { container } = render(<PostsListView {...baseProps} posts={posts} />);
+
+    fireEvent.click(screen.getByText('Fluxo'));
+    expect(getRenderedTitles(container)).toEqual(['Avulso 1', 'Avulso 2', 'Post A', 'Post B']);
+
+    fireEvent.click(screen.getByText('Fluxo'));
+    expect(getRenderedTitles(container)).toEqual(['Post B', 'Post A', 'Avulso 1', 'Avulso 2']);
+  });
 });

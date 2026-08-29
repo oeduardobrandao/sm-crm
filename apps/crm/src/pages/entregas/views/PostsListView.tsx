@@ -239,13 +239,15 @@ export function PostsListView({
                   )}
                 </td>
                 <td style={{ ...oneLineCell, overflow: 'visible' }}>
-                  {card ? (
+                  {workflowId == null ? (
+                    <span className="post-fluxo-tag post-fluxo-tag--avulso">Avulso</span>
+                  ) : card ? (
                     <button
                       type="button"
                       className="post-fluxo-tag"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (workflowId != null) onFluxoClick(workflowId);
+                        onFluxoClick(workflowId);
                       }}
                       title={`Abrir fluxo: ${p.workflow_titulo}`}
                     >

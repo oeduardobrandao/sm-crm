@@ -10,6 +10,9 @@ import type { ClientePost } from '@/store';
 vi.mock('@/store', () => ({ getPostPreview: vi.fn() }));
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn() }));
 
+const mockNavigate = vi.hoisted(() => vi.fn());
+vi.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }));
+
 import { getPostPreview } from '@/store';
 import { listPostMedia } from '@/services/postMedia';
 
@@ -32,6 +35,17 @@ const post: ClientePost = {
   scheduled_at: '2026-07-26T23:00:00.000Z',
   ordem: 0,
   workflow_titulo: 'Posts Julho - Marina',
+};
+
+const avulsoPost: ClientePost = {
+  id: 42,
+  workflow_id: null,
+  titulo: 'Post avulso',
+  tipo: 'feed',
+  status: 'rascunho',
+  scheduled_at: '2026-07-26T23:00:00.000Z',
+  ordem: 0,
+  workflow_titulo: null,
 };
 
 function renderPanel(
@@ -104,6 +118,31 @@ describe('CalendarPostDetailPanel', () => {
     expect(screen.queryByText('Reagendar')).toBeNull();
     expect(screen.queryByRole('button', { name: /Remover data/ })).toBeNull();
     expect(screen.getByText(/Post já agendado no Instagram/)).toBeTruthy();
+  });
+
+  describe('post avulso (workflow_id null)', () => {
+    it('shows "Post avulso, sem fluxo." instead of the "Pertence ao workflow" note, and names the Folder row "Avulso"', () => {
+      renderPanel({ post: avulsoPost, isCurrentWorkflow: false });
+      expect(screen.getByText('Post avulso, sem fluxo.')).toBeInTheDocument();
+      expect(screen.queryByText(/Pertence ao workflow/)).toBeNull();
+      // The Folder meta row: workflow_titulo is null, 'Avulso' fills it instead of blank.
+      expect(screen.getAllByText('Avulso').length).toBeGreaterThan(0);
+    });
+
+    it('hides "Abrir post completo" and shows "Abrir publicação" instead, navigating to the universal deep link on click', () => {
+      renderPanel({ post: avulsoPost, isCurrentWorkflow: false });
+      expect(screen.queryByRole('button', { name: /Abrir post completo/ })).toBeNull();
+
+      const openBtn = screen.getByRole('button', { name: /Abrir publicação/ });
+      fireEvent.click(openBtn);
+      expect(mockNavigate).toHaveBeenCalledWith('/entregas?post=42');
+    });
+
+    it('still allows rescheduling (drag/picker) an unlocked post avulso, but hides "Remover data"', () => {
+      renderPanel({ post: avulsoPost, isCurrentWorkflow: false, isLocked: false });
+      expect(screen.getByText('Reagendar')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Remover data/ })).toBeNull();
+    });
   });
 
   describe('permissions', () => {

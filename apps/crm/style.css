@@ -5624,6 +5624,21 @@ body.role-agent input[name='valor_total'] {
   border-color: var(--border-color);
 }
 
+/* Post avulso (sem fluxo) -- discreet tint distinct from the wired-workflow
+   tag, dashed border signals "not attached to anything" rather than "no card
+   loaded yet". Not clickable. */
+.post-fluxo-tag--avulso {
+  cursor: default;
+  background: var(--surface-1);
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
+.post-fluxo-tag--avulso:hover {
+  background: var(--surface-1);
+  border-color: var(--border-color);
+}
+
 .board-card {
   background: var(--card-bg);
   border: 1px solid var(--border-color);

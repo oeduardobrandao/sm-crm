@@ -255,6 +255,21 @@ describe('PostsKanbanView', () => {
     expect(container.querySelector('.board-post-etapa')?.textContent).toBe('Design');
   });
 
+  it('shows an "Avulso" chip instead of an etapa for a post avulso', () => {
+    const { container } = renderWithQuery(
+      <PostsKanbanView
+        {...baseProps}
+        posts={[
+          makePost({ id: 120, workflow_id: null, workflow_titulo: null, titulo: 'Post avulso' }),
+        ]}
+      />,
+    );
+    expect(container.querySelector('.board-post-etapa')).toBeNull();
+    const chip = screen.getByText('Avulso');
+    expect(chip).toHaveClass('post-fluxo-tag');
+    expect(chip).toHaveClass('post-fluxo-tag--avulso');
+  });
+
   it('shows an overdue etapa deadline in red shorthand', () => {
     const overdue = new Map([
       [

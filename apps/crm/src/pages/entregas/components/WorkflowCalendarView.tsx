@@ -118,7 +118,11 @@ export function WorkflowCalendarView({
           return;
 
         case 'reject-foreign-unschedule':
-          toast.info('Só é possível remover a data de posts deste workflow.');
+          toast.info(
+            post?.workflow_id === null
+              ? 'Post avulso: desagende pela publicação.'
+              : 'Só é possível remover a data de posts deste workflow.',
+          );
           return;
 
         case 'unschedule':

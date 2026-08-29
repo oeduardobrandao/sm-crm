@@ -46,6 +46,17 @@ describe('resolveCalendarDrop', () => {
     ).toEqual({ kind: 'reject-foreign-unschedule' });
   });
 
+  it('rejects unscheduling a post avulso (workflow_id null) the same way as a foreign post', () => {
+    const post = mkPost({
+      workflow_id: null,
+      workflow_titulo: null,
+      scheduled_at: '2026-07-20T13:00:00.000Z',
+    });
+    expect(
+      resolveCalendarDrop({ post, overId: 'unscheduled-zone', currentWorkflowId: 10 }),
+    ).toEqual({ kind: 'reject-foreign-unschedule' });
+  });
+
   it('schedules a post dropped on a date cell, with no previous time', () => {
     const result = resolveCalendarDrop({
       post: mkPost(),
@@ -72,6 +83,16 @@ describe('resolveCalendarDrop', () => {
 
   it('allows rescheduling a post owned by another workflow', () => {
     const post = mkPost({ workflow_id: 99, scheduled_at: '2026-07-20T13:00:00.000Z' });
+    const result = resolveCalendarDrop({ post, overId: 'date-2026-07-24', currentWorkflowId: 10 });
+    expect(result.kind).toBe('schedule');
+  });
+
+  it('allows rescheduling a post avulso (workflow_id null) dropped on a date cell', () => {
+    const post = mkPost({
+      workflow_id: null,
+      workflow_titulo: null,
+      scheduled_at: '2026-07-20T13:00:00.000Z',
+    });
     const result = resolveCalendarDrop({ post, overId: 'date-2026-07-24', currentWorkflowId: 10 });
     expect(result.kind).toBe('schedule');
   });
@@ -106,6 +127,17 @@ describe('formatRescheduleToast', () => {
         currentWorkflowId: 10,
       }),
     ).toBe('Post de «Agosto — Carrosséis» reagendado para 24/07/2026 às 20:00');
+  });
+
+  it('names the post "avulso" rather than a null workflow when rescheduling a post with no workflow', () => {
+    expect(
+      formatRescheduleToast({
+        post: mkPost({ workflow_id: null, workflow_titulo: null }),
+        datetime,
+        verb: 'reagendado',
+        currentWorkflowId: 10,
+      }),
+    ).toBe('Post avulso reagendado para 24/07/2026 às 20:00');
   });
 
   it('uses the agendado verb for a first-time schedule', () => {

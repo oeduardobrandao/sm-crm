@@ -52,7 +52,9 @@ export function resolveCalendarDrop({
 /**
  * Success copy for both reschedule paths (drag-drop confirm and the detail panel picker).
  * Names the owning workflow when the post isn't ours, so the user knows what they touched.
- * A missing post (deleted in another tab mid-flow) degrades to the plain form.
+ * A post avulso has no workflow to name -- "Post de «null»" would be a real bug there, so
+ * it gets its own "Post avulso" form instead. A missing post (deleted in another tab
+ * mid-flow) degrades to the plain form.
  */
 export function formatRescheduleToast({
   post,
@@ -69,6 +71,10 @@ export function formatRescheduleToast({
   const mm = String(datetime.getMinutes()).padStart(2, '0');
   const when = `${datetime.toLocaleDateString('pt-BR')} às ${hh}:${mm}`;
   const owner =
-    post && post.workflow_id !== currentWorkflowId ? `Post de «${post.workflow_titulo}»` : 'Post';
+    post && post.workflow_id === null
+      ? 'Post avulso'
+      : post && post.workflow_id !== currentWorkflowId
+        ? `Post de «${post.workflow_titulo}»`
+        : 'Post';
   return `${owner} ${verb} para ${when}`;
 }

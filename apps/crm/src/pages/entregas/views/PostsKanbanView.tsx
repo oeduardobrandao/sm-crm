@@ -100,7 +100,11 @@ function PostBoardCardContent({
         </span>
       </div>
       <div className="item-title">{post.titulo || 'Post sem título'}</div>
-      {card && <div className="board-post-etapa">{card.etapa.nome}</div>}
+      {card ? (
+        <div className="board-post-etapa">{card.etapa.nome}</div>
+      ) : post.workflow_id === null ? (
+        <span className="post-fluxo-tag post-fluxo-tag--avulso">Avulso</span>
+      ) : null}
       <div className="item-meta board-post-footer">
         <span className="board-post-footer-left">
           {post.cliente_id != null && (

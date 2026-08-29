@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { parseISO, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -48,6 +49,8 @@ export function CalendarPostDetailPanel({
   onRemoveDate,
   onOpenPost,
 }: CalendarPostDetailPanelProps) {
+  const navigate = useNavigate();
+
   const { data: preview } = useQuery({
     queryKey: ['post-preview', post.id],
     queryFn: () => getPostPreview(post.id),
@@ -69,8 +72,13 @@ export function CalendarPostDetailPanel({
   const statusRegistry = useStatusRegistry();
   const scheduled = post.scheduled_at ? parseISO(post.scheduled_at) : null;
   const excerpt = (preview?.conteudo_plain ?? '').trim();
+  // A post avulso has no workflow to name -- 'Avulso' fills the slot instead of
+  // rendering blank next to the Folder icon.
+  const isAvulso = post.workflow_id === null;
+  const workflowLabel = post.workflow_titulo ?? 'Avulso';
   // Rescheduling follows lock status only; removing a date stays own-workflow, because the
-  // calendar sidebar only lists this workflow's backlog.
+  // calendar sidebar only lists this workflow's backlog. An avulso post has no own-workflow
+  // slot to remove the date from here -- it goes through the standalone publication instead.
   const canReschedule = !isLocked;
   const canRemoveDate = isCurrentWorkflow && !isLocked;
   const permalink =
@@ -110,7 +118,7 @@ export function CalendarPostDetailPanel({
           </div>
           <div className="calendar-detail-meta-row">
             <Folder className="h-4 w-4" />
-            <span>{post.workflow_titulo}</span>
+            <span>{workflowLabel}</span>
           </div>
           <div className="calendar-detail-meta-row">
             <User className="h-4 w-4" />
@@ -146,7 +154,9 @@ export function CalendarPostDetailPanel({
         </div>
 
         {!isCurrentWorkflow && (
-          <div className="calendar-detail-note">Pertence ao workflow «{post.workflow_titulo}»</div>
+          <div className="calendar-detail-note">
+            {isAvulso ? 'Post avulso, sem fluxo.' : `Pertence ao workflow «${workflowLabel}»`}
+          </div>
         )}
 
         {canReschedule && (
@@ -184,6 +194,14 @@ export function CalendarPostDetailPanel({
         {isCurrentWorkflow && (
           <button className="calendar-detail-btn calendar-detail-btn--primary" onClick={onOpenPost}>
             <ExternalLink className="h-4 w-4" /> Abrir post completo
+          </button>
+        )}
+        {isAvulso && (
+          <button
+            className="calendar-detail-btn calendar-detail-btn--primary"
+            onClick={() => navigate(`/entregas?post=${post.id}`)}
+          >
+            <ExternalLink className="h-4 w-4" /> Abrir publicação
           </button>
         )}
         <CopyPostLinkButton hubUrl={hubUrl} postId={post.id} />
