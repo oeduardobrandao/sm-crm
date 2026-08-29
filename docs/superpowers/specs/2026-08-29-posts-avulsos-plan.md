@@ -129,6 +129,12 @@ padrão:
    `IF v_workflow_id IS NULL THEN RETURN NEW` (menção em avulso não notificaria) e o
    branch `post_comment` também monta link por workflow. Ambos passam a usar o CASE
    null-safe e NÃO retornam mais cedo por workflow nulo.
+5b. `run_post_status_automations` (canônica `20260805000002_post_status_automations.sql`):
+   no action `notify`, o nome do cliente passa a vir de
+   `clientes WHERE id = new.cliente_id` (hoje `FROM workflows w LEFT JOIN clientes ...
+   WHERE w.id = new.workflow_id`, que fica NULL para avulso) e o link
+   `'/entregas?drawer=' || new.workflow_id` ganha o CASE null-safe padrão
+   (`'/entregas?post=' || new.id` quando avulso). Copy-forward completo.
 6. `folder_sync_post` (canônica `20260425000002`): INSERT → pai = pasta do fluxo
    (`source_type='workflow'`) quando `NEW.workflow_id IS NOT NULL`, senão pasta do cliente
    (**`source_type='client'`**, valor exato do CHECK em 20260425000001:12). Branch UPDATE:
