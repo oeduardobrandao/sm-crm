@@ -470,7 +470,7 @@ export function TemplatesModal({
           etapas: etapaData,
           modo_prazo: fModoPrazo,
         });
-        await propagateTemplateToWorkflows(editingTemplate.id, etapaData);
+        await propagateTemplateToWorkflows(editingTemplate.id);
         toast.success('Template atualizado!');
       } else {
         await addWorkflowTemplate({ nome, etapas: etapaData, modo_prazo: fModoPrazo });

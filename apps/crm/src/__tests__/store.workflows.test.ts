@@ -17,6 +17,10 @@ type MockedSupabaseModule = typeof supabaseModule & {
     operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
     ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
   ) => void;
+  __queueSupabaseRpc: (
+    name: string,
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
 };
@@ -97,55 +101,25 @@ describe('store workflow functions', () => {
     },
   );
 
-  it('propagates pending and active template steps, skipping concluido', async () => {
-    mockedSupabase.__queueSupabaseResult('workflows', 'select', {
-      data: [{ id: 10 }, { id: 11 }],
+  it('propagates template changes via the propagate_template_to_workflows RPC', async () => {
+    mockedSupabase.__queueSupabaseRpc('propagate_template_to_workflows', {
+      data: null,
       error: null,
     });
-    mockedSupabase.__queueSupabaseResult(
-      'workflow_etapas',
-      'select',
-      {
-        data: [
-          { id: 101, ordem: 0, status: 'pendente' },
-          { id: 102, ordem: 1, status: 'concluido' },
-        ],
-        error: null,
-      },
-      {
-        data: [{ id: 111, ordem: 0, status: 'ativo' }],
-        error: null,
-      },
-    );
-    mockedSupabase.__queueSupabaseResult(
-      'workflow_etapas',
-      'update',
-      { data: null, error: null },
-      { data: null, error: null },
-    );
 
-    await store.propagateTemplateToWorkflows(5, [
-      {
-        nome: 'Briefing atualizado',
-        prazo_dias: 3,
-        tipo_prazo: 'uteis',
-        tipo: 'aprovacao_cliente',
-      },
-      { nome: 'Publicação', prazo_dias: 5, tipo_prazo: 'corridos', tipo: 'padrao' },
-    ]);
+    await store.propagateTemplateToWorkflows(5);
 
-    // ordem 1 (status concluido) must never be touched — only ids 101 (pendente) and 111 (ativo).
-    const updates = getCalls('workflow_etapas', 'update');
-    expect(updates).toHaveLength(2);
-    expect(updates[0].payload).toMatchObject({ nome: 'Briefing atualizado', prazo_dias: 3 });
-    expect(updates[1].payload).toMatchObject({ nome: 'Briefing atualizado', prazo_dias: 3 });
-    expect(updates[0].payload).not.toHaveProperty('status');
-    expect(updates[1].payload).not.toHaveProperty('status');
-    // id 101 is pendente — picks up the template's tipo change.
-    expect(updates[0].payload).toMatchObject({ tipo: 'aprovacao_cliente' });
-    // id 111 is ativo — an in-progress client-approval gate must never be added or
-    // stripped by a template edit, so `tipo` is omitted from its update entirely.
-    expect(updates[1].payload).not.toHaveProperty('tipo');
+    const rpcCall = getCalls('rpc:propagate_template_to_workflows').at(-1);
+    expect(rpcCall?.payload).toEqual({ p_template_id: 5 });
+  });
+
+  it('propagates propagate_template_to_workflows RPC errors as thrown Errors', async () => {
+    mockedSupabase.__queueSupabaseRpc('propagate_template_to_workflows', {
+      data: null,
+      error: { message: 'forbidden' },
+    });
+
+    await expect(store.propagateTemplateToWorkflows(5)).rejects.toThrow('forbidden');
   });
 
   it('completes a step and activates the next workflow stage', async () => {

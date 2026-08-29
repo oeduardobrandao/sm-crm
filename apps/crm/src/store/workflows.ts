@@ -65,58 +65,17 @@ export async function removeWorkflowTemplate(id: number): Promise<void> {
 }
 
 /**
- * Propagate template step changes (nome, prazo_dias, tipo_prazo, responsavel_id) to
- * `pendente` and `ativo` workflow_etapas belonging to active workflows that use this
- * template. `status`, `iniciado_em` and `concluido_em` are never touched, so an in-progress
- * step keeps its progress — only its label/prazo/owner catch up to the template. Steps that
- * are already `concluido` are left untouched (rewriting history serves no purpose).
- * `tipo` (the client-approval flag) only syncs on `pendente` steps — an `ativo` step keeps
- * whatever gate it started with, since Kanban reads it live to decide whether advancing
- * needs client approval, and rewriting it mid-cycle could silently add or remove that gate.
+ * Propagate template step changes to `pendente`/`ativo` workflow_etapas of active workflows
+ * using this template. Server-side now — see `propagate_template_to_workflows` in
+ * supabase/migrations/20260826000002_workflow_events_rpc_integration.sql for the full
+ * behavioral spec (it reads the template's `etapas` jsonb directly, so the caller no longer
+ * passes it).
  */
-export async function propagateTemplateToWorkflows(
-  templateId: number,
-  etapas: WorkflowTemplateEtapa[],
-): Promise<void> {
-  // Find all active workflows using this template
-  const { data: workflows, error: wfErr } = await supabase
-    .from('workflows')
-    .select('id')
-    .eq('template_id', templateId)
-    .eq('status', 'ativo');
-  if (wfErr) throw wfErr;
-  if (!workflows || workflows.length === 0) return;
-
-  for (const wf of workflows) {
-    const { data: wfEtapas, error: etErr } = await supabase
-      .from('workflow_etapas')
-      .select('*')
-      .eq('workflow_id', wf.id)
-      .order('ordem', { ascending: true });
-    if (etErr) throw etErr;
-    if (!wfEtapas) continue;
-
-    for (const wfEtapa of wfEtapas) {
-      if (wfEtapa.status === 'concluido') continue;
-      const tplEtapa = etapas[wfEtapa.ordem];
-      if (!tplEtapa) continue;
-      const payload: Record<string, unknown> = {
-        nome: tplEtapa.nome,
-        prazo_dias: tplEtapa.prazo_dias,
-        tipo_prazo: tplEtapa.tipo_prazo,
-        responsavel_id: tplEtapa.responsavel_id ?? null,
-      };
-      // `tipo` gates the Kanban's client-approval requirement on advance
-      // (KanbanView.executeForward reads workflow_etapas.tipo live). Syncing it
-      // on an `ativo` step could silently strip an in-progress approval gate —
-      // or add a surprise one — mid-cycle, so it only ever moves on `pendente`
-      // steps, which haven't started collecting approvals yet.
-      if (wfEtapa.status === 'pendente') {
-        payload.tipo = tplEtapa.tipo ?? 'padrao';
-      }
-      await supabase.from('workflow_etapas').update(payload).eq('id', wfEtapa.id);
-    }
-  }
+export async function propagateTemplateToWorkflows(templateId: number): Promise<void> {
+  const { error } = await supabase.rpc('propagate_template_to_workflows', {
+    p_template_id: templateId,
+  });
+  if (error) throw error;
 }
 
 // =============================================
@@ -222,6 +181,55 @@ export async function updateWorkflowPositions(
 export async function removeWorkflow(id: number): Promise<void> {
   const { error } = await supabase.from('workflows').delete().eq('id', id);
   if (error) throw error;
+}
+
+// =============================================
+// WORKFLOW EVENTS (HISTÓRICO DO FLUXO)
+// =============================================
+export interface WorkflowEventChange {
+  field: string;
+  from: unknown;
+  to: unknown;
+  from_label?: string;
+  to_label?: string;
+}
+
+export interface WorkflowEvent {
+  id: number;
+  workflow_id: number;
+  conta_id: string;
+  event_type:
+    | 'criado'
+    | 'etapa_iniciada'
+    | 'etapa_concluida'
+    | 'etapa_revertida'
+    | 'etapa_editada'
+    | 'fluxo_editado'
+    | 'fluxo_concluido'
+    | 'fluxo_reaberto'
+    | 'fluxo_arquivado'
+    | 'template_migrado'
+    | 'template_propagado';
+  etapa_id: number | null;
+  etapa_nome: string | null;
+  source: 'workspace_user' | 'client' | 'system';
+  actor_user_id: string | null;
+  actor_name: string | null;
+  metadata: { changes?: WorkflowEventChange[]; [key: string]: unknown };
+  created_at: string;
+}
+
+export async function getWorkflowEvents(workflowId: number): Promise<WorkflowEvent[]> {
+  const { data, error } = await supabase
+    .from('workflow_events')
+    .select(
+      'id, workflow_id, conta_id, event_type, etapa_id, etapa_nome, source, actor_user_id, actor_name, metadata, created_at',
+    )
+    .eq('workflow_id', workflowId)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true });
+  if (error) throw error;
+  return data || [];
 }
 
 // =============================================

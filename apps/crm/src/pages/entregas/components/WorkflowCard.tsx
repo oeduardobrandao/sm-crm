@@ -13,6 +13,7 @@ import type { BoardCard } from '../hooks/useEntregasData';
 import { updateWorkflowEtapa, type Membro } from '../../../store';
 import { sanitizeUrl } from '@/utils/security';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { WorkflowTimelinePopover } from './WorkflowTimelinePopover';
 
 function getInitials(name: string): string {
   return name
@@ -681,6 +682,7 @@ export function WorkflowCard({
         >
           <Edit2 className="h-3.5 w-3.5" />
         </button>
+        <WorkflowTimelinePopover workflowId={card.workflow.id!} />
         <button
           className="btn-edit-workflow"
           title="Posts do fluxo"

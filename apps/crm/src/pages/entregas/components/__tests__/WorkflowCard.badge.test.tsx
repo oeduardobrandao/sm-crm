@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render as rtlRender, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('sonner', () => ({
@@ -9,6 +10,7 @@ vi.mock('sonner', () => ({
 
 vi.mock('../../../store', () => ({
   updateWorkflowEtapa: vi.fn(),
+  getWorkflowEvents: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('@/components/ui/dropdown-menu', () => ({
@@ -20,6 +22,11 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 
 import { WorkflowCard } from '../WorkflowCard';
 import type { BoardCard } from '../hooks/useEntregasData';
+
+function render(ui: React.ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 const etapas = [
   {

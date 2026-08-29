@@ -40,6 +40,18 @@ describe('parseNotionExport', () => {
     expect(collections[0].rows).toHaveLength(1);
   });
 
+  test('zip with only markdown files warns about missing CSV databases', () => {
+    const zip = makeZip({
+      'Export/Página do cliente abc123def456789012345678abcdef01.md': '# Cliente A',
+      'Export/Notas 11112222333344445555666677778888.md': '# Notas',
+    });
+    const { collections, warnings } = parseNotionExport('export.zip', zip);
+    expect(collections).toHaveLength(0);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('Markdown & CSV');
+    expect(warnings[0]).toContain('Incluir subpáginas');
+  });
+
   test('rejects zip expanding beyond the cap', () => {
     const big = 'A,B\n' + '1,2\n'.repeat(400);
     const zip = makeZip({ 'x.csv': big });

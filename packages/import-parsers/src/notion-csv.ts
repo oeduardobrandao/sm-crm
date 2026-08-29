@@ -125,7 +125,9 @@ export function parseNotionExport(
     source: 'notion' as const,
   }));
   if (!collections.length && !warnings.length) {
-    warnings.push('Nenhum arquivo CSV encontrado no export do Notion.');
+    warnings.push(
+      'Este export do Notion contém apenas páginas, sem nenhuma base de dados (CSV). Exporte de novo a partir da página que contém a lista de clientes, no formato "Markdown & CSV" e com "Incluir subpáginas" marcado.',
+    );
   }
   return { collections, warnings };
 }

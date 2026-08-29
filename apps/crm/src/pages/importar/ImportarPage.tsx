@@ -23,10 +23,10 @@ import {
 } from '@/services/dataImport';
 import { buildCommitRows, type ExistingCliente } from './buildCommitRows';
 import { mergeAiProposal, summarizeBundle } from './mapping';
-import { ParseFilesError, parseFiles } from './parseFiles';
+import { ParseFilesError, UNREADABLE_MESSAGE, parseFiles } from './parseFiles';
 import { sourceGuide } from './sourceGuides';
 import StepOrigem from './components/StepOrigem';
-import StepUpload from './components/StepUpload';
+import StepUpload, { type UploadError } from './components/StepUpload';
 import StepMapeamento from './components/StepMapeamento';
 import StepPrevia from './components/StepPrevia';
 import StepCommit from './components/StepCommit';
@@ -87,7 +87,7 @@ export default function ImportarPage() {
   const [source, setSource] = useState<SourceKind | null>(null);
   const [bundle, setBundle] = useState<ImportBundle | null>(null);
   const [proposal, setProposal] = useState<MappingProposal | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<UploadError | null>(null);
   const [mappingError, setMappingError] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -133,8 +133,8 @@ export default function ImportarPage() {
     } catch (err) {
       setUploadError(
         err instanceof ParseFilesError
-          ? err.message
-          : 'Não conseguimos ler este arquivo — confira o passo a passo de exportação acima.',
+          ? { message: err.message, details: err.details }
+          : { message: UNREADABLE_MESSAGE, details: [] },
       );
     } finally {
       setBusy(false);

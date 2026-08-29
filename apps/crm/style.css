@@ -8912,6 +8912,27 @@ a.mention-chip:hover {
   color: var(--text-main, #12151a);
 }
 
+.workflow-history-empty {
+  padding: 1rem 0;
+  font-size: 0.8rem;
+  color: var(--text-muted, #718096);
+}
+
+.workflow-event-diffs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.35rem;
+}
+
+.workflow-event-diff {
+  padding: 0.3rem 0.6rem;
+  background: var(--surface-hover, #f8fafc);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  color: var(--text-main, #12151a);
+}
+
 /* ConcludedView */
 .concluded-client-group {
   margin-bottom: 1rem;
