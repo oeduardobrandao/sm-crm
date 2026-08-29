@@ -275,6 +275,30 @@ vi.mock('../components/WorkflowDrawer', () => ({
   ),
 }));
 
+// StandalonePostDrawer pulls in most of `store` for real (getPostApprovals,
+// getWorkspaceUsers, etc.) -- functions the file-wide `../../../store` mock above
+// deliberately doesn't stub (it only provides duplicateWorkflow/getStandalonePost).
+// Stubbed the same way WorkflowDrawer is above: EntregasPage's own wiring
+// (standalonePostId state, onAttached) is what these tests exercise, not the
+// drawer's internals.
+vi.mock('../components/StandalonePostDrawer', () => ({
+  StandalonePostDrawer: ({
+    postId,
+    onClose,
+    onAttached,
+  }: {
+    postId: number;
+    onClose: () => void;
+    onAttached: (workflowId: number, postId: number) => void;
+  }) => (
+    <div>
+      <div>Standalone drawer: {postId}</div>
+      <button onClick={onClose}>Close standalone drawer</button>
+      <button onClick={() => onAttached(2, postId)}>Attach standalone post to fluxo 2</button>
+    </div>
+  ),
+}));
+
 vi.mock('../wizard/NewWorkflowWizard', () => ({
   NewWorkflowWizard: ({
     open,
@@ -731,6 +755,38 @@ describe('EntregasPage', () => {
       await waitFor(() => {
         expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
       });
+    });
+
+    it('onAttached from the standalone drawer closes it and opens the target WorkflowDrawer at the same post', async () => {
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [{ id: 10, nome: 'Clínica Aurora' }],
+        membros: [{ id: 7, nome: 'Ana' }],
+        templates: [],
+        cards: [
+          makeCard({
+            workflow: { id: 2, titulo: 'Fluxo Profundo', cliente_id: 10, status: 'ativo' },
+          }),
+        ],
+        activeWorkflows: [{ id: 2 }],
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      mockedGetStandalonePost.mockResolvedValue({
+        id: 5,
+        workflow_id: null,
+        cliente_nome: 'Clínica Aurora',
+      } as never);
+
+      renderPage('/entregas?post=5');
+      expect(await screen.findByText('Standalone drawer: 5')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Attach standalone post to fluxo 2'));
+
+      await waitFor(() => {
+        expect(screen.queryByText('Standalone drawer: 5')).not.toBeInTheDocument();
+      });
+      expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
     });
 
     it('resolves to an attached post: falls back to the same card-lookup drawer as ?drawer=', async () => {

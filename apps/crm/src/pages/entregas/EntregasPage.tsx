@@ -41,6 +41,7 @@ import { PostsKanbanView } from './views/PostsKanbanView';
 import { PostsListView } from './views/PostsListView';
 import { ConcludedView } from './views/ConcludedView';
 import { WorkflowDrawer } from './components/WorkflowDrawer';
+import { StandalonePostDrawer } from './components/StandalonePostDrawer';
 import { ModeToggle, type EntregasMode } from './components/ModeToggle';
 import { VistasTabs } from './components/VistasTabs';
 import { useActivePosts } from './hooks/useActivePosts';
@@ -56,15 +57,6 @@ import {
   type WorkflowPost,
 } from '../../store';
 import { captureEvent } from '@/lib/analytics';
-
-/** TODO(Task 14): swap this placeholder for the real StandalonePostDrawer.
- *  Everything around it -- the `standalonePostId` state, the open/close
- *  wiring, the deep-link resolver and the click contract -- is already fully
- *  real; this seam only exists so Task 14 has a single spot to drop the
- *  actual drawer into. Renders nothing on purpose (not a visible stub). */
-function StandalonePostDrawerSlot(_props: { postId: number; onClose: () => void }) {
-  return null;
-}
 
 const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
   { id: 'kanban', label: 'Kanban', icon: <Columns className="h-4 w-4" /> },
@@ -401,6 +393,17 @@ export default function EntregasPage() {
     const card = cardsByWorkflowId.get(workflowId);
     if (!card) return;
     handleCardClick(card);
+  };
+
+  // StandalonePostDrawer's AttachToFluxoDialog just moved this post into an active
+  // workflow: close the standalone slot and open that workflow's WorkflowDrawer with
+  // this exact post expanded, same target-lookup as handlePostClick's attached branch.
+  const handlePostAttached = (workflowId: number, postId: number) => {
+    setStandalonePostId(null);
+    const card = cardsByWorkflowId.get(workflowId);
+    if (!card) return;
+    setDrawerInitialPostId(postId);
+    setDrawerCard(card);
   };
 
   // NewAvulsoDialog submit flow: switch into a Publicações-capable view (kanban
@@ -842,9 +845,13 @@ export default function EntregasPage() {
         />
       )}
       {standalonePostId != null && (
-        <StandalonePostDrawerSlot
+        <StandalonePostDrawer
+          key={standalonePostId}
           postId={standalonePostId}
+          membros={membros}
           onClose={() => setStandalonePostId(null)}
+          onRefresh={refresh}
+          onAttached={handlePostAttached}
         />
       )}
       <RecurringWorkflowDialog

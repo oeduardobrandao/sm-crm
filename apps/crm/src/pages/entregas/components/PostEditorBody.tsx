@@ -59,9 +59,11 @@ import { groupOptionsByOwner } from '../statusRegistry';
 // own mutations instead of a WorkflowDrawer.
 //
 // `workflowId` is only forwarded to PropertyPanel (custom properties are
-// scoped to a workflow's template today); a caller without a real workflow
-// would need to resolve what PropertyPanel expects for that case separately --
-// this component makes no assumption about it beyond passing the id through.
+// scoped to a workflow's template today) and is `number | null` so a post
+// avulso (no workflow) can pass `null` -- the StandalonePostDrawer (Task 14)
+// always pairs that with `templateId: undefined`, which already keeps
+// PropertyPanel from rendering at all (see the guard below), so `null` here
+// is never actually read.
 //
 // Everything NOT about editing a single post -- drag-and-drop, the accordion
 // trigger row (badges, status chip, timeline popover, delete), and any
@@ -77,7 +79,7 @@ import { groupOptionsByOwner } from '../statusRegistry';
 export interface PostEditorBodyProps {
   post: WorkflowPost & { property_values?: PostPropertyValue[] };
   templateId: number | null | undefined;
-  workflowId: number;
+  workflowId: number | null;
   clienteId: number;
   clientePosts: ClientePost[];
   isExpanded: boolean;
@@ -379,8 +381,10 @@ export function PostEditorBody({
             : '⚠ Este post já está visível no portal do cliente. Alterações serão refletidas imediatamente.'}
         </div>
       )}
-      {/* Custom properties — shown when template has properties defined */}
-      {templateId != null && templateId !== 0 && (
+      {/* Custom properties — shown when template has properties defined. A post avulso
+          (StandalonePostDrawer) has no workflowId either, and always passes
+          templateId: undefined, so this guard already keeps the two conditions together. */}
+      {templateId != null && templateId !== 0 && workflowId != null && (
         <PropertyPanel
           templateId={templateId}
           postId={post.id!}
