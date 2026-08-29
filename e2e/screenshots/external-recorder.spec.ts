@@ -4,11 +4,14 @@ import { mkdirSync, existsSync, writeFileSync, appendFileSync } from 'node:fs';
 import { SHOT_DIR } from './capture';
 
 // Interactive recorder for the EXTERNAL screens the automated specs cannot
-// reach (Facebook OAuth consent, claude.ai connector dialog). Run HEADED with
-// a human driving the window:
+// reach (Instagram OAuth consent, claude.ai connector dialog). It needs a
+// human driving a headed window, so it is double-gated: CAPTURE_SCREENSHOTS
+// puts the project in the run, and CAPTURE_EXTERNAL_RECORDER opts into THIS
+// spec -- without it, a plain all-specs capture run would sit here for up to
+// 20 minutes waiting for clicks that never come. Run it with:
 //
-//   CAPTURE_SCREENSHOTS=1 npx playwright test --project=screenshots --headed \
-//     e2e/screenshots/external-recorder.spec.ts
+//   CAPTURE_SCREENSHOTS=1 CAPTURE_EXTERNAL_RECORDER=1 npx playwright test \
+//     --project=screenshots --headed e2e/screenshots/external-recorder.spec.ts
 //
 // It saves a frame to e2e/.shots/_rec/ every time any page's pixels change
 // (all tabs/popups included), with a manifest mapping frame -> URL. Nothing is
@@ -25,6 +28,10 @@ const MAX_FRAMES = 500;
 const RECORDING_MINUTES = 20;
 
 test('gravador de telas externas', async ({ page, context }) => {
+  test.skip(
+    !process.env.CAPTURE_EXTERNAL_RECORDER,
+    'Gravador interativo: exige CAPTURE_EXTERNAL_RECORDER=1 e um humano dirigindo a janela',
+  );
   test.setTimeout((RECORDING_MINUTES + 2) * 60_000);
   mkdirSync(REC_DIR, { recursive: true });
   const manifest = path.join(REC_DIR, 'manifest.txt');
