@@ -199,7 +199,10 @@ Cobrir:
 1. Backfill/derivação: insert só com workflow_id → cliente_id preenchido; avulso sem
    cliente_id → raise; FK cross-tenant → raise.
 2. PATCH direto (role authenticated via `SET LOCAL ROLE` como os vizinhos fazem) de
-   `workflow_id` ou `cliente_id` → raise `post_move_requires_rpc`.
+   `workflow_id` ou `cliente_id` → raise `post_move_requires_rpc`. E o caso de spoof
+   silencioso: `UPDATE ... SET cliente_id = <outro cliente> WHERE workflow_id IS NOT
+   NULL` completa sem erro e deixa `cliente_id` inalterado (o trigger re-deriva do fluxo
+   antes da guarda avaliar) — pinar esse comportamento.
 3. Bucket de limite avulso por cliente: com limite 5, 5 avulsos passam e o 6º falha;
    posts em fluxo NÃO contam no bucket; segundo cliente independente; posts com fluxo
    continuam limitados por fluxo.
@@ -610,3 +613,14 @@ mais o gate.
    `npm run format:check` (rodar `npm run format` antes se precisar), os quatro tsc
    (crm, hub, admin, scripts), `npm run test`, `npm run test:functions`,
    `git checkout -- deno.lock` se dirtied, `ls node_modules/.deno` (se existir, avisar).
+
+## Deploy (runbook)
+
+1. Migrations A1→A4 primeiro (staging → prod), depois edge functions
+   (`--use-api`, `--no-verify-jwt` onde aplicável), depois frontend (merge/Vercel).
+   Conferir `supabase/.temp/project-ref` antes de cada `db push` (o link flipa).
+2. **Pré-apply em cada ambiente** (staging e prod), antes do `db push`:
+   `SELECT count(*) FROM workflows w JOIN clientes c ON c.id = w.cliente_id
+   WHERE c.conta_id <> w.conta_id;` deve retornar 0. Um mismatch legado faria o backfill
+   de A1 violar a FK composta na hora do apply.
+3. `bash scripts/test-entitlements.sh` no staging após o push.
