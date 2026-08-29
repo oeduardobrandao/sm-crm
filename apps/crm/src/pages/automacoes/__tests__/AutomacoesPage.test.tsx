@@ -85,12 +85,29 @@ vi.mock('@/components/paywall/FeatureGate', () => ({
 }));
 
 // The dialog has its own client-select / posts-grid / keyword-chip surface --
-// out of scope for the list test, which only needs to know it opened.
+// out of scope for the list test, which only needs to know it opened. Also
+// exposes `tour` (as a data attribute) and the `onSaved` path so the tour
+// wiring tests below can drive them without the real dialog internals.
 vi.mock('../AutomationFormDialog', () => ({
-  default: ({ open }: { open: boolean }) => (open ? <div data-testid="automation-dialog" /> : null),
+  default: ({
+    open,
+    onSaved,
+    tour,
+  }: {
+    open: boolean;
+    onSaved: () => void;
+    tour?: { step: { id: string } };
+  }) =>
+    open ? (
+      <div data-testid="automation-dialog" data-tour-step={tour?.step.id ?? ''}>
+        <button onClick={onSaved}>salvar-mock</button>
+      </div>
+    ) : null,
 }));
 
 import AutomacoesPage from '../AutomacoesPage';
+import { TOUR_STEPS } from '../tour/tourSteps';
+import { tourSeenKey } from '../tour/useAutomationTour';
 
 const AUTOMATIONS = [
   {
@@ -410,6 +427,62 @@ describe('AutomacoesPage', () => {
       // ambos os sinais ficavam pendentes ao mesmo tempo.
       expect(await screen.findByText('emptyNone')).toBeInTheDocument();
       expect(screen.queryByTestId('automacoes-checklist')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('tour guiado', () => {
+    beforeEach(() => {
+      mockGetAutomations.mockResolvedValue([]);
+      mockGetClientes.mockResolvedValue([]);
+      mockHasReadyAccount.mockResolvedValue(true);
+    });
+
+    it('auto-inicia no passo 1 na visita elegível e grava a chave', async () => {
+      renderPage();
+      expect(await screen.findByText('tour.step1Title')).toBeInTheDocument();
+      expect(localStorage.getItem(tourSeenKey('w-1'))).toBe('1');
+    });
+
+    it('não auto-inicia com a chave gravada', async () => {
+      localStorage.setItem(tourSeenKey('w-1'), '1');
+      renderPage();
+      // Espera a página assentar (checklist visível) antes do assert negativo.
+      expect(await screen.findByTestId('automacoes-checklist')).toBeInTheDocument();
+      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
+    });
+
+    it('não auto-inicia com automações existentes', async () => {
+      mockGetAutomations.mockResolvedValue(AUTOMATIONS);
+      renderPage();
+      expect(await screen.findByText('Promo de agosto')).toBeInTheDocument();
+      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
+    });
+
+    it('agente não vê o tour', async () => {
+      setAuth({ role: 'agent', profile: { id: 'user-1', conta_id: 'w-1', role: 'agent' } });
+      renderPage();
+      expect(await screen.findByTestId('automacoes-checklist')).toBeInTheDocument();
+      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
+    });
+
+    it('CTA do passo 1 abre o dialog e avança para o passo 2', async () => {
+      renderPage();
+      fireEvent.click(await screen.findByText('tour.step1Cta'));
+      const dialog = await screen.findByTestId('automation-dialog');
+      expect(dialog).toHaveAttribute('data-tour-step', TOUR_STEPS[1].id);
+      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
+    });
+
+    it('salvar com sucesso (onSaved) encerra o tour', async () => {
+      renderPage();
+      fireEvent.click(await screen.findByText('tour.step1Cta'));
+      fireEvent.click(await screen.findByText('salvar-mock'));
+      await waitFor(() =>
+        expect(screen.queryByTestId('automation-dialog')).not.toBeInTheDocument(),
+      );
+      // Reabrir pelo botão da página: o tour NÃO volta.
+      fireEvent.click(screen.getByRole('button', { name: /newAutomation/ }));
+      expect(screen.getByTestId('automation-dialog')).toHaveAttribute('data-tour-step', '');
     });
   });
 });

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -74,6 +74,9 @@ import {
 } from '../../store';
 import AutomationFormDialog from './AutomationFormDialog';
 import AutomacoesChecklist from './AutomacoesChecklist';
+import TourOverlay from './tour/TourOverlay';
+import { useAutomationTour } from './tour/useAutomationTour';
+import { TOUR_STEPS } from './tour/tourSteps';
 
 /** Module-level so other surfaces (e.g. useEffectiveNavFeatures' sibling
  * count query) can invalidate the same cache entry after a write. */
@@ -228,6 +231,26 @@ export default function AutomacoesPage() {
     setChecklistDismissed(true);
   };
 
+  const tour = useAutomationTour({
+    contaId: profile?.conta_id ?? null,
+    eligibleForAutoStart:
+      automationsQuery.isSuccess &&
+      readyQuery.isSuccess &&
+      readyQuery.data === true &&
+      automations.length === 0 &&
+      canCreate &&
+      !isAgent,
+  });
+
+  // Encerramento por fechamento do dialog: observa a TRANSIÇÃO de formOpen,
+  // não onOpenChange, porque salvar fecha via onSaved -> setFormOpen(false)
+  // sem passar por onOpenChange (decisão do spec).
+  const prevFormOpenRef = useRef(formOpen);
+  useEffect(() => {
+    if (prevFormOpenRef.current && !formOpen) tour.handleDialogClose();
+    prevFormOpenRef.current = formOpen;
+  }, [formOpen, tour]);
+
   if (flagOff && automationsQuery.isPending) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
@@ -283,7 +306,7 @@ export default function AutomacoesPage() {
         {!isAgent && (
           <div className="header-actions">
             <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
-              <Button onClick={openCreate}>
+              <Button onClick={openCreate} data-tour="nova-automacao">
                 <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newAutomation')}
               </Button>
             </FeatureGate>
@@ -518,10 +541,39 @@ export default function AutomacoesPage() {
         </div>
       )}
 
+      {tour.activeStep?.surface === 'page' && (
+        <TourOverlay
+          step={tour.activeStep}
+          index={tour.activeIndex ?? 0}
+          total={TOUR_STEPS.length}
+          onNext={tour.next}
+          onBack={tour.back}
+          onSkip={tour.skip}
+          onFinish={tour.finish}
+          onCta={() => {
+            openCreate();
+            tour.next();
+          }}
+        />
+      )}
+
       <AutomationFormDialog
         open={formOpen}
         onOpenChange={setFormOpen}
         editing={editing}
+        tour={
+          tour.activeStep?.surface === 'dialog'
+            ? {
+                step: tour.activeStep,
+                index: tour.activeIndex ?? 0,
+                total: TOUR_STEPS.length,
+                onNext: tour.next,
+                onBack: tour.back,
+                onSkip: tour.skip,
+                onFinish: tour.finish,
+              }
+            : undefined
+        }
         onSaved={() => {
           setFormOpen(false);
           invalidate();
