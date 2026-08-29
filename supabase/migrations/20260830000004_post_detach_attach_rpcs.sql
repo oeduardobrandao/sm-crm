@@ -42,22 +42,66 @@
 -- workflow_id), trava os workflows de origem que ficaram vazios -- ordem
 -- post-entao-workflow ali, oposta a do attach.
 --
--- Deadlock entre as DUAS RPCs (achado de revisao pos-implementacao,
--- confirmado): attach trava (workflow W -> seus posts); detach com
+-- Advisory locks -- DUAS chaves distintas, cada uma com seu proprio motivo
+-- (ver ordem completa em cada funcao, "PASSO 0" / "PASSO 0b"):
+--
+-- 1) ':post_move' (fix round 1 -- deadlock entre as DUAS RPCs, achado de
+-- revisao, confirmado): attach trava (workflow W -> seus posts); detach com
 -- p_archive_empty_flow trava (posts -> W, so no arquivamento). Interleaving
 -- concreto: attach mirando W trava em P1 (ainda anexado a W, presente no
 -- array pedido -- attach trava os posts antes de checar se sao avulsos);
 -- detach concorrente de P1 com arquivamento trava P1, desanexa, e trava em W
 -- para arquivar -- espera circular, so resolvida pelo detector de deadlock
--- do Postgres (40P01). Corrigido com um advisory lock dedicado por conta
--- (':post_move', chave diferente da ':max_posts_per_workflow' do limitador,
--- outra preocupacao) tomado no TOPO das duas RPCs, antes de qualquer lock de
--- linha -- ver "PASSO 0" em cada funcao abaixo. Com as duas RPCs serializadas
--- por conta, elas nunca mais interleiam entre si, entao a ordem relativa dos
--- locks de linha de uma contra a outra deixa de importar.
+-- do Postgres (40P01). Corrigido com este advisory lock dedicado por conta,
+-- tomado no TOPO das duas RPCs, antes de qualquer lock de linha. Com as duas
+-- RPCs serializadas por conta, elas nunca mais interleiam entre si, entao a
+-- ordem relativa dos locks de linha de uma contra a outra deixa de importar.
 --
--- Caso residual aceito (nao coberto pelo lock acima, pois nao e uma chamada
--- desta RPC): o trigger de mover cliente do workflow inteiro
+-- 2) ':max_posts_per_workflow' (fix round 2 -- deadlock entre attach e um
+-- INSERT concorrente em workflow_posts, achado de revisao, confirmado):
+-- attach tomava este advisory (mesma chave do limitador generico
+-- enforce_plan_count_limit, 20260611130002) SO no passo de contagem, depois
+-- de ja ter travado a linha do workflow (FOR UPDATE) no passo 1. Um INSERT
+-- concorrente em workflow_posts dispara trg_limit_posts (BEFORE INSERT),
+-- que toma o MESMO advisory PRIMEIRO e, ao inserir de fato, pede FOR KEY
+-- SHARE na linha do workflow via a FK workflow_id -- lock que colide com o
+-- FOR UPDATE que attach ja segurava. Ciclo: attach segura a linha do
+-- workflow e espera o advisory; o INSERT segura o advisory e espera a linha
+-- do workflow -- 40P01. Corrigido movendo a tomada deste advisory para
+-- ANTES do lock de linha do workflow (attach: ':post_move' ->
+-- ':max_posts_per_workflow' -> workflow FOR UPDATE -> posts) -- assim as
+-- duas partes disputam o MESMO recurso primeiro (o advisory), uma sempre
+-- vence, e so depois disputa a linha do workflow -- sem ciclo. Custo:
+-- attach segura este lock um pouco mais (agora cobre tambem os locks de
+-- linha do workflow/posts abaixo, nao so a contagem), serializando um pouco
+-- mais cedo contra INSERTs concorrentes na mesma conta -- aceitavel para uma
+-- operacao rara e conduzida por humano. Detach nunca toma este advisory e
+-- nao e afetado por este achado.
+--
+-- Nota de verificacao: no schema atual, este ciclo especifico e ADICIONALMENTE
+-- mascarado (mas nao eliminado como preocupacao) por post_a0_sync_cliente
+-- (20260830000001, mesma tabela): esse trigger dispara ANTES de
+-- trg_limit_posts em qualquer INSERT (ordem alfabetica, 'post_a0_...' < 'trg_...'
+-- -- documentado na propria 20260830000001) e ja toma FOR SHARE na linha do
+-- workflow ANTES do INSERT sequer chegar ao advisory -- FOR SHARE colide com
+-- o FOR UPDATE que attach segura, entao o INSERT so consegue tomar o advisory
+-- DEPOIS de ja ter conseguido (nao apenas pedido) o FOR SHARE na linha, o que
+-- so acontece quando attach NAO a esta segurando. Confirmado empiricamente
+-- (container descartavel): com post_a0_sync_cliente ativo (como sempre esta
+-- em producao) o INSERT concorrente nunca chega a formar o ciclo mesmo contra
+-- a ordem ANTIGA (pre-fix) do advisory; desabilitando post_a0_sync_cliente
+-- so para o teste, o 40P01 citado acima se reproduz de fato contra a ordem
+-- antiga, e desaparece de novo com a ordem nova. Ou seja: o mecanismo descrito
+-- e real (nao e um falso positivo), so que hoje ja e coberto por um efeito
+-- colateral de outro trigger que attach_posts_to_flow nao deveria depender
+-- para sua propria correcao. O fix acima permanece -- e a correcao estrutural
+-- correta e autossuficiente (nao depende de post_a0_sync_cliente continuar
+-- existindo, nem da sua ordem alfabetica atual), cobrindo o ciclo tambem
+-- contra qualquer INSERT futuro em workflow_posts que nao passe por aquele
+-- trigger.
+--
+-- Caso residual aceito (nao coberto por nenhum dos locks acima, pois nao e
+-- uma chamada a estas RPCs): o trigger de mover cliente do workflow inteiro
 -- (workflows_sync_posts_cliente/propagate_workflow_cliente_to_posts,
 -- 20260830000001 -- workflow -> seus posts) ainda pode, em tese, formar
 -- deadlock contra o passo de arquivamento do detach (posts -> workflow). E
@@ -96,9 +140,10 @@ BEGIN
   -- Serializa esta RPC contra attach_posts_to_flow na MESMA conta -- sem
   -- isso, as duas ordens de lock de linha (detach: posts, depois workflow no
   -- arquivamento; attach: workflow, depois posts) podem formar um ciclo de
-  -- espera circular (ver nota grande no topo do arquivo). Chave dedicada
-  -- (':post_move'), distinta da ':max_posts_per_workflow' do limitador de
-  -- plano -- outra preocupacao, outro lock.
+  -- espera circular (ver nota grande no topo do arquivo, item 1). Chave
+  -- dedicada (':post_move'), distinta da ':max_posts_per_workflow' do
+  -- limitador de plano -- outra preocupacao, outro lock, que este detach
+  -- nunca toma.
   PERFORM pg_advisory_xact_lock(hashtext(v_conta::text || ':post_move'));
 
   -- Dedupe + descarta NULLs; array vazio (ou so NULLs) e erro -- nao ha
@@ -223,13 +268,19 @@ BEGIN
     RAISE EXCEPTION 'workspace_not_found' USING ERRCODE = 'P0001';
   END IF;
 
-  -- PASSO 0: mesmo advisory lock por conta de detach_posts_from_flow,
-  -- ANTES de qualquer lock de linha -- serializa as duas RPCs entre si na
-  -- mesma conta (ver nota grande no topo do arquivo). Chave dedicada
-  -- (':post_move'), distinta da ':max_posts_per_workflow' usada mais abaixo
-  -- para o limitador de plano -- outra preocupacao, outro lock, mantido no
-  -- lugar onde estava.
+  -- PASSO 0: advisory lock por conta, ANTES de qualquer lock de linha --
+  -- serializa esta RPC contra detach_posts_from_flow na mesma conta (ver
+  -- nota grande no topo do arquivo, item 1).
   PERFORM pg_advisory_xact_lock(hashtext(v_conta::text || ':post_move'));
+
+  -- PASSO 0b: advisory lock do limitador de plano (mesma chave de
+  -- enforce_plan_count_limit, 20260611130002), tomado AQUI -- antes do lock
+  -- de linha do workflow (passo 1 abaixo), nao mais junto da contagem (ver
+  -- nota grande no topo do arquivo, item 2: sem isso, um INSERT concorrente
+  -- em workflow_posts pode formar deadlock contra este attach via
+  -- trg_limit_posts + a FOR KEY SHARE que a FK workflow_id pede na linha do
+  -- workflow).
+  PERFORM pg_advisory_xact_lock(hashtext(v_conta::text || ':max_posts_per_workflow'));
 
   -- Dedupe + descarta NULLs; array vazio (ou so NULLs) e erro.
   SELECT coalesce(array_agg(DISTINCT x), '{}')
@@ -286,14 +337,10 @@ BEGIN
     RAISE EXCEPTION 'post_belongs_to_another_client' USING ERRCODE = 'P0001';
   END IF;
 
-  -- 3) Guarda de limite, sob o MESMO advisory lock (mesma chave: conta +
-  -- limit_key) do limitador generico enforce_plan_count_limit
-  -- (20260611130002) -- serializa esta checagem contra INSERTs concorrentes
-  -- de posts novos no fluxo (trg_limit_posts) e contra outra chamada
-  -- concorrente de attach_posts_to_flow na MESMA conta. Adquirido antes de
-  -- contar, exatamente como o limitador generico faz.
-  PERFORM pg_advisory_xact_lock(hashtext(v_conta::text || ':max_posts_per_workflow'));
-
+  -- 3) Guarda de limite. O advisory ':max_posts_per_workflow' ja foi tomado
+  -- no PASSO 0b, antes do lock de linha do workflow (ver nota grande no topo
+  -- do arquivo, item 2) -- aqui so falta contar e comparar, ja protegido por
+  -- esse lock.
   v_limit := effective_plan_limit(v_conta, 'max_posts_per_workflow');
   IF v_limit IS NOT NULL THEN
     SELECT count(*) INTO v_current
