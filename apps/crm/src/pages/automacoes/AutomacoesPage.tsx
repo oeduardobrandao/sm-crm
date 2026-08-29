@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -74,6 +74,9 @@ import {
 } from '../../store';
 import AutomationFormDialog from './AutomationFormDialog';
 import AutomacoesChecklist from './AutomacoesChecklist';
+import TourOverlay from './tour/TourOverlay';
+import { useAutomationTour } from './tour/useAutomationTour';
+import { TOUR_STEPS } from './tour/tourSteps';
 
 /** Module-level so other surfaces (e.g. useEffectiveNavFeatures' sibling
  * count query) can invalidate the same cache entry after a write. */
@@ -205,6 +208,15 @@ export default function AutomacoesPage() {
     setEditing(a);
     setFormOpen(true);
   };
+  // Abre o formulário de criação e avança o tour quando o overlay do passo 1
+  // (surface "page") está ativo. Usada por todo botão/CTA de "criar" que pode
+  // ser clicado enquanto esse overlay está montado -- o botão real do
+  // header, o CTA do próprio TourOverlay e o CTA "Criar" da checklist -- para
+  // não depender de cada ponto de entrada reimplementar a mesma guarda.
+  const openCreateAndAdvanceTour = () => {
+    openCreate();
+    if (tour.activeStep?.surface === 'page') tour.next();
+  };
 
   const columnCount = isAgent ? 8 : 9;
 
@@ -227,6 +239,26 @@ export default function AutomacoesPage() {
     localStorage.setItem(dismissKey, '1');
     setChecklistDismissed(true);
   };
+
+  const tour = useAutomationTour({
+    contaId: profile?.conta_id ?? null,
+    eligibleForAutoStart:
+      automationsQuery.isSuccess &&
+      readyQuery.isSuccess &&
+      readyQuery.data === true &&
+      automations.length === 0 &&
+      canCreate &&
+      !isAgent,
+  });
+
+  // Encerramento por fechamento do dialog: observa a TRANSIÇÃO de formOpen,
+  // não onOpenChange, porque salvar fecha via onSaved -> setFormOpen(false)
+  // sem passar por onOpenChange (decisão do spec).
+  const prevFormOpenRef = useRef(formOpen);
+  useEffect(() => {
+    if (prevFormOpenRef.current && !formOpen) tour.handleDialogClose();
+    prevFormOpenRef.current = formOpen;
+  }, [formOpen, tour]);
 
   if (flagOff && automationsQuery.isPending) {
     return (
@@ -283,7 +315,7 @@ export default function AutomacoesPage() {
         {!isAgent && (
           <div className="header-actions">
             <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
-              <Button onClick={openCreate}>
+              <Button onClick={openCreateAndAdvanceTour} data-tour="nova-automacao">
                 <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newAutomation')}
               </Button>
             </FeatureGate>
@@ -305,8 +337,9 @@ export default function AutomacoesPage() {
           hasAutomation={automations.length > 0}
           hasFirstDm={automations.some((a) => a.dms_sent_count > 0)}
           canCreate={canCreate && !isAgent}
-          onCreate={openCreate}
+          onCreate={openCreateAndAdvanceTour}
           onDismiss={dismissChecklist}
+          onStartTour={canCreate && !isAgent ? tour.start : undefined}
         />
       )}
 
@@ -518,10 +551,44 @@ export default function AutomacoesPage() {
         </div>
       )}
 
+      {/* Sem !formOpen aqui, o overlay de página ficaria preso por cima de
+          QUALQUER dialog aberto enquanto o tour segue no passo de página --
+          o botão real, o CTA do card, a checklist, editar uma linha
+          existente, ou qualquer botão futuro que abra o formulário. O tour
+          pode continuar no índice 0 até o dialog fechar (handleDialogClose
+          só encerra passos de surface "dialog"); ao fechar um dialog não
+          relacionado ao tour, o card "Comece por aqui" reaparece, o que é
+          aceitável. */}
+      {tour.activeStep?.surface === 'page' && !formOpen && (
+        <TourOverlay
+          step={tour.activeStep}
+          index={tour.activeIndex ?? 0}
+          total={TOUR_STEPS.length}
+          onNext={tour.next}
+          onBack={tour.back}
+          onSkip={tour.skip}
+          onFinish={tour.finish}
+          onCta={openCreateAndAdvanceTour}
+        />
+      )}
+
       <AutomationFormDialog
         open={formOpen}
         onOpenChange={setFormOpen}
         editing={editing}
+        tour={
+          tour.activeStep?.surface === 'dialog'
+            ? {
+                step: tour.activeStep,
+                index: tour.activeIndex ?? 0,
+                total: TOUR_STEPS.length,
+                onNext: tour.next,
+                onBack: tour.back,
+                onSkip: tour.skip,
+                onFinish: tour.finish,
+              }
+            : undefined
+        }
         onSaved={() => {
           setFormOpen(false);
           invalidate();

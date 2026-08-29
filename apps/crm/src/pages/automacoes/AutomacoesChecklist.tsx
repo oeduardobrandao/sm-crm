@@ -12,6 +12,9 @@ export interface AutomacoesChecklistProps {
   canCreate: boolean;
   onCreate: () => void;
   onDismiss: () => void;
+  /** Quando presente, mostra "Ver passo a passo" no cabeçalho. A página só
+   * passa quando canCreate && !isAgent (o tour precisa do botão-âncora). */
+  onStartTour?: () => void;
 }
 
 type StepState = 'done' | 'current' | 'pending';
@@ -41,6 +44,7 @@ export default function AutomacoesChecklist({
   canCreate,
   onCreate,
   onDismiss,
+  onStartTour,
 }: AutomacoesChecklistProps) {
   const { t } = useTranslation('automations');
   if (accountReady && hasAutomation && hasFirstDm) return null;
@@ -67,14 +71,26 @@ export default function AutomacoesChecklist({
             {t('checklist.subtitle')} · {doneCount}/3
           </div>
         </div>
-        <button
-          type="button"
-          className="text-xs underline"
-          style={{ color: 'var(--text-muted)' }}
-          onClick={onDismiss}
-        >
-          {t('checklist.dismiss')}
-        </button>
+        <div className="flex items-center gap-3">
+          {onStartTour && (
+            <button
+              type="button"
+              className="text-xs underline"
+              style={{ color: 'var(--text-muted)' }}
+              onClick={onStartTour}
+            >
+              {t('checklist.seeTour')}
+            </button>
+          )}
+          <button
+            type="button"
+            className="text-xs underline"
+            style={{ color: 'var(--text-muted)' }}
+            onClick={onDismiss}
+          >
+            {t('checklist.dismiss')}
+          </button>
+        </div>
       </div>
       <div className="mt-3 flex flex-col gap-2">
         <div className={rowCls(s1)} data-testid="checklist-step-1" data-state={s1}>

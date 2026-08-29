@@ -116,7 +116,24 @@ const DialogContent = React.forwardRef<
             }}
             {...props}
           >
-            <div className="grid gap-4 p-6 overflow-y-auto max-h-[85vh]">{children}</div>
+            {/*
+             * `relative` is otherwise a no-op here (no top/left/right/bottom
+             * is ever set on this div itself) -- it exists purely to make
+             * this wrapper the containing block for a `position: absolute`
+             * descendant. Without it, the browser still visually shifts an
+             * absolutely-positioned descendant with THIS div's scroll (it's
+             * the nearest scrolling ancestor) even while resolving its
+             * top/left against a farther, non-scrolling containing block --
+             * doubling any scroll-driven repositioning that JS also applies.
+             * `data-dialog-scroll` gives such a descendant (see TourOverlay)
+             * an unambiguous selector for this exact element.
+             */}
+            <div
+              className="relative grid gap-4 p-6 overflow-y-auto max-h-[85vh]"
+              data-dialog-scroll
+            >
+              {children}
+            </div>
             <DialogPrimitive.Close
               onClick={handleConfirmTrigger}
               className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"

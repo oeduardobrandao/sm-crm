@@ -85,12 +85,29 @@ vi.mock('@/components/paywall/FeatureGate', () => ({
 }));
 
 // The dialog has its own client-select / posts-grid / keyword-chip surface --
-// out of scope for the list test, which only needs to know it opened.
+// out of scope for the list test, which only needs to know it opened. Also
+// exposes `tour` (as a data attribute) and the `onSaved` path so the tour
+// wiring tests below can drive them without the real dialog internals.
 vi.mock('../AutomationFormDialog', () => ({
-  default: ({ open }: { open: boolean }) => (open ? <div data-testid="automation-dialog" /> : null),
+  default: ({
+    open,
+    onSaved,
+    tour,
+  }: {
+    open: boolean;
+    onSaved: () => void;
+    tour?: { step: { id: string } };
+  }) =>
+    open ? (
+      <div data-testid="automation-dialog" data-tour-step={tour?.step.id ?? ''}>
+        <button onClick={onSaved}>salvar-mock</button>
+      </div>
+    ) : null,
 }));
 
 import AutomacoesPage from '../AutomacoesPage';
+import { TOUR_STEPS } from '../tour/tourSteps';
+import { tourSeenKey } from '../tour/useAutomationTour';
 
 const AUTOMATIONS = [
   {
@@ -410,6 +427,126 @@ describe('AutomacoesPage', () => {
       // ambos os sinais ficavam pendentes ao mesmo tempo.
       expect(await screen.findByText('emptyNone')).toBeInTheDocument();
       expect(screen.queryByTestId('automacoes-checklist')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('tour guiado', () => {
+    beforeEach(() => {
+      mockGetAutomations.mockResolvedValue([]);
+      mockGetClientes.mockResolvedValue([]);
+      mockHasReadyAccount.mockResolvedValue(true);
+    });
+
+    it('auto-inicia no passo 1 na visita elegível e grava a chave', async () => {
+      renderPage();
+      expect(await screen.findByText('tour.step1Title')).toBeInTheDocument();
+      expect(localStorage.getItem(tourSeenKey('w-1'))).toBe('1');
+    });
+
+    it('não auto-inicia com a chave gravada', async () => {
+      localStorage.setItem(tourSeenKey('w-1'), '1');
+      renderPage();
+      // Espera a página assentar (checklist visível) antes do assert negativo.
+      expect(await screen.findByTestId('automacoes-checklist')).toBeInTheDocument();
+      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
+    });
+
+    it('não auto-inicia com automações existentes', async () => {
+      mockGetAutomations.mockResolvedValue(AUTOMATIONS);
+      renderPage();
+      expect(await screen.findByText('Promo de agosto')).toBeInTheDocument();
+      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
+    });
+
+    it('agente não vê o tour', async () => {
+      setAuth({ role: 'agent', profile: { id: 'user-1', conta_id: 'w-1', role: 'agent' } });
+      renderPage();
+      expect(await screen.findByTestId('automacoes-checklist')).toBeInTheDocument();
+      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
+    });
+
+    it('CTA do passo 1 abre o dialog e avança para o passo 2', async () => {
+      renderPage();
+      fireEvent.click(await screen.findByText('tour.step1Cta'));
+      const dialog = await screen.findByTestId('automation-dialog');
+      expect(dialog).toHaveAttribute('data-tour-step', TOUR_STEPS[1].id);
+      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
+    });
+
+    it('clicar direto no botão real "Nova automação" (spotlight do passo 1) também avança o tour', async () => {
+      renderPage();
+      await screen.findByText('tour.step1Title');
+      // O spotlight destaca o botão real com pointer-events: none no overlay
+      // ("interação livre") -- clicar nele em vez do CTA "Abrir formulário"
+      // do card é o caminho natural. O dialog deve abrir E o tour deve
+      // avançar para o passo 2, senão o overlay de página fica preso por
+      // cima do dialog recém-aberto.
+      fireEvent.click(screen.getByRole('button', { name: /newAutomation/ }));
+      const dialog = await screen.findByTestId('automation-dialog');
+      expect(dialog).toHaveAttribute('data-tour-step', TOUR_STEPS[1].id);
+      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
+    });
+
+    it('salvar com sucesso (onSaved) encerra o tour', async () => {
+      renderPage();
+      fireEvent.click(await screen.findByText('tour.step1Cta'));
+      fireEvent.click(await screen.findByText('salvar-mock'));
+      await waitFor(() =>
+        expect(screen.queryByTestId('automation-dialog')).not.toBeInTheDocument(),
+      );
+      // Reabrir pelo botão da página: o tour NÃO volta.
+      fireEvent.click(screen.getByRole('button', { name: /newAutomation/ }));
+      expect(screen.getByTestId('automation-dialog')).toHaveAttribute('data-tour-step', '');
+    });
+
+    it('link da checklist reinicia o tour mesmo com a chave gravada', async () => {
+      localStorage.setItem(tourSeenKey('w-1'), '1');
+      renderPage();
+      fireEvent.click(await screen.findByText('checklist.seeTour'));
+      expect(await screen.findByText('tour.step1Title')).toBeInTheDocument();
+    });
+
+    it('abrir um dialog não relacionado (editar linha existente) desmonta o overlay de página', async () => {
+      // Automação existente com dms_sent_count 0 -- o auto-início do tour
+      // exige automations.length === 0, então essa visita não auto-inicia;
+      // o tour é reaberto manualmente pelo link da checklist, elegível
+      // independente de haver automações (achado 1 do review final). Manter
+      // dms_sent_count 0 evita que hasFirstDm derrube a checklist inteira
+      // (accountReady && hasAutomation && hasFirstDm -> null).
+      mockGetAutomations.mockResolvedValue([{ ...AUTOMATIONS[0], dms_sent_count: 0 }]);
+      mockGetClientes.mockResolvedValue(CLIENTES);
+      renderPage();
+
+      fireEvent.click(await screen.findByText('checklist.seeTour'));
+      expect(await screen.findByText('tour.step1Title')).toBeInTheDocument();
+
+      // Caminho completamente diferente do botão "Nova automação" ou do CTA
+      // do tour: abre o menu de ações da linha e clica em "Editar".
+      // Radix DropdownMenuTrigger abre no onPointerDown, e jsdom não tem
+      // window.PointerEvent -- fireEvent.pointerDown vira um Event genérico
+      // sem `button`, então o handler do Radix nunca dispara. onKeyDown
+      // (Enter) é o caminho alternativo suportado pelo próprio Radix e
+      // funciona normalmente em jsdom.
+      fireEvent.keyDown(screen.getByRole('button', { name: /rowActions/ }), { key: 'Enter' });
+      fireEvent.click(await screen.findByText('edit'));
+
+      const dialog = await screen.findByTestId('automation-dialog');
+      // O tour não avança nesse caminho (não é surface "dialog" que o
+      // acompanha) -- o ponto do teste é que o overlay de página some assim
+      // que QUALQUER dialog abre, não que o tour avançou.
+      expect(dialog).toHaveAttribute('data-tour-step', '');
+      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
+    });
+
+    it('CTA "Criar" da checklist também abre o dialog e avança o tour', async () => {
+      renderPage();
+      await screen.findByText('tour.step1Title');
+
+      fireEvent.click(await screen.findByText('checklist.step2Cta'));
+
+      const dialog = await screen.findByTestId('automation-dialog');
+      expect(dialog).toHaveAttribute('data-tour-step', TOUR_STEPS[1].id);
+      expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
     });
   });
 });
