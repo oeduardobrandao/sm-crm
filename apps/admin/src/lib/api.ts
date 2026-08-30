@@ -323,7 +323,7 @@ export interface PayingWorkspace {
 export interface MrrSummary {
   /** Monthly recurring revenue in centavos (annual subs normalized to monthly). */
   mrr_cents: number;
-  /** Number of in-force paid subscriptions counted (active + past_due). */
+  /** Number of paid subscriptions counted (status 'active' only — past_due/failed payments are excluded). */
   paying_count: number;
   currency: string;
   /** Per-workspace breakdown, highest monthly contribution first. Sums to mrr_cents. */

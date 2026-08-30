@@ -1,14 +1,15 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { aggregateMrr, toMonthlyCents } from "../_shared/billing-logic.ts";
+import { aggregateMrr, MRR_STATUSES, toMonthlyCents } from "../_shared/billing-logic.ts";
 import { priceSubscriptionRows } from "./pricing.ts";
 import { fetchOwnerContacts } from "./owner-contact.ts";
 
 /**
  * Monthly recurring revenue + the paying-workspace breakdown behind it, driven by the Stripe
  * subscription mirror (workspace_subscriptions), NOT by plan-assignment counts -- so comped/manual
- * plan grants (which have no subscription row) never inflate it. Only in-force paid subscriptions
- * count (active/past_due). Each is priced from its live Stripe amount, net of coupons; if Stripe
- * is unreachable it falls back to the plan's catalog price. Annual is normalized to monthly, and
+ * plan grants (which have no subscription row) never inflate it. Only subscriptions actually
+ * collecting count (`active` — see MRR_STATUSES); `past_due` (payment failed, provider retrying)
+ * is excluded until it recovers. Each is priced from its live Stripe amount, net of coupons; if
+ * Stripe is unreachable it falls back to the plan's catalog price. Annual is normalized to monthly, and
  * the total is the exact sum of the per-workspace monthly amounts returned in `workspaces`.
  *
  * Extracted from index.ts (was an inline, un-exported handleGetMrr) so the owner-contact
@@ -25,7 +26,7 @@ export async function handleGetMrr(
     .select(
       "workspace_id, provider, status, plan_id, billing_interval, stripe_subscription_id, amount_cents, currency, amount_interval, discount_label",
     )
-    .in("status", ["active", "past_due"]);
+    .in("status", [...MRR_STATUSES]);
   if (subsError) throw subsError;
 
   const rows = subs ?? [];
