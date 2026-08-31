@@ -9,6 +9,7 @@ function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>) {
     buildCorsHeaders,
     createDb: () => db as never,
     now: () => "2026-06-16T12:00:00.000Z",
+    rateLimit: async () => true,
   });
 }
 

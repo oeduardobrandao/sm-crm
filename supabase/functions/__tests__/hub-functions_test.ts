@@ -40,6 +40,7 @@ Deno.test("hub-bootstrap returns workspace metadata for a valid workspace token"
     createDb: () => db as never,
     now,
     touchToken: noopTouchToken,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=mesaas&token=hub-123"));
@@ -69,6 +70,7 @@ Deno.test("hub-bootstrap serves a null client photo when no Instagram account is
     createDb: () => db as never,
     now,
     touchToken: noopTouchToken,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=mesaas&token=hub-123"));
@@ -86,6 +88,7 @@ Deno.test("hub-bootstrap rejects missing query params", async () => {
     createDb: () => createSupabaseQueryMock() as never,
     now,
     touchToken: noopTouchToken,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=mesaas"));
@@ -151,6 +154,7 @@ Deno.test("hub-posts returns flattened post data with signed media URLs", async 
     createDb: () => db as never,
     now,
     signGetUrl: async (key) => `https://signed.mesaas.com/${key}`,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
@@ -227,6 +231,7 @@ Deno.test("hub-posts omits signed URLs and returns media_lost_at for a permanent
       signCalls++;
       return `https://signed.mesaas.com/${key}`;
     },
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
@@ -311,6 +316,7 @@ Deno.test("hub-posts includes signed playback for a ready video when signPlaybac
       hls: `https://stream.example/${uid}.m3u8`,
       expires_at: "2026-04-20T22:00:00.000Z",
     }),
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
@@ -339,6 +345,7 @@ Deno.test("hub-posts returns playback: null for a video that has not finished pr
       hls: `https://stream.example/${uid}.m3u8`,
       expires_at: "2026-04-20T22:00:00.000Z",
     }),
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
@@ -357,6 +364,7 @@ Deno.test("hub-posts returns playback: null when signPlayback is not configured 
     createDb: () => db as never,
     now,
     signGetUrl: async (key) => `https://signed.mesaas.com/${key}`,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
@@ -372,6 +380,7 @@ Deno.test("hub-posts rejects missing tokens", async () => {
     createDb: () => createSupabaseQueryMock() as never,
     now,
     signGetUrl: async () => "https://signed.example",
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-posts"));
@@ -388,6 +397,7 @@ function hubPostsPatchHandler(db: ReturnType<typeof createSupabaseQueryMock>) {
     createDb: () => db as never,
     now,
     signGetUrl: async () => "https://signed.example",
+    rateLimit: async () => true,
   });
 }
 
@@ -495,6 +505,7 @@ Deno.test("hub-approve stores an approval for a valid client post", async () => 
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-approve", {
@@ -522,6 +533,7 @@ Deno.test("hub-approve calls notification RPC with comentario for corrections", 
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-approve", {
@@ -540,6 +552,7 @@ Deno.test("hub-approve rejects invalid approval actions", async () => {
     buildCorsHeaders,
     createDb: () => createSupabaseQueryMock() as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-approve", {
@@ -608,6 +621,7 @@ Deno.test("hub-approve auto-schedules an approved express post despite the missi
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-approve", {
@@ -650,6 +664,7 @@ Deno.test("hub-approve reports scheduled: false when the status RPC fails", asyn
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-approve", {
@@ -679,6 +694,7 @@ Deno.test("hub-approve does not schedule an approved express post when auto-publ
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-approve", {
@@ -714,6 +730,7 @@ Deno.test("hub-approve still skips auto-publish for a non-express post without a
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-approve", {
@@ -761,6 +778,7 @@ Deno.test("hub-approve does not auto-schedule while a later client-approval etap
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-approve", {
@@ -807,6 +825,7 @@ Deno.test("hub-approve auto-schedules on the final client-approval etapa of a du
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-approve", {
@@ -850,6 +869,7 @@ Deno.test("hub-approve fails closed when the etapa lookup errors: approval stand
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-approve", {
@@ -883,6 +903,7 @@ Deno.test("hub-posts suspends every workflow when the etapa lookup errors", asyn
     createDb: () => db as never,
     now,
     signGetUrl: async (key: string) => `https://cdn.test/${key}`,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
@@ -920,6 +941,7 @@ Deno.test("hub-posts flags workflows whose auto-publish is suspended by a later 
     createDb: () => db as never,
     now,
     signGetUrl: async (key: string) => `https://cdn.test/${key}`,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
@@ -946,6 +968,7 @@ Deno.test("hub-posts skips the etapa lookup when auto-publish is off", async () 
     createDb: () => db as never,
     now,
     signGetUrl: async (key: string) => `https://cdn.test/${key}`,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
@@ -972,6 +995,7 @@ Deno.test("hub-brand returns client brand assets from the same workspace", async
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-brand?token=hub-123"));
@@ -994,6 +1018,7 @@ Deno.test("hub-brand rejects links when the client does not belong to the worksp
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-brand?token=hub-123"));
@@ -1016,6 +1041,7 @@ Deno.test("hub-pages lists client pages and strips joined workspace metadata", a
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-pages?token=hub-123"));
@@ -1038,6 +1064,7 @@ Deno.test("hub-pages returns 404 when a requested page does not exist", async ()
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-pages?token=hub-123&page_id=page-404"));
@@ -1072,6 +1099,7 @@ Deno.test("hub-briefing returns the client questionnaire for a valid token", asy
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-briefing?token=hub-123"));
@@ -1087,6 +1115,7 @@ Deno.test("hub-briefing validates required POST fields", async () => {
     buildCorsHeaders,
     createDb: () => createSupabaseQueryMock() as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-briefing", {
@@ -1112,6 +1141,7 @@ Deno.test("hub-ideias creates a new idea with filtered links", async () => {
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-ideias", {
@@ -1144,6 +1174,7 @@ Deno.test("hub-ideias blocks editing locked ideas", async () => {
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-ideias/34a7c1ef-9a2e-4707-a833-cb8f871a0df8?token=hub-123", {
@@ -1164,6 +1195,7 @@ Deno.test("hub-bootstrap handles CORS preflight with 200", async () => {
     createDb: () => createSupabaseQueryMock() as never,
     now,
     touchToken: noopTouchToken,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap", { method: "OPTIONS" }));
   assertEquals(response.status, 200);
@@ -1175,6 +1207,7 @@ Deno.test("hub-bootstrap rejects non-GET methods with 405", async () => {
     createDb: () => createSupabaseQueryMock() as never,
     now,
     touchToken: noopTouchToken,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=x&token=y", { method: "POST" }));
   assertEquals(response.status, 405);
@@ -1189,6 +1222,7 @@ Deno.test("hub-bootstrap returns 404 when the workspace slug is unknown", async 
     createDb: () => db as never,
     now,
     touchToken: noopTouchToken,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=nope&token=hub-123"));
   assertEquals(response.status, 404);
@@ -1206,6 +1240,7 @@ Deno.test("hub-bootstrap returns 403 when the workspace has the hub disabled", a
     createDb: () => db as never,
     now,
     touchToken: noopTouchToken,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=mesaas&token=hub-123"));
   assertEquals(response.status, 403);
@@ -1227,6 +1262,7 @@ Deno.test("hub-bootstrap returns 404 when the hub token is missing or inactive",
     createDb: () => db as never,
     now,
     touchToken: noopTouchToken,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=mesaas&token=hub-123"));
   assertEquals(response.status, 404);
@@ -1237,6 +1273,7 @@ Deno.test("hub-approve rejects non-POST methods with 405", async () => {
     buildCorsHeaders,
     createDb: () => createSupabaseQueryMock() as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-approve", { method: "GET" }));
   assertEquals(response.status, 405);
@@ -1247,6 +1284,7 @@ Deno.test("hub-approve rejects missing required fields with 400", async () => {
     buildCorsHeaders,
     createDb: () => createSupabaseQueryMock() as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-approve", {
     method: "POST",
@@ -1264,6 +1302,7 @@ Deno.test("hub-approve returns 404 when the post cannot be found", async () => {
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-approve", {
     method: "POST",
@@ -1282,6 +1321,7 @@ Deno.test("hub-approve returns 403 when the post belongs to a different client",
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-approve", {
     method: "POST",
@@ -1303,6 +1343,7 @@ Deno.test("hub-approve returns 500 when recording the approval fails", async () 
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-approve", {
     method: "POST",
@@ -1321,6 +1362,7 @@ Deno.test("hub-approve returns 400 when the post is not awaiting client review",
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-approve", {
     method: "POST",
@@ -1335,6 +1377,7 @@ Deno.test("hub-posts rejects non-GET methods with 405", async () => {
     createDb: () => createSupabaseQueryMock() as never,
     now,
     signGetUrl: async () => "https://signed.example",
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-posts?token=hub-123", { method: "POST" }));
   assertEquals(response.status, 405);
@@ -1349,6 +1392,7 @@ Deno.test("hub-posts returns 404 when the hub token is invalid", async () => {
     createDb: () => db as never,
     now,
     signGetUrl: async () => "https://signed.example",
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-posts?token=expired"));
   assertEquals(response.status, 404);
@@ -1368,6 +1412,7 @@ Deno.test("hub-posts returns empty collections when the client has no workflows"
     createDb: () => db as never,
     now,
     signGetUrl: async () => "https://signed.example",
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
   const body = await readJson(response);
@@ -1394,6 +1439,7 @@ Deno.test("hub-posts includes instagramProfile when the client has a linked acco
     createDb: () => db as never,
     now,
     signGetUrl: async () => "https://signed.example",
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
   const body = await readJson(response);
@@ -1422,6 +1468,7 @@ Deno.test("hub-posts returns instagramProfile as null when no account is linked"
     createDb: () => db as never,
     now,
     signGetUrl: async () => "https://signed.example",
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
   const body = await readJson(response);
@@ -1435,6 +1482,7 @@ Deno.test("hub-brand rejects missing tokens with 400", async () => {
     buildCorsHeaders,
     createDb: () => createSupabaseQueryMock() as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-brand"));
   assertEquals(response.status, 400);
@@ -1448,6 +1496,7 @@ Deno.test("hub-brand returns 404 for an invalid hub token", async () => {
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-brand?token=expired"));
   assertEquals(response.status, 404);
@@ -1458,6 +1507,7 @@ Deno.test("hub-pages rejects non-GET methods with 405", async () => {
     buildCorsHeaders,
     createDb: () => createSupabaseQueryMock() as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-pages?token=hub-123", { method: "POST" }));
   assertEquals(response.status, 405);
@@ -1468,6 +1518,7 @@ Deno.test("hub-pages rejects missing tokens with 400", async () => {
     buildCorsHeaders,
     createDb: () => createSupabaseQueryMock() as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-pages"));
   assertEquals(response.status, 400);
@@ -1485,6 +1536,7 @@ Deno.test("hub-pages returns 404 when the client does not belong to the workspac
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-pages?token=hub-123"));
   assertEquals(response.status, 404);
@@ -1495,6 +1547,7 @@ Deno.test("hub-briefing rejects malformed JSON on POST with 400", async () => {
     buildCorsHeaders,
     createDb: () => createSupabaseQueryMock() as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-briefing", {
     method: "POST",
@@ -1508,6 +1561,7 @@ Deno.test("hub-briefing rejects unknown HTTP methods with 405", async () => {
     buildCorsHeaders,
     createDb: () => createSupabaseQueryMock() as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-briefing", { method: "DELETE" }));
   assertEquals(response.status, 405);
@@ -1525,6 +1579,7 @@ Deno.test("hub-briefing returns 404 when the target question is missing", async 
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-briefing", {
     method: "POST",
@@ -1538,6 +1593,7 @@ Deno.test("hub-ideias rejects missing tokens with 400", async () => {
     buildCorsHeaders,
     createDb: () => createSupabaseQueryMock() as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-ideias", {
     method: "POST",
@@ -1554,6 +1610,7 @@ Deno.test("hub-ideias returns 404 for expired or inactive hub tokens", async () 
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-ideias?token=expired"));
   assertEquals(response.status, 404);
@@ -1570,6 +1627,7 @@ Deno.test("hub-ideias rejects POSTs missing titulo with 400", async () => {
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-ideias", {
     method: "POST",
@@ -1589,6 +1647,7 @@ Deno.test("hub-ideias rejects POSTs missing descricao with 400", async () => {
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-ideias", {
     method: "POST",
@@ -1609,6 +1668,7 @@ Deno.test("hub-ideias returns 500 when the insert reports an error", async () =>
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-ideias", {
     method: "POST",
@@ -1630,6 +1690,7 @@ Deno.test("hub-ideias returns 404 when PATCH targets a non-existent idea", async
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-ideias/34a7c1ef-9a2e-4707-a833-cb8f871a0df8?token=hub-123", {
     method: "PATCH",
@@ -1649,6 +1710,7 @@ Deno.test("hub-ideias returns 404 for unsupported routes", async () => {
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-ideias?token=hub-123", { method: "PUT" }));
   assertEquals(response.status, 404);
@@ -1697,6 +1759,7 @@ Deno.test("hub-instagram-feed returns profile and recent posts for a valid token
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-instagram-feed?token=hub-123"));
@@ -1725,6 +1788,7 @@ Deno.test("hub-instagram-feed returns 404 when no Instagram account is linked", 
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-instagram-feed?token=hub-123"));
@@ -1736,6 +1800,7 @@ Deno.test("hub-instagram-feed rejects missing tokens with 400", async () => {
     buildCorsHeaders,
     createDb: () => createSupabaseQueryMock() as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-instagram-feed"));
@@ -1750,6 +1815,7 @@ Deno.test("hub-instagram-feed returns 404 for invalid tokens", async () => {
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    rateLimit: async () => true,
   });
 
   const response = await handler(new Request("https://example.test/hub-instagram-feed?token=expired"));
@@ -1835,6 +1901,7 @@ Deno.test("hub-posts: filters out R2 keys from other workspaces", async () => {
       signedKeys.push(key);
       return `https://signed/${key}`;
     },
+    rateLimit: async () => true,
   });
 
   const res = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
@@ -1914,6 +1981,7 @@ Deno.test("hub-posts: skips R2 keys not found in files table", async () => {
       signedKeys.push(key);
       return `https://signed/${key}`;
     },
+    rateLimit: async () => true,
   });
 
   const res = await handler(new Request("https://example.test/hub-posts?token=hub-123"));

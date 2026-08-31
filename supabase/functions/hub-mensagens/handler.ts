@@ -1,6 +1,7 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { getClientIP } from "../_shared/rate-limit.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -11,6 +12,7 @@ interface HubMensagensHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
   now: () => string;
+  rateLimit: (db: DbClient, key: string, max: number, windowSeconds: number) => Promise<boolean>;
 }
 
 const MAX_CONTENT = 4000;
@@ -41,7 +43,16 @@ export function createHubMensagensHandler(deps: HubMensagensHandlerDeps) {
     if (!token) return json({ error: "token required" }, 400);
 
     const hubToken = await resolveHubToken(db as any, token, deps.now());
-    if (!hubToken) return json({ error: "Link inválido." }, 404);
+    if (!hubToken) {
+      const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
+      if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+      return json({ error: "Link inválido." }, 404);
+    }
+
+    const okRead = await deps.rateLimit(
+      db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300,
+    );
+    if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
 
     const mensagensOn = await effectivePlanFeature(db as any, hubToken.conta_id, "feature_mensagens");
     if (!mensagensOn) return json({ error: "Recurso indisponível." }, 403);
@@ -95,6 +106,11 @@ export function createHubMensagensHandler(deps: HubMensagensHandlerDeps) {
     }
 
     if (req.method === "POST" && seg.length === 0) {
+      const okWrite = await deps.rateLimit(
+        db, `hub-write:hub-mensagens:${contaId}:${clienteId}`, 30, 3600,
+      );
+      if (!okWrite) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+
       const body = await req.json().catch(() => ({}));
       const content = typeof body.content === "string" ? body.content.trim() : "";
       if (!content || content.length > MAX_CONTENT) {

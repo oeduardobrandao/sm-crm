@@ -9,6 +9,7 @@ function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>) {
     buildCorsHeaders,
     createDb: () => db as never,
     now: () => "2026-07-31T12:00:00.000Z",
+    rateLimit: async () => true,
   });
 }
 
@@ -142,6 +143,131 @@ Deno.test("hub-mensagens: POST inserts a general message scoped to the token's c
     content: "Olá equipe!",
     is_workspace_user: false,
   });
+});
+
+// ---------------------------------------------------------------------------
+// Rate limiting
+// ---------------------------------------------------------------------------
+
+function selectiveRateLimit(denyPrefix: string, calls: Array<{ key: string; max: number; windowSeconds: number }>) {
+  return async (_db: unknown, key: string, max: number, windowSeconds: number) => {
+    calls.push({ key, max, windowSeconds });
+    return !key.startsWith(denyPrefix);
+  };
+}
+
+Deno.test("hub-mensagens: invalid token with rateLimit denied returns 429, not 404", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: null, error: null });
+
+  const handler = createHubMensagensHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now: () => "2026-07-31T12:00:00.000Z",
+    rateLimit: selectiveRateLimit("hub-badtoken:", []),
+  });
+  const response = await handler(new Request("https://x.test/hub-mensagens?token=bad", {
+    headers: { "x-forwarded-for": "9.9.9.9" },
+  }));
+
+  assertEquals(response.status, 429);
+  assertEquals(await readJson(response), { error: "Muitas tentativas. Aguarde alguns minutos." });
+});
+
+Deno.test("hub-mensagens: invalid token still 404s when the badtoken limit is not exceeded", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: null, error: null });
+
+  const res = await makeHandler(db)(new Request("https://x.test/hub-mensagens?token=bad"));
+  assertEquals(res.status, 404);
+});
+
+Deno.test("hub-mensagens: valid token over the hub-read budget returns 429 before the feature check", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+
+  const handler = createHubMensagensHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now: () => "2026-07-31T12:00:00.000Z",
+    rateLimit: selectiveRateLimit("hub-read:", []),
+  });
+  const response = await handler(new Request("https://x.test/hub-mensagens?token=t"));
+
+  assertEquals(response.status, 429);
+});
+
+Deno.test("hub-mensagens: POST over the hub-write budget returns 429 and inserts nothing", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+
+  const handler = createHubMensagensHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now: () => "2026-07-31T12:00:00.000Z",
+    rateLimit: selectiveRateLimit("hub-write:", []),
+  });
+  const response = await handler(new Request("https://x.test/hub-mensagens", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: "t", content: "Olá equipe!" }),
+  }));
+
+  assertEquals(response.status, 429);
+  assertEquals(await readJson(response), { error: "Muitas tentativas. Aguarde alguns minutos." });
+  assertEquals(
+    db.calls.some((c) => c.table === "mensagens" && c.operation === "insert"),
+    false,
+    "the write budget must be checked before the insert",
+  );
+});
+
+Deno.test("hub-mensagens: POST content checks the hub-write key/limit scoped to the token's account+cliente", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("mensagens", "insert", { data: { id: 9 }, error: null });
+  const calls: Array<{ key: string; max: number; windowSeconds: number }> = [];
+
+  const handler = createHubMensagensHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now: () => "2026-07-31T12:00:00.000Z",
+    rateLimit: selectiveRateLimit("__never__", calls),
+  });
+  const response = await handler(new Request("https://x.test/hub-mensagens", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: "t", content: "Olá equipe!" }),
+  }));
+
+  assertEquals(response.status, 200);
+  const writeCall = calls.find((c) => c.key.startsWith("hub-write:"));
+  assertEquals(writeCall, { key: "hub-write:hub-mensagens:conta-1:14", max: 30, windowSeconds: 3600 });
+});
+
+Deno.test("hub-mensagens: POST /seen does not check the hub-write budget", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("mark_mensagens_seen", { data: null, error: null });
+  const calls: Array<{ key: string; max: number; windowSeconds: number }> = [];
+
+  const handler = createHubMensagensHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now: () => "2026-07-31T12:00:00.000Z",
+    rateLimit: selectiveRateLimit("__never__", calls),
+  });
+  const response = await handler(new Request("https://x.test/hub-mensagens/seen", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: "t" }),
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(calls.some((c) => c.key.startsWith("hub-write:")), false);
 });
 
 Deno.test("hub-mensagens: POST /seen marks the cliente marker", async () => {

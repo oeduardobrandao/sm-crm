@@ -1,6 +1,7 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { decryptText } from "../_shared/crypto.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
+import { getClientIP } from "../_shared/rate-limit.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -12,6 +13,7 @@ interface HubDashboardHandlerDeps {
   createDb: () => DbClient;
   now: () => string;
   encryptionSecret: string;
+  rateLimit: (db: DbClient, key: string, max: number, windowSeconds: number) => Promise<boolean>;
 }
 
 const VALID_PERIODS = new Set([30, 60, 90]);
@@ -49,7 +51,16 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
     const db = deps.createDb();
 
     const hubToken = await resolveHubToken(db as any, token, deps.now());
-    if (!hubToken) return json({ error: "Link inválido." }, 404);
+    if (!hubToken) {
+      const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
+      if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+      return json({ error: "Link inválido." }, 404);
+    }
+
+    const okRead = await deps.rateLimit(
+      db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300,
+    );
+    if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
 
     const { data: igAccount } = await db
       .from("instagram_accounts")
