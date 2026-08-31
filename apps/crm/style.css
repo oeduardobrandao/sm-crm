@@ -5276,23 +5276,34 @@ body.role-agent input[name='valor_total'] {
 }
 
 /* Template tabs — shown instead of stacked rows when 3+ templates are active */
+/* Folder-tab strip: every tab carries its own 1px baseline (the container has
+ * none) so the line survives inside the overflow-x scroll box, and an ::after
+ * filler extends it to the right edge. The active tab blanks its bottom border
+ * and paints the page background, "opening" into the board below. */
 .board-tabs {
   display: flex;
-  gap: 0.25rem;
+  align-items: flex-end;
+  gap: 0;
   overflow-x: auto;
-  padding-bottom: 0.5rem;
-  margin-bottom: 0.25rem;
-  border-bottom: 2px solid var(--text-main);
+  margin-bottom: 0.9rem;
+  padding-top: 2px;
+}
+
+.board-tabs::after {
+  content: '';
+  flex: 1 0 1rem;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .board-tab {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  padding: 0.4rem 0.9rem;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 10px 10px 0 0;
+  margin-right: -1px;
+  background: var(--surface-2);
   color: var(--text-muted);
   font-size: 0.75rem;
   font-weight: 500;
@@ -5309,8 +5320,12 @@ body.role-agent input[name='valor_total'] {
 }
 
 .board-tab.active {
-  background: var(--text-main);
-  color: var(--card-bg);
+  background: var(--bg-color);
+  border-bottom-color: transparent;
+  color: var(--text-main);
+  font-weight: 600;
+  position: relative;
+  z-index: 1;
 }
 
 .board-tab-count {
