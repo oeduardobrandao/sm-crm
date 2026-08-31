@@ -31,6 +31,8 @@ interface VistasTabsProps {
   /** Serialized query of what is on screen right now. */
   currentQuery: string;
   onApply: (query: string) => void;
+  /** Right-aligned slot on the same row (the Entregas search input). */
+  trailing?: React.ReactNode;
 }
 
 /**
@@ -38,7 +40,7 @@ interface VistasTabsProps {
  * saved vista as an always-visible tab. A vista is a name + the same serialized
  * query string the URL carries. Local per-conta/per-device storage.
  */
-export function VistasTabs({ contaId, currentQuery, onApply }: VistasTabsProps) {
+export function VistasTabs({ contaId, currentQuery, onApply, trailing }: VistasTabsProps) {
   const [views, setViews] = useState<SavedView[]>(() => loadSavedViews(contaId));
   // The vista the user last applied (or that the shared URL matched at mount).
   const [activeName, setActiveName] = useState<string | null>(
@@ -66,13 +68,13 @@ export function VistasTabs({ contaId, currentQuery, onApply }: VistasTabsProps) 
     setActiveName(trimmed);
     setNewName('');
     setAddOpen(false);
-    toast.success(`Vista "${trimmed}" salva!`);
+    toast.success(`Visualização "${trimmed}" salva!`);
   };
 
   const updateWithCurrent = (name: string) => {
     persist(views.map((v) => (v.name === name ? { ...v, query: currentQuery } : v)));
     setActiveName(name);
-    toast.success(`Vista "${name}" atualizada!`);
+    toast.success(`Visualização "${name}" atualizada!`);
   };
 
   const remove = (name: string) => {
@@ -142,7 +144,7 @@ export function VistasTabs({ contaId, currentQuery, onApply }: VistasTabsProps) 
                   {isActive && modified && (
                     <span
                       className="vista-tab-dot"
-                      title="Vista modificada — use ⋯ para salvar as alterações"
+                      title="Visualização modificada: use ⋯ para salvar as alterações"
                     />
                   )}
                 </button>
@@ -151,7 +153,7 @@ export function VistasTabs({ contaId, currentQuery, onApply }: VistasTabsProps) 
                     <button
                       type="button"
                       className="vista-tab-more"
-                      aria-label={`Opções da vista ${v.name}`}
+                      aria-label={`Opções da visualização ${v.name}`}
                     >
                       <MoreHorizontal className="h-3.5 w-3.5" />
                     </button>
@@ -190,12 +192,12 @@ export function VistasTabs({ contaId, currentQuery, onApply }: VistasTabsProps) 
       <Popover open={addOpen} onOpenChange={setAddOpen}>
         <PopoverTrigger asChild>
           <button type="button" className="vista-tab vista-tab--add">
-            <Plus className="h-3.5 w-3.5" /> Nova vista
+            <Plus className="h-3.5 w-3.5" /> Nova visualização
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[260px] p-2">
           <p className="px-1 pb-2 text-[0.7rem] text-muted-foreground">
-            Salva a visualização, o modo e os filtros atuais.
+            Salva a exibição, o modo e os filtros atuais.
           </p>
           <div className="flex items-center gap-2">
             <Input
@@ -205,7 +207,7 @@ export function VistasTabs({ contaId, currentQuery, onApply }: VistasTabsProps) 
               onKeyDown={(e) => {
                 if (e.key === 'Enter') saveNew();
               }}
-              placeholder="Nome da vista"
+              placeholder="Nome da visualização"
               className="h-8 flex-1 min-w-0 !text-xs mb-0 px-2"
             />
             <Button
@@ -219,6 +221,8 @@ export function VistasTabs({ contaId, currentQuery, onApply }: VistasTabsProps) 
           </div>
         </PopoverContent>
       </Popover>
+
+      {trailing != null && <span className="ml-auto shrink-0 pl-3 py-1">{trailing}</span>}
     </div>
   );
 }

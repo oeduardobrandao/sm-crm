@@ -11,8 +11,10 @@ import {
   Columns,
   Archive,
   BookOpen,
+  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import {
   DropdownMenu,
@@ -425,6 +427,11 @@ export default function EntregasPage() {
     (activeView === 'list' && mode === 'publicacoes');
   const { posts: activePosts, isLoading: activePostsLoading } = useActivePosts(postsMode);
 
+  // The busca input (on the VistasTabs row) and the filter pills show together:
+  // hidden on Concluídas and on the Publicações calendar, where they don't apply.
+  const showFilters =
+    activeView !== 'concluded' && !(activeView === 'calendar' && mode === 'publicacoes');
+
   // Posts-mode filtering: only busca / cliente / responsável do post apply; the
   // workflow-shaped filters (status, membros, etapas, templates) are not read here
   // but stay in state so flipping back to Entregas restores them.
@@ -646,7 +653,24 @@ export default function EntregasPage() {
 
       {explainerOpen && <ComoFuncionaPanel onDismiss={dismissExplainer} />}
 
-      <VistasTabs contaId={contaId} currentQuery={currentQuery} onApply={applySavedView} />
+      <VistasTabs
+        contaId={contaId}
+        currentQuery={currentQuery}
+        onApply={applySavedView}
+        trailing={
+          showFilters ? (
+            <div className="relative w-[220px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
+              <Input
+                placeholder={postsMode ? 'Buscar post...' : 'Buscar fluxo...'}
+                value={filters.filterSearch}
+                onChange={(e) => setFilters({ ...filters, filterSearch: e.target.value })}
+                className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
+              />
+            </div>
+          ) : undefined
+        }
+      />
 
       {/* One toolbar row: orientation (view + mode) on the left, filters on the
           right. Wraps on narrow viewports instead of stacking five control rows. */}
@@ -699,7 +723,7 @@ export default function EntregasPage() {
           <ModeToggle mode={mode} onModeChange={setMode} />
         )}
 
-        {activeView !== 'concluded' && !(activeView === 'calendar' && mode === 'publicacoes') && (
+        {showFilters && (
           <EntregasFilters
             filters={filters}
             onChange={setFilters}

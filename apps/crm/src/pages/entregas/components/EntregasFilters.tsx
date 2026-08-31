@@ -15,7 +15,6 @@ import {
   Gauge,
   LayoutTemplate,
   Milestone,
-  Search,
   Shapes,
   SlidersHorizontal,
   UserCheck,
@@ -411,7 +410,6 @@ export function EntregasFilters({
   const sortedTemplates = [...templates].sort((a, b) => a.nome.localeCompare(b.nome));
   const sortedEtapaNames = [...etapaNames].sort((a, b) => a.localeCompare(b));
   const activeCount = countActiveFilters(filters, mode);
-  const searchPlaceholder = mode === 'posts' ? 'Buscar post...' : 'Buscar fluxo...';
 
   const clienteOptions = activeClientes
     .filter((c) => c.id != null)
@@ -489,17 +487,8 @@ export function EntregasFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-2 mb-0 animate-up flex-1 min-w-[240px] min-[901px]:justify-end">
-      <div className="relative flex-1 min-w-[140px] min-[901px]:max-w-[220px]">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
-        <Input
-          placeholder={searchPlaceholder}
-          value={filters.filterSearch}
-          onChange={(e) => onChange({ ...filters, filterSearch: e.target.value })}
-          className="!rounded-full !text-xs h-9 pl-8 pr-4 mb-0 w-full"
-        />
-      </div>
-
-      {/* Primary filters, always on the toolbar. */}
+      {/* Primary filters, always on the toolbar. The busca input lives on the
+          VistasTabs row above (EntregasPage renders it), not here. */}
       {isPosts ? (
         <>
           <MultiSelectFilter
