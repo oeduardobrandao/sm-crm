@@ -77,6 +77,32 @@ const STATUS_HEADER_META: Record<ActivePost['status'], { icon: typeof Image; col
   falha_publicacao: { icon: AlertTriangle, color: 'var(--danger-text)' },
 };
 
+/* Solid hex per canonical status for the pastel column treatment (same recipe
+ * as the Fluxos board: header/border at 30 alpha, count pill 3d, body 0a) --
+ * CSS vars can't take an alpha suffix, hence concrete deep stops. The rail
+ * reuses the Fluxos progression hues, with semantic greens/ambers/red where
+ * the status carries an outcome. */
+const STATUS_COLUMN_TINTS: Record<ActivePost['status'], string> = {
+  rascunho: '#0284c7',
+  revisao_interna: '#4f46e5',
+  aprovado_interno: '#7c3aed',
+  enviado_cliente: '#db2777',
+  aprovado_cliente: '#059669',
+  correcao_cliente: '#c2410c',
+  agendado: '#ca8a04',
+  postado: '#047857',
+  falha_publicacao: '#b91c1c',
+};
+
+const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
+
+/** Custom statuses tint with their user-picked color; anything that is not a
+ *  plain 6-digit hex (alpha suffixes need one) falls back to the neutral look. */
+function columnTintFor(option: StatusOption): string | null {
+  const color = option.kind === 'custom' ? option.color : STATUS_COLUMN_TINTS[option.canonical];
+  return color && HEX_COLOR_RE.test(color) ? color : null;
+}
+
 interface PostsKanbanViewProps {
   posts: ActivePost[];
   isLoading: boolean;
@@ -298,13 +324,18 @@ function PostBoardColumn({
 }) {
   const isLockedColumn = LOCKED_STATUSES.has(option.canonical);
   const { setNodeRef } = useDroppable({ id: `${COL_PREFIX}${option.key}` });
+  const tint = columnTintFor(option);
 
   return (
     <div
       className={`board-column${isDragActive && isLockedColumn ? ' board-column--drag-invalid' : ''}`}
+      style={tint ? { borderColor: `${tint}30` } : undefined}
     >
-      <div className="board-column-header">
-        <span className="board-column-title">
+      <div
+        className="board-column-header"
+        style={tint ? { background: `${tint}30`, borderBottomColor: `${tint}30` } : undefined}
+      >
+        <span className="board-column-title" style={tint ? { color: tint } : undefined}>
           {option.kind === 'custom'
             ? (() => {
                 const CustomIcon = getCustomStatusIcon(option.icone);
@@ -335,15 +366,26 @@ function PostBoardColumn({
                   <HeaderIcon
                     size={13}
                     aria-hidden="true"
-                    style={{ color: meta.color ?? 'var(--text-light)', flexShrink: 0 }}
+                    style={{ color: tint ?? meta.color ?? 'var(--text-light)', flexShrink: 0 }}
                   />
                 );
               })()}
           {option.label}
         </span>
-        <span className="board-column-count">{posts.length}</span>
+        <span
+          className="board-column-count"
+          style={
+            tint ? { background: `${tint}3d`, color: tint, borderColor: 'transparent' } : undefined
+          }
+        >
+          {posts.length}
+        </span>
       </div>
-      <div ref={setNodeRef} className="board-column-body">
+      <div
+        ref={setNodeRef}
+        className="board-column-body"
+        style={tint ? { background: `${tint}0a` } : undefined}
+      >
         {posts.length === 0 ? (
           <div className="board-empty">Nenhum post</div>
         ) : (
