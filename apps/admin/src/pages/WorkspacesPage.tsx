@@ -12,16 +12,10 @@ import {
   formatMoney,
   intervalSuffix,
 } from '../lib/subscription';
-import { describeActivity, type ActivityTone } from './workspace-activity';
+import { describeActivity, ACTIVITY_TONE_CLASS } from './workspace-activity';
 import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip';
 import { toCSV, downloadCSV } from '../lib/csv-export';
 import { WORKSPACE_EXPORT_COLUMNS, buildWorkspaceExportRows } from './workspaces-export';
-
-const ACTIVITY_TONE_CLASS: Record<ActivityTone, string> = {
-  active: 'text-foreground',
-  cooling: 'text-muted-foreground',
-  dormant: 'text-warning',
-};
 
 const activity = (ws: WorkspaceSummary) =>
   describeActivity(ws.last_activity_at, ws.created_at, new Date());

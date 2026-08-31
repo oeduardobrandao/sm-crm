@@ -16,6 +16,8 @@ function payingWorkspace(overrides: Partial<PayingWorkspace> = {}): PayingWorksp
     owner_email: 'ana@example.com',
     owner_telefone: '11999999999',
     owner_marketing_opt_in: true,
+    created_at: '2026-01-15T10:00:00Z',
+    last_activity_at: '2026-08-20T12:00:00Z',
     ...overrides,
   };
 }
@@ -32,6 +34,8 @@ function trialWorkspace(overrides: Partial<TrialWorkspace> = {}): TrialWorkspace
     owner_email: 'bruno@example.com',
     owner_telefone: null,
     owner_marketing_opt_in: false,
+    created_at: '2026-08-01T00:00:00Z',
+    last_activity_at: null,
     ...overrides,
   };
 }
@@ -45,6 +49,7 @@ describe('buildPayingWorkspaceExportRows', () => {
     expect(rows[0].owner_telefone).toBe('11999999999');
     expect(rows[0].owner_marketing_opt_in).toBe('yes');
     expect(rows[0].monthly_amount_brl).toBe(99);
+    expect(rows[0].last_activity_at).toBe('2026-08-20');
   });
 
   it('blanks owner fields that are null', () => {
@@ -67,6 +72,7 @@ describe('buildTrialExportRows', () => {
     expect(rows[0].owner_marketing_opt_in).toBe('no');
     expect(rows[0].trial_ends_at).toBe('2026-09-05');
     expect(rows[0].monthly_amount_brl).toBe(82.5);
+    expect(rows[0].last_activity_at).toBe(''); // null activity exports as blank, not "Nunca"
   });
 
   it('blanks trial_ends_at when null', () => {

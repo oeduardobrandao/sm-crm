@@ -318,12 +318,16 @@ export interface PayingWorkspace {
   owner_email: string | null;
   owner_telefone: string | null;
   owner_marketing_opt_in: boolean;
+  /** When the workspace was created; feeds describeActivity's "never acted" branch. */
+  created_at: string | null;
+  /** Newest human work artifact (admin_workspace_last_activity RPC); null = never. */
+  last_activity_at: string | null;
 }
 
 export interface MrrSummary {
   /** Monthly recurring revenue in centavos (annual subs normalized to monthly). */
   mrr_cents: number;
-  /** Number of in-force paid subscriptions counted (active + past_due). */
+  /** Number of paid subscriptions counted (status 'active' only — past_due/failed payments are excluded). */
   paying_count: number;
   currency: string;
   /** Per-workspace breakdown, highest monthly contribution first. Sums to mrr_cents. */
@@ -348,6 +352,10 @@ export interface TrialWorkspace {
   owner_email: string | null;
   owner_telefone: string | null;
   owner_marketing_opt_in: boolean;
+  /** When the workspace was created; feeds describeActivity's "never acted" branch. */
+  created_at: string | null;
+  /** Newest human work artifact (admin_workspace_last_activity RPC); null = never. */
+  last_activity_at: string | null;
 }
 
 export interface TrialsSummary {
