@@ -631,10 +631,11 @@ function CreateAutomationForm({
         fontSize: '0.85rem',
       }}
     >
-      <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
         Quando entrar em
         <select
           className="drawer-select"
+          style={{ width: 'auto', minWidth: 190 }}
           value={trigger}
           onChange={(e) => setTrigger(e.target.value)}
         >
@@ -654,6 +655,7 @@ function CreateAutomationForm({
       </label>
       <select
         className="drawer-select"
+        style={{ width: 'auto', minWidth: 170 }}
         value={action}
         onChange={(e) => setAction(e.target.value as typeof action)}
       >
@@ -663,6 +665,7 @@ function CreateAutomationForm({
       {action === 'notify' && (
         <select
           className="drawer-select"
+          style={{ width: 'auto', minWidth: 190 }}
           value={notifyTarget}
           onChange={(e) => setNotifyTarget(e.target.value as typeof notifyTarget)}
         >
@@ -674,6 +677,7 @@ function CreateAutomationForm({
       {needsMembro && (
         <select
           className="drawer-select"
+          style={{ width: 'auto', minWidth: 190 }}
           value={membroId}
           onChange={(e) => setMembroId(e.target.value ? Number(e.target.value) : '')}
         >
