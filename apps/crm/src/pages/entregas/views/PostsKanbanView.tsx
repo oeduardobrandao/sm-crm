@@ -8,12 +8,13 @@ import {
   TouchSensor,
   useSensor,
   useSensors,
-  useDraggable,
   useDroppable,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   AlertTriangle,
   CalendarClock,
@@ -32,7 +33,7 @@ import {
   Send,
   ShieldCheck,
 } from 'lucide-react';
-import type { ActivePost } from '@/store';
+import { reorderBoardPosts, type ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -51,6 +52,7 @@ import { formatPostDate } from '@/utils/postDate';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { formatEtapaPrazo } from '../etapaPrazo';
 import { TIPO_LABELS, LOCKED_STATUSES, LOCKED_TOOLTIPS, getPostPublishState } from '../postLabels';
+import { planBoardPlacement, sortColumnPosts, type BoardColumnSort } from '../postsBoardOrder';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { StatusKey, StatusOption, StatusRegistry } from '../statusRegistry';
 import {
@@ -126,6 +128,10 @@ interface PostsKanbanViewProps {
   filtersActive: boolean;
   /** Opens NewAvulsoDialog from the unfiltered empty state's CTA. */
   onCreateAvulso: () => void;
+  /** Per-column sort mode; a column absent from the map (or the whole prop
+   *  omitted) defaults to 'manual'. Wired by the column header menu in a
+   *  later task -- this view only consumes it. */
+  columnSorts?: Partial<Record<StatusKey, BoardColumnSort>>;
 }
 
 /** A post avulso (no workflow) is always openable -- only a wired post depends
@@ -293,7 +299,7 @@ const PostBoardCard = memo(function PostBoardCard({
   // dnd-kit's activation-constraint click-swallow only engages once an actual
   // drag crosses the distance/delay threshold, so a plain click still reaches
   // onClick untouched.
-  const { listeners, setNodeRef, isDragging } = useDraggable({
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(post.id),
     disabled: locked,
   });
@@ -303,6 +309,8 @@ const PostBoardCard = memo(function PostBoardCard({
       ref={setNodeRef}
       className="scheduled-item board-post-card"
       style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
         cursor: locked ? (openable ? 'pointer' : 'default') : 'grab',
         opacity: isDragging ? 0.4 : 1,
       }}
@@ -410,33 +418,42 @@ const PostBoardColumn = memo(function PostBoardColumn({
         className="board-column-body"
         style={tint ? { background: `${tint}0a` } : undefined}
       >
-        {posts.length === 0 && dropSlot == null ? (
-          <div className="board-empty">Nenhum post</div>
-        ) : (
-          <>
-            {posts.map((p, idx) => (
-              <Fragment key={p.id}>
-                {dropSlot != null && dropSlot.index === idx && (
-                  <div
-                    className="board-drop-slot"
-                    style={{ height: dragHeight }}
-                    aria-hidden="true"
+        <SortableContext
+          items={posts.map((p) => String(p.id))}
+          strategy={verticalListSortingStrategy}
+        >
+          {posts.length === 0 && dropSlot == null ? (
+            <div className="board-empty">Nenhum post</div>
+          ) : (
+            <>
+              {posts.map((p, idx) => (
+                <Fragment key={p.id}>
+                  {dropSlot != null && dropSlot.index === idx && (
+                    <div
+                      className="board-drop-slot"
+                      style={{ height: dragHeight }}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <PostBoardCard
+                    post={p}
+                    registry={registry}
+                    card={p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined}
+                    openable={isPostOpenable(p, openableWorkflowIds)}
+                    onPostClick={onPostClick}
                   />
-                )}
-                <PostBoardCard
-                  post={p}
-                  registry={registry}
-                  card={p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined}
-                  openable={isPostOpenable(p, openableWorkflowIds)}
-                  onPostClick={onPostClick}
+                </Fragment>
+              ))}
+              {dropSlot != null && dropSlot.index >= posts.length && (
+                <div
+                  className="board-drop-slot"
+                  style={{ height: dragHeight }}
+                  aria-hidden="true"
                 />
-              </Fragment>
-            ))}
-            {dropSlot != null && dropSlot.index >= posts.length && (
-              <div className="board-drop-slot" style={{ height: dragHeight }} aria-hidden="true" />
-            )}
-          </>
-        )}
+              )}
+            </>
+          )}
+        </SortableContext>
       </div>
     </div>
   );
@@ -456,6 +473,7 @@ export function PostsKanbanView({
   cardsByWorkflowId,
   filtersActive,
   onCreateAvulso,
+  columnSorts,
 }: PostsKanbanViewProps) {
   const registry = useStatusRegistry();
   const updateStatus = useUpdatePostStatus();
@@ -463,9 +481,18 @@ export function PostsKanbanView({
   const [activeId, setActiveId] = useState<number | null>(null);
   const [dropSlot, setDropSlot] = useState<PostsKanbanHoverSlot | null>(null);
   const [dragHeight, setDragHeight] = useState(120);
-  const [pendingConfirm, setPendingConfirm] = useState<{ post: ActivePost; key: StatusKey } | null>(
-    null,
-  );
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    post: ActivePost;
+    key: StatusKey;
+    /** Cross-column placement to persist once the (possibly dialog-gated)
+     *  status write is confirmed -- undefined for a plain confirm with no
+     *  captured drop slot. */
+    place?: () => void;
+  } | null>(null);
+
+  /** Column header menu (a later task) will drive this; every column defaults
+   *  to 'manual' until then. */
+  const columnSortFor = (key: StatusKey): BoardColumnSort => columnSorts?.[key] ?? 'manual';
 
   const byStatus = useMemo(() => {
     const map = new Map<StatusKey, ActivePost[]>(registry.options.map((o) => [o.key, []]));
@@ -476,6 +503,26 @@ export function PostsKanbanView({
     return map;
   }, [posts, registry]);
 
+  /** Each column's rendered order, per its own sort mode -- what the
+   *  SortableContexts above and the drag handlers below both treat as ground
+   *  truth for "where is this post right now". */
+  const sortedByStatus = useMemo(() => {
+    const map = new Map<StatusKey, ActivePost[]>();
+    for (const [key, list] of byStatus) map.set(key, sortColumnPosts(list, columnSortFor(key)));
+    return map;
+    // columnSortFor only reads columnSorts (a plain prop), so it's covered by
+    // the columnSorts dependency without needing to be listed itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [byStatus, columnSorts]);
+
+  /** Reverse index for the drag handlers: which column (in the SORTED view)
+   *  a given post id currently renders in. */
+  const columnKeyByPostId = useMemo(() => {
+    const map = new Map<number, StatusKey>();
+    for (const [key, list] of sortedByStatus) for (const p of list) map.set(p.id, key);
+    return map;
+  }, [sortedByStatus]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
@@ -483,13 +530,34 @@ export function PostsKanbanView({
 
   const activePost = activeId != null ? posts.find((p) => p.id === activeId) : undefined;
 
+  /** Persists a manual-column placement: applies it to the cache the board
+   *  reads from immediately (otimista), then fires the RPC in the background.
+   *  A failure toasts and re-syncs from the server rather than rolling back
+   *  in place -- the batch RPC is all-or-nothing, so there is nothing partial
+   *  to unwind. `board_ordem: null` clears a post's rank (the undo restore
+   *  path below uses that to put an unranked post back to unranked). */
+  const persistPlacement = (updates: { id: number; board_ordem: number | null }[]) => {
+    if (updates.length === 0) return;
+    qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, (old) => {
+      if (!old) return old;
+      const byId = new Map(updates.map((u) => [u.id, u.board_ordem]));
+      return old.map((p) => (byId.has(p.id) ? { ...p, board_ordem: byId.get(p.id)! } : p));
+    });
+    reorderBoardPosts(updates).catch(() => {
+      toast.error('Erro ao salvar a ordem');
+      qc.invalidateQueries({ queryKey: ACTIVE_POSTS_KEY });
+    });
+  };
+
   /** Drag-initiated status change with a temporary undo. The backward mutate
    *  deliberately skips the drop resolver: restoring an approved status must
    *  not re-open the confirm dialog. Before writing it, resolveUndoGuard checks
    *  the LIVE cache: if the post moved again after the drag (another agent,
    *  the client Hub, auto-scheduling) between the drag and the Desfazer click,
-   *  the backward write would clobber that newer change, so it no-ops instead. */
-  const applyStatusChange = (post: ActivePost, key: StatusKey) => {
+   *  the backward write would clobber that newer change, so it no-ops instead.
+   *  `place`, when given, persists the cross-column manual placement captured
+   *  at drop time -- run after the forward write so both land together. */
+  const applyStatusChange = (post: ActivePost, key: StatusKey, place?: () => void) => {
     const move = buildUndoableStatusMove({ post, key, registry });
     if (!move) return;
     updateStatus.mutate(move.forward);
@@ -508,9 +576,14 @@ export function PostsKanbanView({
             return;
           }
           updateStatus.mutate(move.backward);
+          // The forward move may also have placed the post in the target
+          // column's manual order -- Desfazer restores the rank it had
+          // before the drag, not just the status.
+          persistPlacement([{ id: move.forward.id, board_ordem: move.previousBoardOrdem }]);
         },
       },
     });
+    place?.();
   };
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -520,11 +593,54 @@ export function PostsKanbanView({
 
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
+    const draggedId = Number(active.id);
+    const dragged = posts.find((p) => p.id === draggedId);
+    const overId = over ? String(over.id) : undefined;
+    if (!dragged || !overId) {
+      setDropSlot(null);
+      return;
+    }
+    const sourceKey = columnKeyByPostId.get(draggedId);
+    const targetKey = overId.startsWith(COL_PREFIX)
+      ? (overId.slice(COL_PREFIX.length) as StatusKey)
+      : columnKeyByPostId.get(Number(overId));
+    if (!targetKey || targetKey === sourceKey) {
+      setDropSlot(null);
+      return;
+    }
+
+    // Same-column preview is dnd-kit's own sortable transform; a live slot is
+    // only meaningful for a cross-column hover.
+    let pointer: { index: number } | undefined;
+    if (columnSortFor(targetKey) === 'manual') {
+      // The dragged post never actually renders in the target column, so it
+      // must be excluded before computing an over-card's index there.
+      const targetList = (sortedByStatus.get(targetKey) ?? []).filter((p) => p.id !== draggedId);
+      let index = targetList.length;
+      if (!overId.startsWith(COL_PREFIX)) {
+        const overIdx = targetList.findIndex((p) => String(p.id) === overId);
+        if (overIdx !== -1) {
+          const activeRect = active.rect.current?.translated;
+          const overRect = over?.rect;
+          const after =
+            activeRect != null &&
+            overRect != null &&
+            activeRect.top > overRect.top + overRect.height / 2;
+          index = after ? overIdx + 1 : overIdx;
+        }
+      }
+      pointer = { index };
+    }
+    // Auto-sorted targets omit `pointer`: the slot opens at the true landing
+    // index instead, so it never jumps once the optimistic move settles.
+
     const slot = resolvePostsKanbanHover({
-      post: posts.find((p) => p.id === Number(active.id)),
+      post: dragged,
       posts,
-      overId: over ? String(over.id) : undefined,
+      overId,
       registry,
+      columnOf: (id) => columnKeyByPostId.get(id),
+      pointer,
     });
     // Identity-stable update so hovering in place never re-renders the board.
     setDropSlot((prev) =>
@@ -533,15 +649,51 @@ export function PostsKanbanView({
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
+    const slotAtDrop = dropSlot;
     setActiveId(null);
     setDropSlot(null);
     const { active, over } = event;
-    const post = posts.find((p) => p.id === Number(active.id));
+    const draggedId = Number(active.id);
+    const dragged = posts.find((p) => p.id === draggedId);
+    if (!dragged || !over) return;
+    const overId = String(over.id);
+    const sourceKey = columnKeyByPostId.get(draggedId);
+    const targetKey = overId.startsWith(COL_PREFIX)
+      ? (overId.slice(COL_PREFIX.length) as StatusKey)
+      : columnKeyByPostId.get(Number(overId));
+    if (!targetKey || !sourceKey) return;
+
+    // Same-column drop: pure manual reorder, no status change, no undo toast.
+    if (targetKey === sourceKey) {
+      if (columnSortFor(sourceKey) !== 'manual') return;
+      const list = sortedByStatus.get(sourceKey) ?? [];
+      const from = list.findIndex((p) => p.id === draggedId);
+      const to = overId.startsWith(COL_PREFIX)
+        ? list.length - 1
+        : list.findIndex((p) => String(p.id) === overId);
+      if (from === -1 || to === -1 || from === to) return;
+      // `to` is the drop target's index in the FULL list (dragged post
+      // included); inserting at that same index into the list WITHOUT the
+      // dragged post reproduces dnd-kit's arrayMove landing spot regardless
+      // of drag direction.
+      const without = list.filter((p) => p.id !== draggedId);
+      persistPlacement(planBoardPlacement(without, to, draggedId));
+      return;
+    }
+
+    // Cross-column: existing status-change flow, then placement if the
+    // target column is manually sorted.
     const result = resolvePostsKanbanDrop({
-      post,
-      overId: over ? String(over.id) : undefined,
+      post: dragged,
+      overId: `${COL_PREFIX}${targetKey}`,
       registry,
     });
+    const placeAfter = () => {
+      if (columnSortFor(targetKey) !== 'manual') return;
+      const targetList = (sortedByStatus.get(targetKey) ?? []).filter((p) => p.id !== draggedId);
+      const index = slotAtDrop?.key === targetKey ? slotAtDrop.index : targetList.length;
+      persistPlacement(planBoardPlacement(targetList, index, draggedId));
+    };
 
     switch (result.kind) {
       case 'noop':
@@ -551,19 +703,19 @@ export function PostsKanbanView({
         toast.error(result.message);
         return;
       case 'confirm':
-        if (post) setPendingConfirm({ post, key: result.key });
+        setPendingConfirm({ post: dragged, key: result.key, place: placeAfter });
         return;
       case 'write':
-        if (post) applyStatusChange(post, result.key);
+        applyStatusChange(dragged, result.key, placeAfter);
         return;
     }
   };
 
   const handleConfirmStatusChange = () => {
     if (!pendingConfirm) return;
-    const { post, key } = pendingConfirm;
+    const { post, key, place } = pendingConfirm;
     setPendingConfirm(null);
-    applyStatusChange(post, key);
+    applyStatusChange(post, key, place);
   };
 
   if (isLoading) {
@@ -615,7 +767,7 @@ export function PostsKanbanView({
               <PostBoardColumn
                 key={option.key}
                 option={option}
-                posts={byStatus.get(option.key) ?? []}
+                posts={sortedByStatus.get(option.key) ?? []}
                 registry={registry}
                 openableWorkflowIds={openableWorkflowIds}
                 onPostClick={onPostClick}

@@ -14,7 +14,7 @@ vi.mock('sonner', () => ({
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }));
 
-vi.mock('@/store', () => ({ updateWorkflowPost: vi.fn() }));
+vi.mock('@/store', () => ({ updateWorkflowPost: vi.fn(), reorderBoardPosts: vi.fn() }));
 
 // Mock dnd-kit so tests don't need to simulate real pointer/touch events in
 // jsdom (same approach as WorkflowCalendarView.test.tsx / CalendarGrid.test.tsx):
@@ -53,25 +53,40 @@ vi.mock('@dnd-kit/core', () => ({
   TouchSensor: class {},
   useSensor: () => ({}),
   useSensors: (...sensors: unknown[]) => sensors,
-  useDraggable: (opts: { id: string; disabled?: boolean }) => {
+  useDroppable: () => ({ setNodeRef: () => {}, isOver: false }),
+}));
+
+// PostBoardCard uses useSortable (not useDraggable) so the card can preview a
+// same-column reorder; the mock still records into draggableCalls so the
+// existing "is this card's drag disabled" assertions keep working unchanged.
+vi.mock('@dnd-kit/sortable', () => ({
+  SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useSortable: (opts: { id: string; disabled?: boolean }) => {
     draggableCalls.set(opts.id, opts);
     return {
       listeners: opts.disabled ? undefined : {},
       setNodeRef: () => {},
+      transform: null,
+      transition: undefined,
       isDragging: false,
     };
   },
-  useDroppable: () => ({ setNodeRef: () => {}, isOver: false }),
+  verticalListSortingStrategy: 'vertical',
+}));
+
+vi.mock('@dnd-kit/utilities', () => ({
+  CSS: { Transform: { toString: () => undefined } },
 }));
 
 import { PostsKanbanView } from '../PostsKanbanView';
 import { POST_STATUS_ORDER, STATUS_LABELS } from '../../postLabels';
-import { updateWorkflowPost } from '@/store';
+import { updateWorkflowPost, reorderBoardPosts } from '@/store';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../../hooks/useEntregasData';
 import { ACTIVE_POSTS_KEY } from '../../hooks/useUpdatePostStatus';
 
 const mockUpdate = vi.mocked(updateWorkflowPost);
+const mockReorder = vi.mocked(reorderBoardPosts);
 
 beforeAll(() => {
   (Element.prototype as unknown as { hasPointerCapture: () => boolean }).hasPointerCapture = () =>
@@ -86,6 +101,8 @@ beforeEach(() => {
   dndHandlers.onDragOver = undefined;
   dndHandlers.onDragCancel = undefined;
   mockUpdate.mockReset();
+  mockReorder.mockReset();
+  mockReorder.mockResolvedValue(undefined);
   vi.mocked(toast).mockClear();
   vi.mocked(toast.error).mockClear();
   vi.mocked(toast.info).mockClear();
@@ -601,6 +618,72 @@ describe('PostsKanbanView', () => {
         dndHandlers.onDragCancel?.();
       });
       expect(container.querySelector('.board-drop-slot')).toBeNull();
+    });
+
+    it('cross-column drop into an empty manual column also persists the placement at the slot index', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 700, status: 'rascunho', titulo: 'Draft' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '700' }, over: { id: 'col:revisao_interna' } });
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(700, {
+          status: 'revisao_interna',
+          custom_status_id: null,
+        }),
+      );
+      await waitFor(() =>
+        expect(mockReorder).toHaveBeenCalledWith([{ id: 700, board_ordem: 1024 }]),
+      );
+    });
+
+    it('same-column drop over another card reorders only -- no status mutation, no undo toast', async () => {
+      const posts = [
+        makePost({ id: 701, status: 'rascunho', titulo: 'A' }),
+        makePost({ id: 702, status: 'rascunho', titulo: 'B' }),
+      ];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '701' }, over: { id: '702' } });
+
+      await waitFor(() => expect(mockReorder).toHaveBeenCalled());
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(toast).not.toHaveBeenCalled();
+    });
+
+    it('Desfazer also restores the previous board_ordem (null when the post had no prior rank)', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 703, status: 'rascunho', titulo: 'Draft', board_ordem: null })];
+      const { qc } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+      act(() => {
+        qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, posts);
+      });
+
+      dndHandlers.onDragEnd?.({ active: { id: '703' }, over: { id: 'col:revisao_interna' } });
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(703, {
+          status: 'revisao_interna',
+          custom_status_id: null,
+        }),
+      );
+      mockUpdate.mockClear();
+      mockReorder.mockClear();
+
+      const [, options] = vi.mocked(toast).mock.calls[0] as [
+        string,
+        { action: { onClick: () => void } },
+      ];
+      options.action.onClick();
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(703, {
+          status: 'rascunho',
+          custom_status_id: null,
+        }),
+      );
+      expect(mockReorder).toHaveBeenCalledWith([{ id: 703, board_ordem: null }]);
     });
   });
 });

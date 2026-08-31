@@ -65,36 +65,60 @@ export interface PostsKanbanHoverSlot {
  * Decides whether the hovered column should open a live drop slot during a
  * drag, and at which index. Pure, like resolvePostsKanbanDrop above.
  *
- * The index is the spot the card will REALLY land at after the drop: the
- * byStatus grouping preserves the order of `posts` (scheduled_at asc, nulls
- * last from the query), so the landing index is the number of target-column
- * posts that precede the dragged post in that same order. Anchoring the slot
- * to the true landing spot, instead of the pointer, means the card never
- * jumps when the optimistic move settles.
+ * Two ways to land on an index:
+ *  - `pointer`, supplied by the caller when the target column is manually
+ *    sorted: a pointer-derived insert index (computed from card/column
+ *    rects), used as-is.
+ *  - otherwise, the spot the card will REALLY land at once an auto-sorted
+ *    move settles: the byStatus grouping preserves the order of `posts`
+ *    (scheduled_at asc, nulls last from the query), so the landing index is
+ *    the number of target-column posts that precede the dragged post in that
+ *    same order. Anchoring the slot to the true landing spot, instead of the
+ *    pointer, means the card never jumps when the optimistic move settles.
+ *
+ * `overId` may name a droppable column (COL_PREFIX-prefixed) or a card --
+ * resolved to its column via `columnOf` (the sorted-view lookup the view
+ * builds from its per-column render order), so hovering a card mid-column
+ * also opens a slot in a manually-sorted target.
  */
 export function resolvePostsKanbanHover({
   post,
   posts,
   overId,
   registry,
+  columnOf,
+  pointer,
 }: {
   post: ActivePost | undefined;
   /** Full board list, in the exact order the byStatus grouping consumes. */
   posts: ActivePost[];
   overId: string | undefined;
   registry: StatusRegistry;
+  /** Resolves a card id to its column key (sorted view), for over-card hovers. */
+  columnOf?: (postId: number) => StatusKey | undefined;
+  /** Present when the target column is manually sorted: the pointer-derived
+   *  insert index inside that column (computed by the view from rects). */
+  pointer?: { index: number };
 }): PostsKanbanHoverSlot | null {
-  if (!post || !overId || !overId.startsWith(COL_PREFIX)) return null;
+  if (!post || !overId) return null;
 
   const currentOpt = registry.resolve(post);
   if (LOCKED_STATUSES.has(currentOpt.canonical)) return null;
 
-  const targetKey = overId.slice(COL_PREFIX.length) as StatusKey;
-  if (targetKey === currentOpt.key) return null;
+  let targetKey: StatusKey | undefined;
+  if (overId.startsWith(COL_PREFIX)) {
+    targetKey = overId.slice(COL_PREFIX.length) as StatusKey;
+  } else {
+    const overPostId = Number(overId);
+    targetKey = Number.isNaN(overPostId) ? undefined : columnOf?.(overPostId);
+  }
+  if (!targetKey || targetKey === currentOpt.key) return null;
 
   const targetOpt = registry.byKey.get(targetKey);
   // Locked targets refuse the drop with a toast, so opening space would lie.
   if (!targetOpt || LOCKED_STATUSES.has(targetOpt.canonical)) return null;
+
+  if (pointer) return { key: targetKey, index: Math.max(0, pointer.index) };
 
   const draggedAt = posts.findIndex((p) => p.id === post.id);
   const before = draggedAt === -1 ? posts.length : draggedAt;
@@ -110,6 +134,9 @@ export interface UndoableStatusMove {
   forward: UpdatePostStatusVars;
   backward: UpdatePostStatusVars;
   targetLabel: string;
+  /** board_ordem snapshotted before the drag, so Desfazer restores the
+   *  previous manual rank alongside the previous status. */
+  previousBoardOrdem: number | null;
 }
 
 /**
@@ -139,6 +166,7 @@ export function buildUndoableStatusMove({
       canonical: prev.canonical,
     },
     targetLabel: target.label,
+    previousBoardOrdem: post.board_ordem,
   };
 }
 

@@ -252,6 +252,80 @@ describe('resolvePostsKanbanHover', () => {
       }),
     ).toEqual({ key, index: 1 });
   });
+
+  it('resolves the target column via columnOf when hovering over a card id', () => {
+    const dragged = makePost({ id: 10, status: 'rascunho' });
+    const overCard = makePost({ id: 20, status: 'revisao_interna' });
+    const posts = [dragged, overCard];
+    expect(
+      resolvePostsKanbanHover({
+        post: dragged,
+        posts,
+        overId: '20',
+        registry,
+        columnOf: () => 'revisao_interna',
+      }),
+    ).toEqual({ key: 'revisao_interna', index: 0 });
+  });
+
+  it('over-card id resolving to the dragged post’s own column (via columnOf) returns null', () => {
+    const dragged = makePost({ id: 10, status: 'rascunho' });
+    const overCard = makePost({ id: 20, status: 'rascunho' });
+    expect(
+      resolvePostsKanbanHover({
+        post: dragged,
+        posts: [dragged, overCard],
+        overId: '20',
+        registry,
+        columnOf: () => 'rascunho',
+      }),
+    ).toBeNull();
+  });
+
+  it('an explicit pointer index wins over the landing computation', () => {
+    const dragged = makePost({ id: 10, status: 'rascunho' });
+    const posts = [
+      makePost({ id: 1, status: 'revisao_interna' }),
+      makePost({ id: 2, status: 'revisao_interna' }),
+      dragged,
+    ];
+    // Without a pointer, the landing index would be 2 (see the earlier test)
+    // -- the explicit pointer overrides that computation entirely.
+    expect(
+      resolvePostsKanbanHover({
+        post: dragged,
+        posts,
+        overId: `${COL_PREFIX}revisao_interna`,
+        registry,
+        pointer: { index: 0 },
+      }),
+    ).toEqual({ key: 'revisao_interna', index: 0 });
+  });
+
+  it('a negative pointer index clamps to 0', () => {
+    const dragged = makePost({ id: 10, status: 'rascunho' });
+    expect(
+      resolvePostsKanbanHover({
+        post: dragged,
+        posts: [dragged],
+        overId: `${COL_PREFIX}revisao_interna`,
+        registry,
+        pointer: { index: -3 },
+      }),
+    ).toEqual({ key: 'revisao_interna', index: 0 });
+  });
+
+  it('an over-card id with no columnOf given cannot resolve a target column', () => {
+    const dragged = makePost({ id: 10, status: 'rascunho' });
+    expect(
+      resolvePostsKanbanHover({
+        post: dragged,
+        posts: [dragged],
+        overId: '20',
+        registry,
+      }),
+    ).toBeNull();
+  });
 });
 
 describe('buildUndoableStatusMove', () => {
@@ -263,6 +337,7 @@ describe('buildUndoableStatusMove', () => {
       forward: { id: 7, workflowId: 33, key: 'revisao_interna', canonical: 'revisao_interna' },
       backward: { id: 7, workflowId: 33, key: 'rascunho', canonical: 'rascunho' },
       targetLabel: 'Em revisão',
+      previousBoardOrdem: null,
     });
   });
 
@@ -279,7 +354,14 @@ describe('buildUndoableStatusMove', () => {
       forward: { id: 7, workflowId: null, key: 'enviado_cliente', canonical: 'enviado_cliente' },
       backward: { id: 7, workflowId: null, key, canonical: 'rascunho' },
       targetLabel: 'Enviado ao cliente',
+      previousBoardOrdem: null,
     });
+  });
+
+  it('captures previousBoardOrdem from the post at drag time', () => {
+    const post = makePost({ id: 7, status: 'rascunho', board_ordem: 2048 });
+    const move = buildUndoableStatusMove({ post, key: 'revisao_interna', registry });
+    expect(move?.previousBoardOrdem).toBe(2048);
   });
 
   it('targets a custom column with its behaves_as canonical in the forward patch', () => {
