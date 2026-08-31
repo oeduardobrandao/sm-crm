@@ -144,7 +144,10 @@ function PostBoardCardContent({
           {card.etapa.nome}
         </span>
       ) : post.workflow_id === null ? (
-        <span className="post-fluxo-tag post-fluxo-tag--avulso">Avulso</span>
+        <span className="post-fluxo-tag post-fluxo-tag--avulso">
+          <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+          Avulso
+        </span>
       ) : null}
       <div className="item-meta board-post-footer">
         <span className="board-post-footer-left">

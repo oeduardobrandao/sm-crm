@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronUp, ChevronDown, Plus } from 'lucide-react';
+import { ChevronUp, ChevronDown, CircleDashed, Plus } from 'lucide-react';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { Button } from '@/components/ui/button';
@@ -258,7 +258,10 @@ export function PostsListView({
                 </td>
                 <td style={{ ...oneLineCell, overflow: 'visible' }}>
                   {workflowId == null ? (
-                    <span className="post-fluxo-tag post-fluxo-tag--avulso">Avulso</span>
+                    <span className="post-fluxo-tag post-fluxo-tag--avulso">
+                      <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+                      Avulso
+                    </span>
                   ) : card ? (
                     <button
                       type="button"

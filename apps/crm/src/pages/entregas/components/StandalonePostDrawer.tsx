@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { X, Trash2, Link2, Maximize2, Minimize2 } from 'lucide-react';
+import { X, Trash2, Link2, Maximize2, Minimize2, CircleDashed } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -431,7 +431,10 @@ export function StandalonePostDrawer({
             {post && (
               <div className="drawer-header-subtitle">
                 {post.cliente_nome || '—'} &bull;{' '}
-                <span className="badge badge-neutral badge--sm">Avulso</span>
+                <span className="post-fluxo-tag post-fluxo-tag--avulso">
+                  <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+                  Avulso
+                </span>
               </div>
             )}
           </div>
