@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -10,6 +10,7 @@ import {
   useDraggable,
   useDroppable,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
 import {
@@ -51,7 +52,12 @@ import { formatEtapaPrazo } from '../etapaPrazo';
 import { TIPO_LABELS, LOCKED_STATUSES, LOCKED_TOOLTIPS, getPostPublishState } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { StatusKey, StatusOption, StatusRegistry } from '../statusRegistry';
-import { COL_PREFIX, resolvePostsKanbanDrop } from '../postsKanbanDrop';
+import {
+  COL_PREFIX,
+  resolvePostsKanbanDrop,
+  resolvePostsKanbanHover,
+  type PostsKanbanHoverSlot,
+} from '../postsKanbanDrop';
 import { getCustomStatusIcon } from '../statusIcons';
 import { useUpdatePostStatus } from '../hooks/useUpdatePostStatus';
 
@@ -314,6 +320,8 @@ function PostBoardColumn({
   onPostClick,
   cardsByWorkflowId,
   isDragActive,
+  dropSlot,
+  dragHeight,
 }: {
   option: StatusOption;
   posts: ActivePost[];
@@ -322,6 +330,9 @@ function PostBoardColumn({
   onPostClick: (post: ActivePost) => void;
   cardsByWorkflowId: Map<number, BoardCard>;
   isDragActive: boolean;
+  /** Slot for THIS column only; null when the drag hovers elsewhere. */
+  dropSlot: PostsKanbanHoverSlot | null;
+  dragHeight: number;
 }) {
   const isLockedColumn = LOCKED_STATUSES.has(option.canonical);
   const { setNodeRef } = useDroppable({ id: `${COL_PREFIX}${option.key}` });
@@ -387,19 +398,32 @@ function PostBoardColumn({
         className="board-column-body"
         style={tint ? { background: `${tint}0a` } : undefined}
       >
-        {posts.length === 0 ? (
+        {posts.length === 0 && dropSlot == null ? (
           <div className="board-empty">Nenhum post</div>
         ) : (
-          posts.map((p) => (
-            <PostBoardCard
-              key={p.id}
-              post={p}
-              registry={registry}
-              card={p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined}
-              openable={isPostOpenable(p, openableWorkflowIds)}
-              onPostClick={onPostClick}
-            />
-          ))
+          <>
+            {posts.map((p, idx) => (
+              <Fragment key={p.id}>
+                {dropSlot != null && dropSlot.index === idx && (
+                  <div
+                    className="board-drop-slot"
+                    style={{ height: dragHeight }}
+                    aria-hidden="true"
+                  />
+                )}
+                <PostBoardCard
+                  post={p}
+                  registry={registry}
+                  card={p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined}
+                  openable={isPostOpenable(p, openableWorkflowIds)}
+                  onPostClick={onPostClick}
+                />
+              </Fragment>
+            ))}
+            {dropSlot != null && dropSlot.index >= posts.length && (
+              <div className="board-drop-slot" style={{ height: dragHeight }} aria-hidden="true" />
+            )}
+          </>
         )}
       </div>
     </div>
@@ -424,6 +448,8 @@ export function PostsKanbanView({
   const registry = useStatusRegistry();
   const updateStatus = useUpdatePostStatus();
   const [activeId, setActiveId] = useState<number | null>(null);
+  const [dropSlot, setDropSlot] = useState<PostsKanbanHoverSlot | null>(null);
+  const [dragHeight, setDragHeight] = useState(120);
   const [pendingConfirm, setPendingConfirm] = useState<{ post: ActivePost; key: StatusKey } | null>(
     null,
   );
@@ -451,10 +477,26 @@ export function PostsKanbanView({
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(Number(event.active.id));
+    setDragHeight(event.active.rect.current?.initial?.height ?? 120);
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    const slot = resolvePostsKanbanHover({
+      post: posts.find((p) => p.id === Number(active.id)),
+      posts,
+      overId: over ? String(over.id) : undefined,
+      registry,
+    });
+    // Identity-stable update so hovering in place never re-renders the board.
+    setDropSlot((prev) =>
+      prev && slot && prev.key === slot.key && prev.index === slot.index ? prev : slot,
+    );
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveId(null);
+    setDropSlot(null);
     const { active, over } = event;
     const post = posts.find((p) => p.id === Number(active.id));
     const result = resolvePostsKanbanDrop({
@@ -522,8 +564,12 @@ export function PostsKanbanView({
       <DndContext
         sensors={sensors}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
-        onDragCancel={() => setActiveId(null)}
+        onDragCancel={() => {
+          setActiveId(null);
+          setDropSlot(null);
+        }}
       >
         <div className="board-rows-wrapper animate-up">
           <div className="board-container">
@@ -537,6 +583,8 @@ export function PostsKanbanView({
                 onPostClick={onPostClick}
                 cardsByWorkflowId={cardsByWorkflowId}
                 isDragActive={activeId != null}
+                dropSlot={dropSlot?.key === option.key ? dropSlot : null}
+                dragHeight={dragHeight}
               />
             ))}
           </div>

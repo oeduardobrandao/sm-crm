@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ActivePost, PostStatusDefinition } from '../../../store';
 import { buildStatusRegistry, customKey } from '../statusRegistry';
-import { COL_PREFIX, resolvePostsKanbanDrop } from '../postsKanbanDrop';
+import { COL_PREFIX, resolvePostsKanbanDrop, resolvePostsKanbanHover } from '../postsKanbanDrop';
 
 const UUID = '11111111-2222-3333-4444-555555555555';
 
@@ -133,5 +133,116 @@ describe('resolvePostsKanbanDrop', () => {
         registry: customRegistry,
       }),
     ).toEqual({ kind: 'write', key: customKey(UUID) });
+  });
+});
+
+describe('resolvePostsKanbanHover', () => {
+  const registry = buildStatusRegistry([]);
+
+  it('returns null without a post, without an over target, or over a non-column id', () => {
+    const posts = [makePost()];
+    expect(
+      resolvePostsKanbanHover({
+        post: undefined,
+        posts,
+        overId: `${COL_PREFIX}revisao_interna`,
+        registry,
+      }),
+    ).toBeNull();
+    expect(
+      resolvePostsKanbanHover({ post: posts[0], posts, overId: undefined, registry }),
+    ).toBeNull();
+    expect(resolvePostsKanbanHover({ post: posts[0], posts, overId: '42', registry })).toBeNull();
+  });
+
+  it('returns null over the post’s own column and over unknown or locked columns', () => {
+    const post = makePost();
+    const posts = [post];
+    expect(
+      resolvePostsKanbanHover({ post, posts, overId: `${COL_PREFIX}rascunho`, registry }),
+    ).toBeNull();
+    expect(
+      resolvePostsKanbanHover({ post, posts, overId: `${COL_PREFIX}nao_existe`, registry }),
+    ).toBeNull();
+    expect(
+      resolvePostsKanbanHover({ post, posts, overId: `${COL_PREFIX}agendado`, registry }),
+    ).toBeNull();
+    expect(
+      resolvePostsKanbanHover({ post, posts, overId: `${COL_PREFIX}postado`, registry }),
+    ).toBeNull();
+  });
+
+  it('returns null when the dragged post itself sits in a locked status', () => {
+    const post = makePost({ status: 'postado' });
+    expect(
+      resolvePostsKanbanHover({
+        post,
+        posts: [post],
+        overId: `${COL_PREFIX}rascunho`,
+        registry,
+      }),
+    ).toBeNull();
+  });
+
+  it('opens the slot at the true landing index of the target column', () => {
+    // Board order: r1, r2 (revisao_interna), dragged (rascunho), r3 (revisao_interna).
+    // Landing index in revisao_interna = 2 (r1 and r2 precede the dragged post).
+    const dragged = makePost({ id: 10 });
+    const posts = [
+      makePost({ id: 1, status: 'revisao_interna' }),
+      makePost({ id: 2, status: 'revisao_interna' }),
+      dragged,
+      makePost({ id: 3, status: 'revisao_interna' }),
+    ];
+    expect(
+      resolvePostsKanbanHover({
+        post: dragged,
+        posts,
+        overId: `${COL_PREFIX}revisao_interna`,
+        registry,
+      }),
+    ).toEqual({ key: 'revisao_interna', index: 2 });
+  });
+
+  it('opens the slot at index 0 for an empty target column', () => {
+    const dragged = makePost({ id: 10 });
+    expect(
+      resolvePostsKanbanHover({
+        post: dragged,
+        posts: [dragged],
+        overId: `${COL_PREFIX}enviado_cliente`,
+        registry,
+      }),
+    ).toEqual({ key: 'enviado_cliente', index: 0 });
+  });
+
+  it('groups by resolved key, so custom-status posts count in their own column, not the canonical one', () => {
+    const customRegistry = buildStatusRegistry([def()]);
+    const key = customKey(UUID);
+    const dragged = makePost({ id: 10, status: 'revisao_interna' });
+    const posts = [
+      // Custom "Em design" behaves as rascunho but lives in its own column.
+      makePost({ id: 1, custom_status_id: UUID, status: 'rascunho' }),
+      makePost({ id: 2, status: 'rascunho' }),
+      dragged,
+    ];
+    // Hovering the plain rascunho column: only post 2 belongs to it.
+    expect(
+      resolvePostsKanbanHover({
+        post: dragged,
+        posts,
+        overId: `${COL_PREFIX}rascunho`,
+        registry: customRegistry,
+      }),
+    ).toEqual({ key: 'rascunho', index: 1 });
+    // Hovering the custom column: only post 1 belongs to it.
+    expect(
+      resolvePostsKanbanHover({
+        post: dragged,
+        posts,
+        overId: `${COL_PREFIX}${key}`,
+        registry: customRegistry,
+      }),
+    ).toEqual({ key, index: 1 });
   });
 });

@@ -54,3 +54,53 @@ export function resolvePostsKanbanDrop({
 
   return { kind: 'write', key: targetKey };
 }
+
+export interface PostsKanbanHoverSlot {
+  key: StatusKey;
+  index: number;
+}
+
+/**
+ * Decides whether the hovered column should open a live drop slot during a
+ * drag, and at which index. Pure, like resolvePostsKanbanDrop above.
+ *
+ * The index is the spot the card will REALLY land at after the drop: the
+ * byStatus grouping preserves the order of `posts` (scheduled_at asc, nulls
+ * last from the query), so the landing index is the number of target-column
+ * posts that precede the dragged post in that same order. Anchoring the slot
+ * to the true landing spot, instead of the pointer, means the card never
+ * jumps when the optimistic move settles.
+ */
+export function resolvePostsKanbanHover({
+  post,
+  posts,
+  overId,
+  registry,
+}: {
+  post: ActivePost | undefined;
+  /** Full board list, in the exact order the byStatus grouping consumes. */
+  posts: ActivePost[];
+  overId: string | undefined;
+  registry: StatusRegistry;
+}): PostsKanbanHoverSlot | null {
+  if (!post || !overId || !overId.startsWith(COL_PREFIX)) return null;
+
+  const currentOpt = registry.resolve(post);
+  if (LOCKED_STATUSES.has(currentOpt.canonical)) return null;
+
+  const targetKey = overId.slice(COL_PREFIX.length) as StatusKey;
+  if (targetKey === currentOpt.key) return null;
+
+  const targetOpt = registry.byKey.get(targetKey);
+  // Locked targets refuse the drop with a toast, so opening space would lie.
+  if (!targetOpt || LOCKED_STATUSES.has(targetOpt.canonical)) return null;
+
+  const draggedAt = posts.findIndex((p) => p.id === post.id);
+  const before = draggedAt === -1 ? posts.length : draggedAt;
+  let index = 0;
+  for (let i = 0; i < before; i++) {
+    const p = posts[i];
+    if (p.id !== post.id && registry.resolve(p).key === targetKey) index++;
+  }
+  return { key: targetKey, index };
+}
