@@ -269,6 +269,11 @@ describe('PostsKanbanView', () => {
     expect(screen.getByText('2d')).toBeInTheDocument();
   });
 
+  it('renders the canonical status icon in the column header', () => {
+    const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={[makePost()]} />);
+    expect(container.querySelector('.board-column-title .lucide-pencil-line')).toBeInTheDocument();
+  });
+
   it('shows which etapa the post is in', () => {
     const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={[makePost()]} />);
     expect(container.querySelector('.board-post-card .post-fluxo-tag--static')?.textContent).toBe(

@@ -29,6 +29,8 @@ export interface StatusOption {
   cssClass?: string;
   /** User-picked hex color, customs only. */
   color?: string;
+  /** User-picked lucide icon name (statusIcons.ts whitelist), customs only. */
+  icone?: string | null;
 }
 
 export interface StatusRegistry {
@@ -83,6 +85,7 @@ export function buildStatusRegistry(defs: PostStatusDefinition[]): StatusRegistr
         canonical: def.behaves_as,
         label: def.nome,
         color: def.cor,
+        icone: def.icone,
       });
     }
   }

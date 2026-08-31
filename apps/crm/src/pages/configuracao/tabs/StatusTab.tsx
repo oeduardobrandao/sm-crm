@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
+import { CUSTOM_STATUS_ICONS, getCustomStatusIcon } from '@/pages/entregas/statusIcons';
 import { useAuth } from '../../../context/AuthContext';
 import { handleEntitlementMutationError } from '../../../lib/entitlement-toast';
 import {
@@ -82,7 +83,12 @@ export default function StatusTab() {
     // Ordem after the current MAX, not defs.length: archived rows keep their
     // ordem, so a count-based value could collide with a live row and land
     // the new status mid-list.
-    mutationFn: (payload: { nome: string; cor: string; behaves_as: CustomStatusBehavesAs }) =>
+    mutationFn: (payload: {
+      nome: string;
+      cor: string;
+      icone: string | null;
+      behaves_as: CustomStatusBehavesAs;
+    }) =>
       createPostStatusDefinition({
         ...payload,
         ordem: defs.reduce((max, d) => Math.max(max, d.ordem), -1) + 1,
@@ -166,16 +172,27 @@ export default function StatusTab() {
                   padding: '8px 10px',
                 }}
               >
-                <span
-                  title={def.cor}
-                  style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: 5,
-                    background: def.cor,
-                    display: 'inline-block',
-                  }}
-                />
+                {(() => {
+                  const DefIcon = getCustomStatusIcon(def.icone);
+                  return DefIcon ? (
+                    <DefIcon
+                      size={16}
+                      aria-hidden="true"
+                      style={{ color: def.cor, flexShrink: 0 }}
+                    />
+                  ) : (
+                    <span
+                      title={def.cor}
+                      style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: 5,
+                        background: def.cor,
+                        display: 'inline-block',
+                      }}
+                    />
+                  );
+                })()}
                 <strong style={{ fontSize: '0.9rem' }}>{def.nome}</strong>
                 <label
                   style={{
@@ -283,11 +300,17 @@ function CreateStatusForm({
   onCreate,
   creating,
 }: {
-  onCreate: (payload: { nome: string; cor: string; behaves_as: CustomStatusBehavesAs }) => void;
+  onCreate: (payload: {
+    nome: string;
+    cor: string;
+    icone: string | null;
+    behaves_as: CustomStatusBehavesAs;
+  }) => void;
   creating: boolean;
 }) {
   const [nome, setNome] = useState('');
   const [cor, setCor] = useState(PRESET_COLORS[1]);
+  const [icone, setIcone] = useState<string | null>(null);
   const [behavesAs, setBehavesAs] = useState<CustomStatusBehavesAs>('revisao_interna');
 
   const submit = () => {
@@ -296,7 +319,7 @@ function CreateStatusForm({
       toast.error('Dê um nome ao status');
       return;
     }
-    onCreate({ nome: trimmed, cor, behaves_as: behavesAs });
+    onCreate({ nome: trimmed, cor, icone, behaves_as: behavesAs });
     setNome('');
   };
 
@@ -342,6 +365,47 @@ function CreateStatusForm({
             ))}
           </select>
         </label>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          title="Sem ícone (dot de cor)"
+          onClick={() => setIcone(null)}
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 8,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'var(--surface-hover)',
+            border: icone === null ? '2px solid var(--text-main)' : '2px solid transparent',
+            cursor: 'pointer',
+          }}
+        >
+          <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%', background: cor }} />
+        </button>
+        {Object.entries(CUSTOM_STATUS_ICONS).map(([name, IconCmp]) => (
+          <button
+            key={name}
+            type="button"
+            title={name}
+            onClick={() => setIcone(name)}
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 8,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'var(--surface-hover)',
+              border: icone === name ? '2px solid var(--text-main)' : '2px solid transparent',
+              cursor: 'pointer',
+            }}
+          >
+            <IconCmp size={14} aria-hidden="true" style={{ color: cor }} />
+          </button>
+        ))}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ display: 'flex', gap: 5 }}>

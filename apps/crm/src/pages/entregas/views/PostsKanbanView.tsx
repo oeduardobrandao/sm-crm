@@ -52,6 +52,7 @@ import { TIPO_LABELS, LOCKED_STATUSES, LOCKED_TOOLTIPS, getPostPublishState } fr
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { StatusKey, StatusOption, StatusRegistry } from '../statusRegistry';
 import { COL_PREFIX, resolvePostsKanbanDrop } from '../postsKanbanDrop';
+import { getCustomStatusIcon } from '../statusIcons';
 import { useUpdatePostStatus } from '../hooks/useUpdatePostStatus';
 
 const TIPO_ICONS: Record<ActivePost['tipo'], typeof Image> = {
@@ -304,31 +305,40 @@ function PostBoardColumn({
     >
       <div className="board-column-header">
         <span className="board-column-title">
-          {option.kind === 'custom' ? (
-            <span
-              aria-hidden
-              style={{
-                display: 'inline-block',
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                background: option.color,
-                flexShrink: 0,
-              }}
-            />
-          ) : (
-            (() => {
-              const meta = STATUS_HEADER_META[option.canonical];
-              const HeaderIcon = meta.icon;
-              return (
-                <HeaderIcon
-                  size={13}
-                  aria-hidden="true"
-                  style={{ color: meta.color ?? 'var(--text-light)', flexShrink: 0 }}
-                />
-              );
-            })()
-          )}
+          {option.kind === 'custom'
+            ? (() => {
+                const CustomIcon = getCustomStatusIcon(option.icone);
+                return CustomIcon ? (
+                  <CustomIcon
+                    size={13}
+                    aria-hidden="true"
+                    style={{ color: option.color, flexShrink: 0 }}
+                  />
+                ) : (
+                  <span
+                    aria-hidden
+                    style={{
+                      display: 'inline-block',
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background: option.color,
+                      flexShrink: 0,
+                    }}
+                  />
+                );
+              })()
+            : (() => {
+                const meta = STATUS_HEADER_META[option.canonical];
+                const HeaderIcon = meta.icon;
+                return (
+                  <HeaderIcon
+                    size={13}
+                    aria-hidden="true"
+                    style={{ color: meta.color ?? 'var(--text-light)', flexShrink: 0 }}
+                  />
+                );
+              })()}
           {option.label}
         </span>
         <span className="board-column-count">{posts.length}</span>
