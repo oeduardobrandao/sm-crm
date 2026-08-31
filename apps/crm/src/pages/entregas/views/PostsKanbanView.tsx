@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -57,10 +58,11 @@ import {
   buildUndoableStatusMove,
   resolvePostsKanbanDrop,
   resolvePostsKanbanHover,
+  resolveUndoGuard,
   type PostsKanbanHoverSlot,
 } from '../postsKanbanDrop';
 import { getCustomStatusIcon } from '../statusIcons';
-import { useUpdatePostStatus } from '../hooks/useUpdatePostStatus';
+import { ACTIVE_POSTS_KEY, useUpdatePostStatus } from '../hooks/useUpdatePostStatus';
 
 const TIPO_ICONS: Record<ActivePost['tipo'], typeof Image> = {
   feed: Image,
@@ -448,6 +450,7 @@ export function PostsKanbanView({
 }: PostsKanbanViewProps) {
   const registry = useStatusRegistry();
   const updateStatus = useUpdatePostStatus();
+  const qc = useQueryClient();
   const [activeId, setActiveId] = useState<number | null>(null);
   const [dropSlot, setDropSlot] = useState<PostsKanbanHoverSlot | null>(null);
   const [dragHeight, setDragHeight] = useState(120);
@@ -473,7 +476,10 @@ export function PostsKanbanView({
 
   /** Drag-initiated status change with a temporary undo. The backward mutate
    *  deliberately skips the drop resolver: restoring an approved status must
-   *  not re-open the confirm dialog. */
+   *  not re-open the confirm dialog. Before writing it, resolveUndoGuard checks
+   *  the LIVE cache: if the post moved again after the drag (another agent,
+   *  the client Hub, auto-scheduling) between the drag and the Desfazer click,
+   *  the backward write would clobber that newer change, so it no-ops instead. */
   const applyStatusChange = (post: ActivePost, key: StatusKey) => {
     const move = buildUndoableStatusMove({ post, key, registry });
     if (!move) return;
@@ -482,7 +488,18 @@ export function PostsKanbanView({
       duration: 6000,
       action: {
         label: 'Desfazer',
-        onClick: () => updateStatus.mutate(move.backward),
+        onClick: () => {
+          const guard = resolveUndoGuard(
+            qc.getQueryData<ActivePost[]>(ACTIVE_POSTS_KEY),
+            move,
+            registry,
+          );
+          if (guard === 'stale') {
+            toast.info('O post já mudou de novo. Nada foi desfeito.');
+            return;
+          }
+          updateStatus.mutate(move.backward);
+        },
       },
     });
   };

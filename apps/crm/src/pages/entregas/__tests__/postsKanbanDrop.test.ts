@@ -6,6 +6,7 @@ import {
   buildUndoableStatusMove,
   resolvePostsKanbanDrop,
   resolvePostsKanbanHover,
+  resolveUndoGuard,
 } from '../postsKanbanDrop';
 
 const UUID = '11111111-2222-3333-4444-555555555555';
@@ -293,5 +294,40 @@ describe('buildUndoableStatusMove', () => {
     expect(
       buildUndoableStatusMove({ post: makePost(), key: 'custom:nope' as never, registry }),
     ).toBeNull();
+  });
+});
+
+describe('resolveUndoGuard', () => {
+  const registry = buildStatusRegistry([]);
+
+  it("is 'apply' when the post still resolves to the forward key", () => {
+    const post = makePost({ id: 7, status: 'rascunho' });
+    const move = buildUndoableStatusMove({ post, key: 'revisao_interna', registry })!;
+    const currentPosts = [makePost({ id: 7, status: 'revisao_interna' })];
+    expect(resolveUndoGuard(currentPosts, move, registry)).toBe('apply');
+  });
+
+  it("is 'stale' when the post resolves to a different key by undo time", () => {
+    const post = makePost({ id: 7, status: 'rascunho' });
+    const move = buildUndoableStatusMove({ post, key: 'revisao_interna', registry })!;
+    // Someone else moved it again before the Desfazer click landed.
+    const currentPosts = [makePost({ id: 7, status: 'aprovado_interno' })];
+    expect(resolveUndoGuard(currentPosts, move, registry)).toBe('stale');
+  });
+
+  it("is 'stale' when the post is missing from the list, or the list is undefined", () => {
+    const post = makePost({ id: 7, status: 'rascunho' });
+    const move = buildUndoableStatusMove({ post, key: 'revisao_interna', registry })!;
+    expect(resolveUndoGuard([], move, registry)).toBe('stale');
+    expect(resolveUndoGuard(undefined, move, registry)).toBe('stale');
+  });
+
+  it("is 'apply' for a custom-status forward target when the custom pointer still matches", () => {
+    const customRegistry = buildStatusRegistry([def()]);
+    const key = customKey(UUID);
+    const post = makePost({ id: 7, status: 'revisao_interna' });
+    const move = buildUndoableStatusMove({ post, key, registry: customRegistry })!;
+    const currentPosts = [makePost({ id: 7, custom_status_id: UUID, status: 'rascunho' })];
+    expect(resolveUndoGuard(currentPosts, move, customRegistry)).toBe('apply');
   });
 });

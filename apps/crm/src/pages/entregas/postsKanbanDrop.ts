@@ -141,3 +141,19 @@ export function buildUndoableStatusMove({
     targetLabel: target.label,
   };
 }
+
+export type UndoGuardResult = 'apply' | 'stale';
+
+/** Undo is only safe while the post still sits where the drag left it: if its
+ *  resolved key no longer equals the forward target (someone else moved it, or
+ *  it vanished from the board), the backward write would clobber a newer
+ *  change, so the caller must no-op. */
+export function resolveUndoGuard(
+  currentPosts: ActivePost[] | undefined,
+  move: UndoableStatusMove,
+  registry: StatusRegistry,
+): UndoGuardResult {
+  const current = (currentPosts ?? []).find((p) => p.id === move.forward.id);
+  if (!current) return 'stale';
+  return registry.resolve(current).key === move.forward.key ? 'apply' : 'stale';
+}

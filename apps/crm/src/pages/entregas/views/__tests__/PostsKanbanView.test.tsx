@@ -69,6 +69,7 @@ import { POST_STATUS_ORDER, STATUS_LABELS } from '../../postLabels';
 import { updateWorkflowPost } from '@/store';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../../hooks/useEntregasData';
+import { ACTIVE_POSTS_KEY } from '../../hooks/useUpdatePostStatus';
 
 const mockUpdate = vi.mocked(updateWorkflowPost);
 
@@ -87,6 +88,7 @@ beforeEach(() => {
   mockUpdate.mockReset();
   vi.mocked(toast).mockClear();
   vi.mocked(toast.error).mockClear();
+  vi.mocked(toast.info).mockClear();
 });
 
 function renderWithQuery(ui: React.ReactElement) {
@@ -432,6 +434,101 @@ describe('PostsKanbanView', () => {
       dndHandlers.onDragEnd?.({ active: { id: '508' }, over: { id: 'col:revisao_interna' } });
 
       await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Erro ao atualizar status'));
+    });
+
+    it('shows a movido toast with a Desfazer action after a valid write', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 509, status: 'rascunho', titulo: 'Draft' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '509' }, over: { id: 'col:revisao_interna' } });
+
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+      expect(toast).toHaveBeenCalledWith(
+        expect.stringMatching(/Post movido para/),
+        expect.objectContaining({
+          duration: 6000,
+          action: expect.objectContaining({ label: 'Desfazer', onClick: expect.any(Function) }),
+        }),
+      );
+    });
+
+    it('Desfazer restores the previous status when the post still sits where the drag left it', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 510, status: 'rascunho', titulo: 'Draft' })];
+      const { qc } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+      // Mirrors production: useActivePosts (useQuery(['active-posts'])) already
+      // holds this list before PostsKanbanView receives it as a prop.
+      act(() => {
+        qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, posts);
+      });
+
+      dndHandlers.onDragEnd?.({ active: { id: '510' }, over: { id: 'col:revisao_interna' } });
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(510, {
+          status: 'revisao_interna',
+          custom_status_id: null,
+        }),
+      );
+      // The optimistic patch from the forward mutate leaves the cache showing
+      // the post still at the forward key -- the undo guard's "apply" path.
+      expect(
+        qc.getQueryData<ActivePost[]>(ACTIVE_POSTS_KEY)?.find((p) => p.id === 510)?.status,
+      ).toBe('revisao_interna');
+      mockUpdate.mockClear();
+
+      const [, options] = vi.mocked(toast).mock.calls[0] as [
+        string,
+        { action: { onClick: () => void } },
+      ];
+      options.action.onClick();
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(510, {
+          status: 'rascunho',
+          custom_status_id: null,
+        }),
+      );
+      expect(toast.info).not.toHaveBeenCalled();
+    });
+
+    it('Desfazer no-ops and toasts info when the post moved again before the click', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 511, status: 'rascunho', titulo: 'Draft' })];
+      const { qc } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+      act(() => {
+        qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, posts);
+      });
+
+      dndHandlers.onDragEnd?.({ active: { id: '511' }, over: { id: 'col:revisao_interna' } });
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(511, {
+          status: 'revisao_interna',
+          custom_status_id: null,
+        }),
+      );
+      mockUpdate.mockClear();
+
+      // Someone else (another agent, the client Hub, auto-scheduling) moved the
+      // post again before the Desfazer click landed.
+      act(() => {
+        qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, (old) =>
+          (old ?? []).map((p) =>
+            p.id === 511 ? { ...p, status: 'aprovado_interno', custom_status_id: null } : p,
+          ),
+        );
+      });
+
+      const [, options] = vi.mocked(toast).mock.calls[0] as [
+        string,
+        { action: { onClick: () => void } },
+      ];
+      options.action.onClick();
+
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(toast.info).toHaveBeenCalledWith('O post já mudou de novo. Nada foi desfeito.');
     });
 
     it('opens a live drop slot in the hovered column only, suppressing its empty state', () => {

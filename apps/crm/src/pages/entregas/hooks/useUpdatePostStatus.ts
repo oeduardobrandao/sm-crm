@@ -15,7 +15,10 @@ export interface UpdatePostStatusVars {
   canonical: WorkflowPost['status'];
 }
 
-const ACTIVE_POSTS_KEY = ['active-posts'] as const;
+/** The one query every Publicações surface reads; exported so callers that
+ *  need to read the live cache directly (e.g. the kanban's undo staleness
+ *  guard) use the exact same key instead of re-typing the literal. */
+export const ACTIVE_POSTS_KEY = ['active-posts'] as const;
 
 /**
  * Drives a post's status write from drag-and-drop on the Publicações kanban
