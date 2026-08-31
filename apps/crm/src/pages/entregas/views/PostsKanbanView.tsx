@@ -12,7 +12,15 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { Lock, Plus } from 'lucide-react';
+import {
+  CircleDashed,
+  Clapperboard,
+  GalleryHorizontalEnd,
+  Image,
+  Lock,
+  Plus,
+  Route,
+} from 'lucide-react';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { Button } from '@/components/ui/button';
@@ -31,12 +39,18 @@ import {
 import { formatPostDate } from '@/utils/postDate';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { formatEtapaPrazo } from '../etapaPrazo';
-import { TIPO_LABELS, LOCKED_STATUSES, LOCKED_TOOLTIPS } from '../postLabels';
+import { TIPO_LABELS, LOCKED_STATUSES, LOCKED_TOOLTIPS, getPostPublishState } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { StatusKey, StatusOption, StatusRegistry } from '../statusRegistry';
 import { COL_PREFIX, resolvePostsKanbanDrop } from '../postsKanbanDrop';
-import { PostStatusChip } from '../components/PostStatusChip';
 import { useUpdatePostStatus } from '../hooks/useUpdatePostStatus';
+
+const TIPO_ICONS: Record<ActivePost['tipo'], typeof Image> = {
+  feed: Image,
+  reels: Clapperboard,
+  carrossel: GalleryHorizontalEnd,
+  stories: CircleDashed,
+};
 
 interface PostsKanbanViewProps {
   posts: ActivePost[];
@@ -82,13 +96,31 @@ function PostBoardCardContent({
   const locked = LOCKED_STATUSES.has(opt.canonical);
   const membro = card?.membro;
   const prazo = card ? formatEtapaPrazo(card.deadline) : null;
+  const TipoIcon = TIPO_ICONS[post.tipo];
 
   return (
     <>
       <div className="item-top">
-        <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
+        <span className="board-post-tipo">
+          <TipoIcon size={13} aria-hidden="true" style={{ flexShrink: 0 }} />
+          {TIPO_LABELS[post.tipo]}
+        </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-          <PostStatusChip post={post} registry={registry} />
+          {getPostPublishState(post) === 'publicando' && (
+            <span className="board-post-prazo-pill board-post-publicando">Publicando…</span>
+          )}
+          {prazo && (
+            <span
+              className="board-post-prazo-pill"
+              style={
+                prazo.color.startsWith('#')
+                  ? { color: prazo.color, background: `${prazo.color}1f` }
+                  : { color: prazo.color }
+              }
+            >
+              {prazo.shortLabel}
+            </span>
+          )}
           {locked && (
             <TooltipProvider delayDuration={200}>
               <Tooltip>
@@ -107,69 +139,67 @@ function PostBoardCardContent({
       </div>
       <div className="item-title">{post.titulo || 'Post sem título'}</div>
       {card ? (
-        <div className="board-post-etapa">{card.etapa.nome}</div>
+        <span className="post-fluxo-tag post-fluxo-tag--static">
+          <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+          {card.etapa.nome}
+        </span>
       ) : post.workflow_id === null ? (
         <span className="post-fluxo-tag post-fluxo-tag--avulso">Avulso</span>
       ) : null}
       <div className="item-meta board-post-footer">
         <span className="board-post-footer-left">
-          {post.cliente_id != null && (
+          <span className="board-post-avatar-pair">
+            {post.cliente_id != null && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    {card?.clienteAvatarUrl ? (
+                      <img
+                        src={card.clienteAvatarUrl}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="board-post-cliente-avatar"
+                      />
+                    ) : (
+                      <span
+                        className="board-post-cliente-avatar board-post-cliente-avatar--initials"
+                        style={{
+                          background: card?.cliente?.cor || 'var(--surface-hover)',
+                        }}
+                      >
+                        {getInitials(post.cliente_nome || '?')}
+                      </span>
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent>{post.cliente_nome || '—'}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {membro && (
+              <span
+                className={`avatar board-post-assignee-avatar ${avatarColorClass(membro.id ?? membro.nome)}`}
+              >
+                {getInitials(membro.nome)}
+              </span>
+            )}
+          </span>
+          {card && membro && (
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  {card?.clienteAvatarUrl ? (
-                    <img
-                      src={card.clienteAvatarUrl}
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                      className="board-post-cliente-avatar"
-                    />
-                  ) : (
-                    <span
-                      className="board-post-cliente-avatar board-post-cliente-avatar--initials"
-                      style={{
-                        background: card?.cliente?.cor || 'var(--surface-hover)',
-                      }}
-                    >
-                      {getInitials(post.cliente_nome || '?')}
-                    </span>
-                  )}
+                  <span className="board-post-assignee">{membro.nome.split(' ')[0]}</span>
                 </TooltipTrigger>
-                <TooltipContent>{post.cliente_nome || '—'}</TooltipContent>
+                <TooltipContent>
+                  {`${card.etapa.nome}: ${membro.nome}${prazo ? ` · ${prazo.label}` : ''}`}
+                </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
-          <span>{post.scheduled_at ? formatPostDate(post.scheduled_at) : 'Sem data'}</span>
         </span>
-        {card && (membro || prazo) && (
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="board-post-assignee">
-                  {membro && (
-                    <>
-                      <span
-                        className={`avatar board-post-assignee-avatar ${avatarColorClass(membro.id ?? membro.nome)}`}
-                      >
-                        {getInitials(membro.nome)}
-                      </span>
-                      {membro.nome.split(' ')[0]}
-                    </>
-                  )}
-                  {prazo && (
-                    <span className="board-post-prazo" style={{ color: prazo.color }}>
-                      {prazo.shortLabel}
-                    </span>
-                  )}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                {`${card.etapa.nome}${membro ? `: ${membro.nome}` : ''}${prazo ? ` · ${prazo.label}` : ''}`}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+        <span className="board-post-date">
+          {post.scheduled_at ? formatPostDate(post.scheduled_at) : 'Sem data'}
+        </span>
       </div>
     </>
   );

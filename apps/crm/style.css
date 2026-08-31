@@ -5404,20 +5404,56 @@ body.role-agent input[name='valor_total'] {
   gap: 0.4rem;
 }
 
-.board-post-card .post-tipo-badge,
-.board-post-card .post-status-chip {
+.board-post-tipo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Etapa/prazo urgency pill at the card's top-right; text color comes inline
+   from formatEtapaPrazo, the tinted background only when that color is a hex. */
+.board-post-prazo-pill {
   font-size: 0.62rem;
-  padding: 0.08rem 0.45rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* Derived "Publicando…" state: agendado whose scheduled time has arrived.
+   The status column can't convey this, so it keeps a pill of its own. */
+.board-post-publicando {
+  color: var(--primary-hover);
+  background: rgba(234, 179, 8, 0.14);
 }
 
 .board-post-card .item-title {
   font-size: 0.8rem;
-  line-height: 1.3;
+  font-weight: 500;
+  line-height: 1.35;
   margin-top: 0.3rem;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+/* Etapa (post-fluxo-tag--static) and Avulso chips share the compact card scale. */
+.board-post-card .post-fluxo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+  max-width: 100%;
+  font-size: 0.68rem;
+  padding: 0.12rem 0.5rem;
+  color: var(--text-muted);
 }
 
 .board-post-card .item-meta {
@@ -5455,22 +5491,20 @@ body.role-agent input[name='valor_total'] {
   min-width: 0;
 }
 
-/* Which etapa the post's workflow is currently in ("Design", "Copy", …). */
-.board-post-etapa {
-  margin-top: 2px;
-  font-size: 0.58rem;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Client + assignee avatars overlapped into one pair. */
+.board-post-avatar-pair {
+  display: inline-flex;
+  flex-shrink: 0;
 }
 
-.board-post-prazo {
-  font-weight: 700;
+.board-post-avatar-pair .board-post-assignee-avatar {
+  margin-left: -6px;
+  box-shadow: 0 0 0 1.5px var(--card-bg);
+}
+
+.board-post-date {
   white-space: nowrap;
+  color: var(--text-muted);
 }
 
 .board-post-assignee {

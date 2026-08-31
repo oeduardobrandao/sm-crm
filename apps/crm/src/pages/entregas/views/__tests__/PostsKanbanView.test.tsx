@@ -218,7 +218,7 @@ describe('PostsKanbanView', () => {
     expect(onPostClick).toHaveBeenCalledWith(posts[0]);
   });
 
-  it('always shows the status chip, with Publicando… for a due agendado post', () => {
+  it('omits the redundant status chip but keeps the derived Publicando… pill', () => {
     const past = new Date(Date.now() - 60_000).toISOString();
     const future = new Date(Date.now() + 86_400_000).toISOString();
     const posts = [
@@ -228,13 +228,14 @@ describe('PostsKanbanView', () => {
     ];
     const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
 
-    const chips = Array.from(container.querySelectorAll('.post-status-chip')).map(
+    // The column already names the status; cards carry no per-card status chip.
+    expect(container.querySelector('.board-post-card .post-status-chip')).toBeNull();
+    // But "publicando" is derived (agendado + due), which the column can't
+    // convey, so exactly the due card keeps a pill.
+    const pills = Array.from(container.querySelectorAll('.board-post-publicando')).map(
       (el) => el.textContent,
     );
-    expect(chips).toHaveLength(3);
-    expect(chips.filter((c) => c === 'Publicando…')).toHaveLength(1);
-    expect(chips.filter((c) => c === 'Agendado')).toHaveLength(1);
-    expect(chips.filter((c) => c === 'Rascunho')).toHaveLength(1);
+    expect(pills).toEqual(['Publicando…']);
   });
 
   it('shows the client avatar (img when cached, initials fallback otherwise)', () => {
@@ -270,7 +271,9 @@ describe('PostsKanbanView', () => {
 
   it('shows which etapa the post is in', () => {
     const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={[makePost()]} />);
-    expect(container.querySelector('.board-post-etapa')?.textContent).toBe('Design');
+    expect(container.querySelector('.board-post-card .post-fluxo-tag--static')?.textContent).toBe(
+      'Design',
+    );
   });
 
   it('shows an "Avulso" chip instead of an etapa for a post avulso', () => {
