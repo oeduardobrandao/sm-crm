@@ -111,16 +111,18 @@ function rowCardCount(row: BoardRow): number {
   return [...row.columns.values()].reduce((sum, col) => sum + col.length, 0);
 }
 
-// Etapas have no intrinsic color, so columns are tinted by progression: the
-// first etapa is always sky, the last always green, intermediates spread over
-// the palette. Deep stops so the solid header carries white text with
-// contrast; the body reuses the same hue as a faint alpha wash.
-const COLUMN_TINTS = ['#0284c7', '#4f46e5', '#7c3aed', '#db2777', '#b45309', '#c2410c', '#059669'];
+// Etapas are fully user-defined, so their color is keyed to the etapa NAME
+// (stable hash, same recipe as avatarColorClass): "Copy" is the same color in
+// every template and across sessions, with no positional meaning. The palette
+// is deliberately disjoint from the fixed status colors of the Publicações
+// board (sky/indigo/violet/pink/greens/orange/gold/red) so an etapa column is
+// never mistaken for a status column.
+const COLUMN_TINTS = ['#0d9488', '#155e75', '#c026d3', '#4d7c0f', '#475569'];
 
-function columnTint(index: number, count: number): string {
-  if (count <= 1) return COLUMN_TINTS[0];
-  const frac = index / (count - 1);
-  return COLUMN_TINTS[Math.round(frac * (COLUMN_TINTS.length - 1))];
+function columnTint(stepName: string): string {
+  let hash = 0;
+  for (let i = 0; i < stepName.length; i++) hash = (hash * 31 + stepName.charCodeAt(i)) >>> 0;
+  return COLUMN_TINTS[hash % COLUMN_TINTS.length];
 }
 
 // Droppable column body — registers the column as a drop target so empty columns can receive drops
@@ -705,8 +707,8 @@ export function KanbanView({
 
   const renderRowBoard = (row: BoardRow) => (
     <div className="board-container">
-      {[...row.columns.entries()].map(([stepName, stepCards], colIdx, cols) => {
-        const tint = columnTint(colIdx, cols.length);
+      {[...row.columns.entries()].map(([stepName, stepCards], colIdx) => {
+        const tint = columnTint(stepName);
         return (
           <div key={stepName} className="board-column" style={{ borderColor: `${tint}30` }}>
             <div

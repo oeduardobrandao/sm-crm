@@ -79,9 +79,10 @@ const STATUS_HEADER_META: Record<ActivePost['status'], { icon: typeof Image; col
 
 /* Solid hex per canonical status for the pastel column treatment (same recipe
  * as the Fluxos board: header/border at 30 alpha, count pill 3d, body 0a) --
- * CSS vars can't take an alpha suffix, hence concrete deep stops. The rail
- * reuses the Fluxos progression hues, with semantic greens/ambers/red where
- * the status carries an outcome. */
+ * CSS vars can't take an alpha suffix, hence concrete deep stops. FIXED by
+ * design: statuses are a fixed rail, so each keeps one color for good
+ * (semantic greens/orange/gold/red where the status carries an outcome), and
+ * the Fluxos etapa palette deliberately avoids all of these hues. */
 const STATUS_COLUMN_TINTS: Record<ActivePost['status'], string> = {
   rascunho: '#0284c7',
   revisao_interna: '#4f46e5',
