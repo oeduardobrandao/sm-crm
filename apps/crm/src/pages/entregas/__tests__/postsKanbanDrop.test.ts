@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { ActivePost, PostStatusDefinition } from '../../../store';
 import { buildStatusRegistry, customKey } from '../statusRegistry';
-import { COL_PREFIX, resolvePostsKanbanDrop, resolvePostsKanbanHover } from '../postsKanbanDrop';
+import {
+  COL_PREFIX,
+  buildUndoableStatusMove,
+  resolvePostsKanbanDrop,
+  resolvePostsKanbanHover,
+} from '../postsKanbanDrop';
 
 const UUID = '11111111-2222-3333-4444-555555555555';
 
@@ -244,5 +249,49 @@ describe('resolvePostsKanbanHover', () => {
         registry: customRegistry,
       }),
     ).toEqual({ key, index: 1 });
+  });
+});
+
+describe('buildUndoableStatusMove', () => {
+  const registry = buildStatusRegistry([]);
+
+  it('captures forward and backward vars for a canonical-to-canonical move', () => {
+    const post = makePost({ id: 7, workflow_id: 33, status: 'rascunho' });
+    expect(buildUndoableStatusMove({ post, key: 'revisao_interna', registry })).toEqual({
+      forward: { id: 7, workflowId: 33, key: 'revisao_interna', canonical: 'revisao_interna' },
+      backward: { id: 7, workflowId: 33, key: 'rascunho', canonical: 'rascunho' },
+      targetLabel: 'Em revisão',
+    });
+  });
+
+  it('round-trips a custom status: backward restores the custom pointer, not the canonical', () => {
+    const customRegistry = buildStatusRegistry([def()]);
+    const key = customKey(UUID);
+    const post = makePost({ id: 7, workflow_id: null, custom_status_id: UUID, status: 'rascunho' });
+    const move = buildUndoableStatusMove({
+      post,
+      key: 'enviado_cliente',
+      registry: customRegistry,
+    });
+    expect(move).toEqual({
+      forward: { id: 7, workflowId: null, key: 'enviado_cliente', canonical: 'enviado_cliente' },
+      backward: { id: 7, workflowId: null, key, canonical: 'rascunho' },
+      targetLabel: 'Enviado ao cliente',
+    });
+  });
+
+  it('targets a custom column with its behaves_as canonical in the forward patch', () => {
+    const customRegistry = buildStatusRegistry([def()]);
+    const key = customKey(UUID);
+    const post = makePost({ id: 7, status: 'revisao_interna' });
+    const move = buildUndoableStatusMove({ post, key, registry: customRegistry });
+    expect(move?.forward).toEqual({ id: 7, workflowId: 10, key, canonical: 'rascunho' });
+    expect(move?.targetLabel).toBe('Em design');
+  });
+
+  it('returns null for an unknown target key', () => {
+    expect(
+      buildUndoableStatusMove({ post: makePost(), key: 'custom:nope' as never, registry }),
+    ).toBeNull();
   });
 });

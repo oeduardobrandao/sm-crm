@@ -10,7 +10,9 @@ vi.mock('@/hooks/useStatusRegistry', async () => {
   return { useStatusRegistry: () => buildStatusRegistry([]) };
 });
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }),
+}));
 
 vi.mock('@/store', () => ({ updateWorkflowPost: vi.fn() }));
 
@@ -83,6 +85,7 @@ beforeEach(() => {
   dndHandlers.onDragOver = undefined;
   dndHandlers.onDragCancel = undefined;
   mockUpdate.mockReset();
+  vi.mocked(toast).mockClear();
   vi.mocked(toast.error).mockClear();
 });
 

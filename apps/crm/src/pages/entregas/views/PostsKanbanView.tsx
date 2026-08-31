@@ -54,6 +54,7 @@ import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { StatusKey, StatusOption, StatusRegistry } from '../statusRegistry';
 import {
   COL_PREFIX,
+  buildUndoableStatusMove,
   resolvePostsKanbanDrop,
   resolvePostsKanbanHover,
   type PostsKanbanHoverSlot,
@@ -470,9 +471,20 @@ export function PostsKanbanView({
 
   const activePost = activeId != null ? posts.find((p) => p.id === activeId) : undefined;
 
+  /** Drag-initiated status change with a temporary undo. The backward mutate
+   *  deliberately skips the drop resolver: restoring an approved status must
+   *  not re-open the confirm dialog. */
   const applyStatusChange = (post: ActivePost, key: StatusKey) => {
-    const canonical = registry.byKey.get(key)?.canonical ?? post.status;
-    updateStatus.mutate({ id: post.id, workflowId: post.workflow_id, key, canonical });
+    const move = buildUndoableStatusMove({ post, key, registry });
+    if (!move) return;
+    updateStatus.mutate(move.forward);
+    toast(`Post movido para "${move.targetLabel}".`, {
+      duration: 6000,
+      action: {
+        label: 'Desfazer',
+        onClick: () => updateStatus.mutate(move.backward),
+      },
+    });
   };
 
   const handleDragStart = (event: DragStartEvent) => {

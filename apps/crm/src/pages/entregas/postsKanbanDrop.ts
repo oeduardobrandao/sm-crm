@@ -1,6 +1,7 @@
 import type { ActivePost } from '@/store';
 import { LOCKED_STATUSES, LOCKED_TOOLTIPS } from './postLabels';
 import { statusChangeNeedsConfirm, type StatusKey, type StatusRegistry } from './statusRegistry';
+import type { UpdatePostStatusVars } from './hooks/useUpdatePostStatus';
 
 /** Droppable column ids are prefixed so they never collide with a draggable
  *  card id (a plain post id) in dnd-kit's id-keyed registries. */
@@ -103,4 +104,40 @@ export function resolvePostsKanbanHover({
     if (p.id !== post.id && registry.resolve(p).key === targetKey) index++;
   }
   return { key: targetKey, index };
+}
+
+export interface UndoableStatusMove {
+  forward: UpdatePostStatusVars;
+  backward: UpdatePostStatusVars;
+  targetLabel: string;
+}
+
+/**
+ * Snapshots a drag-initiated status change as a forward/backward pair, so the
+ * caller can offer a temporary undo. backward restores the RESOLVED current
+ * key (custom pointer included), and by design skips resolvePostsKanbanDrop:
+ * undoing back into an approved status must not re-open the confirm dialog.
+ */
+export function buildUndoableStatusMove({
+  post,
+  key,
+  registry,
+}: {
+  post: ActivePost;
+  key: StatusKey;
+  registry: StatusRegistry;
+}): UndoableStatusMove | null {
+  const target = registry.byKey.get(key);
+  if (!target) return null;
+  const prev = registry.resolve(post);
+  return {
+    forward: { id: post.id, workflowId: post.workflow_id, key, canonical: target.canonical },
+    backward: {
+      id: post.id,
+      workflowId: post.workflow_id,
+      key: prev.key,
+      canonical: prev.canonical,
+    },
+    targetLabel: target.label,
+  };
 }
