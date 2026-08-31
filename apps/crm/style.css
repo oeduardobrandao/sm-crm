@@ -5288,7 +5288,9 @@ body.role-agent input[name='valor_total'] {
   overflow-x: auto;
   background: var(--surface-2);
   border-radius: 10px 10px 0 0;
-  padding: 5px 12px 0 12px;
+  /* 10px on top and sides: the grey frame around the active tab reads the
+   * same thickness everywhere (10px is also the flare's minimum clearance). */
+  padding: 10px 10px 0;
   margin-bottom: 0.9rem;
 }
 
