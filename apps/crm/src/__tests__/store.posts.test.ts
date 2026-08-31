@@ -768,6 +768,20 @@ describe('posts avulsos', () => {
     expect(call.payload).toEqual({ p_post_ids: [10], p_workflow_id: 5 });
   });
 
+  it('reorderBoardPosts calls the RPC with parallel arrays and skips the call for an empty list', async () => {
+    mockedSupabase.__queueSupabaseRpc('reorder_board_posts', { data: null, error: null });
+
+    await store.reorderBoardPosts([
+      { id: 7, board_ordem: 1024 },
+      { id: 9, board_ordem: null },
+    ]);
+    const call = getCalls('rpc:reorder_board_posts', 'rpc').at(-1)!;
+    expect(call.payload).toEqual({ p_post_ids: [7, 9], p_ordens: [1024, null] });
+
+    await store.reorderBoardPosts([]);
+    expect(getCalls('rpc:reorder_board_posts', 'rpc')).toHaveLength(1);
+  });
+
   it('detachPostsFromWorkflow retries once on a 40P01 deadlock and succeeds', async () => {
     mockedSupabase.__queueSupabaseRpc(
       'detach_posts_from_flow',

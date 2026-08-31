@@ -264,6 +264,10 @@ export interface ScheduledPost {
   tiktok_post_url: string | null;
   instagram_media_id: string | null;
   ig_trial_strategy: 'manual' | 'auto' | null;
+  /** Manual board rank for the Publicações kanban ("manual" column sort).
+   * NULL = never manually positioned; sorts after every ranked post in that
+   * column, in automatic order. */
+  board_ordem: number | null;
 }
 
 /**
@@ -283,7 +287,7 @@ export interface ScheduledPost {
  * already exists; do not reorder that deploy sequence.
  */
 const POST_CONTEXT_COLUMNS =
-  'id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id, ig_trial_strategy';
+  'id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id, ig_trial_strategy, board_ordem';
 
 /**
  * Maps a workflow_posts row that may come from either arm of a wired/avulso
@@ -316,6 +320,7 @@ function mapPostContextRow(row: any): ActivePost {
     tiktok_post_url: row.tiktok_post_url ?? null,
     instagram_media_id: row.instagram_media_id ?? null,
     ig_trial_strategy: row.ig_trial_strategy ?? null,
+    board_ordem: row.board_ordem ?? null,
   };
 }
 
@@ -1041,6 +1046,19 @@ export async function reorderWorkflowPosts(
         }),
     ),
   );
+}
+
+/** Grava a ordem manual do board de Publicacoes em lote via RPC (posse
+ *  all-or-nothing no servidor). board_ordem null limpa o rank. */
+export async function reorderBoardPosts(
+  updates: { id: number; board_ordem: number | null }[],
+): Promise<void> {
+  if (updates.length === 0) return;
+  const { error } = await supabase.rpc('reorder_board_posts', {
+    p_post_ids: updates.map((u) => u.id),
+    p_ordens: updates.map((u) => u.board_ordem),
+  });
+  if (error) throw error;
 }
 
 export async function createPropertyDefinition(

@@ -55,6 +55,7 @@ function makeScheduledPost(overrides?: Partial<ScheduledPost>): ScheduledPost {
     tiktok_publish_error: null,
     tiktok_post_url: null,
     instagram_media_id: null,
+    board_ordem: null,
     ...overrides,
   };
 }

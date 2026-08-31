@@ -128,6 +128,8 @@ function makePost(overrides: Partial<ActivePost> = {}): ActivePost {
     tiktok_publish_error: null,
     tiktok_post_url: null,
     instagram_media_id: null,
+    ig_trial_strategy: null,
+    board_ordem: null,
     ...overrides,
   };
 }
