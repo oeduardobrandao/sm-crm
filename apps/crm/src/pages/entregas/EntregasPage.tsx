@@ -709,10 +709,18 @@ export default function EntregasPage() {
           ))}
         </div>
 
-        {(activeView === 'kanban' || activeView === 'list') && (
+        {(activeView === 'kanban' || activeView === 'list' || activeView === 'calendar') && (
           <ModeToggle
-            mode={activeView === 'kanban' ? kanbanMode : listMode}
-            onModeChange={activeView === 'kanban' ? setKanbanMode : setListMode}
+            mode={
+              activeView === 'kanban' ? kanbanMode : activeView === 'list' ? listMode : calendarMode
+            }
+            onModeChange={
+              activeView === 'kanban'
+                ? setKanbanMode
+                : activeView === 'list'
+                  ? setListMode
+                  : setCalendarMode
+            }
           />
         )}
 
@@ -773,7 +781,6 @@ export default function EntregasPage() {
           cards={filteredCards}
           onCardClick={handleCardClick}
           mode={calendarMode}
-          onModeChange={setCalendarMode}
           openableWorkflowIds={openableWorkflowIds}
           onPostClick={handlePostClick}
         />
