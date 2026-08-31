@@ -24,6 +24,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { avatarColorClass } from '@/lib/avatarColor';
 import type { Cliente, Membro, WorkflowPost, WorkflowTemplate } from '../../../store';
 import { TIPO_ORDER, TIPO_LABELS, TIPO_COLORS } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
@@ -113,6 +114,60 @@ interface MultiSelectOption<T extends string | number> {
   value: T;
   label: string;
   color?: string;
+  /** Small leading visual (initials avatar), same pattern as the card's
+   *  responsável menu. Rendered in the menu rows and in the trigger summary. */
+  avatar?: React.ReactNode;
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function membroAvatar(m: { id?: number; nome: string }): React.ReactNode {
+  return (
+    <span
+      className={`avatar ${avatarColorClass(m.id ?? m.nome)}`}
+      style={{ width: 18, height: 18, fontSize: '0.5rem' }}
+      aria-hidden="true"
+    >
+      {getInitials(m.nome)}
+    </span>
+  );
+}
+
+function clienteAvatar(c: Cliente): React.ReactNode {
+  return c.foto_url ? (
+    <img
+      src={c.foto_url}
+      alt=""
+      loading="lazy"
+      style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+    />
+  ) : (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 18,
+        height: 18,
+        borderRadius: '50%',
+        background: c.cor || 'var(--surface-hover)',
+        color: '#fff',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '0.5rem',
+        fontWeight: 700,
+        flexShrink: 0,
+      }}
+    >
+      {(c.sigla || getInitials(c.nome)).slice(0, 2).toUpperCase()}
+    </span>
+  );
 }
 
 /** "<first label> +N" summary once more than one option is picked. */
@@ -167,7 +222,7 @@ function MultiSelectFilter<T extends string | number>({
           } ${selected.length > 0 ? 'border-[var(--primary-color)]' : ''}`}
         >
           <span className="flex items-center gap-1.5 truncate">
-            {Icon && <Icon className="h-3.5 w-3.5 opacity-60 shrink-0" />}
+            {first?.avatar ?? (Icon && <Icon className="h-3.5 w-3.5 opacity-60 shrink-0" />)}
             {first?.color && (
               <span
                 className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
@@ -211,7 +266,8 @@ function MultiSelectFilter<T extends string | number>({
               >
                 {isChecked && <Check className="h-3 w-3 text-black" strokeWidth={3} />}
               </span>
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-2">
+                {o.avatar}
                 {o.color && (
                   <span
                     className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
@@ -413,10 +469,10 @@ export function EntregasFilters({
 
   const clienteOptions = activeClientes
     .filter((c) => c.id != null)
-    .map((c) => ({ value: c.id!, label: c.nome }));
+    .map((c) => ({ value: c.id!, label: c.nome, avatar: clienteAvatar(c) }));
   const membroOptions = sortedMembros
     .filter((m) => m.id != null)
-    .map((m) => ({ value: m.id!, label: m.nome }));
+    .map((m) => ({ value: m.id!, label: m.nome, avatar: membroAvatar(m) }));
   const etapaOptions = sortedEtapaNames.map((name) => ({ value: name, label: name }));
   const templateOptions = sortedTemplates
     .filter((t) => t.id != null)
