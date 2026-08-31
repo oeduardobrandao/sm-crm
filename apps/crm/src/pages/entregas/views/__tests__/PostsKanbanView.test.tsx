@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi, beforeAll, beforeEach } from 'vitest';
 import { toast } from 'sonner';
@@ -21,6 +21,8 @@ vi.mock('@/store', () => ({ updateWorkflowPost: vi.fn() }));
 const dndHandlers = vi.hoisted(() => ({
   onDragEnd: undefined as ((e: unknown) => void) | undefined,
   onDragStart: undefined as ((e: unknown) => void) | undefined,
+  onDragOver: undefined as ((e: unknown) => void) | undefined,
+  onDragCancel: undefined as (() => void) | undefined,
 }));
 const draggableCalls = vi.hoisted(() => new Map<string, { disabled?: boolean }>());
 
@@ -29,13 +31,19 @@ vi.mock('@dnd-kit/core', () => ({
     children,
     onDragEnd,
     onDragStart,
+    onDragOver,
+    onDragCancel,
   }: {
     children: React.ReactNode;
     onDragEnd?: (e: unknown) => void;
     onDragStart?: (e: unknown) => void;
+    onDragOver?: (e: unknown) => void;
+    onDragCancel?: () => void;
   }) => {
     dndHandlers.onDragEnd = onDragEnd;
     dndHandlers.onDragStart = onDragStart;
+    dndHandlers.onDragOver = onDragOver;
+    dndHandlers.onDragCancel = onDragCancel;
     return <>{children}</>;
   },
   DragOverlay: ({ children }: { children?: React.ReactNode }) => <>{children ?? null}</>,
@@ -72,6 +80,8 @@ beforeEach(() => {
   draggableCalls.clear();
   dndHandlers.onDragEnd = undefined;
   dndHandlers.onDragStart = undefined;
+  dndHandlers.onDragOver = undefined;
+  dndHandlers.onDragCancel = undefined;
   mockUpdate.mockReset();
   vi.mocked(toast.error).mockClear();
 });
@@ -419,6 +429,76 @@ describe('PostsKanbanView', () => {
       dndHandlers.onDragEnd?.({ active: { id: '508' }, over: { id: 'col:revisao_interna' } });
 
       await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Erro ao atualizar status'));
+    });
+
+    it('opens a live drop slot in the hovered column only, suppressing its empty state', () => {
+      const posts = [makePost({ id: 601, status: 'rascunho', titulo: 'Draft' })];
+      const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      // Only the rascunho column has a card; every other column shows "Nenhum post".
+      expect(screen.getAllByText('Nenhum post')).toHaveLength(POST_STATUS_ORDER.length - 1);
+
+      act(() => {
+        dndHandlers.onDragStart?.({ active: { id: '601', rect: { current: null } } });
+        dndHandlers.onDragOver?.({ active: { id: '601' }, over: { id: 'col:revisao_interna' } });
+      });
+
+      const slots = container.querySelectorAll('.board-drop-slot');
+      expect(slots).toHaveLength(1);
+      expect(
+        slots[0].closest('.board-column')?.querySelector('.board-column-title')?.textContent,
+      ).toBe(STATUS_LABELS.revisao_interna);
+      // The target column's own empty state is suppressed while its slot is open.
+      expect(screen.getAllByText('Nenhum post')).toHaveLength(POST_STATUS_ORDER.length - 2);
+    });
+
+    it('renders no slot while hovering a locked column or the card’s own column', () => {
+      const posts = [makePost({ id: 602, status: 'rascunho', titulo: 'Draft' })];
+      const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      act(() => {
+        dndHandlers.onDragStart?.({ active: { id: '602', rect: { current: null } } });
+      });
+
+      act(() => {
+        dndHandlers.onDragOver?.({ active: { id: '602' }, over: { id: 'col:agendado' } });
+      });
+      expect(container.querySelector('.board-drop-slot')).toBeNull();
+
+      act(() => {
+        dndHandlers.onDragOver?.({ active: { id: '602' }, over: { id: 'col:rascunho' } });
+      });
+      expect(container.querySelector('.board-drop-slot')).toBeNull();
+    });
+
+    it('clears the drop slot on drag end and on drag cancel', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 603, status: 'rascunho', titulo: 'Draft' })];
+      const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      act(() => {
+        dndHandlers.onDragStart?.({ active: { id: '603', rect: { current: null } } });
+        dndHandlers.onDragOver?.({ active: { id: '603' }, over: { id: 'col:revisao_interna' } });
+      });
+      expect(container.querySelector('.board-drop-slot')).toBeInTheDocument();
+
+      act(() => {
+        dndHandlers.onDragEnd?.({ active: { id: '603' }, over: { id: 'col:revisao_interna' } });
+      });
+      expect(container.querySelector('.board-drop-slot')).toBeNull();
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+
+      // Re-open the slot, then verify onDragCancel clears it too.
+      act(() => {
+        dndHandlers.onDragStart?.({ active: { id: '603', rect: { current: null } } });
+        dndHandlers.onDragOver?.({ active: { id: '603' }, over: { id: 'col:revisao_interna' } });
+      });
+      expect(container.querySelector('.board-drop-slot')).toBeInTheDocument();
+
+      act(() => {
+        dndHandlers.onDragCancel?.();
+      });
+      expect(container.querySelector('.board-drop-slot')).toBeNull();
     });
   });
 });
