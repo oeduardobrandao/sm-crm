@@ -9,6 +9,13 @@
 
 export type ActivityTone = 'active' | 'cooling' | 'dormant';
 
+/** Text colour per tone, shared by every list that renders an activity cell. */
+export const ACTIVITY_TONE_CLASS: Record<ActivityTone, string> = {
+  active: 'text-foreground',
+  cooling: 'text-muted-foreground',
+  dormant: 'text-warning',
+};
+
 export interface ActivityDescription {
   label: string;
   tone: ActivityTone;

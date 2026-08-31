@@ -6,12 +6,19 @@ import { listWorkspaces, listPlans, getMrr, getTrials } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
 import { formatMoney, intervalLabel, statusMeta, toneBadgeClass } from '../lib/subscription';
 import { toCSV, downloadCSV } from '../lib/csv-export';
+import { describeActivity, ACTIVITY_TONE_CLASS } from './workspace-activity';
+import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip';
 import {
   PAYING_WORKSPACE_EXPORT_COLUMNS,
   buildPayingWorkspaceExportRows,
   TRIAL_EXPORT_COLUMNS,
   buildTrialExportRows,
 } from './dashboard-export';
+
+// created_at is only read when last_activity_at is null ("Nunca"); the "now" fallback keeps
+// that branch on the cooling tone in the unlikely case the workspace row wasn't found.
+const activity = (ws: { last_activity_at: string | null; created_at: string | null }) =>
+  describeActivity(ws.last_activity_at, ws.created_at ?? new Date().toISOString(), new Date());
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -151,10 +158,11 @@ export default function DashboardPage() {
         </div>
 
         {/* Desktop table header */}
-        <div className="hidden md:grid grid-cols-[2fr_1fr_1.25fr_1fr] gap-2 text-xs text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
+        <div className="hidden md:grid grid-cols-[2fr_1fr_1.25fr_1fr_1fr] gap-2 text-xs text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
           <span>Workspace</span>
           <span>Plan</span>
           <span>Billing</span>
+          <span>Last Activity</span>
           <span className="text-right">MRR</span>
         </div>
 
@@ -169,7 +177,7 @@ export default function DashboardPage() {
               <div
                 key={ws.workspace_id}
                 onClick={() => navigate(`/admin/workspaces/${ws.workspace_id}`)}
-                className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1fr_1.25fr_1fr] md:gap-2 md:items-center"
+                className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1fr_1.25fr_1fr_1fr] md:gap-2 md:items-center"
               >
                 {/* Mobile card layout */}
                 <div className="md:hidden flex items-center justify-between gap-3">
@@ -193,6 +201,14 @@ export default function DashboardPage() {
                           {meta.label}
                         </span>
                       )}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className={ACTIVITY_TONE_CLASS[activity(ws).tone]}>
+                            Ativo: {activity(ws).label}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>{activity(ws).title}</TooltipContent>
+                      </Tooltip>
                     </div>
                   </div>
                   <span className="font-sf font-medium whitespace-nowrap">
@@ -234,6 +250,18 @@ export default function DashboardPage() {
                     </span>
                   )}
                 </span>
+                <Tooltip>
+                  {/* asChild keeps the span: the default trigger is a <button>, which would sit
+                      inside this navigable row and hijack its click. */}
+                  <TooltipTrigger asChild>
+                    <span
+                      className={`hidden w-fit md:inline text-sm ${ACTIVITY_TONE_CLASS[activity(ws).tone]}`}
+                    >
+                      {activity(ws).label}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{activity(ws).title}</TooltipContent>
+                </Tooltip>
                 <span className="hidden md:block text-right font-sf text-sm">
                   {formatMoney(ws.monthly_cents, mrrData?.currency)}
                 </span>
@@ -263,10 +291,11 @@ export default function DashboardPage() {
         </div>
 
         {/* Desktop table header */}
-        <div className="hidden md:grid grid-cols-[2fr_1fr_1.25fr_1fr] gap-2 text-xs text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
+        <div className="hidden md:grid grid-cols-[2fr_1fr_1.25fr_1fr_1fr] gap-2 text-xs text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
           <span>Workspace</span>
           <span>Plan</span>
           <span>Trial ends</span>
+          <span>Last Activity</span>
           <span className="text-right">MRR</span>
         </div>
 
@@ -314,7 +343,7 @@ export default function DashboardPage() {
               <div
                 key={ws.workspace_id}
                 onClick={() => navigate(`/admin/workspaces/${ws.workspace_id}`)}
-                className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1fr_1.25fr_1fr] md:gap-2 md:items-center"
+                className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1fr_1.25fr_1fr_1fr] md:gap-2 md:items-center"
               >
                 {/* Mobile card layout */}
                 <div className="md:hidden flex items-center justify-between gap-3">
@@ -333,6 +362,14 @@ export default function DashboardPage() {
                         </span>
                       )}
                       <span>{intervalLabel(ws.interval) || '—'}</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className={ACTIVITY_TONE_CLASS[activity(ws).tone]}>
+                            Ativo: {activity(ws).label}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>{activity(ws).title}</TooltipContent>
+                      </Tooltip>
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-0.5 whitespace-nowrap">
@@ -375,6 +412,18 @@ export default function DashboardPage() {
                     </span>
                   )}
                 </span>
+                <Tooltip>
+                  {/* asChild keeps the span: the default trigger is a <button>, which would sit
+                      inside this navigable row and hijack its click. */}
+                  <TooltipTrigger asChild>
+                    <span
+                      className={`hidden w-fit md:inline text-sm ${ACTIVITY_TONE_CLASS[activity(ws).tone]}`}
+                    >
+                      {activity(ws).label}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{activity(ws).title}</TooltipContent>
+                </Tooltip>
                 <span className="hidden md:block text-right font-sf text-sm">
                   {formatMoney(ws.monthly_cents, currency)}
                 </span>

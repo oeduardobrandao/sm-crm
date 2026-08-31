@@ -4,6 +4,27 @@ import { priceSubscriptionRows } from "./pricing.ts";
 import { fetchOwnerContacts } from "./owner-contact.ts";
 
 /**
+ * last_activity_at per workspace, via the same admin_workspace_last_activity RPC the
+ * Workspaces list and retention radar use — one definition of "activity" everywhere
+ * (newest human work artifact, not sign-ins, not cron writes).
+ */
+async function fetchLastActivity(
+  svc: SupabaseClient,
+  workspaceIds: string[],
+): Promise<Map<string, string | null>> {
+  if (!workspaceIds.length) return new Map();
+  const { data, error } = await svc.rpc("admin_workspace_last_activity", {
+    workspace_ids: workspaceIds,
+  });
+  if (error) throw error;
+  return new Map(
+    ((data ?? []) as Array<{ workspace_id: string; last_activity_at: string | null }>).map(
+      (a) => [a.workspace_id, a.last_activity_at],
+    ),
+  );
+}
+
+/**
  * Monthly recurring revenue + the paying-workspace breakdown behind it, driven by the Stripe
  * subscription mirror (workspace_subscriptions), NOT by plan-assignment counts -- so comped/manual
  * plan grants (which have no subscription row) never inflate it. Only subscriptions actually
@@ -34,9 +55,16 @@ export async function handleGetMrr(
   const planIds = [...new Set(rows.map((s) => s.plan_id).filter(Boolean))] as string[];
 
   const nameByWs = new Map<string, string>();
+  const createdByWs = new Map<string, string>();
   if (wsIds.length) {
-    const { data: wsRows } = await svc.from("workspaces").select("id, name").in("id", wsIds);
-    for (const w of wsRows ?? []) nameByWs.set(w.id, w.name);
+    const { data: wsRows } = await svc
+      .from("workspaces")
+      .select("id, name, created_at")
+      .in("id", wsIds);
+    for (const w of wsRows ?? []) {
+      nameByWs.set(w.id, w.name);
+      createdByWs.set(w.id, w.created_at);
+    }
   }
 
   const planById = new Map<
@@ -60,10 +88,11 @@ export async function handleGetMrr(
   const priceable = await priceSubscriptionRows(svc, rows, nameByWs, planById);
 
   const { mrr_cents, paying_count, priced } = aggregateMrr(priceable);
-  const ownerContacts = await fetchOwnerContactsFn(
-    svc,
-    [...new Set(priced.map((r) => r.workspace_id))],
-  );
+  const pricedWsIds = [...new Set(priced.map((r) => r.workspace_id))];
+  const [ownerContacts, lastActivityByWs] = await Promise.all([
+    fetchOwnerContactsFn(svc, pricedWsIds),
+    fetchLastActivity(svc, pricedWsIds),
+  ]);
   const workspaces = priced
     .map((r) => {
       const owner = ownerContacts.get(r.workspace_id);
@@ -76,6 +105,8 @@ export async function handleGetMrr(
         monthly_cents: r.monthly_cents,
         discount_label: r.discount_label,
         amount_source: r.amount_source,
+        created_at: createdByWs.get(r.workspace_id) ?? null,
+        last_activity_at: lastActivityByWs.get(r.workspace_id) ?? null,
         owner_name: owner?.name ?? null,
         owner_email: owner?.email ?? null,
         owner_telefone: owner?.telefone ?? null,
@@ -114,9 +145,16 @@ export async function handleGetTrials(
   const planIds = [...new Set(rows.map((s) => s.plan_id).filter(Boolean))] as string[];
 
   const nameByWs = new Map<string, string>();
+  const createdByWs = new Map<string, string>();
   if (wsIds.length) {
-    const { data: wsRows } = await svc.from("workspaces").select("id, name").in("id", wsIds);
-    for (const w of wsRows ?? []) nameByWs.set(w.id, w.name);
+    const { data: wsRows } = await svc
+      .from("workspaces")
+      .select("id, name, created_at")
+      .in("id", wsIds);
+    for (const w of wsRows ?? []) {
+      nameByWs.set(w.id, w.name);
+      createdByWs.set(w.id, w.created_at);
+    }
   }
 
   const planById = new Map<
@@ -138,10 +176,11 @@ export async function handleGetTrials(
   }
 
   const priced = await priceSubscriptionRows(svc, rows, nameByWs, planById);
-  const ownerContacts = await fetchOwnerContactsFn(
-    svc,
-    [...new Set(priced.map((r) => r.workspace_id))],
-  );
+  const pricedWsIds = [...new Set(priced.map((r) => r.workspace_id))];
+  const [ownerContacts, lastActivityByWs] = await Promise.all([
+    fetchOwnerContactsFn(svc, pricedWsIds),
+    fetchLastActivity(svc, pricedWsIds),
+  ]);
   const trials = priced
     .map((r) => {
       const owner = ownerContacts.get(r.workspace_id);
@@ -152,6 +191,8 @@ export async function handleGetTrials(
         interval: r.interval,
         trial_ends_at: r.current_period_end ?? null,
         monthly_cents: toMonthlyCents(r.interval, r.amount_cents),
+        created_at: createdByWs.get(r.workspace_id) ?? null,
+        last_activity_at: lastActivityByWs.get(r.workspace_id) ?? null,
         owner_name: owner?.name ?? null,
         owner_email: owner?.email ?? null,
         owner_telefone: owner?.telefone ?? null,
