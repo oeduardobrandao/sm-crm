@@ -96,20 +96,11 @@ export default function EntregasPage() {
   const [editCard, setEditCard] = useState<BoardCard | null>(null);
   const [drawerCard, setDrawerCard] = useState<BoardCard | null>(null);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
-  const modeFor = (view: ActiveView): EntregasMode =>
-    initialQuery.view === view ? initialQuery.mode : 'entregas';
-  // An explicit ?mode= in the URL always wins (only for the view it names --
-  // the other two views still default to 'entregas', same as before). With no
-  // ?mode= param at all, every view seeds from the conta's last-used mode
-  // instead of hardcoding 'entregas'.
-  const [kanbanMode, setKanbanMode] = useState<EntregasMode>(() =>
-    hadModeParam ? modeFor('kanban') : loadLastMode(contaId),
-  );
-  const [calendarMode, setCalendarMode] = useState<EntregasMode>(() =>
-    hadModeParam ? modeFor('calendar') : loadLastMode(contaId),
-  );
-  const [listMode, setListMode] = useState<EntregasMode>(() =>
-    hadModeParam ? modeFor('list') : loadLastMode(contaId),
+  // One page-wide mode: flipping Fluxos/Publicações persists across Kanban,
+  // Calendário and Lista. An explicit ?mode= in the URL wins; with no ?mode=
+  // param, it seeds from the conta's last-used mode.
+  const [mode, setMode] = useState<EntregasMode>(() =>
+    hadModeParam ? initialQuery.mode : loadLastMode(contaId),
   );
   const [drawerInitialPostId, setDrawerInitialPostId] = useState<number | null>(null);
   // Post avulso (fora de fluxo) currently open in the standalone slot below.
@@ -271,13 +262,9 @@ export default function EntregasPage() {
   // Keep the URL in sync with the shareable view state (view + mode + filters),
   // so any Entregas screen can be shared or bookmarked as-is.
   const activeMode: EntregasMode =
-    activeView === 'kanban'
-      ? kanbanMode
-      : activeView === 'calendar'
-        ? calendarMode
-        : activeView === 'list'
-          ? listMode
-          : 'entregas';
+    activeView === 'kanban' || activeView === 'calendar' || activeView === 'list'
+      ? mode
+      : 'entregas';
   const currentQuery = serializeEntregasQuery({ view: activeView, mode: activeMode, filters });
   useEffect(() => {
     // `currentQuery` alone — the transient ?drawer=/?post= params are deliberately dropped.
@@ -414,8 +401,7 @@ export default function EntregasPage() {
     const targetView: ActiveView =
       activeView === 'kanban' || activeView === 'list' ? activeView : 'kanban';
     if (targetView !== activeView) setActiveView(targetView);
-    if (targetView === 'kanban') setKanbanMode('publicacoes');
-    else setListMode('publicacoes');
+    setMode('publicacoes');
     setDrawerCard(null);
     setDrawerInitialPostId(null);
     setStandalonePostId(post.id!);
@@ -426,17 +412,17 @@ export default function EntregasPage() {
   const applySavedView = (query: string) => {
     const parsed = parseEntregasQuery(new URLSearchParams(query));
     setActiveView(parsed.view);
-    if (parsed.view === 'kanban') setKanbanMode(parsed.mode);
-    if (parsed.view === 'calendar') setCalendarMode(parsed.mode);
-    if (parsed.view === 'list') setListMode(parsed.mode);
+    if (parsed.view === 'kanban' || parsed.view === 'calendar' || parsed.view === 'list') {
+      setMode(parsed.mode);
+    }
     setFilters(parsed.filters);
   };
 
   // Publicações mode (Kanban/Lista): every post of every active workflow, fetched
   // only while one of those modes is actually visible.
   const postsMode =
-    (activeView === 'kanban' && kanbanMode === 'publicacoes') ||
-    (activeView === 'list' && listMode === 'publicacoes');
+    (activeView === 'kanban' && mode === 'publicacoes') ||
+    (activeView === 'list' && mode === 'publicacoes');
   const { posts: activePosts, isLoading: activePostsLoading } = useActivePosts(postsMode);
 
   // Posts-mode filtering: only busca / cliente / responsável do post apply; the
@@ -603,7 +589,7 @@ export default function EntregasPage() {
                 Como funciona
               </button>
             )}
-            {activeView === 'kanban' && kanbanMode === 'entregas' && (
+            {activeView === 'kanban' && mode === 'entregas' && (
               <button
                 type="button"
                 onClick={handleReplay}
@@ -710,36 +696,24 @@ export default function EntregasPage() {
         </div>
 
         {(activeView === 'kanban' || activeView === 'list' || activeView === 'calendar') && (
-          <ModeToggle
-            mode={
-              activeView === 'kanban' ? kanbanMode : activeView === 'list' ? listMode : calendarMode
-            }
-            onModeChange={
-              activeView === 'kanban'
-                ? setKanbanMode
-                : activeView === 'list'
-                  ? setListMode
-                  : setCalendarMode
-            }
-          />
+          <ModeToggle mode={mode} onModeChange={setMode} />
         )}
 
-        {activeView !== 'concluded' &&
-          !(activeView === 'calendar' && calendarMode === 'publicacoes') && (
-            <EntregasFilters
-              filters={filters}
-              onChange={setFilters}
-              clientes={clientes}
-              membros={membros}
-              templates={templates}
-              etapaNames={etapaNames}
-              mode={postsMode ? 'posts' : 'entregas'}
-            />
-          )}
+        {activeView !== 'concluded' && !(activeView === 'calendar' && mode === 'publicacoes') && (
+          <EntregasFilters
+            filters={filters}
+            onChange={setFilters}
+            clientes={clientes}
+            membros={membros}
+            templates={templates}
+            etapaNames={etapaNames}
+            mode={postsMode ? 'posts' : 'entregas'}
+          />
+        )}
       </div>
 
       {activeView === 'kanban' &&
-        (kanbanMode === 'entregas' ? (
+        (mode === 'entregas' ? (
           <KanbanView
             cards={filteredCards}
             onCardClick={handleCardClick}
@@ -780,13 +754,13 @@ export default function EntregasPage() {
         <CalendarView
           cards={filteredCards}
           onCardClick={handleCardClick}
-          mode={calendarMode}
+          mode={mode}
           openableWorkflowIds={openableWorkflowIds}
           onPostClick={handlePostClick}
         />
       )}
       {activeView === 'list' &&
-        (listMode === 'entregas' ? (
+        (mode === 'entregas' ? (
           <ListView
             cards={filteredCards}
             sort={listSort}

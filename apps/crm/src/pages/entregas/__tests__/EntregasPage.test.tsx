@@ -966,26 +966,24 @@ describe('EntregasPage', () => {
     expect(screen.queryByText('Workflow drawer: Fluxo Editorial')).not.toBeInTheDocument();
   });
 
-  it('toggles the lista into Publicações mode independently of the kanban mode', () => {
+  it('keeps the Publicações mode when switching between kanban and lista (one page-wide mode)', () => {
     renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
-    // Put the kanban in Publicações mode…
+    // Put the page in Publicações mode from the kanban…
     fireEvent.click(screen.getByText('Publicações'));
     expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
 
-    // …then Lista still opens in Entregas mode (independent state).
+    // …and Lista opens already in Publicações (shared state, not per-view).
     fireEvent.click(screen.getByText('Lista'));
-    expect(screen.getByText(/^list view:/i)).toBeInTheDocument();
-    expect(screen.getByText('FiltersMode: entregas')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByText('Publicações'));
     expect(screen.getByText('Posts list view: 0')).toBeInTheDocument();
     expect(screen.queryByText(/^list view:/i)).toBeNull();
     expect(screen.getByText('FiltersMode: posts')).toBeInTheDocument();
 
-    // Kanban kept its own mode.
+    // Back to Fluxos in the lista carries into the kanban too.
+    fireEvent.click(screen.getByText('Fluxos'));
+    expect(screen.getByText(/^list view:/i)).toBeInTheDocument();
     fireEvent.click(screen.getByText('Kanban'));
-    expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
+    expect(screen.queryByText('Posts kanban view: 0')).toBeNull();
   });
 
   it('applies tipo and post-status filters to the posts modes', () => {
