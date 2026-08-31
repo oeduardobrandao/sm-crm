@@ -113,8 +113,9 @@ function rowCardCount(row: BoardRow): number {
 
 // Etapas have no intrinsic color, so columns are tinted by progression: the
 // first etapa is always sky, the last always green, intermediates spread over
-// the palette. Alpha-suffixed tints stay legible over both themes.
-const COLUMN_TINTS = ['#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#f97316', '#10b981'];
+// the palette. Deep stops so the solid header carries white text with
+// contrast; the body reuses the same hue as a faint alpha wash.
+const COLUMN_TINTS = ['#0284c7', '#4f46e5', '#7c3aed', '#db2777', '#b45309', '#c2410c', '#059669'];
 
 function columnTint(index: number, count: number): string {
   if (count <= 1) return COLUMN_TINTS[0];
@@ -710,11 +711,22 @@ export function KanbanView({
           <div key={stepName} className="board-column" style={{ borderColor: `${tint}40` }}>
             <div
               className="board-column-header"
-              style={{ background: `${tint}52`, borderBottomColor: `${tint}59` }}
+              style={{ background: tint, borderBottomColor: tint }}
               {...(approvalStepNames.has(stepName) ? { 'data-tour': 'wf-col-aprovacao' } : {})}
             >
-              <span className="board-column-title">{stepName}</span>
-              <span className="board-column-count">{stepCards.length}</span>
+              <span className="board-column-title" style={{ color: '#fff' }}>
+                {stepName}
+              </span>
+              <span
+                className="board-column-count"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  color: '#fff',
+                  borderColor: 'transparent',
+                }}
+              >
+                {stepCards.length}
+              </span>
             </div>
             <DroppableColumnBody tint={tint} id={`${COL_PREFIX}${row.key}::${stepName}`}>
               {colIdx === 0 && onAddWorkflow && (
