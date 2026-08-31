@@ -249,17 +249,27 @@ export function StandalonePostDrawer({
     }, 1500);
   };
 
-  const handleConfirmEdit = () => {
+  const handleConfirmEdit = async () => {
     if (!pendingEditData) return;
+    const editData = pendingEditData;
+    setPendingEditData(null);
+    // The approval invalidation must land BEFORE the content save is armed:
+    // saving new content on a still-approved post would defeat the confirm.
+    try {
+      await updateWorkflowPost(postId, { status: 'revisao_interna' });
+      refresh();
+    } catch {
+      toast.error('Não foi possível invalidar a aprovação. O conteúdo não foi salvo.');
+      return;
+    }
     confirmedEditRef.current = true;
-    updateWorkflowPost(postId, { status: 'revisao_interna' }).then(() => refresh());
     setIsSaving(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
         await updateWorkflowPost(postId, {
-          conteudo: pendingEditData.json,
-          conteudo_plain: pendingEditData.plain,
+          conteudo: editData.json,
+          conteudo_plain: editData.plain,
         });
         refresh();
       } catch {
@@ -268,7 +278,6 @@ export function StandalonePostDrawer({
         setIsSaving(false);
       }
     }, 1500);
-    setPendingEditData(null);
   };
 
   const handleCancelEdit = () => {
