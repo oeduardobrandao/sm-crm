@@ -708,22 +708,18 @@ export function KanbanView({
       {[...row.columns.entries()].map(([stepName, stepCards], colIdx, cols) => {
         const tint = columnTint(colIdx, cols.length);
         return (
-          <div key={stepName} className="board-column" style={{ borderColor: `${tint}40` }}>
+          <div key={stepName} className="board-column" style={{ borderColor: `${tint}30` }}>
             <div
               className="board-column-header"
-              style={{ background: tint, borderBottomColor: tint }}
+              style={{ background: `${tint}30`, borderBottomColor: `${tint}30` }}
               {...(approvalStepNames.has(stepName) ? { 'data-tour': 'wf-col-aprovacao' } : {})}
             >
-              <span className="board-column-title" style={{ color: '#fff' }}>
+              <span className="board-column-title" style={{ color: tint }}>
                 {stepName}
               </span>
               <span
                 className="board-column-count"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.2)',
-                  color: '#fff',
-                  borderColor: 'transparent',
-                }}
+                style={{ background: `${tint}3d`, color: tint, borderColor: 'transparent' }}
               >
                 {stepCards.length}
               </span>
