@@ -12,6 +12,8 @@ import {
   Archive,
   BookOpen,
   Search,
+  Route,
+  CircleDashed,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -641,10 +643,10 @@ export default function EntregasPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setNewWorkflowOpen(true)}>
-                Novo fluxo
+                <Route aria-hidden="true" /> Novo fluxo
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setNewAvulsoOpen(true)}>
-                Post avulso
+                <CircleDashed aria-hidden="true" /> Post avulso
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
