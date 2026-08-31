@@ -130,10 +130,10 @@ export function WorkflowCard({
           style={{
             borderLeft: 'none',
             paddingLeft: 0,
-            fontSize: '0.68rem',
+            fontSize: '0.74rem',
             fontWeight: 500,
-            letterSpacing: '0.05em',
-            textTransform: 'uppercase',
+            letterSpacing: '0.01em',
+            textTransform: 'none',
             color: 'var(--text-muted)',
             display: 'inline-flex',
             alignItems: 'center',
