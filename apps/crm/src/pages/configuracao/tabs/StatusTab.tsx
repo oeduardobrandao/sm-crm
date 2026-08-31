@@ -336,7 +336,7 @@ function CreateStatusForm({
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <input
           className="drawer-input"
-          style={{ flex: 1, minWidth: 180 }}
+          style={{ flex: 1, minWidth: 180, maxWidth: 420 }}
           placeholder="Nome do status (ex.: Em design)"
           value={nome}
           maxLength={40}
@@ -350,6 +350,7 @@ function CreateStatusForm({
             gap: 6,
             fontSize: '0.8rem',
             color: 'var(--text-muted)',
+            whiteSpace: 'nowrap',
           }}
         >
           Se comporta como
