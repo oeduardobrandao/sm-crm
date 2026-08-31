@@ -8,6 +8,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { publicOrigin, resolveCtx } from "../_shared/mcp-oauth.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
+import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { headObject, signPutUrl } from "../_shared/r2.ts";
 import { registerTools } from "./tools.ts";
 
@@ -89,6 +90,15 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
         "WWW-Authenticate": `Bearer resource_metadata="${metadataUrl}", scope="${OAUTH_SCOPE}"`,
       },
+    });
+  }
+
+  // key_id is set for both auth paths (mcp_api_keys.id, or oauth:<client_id>) — no fallback needed.
+  const allowed = await checkRateLimit(db, `mcp:${ctx.key_id}`, 120, 60);
+  if (!allowed) {
+    return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+      status: 429,
+      headers: { ...cors, "Content-Type": "application/json", "Retry-After": "60" },
     });
   }
 

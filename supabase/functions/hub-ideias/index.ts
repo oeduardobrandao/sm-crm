@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { signPutUrl, signGetUrl, headObject } from "../_shared/r2.ts";
+import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { createHubIdeiasHandler } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -13,4 +14,6 @@ Deno.serve(createHubIdeiasHandler({
   signPutUrl,
   signGetUrl,
   headObject,
+  // deno-lint-ignore no-explicit-any
+  rateLimit: (db, key, max, win) => checkRateLimit(db as any, key, max, win),
 }));

@@ -1,5 +1,6 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
+import { getClientIP } from "../_shared/rate-limit.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -10,6 +11,7 @@ interface HubEditSuggestionHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
   now: () => string;
+  rateLimit: (db: DbClient, key: string, max: number, windowSeconds: number) => Promise<boolean>;
 }
 
 function extractR2Keys(content: any): string[] {
@@ -67,8 +69,20 @@ export function createHubEditSuggestionHandler(deps: HubEditSuggestionHandlerDep
     // Verify token and enforce feature_hub_portal
     const hubToken = await resolveHubToken(db as any, token, deps.now());
     if (!hubToken) {
+      const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
+      if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
       return json({ error: "Link inválido." }, 404);
     }
+
+    const okRead = await deps.rateLimit(
+      db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300,
+    );
+    if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+
+    const okWrite = await deps.rateLimit(
+      db, `hub-write:hub-edit-suggestion:${hubToken.conta_id}:${hubToken.cliente_id}`, 30, 3600,
+    );
+    if (!okWrite) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
 
     // Verify post exists and get its workflow
     const { data: post } = await db

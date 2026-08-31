@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { signGetUrl } from "../_shared/r2.ts";
 import { signMediaUrl, isMediaProxyEnabled } from "../_shared/media-url.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { isStreamEnabled, signPlaybackUrl } from "../_shared/stream.ts";
 import { createHubPostsHandler } from "./handler.ts";
 
@@ -18,4 +19,6 @@ Deno.serve(createHubPostsHandler({
   now: () => new Date().toISOString(),
   signGetUrl: signUrl,
   signPlayback: isStreamEnabled() ? (uid) => signPlaybackUrl(uid) : undefined,
+  // deno-lint-ignore no-explicit-any
+  rateLimit: (db, key, max, win) => checkRateLimit(db as any, key, max, win),
 }));

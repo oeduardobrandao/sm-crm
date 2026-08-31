@@ -1,6 +1,7 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { getClientIP } from "../_shared/rate-limit.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -14,6 +15,7 @@ interface HubBootstrapHandlerDeps {
   /** Sliding-window renewal. MUST NOT throw — a renewal failure must never
    *  break the client's portal. See index.ts for the timeout + catch wrapper. */
   touchToken: (token: string) => Promise<void>;
+  rateLimit: (db: DbClient, key: string, max: number, windowSeconds: number) => Promise<boolean>;
 }
 
 export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
@@ -48,7 +50,16 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
     // Pass conta.id as expectedContaId to preserve the slug<->token binding:
     // a token from workspace A must never be served under workspace B's slug.
     const hubToken = await resolveHubToken(db as any, token, deps.now(), conta.id);
-    if (!hubToken) return json({ error: "Link inválido." }, 404);
+    if (!hubToken) {
+      const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
+      if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+      return json({ error: "Link inválido." }, 404);
+    }
+
+    const okRead = await deps.rateLimit(
+      db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300,
+    );
+    if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
 
     // Sliding window: keep an in-use link alive. Throttled inside the SQL function.
     // Defence in depth — index.ts already swallows errors, but a handler-level catch
