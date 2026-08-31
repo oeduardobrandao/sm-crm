@@ -5334,16 +5334,16 @@ body.role-agent input[name='valor_total'] {
   background: transparent;
 }
 
+/* Radial gradients give the concave curve the exact same 10px radius as the
+ * tab's top corners (the box-shadow notch trick renders visually fatter). */
 .board-tab.active::before {
   left: -10px;
-  border-bottom-right-radius: 10px;
-  box-shadow: 4px 4px 0 4px var(--bg-color);
+  background: radial-gradient(circle 10px at 0 0, transparent 9.5px, var(--bg-color) 10px);
 }
 
 .board-tab.active::after {
   right: -10px;
-  border-bottom-left-radius: 10px;
-  box-shadow: -4px 4px 0 4px var(--bg-color);
+  background: radial-gradient(circle 10px at 100% 0, transparent 9.5px, var(--bg-color) 10px);
 }
 
 .board-tab-count {
