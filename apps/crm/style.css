@@ -5352,6 +5352,10 @@ body.role-agent input[name='valor_total'] {
 }
 
 .board-column-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
   font-weight: 700;
   font-size: 0.75rem;
   letter-spacing: 0.06em;

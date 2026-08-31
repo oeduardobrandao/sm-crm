@@ -13,13 +13,22 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import {
+  AlertTriangle,
+  CalendarClock,
+  CheckCheck,
+  CircleCheck,
   CircleDashed,
   Clapperboard,
+  Eye,
   GalleryHorizontalEnd,
   Image,
   Lock,
+  MessageSquareWarning,
+  PencilLine,
   Plus,
   Route,
+  Send,
+  ShieldCheck,
 } from 'lucide-react';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
@@ -50,6 +59,21 @@ const TIPO_ICONS: Record<ActivePost['tipo'], typeof Image> = {
   reels: Clapperboard,
   carrossel: GalleryHorizontalEnd,
   stories: CircleDashed,
+};
+
+/* Column-header icon per canonical status; color only where the status carries
+ * a semantic outcome (approved/scheduled/published/failed), muted otherwise.
+ * Custom statuses keep their user-picked color dot instead. */
+const STATUS_HEADER_META: Record<ActivePost['status'], { icon: typeof Image; color?: string }> = {
+  rascunho: { icon: PencilLine },
+  revisao_interna: { icon: Eye },
+  aprovado_interno: { icon: ShieldCheck },
+  enviado_cliente: { icon: Send },
+  aprovado_cliente: { icon: CircleCheck, color: 'var(--success)' },
+  correcao_cliente: { icon: MessageSquareWarning, color: 'var(--warning)' },
+  agendado: { icon: CalendarClock, color: 'var(--primary-hover)' },
+  postado: { icon: CheckCheck, color: 'var(--success)' },
+  falha_publicacao: { icon: AlertTriangle, color: 'var(--danger-text)' },
 };
 
 interface PostsKanbanViewProps {
@@ -280,7 +304,7 @@ function PostBoardColumn({
     >
       <div className="board-column-header">
         <span className="board-column-title">
-          {option.kind === 'custom' && (
+          {option.kind === 'custom' ? (
             <span
               aria-hidden
               style={{
@@ -289,10 +313,21 @@ function PostBoardColumn({
                 height: 8,
                 borderRadius: '50%',
                 background: option.color,
-                marginRight: 6,
-                verticalAlign: 'middle',
+                flexShrink: 0,
               }}
             />
+          ) : (
+            (() => {
+              const meta = STATUS_HEADER_META[option.canonical];
+              const HeaderIcon = meta.icon;
+              return (
+                <HeaderIcon
+                  size={13}
+                  aria-hidden="true"
+                  style={{ color: meta.color ?? 'var(--text-light)', flexShrink: 0 }}
+                />
+              );
+            })()
           )}
           {option.label}
         </span>
