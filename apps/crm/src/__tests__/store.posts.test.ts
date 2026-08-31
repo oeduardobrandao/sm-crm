@@ -879,6 +879,51 @@ describe('posts avulsos', () => {
     );
   });
 
+  it('getActivePosts interleaves undated avulsos with undated wired posts by id (no kind segregation)', async () => {
+    const wiredRow = (id: number) => ({
+      id,
+      workflow_id: 5,
+      titulo: `Fluxo ${id}`,
+      tipo: 'feed',
+      status: 'rascunho',
+      scheduled_at: null,
+      ordem: 0,
+      workflows: {
+        titulo: 'Fluxo A',
+        cliente_id: 7,
+        status: 'ativo',
+        clientes: { nome: 'Yasmin' },
+      },
+    });
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_posts',
+      'select',
+      { data: [wiredRow(1), wiredRow(30)], error: null },
+      {
+        data: [
+          {
+            id: 2,
+            workflow_id: null,
+            cliente_id: 9,
+            titulo: 'Avulso antigo',
+            tipo: 'feed',
+            status: 'rascunho',
+            scheduled_at: null,
+            ordem: 0,
+            clientes: { nome: 'Beto' },
+          },
+        ],
+        error: null,
+      },
+    );
+
+    const result = await store.getActivePosts();
+
+    // Without the id tie-break the stable sort keeps concat order (1, 30, 2),
+    // rendering every undated avulso below every undated wired post.
+    expect(result.map((p) => p.id)).toEqual([1, 2, 30]);
+  });
+
   it('getClientePosts filters the avulso arm by cliente_id and workflow_id null', async () => {
     mockedSupabase.__queueSupabaseResult(
       'workflow_posts',

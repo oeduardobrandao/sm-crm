@@ -10,15 +10,23 @@ import { syncMentions } from './mentions';
  * getActivePosts/getAwaitingClientePosts doc comments), no single ORDER BY can
  * cover both, so the final order is re-established here, client-side, after
  * the merge.
+ *
+ * Ties (same date, or both undated) break by id, i.e. creation order. Without
+ * it the stable sort preserves the concat order of the two arms, and every
+ * undated avulso sinks below every undated wired post -- the Publicações
+ * board would render avulsos as a segregated block at the bottom of each
+ * column instead of interleaving the two kinds.
  */
 function compareScheduledAtAscNullsLast(
-  a: { scheduled_at: string | null },
-  b: { scheduled_at: string | null },
+  a: { scheduled_at: string | null; id: number },
+  b: { scheduled_at: string | null; id: number },
 ): number {
-  if (a.scheduled_at == null && b.scheduled_at == null) return 0;
+  if (a.scheduled_at == null && b.scheduled_at == null) return a.id - b.id;
   if (a.scheduled_at == null) return 1;
   if (b.scheduled_at == null) return -1;
-  return a.scheduled_at < b.scheduled_at ? -1 : a.scheduled_at > b.scheduled_at ? 1 : 0;
+  if (a.scheduled_at < b.scheduled_at) return -1;
+  if (a.scheduled_at > b.scheduled_at) return 1;
+  return a.id - b.id;
 }
 
 /** Ascending by created_at -- the merge comparator for the two functions that

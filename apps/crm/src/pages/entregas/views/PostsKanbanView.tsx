@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, memo, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -271,7 +271,9 @@ function PostBoardCardContent({
 
 /** Draggable card wrapper: click still opens the drawer (openable posts only,
  *  regardless of drag lock); dragging is disabled only for a locked source. */
-function PostBoardCard({
+/* memo: when the slot column re-renders on every slot move, its cards (74+ in
+ * Rascunho) bail out here instead of re-rendering tooltips and avatars. */
+const PostBoardCard = memo(function PostBoardCard({
   post,
   registry,
   card,
@@ -310,19 +312,24 @@ function PostBoardCard({
       <PostBoardCardContent post={post} registry={registry} card={card} />
     </div>
   );
-}
+});
 
 /** Column: droppable body, dimmed while a drag is active if its canonical
  *  status is system-driven (an invalid drop target — the drop still fires, so
  *  the drag-end handler can toast the reason, but never writes). */
-function PostBoardColumn({
+/* memo: a drag start/slot move re-renders the parent on every state change;
+ * without memo all nine columns (hundreds of cards) re-render, which is the
+ * click-to-move delay and mid-drag jank the board used to have. Only the
+ * column whose props actually changed (dragInvalid flip, slot enter/leave)
+ * re-renders now. */
+const PostBoardColumn = memo(function PostBoardColumn({
   option,
   posts,
   registry,
   openableWorkflowIds,
   onPostClick,
   cardsByWorkflowId,
-  isDragActive,
+  dragInvalid,
   dropSlot,
   dragHeight,
 }: {
@@ -332,18 +339,20 @@ function PostBoardColumn({
   openableWorkflowIds: Set<number>;
   onPostClick: (post: ActivePost) => void;
   cardsByWorkflowId: Map<number, BoardCard>;
-  isDragActive: boolean;
+  /** True only while a drag is active AND this column is a locked target --
+   *  computed by the parent so unlocked columns keep a stable prop across a
+   *  drag start and skip re-rendering entirely. */
+  dragInvalid: boolean;
   /** Slot for THIS column only; null when the drag hovers elsewhere. */
   dropSlot: PostsKanbanHoverSlot | null;
   dragHeight: number;
 }) {
-  const isLockedColumn = LOCKED_STATUSES.has(option.canonical);
   const { setNodeRef } = useDroppable({ id: `${COL_PREFIX}${option.key}` });
   const tint = columnTintFor(option);
 
   return (
     <div
-      className={`board-column${isDragActive && isLockedColumn ? ' board-column--drag-invalid' : ''}`}
+      className={`board-column${dragInvalid ? ' board-column--drag-invalid' : ''}`}
       style={tint ? { borderColor: `${tint}30` } : undefined}
     >
       <div
@@ -431,7 +440,7 @@ function PostBoardColumn({
       </div>
     </div>
   );
-}
+});
 
 /**
  * Draggable kanban of every post across active workflows, one column per post
@@ -611,7 +620,7 @@ export function PostsKanbanView({
                 openableWorkflowIds={openableWorkflowIds}
                 onPostClick={onPostClick}
                 cardsByWorkflowId={cardsByWorkflowId}
-                isDragActive={activeId != null}
+                dragInvalid={activeId != null && LOCKED_STATUSES.has(option.canonical)}
                 dropSlot={dropSlot?.key === option.key ? dropSlot : null}
                 dragHeight={dragHeight}
               />
