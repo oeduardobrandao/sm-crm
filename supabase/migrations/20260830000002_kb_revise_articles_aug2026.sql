@@ -513,6 +513,68 @@ SELECT _kb_rv_upsert(
   50
 );
 
+-- Como conectar o Claude (MCP): o fluxo de conector personalizado do
+-- claude.ai mudou -- nao existem mais campos de OAuth para deixar em branco;
+-- o dialogo pede so nome + URL e uma segunda tela mostra as opcoes de
+-- autenticacao que o Claude DETECTA sozinho no servidor. Re-declaracao com
+-- capturas reais do fluxo novo (curadas de um connect real em 2026-08-31);
+-- as duas capturas in-app existentes (pagina MCP e criar chave) permanecem.
+SELECT _kb_rv_upsert(
+  'bbbbbbbb-0001-4000-b000-000000000001',
+  'Como conectar o Claude (MCP)',
+  'como-conectar-o-claude-mcp',
+  'Conecte um agente Claude ao seu workspace por conector (sem chave) ou por chave de API.',
+  _kb_rv_doc(
+    _kb_rv_h(2, 'O que é o MCP'),
+    _kb_rv_p('O MCP (Model Context Protocol) conecta um agente Claude ao seu workspace do Mesaas. Com ele, o agente pode ler informações como clientes, posts, pautas e fluxos e, quando você autoriza, criar rascunhos de conteúdo, sempre dentro dos limites que você define.'),
+    _kb_rv_h(2, 'Onde encontrar'),
+    _kb_rv_p('Abra Configurações e acesse a página Agentes (MCP). Apenas proprietários e administradores podem gerenciar a integração, e o recurso precisa estar liberado no seu plano.'),
+    _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-conectar-o-claude-mcp/01-pagina-mcp.png', 'Página Agentes (MCP) em Configurações, com a URL do conector e as instruções.', 1440, 900),
+    _kb_rv_h(2, 'Método recomendado: claude.ai e Claude Desktop (sem chave)'),
+    _kb_rv_ol_shots(
+      ARRAY[
+        'No Claude, abra Configurações, entre em Conectores e clique em Adicionar, depois em Adicionar conector personalizado',
+        'Dê um nome ao conector, cole a URL do MCP exibida na página Agentes (MCP) do Mesaas e clique em Continuar',
+        'Confira as opções de autenticação: o Claude detecta sozinho o que o servidor exige (login sempre obrigatório e cliente OAuth registrado automaticamente). Não mude nada, só conclua',
+        'Na janela do Mesaas, faça login se preciso, escolha o workspace e as permissões e clique em Autorizar'
+      ],
+      ARRAY[
+        _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-conectar-o-claude-mcp/ext-01-conectores.png', 'Lista de Conectores do Claude com o menu Adicionar aberto e a opção Adicionar conector personalizado.', 960, 730),
+        _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-conectar-o-claude-mcp/ext-02-url-conector.png', 'Diálogo Adicionar conector personalizado com o nome Mesaas e a URL do MCP preenchidos.', 570, 520),
+        _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-conectar-o-claude-mcp/ext-03-autenticacao.png', 'Opções de autenticação do conector, com as escolhas certas já marcadas como Detectado.', 570, 810),
+        _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-conectar-o-claude-mcp/ext-04-autorizar-workspace.png', 'Tela de autorização do Mesaas com o seletor de workspace, as permissões e o botão Autorizar.', 1505, 834)
+      ]::jsonb[]
+    ),
+    _kb_rv_callout('💡', 'blue', 'Essa é a forma mais simples: não envolve chaves e a conexão pode ser revogada a qualquer momento direto no Mesaas.'),
+    _kb_rv_p('Se a janela de autorização não abrir, verifique o bloqueador de popups do navegador. E se esse conector já foi conectado antes, o Claude reaproveita a autorização existente e a janela nem aparece.'),
+    _kb_rv_h(2, 'Claude Code, API ou agentes headless (com chave)'),
+    _kb_rv_ol(ARRAY[
+      'Na página Agentes (MCP), clique em Criar chave de API e dê um nome (ex.: Agente de conteúdo)',
+      'Escolha as permissões da chave e copie o valor exibido (formato mesaas_sk_…), que aparece uma única vez',
+      'Use o comando pronto (Claude Code) ou o bloco de configuração (Claude Desktop) mostrado na página; se já tiver uma chave, use Conectar ao lado dela'
+    ]),
+    _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-conectar-o-claude-mcp/02-criar-chave.png', 'Modal Criar chave de API com nome e permissões de leitura selecionadas.', 1440, 900),
+    _kb_rv_callout('⚠️', 'orange', 'A chave é mostrada apenas no momento da criação. Guarde-a em local seguro; se perdê-la, gere uma nova e revogue a antiga.'),
+    _kb_rv_h(2, 'Permissões (escopos)'),
+    _kb_rv_p('Ao conectar, você escolhe os escopos de acesso. Conceda apenas o necessário:'),
+    _kb_rv_ul(ARRAY[
+      'Clientes, Posts, Fluxos, Tarefas e Ideias/Pautas (leitura) - para o agente consultar informações',
+      'Posts (escrita) - para criar e editar rascunhos de posts e fluxos',
+      'Modelos (escrita) - para criar modelos de fluxo',
+      'Clientes e Equipe (escrita) - para a importação assistida'
+    ]),
+    _kb_rv_p('O preset de agente vem somente com leitura. A escrita é opcional e deve ser ativada por você.'),
+    _kb_rv_h(2, 'Gerenciar e revogar acesso'),
+    _kb_rv_p('Na seção Conexões Claude você vê as conexões ativas e pode desconectar para revogar o acesso na hora. Chaves de API podem ser revogadas individualmente na lista de chaves. No claude.ai, a página do conector mostra o estado da conexão; Desvincular remove a autorização do lado do Claude.'),
+    _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-conectar-o-claude-mcp/ext-06-desvincular.png', 'Página do conector Mesaas no claude.ai em estado desconectado, com o botão Vincular.', 960, 730),
+    _kb_rv_h(2, 'Primeiros comandos'),
+    _kb_rv_callout('✅', 'green', 'Depois de conectar, peça ao agente: liste meus clientes ativos, ou mostre o post X com métricas.')
+  ),
+  'claude-e-ia',
+  ARRAY['mcp', 'claude', 'conector', 'chave-api', 'integracao', 'ia'],
+  5
+);
+
 -- =======================================================================
 -- 2. APPENDS IDEMPOTENTES (preservam capturas e conteudo existente)
 -- =======================================================================
@@ -597,6 +659,13 @@ SELECT _kb_rv_append('o-que-o-agente-pode-fazer', 'Importação assistida',
   _kb_rv_h(2, 'Importação assistida'),
   _kb_rv_p('O agente também ajuda a povoar o workspace: ele pode criar clientes e membros de equipe, e listar os membros existentes. Isso permite, por exemplo, colar uma lista de clientes numa conversa com o Claude e pedir que ele cadastre todos, ou migrar dados de outra ferramenta conversando. As criações são seguras para repetição: se o agente tentar criar um cliente que já existe com o mesmo nome, o sistema reaproveita o registro existente e completa só os campos vazios, em vez de duplicar.'),
   _kb_rv_p('Para usar as ferramentas de importação, a chave ou conexão do agente precisa dos escopos de leitura e escrita de clientes e membros, concedidos na tela de conexão.')
+);
+
+-- O que o agente pode fazer: controle por ferramenta no claude.ai.
+SELECT _kb_rv_append('o-que-o-agente-pode-fazer', 'Permissões de ferramentas',
+  _kb_rv_h(2, 'Controlando as ferramentas no claude.ai'),
+  _kb_rv_p('Além dos escopos concedidos na autorização, o claude.ai dá controle por ferramenta: na página do conector Mesaas, a seção Permissões de ferramentas lista cada ferramenta e deixa você escolher entre permitir sempre, pedir confirmação a cada uso ou bloquear. É uma segunda camada de controle, do lado do Claude, por cima dos escopos do Mesaas.'),
+  _kb_rv_img('https://skjzpekeqefvlojenfsw.supabase.co/storage/v1/object/public/kb-images/como-conectar-o-claude-mcp/ext-05-permissoes-ferramentas.png', 'Seção Permissões de ferramentas do conector Mesaas no claude.ai, com o controle por ferramenta.', 960, 725)
 );
 
 -- Como conectar o Instagram: link de autoconexao do cliente (PR #308).
