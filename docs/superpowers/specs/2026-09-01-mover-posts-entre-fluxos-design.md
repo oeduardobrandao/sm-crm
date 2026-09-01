@@ -30,6 +30,33 @@ Uma migration, `move_posts_to_new_flow` + `move_posts_to_existing_flow`
 `detach_posts_from_flow`/`attach_posts_to_flow`, 20260830000004), mais helpers
 privados `move_posts_core` e `remap_moved_posts_select_options`.
 
+Contrato (fixado após review externa do spec, Codex 2026-09-01):
+
+- A origem é parâmetro EXPLÍCITO (`p_source_workflow_id`), não derivada do
+  lote: todo post precisa estar no fluxo declarado (`post_not_in_source_flow`,
+  all-or-nothing), checado na descoberta e re-checado com as linhas travadas.
+  Sem isso, uma seleção obsoleta cujos posts migraram todos para outro fluxo
+  único clonaria etapas ou arquivaria o fluxo errado.
+- Toda validação roda sob lock e escopada por `conta_id` do chamador (posse
+  all-or-nothing do lote, origem e destino da conta, destino ativo, mesmo
+  cliente, mesmo template). A filtragem do diálogo não é fronteira de
+  segurança.
+- Retorno das duas RPCs: `{ ok, moved, target_workflow_id,
+  archived_workflow_ids }`. A UI abre o drawer do destino pelo id retornado,
+  nunca por título/refetch heurístico.
+- Novo fluxo: `user_id = coalesce(auth.uid(), origem.user_id)` (coluna NOT
+  NULL; fallback cobre chamadas service_role sem usuário).
+- `ordem` no destino: fluxo existente = append determinístico após
+  `max(ordem)` do destino; fluxo novo = 0..N-1. Ordenação interna do lote
+  preserva a ordem relativa da origem (`ORDER BY ordem, id`).
+- "Mesmo modelo" exige `template_id` NÃO NULO e igual dos dois lados; origem
+  sem template → `workflow_template_mismatch` na RPC e opção "fluxo existente"
+  desabilitada na UI (NULL-NULL não é "mesmo modelo").
+- Elegibilidade por status: QUALQUER post do fluxo pode ser movido. Posts
+  aprovados são o cenário motivador, não uma restrição; o desmembrar para
+  avulso também não restringe por status, e restringir bloquearia usos
+  legítimos (ex.: tirar rascunhos do caminho do fluxo que avança).
+
 Pontos estruturais:
 
 - Locks: `':post_move'` → (new-flow) `':max_active_workflows_per_client'` →

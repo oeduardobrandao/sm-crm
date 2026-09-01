@@ -111,6 +111,7 @@ import { PostStatusChip } from './PostStatusChip';
 import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 import { PostEditorBody } from './PostEditorBody';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
+import { MovePostsToFluxoDialog } from './MovePostsToFluxoDialog';
 
 /** Maps detach_posts_from_flow's identifier-style RPC errors (see
  *  supabase/migrations/20260830000004_post_detach_attach_rpcs.sql) to PT copy.
@@ -138,6 +139,10 @@ interface WorkflowDrawerProps {
   onClose: () => void;
   onRefresh: () => void;
   initialPostId?: number;
+  /** Opens another workflow's drawer (used after moving posts to a new or
+   *  existing flow, so the user lands where the posts went). Optional: call
+   *  sites without it just close this drawer. */
+  onOpenWorkflow?: (workflowId: number) => void;
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -148,6 +153,7 @@ export function WorkflowDrawer({
   onClose,
   onRefresh,
   initialPostId,
+  onOpenWorkflow,
 }: WorkflowDrawerProps) {
   const workflowId = card.workflow.id!;
   const qc = useQueryClient();
@@ -188,6 +194,9 @@ export function WorkflowDrawer({
   const [detachTarget, setDetachTarget] = useState<number[] | null>(null);
   const [archiveEmptyFlow, setArchiveEmptyFlow] = useState(false);
   const [isDetaching, setIsDetaching] = useState(false);
+  // Mover para outro fluxo: same two entry points as detach (selection bar +
+  // per-post kebab); the dialog itself carries the destination choice.
+  const [moveTarget, setMoveTarget] = useState<number[] | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -612,6 +621,21 @@ export function WorkflowDrawer({
     }
   };
 
+  // Posts left for another flow (new or existing): this drawer's list just
+  // shrank (or emptied), so refresh the board and land the user where the
+  // posts went. Falls back to only closing when the call site can't open
+  // another drawer.
+  const handleMoved = useCallback(
+    (targetWorkflowId: number) => {
+      setSelectedPostIds(new Set());
+      setMoveTarget(null);
+      onRefresh();
+      onClose();
+      onOpenWorkflow?.(targetWorkflowId);
+    },
+    [onRefresh, onClose, onOpenWorkflow],
+  );
+
   // ── Edit suggestion handlers ──────────────────────────────────────────────
 
   const handleAcceptSuggestion = useCallback(
@@ -866,6 +890,13 @@ export function WorkflowDrawer({
                     <button
                       type="button"
                       className="drawer-selection-bar-btn"
+                      onClick={() => setMoveTarget(Array.from(selectedPostIds))}
+                    >
+                      Mover para outro fluxo
+                    </button>
+                    <button
+                      type="button"
+                      className="drawer-selection-bar-btn"
                       onClick={() => openDetachConfirm(Array.from(selectedPostIds))}
                     >
                       Desmembrar do fluxo
@@ -929,6 +960,7 @@ export function WorkflowDrawer({
                           isSelected={selectedPostIds.has(post.id!)}
                           onSelectChange={(checked) => toggleSelectPost(post.id!, checked)}
                           onDetachRequest={() => openDetachConfirm([post.id!])}
+                          onMoveRequest={() => setMoveTarget([post.id!])}
                           onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
                           onDelete={() => handleDeletePost(post.id!)}
                           onFieldChange={(field, value) =>
@@ -1096,6 +1128,16 @@ export function WorkflowDrawer({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <MovePostsToFluxoDialog
+        open={!!moveTarget}
+        onClose={() => setMoveTarget(null)}
+        postIds={moveTarget ?? []}
+        sourceWorkflow={card.workflow}
+        sourceEtapas={card.allEtapas}
+        isTotalSelection={(moveTarget?.length ?? 0) === posts.length}
+        onMoved={handleMoved}
+      />
     </>
   );
 }
@@ -1129,6 +1171,7 @@ interface SortablePostItemProps {
   isSelected: boolean;
   onSelectChange: (checked: boolean) => void;
   onDetachRequest: () => void;
+  onMoveRequest: () => void;
   onToggle: () => void;
   onDelete: () => void;
   onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
@@ -1174,6 +1217,7 @@ function SortablePostItem({
   isSelected,
   onSelectChange,
   onDetachRequest,
+  onMoveRequest,
   onToggle,
   onDelete,
   onFieldChange,
@@ -1301,6 +1345,7 @@ function SortablePostItem({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onMoveRequest}>Mover para outro fluxo</DropdownMenuItem>
               <DropdownMenuItem onClick={onDetachRequest}>Desmembrar do fluxo</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

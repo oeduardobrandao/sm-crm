@@ -888,6 +888,17 @@ export default function EntregasPage() {
             setDrawerInitialPostId(null);
           }}
           onRefresh={refresh}
+          onOpenWorkflow={(workflowId) => {
+            // Posts just moved to another (possibly brand-new) flow: reuse the
+            // pending-deep-link resolver, which holds the target until its card
+            // exists -- a freshly created flow only shows up after the
+            // ['workflows'] refetch lands. Not a URL navigation: the query-sync
+            // effect would fight over the ?drawer= param.
+            setDrawerCard(null);
+            setDrawerInitialPostId(null);
+            setStandalonePostId(null);
+            setPendingDeepLink({ workflowId, postId: null });
+          }}
         />
       )}
       {standalonePostId != null && (

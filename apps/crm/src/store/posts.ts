@@ -1007,6 +1007,60 @@ export async function attachPostToWorkflow(
   );
 }
 
+export interface MovePostsResult {
+  ok: boolean;
+  moved: number;
+  target_workflow_id: number;
+  archived_workflow_ids: number[];
+}
+
+/**
+ * Moves posts from their current workflow into a brand-new one cloned from it
+ * (etapas copied; the ones before `startOrdem` land as concluded, `startOrdem`
+ * becomes the active etapa) via the move_posts_to_new_flow RPC -- part of the
+ * same sanctioned-move family as detach/attach (see updateWorkflowPost's doc
+ * comment). `sourceWorkflowId` is the flow the whole batch must still belong
+ * to; a stale selection fails with post_not_in_source_flow instead of acting
+ * on the wrong flow.
+ */
+export async function movePostsToNewFlow(
+  postIds: number[],
+  sourceWorkflowId: number,
+  opts: { titulo: string; startOrdem: number; archiveEmptyFlow?: boolean },
+): Promise<MovePostsResult> {
+  return callRpcWithDeadlockRetry<MovePostsResult>(() =>
+    supabase.rpc('move_posts_to_new_flow', {
+      p_post_ids: postIds,
+      p_source_workflow_id: sourceWorkflowId,
+      p_titulo: opts.titulo,
+      p_start_ordem: opts.startOrdem,
+      p_archive_empty_flow: opts.archiveEmptyFlow ?? false,
+    }),
+  );
+}
+
+/**
+ * Moves posts straight from one workflow into another active workflow of the
+ * same client AND same template (never transiently avulso) via the
+ * move_posts_to_existing_flow RPC. Same declared-source contract as
+ * movePostsToNewFlow.
+ */
+export async function movePostsToExistingFlow(
+  postIds: number[],
+  sourceWorkflowId: number,
+  targetWorkflowId: number,
+  archiveEmptyFlow = false,
+): Promise<MovePostsResult> {
+  return callRpcWithDeadlockRetry<MovePostsResult>(() =>
+    supabase.rpc('move_posts_to_existing_flow', {
+      p_post_ids: postIds,
+      p_source_workflow_id: sourceWorkflowId,
+      p_target_workflow_id: targetWorkflowId,
+      p_archive_empty_flow: archiveEmptyFlow,
+    }),
+  );
+}
+
 export interface StandalonePost extends WorkflowPost {
   cliente_nome: string;
 }
