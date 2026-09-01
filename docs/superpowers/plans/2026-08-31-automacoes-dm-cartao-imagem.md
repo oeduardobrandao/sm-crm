@@ -106,7 +106,7 @@ Reporte ao orquestrador: "Milestone 0 preparado, aguardando execução pelo oper
 ### Task 2: Migration + testes SQL
 
 **Files:**
-- Create: `supabase/migrations/20260901000002_ig_dm_media_card.sql`
+- Create: `supabase/migrations/20260901000014_ig_dm_media_card.sql` (versão reservada; um rename tardio de `...000002` para esta já ocorreu na branch — para leitores futuros, o filename correto é este)
 - Modify: `supabase/tests/entitlements/65_instagram_automations.sql` (nova seção ao final; atualizar índice do cabeçalho)
 
 **Interfaces:**
@@ -618,12 +618,16 @@ Deno.test("finalize: key tmp de outro tenant -> 400; size divergente do HEAD -> 
   );
   const db2 = createSupabaseQueryMock();
   setupAuth(db2);
+  db2.queue("automation_media_objects", "select", { data: null, error: null });
+  const copies2: Array<{ from: string; to: string }> = [];
   assertEquals(
-    (await makeHandler(db2, { headObject: async () => ({ contentLength: 999, contentType: "image/jpeg" }) })(
+    (await makeHandler(db2, { copies: copies2, headObject: async () => ({ contentLength: 999, contentType: "image/jpeg" }) })(
       req("finalize", { key: "automation-media-tmp/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }),
     )).status,
     400,
   );
+  // Mismatch detectado no HEAD da TMP: nada foi copiado ao prefixo permanente.
+  assertEquals(copies2, []);
   const db3 = createSupabaseQueryMock();
   setupAuth(db3);
   db3.queueRpc("automation_media_finalize", { data: null, error: { message: "quota_exceeded" } });
@@ -868,19 +872,31 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
           },
         });
       }
-      // Copia para a key final imutável ANTES de qualquer verificação/registro:
-      // a final nunca teve PUT pré-assinado, então o que o HEAD confere abaixo
-      // é exatamente o que os envios servirão.
+      // Valida a TMP antes de copiar (falha barata, nada chega ao prefixo
+      // permanente) e revalida a FINAL depois (a URL de PUT da tmp segue viva:
+      // uma sobrescrita entre o HEAD e a cópia não pode sobreviver). Qualquer
+      // falha PÓS-cópia trasheia a final -- sem isso, requests repetidos com
+      // mismatch acumulariam objetos não medidos fora da quota.
+      const tmpHead = await deps.headObject(tmpKey);
+      if (!tmpHead) return json({ error: "object not found" }, 400);
+      if (tmpHead.contentLength !== size) return json({ error: "size mismatch" }, 400);
+      if (tmpHead.contentType && tmpHead.contentType !== mime) {
+        return json({ error: "content-type mismatch" }, 400);
+      }
       try {
         await deps.copyObject(tmpKey, key);
       } catch (e) {
         console.error("[automation-media] copy tmp->final:", e instanceof Error ? e.message : String(e));
         return json({ error: "object not found" }, 400);
       }
+      const failFinal = async (err: string) => {
+        await deps.trashObject(key).catch(() => {});
+        return json({ error: err }, 400);
+      };
       const head = await deps.headObject(key);
-      if (!head) return json({ error: "object not found" }, 400);
-      if (head.contentLength !== size) return json({ error: "size mismatch" }, 400);
-      if (head.contentType && head.contentType !== mime) return json({ error: "content-type mismatch" }, 400);
+      if (!head) return await failFinal("object not found");
+      if (head.contentLength !== size) return await failFinal("size mismatch");
+      if (head.contentType && head.contentType !== mime) return await failFinal("content-type mismatch");
 
       const { error: rpcErr } = await svc.rpc("automation_media_finalize", {
         p_conta_id: contaId,
