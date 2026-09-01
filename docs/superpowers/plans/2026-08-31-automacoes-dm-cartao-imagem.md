@@ -234,6 +234,13 @@ BEGIN
     -- Nunca finalizado, ou já liberado: no-op idempotente.
     RETURN 0;
   END IF;
+  -- Anti-corrida attach/delete: se alguma automação referencia a key, aborta
+  -- (o RAISE desfaz o DELETE acima). Par com o FOR KEY SHARE do trigger de
+  -- attach: ou o attach commita antes (e este EXISTS o vê -> media_in_use),
+  -- ou este DELETE commita antes (e o attach falha em media_not_finalized).
+  IF EXISTS (SELECT 1 FROM instagram_comment_automations WHERE dm_media->>'key' = p_key) THEN
+    RAISE EXCEPTION 'media_in_use' USING errcode = 'P0001';
+  END IF;
   UPDATE workspaces
      SET storage_used_bytes = GREATEST(0, storage_used_bytes - v_bytes)
    WHERE id = p_conta_id;
@@ -270,8 +277,11 @@ BEGIN
   IF NEW.dm_media IS NULL THEN
     RETURN NEW;
   END IF;
+  -- FOR KEY SHARE: serializa contra o DELETE do automation_media_release
+  -- (anti-corrida attach/delete; ver comentário naquela RPC).
   SELECT * INTO v_obj FROM automation_media_objects
-   WHERE key = NEW.dm_media->>'key' AND conta_id = NEW.conta_id;
+   WHERE key = NEW.dm_media->>'key' AND conta_id = NEW.conta_id
+   FOR KEY SHARE;
   IF v_obj.key IS NULL THEN
     RAISE EXCEPTION 'media_not_finalized' USING errcode = 'P0001';
   END IF;
@@ -705,6 +715,7 @@ export interface AutomationMediaDeps {
   signGetUrl: (key: string) => Promise<string>;
   headObject: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   trashObject: (key: string) => Promise<void>;
+  copyObject: (sourceKey: string, destKey: string) => Promise<void>;
   randomUUID?: () => string;
 }
 
@@ -764,19 +775,34 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
       if (!Number.isFinite(size) || size <= 0 || size > MAX_MEDIA_BYTES) {
         return json({ error: "invalid size" }, 400);
       }
-      const key = `${tenantPrefix}${randomUUID()}.${ALLOWED_MIME[mime]}`;
+      // Upload SEMPRE no prefixo tmp. A key FINAL (a única que dm_media
+      // aceita) nunca recebe PUT pré-assinado: o finalize copia tmp -> final,
+      // então sobrescrever a tmp depois (a URL vive 15 min) não alcança o
+      // objeto contabilizado/servido. Tmp abandonada é órfã aceita.
+      const key = `automation-media-tmp/${contaId}/${randomUUID()}.${ALLOWED_MIME[mime]}`;
       const upload_url = await deps.signPutUrl(key, mime);
       return json({ upload_url, key });
     }
 
     if (route === "finalize") {
-      const key = String(body.key ?? "");
+      const tmpKey = String(body.key ?? "");
       const mime = String(body.mime_type ?? "");
       const size = Number(body.size_bytes ?? 0);
-      if (!key.startsWith(tenantPrefix)) return json({ error: "invalid key" }, 400);
+      const tmpPrefix = `automation-media-tmp/${contaId}/`;
+      if (!tmpKey.startsWith(tmpPrefix)) return json({ error: "invalid key" }, 400);
       if (!(mime in ALLOWED_MIME)) return json({ error: "unsupported file type" }, 415);
       if (!Number.isFinite(size) || size <= 0 || size > MAX_MEDIA_BYTES) {
         return json({ error: "invalid size" }, 400);
+      }
+      // Copia para a key final imutável ANTES de qualquer verificação/registro:
+      // a final nunca teve PUT pré-assinado, então o que o HEAD confere abaixo
+      // é exatamente o que os envios servirão.
+      const key = `${tenantPrefix}${tmpKey.slice(tmpPrefix.length)}`;
+      try {
+        await deps.copyObject(tmpKey, key);
+      } catch (e) {
+        console.error("[automation-media] copy tmp->final:", e instanceof Error ? e.message : String(e));
+        return json({ error: "object not found" }, 400);
       }
       const head = await deps.headObject(key);
       if (!head) return json({ error: "object not found" }, 400);
@@ -801,6 +827,8 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
         console.error("[automation-media] finalize:", msg);
         return json({ error: "internal" }, 500);
       }
+      // Tmp cumpriu o papel; trash best-effort (falha vira órfã tmp, aceita).
+      await deps.trashObject(tmpKey).catch(() => {});
       const width = Number.isFinite(Number(body.width)) && Number(body.width) > 0 ? Number(body.width) : undefined;
       const height = Number.isFinite(Number(body.height)) && Number(body.height) > 0 ? Number(body.height) : undefined;
       return json({
@@ -823,34 +851,27 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
     if (route === "delete") {
       const key = String(body.key ?? "");
       if (!key.startsWith(tenantPrefix)) return json({ error: "invalid key" }, 400);
-      // Nunca apaga objeto ainda referenciado: o CRM desanexa no banco
-      // ANTES de chamar esta rota (posse única garantida por índice).
-      const { data: refs, error: refErr } = await svc
-        .from("instagram_comment_automations")
-        .select("id")
-        .eq("dm_media->>key", key)
-        .limit(1);
-      if (refErr) {
-        console.error("[automation-media] ref check:", refErr.message);
-        return json({ error: "internal" }, 500);
-      }
-      if ((refs ?? []).length > 0) return json({ error: "media_in_use" }, 409);
-      try {
-        await deps.trashObject(key);
-      } catch (e) {
-        console.error("[automation-media] trashObject:", e instanceof Error ? e.message : String(e));
-        return json({ error: "internal" }, 500);
-      }
-      // Os bytes liberados vêm do registro do servidor (release é idempotente
-      // por key e devolve 0 quando não há registro) -- o request não manda
-      // tamanho nenhum, então não dá para forjar liberação de quota.
+      // ORDEM: release ANTES do trash. A RPC faz, na mesma transação, o
+      // ref-check anti-corrida (media_in_use se alguma automação referencia)
+      // e remove o registro -- a partir daí nenhum attach novo passa no
+      // trigger, então o trash abaixo nunca apaga objeto referenciado. Os
+      // bytes liberados vêm do registro do servidor, nunca do request.
       const { error: rpcErr } = await svc.rpc("automation_media_release", {
         p_conta_id: contaId,
         p_key: key,
       });
       if (rpcErr) {
-        console.error("[automation-media] release:", rpcErr.message);
-        // trashObject é 404-tolerante: o retry do cliente re-trasheia e libera.
+        const msg = String(rpcErr.message ?? "");
+        if (msg.includes("media_in_use")) return json({ error: "media_in_use" }, 409);
+        console.error("[automation-media] release:", msg);
+        return json({ error: "internal" }, 500);
+      }
+      try {
+        await deps.trashObject(key);
+      } catch (e) {
+        // Registro já liberado; objeto vira órfão não contabilizado (aceito,
+        // reap futuro). Retry do cliente: release devolve 0 e re-trasheia.
+        console.error("[automation-media] trashObject:", e instanceof Error ? e.message : String(e));
         return json({ error: "internal" }, 500);
       }
       return json({ ok: true });
