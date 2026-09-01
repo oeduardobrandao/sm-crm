@@ -55,6 +55,7 @@ function makeScheduledPost(overrides?: Partial<ScheduledPost>): ScheduledPost {
     tiktok_publish_error: null,
     tiktok_post_url: null,
     instagram_media_id: null,
+    board_ordem: null,
     ...overrides,
   };
 }
@@ -122,5 +123,71 @@ describe('PublicacoesPanel', () => {
 
     expect(scheduleInstagramPost).toHaveBeenCalledWith(1);
     expect(scheduleTikTokPost).not.toHaveBeenCalled();
+  });
+
+  // Object-based click contract (Task 13): the row hands the caller the whole
+  // post, not a (workflowId, postId) pair -- also pins the "Abrir no fluxo"
+  // label for an openable wired post (the true branch of the ternary at
+  // ~line 154; the avulso/false branch is pinned by the next test).
+  it('invokes onPostClick with the post object (not ids) for an openable wired post, and shows "Abrir no fluxo"', () => {
+    const onPostClick = vi.fn();
+    const post = makeScheduledPost({ id: 10, workflow_id: 10 });
+
+    render(
+      <PublicacoesPanel
+        posts={[post]}
+        {...baseProps}
+        openableWorkflowIds={new Set([10])}
+        onPostClick={onPostClick}
+      />,
+    );
+
+    expect(screen.getByText('Abrir no fluxo')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Post de teste'));
+    expect(onPostClick).toHaveBeenCalledWith(post);
+  });
+
+  // A post avulso (workflow_id null) is always openable, even when its id is
+  // (necessarily) absent from openableWorkflowIds -- and its affordance reads
+  // "Abrir" (no fluxo to open into) rather than "Abrir no fluxo".
+  it('a post avulso (workflow_id null) is always openable regardless of openableWorkflowIds, and shows "Abrir"', () => {
+    const onPostClick = vi.fn();
+    const post = makeScheduledPost({ id: 7, workflow_id: null });
+
+    render(
+      <PublicacoesPanel
+        posts={[post]}
+        {...baseProps}
+        openableWorkflowIds={new Set()}
+        onPostClick={onPostClick}
+      />,
+    );
+
+    expect(screen.getByText('Abrir')).toBeInTheDocument();
+    expect(screen.queryByText('Abrir no fluxo')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Post de teste'));
+    expect(onPostClick).toHaveBeenCalledWith(post);
+  });
+
+  // Pre-existing gating (predates Task 13, unchanged by it): a wired post whose
+  // workflow is not (yet) in openableWorkflowIds stays inert -- no affordance,
+  // no click.
+  it('a wired post whose workflow is not openable stays non-clickable, with no "Abrir" affordance', () => {
+    const onPostClick = vi.fn();
+    const post = makeScheduledPost({ id: 11, workflow_id: 99 });
+
+    render(
+      <PublicacoesPanel
+        posts={[post]}
+        {...baseProps}
+        openableWorkflowIds={new Set()}
+        onPostClick={onPostClick}
+      />,
+    );
+
+    expect(screen.queryByText('Abrir no fluxo')).not.toBeInTheDocument();
+    expect(screen.queryByText('Abrir')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Post de teste'));
+    expect(onPostClick).not.toHaveBeenCalled();
   });
 });

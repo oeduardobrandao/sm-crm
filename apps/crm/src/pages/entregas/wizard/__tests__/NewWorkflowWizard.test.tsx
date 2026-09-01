@@ -205,13 +205,12 @@ function renderWizard(
 }
 
 describe('NewWorkflowWizard — step 1 (galeria)', () => {
-  it('renders the six presets, saved templates and começar do zero', () => {
+  it('renders the five presets, saved templates and começar do zero', () => {
     renderWizard();
     expect(screen.getByText('Posts mensais')).toBeTruthy();
     expect(screen.getByText('Aprovação dupla (texto + arte)')).toBeTruthy();
     expect(screen.getByText('Reels / vídeo')).toBeTruthy();
     expect(screen.getByText('Campanha / lançamento')).toBeTruthy();
-    expect(screen.getByText('Post avulso rápido')).toBeTruthy();
     expect(screen.getByText('Identidade / branding')).toBeTruthy();
     expect(screen.getByText('Começar do zero')).toBeTruthy();
     expect(screen.getByText('Fluxo Padrão de Post')).toBeTruthy();
@@ -240,11 +239,11 @@ describe('NewWorkflowWizard — step 1 (galeria)', () => {
     fireEvent.click(screen.getByText('Posts mensais'));
     fireEvent.change(screen.getByLabelText(/nome do fluxo/i), { target: { value: 'Meu nome' } });
     fireEvent.click(screen.getByText('← Voltar'));
-    fireEvent.click(screen.getByText('Post avulso rápido'));
+    fireEvent.click(screen.getByText('Reels / vídeo'));
     // The source really switched...
-    expect(screen.getByText('Novo Fluxo · Post avulso rápido')).toBeTruthy();
+    expect(screen.getByText('Novo Fluxo · Reels / vídeo')).toBeTruthy();
     // ...and non-nome fields ARE overwritten by the new source: Posts mensais is recorrente,
-    // Post avulso rápido is not, so the switch must have flipped back to false.
+    // Reels / vídeo is not, so the switch must have flipped back to false.
     expect(screen.getByRole('switch', { name: /recorrente/i }).getAttribute('aria-checked')).toBe(
       'false',
     );
@@ -253,7 +252,7 @@ describe('NewWorkflowWizard — step 1 (galeria)', () => {
     // ...and the etapas were replaced by the new source's, not merged with the old ones.
     fireEvent.change(screen.getByLabelText(/cliente/i), { target: { value: '1' } });
     fireEvent.click(screen.getByText('Continuar →'));
-    expect(screen.getByDisplayValue('Publicação')).toBeTruthy(); // Post avulso rápido
+    expect(screen.getByDisplayValue('Publicação')).toBeTruthy(); // Reels / vídeo
     expect(screen.queryByDisplayValue('Ajustes')).toBeNull(); // Posts mensais, gone
   });
 
@@ -476,7 +475,7 @@ describe('NewWorkflowWizard — step 3 (etapas)', () => {
     expect(screen.getAllByText('Selecione um responsável para esta etapa.')).toHaveLength(5);
     fireEvent.click(screen.getByText('← Voltar')); // step 2
     fireEvent.click(screen.getByText('← Voltar')); // step 1
-    fireEvent.click(screen.getByText('Post avulso rápido')); // brand-new etapas
+    fireEvent.click(screen.getByText('Reels / vídeo')); // brand-new etapas
     fireEvent.click(screen.getByText('Continuar →')); // step 3
     expect(screen.getByDisplayValue('Publicação')).toBeTruthy(); // the new source's etapas
     expect(screen.queryByText('Selecione um responsável para esta etapa.')).toBeNull();
@@ -526,13 +525,21 @@ describe('NewWorkflowWizard — step 3 (etapas)', () => {
 
   it('the top chip reflects a row-level "Aprovação externa" toggle', () => {
     renderWizard({ membros: equipe });
-    fireEvent.click(screen.getByText('Post avulso rápido')); // preset has no approval etapa
+    fireEvent.click(screen.getByText('Reels / vídeo')); // preset ships with one approval etapa
     fireEvent.change(screen.getByLabelText(/cliente/i), { target: { value: '1' } });
     fireEvent.click(screen.getByText('Continuar →'));
-    const chip = screen.getByRole('button', { name: /Aprovação do cliente/ });
+    // The preset's own approval row is literally named "Aprovação do cliente", so its
+    // draggable row (dnd-kit gives every row role="button", named from its content) also
+    // matches this regex -- the top summary chip renders first in the DOM, hence [0].
+    const chip = screen.getAllByRole('button', { name: /Aprovação do cliente/ })[0];
+    expect(chip.getAttribute('aria-pressed')).toBe('true');
+    // Demote the preset's own approval row (4th: Roteiro, Gravação, Edição, Aprovação do
+    // cliente, Publicação) via its own pill — the top chip must follow.
+    const rowToggles = screen.getAllByRole('button', { name: 'Aprovação externa' });
+    fireEvent.click(rowToggles[3]);
     expect(chip.getAttribute('aria-pressed')).toBe('false');
-    // Promote a row to client-approval via its own pill — the top chip must follow.
-    fireEvent.click(screen.getAllByRole('button', { name: 'Aprovação externa' })[0]);
+    // Promote a different (plain) row back — the top chip must follow again.
+    fireEvent.click(rowToggles[0]);
     expect(chip.getAttribute('aria-pressed')).toBe('true');
   });
 

@@ -20,6 +20,7 @@ function def(overrides: Partial<PostStatusDefinition>): PostStatusDefinition {
     conta_id: 'conta-1',
     nome: 'Em design',
     cor: '#7c5cff',
+    icone: null,
     behaves_as: 'revisao_interna',
     ordem: 0,
     arquivado: false,
@@ -30,6 +31,13 @@ function def(overrides: Partial<PostStatusDefinition>): PostStatusDefinition {
 }
 
 describe('buildStatusRegistry', () => {
+  it('passes the custom definition icone through to its option', () => {
+    const registry = buildStatusRegistry([def({ id: UUID_A, icone: 'palette' })]);
+    const custom = registry.options.find((o) => o.kind === 'custom');
+    expect(custom?.icone).toBe('palette');
+    expect(registry.options.find((o) => o.key === 'rascunho')?.icone).toBeUndefined();
+  });
+
   it('with no definitions yields exactly the canonical pipeline', () => {
     const registry = buildStatusRegistry([]);
     expect(registry.options.map((o) => o.key)).toEqual([...POST_STATUS_ORDER]);

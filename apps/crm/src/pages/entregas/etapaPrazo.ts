@@ -23,6 +23,20 @@ export function etapaDeadlineDate(card: BoardCard): Date | null {
   return etapaDeadlineDateOf(card.etapa);
 }
 
+/**
+ * Prazo mais curto primeiro: atrasados, depois urgentes, depois em dia; cards
+ * sem prazo por último. Empate mantém a ordem manual (position) — é o modo
+ * padrão das colunas do board de Fluxos.
+ */
+export function sortCardsByPrazo(cards: BoardCard[]): BoardCard[] {
+  return [...cards].sort((a, b) => {
+    const ad = etapaDeadlineDate(a)?.getTime() ?? Infinity;
+    const bd = etapaDeadlineDate(b)?.getTime() ?? Infinity;
+    if (ad !== bd) return ad - bd;
+    return (a.workflow.position ?? 0) - (b.workflow.position ?? 0);
+  });
+}
+
 /** Minimal shape needed to compute an etapa's deadline (WorkflowEtapa subset). */
 export interface EtapaDeadlineFields {
   data_limite?: string | null;

@@ -175,6 +175,14 @@ function deadlineBadge(when: Date, now: Date, L: AgendaLabels): AgendaItem['badg
   return { label: L.inDays(diff), className: diff <= 3 ? 'deadline-caution' : 'deadline-ok' };
 }
 
+/** Deep link for a post row: NULL workflow_id = post avulso (fora de fluxo),
+ *  which opens via the universal `?post=` form instead of `?drawer=&post=`. */
+function postHref(p: { id: number; workflow_id: number | null }): string {
+  return p.workflow_id != null
+    ? `/entregas?drawer=${p.workflow_id}&post=${p.id}`
+    : `/entregas?post=${p.id}`;
+}
+
 function joinContext(...parts: (string | null | undefined)[]): string {
   return parts.filter((p) => p && p.trim().length > 0).join(' · ');
 }
@@ -281,7 +289,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
         title: p.titulo,
         context: joinContext(L.publicaAs(fmtTime(when)), statusLabel(p), p.cliente_nome),
         when,
-        href: `/entregas?drawer=${p.workflow_id}&post=${p.id}`,
+        href: postHref(p),
         responsavel: responsavelOf(p.responsavel_id),
         badge: ready
           ? { label: L.agendado, className: 'deadline-ok' }
@@ -311,7 +319,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
             p.cliente_nome,
           ),
           when: null,
-          href: `/entregas?drawer=${p.workflow_id}&post=${p.id}`,
+          href: postHref(p),
           responsavel: responsavelOf(p.responsavel_id),
           badge: overdue
             ? { label: L.semResposta(days), className: 'deadline-warning' }
@@ -333,7 +341,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
           title: p.titulo,
           context: joinContext(p.workflow_titulo, p.cliente_nome),
           when: null,
-          href: `/entregas?drawer=${p.workflow_id}&post=${p.id}`,
+          href: postHref(p),
           responsavel: null,
           badge: {
             label: statusLabel(p),

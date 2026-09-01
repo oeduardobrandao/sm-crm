@@ -251,4 +251,32 @@ describe('card design', () => {
     expect(container.querySelector('.calendar-post-card.foreign')).not.toBeInTheDocument();
     expect(screen.queryByText('Meu fluxo')).not.toBeInTheDocument();
   });
+
+  it('names a post avulso "Avulso" (not blank) and suffixes its tooltip "(avulso)", not "(outro workflow)"', () => {
+    const { container } = render(
+      <CalendarGrid
+        currentMonth={month}
+        scheduledPosts={[
+          mkPost({
+            id: 25,
+            titulo: 'Post sem fluxo',
+            workflow_id: null,
+            workflow_titulo: null,
+          }),
+        ]}
+        currentWorkflowId={10}
+        selectedPostId={null}
+        onSelectPost={() => {}}
+        onMonthChange={() => {}}
+      />,
+    );
+    // Still gets the recessed "foreign" treatment (it isn't this workflow's own post
+    // either), but names itself "Avulso" instead of rendering blank next to the icon.
+    expect(container.querySelector('.calendar-post-card.foreign')).toBeInTheDocument();
+    expect(screen.getByText('Avulso')).toBeInTheDocument();
+    const pill = screen.getByRole('button', { name: /Post sem fluxo/ });
+    expect(pill.title).toContain('Avulso');
+    expect(pill.title).toContain('(avulso)');
+    expect(pill.title).not.toContain('(outro workflow)');
+  });
 });

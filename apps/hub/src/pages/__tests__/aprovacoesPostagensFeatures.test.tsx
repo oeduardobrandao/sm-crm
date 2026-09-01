@@ -1021,3 +1021,155 @@ describe('PostagensPage — feed preview and selection', () => {
     expect(within(grid).getByTestId('grid-selected-count')).toHaveTextContent('1');
   });
 });
+
+describe('PostagensPage — grupo de avulsos', () => {
+  beforeEach(() => {
+    mockedFetchPosts.mockReset();
+  });
+
+  it('pins the avulso group first, expanded by default, ahead of every fluxo group', async () => {
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({
+            id: 1,
+            titulo: 'Post do fluxo',
+            workflow_id: 1,
+            workflow_titulo: 'Fluxo A',
+            workflow_created_at: '2026-08-01T10:00:00Z',
+          }),
+          makePost({
+            id: 2,
+            titulo: 'Post avulso',
+            workflow_id: null,
+            workflow_titulo: null,
+            workflow_created_at: null,
+          }),
+        ],
+      }),
+    );
+
+    renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
+
+    await screen.findByText('Post avulso');
+
+    const groupHeadings = screen.getAllByRole('heading', { level: 3 });
+    expect(groupHeadings.map((h) => h.textContent)).toEqual(['Publicações avulsas', 'Fluxo A']);
+
+    // Avulso group is expanded by default (it is first)...
+    expect(screen.getByText('Post avulso')).toBeInTheDocument();
+    // ...while the fluxo group, being second, starts collapsed.
+    expect(screen.queryByText('Post do fluxo')).not.toBeInTheDocument();
+  });
+
+  it('sorts fluxo groups by workflow_created_at desc, null-safe, after the pinned avulso group', async () => {
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({
+            id: 1,
+            titulo: 'Avulso',
+            workflow_id: null,
+            workflow_titulo: null,
+            workflow_created_at: null,
+          }),
+          makePost({
+            id: 2,
+            titulo: 'Post antigo',
+            workflow_id: 10,
+            workflow_titulo: 'Fluxo antigo',
+            workflow_created_at: '2026-01-01T10:00:00Z',
+          }),
+          makePost({
+            id: 3,
+            titulo: 'Post recente',
+            workflow_id: 20,
+            workflow_titulo: 'Fluxo recente',
+            workflow_created_at: '2026-08-01T10:00:00Z',
+          }),
+          makePost({
+            id: 4,
+            titulo: 'Post sem data',
+            workflow_id: 30,
+            workflow_titulo: 'Fluxo sem data',
+            workflow_created_at: null,
+          }),
+        ],
+      }),
+    );
+
+    renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
+
+    await screen.findByText('Avulso');
+
+    const groupHeadings = screen.getAllByRole('heading', { level: 3 });
+    expect(groupHeadings.map((h) => h.textContent)).toEqual([
+      'Publicações avulsas',
+      'Fluxo recente',
+      'Fluxo antigo',
+      'Fluxo sem data',
+    ]);
+  });
+
+  it('renders the avulso section with no empty state for a client with only avulso posts', async () => {
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({
+            id: 1,
+            titulo: 'Somente avulso',
+            workflow_id: null,
+            workflow_titulo: null,
+            workflow_created_at: null,
+          }),
+        ],
+      }),
+    );
+
+    renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
+
+    expect(await screen.findByText('Publicações avulsas')).toBeInTheDocument();
+    expect(screen.getByText('Somente avulso')).toBeInTheDocument();
+    expect(screen.queryByText('Nenhuma postagem disponível ainda.')).not.toBeInTheDocument();
+  });
+
+  it('collapses two fluxo groups independently even when they share the same title (collapse keyed by group key, not titulo)', async () => {
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({
+            id: 1,
+            titulo: 'Post do primeiro',
+            workflow_id: 10,
+            workflow_titulo: 'Semana 12',
+            workflow_created_at: '2026-08-01T10:00:00Z',
+          }),
+          makePost({
+            id: 2,
+            titulo: 'Post do segundo',
+            workflow_id: 11,
+            workflow_titulo: 'Semana 12',
+            workflow_created_at: '2026-07-01T10:00:00Z',
+          }),
+        ],
+      }),
+    );
+
+    renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
+
+    // First "Semana 12" (workflow 10, more recent) is expanded by default.
+    await screen.findByText('Post do primeiro');
+
+    const [firstHeader, secondHeader] = screen.getAllByRole('button', { name: /Semana 12/ });
+
+    // Expand the second group (workflow 11) too.
+    fireEvent.click(secondHeader);
+    expect(screen.getByText('Post do segundo')).toBeInTheDocument();
+    expect(screen.getByText('Post do primeiro')).toBeInTheDocument();
+
+    // Collapsing the first group must not collapse the second (same titulo, different key).
+    fireEvent.click(firstHeader);
+    expect(screen.queryByText('Post do primeiro')).not.toBeInTheDocument();
+    expect(screen.getByText('Post do segundo')).toBeInTheDocument();
+  });
+});

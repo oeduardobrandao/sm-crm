@@ -87,7 +87,7 @@ export function WorkflowCalendarView({
   );
 
   const invalidateQueries = useCallback(
-    (workflowId?: number) => {
+    (workflowId?: number | null) => {
       qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
       qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', currentWorkflowId] });
       if (workflowId != null && workflowId !== currentWorkflowId) {
@@ -118,7 +118,11 @@ export function WorkflowCalendarView({
           return;
 
         case 'reject-foreign-unschedule':
-          toast.info('Só é possível remover a data de posts deste workflow.');
+          toast.info(
+            post?.workflow_id === null
+              ? 'Post avulso: desagende pela publicação.'
+              : 'Só é possível remover a data de posts deste workflow.',
+          );
           return;
 
         case 'unschedule':

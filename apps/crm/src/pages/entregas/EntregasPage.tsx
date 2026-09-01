@@ -11,9 +11,19 @@ import {
   Columns,
   Archive,
   BookOpen,
+  Search,
+  Route,
+  CircleDashed,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/context/AuthContext';
 import { startEntregasTour, tourStorageKey } from './tour/entregasTour';
 import { shouldAutoStartTour } from './tour/tourGating';
@@ -26,6 +36,7 @@ import {
   RecurringWorkflowDialog,
 } from './components/WorkflowModals';
 import { NewWorkflowWizard } from './wizard/NewWorkflowWizard';
+import { NewAvulsoDialog } from './components/NewAvulsoDialog';
 import { KanbanView } from './views/KanbanView';
 import { ChartView } from './views/ChartView';
 import { CalendarView } from './views/CalendarView';
@@ -34,6 +45,7 @@ import { PostsKanbanView } from './views/PostsKanbanView';
 import { PostsListView } from './views/PostsListView';
 import { ConcludedView } from './views/ConcludedView';
 import { WorkflowDrawer } from './components/WorkflowDrawer';
+import { StandalonePostDrawer } from './components/StandalonePostDrawer';
 import { ModeToggle, type EntregasMode } from './components/ModeToggle';
 import { VistasTabs } from './components/VistasTabs';
 import { useActivePosts } from './hooks/useActivePosts';
@@ -41,7 +53,19 @@ import { useOpenParam } from '../../hooks/useOpenParam';
 import { matchesEtapaPrazo } from './etapaPrazo';
 import { parseEntregasQuery, serializeEntregasQuery, type ActiveView } from './viewQuery';
 import { postMatchesStatusFilter } from './statusRegistry';
-import { duplicateWorkflow } from '../../store';
+import {
+  loadLastMode,
+  persistLastMode,
+  loadBoardColumnSorts,
+  persistBoardColumnSort,
+} from './entregasPrefs';
+import type { BoardColumnSort } from './postsBoardOrder';
+import {
+  duplicateWorkflow,
+  getStandalonePost,
+  type ActivePost,
+  type WorkflowPost,
+} from '../../store';
 import { captureEvent } from '@/lib/analytics';
 
 const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
@@ -54,9 +78,18 @@ const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
 
 export default function EntregasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  // Frozen at mount, same as initialQuery below: the sync effect eventually writes
+  // `mode` back into the URL for a non-default mode, so reading this as a plain
+  // (non-ref) value would flip once that happens and re-seed from the URL forever.
+  const hadModeParam = useRef(searchParams.has('mode')).current;
   // Parsed exactly once: the URL is only an INPUT at mount time; afterwards the
   // page state is the source of truth and the sync effect below writes it back.
   const initialQuery = useRef(parseEntregasQuery(searchParams)).current;
+
+  // contaId is needed by the mode-seeding below, so useAuth is read up front
+  // (its own state, tourDone/explainerOpen, is still set up further down).
+  const { profile } = useAuth();
+  const contaId = profile?.conta_id ?? 'unknown';
 
   const [activeView, setActiveView] = useState<ActiveView>(initialQuery.view);
   const [filters, setFilters] = useState<FilterState>(initialQuery.filters);
@@ -73,12 +106,27 @@ export default function EntregasPage() {
   const [editCard, setEditCard] = useState<BoardCard | null>(null);
   const [drawerCard, setDrawerCard] = useState<BoardCard | null>(null);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
-  const modeFor = (view: ActiveView): EntregasMode =>
-    initialQuery.view === view ? initialQuery.mode : 'entregas';
-  const [kanbanMode, setKanbanMode] = useState<EntregasMode>(() => modeFor('kanban'));
-  const [calendarMode, setCalendarMode] = useState<EntregasMode>(() => modeFor('calendar'));
-  const [listMode, setListMode] = useState<EntregasMode>(() => modeFor('list'));
+  // One page-wide mode: flipping Fluxos/Publicações persists across Kanban,
+  // Calendário and Lista. An explicit ?mode= in the URL wins; with no ?mode=
+  // param, it seeds from the conta's last-used mode.
+  const [mode, setMode] = useState<EntregasMode>(() =>
+    hadModeParam ? initialQuery.mode : loadLastMode(contaId),
+  );
   const [drawerInitialPostId, setDrawerInitialPostId] = useState<number | null>(null);
+  // Post avulso (fora de fluxo) currently open in the standalone slot below.
+  const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
+  const [newAvulsoOpen, setNewAvulsoOpen] = useState(false);
+  // Per-column sort mode for the Publicações board, remembered per conta.
+  const [boardColumnSorts, setBoardColumnSorts] = useState<
+    Partial<Record<string, BoardColumnSort>>
+  >(() => loadBoardColumnSorts(contaId));
+  const handleBoardColumnSortChange = useCallback(
+    (columnKey: string, sort: BoardColumnSort) => {
+      setBoardColumnSorts((prev) => ({ ...prev, [columnKey]: sort }));
+      persistBoardColumnSort(contaId, columnKey, sort);
+    },
+    [contaId],
+  );
   const {
     clientes,
     membros,
@@ -98,8 +146,6 @@ export default function EntregasPage() {
   // --- Onboarding tour + example board ---------------------------------------------------------
   // The persistence key is per-conta. `tourDone` is read once at mount from the current conta's
   // key; it is not recomputed if `contaId` changes within the same mount.
-  const { profile } = useAuth();
-  const contaId = profile?.conta_id ?? 'unknown';
   const [tourDone, setTourDone] = useState(
     () => localStorage.getItem(tourStorageKey(contaId)) === 'true',
   );
@@ -188,25 +234,24 @@ export default function EntregasPage() {
 
   // Auto-open drawer when navigated with ?drawer=<workflowId>, optionally expanding a
   // single post with &post=<postId> (how a linked post in /mensagens is reached).
+  // `workflowId: null` means the link arrived as `?post=<id>` alone (the universal
+  // post deep-link form used by mentions, PostChip, todayAgenda etc.) -- which
+  // post's workflow to actually match is only known after resolving it below.
   // State, not a ref: GlobalSearchTrigger is mounted globally and can fire a deep link while
   // the user is already on /entregas. `cards` keeps its identity across that navigation, so a
   // resolver keyed only on `cards` would never re-run and the link would silently do nothing.
   // Storing the pending target in state re-triggers the resolver below on every new link.
   const [pendingDeepLink, setPendingDeepLink] = useState<{
-    workflowId: number;
+    workflowId: number | null;
     postId: number | null;
   } | null>(null);
   const drawerParam = searchParams.get('drawer');
   const postParam = searchParams.get('post');
   useEffect(() => {
-    if (!drawerParam) return;
-    const parsed = parseInt(drawerParam, 10);
-    if (!isNaN(parsed)) {
-      const parsedPost = postParam ? parseInt(postParam, 10) : NaN;
-      setPendingDeepLink({ workflowId: parsed, postId: isNaN(parsedPost) ? null : parsedPost });
-      // Drop only the transient params — the rest of the query is the shareable view state
-      // and must survive. On mount the sync effect below runs in the same commit and wins;
-      // this removal is what covers a navigation that leaves `currentQuery` unchanged.
+    // Drop only the transient params — the rest of the query is the shareable view state
+    // and must survive. On mount the sync effect below runs in the same commit and wins;
+    // this removal is what covers a navigation that leaves `currentQuery` unchanged.
+    const consumeParams = () =>
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -216,19 +261,31 @@ export default function EntregasPage() {
         },
         { replace: true },
       );
+    if (drawerParam) {
+      const parsed = parseInt(drawerParam, 10);
+      if (!isNaN(parsed)) {
+        const parsedPost = postParam ? parseInt(postParam, 10) : NaN;
+        setPendingDeepLink({ workflowId: parsed, postId: isNaN(parsedPost) ? null : parsedPost });
+        consumeParams();
+      }
+    } else if (postParam) {
+      // `?post=` alone, no `?drawer=`: could be a post avulso (no workflow) or an
+      // attached post reached through the universal `?post=` form -- resolved
+      // asynchronously below via getStandalonePost.
+      const parsedPost = parseInt(postParam, 10);
+      if (!isNaN(parsedPost)) {
+        setPendingDeepLink({ workflowId: null, postId: parsedPost });
+        consumeParams();
+      }
     }
   }, [drawerParam, postParam, setSearchParams]);
 
   // Keep the URL in sync with the shareable view state (view + mode + filters),
   // so any Entregas screen can be shared or bookmarked as-is.
   const activeMode: EntregasMode =
-    activeView === 'kanban'
-      ? kanbanMode
-      : activeView === 'calendar'
-        ? calendarMode
-        : activeView === 'list'
-          ? listMode
-          : 'entregas';
+    activeView === 'kanban' || activeView === 'calendar' || activeView === 'list'
+      ? mode
+      : 'entregas';
   const currentQuery = serializeEntregasQuery({ view: activeView, mode: activeMode, filters });
   useEffect(() => {
     // `currentQuery` alone — the transient ?drawer=/?post= params are deliberately dropped.
@@ -239,17 +296,72 @@ export default function EntregasPage() {
     setSearchParams(new URLSearchParams(currentQuery), { replace: true });
   }, [currentQuery, setSearchParams]);
 
+  // Remembers the last mode the user actively left one of these three views in,
+  // per conta -- read back by the `hadModeParam` seeds above on the next visit
+  // with no explicit ?mode= in the URL.
   useEffect(() => {
-    if (pendingDeepLink === null || cards.length === 0) return;
-    const match = cards.find((c) => c.workflow.id === pendingDeepLink.workflowId);
+    if (activeView === 'kanban' || activeView === 'list' || activeView === 'calendar') {
+      persistLastMode(contaId, activeMode);
+    }
+  }, [activeView, activeMode, contaId]);
+
+  useEffect(() => {
+    if (pendingDeepLink === null || pendingDeepLink.workflowId == null || cards.length === 0)
+      return;
+    const { workflowId, postId } = pendingDeepLink;
+    const match = cards.find((c) => c.workflow.id === workflowId);
     // An unmatched target is kept, not dropped: `cards` arrives asynchronously, so a link
     // that lands before the board has loaded resolves on a later pass.
     if (match) {
       setPendingDeepLink(null);
-      setDrawerInitialPostId(pendingDeepLink.postId);
+      setStandalonePostId(null);
+      setDrawerInitialPostId(postId);
       setDrawerCard(match);
     }
   }, [cards, pendingDeepLink]);
+
+  // Resolves a `?post=` deep link that arrived with no `?drawer=` (workflowId
+  // still null above): looks the post up directly since only its own row says
+  // whether it is a post avulso or attached to a workflow.
+  useEffect(() => {
+    if (pendingDeepLink === null || pendingDeepLink.workflowId != null) return;
+    const postId = pendingDeepLink.postId;
+    if (postId == null) {
+      setPendingDeepLink(null);
+      return;
+    }
+    let cancelled = false;
+    getStandalonePost(postId)
+      .then((post) => {
+        if (cancelled) return;
+        if (!post) {
+          toast.error('Post não encontrado');
+          setPendingDeepLink(null);
+          return;
+        }
+        if (post.workflow_id == null) {
+          // Post avulso: open the standalone slot, closing any open WorkflowDrawer
+          // so only one drawer is ever visible at a time.
+          setDrawerCard(null);
+          setDrawerInitialPostId(null);
+          setStandalonePostId(post.id!);
+          setPendingDeepLink(null);
+        } else {
+          // Attached after all (e.g. re-attached since the link was shared) --
+          // hand off to the card-lookup resolver above.
+          setPendingDeepLink({ workflowId: post.workflow_id, postId });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          toast.error('Post não encontrado');
+          setPendingDeepLink(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingDeepLink]);
 
   // Derive unique active etapa names for the filter dropdown
   const etapaNames = useMemo(() => {
@@ -264,13 +376,24 @@ export default function EntregasPage() {
   const openableWorkflowIds = useMemo(() => new Set(cards.map((c) => c.workflow.id!)), [cards]);
 
   const handleCardClick = (card: BoardCard) => {
+    setStandalonePostId(null);
     setDrawerInitialPostId(null);
     setDrawerCard(card);
   };
-  const handlePostClick = (workflowId: number, postId: number) => {
-    const card = cardsByWorkflowId.get(workflowId);
+  // Object-based click contract shared by the four post-list views (Kanban/Lista/
+  // Calendário/PublicacoesPanel): a post avulso has no workflow card to open, so it
+  // always goes to the standalone slot instead -- avulsos are always "openable".
+  const handlePostClick = (post: ActivePost) => {
+    if (post.workflow_id == null) {
+      setDrawerCard(null);
+      setDrawerInitialPostId(null);
+      setStandalonePostId(post.id);
+      return;
+    }
+    const card = cardsByWorkflowId.get(post.workflow_id);
     if (!card) return;
-    setDrawerInitialPostId(postId);
+    setStandalonePostId(null);
+    setDrawerInitialPostId(post.id);
     setDrawerCard(card);
   };
   // Fluxo tag in the posts list: opens the whole workflow card, not a single post.
@@ -280,28 +403,63 @@ export default function EntregasPage() {
     handleCardClick(card);
   };
 
+  // StandalonePostDrawer's AttachToFluxoDialog just moved this post into an active
+  // workflow: close the standalone slot and open that workflow's WorkflowDrawer with
+  // this exact post expanded, same target-lookup as handlePostClick's attached branch.
+  const handlePostAttached = (workflowId: number, postId: number) => {
+    setStandalonePostId(null);
+    const card = cardsByWorkflowId.get(workflowId);
+    if (!card) return;
+    setDrawerInitialPostId(postId);
+    setDrawerCard(card);
+  };
+
+  // NewAvulsoDialog submit flow: switch into a Publicações-capable view (kanban
+  // stays as-is if already kanban/list; anything else -- chart/calendar/concluded --
+  // switches to kanban), put that view's mode in Publicações, and open the new
+  // post in the standalone slot.
+  const handleAvulsoCreated = (post: WorkflowPost) => {
+    const targetView: ActiveView =
+      activeView === 'kanban' || activeView === 'list' ? activeView : 'kanban';
+    if (targetView !== activeView) setActiveView(targetView);
+    setMode('publicacoes');
+    setDrawerCard(null);
+    setDrawerInitialPostId(null);
+    setStandalonePostId(post.id!);
+  };
+
   // A saved view is just a serialized query string; applying one replays it over
   // the live state (only the target view's mode is touched).
   const applySavedView = (query: string) => {
     const parsed = parseEntregasQuery(new URLSearchParams(query));
     setActiveView(parsed.view);
-    if (parsed.view === 'kanban') setKanbanMode(parsed.mode);
-    if (parsed.view === 'calendar') setCalendarMode(parsed.mode);
-    if (parsed.view === 'list') setListMode(parsed.mode);
+    if (parsed.view === 'kanban' || parsed.view === 'calendar' || parsed.view === 'list') {
+      setMode(parsed.mode);
+    }
     setFilters(parsed.filters);
   };
 
   // Publicações mode (Kanban/Lista): every post of every active workflow, fetched
   // only while one of those modes is actually visible.
   const postsMode =
-    (activeView === 'kanban' && kanbanMode === 'publicacoes') ||
-    (activeView === 'list' && listMode === 'publicacoes');
+    (activeView === 'kanban' && mode === 'publicacoes') ||
+    (activeView === 'list' && mode === 'publicacoes');
   const { posts: activePosts, isLoading: activePostsLoading } = useActivePosts(postsMode);
+
+  // The busca input (on the VistasTabs row) and the filter pills show together:
+  // hidden on Concluídas and on the Publicações calendar, where they don't apply.
+  const showFilters =
+    activeView !== 'concluded' && !(activeView === 'calendar' && mode === 'publicacoes');
 
   // Posts-mode filtering: only busca / cliente / responsável do post apply; the
   // workflow-shaped filters (status, membros, etapas, templates) are not read here
   // but stay in state so flipping back to Entregas restores them.
   const filteredPosts = useMemo(() => {
+    // A post avulso has no workflow_id to look up -- undefined here means the same
+    // "no card" state matchesEtapaPrazo and the membro/etapa filters below already
+    // treat as "excluded while that filter is active".
+    const cardOfPost = (p: ActivePost) =>
+      p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined;
     let ps = activePosts;
     if (filters.filterSearch) {
       const q = filters.filterSearch.toLowerCase();
@@ -309,25 +467,32 @@ export default function EntregasPage() {
     }
     if (filters.filterClientes.length)
       ps = ps.filter((p) => p.cliente_id != null && filters.filterClientes.includes(p.cliente_id));
-    // "Responsável" here means the CURRENT ETAPA's responsible — the same
-    // dimension the posts views display — not the post-level responsavel_id.
+    // "Responsável" here means the CURRENT ETAPA's responsible for a wired post --
+    // the same dimension the posts views display. A post avulso has no etapa, so
+    // it falls back to its own post-level responsavel_id instead of being excluded
+    // outright whenever this filter is active.
     if (filters.filterMembros.length)
       ps = ps.filter((p) => {
-        const respId = cardsByWorkflowId.get(p.workflow_id)?.etapa.responsavel_id;
+        const respId =
+          p.workflow_id != null ? cardOfPost(p)?.etapa.responsavel_id : p.responsavel_id;
         return respId != null && filters.filterMembros.includes(respId);
       });
-    // A post "is in" its workflow's current etapa.
+    // A post "is in" its workflow's current etapa -- a post avulso has none, so
+    // this filter (like prazo below) excludes it whenever it is active.
     if (filters.filterEtapas.length)
       ps = ps.filter((p) => {
-        const etapaNome = cardsByWorkflowId.get(p.workflow_id)?.etapa.nome;
+        const etapaNome = cardOfPost(p)?.etapa.nome;
         return etapaNome != null && filters.filterEtapas.includes(etapaNome);
       });
     if (filters.filterTipos.length) ps = ps.filter((p) => filters.filterTipos.includes(p.tipo));
     if (filters.filterPostStatus.length)
       ps = ps.filter((p) => postMatchesStatusFilter(p, filters.filterPostStatus));
+    // Same exclusion as filterEtapas above: matchesEtapaPrazo returns false for an
+    // undefined card (post avulso) whenever a prazo preset/range is active, and
+    // true unconditionally when the filter itself is empty.
     ps = ps.filter((p) =>
       matchesEtapaPrazo(
-        cardsByWorkflowId.get(p.workflow_id),
+        cardOfPost(p),
         filters.filterPrazo,
         filters.filterPrazoFrom,
         filters.filterPrazoTo,
@@ -347,6 +512,20 @@ export default function EntregasPage() {
     filters.filterPrazoFrom,
     filters.filterPrazoTo,
   ]);
+
+  // Mirrors exactly the fields filteredPosts reads above -- a post-mode filter
+  // this omits would silently show "Ajuste os filtros" instead of the create-avulso
+  // empty state (or vice versa) despite `posts` really being filtered by it.
+  const postsFiltersActive =
+    !!filters.filterSearch ||
+    filters.filterClientes.length > 0 ||
+    filters.filterMembros.length > 0 ||
+    filters.filterEtapas.length > 0 ||
+    filters.filterTipos.length > 0 ||
+    filters.filterPostStatus.length > 0 ||
+    filters.filterPrazo.length > 0 ||
+    !!filters.filterPrazoFrom ||
+    !!filters.filterPrazoTo;
 
   // Apply filters
   let filteredCards = cards;
@@ -436,7 +615,7 @@ export default function EntregasPage() {
                 Como funciona
               </button>
             )}
-            {activeView === 'kanban' && kanbanMode === 'entregas' && (
+            {activeView === 'kanban' && mode === 'entregas' && (
               <button
                 type="button"
                 onClick={handleReplay}
@@ -473,15 +652,44 @@ export default function EntregasPage() {
           <Button variant="outline" onClick={() => setTemplatesOpen(true)}>
             <LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Templates
           </Button>
-          <Button data-tour="novo-fluxo-btn" onClick={() => setNewWorkflowOpen(true)}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo Fluxo
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button data-tour="novo-fluxo-btn">
+                <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setNewWorkflowOpen(true)}>
+                <Route aria-hidden="true" /> Novo fluxo
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setNewAvulsoOpen(true)}>
+                <CircleDashed aria-hidden="true" /> Post avulso
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
       {explainerOpen && <ComoFuncionaPanel onDismiss={dismissExplainer} />}
 
-      <VistasTabs contaId={contaId} currentQuery={currentQuery} onApply={applySavedView} />
+      <VistasTabs
+        contaId={contaId}
+        currentQuery={currentQuery}
+        onApply={applySavedView}
+        trailing={
+          showFilters ? (
+            <div className="relative w-[220px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
+              <Input
+                placeholder={postsMode ? 'Buscar post...' : 'Buscar fluxo...'}
+                value={filters.filterSearch}
+                onChange={(e) => setFilters({ ...filters, filterSearch: e.target.value })}
+                className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
+              />
+            </div>
+          ) : undefined
+        }
+      />
 
       {/* One toolbar row: orientation (view + mode) on the left, filters on the
           right. Wraps on narrow viewports instead of stacking five control rows. */}
@@ -497,7 +705,8 @@ export default function EntregasPage() {
           style={{
             display: 'flex',
             gap: '0.25rem',
-            background: 'var(--surface-2)',
+            background: 'var(--card-bg)',
+            border: '1px solid var(--border-color)',
             padding: '0.25rem',
             borderRadius: '8px',
             overflowX: 'auto',
@@ -530,30 +739,27 @@ export default function EntregasPage() {
           ))}
         </div>
 
-        {(activeView === 'kanban' || activeView === 'list') && (
-          <ModeToggle
-            mode={activeView === 'kanban' ? kanbanMode : listMode}
-            onModeChange={activeView === 'kanban' ? setKanbanMode : setListMode}
-          />
+        {(activeView === 'kanban' || activeView === 'list' || activeView === 'calendar') && (
+          <ModeToggle mode={mode} onModeChange={setMode} />
         )}
 
-        {activeView !== 'concluded' &&
-          !(activeView === 'calendar' && calendarMode === 'publicacoes') && (
-            <EntregasFilters
-              filters={filters}
-              onChange={setFilters}
-              clientes={clientes}
-              membros={membros}
-              templates={templates}
-              etapaNames={etapaNames}
-              mode={postsMode ? 'posts' : 'entregas'}
-            />
-          )}
+        {showFilters && (
+          <EntregasFilters
+            filters={filters}
+            onChange={setFilters}
+            clientes={clientes}
+            membros={membros}
+            templates={templates}
+            etapaNames={etapaNames}
+            mode={postsMode ? 'posts' : 'entregas'}
+          />
+        )}
       </div>
 
       {activeView === 'kanban' &&
-        (kanbanMode === 'entregas' ? (
+        (mode === 'entregas' ? (
           <KanbanView
+            contaId={contaId}
             cards={filteredCards}
             onCardClick={handleCardClick}
             onEditClick={setEditCard}
@@ -584,6 +790,10 @@ export default function EntregasPage() {
             openableWorkflowIds={openableWorkflowIds}
             onPostClick={handlePostClick}
             cardsByWorkflowId={cardsByWorkflowId}
+            filtersActive={postsFiltersActive}
+            onCreateAvulso={() => setNewAvulsoOpen(true)}
+            columnSorts={boardColumnSorts}
+            onColumnSortChange={handleBoardColumnSortChange}
           />
         ))}
       {activeView === 'chart' && <ChartView cards={filteredCards} />}
@@ -591,14 +801,13 @@ export default function EntregasPage() {
         <CalendarView
           cards={filteredCards}
           onCardClick={handleCardClick}
-          mode={calendarMode}
-          onModeChange={setCalendarMode}
+          mode={mode}
           openableWorkflowIds={openableWorkflowIds}
           onPostClick={handlePostClick}
         />
       )}
       {activeView === 'list' &&
-        (listMode === 'entregas' ? (
+        (mode === 'entregas' ? (
           <ListView
             cards={filteredCards}
             sort={listSort}
@@ -613,6 +822,8 @@ export default function EntregasPage() {
             onPostClick={handlePostClick}
             onFluxoClick={handleFluxoClick}
             cardsByWorkflowId={cardsByWorkflowId}
+            filtersActive={postsFiltersActive}
+            onCreateAvulso={() => setNewAvulsoOpen(true)}
           />
         ))}
       {activeView === 'concluded' && <ConcludedView />}
@@ -632,6 +843,14 @@ export default function EntregasPage() {
             captureEvent('workflow_created');
             refresh();
           }}
+        />
+      )}
+      {newAvulsoOpen && (
+        <NewAvulsoDialog
+          open={newAvulsoOpen}
+          onClose={() => setNewAvulsoOpen(false)}
+          clientes={clientes}
+          onCreated={handleAvulsoCreated}
         />
       )}
       {editCard && (
@@ -669,6 +888,16 @@ export default function EntregasPage() {
             setDrawerInitialPostId(null);
           }}
           onRefresh={refresh}
+        />
+      )}
+      {standalonePostId != null && (
+        <StandalonePostDrawer
+          key={standalonePostId}
+          postId={standalonePostId}
+          membros={membros}
+          onClose={() => setStandalonePostId(null)}
+          onRefresh={refresh}
+          onAttached={handlePostAttached}
         />
       )}
       <RecurringWorkflowDialog

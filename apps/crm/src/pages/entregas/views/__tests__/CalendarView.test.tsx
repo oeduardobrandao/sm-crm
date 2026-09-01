@@ -23,7 +23,6 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 
 const defaultProps = {
   mode: 'entregas' as const,
-  onModeChange: vi.fn(),
   openableWorkflowIds: new Set<number>(),
   onPostClick: vi.fn(),
 };
@@ -152,26 +151,19 @@ describe('CalendarView', () => {
     expect(onCardClick).toHaveBeenCalledWith(cardLater);
   });
 
-  it('renders the Publicações panel in publicacoes mode and toggles back via the Fluxos button', () => {
-    const onModeChange = vi.fn();
+  it('renders the Publicações panel in publicacoes mode, without its own mode toggle', () => {
     render(
       <Wrapper>
-        <CalendarView
-          cards={[]}
-          onCardClick={vi.fn()}
-          {...defaultProps}
-          mode="publicacoes"
-          onModeChange={onModeChange}
-        />
+        <CalendarView cards={[]} onCardClick={vi.fn()} {...defaultProps} mode="publicacoes" />
       </Wrapper>,
     );
 
     // The PublicacoesPanel heading must be present
     expect(screen.getByRole('heading', { name: 'Publicações' })).toBeInTheDocument();
 
-    // The 'entregas' mode is labelled "Fluxos"; the value it emits is unchanged.
-    fireEvent.click(screen.getByRole('button', { name: 'Fluxos' }));
-    expect(onModeChange).toHaveBeenCalledWith('entregas');
+    // The Fluxos/Publicações toggle lives in EntregasPage's view toolbar now
+    // (same spot as kanban/list), not inside the calendar.
+    expect(screen.queryByRole('button', { name: 'Fluxos' })).toBeNull();
   });
 
   it('changes month, clears the selected day, and waits for a new day selection', () => {

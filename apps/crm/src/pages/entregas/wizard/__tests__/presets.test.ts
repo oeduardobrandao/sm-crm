@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { STANDARD_PRESETS, presetDurationDays } from '../presets';
 
 describe('STANDARD_PRESETS', () => {
-  it('has 6 presets with unique ids', () => {
-    expect(STANDARD_PRESETS).toHaveLength(6);
-    expect(new Set(STANDARD_PRESETS.map((p) => p.id)).size).toBe(6);
+  it('has 5 presets with unique ids', () => {
+    expect(STANDARD_PRESETS).toHaveLength(5);
+    expect(new Set(STANDARD_PRESETS.map((p) => p.id)).size).toBe(5);
   });
 
   it('every preset has at least one etapa and every etapa has a non-empty name', () => {
@@ -26,7 +26,7 @@ describe('STANDARD_PRESETS', () => {
   });
 
   it('sums duration', () => {
-    const avulso = STANDARD_PRESETS.find((p) => p.id === 'post-avulso')!;
-    expect(presetDurationDays(avulso)).toBe(4);
+    const reels = STANDARD_PRESETS.find((p) => p.id === 'reels-video')!;
+    expect(presetDurationDays(reels)).toBe(10);
   });
 });

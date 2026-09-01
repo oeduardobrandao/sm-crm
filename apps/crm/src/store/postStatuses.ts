@@ -23,6 +23,8 @@ export interface PostStatusDefinition {
   conta_id: string;
   nome: string;
   cor: string;
+  /** Nome kebab-case de ícone lucide (whitelist em statusIcons.ts); null = dot de cor. */
+  icone: string | null;
   behaves_as: CustomStatusBehavesAs;
   ordem: number;
   arquivado: boolean;
@@ -45,7 +47,7 @@ export async function getPostStatusDefinitions(opts?: {
 }
 
 export async function createPostStatusDefinition(
-  payload: Pick<PostStatusDefinition, 'nome' | 'cor' | 'behaves_as' | 'ordem'>,
+  payload: Pick<PostStatusDefinition, 'nome' | 'cor' | 'icone' | 'behaves_as' | 'ordem'>,
 ): Promise<PostStatusDefinition> {
   const conta_id = await getContaId();
   const { data, error } = await supabase
@@ -59,7 +61,7 @@ export async function createPostStatusDefinition(
 
 export async function updatePostStatusDefinition(
   id: string,
-  payload: Partial<Pick<PostStatusDefinition, 'nome' | 'cor' | 'behaves_as' | 'ordem'>>,
+  payload: Partial<Pick<PostStatusDefinition, 'nome' | 'cor' | 'icone' | 'behaves_as' | 'ordem'>>,
 ): Promise<PostStatusDefinition> {
   const { data, error } = await supabase
     .from('post_status_definitions')

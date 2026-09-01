@@ -32,7 +32,7 @@ const RETRY_LIMIT = 10;
 
 interface ClaimedPost {
   post_id: number;
-  workflow_id: number;
+  workflow_id: number | null;
   ig_caption: string;
   scheduled_at: string;
   instagram_container_id: string | null;

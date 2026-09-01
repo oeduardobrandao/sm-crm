@@ -11,13 +11,14 @@ import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../../../store', () => ({
   getClientes: vi.fn(),
-  addWorkflow: vi.fn(),
-  addWorkflowEtapa: vi.fn(),
-  addWorkflowPost: vi.fn(),
+  createAvulsoPost: vi.fn(),
   updateWorkflowPost: vi.fn(),
-  updateWorkflow: vi.fn(),
-  removeWorkflow: vi.fn(),
+  removeWorkflowPost: vi.fn(),
   getHubToken: vi.fn(),
+  // Not used by the page anymore -- kept as spies so the express flow can be
+  // asserted to never manufacture or touch a workflow.
+  addWorkflow: vi.fn(),
+  updateWorkflow: vi.fn(),
 }));
 
 vi.mock('../../../services/instagram', () => ({
@@ -62,13 +63,12 @@ vi.mock('sonner', () => ({
 import ExpressPostPage from '../ExpressPostPage';
 import {
   getClientes,
-  addWorkflow,
-  addWorkflowEtapa,
-  addWorkflowPost,
+  createAvulsoPost,
   updateWorkflowPost,
-  updateWorkflow,
-  removeWorkflow,
+  removeWorkflowPost,
   getHubToken,
+  addWorkflow,
+  updateWorkflow,
 } from '../../../store';
 import { publishInstagramPostNow } from '../../../services/instagram';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
@@ -130,34 +130,19 @@ describe('ExpressPostPage', () => {
       is_active: true,
       expires_at: FUTURE,
     });
-    vi.mocked(addWorkflow).mockResolvedValue({
-      id: 10,
-      cliente_id: 1,
-      titulo: 'Post Express',
-      status: 'ativo',
-      etapa_atual: 0,
-      recorrente: false,
-    });
-    vi.mocked(addWorkflowEtapa).mockResolvedValue({
-      id: 20,
-      workflow_id: 10,
-      ordem: 0,
-      nome: 'Publicação',
-      prazo_dias: 0,
-      tipo_prazo: 'corridos',
-      status: 'concluido',
-    });
-    vi.mocked(addWorkflowPost).mockResolvedValue({
+    vi.mocked(createAvulsoPost).mockResolvedValue({
       id: 30,
-      workflow_id: 10,
+      workflow_id: null,
+      cliente_id: 1,
       titulo: 'Post Express',
       conteudo: null,
       conteudo_plain: '',
       tipo: 'feed',
       ordem: 0,
       status: 'rascunho',
+      is_express: true,
     });
-    vi.mocked(removeWorkflow).mockResolvedValue(undefined);
+    vi.mocked(removeWorkflowPost).mockResolvedValue(undefined);
   });
 
   it('renders page title and subtitle', async () => {
@@ -198,17 +183,18 @@ describe('ExpressPostPage', () => {
     fireEvent.change(screen.getByDisplayValue('Selecionar cliente...'), { target: { value: '1' } });
 
     await waitFor(() => {
-      expect(addWorkflow).toHaveBeenCalled();
+      expect(createAvulsoPost).toHaveBeenCalled();
     });
+    expect(addWorkflow).not.toHaveBeenCalled();
 
     const publishBtn = screen.getByTestId('express-submit');
     expect(publishBtn.hasAttribute('disabled')).toBe(true);
   });
 
-  it('does not call removeWorkflow on unmount when no draft exists', async () => {
+  it('does not call removeWorkflowPost on unmount when no draft exists', async () => {
     const { unmount } = renderWithProviders(<ExpressPostPage />);
     unmount();
-    expect(removeWorkflow).not.toHaveBeenCalled();
+    expect(removeWorkflowPost).not.toHaveBeenCalled();
   });
 
   async function selectClientAndAwaitDraft() {
@@ -218,10 +204,16 @@ describe('ExpressPostPage', () => {
     await waitFor(() => expect(screen.getByText('Simulate Upload')).toBeTruthy());
   }
 
-  it('creates the express draft with the is_express marker', async () => {
+  it('creates the express draft as an avulso post with the is_express marker, with no workflow', async () => {
     renderWithProviders(<ExpressPostPage />);
     await selectClientAndAwaitDraft();
-    expect(addWorkflowPost).toHaveBeenCalledWith(expect.objectContaining({ is_express: true }));
+    expect(createAvulsoPost).toHaveBeenCalledWith({
+      cliente_id: 1,
+      titulo: expect.stringContaining('Post Express - Client A - '),
+      tipo: 'feed',
+      is_express: true,
+    });
+    expect(addWorkflow).not.toHaveBeenCalled();
   });
 
   it('Stories mode hides the caption field and enables publishing without a caption', async () => {
@@ -245,24 +237,17 @@ describe('ExpressPostPage', () => {
     expect(publishBtn.hasAttribute('disabled')).toBe(false);
   });
 
-  it('publishing a Story sends tipo "stories" with an empty caption', async () => {
+  it('publishing a Story sends tipo "stories" with an empty caption, with no workflow to conclude', async () => {
     vi.mocked(updateWorkflowPost).mockResolvedValue({
       id: 30,
-      workflow_id: 10,
+      workflow_id: null,
+      cliente_id: 1,
       titulo: 'Post Express',
       conteudo: null,
       conteudo_plain: '',
       tipo: 'stories',
       ordem: 0,
       status: 'aprovado_cliente',
-    });
-    vi.mocked(updateWorkflow).mockResolvedValue({
-      id: 10,
-      cliente_id: 1,
-      titulo: 'Post Express',
-      status: 'concluido',
-      etapa_atual: 0,
-      recorrente: false,
     });
     vi.mocked(publishInstagramPostNow).mockResolvedValue({ status: 'postado' } as any);
 
@@ -283,6 +268,7 @@ describe('ExpressPostPage', () => {
       ),
     );
     await waitFor(() => expect(publishInstagramPostNow).toHaveBeenCalledWith(30));
+    expect(updateWorkflow).not.toHaveBeenCalled();
   });
 
   describe('client approval mode', () => {
@@ -319,7 +305,8 @@ describe('ExpressPostPage', () => {
     it('sends the post to the client without publishing', async () => {
       vi.mocked(updateWorkflowPost).mockResolvedValue({
         id: 30,
-        workflow_id: 10,
+        workflow_id: null,
+        cliente_id: 1,
         titulo: 'Post Express',
         conteudo: null,
         conteudo_plain: '',
@@ -366,7 +353,8 @@ describe('ExpressPostPage', () => {
     it('sends a Story for approval with tipo "stories" and empty caption', async () => {
       vi.mocked(updateWorkflowPost).mockResolvedValue({
         id: 30,
-        workflow_id: 10,
+        workflow_id: null,
+        cliente_id: 1,
         titulo: 'Post Express',
         conteudo: null,
         conteudo_plain: '',

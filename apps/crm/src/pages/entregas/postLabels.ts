@@ -77,6 +77,25 @@ export const STATUS_CLASS: Record<WorkflowPost['status'], string> = {
 };
 
 /**
+ * Statuses driven entirely by machinery (the publish cron, Instagram/TikTok) —
+ * once a post reaches one of these, moving it by hand in the CRM is blocked.
+ * Single source for both drag guards that read it: CalendarGrid's calendar
+ * drag (which re-exports these two below) and the Publicações kanban's card
+ * drag/column drop guard.
+ */
+export const LOCKED_STATUSES = new Set<WorkflowPost['status']>([
+  'agendado',
+  'postado',
+  'falha_publicacao',
+]);
+
+export const LOCKED_TOOLTIPS: Record<string, string> = {
+  agendado: 'Post já agendado no Instagram — cancele o agendamento para mover',
+  postado: 'Post já publicado',
+  falha_publicacao: 'Post com falha de publicação — resolva o erro antes de reagendar',
+};
+
+/**
  * A presentational-only state, NOT a DB status. A post is "publicando" once it is
  * `agendado` and its scheduled time has passed — the publish cron is actively
  * working on it. Derived from existing fields (no new columns); kept out of the

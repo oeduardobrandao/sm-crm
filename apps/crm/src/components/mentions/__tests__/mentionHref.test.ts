@@ -18,28 +18,28 @@ describe('mentionHref', () => {
     expect(mentionHref(ref)).toBe('/tarefas?tarefa=3');
   });
 
-  it('links a post mention with a parentId to /entregas?drawer=:parentId', () => {
+  it('links a post mention with a parentId to /entregas?drawer=:parentId&post=:id', () => {
     const ref: MentionRef = {
       entityType: 'post',
       id: 2,
       label: 'Post de lançamento',
       parentId: 42,
     };
-    expect(mentionHref(ref)).toBe('/entregas?drawer=42');
+    expect(mentionHref(ref)).toBe('/entregas?drawer=42&post=2');
   });
 
-  it('returns null for a post mention without a parentId', () => {
+  it('links a post mention without a parentId (avulso) to the universal /entregas?post=:id form', () => {
     const ref: MentionRef = { entityType: 'post', id: 2, label: 'Post de lançamento' };
-    expect(mentionHref(ref)).toBeNull();
+    expect(mentionHref(ref)).toBe('/entregas?post=2');
   });
 
-  it('returns null for a post mention with a null parentId', () => {
+  it('links a post mention with a null parentId (avulso) to /entregas?post=:id', () => {
     const ref: MentionRef = {
       entityType: 'post',
       id: 2,
       label: 'Post de lançamento',
       parentId: null,
     };
-    expect(mentionHref(ref)).toBeNull();
+    expect(mentionHref(ref)).toBe('/entregas?post=2');
   });
 });

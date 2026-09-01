@@ -48,6 +48,9 @@ function queueSchedulingReads(
     igCaption?: string | null;
     links?: Array<{ sort_order: number; files: Record<string, unknown> }>;
     encryptedAccessToken?: string;
+    workflowId?: number | null;
+    clienteId?: number;
+    noAccount?: boolean;
   },
 ) {
   db.queue("workflow_posts", "select", {
@@ -55,22 +58,24 @@ function queueSchedulingReads(
       id: 1,
       scheduled_at: "2030-01-01T12:00:00Z",
       ig_caption: opts.igCaption ?? null,
-      workflow_id: 10,
+      workflow_id: opts.workflowId === undefined ? 10 : opts.workflowId,
+      cliente_id: opts.clienteId ?? 20,
       tipo: opts.tipo ?? "stories",
     },
     error: null,
   });
   db.queue("post_file_links", "select", { data: opts.links ?? [], error: null });
-  db.queue("workflows", "select", { data: { cliente_id: 20 }, error: null });
-  db.queue("instagram_accounts", "select", {
-    data: {
-      encrypted_access_token: opts.encryptedAccessToken ?? "",
-      instagram_user_id: "ig-user",
-      token_expires_at: "2030-01-01T12:00:00Z",
-      authorization_status: "connected",
-    },
-    error: null,
-  });
+  db.queue("instagram_accounts", "select", opts.noAccount
+    ? { data: null, error: null }
+    : {
+      data: {
+        encrypted_access_token: opts.encryptedAccessToken ?? "",
+        instagram_user_id: "ig-user",
+        token_expires_at: "2030-01-01T12:00:00Z",
+        authorization_status: "connected",
+      },
+      error: null,
+    });
 }
 
 Deno.test("validateMedia: story 9:16 image passes while feed rules reject it", () => {
@@ -149,4 +154,52 @@ Deno.test("validateForScheduling: multi-media story rejects a bad segment", asyn
   const res = await validateForScheduling(db as any, 1);
   assert(!res.ok);
   assert(res.errors.some((e) => e.includes("JPEG")), res.errors.join("; "));
+});
+
+// ============================================================
+// Posts avulsos (workflow_id null): the post's own cliente_id is the only client
+// pointer — there is no separate "Workflow não encontrado." error path anymore,
+// the account lookup by cliente_id carries every failure mode.
+// ============================================================
+
+Deno.test("validateForScheduling: avulso post (workflow_id null) with connected account and media passes", async () => {
+  const db = createSupabaseQueryMock();
+  queueSchedulingReads(db, {
+    tipo: "feed",
+    workflowId: null,
+    clienteId: 30,
+    igCaption: "legenda avulsa",
+    // Square (1:1) so it clears the feed aspect-ratio window (3:4–1.91:1) — media()'s
+    // default 1080x1920 is only valid for stories (9:16).
+    links: [{ sort_order: 0, files: media({ height: 1080 }) }],
+    encryptedAccessToken: await encryptedToken(),
+  });
+
+  const result = await validateForScheduling(db as never, 1);
+  assertEquals(result.ok, true);
+  assertEquals(result.errors, []);
+  assertEquals(result.account?.instagram_user_id, "ig-user");
+});
+
+Deno.test("validateForScheduling: avulso post (workflow_id null) with no connected Instagram account fails with the account-missing error", async () => {
+  const db = createSupabaseQueryMock();
+  queueSchedulingReads(db, {
+    tipo: "feed",
+    workflowId: null,
+    clienteId: 30,
+    igCaption: "legenda avulsa",
+    links: [{ sort_order: 0, files: media() }],
+    noAccount: true,
+  });
+
+  const result = await validateForScheduling(db as never, 1);
+  assertEquals(result.ok, false);
+  assert(
+    result.errors.includes("Cliente não tem conta Instagram conectada."),
+    `expected the account-missing error, got: ${JSON.stringify(result.errors)}`,
+  );
+  assert(
+    !result.errors.some((e) => e.includes("Workflow")),
+    "there must be no separate workflow-not-found error path anymore",
+  );
 });

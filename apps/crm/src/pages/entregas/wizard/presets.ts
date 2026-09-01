@@ -1,4 +1,4 @@
-import { CalendarDays, Clapperboard, Palette, PenLine, Rocket, Zap } from 'lucide-react';
+import { CalendarDays, Clapperboard, Palette, PenLine, Rocket } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export interface WorkflowPresetEtapa {
@@ -92,15 +92,6 @@ export const STANDARD_PRESETS: WorkflowPreset[] = [
       p('Veiculação', 3),
       p('Relatório', 2),
     ],
-  },
-  {
-    id: 'post-avulso',
-    nome: 'Post avulso rápido',
-    descricao: 'Três etapas, sem aprovação externa — para demandas pontuais.',
-    icon: Zap,
-    recorrente: false,
-    modo_prazo: 'padrao',
-    etapas: [p('Criação', 2), p('Revisão', 1), p('Publicação', 1)],
   },
   {
     id: 'identidade-branding',

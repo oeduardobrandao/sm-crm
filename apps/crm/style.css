@@ -5276,30 +5276,40 @@ body.role-agent input[name='valor_total'] {
 }
 
 /* Template tabs — shown instead of stacked rows when 3+ templates are active */
+/* Chrome-style tab strip: a soft band behind the tabs, inactive tabs
+ * transparent on it, and the active tab painted with the page background so
+ * it merges into the board below. The ::before/::after pseudos are the
+ * signature Chrome flare: transparent quarter-round notches whose box-shadow
+ * (in the tab color) fills the concave outer bottom corners. */
 .board-tabs {
   display: flex;
-  gap: 0.25rem;
+  align-items: flex-end;
+  gap: 0;
   overflow-x: auto;
-  padding-bottom: 0.5rem;
-  margin-bottom: 0.25rem;
-  border-bottom: 2px solid var(--text-main);
+  background: var(--surface-2);
+  border-radius: 10px 10px 0 0;
+  /* 10px on top and sides: the grey frame around the active tab reads the
+   * same thickness everywhere (10px is also the flare's minimum clearance). */
+  padding: 6px 6px 0;
+  margin-bottom: 0.9rem;
 }
 
 .board-tab {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  padding: 0.4rem 0.9rem;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  padding: 0.55rem 1.1rem;
+  border: none;
+  border-radius: 10px 10px 0 0;
   background: transparent;
   color: var(--text-muted);
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
   white-space: nowrap;
   cursor: pointer;
+  position: relative;
   transition: var(--transition);
 }
 
@@ -5308,9 +5318,34 @@ body.role-agent input[name='valor_total'] {
   color: var(--text-main);
 }
 
-.board-tab.active {
-  background: var(--text-main);
-  color: var(--card-bg);
+.board-tab.active,
+.board-tab.active:hover {
+  background: var(--bg-color);
+  color: var(--text-main);
+  font-weight: 600;
+  z-index: 1;
+}
+
+.board-tab.active::before,
+.board-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  background: transparent;
+}
+
+/* Radial gradients give the concave curve the exact same 10px radius as the
+ * tab's top corners (the box-shadow notch trick renders visually fatter). */
+.board-tab.active::before {
+  left: -10px;
+  background: radial-gradient(circle 10px at 0 0, transparent 9.5px, var(--bg-color) 10px);
+}
+
+.board-tab.active::after {
+  right: -10px;
+  background: radial-gradient(circle 10px at 100% 0, transparent 9.5px, var(--bg-color) 10px);
 }
 
 .board-tab-count {
@@ -5352,9 +5387,13 @@ body.role-agent input[name='valor_total'] {
 }
 
 .board-column-title {
-  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  font-weight: 500;
   font-size: 0.75rem;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-main);
   font-family: var(--font-mono, serif);
@@ -5364,13 +5403,29 @@ body.role-agent input[name='valor_total'] {
   background: var(--surface-hover);
   color: var(--text-muted);
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 500;
   padding: 0.12rem 0.5rem;
   border-radius: 999px;
   border: 1px solid var(--border-color);
   font-family: var(--font-mono, serif);
   min-width: 22px;
   text-align: center;
+}
+
+.board-column-sort {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0.15rem;
+  border-radius: 6px;
+  opacity: 0.55;
+}
+
+.board-column-sort:hover {
+  opacity: 1;
+  background: var(--surface-hover);
 }
 
 .board-column-body {
@@ -5404,20 +5459,56 @@ body.role-agent input[name='valor_total'] {
   gap: 0.4rem;
 }
 
-.board-post-card .post-tipo-badge,
-.board-post-card .post-status-chip {
+.board-post-tipo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Etapa/prazo urgency pill at the card's top-right; text color comes inline
+   from formatEtapaPrazo, the tinted background only when that color is a hex. */
+.board-post-prazo-pill {
   font-size: 0.62rem;
-  padding: 0.08rem 0.45rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* Derived "Publicando…" state: agendado whose scheduled time has arrived.
+   The status column can't convey this, so it keeps a pill of its own. */
+.board-post-publicando {
+  color: var(--primary-hover);
+  background: rgba(234, 179, 8, 0.14);
 }
 
 .board-post-card .item-title {
   font-size: 0.8rem;
-  line-height: 1.3;
+  font-weight: 500;
+  line-height: 1.35;
   margin-top: 0.3rem;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+/* Etapa (post-fluxo-tag--static) and Avulso chips share the compact card scale. */
+.board-post-card .post-fluxo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+  max-width: 100%;
+  font-size: 0.68rem;
+  padding: 0.12rem 0.5rem;
+  color: var(--text-muted);
 }
 
 .board-post-card .item-meta {
@@ -5455,22 +5546,20 @@ body.role-agent input[name='valor_total'] {
   min-width: 0;
 }
 
-/* Which etapa the post's workflow is currently in ("Design", "Copy", …). */
-.board-post-etapa {
-  margin-top: 2px;
-  font-size: 0.58rem;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Client + assignee avatars overlapped into one pair. */
+.board-post-avatar-pair {
+  display: inline-flex;
+  flex-shrink: 0;
 }
 
-.board-post-prazo {
-  font-weight: 700;
+.board-post-avatar-pair .board-post-assignee-avatar {
+  margin-left: -6px;
+  box-shadow: 0 0 0 1.5px var(--card-bg);
+}
+
+.board-post-date {
   white-space: nowrap;
+  color: var(--text-muted);
 }
 
 .board-post-assignee {
@@ -5487,6 +5576,22 @@ body.role-agent input[name='valor_total'] {
   width: 16px;
   height: 16px;
   font-size: 0.42rem;
+}
+
+/* Publicações kanban drag-and-drop: dims a column while a card is being
+   dragged, when that column's status is system-driven (agendado/postado/falha
+   de publicação) and therefore an invalid drop target. The drop still fires
+   there (so the handler can toast why), this is purely the visual cue. */
+.board-column--drag-invalid {
+  opacity: 0.35;
+  transition: opacity 0.15s;
+}
+
+/* The dragged card's floating clone in DragOverlay. */
+.board-post-card--overlay {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  cursor: grabbing;
+  pointer-events: none;
 }
 
 /* ===== Vistas salvas (Notion-style tabs, Entregas) ===== */
@@ -5619,6 +5724,33 @@ body.role-agent input[name='valor_total'] {
 .post-fluxo-tag--static:hover {
   background: var(--surface-2);
   border-color: var(--border-color);
+}
+
+/* Post avulso (sem fluxo) -- discreet tint distinct from the wired-workflow
+   tag, dashed border signals "not attached to anything" rather than "no card
+   loaded yet". Not clickable. */
+/* Avulso identity: brand-amber tint + dashed border ("sem contêiner"), so it
+   reads apart from the gray etapa/fluxo chips at a glance. */
+.post-fluxo-tag--avulso {
+  cursor: default;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(255, 191, 48, 0.14);
+  color: var(--primary-hover);
+  border-color: rgba(202, 138, 4, 0.45);
+  border-style: dashed;
+  font-weight: 600;
+}
+
+.post-fluxo-tag--avulso:hover {
+  background: rgba(255, 191, 48, 0.14);
+  border-color: rgba(202, 138, 4, 0.45);
+}
+
+[data-theme='dark'] .post-fluxo-tag--avulso {
+  color: var(--primary-color);
+  border-color: rgba(255, 191, 48, 0.4);
 }
 
 .board-card {
@@ -6399,6 +6531,76 @@ body.role-agent input[name='valor_total'] {
   color: var(--primary-color);
 }
 
+/* Bulk selection bar (desmembrar do fluxo) */
+.drawer-selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.drawer-selection-bar-count {
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.drawer-selection-bar-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--primary-color);
+  cursor: pointer;
+}
+
+.drawer-selection-bar-link:hover {
+  text-decoration: underline;
+}
+
+.drawer-selection-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.drawer-selection-bar-btn {
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  color: var(--text-color);
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.drawer-selection-bar-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.drawer-selection-bar-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+.drawer-selection-bar-btn--ghost:hover {
+  color: var(--text-color);
+  border-color: var(--border-color);
+}
+
 .drawer-empty {
   text-align: center;
   color: var(--text-muted);
@@ -6546,6 +6748,29 @@ body.role-agent input[name='valor_total'] {
 .drawer-delete-btn:hover {
   color: var(--danger, #ef4444);
   background: rgba(239, 68, 68, 0.08);
+}
+
+.drawer-kebab-btn {
+  display: flex;
+  align-items: center;
+  padding: 0.25rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 4px;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.drawer-kebab-btn:hover {
+  color: var(--text-color);
+  background: var(--surface-2);
+}
+
+.drawer-post-select-checkbox {
+  flex-shrink: 0;
 }
 
 /* Accordion content */
@@ -6778,6 +7003,10 @@ body.role-agent input[name='valor_total'] {
 .ex-vis + .ex-aside,
 .ex-tree + .ex-aside {
   margin-top: 0.7rem;
+}
+
+.ex-aside + .ex-aside {
+  margin-top: 0.5rem;
 }
 
 .ex-aside {

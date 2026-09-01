@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { BoardCard } from '../../hooks/useEntregasData';
@@ -92,6 +92,28 @@ vi.mock('@/store', () => ({
   createDesign: vi.fn(),
   getDesignForPost: vi.fn(async () => null),
   syncMentions: vi.fn(),
+  detachPostsFromWorkflow: vi.fn(),
+}));
+
+// Real Radix DropdownMenu needs pointer-event machinery jsdom doesn't provide well;
+// same convention as ClientesPage.test.tsx / WorkflowCard.badge.test.tsx -- render
+// DropdownMenuContent unconditionally (no need to "open" the trigger) and turn
+// DropdownMenuItem into a plain clickable button.
+vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuItem: ({
+    children,
+    onClick,
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+  }) => (
+    <button type="button" onClick={onClick}>
+      {children}
+    </button>
+  ),
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
@@ -165,6 +187,7 @@ import {
   getPostEditSuggestions,
   acceptEditSuggestion,
   syncMentions,
+  detachPostsFromWorkflow,
 } from '@/store';
 
 const mockGetPosts = vi.mocked(getWorkflowPostsWithProperties);
@@ -172,8 +195,12 @@ const mockUpdate = vi.mocked(updateWorkflowPost);
 const mockGetEditSuggestions = vi.mocked(getPostEditSuggestions);
 const mockAcceptEditSuggestion = vi.mocked(acceptEditSuggestion);
 const mockSyncMentions = vi.mocked(syncMentions);
+const mockDetach = vi.mocked(detachPostsFromWorkflow);
 
-function renderDrawer(qc: QueryClient) {
+function renderDrawer(
+  qc: QueryClient,
+  overrides: { onClose?: () => void; onRefresh?: () => void; initialPostId?: number } = {},
+) {
   const card = {
     workflow: {
       id: 10,
@@ -216,9 +243,9 @@ function renderDrawer(qc: QueryClient) {
       <WorkflowDrawer
         card={card}
         membros={[]}
-        onClose={vi.fn()}
-        onRefresh={vi.fn()}
-        initialPostId={1}
+        onClose={overrides.onClose ?? vi.fn()}
+        onRefresh={overrides.onRefresh ?? vi.fn()}
+        initialPostId={overrides.initialPostId ?? 1}
       />
     </QueryClientProvider>,
   );
@@ -460,5 +487,217 @@ describe('WorkflowDrawer Histórico tab', () => {
     fireEvent.click(screen.getByRole('button', { name: /Histórico/i }));
 
     expect(await screen.findByTestId('workflow-history-view-stub')).toHaveTextContent('history-10');
+  });
+});
+
+describe('WorkflowDrawer desmembrar do fluxo (Task 15)', () => {
+  // Two posts so partial vs. total selection is actually distinguishable --
+  // the archive-empty-flow checkbox in the confirm dialog only shows when the
+  // pending batch covers every post of this workflow (ids.length === posts.length).
+  const postA = {
+    id: 1,
+    workflow_id: 10,
+    titulo: 'Post A',
+    conteudo: null,
+    conteudo_plain: '',
+    tipo: 'feed',
+    ordem: 0,
+    status: 'rascunho',
+    responsavel_id: null,
+    scheduled_at: null,
+    ig_caption: null,
+    platform: 'instagram',
+  } as never;
+
+  const postB = {
+    id: 2,
+    workflow_id: 10,
+    titulo: 'Post B',
+    conteudo: null,
+    conteudo_plain: '',
+    tipo: 'feed',
+    ordem: 1,
+    status: 'rascunho',
+    responsavel_id: null,
+    scheduled_at: null,
+    ig_caption: null,
+    platform: 'instagram',
+  } as never;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([postA, postB]);
+  });
+
+  it('seleciona múltiplos posts e atualiza a contagem da barra de seleção', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+
+    const checkboxA = await screen.findByRole('checkbox', { name: 'Selecionar Post A' });
+    fireEvent.click(checkboxA);
+    expect(await screen.findByText('1 selecionado')).toBeInTheDocument();
+
+    const checkboxB = screen.getByRole('checkbox', { name: 'Selecionar Post B' });
+    fireEvent.click(checkboxB);
+    expect(await screen.findByText('2 selecionados')).toBeInTheDocument();
+  });
+
+  it('"Selecionar todos" marca todos os posts do fluxo', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Selecionar Post A' }));
+    await screen.findByText('1 selecionado');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar todos' }));
+
+    expect(await screen.findByText('2 selecionados')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Selecionar Post A' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(screen.getByRole('checkbox', { name: 'Selecionar Post B' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+
+  it('"Limpar" desmarca toda a seleção', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Selecionar Post A' }));
+    await screen.findByText('1 selecionado');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar' }));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('drawer-selection-bar')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('o confirm só mostra o checkbox de arquivar quando a seleção cobre todos os posts do fluxo', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+
+    // Partial selection: só Post A.
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Selecionar Post A' }));
+    fireEvent.click(
+      within(screen.getByTestId('drawer-selection-bar')).getByRole('button', {
+        name: 'Desmembrar do fluxo',
+      }),
+    );
+
+    await screen.findByText('Desmembrar do fluxo?');
+    expect(screen.queryByText('Arquivar o fluxo depois de desmembrar')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(screen.queryByText('Desmembrar do fluxo?')).not.toBeInTheDocument());
+
+    // Total selection: os dois posts.
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar todos' }));
+    fireEvent.click(
+      within(screen.getByTestId('drawer-selection-bar')).getByRole('button', {
+        name: 'Desmembrar do fluxo',
+      }),
+    );
+
+    await screen.findByText('Desmembrar do fluxo?');
+    expect(screen.getByText('Arquivar o fluxo depois de desmembrar')).toBeInTheDocument();
+  });
+
+  it('chama o RPC com os ids selecionados e o boolean de arquivar quando o checkbox está marcado', async () => {
+    mockDetach.mockResolvedValue({ ok: true, detached: 2, archived_workflow_ids: [10] } as never);
+    const onClose = vi.fn();
+    const onRefresh = vi.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined, onClose, onRefresh });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Selecionar Post A' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Selecionar Post B' }));
+    fireEvent.click(
+      within(screen.getByTestId('drawer-selection-bar')).getByRole('button', {
+        name: 'Desmembrar do fluxo',
+      }),
+    );
+
+    await screen.findByText('Desmembrar do fluxo?');
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Arquivar o fluxo depois de desmembrar' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Desmembrar' }));
+
+    await waitFor(() => expect(mockDetach).toHaveBeenCalledWith([1, 2], true));
+    // Archived path: closes the drawer instead of refreshing its own (now pointless) queries.
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onRefresh).toHaveBeenCalled();
+  });
+
+  it('o kebab de um único post cai no mesmo confirm e desmembra só aquele post (sem checkbox de arquivar)', async () => {
+    mockDetach.mockResolvedValue({ ok: true, detached: 1, archived_workflow_ids: [] } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+
+    const checkboxB = await screen.findByRole('checkbox', { name: 'Selecionar Post B' });
+    const rowB = checkboxB.closest('.drawer-post-item') as HTMLElement;
+    fireEvent.click(within(rowB).getByText('Desmembrar do fluxo'));
+
+    await screen.findByText('Desmembrar do fluxo?');
+    // Only 1 of 2 posts targeted -- not a total selection, so no archive option.
+    expect(screen.queryByText('Arquivar o fluxo depois de desmembrar')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Desmembrar' }));
+
+    await waitFor(() => expect(mockDetach).toHaveBeenCalledWith([2], false));
+  });
+
+  it('ao concluir sem arquivar: toasta, limpa a seleção e chama refresh() + onRefresh()', async () => {
+    mockDetach.mockResolvedValue({ ok: true, detached: 1, archived_workflow_ids: [] } as never);
+    const onRefresh = vi.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc, { initialPostId: undefined, onRefresh });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Selecionar Post A' }));
+    fireEvent.click(
+      within(screen.getByTestId('drawer-selection-bar')).getByRole('button', {
+        name: 'Desmembrar do fluxo',
+      }),
+    );
+    await screen.findByText('Desmembrar do fluxo?');
+    fireEvent.click(screen.getByRole('button', { name: 'Desmembrar' }));
+
+    await waitFor(() => expect(mockDetach).toHaveBeenCalledWith([1], false));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+    // refresh()'s own invalidation must cover ['active-posts'] -- every Publicações
+    // surface reads that key, and a detached post's workflow_id just changed.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['active-posts'] });
+    expect(screen.queryByTestId('drawer-selection-bar')).not.toBeInTheDocument();
+  });
+
+  it('toasta erro genérico quando a RPC rejeita com um identificador desconhecido, sem limpar a seleção', async () => {
+    mockDetach.mockRejectedValue({ message: 'post_not_found' });
+    const { toast } = await import('sonner');
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Selecionar Post A' }));
+    fireEvent.click(
+      within(screen.getByTestId('drawer-selection-bar')).getByRole('button', {
+        name: 'Desmembrar do fluxo',
+      }),
+    );
+    await screen.findByText('Desmembrar do fluxo?');
+    // AlertDialogAction closes the confirm dialog on click regardless of the async
+    // outcome (same as every other confirm in this file -- confirmDeletePost et al.
+    // clear their pending state up front too), so the failure signal to assert on is
+    // the toast, plus the selection itself surviving (only a *successful* detach
+    // clears selectedPostIds) so the bar is still there for the user to retry.
+    fireEvent.click(screen.getByRole('button', { name: 'Desmembrar' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Um ou mais posts não foram encontrados.'),
+    );
+    expect(await screen.findByText('1 selecionado')).toBeInTheDocument();
   });
 });

@@ -4,6 +4,7 @@ import {
   etapaDeadlineDateOf,
   formatEtapaPrazo,
   matchesEtapaPrazo,
+  sortCardsByPrazo,
 } from '../etapaPrazo';
 import type { BoardCard } from '../hooks/useEntregasData';
 
@@ -153,5 +154,39 @@ describe('formatEtapaPrazo', () => {
     expect(
       formatEtapaPrazo({ estourado: false, urgente: false, diasRestantes: 4, horasRestantes: 2 }),
     ).toEqual({ label: '4d restantes', shortLabel: '4d', color: 'var(--text-muted)' });
+  });
+});
+
+describe('sortCardsByPrazo', () => {
+  function rankedCard(data_limite: string | null, position: number, id: number): BoardCard {
+    return {
+      workflow: { id, position },
+      etapa: { data_limite, iniciado_em: null, prazo_dias: 2, tipo_prazo: 'corridos' },
+    } as BoardCard;
+  }
+
+  it('orders by deadline asc (atrasados primeiro), cards sem prazo por último', () => {
+    const cards = [
+      rankedCard(null, 0, 1),
+      rankedCard('2026-07-20', 1, 2),
+      rankedCard('2026-07-10', 2, 3),
+    ];
+    expect(sortCardsByPrazo(cards).map((c) => c.workflow.id)).toEqual([3, 2, 1]);
+  });
+
+  it('breaks ties (mesmo prazo ou ambos sem prazo) pela position manual', () => {
+    const cards = [
+      rankedCard(null, 5, 1),
+      rankedCard(null, 2, 2),
+      rankedCard('2026-07-10', 9, 3),
+      rankedCard('2026-07-10', 4, 4),
+    ];
+    expect(sortCardsByPrazo(cards).map((c) => c.workflow.id)).toEqual([4, 3, 2, 1]);
+  });
+
+  it('does not mutate the input array', () => {
+    const cards = [rankedCard('2026-07-20', 0, 1), rankedCard('2026-07-10', 1, 2)];
+    sortCardsByPrazo(cards);
+    expect(cards.map((c) => c.workflow.id)).toEqual([1, 2]);
   });
 });

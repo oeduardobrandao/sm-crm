@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { isSameDay } from 'date-fns';
+import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { computeDeadlineDate, computeWorkflowDeadlineDate } from '../hooks/useEntregasData';
 import { MonthGrid } from '@/components/ui/month-grid';
 import { useScheduledPosts } from '../hooks/useScheduledPosts';
 import { dateDayKey, summarizeDay } from '../hooks/scheduledPostsUtils';
 import { PublicacoesPanel } from '../components/PublicacoesPanel';
-import { ModeToggle, type EntregasMode } from '../components/ModeToggle';
+import { type EntregasMode } from '../components/ModeToggle';
 
 export type CalendarMode = EntregasMode;
 
@@ -15,9 +16,8 @@ interface CalendarViewProps {
   cards: BoardCard[];
   onCardClick: (card: BoardCard) => void;
   mode: CalendarMode;
-  onModeChange: (mode: CalendarMode) => void;
   openableWorkflowIds: Set<number>;
-  onPostClick: (workflowId: number, postId: number) => void;
+  onPostClick: (post: ActivePost) => void;
 }
 
 interface CalendarEvent {
@@ -45,7 +45,6 @@ export function CalendarView({
   cards,
   onCardClick,
   mode,
-  onModeChange,
   openableWorkflowIds,
   onPostClick,
 }: CalendarViewProps) {
@@ -106,12 +105,9 @@ export function CalendarView({
     qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
   };
 
-  const toggle = <ModeToggle mode={mode} onModeChange={onModeChange} />;
-
   if (mode === 'entregas' && cards.length === 0) {
     return (
       <div className="animate-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {toggle}
         <div
           className="card"
           style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
@@ -124,7 +120,6 @@ export function CalendarView({
 
   return (
     <div className="animate-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {toggle}
       <div className="calendar-layout">
         <div className="calendar-main">
           <MonthGrid

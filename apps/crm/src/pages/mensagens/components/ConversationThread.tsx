@@ -39,7 +39,9 @@ export function ConversationThread({
   const [draft, setDraft] = useState('');
   const [replyTo, setReplyTo] = useState<{
     postId: number;
-    workflowId: number;
+    /** NULL = post avulso (fora de fluxo); replyToPostApproval keys on
+     *  postId alone, so a null workflowId still supports the reply. */
+    workflowId: number | null;
     titulo: string;
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -179,7 +181,7 @@ export function ConversationThread({
                   <CheckCircle2 size={13} />
                 )}
                 <span>{eventLabel(m)}</span>
-                {m.post_id != null && m.workflow_id != null && (
+                {m.post_id != null && (
                   <PostChip postId={m.post_id} workflowId={m.workflow_id} titulo={m.post_titulo} />
                 )}
                 <span>· {formatTime(m.created_at)}</span>
@@ -215,7 +217,7 @@ export function ConversationThread({
                     </div>
                   )}
                   {m.content && <p className="whitespace-pre-wrap">{m.content}</p>}
-                  {m.post_id != null && m.workflow_id != null && (
+                  {m.post_id != null && (
                     <div className="mt-2 text-xs">
                       <PostChip
                         postId={m.post_id}
@@ -227,12 +229,12 @@ export function ConversationThread({
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-[var(--text-light)]">
                   <span>{formatTime(m.created_at)}</span>
-                  {m.post_id != null && m.workflow_id != null && (
+                  {m.post_id != null && (
                     <button
                       onClick={() =>
                         setReplyTo({
                           postId: m.post_id!,
-                          workflowId: m.workflow_id!,
+                          workflowId: m.workflow_id,
                           titulo: m.post_titulo ?? 'Post',
                         })
                       }

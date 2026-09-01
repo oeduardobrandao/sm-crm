@@ -130,10 +130,10 @@ export function WorkflowCard({
           style={{
             borderLeft: 'none',
             paddingLeft: 0,
-            fontSize: '0.68rem',
-            fontWeight: 700,
-            letterSpacing: '0.07em',
-            textTransform: 'uppercase',
+            fontSize: '0.74rem',
+            fontWeight: 500,
+            letterSpacing: '0.01em',
+            textTransform: 'none',
             color: 'var(--text-muted)',
             display: 'inline-flex',
             alignItems: 'center',
@@ -192,7 +192,7 @@ export function WorkflowCard({
                   cursor: 'pointer',
                   color: card.cliente.cor || 'var(--text-muted)',
                   opacity: 0.85,
-                  fontWeight: 700,
+                  fontWeight: 500,
                 }}
               >
                 {card.cliente.nome}

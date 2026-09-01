@@ -116,6 +116,7 @@ Deno.test("instagram-publish: schedule with no media fails validateForScheduling
     id: 1,
     status: "aprovado_cliente",
     workflow_id: 9,
+    cliente_id: 5,
     scheduled_at: "2030-01-01T12:00:00Z",
     ig_caption: "cap",
     instagram_container_id: null,
@@ -129,7 +130,6 @@ Deno.test("instagram-publish: schedule with no media fails validateForScheduling
   db.queueRpc("effective_plan_feature", { data: true, error: null });
   // No media attached → validateForScheduling's media check fails.
   db.queue("post_file_links", "select", { data: [], error: null });
-  db.queue("workflows", "select", { data: { cliente_id: 5 }, error: null });
   db.queue("instagram_accounts", "select", {
     data: {
       encrypted_access_token: null,
