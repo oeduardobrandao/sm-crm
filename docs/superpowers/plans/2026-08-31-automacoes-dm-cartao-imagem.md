@@ -111,7 +111,7 @@ Reporte ao orquestrador: "Milestone 0 preparado, aguardando execução pelo oper
 
 **Interfaces:**
 - Consumes: schema atual (`dm_buttons`/CHECKs de `20260819000001`; `effective_plan_limit(uuid, text)` de `20260611150001`; `workspaces.storage_used_bytes`).
-- Produces: `instagram_comment_automations.dm_media jsonb` + `dm_subtitle text` com CHECKs (forma, tenant, título ≤ 80 com mídia); `dm_kind` aceita `'card' | 'card_fallback_buttons' | 'card_fallback_text'`; tabela `automation_media_objects (key pk, conta_id, size_bytes, created_at)`; RPCs `automation_media_finalize(uuid, text, bigint) RETURNS boolean` (idempotente por key) e `automation_media_release(uuid, text) RETURNS bigint` (devolve os bytes liberados; 0 se não havia registro).
+- Produces: `instagram_comment_automations.dm_media jsonb` + `dm_subtitle text` com CHECKs (forma, tenant, título ≤ 80 com mídia); `dm_kind` aceita `'card' | 'card_fallback_buttons' | 'card_fallback_text'`; tabela `automation_media_objects (key pk, conta_id, content_type, size_bytes, created_at)`; RPCs `automation_media_finalize(uuid, text, bigint, text) RETURNS boolean` (idempotente por key) e `automation_media_release(uuid, text) RETURNS bigint` (devolve os bytes liberados; 0 se não havia registro); trigger `trg_ica_dm_media_finalized` (dm_media só aceita objeto finalizado da mesma workspace, metadata normalizada do registro) e índice único parcial `ica_dm_media_key_unique` (posse única da key).
 
 - [ ] **Step 1: Escrever a migration**
 
@@ -185,13 +185,14 @@ ALTER TABLE instagram_automation_sends
 CREATE TABLE automation_media_objects (
   key text PRIMARY KEY,
   conta_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  content_type text NOT NULL,
   size_bytes bigint NOT NULL CHECK (size_bytes > 0),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 -- RLS ligado sem policies: só as RPCs SECURITY DEFINER (service role) tocam.
 ALTER TABLE automation_media_objects ENABLE ROW LEVEL SECURITY;
 
-CREATE FUNCTION automation_media_finalize(p_conta_id uuid, p_key text, p_bytes bigint)
+CREATE FUNCTION automation_media_finalize(p_conta_id uuid, p_key text, p_bytes bigint, p_content_type text)
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_used bigint;
@@ -204,8 +205,8 @@ BEGIN
   IF v_used IS NULL THEN
     RAISE EXCEPTION 'workspace_not_found';
   END IF;
-  INSERT INTO automation_media_objects (key, conta_id, size_bytes)
-    VALUES (p_key, p_conta_id, p_bytes)
+  INSERT INTO automation_media_objects (key, conta_id, size_bytes, content_type)
+    VALUES (p_key, p_conta_id, p_bytes, p_content_type)
     ON CONFLICT (key) DO NOTHING;
   IF NOT FOUND THEN
     -- Já finalizado (retry de cliente): idempotente, não re-reserva.
@@ -239,17 +240,64 @@ BEGIN
   RETURN v_bytes;
 END $$;
 
-REVOKE ALL ON FUNCTION automation_media_finalize(uuid, text, bigint) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION automation_media_finalize(uuid, text, bigint) TO service_role;
+REVOKE ALL ON FUNCTION automation_media_finalize(uuid, text, bigint, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION automation_media_finalize(uuid, text, bigint, text) TO service_role;
 REVOKE ALL ON FUNCTION automation_media_release(uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION automation_media_release(uuid, text) TO service_role;
+
+-- Posse única + finalize obrigatório na PRÓPRIA escrita da automação.
+-- (1) Uma key só pode ser referenciada por UMA automação: uploads são por
+-- automação (key com uuid), e posse única é o que torna o delete do CRM
+-- seguro sem contagem de referências -- sem isto, duas automações da mesma
+-- workspace poderiam compartilhar a key via PostgREST e o delete de uma
+-- quebraria os envios da outra.
+CREATE UNIQUE INDEX ica_dm_media_key_unique
+  ON instagram_comment_automations ((dm_media->>'key'))
+  WHERE dm_media IS NOT NULL;
+
+-- (2) Trigger BEFORE: dm_media só aceita objeto FINALIZADO da mesma
+-- workspace, e content_type/size_bytes são NORMALIZADOS do registro do
+-- servidor -- uma escrita direta via PostgREST com metadata fabricada (ou
+-- apontando para upload que pulou o finalize) não passa. Sem isto, o CHECK
+-- de forma valida o JSON mas nada garante que o objeto existe, foi conferido
+-- pelo HEAD ou entrou na quota. Roda ANTES dos CHECKs da linha (ordem do
+-- Postgres: BEFORE trigger -> CHECKs), então o valor checado é o normalizado.
+CREATE FUNCTION enforce_ig_dm_media_finalized()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_obj automation_media_objects;
+BEGIN
+  IF NEW.dm_media IS NULL THEN
+    RETURN NEW;
+  END IF;
+  SELECT * INTO v_obj FROM automation_media_objects
+   WHERE key = NEW.dm_media->>'key' AND conta_id = NEW.conta_id;
+  IF v_obj.key IS NULL THEN
+    RAISE EXCEPTION 'media_not_finalized' USING errcode = 'P0001';
+  END IF;
+  -- width/height são apresentacionais e ficam como o cliente mandou (se
+  -- números); o resto vem do registro. jsonb_strip_nulls remove width/height
+  -- ausentes para o CHECK de chaves permitidas continuar passando.
+  NEW.dm_media = jsonb_strip_nulls(jsonb_build_object(
+    'key', v_obj.key,
+    'content_type', v_obj.content_type,
+    'size_bytes', v_obj.size_bytes,
+    'width', CASE WHEN jsonb_typeof(NEW.dm_media->'width') = 'number' THEN NEW.dm_media->'width' END,
+    'height', CASE WHEN jsonb_typeof(NEW.dm_media->'height') = 'number' THEN NEW.dm_media->'height' END
+  ));
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER trg_ica_dm_media_finalized
+  BEFORE INSERT OR UPDATE OF dm_media ON instagram_comment_automations
+  FOR EACH ROW EXECUTE FUNCTION enforce_ig_dm_media_finalized();
 ```
 
 Antes de commitar, confirme o nome real do CHECK de `dm_kind` com `grep -n "dm_kind" supabase/migrations/20260819000001_instagram_dm_buttons.sql` (foi inline → nome auto `instagram_automation_sends_dm_kind_check`; o `DROP CONSTRAINT IF EXISTS` protege se divergir, mas nesse caso ajuste o nome no DROP para o real).
 
 - [ ] **Step 2: Testes SQL (nova seção no 65)**
 
-Seguindo o padrão das seções 7-9 (`begin; do $$...$$; rollback;`, roles como nas seções vizinhas), adicione casos: (a) automação válida com `dm_media` completo + `dm_message` de 80 chars + `dm_subtitle` como `authenticated` passa; (b) key com prefixo de OUTRO conta_id → `check_violation`; (c) key fora de `automation-media/` → `check_violation`; (d) `size_bytes` 8388609 → `check_violation`; (e) `content_type` `image/webp` → `check_violation`; (f) chave extra no objeto → `check_violation`; (g) `dm_subtitle` sem `dm_media` → `check_violation`; (h) `dm_message` 81 chars com mídia → `check_violation`; (i) `automation_media_finalize` incrementa `workspaces.storage_used_bytes` e devolve `true` na primeira chamada; a SEGUNDA chamada com a mesma key devolve `false` e NÃO incrementa de novo (idempotência); estoura `quota_exceeded` acima do limite do plano E não deixa linha em `automation_media_objects` (use `workspace_plan_overrides` para fixar um limite baixo, como as suítes de quota existentes fazem — procure o padrão em `supabase/tests/entitlements/` com `grep -l storage_quota_bytes`); (j) `automation_media_release` devolve os bytes do registro e decrementa com piso 0; a segunda chamada devolve 0 e não decrementa; release de key inexistente devolve 0. Use o molde literal da seção 7 (caso "(b) 4 botões", linhas 372-384 do arquivo) para os casos de rejeição.
+Seguindo o padrão das seções 7-9 (`begin; do $$...$$; rollback;`, roles como nas seções vizinhas), adicione casos: (a) automação válida com `dm_media` completo + `dm_message` de 80 chars + `dm_subtitle` como `authenticated` passa; (b) key com prefixo de OUTRO conta_id → `check_violation`; (c) key fora de `automation-media/` → `check_violation`; (d) `size_bytes` 8388609 → `check_violation`; (e) `content_type` `image/webp` → `check_violation`; (f) chave extra no objeto → `check_violation`; (g) `dm_subtitle` sem `dm_media` → `check_violation`; (h) `dm_message` 81 chars com mídia → `check_violation`; (i) `automation_media_finalize` incrementa `workspaces.storage_used_bytes` e devolve `true` na primeira chamada; a SEGUNDA chamada com a mesma key devolve `false` e NÃO incrementa de novo (idempotência); estoura `quota_exceeded` acima do limite do plano E não deixa linha em `automation_media_objects` (use `workspace_plan_overrides` para fixar um limite baixo, como as suítes de quota existentes fazem — procure o padrão em `supabase/tests/entitlements/` com `grep -l storage_quota_bytes`); (j) `automation_media_release` devolve os bytes do registro e decrementa com piso 0; a segunda chamada devolve 0 e não decrementa; release de key inexistente devolve 0; (k) INSERT/UPDATE de automação com `dm_media` apontando para key SEM registro em `automation_media_objects` → exception `media_not_finalized` (sqlstate P0001); (l) com registro presente, metadata fabricada no jsonb (size_bytes/content_type errados) é NORMALIZADA pelo trigger para os valores do registro (assert no valor salvo); (m) segunda automação referenciando a MESMA key → `unique_violation` (índice `ica_dm_media_key_unique`). Use o molde literal da seção 7 (caso "(b) 4 botões", linhas 372-384 do arquivo) para os casos de rejeição.
 
 - [ ] **Step 3: Rodar se houver Supabase local; senão seguir (CI cobre)**
 
@@ -516,6 +564,7 @@ Deno.test("finalize: HEAD confere tamanho/tipo, finaliza com quota e devolve dm_
     p_conta_id: "conta-1",
     p_key: "automation-media/conta-1/fixed-uuid.jpg",
     p_bytes: 5000,
+    p_content_type: "image/jpeg",
   });
 });
 
@@ -549,6 +598,7 @@ Deno.test("finalize: key de outro tenant -> 400; size divergente do HEAD -> 400;
 Deno.test("delete: trasheia (nunca hard delete) e libera pelo registro do servidor; prefixo de outro tenant -> 400", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
+  db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queueRpc("automation_media_release", { data: 5000, error: null });
   const trashed: string[] = [];
   const res = await makeHandler(db, { trashed })(req("delete", {
@@ -568,6 +618,16 @@ Deno.test("delete: trasheia (nunca hard delete) e libera pelo registro do servid
     (await makeHandler(db2)(req("delete", { key: "automation-media/OUTRA/x.jpg" }))).status,
     400,
   );
+});
+
+Deno.test("delete: key ainda referenciada por automação -> 409 e nada é trasheado", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("instagram_comment_automations", "select", { data: [{ id: "auto-1" }], error: null });
+  const trashed: string[] = [];
+  const res = await makeHandler(db, { trashed })(req("delete", { key: "automation-media/conta-1/x.jpg" }));
+  assertEquals(res.status, 409);
+  assertEquals(trashed, []);
 });
 
 Deno.test("sign-view: devolve GET assinado só para key do tenant", async () => {
@@ -688,6 +748,7 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
         p_conta_id: contaId,
         p_key: key,
         p_bytes: size,
+        p_content_type: mime,
       });
       if (rpcErr) {
         const msg = String(rpcErr.message ?? "");
@@ -723,6 +784,18 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
     if (route === "delete") {
       const key = String(body.key ?? "");
       if (!key.startsWith(tenantPrefix)) return json({ error: "invalid key" }, 400);
+      // Nunca apaga objeto ainda referenciado: o CRM desanexa no banco
+      // ANTES de chamar esta rota (posse única garantida por índice).
+      const { data: refs, error: refErr } = await svc
+        .from("instagram_comment_automations")
+        .select("id")
+        .eq("dm_media->>key", key)
+        .limit(1);
+      if (refErr) {
+        console.error("[automation-media] ref check:", refErr.message);
+        return json({ error: "internal" }, 500);
+      }
+      if ((refs ?? []).length > 0) return json({ error: "media_in_use" }, 409);
       try {
         await deps.trashObject(key);
       } catch (e) {
