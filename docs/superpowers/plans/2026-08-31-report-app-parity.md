@@ -364,7 +364,7 @@ Regras de implementação (spec §4.1 + §3.1, não-negociáveis):
   de UMA métrica → aquele campo null, nunca exceção pro chamador (exceto
   TOKEN_EXPIRED, que sobe).
 
-- [ ] **Step 1: Escrever os testes que travam as regras** (fetch mockado; casos: vazio→null; 190→TOKEN_EXPIRED sobe; única em janela >max→null e NUNCA dois requests; aditiva 31d→2 chunks somados; breakdown follows normalizado; falha de uma métrica não derruba as outras)
+- [ ] **Step 1: Escrever os testes que travam as regras** (fetch mockado; casos: vazio→null; 190→TOKEN_EXPIRED sobe; única em janela ≤31d→UM request, NUNCA chunkada; única em janela >31d→chunk-sum de 30d (semântica "acumulado", nunca null por tamanho); aditiva 31d→2 chunks somados; breakdown follows normalizado; falha de uma métrica não derruba as outras)
 
 ```ts
 // supabase/functions/__tests__/instagram-account-metrics.test.ts
@@ -568,8 +568,11 @@ GRANT EXECUTE ON FUNCTION upsert_metrics_daily(jsonb) TO service_role;
 (Gotcha do REVOKE: `REVOKE FROM PUBLIC` também derruba service_role — por isso
 o GRANT explícito logo abaixo, na MESMA migration.)
 
-Se a matriz do spike disser que alguma métrica NÃO tem série diária: remover a
-coluna `*_day` correspondente daqui e do RPC (dirigido pela matriz).
+NOTA pós-checkpoint: TODAS as colunas `*_day` ficam, mesmo as de métricas sem
+série diária nativa — o valor por-dia delas vem de `fetchClosedDayValues`
+(1 request total_value de 1 dia por métrica) e é gravado por este RPC. A
+instrução antiga de "remover colunas sem série diária" morreu com a decisão 3
+do checkpoint.
 
 - [ ] **Step 2: Aplicar em staging e verificar**
 
@@ -877,6 +880,15 @@ Cadeia por janela (mês e mês-anterior, cada uma):
    completa do mês,
 4. null → card omite-se.
 
+Sobre a invariante "valor e prev da MESMA base" com elos diferentes da cadeia
+(ex.: mês atual ao vivo, mês anterior da linha mensal): PERMITIDO por
+construção — os três elos são a MESMA medida (total_value da métrica de conta
+na janela do mês; a linha mensal é produzida pelo mesmo `fetchAccountTotals`,
+e a soma de `*_day` provou ser exata para aditivas no spike). A invariante é
+de DEFINIÇÃO da medida, não de proveniência do armazenamento. Ruling do
+controller sobre achado externo que pedia prev=null em fontes mistas:
+rejeitado; misturar elos da cadeia não distorce o delta.
+
 - [ ] **Step 1: Atualizar testes de snapshot** — period com `effectiveEnd` (mês fechado = endExclusive-1dia; mês corrente = dia da geração); `comparison.prev_outlier=true` quando um post do mês anterior tem >50% da soma de views OU reach; snapshots antigos sem o campo continuam válidos (guard).
 
 - [ ] **Step 2: Implementar** — em snapshot-source: adicionar `impressions` ao select de prevMonthPosts (linha ~162: `select("reach, saved, likes, comments, shares, impressions")`); calcular comparison; substituir `accountViewsPromise` por `accountTotalsPromise` (mês) + `accountPrevTotalsPromise` (mês anterior), ambos degradando para null com warn; buscar linha mensal das duas janelas; montar o `KpiSources` novo. Em ai-input: incluir `comparison` no payload da IA com instrução textual ("mês anterior teve post outlier com N% do total: contextualize quedas").
@@ -942,7 +954,7 @@ ganha o caso novo para o fallback nunca mudar por baixo.)
 
 - [ ] **Step 2: Teste do handler puro** (mocks: janela válida devolve current/previous; previous null quando a janela anterior não cabe na retenção E não há linha mensal; source marca "snapshot" quando o valor veio do banco; end inclusivo: `end=2026-08-31` cobre o dia 31)
 
-- [ ] **Step 3: Implementar** — `account-metrics.ts` exporta `handleAccountMetrics(deps, clientId, start, end)`; usa `parseViewsRange` (validação/clamp/prev — a MESMA convenção end-inclusivo do endpoint de views), `fetchAccountTotals` ao vivo, completa nulls da linha mensal/`*_day` (aditivas), followers de `instagram_follower_history` (primeiro/último ponto DENTRO da janela pedida — aqui é range explícito do usuário, não mês rotulado). No `index.ts`: rota `GET /account-metrics/:clientId` com `verifyClientOwnership` + `getCachedOrFetch(serviceClient, account.id, \`account_metrics_${start}_${end}\`, ..., 6)`.
+- [ ] **Step 3: Implementar** — `account-metrics.ts` exporta `handleAccountMetrics(deps, clientId, start, end)`. **Parsing do range é PRÓPRIO, não `parseViewsRange`**: o parser de views rejeita/clampa ranges fora da janela de 90d de retenção ANTES de qualquer fallback, o que mataria exatamente o caso histórico que o contrato promete (ex.: janeiro backfillado na tabela mensal). Regra: validar datas (formato/ordem/futuro — reusar `parseUtcDayStrict` exportando-o do módulo 4.1 se preciso) SEM clamp; manter a MESMA convenção end-inclusivo do endpoint de views; a retenção decide só a ELEGIBILIDADE do fetch ao vivo (janela toda dentro → live; parcial/fora → pula direto pro fallback linha mensal/`*_day`). Followers de `instagram_follower_history` (primeiro/último ponto DENTRO da janela pedida — range explícito do usuário, não mês rotulado). No `index.ts`: rota `GET /account-metrics/:clientId` com `verifyClientOwnership` + `getCachedOrFetch(serviceClient, account.id, \`account_metrics_${start}_${end}\`, ..., 6)`. Teste obrigatório: range 100% histórico (fora dos 90d) com linha mensal presente → 200 com valores da linha mensal e `source: "snapshot"`, NUNCA erro de range.
 
 - [ ] **Step 4: Rodar suítes, commit** — `git commit -m "feat(analytics): endpoint account-metrics com paridade de conta"`
 
@@ -955,7 +967,7 @@ ganha o caso novo para o fallback nunca mudar por baixo.)
 
 - [ ] **Step 1: Teste do service** (mock de fetch do edge: monta URL certa, propaga o shape `AccountMetricsResponse`, erro → throw)
 
-- [ ] **Step 2: Implementar** — `getAccountMetrics(clientId: number, start: string, end: string): Promise<AccountMetricsResponse>` chamando a edge function com o JWT da sessão (padrão das chamadas existentes no arquivo, helper de fetch já existente); página troca os KPIs de conta para `useQuery(["account-metrics", clientId, start, end], ...)` mantendo os pares current/previous que a UI já renderiza. Somas por post permanecem SÓ nas seções de análise de conteúdo.
+- [ ] **Step 2: Implementar** — `getAccountMetrics(clientId: number, start: string, end: string): Promise<AccountMetricsResponse>` chamando a edge function com o JWT da sessão (padrão das chamadas existentes no arquivo, helper de fetch já existente); página troca os KPIs de conta para TanStack Query v5 (API de objeto — a forma posicional foi REMOVIDA na v5 e quebraria typecheck/runtime): `useQuery({ queryKey: ["account-metrics", clientId, start, end], queryFn: () => getAccountMetrics(clientId, start, end) })`, mantendo os pares current/previous que a UI já renderiza. Somas por post permanecem SÓ nas seções de análise de conteúdo.
 
 - [ ] **Step 3: Gates frontend** — `npm run test`, `npx tsc -p apps/crm/tsconfig.json --noEmit`. Verificar no browser (dev server via preview) que a página de Analytics carrega com os números novos.
 
