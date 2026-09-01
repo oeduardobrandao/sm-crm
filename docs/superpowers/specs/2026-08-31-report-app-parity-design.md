@@ -80,14 +80,31 @@ type AccountMetric =
   | "reach" | "views" | "saves" | "accounts_engaged"
   | "profile_views" | "website_clicks" | "follows_and_unfollows";
 
-interface AccountMetricsResult {
-  // null por métrica = fetch falhou/fora da retenção; NUNCA derruba o chamador.
-  [metric: string]: number | null;
-  // follows_and_unfollows expande em { follows, unfollows, net }.
+interface AccountTotals {
+  reach: number | null;            // null = fetch falhou/fora da retenção;
+  views: number | null;            // NUNCA derruba o chamador.
+  saves: number | null;
+  accounts_engaged: number | null;
+  profile_views: number | null;
+  website_clicks: number | null;
+  follows_and_unfollows: { follows: number; unfollows: number; net: number } | null;
 }
 
-fetchAccountMetrics(fetchFn, accessToken, metrics, sinceSec, untilSec)
+// Agregado da janela (KPIs de relatório/endpoint): metric_type=total_value.
+fetchAccountTotals(fetchFn, accessToken, metrics, sinceSec, untilSec): Partial<AccountTotals>
+
+// Série por-dia (ingestão do cron + backfill): period=day SEM total_value,
+// normalizada para um valor por dia UTC. Mesmos campos, um registro por data.
+fetchAccountDaily(fetchFn, accessToken, metrics, sinceSec, untilSec): Map<date, Partial<AccountTotals>>
 ```
+
+O contrato tem DUAS funções porque os consumidores têm semânticas diferentes
+(agregado da janela vs série diária persistida) e a Graph responde com shapes
+diferentes (`total_value.value` vs `values[]` por dia). A normalização de cada
+shape — incluindo o breakdown `follower_type` de `follows_and_unfollows` — é
+responsabilidade deste módulo; nenhum consumidor toca resposta crua da Graph.
+O spike (§3) documenta o shape de resposta e a semântica de agregação de TODAS
+as métricas nas duas formas, não só do reach.
 
 Regras herdadas de views.ts: janela parcial fora da retenção → null (nunca um
 número enganoso), timeout por request, erro 190 → TOKEN_EXPIRED tipado. Uma chamada
@@ -106,21 +123,41 @@ instagram-report-generator-v2, sync cron.
    `reach_day`, `views_day`, `saves_day`, `accounts_engaged_day`,
    `profile_views_day`, `website_clicks_day`, `follows_day`, `unfollows_day`
    (todas `integer` nullable — null = métrica indisponível naquele dia).
-   O cron busca o valor **do próprio dia** (since=00:00Z de hoje, until=agora) via
-   o módulo 4.1 e faz upsert na linha do dia. Rodadas múltiplas no mesmo dia
-   sobrescrevem com o valor mais recente (o do fim do dia vence).
+   **Regra de finalização:** as colunas `*_day` só recebem DIAS COMPLETOS — o
+   cron busca **o dia anterior** (D-1 UTC, via `fetchAccountDaily`), nunca o dia
+   corrente. Isso elimina a ambiguidade "linha existe = dia fechado?": se uma
+   coluna `*_day` é não-null, o valor é o total final daquele dia. As colunas
+   já existentes (`followers_count`, `*_28d`) continuam sendo o snapshot
+   point-in-time do dia corrente, como hoje.
+   **Upsert preserva valor:** `ON CONFLICT ... DO UPDATE SET col =
+   COALESCE(EXCLUDED.col, tabela.col)` para as colunas `*_day` — uma falha
+   por-métrica numa rodada posterior nunca sobrescreve um valor válido com null
+   (o cron passa em cada conta a cada ~6h; sem isso, a última rodada do dia
+   poderia apagar o que a primeira gravou).
 2. **Correção do mapeamento 28d:** `accounts_engaged` ganha coluna própria
    (`accounts_engaged_28d`); `profile_views_28d` passa a receber a métrica correta
    de profile views (conforme spike). As colunas `*_28d` continuam existindo
    enquanto houver consumidor (CRM Analytics as lê hoje); somem numa migration
    posterior quando 4.4 concluir.
-3. **Backfill na conexão:** ao conectar uma conta
-   (`instagram-integration`, pós-OAuth), disparar busca dos últimos 90 dias de
-   métricas diárias (`period=day` com série temporal, chunks de 30d) e popular
-   `instagram_account_metrics_daily` + `instagram_follower_history`
-   (`follower_count` diário: só 30 dias disponíveis — backfill parcial é esperado).
-   Roda assíncrono e idempotente (upsert por `instagram_account_id, snapshot_date`);
-   falha não bloqueia a conexão.
+3. **Backfill de 90 dias — durável, via o próprio cron** (não no handler OAuth:
+   ele é request-scoped e um fire-and-forget morreria com a request, reportando
+   sucesso da conexão e deixando buracos permanentes). Mecânica:
+   - Migration adiciona `instagram_accounts.metrics_backfilled_at timestamptz`
+     (null = pendente). Contas novas nascem null; contas existentes recebem
+     backfill também (a coluna nasce null para todas — o backfill é idempotente
+     e é exatamente o que popula o histórico que o objetivo 2 quer).
+   - A cada tick, ANTES do sync normal de uma conta com `metrics_backfilled_at`
+     null, o cron busca os ~90 dias de série diária (chunks de 30d,
+     `fetchAccountDaily`) e upserta as linhas; ao completar sem erro, grava o
+     timestamp. Falha → fica null e o próximo tick retenta (retry natural do
+     cron, sem fila nova). Status observável pela própria coluna.
+   - `instagram_follower_history` ganha o que `follower_count` diário oferecer
+     (só ~30 dias — backfill parcial é esperado e aceito).
+4. **Fechamento de mês (para o close-to-close de seguidores):** o "close" de um
+   mês é o `followers_count` da linha do ÚLTIMO DIA do mês. "Cobertura completa"
+   de uma métrica num mês = todos os dias do mês com `*_day` não-null. São essas
+   as definições que os fallbacks de 4.3 usam — nunca "última linha disponível
+   dentro do mês", que foi exatamente o que produziu o "7" da Healing Hands.
 
 ### 4.3 Relatório de blocos (report-docs)
 
@@ -131,7 +168,7 @@ sem prev comparável → prev = null; sem valor → card se omite):
 | KPI | Fonte primária (geração) | Fallback | Sem dado |
 |---|---|---|---|
 | `reach`, `views`, `saves`, `profile_views`, `website_clicks`, `accounts_engaged` | Graph ao vivo, janela do mês (módulo 4.1) | soma das colunas `*_day` do nosso snapshot quando o mês tem cobertura completa de dias | card omitido |
-| `followers_gained` | `follows_and_unfollows` net do mês | fechamento-a-fechamento de snapshots **somente com cobertura completa** (snapshot do fim do mês anterior E do fim do mês existente); o fallback atual de history parcial MORRE | card omitido |
+| `followers_gained` | `follows_and_unfollows` net do mês | fechamento-a-fechamento **somente com os dois closes** (linha do último dia do mês anterior E do mês do relatório, definição §4.2.4); o fallback atual de history parcial MORRE | card omitido |
 | `followers_total` | como hoje (close do mês; fallback último ponto do history do mês) | — | — |
 | `engagement_rate` | `accounts_engaged ÷ reach` da conta no mês (×100) | mesma conta via colunas `*_day` | card omitido |
 | `posts_count` | como hoje | — | — |
@@ -139,8 +176,9 @@ sem prev comparável → prev = null; sem valor → card se omite):
 - **prev:** mesma métrica na janela do mês anterior pela mesma cadeia. Mês anterior
   fora da retenção e sem histórico próprio → prev null (o widget já mostra só o
   valor; comportamento herdado do accountViews atual).
-- **Cobertura completa** (para fallback de soma diária): todos os dias do mês com
-  linha não-null da métrica. Cobertura parcial = null; nunca extrapolar.
+- **Cobertura completa** (para fallback de soma diária): definição §4.2.4 —
+  todos os dias do mês com `*_day` não-null da métrica. Parcial = null; nunca
+  extrapolar.
 - Os cards estampam o período ("01–31 de agosto") no widget/print. A taxa de
   engajamento ganha tooltip com a fórmula ("contas engajadas ÷ alcance — análise
   Mesaas").
@@ -149,26 +187,49 @@ sem prev comparável → prev = null; sem valor → card se omite):
 - **Narrativa da IA** (`ai-input.ts`): recebe os KPIs novos + a flag de outlier
   (abaixo), para parar de tratar quedas pós-viral como fracasso de conteúdo.
 - **Sinalização de outlier:** quando um único post do mês anterior responde por
-  >50% da soma de views ou reach por post daquele mês, o snapshot marca
-  `prev_outlier: true` no breakdown; a IA e (fase de UI) o widget usam isso para
-  contextualizar comparações. (Aritmética por post, já disponível; custo baixo.)
+  >50% da soma de views ou reach por post daquele mês, o snapshot ganha o campo
+  novo **`comparison: { prev_outlier: boolean; prev_top_share: number } | null`**
+  no `ReportDocSnapshot`. Campo OPCIONAL lido com guard (mesmo precedente do
+  campo `views` dos top posts: "snapshots antigos não têm o campo"), então a
+  `version: 1` não muda. Requisitos de dado: a query `prevMonthPosts` de
+  `snapshot-source.ts` passa a selecionar também `impressions` (hoje só traz
+  reach/saved/likes/comments/shares — sem isso o teste por views não roda), e
+  `ai-input.ts` ganha o campo no contrato para a narrativa contextualizar a
+  comparação. Widget de UI usa na fase de UI.
 
 ### 4.4 Analytics do CRM
 
+Caminho ÚNICO do CRM: endpoint novo **`GET /account-metrics/:clientId?start&end`**
+em `instagram-analytics`, no padrão dos endpoints existentes da function —
+`verifyClientOwnership(clientId, contaId)` primeiro, feature gate, depois o
+módulo 4.1 (ao vivo) com fallback nas colunas `*_day` (a function roda com
+service role). O frontend NUNCA lê `instagram_account_metrics_daily` direto:
+a tabela tem RLS service-role-only (migration `20260526000000`) e continua
+assim — leitura direta seria negada, e abrir a RLS criaria um segundo caminho
+de autorização à toa.
+
 `apps/crm/src/services/analytics.ts` + página: KPIs de conta (followers delta,
-reach, impressions/views) passam a vir das colunas `*_day`/history corrigidas ou de
-um endpoint de range novo em `instagram-analytics` (`GET /account-metrics?start&end`)
-que usa o módulo 4.1. Somas por post saem dos KPIs de conta e ficam nas análises de
-conteúdo. Colunas lidas (`reach_28d`, `impressions_28d`, `profile_views_28d`) migram
-para as novas com rótulos corretos.
+reach, views) migram para esse endpoint. Somas por post saem dos KPIs de conta
+e ficam nas análises de conteúdo. As leituras atuais de `reach_28d`,
+`impressions_28d`, `profile_views_28d` somem junto.
 
 ### 4.5 Hub
 
-`instagram-report-generator-v2` (relatório mensal do Hub) migra os mesmos KPIs para
-o módulo 4.1 com a mesma cadeia de fallback — de preferência passando a consumir
-`_shared/report-docs/kpis.ts` para uma fonte única de verdade, se a divergência de
-shape for pequena (avaliar no plano; se for grande, replicar a cadeia com testes de
-paridade entre os dois).
+O Hub serve DOIS produtos de relatório (`hub-report-docs/handlers.ts` lista a
+união): os `report_documents` (blocos, §4.3) e os `analytics_reports` legados
+gerados por `report-worker` → `instagram-report-generator-v2`. Decisão
+explícita, não "avaliar no plano":
+
+- **Relatórios novos do Hub = `report_documents`** e herdam a paridade do §4.3
+  automaticamente.
+- **O gerador legado NÃO é migrado nesta iniciativa.** O pipeline mensal legado
+  está morto em prod (dois defeitos conhecidos, sem correção) e não produz
+  relatórios novos; migrar seu contrato `KpiValue`/deltas seria retrabalho num
+  caminho que não roda. Os `analytics_reports` prontos continuam servidos como
+  hoje (arquivos congelados).
+- Se o pipeline legado for revivido um dia, a revivificação DEVE consumir o
+  módulo 4.1 — fica registrado aqui como pré-condição, com a paridade §4.3 como
+  contrato.
 
 ## 5. Tratamento de erros
 
@@ -195,10 +256,12 @@ paridade entre os dois).
 
 ## 7. Rollout e impacto
 
-1. Ordem de deploy: migration (colunas novas) → módulo compartilhado + functions
-   (`instagram-sync-cron`, `instagram-integration` backfill, `instagram-analytics`,
-   `report-docs`, `instagram-report-generator-v2`, com `--no-verify-jwt` onde
-   aplicável) → frontend CRM/Hub.
+1. Ordem de deploy: migration (colunas novas + `metrics_backfilled_at`) →
+   módulo compartilhado + functions (`instagram-sync-cron` com backfill,
+   `instagram-analytics`, `report-docs`, com `--no-verify-jwt` onde aplicável)
+   → frontend CRM/Hub. O primeiro tick do cron após o deploy backfilla TODAS as
+   contas existentes (coluna nasce null) — esperar rate limit espalhado por
+   alguns ticks é aceitável e deve ser observado.
 2. **Relatórios congelados não mudam** (data_snapshot é imutável por design).
    "Atualizar dados"/regenerar aplica as bases novas. Comunicar ao usuário que
    números regenerados mudam de base — é o objetivo.
