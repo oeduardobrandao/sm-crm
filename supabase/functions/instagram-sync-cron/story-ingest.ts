@@ -199,6 +199,7 @@ export async function ingestStories(opts: StoryIngestOpts): Promise<StoryDailyAg
       });
     if (error) {
       console.error(`[IG-SYNC-CRON] story-ingest: upsert failed for account ${accountId}:`, error);
+      return [];
     }
   }
 

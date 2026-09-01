@@ -277,3 +277,32 @@ Deno.test("ingestStories does not call cacheThumb for already-stable thumbnail U
   const rows = upserted[0] as any[];
   assertEquals(rows[0].thumbnail_url, stableUrl);
 });
+
+Deno.test("ingestStories returns empty aggregates when per-story upsert fails", async () => {
+  const storyId = "17900000000200";
+  const fetchFn = mockFetch({
+    "me/stories": {
+      data: [{ id: storyId, media_type: "IMAGE", thumbnail_url: null, timestamp: "2026-09-01T10:00:00+0000" }],
+    },
+    [`${storyId}/insights`]: {
+      data: [{ name: "reach", values: [{ value: 100 }] }],
+    },
+  });
+
+  // deno-lint-ignore no-explicit-any
+  const failDb: any = {
+    from: () => ({
+      upsert: () => ({ error: { message: "connection reset" } }),
+    }),
+  };
+
+  const result = await ingestStories({
+    fetchFn,
+    accountId: ACCOUNT_ID,
+    accessToken: "fake-token",
+    db: failDb,
+    cacheThumb: (_a, _b, url) => Promise.resolve(url),
+  });
+
+  assertEquals(result.length, 0);
+});
