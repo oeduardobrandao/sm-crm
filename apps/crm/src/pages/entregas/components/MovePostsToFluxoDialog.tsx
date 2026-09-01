@@ -192,6 +192,12 @@ export function MovePostsToFluxoDialog({
       qc.invalidateQueries({ queryKey: ['active-posts'] });
       qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', sourceWorkflowId] });
       qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', result.target_workflow_id] });
+      // The RPC can create/remap per-flow select options on the DESTINATION
+      // (never on the source). With the global 30s staleTime, a destination
+      // drawer opened moments before the move would reuse the cached option
+      // list and render the moved post's remapped value as "Vazio" -- prefix
+      // match covers every ['workflow-select-options', target, definitionId].
+      qc.invalidateQueries({ queryKey: ['workflow-select-options', result.target_workflow_id] });
       qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
       qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
       qc.invalidateQueries({ queryKey: ['workflow-cleared-cliente-counts'] });

@@ -781,6 +781,7 @@ describe('WorkflowDrawer mover para outro fluxo', () => {
     const onRefresh = vi.fn();
     const onOpenWorkflow = vi.fn();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
     renderDrawer(qc, { initialPostId: undefined, onClose, onRefresh, onOpenWorkflow });
 
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Selecionar Post A' }));
@@ -809,5 +810,9 @@ describe('WorkflowDrawer mover para outro fluxo', () => {
     await waitFor(() => expect(onOpenWorkflow).toHaveBeenCalledWith(77));
     expect(onClose).toHaveBeenCalled();
     expect(onRefresh).toHaveBeenCalled();
+    // The RPC can create/remap per-flow select options on the destination;
+    // with the app's 30s staleTime a recently-opened destination would
+    // otherwise render the remapped value as "Vazio" from a stale cache.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-select-options', 77] });
   });
 });
