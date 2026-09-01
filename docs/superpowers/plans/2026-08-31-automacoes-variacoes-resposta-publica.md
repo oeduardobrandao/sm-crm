@@ -314,7 +314,7 @@ Rode: `cat supabase/.temp/project-ref 2>/dev/null` (só para registro; NÃO faç
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20260901000001_ig_public_reply_variations.sql supabase/tests/entitlements/65_instagram_automations.sql
+git add supabase/migrations/20260901000013_ig_public_reply_variations.sql supabase/tests/entitlements/65_instagram_automations.sql
 git commit -m "feat(automacoes): schema de variações de resposta pública (public_replies + public_reply_text)"
 ```
 
