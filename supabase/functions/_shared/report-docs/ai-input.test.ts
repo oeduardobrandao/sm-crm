@@ -4,13 +4,17 @@ import type { ReportDocSnapshot } from "./snapshot.ts";
 
 const snap: ReportDocSnapshot = {
   version: 1,
-  period: { month: "2026-07", label: "Julho de 2026", start: "2026-07-01T00:00:00.000Z", endExclusive: "2026-08-01T00:00:00.000Z" },
+  period: {
+    month: "2026-07", label: "Julho de 2026", start: "2026-07-01T00:00:00.000Z",
+    endExclusive: "2026-08-01T00:00:00.000Z", effectiveEnd: "2026-07-31T00:00:00.000Z",
+  },
   account: { handle: "dra.x", specialty: "Dermato" },
   branding: { workspace_name: "DK", logo_url: null, splash_url: null, accent_color: "#000" },
   kpis: {
     followers_gained: { value: 10, unit: "count", prev: 5 },
     followers_total: { value: 1000, unit: "count", prev: null },
     reach: { value: 500, unit: "count", prev: null },
+    views: { value: 800, unit: "count", prev: null },
     engagement_rate: { value: 4.2, unit: "pct", prev: null },
     saves: { value: 3, unit: "count", prev: null },
     posts_count: { value: 7, unit: "count", prev: null },
@@ -18,8 +22,8 @@ const snap: ReportDocSnapshot = {
     website_clicks: { value: null, unit: "count", prev: null },
   },
   follower_trend: [{ date: "2026-07-01", count: 990 }],
-  content_breakdown: { reels: { count: 3, avg_reach: 100, avg_engagement: 10 } },
-  top_posts: [{ type: "reel", reach: 100, likes: 5, comments: 1, saves: 2, shares: 3, caption_preview: "c", date: null, permalink: null, thumbnail_url: "https://x/y.jpg" }],
+  content_breakdown: { reels: { count: 3, avg_reach: 100, avg_engagement: 10, avg_views: 150 } },
+  top_posts: [{ type: "reel", views: 150, reach: 100, likes: 5, comments: 1, saves: 2, shares: 3, caption_preview: "c", date: null, permalink: null, thumbnail_url: "https://x/y.jpg" }],
   audience: null,
   best_times: [],
   tags_performance: [],
@@ -35,4 +39,32 @@ Deno.test("snapshotToReportData traduz período, kpis e posts sem thumbnails", (
   assert(!("profile_views" in rd.kpis));
   assertEquals(rd.top_posts[0].engagement, 11); // likes+comments+saves+shares
   assert(!("thumbnail_base64" in rd.top_posts[0]));
+});
+
+Deno.test("snapshotToReportData: sem comparison no snapshot (ausente ou null) -> comparison null no payload", () => {
+  assertEquals(snapshotToReportData(snap).comparison, null);
+  assertEquals(snapshotToReportData({ ...snap, comparison: null }).comparison, null);
+});
+
+Deno.test("snapshotToReportData: comparison sem outlier -> presente, SEM instrução (note ausente)", () => {
+  const rd = snapshotToReportData({
+    ...snap,
+    comparison: { prev_outlier: false, prev_top_share: 0.3 },
+  });
+  assertEquals(rd.comparison?.prev_outlier, false);
+  assertEquals(rd.comparison?.prev_top_share, 0.3);
+  assert(!("note" in (rd.comparison ?? {})));
+});
+
+Deno.test("snapshotToReportData: outlier true -> comparison ganha instrução pt-BR com o percentual", () => {
+  const rd = snapshotToReportData({
+    ...snap,
+    comparison: { prev_outlier: true, prev_top_share: 0.734 },
+  });
+  assertEquals(rd.comparison?.prev_outlier, true);
+  assertEquals(rd.comparison?.prev_top_share, 0.734);
+  assert(rd.comparison?.note?.includes("73%"));
+  assert(rd.comparison?.note?.includes("fora da curva"));
+  // Regra da casa: nunca em-dash em texto de usuário.
+  assert(!rd.comparison?.note?.includes("—"));
 });

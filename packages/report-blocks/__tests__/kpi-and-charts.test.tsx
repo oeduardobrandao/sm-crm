@@ -15,7 +15,7 @@ describe('KpiCardBlock', () => {
         mode="view"
       />,
     );
-    expect(screen.getByText('Alcance')).toBeInTheDocument();
+    expect(screen.getByText('Alcance acumulado')).toBeInTheDocument();
     expect(screen.getByText('45.200')).toBeInTheDocument();
     expect(screen.getByText('+13,6%')).toBeInTheDocument(); // (45200-39800)/39800
   });
@@ -109,6 +109,90 @@ describe('KpiCardBlock', () => {
       />,
     );
     expect(screen.queryByText('Visualizações')).not.toBeInTheDocument();
+  });
+
+  it('estampa o período completo quando effectiveEnd cobre o mês inteiro', () => {
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'k1', type: 'kpi_reach', size: 'third' }])}
+        snapshot={makeSnapshotFixture()} // effectiveEnd = 2026-07-31, último dia de julho
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('01–31 de julho')).toBeInTheDocument();
+  });
+
+  it('estampa o período parcial quando effectiveEnd não cobre o mês inteiro', () => {
+    const snap = makeSnapshotFixture({
+      period: {
+        month: '2026-08',
+        label: 'Agosto de 2026',
+        start: '2026-08-01T00:00:00.000Z',
+        endExclusive: '2026-09-01T00:00:00.000Z',
+        effectiveEnd: '2026-08-15T00:00:00.000Z',
+      },
+    });
+    render(
+      <BlockRenderer
+        layout={l([{ id: 'k1', type: 'kpi_reach', size: 'third' }])}
+        snapshot={snap}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('01–15 de agosto · parcial')).toBeInTheDocument();
+  });
+
+  it('snapshot antigo sem effectiveEnd: nenhuma estampa de período (guard)', () => {
+    const snap = makeSnapshotFixture();
+    delete (snap.period as Partial<typeof snap.period>).effectiveEnd;
+    const { container } = render(
+      <BlockRenderer
+        layout={l([{ id: 'k1', type: 'kpi_reach', size: 'third' }])}
+        snapshot={snap}
+        mode="view"
+      />,
+    );
+    expect(container.querySelector('.rb-kpi-period')).toBeNull();
+  });
+
+  it('kpi_engagement_rate traz tooltip explicando a fórmula', () => {
+    const { container } = render(
+      <BlockRenderer
+        layout={l([{ id: 'k1', type: 'kpi_engagement_rate', size: 'third' }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    const card = container.querySelector('.rb-kpi') as HTMLElement;
+    expect(card.getAttribute('title')).toBe(
+      'Contas engajadas ÷ alcance acumulado · análise Mesaas',
+    );
+  });
+
+  it('kpi_reach traz tooltip explicando a diferença do app do Instagram', () => {
+    const { container } = render(
+      <BlockRenderer
+        layout={l([{ id: 'k1', type: 'kpi_reach', size: 'third' }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    const card = container.querySelector('.rb-kpi') as HTMLElement;
+    expect(card.getAttribute('title')).toBe(
+      'Soma do alcance diário do mês. O app do Instagram mostra visitantes únicos, um número menor.',
+    );
+  });
+
+  it('cards sem tooltip dedicado não ganham title', () => {
+    const { container } = render(
+      <BlockRenderer
+        layout={l([{ id: 'k1', type: 'kpi_views', size: 'third' }])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    const card = container.querySelector('.rb-kpi') as HTMLElement;
+    expect(card.hasAttribute('title')).toBe(false);
   });
 });
 
