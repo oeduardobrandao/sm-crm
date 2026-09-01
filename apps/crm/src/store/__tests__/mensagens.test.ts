@@ -84,7 +84,7 @@ describe('store/mensagens', () => {
     expect(rows[0].cliente_nome).toBe('ACME');
   });
 
-  it('getPostChipPreview selects the post with its fluxo and flattens the embed', async () => {
+  it('getPostChipPreview selects the post with its fluxo (left embed) and flattens it', async () => {
     const maybeSingle = vi.fn().mockResolvedValue({
       data: {
         id: 7,
@@ -102,8 +102,11 @@ describe('store/mensagens', () => {
     mockFrom.mockReturnValue({ select });
     const preview = await getPostChipPreview(7);
     expect(mockFrom).toHaveBeenCalledWith('workflow_posts');
+    // Left embed (workflows(titulo), not workflows!inner): an avulso post has no
+    // workflow row at all, so an inner join would silently drop it instead of
+    // returning it with a null workflow_titulo (see the test below).
     expect(select).toHaveBeenCalledWith(
-      'id, titulo, tipo, status, scheduled_at, workflow_id, workflows!inner(titulo)',
+      'id, titulo, tipo, status, scheduled_at, workflow_id, workflows(titulo)',
     );
     expect(eq).toHaveBeenCalledWith('id', 7);
     expect(preview).toEqual({
@@ -114,6 +117,35 @@ describe('store/mensagens', () => {
       scheduled_at: null,
       workflow_id: 3,
       workflow_titulo: 'Fluxo de agosto',
+    });
+  });
+
+  it('getPostChipPreview maps an avulso post (no workflow) to a null workflow_id/workflow_titulo', async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: 8,
+        titulo: 'Post avulso',
+        tipo: 'feed',
+        status: 'rascunho',
+        scheduled_at: null,
+        workflow_id: null,
+        workflows: null,
+      },
+      error: null,
+    });
+    const eq = vi.fn().mockReturnValue({ maybeSingle });
+    mockFrom.mockReturnValue({ select: vi.fn().mockReturnValue({ eq }) });
+
+    const preview = await getPostChipPreview(8);
+
+    expect(preview).toEqual({
+      id: 8,
+      titulo: 'Post avulso',
+      tipo: 'feed',
+      status: 'rascunho',
+      scheduled_at: null,
+      workflow_id: null,
+      workflow_titulo: null,
     });
   });
 

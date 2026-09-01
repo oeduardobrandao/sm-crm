@@ -78,7 +78,8 @@ export function useMensagensData(clienteId: number | null) {
       content,
     }: {
       postId: number;
-      workflowId: number;
+      /** NULL = post avulso (fora de fluxo); replyToPostApproval ignores it. */
+      workflowId: number | null;
       content: string;
     }) => replyToPostApproval(postId, workflowId, content),
     onSuccess: invalidateFeed,

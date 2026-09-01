@@ -1,7 +1,7 @@
 // TikTok scheduling validation matrix + Content Posting API payload builders.
 // Mirrors the STRUCTURE of instagram-publish-utils.ts::validateForScheduling (load post ->
-// load linked media -> load workflow -> load account -> accumulate PT-BR errors ->
-// return { ok, errors, ... }).
+// load linked media -> load account (via the post's own cliente_id) -> accumulate PT-BR
+// errors -> return { ok, errors, ... }).
 //
 // Post-type -> TikTok content-type mapping (design doc "Post-type mapping & validation"):
 //   tipo 'reels'      -> video direct post   (POST /v2/post/publish/video/init/)
@@ -207,7 +207,7 @@ export async function validateForTikTokScheduling(
   const { data: post, error: postError } = await db
     .from("workflow_posts")
     .select(
-      "id, platform, tipo, tiktok_caption, tiktok_title, tiktok_settings, ig_caption, scheduled_at, workflow_id",
+      "id, platform, tipo, tiktok_caption, tiktok_title, tiktok_settings, ig_caption, scheduled_at, workflow_id, cliente_id",
     )
     .eq("id", postId)
     .maybeSingle();
@@ -252,20 +252,10 @@ export async function validateForTikTokScheduling(
   const settings: TikTokSettings = post.tiktok_settings ?? {};
   validatePrivacyLevel(errors, settings);
 
-  const { data: workflow, error: workflowError } = await db
-    .from("workflows")
-    .select("cliente_id")
-    .eq("id", post.workflow_id)
-    .maybeSingle();
-  if (workflowError) {
-    throw new Error(`validateForTikTokScheduling: workflows read failed: ${workflowError.message}`);
-  }
-  if (!workflow) return { ok: false, errors: [...errors, "Workflow não encontrado."] };
-
   const { data: account, error: accountError } = await db
     .from("tiktok_accounts")
     .select("id, encrypted_access_token, encrypted_refresh_token, tiktok_open_id, authorization_status")
-    .eq("client_id", workflow.cliente_id)
+    .eq("client_id", post.cliente_id)
     .maybeSingle();
   if (accountError) {
     throw new Error(`validateForTikTokScheduling: tiktok_accounts read failed: ${accountError.message}`);

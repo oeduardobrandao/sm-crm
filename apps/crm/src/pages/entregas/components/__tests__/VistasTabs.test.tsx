@@ -69,8 +69,8 @@ describe('VistasTabs', () => {
   it('saves a new vista from the + Nova vista popover', () => {
     render(<VistasTabs contaId={CONTA} currentQuery="mode=publicacoes" onApply={vi.fn()} />);
 
-    fireEvent.click(screen.getByText('Nova vista'));
-    fireEvent.change(screen.getByPlaceholderText('Nome da vista'), {
+    fireEvent.click(screen.getByText('Nova visualização'));
+    fireEvent.change(screen.getByPlaceholderText('Nome da visualização'), {
       target: { value: 'Minha vista' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
@@ -95,7 +95,7 @@ describe('VistasTabs', () => {
     seed([{ name: 'Viva', query: 'view=list' }]);
     render(<VistasTabs contaId={CONTA} currentQuery="view=list&prazo=hoje" onApply={vi.fn()} />);
 
-    fireEvent.click(screen.getByLabelText('Opções da vista Viva'));
+    fireEvent.click(screen.getByLabelText('Opções da visualização Viva'));
     fireEvent.click(screen.getByText('Atualizar com estado atual'));
 
     expect(stored()).toEqual([{ name: 'Viva', query: 'view=list&prazo=hoje' }]);
@@ -105,7 +105,7 @@ describe('VistasTabs', () => {
     seed([{ name: 'Antiga', query: 'view=list' }]);
     render(<VistasTabs contaId={CONTA} currentQuery="" onApply={vi.fn()} />);
 
-    fireEvent.click(screen.getByLabelText('Opções da vista Antiga'));
+    fireEvent.click(screen.getByLabelText('Opções da visualização Antiga'));
     fireEvent.click(screen.getByText('Renomear'));
     const input = screen.getByDisplayValue('Antiga');
     fireEvent.change(input, { target: { value: 'Nova' } });
@@ -135,7 +135,7 @@ describe('VistasTabs', () => {
     expect(screen.getAllByText('Alvo')).toHaveLength(1);
 
     // And deleting it removes exactly that one entry
-    fireEvent.click(screen.getByLabelText('Opções da vista Alvo'));
+    fireEvent.click(screen.getByLabelText('Opções da visualização Alvo'));
     fireEvent.click(screen.getByText('Excluir'));
     expect(stored()).toEqual([]);
   });
@@ -144,7 +144,7 @@ describe('VistasTabs', () => {
     seed([{ name: 'Velha', query: 'view=chart' }]);
     render(<VistasTabs contaId={CONTA} currentQuery="" onApply={vi.fn()} />);
 
-    fireEvent.click(screen.getByLabelText('Opções da vista Velha'));
+    fireEvent.click(screen.getByLabelText('Opções da visualização Velha'));
     fireEvent.click(screen.getByText('Excluir'));
 
     expect(stored()).toEqual([]);
@@ -155,6 +155,6 @@ describe('VistasTabs', () => {
     localStorage.setItem(KEY, '{not json');
     render(<VistasTabs contaId={CONTA} currentQuery="" onApply={vi.fn()} />);
     expect(screen.getByText('Padrão')).toBeInTheDocument();
-    expect(screen.getByText('Nova vista')).toBeInTheDocument();
+    expect(screen.getByText('Nova visualização')).toBeInTheDocument();
   });
 });

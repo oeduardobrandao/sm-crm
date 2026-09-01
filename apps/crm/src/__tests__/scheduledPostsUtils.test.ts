@@ -28,6 +28,7 @@ function mk(
     publish_error: null,
     ordem: 0,
     responsavel_id: null,
+    board_ordem: null,
     ...partial,
   };
 }

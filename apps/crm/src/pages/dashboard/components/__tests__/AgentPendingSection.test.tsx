@@ -172,4 +172,24 @@ describe('AgentPendingSection', () => {
     const link = await screen.findByRole('link', { name: /Carrossel amamentação/ });
     expect(link).toHaveAttribute('href', '/entregas?drawer=5&post=31');
   });
+
+  // Same universal ?post= form every other post link producer uses for an avulso.
+  it('links a pending post avulso (workflow_id null) via the universal ?post= form', async () => {
+    getMembrosMock.mockResolvedValue([{ id: 7, nome: 'Ana', crm_user_id: 'user-1' }]);
+    getPostsMock.mockResolvedValue([
+      {
+        id: 42,
+        workflow_id: null,
+        titulo: 'Post fora de fluxo',
+        status: 'rascunho',
+        workflow_titulo: null,
+        cliente_nome: 'Dra. Marina',
+      },
+    ]);
+
+    renderSection();
+
+    const link = await screen.findByRole('link', { name: /Post fora de fluxo/ });
+    expect(link).toHaveAttribute('href', '/entregas?post=42');
+  });
 });

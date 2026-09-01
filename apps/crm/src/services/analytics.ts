@@ -98,7 +98,9 @@ export interface AnalyticsOverview {
     followers: KpiDelta;
     reach: KpiDelta;
     impressions: KpiDelta;
-    profileViews: KpiDelta;
+    // profileViews used to read the (bugged) `profile_views_28d` account
+    // column -- removed in Task 13; account-metrics.current.profile_views /
+    // .accounts_engaged replace it in the Analytics KPI path.
     websiteClicks: KpiDelta;
     engagement: KpiDelta;
     savesRate: KpiDelta;
@@ -611,7 +613,6 @@ export async function getAnalyticsOverview(
         cp.reduce((s: number, p: any) => s + (p.impressions || 0), 0),
         pp.reduce((s: number, p: any) => s + (p.impressions || 0), 0),
       ),
-      profileViews: makeDelta(account.profile_views_28d || 0, 0), // No previous period data stored
       websiteClicks: makeDelta(account.website_clicks_28d || 0, 0),
       engagement: makeDelta(calcEngagement(cp), calcEngagement(pp)),
       savesRate: makeDelta(calcSavesRate(cp), calcSavesRate(pp)),
@@ -646,6 +647,66 @@ export async function getAccountViews(
   }>(`${EDGE_URL}/views/${clientId}?${params}`);
   if (!res?.data) return null;
   return { ...res.data, fetchedAt: res.fetchedAt };
+}
+
+// ---- Account-level KPI parity with the Instagram app (Task 13, ----
+// .superpowers/sdd/2026-08-31-report-app-parity) — replaces the account
+// KPI path that used to read reach_28d/impressions_28d/profile_views_28d
+// directly off the instagram_accounts row (see getAnalyticsOverview above,
+// still used for per-post derived KPIs like engagement/savesRate).
+
+export interface FollowsBreakdown {
+  follows: number;
+  unfollows: number;
+  net: number;
+}
+
+export interface FollowersWindow {
+  start: number;
+  end: number;
+  delta: number;
+}
+
+export type AccountMetricSource = 'live' | 'snapshot' | null;
+
+export interface AccountMetricsWindow {
+  reach: number | null;
+  views: number | null;
+  saves: number | null;
+  accounts_engaged: number | null;
+  profile_views: number | null;
+  website_clicks: number | null;
+  follows_and_unfollows: FollowsBreakdown | null;
+  followers: FollowersWindow | null;
+}
+
+export interface AccountMetricsResponse {
+  period: { start: string; end: string; effectiveEnd: string };
+  current: AccountMetricsWindow;
+  previous: AccountMetricsWindow | null;
+  source: Record<string, AccountMetricSource>;
+}
+
+// GET /account-metrics/:clientId?start&end (end INCLUSIVE) — arbitrary date
+// range with a same-length `previous` window, live Graph data when the
+// range is inside the 90-day retention window, monthly/daily snapshot
+// fallback otherwise. Throws on a non-200 response (unlike fetchEdge, which
+// swallows failures) so callers can surface a real error.
+export async function getAccountMetrics(
+  clientId: number,
+  start: string,
+  end: string,
+  opts?: { refresh?: boolean },
+): Promise<AccountMetricsResponse> {
+  const headers = await getAuthHeaders();
+  const params = new URLSearchParams({ start, end });
+  if (opts?.refresh) params.set('refresh', '1');
+  const res = await fetch(`${EDGE_URL}/account-metrics/${clientId}?${params}`, { headers });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || `Error ${res.status}`);
+  }
+  return res.json();
 }
 
 export async function getPostsAnalytics(

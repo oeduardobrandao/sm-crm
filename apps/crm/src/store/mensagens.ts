@@ -100,15 +100,19 @@ export interface PostChipPreview {
   tipo: 'feed' | 'reels' | 'stories' | 'carrossel';
   status: string;
   scheduled_at: string | null;
-  workflow_id: number;
+  /** NULL = post avulso (fora de fluxo). */
+  workflow_id: number | null;
   workflow_titulo: string | null;
 }
 
-/** Lightweight post details for the hover preview on linked-post chips. */
+/** Lightweight post details for the hover preview on linked-post chips. A left
+ * embed (not `workflows!inner`): an avulso post has no workflow row at all, so
+ * an inner join would silently drop it from the result instead of returning it
+ * with a null workflow_titulo. */
 export async function getPostChipPreview(postId: number): Promise<PostChipPreview | null> {
   const { data, error } = await supabase
     .from('workflow_posts')
-    .select('id, titulo, tipo, status, scheduled_at, workflow_id, workflows!inner(titulo)')
+    .select('id, titulo, tipo, status, scheduled_at, workflow_id, workflows(titulo)')
     .eq('id', postId)
     .maybeSingle();
   if (error) throw error;
@@ -120,7 +124,7 @@ export async function getPostChipPreview(postId: number): Promise<PostChipPrevie
     tipo: data.tipo,
     status: data.status,
     scheduled_at: data.scheduled_at ?? null,
-    workflow_id: data.workflow_id,
+    workflow_id: data.workflow_id ?? null,
     workflow_titulo: wf?.titulo ?? null,
   };
 }

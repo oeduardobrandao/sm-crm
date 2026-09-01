@@ -11,6 +11,7 @@ export function featureForPath(method: string, path: string): string | null {
     // tag *mutations* are gated; reads are free
     return method === "GET" ? null : "feature_post_tagging";
   }
+  if (/^\/account-metrics\//.test(path)) return "feature_instagram";
   // overview / posts-analytics / follower-history / portfolio => base
   return "feature_instagram";
 }

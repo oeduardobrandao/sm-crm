@@ -7,14 +7,11 @@ import { GripVertical, Lock, Folder } from 'lucide-react';
 import { MonthGrid } from '@/components/ui/month-grid';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import type { ClientePost } from '@/store/posts';
-import { TIPO_LABELS, TIPO_COLORS } from '../postLabels';
+import { TIPO_LABELS, TIPO_COLORS, LOCKED_STATUSES, LOCKED_TOOLTIPS } from '../postLabels';
 
-export const LOCKED_STATUSES = new Set(['agendado', 'postado', 'falha_publicacao']);
-export const LOCKED_TOOLTIPS: Record<string, string> = {
-  agendado: 'Post já agendado no Instagram — cancele o agendamento para mover',
-  postado: 'Post já publicado',
-  falha_publicacao: 'Post com falha de publicação — resolva o erro antes de reagendar',
-};
+// Re-exported for existing consumers (UnscheduledPostsSidebar, WorkflowCalendarView) —
+// postLabels.ts is the single source now, shared with the Publicações kanban's drag guard.
+export { LOCKED_STATUSES, LOCKED_TOOLTIPS };
 
 interface CalendarGridProps {
   currentMonth: Date;
@@ -66,12 +63,17 @@ function PostPill({
 
   const time = post.scheduled_at ? format(parseISO(post.scheduled_at), 'HH:mm') : '';
   const titulo = post.titulo || 'Post sem título';
+  // A post avulso has no workflow_titulo to show -- 'Avulso' fills every slot that
+  // would otherwise render blank next to the Folder/workflow affordance.
+  const isAvulso = post.workflow_id === null;
+  const workflowLabel = post.workflow_titulo ?? 'Avulso';
+  const foreignSuffix = isAvulso ? ' (avulso)' : !isCurrentWorkflow ? ' (outro workflow)' : '';
   // The dash carries tipo; the written tipo label sits right beside it, so colour is never
   // the only channel (feed/carrossel sit on the red/green axis). Ownership moved to the card
   // surface + the workflow name, which says *whose* it is instead of merely "not yours".
   const tooltip = isLocked
     ? LOCKED_TOOLTIPS[post.status] || ''
-    : `${TIPO_LABELS[post.tipo]} · ${time} · ${post.workflow_titulo}${!isCurrentWorkflow ? ' (outro workflow)' : ''}`;
+    : `${TIPO_LABELS[post.tipo]} · ${time} · ${workflowLabel}${foreignSuffix}`;
 
   return (
     <div
@@ -80,7 +82,7 @@ function PostPill({
       tabIndex={0}
       aria-pressed={isSelected}
       aria-label={`${TIPO_LABELS[post.tipo]} — ${titulo}${time ? ` — ${time}` : ''}${
-        !isCurrentWorkflow ? ` — workflow ${post.workflow_titulo}` : ''
+        !isCurrentWorkflow ? ` — workflow ${workflowLabel}` : ''
       }`}
       className={`calendar-post-card${isSelected ? ' selected' : ''}${
         isCurrentWorkflow ? '' : ' foreign'
@@ -123,7 +125,7 @@ function PostPill({
       {!isCurrentWorkflow && (
         <div className="post-card-workflow">
           <Folder className="h-2.5 w-2.5" aria-hidden="true" />
-          <span className="post-card-workflow-name">{post.workflow_titulo}</span>
+          <span className="post-card-workflow-name">{workflowLabel}</span>
         </div>
       )}
     </div>
@@ -168,7 +170,7 @@ function DayPostsPopover({
                   onSelectPost(post);
                   setOpen(false);
                 }}
-                title={isForeign ? `Workflow: ${post.workflow_titulo}` : undefined}
+                title={isForeign ? `Workflow: ${post.workflow_titulo ?? 'Avulso'}` : undefined}
               >
                 <span
                   className="calendar-day-popover-dot"

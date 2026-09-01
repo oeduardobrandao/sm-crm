@@ -62,7 +62,7 @@ const CRON_NAME = "tiktok-publish-cron";
 
 interface ClaimedTikTokCronPost {
   post_id: number;
-  workflow_id: number;
+  workflow_id: number | null;
   tipo: string;
   scheduled_at: string;
   caption: string;

@@ -97,6 +97,10 @@ export function ComoFuncionaPanel({ onDismiss }: { onDismiss: () => void }) {
             <strong>Exceção:</strong> concluir uma etapa de aprovação quando existe outra mais
             adiante devolve os posts aprovados para Rascunho.
           </p>
+          <p className="ex-aside">
+            Um post também pode existir sem fluxo (publicação avulsa): ele anda só pelo trilho de
+            status, no quadro de Publicações.
+          </p>
         </article>
 
         {/* ── Automático vs manual ─ two columns, colour-coded */}

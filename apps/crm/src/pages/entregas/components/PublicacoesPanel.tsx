@@ -13,7 +13,7 @@ interface PublicacoesPanelProps {
   openableWorkflowIds: Set<number>;
   isLoading: boolean;
   selectedLabel: string | null;
-  onPostClick: (workflowId: number, postId: number) => void;
+  onPostClick: (post: ScheduledPost) => void;
   onStatusChange: () => void;
 }
 
@@ -24,6 +24,9 @@ function toWorkflowPost(p: ScheduledPost): WorkflowPost {
   return {
     id: p.id,
     workflow_id: p.workflow_id,
+    // Inert filler: ScheduleButton never reads cliente_id (see the comment
+    // above), it only exists here to satisfy WorkflowPost's shape.
+    cliente_id: p.cliente_id ?? 0,
     titulo: p.titulo,
     conteudo: null,
     conteudo_plain: '',
@@ -72,7 +75,10 @@ export function PublicacoesPanel({
           </div>
         ) : (
           posts.map((p) => {
-            const openable = openableWorkflowIds.has(p.workflow_id);
+            const workflowId = p.workflow_id;
+            // A post avulso (no workflow) is always openable -- only a wired post
+            // depends on its workflow still being an active, loaded card.
+            const openable = workflowId == null || openableWorkflowIds.has(workflowId);
             const igStatus = p.cliente_id != null ? (igStatuses.get(p.cliente_id) ?? null) : null;
             const hasInstagramAccount = igStatus != null;
             const safePermalink =
@@ -84,7 +90,7 @@ export function PublicacoesPanel({
                 key={p.id}
                 className="scheduled-item"
                 style={{ cursor: openable ? 'pointer' : 'default' }}
-                onClick={openable ? () => onPostClick(p.workflow_id, p.id) : undefined}
+                onClick={openable ? () => onPostClick(p) : undefined}
               >
                 <div className="item-top">
                   <span className="post-tipo-badge">{TIPO_LABELS[p.tipo]}</span>
@@ -143,7 +149,10 @@ export function PublicacoesPanel({
                       marginTop: 8,
                     }}
                   >
-                    Abrir no fluxo <ChevronRight className="h-3 w-3" />
+                    {/* Post avulso (workflowId null) has no fluxo to open into --
+                        rest of its avulso-specific visual treatment is Task 16. */}
+                    {workflowId != null ? 'Abrir no fluxo' : 'Abrir'}{' '}
+                    <ChevronRight className="h-3 w-3" />
                   </div>
                 )}
               </div>

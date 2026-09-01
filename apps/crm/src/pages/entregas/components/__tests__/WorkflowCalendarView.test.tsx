@@ -6,6 +6,11 @@ import { WorkflowCalendarView } from '../WorkflowCalendarView';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
+// CalendarPostDetailPanel's "Abrir publicação" button (avulso) needs useNavigate;
+// this view is never rendered inside a real Router in tests.
+const mockNavigate = vi.hoisted(() => vi.fn());
+vi.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }));
+
 // Mock dnd-kit so it doesn't require pointer/touch events in jsdom
 const dndHandlers = vi.hoisted(() => ({
   onDragEnd: undefined as ((e: unknown) => void) | undefined,
@@ -294,6 +299,29 @@ describe('WorkflowCalendarView', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Abrir post completo/ }));
     expect(onOpenPost).toHaveBeenCalledWith(2);
   });
+
+  it('shows "Abrir publicação" (not "Abrir post completo") for a post avulso, and it navigates to the universal deep link', async () => {
+    mockGetClientePosts.mockResolvedValue([
+      {
+        id: 55,
+        workflow_id: null,
+        titulo: 'Post Avulso Agendado',
+        tipo: 'feed',
+        status: 'rascunho',
+        scheduled_at: '2026-06-15T13:00:00.000Z',
+        ordem: 0,
+        workflow_titulo: null,
+      },
+    ]);
+    renderWithQuery(<WorkflowCalendarView {...baseProps} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Post Avulso Agendado/ }));
+
+    expect(screen.getByText('Post avulso, sem fluxo.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Abrir post completo/ })).toBeNull();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Abrir publicação/ }));
+    expect(mockNavigate).toHaveBeenCalledWith('/entregas?post=55');
+  });
 });
 
 const foreignPost = {
@@ -305,6 +333,17 @@ const foreignPost = {
   scheduled_at: '2026-07-20T13:00:00.000Z',
   ordem: 0,
   workflow_titulo: 'Agosto — Carrosséis',
+};
+
+const avulsoPost = {
+  id: 88,
+  workflow_id: null,
+  titulo: 'Post avulso',
+  tipo: 'feed' as const,
+  status: 'rascunho' as const,
+  scheduled_at: '2026-07-20T13:00:00.000Z',
+  ordem: 0,
+  workflow_titulo: null,
 };
 
 describe('cross-workflow rescheduling', () => {
@@ -333,6 +372,22 @@ describe('cross-workflow rescheduling', () => {
     });
 
     await waitFor(() => expect(toast.info).toHaveBeenCalled());
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('refuses to unschedule a post avulso with its own copy, distinct from the foreign-post one', async () => {
+    mockGetClientePosts.mockResolvedValue([avulsoPost]);
+    renderWithQuery(<WorkflowCalendarView {...baseProps} />);
+    await screen.findByTitle(/Avulso/);
+
+    dndHandlers.onDragEnd?.({
+      active: { id: 'post-88', data: { current: { post: avulsoPost } } },
+      over: { id: 'unscheduled-zone' },
+    });
+
+    await waitFor(() =>
+      expect(toast.info).toHaveBeenCalledWith('Post avulso: desagende pela publicação.'),
+    );
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 

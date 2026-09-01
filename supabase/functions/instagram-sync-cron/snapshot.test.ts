@@ -6,6 +6,7 @@ Deno.test("buildSnapshotRow builds correct row from account metrics", () => {
     followers_count: 4827,
     reach_28d: 45200,
     impressions_28d: 62000,
+    accounts_engaged_28d: 3100,
     profile_views_28d: 1200,
     website_clicks_28d: 89,
   });
@@ -13,6 +14,7 @@ Deno.test("buildSnapshotRow builds correct row from account metrics", () => {
   assertEquals(row.followers_count, 4827);
   assertEquals(row.reach_28d, 45200);
   assertEquals(row.impressions_28d, 62000);
+  assertEquals(row.accounts_engaged_28d, 3100);
   assertEquals(row.profile_views_28d, 1200);
   assertEquals(row.website_clicks_28d, 89);
   assertEquals(typeof row.snapshot_date, "string");
@@ -23,12 +25,14 @@ Deno.test("buildSnapshotRow handles null/undefined metrics gracefully", () => {
     followers_count: 100,
     reach_28d: null,
     impressions_28d: undefined,
+    accounts_engaged_28d: undefined,
     profile_views_28d: 0,
     website_clicks_28d: null,
   });
   assertEquals(row.followers_count, 100);
   assertEquals(row.reach_28d, null);
   assertEquals(row.impressions_28d, null);
+  assertEquals(row.accounts_engaged_28d, null);
   assertEquals(row.profile_views_28d, 0);
   assertEquals(row.website_clicks_28d, null);
 });

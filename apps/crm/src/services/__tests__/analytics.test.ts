@@ -7,6 +7,7 @@ vi.mock('../../lib/supabase');
 import * as supabaseModule from '../../lib/supabase';
 import {
   generateReport,
+  getAccountMetrics,
   getAnalyticsOverview,
   getClientRateBaseline,
   getPortfolioSummary,
@@ -623,5 +624,144 @@ describe('analytics service', () => {
     expect(posts[0].rates.like_rate).toBe(0.08);
     expect(posts[0].ig_score).not.toBeNull();
     expect(posts[1].ig_score).toBeNull(); // null sinks to bottom even desc
+  });
+});
+
+describe('getAccountMetrics', () => {
+  beforeEach(() => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentProfile({ conta_id: 'conta-1' });
+    fetchHarness.reset();
+    vi.stubGlobal('fetch', fetchHarness.fetchMock);
+  });
+
+  it('builds the account-metrics URL with start/end and forwards the session auth header', async () => {
+    fetchHarness.queueResponse({
+      ok: true,
+      status: 200,
+      json: {
+        period: { start: '2026-08-01', end: '2026-08-31', effectiveEnd: '2026-08-31' },
+        current: {
+          reach: 1000,
+          views: 2000,
+          saves: 30,
+          accounts_engaged: 400,
+          profile_views: 150,
+          website_clicks: 20,
+          follows_and_unfollows: { follows: 12, unfollows: 3, net: 9 },
+          followers: { start: 900, end: 909, delta: 9 },
+        },
+        previous: null,
+        source: { reach: 'live', views: 'live' },
+      },
+    });
+
+    await getAccountMetrics(42, '2026-08-01', '2026-08-31');
+
+    expect(fetchHarness.calls).toHaveLength(1);
+    const call = fetchHarness.calls[0];
+    const url = String(call.input);
+    expect(url).toContain('/instagram-analytics/account-metrics/42');
+    expect(url).toContain('start=2026-08-01');
+    expect(url).toContain('end=2026-08-31');
+    const headers = call.init?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer token-de-teste');
+  });
+
+  it('propagates the AccountMetricsResponse shape returned by the edge function', async () => {
+    const body = {
+      period: { start: '2026-08-01', end: '2026-08-31', effectiveEnd: '2026-08-31' },
+      current: {
+        reach: 1000,
+        views: 2000,
+        saves: 30,
+        accounts_engaged: 400,
+        profile_views: 150,
+        website_clicks: 20,
+        follows_and_unfollows: { follows: 12, unfollows: 3, net: 9 },
+        followers: { start: 900, end: 909, delta: 9 },
+      },
+      previous: {
+        reach: 800,
+        views: 1500,
+        saves: 20,
+        accounts_engaged: 350,
+        profile_views: 120,
+        website_clicks: 15,
+        follows_and_unfollows: { follows: 10, unfollows: 5, net: 5 },
+        followers: { start: 880, end: 900, delta: 20 },
+      },
+      source: { reach: 'live', views: 'snapshot' },
+    };
+    fetchHarness.queueResponse({ ok: true, status: 200, json: body });
+
+    const result = await getAccountMetrics(42, '2026-08-01', '2026-08-31');
+    expect(result).toEqual(body);
+  });
+
+  it('omits refresh from the URL by default', async () => {
+    fetchHarness.queueResponse({
+      ok: true,
+      status: 200,
+      json: {
+        period: { start: '2026-08-01', end: '2026-08-31', effectiveEnd: '2026-08-31' },
+        current: {
+          reach: null,
+          views: null,
+          saves: null,
+          accounts_engaged: null,
+          profile_views: null,
+          website_clicks: null,
+          follows_and_unfollows: null,
+          followers: null,
+        },
+        previous: null,
+        source: {},
+      },
+    });
+
+    await getAccountMetrics(42, '2026-08-01', '2026-08-31');
+
+    const url = String(fetchHarness.calls[0].input);
+    expect(url).not.toContain('refresh');
+  });
+
+  it('forwards refresh=1 when called with { refresh: true }, to bypass the 6h server cache', async () => {
+    fetchHarness.queueResponse({
+      ok: true,
+      status: 200,
+      json: {
+        period: { start: '2026-08-01', end: '2026-08-31', effectiveEnd: '2026-08-31' },
+        current: {
+          reach: null,
+          views: null,
+          saves: null,
+          accounts_engaged: null,
+          profile_views: null,
+          website_clicks: null,
+          follows_and_unfollows: null,
+          followers: null,
+        },
+        previous: null,
+        source: {},
+      },
+    });
+
+    await getAccountMetrics(42, '2026-08-01', '2026-08-31', { refresh: true });
+
+    const url = String(fetchHarness.calls[0].input);
+    expect(url).toContain('refresh=1');
+  });
+
+  it('throws when the edge function responds with a non-200 status', async () => {
+    fetchHarness.queueResponse({
+      ok: false,
+      status: 500,
+      json: { message: 'Falha ao carregar métricas de conta' },
+    });
+
+    await expect(getAccountMetrics(42, '2026-08-01', '2026-08-31')).rejects.toThrow(
+      'Falha ao carregar métricas de conta',
+    );
   });
 });

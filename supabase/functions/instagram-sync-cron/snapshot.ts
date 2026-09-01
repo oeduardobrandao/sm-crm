@@ -2,6 +2,7 @@ interface AccountMetrics {
   followers_count: number | null | undefined;
   reach_28d: number | null | undefined;
   impressions_28d: number | null | undefined;
+  accounts_engaged_28d?: number | null | undefined;
   profile_views_28d: number | null | undefined;
   website_clicks_28d: number | null | undefined;
 }
@@ -12,6 +13,7 @@ export interface SnapshotRow {
   followers_count: number | null;
   reach_28d: number | null;
   impressions_28d: number | null;
+  accounts_engaged_28d: number | null;
   profile_views_28d: number | null;
   website_clicks_28d: number | null;
 }
@@ -27,6 +29,7 @@ export function buildSnapshotRow(
     followers_count: metrics.followers_count ?? null,
     reach_28d: metrics.reach_28d ?? null,
     impressions_28d: metrics.impressions_28d ?? null,
+    accounts_engaged_28d: metrics.accounts_engaged_28d ?? null,
     profile_views_28d: metrics.profile_views_28d ?? null,
     website_clicks_28d: metrics.website_clicks_28d ?? null,
   };
