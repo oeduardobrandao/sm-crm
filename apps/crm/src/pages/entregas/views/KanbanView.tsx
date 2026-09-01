@@ -17,7 +17,19 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Plus } from 'lucide-react';
+import { ArrowUpDown, Check, GripVertical, Plus } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { sortCardsByPrazo } from '../etapaPrazo';
+import {
+  loadFluxosColumnSorts,
+  persistFluxosColumnSort,
+  type FluxosColumnSort,
+} from '../entregasPrefs';
 import { toast } from 'sonner';
 import {
   hasLaterApprovalEtapa,
@@ -38,6 +50,8 @@ import {
 } from '../components/WorkflowModals';
 
 interface KanbanViewBaseProps {
+  /** Persistencia das prefs de ordenacao por coluna; opcional para os testes. */
+  contaId?: string;
   cards: BoardCard[];
   onCardClick: (card: BoardCard) => void;
   onEditClick: (card: BoardCard) => void;
@@ -232,6 +246,7 @@ export function KanbanView({
   awaitingClienteCounts,
   showExample,
   onDismissExample,
+  contaId,
 }: KanbanViewProps) {
   // Server data is canonical: the board always re-derives from the cards prop,
   // so any edit (título, responsável, prazo…) shows as soon as the refetch
@@ -240,6 +255,29 @@ export function KanbanView({
   // them, so drags feel instant while persistence runs in the background.
   const [pendingEtapas, setPendingEtapas] = useState<Map<number, WorkflowEtapa>>(new Map());
   const [pendingPositions, setPendingPositions] = useState<Map<number, number>>(new Map());
+  // Ordenacao por coluna: 'prazo' (padrao, atrasados primeiro) ou 'manual'.
+  // Um drag dentro da coluna materializa a ordem visual em positions e troca a
+  // coluna para 'manual'; o menu do header volta para 'prazo' quando quiser.
+  const [columnSorts, setColumnSorts] = useState<Partial<Record<string, FluxosColumnSort>>>(() =>
+    loadFluxosColumnSorts(contaId ?? 'unknown'),
+  );
+  const sortModeFor = useCallback(
+    (colKey: string): FluxosColumnSort => columnSorts[colKey] ?? 'prazo',
+    [columnSorts],
+  );
+  const setColumnSort = useCallback(
+    (colKey: string, sort: FluxosColumnSort) => {
+      setColumnSorts((prev) => ({ ...prev, [colKey]: sort }));
+      persistFluxosColumnSort(contaId ?? 'unknown', colKey, sort);
+    },
+    [contaId],
+  );
+  /** Cards da coluna na ordem EXIBIDA (prazo ou manual). */
+  const displayCards = useCallback(
+    (rowKey: string, colName: string, cards: BoardCard[]): BoardCard[] =>
+      sortModeFor(`${rowKey}::${colName}`) === 'prazo' ? sortCardsByPrazo(cards) : cards,
+    [sortModeFor],
+  );
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
   // Valid adjacent column currently hovered during a drag ("rowKey::colName"),
   // plus the dragged card's height so the slot opens exactly its size.
@@ -387,8 +425,13 @@ export function KanbanView({
       }
 
       // Slot index: over a card, before or after it by vertical midpoint;
-      // over the column body, at the end.
-      const targetCards = targetRow.columns.get(targetColName) || [];
+      // over the column body, at the end. Indices sao sobre a lista EXIBIDA
+      // (modo prazo reordena a coluna).
+      const targetCards = displayCards(
+        targetRow.key,
+        targetColName,
+        targetRow.columns.get(targetColName) || [],
+      );
       let index = targetCards.length;
       if (!overId.startsWith(COL_PREFIX)) {
         const overIdx = targetCards.findIndex((c) => String(c.workflow.id) === overId);
@@ -403,7 +446,7 @@ export function KanbanView({
         prev && prev.colKey === colKey && prev.index === index ? prev : { colKey, index },
       );
     },
-    [localCards, templates],
+    [localCards, templates, displayCards],
   );
 
   const handleDragEnd = useCallback(
@@ -443,8 +486,14 @@ export function KanbanView({
       }
 
       if (targetColName === activeLocation.colName && targetRow.key === activeLocation.row.key) {
-        // Within-column reorder
-        const col = activeLocation.row.columns.get(activeLocation.colName) || [];
+        // Within-column reorder — sobre a lista EXIBIDA: no modo prazo o drop
+        // materializa a ordem visual em positions e a coluna vira 'manual'.
+        const colKeyStr = `${activeLocation.row.key}::${activeLocation.colName}`;
+        const col = displayCards(
+          activeLocation.row.key,
+          activeLocation.colName,
+          activeLocation.row.columns.get(activeLocation.colName) || [],
+        );
         const oldIdx = col.findIndex((c) => String(c.workflow.id) === activeId);
         const newIdx = overId.startsWith(COL_PREFIX)
           ? col.length - 1
@@ -459,6 +508,7 @@ export function KanbanView({
           reordered.forEach((c, i) => next.set(c.workflow.id!, i));
           return next;
         });
+        if (sortModeFor(colKeyStr) === 'prazo') setColumnSort(colKeyStr, 'manual');
 
         try {
           await updateWorkflowPositions(
@@ -493,14 +543,16 @@ export function KanbanView({
 
         // Capture where in the target column the card was dropped, so the
         // advance/revert (possibly behind a confirm dialog) can land it there
-        // instead of at the bottom.
+        // instead of at the bottom. Indices e vizinhos sobre a lista EXIBIDA
+        // (dropSlot.index veio do handleDragOver, tambem sobre ela).
+        const targetDisplay = displayCards(targetRow.key, targetColName, targetColCards);
         const colKey = `${targetRow.key}::${targetColName}`;
         const slotIndex =
           dropSlot && dropSlot.colKey === colKey
-            ? Math.min(dropSlot.index, targetColCards.length)
-            : targetColCards.length;
-        const beforePos = targetColCards[slotIndex - 1]?.workflow.position;
-        const afterPos = targetColCards[slotIndex]?.workflow.position;
+            ? Math.min(dropSlot.index, targetDisplay.length)
+            : targetDisplay.length;
+        const beforePos = targetDisplay[slotIndex - 1]?.workflow.position;
+        const afterPos = targetDisplay[slotIndex]?.workflow.position;
         const optimisticPos =
           beforePos != null && afterPos != null
             ? (beforePos + afterPos) / 2
@@ -511,7 +563,7 @@ export function KanbanView({
                 : 0;
         pendingInsertRef.current = {
           wfId: draggedCard.workflow.id!,
-          ids: targetColCards.map((c) => c.workflow.id!),
+          ids: targetDisplay.map((c) => c.workflow.id!),
           index: slotIndex,
           optimisticPos,
         };
@@ -527,7 +579,16 @@ export function KanbanView({
         }
       }
     },
-    [localCards, dropSlot, onRefresh, onRecurring, templates],
+    [
+      localCards,
+      dropSlot,
+      onRefresh,
+      onRecurring,
+      templates,
+      displayCards,
+      sortModeFor,
+      setColumnSort,
+    ],
   );
 
   const handleForwardCard = useCallback((card: BoardCard) => {
@@ -707,8 +768,11 @@ export function KanbanView({
 
   const renderRowBoard = (row: BoardRow) => (
     <div className="board-container">
-      {[...row.columns.entries()].map(([stepName, stepCards], colIdx) => {
+      {[...row.columns.entries()].map(([stepName, rawStepCards], colIdx) => {
         const tint = columnTint(stepName);
+        const colKeyStr = `${row.key}::${stepName}`;
+        const stepCards = displayCards(row.key, stepName, rawStepCards);
+        const sortMode = sortModeFor(colKeyStr);
         return (
           <div key={stepName} className="board-column" style={{ borderColor: `${tint}30` }}>
             <div
@@ -716,8 +780,49 @@ export function KanbanView({
               style={{ background: `${tint}30`, borderBottomColor: `${tint}30` }}
               {...(approvalStepNames.has(stepName) ? { 'data-tour': 'wf-col-aprovacao' } : {})}
             >
-              <span className="board-column-title" style={{ color: tint }}>
-                {stepName}
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.15rem',
+                  minWidth: 0,
+                }}
+              >
+                <span className="board-column-title" style={{ color: tint }}>
+                  {stepName}
+                </span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`Ordenar coluna ${stepName}`}
+                      className="board-column-sort"
+                      style={{ color: tint }}
+                    >
+                      <ArrowUpDown size={12} aria-hidden="true" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="min-w-[150px]">
+                    {(
+                      [
+                        ['prazo', 'Prazo'],
+                        ['manual', 'Manual'],
+                      ] as const
+                    ).map(([mode, label]) => (
+                      <DropdownMenuItem
+                        key={mode}
+                        className="gap-2 text-xs"
+                        onSelect={() => setColumnSort(colKeyStr, mode)}
+                      >
+                        <Check
+                          className="h-3.5 w-3.5"
+                          style={{ visibility: sortMode === mode ? 'visible' : 'hidden' }}
+                        />
+                        {label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </span>
               <span
                 className="board-column-count"

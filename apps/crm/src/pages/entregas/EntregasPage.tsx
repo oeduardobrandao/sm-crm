@@ -759,6 +759,7 @@ export default function EntregasPage() {
       {activeView === 'kanban' &&
         (mode === 'entregas' ? (
           <KanbanView
+            contaId={contaId}
             cards={filteredCards}
             onCardClick={handleCardClick}
             onEditClick={setEditCard}

@@ -4,6 +4,8 @@ import {
   persistLastMode,
   loadBoardColumnSorts,
   persistBoardColumnSort,
+  loadFluxosColumnSorts,
+  persistFluxosColumnSort,
 } from '../entregasPrefs';
 
 describe('entregasPrefs', () => {
@@ -71,5 +73,20 @@ describe('board column sort prefs', () => {
     };
     expect(() => persistBoardColumnSort('conta-1', 'rascunho', 'manual')).not.toThrow();
     Storage.prototype.setItem = orig;
+  });
+});
+
+describe('fluxos column sort prefs', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('round-trips per conta and column key', () => {
+    persistFluxosColumnSort('conta-1', 'template:7::Copy', 'manual');
+    expect(loadFluxosColumnSorts('conta-1')).toEqual({ 'template:7::Copy': 'manual' });
+    expect(loadFluxosColumnSorts('conta-2')).toEqual({});
+  });
+
+  it('drops junk values on load', () => {
+    localStorage.setItem('entregas_fluxos_sorts_conta-1', '{"a":"whatever","b":1}');
+    expect(loadFluxosColumnSorts('conta-1')).toEqual({});
   });
 });
