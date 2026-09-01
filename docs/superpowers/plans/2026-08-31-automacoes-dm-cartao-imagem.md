@@ -134,10 +134,17 @@ RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
       AND jsonb_typeof(m->'key') = 'string'
       AND m->>'key' LIKE 'automation-media/%'
       AND m->>'content_type' IN ('image/jpeg', 'image/png', 'image/gif')
-      AND jsonb_typeof(m->'size_bytes') = 'number'
-      AND (m->>'size_bytes')::bigint BETWEEN 1 AND 8388608
-      AND (m->'width' IS NULL OR (jsonb_typeof(m->'width') = 'number' AND (m->>'width')::int > 0))
-      AND (m->'height' IS NULL OR (jsonb_typeof(m->'height') = 'number' AND (m->>'height')::int > 0))
+      -- CASE por campo numérico: AND não garante ordem de avaliação, então o
+      -- cast poderia rodar antes do type-guard e estourar 22023 cru em vez do
+      -- 23514 limpo (mesmo racional do validate_ig_dm_buttons).
+      AND CASE WHEN jsonb_typeof(m->'size_bytes') <> 'number' THEN false
+               ELSE (m->>'size_bytes')::bigint BETWEEN 1 AND 8388608 END
+      AND CASE WHEN m->'width' IS NULL THEN true
+               WHEN jsonb_typeof(m->'width') <> 'number' THEN false
+               ELSE (m->>'width')::int > 0 END
+      AND CASE WHEN m->'height' IS NULL THEN true
+               WHEN jsonb_typeof(m->'height') <> 'number' THEN false
+               ELSE (m->>'height')::int > 0 END
     , false)
   END
 $$;
