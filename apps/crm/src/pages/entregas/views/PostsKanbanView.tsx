@@ -392,70 +392,72 @@ const PostBoardColumn = memo(function PostBoardColumn({
         className="board-column-header"
         style={tint ? { background: `${tint}30`, borderBottomColor: `${tint}30` } : undefined}
       >
-        <span className="board-column-title" style={tint ? { color: tint } : undefined}>
-          {option.kind === 'custom'
-            ? (() => {
-                const CustomIcon = getCustomStatusIcon(option.icone);
-                return CustomIcon ? (
-                  <CustomIcon
-                    size={13}
-                    aria-hidden="true"
-                    style={{ color: option.color, flexShrink: 0 }}
-                  />
-                ) : (
-                  <span
-                    aria-hidden
-                    style={{
-                      display: 'inline-block',
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      background: option.color,
-                      flexShrink: 0,
-                    }}
-                  />
-                );
-              })()
-            : (() => {
-                const meta = STATUS_HEADER_META[option.canonical];
-                const HeaderIcon = meta.icon;
-                return (
-                  <HeaderIcon
-                    size={13}
-                    aria-hidden="true"
-                    style={{ color: tint ?? meta.color ?? 'var(--text-light)', flexShrink: 0 }}
-                  />
-                );
-              })()}
-          {option.label}
-        </span>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label={`Ordenar coluna ${option.label}`}
-              className="board-column-sort"
-              style={tint ? { color: tint } : undefined}
-            >
-              <ArrowUpDown size={12} aria-hidden="true" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="min-w-[170px]">
-            {BOARD_COLUMN_SORTS.map((mode) => (
-              <DropdownMenuItem
-                key={mode}
-                className="gap-2 text-xs"
-                onSelect={() => onColumnSortChange?.(option.key, mode)}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.15rem', minWidth: 0 }}>
+          <span className="board-column-title" style={tint ? { color: tint } : undefined}>
+            {option.kind === 'custom'
+              ? (() => {
+                  const CustomIcon = getCustomStatusIcon(option.icone);
+                  return CustomIcon ? (
+                    <CustomIcon
+                      size={13}
+                      aria-hidden="true"
+                      style={{ color: option.color, flexShrink: 0 }}
+                    />
+                  ) : (
+                    <span
+                      aria-hidden
+                      style={{
+                        display: 'inline-block',
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        background: option.color,
+                        flexShrink: 0,
+                      }}
+                    />
+                  );
+                })()
+              : (() => {
+                  const meta = STATUS_HEADER_META[option.canonical];
+                  const HeaderIcon = meta.icon;
+                  return (
+                    <HeaderIcon
+                      size={13}
+                      aria-hidden="true"
+                      style={{ color: tint ?? meta.color ?? 'var(--text-light)', flexShrink: 0 }}
+                    />
+                  );
+                })()}
+            {option.label}
+          </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={`Ordenar coluna ${option.label}`}
+                className="board-column-sort"
+                style={tint ? { color: tint } : undefined}
               >
-                <Check
-                  className="h-3.5 w-3.5"
-                  style={{ visibility: sort === mode ? 'visible' : 'hidden' }}
-                />
-                {BOARD_COLUMN_SORT_LABELS[mode]}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+                <ArrowUpDown size={12} aria-hidden="true" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[170px]">
+              {BOARD_COLUMN_SORTS.map((mode) => (
+                <DropdownMenuItem
+                  key={mode}
+                  className="gap-2 text-xs"
+                  onSelect={() => onColumnSortChange?.(option.key, mode)}
+                >
+                  <Check
+                    className="h-3.5 w-3.5"
+                    style={{ visibility: sort === mode ? 'visible' : 'hidden' }}
+                  />
+                  {BOARD_COLUMN_SORT_LABELS[mode]}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </span>
         <span
           className="board-column-count"
           style={
