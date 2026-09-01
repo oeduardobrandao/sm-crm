@@ -499,6 +499,7 @@ const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.me
 function makeHandler(db: any, opts?: {
   headObject?: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   trashed?: string[];
+  copies?: Array<{ from: string; to: string }>;
 }) {
   return createAutomationMediaHandler({
     buildCorsHeaders,
@@ -507,6 +508,7 @@ function makeHandler(db: any, opts?: {
     signGetUrl: async (key: string) => `https://get.example.com/${key}`,
     headObject: opts?.headObject ?? (async () => ({ contentLength: 5000, contentType: "image/jpeg" })),
     trashObject: async (key: string) => { opts?.trashed?.push(key); },
+    copyObject: async (from: string, to: string) => { opts?.copies?.push({ from, to }); },
     randomUUID: () => "fixed-uuid",
   });
 }
@@ -526,14 +528,14 @@ function setupAuth(db: any, contaId = "conta-1") {
   db.queue("workspace_members", "select", { data: { user_id: "user-1" }, error: null });
 }
 
-Deno.test("presign: gera key no prefixo do tenant e devolve upload_url", async () => {
+Deno.test("presign: gera key no prefixo TMP do tenant e devolve upload_url", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
   const res = await makeHandler(db)(req("presign", { mime_type: "image/jpeg", size_bytes: 5000 }));
   assertEquals(res.status, 200);
   const body = await res.json();
-  assertEquals(body.key, "automation-media/conta-1/fixed-uuid.jpg");
-  assertEquals(body.upload_url, "https://put.example.com/automation-media/conta-1/fixed-uuid.jpg");
+  assertEquals(body.key, "automation-media-tmp/conta-1/fixed-uuid.jpg");
+  assertEquals(body.upload_url, "https://put.example.com/automation-media-tmp/conta-1/fixed-uuid.jpg");
 });
 
 Deno.test("presign: mime fora da allowlist -> 415; acima de 8MB -> 400; sem auth -> 401", async () => {
@@ -551,12 +553,14 @@ Deno.test("presign: mime fora da allowlist -> 415; acima de 8MB -> 400; sem auth
   assertEquals((await makeHandler(db3)(req("presign", { mime_type: "image/png", size_bytes: 10 }))).status, 401);
 });
 
-Deno.test("finalize: HEAD confere tamanho/tipo, finaliza com quota e devolve dm_media", async () => {
+Deno.test("finalize: copia tmp -> final, HEAD confere a FINAL, finaliza com quota e devolve dm_media com a key final", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
   db.queueRpc("automation_media_finalize", { data: true, error: null });
-  const res = await makeHandler(db)(req("finalize", {
-    key: "automation-media/conta-1/fixed-uuid.jpg",
+  const copies: Array<{ from: string; to: string }> = [];
+  const trashed: string[] = [];
+  const res = await makeHandler(db, { copies, trashed })(req("finalize", {
+    key: "automation-media-tmp/conta-1/fixed-uuid.jpg",
     mime_type: "image/jpeg",
     size_bytes: 5000,
     width: 1080,
@@ -571,6 +575,12 @@ Deno.test("finalize: HEAD confere tamanho/tipo, finaliza com quota e devolve dm_
     width: 1080,
     height: 1350,
   });
+  assertEquals(copies, [{
+    from: "automation-media-tmp/conta-1/fixed-uuid.jpg",
+    to: "automation-media/conta-1/fixed-uuid.jpg",
+  }]);
+  // A tmp é trasheada após a cópia (best-effort).
+  assertEquals(trashed, ["automation-media-tmp/conta-1/fixed-uuid.jpg"]);
   const rpcs = db.calls.filter((c: { table: string }) => c.table === "rpc:automation_media_finalize");
   assertEquals(rpcs[0].payload, {
     p_conta_id: "conta-1",
@@ -580,18 +590,18 @@ Deno.test("finalize: HEAD confere tamanho/tipo, finaliza com quota e devolve dm_
   });
 });
 
-Deno.test("finalize: key de outro tenant -> 400; size divergente do HEAD -> 400; quota -> 413 e trasheia o upload", async () => {
+Deno.test("finalize: key tmp de outro tenant -> 400; size divergente do HEAD -> 400; quota -> 413 e trasheia a final", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
   assertEquals(
-    (await makeHandler(db)(req("finalize", { key: "automation-media/OUTRA/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }))).status,
+    (await makeHandler(db)(req("finalize", { key: "automation-media-tmp/OUTRA/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }))).status,
     400,
   );
   const db2 = createSupabaseQueryMock();
   setupAuth(db2);
   assertEquals(
     (await makeHandler(db2, { headObject: async () => ({ contentLength: 999, contentType: "image/jpeg" }) })(
-      req("finalize", { key: "automation-media/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }),
+      req("finalize", { key: "automation-media-tmp/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }),
     )).status,
     400,
   );
@@ -600,11 +610,12 @@ Deno.test("finalize: key de outro tenant -> 400; size divergente do HEAD -> 400;
   db3.queueRpc("automation_media_finalize", { data: null, error: { message: "quota_exceeded" } });
   const trashed3: string[] = [];
   assertEquals(
-    (await makeHandler(db3, { trashed: trashed3 })(req("finalize", { key: "automation-media/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }))).status,
+    (await makeHandler(db3, { trashed: trashed3 })(req("finalize", { key: "automation-media-tmp/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }))).status,
     413,
   );
-  // Upload rejeitado por quota não fica retido fora da contabilidade.
-  assertEquals(trashed3, ["automation-media/conta-1/x.jpg"]);
+  // Upload rejeitado por quota não fica retido: a cópia FINAL vai para o trash
+  // (a tmp vira órfã aceita).
+  assertEquals(trashed3.includes("automation-media/conta-1/x.jpg"), true);
 });
 
 Deno.test("delete: trasheia (nunca hard delete) e libera pelo registro do servidor; prefixo de outro tenant -> 400", async () => {
@@ -668,6 +679,26 @@ Expected: FAIL (handler inexistente).
 Antes do handler, adicione em `_shared/r2.ts` o helper `headObjectSigned` -- mesmo contrato do `headObject` atual (`Promise<{ contentLength: number; contentType: string | null } | null>`, null em qualquer falha) mas via **presign + fetch puro + AbortSignal**, nunca `getR2().send()` (o transport do SDK é o caminho documentado de travamento no edge runtime, e finalize é um handler que grava estado):
 
 ```ts
+/** Cópia via presign + fetch puro, SEM apagar a origem (metade "copy" do
+ * trashObject; reusa exatamente a técnica documentada lá, incluindo o aviso
+ * de NÃO enviar x-amz-copy-source como header -- o presigner o embute na
+ * query string e duplicá-lo dá 403 SignatureDoesNotMatch, causa raiz do
+ * incidente de 2026-08). Lança em falha. */
+export async function copyObjectSigned(sourceKey: string, destKey: string): Promise<void> {
+  const copySource = `${getBucket()}/${encodeURIComponent(sourceKey).replace(/%2F/g, "/")}`;
+  const cmd = new CopyObjectCommand({
+    Bucket: getBucket(),
+    CopySource: copySource,
+    Key: destKey,
+  });
+  const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
+  const res = await fetch(url, { method: "PUT", signal: AbortSignal.timeout(30_000) });
+  if (!res.ok) {
+    const bodyText = await res.text().catch(() => "");
+    throw new Error(`r2 copy failed: ${res.status}${bodyText ? ` ${bodyText.slice(0, 300)}` : ""}`);
+  }
+}
+
 /** HEAD via presign + fetch puro (mesmo racional de putObject/deleteObject:
  * o transport do SDK trava no edge runtime; este helper é para handlers que
  * gravam estado). null em 404 ou qualquer falha. */
@@ -888,7 +919,7 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
 // supabase/functions/automation-media/index.ts
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
-import { headObjectSigned, signGetUrl, signPutUrl, trashObject } from "../_shared/r2.ts";
+import { copyObjectSigned, headObjectSigned, signGetUrl, signPutUrl, trashObject } from "../_shared/r2.ts";
 import { createAutomationMediaHandler } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -904,6 +935,7 @@ Deno.serve(createAutomationMediaHandler({
   signGetUrl,
   headObject: headObjectSigned,
   trashObject,
+  copyObject: copyObjectSigned,
 }));
 ```
 
