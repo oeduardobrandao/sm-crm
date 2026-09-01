@@ -1002,6 +1002,7 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
 // supabase/functions/automation-media/index.ts
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { makeBoundedFetch } from "../_shared/bounded-fetch.ts";
 import { copyObjectSigned, headObjectSigned, signGetUrl, signPutUrl, trashObject } from "../_shared/r2.ts";
 import { createAutomationMediaHandler } from "./handler.ts";
 
