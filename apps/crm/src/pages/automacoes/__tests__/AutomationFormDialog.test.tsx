@@ -831,6 +831,31 @@ describe('AutomationFormDialog', () => {
       await screen.findByLabelText('form.replyVariationLabel:{"index":5}');
       expect(screen.queryByRole('button', { name: 'form.addReply' })).not.toBeInTheDocument();
     });
+
+    it('remover a única variação preenchida deixa uma linha vazia funcional (estado, não só visual)', async () => {
+      renderDialog();
+      await fillRequiredFields();
+
+      fireEvent.change(screen.getByLabelText('form.replyVariationLabel:{"index":1}'), {
+        target: { value: 'Te chamei na DM!' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'form.removeReply' }));
+
+      const field = screen.getByLabelText('form.replyVariationLabel:{"index":1}');
+      expect(field).toHaveValue('');
+      fireEvent.change(field, { target: { value: 'Nova variação' } });
+      expect(field).toHaveValue('Nova variação');
+
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          public_replies: ['Nova variação'],
+          public_reply: 'Nova variação',
+        }),
+      );
+    });
   });
 
   // ── Tour guiado ──────────────────────────────────────────────────────────

@@ -489,7 +489,13 @@ export default function AutomationFormDialog({
       publicReplies: f.publicReplies.map((r, i) => (i === index ? value : r)),
     }));
   const removeReply = (index: number) =>
-    setForm((f) => ({ ...f, publicReplies: f.publicReplies.filter((_, i) => i !== index) }));
+    setForm((f) => {
+      const next = f.publicReplies.filter((_, i) => i !== index);
+      // Never let the state go empty: an empty array would leave the
+      // render-time fallback (a visual-only ['']) out of sync with the real
+      // state, so typing into it would silently do nothing.
+      return { ...f, publicReplies: next.length > 0 ? next : [''] };
+    });
 
   const targetingPost = form.targetMode === 'post' && typeof form.clientId === 'number';
 
