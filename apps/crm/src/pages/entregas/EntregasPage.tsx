@@ -53,7 +53,13 @@ import { useOpenParam } from '../../hooks/useOpenParam';
 import { matchesEtapaPrazo } from './etapaPrazo';
 import { parseEntregasQuery, serializeEntregasQuery, type ActiveView } from './viewQuery';
 import { postMatchesStatusFilter } from './statusRegistry';
-import { loadLastMode, persistLastMode } from './entregasPrefs';
+import {
+  loadLastMode,
+  persistLastMode,
+  loadBoardColumnSorts,
+  persistBoardColumnSort,
+} from './entregasPrefs';
+import type { BoardColumnSort } from './postsBoardOrder';
 import {
   duplicateWorkflow,
   getStandalonePost,
@@ -110,6 +116,17 @@ export default function EntregasPage() {
   // Post avulso (fora de fluxo) currently open in the standalone slot below.
   const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
   const [newAvulsoOpen, setNewAvulsoOpen] = useState(false);
+  // Per-column sort mode for the Publicações board, remembered per conta.
+  const [boardColumnSorts, setBoardColumnSorts] = useState<
+    Partial<Record<string, BoardColumnSort>>
+  >(() => loadBoardColumnSorts(contaId));
+  const handleBoardColumnSortChange = useCallback(
+    (columnKey: string, sort: BoardColumnSort) => {
+      setBoardColumnSorts((prev) => ({ ...prev, [columnKey]: sort }));
+      persistBoardColumnSort(contaId, columnKey, sort);
+    },
+    [contaId],
+  );
   const {
     clientes,
     membros,
@@ -774,6 +791,8 @@ export default function EntregasPage() {
             cardsByWorkflowId={cardsByWorkflowId}
             filtersActive={postsFiltersActive}
             onCreateAvulso={() => setNewAvulsoOpen(true)}
+            columnSorts={boardColumnSorts}
+            onColumnSortChange={handleBoardColumnSortChange}
           />
         ))}
       {activeView === 'chart' && <ChartView cards={filteredCards} />}

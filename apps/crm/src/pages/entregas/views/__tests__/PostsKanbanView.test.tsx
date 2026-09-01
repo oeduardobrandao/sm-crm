@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi, beforeAll, beforeEach } from 'vitest';
 import { toast } from 'sonner';
@@ -76,6 +76,29 @@ vi.mock('@dnd-kit/sortable', () => ({
 
 vi.mock('@dnd-kit/utilities', () => ({
   CSS: { Transform: { toString: () => undefined } },
+}));
+
+// Real Radix DropdownMenu relies on portals/pointer-capture that jsdom does
+// not model well; every other test in this codebase that exercises a
+// DropdownMenu mocks the module down to plain elements instead (see
+// ClientesPage.test.tsx / WorkflowCard.historyPopover.test.tsx). Content
+// renders unconditionally, so a menu item is queryable without simulating an
+// open click; onSelect (Radix's prop, not onClick) drives the button.
+vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuItem: ({
+    children,
+    onSelect,
+  }: {
+    children: React.ReactNode;
+    onSelect?: () => void;
+  }) => (
+    <button type="button" onClick={onSelect}>
+      {children}
+    </button>
+  ),
 }));
 
 import { PostsKanbanView } from '../PostsKanbanView';
@@ -684,6 +707,49 @@ describe('PostsKanbanView', () => {
         }),
       );
       expect(mockReorder).toHaveBeenCalledWith([{ id: 703, board_ordem: null }]);
+    });
+  });
+
+  describe('column sort menu', () => {
+    it('renders the sort trigger per column', () => {
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={[makePost()]} />);
+      expect(screen.getAllByLabelText(/Ordenar coluna/)).toHaveLength(POST_STATUS_ORDER.length);
+    });
+
+    it('sorts a column by its columnSorts mode -- recentes is highest id first', () => {
+      const posts = [
+        makePost({ id: 801, status: 'rascunho', titulo: 'First' }),
+        makePost({ id: 802, status: 'rascunho', titulo: 'Second' }),
+        makePost({ id: 803, status: 'rascunho', titulo: 'Third' }),
+      ];
+      const { container } = renderWithQuery(
+        <PostsKanbanView {...baseProps} posts={posts} columnSorts={{ rascunho: 'recentes' }} />,
+      );
+
+      const column = Array.from(container.querySelectorAll('.board-column')).find(
+        (el) => el.querySelector('.board-column-title')?.textContent === STATUS_LABELS.rascunho,
+      );
+      const titles = Array.from(column!.querySelectorAll('.item-title')).map(
+        (el) => el.textContent,
+      );
+      expect(titles).toEqual(['Third', 'Second', 'First']);
+    });
+
+    it('selecting "Mais antigos" in a column menu calls onColumnSortChange with the column key and mode', () => {
+      const onColumnSortChange = vi.fn();
+      renderWithQuery(
+        <PostsKanbanView
+          {...baseProps}
+          posts={[makePost({ id: 804, status: 'rascunho', titulo: 'Draft' })]}
+          onColumnSortChange={onColumnSortChange}
+        />,
+      );
+
+      const trigger = screen.getByLabelText(`Ordenar coluna ${STATUS_LABELS.rascunho}`);
+      const column = trigger.closest('.board-column') as HTMLElement;
+      fireEvent.click(within(column).getByText('Mais antigos'));
+
+      expect(onColumnSortChange).toHaveBeenCalledWith('rascunho', 'antigos');
     });
   });
 });

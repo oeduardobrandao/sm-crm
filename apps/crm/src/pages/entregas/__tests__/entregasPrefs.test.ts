@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadLastMode, persistLastMode } from '../entregasPrefs';
+import {
+  loadLastMode,
+  persistLastMode,
+  loadBoardColumnSorts,
+  persistBoardColumnSort,
+} from '../entregasPrefs';
 
 describe('entregasPrefs', () => {
   beforeEach(() => {
@@ -40,5 +45,31 @@ describe('entregasPrefs', () => {
     });
     expect(() => persistLastMode('conta-1', 'publicacoes')).not.toThrow();
     spy.mockRestore();
+  });
+});
+
+describe('board column sort prefs', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('round-trips per conta and column', () => {
+    persistBoardColumnSort('conta-1', 'rascunho', 'recentes');
+    persistBoardColumnSort('conta-1', 'custom:abc', 'data');
+    expect(loadBoardColumnSorts('conta-1')).toEqual({ rascunho: 'recentes', 'custom:abc': 'data' });
+    expect(loadBoardColumnSorts('conta-2')).toEqual({});
+  });
+
+  it('drops junk values on load', () => {
+    localStorage.setItem('entregas_board_sorts_conta-1', '{"rascunho":"whatever","x":3}');
+    expect(loadBoardColumnSorts('conta-1')).toEqual({});
+  });
+
+  it('survives storage failures silently', () => {
+    // jsdom: force a throw
+    const orig = Storage.prototype.setItem;
+    Storage.prototype.setItem = () => {
+      throw new Error('full');
+    };
+    expect(() => persistBoardColumnSort('conta-1', 'rascunho', 'manual')).not.toThrow();
+    Storage.prototype.setItem = orig;
   });
 });

@@ -5412,6 +5412,22 @@ body.role-agent input[name='valor_total'] {
   text-align: center;
 }
 
+.board-column-sort {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0.15rem;
+  border-radius: 6px;
+  opacity: 0.55;
+}
+
+.board-column-sort:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+
 .board-column-body {
   flex: 1;
   display: flex;

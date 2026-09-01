@@ -17,7 +17,9 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import {
   AlertTriangle,
+  ArrowUpDown,
   CalendarClock,
+  Check,
   CheckCheck,
   CircleCheck,
   CircleDashed,
@@ -48,11 +50,23 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { formatPostDate } from '@/utils/postDate';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { formatEtapaPrazo } from '../etapaPrazo';
 import { TIPO_LABELS, LOCKED_STATUSES, LOCKED_TOOLTIPS, getPostPublishState } from '../postLabels';
-import { planBoardPlacement, sortColumnPosts, type BoardColumnSort } from '../postsBoardOrder';
+import {
+  BOARD_COLUMN_SORTS,
+  BOARD_COLUMN_SORT_LABELS,
+  planBoardPlacement,
+  sortColumnPosts,
+  type BoardColumnSort,
+} from '../postsBoardOrder';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { StatusKey, StatusOption, StatusRegistry } from '../statusRegistry';
 import {
@@ -129,9 +143,12 @@ interface PostsKanbanViewProps {
   /** Opens NewAvulsoDialog from the unfiltered empty state's CTA. */
   onCreateAvulso: () => void;
   /** Per-column sort mode; a column absent from the map (or the whole prop
-   *  omitted) defaults to 'manual'. Wired by the column header menu in a
-   *  later task -- this view only consumes it. */
+   *  omitted) defaults to 'manual'. */
   columnSorts?: Partial<Record<StatusKey, BoardColumnSort>>;
+  /** Fires when the user picks a sort mode from a column's header menu.
+   *  Stable across renders (owned by the page) so it can be passed straight
+   *  into the memoized PostBoardColumn without breaking memo. */
+  onColumnSortChange?: (columnKey: string, sort: BoardColumnSort) => void;
 }
 
 /** A post avulso (no workflow) is always openable -- only a wired post depends
@@ -340,6 +357,8 @@ const PostBoardColumn = memo(function PostBoardColumn({
   dragInvalid,
   dropSlot,
   dragHeight,
+  sort,
+  onColumnSortChange,
 }: {
   option: StatusOption;
   posts: ActivePost[];
@@ -354,6 +373,12 @@ const PostBoardColumn = memo(function PostBoardColumn({
   /** Slot for THIS column only; null when the drag hovers elsewhere. */
   dropSlot: PostsKanbanHoverSlot | null;
   dragHeight: number;
+  /** This column's current sort mode, resolved by the parent. */
+  sort: BoardColumnSort;
+  /** Stable callback from the page -- passed straight through (never wrapped
+   *  in an inline arrow here) so this memoized column doesn't re-render on
+   *  every parent render. */
+  onColumnSortChange?: (columnKey: string, sort: BoardColumnSort) => void;
 }) {
   const { setNodeRef } = useDroppable({ id: `${COL_PREFIX}${option.key}` });
   const tint = columnTintFor(option);
@@ -404,6 +429,33 @@ const PostBoardColumn = memo(function PostBoardColumn({
               })()}
           {option.label}
         </span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Ordenar coluna ${option.label}`}
+              className="board-column-sort"
+              style={tint ? { color: tint } : undefined}
+            >
+              <ArrowUpDown size={12} aria-hidden="true" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-[170px]">
+            {BOARD_COLUMN_SORTS.map((mode) => (
+              <DropdownMenuItem
+                key={mode}
+                className="gap-2 text-xs"
+                onSelect={() => onColumnSortChange?.(option.key, mode)}
+              >
+                <Check
+                  className="h-3.5 w-3.5"
+                  style={{ visibility: sort === mode ? 'visible' : 'hidden' }}
+                />
+                {BOARD_COLUMN_SORT_LABELS[mode]}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <span
           className="board-column-count"
           style={
@@ -474,6 +526,7 @@ export function PostsKanbanView({
   filtersActive,
   onCreateAvulso,
   columnSorts,
+  onColumnSortChange,
 }: PostsKanbanViewProps) {
   const registry = useStatusRegistry();
   const updateStatus = useUpdatePostStatus();
@@ -490,8 +543,8 @@ export function PostsKanbanView({
     place?: () => void;
   } | null>(null);
 
-  /** Column header menu (a later task) will drive this; every column defaults
-   *  to 'manual' until then. */
+  /** Driven by the column header menu; a column absent from `columnSorts`
+   *  defaults to 'manual'. */
   const columnSortFor = (key: StatusKey): BoardColumnSort => columnSorts?.[key] ?? 'manual';
 
   const byStatus = useMemo(() => {
@@ -775,6 +828,8 @@ export function PostsKanbanView({
                 dragInvalid={activeId != null && LOCKED_STATUSES.has(option.canonical)}
                 dropSlot={dropSlot?.key === option.key ? dropSlot : null}
                 dragHeight={dragHeight}
+                sort={columnSortFor(option.key)}
+                onColumnSortChange={onColumnSortChange}
               />
             ))}
           </div>
