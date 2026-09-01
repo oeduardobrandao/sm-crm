@@ -58,7 +58,7 @@ import { Chart, registerables } from 'chart.js';
 import { getClientes, getCurrentWorkspace } from '../../store';
 import {
   getAnalyticsOverview,
-  getAccountViews,
+  getAccountMetrics,
   makeDelta,
   getPostsAnalytics,
   getFollowerHistory,
@@ -165,6 +165,18 @@ function formatReportMonth(month: string): string {
 
 function formatNumber(n: number): string {
   return (n || 0).toLocaleString('pt-BR');
+}
+
+// The account-metrics endpoint (Task 13) takes an explicit start/end range
+// (end INCLUSIVE) — it has no "days" shorthand like the old /views endpoint.
+// The "últimos N dias" tabs still drive the UI in days, so this translates
+// that window into start/end with today as the inclusive end, same as the
+// explicit calendar-month picker already does.
+function lastNDaysRange(days: number, today: Date = new Date()): { start: string; end: string } {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const start = new Date(today.getTime() - (days - 1) * 86400000);
+  return { start: fmt(start), end: fmt(today) };
 }
 
 function formatPostDate(date: string): string {
@@ -1021,20 +1033,18 @@ function AnalyticsContent({
   const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
 
   const dateRange = periodStart && periodEnd ? { start: periodStart, end: periodEnd } : undefined;
+  // account-metrics has no "days" shorthand -- always resolve an explicit
+  // start/end, translating the "últimos N dias" tabs the same way the
+  // calendar-month picker already produces an explicit range.
+  const metricsRange = dateRange ?? lastNDaysRange(overviewDays);
 
   const { data: overviewRes, isLoading: loadingOv } = useQuery({
     queryKey: ['analytics-overview', clientId, overviewDays, periodStart, periodEnd],
     queryFn: () => getAnalyticsOverview(clientId, overviewDays, dateRange),
   });
-  // Manual sync must bypass the 6h server-side views cache exactly once.
-  const viewsForceRefresh = useRef(false);
-  const { data: viewsRes, isLoading: loadingViews } = useQuery({
-    queryKey: ['analytics-views', clientId, overviewDays, periodStart, periodEnd],
-    queryFn: () => {
-      const refresh = viewsForceRefresh.current;
-      viewsForceRefresh.current = false;
-      return getAccountViews(clientId, overviewDays, dateRange, refresh);
-    },
+  const { data: metricsRes, isLoading: loadingMetrics } = useQuery({
+    queryKey: ['account-metrics', clientId, metricsRange.start, metricsRange.end],
+    queryFn: () => getAccountMetrics(clientId, metricsRange.start, metricsRange.end),
   });
   const baselineQuery = useQuery({
     queryKey: ['client-rate-baseline', clientId],
@@ -1249,8 +1259,7 @@ function AnalyticsContent({
     try {
       await syncInstagramData(clientId);
       toast.success('Dados sincronizados com sucesso!');
-      viewsForceRefresh.current = true;
-      qc.invalidateQueries({ queryKey: ['analytics-views', clientId] });
+      qc.invalidateQueries({ queryKey: ['account-metrics', clientId] });
       qc.invalidateQueries({ queryKey: ['analytics-overview', clientId] });
       qc.invalidateQueries({ queryKey: ['analytics-posts', clientId] });
       qc.invalidateQueries({ queryKey: ['analytics-history', clientId] });
@@ -1457,17 +1466,36 @@ function AnalyticsContent({
   const periodTag = periodLabel || `${overviewDays}d`;
   const visiblePosts = showAllPosts ? posts : posts.slice(0, 5);
 
-  const viewsDelta =
-    viewsRes && viewsRes.previous != null
-      ? makeDelta(viewsRes.current, viewsRes.previous)
+  // Account-level KPI parity (Task 13): reach, views, followers delta,
+  // accounts engaged, profile views and website clicks all come from
+  // account-metrics' current/previous pair now, instead of the account
+  // row's reach_28d/impressions_28d/profile_views_28d columns.
+  const metricsCurrent = metricsRes?.current;
+  const metricsPrevious = metricsRes?.previous ?? null;
+
+  const metricValue = (v: number | null | undefined) =>
+    loadingMetrics ? '…' : v != null ? v.toLocaleString('pt-BR') : '—';
+  const metricDelta = (current: number | null | undefined, previous: number | null | undefined) =>
+    current != null && previous != null ? makeDelta(current, previous) : undefined;
+  const metricPrevFormatted = (previous: number | null | undefined) =>
+    previous != null ? previous.toLocaleString('pt-BR') : undefined;
+
+  const viewsSub = !loadingMetrics && !metricsRes ? 'Indisponível no momento' : undefined;
+
+  const followersWindow = metricsCurrent?.followers ?? null;
+  const followersPrevWindow = metricsPrevious?.followers ?? null;
+  const followersDelta =
+    followersWindow && followersPrevWindow
+      ? makeDelta(followersWindow.delta, followersPrevWindow.delta)
       : undefined;
-  const viewsValue = loadingViews ? '…' : viewsRes ? viewsRes.current.toLocaleString('pt-BR') : '—';
-  const viewsSub =
-    !loadingViews && !viewsRes
-      ? 'Indisponível no momento'
-      : viewsRes?.partial
-        ? 'O Instagram fornece visualizações de no máximo 90 dias.'
-        : undefined;
+  const followersValue = loadingMetrics
+    ? '…'
+    : followersWindow
+      ? followersWindow.end.toLocaleString('pt-BR')
+      : '—';
+  const followersPrevFormatted = followersWindow
+    ? followersWindow.start.toLocaleString('pt-BR')
+    : undefined;
 
   if (isLoading)
     return (
@@ -1584,26 +1612,20 @@ function AnalyticsContent({
           label="Visualizações"
           icon={Play}
           tone="violet"
-          value={viewsValue}
-          delta={viewsDelta}
-          period={viewsRes?.partial ? 'máx. 90d' : periodTag}
-          prevFormatted={
-            viewsRes && viewsRes.previous != null
-              ? viewsRes.previous.toLocaleString('pt-BR')
-              : undefined
-          }
+          value={metricValue(metricsCurrent?.views)}
+          delta={metricDelta(metricsCurrent?.views, metricsPrevious?.views)}
+          period={periodTag}
+          prevFormatted={metricPrevFormatted(metricsPrevious?.views)}
           sub={viewsSub}
         />
         <KpiCard
           label="Seguidores"
           icon={Users}
           tone="blue"
-          value={overview.followerCount.toLocaleString('pt-BR')}
-          delta={overview.followers}
+          value={followersValue}
+          delta={followersDelta}
           period={periodTag}
-          prevFormatted={(overview.followerCount - overview.followers.current).toLocaleString(
-            'pt-BR',
-          )}
+          prevFormatted={followersPrevFormatted}
         />
         <KpiCard
           label="Engajamento"
@@ -1618,26 +1640,28 @@ function AnalyticsContent({
           label="Contas engajadas"
           icon={Zap}
           tone="amber"
-          value={overview.profileViews.current.toLocaleString('pt-BR')}
-          delta={overview.profileViews}
-          period="28d fixo"
+          value={metricValue(metricsCurrent?.accounts_engaged)}
+          delta={metricDelta(metricsCurrent?.accounts_engaged, metricsPrevious?.accounts_engaged)}
+          period={periodTag}
+          prevFormatted={metricPrevFormatted(metricsPrevious?.accounts_engaged)}
         />
         <KpiCard
-          label="Alcance"
+          label="Alcance acumulado"
           icon={Eye}
           tone="violet"
-          value={overview.reach.current.toLocaleString('pt-BR')}
-          delta={overview.reach}
+          value={metricValue(metricsCurrent?.reach)}
+          delta={metricDelta(metricsCurrent?.reach, metricsPrevious?.reach)}
           period={periodTag}
-          prevFormatted={overview.reach.previous.toLocaleString('pt-BR')}
+          prevFormatted={metricPrevFormatted(metricsPrevious?.reach)}
         />
         <KpiCard
           label="Cliques no link"
           icon={MousePointerClick}
           tone="green"
-          value={overview.websiteClicks.current.toLocaleString('pt-BR')}
-          delta={overview.websiteClicks}
-          period="28d fixo"
+          value={metricValue(metricsCurrent?.website_clicks)}
+          delta={metricDelta(metricsCurrent?.website_clicks, metricsPrevious?.website_clicks)}
+          period={periodTag}
+          prevFormatted={metricPrevFormatted(metricsPrevious?.website_clicks)}
         />
         <KpiCard
           label="Taxa de salvamentos"

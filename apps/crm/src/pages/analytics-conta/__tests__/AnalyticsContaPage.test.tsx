@@ -82,7 +82,7 @@ vi.mock('../../../services/instagram', () => ({
 
 vi.mock('../../../services/analytics', () => ({
   getAnalyticsOverview: vi.fn(),
-  getAccountViews: vi.fn(),
+  getAccountMetrics: vi.fn(),
   makeDelta: (current: number, previous: number) => ({
     current,
     previous,
@@ -282,8 +282,31 @@ function seedCommonAnalyticsData() {
   queryState.clientes = { data: [client] };
   queryState['client-rate-baseline'] = { data: undefined };
   queryState['ig-summary'] = { data: { account } };
-  queryState['analytics-views'] = {
-    data: { current: 45678, previous: 40000, partial: false, fetchedAt: '2026-04-18T12:00:00Z' },
+  queryState['account-metrics'] = {
+    data: {
+      period: { start: '2026-03-19', end: '2026-04-18', effectiveEnd: '2026-04-18' },
+      current: {
+        reach: 4567,
+        views: 45678,
+        saves: 120,
+        accounts_engaged: 98,
+        profile_views: 60,
+        website_clicks: 17,
+        follows_and_unfollows: { follows: 20, unfollows: 5, net: 15 },
+        followers: { start: 1094, end: 1234, delta: 140 },
+      },
+      previous: {
+        reach: 4800,
+        views: 40000,
+        saves: 100,
+        accounts_engaged: 90,
+        profile_views: 55,
+        website_clicks: 17,
+        follows_and_unfollows: { follows: 18, unfollows: 6, net: 12 },
+        followers: { start: 970, end: 1094, delta: 124 },
+      },
+      source: { reach: 'live', views: 'live' },
+    },
     isLoading: false,
   };
   queryState['analytics-overview'] = {
@@ -295,7 +318,6 @@ function seedCommonAnalyticsData() {
         followers: { direction: 'up', deltaPercent: 12.5, current: 140, previous: 124 },
         engagement: { direction: 'up', deltaPercent: 3.2, current: 12.34, previous: 11.9 },
         reach: { direction: 'down', deltaPercent: -4.1, current: 4567, previous: 4800 },
-        profileViews: { direction: 'up', deltaPercent: 8.1, current: 98, previous: 90 },
         websiteClicks: { direction: 'flat', deltaPercent: 0, current: 17, previous: 17 },
         savesRate: { direction: 'up', deltaPercent: 2.2, current: 6.78, previous: 6.1 },
         postsPublished: { direction: 'up', deltaPercent: 25, current: 8, previous: 6 },
@@ -485,8 +507,22 @@ describe('AnalyticsContaPage', () => {
 
   it('omits the views delta when there is no previous period', () => {
     seedCommonAnalyticsData();
-    queryState['analytics-views'] = {
-      data: { current: 999999, previous: null, partial: false, fetchedAt: '2026-04-18T12:00:00Z' },
+    queryState['account-metrics'] = {
+      data: {
+        period: { start: '2026-03-19', end: '2026-04-18', effectiveEnd: '2026-04-18' },
+        current: {
+          reach: 4567,
+          views: 999999,
+          saves: 120,
+          accounts_engaged: 98,
+          profile_views: 60,
+          website_clicks: 17,
+          follows_and_unfollows: { follows: 20, unfollows: 5, net: 15 },
+          followers: { start: 1094, end: 1234, delta: 140 },
+        },
+        previous: null,
+        source: { reach: 'live', views: 'live' },
+      },
       isLoading: false,
     };
 
