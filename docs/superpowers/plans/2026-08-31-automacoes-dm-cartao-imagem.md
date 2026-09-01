@@ -16,7 +16,7 @@
 
 - Worktree: rode TUDO no worktree desta fatia; confirme com `pwd` e `git branch --show-current` antes do primeiro comando e em todo commit. NUNCA use paths do repo principal.
 - Sem travessão (em-dash) em NENHUMA copy voltada a usuário (i18n, toasts, labels). Use ponto, dois-pontos ou "·".
-- Migration: prefixo reservado `20260901000014` (origin/main já tem `20260901000010..12`; acima do `20260901000013` da fatia 1). Antes do `gh pr create`, `git ls-tree origin/main:supabase/migrations | tail -5` e renumere acima do tail novo se main tiver andado, preservando fatia 2 > fatia 1.
+- Migration: prefixo reservado `20260901000002` (acima do `20260901000001` da fatia 1). Antes do `gh pr create`, `git ls-tree origin/main:supabase/migrations | tail -5` e renumere acima do tail se colidir.
 - R2: NUNCA use `getR2().send(...)` para PUT/GET/DELETE em handler que grava estado; use as funções de `_shared/r2.ts` (presign + fetch puro + AbortSignal.timeout, o SDK trava no edge runtime).
 - Function nova: split `index.ts` (thin, `Deno.serve`) + `handler.ts` (factory com deps injetadas) -- é requisito de testabilidade do harness deste repo.
 - `npm run test:functions` suja o `deno.lock` da raiz; `git checkout -- deno.lock` antes de commitar.
@@ -106,12 +106,12 @@ Reporte ao orquestrador: "Milestone 0 preparado, aguardando execução pelo oper
 ### Task 2: Migration + testes SQL
 
 **Files:**
-- Create: `supabase/migrations/20260901000014_ig_dm_media_card.sql` (versão reservada; um rename tardio de `...000002` para esta já ocorreu na branch — para leitores futuros, o filename correto é este)
+- Create: `supabase/migrations/20260901000002_ig_dm_media_card.sql`
 - Modify: `supabase/tests/entitlements/65_instagram_automations.sql` (nova seção ao final; atualizar índice do cabeçalho)
 
 **Interfaces:**
 - Consumes: schema atual (`dm_buttons`/CHECKs de `20260819000001`; `effective_plan_limit(uuid, text)` de `20260611150001`; `workspaces.storage_used_bytes`).
-- Produces: `instagram_comment_automations.dm_media jsonb` + `dm_subtitle text` com CHECKs (forma, tenant, título ≤ 80 com mídia); `dm_kind` aceita `'card' | 'card_fallback_buttons' | 'card_fallback_text'`; tabela `automation_media_objects (key pk, conta_id, content_type, size_bytes, created_at)`; RPCs `automation_media_finalize(uuid, text, bigint, text) RETURNS boolean` (idempotente por key) e `automation_media_release(uuid, text) RETURNS bigint` (devolve os bytes liberados; 0 se não havia registro); trigger `trg_ica_dm_media_finalized` (dm_media só aceita objeto finalizado da mesma workspace, metadata normalizada do registro) e índice único parcial `ica_dm_media_key_unique` (posse única da key).
+- Produces: `instagram_comment_automations.dm_media jsonb` + `dm_subtitle text` com CHECKs (forma, tenant, título ≤ 80 com mídia); `dm_kind` aceita `'card' | 'card_fallback_buttons' | 'card_fallback_text'`; tabela `automation_media_objects (key pk, conta_id, size_bytes, created_at)`; RPCs `automation_media_finalize(uuid, text, bigint) RETURNS boolean` (idempotente por key) e `automation_media_release(uuid, text) RETURNS bigint` (devolve os bytes liberados; 0 se não havia registro).
 
 - [ ] **Step 1: Escrever a migration**
 
@@ -134,17 +134,10 @@ RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
       AND jsonb_typeof(m->'key') = 'string'
       AND m->>'key' LIKE 'automation-media/%'
       AND m->>'content_type' IN ('image/jpeg', 'image/png', 'image/gif')
-      -- CASE por campo numérico: AND não garante ordem de avaliação, então o
-      -- cast poderia rodar antes do type-guard e estourar 22023 cru em vez do
-      -- 23514 limpo (mesmo racional do validate_ig_dm_buttons).
-      AND CASE WHEN jsonb_typeof(m->'size_bytes') <> 'number' THEN false
-               ELSE (m->>'size_bytes')::bigint BETWEEN 1 AND 8388608 END
-      AND CASE WHEN m->'width' IS NULL THEN true
-               WHEN jsonb_typeof(m->'width') <> 'number' THEN false
-               ELSE (m->>'width')::int > 0 END
-      AND CASE WHEN m->'height' IS NULL THEN true
-               WHEN jsonb_typeof(m->'height') <> 'number' THEN false
-               ELSE (m->>'height')::int > 0 END
+      AND jsonb_typeof(m->'size_bytes') = 'number'
+      AND (m->>'size_bytes')::bigint BETWEEN 1 AND 8388608
+      AND (m->'width' IS NULL OR (jsonb_typeof(m->'width') = 'number' AND (m->>'width')::int > 0))
+      AND (m->'height' IS NULL OR (jsonb_typeof(m->'height') = 'number' AND (m->>'height')::int > 0))
     , false)
   END
 $$;
@@ -192,14 +185,13 @@ ALTER TABLE instagram_automation_sends
 CREATE TABLE automation_media_objects (
   key text PRIMARY KEY,
   conta_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  content_type text NOT NULL,
   size_bytes bigint NOT NULL CHECK (size_bytes > 0),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 -- RLS ligado sem policies: só as RPCs SECURITY DEFINER (service role) tocam.
 ALTER TABLE automation_media_objects ENABLE ROW LEVEL SECURITY;
 
-CREATE FUNCTION automation_media_finalize(p_conta_id uuid, p_key text, p_bytes bigint, p_content_type text)
+CREATE FUNCTION automation_media_finalize(p_conta_id uuid, p_key text, p_bytes bigint)
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_used bigint;
@@ -212,8 +204,8 @@ BEGIN
   IF v_used IS NULL THEN
     RAISE EXCEPTION 'workspace_not_found';
   END IF;
-  INSERT INTO automation_media_objects (key, conta_id, size_bytes, content_type)
-    VALUES (p_key, p_conta_id, p_bytes, p_content_type)
+  INSERT INTO automation_media_objects (key, conta_id, size_bytes)
+    VALUES (p_key, p_conta_id, p_bytes)
     ON CONFLICT (key) DO NOTHING;
   IF NOT FOUND THEN
     -- Já finalizado (retry de cliente): idempotente, não re-reserva.
@@ -241,80 +233,23 @@ BEGIN
     -- Nunca finalizado, ou já liberado: no-op idempotente.
     RETURN 0;
   END IF;
-  -- Anti-corrida attach/delete: se alguma automação referencia a key, aborta
-  -- (o RAISE desfaz o DELETE acima). Par com o FOR KEY SHARE do trigger de
-  -- attach: ou o attach commita antes (e este EXISTS o vê -> media_in_use),
-  -- ou este DELETE commita antes (e o attach falha em media_not_finalized).
-  IF EXISTS (SELECT 1 FROM instagram_comment_automations WHERE dm_media->>'key' = p_key) THEN
-    RAISE EXCEPTION 'media_in_use' USING errcode = 'P0001';
-  END IF;
   UPDATE workspaces
      SET storage_used_bytes = GREATEST(0, storage_used_bytes - v_bytes)
    WHERE id = p_conta_id;
   RETURN v_bytes;
 END $$;
 
-REVOKE ALL ON FUNCTION automation_media_finalize(uuid, text, bigint, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION automation_media_finalize(uuid, text, bigint, text) TO service_role;
+REVOKE ALL ON FUNCTION automation_media_finalize(uuid, text, bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION automation_media_finalize(uuid, text, bigint) TO service_role;
 REVOKE ALL ON FUNCTION automation_media_release(uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION automation_media_release(uuid, text) TO service_role;
-
--- Posse única + finalize obrigatório na PRÓPRIA escrita da automação.
--- (1) Uma key só pode ser referenciada por UMA automação: uploads são por
--- automação (key com uuid), e posse única é o que torna o delete do CRM
--- seguro sem contagem de referências -- sem isto, duas automações da mesma
--- workspace poderiam compartilhar a key via PostgREST e o delete de uma
--- quebraria os envios da outra.
-CREATE UNIQUE INDEX ica_dm_media_key_unique
-  ON instagram_comment_automations ((dm_media->>'key'))
-  WHERE dm_media IS NOT NULL;
-
--- (2) Trigger BEFORE: dm_media só aceita objeto FINALIZADO da mesma
--- workspace, e content_type/size_bytes são NORMALIZADOS do registro do
--- servidor -- uma escrita direta via PostgREST com metadata fabricada (ou
--- apontando para upload que pulou o finalize) não passa. Sem isto, o CHECK
--- de forma valida o JSON mas nada garante que o objeto existe, foi conferido
--- pelo HEAD ou entrou na quota. Roda ANTES dos CHECKs da linha (ordem do
--- Postgres: BEFORE trigger -> CHECKs), então o valor checado é o normalizado.
-CREATE FUNCTION enforce_ig_dm_media_finalized()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE
-  v_obj automation_media_objects;
-BEGIN
-  IF NEW.dm_media IS NULL THEN
-    RETURN NEW;
-  END IF;
-  -- FOR KEY SHARE: serializa contra o DELETE do automation_media_release
-  -- (anti-corrida attach/delete; ver comentário naquela RPC).
-  SELECT * INTO v_obj FROM automation_media_objects
-   WHERE key = NEW.dm_media->>'key' AND conta_id = NEW.conta_id
-   FOR KEY SHARE;
-  IF v_obj.key IS NULL THEN
-    RAISE EXCEPTION 'media_not_finalized' USING errcode = 'P0001';
-  END IF;
-  -- width/height são apresentacionais e ficam como o cliente mandou (se
-  -- números); o resto vem do registro. jsonb_strip_nulls remove width/height
-  -- ausentes para o CHECK de chaves permitidas continuar passando.
-  NEW.dm_media = jsonb_strip_nulls(jsonb_build_object(
-    'key', v_obj.key,
-    'content_type', v_obj.content_type,
-    'size_bytes', v_obj.size_bytes,
-    'width', CASE WHEN jsonb_typeof(NEW.dm_media->'width') = 'number' THEN NEW.dm_media->'width' END,
-    'height', CASE WHEN jsonb_typeof(NEW.dm_media->'height') = 'number' THEN NEW.dm_media->'height' END
-  ));
-  RETURN NEW;
-END $$;
-
-CREATE TRIGGER trg_ica_dm_media_finalized
-  BEFORE INSERT OR UPDATE OF dm_media ON instagram_comment_automations
-  FOR EACH ROW EXECUTE FUNCTION enforce_ig_dm_media_finalized();
 ```
 
 Antes de commitar, confirme o nome real do CHECK de `dm_kind` com `grep -n "dm_kind" supabase/migrations/20260819000001_instagram_dm_buttons.sql` (foi inline → nome auto `instagram_automation_sends_dm_kind_check`; o `DROP CONSTRAINT IF EXISTS` protege se divergir, mas nesse caso ajuste o nome no DROP para o real).
 
 - [ ] **Step 2: Testes SQL (nova seção no 65)**
 
-Seguindo o padrão das seções 7-9 (`begin; do $$...$$; rollback;`, roles como nas seções vizinhas), adicione casos: (a) automação válida com `dm_media` completo + `dm_message` de 80 chars + `dm_subtitle` como `authenticated` passa; (b) key com prefixo de OUTRO conta_id → `check_violation`; (c) key fora de `automation-media/` → `check_violation`; (d) `size_bytes` 8388609 → `check_violation`; (e) `content_type` `image/webp` → `check_violation`; (f) chave extra no objeto → `check_violation`; (g) `dm_subtitle` sem `dm_media` → `check_violation`; (h) `dm_message` 81 chars com mídia → `check_violation`; (i) `automation_media_finalize` incrementa `workspaces.storage_used_bytes` e devolve `true` na primeira chamada; a SEGUNDA chamada com a mesma key devolve `false` e NÃO incrementa de novo (idempotência); estoura `quota_exceeded` acima do limite do plano E não deixa linha em `automation_media_objects` (use `workspace_plan_overrides` para fixar um limite baixo, como as suítes de quota existentes fazem — procure o padrão em `supabase/tests/entitlements/` com `grep -l storage_quota_bytes`); (j) `automation_media_release` devolve os bytes do registro e decrementa com piso 0; a segunda chamada devolve 0 e não decrementa; release de key inexistente devolve 0; (k) INSERT/UPDATE de automação com `dm_media` apontando para key SEM registro em `automation_media_objects` → exception `media_not_finalized` (sqlstate P0001); (l) com registro presente, metadata fabricada no jsonb (size_bytes/content_type errados) é NORMALIZADA pelo trigger para os valores do registro (assert no valor salvo); (m) segunda automação referenciando a MESMA key → `unique_violation` (índice `ica_dm_media_key_unique`). Use o molde literal da seção 7 (caso "(b) 4 botões", linhas 372-384 do arquivo) para os casos de rejeição.
+Seguindo o padrão das seções 7-9 (`begin; do $$...$$; rollback;`, roles como nas seções vizinhas), adicione casos: (a) automação válida com `dm_media` completo + `dm_message` de 80 chars + `dm_subtitle` como `authenticated` passa; (b) key com prefixo de OUTRO conta_id → `check_violation`; (c) key fora de `automation-media/` → `check_violation`; (d) `size_bytes` 8388609 → `check_violation`; (e) `content_type` `image/webp` → `check_violation`; (f) chave extra no objeto → `check_violation`; (g) `dm_subtitle` sem `dm_media` → `check_violation`; (h) `dm_message` 81 chars com mídia → `check_violation`; (i) `automation_media_finalize` incrementa `workspaces.storage_used_bytes` e devolve `true` na primeira chamada; a SEGUNDA chamada com a mesma key devolve `false` e NÃO incrementa de novo (idempotência); estoura `quota_exceeded` acima do limite do plano E não deixa linha em `automation_media_objects` (use `workspace_plan_overrides` para fixar um limite baixo, como as suítes de quota existentes fazem — procure o padrão em `supabase/tests/entitlements/` com `grep -l storage_quota_bytes`); (j) `automation_media_release` devolve os bytes do registro e decrementa com piso 0; a segunda chamada devolve 0 e não decrementa; release de key inexistente devolve 0. Use o molde literal da seção 7 (caso "(b) 4 botões", linhas 372-384 do arquivo) para os casos de rejeição.
 
 - [ ] **Step 3: Rodar se houver Supabase local; senão seguir (CI cobre)**
 
@@ -323,7 +258,7 @@ Como na fatia 1: `supabase start` + `bash scripts/test-entitlements.sh` se Docke
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20260901000014_ig_dm_media_card.sql supabase/tests/entitlements/65_instagram_automations.sql
+git add supabase/migrations/20260901000002_ig_dm_media_card.sql supabase/tests/entitlements/65_instagram_automations.sql
 git commit -m "feat(automacoes): schema do cartão com imagem (dm_media, dm_subtitle, quota RPCs)"
 ```
 
@@ -485,7 +420,6 @@ git commit -m "feat(automacoes): payload de generic template (cartão) e parseDm
 - Create: `supabase/functions/automation-media/index.ts`
 - Create: `supabase/functions/automation-media/handler.ts`
 - Create: `supabase/functions/__tests__/automation-media_test.ts`
-- Modify: `supabase/functions/_shared/r2.ts` (novo helper `headObjectSigned`)
 
 **Interfaces:**
 - Consumes: `buildCorsHeaders` (`_shared/cors.ts`), `signPutUrl`/`signGetUrl`/`headObject`/`trashObject` (`_shared/r2.ts`), RPCs da Task 2.
@@ -506,7 +440,6 @@ const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.me
 function makeHandler(db: any, opts?: {
   headObject?: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   trashed?: string[];
-  copies?: Array<{ from: string; to: string }>;
 }) {
   return createAutomationMediaHandler({
     buildCorsHeaders,
@@ -515,7 +448,6 @@ function makeHandler(db: any, opts?: {
     signGetUrl: async (key: string) => `https://get.example.com/${key}`,
     headObject: opts?.headObject ?? (async () => ({ contentLength: 5000, contentType: "image/jpeg" })),
     trashObject: async (key: string) => { opts?.trashed?.push(key); },
-    copyObject: async (from: string, to: string) => { opts?.copies?.push({ from, to }); },
     randomUUID: () => "fixed-uuid",
   });
 }
@@ -531,18 +463,17 @@ function req(path: string, body: unknown, token = "valid-jwt") {
 // deno-lint-ignore no-explicit-any
 function setupAuth(db: any, contaId = "conta-1") {
   db.withAuth({ id: "user-1" });
-  db.queue("profiles", "select", { data: { active_workspace_id: contaId }, error: null });
-  db.queue("workspace_members", "select", { data: { user_id: "user-1" }, error: null });
+  db.queue("profiles", "select", { data: { conta_id: contaId }, error: null });
 }
 
-Deno.test("presign: gera key no prefixo TMP do tenant e devolve upload_url", async () => {
+Deno.test("presign: gera key no prefixo do tenant e devolve upload_url", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
   const res = await makeHandler(db)(req("presign", { mime_type: "image/jpeg", size_bytes: 5000 }));
   assertEquals(res.status, 200);
   const body = await res.json();
-  assertEquals(body.key, "automation-media-tmp/conta-1/fixed-uuid.jpg");
-  assertEquals(body.upload_url, "https://put.example.com/automation-media-tmp/conta-1/fixed-uuid.jpg");
+  assertEquals(body.key, "automation-media/conta-1/fixed-uuid.jpg");
+  assertEquals(body.upload_url, "https://put.example.com/automation-media/conta-1/fixed-uuid.jpg");
 });
 
 Deno.test("presign: mime fora da allowlist -> 415; acima de 8MB -> 400; sem auth -> 401", async () => {
@@ -560,15 +491,12 @@ Deno.test("presign: mime fora da allowlist -> 415; acima de 8MB -> 400; sem auth
   assertEquals((await makeHandler(db3)(req("presign", { mime_type: "image/png", size_bytes: 10 }))).status, 401);
 });
 
-Deno.test("finalize: copia tmp -> final, HEAD confere a FINAL, finaliza com quota e devolve dm_media com a key final", async () => {
+Deno.test("finalize: HEAD confere tamanho/tipo, finaliza com quota e devolve dm_media", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
-  db.queue("automation_media_objects", "select", { data: null, error: null });
   db.queueRpc("automation_media_finalize", { data: true, error: null });
-  const copies: Array<{ from: string; to: string }> = [];
-  const trashed: string[] = [];
-  const res = await makeHandler(db, { copies, trashed })(req("finalize", {
-    key: "automation-media-tmp/conta-1/fixed-uuid.jpg",
+  const res = await makeHandler(db)(req("finalize", {
+    key: "automation-media/conta-1/fixed-uuid.jpg",
     mime_type: "image/jpeg",
     size_bytes: 5000,
     width: 1080,
@@ -583,76 +511,44 @@ Deno.test("finalize: copia tmp -> final, HEAD confere a FINAL, finaliza com quot
     width: 1080,
     height: 1350,
   });
-  assertEquals(copies, [{
-    from: "automation-media-tmp/conta-1/fixed-uuid.jpg",
-    to: "automation-media/conta-1/fixed-uuid.jpg",
-  }]);
-  // A tmp é trasheada após a cópia (best-effort).
-  assertEquals(trashed, ["automation-media-tmp/conta-1/fixed-uuid.jpg"]);
   const rpcs = db.calls.filter((c: { table: string }) => c.table === "rpc:automation_media_finalize");
   assertEquals(rpcs[0].payload, {
     p_conta_id: "conta-1",
     p_key: "automation-media/conta-1/fixed-uuid.jpg",
     p_bytes: 5000,
-    p_content_type: "image/jpeg",
   });
 });
 
-Deno.test("finalize: retry com resposta perdida devolve o canônico do registro sem recopiar", async () => {
-  const db = createSupabaseQueryMock();
-  setupAuth(db);
-  db.queue("automation_media_objects", "select", {
-    data: { key: "automation-media/conta-1/fixed-uuid.jpg", content_type: "image/jpeg", size_bytes: 5000 },
-    error: null,
-  });
-  const copies: Array<{ from: string; to: string }> = [];
-  const res = await makeHandler(db, { copies })(req("finalize", {
-    key: "automation-media-tmp/conta-1/fixed-uuid.jpg",
-    mime_type: "image/jpeg",
-    size_bytes: 5000,
-  }));
-  assertEquals(res.status, 200);
-  assertEquals((await res.json()).dm_media.key, "automation-media/conta-1/fixed-uuid.jpg");
-  assertEquals(copies, []);
-});
-
-Deno.test("finalize: key tmp de outro tenant -> 400; size divergente do HEAD -> 400; quota -> 413 e trasheia a final", async () => {
+Deno.test("finalize: key de outro tenant -> 400; size divergente do HEAD -> 400; quota -> 413 e trasheia o upload", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
   assertEquals(
-    (await makeHandler(db)(req("finalize", { key: "automation-media-tmp/OUTRA/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }))).status,
+    (await makeHandler(db)(req("finalize", { key: "automation-media/OUTRA/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }))).status,
     400,
   );
   const db2 = createSupabaseQueryMock();
   setupAuth(db2);
-  db2.queue("automation_media_objects", "select", { data: null, error: null });
-  const copies2: Array<{ from: string; to: string }> = [];
   assertEquals(
-    (await makeHandler(db2, { copies: copies2, headObject: async () => ({ contentLength: 999, contentType: "image/jpeg" }) })(
-      req("finalize", { key: "automation-media-tmp/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }),
+    (await makeHandler(db2, { headObject: async () => ({ contentLength: 999, contentType: "image/jpeg" }) })(
+      req("finalize", { key: "automation-media/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }),
     )).status,
     400,
   );
-  // Mismatch detectado no HEAD da TMP: nada foi copiado ao prefixo permanente.
-  assertEquals(copies2, []);
   const db3 = createSupabaseQueryMock();
   setupAuth(db3);
-  db3.queue("automation_media_objects", "select", { data: null, error: null });
   db3.queueRpc("automation_media_finalize", { data: null, error: { message: "quota_exceeded" } });
   const trashed3: string[] = [];
   assertEquals(
-    (await makeHandler(db3, { trashed: trashed3 })(req("finalize", { key: "automation-media-tmp/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }))).status,
+    (await makeHandler(db3, { trashed: trashed3 })(req("finalize", { key: "automation-media/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }))).status,
     413,
   );
-  // Upload rejeitado por quota não fica retido: a cópia FINAL vai para o trash
-  // (a tmp vira órfã aceita).
-  assertEquals(trashed3.includes("automation-media/conta-1/x.jpg"), true);
+  // Upload rejeitado por quota não fica retido fora da contabilidade.
+  assertEquals(trashed3, ["automation-media/conta-1/x.jpg"]);
 });
 
 Deno.test("delete: trasheia (nunca hard delete) e libera pelo registro do servidor; prefixo de outro tenant -> 400", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
-  db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queueRpc("automation_media_release", { data: 5000, error: null });
   const trashed: string[] = [];
   const res = await makeHandler(db, { trashed })(req("delete", {
@@ -672,16 +568,6 @@ Deno.test("delete: trasheia (nunca hard delete) e libera pelo registro do servid
     (await makeHandler(db2)(req("delete", { key: "automation-media/OUTRA/x.jpg" }))).status,
     400,
   );
-});
-
-Deno.test("delete: key ainda referenciada por automação -> 409 e nada é trasheado", async () => {
-  const db = createSupabaseQueryMock();
-  setupAuth(db);
-  db.queue("instagram_comment_automations", "select", { data: [{ id: "auto-1" }], error: null });
-  const trashed: string[] = [];
-  const res = await makeHandler(db, { trashed })(req("delete", { key: "automation-media/conta-1/x.jpg" }));
-  assertEquals(res.status, 409);
-  assertEquals(trashed, []);
 });
 
 Deno.test("sign-view: devolve GET assinado só para key do tenant", async () => {
@@ -707,51 +593,7 @@ Expected: FAIL (handler inexistente).
 
 - [ ] **Step 3: Implementar handler + index**
 
-Antes do handler, adicione em `_shared/r2.ts` o helper `headObjectSigned` -- mesmo contrato do `headObject` atual (`Promise<{ contentLength: number; contentType: string | null } | null>`, null em qualquer falha) mas via **presign + fetch puro + AbortSignal**, nunca `getR2().send()` (o transport do SDK é o caminho documentado de travamento no edge runtime, e finalize é um handler que grava estado):
-
-```ts
-/** Cópia via presign + fetch puro, SEM apagar a origem (metade "copy" do
- * trashObject; reusa exatamente a técnica documentada lá, incluindo o aviso
- * de NÃO enviar x-amz-copy-source como header -- o presigner o embute na
- * query string e duplicá-lo dá 403 SignatureDoesNotMatch, causa raiz do
- * incidente de 2026-08). Lança em falha. */
-export async function copyObjectSigned(sourceKey: string, destKey: string): Promise<void> {
-  const copySource = `${getBucket()}/${encodeURIComponent(sourceKey).replace(/%2F/g, "/")}`;
-  const cmd = new CopyObjectCommand({
-    Bucket: getBucket(),
-    CopySource: copySource,
-    Key: destKey,
-  });
-  const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
-  const res = await fetch(url, { method: "PUT", signal: AbortSignal.timeout(30_000) });
-  if (!res.ok) {
-    const bodyText = await res.text().catch(() => "");
-    throw new Error(`r2 copy failed: ${res.status}${bodyText ? ` ${bodyText.slice(0, 300)}` : ""}`);
-  }
-}
-
-/** HEAD via presign + fetch puro (mesmo racional de putObject/deleteObject:
- * o transport do SDK trava no edge runtime; este helper é para handlers que
- * gravam estado). null em 404 ou qualquer falha. */
-export async function headObjectSigned(
-  key: string,
-): Promise<{ contentLength: number; contentType: string | null } | null> {
-  try {
-    const cmd = new HeadObjectCommand({ Bucket: getBucket(), Key: key });
-    const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
-    const res = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) return null;
-    return {
-      contentLength: Number(res.headers.get("content-length") ?? 0),
-      contentType: res.headers.get("content-type"),
-    };
-  } catch (_e) {
-    return null;
-  }
-}
-```
-
-`handler.ts` (factory; roteamento por segmento como `post-media-manage/handler.ts:96-100`; tenant = workspace ativa + membership, padrão do `report-docs/index.ts` -- NÃO o `profiles.conta_id` dos handlers antigos de post-media):
+`handler.ts` (factory; roteamento por segmento como `post-media-manage/handler.ts:96-100`; auth idêntica à do `post-media-finalize/index.ts:20-38` mas via `deps.createDb`):
 
 ```ts
 // supabase/functions/automation-media/handler.ts
@@ -777,7 +619,6 @@ export interface AutomationMediaDeps {
   signGetUrl: (key: string) => Promise<string>;
   headObject: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   trashObject: (key: string) => Promise<void>;
-  copyObject: (sourceKey: string, destKey: string) => Promise<void>;
   randomUUID?: () => string;
 }
 
@@ -801,22 +642,9 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
     const svc = deps.createDb();
     const { data: { user } = { user: null }, error: authErr } = await svc.auth.getUser(token);
     if (authErr || !user) return json({ error: "Unauthorized" }, 401);
-    // Tenant = workspace ATIVA + membership confirmada, padrão do report-docs
-    // (conta_id NÃO é fallback: usuário multi-workspace operaria na workspace
-    // errada, e membro removido manteria acesso). Copie o bloco literal de
-    // supabase/functions/report-docs/index.ts (resolução de tenant, ~linhas
-    // 50-60) e adapte só os nomes -- se o shape real divergir do abaixo, o
-    // report-docs vence.
-    const { data: profile } = await svc.from("profiles").select("active_workspace_id").eq("id", user.id).single();
-    const contaId = profile?.active_workspace_id as string | undefined;
-    if (!contaId) return json({ error: "Profile not found" }, 403);
-    const { data: member } = await svc
-      .from("workspace_members")
-      .select("user_id")
-      .eq("workspace_id", contaId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (!member) return json({ error: "Forbidden" }, 403);
+    const { data: profile } = await svc.from("profiles").select("conta_id").eq("id", user.id).single();
+    if (!profile?.conta_id) return json({ error: "Profile not found" }, 403);
+    const contaId = profile.conta_id as string;
     const tenantPrefix = `automation-media/${contaId}/`;
 
     const parts = new URL(req.url).pathname.split("/").filter(Boolean);
@@ -837,84 +665,29 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
       if (!Number.isFinite(size) || size <= 0 || size > MAX_MEDIA_BYTES) {
         return json({ error: "invalid size" }, 400);
       }
-      // Upload SEMPRE no prefixo tmp. A key FINAL (a única que dm_media
-      // aceita) nunca recebe PUT pré-assinado: o finalize copia tmp -> final,
-      // então sobrescrever a tmp depois (a URL vive 15 min) não alcança o
-      // objeto contabilizado/servido. Tmp abandonada é órfã aceita.
-      const key = `automation-media-tmp/${contaId}/${randomUUID()}.${ALLOWED_MIME[mime]}`;
+      const key = `${tenantPrefix}${randomUUID()}.${ALLOWED_MIME[mime]}`;
       const upload_url = await deps.signPutUrl(key, mime);
       return json({ upload_url, key });
     }
 
     if (route === "finalize") {
-      const tmpKey = String(body.key ?? "");
+      const key = String(body.key ?? "");
       const mime = String(body.mime_type ?? "");
       const size = Number(body.size_bytes ?? 0);
-      const tmpPrefix = `automation-media-tmp/${contaId}/`;
-      if (!tmpKey.startsWith(tmpPrefix)) return json({ error: "invalid key" }, 400);
+      if (!key.startsWith(tenantPrefix)) return json({ error: "invalid key" }, 400);
       if (!(mime in ALLOWED_MIME)) return json({ error: "unsupported file type" }, 415);
       if (!Number.isFinite(size) || size <= 0 || size > MAX_MEDIA_BYTES) {
         return json({ error: "invalid size" }, 400);
       }
-      const key = `${tenantPrefix}${tmpKey.slice(tmpPrefix.length)}`;
-      // Retry idempotente: se a resposta do finalize anterior se perdeu, a key
-      // final JÁ tem registro -- devolve o canônico sem recopiar (recopiar a
-      // tmp, que pode ter sido sobrescrita pela URL de PUT ainda válida,
-      // corromperia a final já verificada).
-      const { data: existing } = await svc
-        .from("automation_media_objects")
-        .select("key, content_type, size_bytes")
-        .eq("key", key)
-        .eq("conta_id", contaId)
-        .maybeSingle();
-      // Guard em existing?.key (não `if (existing)`): o maybeSingle real devolve
-      // null sem linha, mas o mock do harness devolve [] por default, que é
-      // truthy -- e uma linha real sempre tem key NOT NULL. O guard vale para
-      // os dois contratos.
-      if (existing?.key) {
-        const w = Number.isFinite(Number(body.width)) && Number(body.width) > 0 ? Number(body.width) : undefined;
-        const h = Number.isFinite(Number(body.height)) && Number(body.height) > 0 ? Number(body.height) : undefined;
-        return json({
-          dm_media: {
-            key: existing.key,
-            content_type: existing.content_type,
-            size_bytes: existing.size_bytes,
-            ...(w ? { width: w } : {}),
-            ...(h ? { height: h } : {}),
-          },
-        });
-      }
-      // Valida a TMP antes de copiar (falha barata, nada chega ao prefixo
-      // permanente) e revalida a FINAL depois (a URL de PUT da tmp segue viva:
-      // uma sobrescrita entre o HEAD e a cópia não pode sobreviver). Qualquer
-      // falha PÓS-cópia trasheia a final -- sem isso, requests repetidos com
-      // mismatch acumulariam objetos não medidos fora da quota.
-      const tmpHead = await deps.headObject(tmpKey);
-      if (!tmpHead) return json({ error: "object not found" }, 400);
-      if (tmpHead.contentLength !== size) return json({ error: "size mismatch" }, 400);
-      if (tmpHead.contentType && tmpHead.contentType !== mime) {
-        return json({ error: "content-type mismatch" }, 400);
-      }
-      try {
-        await deps.copyObject(tmpKey, key);
-      } catch (e) {
-        console.error("[automation-media] copy tmp->final:", e instanceof Error ? e.message : String(e));
-        return json({ error: "object not found" }, 400);
-      }
-      const failFinal = async (err: string) => {
-        await deps.trashObject(key).catch(() => {});
-        return json({ error: err }, 400);
-      };
       const head = await deps.headObject(key);
-      if (!head) return await failFinal("object not found");
-      if (head.contentLength !== size) return await failFinal("size mismatch");
-      if (head.contentType && head.contentType !== mime) return await failFinal("content-type mismatch");
+      if (!head) return json({ error: "object not found" }, 400);
+      if (head.contentLength !== size) return json({ error: "size mismatch" }, 400);
+      if (head.contentType && head.contentType !== mime) return json({ error: "content-type mismatch" }, 400);
 
       const { error: rpcErr } = await svc.rpc("automation_media_finalize", {
         p_conta_id: contaId,
         p_key: key,
         p_bytes: size,
-        p_content_type: mime,
       });
       if (rpcErr) {
         const msg = String(rpcErr.message ?? "");
@@ -928,8 +701,6 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
         console.error("[automation-media] finalize:", msg);
         return json({ error: "internal" }, 500);
       }
-      // Tmp cumpriu o papel; trash best-effort (falha vira órfã tmp, aceita).
-      await deps.trashObject(tmpKey).catch(() => {});
       const width = Number.isFinite(Number(body.width)) && Number(body.width) > 0 ? Number(body.width) : undefined;
       const height = Number.isFinite(Number(body.height)) && Number(body.height) > 0 ? Number(body.height) : undefined;
       return json({
@@ -952,40 +723,22 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
     if (route === "delete") {
       const key = String(body.key ?? "");
       if (!key.startsWith(tenantPrefix)) return json({ error: "invalid key" }, 400);
-      // Pre-check rápido de referência: devolve 409 sem tocar R2/RPC quando a
-      // key ainda está anexada. NÃO é a garantia (corrida entre este select e
-      // a RPC existe); a garantia transacional é o ref-check DENTRO da RPC.
-      const { data: refs, error: refErr } = await svc
-        .from("instagram_comment_automations")
-        .select("id")
-        .eq("dm_media->>key", key)
-        .limit(1);
-      if (refErr) {
-        console.error("[automation-media] ref pre-check:", refErr.message);
+      try {
+        await deps.trashObject(key);
+      } catch (e) {
+        console.error("[automation-media] trashObject:", e instanceof Error ? e.message : String(e));
         return json({ error: "internal" }, 500);
       }
-      if ((refs ?? []).length > 0) return json({ error: "media_in_use" }, 409);
-      // ORDEM: release ANTES do trash. A RPC faz, na mesma transação, o
-      // ref-check anti-corrida (media_in_use se alguma automação referencia)
-      // e remove o registro -- a partir daí nenhum attach novo passa no
-      // trigger, então o trash abaixo nunca apaga objeto referenciado. Os
-      // bytes liberados vêm do registro do servidor, nunca do request.
+      // Os bytes liberados vêm do registro do servidor (release é idempotente
+      // por key e devolve 0 quando não há registro) -- o request não manda
+      // tamanho nenhum, então não dá para forjar liberação de quota.
       const { error: rpcErr } = await svc.rpc("automation_media_release", {
         p_conta_id: contaId,
         p_key: key,
       });
       if (rpcErr) {
-        const msg = String(rpcErr.message ?? "");
-        if (msg.includes("media_in_use")) return json({ error: "media_in_use" }, 409);
-        console.error("[automation-media] release:", msg);
-        return json({ error: "internal" }, 500);
-      }
-      try {
-        await deps.trashObject(key);
-      } catch (e) {
-        // Registro já liberado; objeto vira órfão não contabilizado (aceito,
-        // reap futuro). Retry do cliente: release devolve 0 e re-trasheia.
-        console.error("[automation-media] trashObject:", e instanceof Error ? e.message : String(e));
+        console.error("[automation-media] release:", rpcErr.message);
+        // trashObject é 404-tolerante: o retry do cliente re-trasheia e libera.
         return json({ error: "internal" }, 500);
       }
       return json({ ok: true });
@@ -1002,7 +755,7 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
 // supabase/functions/automation-media/index.ts
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
-import { copyObjectSigned, headObjectSigned, signGetUrl, signPutUrl, trashObject } from "../_shared/r2.ts";
+import { headObject, signGetUrl, signPutUrl, trashObject } from "../_shared/r2.ts";
 import { createAutomationMediaHandler } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -1016,9 +769,8 @@ Deno.serve(createAutomationMediaHandler({
     }),
   signPutUrl,
   signGetUrl,
-  headObject: headObjectSigned,
+  headObject,
   trashObject,
-  copyObject: copyObjectSigned,
 }));
 ```
 
@@ -1032,7 +784,7 @@ Expected: PASS (6 testes).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/functions/automation-media/ supabase/functions/__tests__/automation-media_test.ts supabase/functions/_shared/r2.ts
+git add supabase/functions/automation-media/ supabase/functions/__tests__/automation-media_test.ts
 git commit -m "feat(automacoes): edge function automation-media (presign, finalize com quota, trash)"
 ```
 
@@ -1433,19 +1185,13 @@ Casos (mesmos helpers/mocks do arquivo; adicione `vi.mock` de `../../../services
 1. `'anexar imagem troca o campo de mensagem para título com limite 80 e mostra subtítulo'` -- simule upload (fireEvent.change no input file com um `File` fake; `mockUpload.mockResolvedValue({ key: 'automation-media/w-1/x.jpg', content_type: 'image/jpeg', size_bytes: 100 })`), espere o thumbnail/nome aparecer e assert que o textarea de DM tem `maxLength = 80` e que o campo `form.subtitleLabel` existe.
 2. `'submit com mídia envia dm_media e dm_subtitle; sem mídia envia null'` -- assert `mockCreate` com `expect.objectContaining({ dm_media: {...}, dm_subtitle: 'sub' })` e o caso contrário com `{ dm_media: null, dm_subtitle: null }`.
 3. `'mensagem acima de 80 com mídia bloqueia o submit com toast'` -- seed via editing com `dm_message` de 100 chars, anexa mídia, submit, assert `toast.error` com `'form.validationDmWithMedia'` e `mockUpdate` não chamado.
-3b. `'remover mídia persistida não apaga o objeto antes do save; apaga só após o update com sucesso'` -- abre com editing que tem `dm_media`, clica remover, assert `mockDeleteMedia` NÃO chamado ainda; submit com `mockUpdate` resolvendo, então assert `mockDeleteMedia` chamado com a mídia antiga. Variante: fechar o dialog sem salvar → `mockDeleteMedia` nunca chamado.
 4. Em `DmPreview.test.tsx`: `'com mídia renderiza o cartão: imagem, título, subtítulo e botão'` -- passe as props novas (`mediaUrl="blob:x"`, `subtitle="Sub"`) e assert `screen.getByTestId('dm-preview-card')` com `<img>` e o texto.
 
 - [ ] **Step 4: Implementar form + preview + página**
 
 `AutomationFormDialog.tsx`:
 - Estado: `dmMedia: null as DmMedia | null`, `dmMediaPreviewUrl: '' as string`, `dmSubtitle: ''`, `dmMediaUploading: false`. Seed do editing: `dmMedia: editing.dm_media ?? null`, `dmSubtitle: editing.dm_subtitle ?? ''`; se `editing.dm_media`, dispare `signAutomationMediaView(key)` num `useEffect` para preencher `dmMediaPreviewUrl` (falha silenciosa: preview sem imagem).
-- Seção "Mídia da DM (opcional)" entre o textarea de DM e o editor de botões (padrão visual do editor de botões): sem mídia, `<input type="file" accept="image/jpeg,image/png,image/gif">` estilizado + help `t('form.mediaHelp')`; ao escolher arquivo, `validateAutomationMediaFile` (erro → `toast.error(t(chave))`), `URL.createObjectURL(file)` para preview imediato, `uploadAutomationMedia` com spinner.
-- **Ciclo de vida da mídia (a ordem importa — o banco é detachado ANTES de qualquer trash, como manda a spec):**
-  - O botão remover mexe SÓ no estado do form (`dmMedia: null`). Nunca apaga na hora um objeto que a automação salva ainda referencia: cancelar o dialog depois deixaria a automação apontando para objeto trasheado e o próximo envio cairia em fallback sem motivo.
-  - Exceção segura: mídia que foi enviada NESTA sessão do dialog e ainda não salva (o banco nunca a referenciou) pode ser apagada em fire-and-forget ao remover/trocar/cancelar. Guarde `sessionUploadedKeys: string[]` no estado para distinguir.
-  - Após o save com SUCESSO (create/update), compare a key persistida anterior (`editing?.dm_media?.key`) com a key salva: se mudou (troca) ou saiu (remoção), chame `deleteAutomationMedia(mediaAntiga)` em fire-and-forget com `.catch` (falha vira órfão recuperável do trash, nunca automação quebrada).
-  - Exclusão da automação (`AutomacoesPage`): após `deleteInstagramAutomation(id)` resolver com sucesso, se `a.dm_media` existia, chame `deleteAutomationMedia(a.dm_media)` em fire-and-forget com `.catch`. A exceção de órfão aceito cobre SÓ formulário abandonado; troca e exclusão são fluxo normal e liberam quota.
+- Seção "Mídia da DM (opcional)" entre o textarea de DM e o editor de botões (padrão visual do editor de botões): sem mídia, `<input type="file" accept="image/jpeg,image/png,image/gif">` estilizado + help `t('form.mediaHelp')`; ao escolher arquivo, `validateAutomationMediaFile` (erro → `toast.error(t(chave))`), `URL.createObjectURL(file)` para preview imediato, `uploadAutomationMedia` com spinner; com mídia, thumbnail 44px + nome + botão remover (chama `deleteAutomationMedia` em fire-and-forget com `.catch` para toast, e limpa o estado ANTES -- o banco é a fonte de verdade e o CHECK protege).
 - Com `dmMedia` presente: o label do textarea de DM vira `t('form.cardTitleLabel')`, `maxLength={80}`, contador `/80`; campo novo `t('form.subtitleLabel')` (Input, `maxLength={80}`, contador). Sem mídia: tudo como hoje.
 - `submit()`: antes de `validateDmButtons`, se `form.dmMedia && form.dmMessage.trim().length > 80` → `toast.error(t('form.validationDmWithMedia'))` e return. Payload: `dm_media: form.dmMedia, dm_subtitle: form.dmMedia && form.dmSubtitle.trim() ? form.dmSubtitle.trim() : null`.
 - `confirmClose`: inclua `form.dmMedia !== null`.
@@ -1499,12 +1245,10 @@ gh pr create --title "feat(automacoes): cartão com imagem na DM (generic templa
 Spec: docs/superpowers/specs/2026-08-31-automacoes-dm-midia-e-variacoes-design.md
 Gate: Milestone 0 (prova do generic template em staging) documentado em docs/superpowers/specs/2026-08-31-milestone0-generic-template-staging.md
 
-## Deploy (ordem estrita; a janela mais apertada é o FRONTEND)
-O CRM novo envia dm_media/dm_subtitle em TODO create/update de automação, e a Vercel shippa o frontend no instante do merge. Portanto:
-1. Migration aplicada em PROD ANTES do merge (`npx supabase db push --linked`, conferindo o project-ref)
-2. Functions em prod ANTES do merge: automation-media, instagram-webhook, instagram-automation-cron (`--use-api --no-verify-jwt`; automation-media faz a própria auth de JWT e precisa estar no ar antes de o frontend poder subir mídia)
-3. Merge (frontend vai junto via Vercel)
-4. Smoke: automação sem mídia segue com dm_kind text/buttons; depois um cartão ponta a ponta em conta real
+## Deploy
+1. Migration ANTES do redeploy
+2. Functions: instagram-webhook, instagram-automation-cron e automation-media (--use-api --no-verify-jwt; automation-media faz a própria auth de JWT)
+3. Smoke: automação sem mídia segue com dm_kind text/buttons
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
