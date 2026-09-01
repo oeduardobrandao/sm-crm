@@ -84,7 +84,7 @@ function Avatar({ name, size = 28, bg }: { name: string; size?: number; bg?: str
         fontWeight: 700,
         fontSize: size * 0.36,
         letterSpacing: '-.02em',
-        border: '2px solid #fff',
+        border: '2px solid transparent',
         boxSizing: 'border-box',
       }}
     >
@@ -435,130 +435,46 @@ export function FeatureShot({
  * Instagram, so it is drawn (in the landing's own style) instead of using a
  * screenshot — keyword comment, automatic public reply, DM with a card. */
 export function AutomacaoVisual() {
-  const card: React.CSSProperties = {
-    background: '#fff',
-    borderRadius: 18,
-    padding: '16px 18px',
-    boxShadow: '0 20px 50px -12px rgba(0,0,0,.16), 0 0 0 1px rgba(30,36,48,.06)',
-  };
-  const micro: React.CSSProperties = {
-    fontFamily: MONO,
-    fontSize: 10,
-    fontWeight: 700,
-    letterSpacing: '.05em',
-    color: BRAND.muted,
-  };
   return (
-    <div
-      style={{
-        position: 'relative',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 14,
-        maxWidth: 400,
-        margin: '0 auto',
-      }}
-    >
-      <div style={card}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 12,
-          }}
-        >
-          <span style={micro}>Comentário no Reels</span>
-          <Badge tone="neutral">Gatilho: QUERO</Badge>
+    <div className="av-stack">
+      <div className="av-card">
+        <div className="av-head">
+          <span className="av-micro">Comentário no Reels</span>
+          <span className="av-tag av-tag--neutral">Gatilho: QUERO</span>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <div className="av-row">
           <Avatar name="Mariana Souza" size={30} bg={BRAND.teal} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, color: BRAND.dark }}>
+            <div className="av-comment">
               <strong>mariana.souza</strong> QUERO 🙋‍♀️
             </div>
-            <div
-              style={{
-                marginTop: 10,
-                padding: '9px 12px',
-                background: '#f8fafc',
-                border: '1px solid rgba(30,36,48,.07)',
-                borderRadius: 12,
-                fontSize: 12.5,
-                color: BRAND.text,
-              }}
-            >
-              <strong style={{ color: BRAND.dark }}>cafedamanha</strong> Te chamei no direct,
-              confere lá 💛
+            <div className="av-reply">
+              <strong>cafedamanha</strong> Te chamei no direct, confere lá 💛
             </div>
-            <div
-              style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', gap: 6 }}
-              aria-hidden="true"
-            >
-              <Badge tone="success" small>
-                Resposta automática
-              </Badge>
+            <div className="av-reply-tags" aria-hidden="true">
+              <span className="av-tag av-tag--success">Resposta automática</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'center' }} aria-hidden="true">
-        <ArrowRight size={18} color={BRAND.muted} style={{ transform: 'rotate(90deg)' }} />
+      <div className="av-arrow" aria-hidden="true">
+        <ArrowRight size={18} style={{ transform: 'rotate(90deg)' }} />
       </div>
 
-      <div style={{ ...card, animation: 'float-up 5s ease-in-out .6s infinite' }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 12,
-          }}
-        >
-          <span style={micro}>Direct</span>
-          <Badge tone="yellow">DM enviada</Badge>
+      <div className="av-card" style={{ animation: 'float-up 5s ease-in-out .6s infinite' }}>
+        <div className="av-head">
+          <span className="av-micro">Direct</span>
+          <span className="av-tag av-tag--yellow">DM enviada</span>
         </div>
-        <div
-          style={{
-            maxWidth: 250,
-            border: '1px solid rgba(30,36,48,.09)',
-            borderRadius: 14,
-            overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
-              height: 88,
-              background: `linear-gradient(135deg,${BRAND.yellow},${BRAND.orange})`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <MessageCircle size={26} color="#7a4d05" />
+        <div className="av-dm">
+          <div className="av-dm-img">
+            <MessageCircle size={26} />
           </div>
-          <div style={{ padding: '11px 13px' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: BRAND.dark }}>
-              Guia do cardápio de inverno
-            </div>
-            <div style={{ fontSize: 11.5, color: BRAND.muted, marginTop: 3, lineHeight: 1.4 }}>
-              Baixe grátis e escolha o seu favorito.
-            </div>
-            <div
-              style={{
-                marginTop: 10,
-                background: BRAND.dark,
-                color: '#fff',
-                textAlign: 'center',
-                padding: '8px 10px',
-                borderRadius: 9,
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              Baixar o guia
-            </div>
+          <div className="av-dm-body">
+            <div className="av-dm-title">Guia do cardápio de inverno</div>
+            <div className="av-dm-sub">Baixe grátis e escolha o seu favorito.</div>
+            <div className="av-dm-btn">Baixar o guia</div>
           </div>
         </div>
       </div>

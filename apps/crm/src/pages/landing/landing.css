@@ -466,7 +466,9 @@
 }
 @media (max-width: 980px) {
   .hero-stage {
-    min-height: 480px;
+    /* single-column: the stage height must track the (full-width) MacBook,
+       or the hero's overflow clips its bottom on tablets */
+    min-height: calc(61vw + 20px);
     margin-top: 8px;
   }
 }
@@ -632,6 +634,14 @@
     transform: translateY(0);
   }
 }
+@media (max-width: 980px) {
+  /* single-column: keep the MacBook inside the stage (the 118% overhang of
+     the two-column layout would clip against the hero's overflow) */
+  .hd-macbook {
+    left: 0;
+    right: 0;
+  }
+}
 @media (max-width: 640px) {
   .hd-macbook {
     top: 34px;
@@ -715,6 +725,167 @@
 [data-theme='dark'] .feat-shot-bar {
   background: #12151a;
   border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* ---- automações visual (comment → DM) ---- */
+.av-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 400px;
+  margin: 0 auto;
+}
+.av-card {
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px 18px;
+  box-shadow:
+    0 20px 50px -12px rgba(0, 0, 0, 0.16),
+    0 0 0 1px rgba(30, 36, 48, 0.06);
+}
+.av-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.av-micro {
+  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+}
+.av-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  font-family: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.av-tag--neutral {
+  background: #f1f5f9;
+  color: #374151;
+}
+.av-tag--success {
+  background: rgba(62, 207, 142, 0.15);
+  color: #15803d;
+}
+.av-tag--yellow {
+  background: rgba(255, 191, 48, 0.18);
+  color: #8a5a06;
+}
+.av-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.av-comment {
+  font-size: 13px;
+  color: #374151;
+}
+.av-comment strong,
+.av-reply strong {
+  color: #12151a;
+}
+.av-reply {
+  margin-top: 10px;
+  padding: 9px 12px;
+  background: #f8fafc;
+  border: 1px solid rgba(30, 36, 48, 0.07);
+  border-radius: 12px;
+  font-size: 12.5px;
+  color: #374151;
+}
+.av-reply-tags {
+  margin-top: 6px;
+  display: flex;
+  justify-content: flex-end;
+}
+.av-arrow {
+  display: flex;
+  justify-content: center;
+  color: #6b7280;
+}
+.av-dm {
+  max-width: 250px;
+  border: 1px solid rgba(30, 36, 48, 0.09);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.av-dm-img {
+  height: 88px;
+  background: linear-gradient(135deg, #ffbf30, #f5a342);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7a4d05;
+}
+.av-dm-body {
+  padding: 11px 13px;
+}
+.av-dm-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #12151a;
+}
+.av-dm-sub {
+  font-size: 11.5px;
+  color: #6b7280;
+  margin-top: 3px;
+  line-height: 1.4;
+}
+.av-dm-btn {
+  margin-top: 10px;
+  background: #12151a;
+  color: #fff;
+  text-align: center;
+  padding: 8px 10px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 600;
+}
+[data-theme='dark'] .av-card {
+  background: #12151a;
+  box-shadow:
+    0 20px 50px -12px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+[data-theme='dark'] .av-micro {
+  color: #9ca3af;
+}
+[data-theme='dark'] .av-comment,
+[data-theme='dark'] .av-reply {
+  color: #cbd5e1;
+}
+[data-theme='dark'] .av-comment strong,
+[data-theme='dark'] .av-reply strong {
+  color: #e8eaf0;
+}
+[data-theme='dark'] .av-reply {
+  background: #1a1e26;
+  border-color: rgba(255, 255, 255, 0.07);
+}
+[data-theme='dark'] .av-tag--neutral {
+  background: rgba(255, 255, 255, 0.08);
+  color: #9ca3af;
+}
+[data-theme='dark'] .av-dm {
+  border-color: rgba(255, 255, 255, 0.09);
+}
+[data-theme='dark'] .av-dm-title {
+  color: #e8eaf0;
+}
+[data-theme='dark'] .av-dm-sub {
+  color: #94a3b8;
+}
+[data-theme='dark'] .av-dm-btn {
+  background: #e8eaf0;
+  color: #12151a;
 }
 
 /* ---- section shells ---- */
