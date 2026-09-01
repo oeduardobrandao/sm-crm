@@ -9,6 +9,7 @@ import { buildMetricFields, fetchPostInsights } from "../_shared/instagram-metri
 import { cachePostThumbnail } from "../_shared/instagram-thumbnail-cache.ts";
 import { fetchInternalWorkspaceIds } from "../_shared/internal-workspaces.ts";
 import { collectSyncCandidates, selectAccountsToSync } from "./select.ts";
+import { runMaintenanceStep } from "./backfill.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -29,6 +30,12 @@ const SYNC_BATCH_LIMIT = Math.max(1, parseInt(Deno.env.get("SYNC_BATCH_LIMIT") |
 // is a cheap indexed read of ~50ms.
 const CANDIDATE_PAGE_SIZE = Math.max(SYNC_BATCH_LIMIT, parseInt(Deno.env.get("SYNC_CANDIDATE_PAGE_SIZE") || "200", 10) || 200);
 const MAX_CANDIDATE_PAGES = Math.max(1, parseInt(Deno.env.get("SYNC_CANDIDATE_PAGES") || "25", 10) || 25);
+
+// Contas processadas pelo passo de manutenção (backfill mensal) por tick.
+// Orçamento PRÓPRIO, independente de SYNC_BATCH_LIMIT: 1 mês (~7 requests
+// fetchAccountTotals) por conta pendente, mais os extras de primeiro tick
+// (reach_day 90d + histórico de seguidores) quando aplicável. Ver backfill.ts.
+const BACKFILL_BATCH_LIMIT = Math.max(1, parseInt(Deno.env.get("BACKFILL_BATCH_LIMIT") || "3", 10) || 3);
 
 // --- Token Decryption Utility ---
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
@@ -333,6 +340,21 @@ Deno.serve(createInstagramSyncCronHandler({
   timingSafeEqual,
   run: async () => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Passo de manutenção (backfill mensal durável + fechamento mensal),
+    // ANTES do batch de sync e em try/catch próprio: seletor e orçamento
+    // independentes de auto_sync_enabled/feature_auto_sync_cron, então uma
+    // falha aqui nunca deve impedir o sync batch de rodar. Ver backfill.ts.
+    try {
+      const { backfilled, monthsClosed } = await runMaintenanceStep(
+        supabase, fetch, decryptToken,
+        { batchLimit: BACKFILL_BATCH_LIMIT, nowSec: Math.floor(Date.now() / 1000) },
+      );
+      console.log(`[IG-SYNC-CRON] Maintenance step: backfilled=${backfilled} monthsClosed=${monthsClosed}`);
+    } catch (e) {
+      console.error("[IG-SYNC-CRON] Maintenance step failed (non-fatal, sync batch proceeds):", e);
+    }
+
     try {
 
     // Page through candidates, least-recently-attempted first, until the batch
