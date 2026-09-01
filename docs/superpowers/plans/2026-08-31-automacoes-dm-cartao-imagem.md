@@ -468,6 +468,7 @@ git commit -m "feat(automacoes): payload de generic template (cartão) e parseDm
 - Create: `supabase/functions/automation-media/index.ts`
 - Create: `supabase/functions/automation-media/handler.ts`
 - Create: `supabase/functions/__tests__/automation-media_test.ts`
+- Modify: `supabase/functions/_shared/r2.ts` (novo helper `headObjectSigned`)
 
 **Interfaces:**
 - Consumes: `buildCorsHeaders` (`_shared/cors.ts`), `signPutUrl`/`signGetUrl`/`headObject`/`trashObject` (`_shared/r2.ts`), RPCs da Task 2.
@@ -511,7 +512,8 @@ function req(path: string, body: unknown, token = "valid-jwt") {
 // deno-lint-ignore no-explicit-any
 function setupAuth(db: any, contaId = "conta-1") {
   db.withAuth({ id: "user-1" });
-  db.queue("profiles", "select", { data: { conta_id: contaId }, error: null });
+  db.queue("profiles", "select", { data: { active_workspace_id: contaId }, error: null });
+  db.queue("workspace_members", "select", { data: { user_id: "user-1" }, error: null });
 }
 
 Deno.test("presign: gera key no prefixo do tenant e devolve upload_url", async () => {
@@ -653,7 +655,31 @@ Expected: FAIL (handler inexistente).
 
 - [ ] **Step 3: Implementar handler + index**
 
-`handler.ts` (factory; roteamento por segmento como `post-media-manage/handler.ts:96-100`; auth idêntica à do `post-media-finalize/index.ts:20-38` mas via `deps.createDb`):
+Antes do handler, adicione em `_shared/r2.ts` o helper `headObjectSigned` -- mesmo contrato do `headObject` atual (`Promise<{ contentLength: number; contentType: string | null } | null>`, null em qualquer falha) mas via **presign + fetch puro + AbortSignal**, nunca `getR2().send()` (o transport do SDK é o caminho documentado de travamento no edge runtime, e finalize é um handler que grava estado):
+
+```ts
+/** HEAD via presign + fetch puro (mesmo racional de putObject/deleteObject:
+ * o transport do SDK trava no edge runtime; este helper é para handlers que
+ * gravam estado). null em 404 ou qualquer falha. */
+export async function headObjectSigned(
+  key: string,
+): Promise<{ contentLength: number; contentType: string | null } | null> {
+  try {
+    const cmd = new HeadObjectCommand({ Bucket: getBucket(), Key: key });
+    const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
+    const res = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return null;
+    return {
+      contentLength: Number(res.headers.get("content-length") ?? 0),
+      contentType: res.headers.get("content-type"),
+    };
+  } catch (_e) {
+    return null;
+  }
+}
+```
+
+`handler.ts` (factory; roteamento por segmento como `post-media-manage/handler.ts:96-100`; tenant = workspace ativa + membership, padrão do `report-docs/index.ts` -- NÃO o `profiles.conta_id` dos handlers antigos de post-media):
 
 ```ts
 // supabase/functions/automation-media/handler.ts
@@ -702,9 +728,22 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
     const svc = deps.createDb();
     const { data: { user } = { user: null }, error: authErr } = await svc.auth.getUser(token);
     if (authErr || !user) return json({ error: "Unauthorized" }, 401);
-    const { data: profile } = await svc.from("profiles").select("conta_id").eq("id", user.id).single();
-    if (!profile?.conta_id) return json({ error: "Profile not found" }, 403);
-    const contaId = profile.conta_id as string;
+    // Tenant = workspace ATIVA + membership confirmada, padrão do report-docs
+    // (conta_id NÃO é fallback: usuário multi-workspace operaria na workspace
+    // errada, e membro removido manteria acesso). Copie o bloco literal de
+    // supabase/functions/report-docs/index.ts (resolução de tenant, ~linhas
+    // 50-60) e adapte só os nomes -- se o shape real divergir do abaixo, o
+    // report-docs vence.
+    const { data: profile } = await svc.from("profiles").select("active_workspace_id").eq("id", user.id).single();
+    const contaId = profile?.active_workspace_id as string | undefined;
+    if (!contaId) return json({ error: "Profile not found" }, 403);
+    const { data: member } = await svc
+      .from("workspace_members")
+      .select("user_id")
+      .eq("workspace_id", contaId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!member) return json({ error: "Forbidden" }, 403);
     const tenantPrefix = `automation-media/${contaId}/`;
 
     const parts = new URL(req.url).pathname.split("/").filter(Boolean);
@@ -828,7 +867,7 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
 // supabase/functions/automation-media/index.ts
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
-import { headObject, signGetUrl, signPutUrl, trashObject } from "../_shared/r2.ts";
+import { headObjectSigned, signGetUrl, signPutUrl, trashObject } from "../_shared/r2.ts";
 import { createAutomationMediaHandler } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -842,7 +881,7 @@ Deno.serve(createAutomationMediaHandler({
     }),
   signPutUrl,
   signGetUrl,
-  headObject,
+  headObject: headObjectSigned,
   trashObject,
 }));
 ```
