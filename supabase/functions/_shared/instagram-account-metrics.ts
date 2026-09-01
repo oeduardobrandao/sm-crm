@@ -214,7 +214,10 @@ async function fetchSimpleMetricTotal(
   let sum = 0;
   let found = false;
   for (const data of responses) {
-    if (data.error) continue;
+    // A chunk-level Graph error (non-190) invalidates the WHOLE metric for
+    // this call. Skipping just that chunk and summing the rest would silently
+    // under-report a partial total as if it were complete.
+    if (data.error) return null;
     const entry = data.data?.find((d) => d.name === metric);
     const value = entry?.total_value?.value;
     if (typeof value === 'number') {
@@ -248,7 +251,9 @@ async function fetchFollowsTotal(
   let unfollows = 0;
   let found = false;
   for (const data of responses) {
-    if (data.error) continue;
+    // Same policy as fetchSimpleMetricTotal: any chunk-level Graph error
+    // nulls the whole metric instead of silently summing a partial result.
+    if (data.error) return null;
     const entry = data.data?.find((d) => d.name === 'follows_and_unfollows');
     const results = entry?.total_value?.breakdowns?.[0]?.results;
     if (!results) continue;
@@ -268,6 +273,21 @@ async function fetchFollowsTotal(
   return found ? { follows, unfollows, net: follows - unfollows } : null;
 }
 
+// Runs one metric's fetch in isolation: any failure that reaches here as a
+// thrown exception (network error, timeout, malformed JSON -- Graph-returned
+// `.error` bodies are already normalized to null inside fetch*Total) degrades
+// to null instead of rejecting the caller's Promise.all. TOKEN_EXPIRED is the
+// sole exception: it must still surface, so every caller of this call site
+// can react to an expired token instead of silently losing the whole batch.
+async function isolateNonTokenFailure<T>(fn: () => Promise<T>): Promise<T | null> {
+  try {
+    return await fn();
+  } catch (e) {
+    if ((e as { code?: string } | null)?.code === 'TOKEN_EXPIRED') throw e;
+    return null;
+  }
+}
+
 // Fetches account totals for the requested metrics over [sinceSec, untilSec).
 // One Graph call per metric (possibly chunked internally); a non-token
 // failure on one metric nulls just that field, never the others. A Graph
@@ -281,21 +301,13 @@ export async function fetchAccountTotals(
 ): Promise<Partial<AccountTotals>> {
   const entries = await Promise.all(
     metrics.map(async (metric) => {
-      try {
-        const value = metric === 'follows_and_unfollows'
-          ? await fetchFollowsTotal(fetchFn, accessToken, sinceSec, untilSec)
-          : await fetchSimpleMetricTotal(fetchFn, accessToken, metric, sinceSec, untilSec);
-        return [metric, value] as const;
-      } catch (e) {
-        // Graph-returned `.error` objects (non-190) are already normalized
-        // to null inside fetch*Total. This catches everything else that can
-        // fail one metric's request in flight (network error, timeout,
-        // malformed JSON) so it degrades the same way instead of rejecting
-        // the whole call. TOKEN_EXPIRED is the sole exception: it must
-        // still surface to the caller.
-        if ((e as { code?: string } | null)?.code === 'TOKEN_EXPIRED') throw e;
-        return [metric, null] as const;
-      }
+      const value = await isolateNonTokenFailure(
+        (): Promise<number | FollowsBreakdown | null> =>
+          metric === 'follows_and_unfollows'
+            ? fetchFollowsTotal(fetchFn, accessToken, sinceSec, untilSec)
+            : fetchSimpleMetricTotal(fetchFn, accessToken, metric, sinceSec, untilSec),
+      );
+      return [metric, value] as const;
     }),
   );
   const result: Partial<AccountTotals> = {};
@@ -321,7 +333,7 @@ export async function fetchClosedDayValues(
 
   const [totals, follows] = await Promise.all([
     fetchAccountTotals(fetchFn, accessToken, CLOSED_DAY_SIMPLE_METRICS, since, until),
-    fetchFollowsTotal(fetchFn, accessToken, since, until),
+    isolateNonTokenFailure(() => fetchFollowsTotal(fetchFn, accessToken, since, until)),
   ]);
 
   return {
@@ -336,12 +348,17 @@ export async function fetchClosedDayValues(
   };
 }
 
-// Graph's end_time for a daily value is the END of the day it describes
-// (e.g. "2026-08-02T07:00:00+0000" describes 2026-08-01), confirmed against
-// the spike JSON. Subtracting 24h and taking the UTC date recovers that day.
-function dayBeforeEndTime(endTime: string): string {
+// Graph's end_time for a daily value carries the calendar date the value
+// measures -- its time-of-day component (07:00Z in the sample account) is
+// just a per-account reporting-boundary artifact, NOT a "day before" marker.
+// Ground truth (spike-result.json): a single-day request for the UTC day
+// 2026-08-31 ([...T00:00Z, 2026-09-01T00:00Z)) returned 579
+// (`reach_total_chunk1`), matching `reach_daily`'s last entry exactly --
+// {end_time: "2026-08-31T07:00:00+0000", value: 579}. So the date component
+// of end_time IS the day; no shift is applied.
+function dayOfEndTime(endTime: string): string {
   const ms = Date.parse(endTime);
-  return new Date(ms - DAY * 1000).toISOString().slice(0, 10);
+  return new Date(ms).toISOString().slice(0, 10);
 }
 
 async function fetchDailySeries(
@@ -361,7 +378,7 @@ async function fetchDailySeries(
     const entry = data.data?.find((d) => d.name === metric);
     for (const v of entry?.values ?? []) {
       if (typeof v.value === 'number' && v.end_time) {
-        out.set(dayBeforeEndTime(v.end_time), v.value);
+        out.set(dayOfEndTime(v.end_time), v.value);
       }
     }
   }
