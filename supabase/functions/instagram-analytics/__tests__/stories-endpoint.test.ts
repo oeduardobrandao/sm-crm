@@ -61,3 +61,52 @@ Deno.test("aggregated retention is ratio of totals, not average of rates", () =>
   const avgOfRates = ((1 - 50/100) + (1 - 90/900)) / 2;
   assert(Math.abs(aggregated - avgOfRates) > 0.01);
 });
+
+Deno.test("days param NaN guard falls back to 30 instead of propagating NaN", () => {
+  const daysParam = parseInt("abc", 10); // NaN -- e.g. ?days=abc
+  const days = Math.min(Math.max(1, Number.isFinite(daysParam) ? daysParam : 30), 365);
+  assertEquals(days, 30);
+});
+
+Deno.test("days param guard leaves valid finite values unchanged", () => {
+  const daysParam = parseInt("45", 10);
+  const days = Math.min(Math.max(1, Number.isFinite(daysParam) ? daysParam : 30), 365);
+  assertEquals(days, 45);
+});
+
+Deno.test("without the guard, a NaN days param crashes on toISOString (regression check)", () => {
+  const daysParam = parseInt("abc", 10); // NaN
+  const unguardedDays = Math.min(Math.max(1, daysParam), 365); // NaN propagates through Math.min/max
+
+  assert(Number.isNaN(unguardedDays));
+
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const start = new Date(today);
+  start.setUTCDate(start.getUTCDate() - unguardedDays + 1); // produces an Invalid Date
+
+  let threw = false;
+  try {
+    start.toISOString();
+  } catch {
+    threw = true;
+  }
+  assert(threw, "toISOString() on an Invalid Date must throw -- this is exactly the pre-fix 500");
+});
+
+Deno.test("KPI totals must come from an uncapped query, not the display-list cap", () => {
+  // Simulates a busy account with 250 stories in the period, while the
+  // returned `stories` list is capped at 200 (`.limit(200)` in the route).
+  const allStories = Array.from({ length: 250 }, () => ({ impressions: 10, exits: 1 }));
+  const cappedRows = allStories.slice(0, 200); // stand-in for the `.limit(200)` query
+
+  const totalFromCappedRows = cappedRows.reduce((s, r) => s + r.impressions, 0);
+  const totalFromUncappedRows = allStories.reduce((s, r) => s + r.impressions, 0);
+
+  assertEquals(totalFromCappedRows, 2000);
+  assertEquals(totalFromUncappedRows, 2500);
+  assert(
+    totalFromCappedRows !== totalFromUncappedRows,
+    "KPIs computed from the capped rows would silently undercount once a period exceeds the display cap",
+  );
+});

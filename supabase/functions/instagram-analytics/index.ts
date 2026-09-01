@@ -1488,7 +1488,7 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
         startDate = startParam;
         endDate = endParam > todayStr ? todayStr : endParam;
       } else {
-        const days = Math.min(Math.max(1, daysParam), 365);
+        const days = Math.min(Math.max(1, Number.isFinite(daysParam) ? daysParam : 30), 365);
         const start = new Date(today);
         start.setUTCDate(start.getUTCDate() - days + 1);
         startDate = start.toISOString().slice(0, 10);
@@ -1505,7 +1505,32 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
         return json({ error: 'range_too_large', max_days: 365 }, 400);
       }
 
-      // Current period stories
+      // Current period: uncapped aggregate for KPIs (never let the display
+      // cap below undercount totals for busy accounts)
+      const { data: allStories } = await serviceClient
+        .from('instagram_story_insights')
+        .select('reach, impressions, replies, taps_forward, exits')
+        .eq('instagram_account_id', account.id)
+        .gte('posted_at', startDate + 'T00:00:00Z')
+        .lt('posted_at', endDate + 'T24:00:00Z');
+
+      const kpiRows = allStories ?? [];
+
+      // Compute KPIs
+      const totalImpressions = kpiRows.reduce((s, r) => s + (r.impressions ?? 0), 0);
+      const totalExits = kpiRows.reduce((s, r) => s + (r.exits ?? 0), 0);
+      const totalTapsForward = kpiRows.reduce((s, r) => s + (r.taps_forward ?? 0), 0);
+      const currentKpis = {
+        stories_count: kpiRows.length,
+        total_reach: kpiRows.reduce((s, r) => s + (r.reach ?? 0), 0),
+        total_impressions: totalImpressions,
+        total_replies: kpiRows.reduce((s, r) => s + (r.replies ?? 0), 0),
+        avg_retention_rate: totalImpressions > 0 ? 1 - (totalExits / totalImpressions) : 0,
+        avg_skip_rate: totalImpressions > 0 ? totalTapsForward / totalImpressions : 0,
+        total_exits: totalExits,
+      };
+
+      // Current period: capped, sorted list for the returned stories table
       const { data: stories } = await serviceClient
         .from('instagram_story_insights')
         .select('*')
@@ -1516,20 +1541,6 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
         .limit(200);
 
       const rows = stories ?? [];
-
-      // Compute KPIs
-      const totalImpressions = rows.reduce((s, r) => s + (r.impressions ?? 0), 0);
-      const totalExits = rows.reduce((s, r) => s + (r.exits ?? 0), 0);
-      const totalTapsForward = rows.reduce((s, r) => s + (r.taps_forward ?? 0), 0);
-      const currentKpis = {
-        stories_count: rows.length,
-        total_reach: rows.reduce((s, r) => s + (r.reach ?? 0), 0),
-        total_impressions: totalImpressions,
-        total_replies: rows.reduce((s, r) => s + (r.replies ?? 0), 0),
-        avg_retention_rate: totalImpressions > 0 ? 1 - (totalExits / totalImpressions) : 0,
-        avg_skip_rate: totalImpressions > 0 ? totalTapsForward / totalImpressions : 0,
-        total_exits: totalExits,
-      };
 
       // Previous period (same duration, ending day before start)
       const rangeDays = Math.round((endMs - startMs) / 86_400_000) + 1;
