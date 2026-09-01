@@ -630,6 +630,7 @@ Deno.test("finalize: key tmp de outro tenant -> 400; size divergente do HEAD -> 
   assertEquals(copies2, []);
   const db3 = createSupabaseQueryMock();
   setupAuth(db3);
+  db3.queue("automation_media_objects", "select", { data: null, error: null });
   db3.queueRpc("automation_media_finalize", { data: null, error: { message: "quota_exceeded" } });
   const trashed3: string[] = [];
   assertEquals(
@@ -859,7 +860,11 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
         .eq("key", key)
         .eq("conta_id", contaId)
         .maybeSingle();
-      if (existing) {
+      // Guard em existing?.key (não `if (existing)`): o maybeSingle real devolve
+      // null sem linha, mas o mock do harness devolve [] por default, que é
+      // truthy -- e uma linha real sempre tem key NOT NULL. O guard vale para
+      // os dois contratos.
+      if (existing?.key) {
         const w = Number.isFinite(Number(body.width)) && Number(body.width) > 0 ? Number(body.width) : undefined;
         const h = Number.isFinite(Number(body.height)) && Number(body.height) > 0 ? Number(body.height) : undefined;
         return json({
@@ -940,6 +945,19 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
     if (route === "delete") {
       const key = String(body.key ?? "");
       if (!key.startsWith(tenantPrefix)) return json({ error: "invalid key" }, 400);
+      // Pre-check rápido de referência: devolve 409 sem tocar R2/RPC quando a
+      // key ainda está anexada. NÃO é a garantia (corrida entre este select e
+      // a RPC existe); a garantia transacional é o ref-check DENTRO da RPC.
+      const { data: refs, error: refErr } = await svc
+        .from("instagram_comment_automations")
+        .select("id")
+        .eq("dm_media->>key", key)
+        .limit(1);
+      if (refErr) {
+        console.error("[automation-media] ref pre-check:", refErr.message);
+        return json({ error: "internal" }, 500);
+      }
+      if ((refs ?? []).length > 0) return json({ error: "media_in_use" }, 409);
       // ORDEM: release ANTES do trash. A RPC faz, na mesma transação, o
       // ref-check anti-corrida (media_in_use se alguma automação referencia)
       // e remove o registro -- a partir daí nenhum attach novo passa no
