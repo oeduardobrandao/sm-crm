@@ -33,7 +33,9 @@ const MAX_MONTHS_BACK = 12;
 // Não precisa ser grande: closePreviousMonthIfMissing é idempotente e barato
 // (uma linha já existente == zero chamadas Graph), então mesmo com muitas
 // contas o custo real por tick é dominado pelas que realmente têm um mês novo
-// para fechar.
+// para fechar. As contas já fechadas no mês corrente são EXCLUÍDAS do
+// seletor (ver runMaintenanceStep) antes do limit, então esta página nunca
+// starva contas com id alto -- o conjunto elegível encolhe a cada fechamento.
 const CLOSE_PAGE_LIMIT = 50;
 
 const MONTHLY_METRICS: AccountMetric[] = [
@@ -215,6 +217,13 @@ async function backfillOneAccount(
     try {
       await backfillReachDaily(db, fetchFn, accessToken, account.id, nowSec);
     } catch (e) {
+      // TOKEN_EXPIRED aqui é tratado igual ao caminho do mês: marca expirado e
+      // pula para a próxima conta imediatamente, em vez de gastar o fetch do
+      // mês sabendo que o token já está morto.
+      if (isTokenExpired(e)) {
+        await markExpired(db, account.id);
+        return false;
+      }
       console.warn(
         `[IG-SYNC-CRON] backfill reach_day 90d falhou para a conta ${account.id} ` +
         `(não-fatal, não é retentado automaticamente depois que o cursor avançar):`, e,
@@ -223,6 +232,10 @@ async function backfillOneAccount(
     try {
       await backfillFollowerHistory(db, fetchFn, accessToken, account.id, account.follower_count, nowSec);
     } catch (e) {
+      if (isTokenExpired(e)) {
+        await markExpired(db, account.id);
+        return false;
+      }
       console.warn(
         `[IG-SYNC-CRON] backfill de histórico de seguidores falhou para a conta ${account.id} ` +
         `(não-fatal, não é retentado automaticamente depois que o cursor avançar):`, e,
@@ -299,6 +312,8 @@ async function backfillOneAccount(
 export interface RunMaintenanceStepOptions {
   batchLimit: number;
   nowSec: number;
+  /** Override de CLOSE_PAGE_LIMIT -- só para teste (fila pequena e determinística). */
+  closeBatchLimit?: number;
 }
 
 export interface RunMaintenanceStepResult {
@@ -312,8 +327,11 @@ export interface RunMaintenanceStepResult {
  * feature_auto_sync_cron. Duas fases:
  *   1) Contas com metrics_backfilled_at NULL: até `batchLimit` contas, 1 mês
  *      (+ extras de primeiro tick) cada.
- *   2) Contas já backfilladas (até CLOSE_PAGE_LIMIT): closePreviousMonthIfMissing
- *      (Task 7) -- é aqui, e só aqui, que o fechamento mensal recorrente roda.
+ *   2) Contas já backfilladas, EXCLUINDO as que já têm a linha do mês anterior
+ *      (até CLOSE_PAGE_LIMIT do restante): closePreviousMonthIfMissing (Task 7)
+ *      -- é aqui, e só aqui, que o fechamento mensal recorrente roda. A exclusão
+ *      evita starvation: sem ela, `order(id).limit(N)` sempre reseleciona o
+ *      mesmo bloco de ids baixos e uma conta com id alto nunca é alcançada.
  *
  * Falha em uma conta nunca derruba o passo inteiro nem o restante do cron:
  * cada conta roda no seu próprio try/catch.
@@ -347,14 +365,44 @@ export async function runMaintenanceStep(
     }
   }
 
-  const { data: closable, error: closableError } = await db
+  // Exclui do seletor as contas que JÁ têm a linha do mês anterior -- sem
+  // isso, `order("id").limit(N)` sempre devolve o mesmo bloco de ids mais
+  // baixos, e uma conta com id fora desse bloco nunca é alcançada assim que
+  // o total de contas já-backfilladas passa de N (achado do review). O
+  // conjunto "precisa fechar" encolhe para vazio conforme os fechamentos vão
+  // acontecendo, então toda conta é alcançada em alguma tick.
+  //
+  // Durante os dias 1-3 do mês (dentro da janela de finalização de
+  // closePreviousMonthIfMissing), a linha do mês anterior ainda não existe
+  // para ninguém -- a exclusão fica vazia e todo tick reseleciona até
+  // CLOSE_PAGE_LIMIT contas, mas cada chamada retorna sem tocar a Graph (a
+  // guarda de janela é a primeira checagem da função). Custo extra: só a
+  // query de exclusão abaixo, uma leitura barata.
+  const currentMonth = currentMonthOf(opts.nowSec);
+  const prevMonthDay1 = monthWindow(prevMonthOf(currentMonth)).startDate;
+  const { data: closedAccounts, error: closedError } = await db
+    .from(MONTHLY_TABLE)
+    .select("instagram_account_id")
+    .eq("month", prevMonthDay1);
+  if (closedError) {
+    console.warn(`[IG-SYNC-CRON] backfill: falha ao listar contas já fechadas em ${prevMonthDay1}: ${closedError.message}`);
+  }
+  const closedIds = new Set(
+    (closedAccounts ?? []).map((r: { instagram_account_id: string }) => r.instagram_account_id),
+  );
+
+  let closableQuery = db
     .from("instagram_accounts")
     .select("id, encrypted_access_token")
     .eq("authorization_status", "active")
     .not("encrypted_access_token", "is", null)
-    .not("metrics_backfilled_at", "is", null)
+    .not("metrics_backfilled_at", "is", null);
+  if (closedIds.size > 0) {
+    closableQuery = closableQuery.not("id", "in", `(${[...closedIds].join(",")})`);
+  }
+  const { data: closable, error: closableError } = await closableQuery
     .order("id", { ascending: true })
-    .limit(CLOSE_PAGE_LIMIT);
+    .limit(opts.closeBatchLimit ?? CLOSE_PAGE_LIMIT);
   if (closableError) {
     console.warn(`[IG-SYNC-CRON] backfill: falha ao listar contas para fechamento mensal: ${closableError.message}`);
   }

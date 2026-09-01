@@ -84,8 +84,14 @@ function accountsTable(state: FakeState) {
       filters.push((r) => (r as unknown as Record<string, unknown>)[col] === val);
       return builder;
     },
-    not(col: string, _op: string, val: unknown) {
-      filters.push((r) => (r as unknown as Record<string, unknown>)[col] !== val);
+    not(col: string, op: string, val: unknown) {
+      if (op === "in") {
+        // supabase-js: `.not(col, 'in', '(1,2,3)')` -- exclui ids na lista.
+        const excluded = new Set(String(val).replace(/[()]/g, "").split(",").filter(Boolean));
+        filters.push((r) => !excluded.has(String((r as unknown as Record<string, unknown>)[col])));
+      } else {
+        filters.push((r) => (r as unknown as Record<string, unknown>)[col] !== val);
+      }
       return builder;
     },
     is(col: string, val: unknown) {
@@ -122,6 +128,12 @@ function monthlyTable(state: FakeState) {
     maybeSingle() {
       const row = state.monthly.find((r) => filters.every((f) => f(r)));
       return Promise.resolve({ data: row ?? null, error: null });
+    },
+    // Fallback: `select(...).eq(...)` sem `.maybeSingle()` (ex.: a query de
+    // exclusão do passo 2, que lê TODAS as contas já fechadas num mês).
+    then(onFulfilled: (v: unknown) => unknown, onRejected?: (e: unknown) => unknown) {
+      const rows = state.monthly.filter((r) => filters.every((f) => f(r)));
+      return Promise.resolve({ data: rows, error: null }).then(onFulfilled, onRejected);
     },
     insert(row: Record<string, unknown>) {
       state.monthly.push(row);
@@ -433,4 +445,70 @@ Deno.test("runMaintenanceStep: contas já backfilladas passam por closePreviousM
   assertEquals(result.monthsClosed, 1);
   assertEquals(state.monthly.length, 1);
   assertEquals(state.monthly[0].month, "2026-08-01");
+});
+
+// --- Fix round 1 -------------------------------------------------------
+
+Deno.test("runMaintenanceStep: fechamento mensal não starva contas com id fora da página fixa (fix round 1, achado 1)", async () => {
+  // 3 contas já backfilladas, closeBatchLimit artificialmente baixo (2) para
+  // simular "mais contas do que cabem numa página" sem precisar de 51 contas
+  // reais. Sem a exclusão, tick 2 selecionaria de novo c1+c2 (menores ids) e
+  // c3 nunca seria alcançada.
+  const state = emptyState([
+    { id: "c1", authorization_status: "active", encrypted_access_token: "enc", follower_count: 1, metrics_backfill_cursor: "2020-01-01", metrics_backfilled_at: "2026-01-01T00:00:00Z" },
+    { id: "c2", authorization_status: "active", encrypted_access_token: "enc", follower_count: 1, metrics_backfill_cursor: "2020-01-01", metrics_backfilled_at: "2026-01-01T00:00:00Z" },
+    { id: "c3", authorization_status: "active", encrypted_access_token: "enc", follower_count: 1, metrics_backfill_cursor: "2020-01-01", metrics_backfilled_at: "2026-01-01T00:00:00Z" },
+  ]);
+  const f = graphOkFetch(SIMPLE_VALUES);
+  const db = makeDb(state);
+
+  // Tick 1: página de 2, ninguém fechado ainda -- pega c1 e c2 (menores ids).
+  const tick1 = await runMaintenanceStep(db, f, decryptToken, {
+    batchLimit: 3, nowSec: NOW, closeBatchLimit: 2,
+  });
+  assertEquals(tick1.monthsClosed, 2);
+  assertEquals(state.monthly.map((r) => r.instagram_account_id).sort(), ["c1", "c2"]);
+
+  // Tick 2: c1 e c2 já têm a linha de 2026-08-01 -- excluídos do seletor.
+  // c3 (que ficaria starvada com um limit(2) sem exclusão) é alcançada.
+  const tick2 = await runMaintenanceStep(db, f, decryptToken, {
+    batchLimit: 3, nowSec: NOW, closeBatchLimit: 2,
+  });
+  assertEquals(tick2.monthsClosed, 1);
+  assertEquals(state.monthly.map((r) => r.instagram_account_id).sort(), ["c1", "c2", "c3"]);
+});
+
+Deno.test("runMaintenanceStep: TOKEN_EXPIRED durante os extras de primeiro tick marca expired sem gastar o fetch do mês (fix round 1, achado 2)", async () => {
+  const state = emptyState([{
+    id: "acc-1", authorization_status: "active", encrypted_access_token: "enc-1",
+    follower_count: 1000, metrics_backfill_cursor: null, metrics_backfilled_at: null,
+  }]);
+  let graphCalls = 0;
+  const f = ((url: string) => {
+    graphCalls++;
+    const u = new URL(url);
+    const metric = u.searchParams.get("metric");
+    // reach_day (fetchReachDaily): metric=reach SEM metric_type -- token expirado.
+    if (metric === "reach" && !u.searchParams.get("metric_type")) {
+      return Promise.resolve({ json: () => Promise.resolve({ error: { code: 190, message: "expired" } }) });
+    }
+    // Qualquer outra chamada (follower deltas, mês) não deveria acontecer --
+    // devolve algo que faria o teste falhar de forma óbvia se acontecesse.
+    return Promise.resolve({
+      json: () => Promise.resolve({ data: [{ name: metric, total_value: { value: 999 } }] }),
+    });
+  }) as unknown as typeof fetch;
+
+  const result = await runMaintenanceStep(makeDb(state), f, decryptToken, {
+    batchLimit: 3, nowSec: NOW,
+  });
+
+  assertEquals(state.accounts[0].authorization_status, "expired");
+  assertEquals(state.accounts[0].metrics_backfill_cursor, null); // nunca chegou no mês
+  assertEquals(state.monthly.length, 0);
+  assertEquals(result.backfilled, 0);
+  // fetchReachDaily dispara os 3 chunks de 90d em paralelo antes de rejeitar
+  // -- todos os 3 já foram despachados quando o Promise.all rejeita. Nenhuma
+  // chamada extra (follower deltas, mês) acontece depois.
+  assertEquals(graphCalls, 3);
 });
