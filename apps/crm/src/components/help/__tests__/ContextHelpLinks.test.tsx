@@ -3,9 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContextHelpLinks } from '../ContextHelpLinks';
-import { getContextLinksForRoute } from '@/store/kb';
+import { getContextLinksForRoutes } from '@/store/kb';
 
-vi.mock('@/store/kb', () => ({ getContextLinksForRoute: vi.fn() }));
+vi.mock('@/store/kb', () => ({ getContextLinksForRoutes: vi.fn() }));
 
 const article = (id: string, slug: string) => ({
   id,
@@ -31,11 +31,11 @@ const article = (id: string, slug: string) => ({
   },
 });
 
-function renderHelp() {
+function renderHelp(initialEntry = '/clientes/42') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const result = render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/clientes/42']}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <ContextHelpLinks />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -58,7 +58,7 @@ describe('ContextHelpLinks', () => {
   });
 
   it('renders one trigger and reveals all valid articles', async () => {
-    vi.mocked(getContextLinksForRoute).mockResolvedValue([
+    vi.mocked(getContextLinksForRoutes).mockResolvedValue([
       article('1', '  adicionar-clientes  '),
       article('2', 'conectar-instagram'),
     ]);
@@ -75,12 +75,30 @@ describe('ContextHelpLinks', () => {
   });
 
   it('omits whitespace-only slugs and hides the trigger when none remain', async () => {
-    vi.mocked(getContextLinksForRoute).mockResolvedValue([article('1', '   ')]);
+    vi.mocked(getContextLinksForRoutes).mockResolvedValue([article('1', '   ')]);
     const { client } = renderHelp();
     await waitFor(() => {
-      expect(client.getQueryState(['kb-context-links', '/clientes'])?.status).toBe('success');
+      expect(client.getQueryState(['kb-context-links', '/clientes/42', '/clientes'])?.status).toBe(
+        'success',
+      );
     });
     expect(screen.queryByRole('button', { name: /Artigos relacionados/ })).not.toBeInTheDocument();
+  });
+
+  it('queries the deep route before the base route on nested pages', async () => {
+    vi.mocked(getContextLinksForRoutes).mockResolvedValue([article('1', 'conectar-o-claude-mcp')]);
+    renderHelp('/configuracao/mcp');
+
+    await screen.findByRole('button', { name: /Artigos relacionados/ });
+    expect(getContextLinksForRoutes).toHaveBeenCalledWith(['/configuracao/mcp', '/configuracao']);
+  });
+
+  it('queries only the base route on single-segment pages', async () => {
+    vi.mocked(getContextLinksForRoutes).mockResolvedValue([article('1', 'gestao-financeira')]);
+    renderHelp('/financeiro');
+
+    await screen.findByRole('button', { name: /Artigos relacionados/ });
+    expect(getContextLinksForRoutes).toHaveBeenCalledWith(['/financeiro']);
   });
 
   it('uses the phone Sheet branch for related articles', async () => {
@@ -93,7 +111,7 @@ describe('ContextHelpLinks', () => {
         removeEventListener: vi.fn(),
       })),
     );
-    vi.mocked(getContextLinksForRoute).mockResolvedValue([article('1', 'artigo-no-celular')]);
+    vi.mocked(getContextLinksForRoutes).mockResolvedValue([article('1', 'artigo-no-celular')]);
     renderHelp();
 
     fireEvent.click(await screen.findByRole('button', { name: /Artigos relacionados/ }));

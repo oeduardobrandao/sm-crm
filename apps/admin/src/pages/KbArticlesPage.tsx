@@ -3,20 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Pencil } from 'lucide-react';
 import { listKbArticles, type KbArticle } from '../lib/api';
+import {
+  KB_CATEGORIES as CATEGORIES,
+  ALL_KB_CATEGORIES as ALL_CATEGORIES,
+} from '../lib/kb-categories';
 
-const CATEGORIES: Record<string, string> = {
-  'primeiros-passos': 'Getting Started',
-  clientes: 'Clients',
-  equipe: 'Team',
-  'entregas-e-fluxos': 'Deliveries & Flows',
-  'hub-do-cliente': 'Client Hub',
-  'instagram-e-analytics': 'Instagram & Analytics',
-  'post-express': 'Post Express',
-  financeiro: 'Financial',
-  arquivos: 'Files',
-};
-
-const ALL_CATEGORIES = Object.keys(CATEGORIES);
 const STATUSES = ['draft', 'published'] as const;
 
 function getStatusBadge(status: string) {

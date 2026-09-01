@@ -96,11 +96,11 @@ Deno.test("hasEverSubscribed: none set is false", () => {
 
 // ─── MRR helpers ─────────────────────────────────────────────────────────────
 
-Deno.test("isMrrStatus: active/past_due count; trialing and terminal states do not", () => {
+Deno.test("isMrrStatus: only active counts; past_due (failed payment), trialing and terminal states do not", () => {
   assert(isMrrStatus("active"));
-  assert(isMrrStatus("past_due"));
   for (
     const s of [
+      "past_due",
       "trialing",
       "canceled",
       "unpaid",
@@ -131,14 +131,14 @@ Deno.test("aggregateMrr: sums monthly-normalized paying rows; total reconciles w
     { workspace_id: "a", status: "active", interval: "month", amount_cents: 19990 }, // 199,90
     { workspace_id: "b", status: "active", interval: "year", amount_cents: 101900 }, // → 84,92
     { workspace_id: "c", status: "active", interval: "month", amount_cents: 9990 }, //   99,90
-    { workspace_id: "d", status: "past_due", interval: "month", amount_cents: 11892 }, // 118,92
+    { workspace_id: "d", status: "past_due", interval: "month", amount_cents: 11892 }, // excluded (failed payment)
     { workspace_id: "e", status: "trialing", interval: "month", amount_cents: 9990 }, // excluded
     { workspace_id: "f", status: "active", interval: "month", amount_cents: 0 }, // excluded ($0)
   ];
   const r = aggregateMrr(rows);
-  assertEquals(r.mrr_cents, 50364); // R$503,64
-  assertEquals(r.paying_count, 4);
-  assertEquals(r.priced.map((p) => p.monthly_cents), [19990, 8492, 9990, 11892]);
+  assertEquals(r.mrr_cents, 38472); // R$384,72
+  assertEquals(r.paying_count, 3);
+  assertEquals(r.priced.map((p) => p.monthly_cents), [19990, 8492, 9990]);
   assertEquals(r.priced.reduce((s, p) => s + p.monthly_cents, 0), r.mrr_cents);
 });
 

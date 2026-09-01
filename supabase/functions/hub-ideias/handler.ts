@@ -1,6 +1,7 @@
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { presignIdeiaImage, finalizeIdeiaImage, removeIdeiaImage } from "../_shared/ideia-media.ts";
+import { getClientIP } from "../_shared/rate-limit.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -14,6 +15,7 @@ interface HubIdeiasHandlerDeps {
   signPutUrl: (key: string, mime: string) => Promise<string>;
   signGetUrl: (key: string, expires?: number) => Promise<string>;
   headObject: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
+  rateLimit: (db: DbClient, key: string, max: number, windowSeconds: number) => Promise<boolean>;
 }
 
 const HUB_IDEIA_TIPOS = ["ideia", "solicitacao"];
@@ -62,10 +64,17 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
     if (!token) return json({ error: "token required" }, 400);
 
     const hubToken = await resolveHubToken(db as any, token, deps.now());
-    if (!hubToken) return json({ error: "Link inválido." }, 404);
+    if (!hubToken) {
+      const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
+      if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+      return json({ error: "Link inválido." }, 404);
+    }
 
     const clienteId = hubToken.cliente_id;
     const workspaceId = hubToken.conta_id;
+
+    const okRead = await deps.rateLimit(db, `hub-read:${workspaceId}:${clienteId}`, 300, 300);
+    if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
 
     // ── Image: presign ─────────────────────────────────────────────
     if (req.method === "POST" && isPresign) {
@@ -165,6 +174,11 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
     }
 
     if (req.method === "POST" && !hasId) {
+      const okWrite = await deps.rateLimit(
+        db, `hub-write:hub-ideias:${workspaceId}:${clienteId}`, 30, 3600,
+      );
+      if (!okWrite) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+
       const body = await req.json().catch(() => ({}));
       const titulo = (body.titulo ?? "").trim();
       const descricao = (body.descricao ?? "").trim();

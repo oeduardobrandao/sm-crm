@@ -14,6 +14,7 @@ export const PAYING_WORKSPACE_EXPORT_COLUMNS: CsvColumn[] = [
   { key: 'monthly_amount_brl', label: 'Monthly Amount (R$)' },
   { key: 'discount_label', label: 'Discount' },
   { key: 'amount_source', label: 'Amount Source' },
+  { key: 'last_activity_at', label: 'Last Activity' },
 ];
 
 export function buildPayingWorkspaceExportRows(
@@ -31,6 +32,7 @@ export function buildPayingWorkspaceExportRows(
     monthly_amount_brl: centsToReais(ws.monthly_cents),
     discount_label: ws.discount_label ?? '',
     amount_source: ws.amount_source ?? '',
+    last_activity_at: isoDate(ws.last_activity_at),
   }));
 }
 
@@ -44,6 +46,7 @@ export const TRIAL_EXPORT_COLUMNS: CsvColumn[] = [
   { key: 'interval', label: 'Billing Interval' },
   { key: 'trial_ends_at', label: 'Trial Ends' },
   { key: 'monthly_amount_brl', label: 'Expected Monthly Amount (R$)' },
+  { key: 'last_activity_at', label: 'Last Activity' },
 ];
 
 export function buildTrialExportRows(trials: TrialWorkspace[]): Record<string, string | number>[] {
@@ -57,5 +60,6 @@ export function buildTrialExportRows(trials: TrialWorkspace[]): Record<string, s
     interval: t.interval ?? '',
     trial_ends_at: isoDate(t.trial_ends_at),
     monthly_amount_brl: centsToReais(t.monthly_cents),
+    last_activity_at: isoDate(t.last_activity_at),
   }));
 }

@@ -6,8 +6,9 @@ const HEADERS = { "Content-Type": "application/json" };
 
 function makeFakeSvc(rows: {
   subscriptions: Record<string, unknown>[];
-  workspaces: Array<{ id: string; name: string }>;
+  workspaces: Array<{ id: string; name: string; created_at?: string }>;
   plans: Array<{ id: string; name: string; price_brl: number | null; price_brl_annual: number | null }>;
+  lastActivity?: Array<{ workspace_id: string; last_activity_at: string | null }>;
 }) {
   const db = {
     from(table: string) {
@@ -26,6 +27,12 @@ function makeFakeSvc(rows: {
         return { select: () => ({ in: () => Promise.resolve({ data: rows.plans, error: null }) }) };
       }
       throw new Error(`unexpected table ${table}`);
+    },
+    rpc(fn: string) {
+      if (fn === "admin_workspace_last_activity") {
+        return Promise.resolve({ data: rows.lastActivity ?? [], error: null });
+      }
+      throw new Error(`unexpected rpc ${fn}`);
     },
   };
   return db as unknown as SupabaseClient;
@@ -57,8 +64,9 @@ Deno.test("handleGetMrr attaches owner_* fields from fetchOwnerContacts to each 
         discount_label: null,
       },
     ],
-    workspaces: [{ id: "ws-1", name: "Alpha" }],
+    workspaces: [{ id: "ws-1", name: "Alpha", created_at: "2026-01-01T00:00:00Z" }],
     plans: [{ id: "pro", name: "Pro", price_brl: 9900, price_brl_annual: null }],
+    lastActivity: [{ workspace_id: "ws-1", last_activity_at: "2026-08-20T12:00:00Z" }],
   });
 
   const res = await handleGetMrr(svc, HEADERS, fakeFetchOwnerContacts);
@@ -68,6 +76,8 @@ Deno.test("handleGetMrr attaches owner_* fields from fetchOwnerContacts to each 
   assertEquals(body.workspaces[0].owner_email, "ws-1@example.com");
   assertEquals(body.workspaces[0].owner_telefone, "11999999999");
   assertEquals(body.workspaces[0].owner_marketing_opt_in, true);
+  assertEquals(body.workspaces[0].created_at, "2026-01-01T00:00:00Z");
+  assertEquals(body.workspaces[0].last_activity_at, "2026-08-20T12:00:00Z");
 });
 
 Deno.test("handleGetTrials attaches owner_* fields from fetchOwnerContacts to each row", async () => {
@@ -86,8 +96,9 @@ Deno.test("handleGetTrials attaches owner_* fields from fetchOwnerContacts to ea
         discount_label: null,
       },
     ],
-    workspaces: [{ id: "ws-2", name: "Beta" }],
+    workspaces: [{ id: "ws-2", name: "Beta", created_at: "2026-08-01T00:00:00Z" }],
     plans: [{ id: "pro", name: "Pro", price_brl: null, price_brl_annual: 99000 }],
+    // No RPC row for ws-2: a workspace with no recorded activity comes back null, not missing.
   });
 
   const res = await handleGetTrials(svc, HEADERS, fakeFetchOwnerContacts);
@@ -96,4 +107,6 @@ Deno.test("handleGetTrials attaches owner_* fields from fetchOwnerContacts to ea
   assertEquals(body.trials[0].owner_name, "Owner of ws-2");
   assertEquals(body.trials[0].owner_email, "ws-2@example.com");
   assertEquals(body.trials[0].monthly_cents, 8250); // round(99000/12) = 8250
+  assertEquals(body.trials[0].created_at, "2026-08-01T00:00:00Z");
+  assertEquals(body.trials[0].last_activity_at, null);
 });

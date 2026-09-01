@@ -12,6 +12,7 @@ function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>) {
     signPutUrl: async (key: string) => `https://put.example.com/${key}`,
     signGetUrl: async (key: string) => `https://get.example.com/${key}`,
     headObject: async (k: string) => ({ contentLength: k.includes('.thumb.') ? 2000 : 5000, contentType: null }),
+    rateLimit: async () => true,
   });
 }
 

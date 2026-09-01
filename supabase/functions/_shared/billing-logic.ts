@@ -133,12 +133,15 @@ export function resolvePlanFromPriceId(
 // ─── MRR ───────────────────────────────────────────────────────────────────
 
 /**
- * Statuses that count toward MRR: an in-force paid subscription that owes money.
+ * Statuses that count toward MRR: only `active` — revenue actually being collected.
  * `trialing` is excluded — a trial pays nothing yet. Terminal states (canceled/unpaid/
  * incomplete_expired/paused) and `incomplete` (never charged) are excluded too. `past_due`
- * is kept: the subscription still exists and Stripe is retrying, so the revenue is in-force.
+ * is excluded as well: the last charge FAILED, so until the provider's retries recover it
+ * the revenue is not realized and would overstate MRR. Note the Crisp sync's `pagante`
+ * segment (migration 20260804000011) deliberately still counts past_due — a delinquent
+ * customer is still a customer to support — so it no longer mirrors this set.
  */
-export const MRR_STATUSES = new Set(["active", "past_due"]);
+export const MRR_STATUSES = new Set(["active"]);
 
 export function isMrrStatus(status: string | null | undefined): boolean {
   return !!status && MRR_STATUSES.has(status);

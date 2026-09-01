@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test } from '@playwright/test';
 import path from 'node:path';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -9,10 +9,8 @@ const SLUG = 'como-usar-o-post-express';
 
 // A throwaway 16x16 gradient PNG, generated once and embedded as base64 so this
 // spec is self-contained: no binary fixture committed to the repo, and no
-// dependency on any path outside this file (an earlier version pointed at an
-// agent-session-scoped scratchpad directory, which would not exist on a
-// re-run from a different session or machine). Written to a fresh temp dir
-// per run so parallel/serial re-invocations never collide.
+// dependency on any path outside this file. Written to a fresh temp dir per
+// run so parallel/serial re-invocations never collide.
 const FIXTURE_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAABlklEQVR42g3LQQEAIQgAQRsQwQhEIAIRjEAEIhjBCHz2bwQjGMEKd/Of1hrS6A1tWMMboxGNbMzGalRjN07jNl6jNUGELqhgggtDCCGFKSyhhC0c4QpP/tCRTu9oxzreGZ3oZGd2Vqc6u3M6t/P6HxRRuqKKKa4MJZRUprKUUrZylKs8/YMhRjfUMMONYYSRxjSWUcY2jnGNZ39wxOmOOua4M5xw0pnOcsrZznGu8/wPAxn0gQ5s4IMxiEEO5mANarAHZ3AHb/whkKAHGljgwQgiyGAGK6hgBye4wYs/JJL0RBNLPBlJJJnMZCWV7OQkN3n5h4lM+kQnNvHJmMQkJ3OyJjXZkzO5kzf/sJBFX+jCFr4Yi1jkYi7WohZ7cRZ38dYfCil6oYUVXowiiixmsYoqdnGKW7z6w0Y2faMb2/hmbGKTm7lZm9rszdnczdt/OMihH/RgBz+MQxzyMA/rUId9OId7eOcPF7n0i17s4pdxiUte5mVd6rIv53Iv7/7hIY/+0Ic9/DEe8cjHfKxHPfbjPO7jPT4w9aIwBrSElgAAAABJRU5ErkJggg==';
 
@@ -23,93 +21,84 @@ function writeFixtureImage(): string {
   return file;
 }
 
-// Task 4 Step 3 finding (verified against source, not re-litigated since):
-// scheduling a post is a raw PostgREST write -- updateWorkflowPost
-// (apps/crm/src/store/posts.ts:458-470) does
-// supabase.from('workflow_posts').update({ status: 'agendado' }), i.e. a
-// PATCH to /rest/v1/workflow_posts that never touches /functions/v1/. The
-// safety net's **/rest/v1/** interceptor (installSafetyNet, extended in
-// cc9dade1 / isSchedulingWrite()) blocks exactly this shape as a backstop.
-// Post Express itself exposes no schedule control at all (only "Publicar
-// agora" / "Publicar Stories"), so Control 1 here is simply: never click
-// Publish.
+// Post-#330 layout: a single-column 5-step vertical stepper (Formato, Cliente,
+// Mídia, Legenda do Instagram, Envio) plus a "Modo de envio" toggle in step 5
+// (Publicar agora / Aprovação do cliente). Control 1 is unchanged: never click
+// the submit button (data-testid="express-submit") -- in 'now' mode it
+// publishes to a real Instagram account, in approval mode it sends a real post
+// to the client portal. The safety net stays installed as backstop.
 
 test.describe.configure({ mode: 'serial' });
 
 test('post express walkthrough', async ({ page }) => {
   const violations = await installSafetyNet(page);
 
-  // Step 1 -- 'Acesse Post Express'
+  // Etapa 1 -- Formato. Wait until the client <select> is populated: while the
+  // clients query is in flight the page shows its "Nenhum cliente com
+  // Instagram configurado" empty-state banner, and a shot taken then captures
+  // that loading flash instead of the real resting state.
   await page.goto('/post-express');
   await page.getByRole('heading', { name: /post express/i }).waitFor();
-  await shoot(page, SLUG, 1, 'acessar-post-express');
-
-  // Step 2 -- 'Selecione o cliente'
-  // This is a native <select>, not a custom listbox: selectOption() drives it
-  // directly. Clicking it to "open" the dropdown would trigger an OS-native
-  // popup on macOS that Playwright's page.screenshot() cannot capture (it
-  // only captures the page's own render tree, not OS chrome), so the
-  // brief's illustrative click+option pattern does not apply here.
+  await page.getByText(/Etapa 1/).waitFor();
   const clientSelect = page.locator('select');
   await clientSelect.waitFor();
+  await page
+    .locator('select option', { hasText: 'Studio Bem-Estar' })
+    .waitFor({ state: 'attached', timeout: 15_000 });
+  await shoot(page, SLUG, 1, 'etapa-formato');
+
+  // Etapa 2 -- Cliente (native <select>: selectOption drives it directly; an
+  // opened dropdown is OS chrome that page.screenshot() cannot capture anyway)
   await clientSelect.selectOption({ label: 'Studio Bem-Estar' });
-  // Selecting a client kicks off an async draft (workflow + workflow_post)
-  // creation; the media upload card only renders once `draft` is set. Wait
-  // for the dropzone itself (not just the card label) so the gallery's own
-  // "loading" skeleton (PostMediaGallery's mediaLoading state) has resolved
-  // before the shot -- otherwise this step's screenshot risks catching that
-  // skeleton mid-fade.
+  // The capture workspace's IG tokens are deliberately fake (DK TESTE), so the
+  // client card renders the expired-token warning -- an environment artifact a
+  // reader with a healthy connection never sees. Hide that one banner for the
+  // shots; everything else is the page's real state.
+  await page
+    .getByText('Token do Instagram expirou', { exact: false })
+    .locator('..')
+    .evaluate((el) => {
+      (el as HTMLElement).style.display = 'none';
+    })
+    .catch(() => {});
+  // Selecting a client kicks off async draft creation; the media dropzone only
+  // renders once the draft exists.
   await page.getByText('Adicionar', { exact: true }).waitFor();
   await shoot(page, SLUG, 2, 'selecionar-cliente');
 
-  // Step 3 -- 'Envie a mídia ou mídias do post'
+  // Etapa 3 -- Mídia. The first upload is marked as cover automatically, so
+  // the 'capa' badge is a concrete upload-finished signal (not a skeleton).
   const fileInput = page.locator('input[type="file"][multiple]');
   await fileInput.setInputFiles(writeFixtureImage());
-  // Wait for the uploaded tile's cover badge -- post-media-finalize marks the
-  // first upload as the cover automatically, so this is a concrete signal
-  // the upload finished and the thumbnail rendered (not a spinner/skeleton).
   await page.getByText('capa').waitFor();
+  await page
+    .getByText('Upload concluído')
+    .waitFor({ state: 'hidden', timeout: 8_000 })
+    .catch(() => {});
   await shoot(page, SLUG, 3, 'enviar-midia');
 
-  // Step 4 -- 'Revise o tipo detectado: feed, reels ou carrossel'
-  // A single image with no story toggle detects as 'Feed'; the badge is
-  // computed synchronously from the media list, so it's already visible by
-  // the time the cover badge above rendered. Re-assert it explicitly so this
-  // step's screenshot is anchored to its own selector, not a reused wait.
-  await page.getByText('Feed', { exact: true }).waitFor();
-  // Let the transient "Upload concluído" toast clear so steps 3 and 4 aren't
-  // pixel-identical, and confirm the Instagram Preview's own <img> (a
-  // separate element from the gallery tile, fetching the same file over the
-  // network) has actually finished loading -- not just mounted. Without
-  // this, the preview renders as a blank dark square in later screenshots:
-  // `.complete` is true for a still-loading OR broken <img>, but
-  // `naturalWidth > 0` only once pixels have actually decoded, so this is a
-  // real load check, not a bare timeout. The only <img alt=""> on this page
-  // at this point in the flow is the Preview panel's media image (the two
-  // avatar slots that would also match render as a gradient div instead,
-  // since this client has no profile_picture_url).
-  await page.getByText('Upload concluído').waitFor({ state: 'hidden', timeout: 8_000 });
-  const previewImg = page.locator('img[alt=""]');
-  await previewImg.waitFor();
-  await expect
-    .poll(() =>
-      previewImg.evaluate(
-        (el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0,
-      ),
-    )
-    .toBe(true);
-  await shoot(page, SLUG, 4, 'tipo-detectado');
-
-  // Step 5 -- 'Escreva a legenda com até 2.200 caracteres'
+  // Etapa 4 -- Legenda do Instagram
   const captionBox = page.locator('textarea');
   await captionBox.fill('Exemplo de legenda para o artigo de ajuda.');
-  await shoot(page, SLUG, 5, 'escrever-legenda');
+  await shoot(page, SLUG, 4, 'escrever-legenda');
 
-  // Step 6 -- 'Confira o preview e publique'
-  // Capture the pre-click state only. Do NOT click publish.
-  const publishButton = page.getByRole('button', { name: /publicar agora/i });
-  await publishButton.scrollIntoViewIfNeeded();
-  await shoot(page, SLUG, 6, 'preview-e-publicar');
+  // Etapa 5 -- Envio, modo "Publicar agora" (the default). Anchor on the step
+  // label: "Publicar agora" appears twice (mode toggle + submit CTA), so a
+  // role query on the button name is ambiguous by design here.
+  const stepFive = page.getByText(/Etapa 5/);
+  await stepFive.scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Aprovação do cliente', exact: true }).waitFor();
+  await shoot(page, SLUG, 5, 'modo-de-envio');
+
+  // Modo "Aprovação do cliente": wait for the hub-link status line (either the
+  // active-link confirmation or the missing-link warning) so the shot shows
+  // the mode's explanatory state, then capture. Do NOT click submit.
+  await page.getByRole('button', { name: 'Aprovação do cliente', exact: true }).click();
+  await page
+    .getByText(/Link do portal ativo|não tem um link ativo/)
+    .waitFor({ timeout: 10_000 })
+    .catch(() => {});
+  await shoot(page, SLUG, 6, 'aprovacao-do-cliente');
 
   // Fails the run if anything outward-facing was attempted. Must be last.
   assertNoViolations(violations);

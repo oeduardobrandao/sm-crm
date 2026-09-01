@@ -111,6 +111,7 @@ Deno.test("touchToken is called when the token resolves", async () => {
     createDb: () => makeDb({ cliente_id: 15, conta_id: "ws-1", is_active: true }) as any,
     now: () => NOW,
     touchToken: async (t: string) => { calls.push(t); },
+    rateLimit: async () => true,
   });
   const res = await handler(req());
   assertEquals(res.status, 200);
@@ -124,6 +125,7 @@ Deno.test("touchToken is NOT called when the token does not resolve", async () =
     createDb: () => makeDb(null) as any,
     now: () => NOW,
     touchToken: async (t: string) => { calls.push(t); },
+    rateLimit: async () => true,
   });
   const res = await handler(req());
   assertEquals(res.status, 404);
@@ -136,6 +138,7 @@ Deno.test("a throwing touchToken must NOT break the client's portal", async () =
     createDb: () => makeDb({ cliente_id: 15, conta_id: "ws-1", is_active: true }) as any,
     now: () => NOW,
     touchToken: async () => { throw new Error("renewal exploded"); },
+    rateLimit: async () => true,
   });
   const res = await handler(req());
   assertEquals(res.status, 200);
@@ -147,6 +150,7 @@ Deno.test("feature_mensagens reflects the effective_plan_feature RPC result", as
     createDb: () => makeDb({ cliente_id: 15, conta_id: "ws-1", is_active: true }) as any,
     now: () => NOW,
     touchToken: async () => {},
+    rateLimit: async () => true,
   });
   const res = await handler(req());
   const body = await res.json();
@@ -172,6 +176,7 @@ Deno.test("feature_mensagens defaults to false and does NOT break the response w
     createDb: () => makeDbWithFailingRpc({ cliente_id: 15, conta_id: "ws-1", is_active: true }) as any,
     now: () => NOW,
     touchToken: async () => {},
+    rateLimit: async () => true,
   });
   const res = await handler(req());
   assertEquals(res.status, 200);
@@ -191,6 +196,7 @@ Deno.test("hub_theme reflects the workspace's stored columns when feature_brand_
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    rateLimit: async () => true,
   });
   const res = await handler(req());
   assertEquals(res.status, 200);
@@ -219,6 +225,7 @@ Deno.test("hub_theme falls back to neutral defaults (hide_branding: false) when 
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    rateLimit: async () => true,
   });
   const res = await handler(req());
   assertEquals(res.status, 200);
@@ -236,6 +243,7 @@ Deno.test("hub_theme falls back to neutral defaults (fail closed) when the featu
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    rateLimit: async () => true,
   });
   const res = await handler(req());
   assertEquals(res.status, 200);
@@ -253,6 +261,7 @@ Deno.test("feature_mensagens and feature_brand_customization are resolved indepe
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    rateLimit: async () => true,
   });
   const res = await handler(req());
   assertEquals(res.status, 200);
@@ -284,6 +293,7 @@ Deno.test("cliente_foto_url uses the manual foto_url when set, ignoring a connec
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    rateLimit: async () => true,
   });
   const res = await handler(req());
   const body = await res.json();
@@ -301,6 +311,7 @@ Deno.test("cliente_foto_url falls back to the Instagram avatar when no manual ph
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    rateLimit: async () => true,
   });
   const res = await handler(req());
   const body = await res.json();
@@ -318,6 +329,7 @@ Deno.test("cliente_foto_url is null when neither a manual photo nor a connected 
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    rateLimit: async () => true,
   });
   const res = await handler(req());
   const body = await res.json();

@@ -1,5 +1,6 @@
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
+import { getClientIP } from "../_shared/rate-limit.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -10,6 +11,7 @@ interface HubBriefingHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
   now: () => string;
+  rateLimit: (db: DbClient, key: string, max: number, windowSeconds: number) => Promise<boolean>;
 }
 
 export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
@@ -26,7 +28,16 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
       if (!token) return json({ error: "token required" }, 400);
 
       const hubToken = await resolveHubToken(db as any, token, deps.now());
-      if (!hubToken) return json({ error: "Link inválido." }, 404);
+      if (!hubToken) {
+        const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
+        if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+        return json({ error: "Link inválido." }, 404);
+      }
+
+      const okRead = await deps.rateLimit(
+        db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300,
+      );
+      if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
 
       // Parent query: briefings drive the response so empty briefings still render.
       const { data: briefings, error: bErr } = await db
@@ -99,7 +110,21 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
       }
 
       const hubToken = await resolveHubToken(db as any, token, deps.now());
-      if (!hubToken) return json({ error: "Link inválido." }, 404);
+      if (!hubToken) {
+        const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
+        if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+        return json({ error: "Link inválido." }, 404);
+      }
+
+      const okRead = await deps.rateLimit(
+        db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300,
+      );
+      if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+
+      const okWrite = await deps.rateLimit(
+        db, `hub-write:hub-briefing:${hubToken.conta_id}:${hubToken.cliente_id}`, 30, 3600,
+      );
+      if (!okWrite) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
 
       const { data: question } = await db
         .from("hub_briefing_questions")

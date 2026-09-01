@@ -11,6 +11,7 @@ function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>) {
     createDb: () => db as never,
     now,
     encryptionSecret: "test-secret",
+    rateLimit: async () => true,
   });
 }
 
@@ -163,6 +164,70 @@ Deno.test("hub-dashboard rejects non-GET methods with 405", async () => {
   const handler = makeHandler(createSupabaseQueryMock());
   const response = await handler(new Request("https://example.test/hub-dashboard?token=hub-123", { method: "POST" }));
   assertEquals(response.status, 405);
+});
+
+// ---------------------------------------------------------------------------
+// Rate limiting
+// ---------------------------------------------------------------------------
+
+function selectiveRateLimit(denyPrefix: string, calls: Array<{ key: string; max: number; windowSeconds: number }>) {
+  return async (_db: unknown, key: string, max: number, windowSeconds: number) => {
+    calls.push({ key, max, windowSeconds });
+    return !key.startsWith(denyPrefix);
+  };
+}
+
+Deno.test("hub-dashboard: invalid token with rateLimit denied returns 429, not 404", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: null, error: null });
+  const calls: Array<{ key: string; max: number; windowSeconds: number }> = [];
+
+  const handler = createHubDashboardHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    encryptionSecret: "test-secret",
+    rateLimit: selectiveRateLimit("hub-badtoken:", calls),
+  });
+  const response = await handler(new Request("https://example.test/hub-dashboard?token=expired", {
+    headers: { "x-forwarded-for": "1.2.3.4" },
+  }));
+
+  assertEquals(response.status, 429);
+  const body = await response.json();
+  assertEquals(body.error, "Muitas tentativas. Aguarde alguns minutos.");
+  assertEquals(calls, [{ key: "hub-badtoken:1.2.3.4", max: 30, windowSeconds: 600 }]);
+});
+
+Deno.test("hub-dashboard: invalid token still 404s when the badtoken limit is not exceeded", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: null, error: null });
+
+  const handler = makeHandler(db);
+  const response = await handler(new Request("https://example.test/hub-dashboard?token=expired"));
+
+  assertEquals(response.status, 404);
+});
+
+Deno.test("hub-dashboard: valid token over the hub-read budget returns 429", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  const calls: Array<{ key: string; max: number; windowSeconds: number }> = [];
+
+  const handler = createHubDashboardHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    encryptionSecret: "test-secret",
+    rateLimit: selectiveRateLimit("hub-read:", calls),
+  });
+  const response = await handler(new Request("https://example.test/hub-dashboard?token=hub-123"));
+
+  assertEquals(response.status, 429);
+  assertEquals(calls, [{ key: "hub-read:conta-1:14", max: 300, windowSeconds: 300 }]);
 });
 
 Deno.test("hub-dashboard gracefully handles Graph API failure", async () => {

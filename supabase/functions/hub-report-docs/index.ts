@@ -5,6 +5,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
+import { checkRateLimit, getClientIP } from "../_shared/rate-limit.ts";
 import { docHandler, listHandler, printDocHandler } from "./handlers.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -44,7 +45,16 @@ Deno.serve(async (req: Request) => {
     const token = url.searchParams.get("token");
     if (!token) return json({ error: "token required" }, 400);
     const hubToken = await resolveHubToken(db, token, new Date().toISOString());
-    if (!hubToken) return json({ error: "Link inválido." }, 404);
+    if (!hubToken) {
+      const okBadToken = await checkRateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
+      if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+      return json({ error: "Link inválido." }, 404);
+    }
+
+    const okRead = await checkRateLimit(
+      db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300,
+    );
+    if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
 
     if (path === "/list" || path === "/list/") {
       return json({ items: await listHandler(db, hubToken) });
