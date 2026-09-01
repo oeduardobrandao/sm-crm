@@ -699,6 +699,60 @@ describe('getAccountMetrics', () => {
     expect(result).toEqual(body);
   });
 
+  it('omits refresh from the URL by default', async () => {
+    fetchHarness.queueResponse({
+      ok: true,
+      status: 200,
+      json: {
+        period: { start: '2026-08-01', end: '2026-08-31', effectiveEnd: '2026-08-31' },
+        current: {
+          reach: null,
+          views: null,
+          saves: null,
+          accounts_engaged: null,
+          profile_views: null,
+          website_clicks: null,
+          follows_and_unfollows: null,
+          followers: null,
+        },
+        previous: null,
+        source: {},
+      },
+    });
+
+    await getAccountMetrics(42, '2026-08-01', '2026-08-31');
+
+    const url = String(fetchHarness.calls[0].input);
+    expect(url).not.toContain('refresh');
+  });
+
+  it('forwards refresh=1 when called with { refresh: true }, to bypass the 6h server cache', async () => {
+    fetchHarness.queueResponse({
+      ok: true,
+      status: 200,
+      json: {
+        period: { start: '2026-08-01', end: '2026-08-31', effectiveEnd: '2026-08-31' },
+        current: {
+          reach: null,
+          views: null,
+          saves: null,
+          accounts_engaged: null,
+          profile_views: null,
+          website_clicks: null,
+          follows_and_unfollows: null,
+          followers: null,
+        },
+        previous: null,
+        source: {},
+      },
+    });
+
+    await getAccountMetrics(42, '2026-08-01', '2026-08-31', { refresh: true });
+
+    const url = String(fetchHarness.calls[0].input);
+    expect(url).toContain('refresh=1');
+  });
+
   it('throws when the edge function responds with a non-200 status', async () => {
     fetchHarness.queueResponse({
       ok: false,

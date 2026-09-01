@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert";
 import {
-  fetchAccountTotals, fetchAccountTotalsDetailed, fetchClosedDayValues, fetchReachDaily, UNIQUE_METRICS,
+  fetchAccountTotals, fetchAccountTotalsDetailed, fetchClosedDayValues, fetchReachDaily,
+  isWindowLiveEligible, UNIQUE_METRICS, VIEWS_WINDOW_DAYS,
 } from "../_shared/instagram-account-metrics.ts";
 
 const DAY = 86400;
@@ -312,4 +313,46 @@ Deno.test("fetchAccountTotalsDetailed: fetchAccountTotals continua devolvendo sÃ
       : { data: [{ name: "views", total_value: { value: 7 } }] });
   const plain = await fetchAccountTotals(f, "tok", ["views", "saves"], T0, T0 + DAY);
   assertEquals(plain, { views: 7, saves: null });
+});
+
+// --- isWindowLiveEligible (Task final-fix Finding 3) -------------------------
+// Gates whether a window's live Graph fetch is even attempted: a window fully
+// outside the VIEWS_WINDOW_DAYS retention lookback can never return real data,
+// so callers should skip the round-trip; a window that only partially
+// overlaps still goes live unchanged.
+
+Deno.test("isWindowLiveEligible: window fully inside retention -> eligible", () => {
+  const nowSec = T0 + 100 * DAY;
+  // window ends well within the last VIEWS_WINDOW_DAYS
+  assertEquals(isWindowLiveEligible(T0 + 95 * DAY, T0 + 98 * DAY, nowSec), true);
+});
+
+Deno.test("isWindowLiveEligible: window fully outside (ends before) retention -> NOT eligible", () => {
+  const nowSec = T0 + 200 * DAY;
+  const retentionStart = nowSec - VIEWS_WINDOW_DAYS * DAY;
+  // a whole month that ended well before the retention boundary
+  const sinceSec = retentionStart - 40 * DAY;
+  const untilSec = retentionStart - 10 * DAY;
+  assertEquals(isWindowLiveEligible(sinceSec, untilSec, nowSec), false);
+});
+
+Deno.test("isWindowLiveEligible: window straddling the retention boundary (partial overlap) -> eligible", () => {
+  const nowSec = T0 + 200 * DAY;
+  const retentionStart = nowSec - VIEWS_WINDOW_DAYS * DAY;
+  // starts before the boundary, ends after it -- partial overlap keeps live
+  const sinceSec = retentionStart - 5 * DAY;
+  const untilSec = retentionStart + 5 * DAY;
+  assertEquals(isWindowLiveEligible(sinceSec, untilSec, nowSec), true);
+});
+
+Deno.test("isWindowLiveEligible: window ending exactly at the retention boundary -> NOT eligible", () => {
+  const nowSec = T0 + 200 * DAY;
+  const retentionStart = nowSec - VIEWS_WINDOW_DAYS * DAY;
+  assertEquals(isWindowLiveEligible(retentionStart - 10 * DAY, retentionStart, nowSec), false);
+});
+
+Deno.test("isWindowLiveEligible: empty/inverted window -> NOT eligible", () => {
+  const nowSec = T0 + 100 * DAY;
+  assertEquals(isWindowLiveEligible(T0 + 10 * DAY, T0 + 10 * DAY, nowSec), false);
+  assertEquals(isWindowLiveEligible(T0 + 10 * DAY, T0 + 5 * DAY, nowSec), false);
 });

@@ -27,7 +27,7 @@ const {
   return {
     paramsState: { id: '42' },
     navigateMock: vi.fn(),
-    queryClientMock: { invalidateQueries: vi.fn() },
+    queryClientMock: { invalidateQueries: vi.fn(), fetchQuery: vi.fn() },
     queryState,
     toastSuccessMock: vi.fn(),
     toastErrorMock: vi.fn(),
@@ -241,6 +241,7 @@ vi.mock('@/components/ui/sheet', async () => {
 import AnalyticsContaPage from '../AnalyticsContaPage';
 import {
   getAccountAIAnalysis,
+  getAccountMetrics,
   getClientReports,
   getTags,
   getBestPostingTimes,
@@ -252,11 +253,13 @@ import {
   generateReport,
 } from '../../../services/analytics';
 import { getClientes, getCurrentWorkspace } from '../../../store';
-import { getInstagramSummary } from '../../../services/instagram';
+import { getInstagramSummary, syncInstagramData } from '../../../services/instagram';
 
 const mockedGetClientes = vi.mocked(getClientes);
 const mockedGetInstagramSummary = vi.mocked(getInstagramSummary);
+const mockedSyncInstagramData = vi.mocked(syncInstagramData);
 const mockedGetAnalyticsOverview = vi.mocked(getAnalyticsOverview);
+const mockedGetAccountMetrics = vi.mocked(getAccountMetrics);
 const mockedGetPostsAnalytics = vi.mocked(getPostsAnalytics);
 const mockedGetFollowerHistory = vi.mocked(getFollowerHistory);
 const mockedGetTags = vi.mocked(getTags);
@@ -445,9 +448,12 @@ beforeEach(() => {
   toastErrorMock.mockReset();
   accountAIMock.mockReset();
   queryClientMock.invalidateQueries.mockReset();
+  queryClientMock.fetchQuery.mockReset();
   deleteReportDocMock.mockReset();
   mockedGetClientes.mockReset();
   mockedGetInstagramSummary.mockReset();
+  mockedSyncInstagramData.mockReset();
+  mockedGetAccountMetrics.mockReset();
   mockedGetAnalyticsOverview.mockReset();
   mockedGetPostsAnalytics.mockReset();
   mockedGetFollowerHistory.mockReset();
@@ -464,6 +470,7 @@ beforeEach(() => {
   mockedGetInstagramSummary.mockResolvedValue({
     account: { username: 'clinicaaurora', profile_picture_url: 'https://example.com/avatar.jpg' },
   });
+  mockedSyncInstagramData.mockResolvedValue(undefined);
   mockedGetAnalyticsOverview.mockResolvedValue({ data: {} });
   mockedGetPostsAnalytics.mockResolvedValue({ posts: [] });
   mockedGetFollowerHistory.mockResolvedValue({ history: [], postDates: [] });
@@ -877,5 +884,73 @@ describe('AnalyticsContaPage', () => {
     expect(queryClientMock.invalidateQueries).not.toHaveBeenCalledWith({
       queryKey: ['report-docs', 42],
     });
+  });
+
+  it('Sincronizar Dados: after a successful sync, bypasses the account-metrics cache via fetchQuery({refresh:true})', async () => {
+    seedCommonAnalyticsData();
+    mockedGetAccountMetrics.mockResolvedValue({
+      period: { start: '2026-03-19', end: '2026-04-18', effectiveEnd: '2026-04-18' },
+      current: {
+        reach: 1,
+        views: 1,
+        saves: 1,
+        accounts_engaged: 1,
+        profile_views: 1,
+        website_clicks: 1,
+        follows_and_unfollows: null,
+        followers: null,
+      },
+      previous: null,
+      source: {},
+    });
+
+    render(<AnalyticsContaPage />);
+    fireEvent.click(screen.getByTitle('Sincronizar Dados'));
+
+    await waitFor(() =>
+      expect(toastSuccessMock).toHaveBeenCalledWith('Dados sincronizados com sucesso!'),
+    );
+
+    expect(mockedSyncInstagramData).toHaveBeenCalledWith(42);
+    expect(queryClientMock.fetchQuery).toHaveBeenCalledTimes(1);
+    const call = queryClientMock.fetchQuery.mock.calls[0][0] as {
+      queryKey: unknown[];
+      queryFn: () => unknown;
+    };
+    expect(call.queryKey[0]).toBe('account-metrics');
+    expect(call.queryKey[1]).toBe(42);
+
+    // A plain invalidateQueries would refetch through the ORIGINAL (non-refresh)
+    // queryFn and just hit the 6h server cache again -- the fix's whole point is
+    // that the account-metrics refetch after a sync goes through THIS queryFn,
+    // which forwards refresh:true to bypass that cache.
+    call.queryFn();
+    expect(mockedGetAccountMetrics).toHaveBeenCalledWith(
+      42,
+      expect.any(String),
+      expect.any(String),
+      { refresh: true },
+    );
+
+    // Every other affected query still gets a plain invalidation.
+    expect(queryClientMock.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['analytics-overview', 42],
+    });
+    expect(queryClientMock.invalidateQueries).not.toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: expect.arrayContaining(['account-metrics']) }),
+    );
+  });
+
+  it('Sincronizar Dados: sync failure shows a toast and never calls fetchQuery', async () => {
+    seedCommonAnalyticsData();
+    mockedSyncInstagramData.mockRejectedValue(new Error('Falha de rede'));
+
+    render(<AnalyticsContaPage />);
+    fireEvent.click(screen.getByTitle('Sincronizar Dados'));
+
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith('Erro na sincronização: Falha de rede'),
+    );
+    expect(queryClientMock.fetchQuery).not.toHaveBeenCalled();
   });
 });

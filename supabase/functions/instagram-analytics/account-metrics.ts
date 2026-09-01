@@ -401,7 +401,10 @@ export async function handleAccountMetrics(
 
   const startMs = toMs(start);
   const effEndMs = toMs(effectiveEnd);
-  const lenDays = Math.round((toMs(end) - startMs) / DAY_MS) + 1;
+  // lenDays MUST derive from effectiveEnd, not the raw (possibly future) end:
+  // the current window itself is clamped to effectiveEnd, so a previous
+  // window sized off the unclamped end would run longer than current.
+  const lenDays = Math.round((effEndMs - startMs) / DAY_MS) + 1;
 
   const prevEnd = addDays(start, -1);
   const prevStart = addDays(prevEnd, -(lenDays - 1));
@@ -424,7 +427,7 @@ export async function handleAccountMetrics(
   const [currentResolved, prevResolved, currentFollowers, prevFollowers] = await Promise.all([
     resolveWindowFull(deps, start, effectiveEnd, currentLive),
     resolveWindowFull(deps, prevStart, prevEnd, prevLive),
-    followersFor(deps, start, end),
+    followersFor(deps, start, effectiveEnd),
     followersFor(deps, prevStart, prevEnd),
   ]);
 

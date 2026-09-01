@@ -8,7 +8,7 @@ import {
   cachePostThumbnail, isEphemeralInstagramUrl, type ThumbnailStorage,
 } from "../_shared/instagram-thumbnail-cache.ts";
 import {
-  fetchAccountTotals, type AccountMetric, type AccountTotals,
+  fetchAccountTotals, isWindowLiveEligible, type AccountMetric, type AccountTotals,
 } from "../_shared/instagram-account-metrics.ts";
 import {
   daysInMonth, lastDayOfMonth, resolveAccountWindow,
@@ -125,7 +125,14 @@ export async function loadClientSnapshot(
       if (!token) return null;
       const sinceSec = Date.parse(win.start) / 1000;
       const untilSec = Math.min(Date.parse(win.endExclusive) / 1000, nowSec);
-      if (untilSec <= sinceSec) return null;
+      // A month fully outside Graph's retention lookback (a historical report
+      // month, well past the window) can never return real data live -- skip
+      // the round-trip entirely rather than firing 7 metrics x 2 windows of
+      // doomed requests before falling back to the monthly-row/daily-sum
+      // snapshot chain below. A month that only partially overlaps retention
+      // still goes live (unchanged): Graph errors on the out-of-range slice
+      // degrade the same way any other per-metric failure does.
+      if (!isWindowLiveEligible(sinceSec, untilSec, nowSec)) return null;
       return fetchAccountTotals(deps.fetch, token, ACCOUNT_METRICS, sinceSec, untilSec)
         .catch((e) => {
           console.warn(

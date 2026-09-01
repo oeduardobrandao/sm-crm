@@ -288,6 +288,55 @@ Deno.test("followers: fewer than 2 points within the window resolves to null", a
   assertEquals(result.body.current.followers, null);
 });
 
+Deno.test("comparison window derives from effectiveEnd, not the raw future end", async () => {
+  // request end is 2026-09-05, 5 days past "today" (2026-08-31 per NOW_MS).
+  // effectiveEnd clamps current to 2026-08-25..2026-08-31 (7 days). previous
+  // MUST be sized off that same 7-day span (2026-08-18..2026-08-24), not off
+  // the raw 12-day request span -- a stale lenDays would look for previous
+  // daily rows over 2026-08-13..2026-08-24 (12 days) instead, and the day-sum
+  // guard (rows.length !== expectedDays.length) would flip the result to null.
+  const currentSinceSec = String(Date.parse("2026-08-25T00:00:00Z") / 1000);
+
+  const deps = baseDeps({
+    db: makeDb({
+      daily: [
+        { instagram_account_id: "acc-1", snapshot_date: "2026-08-18", views_day: 100 },
+        { instagram_account_id: "acc-1", snapshot_date: "2026-08-19", views_day: 100 },
+        { instagram_account_id: "acc-1", snapshot_date: "2026-08-20", views_day: 100 },
+        { instagram_account_id: "acc-1", snapshot_date: "2026-08-21", views_day: 100 },
+        { instagram_account_id: "acc-1", snapshot_date: "2026-08-22", views_day: 100 },
+        { instagram_account_id: "acc-1", snapshot_date: "2026-08-23", views_day: 100 },
+        { instagram_account_id: "acc-1", snapshot_date: "2026-08-24", views_day: 100 },
+      ],
+      follower: [
+        { instagram_account_id: "acc-1", date: "2026-08-25", follower_count: 1000 },
+        { instagram_account_id: "acc-1", date: "2026-08-31", follower_count: 1050 },
+        // beyond effectiveEnd -- must NOT be picked up as the window's "last" point
+        { instagram_account_id: "acc-1", date: "2026-09-03", follower_count: 9999 },
+      ],
+    }),
+    // Only the current window's since-key resolves; the previous window's
+    // fetch returns "no data" for every simple metric, forcing it through
+    // the daily snapshot chain where the length check actually bites.
+    fetch: fakeGraphFetch({
+      [currentSinceSec]: {
+        reach: 5000, views: 8000, saves: 120, accounts_engaged: 900,
+        profile_views: 300, website_clicks: 40, follows: 60, unfollows: 10,
+      },
+    }),
+  });
+
+  const result = await handleAccountMetrics(deps, "2026-08-25", "2026-09-05");
+  if (!result.ok) throw new Error(`expected ok, got error: ${result.error}`);
+
+  assertEquals(result.body.period, { start: "2026-08-25", end: "2026-09-05", effectiveEnd: "2026-08-31" });
+  // followers window bounded by effectiveEnd, not the raw future end
+  assertEquals(result.body.current.followers, { start: 1000, end: 1050, delta: 50 });
+
+  if (!result.body.previous) throw new Error("expected previous to be non-null (7-day daily sum)");
+  assertEquals(result.body.previous.views, 700);
+});
+
 Deno.test("invalid ranges return a 400 without touching db/fetch", async () => {
   const deps = baseDeps();
 

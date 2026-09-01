@@ -367,7 +367,7 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================
-    // GET /account-metrics/:clientId?start&end
+    // GET /account-metrics/:clientId?start&end (optional refresh=1)
     // Account-level KPI parity with the Instagram app for an ARBITRARY
     // date range (end INCLUSIVE), plus a same-length `previous` window.
     // Range parsing is its OWN thing (account-metrics.ts), not
@@ -392,11 +392,12 @@ Deno.serve(async (req) => {
       const { account, accessToken } = await getAccountWithToken(serviceClient, clientId);
 
       const cacheKey = `account_metrics_${start}_${end}`;
+      const skipCacheRead = url.searchParams.get('refresh') === '1';
       const { data: outcome } = await getCachedOrFetch(serviceClient, account.id, cacheKey, async () => {
         const result = await handleAccountMetrics({ db: serviceClient, fetch, account, accessToken }, start!, end!);
         if (!result.ok) throw new Error(result.error);
         return result.body;
-      }, 6);
+      }, 6, skipCacheRead);
 
       return json(outcome);
     }

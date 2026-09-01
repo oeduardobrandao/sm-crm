@@ -696,9 +696,11 @@ export async function getAccountMetrics(
   clientId: number,
   start: string,
   end: string,
+  opts?: { refresh?: boolean },
 ): Promise<AccountMetricsResponse> {
   const headers = await getAuthHeaders();
   const params = new URLSearchParams({ start, end });
+  if (opts?.refresh) params.set('refresh', '1');
   const res = await fetch(`${EDGE_URL}/account-metrics/${clientId}?${params}`, { headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));

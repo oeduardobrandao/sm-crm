@@ -40,6 +40,20 @@ export function parseUtcDayStrict(day: string): number | null {
   return new Date(ms).toISOString().slice(0, 10) === day ? ms : null;
 }
 
+// A window is "live eligible" when it overlaps the Graph retention lookback
+// (now - VIEWS_WINDOW_DAYS) at all -- fully or partially. A window that ends
+// entirely before that boundary (e.g. a historical report month, Task 10)
+// can never get real data from a live fetch, so callers should skip the
+// Graph round-trip instead of firing a request doomed to fail per-metric.
+// A window that only partially overlaps still goes live with its existing
+// clamp -- Graph erroring on the out-of-range slice degrades that request
+// the same way any other Graph failure does, so behavior there is unchanged.
+export function isWindowLiveEligible(sinceSec: number, untilSec: number, nowSec: number): boolean {
+  if (untilSec <= sinceSec) return false;
+  const retentionStartSec = nowSec - VIEWS_WINDOW_DAYS * DAY;
+  return untilSec > retentionStartSec;
+}
+
 export interface ViewsRange {
   since: number;
   until: number;
