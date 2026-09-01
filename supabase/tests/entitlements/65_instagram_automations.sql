@@ -954,6 +954,16 @@ begin
   )) into v_valid;
   assert not v_valid, 'chave extra no objeto de dm_media deve ser rejeitada pela função de validação';
 
+  -- (f2) size_bytes não-numérico (string) -> validate_ig_dm_media deve
+  --      devolver false (check_violation 23514), nunca levantarem 22023: o
+  --      CASE em validate_ig_dm_media garante a ordem dos type-guards (AND
+  --      não garante short-circuit no Postgres).
+  select validate_ig_dm_media(jsonb_build_object(
+    'key', 'automation-media/' || v_ws::text || '/img.jpg',
+    'content_type', 'image/jpeg', 'size_bytes', 'large'
+  )) into v_valid;
+  assert not v_valid, 'size_bytes não-numérico deve ser false, não erro de cast';
+
   -- (g) dm_subtitle sem dm_media -> check_violation (ica_dm_subtitle_with_media).
   --     dm_media é NULL, então o trigger nem toca a linha; nenhum finalize
   --     é necessário aqui.
