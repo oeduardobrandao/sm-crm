@@ -28,7 +28,7 @@ export interface LandingHowStep {
 }
 
 export const LANDING: {
-  hero: { eyebrow: string; titleBefore: string; titleEm: string; titleAfter: string; sub: string };
+  hero: { titleBefore: string; titleEm: string; titleAfter: string; sub: string; note: string };
   ticker: string[];
   featuresTitle: string;
   featuresSub: string;
@@ -38,11 +38,11 @@ export const LANDING: {
   faq: LandingFaqItem[];
 } = {
   hero: {
-    eyebrow: 'Comece grátis · Sem cartão de crédito',
     titleBefore: 'Sua agência de social media ',
     titleEm: 'sem caos',
     titleAfter: ', sem planilha, sem grupo de WhatsApp.',
     sub: 'Mesaas é o CRM feito para gestores e agências de social media. Clientes, entregas, aprovações, agendamento automático no Instagram e métricas — em um só lugar.',
+    note: '30 dias grátis em qualquer plano. Sem cartão de crédito.',
   },
   ticker: [
     'Clientes + contratos',
@@ -117,14 +117,14 @@ export const LANDING: {
       ],
     },
     {
-      title: 'Financeiro sem planilha paralela',
+      title: 'Comentou a palavra-chave, recebeu no direct. Sozinho.',
       description:
-        'Contratos, mensalidades e despesas da operação em um lugar só. Saiba o MRR da sua agência, quais clientes estão em aberto e quanto sobra no fim do mês — sem abrir o Excel.',
+        'Defina um gatilho por post ou para o perfil inteiro. O Mesaas responde o comentário em público e manda a DM com link ou cartão, na hora, 24 por 7. Disponível nos planos Pro e Max.',
       bullets: [
-        'MRR, <strong>receita prevista e em aberto</strong> em tempo real',
-        'Contratos com datas de renovação automáticas',
-        'Exportação de CSV para seu contador',
-        '<strong>Despesas da operação</strong> vinculadas ao cliente que geraram',
+        'Gatilho por <strong>palavra-chave</strong> em Feed e Reels',
+        'Respostas públicas com <strong>variações</strong>, sem parecer robô',
+        'DM com <strong>cartão, imagem e botão</strong> de link',
+        'Configurado direto no post, dentro do Mesaas',
       ],
     },
   ],
