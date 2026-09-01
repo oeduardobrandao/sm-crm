@@ -13,6 +13,10 @@ const {
   mockGetClientePosts,
   mockGetPostCovers,
   mockUseAuth,
+  mockUploadMedia,
+  mockDeleteMedia,
+  mockSignMediaView,
+  mockValidateMediaFile,
 } = vi.hoisted(() => ({
   mockCreate: vi.fn(),
   mockUpdate: vi.fn(),
@@ -22,6 +26,10 @@ const {
   mockGetClientePosts: vi.fn(),
   mockGetPostCovers: vi.fn(),
   mockUseAuth: vi.fn(),
+  mockUploadMedia: vi.fn(),
+  mockDeleteMedia: vi.fn(),
+  mockSignMediaView: vi.fn(),
+  mockValidateMediaFile: vi.fn(),
 }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -68,6 +76,13 @@ vi.mock('../../../services/postMedia', async () => {
 });
 
 vi.mock('../../../context/AuthContext', () => ({ useAuth: mockUseAuth }));
+
+vi.mock('../../../services/automationMedia', () => ({
+  uploadAutomationMedia: mockUploadMedia,
+  deleteAutomationMedia: mockDeleteMedia,
+  signAutomationMediaView: mockSignMediaView,
+  validateAutomationMediaFile: mockValidateMediaFile,
+}));
 
 // Radix Select relies on pointer capture / portals that jsdom does not model --
 // same simplified stand-in used by ClientesPage.test.tsx.
@@ -240,6 +255,8 @@ const EDITING_BASE: InstagramCommentAutomation = {
   pending_post_deleted_at: null,
   keywords: ['preco'],
   dm_message: 'Segue o link!',
+  dm_media: null,
+  dm_subtitle: null,
   public_reply: null,
   public_replies: [],
   ativo: true,
@@ -337,7 +354,28 @@ describe('AutomationFormDialog', () => {
       role: 'owner',
       profile: { id: 'user-1', conta_id: 'w-1', role: 'owner' },
     });
+    mockValidateMediaFile.mockReturnValue(null);
+    mockUploadMedia.mockResolvedValue({
+      key: 'automation-media/w-1/x.jpg',
+      content_type: 'image/jpeg',
+      size_bytes: 100,
+    });
+    mockDeleteMedia.mockResolvedValue(undefined);
+    mockSignMediaView.mockResolvedValue('https://signed.example/x.jpg');
+    // jsdom doesn't implement it -- same stub used by postMedia.test.ts et al.
+    URL.createObjectURL = vi.fn(() => 'blob:mock-preview');
   });
+
+  /** Anexa um arquivo de imagem fake ao input de mídia e espera o upload
+   * (mockado, resolve na hora) terminar -- o botão "remover mídia" só existe
+   * depois que `dmMedia` aterrissa no form. */
+  async function attachMedia(fileName = 'foto.jpg') {
+    const file = new File(['a'], fileName, { type: 'image/jpeg' });
+    fireEvent.change(screen.getByLabelText('form.mediaLabel'), {
+      target: { files: [file] },
+    });
+    await screen.findByRole('button', { name: 'form.mediaRemove' });
+  }
 
   it('saves the real Instagram media id (instagram_post_id), not the internal uuid, when a specific post is targeted', async () => {
     const onSaved = vi.fn();
@@ -858,6 +896,128 @@ describe('AutomationFormDialog', () => {
           public_reply: 'Nova variação',
         }),
       );
+    });
+  });
+
+  // ── Mídia do cartão de DM ────────────────────────────────────────────────
+
+  describe('mídia do cartão', () => {
+    it('anexar imagem troca o campo de mensagem para título com limite 80 e mostra subtítulo', async () => {
+      renderDialog();
+
+      await fillRequiredFields();
+      await attachMedia();
+
+      expect(mockUploadMedia).toHaveBeenCalledTimes(1);
+      const dmField = screen.getByLabelText('form.cardTitleLabel') as HTMLTextAreaElement;
+      expect(dmField.maxLength).toBe(80);
+      expect(screen.getByLabelText('form.subtitleLabel')).toBeInTheDocument();
+    });
+
+    it('submit com mídia envia dm_media e dm_subtitle', async () => {
+      renderDialog();
+
+      await fillRequiredFields();
+      await attachMedia();
+      fireEvent.change(screen.getByLabelText('form.subtitleLabel'), {
+        target: { value: 'sub' },
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dm_media: {
+            key: 'automation-media/w-1/x.jpg',
+            content_type: 'image/jpeg',
+            size_bytes: 100,
+          },
+          dm_subtitle: 'sub',
+        }),
+      );
+    });
+
+    it('submit sem mídia envia dm_media e dm_subtitle como null', async () => {
+      renderDialog();
+
+      await fillRequiredFields();
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ dm_media: null, dm_subtitle: null }),
+      );
+    });
+
+    it('mensagem acima de 80 com mídia bloqueia o submit com toast', async () => {
+      renderDialog(vi.fn(), {
+        ...EDITING_BASE,
+        dm_message: 'x'.repeat(100),
+      });
+
+      await attachMedia();
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('form.validationDmWithMedia'));
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('remover mídia persistida não apaga o objeto antes do save; apaga só após o update com sucesso', async () => {
+      renderDialog(vi.fn(), {
+        ...EDITING_BASE,
+        dm_media: {
+          key: 'automation-media/w-1/old.jpg',
+          content_type: 'image/jpeg',
+          size_bytes: 50,
+        },
+        dm_subtitle: 'Antiga',
+      });
+
+      fireEvent.click(await screen.findByRole('button', { name: 'form.mediaRemove' }));
+      expect(mockDeleteMedia).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+      await waitFor(() =>
+        expect(mockDeleteMedia).toHaveBeenCalledWith({
+          key: 'automation-media/w-1/old.jpg',
+          content_type: 'image/jpeg',
+          size_bytes: 50,
+        }),
+      );
+    });
+
+    it('fechar o dialog sem salvar depois de remover mídia persistida nunca apaga o objeto', async () => {
+      const onOpenChange = vi.fn();
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={qc}>
+          <MemoryRouter>
+            <AutomationFormDialog
+              open
+              onOpenChange={onOpenChange}
+              editing={{
+                ...EDITING_BASE,
+                dm_media: {
+                  key: 'automation-media/w-1/old.jpg',
+                  content_type: 'image/jpeg',
+                  size_bytes: 50,
+                },
+                dm_subtitle: 'Antiga',
+              }}
+              onSaved={vi.fn()}
+            />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+
+      fireEvent.click(await screen.findByRole('button', { name: 'form.mediaRemove' }));
+      fireEvent.click(screen.getByRole('button', { name: 'form.cancel' }));
+
+      expect(mockDeleteMedia).not.toHaveBeenCalled();
+      expect(onOpenChange).toHaveBeenCalledWith(false);
     });
   });
 
