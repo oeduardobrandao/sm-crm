@@ -134,14 +134,23 @@ async function syncAccount(
   const nowTimestamp = Math.floor(Date.now() / 1000);
   const sinceDate = nowTimestamp - (28 * 24 * 60 * 60);
 
+  // Every fetch here needs its own timeout (house rule, R2-hang incident):
+  // this Promise.all is inside a state-setting handler -- a stalled Graph
+  // request would otherwise hold up the whole account sync indefinitely,
+  // and the edge runtime can kill the invocation mid-state before it ever
+  // reaches the DB updates below. A rejection here (timeout or otherwise)
+  // propagates out of this async function to the caller's try/catch
+  // (runPool's account callback in the handler below), which already
+  // treats it as a sync failure for this account -- same as any other
+  // network error today, so this doesn't change failure semantics.
   const [reachRes, viewsRes, engagedRes, websiteClicksRes, profileViewsRes, igProfileRes, mediaRes] = await Promise.all([
-    fetch(`https://graph.instagram.com/me/insights?metric=reach&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/me/insights?metric=website_clicks&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/me/insights?metric=profile_views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/me?fields=followers_count,follows_count,media_count,profile_picture_url&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`)
+    fetch(`https://graph.instagram.com/me/insights?metric=reach&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
+    fetch(`https://graph.instagram.com/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
+    fetch(`https://graph.instagram.com/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
+    fetch(`https://graph.instagram.com/me/insights?metric=website_clicks&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
+    fetch(`https://graph.instagram.com/me/insights?metric=profile_views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
+    fetch(`https://graph.instagram.com/me?fields=followers_count,follows_count,media_count,profile_picture_url&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
+    fetch(`https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) })
   ]);
 
   const [reachData, viewsData, engagedData, websiteClicksData, profileViewsData, igProfile, mediaData] = await Promise.all([
