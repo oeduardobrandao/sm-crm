@@ -30,7 +30,11 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Date.parse normalizes impossible days ("2026-02-30" becomes Mar 2), so a
 // parsed date only counts as valid when it round-trips to the supplied string.
-function parseUtcDayStrict(day: string): number | null {
+// Exported for account-metrics.ts's own range parser (Task 12): it validates
+// dates the same way parseViewsRange does, but WITHOUT parseViewsRange's
+// 90-day-retention clamp, which would kill the historical-range-from-snapshot
+// case the account-metrics contract promises.
+export function parseUtcDayStrict(day: string): number | null {
   const ms = Date.parse(`${day}T00:00:00Z`);
   if (!Number.isFinite(ms)) return null;
   return new Date(ms).toISOString().slice(0, 10) === day ? ms : null;
