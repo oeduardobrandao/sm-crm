@@ -19,7 +19,7 @@ const IG = {
   hairline: '#dbdbdb',
 };
 
-function Avatar({
+export function Avatar({
   clientName,
   clientSigla,
   clientCor,

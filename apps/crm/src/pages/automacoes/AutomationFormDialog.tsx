@@ -50,6 +50,7 @@ import {
   type IgAccountStatus,
 } from '../../store';
 import DmPreview from './DmPreview';
+import CommentReplyPreview from './CommentReplyPreview';
 import { dmMessageLimit, MAX_BUTTON_TITLE, MAX_DM_BUTTONS, validateDmButtons } from './dmButtons';
 import TourOverlay, { type TourOverlayProps } from './tour/TourOverlay';
 
@@ -1515,28 +1516,27 @@ export default function AutomationFormDialog({
               >
                 {t('form.repliesHelp')}
               </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                 {(form.publicReplies.length > 0 ? form.publicReplies : ['']).map((r, i) => (
-                  <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1 }}>
-                      <Textarea
-                        value={r}
-                        maxLength={500}
-                        rows={2}
-                        aria-label={t('form.replyVariationLabel', { index: i + 1 })}
-                        placeholder={t('form.replyPlaceholderVariation')}
-                        onChange={(e) => updateReply(i, e.target.value)}
-                      />
-                      <div
-                        style={{
-                          textAlign: 'right',
-                          fontSize: '0.7rem',
-                          color: 'var(--text-muted)',
-                        }}
-                      >
-                        {r.length}/500
-                      </div>
-                    </div>
+                  <div key={i} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                    <Input
+                      value={r}
+                      maxLength={500}
+                      aria-label={t('form.replyVariationLabel', { index: i + 1 })}
+                      placeholder={t('form.replyPlaceholderVariation')}
+                      onChange={(e) => updateReply(i, e.target.value)}
+                    />
+                    <span
+                      style={{
+                        fontSize: '0.68rem',
+                        color: 'var(--text-muted)',
+                        flexShrink: 0,
+                        width: '3.2rem',
+                        textAlign: 'right',
+                      }}
+                    >
+                      {r.length}/500
+                    </span>
                     <Button
                       type="button"
                       variant="ghost"
@@ -1576,6 +1576,15 @@ export default function AutomationFormDialog({
               mediaUrl={form.dmMediaPreviewUrl || null}
               subtitle={form.dmSubtitle}
             />
+            <div style={{ marginTop: '1.25rem' }}>
+              <CommentReplyPreview
+                clientName={selectedCliente?.nome ?? null}
+                clientSigla={selectedCliente?.sigla ?? null}
+                clientCor={selectedCliente?.cor ?? null}
+                replies={form.publicReplies}
+                keyword={form.keywords[0] ?? null}
+              />
+            </div>
           </div>
         </div>
 
