@@ -1336,6 +1336,43 @@ Deno.test("executeSend (pr-4): send legado unknown sem texto persistido reconcil
   assertEquals(updates[0].payload, { public_reply_id: "r-88", public_reply_status: "sent" });
 });
 
+Deno.test("executeSend (pr-5): retry a partir de 'failed' reusa o texto persistido, nunca re-sorteia do pool atual", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ public_reply: null, public_replies: ["outra"] }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // em voo (regrava o mesmo texto)
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // sent
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  const { fetchFn, calls } = routedFetch({
+    publicReply: () => ({ body: { id: "reply-5" } }),
+  });
+
+  // random aponta para "outra" (o único item do pool atual, distinto do texto
+  // persistido) -- se `pickPublicReply` fosse chamado em vez de reusar o
+  // snapshot de `send.public_reply_text`, o texto postado seria "outra".
+  await executeSend(
+    baseSendCtx(db, { fetchFn, random: () => 0 }),
+    baseClaimedSend({
+      dm_status: "sent",
+      public_reply_status: "failed",
+      public_reply_text: "texto sorteado antes",
+    }),
+  );
+
+  const updates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(updates[0].payload, {
+    public_reply_status: "unknown",
+    public_reply_text: "texto sorteado antes",
+  });
+  const publicPost = calls.find((c) => c.method === "POST" && c.url.includes("/replies"));
+  assertEquals(JSON.parse(publicPost?.body ?? "null"), { message: "texto sorteado antes" });
+  assertEquals(updates[1].payload, { public_reply_id: "reply-5", public_reply_status: "sent" });
+});
+
 Deno.test("executeSend: 'já existe private reply' (already_replied) -> auto-correção, mark_automation_dm_sent chamado", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {
