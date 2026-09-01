@@ -1492,10 +1492,12 @@ gh pr create --title "feat(automacoes): cartão com imagem na DM (generic templa
 Spec: docs/superpowers/specs/2026-08-31-automacoes-dm-midia-e-variacoes-design.md
 Gate: Milestone 0 (prova do generic template em staging) documentado em docs/superpowers/specs/2026-08-31-milestone0-generic-template-staging.md
 
-## Deploy
-1. Migration ANTES do redeploy
-2. Functions: instagram-webhook, instagram-automation-cron e automation-media (--use-api --no-verify-jwt; automation-media faz a própria auth de JWT)
-3. Smoke: automação sem mídia segue com dm_kind text/buttons
+## Deploy (ordem estrita; a janela mais apertada é o FRONTEND)
+O CRM novo envia dm_media/dm_subtitle em TODO create/update de automação, e a Vercel shippa o frontend no instante do merge. Portanto:
+1. Migration aplicada em PROD ANTES do merge (`npx supabase db push --linked`, conferindo o project-ref)
+2. Functions em prod ANTES do merge: automation-media, instagram-webhook, instagram-automation-cron (`--use-api --no-verify-jwt`; automation-media faz a própria auth de JWT e precisa estar no ar antes de o frontend poder subir mídia)
+3. Merge (frontend vai junto via Vercel)
+4. Smoke: automação sem mídia segue com dm_kind text/buttons; depois um cartão ponta a ponta em conta real
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
