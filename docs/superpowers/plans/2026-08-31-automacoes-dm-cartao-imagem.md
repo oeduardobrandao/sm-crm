@@ -316,7 +316,7 @@ Como na fatia 1: `supabase start` + `bash scripts/test-entitlements.sh` se Docke
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20260901000002_ig_dm_media_card.sql supabase/tests/entitlements/65_instagram_automations.sql
+git add supabase/migrations/20260901000014_ig_dm_media_card.sql supabase/tests/entitlements/65_instagram_automations.sql
 git commit -m "feat(automacoes): schema do cartão com imagem (dm_media, dm_subtitle, quota RPCs)"
 ```
 
