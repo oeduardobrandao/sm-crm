@@ -80,9 +80,13 @@ reservado ABAIXO do da fatia 2 (fatia 1 merga primeiro).
   por item): array, 0..5 itens, cada item string com 1..500 chars após
   btrim. Sem REVOKE restritivo (roda como o role que insere).
 - `instagram_comment_automations.public_replies jsonb NOT NULL DEFAULT '[]'`
-  + CHECK. Backfill na mesma migration:
+  + CHECK. Backfill na mesma migration, ANTES de adicionar o CHECK:
   `public_replies = jsonb_build_array(public_reply)` onde
-  `public_reply IS NOT NULL`.
+  `public_reply IS NOT NULL AND btrim(public_reply) <> ''`. O CHECK atual de
+  `public_reply` (char_length 1..500, sem btrim) aceita string só de
+  espaços; um valor desses viraria array inválido para o validador novo —
+  linhas assim ficam com `[]` (e o CRM novo normaliza `public_reply` para
+  NULL na próxima edição).
 - **`public_reply` (coluna antiga) FICA.** Entre a migration e o redeploy, o
   código antigo ainda a lê. O CRM novo grava as duas (`public_reply` =
   primeira variação ou NULL) para leitores legados (lista, MCP). O DROP é
@@ -113,6 +117,14 @@ reservado ABAIXO do da fatia 2 (fatia 1 merga primeiro).
      coberto em teste).
 - `ClaimedSend` ganha `public_reply_text` (vem do claim do cron também —
   a RPC `claim_retryable_automation_sends` passa a devolver a coluna).
+- **`public_reply_text` não-nulo é autoritativo até o fechamento.** Todos os
+  gates que hoje leem `automation.public_reply` atual passam a decidir pela
+  resposta PLANEJADA do send: com `public_reply_text` gravado, a
+  reconciliação roda e o fechamento (`sent` vs `sent_partial`) considera que
+  havia resposta pública pendente — mesmo que um editor tenha esvaziado o
+  pool da automação no meio do caminho. Hoje esse cenário fecharia um send
+  `unknown` como `sent` sem reconciliar. O pool atual da automação só decide
+  quando ainda NÃO há texto persistido (primeira tentativa).
 
 ### UI (CRM)
 
@@ -132,11 +144,14 @@ reservado ABAIXO do da fatia 2 (fatia 1 merga primeiro).
 - Deno (`instagram-webhook-process_test.ts`): sorteio gravado ANTES do POST
   (ordem verificável pelo mock); reentrada reusa texto sem re-sorteio;
   reconciliação casa pelo texto persistido; fallback legado
-  (`public_reply_text` NULL) casa contra o pool; rng injetado torna o caso
+  (`public_reply_text` NULL) casa contra o pool; send `unknown` com pool
+  esvaziado no meio do caminho ainda reconcilia e fecha pelo texto
+  persistido (nunca `sent` sem reconciliar); rng injetado torna o caso
   determinístico.
 - SQL (`65_instagram_automations.sql`): CHECK rejeita 6 itens, item vazio,
-  item 501 chars, não-array; backfill verificado; insert válido como
-  `authenticated` passa.
+  item 501 chars, não-array; backfill verificado, incluindo o caso
+  `public_reply` só de espaços → `[]`; insert válido como `authenticated`
+  passa.
 - Vitest: editor de variações (adicionar/remover/limites), whitelist do
   store, submit com validação.
 
@@ -159,7 +174,13 @@ Prefixo reservado ACIMA do da fatia 1; re-verificar tail no `gh pr create`.
   `content_type` (`image/jpeg` | `image/png` | `image/gif`), `size_bytes`
   (int, 1..8388608), `width`/`height` (int > 0, opcionais).
 - `instagram_comment_automations`:
-  - `dm_media jsonb` (nullable) + CHECK `validate_ig_dm_media(dm_media)`.
+  - `dm_media jsonb` (nullable) + CHECK `validate_ig_dm_media(dm_media)`
+    + CHECK de posse: `dm_media IS NULL OR dm_media->>'key' LIKE
+    'automation-media/' || conta_id || '/%'`. RLS protege a LINHA, não o
+    conteúdo do JSON: sem esse bind, um usuário autenticado apontaria a
+    própria automação (via PostgREST) para a key de OUTRA workspace e o
+    envio (service role) pré-assinaria o objeto alheio para a Meta. Mesmo
+    racional do guard de prefixo do `post-media-finalize`.
   - `dm_subtitle text` + CHECK (NULL, ou 1..80 chars E `dm_media IS NOT
     NULL` — subtítulo só existe com mídia).
   - CHECK adicional: `dm_media IS NULL OR char_length(dm_message) <= 80`
@@ -172,14 +193,32 @@ Prefixo reservado ACIMA do da fatia 1; re-verificar tail no `gh pr create`.
 
 - Objetos em `automation-media/{conta_id}/{uuid}.{ext}` no bucket R2
   existente. Fora do alcance do cleanup-cron de posts por prefixo.
-- Nova function `automation-media` (JWT; verifica `conta_id` do usuário e
-  posse da automação quando informada):
+- Nova function `automation-media` (JWT; toda rota resolve o `conta_id` do
+  usuário e só opera sob `automation-media/{conta_id}/`), no MESMO contrato
+  de upload do `post-media-finalize`:
   - `POST /presign`: valida content-type/tamanho declarados e devolve
-    presigned PUT + a `key`.
-  - `POST /delete`: apaga objeto (usada na troca/remoção de mídia e na
-    exclusão da automação pelo CRM).
-- Órfãos por abandono de formulário são possíveis e ACEITOS como residual
-  (baratos; anotar; um reap por prefixo pode entrar no cleanup-cron depois).
+    presigned PUT + a `key` (gerada pela function, nunca pelo cliente).
+  - `POST /finalize`: `headObject` no objeto subido; confere que
+    content-type e tamanho REAIS batem com os declarados e respeitam os
+    limites; contabiliza `size_bytes` no contador de storage do workspace
+    de forma atômica com lock (mesmo padrão do RPC
+    `post_media_insert_with_quota` — quota estourada devolve erro e o
+    objeto vai para o trash); devolve o objeto `dm_media` canônico, que é o
+    que o CRM grava na automação. Sem finalize, nada é gravado.
+  - `POST /delete` (troca/remoção/exclusão da automação): o CRM PRIMEIRO
+    desanexa no banco (`dm_media = NULL` ou a key nova) e SÓ ENTÃO chama a
+    rota, que usa `trashObject` (janela de undo de 30 dias, convenção do
+    repo) e decrementa o contador de storage. Nunca hard-delete imediato;
+    falha na rota deixa órfão recuperável, nunca automação apontando para
+    objeto inexistente.
+- O jsonb `dm_media` é metadado de apresentação; os pontos de enforcement
+  são o finalize (conteúdo real) e o CHECK de posse (tenant). O
+  `executeSend` re-verifica o prefixo `automation-media/{conta_id}/` antes
+  de pré-assinar (defesa em profundidade espelhando o CHECK).
+- Órfãos por abandono de formulário (upload sem finalize, ou finalize sem
+  gravação) são possíveis e ACEITOS como residual (baratos; anotar; um reap
+  por prefixo pode entrar no cleanup-cron depois). Órfãos não finalizados
+  não contam quota.
 - Todo I/O com timeout + AbortSignal (lição do incidente R2: presign +
   fetch puro, nunca o caminho do aws-sdk que trava).
 
@@ -224,10 +263,13 @@ Prefixo reservado ACIMA do da fatia 1; re-verificar tail no `gh pr create`.
   `instagram-webhook-process_test.ts`: cartão → body de generic template +
   `p_dm_kind='card'`; permanent×1 → fallback buttons; permanent×2 → texto;
   permanent×3 → `dm_permanent` com 3 POSTs; presign mockado; falha de
-  presign → retry. Testes da function `automation-media` (auth, posse,
-  content-type inválido).
-- SQL: CHECKs de `dm_media` (chave extra, prefixo errado, 9 MB, tipo não
-  permitido), `dm_subtitle` sem mídia, título 81 com mídia.
+  presign → retry; key fora do prefixo do tenant → send não pré-assina.
+  Testes da function `automation-media` (auth, content-type inválido,
+  finalize com size/content-type divergentes do HEAD, quota estourada,
+  delete usa trashObject).
+- SQL: CHECKs de `dm_media` (chave extra, prefixo errado, key de OUTRO
+  conta_id, 9 MB, tipo não permitido), `dm_subtitle` sem mídia, título 81
+  com mídia; contador de storage incrementa/decrementa.
 - Vitest: modo cartão do formulário (troca de campos, contadores, bloqueio
   > 80), preview do cartão, whitelists.
 
