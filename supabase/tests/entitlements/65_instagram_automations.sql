@@ -39,7 +39,9 @@
 --    parcial ica_dm_media_key_unique (posse única da key) (10).
 --    automation_media_finalize/automation_media_release: idempotência por
 --    key, incremento/decremento de storage_used_bytes, quota_exceeded sem
---    deixar linha órfã, e piso 0 no release (10b).
+--    deixar linha órfã, piso 0 no release, e o anti-corrida attach/delete
+--    (release de key referenciada por uma automação -> media_in_use,
+--    registro sobrevive) (10b).
 
 -- 1-3. Feature gate (off -> on -> downgrade) + RLS (any workspace member
 --      writes, including agent)
@@ -1012,10 +1014,12 @@ rollback;
 
 -- 10b. automation_media_finalize/automation_media_release: idempotência por
 --      key, incremento/decremento atômico de workspaces.storage_used_bytes,
---      quota_exceeded sem deixar linha órfã em automation_media_objects, e
---      piso 0 no release (nunca deixa storage_used_bytes negativo). Roda
---      como table owner (stand-in do service role, como as seções 4, 6 e 8 --
---      as RPCs são REVOKE ALL FROM PUBLIC / GRANT ... TO service_role).
+--      quota_exceeded sem deixar linha órfã em automation_media_objects,
+--      piso 0 no release (nunca deixa storage_used_bytes negativo), e o
+--      anti-corrida attach/delete (release de key referenciada por uma
+--      automação -> media_in_use, registro sobrevive). Roda como table owner
+--      (stand-in do service role, como as seções 4, 6 e 8 -- as RPCs são
+--      REVOKE ALL FROM PUBLIC / GRANT ... TO service_role).
 begin;
 do $$
 declare
@@ -1023,11 +1027,14 @@ declare
   v_key1 text;
   v_key2 text;
   v_key3 text;
+  v_key4 text;
   v_ok boolean;
   v_bytes bigint;
   v_used bigint;
   v_n int;
   v_rejected boolean;
+  v_owner4 uuid := gen_random_uuid();
+  v_cli4 bigint;
 begin
   -- Workspace real (a FOR UPDATE de automation_media_finalize precisa achar
   -- a linha em workspaces) com quota baixa e conhecida via resource_overrides,
@@ -1089,6 +1096,35 @@ begin
   select storage_used_bytes into v_used from workspaces where id = v_ws;
   assert v_used = 0, format('piso 0: storage_used_bytes não pode ir negativo, veio %s', v_used);
 
-  raise notice 'PASS 65 seção 10b: automation_media_finalize/release (idempotência, quota, piso 0)';
+  -- (n) release de key REFERENCIADA por uma automação -> media_in_use
+  --     (anti-corrida attach/delete); o registro sobrevive (o RAISE desfaz
+  --     o DELETE) e storage_used_bytes continua refletindo o objeto vivo.
+  v_key4 := 'automation-media/' || v_ws::text || '/img4.jpg';
+  select automation_media_finalize(v_ws, v_key4, 700, 'image/jpeg') into v_ok;
+  assert v_ok, 'finalize de v_key4 deve devolver true';
+
+  insert into auth.users (id) values (v_owner4);
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_owner4, v_ws, 'C4', 'C4', '#000') returning id into v_cli4;
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, dm_media)
+    values (v_ws, v_cli4, 'Em uso', array['x'], 'msg',
+      jsonb_build_object('key', v_key4, 'content_type', 'image/jpeg', 'size_bytes', 700));
+
+  v_rejected := false;
+  begin
+    perform automation_media_release(v_ws, v_key4);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'media_in_use', format('wrong msg: %s', sqlerrm);
+    v_rejected := true;
+  end;
+  assert v_rejected, 'release de key referenciada por automação deve estourar media_in_use';
+
+  select count(*) into v_n from automation_media_objects where key = v_key4;
+  assert v_n = 1, 'registro deve sobreviver ao release rejeitado (DELETE desfeito pelo RAISE)';
+  select storage_used_bytes into v_used from workspaces where id = v_ws;
+  assert v_used = 700, format('storage_used_bytes deve continuar refletindo o objeto vivo (700), veio %s', v_used);
+
+  raise notice 'PASS 65 seção 10b: automation_media_finalize/release (idempotência, quota, piso 0, anti-corrida)';
 end $$;
 rollback;

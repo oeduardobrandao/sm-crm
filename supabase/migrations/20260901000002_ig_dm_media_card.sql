@@ -116,6 +116,13 @@ BEGIN
     -- Nunca finalizado, ou já liberado: no-op idempotente.
     RETURN 0;
   END IF;
+  -- Anti-corrida attach/delete: se alguma automação referencia a key, aborta
+  -- (o RAISE desfaz o DELETE acima). Par com o FOR KEY SHARE do trigger de
+  -- attach: ou o attach commita antes (e este EXISTS o vê -> media_in_use),
+  -- ou este DELETE commita antes (e o attach falha em media_not_finalized).
+  IF EXISTS (SELECT 1 FROM instagram_comment_automations WHERE dm_media->>'key' = p_key) THEN
+    RAISE EXCEPTION 'media_in_use' USING errcode = 'P0001';
+  END IF;
   UPDATE workspaces
      SET storage_used_bytes = GREATEST(0, storage_used_bytes - v_bytes)
    WHERE id = p_conta_id;
@@ -152,8 +159,11 @@ BEGIN
   IF NEW.dm_media IS NULL THEN
     RETURN NEW;
   END IF;
+  -- FOR KEY SHARE: serializa contra o DELETE do automation_media_release
+  -- (anti-corrida attach/delete; ver comentário naquela RPC).
   SELECT * INTO v_obj FROM automation_media_objects
-   WHERE key = NEW.dm_media->>'key' AND conta_id = NEW.conta_id;
+   WHERE key = NEW.dm_media->>'key' AND conta_id = NEW.conta_id
+   FOR KEY SHARE;
   IF v_obj.key IS NULL THEN
     RAISE EXCEPTION 'media_not_finalized' USING errcode = 'P0001';
   END IF;
