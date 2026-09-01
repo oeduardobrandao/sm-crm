@@ -26,7 +26,7 @@
 ### Task 1: Migration + testes SQL
 
 **Files:**
-- Create: `supabase/migrations/20260901000001_ig_public_reply_variations.sql`
+- Create: `supabase/migrations/20260901000013_ig_public_reply_variations.sql` (versão reservada; um rename tardio de `...000001` para esta já ocorreu na branch — para leitores futuros, o filename correto é este)
 - Modify: `supabase/tests/entitlements/65_instagram_automations.sql` (adicionar seção 9 ao final, antes do fim do arquivo; atualizar o índice de seções no cabeçalho, linhas 4-27)
 
 **Interfaces:**
