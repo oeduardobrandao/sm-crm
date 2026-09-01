@@ -25,7 +25,7 @@
 --    Single-session scenario: claimed (first comment) -> cooldown (second,
 --    different comment, same commenter -- the in-flight 'processing' row
 --    reserves it) -> duplicate (re-claiming the first comment again).
--- 9. public_replies (migration 20260901000001): CHECK via validate_ig_public_
+-- 9. public_replies (migration 20260901000013): CHECK via validate_ig_public_
 --    replies (same CASE type-guard rationale as validate_ig_dm_buttons), the
 --    backfill expression from the legacy public_reply column, and
 --    claim_retryable_automation_sends returning the new public_reply_text
