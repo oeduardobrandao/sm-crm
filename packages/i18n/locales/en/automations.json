@@ -102,6 +102,7 @@
     "removeReply": "Remove variation",
     "replyPlaceholderVariation": "Replied in your DMs! ✉️",
     "mediaLabel": "DM media (optional)",
+    "mediaDropCta": "Click to upload or drag an image here",
     "mediaHelp": "Image or GIF up to 8 MB. With media, the DM becomes a card: image, short title and buttons.",
     "mediaRemove": "Remove media",
     "mediaInvalidType": "Use a JPG, PNG or GIF image.",

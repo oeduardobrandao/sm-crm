@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { AlertTriangle, Check, ExternalLink, Instagram, Plus, X } from 'lucide-react';
+import { AlertTriangle, Check, ExternalLink, ImagePlus, Instagram, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -425,6 +425,8 @@ export default function AutomationFormDialog({
    * preview -- the only kind of URL this ref ever holds, so revoking it is
    * always safe (never the https:// signed URL of a persisted media). */
   const localPreviewUrlRef = useRef<string | null>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const [isMediaDragOver, setIsMediaDragOver] = useState(false);
   /** One-shot: the production page is derived from the seeded target exactly
    * once per dialog opening, and never again -- a refetch must not yank the user
    * off the page they just paged to. */
@@ -567,11 +569,7 @@ export default function AutomationFormDialog({
       return { ...f, publicReplies: next.length > 0 ? next : [''] };
     });
 
-  const handleMediaChange = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    // Permite escolher o mesmo arquivo de novo depois de remover.
-    e.target.value = '';
-    if (!file) return;
+  const processMediaFile = async (file: File) => {
     const errorKey = validateAutomationMediaFile(file);
     if (errorKey) {
       toast.error(t(errorKey));
@@ -596,6 +594,35 @@ export default function AutomationFormDialog({
       revokeLocalPreview(localPreviewUrlRef);
       setForm((f) => ({ ...f, dmMediaUploading: false, dmMediaPreviewUrl: '' }));
     }
+  };
+
+  const handleMediaChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    // Permite escolher o mesmo arquivo de novo depois de remover.
+    e.target.value = '';
+    if (!file) return;
+    void processMediaFile(file);
+  };
+
+  const handleMediaDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (form.dmMedia || form.dmMediaUploading) return;
+    e.preventDefault();
+    setIsMediaDragOver(true);
+  };
+
+  const handleMediaDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsMediaDragOver(false);
+    }
+  };
+
+  const handleMediaDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsMediaDragOver(false);
+    if (form.dmMedia || form.dmMediaUploading) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file) void processMediaFile(file);
   };
 
   /** Só mexe no estado do form -- nunca apaga na hora um objeto que a
@@ -1324,24 +1351,71 @@ export default function AutomationFormDialog({
                   <Spinner size="sm" />
                 </div>
               ) : (
-                <>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => mediaInputRef.current?.click()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      mediaInputRef.current?.click();
+                    }
+                  }}
+                  onDragOver={handleMediaDragOver}
+                  onDragLeave={handleMediaDragLeave}
+                  onDrop={handleMediaDrop}
+                  className="flex flex-col items-center justify-center text-center cursor-pointer transition-colors"
+                  style={{
+                    marginTop: 6,
+                    padding: '1.5rem 1rem',
+                    borderRadius: 'var(--radius, 10px)',
+                    border: `1.5px dashed ${isMediaDragOver ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                    background: isMediaDragOver
+                      ? 'color-mix(in srgb, var(--primary-color) 8%, transparent)'
+                      : 'var(--surface-1, transparent)',
+                  }}
+                >
                   <input
+                    ref={mediaInputRef}
                     id="automacao-midia"
                     type="file"
                     accept="image/jpeg,image/png,image/gif"
                     onChange={handleMediaChange}
-                    style={{ display: 'block', marginTop: 6, fontSize: '0.8rem' }}
+                    className="hidden"
                   />
+                  <div
+                    className="flex items-center justify-center"
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      background: 'var(--surface-2, rgba(0,0,0,0.04))',
+                      color: isMediaDragOver ? 'var(--primary-color)' : 'var(--text-muted)',
+                      marginBottom: 8,
+                    }}
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                  </div>
+                  <p
+                    style={{
+                      fontSize: '0.8rem',
+                      fontWeight: 500,
+                      color: 'var(--text-main)',
+                      margin: 0,
+                    }}
+                  >
+                    {t('form.mediaDropCta')}
+                  </p>
                   <p
                     style={{
                       fontSize: '0.75rem',
                       color: 'var(--text-muted)',
-                      margin: '0.35rem 0 0',
+                      margin: '0.25rem 0 0',
                     }}
                   >
                     {t('form.mediaHelp')}
                   </p>
-                </>
+                </div>
               )}
               {form.dmMedia && (
                 <div style={{ marginTop: 8 }}>

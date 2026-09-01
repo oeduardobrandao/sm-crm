@@ -102,6 +102,7 @@
     "removeReply": "Remover variação",
     "replyPlaceholderVariation": "Respondido no direct! ✉️",
     "mediaLabel": "Mídia da DM (opcional)",
+    "mediaDropCta": "Clique para enviar ou arraste uma imagem aqui",
     "mediaHelp": "Imagem ou GIF de até 8 MB. Com mídia, a DM vira um cartão: imagem, título curto e botões.",
     "mediaRemove": "Remover mídia",
     "mediaInvalidType": "Use uma imagem JPG, PNG ou GIF.",
