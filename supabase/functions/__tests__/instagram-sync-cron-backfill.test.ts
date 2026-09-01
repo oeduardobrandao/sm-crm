@@ -307,7 +307,7 @@ Deno.test("runMaintenanceStep: tick subsequente (cursor já setado) não repete 
   assertEquals(state.followerHistory.length, 0);
 });
 
-Deno.test("runMaintenanceStep: mês HONESTAMENTE vazio (Graph OK, sem dado, sem falha) marca metrics_backfilled_at e não insere linha", async () => {
+Deno.test("runMaintenanceStep: mês HONESTAMENTE vazio (Graph OK, sem dado, sem falha) marca metrics_backfilled_at -- passo 1 não insere linha própria", async () => {
   const state = emptyState([{
     id: "acc-1", authorization_status: "active", encrypted_access_token: "enc-1",
     follower_count: 1000, metrics_backfill_cursor: "2026-08-01", metrics_backfilled_at: null,
@@ -323,8 +323,18 @@ Deno.test("runMaintenanceStep: mês HONESTAMENTE vazio (Graph OK, sem dado, sem 
   });
 
   assertEquals(result.backfilled, 1);
-  assertEquals(state.monthly.length, 0);
   assertEquals(typeof state.accounts[0].metrics_backfilled_at, "string");
+  // O passo 1 (backfillOneAccount) não insere linha nenhuma para o mês-alvo
+  // 2026-07 (fim de retenção, sem falha). A ÚNICA linha que aparece vem do
+  // passo 2 (closePreviousMonthIfMissing, achado P1 rodada 3 -- monthly-close
+  // agora insere uma linha de nulls quando o mês vem honestamente vazio SEM
+  // falha, marcando-o como já verificado): esta conta acabou de virar "já
+  // backfillada" durante o passo 1 e passa a ser elegível ao passo 2 na MESMA
+  // invocação -- mesmo mock (`data: []` para tudo) também resolve o mês
+  // 2026-08 (prevMonthOf de NOW) como honestamente vazio ali.
+  assertEquals(state.monthly.length, 1);
+  assertEquals(state.monthly[0].month, "2026-08-01");
+  assertEquals(state.monthly[0].reach_month, null);
 });
 
 Deno.test("runMaintenanceStep: mês all-null POR FALHA (não-190) não finaliza -- cursor intocado, retentado no próximo tick (fix round 2)", async () => {
@@ -367,6 +377,76 @@ Deno.test("runMaintenanceStep: mês all-null POR FALHA (não-190) não finaliza 
   assertEquals(calls > 0, true); // confirma que a primeira tentativa realmente chamou a Graph
 });
 
+Deno.test("runMaintenanceStep: mês PARCIAL (algumas métricas vieram, outras falharam) salva o que veio mas NÃO avança o cursor (achado P1 rodada 3)", async () => {
+  const state = emptyState([{
+    // Cursor em 2026-07-01 -> alvo é 2026-06-01 (junho, 30 dias): um único
+    // chunk de 30d por métrica aditiva/follows, sem duplicar o valor mockado
+    // (mesma razão do teste "dia 4+" em monthly-close.ts para um mês de 31
+    // dias vs 30) -- necessário aqui porque, ao contrário dos outros testes
+    // deste arquivo, este afirma o VALOR exato de campos aditivos.
+    id: "acc-1", authorization_status: "active", encrypted_access_token: "enc-1",
+    follower_count: 1000, metrics_backfill_cursor: "2026-07-01", metrics_backfilled_at: null,
+  }]);
+  // `views` volta com erro Graph não-190; as outras 6 métricas vêm normais.
+  // ANTES do fix, hasAny=true (6 de 7 vieram) fazia a linha ser upsertada E
+  // o cursor avançar -- perdendo `views` desse mês para sempre, já que o
+  // próximo tick nunca mais reprocessa um mês já avançado.
+  const f = (async (url: string) => {
+    const u = new URL(url);
+    const metric = u.searchParams.get("metric");
+    if (metric === "views") {
+      return { json: () => Promise.resolve({ error: { code: 100, message: "metric not available" } }) };
+    }
+    if (metric === "follows_and_unfollows") {
+      return {
+        json: () => Promise.resolve({
+          data: [{
+            name: "follows_and_unfollows",
+            total_value: { breakdowns: [{ results: [
+              { dimension_values: ["FOLLOWER"], value: 20 },
+              { dimension_values: ["NON_FOLLOWER"], value: 5 },
+            ] }] },
+          }],
+        }),
+      };
+    }
+    return {
+      json: () => Promise.resolve({
+        data: [{ name: metric, total_value: { value: SIMPLE_VALUES[metric!] } }],
+      }),
+    };
+  }) as unknown as typeof fetch;
+
+  const result = await runMaintenanceStep(makeDb(state), f, decryptToken, {
+    batchLimit: 3, nowSec: NOW,
+  });
+
+  assertEquals(result.backfilled, 0); // não finalizou nem avançou -- não conta como progresso
+  assertEquals(state.accounts[0].metrics_backfill_cursor, "2026-07-01"); // INTOCADO
+  assertEquals(state.accounts[0].metrics_backfilled_at, null);
+
+  // A linha do mês foi salva com o que veio -- views_month null, o resto com
+  // valor real. Isso é o que permite o retry seguinte apenas REFAZER o campo
+  // que faltou em vez de perder também o que já tinha sido obtido.
+  assertEquals(state.monthly.length, 1);
+  assertEquals(state.monthly[0].month, "2026-06-01");
+  assertEquals(state.monthly[0].views_month, null);
+  assertEquals(state.monthly[0].reach_month, 500);
+  assertEquals(state.monthly[0].follows_month, 20);
+
+  // Próximo tick reprocessa o MESMO mês (cursor intocado); desta vez `views`
+  // também vem -- o upsert PREENCHE o campo que faltava na mesma linha (não
+  // duplica) e ENTÃO avança o cursor.
+  const f2 = graphOkFetch(SIMPLE_VALUES);
+  const result2 = await runMaintenanceStep(makeDb(state), f2, decryptToken, {
+    batchLimit: 3, nowSec: NOW,
+  });
+  assertEquals(result2.backfilled, 1);
+  assertEquals(state.monthly.length, 1); // upsert atualizou a MESMA linha, não duplicou
+  assertEquals(state.monthly[0].views_month, 200);
+  assertEquals(state.accounts[0].metrics_backfill_cursor, "2026-06-01");
+});
+
 Deno.test("runMaintenanceStep: cursor no cap de 12 meses marca metrics_backfilled_at sem fetch de backfill", async () => {
   const state = emptyState([{
     id: "acc-1", authorization_status: "active", encrypted_access_token: "enc-1",
@@ -389,10 +469,16 @@ Deno.test("runMaintenanceStep: cursor no cap de 12 meses marca metrics_backfille
   // conta acabou de virar "já backfillada" durante o passo 1 -- 2 métricas
   // únicas (reach, accounts_engaged) em request único de 31d + 4 métricas
   // aditivas + follows_and_unfollows em 2 chunks de 30d cada (mês de agosto,
-  // 31 dias) = 2 + 4*2 + 2 = 12. O mock devolve JSON vazio para tudo, então
-  // nenhuma linha mensal é inserida (hasAny fica false).
+  // 31 dias) = 2 + 4*2 + 2 = 12.
   assertEquals(graphCalls, 12);
-  assertEquals(state.monthly.length, 0);
+  // O mock devolve JSON vazio (sem `.error`) para tudo -- zero falhas, mês
+  // honestamente vazio. Achado P1 rodada 3: monthly-close AGORA insere essa
+  // linha de nulls mesmo assim (era pulada antes), pois a linha em si é o
+  // único marcador de "mês já verificado" que este módulo tem -- sem ela,
+  // todo tick de manutenção reconsultaria a Graph à toa para este mês.
+  assertEquals(state.monthly.length, 1);
+  assertEquals(state.monthly[0].month, "2026-08-01");
+  assertEquals(state.monthly[0].reach_month, null);
 });
 
 Deno.test("runMaintenanceStep: TOKEN_EXPIRED marca authorization_status=expired e não derruba o passo", async () => {

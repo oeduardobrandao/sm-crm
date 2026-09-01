@@ -1271,8 +1271,17 @@ function AnalyticsContent({
       // (App.tsx) -- without this override, clicking "Sincronizar" within 30s
       // of the page mounting (or a previous fetch) would silently resolve
       // from cache and skip the refresh=1 request entirely.
+      //
+      // cancelQueries FIRST is required too: if the page's own initial
+      // useQuery for this exact key is still in flight when "Sincronizar" is
+      // clicked, fetchQuery would DEDUPE onto that in-flight (non-refresh)
+      // request instead of issuing its own refresh:true one -- same stale-data
+      // outcome, one layer removed. Cancelling clears the in-flight query so
+      // fetchQuery always starts its own fresh, refresh:true request.
+      const accountMetricsKey = ['account-metrics', clientId, metricsRange.start, metricsRange.end];
+      await qc.cancelQueries({ queryKey: accountMetricsKey });
       qc.fetchQuery({
-        queryKey: ['account-metrics', clientId, metricsRange.start, metricsRange.end],
+        queryKey: accountMetricsKey,
         queryFn: () =>
           getAccountMetrics(clientId, metricsRange.start, metricsRange.end, { refresh: true }),
         staleTime: 0,

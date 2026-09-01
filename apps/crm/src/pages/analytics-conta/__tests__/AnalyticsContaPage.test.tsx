@@ -27,7 +27,7 @@ const {
   return {
     paramsState: { id: '42' },
     navigateMock: vi.fn(),
-    queryClientMock: { invalidateQueries: vi.fn(), fetchQuery: vi.fn() },
+    queryClientMock: { invalidateQueries: vi.fn(), fetchQuery: vi.fn(), cancelQueries: vi.fn() },
     queryState,
     toastSuccessMock: vi.fn(),
     toastErrorMock: vi.fn(),
@@ -449,6 +449,8 @@ beforeEach(() => {
   accountAIMock.mockReset();
   queryClientMock.invalidateQueries.mockReset();
   queryClientMock.fetchQuery.mockReset();
+  queryClientMock.cancelQueries.mockReset();
+  queryClientMock.cancelQueries.mockResolvedValue(undefined);
   deleteReportDocMock.mockReset();
   mockedGetClientes.mockReset();
   mockedGetInstagramSummary.mockReset();
@@ -921,6 +923,18 @@ describe('AnalyticsContaPage', () => {
     expect(call.queryKey[0]).toBe('account-metrics');
     expect(call.queryKey[1]).toBe(42);
 
+    // cancelQueries MUST run on the SAME key, and BEFORE fetchQuery: if the
+    // page's own initial useQuery for this key is still in flight when
+    // "Sincronizar" is clicked, fetchQuery would dedupe onto that in-flight
+    // (non-refresh) request instead of firing its own refresh:true one --
+    // same stale-data bug as the missing staleTime override, one layer down.
+    expect(queryClientMock.cancelQueries).toHaveBeenCalledTimes(1);
+    const cancelCall = queryClientMock.cancelQueries.mock.calls[0][0] as { queryKey: unknown[] };
+    expect(cancelCall.queryKey).toEqual(call.queryKey);
+    expect(queryClientMock.cancelQueries.mock.invocationCallOrder[0]).toBeLessThan(
+      queryClientMock.fetchQuery.mock.invocationCallOrder[0],
+    );
+
     // MUST be 0: the app's global QueryClient default is staleTime: 30_000
     // (App.tsx). fetchQuery only invokes queryFn when the cached entry is
     // stale by that threshold, so without this override a "Sincronizar"
@@ -961,6 +975,7 @@ describe('AnalyticsContaPage', () => {
     await waitFor(() =>
       expect(toastErrorMock).toHaveBeenCalledWith('Erro na sincronização: Falha de rede'),
     );
+    expect(queryClientMock.cancelQueries).not.toHaveBeenCalled();
     expect(queryClientMock.fetchQuery).not.toHaveBeenCalled();
   });
 });

@@ -283,23 +283,35 @@ async function backfillOneAccount(
     row.profile_views_month, row.website_clicks_month, row.follows_month, row.unfollows_month,
   ].some((v) => v !== null);
 
-  if (!hasAny) {
-    if (failedMetrics.length > 0) {
-      // Tudo null, mas ao menos uma métrica veio de uma FALHA (erro de
-      // chunk/rede), não de um mês honestamente vazio -- fetchAccountTotals
-      // sozinho não distingue os dois casos (ambos normalizam pra null por
-      // métrica), por isso o backfill usa a variante Detailed aqui. Marcar
-      // metrics_backfilled_at neste caso finalizaria a conta permanentemente
-      // por causa de uma falha transitória, perdendo todos os meses mais
-      // antigos. Não avança o cursor -- o próximo tick reprocessa este MESMO
-      // mês, e só finaliza de verdade quando ele vier honestamente vazio.
-      console.warn(
-        `[IG-SYNC-CRON] backfill: mês ${target.month} da conta ${account.id} veio ` +
-        `inteiramente null com falha em ${failedMetrics.join(",")} -- não finalizando ` +
-        `o backfill, tick seguinte reprocessa o mesmo mês.`,
-      );
-      return false;
+  if (failedMetrics.length > 0) {
+    // Alguma métrica veio de uma FALHA (erro de chunk/rede), não de um mês
+    // honestamente vazio -- fetchAccountTotals sozinho não distingue os dois
+    // casos (ambos normalizam pra null por métrica), por isso o backfill usa
+    // a variante Detailed aqui. PARCIAL (algumas vieram, outras falharam,
+    // achado P1 da rodada 3): salva o que veio -- o upsert reenche
+    // especificamente as colunas que faltam quando o retry tiver sucesso --
+    // mas NUNCA avança o cursor nem marca o mês como concluído com base em
+    // dado incompleto. Marcar metrics_backfilled_at ou avançar o cursor aqui
+    // perderia permanentemente as métricas que falharam (ou meses mais
+    // antigos, no caso totalmente-null). O próximo tick reprocessa este
+    // MESMO mês, e só finaliza de verdade quando ele vier sem nenhuma falha.
+    if (hasAny) {
+      const { error: upsertError } = await db
+        .from(MONTHLY_TABLE)
+        .upsert(row, { onConflict: "instagram_account_id,month" });
+      if (upsertError) {
+        console.warn(`[IG-SYNC-CRON] backfill: upsert parcial falhou para a conta ${account.id}: ${upsertError.message}`);
+      }
     }
+    console.warn(
+      `[IG-SYNC-CRON] backfill: mês ${target.month} da conta ${account.id} teve falha em ` +
+      `${failedMetrics.join(",")}${hasAny ? " (parcial -- métricas que vieram foram salvas)" : " (tudo null)"} -- ` +
+      `não finalizando o backfill, tick seguinte reprocessa o mesmo mês.`,
+    );
+    return false;
+  }
+
+  if (!hasAny) {
     // Mês inteiro sem dado e SEM falha (todas as métricas honestamente
     // vazias): fim real da retenção da Graph para esta conta. Não insere
     // linha de nulls, encerra o backfill aqui.
