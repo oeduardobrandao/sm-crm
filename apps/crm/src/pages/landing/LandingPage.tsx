@@ -69,6 +69,23 @@ export default function LandingPage() {
     document.getElementById(id)?.scrollIntoView();
   }, []);
 
+  // Chromium never lazy-loads an <img> whose box was hidden when the lazy
+  // observer first saw it, so the dark screenshot variants would stay blank
+  // after a theme toggle. Promote them to eager the moment dark mode turns on.
+  useEffect(() => {
+    const root = document.documentElement;
+    const promote = () => {
+      if (root.getAttribute('data-theme') !== 'dark') return;
+      document
+        .querySelectorAll<HTMLImageElement>('img.hd-dark[loading="lazy"]')
+        .forEach((img) => (img.loading = 'eager'));
+    };
+    promote();
+    const observer = new MutationObserver(promote);
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div ref={rootRef} className="lp-root">
       <PromoBanner />
@@ -179,6 +196,7 @@ const FEATURE_VISUALS: { icon: ReactNode; color: string; visual: ReactNode }[] =
     visual: (
       <FeatureShot
         src="/landing/feat-entregas.webp"
+        srcDark="/landing/feat-entregas-dark.webp"
         width={1400}
         height={1095}
         alt="Kanban de entregas do Mesaas com fluxos por etapa"
@@ -192,6 +210,7 @@ const FEATURE_VISUALS: { icon: ReactNode; color: string; visual: ReactNode }[] =
     visual: (
       <FeatureShot
         src="/landing/feat-agendamento.webp"
+        srcDark="/landing/feat-agendamento-dark.webp"
         width={1400}
         height={1095}
         alt="Agendamento de post no Instagram dentro do Mesaas"
@@ -205,6 +224,7 @@ const FEATURE_VISUALS: { icon: ReactNode; color: string; visual: ReactNode }[] =
     visual: (
       <FeatureShot
         src="/landing/feat-analytics.webp"
+        srcDark="/landing/feat-analytics-dark.webp"
         width={1400}
         height={1095}
         alt="Métricas do Instagram no Mesaas: seguidores, alcance e engajamento"
@@ -218,6 +238,7 @@ const FEATURE_VISUALS: { icon: ReactNode; color: string; visual: ReactNode }[] =
     visual: (
       <FeatureShot
         src="/landing/feat-hub.webp"
+        srcDark="/landing/feat-hub-dark.webp"
         width={1400}
         height={1050}
         alt="Portal do cliente do Mesaas com aprovações por link"
@@ -231,6 +252,7 @@ const FEATURE_VISUALS: { icon: ReactNode; color: string; visual: ReactNode }[] =
     visual: (
       <FeatureShot
         src="/landing/feat-calendario.webp"
+        srcDark="/landing/feat-calendario-dark.webp"
         width={1400}
         height={1095}
         alt="Calendário editorial mensal do Mesaas"

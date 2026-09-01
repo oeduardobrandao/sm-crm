@@ -125,6 +125,19 @@ test('crm: entregas (board produção de conteúdo)', async ({ page }) => {
   await page.waitForTimeout(400);
   await shoot(page, SLUG, 5, 'entregas');
 
+  // Dark variant: the CRM theme is pure CSS keyed off data-theme.
+  await page.evaluate(() => {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    document.querySelectorAll<HTMLElement>('body *').forEach((el) => {
+      if (el.children.length === 0 && /^entrega /.test(el.textContent?.trim() ?? '')) {
+        el.style.background = 'rgba(255,255,255,.08)';
+        el.style.color = '#9ca3af';
+      }
+    });
+  });
+  await page.waitForTimeout(600);
+  await shoot(page, SLUG, 15, 'entregas-dark');
+
   assertNoViolations(violations);
 });
 
@@ -155,6 +168,19 @@ test('crm: agendamento (post express preenchido)', async ({ page }) => {
   await dressCrm(page);
   await shoot(page, SLUG, 1, 'agendamento');
 
+  // Dark variant: the CRM theme is pure CSS keyed off data-theme.
+  await page.evaluate(() => {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    document.querySelectorAll<HTMLElement>('body *').forEach((el) => {
+      if (el.children.length === 0 && /^entrega /.test(el.textContent?.trim() ?? '')) {
+        el.style.background = 'rgba(255,255,255,.08)';
+        el.style.color = '#9ca3af';
+      }
+    });
+  });
+  await page.waitForTimeout(600);
+  await shoot(page, SLUG, 11, 'agendamento-dark');
+
   assertNoViolations(violations);
 });
 
@@ -176,13 +202,17 @@ test('crm: calendario (maio, vestido de setembro)', async ({ page }) => {
   // calendar already renders, relabeled per weekday. Screenshot-only.
   await page.evaluate(() => {
     const chips = Array.from(document.querySelectorAll<HTMLElement>('main span, main div')).filter(
-      (el) => el.children.length === 0 && /^[↗↘]?\s*\d+ (Receb|Desp)\.$/.test(el.textContent?.trim() ?? ''),
+      (el) =>
+        el.children.length === 0 &&
+        /^[↗↘]?\s*\d+ (Receb|Desp)\.$/.test(el.textContent?.trim() ?? ''),
     );
     const sample = chips[0]?.parentElement?.querySelector('span, div') ?? chips[0];
     if (!sample) return;
     const template = (chips[0].closest('[class]') as HTMLElement) ?? chips[0];
     // hide the finance chips — the landing story here is posts
-    chips.forEach((c) => ((c.closest('[class*="chip"], span, div') as HTMLElement).style.display = 'none'));
+    chips.forEach(
+      (c) => ((c.closest('[class*="chip"], span, div') as HTMLElement).style.display = 'none'),
+    );
 
     const POSTS: Array<[number, string, string, string]> = [
       [4, 'Reels · 18:00', '#FBEAF0', '#993556'],
@@ -199,7 +229,9 @@ test('crm: calendario (maio, vestido de setembro)', async ({ page }) => {
       [28, 'Carrossel · 20:00', '#FAEEDA', '#854F0B'],
     ];
     const dayCells = Array.from(
-      document.querySelectorAll<HTMLElement>('main [class*="day"], main td, main .calendar-grid > div'),
+      document.querySelectorAll<HTMLElement>(
+        'main [class*="day"], main td, main .calendar-grid > div',
+      ),
     );
     const cellFor = (day: number) =>
       dayCells.find((c) => {
@@ -213,7 +245,8 @@ test('crm: calendario (maio, vestido de setembro)', async ({ page }) => {
       chip.style.display = '';
       const leaf = chip.querySelector('span, div') ?? chip;
       leaf.textContent = label;
-      (leaf as HTMLElement).style.cssText += `;background:${bg};color:${fg};display:inline-block;border-radius:6px;padding:2px 6px;font-size:11px;font-weight:600`;
+      (leaf as HTMLElement).style.cssText +=
+        `;background:${bg};color:${fg};display:inline-block;border-radius:6px;padding:2px 6px;font-size:11px;font-weight:600`;
       chip.style.cssText += ';background:transparent';
       cell.appendChild(chip);
     }
@@ -228,6 +261,29 @@ test('crm: calendario (maio, vestido de setembro)', async ({ page }) => {
   });
   await page.waitForTimeout(400);
   await shoot(page, SLUG, 2, 'calendario');
+
+  // Dark variant: flip the theme and re-tint the injected post chips to the
+  // dark end of each color ramp.
+  await page.evaluate(() => {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    const DARKMAP: Record<string, [string, string]> = {
+      Reels: ['#4B1528', '#F4C0D1'],
+      Feed: ['#04342C', '#9FE1CB'],
+      Carrossel: ['#412402', '#FAC775'],
+      Story: ['#042C53', '#B5D4F4'],
+    };
+    document.querySelectorAll<HTMLElement>('main *').forEach((el) => {
+      const t = el.textContent?.trim() ?? '';
+      const m = /^(Reels|Feed|Carrossel|Story) · /.exec(t);
+      if (el.children.length === 0 && m) {
+        const [bg, fg] = DARKMAP[m[1]];
+        el.style.background = bg;
+        el.style.color = fg;
+      }
+    });
+  });
+  await page.waitForTimeout(600);
+  await shoot(page, SLUG, 12, 'calendario-dark');
 
   assertNoViolations(violations);
 });
@@ -257,6 +313,14 @@ test('crm: analytics do instagram', async ({ page }) => {
     )
       banner = banner.parentElement;
     if (banner) banner.style.display = 'none';
+
+    // KPI grid as a clean 4x2: the 8 cards divide evenly, so force 4 columns
+    // and drop the filler cells the 5-column layout needed.
+    const grid = document.querySelector<HTMLElement>('.kpi-grid');
+    if (grid) grid.style.setProperty('--kpi-cols', '4');
+    document
+      .querySelectorAll<HTMLElement>('.kpi-card--filler')
+      .forEach((f) => (f.style.display = 'none'));
 
     const leaves = Array.from(document.querySelectorAll<HTMLElement>('main *')).filter(
       (el) => el.children.length === 0,
@@ -298,6 +362,19 @@ test('crm: analytics do instagram', async ({ page }) => {
   await page.waitForTimeout(400);
   await shoot(page, SLUG, 3, 'analytics-lista');
 
+  // Dark variant: the CRM theme is pure CSS keyed off data-theme.
+  await page.evaluate(() => {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    document.querySelectorAll<HTMLElement>('body *').forEach((el) => {
+      if (el.children.length === 0 && /^entrega /.test(el.textContent?.trim() ?? '')) {
+        el.style.background = 'rgba(255,255,255,.08)';
+        el.style.color = '#9ca3af';
+      }
+    });
+  });
+  await page.waitForTimeout(600);
+  await shoot(page, SLUG, 13, 'analytics-lista-dark');
+
   assertNoViolations(violations);
 });
 
@@ -321,59 +398,74 @@ test('hub desktop home (dressed)', async ({ page, browser }) => {
   const hubPage = await context.newPage();
   const hubViolations = await installSafetyNet(hubPage);
 
-  await hubPage.goto(hubPath);
-  await hubPage.locator('main.hub-noise').waitFor({ timeout: 20_000 });
-  await hubPage.waitForLoadState('networkidle');
-  await hubPage.waitForTimeout(2500);
+  const loadAndDress = async () => {
+    await hubPage.goto(hubPath);
+    await hubPage.locator('main.hub-noise').waitFor({ timeout: 20_000 });
+    await hubPage.waitForLoadState('networkidle');
+    await hubPage.waitForTimeout(2500);
+    await dressHubDesktop();
+    await hubPage.waitForTimeout(600);
+  };
 
-  await hubPage.evaluate((camila) => {
-    const leaves = Array.from(document.querySelectorAll<HTMLElement>('main *, aside *, nav *')).filter(
-      (el) => el.children.length === 0,
-    );
-    const setKpi = (labelText: string, value: string, sub?: string) => {
-      const label = leaves.find((el) => el.textContent?.trim() === labelText);
-      if (!label) return;
-      let card: HTMLElement | null = label.parentElement;
-      let valueEl: HTMLElement | undefined;
-      while (card && !valueEl) {
-        const cardLeaves = Array.from(card.querySelectorAll<HTMLElement>('*')).filter(
-          (el) => el.children.length === 0,
-        );
-        valueEl = cardLeaves.find((el) => /^(0|—|--|-)$/.test(el.textContent?.trim() ?? ''));
-        if (valueEl) {
-          valueEl.textContent = value;
-          if (sub) {
-            const subEl = cardLeaves.find((el) =>
-              ['Tudo em dia', 'Nada agendado'].includes(el.textContent?.trim() ?? ''),
-            );
-            if (subEl) subEl.textContent = sub;
+  const dressHubDesktop = () =>
+    hubPage.evaluate((camila) => {
+      const leaves = Array.from(
+        document.querySelectorAll<HTMLElement>('main *, aside *, nav *'),
+      ).filter((el) => el.children.length === 0);
+      const setKpi = (labelText: string, value: string, sub?: string) => {
+        const label = leaves.find((el) => el.textContent?.trim() === labelText);
+        if (!label) return;
+        let card: HTMLElement | null = label.parentElement;
+        let valueEl: HTMLElement | undefined;
+        while (card && !valueEl) {
+          const cardLeaves = Array.from(card.querySelectorAll<HTMLElement>('*')).filter(
+            (el) => el.children.length === 0,
+          );
+          valueEl = cardLeaves.find((el) => /^(0|—|--|-)$/.test(el.textContent?.trim() ?? ''));
+          if (valueEl) {
+            valueEl.textContent = value;
+            if (sub) {
+              const subEl = cardLeaves.find((el) =>
+                ['Tudo em dia', 'Nada agendado'].includes(el.textContent?.trim() ?? ''),
+              );
+              if (subEl) subEl.textContent = sub;
+            }
+            return;
           }
-          return;
+          card = card.parentElement;
         }
-        card = card.parentElement;
-      }
-    };
-    document.querySelectorAll<HTMLElement>('body *').forEach((el) => {
-      if (el.children.length === 0 && el.textContent?.trim() === 'DK TESTE')
-        el.textContent = 'Aura Social';
-      if (el.children.length === 0 && el.textContent?.trim() === 'D') el.textContent = 'A';
-      if (el.children.length === 0 && el.textContent?.trim() === 'Dr.') el.textContent = 'Camila';
-      if (el.children.length === 0 && /^Dr\. Rafael Nun/.test(el.textContent?.trim() ?? ''))
-        el.textContent = 'Café da Manhã';
-    });
-    document.querySelectorAll<HTMLImageElement>('body img').forEach((img) => {
-      if (img.clientWidth >= 24) {
-        img.src = camila;
-        img.style.objectFit = 'cover';
-      }
-    });
-    setKpi('Posts este mês', '14');
-    setKpi('Aprovações pendentes', '2', '2 aguardando seu OK');
-    setKpi('Taxa de aprovação', '96%');
-    setKpi('Próximo post', 'Qui · 18:00', 'Reels · Cardápio de inverno');
-  }, CAMILA_URI);
-  await hubPage.waitForTimeout(600);
+      };
+      document.querySelectorAll<HTMLElement>('body *').forEach((el) => {
+        if (el.children.length === 0 && el.textContent?.trim() === 'DK TESTE')
+          el.textContent = 'Aura Social';
+        if (el.children.length === 0 && el.textContent?.trim() === 'D') el.textContent = 'A';
+        if (el.children.length === 0 && el.textContent?.trim() === 'Dr.') el.textContent = 'Camila';
+        if (el.children.length === 0 && /^Dr\. Rafael Nun/.test(el.textContent?.trim() ?? ''))
+          el.textContent = 'Café da Manhã';
+      });
+      document.querySelectorAll<HTMLImageElement>('body img').forEach((img) => {
+        if (img.clientWidth >= 24) {
+          img.src = camila;
+          img.style.objectFit = 'cover';
+        }
+      });
+      setKpi('Posts este mês', '14');
+      setKpi('Aprovações pendentes', '2', '2 aguardando seu OK');
+      setKpi('Taxa de aprovação', '96%');
+      setKpi('Próximo post', 'Qui · 18:00', 'Reels · Cardápio de inverno');
+    }, CAMILA_URI);
+
+  await loadAndDress();
   await shoot(hubPage, SLUG, 4, 'hub-desktop');
+
+  // Dark variant: the Hub resolves its whitelabel tokens on mount from the
+  // stored theme, so seed localStorage and reload.
+  await hubPage.evaluate(() => {
+    localStorage.setItem('hub-theme', 'dark');
+    localStorage.setItem('hub-theme-explicit', '1');
+  });
+  await loadAndDress();
+  await shoot(hubPage, SLUG, 14, 'hub-desktop-dark');
 
   assertNoViolations(hubViolations);
   await context.close();

@@ -387,12 +387,15 @@ export function IconSquare({
  * e2e/screenshots/landing-features.spec.ts into public/landing/. */
 export function FeatureShot({
   src,
+  srcDark,
   alt,
   url,
   width = 1400,
   height = 910,
 }: {
   src: string;
+  /** Dark-theme variant, shown when [data-theme='dark'] via the hd-light/hd-dark pair. */
+  srcDark: string;
   alt: string;
   url: string;
   width?: number;
@@ -406,7 +409,24 @@ export function FeatureShot({
         <span className="feat-shot-dot" style={{ background: '#27c941' }} />
         <span className="feat-shot-url">{url}</span>
       </div>
-      <img src={src} alt={alt} width={width} height={height} loading="lazy" decoding="async" />
+      <img
+        className="hd-light"
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        loading="lazy"
+        decoding="async"
+      />
+      <img
+        className="hd-dark"
+        src={srcDark}
+        alt={alt}
+        width={width}
+        height={height}
+        loading="lazy"
+        decoding="async"
+      />
     </div>
   );
 }
