@@ -470,10 +470,14 @@ ALTER TABLE instagram_account_metrics_monthly ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Service role full access" ON instagram_account_metrics_monthly
   FOR ALL USING (auth.role() = 'service_role');
 
--- 3) Estado do backfill (seletor + checkpoint; spec §4.2.3)
+-- 3) Estado do backfill (seletor + checkpoint; spec §4.2.3) + a coluna 28d
+--    que a Task 6 também grava em instagram_accounts (o update da conta
+--    escreve as *_28d nos DOIS lugares, como as quatro existentes — sem esta
+--    coluna aqui, todo sync falharia com missing column; achado Codex P1)
 ALTER TABLE instagram_accounts
   ADD COLUMN IF NOT EXISTS metrics_backfilled_at timestamptz,
-  ADD COLUMN IF NOT EXISTS metrics_backfill_cursor date;
+  ADD COLUMN IF NOT EXISTS metrics_backfill_cursor date,
+  ADD COLUMN IF NOT EXISTS accounts_engaged_28d integer;
 
 -- 4) Upsert atômico que preserva valor: não-null novo vence (reconsulta da
 --    janela móvel), null NUNCA apaga valor válido. supabase-js .upsert() não
@@ -652,14 +656,19 @@ export async function ingestClosedDays(
 
 **Files:**
 - Create: `supabase/functions/instagram-sync-cron/monthly-close.ts`
-- Modify: `supabase/functions/instagram-sync-cron/index.ts` (chamada por conta, após ingestClosedDays)
 - Test: `supabase/functions/__tests__/instagram-sync-cron-monthly.test.ts`
 
-**Interfaces:**
-- Consumes: `fetchAccountTotals` (Task 4), tabela `instagram_account_metrics_monthly` (Task 5).
-- Produces: `closePreviousMonthIfMissing(db, fetchFn, accountId, accessToken, nowSec): Promise<void>` — idempotente: se a linha do mês anterior já existe, retorna sem chamada Graph.
+(A LIGAÇÃO no index.ts acontece na Task 8, no passo de MANUTENÇÃO — nunca no
+caminho por-conta do sync: o seletor do sync exclui workspaces sem
+`feature_auto_sync_cron`, e uma conta com relatórios mas sem auto-sync ficaria
+para sempre sem agregados mensais, perdendo o histórico de reach/engaged após
+os 90d de retenção. Achado Codex P1.)
 
-- [ ] **Step 1: Teste** (db mock: 1º caso linha existente → zero chamadas Graph; 2º caso ausente → insere linha com os valores do fetch; 3º caso mês anterior fora da retenção → NÃO insere linha de nulls)
+**Interfaces:**
+- Consumes: `fetchAccountTotals` (Task 4), tabela `instagram_account_metrics_monthly` (Task 5), `CLOSED_DAYS_WINDOW` (Task 6).
+- Produces: `closePreviousMonthIfMissing(db, fetchFn, accountId, accessToken, nowSec): Promise<void>` — idempotente: se a linha do mês anterior já existe, retorna sem chamada Graph. **Janela de finalização:** NÃO fecha o mês antes de `nowSec >= início do mês corrente + CLOSED_DAYS_WINDOW dias` — fechar no tick 1 do dia 1 congelaria dados que a Meta ainda revisa (mesma razão da janela D-1..D-3 da ingestão diária; achado Codex P1). Antes disso, retorna sem fazer nada; a linha só nasce depois que os dados do fim do mês estabilizaram.
+
+- [ ] **Step 1: Teste** (db mock: 1º caso linha existente → zero chamadas Graph; 2º caso dia 1-3 do mês → zero chamadas Graph e NENHUMA linha (janela de finalização); 3º caso dia 4+, linha ausente → insere com os valores do fetch; 4º caso mês anterior fora da retenção → NÃO insere linha de nulls)
 
 ```ts
 import { assertEquals } from "jsr:@std/assert";
@@ -672,13 +681,15 @@ Deno.test("não refaz mês já fechado", async () => {
       Promise.resolve({ data: { id: 1 } }) }) }) }) }),
   };
   const f = (() => { graphCalls++; }) as unknown as typeof fetch;
+  // Dia 5: já FORA da janela de finalização — o zero de chamadas aqui prova
+  // a idempotência (linha existe), não a janela.
   await closePreviousMonthIfMissing(db, f, "acc", "tok",
-    Math.floor(Date.parse("2026-09-02T12:00:00Z") / 1000));
+    Math.floor(Date.parse("2026-09-05T12:00:00Z") / 1000));
   assertEquals(graphCalls, 0);
 });
 ```
 
-- [ ] **Step 2: Implementar** — mês anterior = `monthWindow(prevMonthOf(mesCorrente))` (helpers de `_shared/report-docs/month-window.ts`); `fetchAccountTotals` na janela; inserir linha só se AO MENOS uma métrica veio não-null (janela fora da retenção → tudo null → não insere, o próximo tick não retenta à toa: nesse caso inserir a linha vazia é pior que nada? NÃO — spec manda não inventar número: sem nenhum valor, sem linha; a checagem "já existe" usa a presença da linha, e para conta cujo mês está fora da retenção a linha nunca existirá, custo de 7 chamadas/tick — mitigar guardando tentativa em memória do batch e SÓ tentando quando `nowSec` está nos primeiros 7 dias do mês OU a linha do mês anterior está ausente E o mês anterior ainda cabe na retenção de 90d, checável por aritmética local sem Graph).
+- [ ] **Step 2: Implementar** — ordem das guardas: (1) janela de finalização (`nowSec < início do mês corrente + CLOSED_DAYS_WINDOW dias` → return, nada de Graph); (2) mês anterior fora da retenção de 90d (aritmética local, sem Graph → return); (3) linha já existe → return sem Graph; (4) `fetchAccountTotals` em `monthWindow(prevMonthOf(mesCorrente))` (helpers de `_shared/report-docs/month-window.ts`) e inserir a linha só se AO MENOS uma métrica veio não-null (tudo null = não inventar número, sem linha; a guarda (2) evita retentar para sempre um mês irrecuperável).
 
 - [ ] **Step 3: Rodar testes (PASS) e commit** — `git commit -m "feat(sync-cron): fecha agregado mensal por conta"`
 
