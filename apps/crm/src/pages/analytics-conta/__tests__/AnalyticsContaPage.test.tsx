@@ -916,9 +916,19 @@ describe('AnalyticsContaPage', () => {
     const call = queryClientMock.fetchQuery.mock.calls[0][0] as {
       queryKey: unknown[];
       queryFn: () => unknown;
+      staleTime?: number;
     };
     expect(call.queryKey[0]).toBe('account-metrics');
     expect(call.queryKey[1]).toBe(42);
+
+    // MUST be 0: the app's global QueryClient default is staleTime: 30_000
+    // (App.tsx). fetchQuery only invokes queryFn when the cached entry is
+    // stale by that threshold, so without this override a "Sincronizar"
+    // click within 30s of the page mounting (or a previous fetch) would
+    // silently resolve from cache and skip the refresh=1 request entirely --
+    // this mock doesn't enforce staleTime itself, so this assertion is what
+    // actually guards against that regression.
+    expect(call.staleTime).toBe(0);
 
     // A plain invalidateQueries would refetch through the ORIGINAL (non-refresh)
     // queryFn and just hit the 6h server cache again -- the fix's whole point is

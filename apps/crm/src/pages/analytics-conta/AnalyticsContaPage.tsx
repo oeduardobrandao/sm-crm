@@ -1265,11 +1265,17 @@ function AnalyticsContent({
       // so a manual sync would silently show stale numbers. fetchQuery with
       // refresh:true bypasses the cache read for exactly this query's key and
       // writes the fresh result straight into it; the mounted useQuery on the
-      // same key picks it up like any other cache update.
+      // same key picks it up like any other cache update. staleTime MUST be
+      // forced to 0 here: fetchQuery only calls queryFn when the CACHED entry
+      // is stale, and the app's global default is staleTime: 30_000
+      // (App.tsx) -- without this override, clicking "Sincronizar" within 30s
+      // of the page mounting (or a previous fetch) would silently resolve
+      // from cache and skip the refresh=1 request entirely.
       qc.fetchQuery({
         queryKey: ['account-metrics', clientId, metricsRange.start, metricsRange.end],
         queryFn: () =>
           getAccountMetrics(clientId, metricsRange.start, metricsRange.end, { refresh: true }),
+        staleTime: 0,
       });
       qc.invalidateQueries({ queryKey: ['analytics-overview', clientId] });
       qc.invalidateQueries({ queryKey: ['analytics-posts', clientId] });
