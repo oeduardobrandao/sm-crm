@@ -1013,6 +1013,10 @@ Deno.serve(createAutomationMediaHandler({
   createDb: () =>
     createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
+      // Handler grava estado: TODA chamada Supabase (Auth/PostgREST/RPC) com
+      // teto de tempo, senão um stall deixa R2/quota meio-progredidos sem
+      // resposta tratada. Padrão do report-docs; helper promovido a _shared.
+      global: { fetch: makeBoundedFetch() },
     }),
   signPutUrl,
   signGetUrl,
