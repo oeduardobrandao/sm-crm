@@ -915,6 +915,38 @@ describe('AutomationFormDialog', () => {
       expect(screen.getByLabelText('form.subtitleLabel')).toBeInTheDocument();
     });
 
+    it('botão salvar fica desabilitado durante o upload da mídia; clique não dispara create', async () => {
+      let resolveUpload!: (media: {
+        key: string;
+        content_type: string;
+        size_bytes: number;
+      }) => void;
+      mockUploadMedia.mockReturnValue(
+        new Promise((resolve) => {
+          resolveUpload = resolve;
+        }),
+      );
+
+      renderDialog();
+      await fillRequiredFields();
+
+      const file = new File(['a'], 'foto.jpg', { type: 'image/jpeg' });
+      fireEvent.change(screen.getByLabelText('form.mediaLabel'), { target: { files: [file] } });
+
+      const saveButton = screen.getByRole('button', { name: 'form.save' });
+      await waitFor(() => expect(saveButton).toBeDisabled());
+
+      fireEvent.click(saveButton);
+      expect(mockCreate).not.toHaveBeenCalled();
+
+      resolveUpload({
+        key: 'automation-media/w-1/x.jpg',
+        content_type: 'image/jpeg',
+        size_bytes: 100,
+      });
+      await waitFor(() => expect(saveButton).not.toBeDisabled());
+    });
+
     it('submit com mídia envia dm_media e dm_subtitle', async () => {
       renderDialog();
 

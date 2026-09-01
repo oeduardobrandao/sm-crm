@@ -504,7 +504,11 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
       // trata como transient (retry com backoff), sem nenhum POST.
       let imageUrl: string;
       try {
-        imageUrl = await (ctx.signMediaUrl ?? signGetUrl)(media.key);
+        // A DM vive para sempre no inbox e a Meta pode re-buscar a imagem
+        // bem depois do envio; o default de signGetUrl (1h) expiraria antes
+        // disso, então usamos um TTL de 7 dias quando não há signMediaUrl
+        // injetado (produção).
+        imageUrl = ctx.signMediaUrl ? await ctx.signMediaUrl(media.key) : await signGetUrl(media.key, 7 * 24 * 3600);
       } catch (e) {
         console.error(`[instagram-webhook] presign da mídia falhou no send ${send.send_id}:`, errMessage(e));
         const commentTooOld = new Date(send.comment_created_at).getTime() <= nowDate.getTime() - RETRY_WINDOW_MS;

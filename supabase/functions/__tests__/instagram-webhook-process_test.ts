@@ -1725,6 +1725,45 @@ Deno.test("executeSend (card-1): com dm_media envia generic template e grava dm_
   assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "card" });
 });
 
+Deno.test("executeSend (card-1b): permanent no cartão entrega no button template (dm_kind card_fallback_buttons)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({
+      dm_media: CARD_MEDIA,
+      dm_subtitle: "sub",
+      dm_buttons: [{ title: "Abrir", url: "https://a.b" }],
+      public_reply: null,
+    }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  let attempt = 0;
+  const { fetchFn, calls } = routedFetch({
+    privateReply: () => {
+      attempt++;
+      if (attempt <= 1) return { status: 400, ok: false, body: { error: { message: "no", code: 100 } } };
+      return { body: {} };
+    },
+  });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn, signMediaUrl: (k: string) => Promise.resolve(`https://s/${k}`) }),
+    baseClaimedSend({}),
+  );
+
+  const dmCalls = calls.filter((c) => c.url.includes("/messages"));
+  assertEquals(dmCalls.length, 2);
+  // 2ª tentativa (a que entrega): button template com o texto do cartão
+  const second = JSON.parse(dmCalls[1].body ?? "null");
+  assertEquals(second.message.attachment.payload.template_type, "button");
+  assertEquals(second.message.attachment.payload.text, "msg\n\nsub");
+  const marks = rpcCallsFor(db, "mark_automation_dm_sent");
+  assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "card_fallback_buttons" });
+});
+
 Deno.test("executeSend (card-2): permanent no cartão cai para button template; permanent de novo cai para texto", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {

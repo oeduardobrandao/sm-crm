@@ -1509,7 +1509,11 @@ export default function AutomationFormDialog({
           <Button type="button" variant="outline" onClick={closeDialog}>
             {t('form.cancel')}
           </Button>
-          <Button type="button" onClick={submit} disabled={saveMutation.isPending}>
+          <Button
+            type="button"
+            onClick={submit}
+            disabled={saveMutation.isPending || form.dmMediaUploading}
+          >
             {saveMutation.isPending && <Spinner size="sm" />} {t('form.save')}
           </Button>
         </DialogFooter>

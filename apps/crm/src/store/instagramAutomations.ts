@@ -17,7 +17,7 @@ export interface DmButton {
 }
 
 // Mídia do cartão de DM (generic template). Espelha o formato validado por
-// validate_ig_dm_media (migration 20260901000014): key SEMPRE em
+// validate_ig_dm_media (migration 20260901102000): key SEMPRE em
 // automation-media/<conta_id>/..., content_type restrito, size_bytes em
 // bytes, width/height opcionais e só presentacionais.
 export interface DmMedia {

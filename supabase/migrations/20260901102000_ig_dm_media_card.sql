@@ -80,6 +80,9 @@ DECLARE
   v_used bigint;
   v_quota bigint;
 BEGIN
+  IF p_key NOT LIKE 'automation-media/' || p_conta_id::text || '/%' THEN
+    RAISE EXCEPTION 'invalid_key';
+  END IF;
   IF p_bytes IS NULL OR p_bytes <= 0 THEN
     RAISE EXCEPTION 'invalid_bytes';
   END IF;
@@ -120,7 +123,7 @@ BEGIN
   -- (o RAISE desfaz o DELETE acima). Par com o FOR KEY SHARE do trigger de
   -- attach: ou o attach commita antes (e este EXISTS o vê -> media_in_use),
   -- ou este DELETE commita antes (e o attach falha em media_not_finalized).
-  IF EXISTS (SELECT 1 FROM instagram_comment_automations WHERE dm_media->>'key' = p_key) THEN
+  IF EXISTS (SELECT 1 FROM instagram_comment_automations WHERE dm_media IS NOT NULL AND dm_media->>'key' = p_key) THEN
     RAISE EXCEPTION 'media_in_use' USING errcode = 'P0001';
   END IF;
   UPDATE workspaces

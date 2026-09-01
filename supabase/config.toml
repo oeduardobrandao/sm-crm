@@ -203,3 +203,6 @@ verify_jwt = false
 
 [functions.stream-webhook]
 verify_jwt = false
+
+[functions.automation-media]
+verify_jwt = false

@@ -30,7 +30,7 @@
 --    backfill expression from the legacy public_reply column, and
 --    claim_retryable_automation_sends returning the new public_reply_text
 --    column.
--- 10-10b. dm_media/dm_subtitle (migration 20260901000002): CHECK de forma
+-- 10-10b. dm_media/dm_subtitle (migration 20260901102000): CHECK de forma
 --    (validate_ig_dm_media), bind de tenant via conta_id na key, subtítulo
 --    só com mídia, dm_message <= 80 com mídia, o trigger
 --    trg_ica_dm_media_finalized (dm_media só aceita objeto finalizado da
@@ -760,7 +760,7 @@ end $$;
 rollback;
 
 -- ---------------------------------------------------------------------------
--- 10. dm_media/dm_subtitle (migração 20260901000002): CHECK de forma via
+-- 10. dm_media/dm_subtitle (migração 20260901102000): CHECK de forma via
 --     validate_ig_dm_media, bind de tenant (a key precisa carregar o
 --     conta_id da PRÓPRIA automação), teto de 80 chars em dm_message/
 --     dm_subtitle quando há mídia, e o trigger trg_ica_dm_media_finalized
@@ -787,7 +787,9 @@ declare
   v_valid boolean;
   v_key_a text;
   v_key_b text;
+  v_key_b2 text;
   v_key_c text;
+  v_key_c2 text;
   v_key_d text;
   v_key_e text;
   v_key_h text;
@@ -827,12 +829,28 @@ begin
 
   reset role;
 
-  -- (b) key finalizada na PRÓPRIA workspace mas com prefixo de OUTRO
-  --     conta_id no texto -> passa o trigger (achou o registro), mas
-  --     check_violation em ica_dm_media_tenant.
+  -- (b) key com prefixo de OUTRO conta_id no texto -> automation_media_finalize
+  --     tem um guard de invalid_key que compara p_key contra o próprio
+  --     p_conta_id, então a rejeição já acontece aqui; a key nunca chega a
+  --     ser finalizada.
   v_key_b := 'automation-media/' || gen_random_uuid()::text || '/img.jpg';
-  select automation_media_finalize(v_ws, v_key_b, 100, 'image/png') into v_ok;
-  assert v_ok, 'finalize do objeto (b) deve devolver true';
+  v_rejected := false;
+  begin
+    perform automation_media_finalize(v_ws, v_key_b, 100, 'image/png');
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_key', format('wrong msg: %s', sqlerrm);
+    v_rejected := true;
+  end;
+  assert v_rejected, 'finalize com key de outra workspace no texto deve ser rejeitado (invalid_key)';
+
+  -- (b2) mesmo cenário, mas contornando o guard do RPC via manipulação direta
+  --      de automation_media_objects (table owner, stand-in de um write-path
+  --      fora do finalize) -- prova que ica_dm_media_tenant continua sendo
+  --      uma segunda linha de defesa mesmo quando o objeto já está
+  --      "finalizado" por fora do RPC.
+  v_key_b2 := 'automation-media/' || gen_random_uuid()::text || '/img-b2.jpg';
+  insert into automation_media_objects (key, conta_id, size_bytes, content_type)
+    values (v_key_b2, v_ws, 100, 'image/png');
 
   set local role authenticated;
   perform set_config('request.jwt.claims',
@@ -842,18 +860,32 @@ begin
     insert into instagram_comment_automations
       (conta_id, client_id, name, keywords, dm_message, dm_media)
       values (v_ws, v_cli, 'Outro tenant', array['x'], 'msg',
-        jsonb_build_object('key', v_key_b, 'content_type', 'image/png', 'size_bytes', 100));
+        jsonb_build_object('key', v_key_b2, 'content_type', 'image/png', 'size_bytes', 100));
   exception when check_violation then
     v_rejected := true;
   end;
   assert v_rejected, 'key com conta_id de outra workspace no texto deve ser rejeitada';
   reset role;
 
-  -- (c) key fora de automation-media/ -> finalizada, mas
-  --     check_violation em validate_ig_dm_media (prefixo).
+  -- (c) key fora de automation-media/ -> o mesmo guard de invalid_key do
+  --     finalize (case b) também cobre o prefixo fixo, então a rejeição já
+  --     acontece aqui.
   v_key_c := 'outro-prefixo/' || v_ws::text || '/img.jpg';
-  select automation_media_finalize(v_ws, v_key_c, 100, 'image/png') into v_ok;
-  assert v_ok, 'finalize do objeto (c) deve devolver true';
+  v_rejected := false;
+  begin
+    perform automation_media_finalize(v_ws, v_key_c, 100, 'image/png');
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_key', format('wrong msg: %s', sqlerrm);
+    v_rejected := true;
+  end;
+  assert v_rejected, 'finalize com key fora de automation-media/ deve ser rejeitado (invalid_key)';
+
+  -- (c2) mesmo cenário, mas contornando o guard do RPC via manipulação
+  --      direta de automation_media_objects -- finalizada, mas
+  --      check_violation em validate_ig_dm_media (prefixo).
+  v_key_c2 := 'outro-prefixo/' || v_ws::text || '/img-c2.jpg';
+  insert into automation_media_objects (key, conta_id, size_bytes, content_type)
+    values (v_key_c2, v_ws, 100, 'image/png');
 
   set local role authenticated;
   perform set_config('request.jwt.claims',
@@ -863,7 +895,7 @@ begin
     insert into instagram_comment_automations
       (conta_id, client_id, name, keywords, dm_message, dm_media)
       values (v_ws, v_cli, 'Prefixo errado', array['x'], 'msg',
-        jsonb_build_object('key', v_key_c, 'content_type', 'image/png', 'size_bytes', 100));
+        jsonb_build_object('key', v_key_c2, 'content_type', 'image/png', 'size_bytes', 100));
   exception when check_violation then
     v_rejected := true;
   end;
@@ -1040,6 +1072,8 @@ begin
   -- a linha em workspaces) com quota baixa e conhecida via resource_overrides,
   -- no mesmo padrão de 63_storage_autoclean.sql.
   v_ws := et_make_workspace('pro', '{"storage_quota_bytes": 1000}'::jsonb);
+  update workspace_plan_overrides set feature_overrides = '{"feature_instagram_automation": true}'::jsonb
+    where workspace_id = v_ws;
   v_key1 := 'automation-media/' || v_ws::text || '/img1.jpg';
   v_key2 := 'automation-media/' || v_ws::text || '/img2.jpg';
   v_key3 := 'automation-media/' || v_ws::text || '/img3.jpg';

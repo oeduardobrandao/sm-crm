@@ -78,6 +78,7 @@ export async function copyObjectSigned(sourceKey: string, destKey: string): Prom
     const bodyText = await res.text().catch(() => "");
     throw new Error(`r2 copy failed: ${res.status}${bodyText ? ` ${bodyText.slice(0, 300)}` : ""}`);
   }
+  await res.body?.cancel();
 }
 
 /** HEAD via presign + fetch puro (mesmo racional de putObject/deleteObject:
