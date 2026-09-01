@@ -611,30 +611,54 @@ export function PostsKanbanView({
    *  the client Hub, auto-scheduling) between the drag and the Desfazer click,
    *  the backward write would clobber that newer change, so it no-ops instead.
    *  `place`, when given, persists the cross-column manual placement captured
-   *  at drop time -- run after the forward write so both land together. */
+   *  at drop time -- run after the forward write so both land together.
+   *
+   *  Known race, worked around rather than eliminated: `place`/persistPlacement
+   *  below patches `board_ordem` in the ['active-posts'] cache synchronously,
+   *  but useUpdatePostStatus's onMutate starts with `await cancelQueries(...)`,
+   *  so its rollback snapshot is only taken once that resolves -- AFTER the
+   *  placement patch already landed. If the status write then fails, the
+   *  hook-level onError restores a snapshot that already carries the new
+   *  rank, even though the reorder RPC fired independently and the post never
+   *  actually moved server-side. TanStack Query v5 runs per-mutate callbacks
+   *  after the hook's own, so the `onError` below fires right after that
+   *  corrupted restore and re-applies the correct rank to both cache and
+   *  server through persistPlacement (which re-issues the RPC too). Same
+   *  shape on the Desfazer path below. */
   const applyStatusChange = (post: ActivePost, key: StatusKey, place?: () => void) => {
     const move = buildUndoableStatusMove({ post, key, registry });
     if (!move) return;
-    updateStatus.mutate(move.forward);
+    updateStatus.mutate(move.forward, {
+      onError: () =>
+        persistPlacement([{ id: move.forward.id, board_ordem: move.previousBoardOrdem }]),
+    });
     toast(`Post movido para "${move.targetLabel}".`, {
       duration: 6000,
       action: {
         label: 'Desfazer',
         onClick: () => {
-          const guard = resolveUndoGuard(
-            qc.getQueryData<ActivePost[]>(ACTIVE_POSTS_KEY),
-            move,
-            registry,
-          );
+          const cachedPosts = qc.getQueryData<ActivePost[]>(ACTIVE_POSTS_KEY);
+          const guard = resolveUndoGuard(cachedPosts, move, registry);
           if (guard === 'stale') {
             toast.info('O post já mudou de novo. Nada foi desfeito.');
             return;
           }
-          updateStatus.mutate(move.backward);
+          // Same cached post the guard above just checked: its board_ordem
+          // right now is whatever the forward drop placed it at (or
+          // unchanged, when the target column wasn't manually sorted).
+          const current = (cachedPosts ?? []).find((p) => p.id === move.forward.id);
+          const rankBeforeUndo = current?.board_ordem ?? null;
+          updateStatus.mutate(move.backward, {
+            onError: () => persistPlacement([{ id: move.forward.id, board_ordem: rankBeforeUndo }]),
+          });
           // The forward move may also have placed the post in the target
           // column's manual order -- Desfazer restores the rank it had
-          // before the drag, not just the status.
-          persistPlacement([{ id: move.forward.id, board_ordem: move.previousBoardOrdem }]);
+          // before the drag, not just the status. Skipped when the forward
+          // drop never actually placed anything (non-manual target), so a
+          // no-op restore doesn't fire an RPC for nothing.
+          if (rankBeforeUndo !== move.previousBoardOrdem) {
+            persistPlacement([{ id: move.forward.id, board_ordem: move.previousBoardOrdem }]);
+          }
         },
       },
     });

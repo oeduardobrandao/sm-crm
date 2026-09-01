@@ -478,6 +478,34 @@ describe('PostsKanbanView', () => {
       await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Erro ao atualizar status'));
     });
 
+    it('a failed forward write into a manual column restores the pre-drag rank via the reorder RPC', async () => {
+      mockUpdate.mockRejectedValue(new Error('boom'));
+      const posts = [makePost({ id: 750, status: 'rascunho', titulo: 'Draft', board_ordem: null })];
+      const { qc } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+      act(() => {
+        qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, posts);
+      });
+
+      dndHandlers.onDragEnd?.({ active: { id: '750' }, over: { id: 'col:revisao_interna' } });
+
+      // The drop placed the post into the (empty, manually-sorted) target
+      // column with a real rank, via the same synchronous persistPlacement
+      // that races useUpdatePostStatus's onMutate snapshot.
+      await waitFor(() =>
+        expect(mockReorder).toHaveBeenCalledWith([{ id: 750, board_ordem: 1024 }]),
+      );
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Erro ao atualizar status'));
+
+      // Once the failed status write settles, the per-call onError must
+      // restore the pre-drag rank (null -- this post never had one) through
+      // the reorder RPC too, not just leave whatever rank the hook-level
+      // rollback's (corrupted) snapshot happened to carry.
+      await waitFor(() =>
+        expect(mockReorder).toHaveBeenCalledWith([{ id: 750, board_ordem: null }]),
+      );
+    });
+
     it('shows a movido toast with a Desfazer action after a valid write', async () => {
       mockUpdate.mockResolvedValue({} as never);
       const posts = [makePost({ id: 509, status: 'rascunho', titulo: 'Draft' })];
