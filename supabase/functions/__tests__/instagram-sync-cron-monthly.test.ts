@@ -242,14 +242,20 @@ interface StoriesFakeState {
   daily: DailyRow[];
   storyInsights: StoryInsightRow[];
   monthly: MonthlyStoriesRow[];
+  /** Simulates a failed instagram_story_insights read (review finding). */
+  storyInsightsError?: { message: string } | null;
 }
 
 // Read-only builder: chains eq/gte/lt/not as narrowing filters over `rows`,
 // terminating either via limit().maybeSingle() (single-row probe, mirrors
 // the coverage-check query) or by being awaited directly (mirrors the
-// aggregation query, which has no .maybeSingle()).
+// aggregation query, which has no .maybeSingle()). An optional `errorToReturn`
+// simulates a failed read (network blip, timeout) -- both terminals resolve
+// `{ data: null, error }` instead of filtering `rows` at all, exercising the
+// error-bailout path (review finding: a failed read must never be treated as
+// "zero rows").
 // deno-lint-ignore no-explicit-any
-function readTable(rows: any[]) {
+function readTable(rows: any[], errorToReturn: { message: string } | null = null) {
   let data = rows.slice();
   // deno-lint-ignore no-explicit-any
   const builder: any = {
@@ -262,8 +268,12 @@ function readTable(rows: any[]) {
       return builder;
     },
     limit(n: number) { data = data.slice(0, n); return builder; },
-    maybeSingle() { return Promise.resolve({ data: data[0] ?? null, error: null }); },
+    maybeSingle() {
+      if (errorToReturn) return Promise.resolve({ data: null, error: errorToReturn });
+      return Promise.resolve({ data: data[0] ?? null, error: null });
+    },
     then(onFulfilled: (v: unknown) => unknown, onRejected?: (e: unknown) => unknown) {
+      if (errorToReturn) return Promise.resolve({ data: null, error: errorToReturn }).then(onFulfilled, onRejected);
       return Promise.resolve({ data, error: null }).then(onFulfilled, onRejected);
     },
   };
@@ -303,7 +313,7 @@ function storiesDb(state: StoriesFakeState) {
   return {
     from(table: string) {
       if (table === "instagram_account_metrics_daily") return readTable(state.daily);
-      if (table === "instagram_story_insights") return readTable(state.storyInsights);
+      if (table === "instagram_story_insights") return readTable(state.storyInsights, state.storyInsightsError ?? null);
       if (table === "instagram_account_metrics_monthly") return monthlyStoriesTable(state);
       throw new Error(`fake db: tabela inesperada ${table}`);
     },
@@ -355,6 +365,28 @@ Deno.test("closeStoriesForMonth: com cobertura, agrega instagram_story_insights 
     stories_taps_forward_month: 15,
     stories_taps_back_month: 3,
     stories_exits_month: 4,
+  });
+});
+
+Deno.test("closeStoriesForMonth: falha na leitura de instagram_story_insights NÃO grava zeros -- aborta sem tocar a linha (achado do review)", async () => {
+  const state: StoriesFakeState = {
+    // Coverage guard passes (a real day with stories_count_day set exists).
+    daily: [{ instagram_account_id: "acc-1", snapshot_date: "2026-08-10", stories_count_day: 3 }],
+    // Irrelevant here -- the read itself will fail before these rows matter.
+    storyInsights: [{ instagram_account_id: "acc-1", posted_at: "2026-08-05T10:00:00Z", reach: 500 }],
+    storyInsightsError: { message: "connection reset" },
+    monthly: [{ instagram_account_id: "acc-1", month: "2026-08-01", stories_count_month: null }],
+  };
+
+  await closeStoriesForMonth(storiesDb(state), "acc-1", "2026-08");
+
+  // Before the fix, a failed read defaulted `rows` to `[]`, producing a
+  // false all-zero total that the idempotency guard (stories_count_month IS
+  // NULL) would happily accept and lock in forever. After the fix, the
+  // function bails without writing -- the row stays exactly as it was, null
+  // included, which is what lets a later retry pick it back up.
+  assertEquals(state.monthly[0], {
+    instagram_account_id: "acc-1", month: "2026-08-01", stories_count_month: null,
   });
 });
 

@@ -141,13 +141,27 @@ export async function closeStoriesForMonth(
 
   if (!coverage) return; // No stories data collected this month; leave NULL
 
-  // Aggregate from the per-story insights table.
-  const { data: agg } = await db
+  // Aggregate from the per-story insights table. A failed read here must
+  // NOT be treated as "zero stories": the coverage guard above already
+  // confirmed real stories exist for this month, so defaulting a failed
+  // read to an empty array would write a false all-zero total and lock it
+  // in via the `.is("stories_count_month", null)` idempotency guard below
+  // (review finding). Bail without writing instead -- the row stays NULL,
+  // which is exactly the signal the stories-retry pass in backfill.ts looks
+  // for on a later tick.
+  const { data: agg, error: aggError } = await db
     .from(STORY_INSIGHTS_TABLE)
     .select("reach, impressions, replies, taps_forward, taps_back, exits")
     .eq("instagram_account_id", accountId)
     .gte("posted_at", `${monthStart}T00:00:00Z`)
     .lt("posted_at", `${nextMonthStart}T00:00:00Z`);
+
+  if (aggError) {
+    console.warn(
+      `[IG-SYNC-CRON] closeStoriesForMonth: aggregate query failed for ${accountId}/${month}: ${aggError.message}`,
+    );
+    return;
+  }
 
   const rows = agg ?? [];
   const totals = {

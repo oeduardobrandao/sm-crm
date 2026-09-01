@@ -73,6 +73,16 @@ interface FakeState {
   monthly: Array<Record<string, unknown>>;
   followerHistory: Array<{ instagram_account_id: string; date: string; follower_count: number; source: string }>;
   dailyUpserts: Array<Record<string, unknown>[]>;
+  // Read-only sources for closeStoriesForMonth (Task 3 / review fix): only
+  // populated by tests that actually exercise the stories-retry pass (fase
+  // 3) below -- everything else leaves these empty, matching "no stories
+  // data collected" (closeStoriesForMonth's coverage guard returns early).
+  dailyMetrics?: Array<{ instagram_account_id: string; snapshot_date: string; stories_count_day: number | null }>;
+  storyInsights?: Array<{
+    instagram_account_id: string; posted_at: string;
+    reach?: number; impressions?: number; replies?: number;
+    taps_forward?: number; taps_back?: number; exits?: number;
+  }>;
 }
 
 function accountsTable(state: FakeState) {
@@ -118,6 +128,7 @@ function accountsTable(state: FakeState) {
 
 function monthlyTable(state: FakeState) {
   const filters: Array<(row: Record<string, unknown>) => boolean> = [];
+  let limitN: number | null = null;
   // deno-lint-ignore no-explicit-any
   const builder: any = {
     select() { return builder; },
@@ -125,14 +136,26 @@ function monthlyTable(state: FakeState) {
       filters.push((r) => r[col] === val);
       return builder;
     },
+    // Used by the stories-retry pass (fase 3): `.is("stories_count_month",
+    // null)` -- a row that never had the column set (undefined, since
+    // closePreviousMonthIfMissing's insert doesn't include stories fields)
+    // normalizes to null here, same as a real NULL column would.
+    is(col: string, val: unknown) {
+      filters.push((r) => (r[col] ?? null) === val);
+      return builder;
+    },
+    order() { return builder; },
+    limit(n: number) { limitN = n; return builder; },
     maybeSingle() {
       const row = state.monthly.find((r) => filters.every((f) => f(r)));
       return Promise.resolve({ data: row ?? null, error: null });
     },
     // Fallback: `select(...).eq(...)` sem `.maybeSingle()` (ex.: a query de
-    // exclusão do passo 2, que lê TODAS as contas já fechadas num mês).
+    // exclusão do passo 2, que lê TODAS as contas já fechadas num mês; e a
+    // query de retry de stories da fase 3, que também usa .is()/.limit()).
     then(onFulfilled: (v: unknown) => unknown, onRejected?: (e: unknown) => unknown) {
-      const rows = state.monthly.filter((r) => filters.every((f) => f(r)));
+      let rows = state.monthly.filter((r) => filters.every((f) => f(r)));
+      if (limitN !== null) rows = rows.slice(0, limitN);
       return Promise.resolve({ data: rows, error: null }).then(onFulfilled, onRejected);
     },
     insert(row: Record<string, unknown>) {
@@ -145,6 +168,54 @@ function monthlyTable(state: FakeState) {
       );
       if (idx >= 0) state.monthly[idx] = row; else state.monthly.push(row);
       return Promise.resolve({ error: null });
+    },
+    // Used by closeStoriesForMonth's write: `.update(patch).eq(...).eq(...)
+    // .is(...)`, applying `patch` only to rows still matching once the whole
+    // chain is awaited -- enforces the `.is("stories_count_month", null)`
+    // idempotency guard for real, not just for show.
+    update(patch: Record<string, unknown>) {
+      let matches = state.monthly.slice();
+      // deno-lint-ignore no-explicit-any
+      const upd: any = {
+        eq(col: string, val: unknown) {
+          matches = matches.filter((r) => r[col] === val);
+          return upd;
+        },
+        is(col: string, val: unknown) {
+          matches = matches.filter((r) => (r[col] ?? null) === val);
+          return upd;
+        },
+        then(onFulfilled: (v: unknown) => unknown, onRejected?: (e: unknown) => unknown) {
+          for (const row of matches) Object.assign(row, patch);
+          return Promise.resolve({ error: null }).then(onFulfilled, onRejected);
+        },
+      };
+      return upd;
+    },
+  };
+  return builder;
+}
+
+// Generic read-only table for closeStoriesForMonth's two read sources
+// (instagram_account_metrics_daily's coverage check, instagram_story_insights'
+// aggregation): chains eq/gte/lt/not as narrowing filters, terminating via
+// either limit().maybeSingle() or a direct await.
+function readOnlyTable(rows: Array<Record<string, unknown>>) {
+  let data = rows.slice();
+  // deno-lint-ignore no-explicit-any
+  const builder: any = {
+    select() { return builder; },
+    eq(col: string, val: unknown) { data = data.filter((r) => r[col] === val); return builder; },
+    gte(col: string, val: unknown) { data = data.filter((r) => String(r[col]) >= String(val)); return builder; },
+    lt(col: string, val: unknown) { data = data.filter((r) => String(r[col]) < String(val)); return builder; },
+    not(col: string, op: string, val: unknown) {
+      if (op === "is" && val === null) data = data.filter((r) => r[col] !== null && r[col] !== undefined);
+      return builder;
+    },
+    limit(n: number) { data = data.slice(0, n); return builder; },
+    maybeSingle() { return Promise.resolve({ data: data[0] ?? null, error: null }); },
+    then(onFulfilled: (v: unknown) => unknown, onRejected?: (e: unknown) => unknown) {
+      return Promise.resolve({ data, error: null }).then(onFulfilled, onRejected);
     },
   };
   return builder;
@@ -189,6 +260,8 @@ function makeDb(state: FakeState) {
       if (table === "instagram_accounts") return accountsTable(state);
       if (table === "instagram_account_metrics_monthly") return monthlyTable(state);
       if (table === "instagram_follower_history") return followerTable(state);
+      if (table === "instagram_account_metrics_daily") return readOnlyTable(state.dailyMetrics ?? []);
+      if (table === "instagram_story_insights") return readOnlyTable(state.storyInsights ?? []);
       throw new Error(`fake db: tabela inesperada ${table}`);
     },
     rpc(name: string, args: { p_rows: Record<string, unknown>[] }) {
@@ -573,6 +646,80 @@ Deno.test("runMaintenanceStep: contas já backfilladas passam por closePreviousM
   assertEquals(result.monthsClosed, 1);
   assertEquals(state.monthly.length, 1);
   assertEquals(state.monthly[0].month, "2026-08-01");
+});
+
+// --- Review fix: stories-retry pass (fase 3) ----------------------------
+
+Deno.test("runMaintenanceStep: fase 3 preenche stories de uma conta cuja linha mensal já existe mas ficou com stories_count_month null (achado do review)", async () => {
+  const state = emptyState([{
+    id: "acc-1", authorization_status: "active", encrypted_access_token: "enc-1",
+    follower_count: 1000, metrics_backfill_cursor: "2020-01-01", metrics_backfilled_at: "2026-01-01T00:00:00Z",
+  }]);
+  // The base monthly row for 2026-08-01 ALREADY exists (e.g. closed on a
+  // previous tick) but stories_count_month is still null -- simulating a
+  // transient failure on the one-shot attempt that used to be the only
+  // opportunity (achado do review). Because the row already exists, this
+  // account is EXCLUDED from `closable` (fase 2) via `closedIds` -- before
+  // the fix, nothing would ever revisit it.
+  state.monthly.push({
+    instagram_account_id: "acc-1", month: "2026-08-01",
+    reach_month: 500, stories_count_month: null,
+  });
+  state.dailyMetrics = [
+    { instagram_account_id: "acc-1", snapshot_date: "2026-08-10", stories_count_day: 2 },
+  ];
+  state.storyInsights = [
+    { instagram_account_id: "acc-1", posted_at: "2026-08-05T10:00:00Z", reach: 100, impressions: 150 },
+    { instagram_account_id: "acc-1", posted_at: "2026-08-20T10:00:00Z", reach: 50, impressions: 80 },
+  ];
+  const f = graphOkFetch(SIMPLE_VALUES);
+
+  const result = await runMaintenanceStep(makeDb(state), f, decryptToken, {
+    batchLimit: 3, nowSec: NOW,
+  });
+
+  // acc-1 never went through fase 2 this tick (it's excluded from `closable`
+  // -- the base row already existed) -- monthsClosed stays 0. Only the new
+  // fase-3 retry pass (queries stories_count_month IS NULL directly) can
+  // have filled the columns in.
+  assertEquals(result.monthsClosed, 0);
+  assertEquals(state.monthly.length, 1);
+  const row = state.monthly[0];
+  assertEquals(row.stories_count_month, 2);
+  assertEquals(row.stories_reach_month, 150);
+  assertEquals(row.stories_impressions_month, 230);
+  // The pre-existing reach_month (written by a prior closePreviousMonthIfMissing)
+  // is untouched by the stories-only update.
+  assertEquals(row.reach_month, 500);
+});
+
+Deno.test("runMaintenanceStep: fase 3 não repete uma conta cujas stories já foram preenchidas", async () => {
+  const state = emptyState([{
+    id: "acc-1", authorization_status: "active", encrypted_access_token: "enc-1",
+    follower_count: 1000, metrics_backfill_cursor: "2020-01-01", metrics_backfilled_at: "2026-01-01T00:00:00Z",
+  }]);
+  // stories_count_month already filled (e.g. by a previous fase-3 retry) --
+  // must not appear in the retry query's `IS NULL` filter, so
+  // closeStoriesForMonth is never even attempted again for this account.
+  state.monthly.push({
+    instagram_account_id: "acc-1", month: "2026-08-01",
+    stories_count_month: 3, stories_reach_month: 999,
+  });
+  state.dailyMetrics = [
+    { instagram_account_id: "acc-1", snapshot_date: "2026-08-10", stories_count_day: 5 },
+  ];
+  state.storyInsights = [
+    { instagram_account_id: "acc-1", posted_at: "2026-08-05T10:00:00Z", reach: 1 },
+  ];
+  const f = graphOkFetch(SIMPLE_VALUES);
+
+  await runMaintenanceStep(makeDb(state), f, decryptToken, { batchLimit: 3, nowSec: NOW });
+
+  // Untouched -- the idempotency guard (`.is("stories_count_month", null)`
+  // inside closeStoriesForMonth) is a second line of defense, but the fase-3
+  // selector itself should already exclude this row.
+  assertEquals(state.monthly[0].stories_count_month, 3);
+  assertEquals(state.monthly[0].stories_reach_month, 999);
 });
 
 // --- Fix round 1 -------------------------------------------------------

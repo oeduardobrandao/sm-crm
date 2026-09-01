@@ -37,6 +37,17 @@ const MAX_MONTHS_BACK = 12;
 // seletor (ver runMaintenanceStep) antes do limit, então esta página nunca
 // starva contas com id alto -- o conjunto elegível encolhe a cada fechamento.
 const CLOSE_PAGE_LIMIT = 50;
+// Página de contas com a linha mensal do mês anterior já existente mas
+// stories_count_month ainda NULL, revisada por tick para retry (achado do
+// review: closeStoriesForMonth só era chamada dentro do loop `closable`
+// acima, imediatamente após closePreviousMonthIfMissing criar a linha base
+// -- uma conta só tinha essa ÚNICA chance, no único tick em que sua linha
+// nasce; qualquer falha transitória ali (rede, leitura de
+// instagram_story_insights) deixava as colunas de stories NULL para sempre,
+// sem caminho de retry). Não precisa ser grande pelo mesmo motivo do
+// CLOSE_PAGE_LIMIT: cada conta cujas stories já foram preenchidas
+// simplesmente some desta lista no próximo tick.
+const STORIES_RETRY_PAGE_LIMIT = 50;
 
 const MONTHLY_METRICS: AccountMetric[] = [
   "reach", "views", "saves", "accounts_engaged",
@@ -344,6 +355,8 @@ export interface RunMaintenanceStepOptions {
   nowSec: number;
   /** Override de CLOSE_PAGE_LIMIT -- só para teste (fila pequena e determinística). */
   closeBatchLimit?: number;
+  /** Override de STORIES_RETRY_PAGE_LIMIT -- só para teste (fila pequena e determinística). */
+  storiesRetryBatchLimit?: number;
 }
 
 export interface RunMaintenanceStepResult {
@@ -362,6 +375,12 @@ export interface RunMaintenanceStepResult {
  *      -- é aqui, e só aqui, que o fechamento mensal recorrente roda. A exclusão
  *      evita starvation: sem ela, `order(id).limit(N)` sempre reseleciona o
  *      mesmo bloco de ids baixos e uma conta com id alto nunca é alcançada.
+ *      closeStoriesForMonth (Task 3) roda logo em seguida, na mesma conta.
+ *   3) Contas que JÁ têm a linha do mês anterior (fechada nesta fase 2, neste
+ *      tick ou em qualquer tick passado) mas cujo stories_count_month ainda
+ *      é NULL (até STORIES_RETRY_PAGE_LIMIT): reoferece closeStoriesForMonth
+ *      -- o caminho de retry para uma falha transitória na fase 2 (achado do
+ *      review: sem esta fase, uma conta só tinha uma chance por mês).
  *
  * Falha em uma conta nunca derruba o passo inteiro nem o restante do cron:
  * cada conta roda no seu próprio try/catch.
@@ -456,6 +475,37 @@ export async function runMaintenanceStep(
       await closeStoriesForMonth(db, account.id, prevMonthForStories);
     } catch (e) {
       console.warn(`[IG-SYNC-CRON] closeStoriesForMonth failed for ${account.id}:`, e);
+    }
+  }
+
+  // Fase 3: retry de stories, desacoplado da fase 2 acima (achado do review).
+  // A fase 2 só oferece closeStoriesForMonth a uma conta no ÚNICO tick em que
+  // sua linha mensal nasce -- uma falha transitória ali (rede, leitura de
+  // instagram_story_insights) deixaria as colunas de stories NULL para
+  // sempre, já que a conta nunca mais aparece em `closable` depois que sua
+  // linha existe. Esta fase busca especificamente as contas com linha
+  // existente e stories_count_month ainda NULL -- inclui tanto as que
+  // acabaram de ser fechadas na fase 2 deste mesmo tick (se a tentativa ali
+  // falhou) quanto as fechadas em qualquer tick anterior -- e tenta de novo.
+  // Uma conta cujas stories já foram preenchidas (por esta fase ou pela 2)
+  // simplesmente não aparece mais aqui, então o conjunto pendente encolhe a
+  // cada tick como no `closedIds` acima.
+  const { data: storiesPending, error: storiesPendingError } = await db
+    .from(MONTHLY_TABLE)
+    .select("instagram_account_id")
+    .eq("month", prevMonthDay1)
+    .is("stories_count_month", null)
+    .order("instagram_account_id", { ascending: true })
+    .limit(opts.storiesRetryBatchLimit ?? STORIES_RETRY_PAGE_LIMIT);
+  if (storiesPendingError) {
+    console.warn(`[IG-SYNC-CRON] backfill: falha ao listar contas pendentes de stories em ${prevMonthDay1}: ${storiesPendingError.message}`);
+  }
+
+  for (const row of (storiesPending ?? []) as Array<{ instagram_account_id: string }>) {
+    try {
+      await closeStoriesForMonth(db, row.instagram_account_id, prevMonthForStories);
+    } catch (e) {
+      console.warn(`[IG-SYNC-CRON] closeStoriesForMonth retry failed for ${row.instagram_account_id}:`, e);
     }
   }
 
