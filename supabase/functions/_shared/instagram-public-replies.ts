@@ -3,8 +3,13 @@
 //
 // Fail-open POR DESIGN, mesmo racional do parseDmButtons (instagram-dm-payload.ts):
 // o enforcement da forma é o CHECK do banco; um throw aqui envenenaria envios.
-// A janela migration -> redeploy chega com public_replies ausente (undefined),
-// e automações antigas com '[]' -- nos dois casos o legado public_reply decide.
+// Isso cobre o VALOR de public_replies vindo NULL, '[]' ou malformado (item
+// não-string, excesso de itens) -- nesses casos o legado public_reply decide.
+// A COLUNA em si é pré-requisito DURO, não fail-open: `executeSend`
+// (instagram-webhook/process.ts) faz um SELECT explícito de public_replies na
+// revalidação, e a ausência da coluna é um 400 do PostgREST, não um valor
+// undefined tratável aqui. A migration da Task 1 tem que estar aplicada ANTES
+// do redeploy deste código, sem exceção.
 
 export const MAX_PUBLIC_REPLIES = 5;
 

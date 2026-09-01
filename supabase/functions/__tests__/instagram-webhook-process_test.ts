@@ -1373,6 +1373,30 @@ Deno.test("executeSend (pr-5): retry a partir de 'failed' reusa o texto persisti
   assertEquals(updates[1].payload, { public_reply_id: "reply-5", public_reply_status: "sent" });
 });
 
+// Blindagem do review de branch (Important #1): `send.public_reply_text`
+// chega `undefined` (não `null`) na janela de deploy em que a RPC de claim
+// ainda usa o schema antigo (ou num rollback) -- sem normalizar para `null`
+// antes dos guards, `undefined !== null` degenera `hadPlanned`/`matchesPlanned`
+// e um send SEM resposta pública configurada fecharia 'sent_partial' à toa.
+Deno.test("executeSend (pr-6): public_reply_text undefined (RPC antiga) sem automação configurada -> fecha 'sent', não sent_partial", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ public_reply: null, public_replies: [] }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento (único update)
+
+  await executeSend(
+    baseSendCtx(db),
+    baseClaimedSend({ dm_status: "sent", public_reply_text: undefined as never }),
+  );
+
+  const updates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(updates.length, 1);
+  assertEquals(updates[0].payload, { status: "sent" });
+});
+
 Deno.test("executeSend: 'já existe private reply' (already_replied) -> auto-correção, mark_automation_dm_sent chamado", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", {

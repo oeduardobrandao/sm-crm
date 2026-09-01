@@ -591,14 +591,21 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
   const pool = parsePublicReplies(automation.public_replies, automation.public_reply);
   let finalPublicReplyStatus = send.public_reply_status;
 
+  // Normaliza UMA vez: `send.public_reply_text` chega `undefined` (não
+  // `null`) na janela de deploy em que a RPC de claim ainda não devolve a
+  // coluna nova (schema antigo do cron) ou num rollback -- `!== null` sozinho
+  // deixaria passar `undefined` como "tem texto persistido" e degeneraria os
+  // guards abaixo. Os três pontos que consultam o snapshot usam `plannedText`.
+  const plannedText = send.public_reply_text ?? null;
+
   // Reconciliador: com texto persistido, casa só contra ele; send legado em
   // voo (criado antes desta versão) casa contra qualquer item do pool atual.
   const matchesPlanned = (t: string | undefined): boolean =>
-    send.public_reply_text !== null ? t === send.public_reply_text : t !== undefined && pool.includes(t);
+    plannedText !== null ? t === plannedText : t !== undefined && pool.includes(t);
 
   // "Havia resposta planejada" decide reconciliação e fechamento: texto
   // persistido, OU estado em voo/failed anterior, OU pool atual não-vazio.
-  const hadPlanned = send.public_reply_text !== null ||
+  const hadPlanned = plannedText !== null ||
     send.public_reply_status === "unknown" ||
     send.public_reply_status === "failed" ||
     pool.length > 0;
@@ -629,7 +636,11 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
       // Primeira tentativa (ou 'failed' confirmado sem post). Sorteia UMA vez
       // (ou reusa o snapshot de uma rodada 'failed' anterior) e persiste o
       // texto JUNTO com o estado em voo, antes de qualquer chamada externa.
-      const planned = send.public_reply_text ?? pickPublicReply(pool, random);
+      // `plannedText === null` num retry 'failed' é o caso transicional de um
+      // send legado (pré-migration, nunca chegou a persistir texto): nada foi
+      // postado ainda, então sortear de novo aqui é inofensivo -- é o mesmo
+      // sorteio que uma primeira tentativa faria.
+      const planned = plannedText ?? pickPublicReply(pool, random);
       if (planned !== null) {
         const { error: markErr } = await ctx.svc
           .from("instagram_automation_sends")
