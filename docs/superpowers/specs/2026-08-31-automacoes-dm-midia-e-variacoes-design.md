@@ -215,9 +215,16 @@ Prefixo reservado ACIMA do da fatia 1; re-verificar tail no `gh pr create`.
     rota é idempotente). Nunca hard-delete imediato; falha na rota deixa
     órfão recuperável, nunca automação apontando para objeto inexistente.
 - O jsonb `dm_media` é metadado de apresentação; os pontos de enforcement
-  são o finalize (conteúdo real) e o CHECK de posse (tenant). O
-  `executeSend` re-verifica o prefixo `automation-media/{conta_id}/` antes
-  de pré-assinar (defesa em profundidade espelhando o CHECK).
+  são o finalize (conteúdo real), o CHECK de posse (tenant), um trigger
+  BEFORE na própria automação (a key precisa ter registro finalizado da
+  mesma workspace, e content_type/size_bytes são normalizados do registro:
+  escrita direta via PostgREST não referencia objeto não-finalizado nem
+  fabrica metadata) e um índice único parcial na key (posse única: duas
+  automações nunca compartilham objeto, o que torna o delete seguro sem
+  contagem de referências; a rota /delete ainda recusa com 409 uma key
+  referenciada). O `executeSend` re-verifica o prefixo
+  `automation-media/{conta_id}/` antes de pré-assinar (defesa em
+  profundidade espelhando o CHECK).
 - Órfãos por abandono de formulário (upload sem finalize, ou finalize sem
   gravação) são possíveis e ACEITOS como residual (baratos; anotar; um reap
   por prefixo pode entrar no cleanup-cron depois). Órfãos não finalizados
