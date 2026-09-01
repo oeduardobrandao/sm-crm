@@ -16,7 +16,7 @@
 
 - Worktree: rode TUDO no worktree desta fatia; confirme com `pwd` e `git branch --show-current` antes do primeiro comando e em todo commit. NUNCA use paths do repo principal.
 - Sem travessão (em-dash) em NENHUMA copy voltada a usuário (i18n, toasts, labels). Use ponto, dois-pontos ou "·".
-- Migration: prefixo reservado `20260901000002` (acima do `20260901000001` da fatia 1). Antes do `gh pr create`, `git ls-tree origin/main:supabase/migrations | tail -5` e renumere acima do tail se colidir.
+- Migration: prefixo reservado `20260901000014` (origin/main já tem `20260901000010..12`; acima do `20260901000013` da fatia 1). Antes do `gh pr create`, `git ls-tree origin/main:supabase/migrations | tail -5` e renumere acima do tail novo se main tiver andado, preservando fatia 2 > fatia 1.
 - R2: NUNCA use `getR2().send(...)` para PUT/GET/DELETE em handler que grava estado; use as funções de `_shared/r2.ts` (presign + fetch puro + AbortSignal.timeout, o SDK trava no edge runtime).
 - Function nova: split `index.ts` (thin, `Deno.serve`) + `handler.ts` (factory com deps injetadas) -- é requisito de testabilidade do harness deste repo.
 - `npm run test:functions` suja o `deno.lock` da raiz; `git checkout -- deno.lock` antes de commitar.
@@ -556,6 +556,7 @@ Deno.test("presign: mime fora da allowlist -> 415; acima de 8MB -> 400; sem auth
 Deno.test("finalize: copia tmp -> final, HEAD confere a FINAL, finaliza com quota e devolve dm_media com a key final", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
+  db.queue("automation_media_objects", "select", { data: null, error: null });
   db.queueRpc("automation_media_finalize", { data: true, error: null });
   const copies: Array<{ from: string; to: string }> = [];
   const trashed: string[] = [];
@@ -588,6 +589,24 @@ Deno.test("finalize: copia tmp -> final, HEAD confere a FINAL, finaliza com quot
     p_bytes: 5000,
     p_content_type: "image/jpeg",
   });
+});
+
+Deno.test("finalize: retry com resposta perdida devolve o canônico do registro sem recopiar", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("automation_media_objects", "select", {
+    data: { key: "automation-media/conta-1/fixed-uuid.jpg", content_type: "image/jpeg", size_bytes: 5000 },
+    error: null,
+  });
+  const copies: Array<{ from: string; to: string }> = [];
+  const res = await makeHandler(db, { copies })(req("finalize", {
+    key: "automation-media-tmp/conta-1/fixed-uuid.jpg",
+    mime_type: "image/jpeg",
+    size_bytes: 5000,
+  }));
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).dm_media.key, "automation-media/conta-1/fixed-uuid.jpg");
+  assertEquals(copies, []);
 });
 
 Deno.test("finalize: key tmp de outro tenant -> 400; size divergente do HEAD -> 400; quota -> 413 e trasheia a final", async () => {
@@ -825,10 +844,33 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
       if (!Number.isFinite(size) || size <= 0 || size > MAX_MEDIA_BYTES) {
         return json({ error: "invalid size" }, 400);
       }
+      const key = `${tenantPrefix}${tmpKey.slice(tmpPrefix.length)}`;
+      // Retry idempotente: se a resposta do finalize anterior se perdeu, a key
+      // final JÁ tem registro -- devolve o canônico sem recopiar (recopiar a
+      // tmp, que pode ter sido sobrescrita pela URL de PUT ainda válida,
+      // corromperia a final já verificada).
+      const { data: existing } = await svc
+        .from("automation_media_objects")
+        .select("key, content_type, size_bytes")
+        .eq("key", key)
+        .eq("conta_id", contaId)
+        .maybeSingle();
+      if (existing) {
+        const w = Number.isFinite(Number(body.width)) && Number(body.width) > 0 ? Number(body.width) : undefined;
+        const h = Number.isFinite(Number(body.height)) && Number(body.height) > 0 ? Number(body.height) : undefined;
+        return json({
+          dm_media: {
+            key: existing.key,
+            content_type: existing.content_type,
+            size_bytes: existing.size_bytes,
+            ...(w ? { width: w } : {}),
+            ...(h ? { height: h } : {}),
+          },
+        });
+      }
       // Copia para a key final imutável ANTES de qualquer verificação/registro:
       // a final nunca teve PUT pré-assinado, então o que o HEAD confere abaixo
       // é exatamente o que os envios servirão.
-      const key = `${tenantPrefix}${tmpKey.slice(tmpPrefix.length)}`;
       try {
         await deps.copyObject(tmpKey, key);
       } catch (e) {

@@ -14,7 +14,7 @@
 
 - Worktree: rode TUDO no worktree desta fatia; confirme com `pwd` e `git branch --show-current` antes do primeiro comando e em todo commit. NUNCA use paths do repo principal.
 - Sem travessão (em-dash) em NENHUMA copy voltada a usuário (i18n, toasts, labels). Use ponto, dois-pontos ou "·".
-- Migration: prefixo de versão reservado `20260901000001`. Antes do `gh pr create`, rode `git ls-tree origin/main:supabase/migrations | tail -5` e renumere ACIMA do tail se houver colisão (o guard do CI só compara dentro do PR).
+- Migration: prefixo de versão reservado `20260901000013` (origin/main já tem `20260901000010..12`; a fatia 2 reserva `20260901000014`, sempre acima desta). Antes do `gh pr create`, rode `git ls-tree origin/main:supabase/migrations | tail -5` e, se main tiver andado, renumere AMBAS as reservas acima do tail novo preservando a ordem fatia 1 < fatia 2 (o guard do CI só compara dentro do PR).
 - `npm run test:functions` suja o `deno.lock` da raiz; depois de rodá-lo, `git checkout -- deno.lock` antes de commitar (a menos que você tenha adicionado dependência Deno de propósito, o que este plano não faz).
 - Se algum comando `deno` rodar, verifique `ls node_modules/.deno` depois; se existir, rode `npm ci` antes de confiar em qualquer checagem npm local.
 - Verificação completa antes do PR (é o que o CI roda): `npx tsc -p apps/crm/tsconfig.json --noEmit`, `npx tsc -p apps/hub/tsconfig.json --noEmit`, `npx tsc -p apps/admin/tsconfig.json --noEmit`, `npx tsc -p tsconfig.scripts.json`, `npm run test`, `npm run test:functions`, `npm run lint`, `npm run format:check` (use `npm run format` para auto-fix).
@@ -925,7 +925,7 @@ npm run format:check
 
 - [ ] **Step 2: Re-verificar versão da migration**
 
-Run: `git ls-tree origin/main:supabase/migrations | tail -5` (após `git fetch origin main`). Se existir prefixo >= `20260901000001` em main, renumere a migration ACIMA do tail (e mantenha-a ABAIXO de `20260901000002`, reservado para a fatia 2; se precisar subir além, use `2026090100000X` baixo e avise no PR).
+Run: `git ls-tree origin/main:supabase/migrations | tail -5` (após `git fetch origin main`). A migration desta fatia deve estar em `20260901000013`; se main tiver ganhado prefixo >= a esse, renumere ACIMA do tail novo (a fatia 2 renumera a dela para ficar acima desta; anote no PR).
 
 - [ ] **Step 3: Commit final e PR**
 
