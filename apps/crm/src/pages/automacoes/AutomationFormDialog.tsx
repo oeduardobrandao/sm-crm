@@ -75,6 +75,17 @@ const MAX_PUBLIC_REPLIES = 5;
  * Com mídia, dm_message É o título -- ver ica_dm_message_len_with_media. */
 const MAX_CARD_TITLE = 80;
 
+/** Revoga a preview local (uma `blob:` que NÓS criamos com createObjectURL)
+ * e limpa a ref -- idempotente, seguro chamar de novo com a ref já nula.
+ * NUNCA recebe a URL assinada de leitura (https://) de uma mídia persistida:
+ * essa nunca passa por este ref, então nunca é revogada por engano. */
+function revokeLocalPreview(ref: { current: string | null }) {
+  if (ref.current) {
+    URL.revokeObjectURL(ref.current);
+    ref.current = null;
+  }
+}
+
 // Stable identity for the "no data yet" fallback -- `?? new Map()` would
 // otherwise mint a fresh Map every render, defeating the useMemo below that
 // depends on it (react-hooks/exhaustive-deps caught this).
@@ -410,6 +421,10 @@ export default function AutomationFormDialog({
    * until the row itself stops pointing at it (see the media lifecycle note
    * above `submit`). */
   const [sessionUploadedKeys, setSessionUploadedKeys] = useState<string[]>([]);
+  /** The blob: URL (if any) that `handleMediaChange` created for the local
+   * preview -- the only kind of URL this ref ever holds, so revoking it is
+   * always safe (never the https:// signed URL of a persisted media). */
+  const localPreviewUrlRef = useRef<string | null>(null);
   /** One-shot: the production page is derived from the seeded target exactly
    * once per dialog opening, and never again -- a refetch must not yank the user
    * off the page they just paged to. */
@@ -480,6 +495,16 @@ export default function AutomationFormDialog({
       cancelled = true;
     };
   }, [open, editing]);
+
+  // Revoga a preview local ao fechar o dialog (open true -> false) ou ao
+  // desmontar -- cobre TODO caminho de fechamento (Cancelar, X, Esc, clique
+  // fora, ou um save bem-sucedido que chama onSaved()), não só o handler do
+  // botão Cancelar. Cleanup roda ANTES do próximo efeito, então por uma
+  // reabertura a ref já está nula.
+  useEffect(() => {
+    if (!open) return;
+    return () => revokeLocalPreview(localPreviewUrlRef);
+  }, [open]);
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
   const clientIds = useMemo(
@@ -552,7 +577,15 @@ export default function AutomationFormDialog({
       toast.error(t(errorKey));
       return;
     }
+    // Substitui qualquer preview local anterior (não deveria sobrar uma --
+    // a seção de upload só aparece sem dmMedia -- mas revogar aqui também
+    // cobre a troca de forma defensiva, sem nunca deixar a URL ainda em tela
+    // ser revogada: o replace só acontece ANTES do novo createObjectURL, e o
+    // setForm que troca o src pro novo blob roda na mesma tick, antes de
+    // qualquer paint com a URL revogada.
+    revokeLocalPreview(localPreviewUrlRef);
     const previewUrl = URL.createObjectURL(file);
+    localPreviewUrlRef.current = previewUrl;
     setForm((f) => ({ ...f, dmMediaUploading: true, dmMediaPreviewUrl: previewUrl }));
     try {
       const media = await uploadAutomationMedia(file);
@@ -560,6 +593,7 @@ export default function AutomationFormDialog({
       setForm((f) => ({ ...f, dmMedia: media, dmMediaUploading: false }));
     } catch {
       toast.error(t('form.mediaUploadError'));
+      revokeLocalPreview(localPreviewUrlRef);
       setForm((f) => ({ ...f, dmMediaUploading: false, dmMediaPreviewUrl: '' }));
     }
   };
@@ -571,6 +605,10 @@ export default function AutomationFormDialog({
    * então trashear fire-and-forget é seguro. */
   const handleRemoveMedia = () => {
     const media = form.dmMedia;
+    // A preview local (se houver -- uma persistida usa a URL assinada, que
+    // nunca passa por este ref) não serve mais pra nada assim que o campo
+    // some da tela.
+    revokeLocalPreview(localPreviewUrlRef);
     setForm((f) => ({ ...f, dmMedia: null, dmMediaPreviewUrl: '', dmSubtitle: '' }));
     if (media && sessionUploadedKeys.includes(media.key)) {
       deleteAutomationMedia(media).catch(() => {});
@@ -579,8 +617,10 @@ export default function AutomationFormDialog({
   };
 
   /** Fecha o dialog (Cancelar, X, Esc, clique fora) sem salvar. Mesma exceção
-   * segura do remove: só trashea fire-and-forget uma mídia desta sessão que
-   * ainda está anexada e nunca foi salva. */
+   * segura do remove pro objeto no R2: só trashea fire-and-forget uma mídia
+   * desta sessão que ainda está anexada e nunca foi salva. A preview local
+   * (blob:) some de qualquer forma -- o efeito `[open]` acima já revoga
+   * quando `open` vira false, então não duplicamos aqui. */
   const closeDialog = () => {
     if (form.dmMedia && sessionUploadedKeys.includes(form.dmMedia.key)) {
       deleteAutomationMedia(form.dmMedia).catch(() => {});

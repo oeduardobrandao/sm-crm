@@ -362,8 +362,9 @@ describe('AutomationFormDialog', () => {
     });
     mockDeleteMedia.mockResolvedValue(undefined);
     mockSignMediaView.mockResolvedValue('https://signed.example/x.jpg');
-    // jsdom doesn't implement it -- same stub used by postMedia.test.ts et al.
+    // jsdom doesn't implement either -- same stub used by postMedia.test.ts et al.
     URL.createObjectURL = vi.fn(() => 'blob:mock-preview');
+    URL.revokeObjectURL = vi.fn();
   });
 
   /** Anexa um arquivo de imagem fake ao input de mídia e espera o upload
@@ -1024,7 +1025,7 @@ describe('AutomationFormDialog', () => {
   // ── Tour guiado ──────────────────────────────────────────────────────────
 
   describe('tour', () => {
-    it('expõe as âncoras data-tour dos 7 campos', async () => {
+    it('expõe as âncoras data-tour dos 8 campos', async () => {
       renderDialog();
       await screen.findByLabelText('form.nameLabel');
       for (const anchor of [
@@ -1033,6 +1034,7 @@ describe('AutomationFormDialog', () => {
         'campo-alvo',
         'campo-palavras',
         'campo-dm',
+        'campo-midia',
         'campo-botoes',
         'campo-resposta',
       ]) {

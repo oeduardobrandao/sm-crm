@@ -11,6 +11,7 @@ const {
   mockGetSends,
   mockUpdate,
   mockDelete,
+  mockDeleteMedia,
   hasFeatureMock,
   mockUseAuth,
   mockHasReadyAccount,
@@ -21,6 +22,7 @@ const {
   mockGetSends: vi.fn(),
   mockUpdate: vi.fn().mockResolvedValue(undefined),
   mockDelete: vi.fn().mockResolvedValue(undefined),
+  mockDeleteMedia: vi.fn().mockResolvedValue(undefined),
   hasFeatureMock: vi.fn(() => true),
   mockUseAuth: vi.fn(),
   mockHasReadyAccount: vi.fn(),
@@ -53,6 +55,10 @@ vi.mock('../../../store', async () => {
 });
 
 vi.mock('../../../context/AuthContext', () => ({ useAuth: mockUseAuth }));
+
+vi.mock('../../../services/automationMedia', () => ({
+  deleteAutomationMedia: mockDeleteMedia,
+}));
 
 vi.mock('../../../hooks/useEntitlements', () => ({
   useEntitlements: () => entitlementsMock(),
@@ -248,6 +254,7 @@ describe('AutomacoesPage', () => {
     mockGetSends.mockResolvedValue(SENDS);
     mockUpdate.mockResolvedValue(undefined);
     mockDelete.mockResolvedValue(undefined);
+    mockDeleteMedia.mockResolvedValue(undefined);
     entitlementsMock.mockReturnValue({ isLoading: false, hasFeature: () => true });
     mockHasReadyAccount.mockResolvedValue(false);
     setAuth();
@@ -348,6 +355,87 @@ describe('AutomacoesPage', () => {
     fireEvent.click(within(row).getByRole('switch'));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('reactivateNeedsTarget'));
+  });
+
+  describe('cartão de mídia na DM', () => {
+    const MEDIA = {
+      key: 'automation-media/w-1/img.jpg',
+      content_type: 'image/jpeg',
+      size_bytes: 12345,
+    };
+
+    it('mostra o chip de cartão (table.cardBadge) para uma automação com dm_media', async () => {
+      mockGetAutomations.mockResolvedValue([{ ...AUTOMATIONS[0], dm_media: MEDIA }]);
+      renderPage();
+
+      const row = (await screen.findByText('Promo de agosto')).closest('tr')!;
+      expect(within(row).getByText('table.cardBadge')).toBeInTheDocument();
+    });
+
+    it('não mostra o chip de cartão para uma automação sem dm_media', async () => {
+      renderPage();
+
+      const row = (await screen.findByText('Promo de agosto')).closest('tr')!;
+      expect(within(row).queryByText('table.cardBadge')).not.toBeInTheDocument();
+    });
+
+    it('mostra os badges de fallback do cartão (card_fallback_buttons e card_fallback_text) no log de envios', async () => {
+      mockGetSends.mockResolvedValue([
+        { ...SENDS[0], id: 'send-2', dm_kind: 'card_fallback_buttons' as const },
+        { ...SENDS[0], id: 'send-3', dm_kind: 'card_fallback_text' as const },
+      ]);
+      renderPage();
+
+      const row = (await screen.findByText('Promo de agosto')).closest('tr')!;
+      fireEvent.click(row);
+
+      expect(await screen.findByText('sendStatus.card_fallback_buttons')).toBeInTheDocument();
+      expect(screen.getByText('sendStatus.card_fallback_text')).toBeInTheDocument();
+    });
+
+    /** Abre o menu de ações da linha (mesmo caminho onKeyDown/Enter usado no
+     * teste do tour, já que jsdom não modela PointerEvent), clica em
+     * "Excluir" e devolve o botão de confirmação do AlertDialog -- que nesse
+     * ponto é o ÚNICO elemento com o texto "delete" na tela, porque o Radix
+     * fecha o dropdown ao selecionar o item. */
+    async function openDeleteConfirm() {
+      fireEvent.keyDown(screen.getByRole('button', { name: /rowActions/ }), { key: 'Enter' });
+      fireEvent.click(await screen.findByText('delete'));
+      return screen.findByRole('button', { name: 'delete' });
+    }
+
+    it('exclusão com dm_media: deleteAutomationMedia só dispara DEPOIS que deleteInstagramAutomation resolve', async () => {
+      mockGetAutomations.mockResolvedValue([{ ...AUTOMATIONS[0], dm_media: MEDIA }]);
+      let resolveDelete: (() => void) | undefined;
+      mockDelete.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveDelete = resolve;
+          }),
+      );
+      renderPage();
+      await screen.findByText('Promo de agosto');
+
+      fireEvent.click(await openDeleteConfirm());
+
+      await waitFor(() => expect(mockDelete).toHaveBeenCalledTimes(1));
+      // O delete ainda está pendente -- a mídia não pode ter sido liberada
+      // enquanto a linha ainda pode não ter sumido do banco.
+      expect(mockDeleteMedia).not.toHaveBeenCalled();
+
+      resolveDelete?.();
+      await waitFor(() => expect(mockDeleteMedia).toHaveBeenCalledWith(MEDIA));
+    });
+
+    it('exclusão sem dm_media nunca chama deleteAutomationMedia', async () => {
+      renderPage(); // AUTOMATIONS[0] não tem dm_media
+      await screen.findByText('Promo de agosto');
+
+      fireEvent.click(await openDeleteConfirm());
+
+      await waitFor(() => expect(mockDelete).toHaveBeenCalledTimes(1));
+      expect(mockDeleteMedia).not.toHaveBeenCalled();
+    });
   });
 
   describe('gate de página (flag off)', () => {
