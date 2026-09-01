@@ -173,6 +173,11 @@ color:#374151;
   animation:hd-enter .8s cubic-bezier(.22,1,.36,1) both;
 }
 .hd-macbook img{display:block;width:100%;height:auto}
+/* theme-matched screenshot variants: exactly one of the pair renders.
+   .hd-stage prefix outranks `.hd-macbook img` (display:block) above. */
+.hd-stage .hd-dark{display:none}
+[data-theme='dark'] .hd-stage .hd-light{display:none}
+[data-theme='dark'] .hd-stage .hd-dark{display:block}
 .hd-iphone{
   position:absolute;right:-1%;bottom:0;width:clamp(148px,15vw,178px);z-index:3;
   filter:drop-shadow(0 26px 46px rgba(0,0,0,.30));

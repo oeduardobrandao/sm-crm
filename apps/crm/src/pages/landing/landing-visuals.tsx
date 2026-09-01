@@ -173,6 +173,7 @@ export function HeroDevices() {
       <div className="hd-macbook">
         <span className="hd-tag hd-tag-agency">Sua agência</span>
         <img
+          className="hd-light"
           src="/landing/hero-macbook.webp"
           width={1800}
           height={1087}
@@ -181,16 +182,35 @@ export function HeroDevices() {
           fetchPriority="high"
           decoding="async"
         />
+        <img
+          className="hd-dark"
+          src="/landing/hero-macbook-dark.webp"
+          width={1800}
+          height={1087}
+          alt="MacBook com o quadro de entregas do Mesaas: fluxos por etapa, do briefing à aprovação do cliente"
+          loading="lazy"
+          decoding="async"
+        />
       </div>
 
       <div className="hd-iphone">
         <span className="hd-tag hd-tag-client">Seu cliente</span>
         <img
+          className="hd-light"
           src="/landing/hero-iphone.webp"
           width={560}
           height={1160}
           alt="iPhone com o Hub do cliente: aprovações pendentes e próximo post"
           loading="eager"
+          decoding="async"
+        />
+        <img
+          className="hd-dark"
+          src="/landing/hero-iphone-dark.webp"
+          width={560}
+          height={1160}
+          alt="iPhone com o Hub do cliente: aprovações pendentes e próximo post"
+          loading="lazy"
           decoding="async"
         />
       </div>

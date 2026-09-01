@@ -144,6 +144,20 @@ test('macbook: crm entregas (dressed)', async ({ page }) => {
   await page.waitForTimeout(600);
   await shoot(page, SLUG, 1, 'crm-dashboard');
 
+  // Dark variant: the CRM theme is pure CSS keyed off data-theme, so flipping
+  // the attribute is enough; re-tint the inline-styled due pills for dark.
+  await page.evaluate(() => {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    document.querySelectorAll<HTMLElement>('body *').forEach((el) => {
+      if (el.children.length === 0 && /^entrega /.test(el.textContent?.trim() ?? '')) {
+        el.style.background = 'rgba(255,255,255,.08)';
+        el.style.color = '#9ca3af';
+      }
+    });
+  });
+  await page.waitForTimeout(600);
+  await shoot(page, SLUG, 3, 'crm-dashboard-dark');
+
   assertNoViolations(violations);
 });
 
@@ -173,68 +187,88 @@ test('iphone: client hub (Dr. Rafael Nunes)', async ({ page, browser }) => {
   const hubPage = await context.newPage();
   const hubViolations = await installSafetyNet(hubPage);
 
-  await hubPage.goto(hubPath);
-  await hubPage.locator('main.hub-noise').waitFor({ timeout: 20_000 });
-  await hubPage.waitForLoadState('networkidle');
-  await hubPage.waitForTimeout(2500);
+  const loadHub = async () => {
+    await hubPage.goto(hubPath);
+    await hubPage.locator('main.hub-noise').waitFor({ timeout: 20_000 });
+    await hubPage.waitForLoadState('networkidle');
+    await hubPage.waitForTimeout(2500);
+    await dressHub();
+    await hubPage.waitForTimeout(600);
+  };
 
   // Marketing dressing: same text-only DOM rewrites as the CRM shot.
-  await hubPage.evaluate((camila) => {
-    // Simulated iOS safe area so the bezel's Dynamic Island doesn't cover the
-    // Hub header in the composited shot.
-    const st = document.createElement('style');
-    st.textContent = 'body{padding-top:58px} header{top:58px!important}';
-    document.head.appendChild(st);
-    const leaves = Array.from(document.querySelectorAll<HTMLElement>('main *, header *')).filter(
-      (el) => el.children.length === 0,
-    );
-    const setKpi = (labelText: string, value: string, sub?: string) => {
-      const label = leaves.find((el) => el.textContent?.trim() === labelText);
-      if (!label) return;
-      // Climb until we reach the container that also holds the value leaf.
-      let card: HTMLElement | null = label.parentElement;
-      let valueEl: HTMLElement | undefined;
-      while (card && !valueEl) {
-        const cardLeaves = Array.from(card.querySelectorAll<HTMLElement>('*')).filter(
-          (el) => el.children.length === 0,
-        );
-        valueEl = cardLeaves.find((el) => /^(0|—|--|-)$/.test(el.textContent?.trim() ?? ''));
-        if (valueEl) {
-          valueEl.textContent = value;
-          if (sub) {
-            const subEl = cardLeaves.find((el) =>
-              ['Tudo em dia', 'Nada agendado'].includes(el.textContent?.trim() ?? ''),
-            );
-            if (subEl) subEl.textContent = sub;
+  const dressHub = async () =>
+    hubPage.evaluate((camila) => {
+      // Simulated iOS safe area so the bezel's Dynamic Island doesn't cover the
+      // Hub header in the composited shot.
+      const st = document.createElement('style');
+      st.textContent = 'body{padding-top:58px} header{top:58px!important}';
+      document.head.appendChild(st);
+      // Paint the safe-area strip with the hub's own background (dark or light)
+      const hubRoot = document.querySelector('.hub-root');
+      const rootBg = hubRoot ? getComputedStyle(hubRoot).backgroundColor : '';
+      if (rootBg && rootBg !== 'rgba(0, 0, 0, 0)') document.body.style.background = rootBg;
+      const leaves = Array.from(document.querySelectorAll<HTMLElement>('main *, header *')).filter(
+        (el) => el.children.length === 0,
+      );
+      const setKpi = (labelText: string, value: string, sub?: string) => {
+        const label = leaves.find((el) => el.textContent?.trim() === labelText);
+        if (!label) return;
+        // Climb until we reach the container that also holds the value leaf.
+        let card: HTMLElement | null = label.parentElement;
+        let valueEl: HTMLElement | undefined;
+        while (card && !valueEl) {
+          const cardLeaves = Array.from(card.querySelectorAll<HTMLElement>('*')).filter(
+            (el) => el.children.length === 0,
+          );
+          valueEl = cardLeaves.find((el) => /^(0|—|--|-)$/.test(el.textContent?.trim() ?? ''));
+          if (valueEl) {
+            valueEl.textContent = value;
+            if (sub) {
+              const subEl = cardLeaves.find((el) =>
+                ['Tudo em dia', 'Nada agendado'].includes(el.textContent?.trim() ?? ''),
+              );
+              if (subEl) subEl.textContent = sub;
+            }
+            return;
           }
-          return;
+          card = card.parentElement;
         }
-        card = card.parentElement;
-      }
-    };
-    // Anonymize: fictional agency brand + fictional client, no real photos.
-    document.querySelectorAll<HTMLElement>('body *').forEach((el) => {
-      if (el.children.length === 0 && el.textContent?.trim() === 'DK TESTE')
-        el.textContent = 'Aura Social';
-      if (el.children.length === 0 && el.textContent?.trim() === 'D') el.textContent = 'A';
-      if (el.children.length === 0 && el.textContent?.trim() === 'Dr.') el.textContent = 'Camila';
-      if (el.children.length === 0 && el.textContent?.trim() === 'Dr. Rafael Nunes')
-        el.textContent = 'Café da Manhã';
-    });
-    // Client avatar photo → Camila's generated portrait
-    document.querySelectorAll<HTMLImageElement>('main img').forEach((img) => {
-      if (img.clientWidth >= 60) {
-        img.src = camila;
-        img.style.objectFit = 'cover';
-      }
-    });
-    setKpi('Posts este mês', '14');
-    setKpi('Aprovações pendentes', '2', '2 aguardando seu OK');
-    setKpi('Taxa de aprovação', '96%');
-    setKpi('Próximo post', 'Qui · 18:00', 'Reels · Cardápio de inverno');
-  }, CAMILA_URI);
-  await hubPage.waitForTimeout(600);
+      };
+      // Anonymize: fictional agency brand + fictional client, no real photos.
+      document.querySelectorAll<HTMLElement>('body *').forEach((el) => {
+        if (el.children.length === 0 && el.textContent?.trim() === 'DK TESTE')
+          el.textContent = 'Aura Social';
+        if (el.children.length === 0 && el.textContent?.trim() === 'D') el.textContent = 'A';
+        if (el.children.length === 0 && el.textContent?.trim() === 'Dr.') el.textContent = 'Camila';
+        if (el.children.length === 0 && el.textContent?.trim() === 'Dr. Rafael Nunes')
+          el.textContent = 'Café da Manhã';
+      });
+      // Client avatar photo → Camila's generated portrait
+      document.querySelectorAll<HTMLImageElement>('main img').forEach((img) => {
+        if (img.clientWidth >= 60) {
+          img.src = camila;
+          img.style.objectFit = 'cover';
+        }
+      });
+      setKpi('Posts este mês', '14');
+      setKpi('Aprovações pendentes', '2', '2 aguardando seu OK');
+      setKpi('Taxa de aprovação', '96%');
+      setKpi('Próximo post', 'Qui · 18:00', 'Reels · Cardápio de inverno');
+    }, CAMILA_URI);
+
+  await loadHub();
   await shoot(hubPage, SLUG, 2, 'hub-rn-home');
+
+  // Dark variant: the Hub resolves its whitelabel tokens on mount from the
+  // stored theme, so seed localStorage and reload instead of just flipping
+  // the attribute.
+  await hubPage.evaluate(() => {
+    localStorage.setItem('hub-theme', 'dark');
+    localStorage.setItem('hub-theme-explicit', '1');
+  });
+  await loadHub();
+  await shoot(hubPage, SLUG, 4, 'hub-rn-home-dark');
 
   assertNoViolations(hubViolations);
   await context.close();
