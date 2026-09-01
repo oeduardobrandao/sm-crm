@@ -1002,6 +1002,7 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
 // supabase/functions/automation-media/index.ts
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { makeBoundedFetch } from "../_shared/bounded-fetch.ts";
 import { copyObjectSigned, headObjectSigned, signGetUrl, signPutUrl, trashObject } from "../_shared/r2.ts";
 import { createAutomationMediaHandler } from "./handler.ts";
 
@@ -1013,6 +1014,10 @@ Deno.serve(createAutomationMediaHandler({
   createDb: () =>
     createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
+      // Handler grava estado: TODA chamada Supabase (Auth/PostgREST/RPC) com
+      // teto de tempo, senão um stall deixa R2/quota meio-progredidos sem
+      // resposta tratada. Padrão do report-docs; helper promovido a _shared.
+      global: { fetch: makeBoundedFetch() },
     }),
   signPutUrl,
   signGetUrl,
