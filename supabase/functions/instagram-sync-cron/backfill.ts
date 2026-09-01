@@ -16,7 +16,7 @@
 // cada sync horário multiplicaria o custo Graph por 24x/dia à toa).
 import {
   type AccountMetric, type DailyValues,
-  fetchAccountTotals, fetchFollowerCountDeltas, fetchReachDaily,
+  fetchAccountTotalsDetailed, fetchFollowerCountDeltas, fetchReachDaily,
 } from "../_shared/instagram-account-metrics.ts";
 import { monthWindow, prevMonthOf } from "../_shared/report-docs/month-window.ts";
 import { closePreviousMonthIfMissing } from "./monthly-close.ts";
@@ -255,8 +255,9 @@ async function backfillOneAccount(
   const until = Date.parse(window.endExclusive) / 1000;
 
   let totals;
+  let failedMetrics: AccountMetric[];
   try {
-    totals = await fetchAccountTotals(fetchFn, accessToken, MONTHLY_METRICS, since, until);
+    ({ totals, failedMetrics } = await fetchAccountTotalsDetailed(fetchFn, accessToken, MONTHLY_METRICS, since, until));
   } catch (e) {
     if (isTokenExpired(e)) {
       await markExpired(db, account.id);
@@ -283,8 +284,25 @@ async function backfillOneAccount(
   ].some((v) => v !== null);
 
   if (!hasAny) {
-    // Mês inteiro sem dado: fim real da retenção da Graph para esta conta.
-    // Não insere linha de nulls, encerra o backfill aqui.
+    if (failedMetrics.length > 0) {
+      // Tudo null, mas ao menos uma métrica veio de uma FALHA (erro de
+      // chunk/rede), não de um mês honestamente vazio -- fetchAccountTotals
+      // sozinho não distingue os dois casos (ambos normalizam pra null por
+      // métrica), por isso o backfill usa a variante Detailed aqui. Marcar
+      // metrics_backfilled_at neste caso finalizaria a conta permanentemente
+      // por causa de uma falha transitória, perdendo todos os meses mais
+      // antigos. Não avança o cursor -- o próximo tick reprocessa este MESMO
+      // mês, e só finaliza de verdade quando ele vier honestamente vazio.
+      console.warn(
+        `[IG-SYNC-CRON] backfill: mês ${target.month} da conta ${account.id} veio ` +
+        `inteiramente null com falha em ${failedMetrics.join(",")} -- não finalizando ` +
+        `o backfill, tick seguinte reprocessa o mesmo mês.`,
+      );
+      return false;
+    }
+    // Mês inteiro sem dado e SEM falha (todas as métricas honestamente
+    // vazias): fim real da retenção da Graph para esta conta. Não insere
+    // linha de nulls, encerra o backfill aqui.
     await markBackfilled(db, account.id);
     return true;
   }

@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert";
 import {
-  fetchAccountTotals, fetchClosedDayValues, fetchReachDaily, UNIQUE_METRICS,
+  fetchAccountTotals, fetchAccountTotalsDetailed, fetchClosedDayValues, fetchReachDaily, UNIQUE_METRICS,
 } from "../_shared/instagram-account-metrics.ts";
 
 const DAY = 86400;
@@ -255,4 +255,61 @@ Deno.test("chunk falho no meio de uma janela grande derruba só aquela métrica,
   assertEquals(r.views, null);
   // saves não teve nenhum chunk com erro -> soma completa dos 3.
   assertEquals(r.saves, 27);
+});
+
+// --- fetchAccountTotalsDetailed (backfill fix round 2, achado 1) ----------
+//
+// fetchAccountTotals sozinho normaliza TANTO "Graph respondeu erro" QUANTO
+// "Graph respondeu certinho e não tinha nada" para o mesmo null por métrica
+// -- o backfill mensal precisa distinguir os dois (uma falha transitória não
+// pode finalizar o backfill como se fosse fim de retenção), daí a variante
+// Detailed abaixo.
+
+Deno.test("fetchAccountTotalsDetailed: métrica com erro de chunk entra em failedMetrics", async () => {
+  const f = fakeFetch(() => ({ error: { message: "rate limited" } }));
+  const { totals, failedMetrics } = await fetchAccountTotalsDetailed(f, "tok", ["saves"], T0, T0 + DAY);
+  assertEquals(totals.saves, null);
+  assertEquals(failedMetrics, ["saves"]);
+});
+
+Deno.test("fetchAccountTotalsDetailed: métrica sem dado (Graph respondeu OK, vazio) NÃO entra em failedMetrics", async () => {
+  const f = fakeFetch(() => ({ data: [] }));
+  const { totals, failedMetrics } = await fetchAccountTotalsDetailed(f, "tok", ["saves"], T0, T0 + DAY);
+  assertEquals(totals.saves, null);
+  assertEquals(failedMetrics, []);
+});
+
+Deno.test("fetchAccountTotalsDetailed: falha de rede (fetch rejeita, não-190) entra em failedMetrics", async () => {
+  const f = (() => Promise.reject(new TypeError("network down"))) as unknown as typeof fetch;
+  const { totals, failedMetrics } = await fetchAccountTotalsDetailed(f, "tok", ["views"], T0, T0 + DAY);
+  assertEquals(totals.views, null);
+  assertEquals(failedMetrics, ["views"]);
+});
+
+Deno.test("fetchAccountTotalsDetailed: mistura -- só as métricas que realmente falharam entram em failedMetrics", async () => {
+  const f = fakeFetch((url) => {
+    const metric = url.searchParams.get("metric");
+    if (metric === "saves") return { error: { message: "boom" } }; // falha
+    if (metric === "profile_views") return { data: [] }; // vazio, sem falha
+    return { data: [{ name: "views", total_value: { value: 42 } }] }; // valor real
+  });
+  const { totals, failedMetrics } = await fetchAccountTotalsDetailed(
+    f, "tok", ["views", "saves", "profile_views"], T0, T0 + DAY,
+  );
+  assertEquals(totals, { views: 42, saves: null, profile_views: null });
+  assertEquals(failedMetrics, ["saves"]);
+});
+
+Deno.test("fetchAccountTotalsDetailed: erro 190 ainda sobe como TOKEN_EXPIRED (não vira failedMetrics)", async () => {
+  const f = fakeFetch(() => ({ error: { code: 190, message: "expired" } }));
+  await assertRejects(() => fetchAccountTotalsDetailed(f, "tok", ["views"], T0, T0 + DAY));
+});
+
+Deno.test("fetchAccountTotalsDetailed: fetchAccountTotals continua devolvendo só os totais (contrato inalterado)", async () => {
+  const f = fakeFetch((url) =>
+    url.searchParams.get("metric") === "saves"
+      ? { error: { message: "boom" } }
+      : { data: [{ name: "views", total_value: { value: 7 } }] });
+  const plain = await fetchAccountTotals(f, "tok", ["views", "saves"], T0, T0 + DAY);
+  assertEquals(plain, { views: 7, saves: null });
 });

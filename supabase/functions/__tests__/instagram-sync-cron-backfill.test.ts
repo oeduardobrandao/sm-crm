@@ -307,13 +307,15 @@ Deno.test("runMaintenanceStep: tick subsequente (cursor já setado) não repete 
   assertEquals(state.followerHistory.length, 0);
 });
 
-Deno.test("runMaintenanceStep: mês inteiro sem dado marca metrics_backfilled_at e não insere linha", async () => {
+Deno.test("runMaintenanceStep: mês HONESTAMENTE vazio (Graph OK, sem dado, sem falha) marca metrics_backfilled_at e não insere linha", async () => {
   const state = emptyState([{
     id: "acc-1", authorization_status: "active", encrypted_access_token: "enc-1",
     follower_count: 1000, metrics_backfill_cursor: "2026-08-01", metrics_backfilled_at: null,
   }]);
+  // Graph responde 200 OK com `data: []` para tudo -- sem `.error`, é um mês
+  // genuinamente vazio (fim de retenção), não uma falha transitória.
   const f = (() => Promise.resolve({
-    json: () => Promise.resolve({ error: { code: 100, message: "metric not available" } }),
+    json: () => Promise.resolve({ data: [] }),
   })) as unknown as typeof fetch;
 
   const result = await runMaintenanceStep(makeDb(state), f, decryptToken, {
@@ -323,6 +325,46 @@ Deno.test("runMaintenanceStep: mês inteiro sem dado marca metrics_backfilled_at
   assertEquals(result.backfilled, 1);
   assertEquals(state.monthly.length, 0);
   assertEquals(typeof state.accounts[0].metrics_backfilled_at, "string");
+});
+
+Deno.test("runMaintenanceStep: mês all-null POR FALHA (não-190) não finaliza -- cursor intocado, retentado no próximo tick (fix round 2)", async () => {
+  const state = emptyState([{
+    id: "acc-1", authorization_status: "active", encrypted_access_token: "enc-1",
+    follower_count: 1000, metrics_backfill_cursor: "2026-08-01", metrics_backfilled_at: null,
+  }]);
+  // Toda métrica volta com um erro Graph não-190 (ex.: instabilidade
+  // temporária) -- indistinguível de "vazio" olhando só os totais, mas
+  // fetchAccountTotalsDetailed sabe que houve falha. ANTES do fix round 2,
+  // isso marcava metrics_backfilled_at e perdia todos os meses mais antigos
+  // permanentemente por causa de um blip transitório.
+  let calls = 0;
+  const f = (() => {
+    calls++;
+    return Promise.resolve({
+      json: () => Promise.resolve({ error: { code: 100, message: "metric not available" } }),
+    });
+  }) as unknown as typeof fetch;
+
+  const result = await runMaintenanceStep(makeDb(state), f, decryptToken, {
+    batchLimit: 3, nowSec: NOW,
+  });
+
+  assertEquals(result.backfilled, 0); // não progrediu -- nem finalizou, nem avançou
+  assertEquals(state.monthly.length, 0);
+  assertEquals(state.accounts[0].metrics_backfilled_at, null); // NÃO finalizado
+  assertEquals(state.accounts[0].metrics_backfill_cursor, "2026-08-01"); // intocado
+
+  // Próximo tick reprocessa o MESMO mês (2026-07-01, já que o cursor não
+  // avançou) -- desta vez a Graph responde normalmente.
+  const f2 = graphOkFetch(SIMPLE_VALUES);
+  const result2 = await runMaintenanceStep(makeDb(state), f2, decryptToken, {
+    batchLimit: 3, nowSec: NOW,
+  });
+  assertEquals(result2.backfilled, 1);
+  assertEquals(state.monthly.length, 1);
+  assertEquals(state.monthly[0].month, "2026-07-01"); // o mesmo mês que falhou antes
+  assertEquals(state.accounts[0].metrics_backfill_cursor, "2026-07-01");
+  assertEquals(calls > 0, true); // confirma que a primeira tentativa realmente chamou a Graph
 });
 
 Deno.test("runMaintenanceStep: cursor no cap de 12 meses marca metrics_backfilled_at sem fetch de backfill", async () => {

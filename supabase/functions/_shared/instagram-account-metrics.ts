@@ -200,13 +200,24 @@ function metricWindows(
   return chunkRange(since, until, VIEWS_CHUNK_DAYS);
 }
 
-async function fetchSimpleMetricTotal(
+// `failed: true` distinguishes "Graph told us this chunk errored" from
+// "Graph answered fine and there was genuinely nothing" -- both normalize to
+// a null `value` for the plain (non-Detailed) callers below, but callers that
+// need to tell a real outage apart from an honestly-empty result (the
+// backfill's finalization decision -- see fetchAccountTotalsDetailed) need
+// this bit preserved instead of collapsed.
+interface MetricOutcome<T> {
+  value: T | null;
+  failed: boolean;
+}
+
+async function fetchSimpleMetricTotalDetailed(
   fetchFn: typeof fetch,
   accessToken: string,
   metric: AccountMetric,
   since: number,
   until: number,
-): Promise<number | null> {
+): Promise<MetricOutcome<number>> {
   const windows = metricWindows(metric, since, until);
   const responses = await Promise.all(
     windows.map((w) => fetchInsight(fetchFn, accessToken, metric, w.since, w.until, '&metric_type=total_value')),
@@ -217,7 +228,7 @@ async function fetchSimpleMetricTotal(
     // A chunk-level Graph error (non-190) invalidates the WHOLE metric for
     // this call. Skipping just that chunk and summing the rest would silently
     // under-report a partial total as if it were complete.
-    if (data.error) return null;
+    if (data.error) return { value: null, failed: true };
     const entry = data.data?.find((d) => d.name === metric);
     const value = entry?.total_value?.value;
     if (typeof value === 'number') {
@@ -225,15 +236,15 @@ async function fetchSimpleMetricTotal(
       found = true;
     }
   }
-  return found ? sum : null;
+  return { value: found ? sum : null, failed: false };
 }
 
-async function fetchFollowsTotal(
+async function fetchFollowsTotalDetailed(
   fetchFn: typeof fetch,
   accessToken: string,
   since: number,
   until: number,
-): Promise<FollowsBreakdown | null> {
+): Promise<MetricOutcome<FollowsBreakdown>> {
   const windows = metricWindows('follows_and_unfollows', since, until);
   const responses = await Promise.all(
     windows.map((w) =>
@@ -251,9 +262,10 @@ async function fetchFollowsTotal(
   let unfollows = 0;
   let found = false;
   for (const data of responses) {
-    // Same policy as fetchSimpleMetricTotal: any chunk-level Graph error
-    // nulls the whole metric instead of silently summing a partial result.
-    if (data.error) return null;
+    // Same policy as fetchSimpleMetricTotalDetailed: any chunk-level Graph
+    // error nulls the whole metric instead of silently summing a partial
+    // result.
+    if (data.error) return { value: null, failed: true };
     const entry = data.data?.find((d) => d.name === 'follows_and_unfollows');
     const results = entry?.total_value?.breakdowns?.[0]?.results;
     if (!results) continue;
@@ -270,15 +282,37 @@ async function fetchFollowsTotal(
       }
     }
   }
-  return found ? { follows, unfollows, net: follows - unfollows } : null;
+  return { value: found ? { follows, unfollows, net: follows - unfollows } : null, failed: false };
+}
+
+async function fetchFollowsTotal(
+  fetchFn: typeof fetch,
+  accessToken: string,
+  since: number,
+  until: number,
+): Promise<FollowsBreakdown | null> {
+  const { value } = await fetchFollowsTotalDetailed(fetchFn, accessToken, since, until);
+  return value;
 }
 
 // Runs one metric's fetch in isolation: any failure that reaches here as a
 // thrown exception (network error, timeout, malformed JSON -- Graph-returned
-// `.error` bodies are already normalized to null inside fetch*Total) degrades
-// to null instead of rejecting the caller's Promise.all. TOKEN_EXPIRED is the
-// sole exception: it must still surface, so every caller of this call site
-// can react to an expired token instead of silently losing the whole batch.
+// `.error` bodies are already normalized inside fetch*TotalDetailed) degrades
+// to a failed outcome instead of rejecting the caller's Promise.all.
+// TOKEN_EXPIRED is the sole exception: it must still surface, so every caller
+// of this call site can react to an expired token instead of silently losing
+// the whole batch.
+async function isolateNonTokenFailureDetailed<T>(
+  fn: () => Promise<MetricOutcome<T>>,
+): Promise<MetricOutcome<T>> {
+  try {
+    return await fn();
+  } catch (e) {
+    if ((e as { code?: string } | null)?.code === 'TOKEN_EXPIRED') throw e;
+    return { value: null, failed: true };
+  }
+}
+
 async function isolateNonTokenFailure<T>(fn: () => Promise<T>): Promise<T | null> {
   try {
     return await fn();
@@ -288,10 +322,45 @@ async function isolateNonTokenFailure<T>(fn: () => Promise<T>): Promise<T | null
   }
 }
 
-// Fetches account totals for the requested metrics over [sinceSec, untilSec).
+// Fetches account totals for the requested metrics over [sinceSec, untilSec),
+// plus which of them came back null because of an actual failure (Graph
+// chunk-level error, thrown exception) rather than an honestly-empty result.
 // One Graph call per metric (possibly chunked internally); a non-token
 // failure on one metric nulls just that field, never the others. A Graph
 // code-190 error (expired token) rejects the whole call.
+//
+// This is the source of truth `fetchAccountTotals` below wraps -- callers
+// that only need the totals (the vast majority) keep using that; callers
+// that must tell "genuinely nothing there" apart from "we don't actually
+// know" (e.g. the backfill deciding whether a month is really the end of
+// retention) use this one instead.
+export async function fetchAccountTotalsDetailed(
+  fetchFn: typeof fetch,
+  accessToken: string,
+  metrics: AccountMetric[],
+  sinceSec: number,
+  untilSec: number,
+): Promise<{ totals: Partial<AccountTotals>; failedMetrics: AccountMetric[] }> {
+  const entries = await Promise.all(
+    metrics.map(async (metric) => {
+      const outcome = await isolateNonTokenFailureDetailed(
+        (): Promise<MetricOutcome<number | FollowsBreakdown>> =>
+          metric === 'follows_and_unfollows'
+            ? fetchFollowsTotalDetailed(fetchFn, accessToken, sinceSec, untilSec)
+            : fetchSimpleMetricTotalDetailed(fetchFn, accessToken, metric, sinceSec, untilSec),
+      );
+      return [metric, outcome] as const;
+    }),
+  );
+  const totals: Partial<AccountTotals> = {};
+  const failedMetrics: AccountMetric[] = [];
+  for (const [metric, outcome] of entries) {
+    (totals as Record<string, unknown>)[metric] = outcome.value;
+    if (outcome.failed) failedMetrics.push(metric);
+  }
+  return { totals, failedMetrics };
+}
+
 export async function fetchAccountTotals(
   fetchFn: typeof fetch,
   accessToken: string,
@@ -299,22 +368,8 @@ export async function fetchAccountTotals(
   sinceSec: number,
   untilSec: number,
 ): Promise<Partial<AccountTotals>> {
-  const entries = await Promise.all(
-    metrics.map(async (metric) => {
-      const value = await isolateNonTokenFailure(
-        (): Promise<number | FollowsBreakdown | null> =>
-          metric === 'follows_and_unfollows'
-            ? fetchFollowsTotal(fetchFn, accessToken, sinceSec, untilSec)
-            : fetchSimpleMetricTotal(fetchFn, accessToken, metric, sinceSec, untilSec),
-      );
-      return [metric, value] as const;
-    }),
-  );
-  const result: Partial<AccountTotals> = {};
-  for (const [metric, value] of entries) {
-    (result as Record<string, unknown>)[metric] = value;
-  }
-  return result;
+  const { totals } = await fetchAccountTotalsDetailed(fetchFn, accessToken, metrics, sinceSec, untilSec);
+  return totals;
 }
 
 const CLOSED_DAY_SIMPLE_METRICS: AccountMetric[] = [
