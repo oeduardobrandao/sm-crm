@@ -4,6 +4,7 @@ import { createInstagramSyncCronHandler } from "./handler.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import { runPool } from "./pool.ts";
 import { buildSnapshotRow } from "./snapshot.ts";
+import { ingestClosedDays } from "./daily-ingest.ts";
 import { buildMetricFields, fetchPostInsights } from "../_shared/instagram-metrics.ts";
 import { cachePostThumbnail } from "../_shared/instagram-thumbnail-cache.ts";
 import { fetchInternalWorkspaceIds } from "../_shared/internal-workspaces.ts";
@@ -126,17 +127,18 @@ async function syncAccount(
   const nowTimestamp = Math.floor(Date.now() / 1000);
   const sinceDate = nowTimestamp - (28 * 24 * 60 * 60);
 
-  const [reachRes, viewsRes, engagedRes, websiteClicksRes, igProfileRes, mediaRes] = await Promise.all([
+  const [reachRes, viewsRes, engagedRes, websiteClicksRes, profileViewsRes, igProfileRes, mediaRes] = await Promise.all([
     fetch(`https://graph.instagram.com/me/insights?metric=reach&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
     fetch(`https://graph.instagram.com/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
     fetch(`https://graph.instagram.com/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
     fetch(`https://graph.instagram.com/me/insights?metric=website_clicks&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
+    fetch(`https://graph.instagram.com/me/insights?metric=profile_views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
     fetch(`https://graph.instagram.com/me?fields=followers_count,follows_count,media_count,profile_picture_url&access_token=${accessToken}`),
     fetch(`https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`)
   ]);
 
-  const [reachData, viewsData, engagedData, websiteClicksData, igProfile, mediaData] = await Promise.all([
-    reachRes.json(), viewsRes.json(), engagedRes.json(), websiteClicksRes.json(), igProfileRes.json(), mediaRes.json()
+  const [reachData, viewsData, engagedData, websiteClicksData, profileViewsData, igProfile, mediaData] = await Promise.all([
+    reachRes.json(), viewsRes.json(), engagedRes.json(), websiteClicksRes.json(), profileViewsRes.json(), igProfileRes.json(), mediaRes.json()
   ]);
 
   // Check for expired token — mark in DB so UI shows correct status
@@ -145,8 +147,11 @@ async function syncAccount(
     return { success: false, error: 'TOKEN_EXPIRED' };
   }
 
-  // Parse insights
-  let totalReach = 0, totalImpressions = 0, totalViews = 0, totalWebsiteClicks = 0;
+  // Parse insights. Variables named for what the Graph metric actually IS
+  // (previously `accounts_engaged` was parsed into a variable called
+  // `totalViews` and written to profile_views_28d — a mislabeled value, not
+  // profile views at all; fixed here + real profile_views fetched above).
+  let totalReach = 0, totalViews = 0, totalEngaged = 0, totalWebsiteClicks = 0, totalProfileViews = 0;
   if (reachData.data) {
     for (const insight of reachData.data) {
       if (insight.name === 'reach') totalReach = insight.total_value?.value || 0;
@@ -154,17 +159,22 @@ async function syncAccount(
   }
   if (viewsData.data) {
     for (const insight of viewsData.data) {
-      if (insight.name === 'views') totalImpressions = insight.total_value?.value || 0;
+      if (insight.name === 'views') totalViews = insight.total_value?.value || 0;
     }
   }
   if (engagedData.data) {
     for (const insight of engagedData.data) {
-      if (insight.name === 'accounts_engaged') totalViews = insight.total_value?.value || 0;
+      if (insight.name === 'accounts_engaged') totalEngaged = insight.total_value?.value || 0;
     }
   }
   if (websiteClicksData.data) {
     for (const insight of websiteClicksData.data) {
       if (insight.name === 'website_clicks') totalWebsiteClicks = insight.total_value?.value || 0;
+    }
+  }
+  if (profileViewsData.data) {
+    for (const insight of profileViewsData.data) {
+      if (insight.name === 'profile_views') totalProfileViews = insight.total_value?.value || 0;
     }
   }
 
@@ -212,8 +222,9 @@ async function syncAccount(
       media_count: igProfile.media_count || account.media_count,
       ...(storedAvatarUrl ? { profile_picture_url: storedAvatarUrl } : igProfile.profile_picture_url ? { profile_picture_url: igProfile.profile_picture_url } : {}),
       reach_28d: totalReach,
-      impressions_28d: totalImpressions,
-      profile_views_28d: totalViews,
+      impressions_28d: totalViews,
+      accounts_engaged_28d: totalEngaged,
+      profile_views_28d: totalProfileViews,
       website_clicks_28d: totalWebsiteClicks,
       last_synced_at: new Date().toISOString()
     }).eq('id', account.id),
@@ -229,13 +240,23 @@ async function syncAccount(
       buildSnapshotRow(account.id, {
         followers_count: igProfile.followers_count || account.follower_count,
         reach_28d: totalReach,
-        impressions_28d: totalImpressions,
-        profile_views_28d: totalViews,
+        impressions_28d: totalViews,
+        accounts_engaged_28d: totalEngaged,
+        profile_views_28d: totalProfileViews,
         website_clicks_28d: totalWebsiteClicks,
       }),
       { onConflict: 'instagram_account_id,snapshot_date' }
     ),
   ]);
+
+  // Ingestão de dias fechados (D-1..D-3 UTC) nas colunas *_day. Falha aqui
+  // (rede, token — o estado do token já foi tratado acima) só loga: nunca
+  // derruba o resultado do sync desta conta.
+  try {
+    await ingestClosedDays(supabase, fetch, account.id, accessToken, Math.floor(Date.now() / 1000));
+  } catch (e) {
+    console.warn(`[IG-SYNC-CRON] ingestClosedDays failed for account ${account.id} (non-fatal):`, e);
+  }
 
   if (mediaData.data && mediaData.data.length > 0) {
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
