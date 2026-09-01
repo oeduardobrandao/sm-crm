@@ -30,6 +30,12 @@
 --    backfill expression from the legacy public_reply column, and
 --    claim_retryable_automation_sends returning the new public_reply_text
 --    column.
+-- 10-10b. dm_media/dm_subtitle (migration 20260901000002): CHECK de forma
+--    (validate_ig_dm_media), bind de tenant via conta_id na key, subtítulo
+--    só com mídia, e dm_message <= 80 com mídia (10). automation_media_finalize/
+--    automation_media_release: idempotência por key, incremento/decremento
+--    de storage_used_bytes, quota_exceeded sem deixar linha órfã, e piso 0
+--    no release (10b).
 
 -- 1-3. Feature gate (off -> on -> downgrade) + RLS (any workspace member
 --      writes, including agent)
@@ -744,5 +750,249 @@ begin
     'claim deve devolver public_reply_text';
 
   raise notice 'PASS 65 seção 9c: claim devolve public_reply_text';
+end $$;
+rollback;
+
+-- ---------------------------------------------------------------------------
+-- 10. dm_media/dm_subtitle: CHECK de forma via validate_ig_dm_media, bind de
+--     tenant (a key precisa carregar o conta_id da PRÓPRIA automação) e o
+--     teto de 80 chars em dm_message/dm_subtitle quando há mídia. Inserts
+--     VÁLIDOS rodam como authenticated, mesmo racional da seção 7 (a função
+--     de CHECK não leva REVOKE/GRANT).
+-- ---------------------------------------------------------------------------
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid;
+  v_owner uuid := gen_random_uuid();
+  v_cli bigint;
+  v_auto uuid;
+  v_media jsonb;
+  v_rejected boolean;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_instagram_automation": true}'::jsonb);
+
+  insert into auth.users (id) values (v_owner);
+  insert into workspace_members (user_id, workspace_id, role) values (v_owner, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws, role = 'owner'
+    where id = v_owner;
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_owner, v_ws, 'C', 'C', '#000') returning id into v_cli;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+
+  -- (a) Válido: dm_media completo (com width/height opcionais) + dm_message
+  --     de exatamente 80 chars + dm_subtitle, como authenticated.
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, dm_subtitle, dm_media)
+    values (v_ws, v_cli, 'Cartão', array['card'], repeat('a', 80), 'Confira as novidades!',
+      jsonb_build_object(
+        'key', 'automation-media/' || v_ws::text || '/img1.jpg',
+        'content_type', 'image/jpeg',
+        'size_bytes', 12345,
+        'width', 800,
+        'height', 600
+      ))
+    returning id, dm_media into v_auto, v_media;
+  assert v_media->>'content_type' = 'image/jpeg', 'insert válido com dm_media deve passar';
+
+  -- (b) key com prefixo de OUTRO conta_id -> check_violation (ica_dm_media_tenant)
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_media)
+      values (v_ws, v_cli, 'Outro tenant', array['x'], 'msg',
+        jsonb_build_object(
+          'key', 'automation-media/' || gen_random_uuid()::text || '/img.jpg',
+          'content_type', 'image/png',
+          'size_bytes', 100
+        ));
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'key com conta_id de outra workspace deve ser rejeitada';
+
+  -- (c) key fora de automation-media/ -> check_violation (validate_ig_dm_media)
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_media)
+      values (v_ws, v_cli, 'Prefixo errado', array['x'], 'msg',
+        jsonb_build_object(
+          'key', 'outro-prefixo/' || v_ws::text || '/img.jpg',
+          'content_type', 'image/png',
+          'size_bytes', 100
+        ));
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'key fora de automation-media/ deve ser rejeitada';
+
+  -- (d) size_bytes 8388609 (1 acima do teto de 8MB) -> check_violation
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_media)
+      values (v_ws, v_cli, 'Grande demais', array['x'], 'msg',
+        jsonb_build_object(
+          'key', 'automation-media/' || v_ws::text || '/img.jpg',
+          'content_type', 'image/jpeg',
+          'size_bytes', 8388609
+        ));
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'size_bytes acima de 8388608 deve ser rejeitado';
+
+  -- (e) content_type image/webp (fora da lista aceita) -> check_violation
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_media)
+      values (v_ws, v_cli, 'Webp', array['x'], 'msg',
+        jsonb_build_object(
+          'key', 'automation-media/' || v_ws::text || '/img.webp',
+          'content_type', 'image/webp',
+          'size_bytes', 100
+        ));
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'content_type image/webp deve ser rejeitado';
+
+  -- (f) chave extra no objeto -> check_violation (fora do allowlist de chaves)
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_media)
+      values (v_ws, v_cli, 'Chave extra', array['x'], 'msg',
+        jsonb_build_object(
+          'key', 'automation-media/' || v_ws::text || '/img.jpg',
+          'content_type', 'image/png',
+          'size_bytes', 100,
+          'foo', 'bar'
+        ));
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'chave extra no objeto de dm_media deve ser rejeitada';
+
+  -- (g) dm_subtitle sem dm_media -> check_violation (ica_dm_subtitle_with_media)
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_subtitle)
+      values (v_ws, v_cli, 'Sem mídia', array['x'], 'msg', 'Legenda solta');
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'dm_subtitle sem dm_media deve ser rejeitado';
+
+  -- (h) dm_message com 81 chars COM mídia -> check_violation (teto de 80 do título)
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_media)
+      values (v_ws, v_cli, 'Título longo', array['x'], repeat('a', 81),
+        jsonb_build_object(
+          'key', 'automation-media/' || v_ws::text || '/img.jpg',
+          'content_type', 'image/jpeg',
+          'size_bytes', 100
+        ));
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'dm_message de 81 chars com mídia deve ser rejeitado';
+
+  reset role;
+  raise notice 'PASS 65 seção 10: CHECKs de dm_media/dm_subtitle';
+end $$;
+rollback;
+
+-- 10b. automation_media_finalize/automation_media_release: idempotência por
+--      key, incremento/decremento atômico de workspaces.storage_used_bytes,
+--      quota_exceeded sem deixar linha órfã em automation_media_objects, e
+--      piso 0 no release (nunca deixa storage_used_bytes negativo). Roda
+--      como table owner (stand-in do service role, como as seções 4, 6 e 8 --
+--      as RPCs são REVOKE ALL FROM PUBLIC / GRANT ... TO service_role).
+begin;
+do $$
+declare
+  v_ws uuid;
+  v_key1 text;
+  v_key2 text;
+  v_key3 text;
+  v_ok boolean;
+  v_bytes bigint;
+  v_used bigint;
+  v_n int;
+  v_rejected boolean;
+begin
+  -- Workspace real (a FOR UPDATE de automation_media_finalize precisa achar
+  -- a linha em workspaces) com quota baixa e conhecida via resource_overrides,
+  -- no mesmo padrão de 63_storage_autoclean.sql.
+  v_ws := et_make_workspace('pro', '{"storage_quota_bytes": 1000}'::jsonb);
+  v_key1 := 'automation-media/' || v_ws::text || '/img1.jpg';
+  v_key2 := 'automation-media/' || v_ws::text || '/img2.jpg';
+  v_key3 := 'automation-media/' || v_ws::text || '/img3.jpg';
+
+  -- (i) primeira finalize: incrementa e devolve true
+  select automation_media_finalize(v_ws, v_key1, 600) into v_ok;
+  assert v_ok, 'primeira finalize deve devolver true';
+  select storage_used_bytes into v_used from workspaces where id = v_ws;
+  assert v_used = 600, format('storage_used_bytes deve ser 600, veio %s', v_used);
+
+  -- rechamada com a MESMA key: idempotente, não re-reserva nem incrementa
+  select automation_media_finalize(v_ws, v_key1, 600) into v_ok;
+  assert not v_ok, 'segunda finalize com a mesma key deve devolver false';
+  select storage_used_bytes into v_used from workspaces where id = v_ws;
+  assert v_used = 600, 'segunda finalize não pode incrementar de novo';
+
+  -- finalize de uma NOVA key que estouraria a quota (600 + 500 > 1000)
+  v_rejected := false;
+  begin
+    perform automation_media_finalize(v_ws, v_key2, 500);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm like 'quota_exceeded%', format('wrong msg: %s', sqlerrm);
+    v_rejected := true;
+  end;
+  assert v_rejected, 'finalize acima da quota do plano deve estourar quota_exceeded';
+  select storage_used_bytes into v_used from workspaces where id = v_ws;
+  assert v_used = 600, 'quota_exceeded não pode alterar storage_used_bytes';
+  select count(*) into v_n from automation_media_objects where key = v_key2;
+  assert v_n = 0, 'quota_exceeded não pode deixar linha órfã em automation_media_objects';
+
+  -- (j) release devolve os bytes do registro e decrementa
+  select automation_media_release(v_ws, v_key1) into v_bytes;
+  assert v_bytes = 600, format('release deve devolver 600, veio %s', v_bytes);
+  select storage_used_bytes into v_used from workspaces where id = v_ws;
+  assert v_used = 0, format('storage_used_bytes deve voltar a 0, veio %s', v_used);
+
+  -- rechamada com a MESMA key: no-op idempotente
+  select automation_media_release(v_ws, v_key1) into v_bytes;
+  assert v_bytes = 0, 'segunda release da mesma key deve devolver 0';
+  select storage_used_bytes into v_used from workspaces where id = v_ws;
+  assert v_used = 0, 'segunda release não pode decrementar de novo';
+
+  -- release de key nunca finalizada: no-op idempotente
+  select automation_media_release(v_ws, v_key3) into v_bytes;
+  assert v_bytes = 0, 'release de key nunca finalizada deve devolver 0';
+
+  -- piso 0: storage_used_bytes corrompido/menor que o registro nunca vai a
+  -- negativo (GREATEST(0, ...)).
+  select automation_media_finalize(v_ws, v_key3, 300) into v_ok;
+  assert v_ok, 'finalize de v_key3 deve devolver true';
+  update workspaces set storage_used_bytes = 100 where id = v_ws;
+  select automation_media_release(v_ws, v_key3) into v_bytes;
+  assert v_bytes = 300, format('release deve devolver o tamanho registrado (300), veio %s', v_bytes);
+  select storage_used_bytes into v_used from workspaces where id = v_ws;
+  assert v_used = 0, format('piso 0: storage_used_bytes não pode ir negativo, veio %s', v_used);
+
+  raise notice 'PASS 65 seção 10b: automation_media_finalize/release (idempotência, quota, piso 0)';
 end $$;
 rollback;
