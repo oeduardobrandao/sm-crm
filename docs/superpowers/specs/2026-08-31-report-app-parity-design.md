@@ -83,6 +83,34 @@ Testes obrigatórios do spike:
 
 Caso de teste permanente: Healing Hands, agosto/2026, prints do app em mãos.
 
+### 3.1 Resultado do spike (executado 2026-08-31/09-01; matriz completa no plano)
+
+Decisões seladas com o Eduardo no checkpoint:
+
+1. **Reach e accounts_engaged NÃO têm paridade possível**: a Graph soma o alcance
+   diário sem deduplicar entre dias mesmo em request único (21.176 vs 10.281 do
+   app). O card vira **"Alcance acumulado"** com tooltip honesto ("Soma do
+   alcance diário do mês. O app do Instagram mostra visitantes únicos, um número
+   menor."). A regra "únicos em um request" de §4.1 relaxa: janela ≤31d em
+   request único; acima disso, chunk-sum — tudo sob a mesma semântica
+   "acumulado". Views/saves/profile_views/website_clicks são aditivas com soma
+   exata (views bateu o app ao centavo: 46.129) — paridade real nessas.
+2. **Série diária (`values[]`) só existe para reach e follower_count.** O valor
+   por-dia das demais sai de 1 request `total_value` com janela de 1 dia. O
+   cron diário absorve isso (~19 requests/conta/tick); o **backfill de 90 dias
+   por-dia morre** e vira **backfill MENSAL**: preencher
+   `instagram_account_metrics_monthly` dos meses passados (1 request por
+   métrica por mês, tentando meses mais antigos até a API devolver vazio — a
+   retenção real provou ser maior que 90d), mais follower_history (~30d) e a
+   série diária de reach (existe de graça). Colunas `*_day` das demais métricas
+   acumulam só daqui pra frente.
+3. **`follows_and_unfollows` exige `breakdown=follow_type`** (sem breakdown o
+   total_value nem vem); mapear `FOLLOWER`→follows, `NON_FOLLOWER`→unfollows
+   (122/68 casou com os +115/−66 do app, janelas à parte — validar de novo no
+   gate de paridade).
+4. **`follower_count` diário devolve DELTAS (0-8), não totais**: o backfill do
+   history ancora no total atual e anda para trás subtraindo deltas.
+
 ## 4. Arquitetura
 
 ### 4.1 Módulo compartilhado `supabase/functions/_shared/instagram-account-metrics.ts`

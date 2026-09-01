@@ -42,6 +42,28 @@ depois desta tabela preenchida e do checkpoint com o Eduardo.**
 Latência de finalização de D-1 (para calibrar a janela D-1..D-3): **pendente: repetir probe g em D+1** (valor capturado em 2026-08-31 para D-1=31/08: `views total_value = 1496`; repetir a chamada no dia seguinte e comparar se o valor mudou)
 Reach 01–31/08 Healing Hands, caminho de produção (chunk30+chunk1): **21598** · request único 31d: **21176** · app: 10.281 — paridade NÃO bate (ambos os caminhos ~2,06-2,10x o valor do app)
 
+### Decisões do checkpoint (Eduardo, 2026-09-01) — VINCULAM as Fases 1+
+
+1. Card de alcance vira **"Alcance acumulado"** (label em `KPI_LABELS_PT`) com
+   tooltip: "Soma do alcance diário do mês. O app do Instagram mostra
+   visitantes únicos, um número menor." `accounts_engaged` herda a mesma
+   semântica acumulada. A regra de únicos do módulo relaxa: janela ≤31d em UM
+   request; acima, chunk-sum (mesma semântica acumulada) — nunca null por
+   tamanho de janela.
+2. **Backfill é MENSAL, não diário**: preenche `instagram_account_metrics_monthly`
+   dos meses passados (1 request `total_value` por métrica por mês; segue para
+   meses mais antigos até TODAS as métricas de um mês virem vazias, cap de 12
+   meses), + `instagram_follower_history` (deltas de ~30d ancorados no total
+   atual, andando para trás), + `reach_day` via série diária (existe de graça,
+   chunks de 30d, 90d). Colunas `*_day` das outras métricas só acumulam daqui
+   pra frente via cron.
+3. A série diária nativa vira `fetchReachDaily` (só reach tem `values[]`). O
+   valor por-dia das demais sai de `fetchClosedDayValues` (1 request
+   total_value de janela de 1 dia por métrica; follows via breakdown).
+   `follower_count` diário devolve DELTAS (`fetchFollowerCountDeltas`).
+4. Breakdown de follows: `follow_type`, mapeando `FOLLOWER`→follows,
+   `NON_FOLLOWER`→unfollows (validar no gate de paridade final).
+
 ---
 
 # FASE 0 — Spike de validação
@@ -299,31 +321,45 @@ export async function fetchAccountTotals(
   sinceSec: number, untilSec: number,
 ): Promise<Partial<AccountTotals>>;
 
-// date key = "YYYY-MM-DD" UTC. Só métricas COM série diária na matriz.
 export interface DailyValues {
   reach: number | null; views: number | null; saves: number | null;
   accounts_engaged: number | null; profile_views: number | null;
   website_clicks: number | null; follows: number | null; unfollows: number | null;
 }
-export async function fetchAccountDaily(
-  fetchFn: typeof fetch, accessToken: string, metrics: AccountMetric[],
-  sinceSec: number, untilSec: number,
-): Promise<Map<string, Partial<DailyValues>>>;
 
-export async function fetchFollowerCountDaily(
+// Valores de UM dia fechado (janela [dia 00:00Z, dia+1 00:00Z)): 1 request
+// total_value POR MÉTRICA (a matriz provou que série diária values[] só
+// existe para reach; follows entra via breakdown=follow_type). ~7 requests.
+export async function fetchClosedDayValues(
+  fetchFn: typeof fetch, accessToken: string, dayUtc: string, // "YYYY-MM-DD"
+): Promise<Partial<DailyValues>>;
+
+// Série diária NATIVA de reach (única métrica com values[] — matriz).
+// 1 request por chunk de 30d. Usada pelo backfill do reach_day.
+export async function fetchReachDaily(
   fetchFn: typeof fetch, accessToken: string, sinceSec: number, untilSec: number,
-): Promise<Map<string, number>>; // retenção ~30d; datas "YYYY-MM-DD"
+): Promise<Map<string, number>>; // date "YYYY-MM-DD" -> reach do dia
+
+// DELTAS diários de seguidores (a Graph devolve variação 0-8/dia, NÃO o
+// total — achado da matriz). Retenção ~30d.
+export async function fetchFollowerCountDeltas(
+  fetchFn: typeof fetch, accessToken: string, sinceSec: number, untilSec: number,
+): Promise<Map<string, number>>; // date "YYYY-MM-DD" -> delta do dia
 ```
 
-Regras de implementação (da spec §4.1, não-negociáveis):
-- Resposta com conjunto de dados VAZIO → null (nunca 0).
+Regras de implementação (spec §4.1 + §3.1, não-negociáveis):
+- Resposta com conjunto de dados VAZIO (ou `total_value` ausente do body, caso
+  follows sem breakdown) → null (nunca 0).
 - Erro `code: 190` → `throw { code: "TOKEN_EXPIRED", ... }` (padrão views.ts).
-- `fetchAccountTotals` para métricas em `UNIQUE_METRICS`: UM request cobrindo a
-  janela inteira; janela maior que o range máximo da matriz → aquele campo = null.
-  Métricas aditivas: chunking de 30d somado (comportamento atual de
-  `sumViewsRange`).
-- `follows_and_unfollows` com o breakdown validado na matriz; normalizar para
-  `FollowsBreakdown` com `net = follows - unfollows`.
+- `fetchAccountTotals` para métricas em `UNIQUE_METRICS` (reach,
+  accounts_engaged): janela ≤31 dias → UM request (provado no spike que 31d é
+  aceito); janela >31d → chunk-sum de 30d. A semântica das duas É "acumulado"
+  (a API não deduplica entre dias nem em request único — decisão do
+  checkpoint: rótulo honesto, nunca null por tamanho de janela). Métricas
+  aditivas: chunking de 30d somado (soma provou ser exata no spike).
+- `follows_and_unfollows` SEMPRE com `breakdown=follow_type` (sem breakdown o
+  total_value nem vem no body); normalizar `FOLLOWER`→follows,
+  `NON_FOLLOWER`→unfollows, `net = follows - unfollows`.
 - Uma chamada Graph por métrica, `Promise.all`, timeout 10s por request; falha
   de UMA métrica → aquele campo null, nunca exceção pro chamador (exceto
   TOKEN_EXPIRED, que sobe).
@@ -334,7 +370,7 @@ Regras de implementação (da spec §4.1, não-negociáveis):
 // supabase/functions/__tests__/instagram-account-metrics.test.ts
 import { assertEquals, assertRejects } from "jsr:@std/assert";
 import {
-  fetchAccountTotals, fetchAccountDaily, UNIQUE_METRICS,
+  fetchAccountTotals, fetchClosedDayValues, fetchReachDaily, UNIQUE_METRICS,
 } from "../_shared/instagram-account-metrics.ts";
 
 const DAY = 86400;
@@ -386,24 +422,37 @@ Deno.test("erro 190 sobe como TOKEN_EXPIRED", async () => {
   await assertRejects(() => fetchAccountTotals(f, "tok", ["views"], T0, T0 + DAY));
 });
 
-Deno.test("fetchAccountDaily indexa por dia UTC", async () => {
+Deno.test("fetchReachDaily indexa por dia UTC", async () => {
   const f = fakeFetch(() => ({
     data: [{
-      name: "views",
+      name: "reach",
       values: [
-        { end_time: "2026-08-02T07:00:00+0000", value: 5 },
-        { end_time: "2026-08-03T07:00:00+0000", value: 9 },
+        { end_time: "2026-08-02T07:00:00+0000", value: 483 },
+        { end_time: "2026-08-03T07:00:00+0000", value: 393 },
       ],
     }],
   }));
-  const m = await fetchAccountDaily(f, "tok", ["views"], T0, T0 + 3 * DAY);
-  assertEquals(m.get("2026-08-01")?.views, 5); // end_time = fim do dia anterior
+  const m = await fetchReachDaily(f, "tok", T0, T0 + 3 * DAY);
+  assertEquals(m.get("2026-08-01"), 483); // end_time = fim do dia anterior
+});
+
+Deno.test("fetchClosedDayValues: 1 request por métrica, janela de 1 dia", async () => {
+  const windows = new Set<string>();
+  const f = fakeFetch((url) => {
+    windows.add(`${url.searchParams.get("since")}-${url.searchParams.get("until")}`);
+    return { data: [{ name: url.searchParams.get("metric")!.split(",")[0],
+      total_value: { value: 3 } }] };
+  });
+  const v = await fetchClosedDayValues(f, "tok", "2026-08-30");
+  assertEquals(v.views, 3);
+  assertEquals(windows.size, 1); // todas as chamadas na MESMA janela [dia, dia+1)
 });
 ```
 
-Nota do último teste: a convenção `end_time`→dia é a que a MATRIZ do spike
-documentar (a Graph reporta o fim do período; confirmar o offset real no JSON do
-spike e ajustar o teste ao fato, não o contrário).
+Nota do teste de fetchReachDaily: a convenção `end_time`→dia deve ser conferida
+contra o JSON real do spike (`reach_daily` em
+`.superpowers/sdd/2026-08-31-report-app-parity/spike-result.json`) e o teste
+ajustado ao fato, não o contrário.
 
 - [ ] **Step 2: Rodar e ver falhar** — `npm run test:functions -- --filter "instagram-account-metrics"` (filter casa com NOME de teste; se não filtrar, rodar a suíte inteira). Expected: FAIL (módulo não existe).
 
@@ -563,7 +612,7 @@ npx supabase link --project-ref skjzpekeqefvlojenfsw
 - Create: `supabase/functions/instagram-sync-cron/daily-ingest.ts`
 
 **Interfaces:**
-- Consumes: `fetchAccountDaily` (Task 4), RPC `upsert_metrics_daily` (Task 5).
+- Consumes: `fetchClosedDayValues` (Task 4), RPC `upsert_metrics_daily` (Task 5).
 - Produces: `buildDailyRows(accountId: string, daily: Map<string, Partial<DailyValues>>): DailyRow[]` (pura, testável) e `ingestClosedDays(db, fetchFn, accountId, accessToken, nowSec): Promise<void>` em `daily-ingest.ts`.
 
 - [ ] **Step 1: Teste da função pura**
@@ -596,17 +645,11 @@ Deno.test("buildDailyRows mapeia métricas para colunas *_day", () => {
 // upsert_metrics_daily (COALESCE: null nunca apaga; não-null novo vence —
 // é a reconsulta corrigindo insights revisados pela Meta). Spec §4.2.1.
 import {
-  type AccountMetric, type DailyValues, fetchAccountDaily,
+  type DailyValues, fetchClosedDayValues,
 } from "../_shared/instagram-account-metrics.ts";
 
 const DAY = 86400;
 export const CLOSED_DAYS_WINDOW = 3; // calibrado pelo spike §3.3
-
-// Métricas com série diária confirmada na matriz do spike (ajustar lá).
-const DAILY_METRICS: AccountMetric[] = [
-  "reach", "views", "saves", "accounts_engaged",
-  "profile_views", "website_clicks", "follows_and_unfollows",
-];
 
 export interface DailyRow {
   instagram_account_id: string;
@@ -636,9 +679,16 @@ export async function ingestClosedDays(
   nowSec: number,
 ): Promise<void> {
   const todayStart = Math.floor(nowSec / DAY) * DAY;
-  const since = todayStart - CLOSED_DAYS_WINDOW * DAY; // D-3 00:00Z
-  const until = todayStart;                            // hoje 00:00Z (exclusivo)
-  const daily = await fetchAccountDaily(fetchFn, accessToken, DAILY_METRICS, since, until);
+  // D-1..D-CLOSED_DAYS_WINDOW: dias FECHADOS, reconsultados a cada rodada
+  // (insights podem ser revisados pela Meta). ~7 requests por dia coberto.
+  const days: string[] = [];
+  for (let i = CLOSED_DAYS_WINDOW; i >= 1; i--) {
+    days.push(new Date((todayStart - i * DAY) * 1000).toISOString().slice(0, 10));
+  }
+  const daily = new Map<string, Partial<DailyValues>>();
+  await Promise.all(days.map(async (day) => {
+    daily.set(day, await fetchClosedDayValues(fetchFn, accessToken, day));
+  }));
   const rows = buildDailyRows(accountId, daily);
   if (rows.length === 0) return;
   const { error } = await db.rpc("upsert_metrics_daily", { p_rows: rows });
@@ -701,45 +751,45 @@ Deno.test("não refaz mês já fechado", async () => {
 - Test: `supabase/functions/__tests__/instagram-sync-cron-backfill.test.ts`
 
 **Interfaces:**
-- Consumes: `fetchAccountDaily`, `fetchFollowerCountDaily` (Task 4), RPC (Task 5), colunas `metrics_backfilled_at`/`metrics_backfill_cursor` (Task 5).
-- Produces: `runBackfillStep(db, fetchFn, decryptToken, opts: { batchLimit: number; chunksPerAccount: number; nowSec: number }): Promise<{ accounts: number; chunks: number }>`.
+- Consumes: `fetchAccountTotals`, `fetchReachDaily`, `fetchFollowerCountDeltas` (Task 4), RPC + tabela mensal (Task 5), `closePreviousMonthIfMissing` (Task 7), colunas `metrics_backfilled_at`/`metrics_backfill_cursor` (Task 5).
+- Produces: `runMaintenanceStep(db, fetchFn, decryptToken, opts: { batchLimit: number; nowSec: number }): Promise<{ backfilled: number; monthsClosed: number }>` e a função pura `nextBackfillMonth(cursor: string | null, nowSec: number): { month: string; done: boolean }`.
 
-Regras (spec §4.2.3):
+Regras (spec §3.1 decisão 2 + §4.2.3 — o backfill DIÁRIO de 90d morreu no
+checkpoint; o backfill é MENSAL):
 - Seletor PRÓPRIO: `authorization_status='active'` + `encrypted_access_token` não-null + `metrics_backfilled_at is null`, ordenado por `id`. Independente de `auto_sync_enabled` e de `feature_auto_sync_cron`.
-- Orçamento próprio: `BACKFILL_BATCH_LIMIT` (default 3 contas/tick) × `chunksPerAccount` (default 1 chunk de 30d por conta por tick) — nunca competir com o wall-clock do sync.
-- Anda do presente para trás: 1º chunk = `[hoje-30d, hoje)`; cursor = dia mais antigo já ingerido; próximo chunk termina no cursor. `metrics_backfilled_at = now()` quando o cursor cruzar `hoje - 90d`.
-- `fetchFollowerCountDaily` roda no primeiro chunk (retenção ~30d) e alimenta `instagram_follower_history` com upsert que respeita `source='manual'` (mesma checagem do sync atual).
+- Orçamento próprio: `BACKFILL_BATCH_LIMIT` (default 3 contas/tick), 1 mês por conta por tick (~7 requests `fetchAccountTotals` na janela do mês).
+- Anda do presente para trás POR MÊS: 1º alvo = mês anterior completo; cursor (`metrics_backfill_cursor`) = dia 1 do mês mais antigo já preenchido; próximo alvo = mês anterior ao cursor. Insere em `instagram_account_metrics_monthly` (mesma regra da Task 7: só se ao menos uma métrica não-null).
+- **Término**: quando um mês devolve TODAS as métricas null/vazias (fim da retenção real) OU cap de 12 meses → `metrics_backfilled_at = now()`.
+- **No primeiro tick de cada conta** (cursor null), além do mês: (a) `fetchReachDaily` de 90d (3 chunks de 30d) → `reach_day` via RPC; (b) `fetchFollowerCountDeltas` (~30d) → converter DELTAS em totais ancorando no `follower_count` atual da conta e subtraindo para trás → upsert em `instagram_follower_history` respeitando `source='manual'` (mesma checagem do sync atual).
 - Execução morta retoma do cursor (upserts idempotentes).
+- O `runMaintenanceStep` também chama `closePreviousMonthIfMissing` (Task 7) para contas JÁ backfilladas (`metrics_backfilled_at` não-null) — é aqui que o fechamento mensal roda, com este seletor, NUNCA no caminho por-conta do sync (achado Codex P1).
 
-- [ ] **Step 1: Teste da progressão do cursor**
+- [ ] **Step 1: Teste da progressão do cursor mensal**
 
 ```ts
 import { assertEquals } from "jsr:@std/assert";
-import { nextChunk } from "../instagram-sync-cron/backfill.ts";
+import { nextBackfillMonth } from "../instagram-sync-cron/backfill.ts";
 
-const DAY = 86400;
-const NOW = Math.floor(Date.parse("2026-09-01T12:00:00Z") / 1000);
+const NOW = Math.floor(Date.parse("2026-09-05T12:00:00Z") / 1000);
 
-Deno.test("primeiro chunk parte de hoje-30d", () => {
-  const c = nextChunk(null, NOW);
-  assertEquals(c, {
-    sinceSec: Math.floor(NOW / DAY) * DAY - 30 * DAY,
-    untilSec: Math.floor(NOW / DAY) * DAY,
-    done: false,
-  });
+Deno.test("primeiro alvo é o mês anterior completo", () => {
+  assertEquals(nextBackfillMonth(null, NOW), { month: "2026-08-01", done: false });
 });
 
-Deno.test("cursor além do horizonte de 90d encerra", () => {
-  const c = nextChunk("2026-06-02", NOW); // ~91 dias atrás
-  assertEquals(c.done, true);
+Deno.test("cursor anda um mês para trás", () => {
+  assertEquals(nextBackfillMonth("2026-08-01", NOW), { month: "2026-07-01", done: false });
+});
+
+Deno.test("cap de 12 meses encerra", () => {
+  assertEquals(nextBackfillMonth("2025-09-01", NOW).done, true);
 });
 ```
 
-- [ ] **Step 2: Implementar `backfill.ts`** (função pura `nextChunk(cursor: string | null, nowSec)` + `runBackfillStep` que: seleciona contas, descriptografa token — reusar o decrypt já existente no index do cron —, chama `fetchAccountDaily` no chunk, RPC, atualiza cursor; em `done`, grava `metrics_backfilled_at`). TOKEN_EXPIRED → marca `authorization_status='expired'` e pula (não retém a fila).
+- [ ] **Step 2: Implementar `backfill.ts`** — `nextBackfillMonth` pura + `runMaintenanceStep` que: seleciona contas pendentes (seletor próprio acima), descriptografa token (reusar o decrypt já existente no index do cron), roda o mês-alvo via `fetchAccountTotals` na janela do mês (mesma inserção da Task 7), no primeiro tick também `fetchReachDaily`/`fetchFollowerCountDeltas`, atualiza cursor; mês todo-null ou cap → grava `metrics_backfilled_at`; depois roda `closePreviousMonthIfMissing` nas contas já backfilladas. TOKEN_EXPIRED → marca `authorization_status='expired'` e pula (não retém a fila). Falha por conta não derruba o passo.
 
-- [ ] **Step 3: Ligar no `index.ts`** — passo separado no começo do handler do cron, com try/catch próprio (falha do backfill nunca impede o sync batch), logando `{ accounts, chunks }`.
+- [ ] **Step 3: Ligar no `index.ts`** — passo separado no começo do handler do cron, com try/catch próprio (falha da manutenção nunca impede o sync batch), logando `{ backfilled, monthsClosed }`.
 
-- [ ] **Step 4: Rodar suítes (PASS) e commit** — `git commit -m "feat(sync-cron): backfill 90d durável com cursor e orçamento próprio"`
+- [ ] **Step 4: Rodar suítes (PASS) e commit** — `git commit -m "feat(sync-cron): backfill mensal durável + fechamento mensal no passo de manutenção"`
 
 ---
 
@@ -784,6 +834,9 @@ Regras de montagem (invariante mantida: valor e prev SEMPRE da mesma base):
 - `engagement_rate`: `accounts_engaged / reach * 100` quando ambos não-null na
   MESMA fonte (accountMonth); prev idem.
 - `posts_count`: `allPosts.length`; prev = `prevMonthPostsCount`.
+- `KPI_LABELS_PT.reach` muda para **"Alcance acumulado"** (decisão do
+  checkpoint: a Graph não expõe alcance deduplicado do mês; o label antigo
+  "Alcance" convidava comparação com o número de visitantes únicos do app).
 
 - [ ] **Step 1: Reescrever `kpis.test.ts`** cobrindo: card omite-se com fonte null; prev null quando só o mês atual tem dado; followers_gained via net; fallback close-to-close exige os DOIS closes (um só → null — o caso Healing Hands vira teste com nome `"conta conectada no meio do mês não inventa ganho"`); engagement exige as duas métricas da mesma fonte.
 
@@ -844,7 +897,7 @@ Atualizar todo consumidor/teste que aparecer.
 - Modify: `packages/report-blocks/types.ts` (period.effectiveEnd, comparison — espelho do snapshot)
 - Test: teste existente do pacote (localizar com `ls packages/report-blocks/*.test.*`; se não houver, criar `packages/report-blocks/blocks/KpiCardBlock.test.tsx` no padrão Vitest do repo)
 
-- [ ] **Step 1: Teste** — card renderiza "01–15 de agosto · parcial" quando `effectiveEnd` < fim do mês e "01–31 de agosto" quando completo; card de `engagement_rate` tem `title`/tooltip "Contas engajadas ÷ alcance · análise Mesaas"; snapshot ANTIGO (sem effectiveEnd) não quebra (guard: sem o campo, não estampa período).
+- [ ] **Step 1: Teste** — card renderiza "01–15 de agosto · parcial" quando `effectiveEnd` < fim do mês e "01–31 de agosto" quando completo; card de `engagement_rate` tem `title`/tooltip "Contas engajadas ÷ alcance acumulado · análise Mesaas"; card de `reach` mostra o label "Alcance acumulado" (vem de `KPI_LABELS_PT`, mudado na Task 9) e `title`/tooltip "Soma do alcance diário do mês. O app do Instagram mostra visitantes únicos, um número menor."; snapshot ANTIGO (sem effectiveEnd) não quebra (guard: sem o campo, não estampa período). ATENÇÃO copy: nada de em-dash nos textos user-facing.
 
 - [ ] **Step 2: Implementar, rodar `npm run test` (PASS)**
 
