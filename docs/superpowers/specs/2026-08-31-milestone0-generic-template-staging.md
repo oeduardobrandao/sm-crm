@@ -35,19 +35,48 @@ Content-Type: application/json
   }
 }
 
-Versão da Graph API confirmada em `supabase/functions/_shared/instagram-graph.ts`
-(constante `GRAPH_VERSION`, consumida por `GRAPH_BASE` em
-`_shared/instagram-messaging.ts`): `v22.0`. O placeholder original desta task
-citava v23.0; o valor real no código é v22.0 e é o que a chamada acima usa.
+Versão da Graph API confirmada em `supabase/functions/_shared/instagram-graph.ts`:
+a constante `GRAPH_VERSION` é usada nesse mesmo arquivo para montar
+`GRAPH_BASE`, que por sua vez é importada e consumida em
+`supabase/functions/_shared/instagram-messaging.ts`. Valor atual: `v22.0`. O
+placeholder original desta task citava v23.0; o valor real no código é v22.0
+e é o que a chamada acima usa.
 
 ## Variações a testar (cada uma exige comentário novo)
-1. Cartão completo (acima).
-2. Sem `buttons` (imagem + título + subtítulo apenas).
-3. `image_url` de presigned GET do R2 de staging (não só URL pública),
-   para provar que a Meta baixa de URL assinada com query string.
+1. Cartão completo (acima): imagem + título + subtítulo + botão, `image_url`
+   pública.
+2. Sem `buttons`: cópia exata da variação 1, removendo apenas o campo
+   `buttons` (imagem + título + subtítulo, `image_url` pública).
+3. `image_url` de presigned GET do R2 de staging: cópia exata da variação 2
+   (sem `buttons`), trocando apenas `image_url` para a URL assinada. Isola se
+   a URL presigned é a causa de uma eventual rejeição, sem misturar com o
+   botão.
+4. Cartão completo com `image_url` presigned: cópia exata da variação 1
+   (com `buttons`), trocando apenas `image_url` para a URL assinada. Só
+   roda depois de 1, 2 e 3 confirmarem cada peça isoladamente.
+
+Para as variações 3 e 4: gere a URL presigned imediatamente antes do POST (o
+signer compartilhado emite GET presigned com validade de 1 hora) e registre
+no resultado o horário de geração, o horário do envio do POST e o horário de
+expiração calculado. Uma URL expirada durante o teste produz falso negativo
+atribuído à Meta.
 
 ## Resultado (preencher)
-- [ ] 1 aceito? Renderizou no app iOS/Android como cartão?
-- [ ] 2 aceito?
-- [ ] 3 aceito?
-- Códigos de erro observados (se houver):
+
+Para cada variação (1 a 4), registrar:
+- Status HTTP da resposta do POST.
+- Corpo de resposta sanitizado: `message_id` em caso de sucesso, ou o erro
+  Graph completo (`code`, `subcode`, `message`) em caso de falha. Nunca
+  registrar o token de acesso usado.
+- Horário do envio (e, para variações 3 e 4, horário de geração da URL
+  presigned e horário de expiração calculado).
+- Variante de `image_url` usada (pública ou presigned).
+- Resultado visual por plataforma: renderizou como cartão no iOS? No
+  Android? Na web, se testado?
+
+| Variação | Status HTTP | message_id / erro (code/subcode) | Horário envio | URL: pública/presigned (expira às) | iOS | Android | Web |
+|---|---|---|---|---|---|---|---|
+| 1 (completo) | | | | pública | | | |
+| 2 (sem buttons) | | | | pública | | | |
+| 3 (sem buttons, URL presigned) | | | | presigned (expira às ___) | | | |
+| 4 (completo, URL presigned) | | | | presigned (expira às ___) | | | |
