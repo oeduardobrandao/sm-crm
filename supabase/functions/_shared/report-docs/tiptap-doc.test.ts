@@ -34,7 +34,7 @@ Deno.test("aiGoalsDoc: id de KPI vira label pt-BR e target numérico formata; te
     .filter((n) => n.type === "heading")
     .map((n) => n.content[0].text);
   assertEquals(headings, [
-    "Alcance: 7.000",
+    "Alcance acumulado: 7.000",
     "Visualizações: 60.000",
     "Taxa de engajamento: 11,5%",
     "alcance nos reels: +10%",

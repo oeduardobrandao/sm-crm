@@ -15,7 +15,7 @@ describe('KpiCardBlock', () => {
         mode="view"
       />,
     );
-    expect(screen.getByText('Alcance')).toBeInTheDocument();
+    expect(screen.getByText('Alcance acumulado')).toBeInTheDocument();
     expect(screen.getByText('45.200')).toBeInTheDocument();
     expect(screen.getByText('+13,6%')).toBeInTheDocument(); // (45200-39800)/39800
   });

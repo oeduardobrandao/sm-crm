@@ -259,14 +259,24 @@ export async function loadClientSnapshot(
       accent_color: ws?.brand_color ?? "#171717",
       hub_theme: hubTheme,
     },
+    // Task 10 re-wires real sources: kpis.ts agora consome AccountTotals
+    // (accountMonth/accountPrevMonth) em vez do snapshot mensal e da soma de
+    // posts. Este bridge é MÍNIMO e MECÂNICO -- mantém o card de views
+    // idêntico (accountViews já era ao vivo) e OMITE reach/saves/
+    // engagement_rate/profile_views/website_clicks/followers_gained-via-net
+    // até a Task 10 trocar isso pela busca real de AccountTotals via
+    // fetchAccountTotals. Isso é esperado e temporário: sem esse bridge, o
+    // branch não compilaria contra o novo KpiSources.
     kpiSources: {
-      allPosts: posts,
-      prevMonthPosts: prevMonthPostsRes.error ? null : (prevMonthPostsRes.data ?? []),
-      currSnapshot: currSnapRes.data?.[0] ?? null,
-      prevSnapshot: prevSnapRes.data?.[0] ?? null,
-      prevPrevSnapshot: prevPrevSnapRes.data?.[0] ?? null,
+      accountMonth: accountViews ? { views: accountViews.value } : null,
+      accountPrevMonth: accountViews?.prev != null ? { views: accountViews.prev } : null,
+      followersClose: typeof currSnapRes.data?.[0]?.followers_count === "number"
+        ? currSnapRes.data[0].followers_count : null,
+      followersPrevClose: typeof prevSnapRes.data?.[0]?.followers_count === "number"
+        ? prevSnapRes.data[0].followers_count : null,
       followerHistory: followerHistoryRes.data ?? [],
-      accountViews,
+      allPosts: posts,
+      prevMonthPostsCount: prevMonthPostsRes.error ? null : (prevMonthPostsRes.data ?? []).length,
     },
     followerTrend: (followerHistoryRes.data ?? []).map(
       (r: { date: string; follower_count: number }) => ({ date: r.date, count: r.follower_count }),

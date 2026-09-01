@@ -7,11 +7,14 @@ Deno.test("assembleSnapshot monta o documento congelado", () => {
     account: { handle: "dra.exemplo", specialty: "Dermatologia · São Paulo" },
     branding: { workspace_name: "DK", logo_url: null, splash_url: null, accent_color: "#123456" },
     kpiSources: {
-      allPosts: [{ reach: 100, likes: 10, comments: 1, saved: 2, shares: 0 }],
-      prevMonthPosts: [],
-      currSnapshot: null, prevSnapshot: null, prevPrevSnapshot: null,
+      // Task 10 re-wires real sources: accountMonth/accountPrevMonth chegam
+      // vazios aqui de propósito -- este teste cobre a montagem do snapshot,
+      // não a busca de métricas de conta.
+      accountMonth: null, accountPrevMonth: null,
+      followersClose: null, followersPrevClose: null,
       followerHistory: [{ follower_count: 900 }],
-      accountViews: null,
+      allPosts: [{ reach: 100, likes: 10, comments: 1, saved: 2, shares: 0 }],
+      prevMonthPostsCount: null,
     },
     followerTrend: [{ date: "2026-07-01", count: 900 }],
     posts: [{
@@ -28,7 +31,9 @@ Deno.test("assembleSnapshot monta o documento congelado", () => {
   assertEquals(snap.version, 1);
   assertEquals(snap.period.month, "2026-07");
   assertEquals(snap.period.label, "Julho de 2026");
-  assertEquals(snap.kpis.reach.value, 100);
+  // reach agora vem de AccountTotals (accountMonth), não da soma de posts;
+  // sem accountMonth nesta fixture, o card se omite (Task 10 re-wires real sources).
+  assertEquals(snap.kpis.reach.value, null);
   assertEquals(snap.top_posts.length, 1);
   assertEquals(snap.top_posts[0].type, "reel");
   // shares flui de SnapshotPostRow pra SnapshotTopPost (não fica de fora, como
@@ -55,8 +60,9 @@ Deno.test("top posts ordenam por views desc; empate de views decide por reach", 
     account: { handle: "h", specialty: "" },
     branding: { workspace_name: "W", logo_url: null, splash_url: null, accent_color: "#000" },
     kpiSources: {
-      allPosts: [], prevMonthPosts: null, currSnapshot: null, prevSnapshot: null,
-      prevPrevSnapshot: null, followerHistory: [], accountViews: null,
+      accountMonth: null, accountPrevMonth: null,
+      followersClose: null, followersPrevClose: null,
+      followerHistory: [], allPosts: [], prevMonthPostsCount: null,
     },
     followerTrend: [],
     // Reach mandaria "c" primeiro; views mandam "a". Empate 100 ("b" vs "c"):
@@ -76,8 +82,9 @@ Deno.test("thumbnail estável (mapa) entra; carousel e image mapeiam certo", () 
     account: { handle: "h", specialty: "" },
     branding: { workspace_name: "W", logo_url: null, splash_url: null, accent_color: "#000" },
     kpiSources: {
-      allPosts: [], prevMonthPosts: null, currSnapshot: null, prevSnapshot: null,
-      prevPrevSnapshot: null, followerHistory: [], accountViews: null,
+      accountMonth: null, accountPrevMonth: null,
+      followersClose: null, followersPrevClose: null,
+      followerHistory: [], allPosts: [], prevMonthPostsCount: null,
     },
     followerTrend: [],
     posts: [
@@ -106,8 +113,9 @@ Deno.test("aceita branding.hub_theme opcional sem quebrar o assembleSnapshot", (
       },
     },
     kpiSources: {
-      allPosts: [], prevMonthPosts: null, currSnapshot: null, prevSnapshot: null,
-      prevPrevSnapshot: null, followerHistory: [], accountViews: null,
+      accountMonth: null, accountPrevMonth: null,
+      followersClose: null, followersPrevClose: null,
+      followerHistory: [], allPosts: [], prevMonthPostsCount: null,
     },
     followerTrend: [],
     posts: [],
@@ -129,8 +137,9 @@ Deno.test("assembleSnapshot repassa profile_picture_url e client_name do account
     },
     branding: { workspace_name: "DK", logo_url: null, splash_url: null, accent_color: "#123456" },
     kpiSources: {
-      allPosts: [], prevMonthPosts: null, currSnapshot: null, prevSnapshot: null,
-      prevPrevSnapshot: null, followerHistory: [], accountViews: null,
+      accountMonth: null, accountPrevMonth: null,
+      followersClose: null, followersPrevClose: null,
+      followerHistory: [], allPosts: [], prevMonthPostsCount: null,
     },
     followerTrend: [],
     posts: [],
@@ -149,8 +158,9 @@ Deno.test("assembleSnapshot: account sem profile_picture_url/client_name continu
     account: { handle: "h", specialty: "" },
     branding: { workspace_name: "W", logo_url: null, splash_url: null, accent_color: "#000" },
     kpiSources: {
-      allPosts: [], prevMonthPosts: null, currSnapshot: null, prevSnapshot: null,
-      prevPrevSnapshot: null, followerHistory: [], accountViews: null,
+      accountMonth: null, accountPrevMonth: null,
+      followersClose: null, followersPrevClose: null,
+      followerHistory: [], allPosts: [], prevMonthPostsCount: null,
     },
     followerTrend: [],
     posts: [],
