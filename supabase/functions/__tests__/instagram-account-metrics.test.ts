@@ -143,6 +143,65 @@ Deno.test("fetchReachDaily indexa pela DATA do end_time, sem deslocar um dia", a
   assertEquals(m.get("2026-08-31"), 579);
 });
 
+// Fix round 2: uma série diária alimenta cursor de backfill. Um mapa parcial
+// que parece "bem-sucedido" faria o consumidor avançar o cursor por cima de
+// dias nunca de fato buscados -- pular esses dias PARA SEMPRE. Por isso
+// qualquer chunk com erro (não-190) precisa DERRUBAR a chamada inteira, nunca
+// devolver um Map incompleto silenciosamente.
+Deno.test("fetchReachDaily: chunk do meio falha (não-190) -> rejeita, nunca mapa parcial", async () => {
+  const middleChunkSince = String(T0 + 30 * DAY);
+  const f = fakeFetch((url) => {
+    if (url.searchParams.get("since") === middleChunkSince) {
+      return { error: { message: "rate limited" } };
+    }
+    return {
+      data: [{
+        name: "reach",
+        values: [{ end_time: "2026-08-05T07:00:00+0000", value: 100 }],
+      }],
+    };
+  });
+  let caught: unknown = null;
+  try {
+    await fetchReachDaily(f, "tok", T0, T0 + 61 * DAY); // 61d = 3 chunks (30/30/1)
+  } catch (e) {
+    caught = e;
+  }
+  assertEquals((caught as { code?: string } | null)?.code, "SERIES_INCOMPLETE");
+  assertEquals((caught as { metric?: string } | null)?.metric, "reach");
+});
+
+Deno.test("fetchReachDaily: janela de um chunk só, sem erro -- comportamento inalterado", async () => {
+  const calls: string[] = [];
+  const f = fakeFetch((url) => {
+    calls.push(`${url.searchParams.get("since")}-${url.searchParams.get("until")}`);
+    return {
+      data: [{
+        name: "reach",
+        values: [
+          { end_time: "2026-08-01T07:00:00+0000", value: 10 },
+          { end_time: "2026-08-02T07:00:00+0000", value: 20 },
+        ],
+      }],
+    };
+  });
+  const m = await fetchReachDaily(f, "tok", T0, T0 + 3 * DAY); // < 30d -> 1 chunk só
+  assertEquals(m.get("2026-08-01"), 10);
+  assertEquals(m.get("2026-08-02"), 20);
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("fetchReachDaily: erro 190 sobe como TOKEN_EXPIRED, não SERIES_INCOMPLETE", async () => {
+  const f = fakeFetch(() => ({ error: { code: 190, message: "expired" } }));
+  let caught: unknown = null;
+  try {
+    await fetchReachDaily(f, "tok", T0, T0 + 3 * DAY);
+  } catch (e) {
+    caught = e;
+  }
+  assertEquals((caught as { code?: string } | null)?.code, "TOKEN_EXPIRED");
+});
+
 Deno.test("fetchClosedDayValues: 1 request por métrica, janela de 1 dia", async () => {
   const windows = new Set<string>();
   const f = fakeFetch((url) => {

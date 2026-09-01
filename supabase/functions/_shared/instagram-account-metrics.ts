@@ -361,6 +361,21 @@ function dayOfEndTime(endTime: string): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+// Thrown by fetchDailySeries when ANY chunk of a multi-chunk daily-series
+// fetch (fetchReachDaily / fetchFollowerCountDeltas) comes back with a
+// non-190 Graph error. These series feed a backfill cursor, not a one-off
+// display value: a partial-but-returned Map would look successful and let
+// the caller advance its cursor past days it never actually fetched,
+// permanently skipping them. A thrown error is safer -- the caller (the
+// backfill consumer) should catch this, NOT advance the cursor, and retry
+// the whole series on its next tick. (Graph code 190 still throws
+// TOKEN_EXPIRED from fetchInsight before a chunk even reaches this check.)
+export interface SeriesIncompleteError {
+  code: 'SERIES_INCOMPLETE';
+  metric: 'reach' | 'follower_count';
+  message: string;
+}
+
 async function fetchDailySeries(
   fetchFn: typeof fetch,
   accessToken: string,
@@ -374,7 +389,14 @@ async function fetchDailySeries(
   );
   const out = new Map<string, number>();
   for (const data of responses) {
-    if (data.error) continue;
+    if (data.error) {
+      const err: SeriesIncompleteError = {
+        code: 'SERIES_INCOMPLETE',
+        metric,
+        message: data.error.message || 'Graph API error',
+      };
+      throw err;
+    }
     const entry = data.data?.find((d) => d.name === metric);
     for (const v of entry?.values ?? []) {
       if (typeof v.value === 'number' && v.end_time) {
