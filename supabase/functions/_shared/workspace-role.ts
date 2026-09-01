@@ -19,3 +19,14 @@
 export function isWorkspaceOwner(membershipRole: string | null | undefined): boolean {
   return membershipRole === "owner";
 }
+
+/**
+ * Whether a `workspace_members.role` value authorises mutating actions that
+ * are NOT owner-only -- managing automations, their media, and similar
+ * workspace content. Owner or admin, never agent. Same per-workspace
+ * source-of-truth rationale as `isWorkspaceOwner`: check the membership row
+ * for the target workspace, never `profiles.role`.
+ */
+export function isWorkspaceEditor(membershipRole: string | null | undefined): boolean {
+  return membershipRole === "owner" || membershipRole === "admin";
+}

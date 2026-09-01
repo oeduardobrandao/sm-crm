@@ -31,10 +31,18 @@ function req(path: string, body: unknown, token = "valid-jwt") {
 }
 
 // deno-lint-ignore no-explicit-any
-function setupAuth(db: any, contaId = "conta-1") {
+function setupAuth(db: any, contaId = "conta-1", role = "owner", featureEnabled = true) {
   db.withAuth({ id: "user-1" });
   db.queue("profiles", "select", { data: { active_workspace_id: contaId }, error: null });
-  db.queue("workspace_members", "select", { data: { user_id: "user-1" }, error: null });
+  db.queue("workspace_members", "select", { data: { user_id: "user-1", role }, error: null });
+  // presign/finalize checam feature_instagram_automation via resolveEntitlements
+  // (workspaces -> plans).
+  db.queue("workspaces", "select", { data: { plan_id: "plan-1" }, error: null });
+  db.queue("workspace_plan_overrides", "select", { data: null, error: null });
+  db.queue("plans", "select", {
+    data: { name: featureEnabled ? "Max" : "Free", feature_instagram_automation: featureEnabled },
+    error: null,
+  });
 }
 
 Deno.test("presign: gera key no prefixo TMP do tenant e devolve upload_url", async () => {
@@ -183,6 +191,65 @@ Deno.test("delete: key ainda referenciada por automação -> 409 e nada é trash
   const res = await makeHandler(db, { trashed })(req("delete", { key: "automation-media/conta-1/x.jpg" }));
   assertEquals(res.status, 409);
   assertEquals(trashed, []);
+});
+
+Deno.test("presign/finalize/delete: agent (sem poder de mutar automação) -> 403", async () => {
+  const dbPresign = createSupabaseQueryMock();
+  setupAuth(dbPresign, "conta-1", "agent");
+  assertEquals(
+    (await makeHandler(dbPresign)(req("presign", { mime_type: "image/jpeg", size_bytes: 5000 }))).status,
+    403,
+  );
+
+  const dbFinalize = createSupabaseQueryMock();
+  setupAuth(dbFinalize, "conta-1", "agent");
+  assertEquals(
+    (await makeHandler(dbFinalize)(req("finalize", {
+      key: "automation-media-tmp/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000,
+    }))).status,
+    403,
+  );
+
+  const dbDelete = createSupabaseQueryMock();
+  setupAuth(dbDelete, "conta-1", "agent");
+  assertEquals(
+    (await makeHandler(dbDelete)(req("delete", { key: "automation-media/conta-1/x.jpg" }))).status,
+    403,
+  );
+});
+
+Deno.test("sign-view: agent (só leitura) continua permitido, como ica_select", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db, "conta-1", "agent");
+  const res = await makeHandler(db)(req("sign-view", { key: "automation-media/conta-1/x.jpg" }));
+  assertEquals(res.status, 200);
+});
+
+Deno.test("presign/finalize: workspace sem feature_instagram_automation -> 403 feature_disabled", async () => {
+  const dbPresign = createSupabaseQueryMock();
+  setupAuth(dbPresign, "conta-1", "owner", false);
+  const resPresign = await makeHandler(dbPresign)(req("presign", { mime_type: "image/jpeg", size_bytes: 5000 }));
+  assertEquals(resPresign.status, 403);
+  assertEquals((await resPresign.json()).error, "feature_disabled");
+
+  const dbFinalize = createSupabaseQueryMock();
+  setupAuth(dbFinalize, "conta-1", "owner", false);
+  const resFinalize = await makeHandler(dbFinalize)(req("finalize", {
+    key: "automation-media-tmp/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000,
+  }));
+  assertEquals(resFinalize.status, 403);
+  assertEquals((await resFinalize.json()).error, "feature_disabled");
+});
+
+Deno.test("delete: workspace sem feature_instagram_automation ainda pode apagar mídia existente (downgrade não trava limpeza)", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db, "conta-1", "owner", false);
+  db.queue("instagram_comment_automations", "select", { data: [], error: null });
+  db.queueRpc("automation_media_release", { data: 5000, error: null });
+  const trashed: string[] = [];
+  const res = await makeHandler(db, { trashed })(req("delete", { key: "automation-media/conta-1/x.jpg" }));
+  assertEquals(res.status, 200);
+  assertEquals(trashed, ["automation-media/conta-1/x.jpg"]);
 });
 
 Deno.test("sign-view: devolve GET assinado só para key do tenant", async () => {
