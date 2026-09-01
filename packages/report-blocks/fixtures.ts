@@ -9,6 +9,7 @@ export function makeSnapshotFixture(over: Partial<ReportDocSnapshot> = {}): Repo
       label: 'Julho de 2026',
       start: '2026-07-01T00:00:00.000Z',
       endExclusive: '2026-08-01T00:00:00.000Z',
+      effectiveEnd: '2026-07-31T00:00:00.000Z',
     },
     account: { handle: 'dra.exemplo', specialty: 'Dermatologia · São Paulo' },
     branding: {
