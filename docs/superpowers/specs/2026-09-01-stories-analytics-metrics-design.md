@@ -14,15 +14,21 @@ Os scopes OAuth atuais (`instagram_business_manage_insights`) ja cobrem leitura 
 insights de Stories. Nao e necessario scope adicional.
 
 Stories sao efemeros (24h) e a Graph API so retorna metricas de stories vivos ou
-recem-expirados (~48h). O cron horario existente captura cada story pelo menos 1x antes
-da expiracao.
+recem-expirados (~48h). O cron horario coleta stories de cada conta selecionada para
+sync. Contas podem ser deferidas alem de 24h se o lote estiver cheio (o seletor em
+`select.ts` ordena por `last_sync_attempt_at` stalest-first, com lote limitado). Isso
+significa que stories de contas deferidas podem expirar sem coleta. Esse e um trade-off
+aceito: o mesmo risco ja existe pra metricas de posts (revisoes D-1..D-3 atrasam), e
+aumentar a frequencia do cron so pra stories nao justifica a complexidade. Se o volume
+de contas crescer a ponto de deferral ser frequente, o lote deve ser aumentado — nao e
+responsabilidade desta feature.
 
 ## Decisoes
 
 | Decisao | Escolha | Razao |
 |---|---|---|
 | Tabela de stories | Separada (`instagram_story_insights`) | Metricas fundamentalmente diferentes de posts (taps/exits vs likes/comments) |
-| Coleta | Cron horario existente | Sem infra nova; janela de 24h com cron horario = pelo menos 1 captura |
+| Coleta | Cron horario existente | Sem infra nova; janela de 24h com cron horario = captura na maioria dos casos |
 | Metricas coletadas | reach, impressions, replies, taps_forward, taps_back, exits, shares | Navegacao completa: permite calcular retencao e skip rate |
 | Agregados | Colunas em daily/monthly | Segue o padrao existente; funciona com a fallback chain |
 | UI | Secao separada na pagina de analytics | Entre BaselineCard e "Desempenho por Tipo" |
@@ -57,8 +63,16 @@ CREATE INDEX idx_story_insights_account_posted
   ON instagram_story_insights (instagram_account_id, posted_at DESC);
 ```
 
-RLS: mesma politica das demais tabelas de analytics — join com `instagram_accounts` ->
-`clientes` -> `conta_id` = `get_my_conta_id()`.
+**RLS:** service_role-only, mesmo padrao de `instagram_account_metrics_daily` e
+`instagram_account_metrics_monthly`. A tabela nao e acessada diretamente pelo frontend;
+o endpoint de analytics roda como service_role e faz ownership check por conta propria.
+
+```sql
+ALTER TABLE instagram_story_insights ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access"
+  ON instagram_story_insights
+  USING (auth.role() = 'service_role');
+```
 
 ### 1.2 Colunas novas em `instagram_account_metrics_daily`
 
@@ -100,6 +114,15 @@ stories_taps_back_day   = COALESCE(EXCLUDED.stories_taps_back_day,   t.stories_t
 stories_exits_day       = COALESCE(EXCLUDED.stories_exits_day,       t.stories_exits_day)
 ```
 
+### 1.5 Migration
+
+Prefixo de versao: `20260902000010` (o namespace `20260901*` ja tem 7 migrations;
+usar `20260902` evita colisao). Verificar contra `origin/main` antes de abrir o PR
+com `git ls-tree origin/main:supabase/migrations | tail`.
+
+Uma unica migration contendo: CREATE TABLE, ALTER TABLEs, RLS policy, e
+CREATE OR REPLACE da RPC `upsert_metrics_daily` com as novas colunas.
+
 ## 2. Data Collection Pipeline
 
 ### 2.1 Novo passo no instagram-sync-cron
@@ -111,13 +134,14 @@ Apos o fetch de `me/media` e antes do daily-ingest, adicionar:
    - Nao ha paginacao: o endpoint retorna todos os stories ativos
 
 2. **Fetch insights por story**: `GET /{storyId}/insights?metric=reach,impressions,replies,taps_forward,taps_back,exits,shares`
-   - Uma chamada por story
-   - Concorrencia limitada a 3 por vez dentro do pool existente
-   - Fallback: se `shares` nao for suportado (stories muito antigos), retry sem `shares`
+   - Uma chamada por story, sequencial com `AbortSignal.timeout(10_000)` por chamada
+     (mesmo padrao de `fetchPostInsights` em `_shared/instagram-metrics.ts`)
+   - Fallback: se `shares` nao for suportado, retry sem `shares`
 
-3. **Upsert em `instagram_story_insights`**: ON CONFLICT do `instagram_media_id` atualiza
-   metricas (um story ainda vivo pode ter metricas atualizadas entre execucoes do cron).
-   `expired_at` e calculado como `posted_at + interval '24 hours'`.
+3. **Upsert em `instagram_story_insights`**: ON CONFLICT de
+   `(instagram_account_id, instagram_media_id)` (target composto, alinhado com a
+   constraint UNIQUE). Atualiza metricas e `synced_at` no conflito. `expired_at` e
+   calculado como `posted_at + interval '24 hours'`.
 
 4. **Agregar em daily**: apos inserir os stories individuais, agregar por
    `date_trunc('day', posted_at)` e incluir no payload do `upsert_metrics_daily`.
@@ -129,22 +153,41 @@ Isolar a logica de stories num modulo separado dentro de `instagram-sync-cron/`:
 
 ```typescript
 export async function ingestStories(
-  fetch: BoundedFetch,
+  fetch: typeof globalThis.fetch,
   accountId: string,
+  igAccountId: string,
   accessToken: string,
   db: SupabaseClient
 ): Promise<StoryDailyAgg[]>
 ```
 
+Cada chamada Graph usa `AbortSignal.timeout(10_000)` pra evitar que um story preso
+consuma a execucao inteira. Se o fetch de `me/stories` falhar, o erro e logado e a
+funcao retorna `[]` (graceful degradation — a coleta de stories nao deve bloquear a
+coleta de feed).
+
 Retorna os agregados diarios pra inclusao no payload de `upsert_metrics_daily`.
 
 ### 2.3 Monthly close de stories
 
-No `monthly-close.ts`, adicionar passo que agrega `instagram_story_insights` do mes
-anterior e escreve as colunas `stories_*_month` em `instagram_account_metrics_monthly`.
+A logica existente em `closePreviousMonthIfMissing` retorna cedo se o row mensal ja
+existe (guard de idempotencia em `monthly-close.ts:63`). Isso significa que colunas
+`stories_*_month` NULL em rows ja criados nunca seriam preenchidas.
 
-Fonte: `SELECT ... FROM instagram_story_insights WHERE posted_at >= month_start AND posted_at < month_end GROUP BY instagram_account_id`. Nao usa a Graph API (os dados ja
-expiraram). Idempotente: so executa se as colunas de stories estao NULL no row mensal.
+Solucao: apos o `closePreviousMonthIfMissing` existente, adicionar um passo
+`closeStoriesForMonth` que faz UPDATE parcial:
+
+```sql
+UPDATE instagram_account_metrics_monthly
+SET stories_count_month = $1, stories_reach_month = $2, ...
+WHERE instagram_account_id = $3 AND month = $4
+  AND stories_count_month IS NULL
+```
+
+O `WHERE stories_count_month IS NULL` garante idempotencia: so roda uma vez. A fonte e
+agregacao de `instagram_story_insights` do mes. Se nao houver stories no mes, o update
+seta as colunas pra 0 (nao NULL — ausencia de stories e dado valido, diferente de
+"feature nao existia").
 
 O backfill historico (`backfill.ts`) NAO coleta stories retroativamente — a API nao
 retorna stories expirados. Meses anteriores a esta feature terao colunas de stories NULL,
@@ -160,14 +203,45 @@ Adicionado ao router de `instagram-analytics/index.ts`.
 - `days=N` (default 30) — periodo em dias a partir de hoje
 - `start=YYYY-MM-DD&end=YYYY-MM-DD` — range customizado (tem precedencia sobre `days`)
 
+**Semantica de periodo (alinhada com `account-metrics.ts`):**
+- Todas as datas sao interpretadas em UTC
+- `end` e inclusivo (o dia inteiro e incluido: `posted_at < end + 1 day`)
+- `effectiveEnd` e clamped a hoje (datas futuras sao truncadas)
+- Range maximo: 365 dias (retorna 400 se exceder)
+- Periodo anterior: mesma duracao, terminando no dia antes de `start`
+- Se `start > end` ou datas invalidas: retorna 400
+
 **Resolucao de dados:**
 
 - Query direta em `instagram_story_insights` com filtro de `posted_at` no range
-- KPIs: SUM/COUNT/AVG dos stories no range atual, mesma query com range anterior
-  pra deltas
+  (usando service_role client, mesmo padrao dos demais endpoints)
+- KPIs: agregados do range atual + range anterior pra deltas
 - Nao ha fallback chain live -> monthly -> daily. Todos os dados residem no banco
-  (a API so retorna stories das ultimas 24h, entao nao ha fetch live pra periodos
-  passados)
+
+**Formulas de agregacao (KPIs):**
+
+```
+stories_count       = COUNT(*)
+total_reach         = SUM(reach)
+total_impressions   = SUM(impressions)
+total_replies       = SUM(replies)
+total_exits         = SUM(exits)
+
+-- Taxas: razao dos totais (nao media de taxas por story), pra evitar
+-- distorcao por stories com poucos impressions
+avg_retention_rate  = 1 - (SUM(exits) / NULLIF(SUM(impressions), 0))
+avg_skip_rate       = SUM(taps_forward) / NULLIF(SUM(impressions), 0)
+```
+
+Quando `SUM(impressions)` e 0 ou NULL, as taxas retornam 0.
+
+**Formulas per-story (computed no endpoint):**
+
+```
+retention_rate = 1 - (exits / NULLIF(impressions, 0))   -- 0 se impressions = 0
+skip_rate      = taps_forward / NULLIF(impressions, 0)   -- 0 se impressions = 0
+back_rate      = taps_back / NULLIF(impressions, 0)      -- 0 se impressions = 0
+```
 
 **Shape de resposta:**
 
@@ -192,9 +266,9 @@ interface StoryInsight {
   taps_back: number;
   exits: number;
   shares: number;
-  retention_rate: number;  // 1 - (exits / impressions), 0 se impressions = 0
-  skip_rate: number;       // taps_forward / impressions
-  back_rate: number;       // taps_back / impressions
+  retention_rate: number;
+  skip_rate: number;
+  back_rate: number;
 }
 
 interface StoriesKpis {
@@ -202,7 +276,7 @@ interface StoriesKpis {
   total_reach: number;
   total_impressions: number;
   total_replies: number;
-  avg_retention_rate: number;  // media ponderada por impressions
+  avg_retention_rate: number;
   avg_skip_rate: number;
   total_exits: number;
 }
@@ -221,7 +295,8 @@ interface StoriesKpis {
 
 ### 4.1 Service layer (`analytics.ts`)
 
-Nova funcao:
+Nova funcao usando o padrao `fetchEdge<T>` existente (wrapper de `fetch` com
+`getAuthHeaders()`, definido em `analytics.ts:34`):
 
 ```typescript
 export async function getStoriesAnalytics(
@@ -231,7 +306,8 @@ export async function getStoriesAnalytics(
 ): Promise<StoriesAnalyticsResponse>
 ```
 
-Chama o endpoint `/stories/:clientId` via `callEdgeFunction`.
+Constroi a URL a partir de `EDGE_URL` + `/stories/${clientId}` com query params.
+Retorna `null` em caso de erro (mesmo padrao de `getAudienceDemographics`).
 
 ### 4.2 Secao na pagina de analytics (`AnalyticsContaPage.tsx`)
 
@@ -275,7 +351,19 @@ refresh manual).
 
 ## 5. Integracao com relatorios PDF
 
-### 5.1 Layout (`default-layout.ts`)
+### 5.1 Block types
+
+Quatro novos tipos adicionados ao array `BLOCK_TYPES` em
+`_shared/report-docs/layout.ts`:
+- `kpi_stories_count`
+- `kpi_stories_reach`
+- `kpi_stories_retention`
+- `top_stories`
+
+Correspondentes componentes React adicionados ao `BLOCK_COMPONENTS` em
+`packages/report-blocks/BlockRenderer.tsx`.
+
+### 5.2 Layout (`default-layout.ts`)
 
 Nova secao "Stories" apos a secao "Publicacoes", condicional a `hasStories`:
 
@@ -286,17 +374,29 @@ Nova secao "Stories" apos a secao "Publicacoes", condicional a `hasStories`:
 | `kpi_stories_retention` | third | Taxa de retencao media |
 | `top_stories` | full | Top 6 stories por alcance (thumbnail + metricas) |
 
-### 5.2 KPIs (`kpis.ts`)
+**Escopo:** esta secao so aparece em novos documentos criados com o layout padrao.
+Layouts ja customizados/congelados nao recebem stories automaticamente — o usuario
+pode adiciona-los manualmente via editor de layout. Nao ha migracao de templates
+existentes.
+
+### 5.3 KPIs (`kpis.ts`)
 
 Tres novos KPI IDs: `stories_count`, `stories_reach`, `stories_retention`.
 Shape: `{ value: number | null, unit: 'count' | 'pct', prev: number | null }`.
 
-### 5.3 Snapshot source (`snapshot-source.ts`)
+### 5.4 Snapshot source (`snapshot-source.ts`)
 
 Novo campo `stories` no snapshot:
 - KPIs: das colunas `stories_*_month` em `instagram_account_metrics_monthly`
 - Top stories: query em `instagram_story_insights` WHERE `posted_at` no mes,
-  ORDER BY `reach` DESC LIMIT 6, mapeados pra `SnapshotTopStory`:
+  ORDER BY `reach` DESC LIMIT 6
+
+**Thumbnail caching:** thumbnails de stories recebem o mesmo tratamento que
+thumbnails de posts: `isEphemeralInstagramUrl(url)` + `cachePostThumbnail()` pra
+converter URLs efemeras do CDN do Instagram em URLs estaveis no Supabase Storage.
+Sem isso, PDFs gerados depois de 24-48h teriam imagens quebradas.
+
+Mapeados pra `SnapshotTopStory`:
 
 ```typescript
 interface SnapshotTopStory {
@@ -308,17 +408,17 @@ interface SnapshotTopStory {
   exits: number;
   retention_rate: number;
   date: string | null;
-  thumbnail_url: string | null;
+  thumbnail_url: string | null;  // URL estavel pos-cache
 }
 ```
 
-### 5.4 AI narrative
+### 5.5 AI narrative
 
 O prompt do Gemini em `report-generator-v2` recebe contexto de stories (se disponivel)
 pra incluir na analise. Exemplo: "A taxa de retencao nos stories foi de X%, com Y
 respostas." O modelo decide se e relevante incluir na narrativa.
 
-### 5.5 Condicional
+### 5.6 Condicional
 
 Se `stories_count_month` e 0 ou NULL, a secao nao aparece no relatorio. Relatorios de
 meses anteriores a esta feature nao terao dados de stories.
@@ -328,14 +428,16 @@ meses anteriores a esta feature nao terao dados de stories.
 ### 6.1 Edge function tests (Deno)
 
 - `instagram-sync-cron`: test de `story-ingest.ts` com mock da Graph API, verificando
-  upsert em `instagram_story_insights` e agregacao em daily
+  upsert em `instagram_story_insights` (target composto) e agregacao em daily
 - `instagram-analytics`: test do endpoint `/stories/:clientId` com dados mockados,
-  verificando KPIs, rates computados, e range de datas
-- Monthly close: test da agregacao mensal de stories
+  verificando KPIs, rates computados, range de datas, e edge cases (impressions=0,
+  range invalido, range >365d)
+- Monthly close: test da agregacao mensal de stories, incluindo o caso de row mensal
+  pre-existente com stories columns NULL
 
 ### 6.2 Frontend tests (Vitest)
 
-- `getStoriesAnalytics`: test da chamada ao edge function
+- `getStoriesAnalytics`: test da chamada ao edge function via fetchEdge
 - Secao de Stories: render condicional (nao renderiza com 0 stories), KPI cards,
   tabela com dados mockados
 
@@ -343,12 +445,14 @@ meses anteriores a esta feature nao terao dados de stories.
 
 ### Ordem de deploy
 
-1. **Migration** — schema (tabela + colunas + RPC) via `supabase db push --linked`
+1. **Migration** — schema (tabela + colunas + RPC) via `supabase db push --linked`.
+   Prefixo `20260902000010` (verificar contra main antes do push)
 2. **Edge functions** — `instagram-sync-cron` (coleta) + `instagram-analytics` (API)
    em sequencia
 3. **Frontend** — PR com a secao de Stories; apos merge, deploy automatico via Vercel
-4. **Report pipeline** — `report-docs` e `instagram-report-generator-v2` numa segunda
-   fase (pode ser PR separado)
+4. **Report pipeline** — `report-docs`, `report-blocks`, e `instagram-report-generator-v2`
+   numa segunda fase (pode ser PR separado). Inclui: BLOCK_TYPES, BLOCK_COMPONENTS,
+   snapshot source, thumbnail caching, KPIs, default layout, AI prompt
 
 ### Observacoes
 
@@ -357,3 +461,4 @@ meses anteriores a esta feature nao terao dados de stories.
 - A secao de Stories no frontend sera invisivel ate o primeiro story ser coletado
 - Relatorios do mes de deploy podem ter dados parciais de stories (cobertura
   comeca no dia do deploy)
+- Contas deferidas pelo seletor do cron podem perder stories (trade-off aceito)
