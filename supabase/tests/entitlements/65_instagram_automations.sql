@@ -25,6 +25,11 @@
 --    Single-session scenario: claimed (first comment) -> cooldown (second,
 --    different comment, same commenter -- the in-flight 'processing' row
 --    reserves it) -> duplicate (re-claiming the first comment again).
+-- 9. public_replies (migration 20260901000001): CHECK via validate_ig_public_
+--    replies (same CASE type-guard rationale as validate_ig_dm_buttons), the
+--    backfill expression from the legacy public_reply column, and
+--    claim_retryable_automation_sends returning the new public_reply_text
+--    column.
 
 -- 1-3. Feature gate (off -> on -> downgrade) + RLS (any workspace member
 --      writes, including agent)
@@ -562,5 +567,182 @@ begin
   assert v_rejected, 'dm_kind inválido deve cair no CHECK';
 
   raise notice 'PASS 65 mark_automation_dm_sent dm_kind (transição única + CHECK)';
+end $$;
+rollback;
+
+-- ---------------------------------------------------------------------------
+-- 9. public_replies: CHECK, backfill e claim_retryable devolve public_reply_text
+-- ---------------------------------------------------------------------------
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid;
+  v_owner uuid := gen_random_uuid();
+  v_cli bigint;
+  v_rejected boolean;
+  v_auto uuid;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_instagram_automation": true}'::jsonb);
+
+  insert into auth.users (id) values (v_owner);
+  insert into workspace_members (user_id, workspace_id, role) values (v_owner, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws, role = 'owner'
+    where id = v_owner;
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_owner, v_ws, 'C', 'C', '#000') returning id into v_cli;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+
+  -- (a) válido: 5 variações de 500 chars como authenticated
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, public_replies)
+    values (v_ws, v_cli, 'Cinco', array['x'], 'msg',
+      to_jsonb(array_fill(repeat('a', 500), array[5])))
+    returning id into v_auto;
+
+  -- (b) 6 variações -> check_violation
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, public_replies)
+      values (v_ws, v_cli, 'Seis', array['x'], 'msg',
+        to_jsonb(array_fill('oi'::text, array[6])));
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, '6 variações devem ser rejeitadas';
+
+  -- (c) item vazio após btrim -> check_violation
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, public_replies)
+      values (v_ws, v_cli, 'Vazia', array['x'], 'msg', '["ok", "   "]'::jsonb);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'variação só de espaços deve ser rejeitada';
+
+  -- (d) item de 501 chars -> check_violation
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, public_replies)
+      values (v_ws, v_cli, 'Longa', array['x'], 'msg',
+        jsonb_build_array(repeat('a', 501)));
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'variação de 501 chars deve ser rejeitada';
+
+  -- (e) não-array -> check_violation
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, public_replies)
+      values (v_ws, v_cli, 'NaoArray', array['x'], 'msg', '"oi"'::jsonb);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'public_replies não-array deve ser rejeitado';
+
+  reset role;
+  raise notice 'PASS 65 seção 9a: CHECKs de public_replies';
+end $$;
+rollback;
+
+-- Backfill: simula a janela pré-migration inserindo com public_reply legado e
+-- re-rodando o UPDATE de backfill (a migration real já rodou no schema do
+-- teste; aqui provamos a EXPRESSÃO de backfill contra os dois casos). Roda
+-- como table owner, sem troca de role (mesmo padrão das seções 4/6/8).
+begin;
+do $$
+declare
+  v_ws uuid;
+  v_uid uuid := gen_random_uuid();
+  v_cli bigint;
+  v_normal uuid;
+  v_blank uuid;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_instagram_automation": true}'::jsonb);
+
+  insert into auth.users (id) values (v_uid);
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
+
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, public_reply)
+    values (v_ws, v_cli, 'Com reply', array['x'], 'msg', 'olha a DM')
+    returning id into v_normal;
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, public_reply)
+    values (v_ws, v_cli, 'Só espaços', array['x'], 'msg', '   ')
+    returning id into v_blank;
+
+  update instagram_comment_automations
+     set public_replies = jsonb_build_array(public_reply)
+   where public_reply is not null and btrim(public_reply) <> ''
+     and id in (v_normal, v_blank);
+
+  assert (select public_replies from instagram_comment_automations where id = v_normal)
+         = '["olha a DM"]'::jsonb, 'backfill deve virar array de 1';
+  assert (select public_replies from instagram_comment_automations where id = v_blank)
+         = '[]'::jsonb, 'public_reply só de espaços deve ficar []';
+
+  raise notice 'PASS 65 seção 9b: backfill de public_replies';
+end $$;
+rollback;
+
+-- claim_retryable_automation_sends devolve public_reply_text (como owner,
+-- stand-in do service_role -- ver seções 4/6/8; instagram_accounts não tem
+-- coluna conta_id, o join da RPC é por client_id).
+begin;
+do $$
+declare
+  v_ws uuid;
+  v_uid uuid := gen_random_uuid();
+  v_cli bigint;
+  v_auto uuid;
+  v_send uuid;
+  v_row record;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_instagram_automation": true}'::jsonb);
+
+  insert into auth.users (id) values (v_uid);
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
+
+  insert into instagram_accounts
+    (client_id, instagram_user_id, encrypted_access_token,
+     authorization_status, permissions, comments_subscribed_at)
+    values (v_cli, 'ig-1', 'enc-tok', 'active',
+      array['instagram_business_manage_comments','instagram_business_manage_messages'],
+      now());
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, public_replies)
+    values (v_ws, v_cli, 'Retry', array['x'], 'msg', '["variação A"]'::jsonb)
+    returning id into v_auto;
+  insert into instagram_automation_sends
+    (comment_id, automation_id, conta_id, commenter_id, comment_text,
+     comment_created_at, status, next_attempt_at, attempts, public_reply_text)
+    values ('c-9', v_auto, v_ws, 'u-9', 'x', now(), 'retry', now() - interval '1 minute',
+      1, 'variação A')
+    returning id into v_send;
+
+  select * into v_row from claim_retryable_automation_sends(10);
+  assert v_row.send_id = v_send, 'claim deve devolver o send em retry';
+  assert v_row.public_reply_text = 'variação A',
+    'claim deve devolver public_reply_text';
+
+  raise notice 'PASS 65 seção 9c: claim devolve public_reply_text';
 end $$;
 rollback;
