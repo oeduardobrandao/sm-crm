@@ -160,11 +160,18 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       if (!rejectedAtByPost[r.post_id]) rejectedAtByPost[r.post_id] = r.updated_at;
     }
 
-    const { data: propertyValues } = postIds.length > 0
+    // Propriedades pertencem ao modelo do fluxo: um post avulso (detach preserva
+    // os valores como dado inativo) NAO expoe propriedades no Hub, senao o
+    // cliente veria valores obsoletos do fluxo antigo. So posts com workflow.
+    const wiredPostIds = flatPosts
+      .filter((post: any) => post.workflow_id != null)
+      .map((post: { id: number }) => post.id);
+
+    const { data: propertyValues } = wiredPostIds.length > 0
       ? await db
           .from("post_property_values")
           .select("post_id, value, template_property_definitions!inner(name, type, config, portal_visible, display_order)")
-          .in("post_id", postIds)
+          .in("post_id", wiredPostIds)
           .eq("template_property_definitions.portal_visible", true)
           .order("template_property_definitions(display_order)", { ascending: true })
       : { data: [] };

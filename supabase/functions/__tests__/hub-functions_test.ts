@@ -1460,7 +1460,6 @@ Deno.test("hub-posts returns an avulso post with workflow_titulo: null for a cli
     error: null,
   });
   db.queue("post_approvals", "select", { data: [], error: null });
-  db.queue("post_property_values", "select", { data: [], error: null });
   db.queue("post_file_links", "select", { data: [], error: null });
   db.queue("instagram_accounts", "select", { data: null, error: null });
   db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
@@ -1479,11 +1478,78 @@ Deno.test("hub-posts returns an avulso post with workflow_titulo: null for a cli
   assertEquals(body.posts[0].workflow_titulo, null);
   assertEquals(body.posts[0].workflow_created_at, null);
   assertEquals(body.workflowSelectOptions, []);
+  assertEquals(body.propertyValues, []);
   assertEquals(body.autoPublishOnApproval, false);
   assert(
     !db.calls.some((c: { table: string }) => c.table === "workflow_select_options"),
     "workflow_select_options must be skipped when no post has a workflow_id",
   );
+  // Propriedades pertencem ao modelo do fluxo: com só avulsos, a query nem roda.
+  assert(
+    !db.calls.some((c: { table: string }) => c.table === "post_property_values"),
+    "post_property_values must be skipped when no post has a workflow_id",
+  );
+});
+
+Deno.test("hub-posts fetches property values only for posts attached to a workflow (detached avulso values stay hidden)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 50,
+        titulo: "Post avulso destacado",
+        tipo: "feed",
+        status: "enviado_cliente",
+        ordem: 0,
+        conteudo_plain: "",
+        scheduled_at: null,
+        platform: "instagram",
+        workflow_id: null,
+        workflows: null,
+      },
+      {
+        id: 51,
+        titulo: "Post no fluxo",
+        tipo: "feed",
+        status: "enviado_cliente",
+        ordem: 0,
+        conteudo_plain: "",
+        scheduled_at: null,
+        platform: "instagram",
+        workflow_id: 7,
+        workflows: { titulo: "Fluxo A", created_at: "2026-04-01T00:00:00.000Z" },
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async () => "https://signed.example",
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+
+  assertEquals(response.status, 200);
+  const propCall = db.calls.find((c: { table: string }) => c.table === "post_property_values");
+  assert(propCall, "post_property_values must run when at least one post has a workflow");
+  const inModifier = (propCall as { modifiers: Array<{ method: string; args: unknown[] }> })
+    .modifiers.find((m) => m.method === "in" && m.args[0] === "post_id");
+  assert(inModifier, "property values query filters by post_id");
+  // So o post com fluxo (51); o avulso destacado (50) fica de fora, senao o Hub
+  // renderizaria valores obsoletos do template do fluxo antigo.
+  assertEquals(inModifier!.args[1], [51]);
 });
 
 Deno.test("hub-posts includes instagramProfile when the client has a linked account", async () => {
