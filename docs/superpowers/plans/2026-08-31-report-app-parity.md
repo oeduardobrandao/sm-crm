@@ -30,17 +30,17 @@ depois desta tabela preenchida e do checkpoint com o Eduardo.**
 
 | Métrica | total_value ok? | Série diária (`values[]`)? | Breakdown | Range máx/request | Retenção | Vazio observado? | Dedup na janela? (únicos) | Plano B |
 |---|---|---|---|---|---|---|---|---|
-| reach | ? | ? | — | ? | ? | ? | ? (vs 10.281 do app) | ? |
-| views | ok (produção) | ? | — | ~30d (chunks hoje) | 90d | ? | n/a (aditiva) | — |
-| saves | ? | ? | — | ? | ? | ? | n/a | ? |
-| accounts_engaged | ? | ? | — | ? | ? | ? | ? | ? |
-| profile_views | ? (nome a confirmar) | ? | — | ? | ? | ? | n/a | ? |
-| website_clicks | ? | ? | — | ? | ? | ? | n/a | ? |
-| follows_and_unfollows | ? | ? | `follow_type`? | ? | ? | ? | n/a | ? |
-| follower_count | n/a | ? | — | ? | ~30d | ? | n/a | history atual |
+| reach | ok — 200, `value` presente (21176/31d, 21019/chunk30, 579/chunk1) | sim — 4 valores, 1/dia (probe sem `metric_type`, Aug28-31) | — (não testado) | 31d aceito num único request (200) — chunking de produção pode ser desnecessário | testado só p/ reach: janela ~170-200d atrás (Jan-Fev/2026) devolveu 200 com `value=7832`, NÃO vazia — retenção real é maior que os 90d supostos, limite exato não confirmado | não (nem diário nem fora-da-retenção vieram vazios) | **NÃO** — 31d único (21176) ≈ chunk30+chunk1 (21598, só +2%); ambos ~2,06x o valor do app (10.281). Sugere que mesmo o request único não dedupe entre dias, e sim soma valores diários | bloqueado — sem caminho comprovado pra reach mensal deduplicado por este endpoint; decisão para o checkpoint com Eduardo |
+| views | ok (produção) — 200, 47625/31d, 46129/chunk30 (bate exato com os 46.129 do app), 1496/chunk1 | não — probe cru devolveu `data: []`; só `metric_type=total_value` funciona, série diária exigiria 1 request por dia | — | 31d aceito num único request; chunk30+chunk1 = 47625 = single 31d exato → aditiva, chunking hoje é opcional | 90d (suposição original da spec; não retestada neste spike) | sim (na série diária crua) | n/a (aditiva) — soma bate exata, e chunk30 sozinho já bate com o número do app | — |
+| saves | ok — 200, 55/31d, 51/chunk30, 4/chunk1, soma bate exato | não — `data: []` no probe cru | — | 31d aceito num único request; aditiva (soma exata) | não testada neste spike | sim (série diária crua) | n/a (aditiva, soma exata) | — |
+| accounts_engaged | ok — 200, 240/31d, 231/chunk30, 15/chunk1 | não — `data: []` no probe cru | — | 31d aceito num único request | não testada neste spike | sim (série diária crua) | **NÃO/parcial** — chunk30+chunk1 (246) > single 31d (240), +2,5% — mesmo padrão de "soma sem dedup real" do reach, em escala menor | mesma pendência do reach — não tratar como mensal deduplicado; decisão no checkpoint |
+| profile_views | ok, nome confirmado = `profile_views` — 200, 1463/31d, 1427/chunk30, 36/chunk1, soma bate exato | não — `data: []` no probe cru | — | 31d aceito num único request; aditiva (soma exata) | não testada neste spike | sim (série diária crua) | n/a (aditiva, soma exata) | — |
+| website_clicks | ok — 200, 175/31d, 171/chunk30, 4/chunk1, soma bate exato | não — `data: []` no probe cru | — | 31d aceito num único request; aditiva (soma exata) | não testada neste spike | sim (série diária crua) | n/a (aditiva, soma exata) | — |
+| follows_and_unfollows | **NÃO sem breakdown** — 200, mas `total_value` ausente do body (nem zero: o campo não existe) em 31d/chunk30/chunk1; só vem com `breakdown` | não — `data: []` mesmo sem breakdown | `follow_type` funciona (200, `FOLLOWER=122`/`NON_FOLLOWER=68`); `follower_type` falha (400: "breakdown[0] must be one of the following values: country, city, age, gender, follow_type, media_product_type, contact_button_type") | 31d aceito com breakdown | não testada neste spike | sim (`total_value` sem breakdown e série diária) | n/a | usar sempre `breakdown=follow_type`; mapear `FOLLOWER`/`NON_FOLLOWER` pra follows/unfollows precisa confirmação — os números (122/68) batem aproximadamente com o app (115/66 follows/unfollows), mas as janelas são diferentes (calendário vs 30d rolante), não é prova definitiva |
+| follower_count | n/a (não testado neste spike — só probe diário) | sim — 30 valores, 1/dia (Aug2-Aug31), **mas os valores parecem DELTA diário** (0 a 8) e não estoque acumulado, apesar do título "Número de seguidores" — achado inesperado | — | 30d testado (não testamos janela maior) | ~30d (mantido, não retestada) | não | n/a | history atual (mantido) — mas o módulo precisa tratar os valores diários como delta, não como snapshot |
 
-Latência de finalização de D-1 (para calibrar a janela D-1..D-3): **?**
-Reach 01–31/08 Healing Hands, caminho de produção: **?** · request único 31d: **?** · app: 10.281
+Latência de finalização de D-1 (para calibrar a janela D-1..D-3): **pendente: repetir probe g em D+1** (valor capturado em 2026-08-31 para D-1=31/08: `views total_value = 1496`; repetir a chamada no dia seguinte e comparar se o valor mudou)
+Reach 01–31/08 Healing Hands, caminho de produção (chunk30+chunk1): **21598** · request único 31d: **21176** · app: 10.281 — paridade NÃO bate (ambos os caminhos ~2,06-2,10x o valor do app)
 
 ---
 
