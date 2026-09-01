@@ -335,6 +335,19 @@ begin
     format('partial move without flag must archive nothing, got %s', v_result);
   v_new_wf := (v_result->>'target_workflow_id')::bigint;
 
+  -- Retorno enriquecido (20260901120000): a linha do fluxo novo e as etapas
+  -- clonadas voltam no proprio resultado, para o CRM abrir o drawer do
+  -- destino sem esperar o refetch do board.
+  assert (v_result->'workflow'->>'id')::bigint = v_new_wf,
+    format('result must carry the new workflow row, got %s', v_result->'workflow');
+  assert v_result->'workflow'->>'titulo' = 'Origem (continuação)',
+    'returned workflow row must reflect the trimmed titulo';
+  assert jsonb_array_length(v_result->'etapas') = 4,
+    format('result must carry the 4 cloned etapas, got %s', v_result->'etapas');
+  assert v_result->'etapas'->0->>'ordem' = '0'
+     and v_result->'etapas'->3->>'ordem' = '3',
+    'returned etapas must be ordered by ordem';
+
   -- 3a. fluxo novo: heranca + escolhas fixadas em spec
   select * into v_wf_row from workflows where id = v_new_wf;
   assert v_wf_row.titulo = 'Origem (continuação)', format('titulo must be trimmed, got %L', v_wf_row.titulo);

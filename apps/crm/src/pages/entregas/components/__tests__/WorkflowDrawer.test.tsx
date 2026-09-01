@@ -771,11 +771,15 @@ describe('WorkflowDrawer mover para outro fluxo', () => {
   });
 
   it('confirmar "novo fluxo" na barra de seleção move o lote e abre o drawer do destino', async () => {
+    const seedWorkflow = { id: 77, cliente_id: 42, titulo: 'Campanha Julho (continuação)' };
+    const seedEtapas = [{ id: 900, workflow_id: 77, ordem: 0, nome: 'Produção', status: 'ativo' }];
     mockMoveToNewFlow.mockResolvedValue({
       ok: true,
       moved: 2,
       target_workflow_id: 77,
       archived_workflow_ids: [10],
+      workflow: seedWorkflow,
+      etapas: seedEtapas,
     } as never);
     const onClose = vi.fn();
     const onRefresh = vi.fn();
@@ -806,8 +810,15 @@ describe('WorkflowDrawer mover para outro fluxo', () => {
         archiveEmptyFlow: true,
       }),
     );
-    // Lands the user where the posts went: close this drawer, open the target's.
-    await waitFor(() => expect(onOpenWorkflow).toHaveBeenCalledWith(77));
+    // Lands the user where the posts went: close this drawer, open the
+    // target's -- carrying the new flow's row + etapas so the page can open
+    // it without waiting for the board refetch.
+    await waitFor(() =>
+      expect(onOpenWorkflow).toHaveBeenCalledWith(77, {
+        workflow: seedWorkflow,
+        etapas: seedEtapas,
+      }),
+    );
     expect(onClose).toHaveBeenCalled();
     expect(onRefresh).toHaveBeenCalled();
     // The RPC can create/remap per-flow select options on the destination;

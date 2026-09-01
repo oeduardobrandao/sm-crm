@@ -25,6 +25,7 @@ import {
   getWorkflows,
   movePostsToNewFlow,
   movePostsToExistingFlow,
+  type MovePostsResult,
   type Workflow,
   type WorkflowEtapa,
 } from '../../../store';
@@ -42,8 +43,9 @@ interface MovePostsToFluxoDialogProps {
    *  dialog offer the checkbox (same rule as the detach confirm). */
   isTotalSelection: boolean;
   /** Fires after a successful move (posts re-parented + caches invalidated) so
-   *  the caller can open the target flow's drawer. */
-  onMoved: (targetWorkflowId: number, archived: boolean) => void;
+   *  the caller can open the target flow's drawer. The result carries the new
+   *  flow's row + etapas (when the DB returns them) for an instant open. */
+  onMoved: (result: MovePostsResult) => void;
 }
 
 /** Eligible "fluxo existente" targets: the client's other ACTIVE flows sharing
@@ -209,7 +211,7 @@ export function MovePostsToFluxoDialog({
       qc.invalidateQueries({ queryKey: ['workflow-covers'] });
       qc.invalidateQueries({ queryKey: ['workflow-post-responsaveis'] });
       qc.invalidateQueries({ queryKey: ['workflow-events', sourceWorkflowId] });
-      onMoved(result.target_workflow_id, result.archived_workflow_ids.length > 0);
+      onMoved(result);
       onClose();
     } catch (err) {
       toast.error(getMoveErrorToast(err));

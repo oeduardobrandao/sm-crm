@@ -63,7 +63,10 @@ import type { BoardColumnSort } from './postsBoardOrder';
 import {
   duplicateWorkflow,
   getStandalonePost,
+  getDeadlineInfo,
   type ActivePost,
+  type Workflow,
+  type WorkflowEtapa,
   type WorkflowPost,
 } from '../../store';
 import { captureEvent } from '@/lib/analytics';
@@ -373,6 +376,30 @@ export default function EntregasPage() {
   // Resolve a post's workflow back to its board card (O(1)) for drawer opening.
   // Built from the UNFILTERED cards so a filtered-out workflow's post is still openable.
   const cardsByWorkflowId = useMemo(() => new Map(cards.map((c) => [c.workflow.id!, c])), [cards]);
+
+  // Builds a BoardCard for a flow the board has not refetched yet (one just
+  // created by "mover para outro fluxo"), mirroring useEntregasData's builder.
+  // Covers/avatar/hubUrl are omitted -- they arrive with the background refresh.
+  const buildProvisionalCard = (seed: {
+    workflow: Workflow;
+    etapas: WorkflowEtapa[];
+  }): BoardCard | null => {
+    if (seed.workflow.status !== 'ativo' || seed.etapas.length === 0) return null;
+    const etapas = [...seed.etapas].sort((a, b) => a.ordem - b.ordem);
+    const activeEtapa = etapas.find((e) => e.status === 'ativo') ?? etapas[0];
+    return {
+      workflow: seed.workflow,
+      etapa: activeEtapa,
+      cliente: clientes.find((c) => c.id === seed.workflow.cliente_id),
+      membro: activeEtapa.responsavel_id
+        ? membros.find((m) => m.id === activeEtapa.responsavel_id)
+        : undefined,
+      deadline: getDeadlineInfo(activeEtapa),
+      totalEtapas: etapas.length,
+      etapaIdx: activeEtapa.ordem,
+      allEtapas: etapas,
+    };
+  };
   const openableWorkflowIds = useMemo(() => new Set(cards.map((c) => c.workflow.id!)), [cards]);
 
   const handleCardClick = (card: BoardCard) => {
@@ -888,15 +915,30 @@ export default function EntregasPage() {
             setDrawerInitialPostId(null);
           }}
           onRefresh={refresh}
-          onOpenWorkflow={(workflowId) => {
-            // Posts just moved to another (possibly brand-new) flow: reuse the
-            // pending-deep-link resolver, which holds the target until its card
-            // exists -- a freshly created flow only shows up after the
-            // ['workflows'] refetch lands. Not a URL navigation: the query-sync
-            // effect would fight over the ?drawer= param.
+          onOpenWorkflow={(workflowId, seed) => {
+            // Posts just moved to another flow: land the user there NOW when
+            // possible. An existing target already has a board card; a freshly
+            // created flow rides in via `seed` (the RPC returns its row +
+            // etapas), from which a provisional card opens the drawer without
+            // waiting for the workflows + all-active-etapas refetch cascade
+            // (the latter re-keys on the active-id list, refetching etapas for
+            // EVERY active flow). Covers/hubUrl arrive with the background
+            // refresh, same as any card. Fallback: the pending-deep-link
+            // resolver, which holds the target until its card exists. Not a
+            // URL navigation: the query-sync effect would fight over ?drawer=.
             setDrawerCard(null);
             setDrawerInitialPostId(null);
             setStandalonePostId(null);
+            const existing = cardsByWorkflowId.get(workflowId);
+            if (existing) {
+              setDrawerCard(existing);
+              return;
+            }
+            const seededCard = seed ? buildProvisionalCard(seed) : null;
+            if (seededCard) {
+              setDrawerCard(seededCard);
+              return;
+            }
             setPendingDeepLink({ workflowId, postId: null });
           }}
         />

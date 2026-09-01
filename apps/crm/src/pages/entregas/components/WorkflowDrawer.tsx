@@ -78,6 +78,9 @@ import {
   getClientePosts,
   syncMentions,
   detachPostsFromWorkflow,
+  type MovePostsResult,
+  type Workflow,
+  type WorkflowEtapa,
   type WorkflowPost,
   type PostApproval,
   type PostStatusEvent,
@@ -140,9 +143,14 @@ interface WorkflowDrawerProps {
   onRefresh: () => void;
   initialPostId?: number;
   /** Opens another workflow's drawer (used after moving posts to a new or
-   *  existing flow, so the user lands where the posts went). Optional: call
-   *  sites without it just close this drawer. */
-  onOpenWorkflow?: (workflowId: number) => void;
+   *  existing flow, so the user lands where the posts went). `seed` carries a
+   *  freshly created flow's row + etapas so the caller can open its drawer
+   *  without waiting for the board refetch. Optional: call sites without it
+   *  just close this drawer. */
+  onOpenWorkflow?: (
+    workflowId: number,
+    seed?: { workflow: Workflow; etapas: WorkflowEtapa[] },
+  ) => void;
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -623,15 +631,21 @@ export function WorkflowDrawer({
 
   // Posts left for another flow (new or existing): this drawer's list just
   // shrank (or emptied), so refresh the board and land the user where the
-  // posts went. Falls back to only closing when the call site can't open
-  // another drawer.
+  // posts went. A new flow's row + etapas ride along so the caller can open
+  // its drawer instantly instead of waiting for the board refetch. Falls back
+  // to only closing when the call site can't open another drawer.
   const handleMoved = useCallback(
-    (targetWorkflowId: number) => {
+    (result: MovePostsResult) => {
       setSelectedPostIds(new Set());
       setMoveTarget(null);
       onRefresh();
       onClose();
-      onOpenWorkflow?.(targetWorkflowId);
+      onOpenWorkflow?.(
+        result.target_workflow_id,
+        result.workflow && result.etapas
+          ? { workflow: result.workflow, etapas: result.etapas }
+          : undefined,
+      );
     },
     [onRefresh, onClose, onOpenWorkflow],
   );

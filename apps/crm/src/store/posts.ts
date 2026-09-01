@@ -1,6 +1,7 @@
 import { supabase, getContaId, getUserId } from './core';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
+import type { Workflow, WorkflowEtapa } from './workflows';
 
 /**
  * Ascending by scheduled_at, nulls last -- replicates the `.order('scheduled_at',
@@ -1012,6 +1013,13 @@ export interface MovePostsResult {
   moved: number;
   target_workflow_id: number;
   archived_workflow_ids: number[];
+  /** New-flow path only, and only once migration 20260901120000 is applied:
+   *  the freshly created workflow row and its cloned etapas, so the UI can
+   *  open the destination drawer immediately instead of waiting for the
+   *  board's workflows + all-active-etapas refetch cascade. Treat as
+   *  optional -- an older DB simply omits them. */
+  workflow?: Workflow;
+  etapas?: WorkflowEtapa[];
 }
 
 /**

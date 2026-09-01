@@ -830,8 +830,17 @@ describe('posts avulsos', () => {
   });
 
   it('movePostsToNewFlow calls the RPC with the batch, declared source and new-flow options', async () => {
+    const workflowRow = { id: 99, titulo: 'Fluxo (continuação)', status: 'ativo' };
+    const etapasRows = [{ id: 500, workflow_id: 99, ordem: 0, nome: 'Copy', status: 'ativo' }];
     mockedSupabase.__queueSupabaseRpc('move_posts_to_new_flow', {
-      data: { ok: true, moved: 2, target_workflow_id: 99, archived_workflow_ids: [] },
+      data: {
+        ok: true,
+        moved: 2,
+        target_workflow_id: 99,
+        archived_workflow_ids: [],
+        workflow: workflowRow,
+        etapas: etapasRows,
+      },
       error: null,
     });
 
@@ -840,11 +849,15 @@ describe('posts avulsos', () => {
       startOrdem: 2,
     });
 
+    // The new flow's row + etapas (migration 20260901120000) pass through
+    // untouched so the UI can open the destination drawer instantly.
     expect(result).toEqual({
       ok: true,
       moved: 2,
       target_workflow_id: 99,
       archived_workflow_ids: [],
+      workflow: workflowRow,
+      etapas: etapasRows,
     });
     const call = getCalls('rpc:move_posts_to_new_flow', 'rpc').at(-1)!;
     expect(call.payload).toEqual({
