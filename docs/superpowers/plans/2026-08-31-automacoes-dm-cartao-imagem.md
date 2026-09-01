@@ -1007,7 +1007,7 @@ Expected: PASS (6 testes).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/functions/automation-media/ supabase/functions/__tests__/automation-media_test.ts
+git add supabase/functions/automation-media/ supabase/functions/__tests__/automation-media_test.ts supabase/functions/_shared/r2.ts
 git commit -m "feat(automacoes): edge function automation-media (presign, finalize com quota, trash)"
 ```
 
