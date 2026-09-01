@@ -281,10 +281,21 @@ export async function fetchAccountTotals(
 ): Promise<Partial<AccountTotals>> {
   const entries = await Promise.all(
     metrics.map(async (metric) => {
-      const value = metric === 'follows_and_unfollows'
-        ? await fetchFollowsTotal(fetchFn, accessToken, sinceSec, untilSec)
-        : await fetchSimpleMetricTotal(fetchFn, accessToken, metric, sinceSec, untilSec);
-      return [metric, value] as const;
+      try {
+        const value = metric === 'follows_and_unfollows'
+          ? await fetchFollowsTotal(fetchFn, accessToken, sinceSec, untilSec)
+          : await fetchSimpleMetricTotal(fetchFn, accessToken, metric, sinceSec, untilSec);
+        return [metric, value] as const;
+      } catch (e) {
+        // Graph-returned `.error` objects (non-190) are already normalized
+        // to null inside fetch*Total. This catches everything else that can
+        // fail one metric's request in flight (network error, timeout,
+        // malformed JSON) so it degrades the same way instead of rejecting
+        // the whole call. TOKEN_EXPIRED is the sole exception: it must
+        // still surface to the caller.
+        if ((e as { code?: string } | null)?.code === 'TOKEN_EXPIRED') throw e;
+        return [metric, null] as const;
+      }
     }),
   );
   const result: Partial<AccountTotals> = {};

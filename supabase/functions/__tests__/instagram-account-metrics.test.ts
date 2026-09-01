@@ -65,6 +65,20 @@ Deno.test("falha de uma métrica não derruba as outras", async () => {
   assertEquals(r.saves, null);
 });
 
+Deno.test("falha de rede (fetch rejeita) em uma métrica não derruba as outras", async () => {
+  const f = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    if (url.searchParams.get("metric") === "saves") throw new TypeError("network down");
+    return new Response(
+      JSON.stringify({ data: [{ name: "views", total_value: { value: 9 } }] }),
+      { status: 200 },
+    );
+  }) as typeof fetch;
+  const r = await fetchAccountTotals(f, "tok", ["views", "saves"], T0, T0 + DAY);
+  assertEquals(r.views, 9);
+  assertEquals(r.saves, null);
+});
+
 Deno.test("erro 190 sobe como TOKEN_EXPIRED", async () => {
   const f = fakeFetch(() => ({ error: { code: 190, message: "expired" } }));
   await assertRejects(() => fetchAccountTotals(f, "tok", ["views"], T0, T0 + DAY));
