@@ -111,7 +111,7 @@ Reporte ao orquestrador: "Milestone 0 preparado, aguardando execução pelo oper
 
 **Interfaces:**
 - Consumes: schema atual (`dm_buttons`/CHECKs de `20260819000001`; `effective_plan_limit(uuid, text)` de `20260611150001`; `workspaces.storage_used_bytes`).
-- Produces: `instagram_comment_automations.dm_media jsonb` + `dm_subtitle text` com CHECKs (forma, tenant, título ≤ 80 com mídia); `dm_kind` aceita `'card' | 'card_fallback_buttons' | 'card_fallback_text'`; RPCs `automation_media_reserve_storage(uuid, bigint)` e `automation_media_release_storage(uuid, bigint)`.
+- Produces: `instagram_comment_automations.dm_media jsonb` + `dm_subtitle text` com CHECKs (forma, tenant, título ≤ 80 com mídia); `dm_kind` aceita `'card' | 'card_fallback_buttons' | 'card_fallback_text'`; tabela `automation_media_objects (key pk, conta_id, size_bytes, created_at)`; RPCs `automation_media_finalize(uuid, text, bigint) RETURNS boolean` (idempotente por key) e `automation_media_release(uuid, text) RETURNS bigint` (devolve os bytes liberados; 0 se não havia registro).
 
 - [ ] **Step 1: Escrever a migration**
 
@@ -175,13 +175,24 @@ ALTER TABLE instagram_automation_sends
   );
 
 -- Quota: dm_media não tem linha própria em tabela de mídia (é jsonb), então
--- não há trigger para manter storage_used_bytes -- estas RPCs fazem o par
--- reserva/liberação, chamadas SÓ pela function automation-media (service
--- role). Mesmo lock e mesma fonte de quota do post_media_insert_with_quota
--- (20260611150001). NUNCA criar um "decrement_storage" genérico por cima
--- (ver aviso em 20260811000002).
-CREATE FUNCTION automation_media_reserve_storage(p_conta_id uuid, p_bytes bigint)
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+-- não há trigger para manter storage_used_bytes. A fonte de verdade é o
+-- registro por objeto abaixo: finalize é IDEMPOTENTE por key (retry não
+-- re-reserva) e o release lê o tamanho DAQUI, nunca do request (um cliente
+-- não pode forjar bytes para drenar o contador). Chamadas SÓ pela function
+-- automation-media (service role). Mesmo lock e mesma fonte de quota do
+-- post_media_insert_with_quota (20260611150001). NUNCA criar um
+-- "decrement_storage" genérico por cima (ver aviso em 20260811000002).
+CREATE TABLE automation_media_objects (
+  key text PRIMARY KEY,
+  conta_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  size_bytes bigint NOT NULL CHECK (size_bytes > 0),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+-- RLS ligado sem policies: só as RPCs SECURITY DEFINER (service role) tocam.
+ALTER TABLE automation_media_objects ENABLE ROW LEVEL SECURITY;
+
+CREATE FUNCTION automation_media_finalize(p_conta_id uuid, p_key text, p_bytes bigint)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_used bigint;
   v_quota bigint;
@@ -193,36 +204,52 @@ BEGIN
   IF v_used IS NULL THEN
     RAISE EXCEPTION 'workspace_not_found';
   END IF;
+  INSERT INTO automation_media_objects (key, conta_id, size_bytes)
+    VALUES (p_key, p_conta_id, p_bytes)
+    ON CONFLICT (key) DO NOTHING;
+  IF NOT FOUND THEN
+    -- Já finalizado (retry de cliente): idempotente, não re-reserva.
+    RETURN false;
+  END IF;
   v_quota := effective_plan_limit(p_conta_id, 'storage_quota_bytes');
   IF v_quota IS NOT NULL AND v_used + p_bytes > v_quota THEN
+    -- O RAISE desfaz o INSERT acima na mesma transação.
     RAISE EXCEPTION 'quota_exceeded' USING errcode = 'P0001';
   END IF;
   UPDATE workspaces SET storage_used_bytes = storage_used_bytes + p_bytes
    WHERE id = p_conta_id;
+  RETURN true;
 END $$;
 
-CREATE FUNCTION automation_media_release_storage(p_conta_id uuid, p_bytes bigint)
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+CREATE FUNCTION automation_media_release(p_conta_id uuid, p_key text)
+RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_bytes bigint;
 BEGIN
-  IF p_bytes IS NULL OR p_bytes <= 0 THEN
-    RAISE EXCEPTION 'invalid_bytes';
+  DELETE FROM automation_media_objects
+   WHERE key = p_key AND conta_id = p_conta_id
+  RETURNING size_bytes INTO v_bytes;
+  IF v_bytes IS NULL THEN
+    -- Nunca finalizado, ou já liberado: no-op idempotente.
+    RETURN 0;
   END IF;
   UPDATE workspaces
-     SET storage_used_bytes = GREATEST(0, storage_used_bytes - p_bytes)
+     SET storage_used_bytes = GREATEST(0, storage_used_bytes - v_bytes)
    WHERE id = p_conta_id;
+  RETURN v_bytes;
 END $$;
 
-REVOKE ALL ON FUNCTION automation_media_reserve_storage(uuid, bigint) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION automation_media_reserve_storage(uuid, bigint) TO service_role;
-REVOKE ALL ON FUNCTION automation_media_release_storage(uuid, bigint) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION automation_media_release_storage(uuid, bigint) TO service_role;
+REVOKE ALL ON FUNCTION automation_media_finalize(uuid, text, bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION automation_media_finalize(uuid, text, bigint) TO service_role;
+REVOKE ALL ON FUNCTION automation_media_release(uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION automation_media_release(uuid, text) TO service_role;
 ```
 
 Antes de commitar, confirme o nome real do CHECK de `dm_kind` com `grep -n "dm_kind" supabase/migrations/20260819000001_instagram_dm_buttons.sql` (foi inline → nome auto `instagram_automation_sends_dm_kind_check`; o `DROP CONSTRAINT IF EXISTS` protege se divergir, mas nesse caso ajuste o nome no DROP para o real).
 
 - [ ] **Step 2: Testes SQL (nova seção no 65)**
 
-Seguindo o padrão das seções 7-9 (`begin; do $$...$$; rollback;`, roles como nas seções vizinhas), adicione casos: (a) automação válida com `dm_media` completo + `dm_message` de 80 chars + `dm_subtitle` como `authenticated` passa; (b) key com prefixo de OUTRO conta_id → `check_violation`; (c) key fora de `automation-media/` → `check_violation`; (d) `size_bytes` 8388609 → `check_violation`; (e) `content_type` `image/webp` → `check_violation`; (f) chave extra no objeto → `check_violation`; (g) `dm_subtitle` sem `dm_media` → `check_violation`; (h) `dm_message` 81 chars com mídia → `check_violation`; (i) `automation_media_reserve_storage` incrementa `workspaces.storage_used_bytes` e estoura `quota_exceeded` acima do limite do plano (use `workspace_plan_overrides` para fixar um limite baixo, como as suítes de quota existentes fazem — procure o padrão em `supabase/tests/entitlements/` com `grep -l storage_quota_bytes`); (j) `automation_media_release_storage` decrementa com piso 0. Use o molde literal da seção 7 (caso "(b) 4 botões", linhas 372-384 do arquivo) para os casos de rejeição.
+Seguindo o padrão das seções 7-9 (`begin; do $$...$$; rollback;`, roles como nas seções vizinhas), adicione casos: (a) automação válida com `dm_media` completo + `dm_message` de 80 chars + `dm_subtitle` como `authenticated` passa; (b) key com prefixo de OUTRO conta_id → `check_violation`; (c) key fora de `automation-media/` → `check_violation`; (d) `size_bytes` 8388609 → `check_violation`; (e) `content_type` `image/webp` → `check_violation`; (f) chave extra no objeto → `check_violation`; (g) `dm_subtitle` sem `dm_media` → `check_violation`; (h) `dm_message` 81 chars com mídia → `check_violation`; (i) `automation_media_finalize` incrementa `workspaces.storage_used_bytes` e devolve `true` na primeira chamada; a SEGUNDA chamada com a mesma key devolve `false` e NÃO incrementa de novo (idempotência); estoura `quota_exceeded` acima do limite do plano E não deixa linha em `automation_media_objects` (use `workspace_plan_overrides` para fixar um limite baixo, como as suítes de quota existentes fazem — procure o padrão em `supabase/tests/entitlements/` com `grep -l storage_quota_bytes`); (j) `automation_media_release` devolve os bytes do registro e decrementa com piso 0; a segunda chamada devolve 0 e não decrementa; release de key inexistente devolve 0. Use o molde literal da seção 7 (caso "(b) 4 botões", linhas 372-384 do arquivo) para os casos de rejeição.
 
 - [ ] **Step 3: Rodar se houver Supabase local; senão seguir (CI cobre)**
 
@@ -396,7 +423,7 @@ git commit -m "feat(automacoes): payload de generic template (cartão) e parseDm
 
 **Interfaces:**
 - Consumes: `buildCorsHeaders` (`_shared/cors.ts`), `signPutUrl`/`signGetUrl`/`headObject`/`trashObject` (`_shared/r2.ts`), RPCs da Task 2.
-- Produces: rotas `POST /automation-media/presign` → `{ upload_url, key }`; `POST /automation-media/finalize` → `{ dm_media: { key, content_type, size_bytes, width?, height? } }`; `POST /automation-media/sign-view` → `{ url }`; `POST /automation-media/delete` → `{ ok: true }`. Export `createAutomationMediaHandler(deps)`. A Task 6 (frontend) consome as quatro rotas.
+- Produces: rotas `POST /automation-media/presign` → `{ upload_url, key }`; `POST /automation-media/finalize` (body `{ key, mime_type, size_bytes, width?, height? }`, idempotente por key via RPC) → `{ dm_media: { key, content_type, size_bytes, width?, height? } }`; `POST /automation-media/sign-view` → `{ url }`; `POST /automation-media/delete` (body `{ key }` — os bytes liberados vêm do registro do servidor, NUNCA do request) → `{ ok: true }`. Export `createAutomationMediaHandler(deps)`. A Task 6 (frontend) consome as quatro rotas.
 
 - [ ] **Step 1: Testes que falham**
 
@@ -464,10 +491,10 @@ Deno.test("presign: mime fora da allowlist -> 415; acima de 8MB -> 400; sem auth
   assertEquals((await makeHandler(db3)(req("presign", { mime_type: "image/png", size_bytes: 10 }))).status, 401);
 });
 
-Deno.test("finalize: HEAD confere tamanho/tipo, reserva quota e devolve dm_media", async () => {
+Deno.test("finalize: HEAD confere tamanho/tipo, finaliza com quota e devolve dm_media", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
-  db.queueRpc("automation_media_reserve_storage", { data: null, error: null });
+  db.queueRpc("automation_media_finalize", { data: true, error: null });
   const res = await makeHandler(db)(req("finalize", {
     key: "automation-media/conta-1/fixed-uuid.jpg",
     mime_type: "image/jpeg",
@@ -484,11 +511,15 @@ Deno.test("finalize: HEAD confere tamanho/tipo, reserva quota e devolve dm_media
     width: 1080,
     height: 1350,
   });
-  const rpcs = db.calls.filter((c: { table: string }) => c.table === "rpc:automation_media_reserve_storage");
-  assertEquals(rpcs[0].payload, { p_conta_id: "conta-1", p_bytes: 5000 });
+  const rpcs = db.calls.filter((c: { table: string }) => c.table === "rpc:automation_media_finalize");
+  assertEquals(rpcs[0].payload, {
+    p_conta_id: "conta-1",
+    p_key: "automation-media/conta-1/fixed-uuid.jpg",
+    p_bytes: 5000,
+  });
 });
 
-Deno.test("finalize: key de outro tenant -> 400; size divergente do HEAD -> 400; quota -> 413", async () => {
+Deno.test("finalize: key de outro tenant -> 400; size divergente do HEAD -> 400; quota -> 413 e trasheia o upload", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
   assertEquals(
@@ -505,31 +536,36 @@ Deno.test("finalize: key de outro tenant -> 400; size divergente do HEAD -> 400;
   );
   const db3 = createSupabaseQueryMock();
   setupAuth(db3);
-  db3.queueRpc("automation_media_reserve_storage", { data: null, error: { message: "quota_exceeded" } });
+  db3.queueRpc("automation_media_finalize", { data: null, error: { message: "quota_exceeded" } });
+  const trashed3: string[] = [];
   assertEquals(
-    (await makeHandler(db3)(req("finalize", { key: "automation-media/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }))).status,
+    (await makeHandler(db3, { trashed: trashed3 })(req("finalize", { key: "automation-media/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000 }))).status,
     413,
   );
+  // Upload rejeitado por quota não fica retido fora da contabilidade.
+  assertEquals(trashed3, ["automation-media/conta-1/x.jpg"]);
 });
 
-Deno.test("delete: trasheia (nunca hard delete) e libera quota; prefixo de outro tenant -> 400", async () => {
+Deno.test("delete: trasheia (nunca hard delete) e libera pelo registro do servidor; prefixo de outro tenant -> 400", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
-  db.queueRpc("automation_media_release_storage", { data: null, error: null });
+  db.queueRpc("automation_media_release", { data: 5000, error: null });
   const trashed: string[] = [];
   const res = await makeHandler(db, { trashed })(req("delete", {
     key: "automation-media/conta-1/x.jpg",
-    size_bytes: 5000,
   }));
   assertEquals(res.status, 200);
   assertEquals(trashed, ["automation-media/conta-1/x.jpg"]);
-  const rpcs = db.calls.filter((c: { table: string }) => c.table === "rpc:automation_media_release_storage");
-  assertEquals(rpcs[0].payload, { p_conta_id: "conta-1", p_bytes: 5000 });
+  const rpcs = db.calls.filter((c: { table: string }) => c.table === "rpc:automation_media_release");
+  assertEquals(rpcs[0].payload, {
+    p_conta_id: "conta-1",
+    p_key: "automation-media/conta-1/x.jpg",
+  });
 
   const db2 = createSupabaseQueryMock();
   setupAuth(db2);
   assertEquals(
-    (await makeHandler(db2)(req("delete", { key: "automation-media/OUTRA/x.jpg", size_bytes: 1 }))).status,
+    (await makeHandler(db2)(req("delete", { key: "automation-media/OUTRA/x.jpg" }))).status,
     400,
   );
 });
@@ -648,14 +684,21 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
       if (head.contentLength !== size) return json({ error: "size mismatch" }, 400);
       if (head.contentType && head.contentType !== mime) return json({ error: "content-type mismatch" }, 400);
 
-      const { error: rpcErr } = await svc.rpc("automation_media_reserve_storage", {
+      const { error: rpcErr } = await svc.rpc("automation_media_finalize", {
         p_conta_id: contaId,
+        p_key: key,
         p_bytes: size,
       });
       if (rpcErr) {
         const msg = String(rpcErr.message ?? "");
-        if (msg.includes("quota_exceeded")) return json({ error: "quota_exceeded" }, 413);
-        console.error("[automation-media] reserve_storage:", msg);
+        if (msg.includes("quota_exceeded")) {
+          // Não deixa o upload rejeitado retido fora da contabilidade.
+          await deps.trashObject(key).catch((e) =>
+            console.error("[automation-media] trash pós-quota:", e instanceof Error ? e.message : String(e))
+          );
+          return json({ error: "quota_exceeded" }, 413);
+        }
+        console.error("[automation-media] finalize:", msg);
         return json({ error: "internal" }, 500);
       }
       const width = Number.isFinite(Number(body.width)) && Number(body.width) > 0 ? Number(body.width) : undefined;
@@ -679,7 +722,6 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
 
     if (route === "delete") {
       const key = String(body.key ?? "");
-      const size = Number(body.size_bytes ?? 0);
       if (!key.startsWith(tenantPrefix)) return json({ error: "invalid key" }, 400);
       try {
         await deps.trashObject(key);
@@ -687,12 +729,17 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
         console.error("[automation-media] trashObject:", e instanceof Error ? e.message : String(e));
         return json({ error: "internal" }, 500);
       }
-      if (Number.isFinite(size) && size > 0) {
-        const { error: rpcErr } = await svc.rpc("automation_media_release_storage", {
-          p_conta_id: contaId,
-          p_bytes: size,
-        });
-        if (rpcErr) console.error("[automation-media] release_storage:", rpcErr.message);
+      // Os bytes liberados vêm do registro do servidor (release é idempotente
+      // por key e devolve 0 quando não há registro) -- o request não manda
+      // tamanho nenhum, então não dá para forjar liberação de quota.
+      const { error: rpcErr } = await svc.rpc("automation_media_release", {
+        p_conta_id: contaId,
+        p_key: key,
+      });
+      if (rpcErr) {
+        console.error("[automation-media] release:", rpcErr.message);
+        // trashObject é 404-tolerante: o retry do cliente re-trasheia e libera.
+        return json({ error: "internal" }, 500);
       }
       return json({ ok: true });
     }
@@ -1116,10 +1163,7 @@ export async function uploadAutomationMedia(
 }
 
 export async function deleteAutomationMedia(media: DmMedia): Promise<void> {
-  await callFn<{ ok: boolean }>('automation-media', 'delete', {
-    key: media.key,
-    size_bytes: media.size_bytes,
-  });
+  await callFn<{ ok: boolean }>('automation-media', 'delete', { key: media.key });
 }
 
 export async function signAutomationMediaView(key: string): Promise<string> {

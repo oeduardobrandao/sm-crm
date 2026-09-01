@@ -200,17 +200,20 @@ Prefixo reservado ACIMA do da fatia 1; re-verificar tail no `gh pr create`.
     presigned PUT + a `key` (gerada pela function, nunca pelo cliente).
   - `POST /finalize`: `headObject` no objeto subido; confere que
     content-type e tamanho REAIS batem com os declarados e respeitam os
-    limites; contabiliza `size_bytes` no contador de storage do workspace
-    de forma atômica com lock (mesmo padrão do RPC
-    `post_media_insert_with_quota` — quota estourada devolve erro e o
-    objeto vai para o trash); devolve o objeto `dm_media` canônico, que é o
-    que o CRM grava na automação. Sem finalize, nada é gravado.
+    limites; registra o objeto em `automation_media_objects` (key pk,
+    conta_id, size_bytes) e contabiliza no contador de storage de forma
+    atômica com lock, IDEMPOTENTE por key (retry de finalize não re-reserva;
+    mesmo lock e fonte de quota do `post_media_insert_with_quota`). Quota
+    estourada devolve erro, não deixa registro e o objeto vai para o trash.
+    Devolve o objeto `dm_media` canônico, que é o que o CRM grava na
+    automação. Sem finalize, nada é gravado.
   - `POST /delete` (troca/remoção/exclusão da automação): o CRM PRIMEIRO
     desanexa no banco (`dm_media = NULL` ou a key nova) e SÓ ENTÃO chama a
     rota, que usa `trashObject` (janela de undo de 30 dias, convenção do
-    repo) e decrementa o contador de storage. Nunca hard-delete imediato;
-    falha na rota deixa órfão recuperável, nunca automação apontando para
-    objeto inexistente.
+    repo) e libera do contador os bytes REGISTRADOS no servidor para aquela
+    key (o request não carrega tamanho: liberação forjada é impossível, e a
+    rota é idempotente). Nunca hard-delete imediato; falha na rota deixa
+    órfão recuperável, nunca automação apontando para objeto inexistente.
 - O jsonb `dm_media` é metadado de apresentação; os pontos de enforcement
   são o finalize (conteúdo real) e o CHECK de posse (tenant). O
   `executeSend` re-verifica o prefixo `automation-media/{conta_id}/` antes
