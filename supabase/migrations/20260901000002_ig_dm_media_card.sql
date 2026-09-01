@@ -67,13 +67,14 @@ ALTER TABLE instagram_automation_sends
 CREATE TABLE automation_media_objects (
   key text PRIMARY KEY,
   conta_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  content_type text NOT NULL,
   size_bytes bigint NOT NULL CHECK (size_bytes > 0),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 -- RLS ligado sem policies: só as RPCs SECURITY DEFINER (service role) tocam.
 ALTER TABLE automation_media_objects ENABLE ROW LEVEL SECURITY;
 
-CREATE FUNCTION automation_media_finalize(p_conta_id uuid, p_key text, p_bytes bigint)
+CREATE FUNCTION automation_media_finalize(p_conta_id uuid, p_key text, p_bytes bigint, p_content_type text)
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_used bigint;
@@ -86,8 +87,8 @@ BEGIN
   IF v_used IS NULL THEN
     RAISE EXCEPTION 'workspace_not_found';
   END IF;
-  INSERT INTO automation_media_objects (key, conta_id, size_bytes)
-    VALUES (p_key, p_conta_id, p_bytes)
+  INSERT INTO automation_media_objects (key, conta_id, size_bytes, content_type)
+    VALUES (p_key, p_conta_id, p_bytes, p_content_type)
     ON CONFLICT (key) DO NOTHING;
   IF NOT FOUND THEN
     -- Já finalizado (retry de cliente): idempotente, não re-reserva.
@@ -121,7 +122,54 @@ BEGIN
   RETURN v_bytes;
 END $$;
 
-REVOKE ALL ON FUNCTION automation_media_finalize(uuid, text, bigint) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION automation_media_finalize(uuid, text, bigint) TO service_role;
+REVOKE ALL ON FUNCTION automation_media_finalize(uuid, text, bigint, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION automation_media_finalize(uuid, text, bigint, text) TO service_role;
 REVOKE ALL ON FUNCTION automation_media_release(uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION automation_media_release(uuid, text) TO service_role;
+
+-- Posse única + finalize obrigatório na PRÓPRIA escrita da automação.
+-- (1) Uma key só pode ser referenciada por UMA automação: uploads são por
+-- automação (key com uuid), e posse única é o que torna o delete do CRM
+-- seguro sem contagem de referências -- sem isto, duas automações da mesma
+-- workspace poderiam compartilhar a key via PostgREST e o delete de uma
+-- quebraria os envios da outra.
+CREATE UNIQUE INDEX ica_dm_media_key_unique
+  ON instagram_comment_automations ((dm_media->>'key'))
+  WHERE dm_media IS NOT NULL;
+
+-- (2) Trigger BEFORE: dm_media só aceita objeto FINALIZADO da mesma
+-- workspace, e content_type/size_bytes são NORMALIZADOS do registro do
+-- servidor -- uma escrita direta via PostgREST com metadata fabricada (ou
+-- apontando para upload que pulou o finalize) não passa. Sem isto, o CHECK
+-- de forma valida o JSON mas nada garante que o objeto existe, foi conferido
+-- pelo HEAD ou entrou na quota. Roda ANTES dos CHECKs da linha (ordem do
+-- Postgres: BEFORE trigger -> CHECKs), então o valor checado é o normalizado.
+CREATE FUNCTION enforce_ig_dm_media_finalized()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_obj automation_media_objects;
+BEGIN
+  IF NEW.dm_media IS NULL THEN
+    RETURN NEW;
+  END IF;
+  SELECT * INTO v_obj FROM automation_media_objects
+   WHERE key = NEW.dm_media->>'key' AND conta_id = NEW.conta_id;
+  IF v_obj.key IS NULL THEN
+    RAISE EXCEPTION 'media_not_finalized' USING errcode = 'P0001';
+  END IF;
+  -- width/height são apresentacionais e ficam como o cliente mandou (se
+  -- números); o resto vem do registro. jsonb_strip_nulls remove width/height
+  -- ausentes para o CHECK de chaves permitidas continuar passando.
+  NEW.dm_media = jsonb_strip_nulls(jsonb_build_object(
+    'key', v_obj.key,
+    'content_type', v_obj.content_type,
+    'size_bytes', v_obj.size_bytes,
+    'width', CASE WHEN jsonb_typeof(NEW.dm_media->'width') = 'number' THEN NEW.dm_media->'width' END,
+    'height', CASE WHEN jsonb_typeof(NEW.dm_media->'height') = 'number' THEN NEW.dm_media->'height' END
+  ));
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER trg_ica_dm_media_finalized
+  BEFORE INSERT OR UPDATE OF dm_media ON instagram_comment_automations
+  FOR EACH ROW EXECUTE FUNCTION enforce_ig_dm_media_finalized();

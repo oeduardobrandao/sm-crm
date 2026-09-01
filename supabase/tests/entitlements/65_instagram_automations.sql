@@ -32,10 +32,14 @@
 --    column.
 -- 10-10b. dm_media/dm_subtitle (migration 20260901000002): CHECK de forma
 --    (validate_ig_dm_media), bind de tenant via conta_id na key, subtítulo
---    só com mídia, e dm_message <= 80 com mídia (10). automation_media_finalize/
---    automation_media_release: idempotência por key, incremento/decremento
---    de storage_used_bytes, quota_exceeded sem deixar linha órfã, e piso 0
---    no release (10b).
+--    só com mídia, dm_message <= 80 com mídia, o trigger
+--    trg_ica_dm_media_finalized (dm_media só aceita objeto finalizado da
+--    própria workspace, com content_type/size_bytes normalizados do
+--    registro; key não finalizada -> media_not_finalized) e o índice único
+--    parcial ica_dm_media_key_unique (posse única da key) (10).
+--    automation_media_finalize/automation_media_release: idempotência por
+--    key, incremento/decremento de storage_used_bytes, quota_exceeded sem
+--    deixar linha órfã, e piso 0 no release (10b).
 
 -- 1-3. Feature gate (off -> on -> downgrade) + RLS (any workspace member
 --      writes, including agent)
@@ -754,11 +758,18 @@ end $$;
 rollback;
 
 -- ---------------------------------------------------------------------------
--- 10. dm_media/dm_subtitle: CHECK de forma via validate_ig_dm_media, bind de
---     tenant (a key precisa carregar o conta_id da PRÓPRIA automação) e o
---     teto de 80 chars em dm_message/dm_subtitle quando há mídia. Inserts
---     VÁLIDOS rodam como authenticated, mesmo racional da seção 7 (a função
---     de CHECK não leva REVOKE/GRANT).
+-- 10. dm_media/dm_subtitle (migração 20260901000002): CHECK de forma via
+--     validate_ig_dm_media, bind de tenant (a key precisa carregar o
+--     conta_id da PRÓPRIA automação), teto de 80 chars em dm_message/
+--     dm_subtitle quando há mídia, e o trigger trg_ica_dm_media_finalized
+--     (dm_media só aceita objeto FINALIZADO da mesma workspace; normaliza
+--     content_type/size_bytes do registro; índice único ica_dm_media_key_unique
+--     dá posse única da key). Como o trigger reconstrói dm_media inteiro a
+--     partir do registro antes dos CHECKs rodarem, todo caso com dm_media
+--     NÃO nulo precisa primeiro finalizar o objeto (table owner, stand-in do
+--     service_role -- a RPC é REVOKE ALL FROM PUBLIC / GRANT ... TO
+--     service_role) antes do INSERT como authenticated; só assim o trigger
+--     encontra o registro e deixa o CHECK sob teste ser o único a disparar.
 -- ---------------------------------------------------------------------------
 begin;
 select et_grant_hosted_parity();
@@ -770,8 +781,18 @@ declare
   v_auto uuid;
   v_media jsonb;
   v_rejected boolean;
+  v_ok boolean;
+  v_valid boolean;
+  v_key_a text;
+  v_key_b text;
+  v_key_c text;
+  v_key_d text;
+  v_key_e text;
+  v_key_h text;
+  v_key_k text;
+  v_key_l text;
 begin
-  v_ws := et_make_workspace('pro');
+  v_ws := et_make_workspace('pro'); -- plano 'pro': storage_quota_bytes = 10737418240 (10GB), folga de sobra
   insert into workspace_plan_overrides (workspace_id, feature_overrides)
     values (v_ws, '{"feature_instagram_automation": true}'::jsonb);
 
@@ -782,107 +803,129 @@ begin
   insert into clientes (user_id, conta_id, nome, sigla, cor)
     values (v_owner, v_ws, 'C', 'C', '#000') returning id into v_cli;
 
+  -- (a) Válido: finalize o objeto (table owner) e então INSERT como
+  --     authenticated com dm_media completo (width/height opcionais) +
+  --     dm_message de exatamente 80 chars + dm_subtitle.
+  v_key_a := 'automation-media/' || v_ws::text || '/img1.jpg';
+  select automation_media_finalize(v_ws, v_key_a, 12345, 'image/jpeg') into v_ok;
+  assert v_ok, 'finalize do objeto válido (a) deve devolver true';
+
   set local role authenticated;
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
 
-  -- (a) Válido: dm_media completo (com width/height opcionais) + dm_message
-  --     de exatamente 80 chars + dm_subtitle, como authenticated.
   insert into instagram_comment_automations
     (conta_id, client_id, name, keywords, dm_message, dm_subtitle, dm_media)
     values (v_ws, v_cli, 'Cartão', array['card'], repeat('a', 80), 'Confira as novidades!',
-      jsonb_build_object(
-        'key', 'automation-media/' || v_ws::text || '/img1.jpg',
-        'content_type', 'image/jpeg',
-        'size_bytes', 12345,
-        'width', 800,
-        'height', 600
-      ))
+      jsonb_build_object('key', v_key_a, 'content_type', 'image/jpeg', 'size_bytes', 12345,
+        'width', 800, 'height', 600))
     returning id, dm_media into v_auto, v_media;
-  assert v_media->>'content_type' = 'image/jpeg', 'insert válido com dm_media deve passar';
+  assert v_media->>'content_type' = 'image/jpeg', 'insert válido com dm_media finalizado deve passar';
+  assert (v_media->>'size_bytes')::bigint = 12345, 'size_bytes deve vir normalizado do registro';
 
-  -- (b) key com prefixo de OUTRO conta_id -> check_violation (ica_dm_media_tenant)
+  reset role;
+
+  -- (b) key finalizada na PRÓPRIA workspace mas com prefixo de OUTRO
+  --     conta_id no texto -> passa o trigger (achou o registro), mas
+  --     check_violation em ica_dm_media_tenant.
+  v_key_b := 'automation-media/' || gen_random_uuid()::text || '/img.jpg';
+  select automation_media_finalize(v_ws, v_key_b, 100, 'image/png') into v_ok;
+  assert v_ok, 'finalize do objeto (b) deve devolver true';
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
   v_rejected := false;
   begin
     insert into instagram_comment_automations
       (conta_id, client_id, name, keywords, dm_message, dm_media)
       values (v_ws, v_cli, 'Outro tenant', array['x'], 'msg',
-        jsonb_build_object(
-          'key', 'automation-media/' || gen_random_uuid()::text || '/img.jpg',
-          'content_type', 'image/png',
-          'size_bytes', 100
-        ));
+        jsonb_build_object('key', v_key_b, 'content_type', 'image/png', 'size_bytes', 100));
   exception when check_violation then
     v_rejected := true;
   end;
-  assert v_rejected, 'key com conta_id de outra workspace deve ser rejeitada';
+  assert v_rejected, 'key com conta_id de outra workspace no texto deve ser rejeitada';
+  reset role;
 
-  -- (c) key fora de automation-media/ -> check_violation (validate_ig_dm_media)
+  -- (c) key fora de automation-media/ -> finalizada, mas
+  --     check_violation em validate_ig_dm_media (prefixo).
+  v_key_c := 'outro-prefixo/' || v_ws::text || '/img.jpg';
+  select automation_media_finalize(v_ws, v_key_c, 100, 'image/png') into v_ok;
+  assert v_ok, 'finalize do objeto (c) deve devolver true';
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
   v_rejected := false;
   begin
     insert into instagram_comment_automations
       (conta_id, client_id, name, keywords, dm_message, dm_media)
       values (v_ws, v_cli, 'Prefixo errado', array['x'], 'msg',
-        jsonb_build_object(
-          'key', 'outro-prefixo/' || v_ws::text || '/img.jpg',
-          'content_type', 'image/png',
-          'size_bytes', 100
-        ));
+        jsonb_build_object('key', v_key_c, 'content_type', 'image/png', 'size_bytes', 100));
   exception when check_violation then
     v_rejected := true;
   end;
   assert v_rejected, 'key fora de automation-media/ deve ser rejeitada';
+  reset role;
 
-  -- (d) size_bytes 8388609 (1 acima do teto de 8MB) -> check_violation
+  -- (d) size_bytes 8388609 (1 acima do teto de 8MB) registrado no objeto ->
+  --     normalizado pelo trigger -> check_violation em validate_ig_dm_media.
+  v_key_d := 'automation-media/' || v_ws::text || '/imgd.jpg';
+  select automation_media_finalize(v_ws, v_key_d, 8388609, 'image/jpeg') into v_ok;
+  assert v_ok, 'finalize do objeto (d) deve devolver true';
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
   v_rejected := false;
   begin
     insert into instagram_comment_automations
       (conta_id, client_id, name, keywords, dm_message, dm_media)
       values (v_ws, v_cli, 'Grande demais', array['x'], 'msg',
-        jsonb_build_object(
-          'key', 'automation-media/' || v_ws::text || '/img.jpg',
-          'content_type', 'image/jpeg',
-          'size_bytes', 8388609
-        ));
+        jsonb_build_object('key', v_key_d, 'content_type', 'image/jpeg', 'size_bytes', 8388609));
   exception when check_violation then
     v_rejected := true;
   end;
   assert v_rejected, 'size_bytes acima de 8388608 deve ser rejeitado';
+  reset role;
 
-  -- (e) content_type image/webp (fora da lista aceita) -> check_violation
+  -- (e) content_type image/webp registrado no objeto (finalize não valida
+  --     o mime) -> normalizado pelo trigger -> check_violation.
+  v_key_e := 'automation-media/' || v_ws::text || '/imge.jpg';
+  select automation_media_finalize(v_ws, v_key_e, 100, 'image/webp') into v_ok;
+  assert v_ok, 'finalize do objeto (e) deve devolver true';
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
   v_rejected := false;
   begin
     insert into instagram_comment_automations
       (conta_id, client_id, name, keywords, dm_message, dm_media)
       values (v_ws, v_cli, 'Webp', array['x'], 'msg',
-        jsonb_build_object(
-          'key', 'automation-media/' || v_ws::text || '/img.webp',
-          'content_type', 'image/webp',
-          'size_bytes', 100
-        ));
+        jsonb_build_object('key', v_key_e, 'content_type', 'image/webp', 'size_bytes', 100));
   exception when check_violation then
     v_rejected := true;
   end;
   assert v_rejected, 'content_type image/webp deve ser rejeitado';
+  reset role;
 
-  -- (f) chave extra no objeto -> check_violation (fora do allowlist de chaves)
-  v_rejected := false;
-  begin
-    insert into instagram_comment_automations
-      (conta_id, client_id, name, keywords, dm_message, dm_media)
-      values (v_ws, v_cli, 'Chave extra', array['x'], 'msg',
-        jsonb_build_object(
-          'key', 'automation-media/' || v_ws::text || '/img.jpg',
-          'content_type', 'image/png',
-          'size_bytes', 100,
-          'foo', 'bar'
-        ));
-  exception when check_violation then
-    v_rejected := true;
-  end;
-  assert v_rejected, 'chave extra no objeto de dm_media deve ser rejeitada';
+  -- (f) chave extra no objeto -> o trigger trg_ica_dm_media_finalized SEMPRE
+  --     reconstrói dm_media a partir do registro + width/height, então uma
+  --     chave extra do cliente nunca sobrevive até o CHECK via INSERT/UPDATE
+  --     normal. Prova-se a rejeição chamando validate_ig_dm_media direto.
+  select validate_ig_dm_media(jsonb_build_object(
+    'key', 'automation-media/' || v_ws::text || '/img.jpg',
+    'content_type', 'image/png', 'size_bytes', 100, 'foo', 'bar'
+  )) into v_valid;
+  assert not v_valid, 'chave extra no objeto de dm_media deve ser rejeitada pela função de validação';
 
-  -- (g) dm_subtitle sem dm_media -> check_violation (ica_dm_subtitle_with_media)
+  -- (g) dm_subtitle sem dm_media -> check_violation (ica_dm_subtitle_with_media).
+  --     dm_media é NULL, então o trigger nem toca a linha; nenhum finalize
+  --     é necessário aqui.
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
   v_rejected := false;
   begin
     insert into instagram_comment_automations
@@ -892,25 +935,78 @@ begin
     v_rejected := true;
   end;
   assert v_rejected, 'dm_subtitle sem dm_media deve ser rejeitado';
+  reset role;
 
-  -- (h) dm_message com 81 chars COM mídia -> check_violation (teto de 80 do título)
+  -- (h) dm_message com 81 chars COM mídia finalizada -> passa o trigger,
+  --     check_violation em ica_dm_message_len_with_media (teto de 80).
+  v_key_h := 'automation-media/' || v_ws::text || '/imgh.jpg';
+  select automation_media_finalize(v_ws, v_key_h, 100, 'image/jpeg') into v_ok;
+  assert v_ok, 'finalize do objeto (h) deve devolver true';
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
   v_rejected := false;
   begin
     insert into instagram_comment_automations
       (conta_id, client_id, name, keywords, dm_message, dm_media)
       values (v_ws, v_cli, 'Título longo', array['x'], repeat('a', 81),
-        jsonb_build_object(
-          'key', 'automation-media/' || v_ws::text || '/img.jpg',
-          'content_type', 'image/jpeg',
-          'size_bytes', 100
-        ));
+        jsonb_build_object('key', v_key_h, 'content_type', 'image/jpeg', 'size_bytes', 100));
   exception when check_violation then
     v_rejected := true;
   end;
   assert v_rejected, 'dm_message de 81 chars com mídia deve ser rejeitado';
 
+  -- (k) dm_media aponta para key SEM registro em automation_media_objects
+  --     -> trigger dispara media_not_finalized (P0001), não check_violation.
+  v_key_k := 'automation-media/' || v_ws::text || '/imgk-nunca-finalizada.jpg';
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_media)
+      values (v_ws, v_cli, 'Nunca finalizada', array['x'], 'msg',
+        jsonb_build_object('key', v_key_k, 'content_type', 'image/jpeg', 'size_bytes', 100));
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'media_not_finalized', format('wrong msg: %s', sqlerrm);
+    v_rejected := true;
+  end;
+  assert v_rejected, 'dm_media apontando para key não finalizada deve ser rejeitado';
+
+  -- (l) metadata fabricada (content_type/size_bytes divergentes do
+  --     registro) é NORMALIZADA pelo trigger para os valores reais.
+  v_key_l := 'automation-media/' || v_ws::text || '/imgl.jpg';
   reset role;
-  raise notice 'PASS 65 seção 10: CHECKs de dm_media/dm_subtitle';
+  select automation_media_finalize(v_ws, v_key_l, 555, 'image/png') into v_ok;
+  assert v_ok, 'finalize do objeto (l) deve devolver true';
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, dm_media)
+    values (v_ws, v_cli, 'Normalizado', array['x'], 'Confira!',
+      jsonb_build_object('key', v_key_l, 'content_type', 'image/gif', 'size_bytes', 999999))
+    returning dm_media into v_media;
+  assert v_media->>'content_type' = 'image/png',
+    format('content_type deve vir normalizado do registro (image/png), veio %s', v_media->>'content_type');
+  assert (v_media->>'size_bytes')::bigint = 555,
+    format('size_bytes deve vir normalizado do registro (555), veio %s', v_media->>'size_bytes');
+
+  -- (m) segunda automação referenciando a MESMA key de (a) -> unique_violation
+  --     (índice parcial ica_dm_media_key_unique: posse única da key).
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, dm_media)
+      values (v_ws, v_cli, 'Duplicada', array['x'], 'Outra',
+        jsonb_build_object('key', v_key_a, 'content_type', 'image/jpeg', 'size_bytes', 12345));
+  exception when unique_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'segunda automação com a mesma key deve violar o índice único';
+
+  reset role;
+  raise notice 'PASS 65 seção 10: dm_media CHECKs + trigger de finalização + índice único';
 end $$;
 rollback;
 
@@ -942,13 +1038,13 @@ begin
   v_key3 := 'automation-media/' || v_ws::text || '/img3.jpg';
 
   -- (i) primeira finalize: incrementa e devolve true
-  select automation_media_finalize(v_ws, v_key1, 600) into v_ok;
+  select automation_media_finalize(v_ws, v_key1, 600, 'image/jpeg') into v_ok;
   assert v_ok, 'primeira finalize deve devolver true';
   select storage_used_bytes into v_used from workspaces where id = v_ws;
   assert v_used = 600, format('storage_used_bytes deve ser 600, veio %s', v_used);
 
   -- rechamada com a MESMA key: idempotente, não re-reserva nem incrementa
-  select automation_media_finalize(v_ws, v_key1, 600) into v_ok;
+  select automation_media_finalize(v_ws, v_key1, 600, 'image/jpeg') into v_ok;
   assert not v_ok, 'segunda finalize com a mesma key deve devolver false';
   select storage_used_bytes into v_used from workspaces where id = v_ws;
   assert v_used = 600, 'segunda finalize não pode incrementar de novo';
@@ -956,7 +1052,7 @@ begin
   -- finalize de uma NOVA key que estouraria a quota (600 + 500 > 1000)
   v_rejected := false;
   begin
-    perform automation_media_finalize(v_ws, v_key2, 500);
+    perform automation_media_finalize(v_ws, v_key2, 500, 'image/jpeg');
   exception when sqlstate 'P0001' then
     assert sqlerrm like 'quota_exceeded%', format('wrong msg: %s', sqlerrm);
     v_rejected := true;
@@ -985,7 +1081,7 @@ begin
 
   -- piso 0: storage_used_bytes corrompido/menor que o registro nunca vai a
   -- negativo (GREATEST(0, ...)).
-  select automation_media_finalize(v_ws, v_key3, 300) into v_ok;
+  select automation_media_finalize(v_ws, v_key3, 300, 'image/jpeg') into v_ok;
   assert v_ok, 'finalize de v_key3 deve devolver true';
   update workspaces set storage_used_bytes = 100 where id = v_ws;
   select automation_media_release(v_ws, v_key3) into v_bytes;
