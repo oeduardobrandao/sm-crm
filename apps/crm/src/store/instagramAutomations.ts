@@ -37,6 +37,7 @@ export interface InstagramCommentAutomation {
   dm_message: string;
   dm_buttons: DmButton[];
   public_reply: string | null;
+  public_replies: string[];
   ativo: boolean;
   dms_sent_count: number;
   last_triggered_at: string | null;
@@ -60,6 +61,7 @@ export interface InstagramAutomationSend {
   dm_status: 'sent' | 'failed' | null;
   dm_kind: 'text' | 'buttons' | 'buttons_fallback_text' | null;
   public_reply_status: 'sent' | 'failed' | 'unknown' | null;
+  public_reply_text: string | null;
   attempts: number;
   created_at: string;
 }
@@ -112,6 +114,7 @@ export async function createInstagramAutomation(
     | 'dm_message'
     | 'dm_buttons'
     | 'public_reply'
+    | 'public_replies'
   >,
 ): Promise<InstagramCommentAutomation> {
   const conta_id = await getContaId();
@@ -145,6 +148,7 @@ export async function updateInstagramAutomation(
       | 'dm_message'
       | 'dm_buttons'
       | 'public_reply'
+      | 'public_replies'
       | 'ativo'
     >
   >,
