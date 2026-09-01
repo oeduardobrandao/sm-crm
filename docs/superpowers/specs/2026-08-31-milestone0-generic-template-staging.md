@@ -76,13 +76,16 @@ Para cada variação (1 a 4), registrar:
 
 | Variação | Status HTTP | message_id / erro (code/subcode) | Horário envio | URL: pública/presigned (expira às) | iOS | Android | Web |
 |---|---|---|---|---|---|---|---|
-| 1 (completo) | 200 | message_id recebido | 2026-09-01T12:09:27Z | pública | pendente | pendente | - |
-| 2 (sem buttons) | 200 | message_id recebido | 2026-09-01T12:09:29Z | pública | pendente | pendente | - |
-| 3 (sem buttons, URL presigned) | 200 | message_id recebido | 2026-09-01T12:09:30Z | presigned (gerada 12:09:30Z, expira 13:09:30Z) | pendente | pendente | - |
-| 4 (completo, URL presigned) | 200 | message_id recebido | 2026-09-01T12:09:31Z | presigned (gerada 12:09:31Z, expira 13:09:31Z) | pendente | pendente | - |
+| 1 (completo) | 200 | message_id recebido | 2026-09-01T12:09:27Z | pública | cartão OK | - | - |
+| 2 (sem buttons) | 200 | message_id recebido | 2026-09-01T12:09:29Z | pública | cartão OK | - | - |
+| 3 (sem buttons, URL presigned) | 200 | message_id recebido | 2026-09-01T12:09:30Z | presigned (gerada 12:09:30Z, expira 13:09:30Z) | cartão OK | - | - |
+| 4 (completo, URL presigned) | 200 | message_id recebido | 2026-09-01T12:09:31Z | presigned (gerada 12:09:31Z, expira 13:09:31Z) | cartão OK | - | - |
 
 Execução: 2026-09-01, conta mesaas.com.br (staging), post DbD26OckbXX, via
 function descartável milestone0-card-proof (action auto). As QUATRO variações
 aceitas pela Graph (200 + message_id), incluindo image_url presigned gerada
-imediatamente antes do POST. GATE DE API: PASSOU. Confirmação visual por
-plataforma: pendente (preencher acima quando verificada no app).
+imediatamente antes do POST. GATE DE API: PASSOU. Confirmação visual (iOS, 2026-09-01): as 4 DMs
+renderizaram como cartão com imagem carregada, nas duas formas esperadas
+(sem botão nas variações 2/3; com botão Abrir nas 1/4) -- inclusive as de
+image_url presigned. GATE COMPLETO: PASSOU. Android/web não testados
+(não bloqueante).
