@@ -134,10 +134,17 @@ RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
       AND jsonb_typeof(m->'key') = 'string'
       AND m->>'key' LIKE 'automation-media/%'
       AND m->>'content_type' IN ('image/jpeg', 'image/png', 'image/gif')
-      AND jsonb_typeof(m->'size_bytes') = 'number'
-      AND (m->>'size_bytes')::bigint BETWEEN 1 AND 8388608
-      AND (m->'width' IS NULL OR (jsonb_typeof(m->'width') = 'number' AND (m->>'width')::int > 0))
-      AND (m->'height' IS NULL OR (jsonb_typeof(m->'height') = 'number' AND (m->>'height')::int > 0))
+      -- CASE por campo numérico: AND não garante ordem de avaliação, então o
+      -- cast poderia rodar antes do type-guard e estourar 22023 cru em vez do
+      -- 23514 limpo (mesmo racional do validate_ig_dm_buttons).
+      AND CASE WHEN jsonb_typeof(m->'size_bytes') <> 'number' THEN false
+               ELSE (m->>'size_bytes')::bigint BETWEEN 1 AND 8388608 END
+      AND CASE WHEN m->'width' IS NULL THEN true
+               WHEN jsonb_typeof(m->'width') <> 'number' THEN false
+               ELSE (m->>'width')::int > 0 END
+      AND CASE WHEN m->'height' IS NULL THEN true
+               WHEN jsonb_typeof(m->'height') <> 'number' THEN false
+               ELSE (m->>'height')::int > 0 END
     , false)
   END
 $$;
@@ -1492,10 +1499,12 @@ gh pr create --title "feat(automacoes): cartão com imagem na DM (generic templa
 Spec: docs/superpowers/specs/2026-08-31-automacoes-dm-midia-e-variacoes-design.md
 Gate: Milestone 0 (prova do generic template em staging) documentado em docs/superpowers/specs/2026-08-31-milestone0-generic-template-staging.md
 
-## Deploy
-1. Migration ANTES do redeploy
-2. Functions: instagram-webhook, instagram-automation-cron e automation-media (--use-api --no-verify-jwt; automation-media faz a própria auth de JWT)
-3. Smoke: automação sem mídia segue com dm_kind text/buttons
+## Deploy (ordem estrita; a janela mais apertada é o FRONTEND)
+O CRM novo envia dm_media/dm_subtitle em TODO create/update de automação, e a Vercel shippa o frontend no instante do merge. Portanto:
+1. Migration aplicada em PROD ANTES do merge (`npx supabase db push --linked`, conferindo o project-ref)
+2. Functions em prod ANTES do merge: automation-media, instagram-webhook, instagram-automation-cron (`--use-api --no-verify-jwt`; automation-media faz a própria auth de JWT e precisa estar no ar antes de o frontend poder subir mídia)
+3. Merge (frontend vai junto via Vercel)
+4. Smoke: automação sem mídia segue com dm_kind text/buttons; depois um cartão ponta a ponta em conta real
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
