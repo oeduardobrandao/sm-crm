@@ -5,6 +5,8 @@
 // objeto REAL + reserva quota atômica). delete: trashObject (undo 30d) +
 // liberação de quota. Nada aqui grava dm_media na automação: quem grava é o
 // CRM via PostgREST, e o CHECK de tenant do banco é o enforcement final.
+import { assertPlanFeature, FeatureDisabledError } from "../_shared/entitlements.ts";
+import { isWorkspaceEditor } from "../_shared/workspace-role.ts";
 
 const MAX_MEDIA_BYTES = 8 * 1024 * 1024; // limite de imagem da Meta
 const ALLOWED_MIME: Record<string, string> = {
@@ -53,7 +55,7 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
     if (!contaId) return json({ error: "Profile not found" }, 403);
     const { data: member } = await svc
       .from("workspace_members")
-      .select("user_id")
+      .select("user_id, role")
       .eq("workspace_id", contaId)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -62,6 +64,29 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
 
     const parts = new URL(req.url).pathname.split("/").filter(Boolean);
     const route = parts[parts.indexOf("automation-media") + 1];
+
+    // Mesmo split de mutação vs leitura que a RLS de instagram_comment_automations
+    // (ica_insert/update/delete vs ica_select): agent lê (sign-view), só
+    // owner/admin muta. workspace_members.role, nunca profiles.role -- ver
+    // isWorkspaceEditor.
+    const mutatingRoutes = new Set(["presign", "finalize", "delete"]);
+    if (mutatingRoutes.has(route) && !isWorkspaceEditor(member.role as string | null | undefined)) {
+      return json({ error: "Forbidden" }, 403);
+    }
+    // Mesmo gate INSERT-only da automação (feature_instagram_automation):
+    // downgrade bloqueia alocar mídia NOVA, mas não impede ver ou apagar a que
+    // já existe -- espelha "existentes continuam legíveis, tocáveis e
+    // executando; só criar novas é bloqueado".
+    if (route === "presign" || route === "finalize") {
+      try {
+        await assertPlanFeature(svc, contaId, "feature_instagram_automation");
+      } catch (e) {
+        if (e instanceof FeatureDisabledError) {
+          return json({ error: "feature_disabled", feature: "feature_instagram_automation" }, 403);
+        }
+        throw e;
+      }
+    }
 
     // deno-lint-ignore no-explicit-any
     let body: any;
