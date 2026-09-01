@@ -5,8 +5,9 @@ import { reportCronFailure } from "../_shared/triage.ts";
 import { runPool } from "./pool.ts";
 import { buildSnapshotRow } from "./snapshot.ts";
 import { ingestClosedDays } from "./daily-ingest.ts";
+import { ingestStories } from "./story-ingest.ts";
 import { buildMetricFields, fetchPostInsights } from "../_shared/instagram-metrics.ts";
-import { cachePostThumbnail } from "../_shared/instagram-thumbnail-cache.ts";
+import { cachePostThumbnail, isEphemeralInstagramUrl } from "../_shared/instagram-thumbnail-cache.ts";
 import { fetchInternalWorkspaceIds } from "../_shared/internal-workspaces.ts";
 import { collectSyncCandidates, selectAccountsToSync } from "./select.ts";
 import { runMaintenanceStep } from "./backfill.ts";
@@ -338,6 +339,34 @@ async function syncAccount(
 
       await supabase.from('instagram_posts').upsert(allPostData, { onConflict: 'instagram_post_id' });
     }
+  }
+
+  // Stories ingest (non-fatal: failure never blocks feed sync)
+  try {
+    const storyAggs = await ingestStories({
+      fetchFn: fetch,
+      accountId: account.id,
+      accessToken,
+      db: supabase,
+      cacheThumb: async (acctId, mediaId, url) => {
+        const cached = await cachePostThumbnail(
+          { fetch, storage: supabase.storage },
+          acctId, mediaId, url, null,
+        );
+        return cached && !isEphemeralInstagramUrl(cached) ? cached : url;
+      },
+    });
+    // Merge story daily aggregates into existing daily rows
+    if (storyAggs.length > 0) {
+      const { error: storyDailyErr } = await supabase.rpc("upsert_metrics_daily", {
+        p_rows: storyAggs,
+      });
+      if (storyDailyErr) {
+        console.warn(`[IG-SYNC-CRON] story daily upsert failed for ${account.id}:`, storyDailyErr);
+      }
+    }
+  } catch (e) {
+    console.warn(`[IG-SYNC-CRON] story ingest failed for account ${account.id} (non-fatal):`, e);
   }
 
   return { success: true };

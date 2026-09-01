@@ -19,7 +19,7 @@ import {
   fetchAccountTotalsDetailed, fetchFollowerCountDeltas, fetchReachDaily,
 } from "../_shared/instagram-account-metrics.ts";
 import { monthWindow, prevMonthOf } from "../_shared/report-docs/month-window.ts";
-import { closePreviousMonthIfMissing } from "./monthly-close.ts";
+import { closePreviousMonthIfMissing, closeStoriesForMonth } from "./monthly-close.ts";
 import { buildDailyRows } from "./daily-ingest.ts";
 
 const DAY = 86400;
@@ -410,6 +410,9 @@ export async function runMaintenanceStep(
   // query de exclusão abaixo, uma leitura barata.
   const currentMonth = currentMonthOf(opts.nowSec);
   const prevMonthDay1 = monthWindow(prevMonthOf(currentMonth)).startDate;
+  // "YYYY-MM" for closeStoriesForMonth -- same previous month as
+  // prevMonthDay1 above, just without the day-of-month suffix.
+  const prevMonthForStories = prevMonthDay1.slice(0, 7);
   const { data: closedAccounts, error: closedError } = await db
     .from(MONTHLY_TABLE)
     .select("instagram_account_id")
@@ -448,6 +451,11 @@ export async function runMaintenanceStep(
       } else {
         console.warn(`[IG-SYNC-CRON] backfill: fechamento mensal falhou para a conta ${account.id} (não-fatal):`, e);
       }
+    }
+    try {
+      await closeStoriesForMonth(db, account.id, prevMonthForStories);
+    } catch (e) {
+      console.warn(`[IG-SYNC-CRON] closeStoriesForMonth failed for ${account.id}:`, e);
     }
   }
 
