@@ -76,7 +76,13 @@ Para cada variação (1 a 4), registrar:
 
 | Variação | Status HTTP | message_id / erro (code/subcode) | Horário envio | URL: pública/presigned (expira às) | iOS | Android | Web |
 |---|---|---|---|---|---|---|---|
-| 1 (completo) | | | | pública | | | |
-| 2 (sem buttons) | | | | pública | | | |
-| 3 (sem buttons, URL presigned) | | | | presigned (expira às ___) | | | |
-| 4 (completo, URL presigned) | | | | presigned (expira às ___) | | | |
+| 1 (completo) | 200 | message_id recebido | 2026-09-01T12:09:27Z | pública | pendente | pendente | - |
+| 2 (sem buttons) | 200 | message_id recebido | 2026-09-01T12:09:29Z | pública | pendente | pendente | - |
+| 3 (sem buttons, URL presigned) | 200 | message_id recebido | 2026-09-01T12:09:30Z | presigned (gerada 12:09:30Z, expira 13:09:30Z) | pendente | pendente | - |
+| 4 (completo, URL presigned) | 200 | message_id recebido | 2026-09-01T12:09:31Z | presigned (gerada 12:09:31Z, expira 13:09:31Z) | pendente | pendente | - |
+
+Execução: 2026-09-01, conta mesaas.com.br (staging), post DbD26OckbXX, via
+function descartável milestone0-card-proof (action auto). As QUATRO variações
+aceitas pela Graph (200 + message_id), incluindo image_url presigned gerada
+imediatamente antes do POST. GATE DE API: PASSOU. Confirmação visual por
+plataforma: pendente (preencher acima quando verificada no app).
