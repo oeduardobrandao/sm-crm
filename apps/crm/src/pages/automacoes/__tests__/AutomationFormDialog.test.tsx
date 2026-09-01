@@ -241,6 +241,7 @@ const EDITING_BASE: InstagramCommentAutomation = {
   keywords: ['preco'],
   dm_message: 'Segue o link!',
   public_reply: null,
+  public_replies: [],
   ativo: true,
   dms_sent_count: 0,
   last_triggered_at: null,
@@ -780,6 +781,84 @@ describe('AutomationFormDialog', () => {
     const patch = mockUpdate.mock.calls[0][1];
     expect(patch).not.toHaveProperty('pending_post_deleted_at');
     expect(patch).toMatchObject({ ig_media_id: '17900000000000001', workflow_post_id: null });
+  });
+
+  // ── Variações de resposta pública ────────────────────────────────────────
+
+  describe('variações de resposta pública', () => {
+    it('salva variações preenchidas como public_replies e espelha a primeira em public_reply', async () => {
+      renderDialog();
+      await fillRequiredFields();
+
+      fireEvent.change(screen.getByLabelText('form.replyVariationLabel:{"index":1}'), {
+        target: { value: 'Te chamei na DM!' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'form.addReply' }));
+      fireEvent.change(screen.getByLabelText('form.replyVariationLabel:{"index":2}'), {
+        target: { value: 'Olha o direct!' },
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          public_replies: ['Te chamei na DM!', 'Olha o direct!'],
+          public_reply: 'Te chamei na DM!',
+        }),
+      );
+    });
+
+    it('variações vazias são descartadas; tudo vazio vira public_replies [] e public_reply null', async () => {
+      renderDialog();
+      await fillRequiredFields();
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+      await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ public_replies: [], public_reply: null }),
+      );
+    });
+
+    it('editar automação legada abre public_reply como lista de 1 variação', async () => {
+      renderDialog(vi.fn(), { ...EDITING_BASE, public_reply: 'legada', public_replies: [] });
+      expect(await screen.findByLabelText('form.replyVariationLabel:{"index":1}')).toHaveValue(
+        'legada',
+      );
+    });
+
+    it('botão de adicionar some com 5 variações', async () => {
+      renderDialog(vi.fn(), {
+        ...EDITING_BASE,
+        public_replies: ['a', 'b', 'c', 'd', 'e'],
+      });
+      await screen.findByLabelText('form.replyVariationLabel:{"index":5}');
+      expect(screen.queryByRole('button', { name: 'form.addReply' })).not.toBeInTheDocument();
+    });
+
+    it('remover a única variação preenchida deixa uma linha vazia funcional (estado, não só visual)', async () => {
+      renderDialog();
+      await fillRequiredFields();
+
+      fireEvent.change(screen.getByLabelText('form.replyVariationLabel:{"index":1}'), {
+        target: { value: 'Te chamei na DM!' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'form.removeReply' }));
+
+      const field = screen.getByLabelText('form.replyVariationLabel:{"index":1}');
+      expect(field).toHaveValue('');
+      fireEvent.change(field, { target: { value: 'Nova variação' } });
+      expect(field).toHaveValue('Nova variação');
+
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          public_replies: ['Nova variação'],
+          public_reply: 'Nova variação',
+        }),
+      );
+    });
   });
 
   // ── Tour guiado ──────────────────────────────────────────────────────────
