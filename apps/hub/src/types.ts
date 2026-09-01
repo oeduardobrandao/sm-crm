@@ -82,9 +82,11 @@ export interface HubPost {
   /** Set when the storage auto-clean removed this post's media after
    * publication — an empty media list then means "removed", not "none yet". */
   media_autocleaned_at?: string | null;
-  workflow_id: number;
-  workflow_titulo: string;
-  workflow_created_at: string;
+  /** Null for a post created outside any fluxo ("avulso") — arrives paired with a null
+   * workflow_titulo/workflow_created_at, including for clients with zero fluxos. */
+  workflow_id: number | null;
+  workflow_titulo: string | null;
+  workflow_created_at: string | null;
   media: HubPostMedia[];
   cover_media: HubPostMedia | null;
   pending_suggestion: PendingEditSuggestion | null;

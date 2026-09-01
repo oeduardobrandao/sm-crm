@@ -31,6 +31,15 @@ import { getIdeias } from '@/store/ideias';
 import { getAllHubPages } from '@/store/hub';
 import { useAuth } from '@/context/AuthContext';
 
+/** Deep link for a post result: NULL workflow_id = post avulso (fora de
+ *  fluxo), which opens via the universal `?post=` form instead of
+ *  `?drawer=&post=`. */
+function postHref(p: { id?: number; workflow_id: number | null }): string {
+  return p.workflow_id != null
+    ? `/entregas?drawer=${p.workflow_id}&post=${p.id}`
+    : `/entregas?post=${p.id}`;
+}
+
 export default function GlobalSearchTrigger() {
   const [open, setOpen] = useState(false);
   const { t } = useTranslation();
@@ -219,13 +228,13 @@ export default function GlobalSearchTrigger() {
                   {posts.map((p) => (
                     <CommandItem
                       key={`post-${p.id}`}
-                      value={`postagem ${p.titulo} ${workflowMap.get(p.workflow_id) ?? ''}`}
-                      onSelect={() => go(`/entregas?drawer=${p.workflow_id}&post=${p.id}`)}
+                      value={`postagem ${p.titulo} ${p.workflow_id != null ? (workflowMap.get(p.workflow_id) ?? '') : ''}`}
+                      onSelect={() => go(postHref(p))}
                     >
                       <Image className="h-4 w-4 shrink-0" />
                       <span className="truncate">{p.titulo}</span>
                       <span className="ml-auto truncate text-xs text-muted-foreground">
-                        {p.tipo}
+                        {p.workflow_id != null ? p.tipo : `${p.tipo} · Avulso`}
                       </span>
                     </CommandItem>
                   ))}

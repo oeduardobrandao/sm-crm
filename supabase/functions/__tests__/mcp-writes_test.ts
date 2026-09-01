@@ -17,7 +17,7 @@ function makeFakeDb(responses: Record<string, Resp[]>) {
     // deno-lint-ignore no-explicit-any
     const rec: any = {};
     const next = (): Resp => (queues[table] ?? []).shift() ?? { data: null, error: null };
-    for (const m of ["select", "eq", "in", "gte", "order", "limit", "insert", "update", "upsert", "delete"]) {
+    for (const m of ["select", "eq", "in", "is", "gte", "order", "limit", "insert", "update", "upsert", "delete"]) {
       rec[m] = (...args: unknown[]) => { calls.push({ table, method: m, args }); return rec; };
     }
     rec.single = () => { calls.push({ table, method: "single", args: [] }); return Promise.resolve(next()); };
@@ -114,6 +114,62 @@ Deno.test("createPost: missing/inactive fluxo -> McpInputError, no insert", asyn
   const deps = { db, ctx: CTX } as unknown as Deps;
   let err: unknown;
   try { await createPost(deps, { workflow_id: 99, titulo: "T" }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "throws McpInputError");
+  assert(!calls.some((c) => c.table === "workflow_posts" && c.method === "insert"), "no post insert");
+});
+
+const EXACTLY_ONE_OF_MSG = "Informe exatamente um entre workflow_id (fluxo) ou cliente_id (post avulso).";
+
+Deno.test("createPost: neither workflow_id nor cliente_id -> McpInputError, no db access", async () => {
+  const { db, calls } = makeFakeDb({});
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try { await createPost(deps, { titulo: "T" }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "throws McpInputError");
+  assertEquals((err as McpInputError).message, EXACTLY_ONE_OF_MSG);
+  assert(!calls.some((c) => c.table === "workflow_posts" || c.table === "workflows" || c.table === "clientes"), "no db access at all");
+});
+
+Deno.test("createPost: both workflow_id and cliente_id -> McpInputError, no db access", async () => {
+  const { db, calls } = makeFakeDb({});
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try { await createPost(deps, { workflow_id: 99, cliente_id: 5, titulo: "T" }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "throws McpInputError");
+  assertEquals((err as McpInputError).message, EXACTLY_ONE_OF_MSG);
+  assert(!calls.some((c) => c.table === "workflow_posts" || c.table === "workflows" || c.table === "clientes"), "no db access at all");
+});
+
+Deno.test("createPost: avulso — client-checked, ordem max among the client's avulsos + 1, workflow_id null in insert", async () => {
+  const { db, calls } = makeFakeDb({
+    clientes: [{ data: { id: 5, especialidade: null, cor: null }, error: null }], // verifyClient
+    workflow_posts: [
+      { data: { ordem: 4 }, error: null },                                            // ordem query (avulsos of client 5)
+      { data: { id: 700, workflow_id: null, cliente_id: 5, status: "rascunho", created_via: "agent" }, error: null }, // insert
+    ],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  const out = await createPost(deps, { cliente_id: 5, titulo: "T", tipo: "feed", body: "linha" });
+
+  assert(has(calls, "clientes", "eq", ["conta_id", "workspace-A"]), "client ownership scoped");
+  assert(has(calls, "clientes", "eq", ["id", 5]), "client ownership checks the id");
+  assert(has(calls, "workflow_posts", "eq", ["cliente_id", 5]), "ordem query scoped to the client");
+  assert(has(calls, "workflow_posts", "is", ["workflow_id", null]), "ordem query scoped to avulsos only, not attached posts");
+  const post = insertPayload(calls, "workflow_posts")!;
+  assertEquals(post.workflow_id, null);
+  assertEquals(post.cliente_id, 5);
+  assertEquals(post.ordem, 5); // max(4) + 1
+  assertEquals(post.status, "rascunho");
+  assertEquals(post.created_via, "agent");
+  assertEquals(post.conta_id, "workspace-A");
+  assertEquals(out.id, 700);
+});
+
+Deno.test("createPost: avulso, unowned/unknown client -> McpInputError, no insert", async () => {
+  const { db, calls } = makeFakeDb({ clientes: [{ data: null, error: null }] });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try { await createPost(deps, { cliente_id: 5, titulo: "T" }); } catch (e) { err = e; }
   assert(err instanceof McpInputError, "throws McpInputError");
   assert(!calls.some((c) => c.table === "workflow_posts" && c.method === "insert"), "no post insert");
 });
@@ -332,7 +388,6 @@ Deno.test("setPostProperty: tenant+template scoped, select option, upsert with d
   const out = await setPostProperty(deps, { post_id: 7, property_id: 45, value: "w1" });
 
   assert(has(calls, "workflow_posts", "eq", ["conta_id", "workspace-A"]), "post tenant-scoped");
-  assert(has(calls, "workflow_posts", "eq", ["workflows.conta_id", "workspace-A"]), "embedded workflow tenant-scoped");
   assert(has(calls, "template_property_definitions", "eq", ["conta_id", "workspace-A"]), "def tenant-scoped");
   assert(has(calls, "workflow_select_options", "eq", ["workflow_id", 3]), "options workflow-scoped");
   assert(has(calls, "workflow_select_options", "eq", ["property_definition_id", 45]), "options def-scoped");
@@ -350,6 +405,22 @@ Deno.test("setPostProperty: missing post -> McpInputError, no upsert", async () 
   let err: unknown;
   try { await setPostProperty(deps, { post_id: 7, property_id: 45, value: "x" }); } catch (e) { err = e; }
   assert(err instanceof McpInputError, "throws McpInputError");
+  assert(!calls.some((c) => c.table === "post_property_values" && c.method === "upsert"), "no upsert");
+});
+
+Deno.test("setPostProperty: post avulso (workflow_id null) -> clear McpInputError, no def fetch, no upsert", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_posts: [{ data: { id: 7, status: "rascunho", workflow_id: null, workflows: null }, error: null }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try { await setPostProperty(deps, { post_id: 7, property_id: 45, value: "x" }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "throws McpInputError");
+  assertEquals(
+    (err as McpInputError).message,
+    "Post avulso não pertence a um fluxo; propriedades personalizadas pertencem ao modelo do fluxo.",
+  );
+  assert(!calls.some((c) => c.table === "template_property_definitions"), "never looks up the property def");
   assert(!calls.some((c) => c.table === "post_property_values" && c.method === "upsert"), "no upsert");
 });
 

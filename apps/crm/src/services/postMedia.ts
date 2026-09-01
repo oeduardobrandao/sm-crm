@@ -151,7 +151,7 @@ export async function probeVideo(
   });
 }
 
-function putWithProgress(
+export function putWithProgress(
   url: string,
   file: File,
   onProgress?: (p: UploadProgress) => void,

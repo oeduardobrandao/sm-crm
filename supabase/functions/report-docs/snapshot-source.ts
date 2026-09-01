@@ -7,8 +7,14 @@ import { decryptText } from "../_shared/crypto.ts";
 import {
   cachePostThumbnail, isEphemeralInstagramUrl, type ThumbnailStorage,
 } from "../_shared/instagram-thumbnail-cache.ts";
-import { fetchAccountViews } from "./account-views.ts";
-import { monthWindow, prevMonthOf } from "../_shared/report-docs/month-window.ts";
+import {
+  fetchAccountTotals, isWindowLiveEligible, type AccountMetric, type AccountTotals,
+} from "../_shared/instagram-account-metrics.ts";
+import {
+  daysInMonth, lastDayOfMonth, resolveAccountWindow,
+  type DailyMetricsRow, type MonthlyMetricsRow,
+} from "./account-window.ts";
+import { monthWindow, prevMonthOf, type MonthWindow } from "../_shared/report-docs/month-window.ts";
 import {
   assembleSnapshot, MAX_SNAPSHOT_POSTS, type ReportDocSnapshot, type SnapshotHubTheme,
   type SnapshotPostRow,
@@ -16,6 +22,13 @@ import {
 import type { TagPerformance } from "../_shared/report-template/types.ts";
 import { GenerateError } from "./errors.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+
+// As 7 métricas de conta que a cadeia (Graph ao vivo -> linha mensal -> soma
+// diária das aditivas) resolve por janela de mês -- spec §4.1/§4.3.
+const ACCOUNT_METRICS: AccountMetric[] = [
+  "reach", "views", "saves", "accounts_engaged", "profile_views", "website_clicks",
+  "follows_and_unfollows",
+];
 
 export interface SnapshotDeps {
   fetch: typeof fetch;
@@ -73,7 +86,6 @@ export async function loadClientSnapshot(
 
   const igAccountId = account.id;
   const prevW = monthWindow(prevMonthOf(month));
-  const prevPrevW = monthWindow(prevMonthOf(prevMonthOf(month)));
 
   // Regra da casa: TOKEN_ENCRYPTION_KEY é obrigatória, sem fallback. Config
   // ausente falha a geração ALTO e síncrono AQUI (nunca some no catch de
@@ -85,20 +97,54 @@ export async function loadClientSnapshot(
     throw new Error("TOKEN_ENCRYPTION_KEY missing");
   }
 
-  // Views da conta: Graph ao vivo, em paralelo com as queries abaixo. Fonte
-  // OPCIONAL — falha de token/Graph degrada o card para null com log, nunca
-  // derruba a geração.
-  const accountViewsPromise: Promise<{ value: number | null; prev: number | null }> =
-    (async () => {
-      if (!account.encrypted_access_token) return { value: null, prev: null };
-      const token = await decryptIgToken(account.encrypted_access_token, encryptionSecret!);
-      return await fetchAccountViews(deps.fetch, token, month, Math.floor(Date.now() / 1000));
-    })().catch((e) => {
+  const nowMs = Date.now();
+  const nowSec = Math.floor(nowMs / 1000);
+  const nowIso = new Date(nowMs).toISOString();
+
+  // Token decriptado UMA vez (elo 1 da cadeia de contas, spec §4.1/§4.3),
+  // reusado pelas duas janelas (mês e mês anterior) abaixo -- ambas dependem
+  // da MESMA promise, então o decrypt roda uma única vez mesmo que as duas
+  // façam .then() nela. Fonte OPCIONAL: token ausente ou decrypt falho nunca
+  // derruba a geração, só degrada esse elo pra null (a cadeia segue pros
+  // elos 2/3).
+  const tokenPromise: Promise<string | null> = account.encrypted_access_token
+    ? decryptIgToken(account.encrypted_access_token, encryptionSecret!).catch((e) => {
       console.warn(
-        `[report-docs] account views fetch failed: ${(e as Error)?.message ?? String(e)}`,
+        `[report-docs] token decrypt failed: ${(e as Error)?.message ?? String(e)}`,
       );
-      return { value: null, prev: null };
+      return null;
+    })
+    : Promise.resolve(null);
+
+  // Elo 1 (Graph ao vivo) de UMA janela de mês: clampada em min(fim, agora) --
+  // um mês em curso não pode pedir dado do futuro à Graph. Fonte OPCIONAL:
+  // qualquer falha (token expirado, erro de rede, Graph fora) degrada pra
+  // null com log; a cadeia (account-window.ts) segue pros elos 2/3.
+  function liveAccountTotals(win: MonthWindow): Promise<Partial<AccountTotals> | null> {
+    return tokenPromise.then((token) => {
+      if (!token) return null;
+      const sinceSec = Date.parse(win.start) / 1000;
+      const untilSec = Math.min(Date.parse(win.endExclusive) / 1000, nowSec);
+      // A month fully outside Graph's retention lookback (a historical report
+      // month, well past the window) can never return real data live -- skip
+      // the round-trip entirely rather than firing 7 metrics x 2 windows of
+      // doomed requests before falling back to the monthly-row/daily-sum
+      // snapshot chain below. A month that only partially overlaps retention
+      // still goes live (unchanged): Graph errors on the out-of-range slice
+      // degrade the same way any other per-metric failure does.
+      if (!isWindowLiveEligible(sinceSec, untilSec, nowSec)) return null;
+      return fetchAccountTotals(deps.fetch, token, ACCOUNT_METRICS, sinceSec, untilSec)
+        .catch((e) => {
+          console.warn(
+            `[report-docs] account totals fetch failed (${win.month}): ` +
+              `${(e as Error)?.message ?? String(e)}`,
+          );
+          return null;
+        });
     });
+  }
+  const accountTotalsPromise = liveAccountTotals(w);
+  const accountPrevTotalsPromise = liveAccountTotals(prevW);
 
   // Foto do cliente: MESMA prioridade do hub-bootstrap/handler.ts (upload manual
   // em clientes.foto_url primeiro, Instagram como fallback) -- achado do usuário
@@ -122,15 +168,31 @@ export async function loadClientSnapshot(
       .then((cached) => (cached && !isEphemeralInstagramUrl(cached) ? cached : null))
     : Promise.resolve(rawAvatar);
 
-  const lastSnapshotOfMonth = (win: typeof w) =>
-    db.from("instagram_account_metrics_daily").select("*")
+  // Elo 2 (linha do mês fechado) e elo 3 (soma de *_day) da cadeia --
+  // account-window.ts resolve os dois a partir do que essas queries trazem.
+  const MONTHLY_COLUMNS = "reach_month, views_month, saves_month, accounts_engaged_month, " +
+    "profile_views_month, website_clicks_month, follows_month, unfollows_month";
+  const monthlyRowOf = (win: MonthWindow) =>
+    db.from("instagram_account_metrics_monthly").select(MONTHLY_COLUMNS)
+      .eq("instagram_account_id", igAccountId).eq("month", win.startDate).maybeSingle();
+
+  // Linhas diárias do mês INTEIRO (não só a última): o elo 3 precisa somar
+  // todos os dias com cobertura completa, e o "close" de seguidores (spec
+  // §4.2.4) é a linha do ÚLTIMO DIA do mês -- nunca "última linha disponível
+  // dentro do mês" (o bug original da Healing Hands). Um único round-trip
+  // serve os dois usos.
+  const DAILY_COLUMNS = "snapshot_date, followers_count, reach_day, views_day, saves_day, " +
+    "accounts_engaged_day, profile_views_day, website_clicks_day, follows_day, unfollows_day";
+  const dailyRowsOf = (win: MonthWindow) =>
+    db.from("instagram_account_metrics_daily").select(DAILY_COLUMNS)
       .eq("instagram_account_id", igAccountId)
       .gte("snapshot_date", win.startDate).lt("snapshot_date", win.endDateExclusive)
-      .order("snapshot_date", { ascending: false }).limit(1);
+      .order("snapshot_date", { ascending: true });
 
   const [
     postsRes, followerHistoryRes, demographicsRes, bestTimesRes, tagPerformanceRes,
-    workspaceRes, prevPrevSnapRes, prevSnapRes, currSnapRes, prevMonthPostsRes,
+    workspaceRes, monthlyRowRes, prevMonthlyRowRes, dailyRowsRes, prevDailyRowsRes,
+    prevMonthPostsRes,
   ] = await Promise.all([
     db.from("instagram_posts").select("*")
       .eq("instagram_account_id", igAccountId)
@@ -156,10 +218,11 @@ export async function loadClientSnapshot(
       "name, logo_url, brand_color, report_splash_url, hub_surface_theme, " +
         "hub_font_display, hub_font_body, hub_radius, hub_card_style",
     ).eq("id", contaId).single(),
-    lastSnapshotOfMonth(prevPrevW),
-    lastSnapshotOfMonth(prevW),
-    lastSnapshotOfMonth(w),
-    db.from("instagram_posts").select("reach, saved, likes, comments, shares")
+    monthlyRowOf(w),
+    monthlyRowOf(prevW),
+    dailyRowsOf(w),
+    dailyRowsOf(prevW),
+    db.from("instagram_posts").select("reach, saved, likes, comments, shares, impressions")
       .eq("instagram_account_id", igAccountId)
       .gte("posted_at", prevW.start).lt("posted_at", prevW.endExclusive),
   ]);
@@ -183,9 +246,10 @@ export async function loadClientSnapshot(
   warnQueryError("demographics cache", demographicsRes.error);
   warnQueryError("best times cache", bestTimesRes.error);
   warnQueryError("tag performance", tagPerformanceRes.error);
-  warnQueryError("prev-prev-month snapshot", prevPrevSnapRes.error);
-  warnQueryError("prev-month snapshot", prevSnapRes.error);
-  warnQueryError("report-month snapshot", currSnapRes.error);
+  warnQueryError("report-month monthly metrics", monthlyRowRes.error);
+  warnQueryError("prev-month monthly metrics", prevMonthlyRowRes.error);
+  warnQueryError("report-month daily metrics", dailyRowsRes.error);
+  warnQueryError("prev-month daily metrics", prevDailyRowsRes.error);
   warnQueryError("prev-month posts", prevMonthPostsRes.error);
 
   const posts: SnapshotPostRow[] = postsRes.data ?? [];
@@ -241,11 +305,51 @@ export async function loadClientSnapshot(
     if (cached && !isEphemeralInstagramUrl(cached)) stableThumbnails.set(url, cached);
   }));
 
-  const accountViews = await accountViewsPromise;
-  const avatarUrl = await avatarUrlPromise;
+  const [accountLive, accountPrevLive, avatarUrl] = await Promise.all([
+    accountTotalsPromise,
+    accountPrevTotalsPromise,
+    avatarUrlPromise,
+  ]);
+
+  // Elo 2/3 da cadeia, por janela: linha mensal (elo 2) + linhas diárias do
+  // mês inteiro (elo 3, só aditivas -- account-window.ts decide) + o close
+  // de seguidores (linha do ÚLTIMO DIA do mês, spec §4.2.4).
+  const dailyRowsOfW: DailyMetricsRow[] = dailyRowsRes.data ?? [];
+  const dailyRowsOfPrevW: DailyMetricsRow[] = prevDailyRowsRes.data ?? [];
+  type DailyRowWithDate = DailyMetricsRow & { snapshot_date: string; followers_count: number | null };
+  const followersCloseOf = (rows: DailyRowWithDate[], win: MonthWindow): number | null => {
+    const lastDay = lastDayOfMonth(win.endDateExclusive);
+    const row = rows.find((r) => r.snapshot_date === lastDay);
+    return typeof row?.followers_count === "number" ? row.followers_count : null;
+  };
+
+  const accountMonth: Partial<AccountTotals> = resolveAccountWindow(
+    accountLive,
+    (monthlyRowRes.data as MonthlyMetricsRow | null) ?? null,
+    dailyRowsOfW,
+    daysInMonth(w.startDate, w.endDateExclusive),
+  );
+  const accountPrevMonth: Partial<AccountTotals> = resolveAccountWindow(
+    accountPrevLive,
+    (prevMonthlyRowRes.data as MonthlyMetricsRow | null) ?? null,
+    dailyRowsOfPrevW,
+    daysInMonth(prevW.startDate, prevW.endDateExclusive),
+  );
 
   const snapshot = assembleSnapshot({
     month,
+    nowIso,
+    // Outlier do mês ANTERIOR (spec §4.3): erro na query ou mês sem posts
+    // degradam igual, pro mesmo `comparison: null` (computeComparison trata
+    // os dois casos da mesma forma).
+    prevMonthPosts: prevMonthPostsRes.error
+      ? null
+      : (prevMonthPostsRes.data ?? []).map(
+        (p: { impressions: number | null; reach: number | null }) => ({
+          views: p.impressions ?? null,
+          reach: p.reach ?? null,
+        }),
+      ),
     account: {
       handle: account.username ?? account.handle ?? "",
       specialty: [cliente.especialidade].filter(Boolean).join(" · "),
@@ -260,13 +364,13 @@ export async function loadClientSnapshot(
       hub_theme: hubTheme,
     },
     kpiSources: {
-      allPosts: posts,
-      prevMonthPosts: prevMonthPostsRes.error ? null : (prevMonthPostsRes.data ?? []),
-      currSnapshot: currSnapRes.data?.[0] ?? null,
-      prevSnapshot: prevSnapRes.data?.[0] ?? null,
-      prevPrevSnapshot: prevPrevSnapRes.data?.[0] ?? null,
+      accountMonth,
+      accountPrevMonth,
+      followersClose: followersCloseOf(dailyRowsOfW as DailyRowWithDate[], w),
+      followersPrevClose: followersCloseOf(dailyRowsOfPrevW as DailyRowWithDate[], prevW),
       followerHistory: followerHistoryRes.data ?? [],
-      accountViews,
+      allPosts: posts,
+      prevMonthPostsCount: prevMonthPostsRes.error ? null : (prevMonthPostsRes.data ?? []).length,
     },
     followerTrend: (followerHistoryRes.data ?? []).map(
       (r: { date: string; follower_count: number }) => ({ date: r.date, count: r.follower_count }),

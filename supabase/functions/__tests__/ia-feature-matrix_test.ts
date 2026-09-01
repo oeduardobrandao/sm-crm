@@ -15,4 +15,5 @@ Deno.test("featureForPath maps IA routes to flags", () => {
   assertEquals(featureForPath("POST", "/posts/abc/tags"), "feature_post_tagging");
   assertEquals(featureForPath("GET", "/overview/12"), "feature_instagram");
   assertEquals(featureForPath("GET", "/portfolio"), "feature_instagram");
+  assertEquals(featureForPath("GET", "/account-metrics/12"), "feature_instagram");
 });

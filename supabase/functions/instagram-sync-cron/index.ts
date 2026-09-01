@@ -4,10 +4,12 @@ import { createInstagramSyncCronHandler } from "./handler.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import { runPool } from "./pool.ts";
 import { buildSnapshotRow } from "./snapshot.ts";
+import { ingestClosedDays } from "./daily-ingest.ts";
 import { buildMetricFields, fetchPostInsights } from "../_shared/instagram-metrics.ts";
 import { cachePostThumbnail } from "../_shared/instagram-thumbnail-cache.ts";
 import { fetchInternalWorkspaceIds } from "../_shared/internal-workspaces.ts";
 import { collectSyncCandidates, selectAccountsToSync } from "./select.ts";
+import { runMaintenanceStep } from "./backfill.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -28,6 +30,12 @@ const SYNC_BATCH_LIMIT = Math.max(1, parseInt(Deno.env.get("SYNC_BATCH_LIMIT") |
 // is a cheap indexed read of ~50ms.
 const CANDIDATE_PAGE_SIZE = Math.max(SYNC_BATCH_LIMIT, parseInt(Deno.env.get("SYNC_CANDIDATE_PAGE_SIZE") || "200", 10) || 200);
 const MAX_CANDIDATE_PAGES = Math.max(1, parseInt(Deno.env.get("SYNC_CANDIDATE_PAGES") || "25", 10) || 25);
+
+// Contas processadas pelo passo de manutenção (backfill mensal) por tick.
+// Orçamento PRÓPRIO, independente de SYNC_BATCH_LIMIT: 1 mês (~7 requests
+// fetchAccountTotals) por conta pendente, mais os extras de primeiro tick
+// (reach_day 90d + histórico de seguidores) quando aplicável. Ver backfill.ts.
+const BACKFILL_BATCH_LIMIT = Math.max(1, parseInt(Deno.env.get("BACKFILL_BATCH_LIMIT") || "3", 10) || 3);
 
 // --- Token Decryption Utility ---
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
@@ -126,17 +134,27 @@ async function syncAccount(
   const nowTimestamp = Math.floor(Date.now() / 1000);
   const sinceDate = nowTimestamp - (28 * 24 * 60 * 60);
 
-  const [reachRes, viewsRes, engagedRes, websiteClicksRes, igProfileRes, mediaRes] = await Promise.all([
-    fetch(`https://graph.instagram.com/me/insights?metric=reach&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/me/insights?metric=website_clicks&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/me?fields=followers_count,follows_count,media_count,profile_picture_url&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`)
+  // Every fetch here needs its own timeout (house rule, R2-hang incident):
+  // this Promise.all is inside a state-setting handler -- a stalled Graph
+  // request would otherwise hold up the whole account sync indefinitely,
+  // and the edge runtime can kill the invocation mid-state before it ever
+  // reaches the DB updates below. A rejection here (timeout or otherwise)
+  // propagates out of this async function to the caller's try/catch
+  // (runPool's account callback in the handler below), which already
+  // treats it as a sync failure for this account -- same as any other
+  // network error today, so this doesn't change failure semantics.
+  const [reachRes, viewsRes, engagedRes, websiteClicksRes, profileViewsRes, igProfileRes, mediaRes] = await Promise.all([
+    fetch(`https://graph.instagram.com/me/insights?metric=reach&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
+    fetch(`https://graph.instagram.com/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
+    fetch(`https://graph.instagram.com/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
+    fetch(`https://graph.instagram.com/me/insights?metric=website_clicks&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
+    fetch(`https://graph.instagram.com/me/insights?metric=profile_views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
+    fetch(`https://graph.instagram.com/me?fields=followers_count,follows_count,media_count,profile_picture_url&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
+    fetch(`https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) })
   ]);
 
-  const [reachData, viewsData, engagedData, websiteClicksData, igProfile, mediaData] = await Promise.all([
-    reachRes.json(), viewsRes.json(), engagedRes.json(), websiteClicksRes.json(), igProfileRes.json(), mediaRes.json()
+  const [reachData, viewsData, engagedData, websiteClicksData, profileViewsData, igProfile, mediaData] = await Promise.all([
+    reachRes.json(), viewsRes.json(), engagedRes.json(), websiteClicksRes.json(), profileViewsRes.json(), igProfileRes.json(), mediaRes.json()
   ]);
 
   // Check for expired token — mark in DB so UI shows correct status
@@ -145,8 +163,11 @@ async function syncAccount(
     return { success: false, error: 'TOKEN_EXPIRED' };
   }
 
-  // Parse insights
-  let totalReach = 0, totalImpressions = 0, totalViews = 0, totalWebsiteClicks = 0;
+  // Parse insights. Variables named for what the Graph metric actually IS
+  // (previously `accounts_engaged` was parsed into a variable called
+  // `totalViews` and written to profile_views_28d — a mislabeled value, not
+  // profile views at all; fixed here + real profile_views fetched above).
+  let totalReach = 0, totalViews = 0, totalEngaged = 0, totalWebsiteClicks = 0, totalProfileViews = 0;
   if (reachData.data) {
     for (const insight of reachData.data) {
       if (insight.name === 'reach') totalReach = insight.total_value?.value || 0;
@@ -154,17 +175,22 @@ async function syncAccount(
   }
   if (viewsData.data) {
     for (const insight of viewsData.data) {
-      if (insight.name === 'views') totalImpressions = insight.total_value?.value || 0;
+      if (insight.name === 'views') totalViews = insight.total_value?.value || 0;
     }
   }
   if (engagedData.data) {
     for (const insight of engagedData.data) {
-      if (insight.name === 'accounts_engaged') totalViews = insight.total_value?.value || 0;
+      if (insight.name === 'accounts_engaged') totalEngaged = insight.total_value?.value || 0;
     }
   }
   if (websiteClicksData.data) {
     for (const insight of websiteClicksData.data) {
       if (insight.name === 'website_clicks') totalWebsiteClicks = insight.total_value?.value || 0;
+    }
+  }
+  if (profileViewsData.data) {
+    for (const insight of profileViewsData.data) {
+      if (insight.name === 'profile_views') totalProfileViews = insight.total_value?.value || 0;
     }
   }
 
@@ -212,8 +238,9 @@ async function syncAccount(
       media_count: igProfile.media_count || account.media_count,
       ...(storedAvatarUrl ? { profile_picture_url: storedAvatarUrl } : igProfile.profile_picture_url ? { profile_picture_url: igProfile.profile_picture_url } : {}),
       reach_28d: totalReach,
-      impressions_28d: totalImpressions,
-      profile_views_28d: totalViews,
+      impressions_28d: totalViews,
+      accounts_engaged_28d: totalEngaged,
+      profile_views_28d: totalProfileViews,
       website_clicks_28d: totalWebsiteClicks,
       last_synced_at: new Date().toISOString()
     }).eq('id', account.id),
@@ -229,13 +256,23 @@ async function syncAccount(
       buildSnapshotRow(account.id, {
         followers_count: igProfile.followers_count || account.follower_count,
         reach_28d: totalReach,
-        impressions_28d: totalImpressions,
-        profile_views_28d: totalViews,
+        impressions_28d: totalViews,
+        accounts_engaged_28d: totalEngaged,
+        profile_views_28d: totalProfileViews,
         website_clicks_28d: totalWebsiteClicks,
       }),
       { onConflict: 'instagram_account_id,snapshot_date' }
     ),
   ]);
+
+  // Ingestão de dias fechados (D-1..D-3 UTC) nas colunas *_day. Falha aqui
+  // (rede, token — o estado do token já foi tratado acima) só loga: nunca
+  // derruba o resultado do sync desta conta.
+  try {
+    await ingestClosedDays(supabase, fetch, account.id, accessToken, Math.floor(Date.now() / 1000));
+  } catch (e) {
+    console.warn(`[IG-SYNC-CRON] ingestClosedDays failed for account ${account.id} (non-fatal):`, e);
+  }
 
   if (mediaData.data && mediaData.data.length > 0) {
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
@@ -312,6 +349,21 @@ Deno.serve(createInstagramSyncCronHandler({
   timingSafeEqual,
   run: async () => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Passo de manutenção (backfill mensal durável + fechamento mensal),
+    // ANTES do batch de sync e em try/catch próprio: seletor e orçamento
+    // independentes de auto_sync_enabled/feature_auto_sync_cron, então uma
+    // falha aqui nunca deve impedir o sync batch de rodar. Ver backfill.ts.
+    try {
+      const { backfilled, monthsClosed } = await runMaintenanceStep(
+        supabase, fetch, decryptToken,
+        { batchLimit: BACKFILL_BATCH_LIMIT, nowSec: Math.floor(Date.now() / 1000) },
+      );
+      console.log(`[IG-SYNC-CRON] Maintenance step: backfilled=${backfilled} monthsClosed=${monthsClosed}`);
+    } catch (e) {
+      console.error("[IG-SYNC-CRON] Maintenance step failed (non-fatal, sync batch proceeds):", e);
+    }
+
     try {
 
     // Page through candidates, least-recently-attempted first, until the batch

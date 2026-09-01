@@ -139,14 +139,25 @@ export function PostagensPage() {
   const groups = useMemo(
     () =>
       Object.values(
-        allPosts.reduce<Record<number, { titulo: string; posts: HubPost[] }>>((acc, post) => {
-          if (!acc[post.workflow_id]) {
-            acc[post.workflow_id] = { titulo: post.workflow_titulo, posts: [] };
-          }
-          acc[post.workflow_id].posts.push(post);
-          return acc;
-        }, {}),
+        allPosts.reduce<Record<string, { key: string; titulo: string; posts: HubPost[] }>>(
+          (acc, post) => {
+            const key = post.workflow_id != null ? `wf-${post.workflow_id}` : 'avulso';
+            if (!acc[key]) {
+              acc[key] = {
+                key,
+                titulo: key === 'avulso' ? 'Publicações avulsas' : (post.workflow_titulo ?? ''),
+                posts: [],
+              };
+            }
+            acc[key].posts.push(post);
+            return acc;
+          },
+          {},
+        ),
       ).sort((a, b) => {
+        // The avulso group always leads, regardless of any fluxo's date.
+        if (a.key === 'avulso') return -1;
+        if (b.key === 'avulso') return 1;
         const aDate = a.posts[0]?.workflow_created_at ?? '';
         const bDate = b.posts[0]?.workflow_created_at ?? '';
         return bDate.localeCompare(aDate);
@@ -157,7 +168,7 @@ export function PostagensPage() {
   const initializedRef = useRef(false);
   if (!initializedRef.current && groups.length > 0 && collapsed === null) {
     initializedRef.current = true;
-    setCollapsed(new Set(groups.slice(1).map((g) => g.titulo)));
+    setCollapsed(new Set(groups.slice(1).map((g) => g.key)));
   }
   const effectiveCollapsed = collapsed ?? new Set<string>();
 
@@ -224,15 +235,15 @@ export function PostagensPage() {
             const withoutMedia = group.posts.filter((p) => p.media.length === 0);
 
             return (
-              <section key={group.titulo}>
+              <section key={group.key}>
                 <button
                   type="button"
                   className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-4 w-full text-left group"
                   onClick={() =>
                     setCollapsed((prev) => {
                       const next = new Set(prev ?? new Set<string>());
-                      if (next.has(group.titulo)) next.delete(group.titulo);
-                      else next.add(group.titulo);
+                      if (next.has(group.key)) next.delete(group.key);
+                      else next.add(group.key);
                       return next;
                     })
                   }
@@ -247,18 +258,18 @@ export function PostagensPage() {
                   <span className="text-[11px] hub-tx3">
                     {group.posts.length} {group.posts.length === 1 ? 'post' : 'posts'}
                   </span>
-                  {effectiveCollapsed.has(group.titulo) && (
+                  {effectiveCollapsed.has(group.key) && (
                     <span className="text-[10px] hub-tx3 hidden sm:inline">
                       clique para expandir
                     </span>
                   )}
                   <ChevronDown
                     size={16}
-                    className={`ml-auto hub-tx3 transition-transform ${effectiveCollapsed.has(group.titulo) ? '-rotate-90' : ''}`}
+                    className={`ml-auto hub-tx3 transition-transform ${effectiveCollapsed.has(group.key) ? '-rotate-90' : ''}`}
                   />
                 </button>
 
-                {!effectiveCollapsed.has(group.titulo) && withMedia.length > 0 && (
+                {!effectiveCollapsed.has(group.key) && withMedia.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {withMedia.map((post, i) => (
                       <div key={post.id} className="flex flex-col gap-1.5">
@@ -286,7 +297,7 @@ export function PostagensPage() {
                   </div>
                 )}
 
-                {!effectiveCollapsed.has(group.titulo) && stories.length > 0 && (
+                {!effectiveCollapsed.has(group.key) && stories.length > 0 && (
                   <div className={withMedia.length > 0 ? 'mt-4' : ''}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {stories.map((post) => (
@@ -312,7 +323,7 @@ export function PostagensPage() {
                   </div>
                 )}
 
-                {!effectiveCollapsed.has(group.titulo) && withoutMedia.length > 0 && (
+                {!effectiveCollapsed.has(group.key) && withoutMedia.length > 0 && (
                   <div className={withMedia.length > 0 || stories.length > 0 ? 'mt-4' : ''}>
                     <div className="max-w-[640px] space-y-3">
                       {withoutMedia.map((post) => (

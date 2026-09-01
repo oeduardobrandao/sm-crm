@@ -8,7 +8,9 @@ import { STATUS_LABELS, TIPO_LABELS } from '@/pages/entregas/postLabels';
 
 interface Props {
   postId: number;
-  workflowId: number;
+  /** NULL = post avulso (fora de fluxo) -- the chip still links, via the
+   *  universal `?post=` deep-link form. */
+  workflowId: number | null;
   titulo: string | null;
 }
 
@@ -81,7 +83,11 @@ export function PostChip({ postId, workflowId, titulo }: Props) {
       onBlur={cancelOpen}
     >
       <Link
-        to={`/entregas?drawer=${workflowId}&post=${postId}`}
+        to={
+          workflowId != null
+            ? `/entregas?drawer=${workflowId}&post=${postId}`
+            : `/entregas?post=${postId}`
+        }
         className="flex w-fit items-center gap-2 rounded-md border border-[var(--border-color)] px-3 py-2 font-semibold transition-colors hover:bg-[var(--surface-hover)]"
         style={{ background: 'var(--bg-color)' }}
       >

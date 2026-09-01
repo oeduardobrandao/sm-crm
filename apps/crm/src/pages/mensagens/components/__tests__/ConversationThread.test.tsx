@@ -214,4 +214,41 @@ describe('ConversationThread', () => {
     const chip = screen.getByRole('link', { name: 'Post de julho' });
     expect(chip).toHaveAttribute('href', '/entregas?drawer=3&post=7');
   });
+
+  it('shows the post chip and lets replying on a post avulso (workflow_id null), gated only on post_id', async () => {
+    const avulsoItems: MensagemFeedItem[] = [
+      {
+        source: 'post_feedback',
+        item_id: 9,
+        cliente_id: 14,
+        cliente_nome: 'ACME',
+        post_id: 21,
+        workflow_id: null,
+        post_titulo: 'Post avulso',
+        action: 'correcao',
+        content: 'Trocar a legenda',
+        is_workspace_user: false,
+        author_user_id: null,
+        author_name: null,
+        author_avatar_url: null,
+        created_at: '2026-07-30T11:00:00.000Z',
+      },
+    ];
+    const { replyToPost } = renderThread({ feed: makeFeed({ data: { pages: [avulsoItems] } }) });
+
+    const chip = screen.getByRole('link', { name: 'Post avulso' });
+    expect(chip).toHaveAttribute('href', '/entregas?post=21');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Responder' }));
+    const input = screen.getByPlaceholderText('Responder sobre o post…');
+    fireEvent.change(input, { target: { value: 'Feito' } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
+    });
+    expect(replyToPost.mutateAsync).toHaveBeenCalledWith({
+      postId: 21,
+      workflowId: null,
+      content: 'Feito',
+    });
+  });
 });

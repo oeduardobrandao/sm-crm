@@ -25,4 +25,20 @@ describe('isAutoPublishActive', () => {
   it('treats a missing suspended list as no suspensions (older backend)', () => {
     expect(isAutoPublishActive({ autoPublishOnApproval: true }, 7)).toBe(true);
   });
+
+  it('is true for a post avulso (workflowId null) when auto-publish is on', () => {
+    // An avulso post has no workflow etapas at all, so it can never appear in
+    // autoPublishSuspendedWorkflowIds -- matches hub-approve's own
+    // isFinalApprovalCycle early return for a null workflow_id.
+    expect(
+      isAutoPublishActive(
+        { autoPublishOnApproval: true, autoPublishSuspendedWorkflowIds: [7] },
+        null,
+      ),
+    ).toBe(true);
+  });
+
+  it('is false for a post avulso when auto-publish is off', () => {
+    expect(isAutoPublishActive({ autoPublishOnApproval: false }, null)).toBe(false);
+  });
 });

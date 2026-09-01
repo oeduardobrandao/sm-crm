@@ -37,19 +37,19 @@ describe('MentionChip', () => {
     );
   });
 
-  it('renders a post mention with a parentId as a link to /entregas?drawer=:parentId', () => {
+  it('renders a post mention with a parentId as a link to /entregas?drawer=:parentId&post=:id', () => {
     renderChip({ entityType: 'post', id: 2, label: 'Post de lançamento', parentId: 42 });
     expect(screen.getByRole('link', { name: /@Post de lançamento/ })).toHaveAttribute(
       'href',
-      '/entregas?drawer=42',
+      '/entregas?drawer=42&post=2',
     );
   });
 
-  it('renders a post mention without a parentId as an unlinked span', () => {
+  it('renders a post mention without a parentId (avulso) as a link via the universal /entregas?post=:id form', () => {
     renderChip({ entityType: 'post', id: 2, label: 'Post sem workflow' });
-    expect(screen.queryByRole('link')).toBeNull();
-    const span = screen.getByText(/@Post sem workflow/);
-    expect(span.className).toContain('mention-chip');
-    expect(span.className).toContain('mention-chip--post');
+    const link = screen.getByRole('link', { name: /@Post sem workflow/ });
+    expect(link).toHaveAttribute('href', '/entregas?post=2');
+    expect(link.className).toContain('mention-chip');
+    expect(link.className).toContain('mention-chip--post');
   });
 });

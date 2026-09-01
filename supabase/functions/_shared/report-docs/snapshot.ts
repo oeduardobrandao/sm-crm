@@ -58,7 +58,26 @@ export type SnapshotContentBreakdown = {
 
 export interface ReportDocSnapshot {
   version: 1;
-  period: { month: string; label: string; start: string; endExclusive: string };
+  period: {
+    month: string;
+    label: string;
+    start: string;
+    endExclusive: string;
+    /** min(último dia do mês, dia da geração), congelado na montagem (spec
+     * §4.3). Mês fechado -> último dia do mês; mês corrente (relatório
+     * gerado em andamento) -> o dia da geração, pra nunca estampar um
+     * período "01-31" que ainda não aconteceu inteiro. Snapshots antigos não
+     * têm este campo -- leitores usam guard (mesmo precedente do campo
+     * `views` dos top posts). */
+    effectiveEnd: string;
+  };
+  /** Sinalização de outlier do mês ANTERIOR (spec §4.3): quando um post
+   * sozinho respondeu por mais de 50% da soma de views (impressions) OU
+   * reach por post daquele mês, pra narrativa da IA (ai-input.ts) não tratar
+   * a queda pós-viral como fracasso de conteúdo. Ausente/null = mês anterior
+   * sem posts ou fonte indisponível. Campo OPCIONAL (mesmo precedente de
+   * `views` nos top posts): `version: 1` não muda. */
+  comparison?: { prev_outlier: boolean; prev_top_share: number } | null;
   account: {
     handle: string;
     specialty: string;
@@ -95,8 +114,23 @@ export interface SnapshotPostRow {
   thumbnail_url: string | null;
 }
 
+/** Post do mês ANTERIOR reduzido aos campos que o cálculo de outlier usa.
+ * `views` = `instagram_posts.impressions` (mesma base dos top posts). */
+export interface SnapshotPrevMonthPost {
+  views: number | null;
+  reach: number | null;
+}
+
 export interface SnapshotInput {
   month: string;
+  /** ISO timestamp do momento da geração -- alimenta `period.effectiveEnd`.
+   * Congelado pelo CHAMADOR (nunca `new Date()` aqui dentro: assembleSnapshot
+   * é puro e determinístico para os mesmos argumentos, precisa pra teste). */
+  nowIso: string;
+  /** Posts do mês ANTERIOR (não os do mês do relatório -- esses já vêm em
+   * `posts`), só pro cálculo de `comparison`. Vazio/null = mês anterior sem
+   * dado -> `comparison` sai null. */
+  prevMonthPosts: SnapshotPrevMonthPost[] | null;
   account: {
     handle: string;
     specialty: string;
@@ -140,6 +174,47 @@ function stableThumb(
   if (cached && !isEphemeralInstagramUrl(cached)) return cached;
   // A regra da spec §5: URL efêmera do CDN nunca congela no snapshot.
   return isEphemeralInstagramUrl(url) ? null : url;
+}
+
+const DAY_MS = 86_400_000;
+
+// min(último dia do mês, agora): mês fechado -> now sempre depois do último
+// dia -> vence o último dia; mês em curso -> now ainda dentro do mês ->
+// vence now. Uma única fórmula cobre os dois casos da spec §4.3.
+function computeEffectiveEnd(w: { endExclusive: string }, nowIso: string): string {
+  const lastDayMs = Date.parse(w.endExclusive) - DAY_MS;
+  const nowMs = Date.parse(nowIso);
+  return new Date(Math.min(lastDayMs, nowMs)).toISOString();
+}
+
+// Outlier do mês ANTERIOR (spec §4.3): um post sozinho respondendo por >50%
+// da soma de views OU reach por post daquele mês. prev_top_share é sempre o
+// MAIOR dos dois shares, exposto mesmo quando <=50% (a UI/IA decide o que
+// fazer com o número; só a flag prev_outlier é o corte). null = mês anterior
+// sem posts (vazio ou fonte indisponível -- o chamador já normaliza os dois
+// casos pra este mesmo formato).
+function computeComparison(
+  prevMonthPosts: SnapshotPrevMonthPost[] | null,
+): ReportDocSnapshot["comparison"] {
+  if (!prevMonthPosts || prevMonthPosts.length === 0) return null;
+
+  let sumViews = 0;
+  let maxViews = 0;
+  let sumReach = 0;
+  let maxReach = 0;
+  for (const p of prevMonthPosts) {
+    const views = p.views ?? 0;
+    const reach = p.reach ?? 0;
+    sumViews += views;
+    if (views > maxViews) maxViews = views;
+    sumReach += reach;
+    if (reach > maxReach) maxReach = reach;
+  }
+  const viewsShare = sumViews > 0 ? maxViews / sumViews : 0;
+  const reachShare = sumReach > 0 ? maxReach / sumReach : 0;
+  const topShare = Math.max(viewsShare, reachShare);
+
+  return { prev_outlier: topShare > 0.5, prev_top_share: topShare };
 }
 
 export function assembleSnapshot(input: SnapshotInput): ReportDocSnapshot {
@@ -196,7 +271,11 @@ export function assembleSnapshot(input: SnapshotInput): ReportDocSnapshot {
 
   return {
     version: 1,
-    period: { month: w.month, label: w.label, start: w.start, endExclusive: w.endExclusive },
+    period: {
+      month: w.month, label: w.label, start: w.start, endExclusive: w.endExclusive,
+      effectiveEnd: computeEffectiveEnd(w, input.nowIso),
+    },
+    comparison: computeComparison(input.prevMonthPosts),
     account: input.account,
     branding: input.branding,
     kpis: computeKpis(input.kpiSources),

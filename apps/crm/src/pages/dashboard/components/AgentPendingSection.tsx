@@ -284,7 +284,13 @@ export function AgentPendingSection() {
               {meusPosts.map((post) => (
                 <Row
                   key={post.id}
-                  to={`/entregas?drawer=${post.workflow_id}&post=${post.id}`}
+                  // NULL workflow_id = post avulso (fora de fluxo); it still opens via
+                  // the universal ?post= deep-link form.
+                  to={
+                    post.workflow_id != null
+                      ? `/entregas?drawer=${post.workflow_id}&post=${post.id}`
+                      : `/entregas?post=${post.id}`
+                  }
                   title={post.titulo}
                   context={[post.cliente_nome, POST_STATUS_LABELS[post.status]]
                     .filter(Boolean)

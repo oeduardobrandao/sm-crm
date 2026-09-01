@@ -61,6 +61,17 @@ export interface FollowerTrendPoint {
   count: number;
 }
 
+/** Sinalização de outlier do mês ANTERIOR (report-docs/snapshot.ts
+ * `comparison`), pra narrativa não tratar quedas pós-viral como fracasso.
+ * `note` só existe quando `prev_outlier` é true -- uma instrução curta em
+ * pt-BR embutida nos DADOS (o modelo já lê tudo isto como JSON no
+ * userPrompt; não depende do system prompt saber sobre este campo). */
+export interface ReportDataComparison {
+  prev_outlier: boolean;
+  prev_top_share: number;
+  note?: string;
+}
+
 export interface ReportData {
   handle: string;
   specialty: string;
@@ -74,6 +85,10 @@ export interface ReportData {
   best_times: BestTimeSlot[];
   tags_performance: TagPerformance[];
   follower_trend: FollowerTrendPoint[];
+  /** Opcional e aditivo: só o pipeline de blocos preenche (ai-input.ts); o
+   * gerador legado nunca seta e segue byte-idêntico. null = mês anterior
+   * sem outlier detectável (sem posts, ou nenhum post dominante). */
+  comparison?: ReportDataComparison | null;
 }
 
 export interface Recommendation {

@@ -41,7 +41,7 @@ function has(calls: Call[], table: string, method: string, args: unknown[]): boo
 }
 
 const postRow = (over: Record<string, unknown> = {}) => ({
-  id: 1, workflow_id: 10, titulo: "Post", tipo: "feed", status: "publicado",
+  id: 1, workflow_id: 10, cliente_id: 1, titulo: "Post", tipo: "feed", status: "publicado",
   ig_caption: "cap", conteudo_plain: "Linha 1\nLinha 2", created_via: "user",
   instagram_media_id: "m1", instagram_permalink: null,
   scheduled_at: null, published_at: "2026-06-01T00:00:00Z", created_at: "2026-05-01T00:00:00Z",
@@ -313,17 +313,16 @@ const igDistPost = (over: Record<string, unknown> = {}) => ({
 
 Deno.test("getPost: ig_score + tiers computed when client has >=5 sample", async () => {
   // Sequence of DB calls in getPost:
-  // 1. workflow_posts -> maybeSingle (post)
+  // 1. workflow_posts -> maybeSingle (post, cliente_id read straight off the row)
   // 2. loadPostProps: post_property_values -> then (empty)
   // 3. loadMetrics: instagram_posts -> then (metric, media_id="m10")
   // 4. post_file_links -> then (empty, no media)
-  // 5. workflows -> maybeSingle (cliente_id: 99)
-  // 6. loadClientRateDistributions:
+  // 5. loadClientRateDistributions (client id = p.cliente_id, no workflows fetch):
   //    a. clientes -> maybeSingle (owned)
   //    b. instagram_accounts -> then (account)
   //    c. instagram_posts -> then (5 dist posts)
-  const { db } = makeFakeDb({
-    workflow_posts: [{ data: postRow({ id: 10, workflow_id: 20, instagram_media_id: "m10" }), error: null }],
+  const { db, calls } = makeFakeDb({
+    workflow_posts: [{ data: postRow({ id: 10, workflow_id: 20, cliente_id: 99, instagram_media_id: "m10" }), error: null }],
     post_property_values: [{ data: [], error: null }],
     instagram_posts: [
       // loadMetrics: the post's own metric
@@ -337,7 +336,6 @@ Deno.test("getPost: ig_score + tiers computed when client has >=5 sample", async
       },
     ],
     post_file_links: [{ data: [], error: null }],
-    workflows: [{ data: { cliente_id: 99 }, error: null }],
     clientes: [{ data: { id: 99, especialidade: null, cor: null }, error: null }],
     instagram_accounts: [{ data: [{ id: 77 }], error: null }],
   });
@@ -346,6 +344,7 @@ Deno.test("getPost: ig_score + tiers computed when client has >=5 sample", async
   const out = await getPost(deps, { post_id: 10 });
 
   assert(out !== null, "post should not be null");
+  assert(!calls.some((c) => c.table === "workflows"), "getPost never reads workflows; cliente_id comes straight off the post row");
   assert(typeof out.ig_score === "number", `ig_score should be numeric, got ${out.ig_score}`);
   assert(out.ig_score >= 0 && out.ig_score <= 100, `ig_score should be 0-100, got ${out.ig_score}`);
   assert(out.tiers !== null, "tiers should not be null when sample is sufficient");
@@ -361,13 +360,9 @@ Deno.test("getPost: ig_score + tiers computed when client has >=5 sample", async
 
 Deno.test("getPost: ig_score null when no metric row (no media_id)", async () => {
   const { db } = makeFakeDb({
-    workflow_posts: [{ data: postRow({ id: 11, workflow_id: 21, instagram_media_id: null, instagram_permalink: null }), error: null }],
+    workflow_posts: [{ data: postRow({ id: 11, workflow_id: 21, cliente_id: 99, instagram_media_id: null, instagram_permalink: null }), error: null }],
     post_property_values: [{ data: [], error: null }],
     post_file_links: [{ data: [], error: null }],
-    workflows: [{ data: { cliente_id: 99 }, error: null }],
-    // Even with a valid client, no mrow means no scoring
-    clientes: [{ data: { id: 99, especialidade: null, cor: null }, error: null }],
-    instagram_accounts: [{ data: [{ id: 77 }], error: null }],
     instagram_posts: [
       { data: [], error: null }, // loadMetrics — no matching post
     ],
@@ -379,6 +374,34 @@ Deno.test("getPost: ig_score null when no metric row (no media_id)", async () =>
   assert(out !== null, "post should not be null");
   assertEquals(out.ig_score, null, "ig_score null when no metric row");
   assertEquals(out.tiers, null, "tiers null when no metric row");
+});
+
+Deno.test("getPost: avulso (workflow_id null) reads cliente_id straight off the post, no workflows fetch", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_posts: [{
+      data: postRow({ id: 40, workflow_id: null, cliente_id: 12, instagram_media_id: "m40" }),
+      error: null,
+    }],
+    post_property_values: [{ data: [], error: null }],
+    instagram_posts: [
+      // loadMetrics: the post's own metric
+      { data: [metricRow({ instagram_post_id: "m40", impressions: 1000, likes: 100, saved: 50, shares: 20, comments: 10, media_type: "IMAGE" })], error: null },
+      // loadClientRateDistributions: 5 historical posts
+      { data: [igDistPost(), igDistPost(), igDistPost(), igDistPost(), igDistPost()], error: null },
+    ],
+    post_file_links: [{ data: [], error: null }],
+    clientes: [{ data: { id: 12, especialidade: null, cor: null }, error: null }],
+    instagram_accounts: [{ data: [{ id: 77 }], error: null }],
+  });
+  const deps = { db, ctx: CTX, signUrl: (k: string) => Promise.resolve(`signed:${k}`) } as unknown as Deps;
+
+  const out = await getPost(deps, { post_id: 40 });
+
+  assert(out !== null, "avulso post should still resolve");
+  assertEquals(out.workflow_id, null, "workflow_id stays null for an avulso");
+  assertEquals(out.cliente_id, 12, "cliente_id exposed directly");
+  assert(!calls.some((c) => c.table === "workflows"), "never reads workflows for an avulso post (would .eq('id', null) otherwise)");
+  assert(typeof out.ig_score === "number", "ig_score still computed for an avulso post");
 });
 
 Deno.test("list_posts: ig_score sort without client_id throws McpInputError", async () => {
@@ -404,22 +427,20 @@ Deno.test("list_posts: derived sort (like_rate) orders by rate, slices after sor
   // With limit=2, published_at order would give [B,C] (newest first).
   // With like_rate sort, should give [A,C] after slice(0,2) — A is top-rate despite oldest.
   const makePost = (id: number, mediaId: string, pub: string) =>
-    postRow({ id, workflow_id: 30, instagram_media_id: mediaId, published_at: pub });
+    postRow({ id, workflow_id: 30, cliente_id: 5, instagram_media_id: mediaId, published_at: pub });
   const makeMetric = (mediaId: string, likes: number) =>
     metricRow({ instagram_post_id: mediaId, likes, impressions: 1000, saved: 20, shares: 5, comments: 3, media_type: "IMAGE" });
 
   // DB call sequence for listPosts with derived sort + client_id=5:
-  // 1. clientWorkflowIds: workflows -> then ([{id:30}])
-  // 2. workflow_posts -> then (3 posts, .limit(500))
-  // 3. post_property_values -> then (empty)
-  // 4. post_file_links -> then (empty)
-  // 5. instagram_posts -> then (3 metrics)
-  // 6. loadClientRateDistributions:
+  // 1. workflow_posts -> then (3 posts, filtered by .eq("cliente_id", 5), .limit(500))
+  // 2. post_property_values -> then (empty)
+  // 3. post_file_links -> then (empty)
+  // 4. instagram_posts -> then (3 metrics)
+  // 5. loadClientRateDistributions:
   //    a. clientes -> maybeSingle (owned)
   //    b. instagram_accounts -> then ([{id:88}])
   //    c. instagram_posts -> then (5 dist posts for distributions)
-  const { db } = makeFakeDb({
-    workflows: [{ data: [{ id: 30 }], error: null }],
+  const { db, calls } = makeFakeDb({
     workflow_posts: [{
       data: [
         makePost(1, "mA", "2026-01-01T00:00:00Z"),
@@ -450,6 +471,9 @@ Deno.test("list_posts: derived sort (like_rate) orders by rate, slices after sor
 
   const result = await listPosts(deps, { client_id: 5, sort_by_metric: "like_rate", limit: 2 });
 
+  assert(has(calls, "workflow_posts", "eq", ["cliente_id", 5]), "filters workflow_posts by cliente_id directly (no workflow lookup)");
+  assert(!calls.some((c) => c.table === "workflows"), "never reads workflows to resolve the client's post ids");
+
   // Derived sort → returns { posts, truncated, cap }
   assert(typeof result === "object" && !Array.isArray(result), "derived sort should return an object, not an array");
   const { posts, truncated, cap } = result as { posts: any[]; truncated: boolean; cap: number };
@@ -458,6 +482,24 @@ Deno.test("list_posts: derived sort (like_rate) orders by rate, slices after sor
   assertEquals(posts[1].id, 3, "second-by-like_rate (post C, id=3) should be second");
   assertEquals(truncated, false, "truncated=false (3 rows < cap=500)");
   assertEquals(cap, 500, "cap should be 500");
+});
+
+Deno.test("listPosts: client_id filters directly on cliente_id, including an avulso (workflow_id null)", async () => {
+  const attached = postRow({ id: 1, workflow_id: 30, cliente_id: 5, instagram_media_id: null, instagram_permalink: null });
+  const avulso = postRow({ id: 2, workflow_id: null, cliente_id: 5, instagram_media_id: null, instagram_permalink: null });
+  const { db, calls } = makeFakeDb({
+    workflow_posts: [{ data: [attached, avulso], error: null }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+
+  const out = await listPosts(deps, { client_id: 5 }) as any[];
+
+  assert(has(calls, "workflow_posts", "eq", ["cliente_id", 5]), "filters directly by cliente_id");
+  assert(!calls.some((c) => c.table === "workflows"), "never resolves the client's workflows first");
+  assertEquals(out.length, 2);
+  assertEquals(out.find((p) => p.id === 1)?.workflow_id, 30);
+  assertEquals(out.find((p) => p.id === 2)?.workflow_id, null, "avulso post included, workflow_id stays null");
+  assert(out.every((p) => p.cliente_id === 5), "every row carries cliente_id");
 });
 
 Deno.test("baseline: like_rate gets quartiles when n>=5, share_rate null when n<5", async () => {

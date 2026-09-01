@@ -18,6 +18,20 @@ export type PrivateReplyMessage =
         buttons: Array<{ type: "web_url"; url: string; title: string }>;
       };
     };
+  }
+  | {
+    attachment: {
+      type: "template";
+      payload: {
+        template_type: "generic";
+        elements: Array<{
+          title: string;
+          subtitle?: string;
+          image_url: string;
+          buttons?: Array<{ type: "web_url"; url: string; title: string }>;
+        }>;
+      };
+    };
   };
 
 export const MAX_DM_BUTTONS = 3;
@@ -119,4 +133,56 @@ export function buildFallbackText(text: string, buttons: DmButton[]): string {
     : `${trimmedText.slice(0, Math.max(0, budget - 1))}…`;
   if (!finalText) return linesBlock;
   return `${finalText}\n\n${linesBlock}`;
+}
+
+// ---------- DmMedia (generic template support) ----------
+
+export interface DmMedia {
+  key: string;
+  contentType: string;
+  sizeBytes: number;
+}
+
+// Fail-open como parseDmButtons: o enforcement é o CHECK do banco; aqui só
+// convertemos ou descartamos com warn.
+export function parseDmMedia(raw: unknown): DmMedia | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    console.warn("[instagram-dm-payload] dm_media malformado; ignorando:", typeof raw);
+    return null;
+  }
+  const o = raw as Record<string, unknown>;
+  if (typeof o.key !== "string" || typeof o.content_type !== "string" || typeof o.size_bytes !== "number") {
+    console.warn("[instagram-dm-payload] dm_media sem campos obrigatórios; ignorando");
+    return null;
+  }
+  return { key: o.key, contentType: o.content_type, sizeBytes: o.size_bytes };
+}
+
+export function buildCardText(title: string, subtitle: string | null): string {
+  return subtitle ? `${title}\n\n${subtitle}` : title;
+}
+
+export function buildCardMessage(
+  title: string,
+  subtitle: string | null,
+  imageUrl: string,
+  buttons: DmButton[],
+): PrivateReplyMessage {
+  return {
+    attachment: {
+      type: "template",
+      payload: {
+        template_type: "generic",
+        elements: [{
+          title,
+          ...(subtitle ? { subtitle } : {}),
+          image_url: imageUrl,
+          ...(buttons.length > 0
+            ? { buttons: buttons.map((b) => ({ type: "web_url" as const, url: b.url, title: b.title })) }
+            : {}),
+        }],
+      },
+    },
+  };
 }

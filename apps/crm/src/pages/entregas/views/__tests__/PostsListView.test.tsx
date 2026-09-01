@@ -36,6 +36,7 @@ function makePost(overrides: Partial<ActivePost> = {}): ActivePost {
     tiktok_post_url: null,
     instagram_media_id: null,
     ig_trial_strategy: null,
+    board_ordem: null,
     ...overrides,
   };
 }
@@ -57,6 +58,8 @@ const baseProps = {
   onPostClick: vi.fn(),
   onFluxoClick: vi.fn(),
   cardsByWorkflowId: new Map([[10, makeBoardCard()]]),
+  filtersActive: true,
+  onCreateAvulso: vi.fn(),
 };
 
 function getRenderedTitles(container: HTMLElement) {
@@ -66,9 +69,25 @@ function getRenderedTitles(container: HTMLElement) {
 }
 
 describe('PostsListView', () => {
-  it('renders the empty state when no posts match', () => {
-    render(<PostsListView {...baseProps} posts={[]} />);
+  it('renders the filtered empty state when a filter narrows the list to nothing', () => {
+    render(<PostsListView {...baseProps} posts={[]} filtersActive />);
     expect(screen.getByText('Nenhum post encontrado. Ajuste os filtros.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar post avulso' })).toBeNull();
+  });
+
+  it('renders a "Criar post avulso" CTA when the list is empty with no filters active', () => {
+    const onCreateAvulso = vi.fn();
+    render(
+      <PostsListView
+        {...baseProps}
+        posts={[]}
+        filtersActive={false}
+        onCreateAvulso={onCreateAvulso}
+      />,
+    );
+    expect(screen.queryByText('Nenhum post encontrado. Ajuste os filtros.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Criar post avulso' }));
+    expect(onCreateAvulso).toHaveBeenCalledTimes(1);
   });
 
   it('renders all columns including Etapa atual, Responsável and Prazo da etapa', () => {
@@ -283,11 +302,74 @@ describe('PostsListView', () => {
     render(<PostsListView {...baseProps} posts={posts} onPostClick={onPostClick} />);
 
     fireEvent.click(screen.getByText('Openable'));
-    expect(onPostClick).toHaveBeenCalledWith(10, 100);
+    expect(onPostClick).toHaveBeenCalledWith(posts[0]);
 
     onPostClick.mockClear();
     fireEvent.click(screen.getByText('Locked'));
     expect(onPostClick).not.toHaveBeenCalled();
+  });
+
+  it('a post avulso (workflow_id null) is always openable, regardless of openableWorkflowIds', () => {
+    const onPostClick = vi.fn();
+    const posts = [makePost({ id: 102, workflow_id: null, titulo: 'Post avulso' })];
+    render(
+      <PostsListView
+        {...baseProps}
+        posts={posts}
+        onPostClick={onPostClick}
+        openableWorkflowIds={new Set()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Post avulso'));
+    expect(onPostClick).toHaveBeenCalledWith(posts[0]);
+  });
+
+  it('shows the discreet "Avulso" tag (not a clickable fluxo button) in the Fluxo cell for a post avulso', () => {
+    const onFluxoClick = vi.fn();
+    render(
+      <PostsListView
+        {...baseProps}
+        posts={[makePost({ workflow_id: null, workflow_titulo: null, titulo: 'Post avulso' })]}
+        onFluxoClick={onFluxoClick}
+      />,
+    );
+
+    const tag = screen.getByText('Avulso');
+    expect(tag).toHaveClass('post-fluxo-tag');
+    expect(tag).toHaveClass('post-fluxo-tag--avulso');
+    expect(screen.queryByRole('button', { name: 'Avulso' })).toBeNull();
+    fireEvent.click(tag);
+    expect(onFluxoClick).not.toHaveBeenCalled();
+  });
+
+  it('leaves Etapa atual and Prazo da etapa blank for a post avulso', () => {
+    const posts = [
+      makePost({ id: 103, workflow_id: null, workflow_titulo: null, titulo: 'Post avulso' }),
+    ];
+    render(<PostsListView {...baseProps} posts={posts} />);
+
+    const row = screen.getByText('Post avulso').closest('tr')!;
+    const cells = Array.from(row.querySelectorAll('td')).map((td) => td.textContent);
+    // Columns: Título, Cliente, Fluxo, Etapa atual, Tipo, Status, Responsável, Prazo da etapa, Agendado para
+    expect(cells[3]).toBe('—'); // Etapa atual
+    expect(cells[7]).toBe('—'); // Prazo da etapa
+  });
+
+  it('groups posts avulsos together when sorting by Fluxo, in both directions', () => {
+    const posts = [
+      makePost({ titulo: 'Avulso 1', workflow_id: null, workflow_titulo: null }),
+      makePost({ titulo: 'Avulso 2', workflow_id: null, workflow_titulo: null }),
+      makePost({ titulo: 'Post A', workflow_id: 10, workflow_titulo: 'Fluxo A' }),
+      makePost({ titulo: 'Post B', workflow_id: 11, workflow_titulo: 'Fluxo B' }),
+    ];
+    const { container } = render(<PostsListView {...baseProps} posts={posts} />);
+
+    fireEvent.click(screen.getByText('Fluxo'));
+    expect(getRenderedTitles(container)).toEqual(['Avulso 1', 'Avulso 2', 'Post A', 'Post B']);
+
+    fireEvent.click(screen.getByText('Fluxo'));
+    expect(getRenderedTitles(container)).toEqual(['Post B', 'Post A', 'Avulso 1', 'Avulso 2']);
   });
 
   it('mostra o selo Teste em reels de teste', () => {

@@ -428,17 +428,8 @@ function metricsFor(
 // ---- posts -------------------------------------------------------------------
 
 const POST_COLS =
-  "id, workflow_id, titulo, tipo, status, ig_caption, conteudo_plain, created_via, " +
+  "id, workflow_id, cliente_id, titulo, tipo, status, ig_caption, conteudo_plain, created_via, " +
   "instagram_media_id, instagram_permalink, scheduled_at, published_at, created_at";
-
-async function clientWorkflowIds(d: Deps, clientId: number): Promise<number[]> {
-  const { data } = await d.db
-    .from("workflows")
-    .select("id")
-    .eq("conta_id", d.ctx.conta_id)
-    .eq("cliente_id", clientId);
-  return (data ?? []).map((w: any) => w.id);
-}
 
 export async function listPosts(
   d: Deps,
@@ -463,11 +454,10 @@ export async function listPosts(
 
   let q = d.db.from("workflow_posts").select(POST_COLS).eq("conta_id", d.ctx.conta_id);
 
-  if (args.client_id !== undefined) {
-    const wfIds = await clientWorkflowIds(d, args.client_id);
-    if (wfIds.length === 0) return derived ? { posts: [], truncated: false, cap: DERIVED_SORT_CAP } : [];
-    q = q.in("workflow_id", wfIds);
-  }
+  // cliente_id e sempre igual ao cliente do workflow para posts anexados (invariante
+  // da Task 1), entao filtrar direto por ele preserva o comportamento anterior e
+  // inclui os avulsos do cliente de graca.
+  if (args.client_id !== undefined) q = q.eq("cliente_id", args.client_id);
   if (args.formato) q = q.eq("tipo", args.formato);
   if (args.published_since) q = q.gte("published_at", args.published_since);
 
@@ -511,6 +501,7 @@ export async function listPosts(
     return {
       id: p.id,
       workflow_id: p.workflow_id,
+      cliente_id: p.cliente_id,
       titulo: p.titulo,
       tipo: p.tipo,
       status: p.status,
@@ -600,9 +591,9 @@ export async function getPost(d: Deps, args: { post_id: number }): Promise<any |
   let ig_score: number | null = null;
   let tiers: Record<RateKey, ReturnType<typeof performanceTier>> | null = null;
   {
-    const { data: wf } = await d.db.from("workflows")
-      .select("cliente_id").eq("conta_id", d.ctx.conta_id).eq("id", p.workflow_id).maybeSingle();
-    const clientId = (wf as any)?.cliente_id;
+    // cliente_id vem direto do post (sempre presente, anexado ou avulso); nao ha
+    // mais necessidade de buscar o workflow so para achar o cliente.
+    const clientId = p.cliente_id;
     if (clientId && mrow) {
       const dists = await loadClientRateDistributions(d, clientId);
       const samples = selectRateSamples(mrow.media_type, dists);
@@ -618,6 +609,7 @@ export async function getPost(d: Deps, args: { post_id: number }): Promise<any |
   return {
     id: p.id,
     workflow_id: p.workflow_id,
+    cliente_id: p.cliente_id,
     titulo: p.titulo,
     tipo: p.tipo,
     status: p.status,
@@ -983,17 +975,13 @@ export async function listPostFeedback(
 ): Promise<any[]> {
   const limit = Math.min(Math.max(1, args.limit ?? 25), 100);
 
-  let wfIds: number[] | null = null;
-  if (args.client_id !== undefined) {
-    wfIds = await clientWorkflowIds(d, args.client_id);
-    if (wfIds.length === 0) return [];
-  }
-
   // Shared tenant + content filters, applied to BOTH post_approvals reads.
+  // client_id filtra direto por workflow_posts.cliente_id: cobre anexados e
+  // avulsos igualmente, sem precisar resolver workflow_id -> cliente antes.
   const applyFilters = (q: any) => {
     q = q.eq("workflow_posts.conta_id", d.ctx.conta_id); // never read post_approvals by bare post_id
     if (args.post_id !== undefined) q = q.eq("post_id", args.post_id);
-    if (wfIds) q = q.in("workflow_posts.workflow_id", wfIds);
+    if (args.client_id !== undefined) q = q.eq("workflow_posts.cliente_id", args.client_id);
     if (args.action) q = q.eq("action", args.action);
     if (args.since) q = q.gte("created_at", args.since);
     return q;
@@ -1015,7 +1003,7 @@ export async function listPostFeedback(
   const feedbackP = applyFilters(
     d.db.from("post_approvals").select(
       "post_id, action, comentario, is_workspace_user, created_at, " +
-      "workflow_posts!inner(workflow_id, titulo, status, conta_id)",
+      "workflow_posts!inner(workflow_id, titulo, status, conta_id, cliente_id)",
     ),
   ).in("post_id", chosenIds);
   const eventsP = d.db.from("post_status_events")
@@ -1027,37 +1015,18 @@ export async function listPostFeedback(
   if (fbErr) throw fbErr;
   if (evErr) throw evErr;
 
-  // Resolve cliente_id via workflow_id -> cliente_id.
-  const fbRaw = (fbData ?? []) as any[];
-  const wfPresent = [...new Set(fbRaw.map((r) => r.workflow_posts.workflow_id))];
-  const clienteByWf = new Map<number, number>();
-  if (wfPresent.length > 0) {
-    const { data: wfData, error: wfErr } = await d.db
-      .from("workflows").select("id, cliente_id")
-      .eq("conta_id", d.ctx.conta_id).in("id", wfPresent);
-    if (wfErr) throw wfErr;
-    for (const w of (wfData ?? []) as any[]) clienteByWf.set(w.id, w.cliente_id);
-  }
-
-  const feedbackRows: FeedbackRow[] = [];
-  for (const r of fbRaw) {
-    const wfId = r.workflow_posts.workflow_id;
-    const cliente_id = clienteByWf.get(wfId);
-    if (cliente_id === undefined) {
-      console.warn(`[mcp] list_post_feedback: workflow ${wfId} missing cliente_id (conta ${d.ctx.conta_id}); dropping row`);
-      continue;
-    }
-    feedbackRows.push({
-      post_id: r.post_id,
-      titulo: r.workflow_posts.titulo,
-      status: r.workflow_posts.status,
-      cliente_id,
-      action: r.action,
-      comentario: r.comentario ?? null,
-      is_workspace_user: r.is_workspace_user,
-      created_at: r.created_at,
-    });
-  }
+  // cliente_id vem direto do embed (sempre presente, anexado ou avulso); nao ha
+  // mais resolucao workflow_id -> cliente, entao nenhuma linha e descartada.
+  const feedbackRows: FeedbackRow[] = ((fbData ?? []) as any[]).map((r) => ({
+    post_id: r.post_id,
+    titulo: r.workflow_posts.titulo,
+    status: r.workflow_posts.status,
+    cliente_id: r.workflow_posts.cliente_id,
+    action: r.action,
+    comentario: r.comentario ?? null,
+    is_workspace_user: r.is_workspace_user,
+    created_at: r.created_at,
+  }));
 
   const statusEvents: StatusEventRow[] = ((evData ?? []) as any[]).map((e) => ({
     post_id: e.post_id,
@@ -1143,18 +1112,73 @@ export async function createWorkflow(
   return wf;
 }
 
+const CREATE_POST_SELECT = "id, workflow_id, cliente_id, titulo, tipo, status, ig_caption, created_via, created_at";
+
 export async function createPost(
   d: Deps,
-  args: { workflow_id: number; titulo: string; tipo?: string; body?: string; ig_caption?: string },
+  args: {
+    workflow_id?: number;
+    cliente_id?: number;
+    titulo: string;
+    tipo?: string;
+    body?: string;
+    ig_caption?: string;
+  },
 ): Promise<any> {
-  const wf = await verifyActiveWorkflow(d, args.workflow_id);
-  if (!wf) throw new McpInputError("Fluxo não encontrado, ou inativo, neste workspace.");
+  const hasWorkflow = args.workflow_id !== undefined;
+  const hasCliente = args.cliente_id !== undefined;
+  if (hasWorkflow === hasCliente) {
+    throw new McpInputError(
+      "Informe exatamente um entre workflow_id (fluxo) ou cliente_id (post avulso).",
+    );
+  }
+
+  if (hasWorkflow) {
+    const wf = await verifyActiveWorkflow(d, args.workflow_id!);
+    if (!wf) throw new McpInputError("Fluxo não encontrado, ou inativo, neste workspace.");
+
+    const { data: last } = await d.db
+      .from("workflow_posts")
+      .select("ordem")
+      .eq("conta_id", d.ctx.conta_id)
+      .eq("workflow_id", args.workflow_id!)
+      .order("ordem", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const ordem = ((last?.ordem as number | undefined) ?? -1) + 1;
+
+    const { data: post, error } = await d.db
+      .from("workflow_posts")
+      .insert({
+        workflow_id: args.workflow_id,
+        conta_id: d.ctx.conta_id,
+        titulo: args.titulo,
+        tipo: args.tipo ?? "feed",
+        conteudo: buildTiptapDoc(args.body),
+        conteudo_plain: args.body ?? "",
+        ig_caption: args.ig_caption ?? null,
+        ordem,
+        status: "rascunho",
+        created_via: "agent",
+      })
+      .select(CREATE_POST_SELECT)
+      .single();
+    if (error) throw error;
+    return post;
+  }
+
+  // Post avulso: sem fluxo, preso direto ao cliente. ordem conta so entre os
+  // avulsos deste cliente (workflow_id is null), nunca entre posts ja anexados
+  // a um fluxo do mesmo cliente.
+  const client = await verifyClient(d, args.cliente_id!);
+  if (!client) throw new McpInputError("Cliente não encontrado neste workspace.");
 
   const { data: last } = await d.db
     .from("workflow_posts")
     .select("ordem")
     .eq("conta_id", d.ctx.conta_id)
-    .eq("workflow_id", args.workflow_id)
+    .eq("cliente_id", args.cliente_id!)
+    .is("workflow_id", null)
     .order("ordem", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -1163,7 +1187,8 @@ export async function createPost(
   const { data: post, error } = await d.db
     .from("workflow_posts")
     .insert({
-      workflow_id: args.workflow_id,
+      workflow_id: null,
+      cliente_id: args.cliente_id,
       conta_id: d.ctx.conta_id,
       titulo: args.titulo,
       tipo: args.tipo ?? "feed",
@@ -1174,7 +1199,7 @@ export async function createPost(
       status: "rascunho",
       created_via: "agent",
     })
-    .select("id, workflow_id, titulo, tipo, status, ig_caption, created_via, created_at")
+    .select(CREATE_POST_SELECT)
     .single();
   if (error) throw error;
   return post;
@@ -1256,12 +1281,18 @@ export async function setPostProperty(
   d: Deps,
   args: { post_id: number; property_id: number; value: unknown },
 ): Promise<{ post_id: number; property_id: number; value: unknown; status: string }> {
-  // 1. Fetch post + its template (tenant-scoped, + embedded workflow tenant check).
+  // 1. Fetch post + its template. workflows e um left embed (nao mais !inner):
+  // um post avulso tem workflow_id null, entao um inner join o excluiria da
+  // consulta antes mesmo de chegarmos na checagem de avulso abaixo. O tenant
+  // check do post em si ja vem do conta_id da propria linha (a mesma coluna
+  // que a trigger sync_workflow_post_cliente garante bater com o workflow
+  // quando ha um); nao precisamos mais do .eq("workflows.conta_id", ...), que
+  // so funcionava com o inner join (e quebraria o left join, voltando a
+  // excluir avulsos).
   const { data: post, error: postErr } = await d.db
     .from("workflow_posts")
-    .select("id, status, workflow_id, workflows!inner(template_id, conta_id)")
+    .select("id, status, workflow_id, workflows(template_id, conta_id)")
     .eq("conta_id", d.ctx.conta_id)
-    .eq("workflows.conta_id", d.ctx.conta_id)
     .eq("id", args.post_id)
     .maybeSingle();
   if (postErr) throw postErr;
@@ -1269,6 +1300,11 @@ export async function setPostProperty(
   const p = post as any;
   if (!EDITABLE_STATUSES.includes(p.status)) {
     throw new McpInputError(`Post em estado '${p.status}' não pode ser editado pelo agente.`);
+  }
+  if (p.workflow_id === null) {
+    throw new McpInputError(
+      "Post avulso não pertence a um fluxo; propriedades personalizadas pertencem ao modelo do fluxo.",
+    );
   }
   const templateId = p.workflows?.template_id ?? null;
   if (templateId === null) {

@@ -1,5 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { describe, expect, it, vi, beforeAll, beforeEach } from 'vitest';
+import { toast } from 'sonner';
 
 // Canonical-only registry (what the real hook returns while definitions load),
 // without dragging TanStack Query / the supabase client into this test.
@@ -8,10 +10,139 @@ vi.mock('@/hooks/useStatusRegistry', async () => {
   return { useStatusRegistry: () => buildStatusRegistry([]) };
 });
 
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }),
+}));
+
+vi.mock('@/store', () => ({ updateWorkflowPost: vi.fn(), reorderBoardPosts: vi.fn() }));
+
+// Mock dnd-kit so tests don't need to simulate real pointer/touch events in
+// jsdom (same approach as WorkflowCalendarView.test.tsx / CalendarGrid.test.tsx):
+// capture the handlers DndContext is given, and record what each card's
+// useDraggable was called with so "is this card's drag disabled" is assertable.
+const dndHandlers = vi.hoisted(() => ({
+  onDragEnd: undefined as ((e: unknown) => void) | undefined,
+  onDragStart: undefined as ((e: unknown) => void) | undefined,
+  onDragOver: undefined as ((e: unknown) => void) | undefined,
+  onDragCancel: undefined as (() => void) | undefined,
+}));
+const draggableCalls = vi.hoisted(() => new Map<string, { disabled?: boolean }>());
+
+vi.mock('@dnd-kit/core', () => ({
+  DndContext: ({
+    children,
+    onDragEnd,
+    onDragStart,
+    onDragOver,
+    onDragCancel,
+  }: {
+    children: React.ReactNode;
+    onDragEnd?: (e: unknown) => void;
+    onDragStart?: (e: unknown) => void;
+    onDragOver?: (e: unknown) => void;
+    onDragCancel?: () => void;
+  }) => {
+    dndHandlers.onDragEnd = onDragEnd;
+    dndHandlers.onDragStart = onDragStart;
+    dndHandlers.onDragOver = onDragOver;
+    dndHandlers.onDragCancel = onDragCancel;
+    return <>{children}</>;
+  },
+  DragOverlay: ({ children }: { children?: React.ReactNode }) => <>{children ?? null}</>,
+  PointerSensor: class {},
+  TouchSensor: class {},
+  useSensor: () => ({}),
+  useSensors: (...sensors: unknown[]) => sensors,
+  useDroppable: () => ({ setNodeRef: () => {}, isOver: false }),
+}));
+
+// PostBoardCard uses useSortable (not useDraggable) so the card can preview a
+// same-column reorder; the mock still records into draggableCalls so the
+// existing "is this card's drag disabled" assertions keep working unchanged.
+vi.mock('@dnd-kit/sortable', () => ({
+  SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useSortable: (opts: { id: string; disabled?: boolean }) => {
+    draggableCalls.set(opts.id, opts);
+    return {
+      listeners: opts.disabled ? undefined : {},
+      setNodeRef: () => {},
+      transform: null,
+      transition: undefined,
+      isDragging: false,
+    };
+  },
+  verticalListSortingStrategy: 'vertical',
+}));
+
+vi.mock('@dnd-kit/utilities', () => ({
+  CSS: { Transform: { toString: () => undefined } },
+}));
+
+// Real Radix DropdownMenu relies on portals/pointer-capture that jsdom does
+// not model well; every other test in this codebase that exercises a
+// DropdownMenu mocks the module down to plain elements instead (see
+// ClientesPage.test.tsx / WorkflowCard.historyPopover.test.tsx). Content
+// renders unconditionally, so a menu item is queryable without simulating an
+// open click; onSelect (Radix's prop, not onClick) drives the button.
+vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuItem: ({
+    children,
+    onSelect,
+  }: {
+    children: React.ReactNode;
+    onSelect?: () => void;
+  }) => (
+    <button type="button" onClick={onSelect}>
+      {children}
+    </button>
+  ),
+}));
+
 import { PostsKanbanView } from '../PostsKanbanView';
 import { POST_STATUS_ORDER, STATUS_LABELS } from '../../postLabels';
+import { updateWorkflowPost, reorderBoardPosts } from '@/store';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../../hooks/useEntregasData';
+import { ACTIVE_POSTS_KEY } from '../../hooks/useUpdatePostStatus';
+
+const mockUpdate = vi.mocked(updateWorkflowPost);
+const mockReorder = vi.mocked(reorderBoardPosts);
+
+beforeAll(() => {
+  (Element.prototype as unknown as { hasPointerCapture: () => boolean }).hasPointerCapture = () =>
+    false;
+  (Element.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = () => {};
+});
+
+beforeEach(() => {
+  draggableCalls.clear();
+  dndHandlers.onDragEnd = undefined;
+  dndHandlers.onDragStart = undefined;
+  dndHandlers.onDragOver = undefined;
+  dndHandlers.onDragCancel = undefined;
+  mockUpdate.mockReset();
+  mockReorder.mockReset();
+  mockReorder.mockResolvedValue(undefined);
+  vi.mocked(toast).mockClear();
+  vi.mocked(toast.error).mockClear();
+  vi.mocked(toast.info).mockClear();
+});
+
+function renderWithQuery(ui: React.ReactElement) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const result = render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+  return {
+    ...result,
+    qc,
+    rerender: (nextUi: React.ReactElement) =>
+      result.rerender(<QueryClientProvider client={qc}>{nextUi}</QueryClientProvider>),
+  };
+}
 
 let nextId = 1;
 function makePost(overrides: Partial<ActivePost> = {}): ActivePost {
@@ -24,6 +155,7 @@ function makePost(overrides: Partial<ActivePost> = {}): ActivePost {
     titulo: 'Post Base',
     tipo: 'feed',
     status: 'rascunho',
+    custom_status_id: null,
     scheduled_at: null,
     published_at: null,
     ig_caption: null,
@@ -36,6 +168,8 @@ function makePost(overrides: Partial<ActivePost> = {}): ActivePost {
     tiktok_publish_error: null,
     tiktok_post_url: null,
     instagram_media_id: null,
+    ig_trial_strategy: null,
+    board_ordem: null,
     ...overrides,
   };
 }
@@ -56,17 +190,35 @@ const baseProps = {
   openableWorkflowIds: new Set([10]),
   onPostClick: vi.fn(),
   cardsByWorkflowId: new Map([[10, makeBoardCard()]]),
+  filtersActive: true,
+  onCreateAvulso: vi.fn(),
 };
 
 describe('PostsKanbanView', () => {
   it('shows a spinner while loading', () => {
-    const { container } = render(<PostsKanbanView {...baseProps} posts={[]} isLoading />);
+    const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={[]} isLoading />);
     expect(container.querySelector('.board-container')).toBeNull();
   });
 
-  it('renders the global empty state when there are no posts', () => {
-    render(<PostsKanbanView {...baseProps} posts={[]} />);
+  it('renders the filtered empty state when a filter narrows the board to nothing', () => {
+    renderWithQuery(<PostsKanbanView {...baseProps} posts={[]} filtersActive />);
     expect(screen.getByText('Nenhum post encontrado. Ajuste os filtros.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar post avulso' })).toBeNull();
+  });
+
+  it('renders a "Criar post avulso" CTA when the board is empty with no filters active', () => {
+    const onCreateAvulso = vi.fn();
+    renderWithQuery(
+      <PostsKanbanView
+        {...baseProps}
+        posts={[]}
+        filtersActive={false}
+        onCreateAvulso={onCreateAvulso}
+      />,
+    );
+    expect(screen.queryByText('Nenhum post encontrado. Ajuste os filtros.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Criar post avulso' }));
+    expect(onCreateAvulso).toHaveBeenCalledTimes(1);
   });
 
   it('renders all 9 status columns in pipeline order with counts', () => {
@@ -75,7 +227,7 @@ describe('PostsKanbanView', () => {
       makePost({ status: 'rascunho', titulo: 'Draft B' }),
       makePost({ status: 'postado', titulo: 'Published', scheduled_at: '2026-07-01T12:00:00Z' }),
     ];
-    const { container } = render(<PostsKanbanView {...baseProps} posts={posts} />);
+    const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
 
     const titles = Array.from(container.querySelectorAll('.board-column-title')).map(
       (el) => el.textContent,
@@ -97,17 +249,33 @@ describe('PostsKanbanView', () => {
       makePost({ id: 100, workflow_id: 10, titulo: 'Openable' }),
       makePost({ id: 101, workflow_id: 99, titulo: 'Concluded WF post' }),
     ];
-    render(<PostsKanbanView {...baseProps} posts={posts} onPostClick={onPostClick} />);
+    renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} onPostClick={onPostClick} />);
 
     fireEvent.click(screen.getByText('Openable'));
-    expect(onPostClick).toHaveBeenCalledWith(10, 100);
+    expect(onPostClick).toHaveBeenCalledWith(posts[0]);
 
     onPostClick.mockClear();
     fireEvent.click(screen.getByText('Concluded WF post'));
     expect(onPostClick).not.toHaveBeenCalled();
   });
 
-  it('always shows the status chip, with Publicando… for a due agendado post', () => {
+  it('a post avulso (workflow_id null) is always openable, regardless of openableWorkflowIds', () => {
+    const onPostClick = vi.fn();
+    const posts = [makePost({ id: 102, workflow_id: null, titulo: 'Post avulso' })];
+    renderWithQuery(
+      <PostsKanbanView
+        {...baseProps}
+        posts={posts}
+        onPostClick={onPostClick}
+        openableWorkflowIds={new Set()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Post avulso'));
+    expect(onPostClick).toHaveBeenCalledWith(posts[0]);
+  });
+
+  it('omits the redundant status chip but keeps the derived Publicando… pill', () => {
     const past = new Date(Date.now() - 60_000).toISOString();
     const future = new Date(Date.now() + 86_400_000).toISOString();
     const posts = [
@@ -115,22 +283,23 @@ describe('PostsKanbanView', () => {
       makePost({ status: 'agendado', titulo: 'Not due', scheduled_at: future }),
       makePost({ status: 'rascunho', titulo: 'Draft' }),
     ];
-    const { container } = render(<PostsKanbanView {...baseProps} posts={posts} />);
+    const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
 
-    const chips = Array.from(container.querySelectorAll('.post-status-chip')).map(
+    // The column already names the status; cards carry no per-card status chip.
+    expect(container.querySelector('.board-post-card .post-status-chip')).toBeNull();
+    // But "publicando" is derived (agendado + due), which the column can't
+    // convey, so exactly the due card keeps a pill.
+    const pills = Array.from(container.querySelectorAll('.board-post-publicando')).map(
       (el) => el.textContent,
     );
-    expect(chips).toHaveLength(3);
-    expect(chips.filter((c) => c === 'Publicando…')).toHaveLength(1);
-    expect(chips.filter((c) => c === 'Agendado')).toHaveLength(1);
-    expect(chips.filter((c) => c === 'Rascunho')).toHaveLength(1);
+    expect(pills).toEqual(['Publicando…']);
   });
 
   it('shows the client avatar (img when cached, initials fallback otherwise)', () => {
     const withAvatar = new Map([
       [10, makeBoardCard({ clienteAvatarUrl: 'https://cdn.example/avatar.jpg' })],
     ]);
-    const { container, rerender } = render(
+    const { container, rerender } = renderWithQuery(
       <PostsKanbanView {...baseProps} posts={[makePost()]} cardsByWorkflowId={withAvatar} />,
     );
     expect(container.querySelector('img.board-post-cliente-avatar')).toHaveAttribute(
@@ -151,15 +320,37 @@ describe('PostsKanbanView', () => {
   });
 
   it('shows the etapa responsible with the etapa deadline, colored by urgency', () => {
-    render(<PostsKanbanView {...baseProps} posts={[makePost()]} />);
+    renderWithQuery(<PostsKanbanView {...baseProps} posts={[makePost()]} />);
     expect(screen.getByText('Ana')).toBeInTheDocument();
     expect(screen.getByText('AS')).toBeInTheDocument();
     expect(screen.getByText('2d')).toBeInTheDocument();
   });
 
+  it('renders the canonical status icon in the column header', () => {
+    const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={[makePost()]} />);
+    expect(container.querySelector('.board-column-title .lucide-pencil-line')).toBeInTheDocument();
+  });
+
   it('shows which etapa the post is in', () => {
-    const { container } = render(<PostsKanbanView {...baseProps} posts={[makePost()]} />);
-    expect(container.querySelector('.board-post-etapa')?.textContent).toBe('Design');
+    const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={[makePost()]} />);
+    expect(container.querySelector('.board-post-card .post-fluxo-tag--static')?.textContent).toBe(
+      'Design',
+    );
+  });
+
+  it('shows an "Avulso" chip instead of an etapa for a post avulso', () => {
+    const { container } = renderWithQuery(
+      <PostsKanbanView
+        {...baseProps}
+        posts={[
+          makePost({ id: 120, workflow_id: null, workflow_titulo: null, titulo: 'Post avulso' }),
+        ]}
+      />,
+    );
+    expect(container.querySelector('.board-post-etapa')).toBeNull();
+    const chip = screen.getByText('Avulso');
+    expect(chip).toHaveClass('post-fluxo-tag');
+    expect(chip).toHaveClass('post-fluxo-tag--avulso');
   });
 
   it('shows an overdue etapa deadline in red shorthand', () => {
@@ -171,13 +362,15 @@ describe('PostsKanbanView', () => {
         }),
       ],
     ]);
-    render(<PostsKanbanView {...baseProps} posts={[makePost()]} cardsByWorkflowId={overdue} />);
+    renderWithQuery(
+      <PostsKanbanView {...baseProps} posts={[makePost()]} cardsByWorkflowId={overdue} />,
+    );
     const prazo = screen.getByText('3d atr.');
     expect(prazo).toHaveStyle({ color: '#ef4444' });
   });
 
   it('falls back for missing titulo, date and workflow card', () => {
-    render(
+    renderWithQuery(
       <PostsKanbanView
         {...baseProps}
         posts={[makePost({ titulo: '', workflow_id: 99, cliente_id: null, scheduled_at: null })]}
@@ -186,5 +379,405 @@ describe('PostsKanbanView', () => {
     );
     expect(screen.getByText('Post sem título')).toBeInTheDocument();
     expect(screen.getByText('Sem data')).toBeInTheDocument();
+  });
+
+  describe('drag-and-drop', () => {
+    it('disables dragging and shows the lock icon for a card in a locked (system) status', () => {
+      const posts = [makePost({ id: 501, status: 'postado', titulo: 'Published' })];
+      const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      expect(draggableCalls.get('501')?.disabled).toBe(true);
+      expect(container.querySelector('.lucide-lock')).toBeInTheDocument();
+    });
+
+    it('leaves an unlocked card draggable', () => {
+      const posts = [makePost({ id: 502, status: 'rascunho', titulo: 'Draft' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      expect(draggableCalls.get('502')?.disabled).toBeFalsy();
+    });
+
+    it('same-column drop is a no-op', () => {
+      const posts = [makePost({ id: 503, status: 'rascunho', titulo: 'Draft' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '503' }, over: { id: 'col:rascunho' } });
+
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('rejects a drop onto a system column with a toast, without writing', () => {
+      const posts = [makePost({ id: 504, status: 'rascunho', titulo: 'Draft' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '504' }, over: { id: 'col:agendado' } });
+
+      expect(toast.error).toHaveBeenCalledWith(
+        'Post já agendado no Instagram — cancele o agendamento para mover',
+      );
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('writes the target status when dropping an unapproved post on an unlocked column', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 505, status: 'rascunho', titulo: 'Draft' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '505' }, over: { id: 'col:revisao_interna' } });
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(505, {
+          status: 'revisao_interna',
+          custom_status_id: null,
+        }),
+      );
+    });
+
+    it('confirms before moving an approved post to a different status, and writes only after confirming', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 506, status: 'aprovado_interno', titulo: 'Approved' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '506' }, over: { id: 'col:rascunho' } });
+
+      expect(await screen.findByText('Post aprovado')).toBeInTheDocument();
+      expect(mockUpdate).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(506, {
+          status: 'rascunho',
+          custom_status_id: null,
+        }),
+      );
+    });
+
+    it('cancelling the confirm dialog never writes', async () => {
+      const posts = [makePost({ id: 507, status: 'aprovado_cliente', titulo: 'Approved' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '507' }, over: { id: 'col:correcao_cliente' } });
+
+      expect(await screen.findByText('Post aprovado')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+      expect(mockUpdate).not.toHaveBeenCalled();
+      await waitFor(() => expect(screen.queryByText('Post aprovado')).toBeNull());
+    });
+
+    it('rolls back the optimistic move and toasts on a failed write', async () => {
+      mockUpdate.mockRejectedValue(new Error('boom'));
+      const posts = [makePost({ id: 508, status: 'rascunho', titulo: 'Draft' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '508' }, over: { id: 'col:revisao_interna' } });
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Erro ao atualizar status'));
+    });
+
+    it('a failed forward write into a manual column restores the pre-drag rank via the reorder RPC', async () => {
+      mockUpdate.mockRejectedValue(new Error('boom'));
+      const posts = [makePost({ id: 750, status: 'rascunho', titulo: 'Draft', board_ordem: null })];
+      const { qc } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+      act(() => {
+        qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, posts);
+      });
+
+      dndHandlers.onDragEnd?.({ active: { id: '750' }, over: { id: 'col:revisao_interna' } });
+
+      // The drop placed the post into the (empty, manually-sorted) target
+      // column with a real rank, via the same synchronous persistPlacement
+      // that races useUpdatePostStatus's onMutate snapshot.
+      await waitFor(() =>
+        expect(mockReorder).toHaveBeenCalledWith([{ id: 750, board_ordem: 1024 }]),
+      );
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Erro ao atualizar status'));
+
+      // Once the failed status write settles, the per-call onError must
+      // restore the pre-drag rank (null -- this post never had one) through
+      // the reorder RPC too, not just leave whatever rank the hook-level
+      // rollback's (corrupted) snapshot happened to carry.
+      await waitFor(() =>
+        expect(mockReorder).toHaveBeenCalledWith([{ id: 750, board_ordem: null }]),
+      );
+    });
+
+    it('shows a movido toast with a Desfazer action after a valid write', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 509, status: 'rascunho', titulo: 'Draft' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '509' }, over: { id: 'col:revisao_interna' } });
+
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+      expect(toast).toHaveBeenCalledWith(
+        expect.stringMatching(/Post movido para/),
+        expect.objectContaining({
+          duration: 6000,
+          action: expect.objectContaining({ label: 'Desfazer', onClick: expect.any(Function) }),
+        }),
+      );
+    });
+
+    it('Desfazer restores the previous status when the post still sits where the drag left it', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 510, status: 'rascunho', titulo: 'Draft' })];
+      const { qc } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+      // Mirrors production: useActivePosts (useQuery(['active-posts'])) already
+      // holds this list before PostsKanbanView receives it as a prop.
+      act(() => {
+        qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, posts);
+      });
+
+      dndHandlers.onDragEnd?.({ active: { id: '510' }, over: { id: 'col:revisao_interna' } });
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(510, {
+          status: 'revisao_interna',
+          custom_status_id: null,
+        }),
+      );
+      // The optimistic patch from the forward mutate leaves the cache showing
+      // the post still at the forward key -- the undo guard's "apply" path.
+      expect(
+        qc.getQueryData<ActivePost[]>(ACTIVE_POSTS_KEY)?.find((p) => p.id === 510)?.status,
+      ).toBe('revisao_interna');
+      mockUpdate.mockClear();
+
+      const [, options] = vi.mocked(toast).mock.calls[0] as [
+        string,
+        { action: { onClick: () => void } },
+      ];
+      options.action.onClick();
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(510, {
+          status: 'rascunho',
+          custom_status_id: null,
+        }),
+      );
+      expect(toast.info).not.toHaveBeenCalled();
+    });
+
+    it('Desfazer no-ops and toasts info when the post moved again before the click', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 511, status: 'rascunho', titulo: 'Draft' })];
+      const { qc } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+      act(() => {
+        qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, posts);
+      });
+
+      dndHandlers.onDragEnd?.({ active: { id: '511' }, over: { id: 'col:revisao_interna' } });
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(511, {
+          status: 'revisao_interna',
+          custom_status_id: null,
+        }),
+      );
+      mockUpdate.mockClear();
+
+      // Someone else (another agent, the client Hub, auto-scheduling) moved the
+      // post again before the Desfazer click landed.
+      act(() => {
+        qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, (old) =>
+          (old ?? []).map((p) =>
+            p.id === 511 ? { ...p, status: 'aprovado_interno', custom_status_id: null } : p,
+          ),
+        );
+      });
+
+      const [, options] = vi.mocked(toast).mock.calls[0] as [
+        string,
+        { action: { onClick: () => void } },
+      ];
+      options.action.onClick();
+
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(toast.info).toHaveBeenCalledWith('O post já mudou de novo. Nada foi desfeito.');
+    });
+
+    it('opens a live drop slot in the hovered column only, suppressing its empty state', () => {
+      const posts = [makePost({ id: 601, status: 'rascunho', titulo: 'Draft' })];
+      const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      // Only the rascunho column has a card; every other column shows "Nenhum post".
+      expect(screen.getAllByText('Nenhum post')).toHaveLength(POST_STATUS_ORDER.length - 1);
+
+      act(() => {
+        dndHandlers.onDragStart?.({ active: { id: '601', rect: { current: null } } });
+        dndHandlers.onDragOver?.({ active: { id: '601' }, over: { id: 'col:revisao_interna' } });
+      });
+
+      const slots = container.querySelectorAll('.board-drop-slot');
+      expect(slots).toHaveLength(1);
+      expect(
+        slots[0].closest('.board-column')?.querySelector('.board-column-title')?.textContent,
+      ).toBe(STATUS_LABELS.revisao_interna);
+      // The target column's own empty state is suppressed while its slot is open.
+      expect(screen.getAllByText('Nenhum post')).toHaveLength(POST_STATUS_ORDER.length - 2);
+    });
+
+    it('renders no slot while hovering a locked column or the card’s own column', () => {
+      const posts = [makePost({ id: 602, status: 'rascunho', titulo: 'Draft' })];
+      const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      act(() => {
+        dndHandlers.onDragStart?.({ active: { id: '602', rect: { current: null } } });
+      });
+
+      act(() => {
+        dndHandlers.onDragOver?.({ active: { id: '602' }, over: { id: 'col:agendado' } });
+      });
+      expect(container.querySelector('.board-drop-slot')).toBeNull();
+
+      act(() => {
+        dndHandlers.onDragOver?.({ active: { id: '602' }, over: { id: 'col:rascunho' } });
+      });
+      expect(container.querySelector('.board-drop-slot')).toBeNull();
+    });
+
+    it('clears the drop slot on drag end and on drag cancel', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 603, status: 'rascunho', titulo: 'Draft' })];
+      const { container } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      act(() => {
+        dndHandlers.onDragStart?.({ active: { id: '603', rect: { current: null } } });
+        dndHandlers.onDragOver?.({ active: { id: '603' }, over: { id: 'col:revisao_interna' } });
+      });
+      expect(container.querySelector('.board-drop-slot')).toBeInTheDocument();
+
+      act(() => {
+        dndHandlers.onDragEnd?.({ active: { id: '603' }, over: { id: 'col:revisao_interna' } });
+      });
+      expect(container.querySelector('.board-drop-slot')).toBeNull();
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+
+      // Re-open the slot, then verify onDragCancel clears it too.
+      act(() => {
+        dndHandlers.onDragStart?.({ active: { id: '603', rect: { current: null } } });
+        dndHandlers.onDragOver?.({ active: { id: '603' }, over: { id: 'col:revisao_interna' } });
+      });
+      expect(container.querySelector('.board-drop-slot')).toBeInTheDocument();
+
+      act(() => {
+        dndHandlers.onDragCancel?.();
+      });
+      expect(container.querySelector('.board-drop-slot')).toBeNull();
+    });
+
+    it('cross-column drop into an empty manual column also persists the placement at the slot index', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 700, status: 'rascunho', titulo: 'Draft' })];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '700' }, over: { id: 'col:revisao_interna' } });
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(700, {
+          status: 'revisao_interna',
+          custom_status_id: null,
+        }),
+      );
+      await waitFor(() =>
+        expect(mockReorder).toHaveBeenCalledWith([{ id: 700, board_ordem: 1024 }]),
+      );
+    });
+
+    it('same-column drop over another card reorders only -- no status mutation, no undo toast', async () => {
+      const posts = [
+        makePost({ id: 701, status: 'rascunho', titulo: 'A' }),
+        makePost({ id: 702, status: 'rascunho', titulo: 'B' }),
+      ];
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+
+      dndHandlers.onDragEnd?.({ active: { id: '701' }, over: { id: '702' } });
+
+      await waitFor(() => expect(mockReorder).toHaveBeenCalled());
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(toast).not.toHaveBeenCalled();
+    });
+
+    it('Desfazer also restores the previous board_ordem (null when the post had no prior rank)', async () => {
+      mockUpdate.mockResolvedValue({} as never);
+      const posts = [makePost({ id: 703, status: 'rascunho', titulo: 'Draft', board_ordem: null })];
+      const { qc } = renderWithQuery(<PostsKanbanView {...baseProps} posts={posts} />);
+      act(() => {
+        qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, posts);
+      });
+
+      dndHandlers.onDragEnd?.({ active: { id: '703' }, over: { id: 'col:revisao_interna' } });
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(703, {
+          status: 'revisao_interna',
+          custom_status_id: null,
+        }),
+      );
+      mockUpdate.mockClear();
+      mockReorder.mockClear();
+
+      const [, options] = vi.mocked(toast).mock.calls[0] as [
+        string,
+        { action: { onClick: () => void } },
+      ];
+      options.action.onClick();
+
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(703, {
+          status: 'rascunho',
+          custom_status_id: null,
+        }),
+      );
+      expect(mockReorder).toHaveBeenCalledWith([{ id: 703, board_ordem: null }]);
+    });
+  });
+
+  describe('column sort menu', () => {
+    it('renders the sort trigger per column', () => {
+      renderWithQuery(<PostsKanbanView {...baseProps} posts={[makePost()]} />);
+      expect(screen.getAllByLabelText(/Ordenar coluna/)).toHaveLength(POST_STATUS_ORDER.length);
+    });
+
+    it('sorts a column by its columnSorts mode -- recentes is highest id first', () => {
+      const posts = [
+        makePost({ id: 801, status: 'rascunho', titulo: 'First' }),
+        makePost({ id: 802, status: 'rascunho', titulo: 'Second' }),
+        makePost({ id: 803, status: 'rascunho', titulo: 'Third' }),
+      ];
+      const { container } = renderWithQuery(
+        <PostsKanbanView {...baseProps} posts={posts} columnSorts={{ rascunho: 'recentes' }} />,
+      );
+
+      const column = Array.from(container.querySelectorAll('.board-column')).find(
+        (el) => el.querySelector('.board-column-title')?.textContent === STATUS_LABELS.rascunho,
+      );
+      const titles = Array.from(column!.querySelectorAll('.item-title')).map(
+        (el) => el.textContent,
+      );
+      expect(titles).toEqual(['Third', 'Second', 'First']);
+    });
+
+    it('selecting "Mais antigos" in a column menu calls onColumnSortChange with the column key and mode', () => {
+      const onColumnSortChange = vi.fn();
+      renderWithQuery(
+        <PostsKanbanView
+          {...baseProps}
+          posts={[makePost({ id: 804, status: 'rascunho', titulo: 'Draft' })]}
+          onColumnSortChange={onColumnSortChange}
+        />,
+      );
+
+      const trigger = screen.getByLabelText(`Ordenar coluna ${STATUS_LABELS.rascunho}`);
+      const column = trigger.closest('.board-column') as HTMLElement;
+      fireEvent.click(within(column).getByText('Mais antigos'));
+
+      expect(onColumnSortChange).toHaveBeenCalledWith('rascunho', 'antigos');
+    });
   });
 });

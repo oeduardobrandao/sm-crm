@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -30,6 +30,12 @@ import { useAuth } from '../../context/AuthContext';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
 import { getInstagramPosts, type InstagramPostSummary } from '../../services/instagram';
 import { getPostCovers } from '../../services/postMedia';
+import {
+  deleteAutomationMedia,
+  signAutomationMediaView,
+  uploadAutomationMedia,
+  validateAutomationMediaFile,
+} from '../../services/automationMedia';
 import { TIPO_LABELS } from '../entregas/postLabels';
 import {
   createInstagramAutomation,
@@ -39,6 +45,7 @@ import {
   getInstagramAccountStatuses,
   type ClientePost,
   type DmButton,
+  type DmMedia,
   type InstagramCommentAutomation,
   type IgAccountStatus,
 } from '../../store';
@@ -63,6 +70,21 @@ const POSTS_PAGE_SIZE = 10;
 /** The production list arrives unpaginated, so it is chunked client-side. */
 const PRODUCTION_PAGE_SIZE = 12;
 const MAX_KEYWORD_LENGTH = 40;
+const MAX_PUBLIC_REPLIES = 5;
+/** Limite da Meta pro título de um generic template (cartão com imagem).
+ * Com mídia, dm_message É o título -- ver ica_dm_message_len_with_media. */
+const MAX_CARD_TITLE = 80;
+
+/** Revoga a preview local (uma `blob:` que NÓS criamos com createObjectURL)
+ * e limpa a ref -- idempotente, seguro chamar de novo com a ref já nula.
+ * NUNCA recebe a URL assinada de leitura (https://) de uma mídia persistida:
+ * essa nunca passa por este ref, então nunca é revogada por engano. */
+function revokeLocalPreview(ref: { current: string | null }) {
+  if (ref.current) {
+    URL.revokeObjectURL(ref.current);
+    ref.current = null;
+  }
+}
 
 // Stable identity for the "no data yet" fallback -- `?? new Map()` would
 // otherwise mint a fresh Map every render, defeating the useMemo below that
@@ -115,7 +137,11 @@ function emptyState() {
     keywordInput: '',
     dmMessage: '',
     buttons: [] as DmButton[],
-    publicReply: '',
+    publicReplies: [''] as string[],
+    dmMedia: null as DmMedia | null,
+    dmMediaPreviewUrl: '' as string,
+    dmMediaUploading: false,
+    dmSubtitle: '' as string,
   };
 }
 
@@ -389,6 +415,16 @@ export default function AutomationFormDialog({
   const [form, setForm] = useState(emptyState);
   const [postsPage, setPostsPage] = useState(1);
   const [productionPage, setProductionPage] = useState(1);
+  /** Keys uploaded to R2 DURING this dialog session that the database has
+   * never referenced yet. Only these are safe to trash fire-and-forget on
+   * remove/replace/cancel -- a persisted key stays attached to the automation
+   * until the row itself stops pointing at it (see the media lifecycle note
+   * above `submit`). */
+  const [sessionUploadedKeys, setSessionUploadedKeys] = useState<string[]>([]);
+  /** The blob: URL (if any) that `handleMediaChange` created for the local
+   * preview -- the only kind of URL this ref ever holds, so revoking it is
+   * always safe (never the https:// signed URL of a persisted media). */
+  const localPreviewUrlRef = useRef<string | null>(null);
   /** One-shot: the production page is derived from the seeded target exactly
    * once per dialog opening, and never again -- a refetch must not yank the user
    * off the page they just paged to. */
@@ -415,7 +451,16 @@ export default function AutomationFormDialog({
         keywordInput: '',
         dmMessage: editing.dm_message,
         buttons: editing.dm_buttons ?? [],
-        publicReply: editing.public_reply ?? '',
+        publicReplies:
+          (editing.public_replies ?? []).length > 0
+            ? [...editing.public_replies]
+            : editing.public_reply
+              ? [editing.public_reply]
+              : [''],
+        dmMedia: editing.dm_media ?? null,
+        dmMediaPreviewUrl: '',
+        dmMediaUploading: false,
+        dmSubtitle: editing.dm_subtitle ?? '',
       });
     } else if (seed) {
       setForm({
@@ -431,7 +476,35 @@ export default function AutomationFormDialog({
     setPostsPage(1);
     setProductionPage(1);
     productionPageSeededRef.current = false;
+    setSessionUploadedKeys([]);
   }, [open, editing]);
+
+  // A mídia persistida só guarda a key -- a URL assinada de leitura tem que
+  // ser buscada à parte para a prévia (e o thumbnail no campo) terem algo
+  // pra mostrar. Falha silenciosa: sem preview, a seção de mídia ainda
+  // funciona (mostra só o nome do arquivo), então não vale um toast de erro.
+  useEffect(() => {
+    if (!open || !editing?.dm_media) return;
+    let cancelled = false;
+    signAutomationMediaView(editing.dm_media.key)
+      .then((url) => {
+        if (!cancelled) setForm((f) => ({ ...f, dmMediaPreviewUrl: url }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [open, editing]);
+
+  // Revoga a preview local ao fechar o dialog (open true -> false) ou ao
+  // desmontar -- cobre TODO caminho de fechamento (Cancelar, X, Esc, clique
+  // fora, ou um save bem-sucedido que chama onSaved()), não só o handler do
+  // botão Cancelar. Cleanup roda ANTES do próximo efeito, então por uma
+  // reabertura a ref já está nula.
+  useEffect(() => {
+    if (!open) return;
+    return () => revokeLocalPreview(localPreviewUrlRef);
+  }, [open]);
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
   const clientIds = useMemo(
@@ -463,10 +536,13 @@ export default function AutomationFormDialog({
   const selectedCliente =
     typeof form.clientId === 'number' ? clientes.find((c) => c.id === form.clientId) : undefined;
 
-  const dmLimit = dmMessageLimit(form.buttons);
+  // Com mídia, a mensagem vira o título do cartão (limite fixo de 80,
+  // independente dos botões); sem mídia, o limite de sempre.
+  const dmLimit = form.dmMedia ? MAX_CARD_TITLE : dmMessageLimit(form.buttons);
   // Automação antiga pode ter até 1000 chars; ao adicionar um botão o limite
   // cai para 640 e o contador fica vermelho -- maxLength não corta valor já
-  // digitado, então o bloqueio real é o validateDmButtons no submit.
+  // digitado, então o bloqueio real é o validateDmButtons (ou a checagem de
+  // mídia) no submit.
   const dmOverLimit = form.dmMessage.length > dmLimit;
 
   const updateButton = (index: number, patch: Partial<DmButton>) =>
@@ -476,6 +552,81 @@ export default function AutomationFormDialog({
     }));
   const removeButton = (index: number) =>
     setForm((f) => ({ ...f, buttons: f.buttons.filter((_, i) => i !== index) }));
+
+  const updateReply = (index: number, value: string) =>
+    setForm((f) => ({
+      ...f,
+      publicReplies: f.publicReplies.map((r, i) => (i === index ? value : r)),
+    }));
+  const removeReply = (index: number) =>
+    setForm((f) => {
+      const next = f.publicReplies.filter((_, i) => i !== index);
+      // Never let the state go empty: an empty array would leave the
+      // render-time fallback (a visual-only ['']) out of sync with the real
+      // state, so typing into it would silently do nothing.
+      return { ...f, publicReplies: next.length > 0 ? next : [''] };
+    });
+
+  const handleMediaChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    // Permite escolher o mesmo arquivo de novo depois de remover.
+    e.target.value = '';
+    if (!file) return;
+    const errorKey = validateAutomationMediaFile(file);
+    if (errorKey) {
+      toast.error(t(errorKey));
+      return;
+    }
+    // Substitui qualquer preview local anterior (não deveria sobrar uma --
+    // a seção de upload só aparece sem dmMedia -- mas revogar aqui também
+    // cobre a troca de forma defensiva, sem nunca deixar a URL ainda em tela
+    // ser revogada: o replace só acontece ANTES do novo createObjectURL, e o
+    // setForm que troca o src pro novo blob roda na mesma tick, antes de
+    // qualquer paint com a URL revogada.
+    revokeLocalPreview(localPreviewUrlRef);
+    const previewUrl = URL.createObjectURL(file);
+    localPreviewUrlRef.current = previewUrl;
+    setForm((f) => ({ ...f, dmMediaUploading: true, dmMediaPreviewUrl: previewUrl }));
+    try {
+      const media = await uploadAutomationMedia(file);
+      setSessionUploadedKeys((keys) => [...keys, media.key]);
+      setForm((f) => ({ ...f, dmMedia: media, dmMediaUploading: false }));
+    } catch {
+      toast.error(t('form.mediaUploadError'));
+      revokeLocalPreview(localPreviewUrlRef);
+      setForm((f) => ({ ...f, dmMediaUploading: false, dmMediaPreviewUrl: '' }));
+    }
+  };
+
+  /** Só mexe no estado do form -- nunca apaga na hora um objeto que a
+   * automação salva ainda referencia (cancelar o dialog depois deixaria a
+   * automação apontando pra um objeto trasheado). A ÚNICA exceção segura é a
+   * mídia enviada NESTA sessão e ainda não salva: o banco nunca a referenciou,
+   * então trashear fire-and-forget é seguro. */
+  const handleRemoveMedia = () => {
+    const media = form.dmMedia;
+    // A preview local (se houver -- uma persistida usa a URL assinada, que
+    // nunca passa por este ref) não serve mais pra nada assim que o campo
+    // some da tela.
+    revokeLocalPreview(localPreviewUrlRef);
+    setForm((f) => ({ ...f, dmMedia: null, dmMediaPreviewUrl: '', dmSubtitle: '' }));
+    if (media && sessionUploadedKeys.includes(media.key)) {
+      deleteAutomationMedia(media).catch(() => {});
+      setSessionUploadedKeys((keys) => keys.filter((k) => k !== media.key));
+    }
+  };
+
+  /** Fecha o dialog (Cancelar, X, Esc, clique fora) sem salvar. Mesma exceção
+   * segura do remove pro objeto no R2: só trashea fire-and-forget uma mídia
+   * desta sessão que ainda está anexada e nunca foi salva. A preview local
+   * (blob:) some de qualquer forma -- o efeito `[open]` acima já revoga
+   * quando `open` vira false, então não duplicamos aqui. */
+  const closeDialog = () => {
+    if (form.dmMedia && sessionUploadedKeys.includes(form.dmMedia.key)) {
+      deleteAutomationMedia(form.dmMedia).catch(() => {});
+    }
+    onOpenChange(false);
+  };
 
   const targetingPost = form.targetMode === 'post' && typeof form.clientId === 'number';
 
@@ -595,6 +746,8 @@ export default function AutomationFormDialog({
                 workflow_post_id: sel.workflow_post_id,
               };
 
+      const cleanedReplies = form.publicReplies.map((r) => r.trim()).filter((r) => r !== '');
+
       const payload = {
         client_id: form.clientId as number,
         name: form.name.trim(),
@@ -602,7 +755,10 @@ export default function AutomationFormDialog({
         keywords: form.keywords,
         dm_message: form.dmMessage.trim(),
         dm_buttons: form.buttons.map((b) => ({ title: b.title.trim(), url: b.url.trim() })),
-        public_reply: form.publicReply.trim() || null,
+        public_replies: cleanedReplies,
+        public_reply: cleanedReplies[0] ?? null,
+        dm_media: form.dmMedia,
+        dm_subtitle: form.dmMedia && form.dmSubtitle.trim() ? form.dmSubtitle.trim() : null,
       };
       if (!editing) return createInstagramAutomation(payload);
 
@@ -618,6 +774,16 @@ export default function AutomationFormDialog({
     },
     onSuccess: () => {
       toast.success(editing ? t('toastUpdated') : t('toastCreated'));
+      // Ciclo de vida da mídia: o banco já foi salvo (sucesso confirmado)
+      // apontando pra `form.dmMedia` (ou nada). Se a automação tinha uma
+      // mídia PERSISTIDA antes e a key mudou (troca) ou sumiu (remoção),
+      // libera o objeto antigo agora -- nunca antes, porque até aqui a
+      // automação salva ainda podia estar apontando pra ele. Fire-and-forget:
+      // falha vira órfão recuperável do trash, nunca automação quebrada.
+      const oldMedia = editing?.dm_media ?? null;
+      if (oldMedia && oldMedia.key !== (form.dmMedia?.key ?? null)) {
+        deleteAutomationMedia(oldMedia).catch(() => {});
+      }
       qc.invalidateQueries({ queryKey: ['instagram-automations'] });
       qc.invalidateQueries({ queryKey: ['instagram-automations-count'] });
       onSaved();
@@ -696,6 +862,10 @@ export default function AutomationFormDialog({
       toast.error(t('form.validationDm'));
       return;
     }
+    if (form.dmMedia && form.dmMessage.trim().length > MAX_CARD_TITLE) {
+      toast.error(t('form.validationDmWithMedia'));
+      return;
+    }
     const buttonsError = validateDmButtons(form.buttons, form.dmMessage);
     if (buttonsError) {
       toast.error(t(buttonsError));
@@ -709,12 +879,14 @@ export default function AutomationFormDialog({
       <DialogContent
         className={cn('max-w-3xl', elevated && DRAWER_ELEVATED_Z)}
         overlayClassName={elevated ? DRAWER_ELEVATED_Z : undefined}
-        onConfirmClose={() => onOpenChange(false)}
+        onConfirmClose={closeDialog}
         confirmClose={
           form.name.trim() !== '' ||
           form.keywords.length > 0 ||
           form.dmMessage.trim() !== '' ||
-          form.buttons.length > 0
+          form.buttons.length > 0 ||
+          form.publicReplies.some((r) => r.trim() !== '') ||
+          form.dmMedia !== null
         }
       >
         <DialogHeader>
@@ -1078,7 +1250,7 @@ export default function AutomationFormDialog({
 
             <div data-tour="campo-dm">
               <label className="text-sm font-medium" htmlFor="automacao-dm">
-                {t('form.dmLabel')}
+                {form.dmMedia ? t('form.cardTitleLabel') : t('form.dmLabel')}
               </label>
               <Textarea
                 id="automacao-dm"
@@ -1097,6 +1269,98 @@ export default function AutomationFormDialog({
               >
                 {form.dmMessage.length}/{dmLimit}
               </div>
+            </div>
+
+            <div data-tour="campo-midia">
+              <label className="text-sm font-medium" htmlFor="automacao-midia">
+                {t('form.mediaLabel')}
+              </label>
+              {form.dmMedia ? (
+                <div className="flex items-center gap-2" style={{ marginTop: 6 }}>
+                  {form.dmMediaPreviewUrl && (
+                    <img
+                      src={form.dmMediaPreviewUrl}
+                      alt=""
+                      style={{
+                        width: 40,
+                        height: 40,
+                        objectFit: 'cover',
+                        borderRadius: 6,
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                  <span
+                    style={{
+                      fontSize: '0.8rem',
+                      color: 'var(--text-main)',
+                      flex: 1,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {form.dmMedia.key.split('/').pop()}
+                  </span>
+                  <Button type="button" variant="ghost" size="sm" onClick={handleRemoveMedia}>
+                    {t('form.mediaRemove')}
+                  </Button>
+                </div>
+              ) : form.dmMediaUploading ? (
+                <div className="flex items-center gap-2" style={{ marginTop: 6 }}>
+                  {form.dmMediaPreviewUrl && (
+                    <img
+                      src={form.dmMediaPreviewUrl}
+                      alt=""
+                      style={{
+                        width: 40,
+                        height: 40,
+                        objectFit: 'cover',
+                        borderRadius: 6,
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                  <Spinner size="sm" />
+                </div>
+              ) : (
+                <>
+                  <input
+                    id="automacao-midia"
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif"
+                    onChange={handleMediaChange}
+                    style={{ display: 'block', marginTop: 6, fontSize: '0.8rem' }}
+                  />
+                  <p
+                    style={{
+                      fontSize: '0.75rem',
+                      color: 'var(--text-muted)',
+                      margin: '0.35rem 0 0',
+                    }}
+                  >
+                    {t('form.mediaHelp')}
+                  </p>
+                </>
+              )}
+              {form.dmMedia && (
+                <div style={{ marginTop: 8 }}>
+                  <label className="text-sm font-medium" htmlFor="automacao-subtitulo">
+                    {t('form.subtitleLabel')}
+                  </label>
+                  <Input
+                    id="automacao-subtitulo"
+                    value={form.dmSubtitle}
+                    maxLength={80}
+                    onChange={(e) => setForm((f) => ({ ...f, dmSubtitle: e.target.value }))}
+                  />
+                  <div
+                    style={{ textAlign: 'right', fontSize: '0.7rem', color: 'var(--text-muted)' }}
+                  >
+                    {form.dmSubtitle.length}/80
+                  </div>
+                </div>
+              )}
             </div>
 
             <div data-tour="campo-botoes">
@@ -1167,19 +1431,63 @@ export default function AutomationFormDialog({
             </div>
 
             <div data-tour="campo-resposta">
-              <label className="text-sm font-medium" htmlFor="automacao-reply">
-                {t('form.replyLabel')}
-              </label>
-              <Textarea
-                id="automacao-reply"
-                value={form.publicReply}
-                maxLength={500}
-                rows={2}
-                onChange={(e) => setForm((f) => ({ ...f, publicReply: e.target.value }))}
-                placeholder={t('form.replyPlaceholder')}
-              />
-              <div style={{ textAlign: 'right', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                {form.publicReply.length}/500
+              <span className="text-sm font-medium">{t('form.repliesLabel')}</span>
+              <p
+                style={{
+                  fontSize: '0.75rem',
+                  color: 'var(--text-muted)',
+                  margin: '0.1rem 0 0.5rem',
+                }}
+              >
+                {t('form.repliesHelp')}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {(form.publicReplies.length > 0 ? form.publicReplies : ['']).map((r, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <Textarea
+                        value={r}
+                        maxLength={500}
+                        rows={2}
+                        aria-label={t('form.replyVariationLabel', { index: i + 1 })}
+                        placeholder={t('form.replyPlaceholderVariation')}
+                        onChange={(e) => updateReply(i, e.target.value)}
+                      />
+                      <div
+                        style={{
+                          textAlign: 'right',
+                          fontSize: '0.7rem',
+                          color: 'var(--text-muted)',
+                        }}
+                      >
+                        {r.length}/500
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t('form.removeReply')}
+                      onClick={() => removeReply(i)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                {form.publicReplies.length < MAX_PUBLIC_REPLIES && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    style={{ alignSelf: 'flex-start' }}
+                    onClick={() =>
+                      setForm((f) => ({ ...f, publicReplies: [...f.publicReplies, ''] }))
+                    }
+                  >
+                    <Plus className="h-4 w-4" style={{ marginRight: '0.35rem' }} />
+                    {t('form.addReply')}
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -1191,15 +1499,21 @@ export default function AutomationFormDialog({
               clientCor={selectedCliente?.cor ?? null}
               text={form.dmMessage}
               buttons={form.buttons}
+              mediaUrl={form.dmMediaPreviewUrl || null}
+              subtitle={form.dmSubtitle}
             />
           </div>
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="outline" onClick={closeDialog}>
             {t('form.cancel')}
           </Button>
-          <Button type="button" onClick={submit} disabled={saveMutation.isPending}>
+          <Button
+            type="button"
+            onClick={submit}
+            disabled={saveMutation.isPending || form.dmMediaUploading}
+          >
             {saveMutation.isPending && <Spinner size="sm" />} {t('form.save')}
           </Button>
         </DialogFooter>

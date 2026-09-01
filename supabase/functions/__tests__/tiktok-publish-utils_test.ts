@@ -76,12 +76,13 @@ interface SeedOpts {
   links?: unknown[];
   scheduled_at?: string | null;
   account?: Record<string, unknown> | null;
-  workflow?: Record<string, unknown> | null;
+  workflowId?: number | null;
+  clienteId?: number;
 }
 
 // Queues every select validateForTikTokScheduling issues, in call order, for the
-// non-early-return (non-stories) path: workflow_posts -> post_file_links -> workflows
-// -> tiktok_accounts.
+// non-early-return (non-stories) path: workflow_posts -> post_file_links ->
+// tiktok_accounts (by the post's own cliente_id — no workflow join).
 function seed(db: ReturnType<typeof createSupabaseQueryMock>, opts: SeedOpts = {}) {
   const {
     tipo = "carrossel",
@@ -99,7 +100,8 @@ function seed(db: ReturnType<typeof createSupabaseQueryMock>, opts: SeedOpts = {
       tiktok_open_id: "open-1",
       authorization_status: "active",
     },
-    workflow = { cliente_id: 5 },
+    workflowId = 9,
+    clienteId = 5,
   } = opts;
 
   db.queue("workflow_posts", "select", {
@@ -112,12 +114,12 @@ function seed(db: ReturnType<typeof createSupabaseQueryMock>, opts: SeedOpts = {
       tiktok_title,
       tiktok_settings,
       scheduled_at,
-      workflow_id: 9,
+      workflow_id: workflowId,
+      cliente_id: clienteId,
     },
     error: null,
   });
   db.queue("post_file_links", "select", { data: links, error: null });
-  db.queue("workflows", "select", { data: workflow, error: null });
   db.queue("tiktok_accounts", "select", { data: account, error: null });
 }
 
@@ -157,8 +159,8 @@ Deno.test("validateForTikTokScheduling: stories tipo → single exact error, no 
 // Rule 1b: a Supabase read `error` is an infra failure and must THROW — never get
 // swallowed into the PT-BR errors[] array. `data: null` with NO error keeps its
 // existing domain meaning ("Post não encontrado."). One pattern (workflow_posts) is
-// enough to pin the contract; the other three reads (post_file_links, workflows,
-// tiktok_accounts) follow the identical `if (error) throw` shape.
+// enough to pin the contract; the other two reads (post_file_links, tiktok_accounts)
+// follow the identical `if (error) throw` shape.
 // ============================================================
 
 Deno.test("validateForTikTokScheduling: workflow_posts read error THROWS (infra failure, not a PT-BR domain error)", async () => {
@@ -188,30 +190,44 @@ Deno.test("validateForTikTokScheduling: workflow_posts data:null with NO error s
   assertEquals(res.errors, ["Post não encontrado."]);
 });
 
-Deno.test("validateForTikTokScheduling: workflows read data:null with NO error yields domain 'not found' error (no throw)", async () => {
+// ============================================================
+// Posts avulsos (workflow_id null): the post's own cliente_id is the only client
+// pointer now — there is no separate "Workflow não encontrado." step anymore, the
+// tiktok_accounts lookup by cliente_id carries every failure mode on its own.
+// ============================================================
+
+Deno.test("validateForTikTokScheduling: avulso post (workflow_id null) with connected account and media passes", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("workflow_posts", "select", {
-    data: {
-      id: 1,
-      platform: "tiktok",
+  const account = await accountWithRealTokens();
+  Deno.env.set("TIKTOK_APP_AUDITED", "true");
+  try {
+    seed(db, {
       tipo: "carrossel",
-      tiktok_caption: "legenda",
-      ig_caption: null,
-      tiktok_title: null,
-      tiktok_settings: VALID_SETTINGS,
-      scheduled_at: "2030-01-01T12:00:00Z",
-      workflow_id: 9,
-    },
-    error: null,
-  });
-  db.queue("post_file_links", "select", { data: [imageLink(0)], error: null });
-  db.queue("workflows", "select", { data: null, error: null });
+      workflowId: null,
+      clienteId: 30,
+      account,
+      tiktok_settings: { ...VALID_SETTINGS, privacy_level: "SELF_ONLY" },
+    });
+    const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+    assert(res.ok, `expected ok, got: ${JSON.stringify(res.errors)}`);
+    assertEquals(res.errors, []);
+  } finally {
+    Deno.env.delete("TIKTOK_APP_AUDITED");
+  }
+});
+
+Deno.test("validateForTikTokScheduling: avulso post (workflow_id null) with no connected TikTok account fails with the account-missing error", async () => {
+  const db = createSupabaseQueryMock();
+  seed(db, { workflowId: null, clienteId: 30, account: null });
   const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
-  assert(res !== undefined, "must resolve, not throw, when workflow read simply finds no match");
   assert(!res.ok);
   assert(
-    res.errors.includes("Workflow não encontrado."),
-    `expected exact domain error "Workflow não encontrado.", got: ${JSON.stringify(res.errors)}`,
+    res.errors.some((e) => e.toLowerCase().includes("conta")),
+    `expected the account-missing error, got: ${JSON.stringify(res.errors)}`,
+  );
+  assert(
+    !res.errors.some((e) => e.includes("Workflow")),
+    "there must be no separate workflow-not-found error path anymore",
   );
 });
 

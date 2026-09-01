@@ -27,7 +27,7 @@ const {
   return {
     paramsState: { id: '42' },
     navigateMock: vi.fn(),
-    queryClientMock: { invalidateQueries: vi.fn() },
+    queryClientMock: { invalidateQueries: vi.fn(), fetchQuery: vi.fn(), cancelQueries: vi.fn() },
     queryState,
     toastSuccessMock: vi.fn(),
     toastErrorMock: vi.fn(),
@@ -82,7 +82,7 @@ vi.mock('../../../services/instagram', () => ({
 
 vi.mock('../../../services/analytics', () => ({
   getAnalyticsOverview: vi.fn(),
-  getAccountViews: vi.fn(),
+  getAccountMetrics: vi.fn(),
   makeDelta: (current: number, previous: number) => ({
     current,
     previous,
@@ -241,6 +241,7 @@ vi.mock('@/components/ui/sheet', async () => {
 import AnalyticsContaPage from '../AnalyticsContaPage';
 import {
   getAccountAIAnalysis,
+  getAccountMetrics,
   getClientReports,
   getTags,
   getBestPostingTimes,
@@ -252,11 +253,13 @@ import {
   generateReport,
 } from '../../../services/analytics';
 import { getClientes, getCurrentWorkspace } from '../../../store';
-import { getInstagramSummary } from '../../../services/instagram';
+import { getInstagramSummary, syncInstagramData } from '../../../services/instagram';
 
 const mockedGetClientes = vi.mocked(getClientes);
 const mockedGetInstagramSummary = vi.mocked(getInstagramSummary);
+const mockedSyncInstagramData = vi.mocked(syncInstagramData);
 const mockedGetAnalyticsOverview = vi.mocked(getAnalyticsOverview);
+const mockedGetAccountMetrics = vi.mocked(getAccountMetrics);
 const mockedGetPostsAnalytics = vi.mocked(getPostsAnalytics);
 const mockedGetFollowerHistory = vi.mocked(getFollowerHistory);
 const mockedGetTags = vi.mocked(getTags);
@@ -282,8 +285,31 @@ function seedCommonAnalyticsData() {
   queryState.clientes = { data: [client] };
   queryState['client-rate-baseline'] = { data: undefined };
   queryState['ig-summary'] = { data: { account } };
-  queryState['analytics-views'] = {
-    data: { current: 45678, previous: 40000, partial: false, fetchedAt: '2026-04-18T12:00:00Z' },
+  queryState['account-metrics'] = {
+    data: {
+      period: { start: '2026-03-19', end: '2026-04-18', effectiveEnd: '2026-04-18' },
+      current: {
+        reach: 4567,
+        views: 45678,
+        saves: 120,
+        accounts_engaged: 98,
+        profile_views: 60,
+        website_clicks: 17,
+        follows_and_unfollows: { follows: 20, unfollows: 5, net: 15 },
+        followers: { start: 1094, end: 1234, delta: 140 },
+      },
+      previous: {
+        reach: 4800,
+        views: 40000,
+        saves: 100,
+        accounts_engaged: 90,
+        profile_views: 55,
+        website_clicks: 17,
+        follows_and_unfollows: { follows: 18, unfollows: 6, net: 12 },
+        followers: { start: 970, end: 1094, delta: 124 },
+      },
+      source: { reach: 'live', views: 'live' },
+    },
     isLoading: false,
   };
   queryState['analytics-overview'] = {
@@ -295,7 +321,6 @@ function seedCommonAnalyticsData() {
         followers: { direction: 'up', deltaPercent: 12.5, current: 140, previous: 124 },
         engagement: { direction: 'up', deltaPercent: 3.2, current: 12.34, previous: 11.9 },
         reach: { direction: 'down', deltaPercent: -4.1, current: 4567, previous: 4800 },
-        profileViews: { direction: 'up', deltaPercent: 8.1, current: 98, previous: 90 },
         websiteClicks: { direction: 'flat', deltaPercent: 0, current: 17, previous: 17 },
         savesRate: { direction: 'up', deltaPercent: 2.2, current: 6.78, previous: 6.1 },
         postsPublished: { direction: 'up', deltaPercent: 25, current: 8, previous: 6 },
@@ -423,9 +448,14 @@ beforeEach(() => {
   toastErrorMock.mockReset();
   accountAIMock.mockReset();
   queryClientMock.invalidateQueries.mockReset();
+  queryClientMock.fetchQuery.mockReset();
+  queryClientMock.cancelQueries.mockReset();
+  queryClientMock.cancelQueries.mockResolvedValue(undefined);
   deleteReportDocMock.mockReset();
   mockedGetClientes.mockReset();
   mockedGetInstagramSummary.mockReset();
+  mockedSyncInstagramData.mockReset();
+  mockedGetAccountMetrics.mockReset();
   mockedGetAnalyticsOverview.mockReset();
   mockedGetPostsAnalytics.mockReset();
   mockedGetFollowerHistory.mockReset();
@@ -442,6 +472,7 @@ beforeEach(() => {
   mockedGetInstagramSummary.mockResolvedValue({
     account: { username: 'clinicaaurora', profile_picture_url: 'https://example.com/avatar.jpg' },
   });
+  mockedSyncInstagramData.mockResolvedValue(undefined);
   mockedGetAnalyticsOverview.mockResolvedValue({ data: {} });
   mockedGetPostsAnalytics.mockResolvedValue({ posts: [] });
   mockedGetFollowerHistory.mockResolvedValue({ history: [], postDates: [] });
@@ -485,8 +516,22 @@ describe('AnalyticsContaPage', () => {
 
   it('omits the views delta when there is no previous period', () => {
     seedCommonAnalyticsData();
-    queryState['analytics-views'] = {
-      data: { current: 999999, previous: null, partial: false, fetchedAt: '2026-04-18T12:00:00Z' },
+    queryState['account-metrics'] = {
+      data: {
+        period: { start: '2026-03-19', end: '2026-04-18', effectiveEnd: '2026-04-18' },
+        current: {
+          reach: 4567,
+          views: 999999,
+          saves: 120,
+          accounts_engaged: 98,
+          profile_views: 60,
+          website_clicks: 17,
+          follows_and_unfollows: { follows: 20, unfollows: 5, net: 15 },
+          followers: { start: 1094, end: 1234, delta: 140 },
+        },
+        previous: null,
+        source: { reach: 'live', views: 'live' },
+      },
       isLoading: false,
     };
 
@@ -841,5 +886,96 @@ describe('AnalyticsContaPage', () => {
     expect(queryClientMock.invalidateQueries).not.toHaveBeenCalledWith({
       queryKey: ['report-docs', 42],
     });
+  });
+
+  it('Sincronizar Dados: after a successful sync, bypasses the account-metrics cache via fetchQuery({refresh:true})', async () => {
+    seedCommonAnalyticsData();
+    mockedGetAccountMetrics.mockResolvedValue({
+      period: { start: '2026-03-19', end: '2026-04-18', effectiveEnd: '2026-04-18' },
+      current: {
+        reach: 1,
+        views: 1,
+        saves: 1,
+        accounts_engaged: 1,
+        profile_views: 1,
+        website_clicks: 1,
+        follows_and_unfollows: null,
+        followers: null,
+      },
+      previous: null,
+      source: {},
+    });
+
+    render(<AnalyticsContaPage />);
+    fireEvent.click(screen.getByTitle('Sincronizar Dados'));
+
+    await waitFor(() =>
+      expect(toastSuccessMock).toHaveBeenCalledWith('Dados sincronizados com sucesso!'),
+    );
+
+    expect(mockedSyncInstagramData).toHaveBeenCalledWith(42);
+    expect(queryClientMock.fetchQuery).toHaveBeenCalledTimes(1);
+    const call = queryClientMock.fetchQuery.mock.calls[0][0] as {
+      queryKey: unknown[];
+      queryFn: () => unknown;
+      staleTime?: number;
+    };
+    expect(call.queryKey[0]).toBe('account-metrics');
+    expect(call.queryKey[1]).toBe(42);
+
+    // cancelQueries MUST run on the SAME key, and BEFORE fetchQuery: if the
+    // page's own initial useQuery for this key is still in flight when
+    // "Sincronizar" is clicked, fetchQuery would dedupe onto that in-flight
+    // (non-refresh) request instead of firing its own refresh:true one --
+    // same stale-data bug as the missing staleTime override, one layer down.
+    expect(queryClientMock.cancelQueries).toHaveBeenCalledTimes(1);
+    const cancelCall = queryClientMock.cancelQueries.mock.calls[0][0] as { queryKey: unknown[] };
+    expect(cancelCall.queryKey).toEqual(call.queryKey);
+    expect(queryClientMock.cancelQueries.mock.invocationCallOrder[0]).toBeLessThan(
+      queryClientMock.fetchQuery.mock.invocationCallOrder[0],
+    );
+
+    // MUST be 0: the app's global QueryClient default is staleTime: 30_000
+    // (App.tsx). fetchQuery only invokes queryFn when the cached entry is
+    // stale by that threshold, so without this override a "Sincronizar"
+    // click within 30s of the page mounting (or a previous fetch) would
+    // silently resolve from cache and skip the refresh=1 request entirely --
+    // this mock doesn't enforce staleTime itself, so this assertion is what
+    // actually guards against that regression.
+    expect(call.staleTime).toBe(0);
+
+    // A plain invalidateQueries would refetch through the ORIGINAL (non-refresh)
+    // queryFn and just hit the 6h server cache again -- the fix's whole point is
+    // that the account-metrics refetch after a sync goes through THIS queryFn,
+    // which forwards refresh:true to bypass that cache.
+    call.queryFn();
+    expect(mockedGetAccountMetrics).toHaveBeenCalledWith(
+      42,
+      expect.any(String),
+      expect.any(String),
+      { refresh: true },
+    );
+
+    // Every other affected query still gets a plain invalidation.
+    expect(queryClientMock.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['analytics-overview', 42],
+    });
+    expect(queryClientMock.invalidateQueries).not.toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: expect.arrayContaining(['account-metrics']) }),
+    );
+  });
+
+  it('Sincronizar Dados: sync failure shows a toast and never calls fetchQuery', async () => {
+    seedCommonAnalyticsData();
+    mockedSyncInstagramData.mockRejectedValue(new Error('Falha de rede'));
+
+    render(<AnalyticsContaPage />);
+    fireEvent.click(screen.getByTitle('Sincronizar Dados'));
+
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith('Erro na sincronização: Falha de rede'),
+    );
+    expect(queryClientMock.cancelQueries).not.toHaveBeenCalled();
+    expect(queryClientMock.fetchQuery).not.toHaveBeenCalled();
   });
 });

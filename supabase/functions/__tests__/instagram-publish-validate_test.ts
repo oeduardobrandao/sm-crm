@@ -20,18 +20,17 @@ function link(i: number) {
   };
 }
 
-// Queue the four selects validateForScheduling makes, in any order (keyed by table).
+// Queue the three selects validateForScheduling makes, in any order (keyed by table).
 // account has no encrypted token + active status, so no decrypt/network happens.
 function seed(db: ReturnType<typeof createSupabaseQueryMock>, count: number, tipo?: string) {
   db.queue("workflow_posts", "select", {
-    data: { id: 1, scheduled_at: null, ig_caption: "cap", workflow_id: 9, tipo },
+    data: { id: 1, scheduled_at: null, ig_caption: "cap", workflow_id: 9, cliente_id: 5, tipo },
     error: null,
   });
   db.queue("post_file_links", "select", {
     data: Array.from({ length: count }, (_, i) => link(i)),
     error: null,
   });
-  db.queue("workflows", "select", { data: { cliente_id: 5 }, error: null });
   db.queue("instagram_accounts", "select", {
     data: {
       encrypted_access_token: null,

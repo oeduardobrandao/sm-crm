@@ -74,7 +74,7 @@ export async function validateForScheduling(
 
   const { data: post } = await db
     .from("workflow_posts")
-    .select("id, scheduled_at, ig_caption, workflow_id, tipo, ig_trial_strategy")
+    .select("id, scheduled_at, ig_caption, workflow_id, cliente_id, tipo, ig_trial_strategy")
     .eq("id", postId)
     .single();
   if (!post) return { ok: false, errors: ["Post não encontrado."] };
@@ -121,18 +121,12 @@ export async function validateForScheduling(
     if (post.tipo !== "reels" || !isSingleVideo) errors.push(TRIAL_MEDIA_SHAPE_ERROR);
   }
 
-  const { data: workflow } = await db
-    .from("workflows")
-    .select("cliente_id")
-    .eq("id", post.workflow_id)
-    .single();
-
-  if (!workflow) return { ok: false, errors: ["Workflow não encontrado."] };
-
+  // No workflow lookup: post.cliente_id (selected above) is authoritative for
+  // both attached and avulso posts, so a workflow row is never required here.
   const { data: account } = await db
     .from("instagram_accounts")
     .select("encrypted_access_token, instagram_user_id, token_expires_at, authorization_status")
-    .eq("client_id", workflow.cliente_id)
+    .eq("client_id", post.cliente_id)
     .maybeSingle();
 
   if (!account) {

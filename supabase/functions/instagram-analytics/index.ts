@@ -15,6 +15,7 @@ const INTERNAL_FUNCTION_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? (()
 const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? '';
 import { UUID_RE } from "./utils.ts";
 import { parseViewsRange, sumViewsRange } from "./views.ts";
+import { handleAccountMetrics, parseAccountMetricsRange } from "./account-metrics.ts";
 
 // --- Token Decryption ---
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
@@ -363,6 +364,42 @@ Deno.serve(async (req) => {
       }, 6, skipCacheRead);
 
       return json(result);
+    }
+
+    // ==========================================
+    // GET /account-metrics/:clientId?start&end (optional refresh=1)
+    // Account-level KPI parity with the Instagram app for an ARBITRARY
+    // date range (end INCLUSIVE), plus a same-length `previous` window.
+    // Range parsing is its OWN thing (account-metrics.ts), not
+    // parseViewsRange -- see that file's header for why.
+    // ==========================================
+    if (req.method === 'GET' && path.match(/^\/account-metrics\/\d+$/)) {
+      const clientId = path.split('/')[2];
+      await verifyClientOwnership(serviceClient, clientId, contaId);
+
+      const start = url.searchParams.get('start');
+      const end = url.searchParams.get('end');
+
+      // Validate BEFORE touching the cache table -- an invalid range must
+      // never get written into instagram_analytics_cache (same reasoning as
+      // /views: validation happens ahead of getCachedOrFetch, not inside its
+      // fetchFn, whose return value is unconditionally cached).
+      const rangeCheck = parseAccountMetricsRange(start, end, Math.floor(Date.now() / 1000));
+      if (!rangeCheck.ok) {
+        return json({ error: true, message: rangeCheck.error }, 400);
+      }
+
+      const { account, accessToken } = await getAccountWithToken(serviceClient, clientId);
+
+      const cacheKey = `account_metrics_${start}_${end}`;
+      const skipCacheRead = url.searchParams.get('refresh') === '1';
+      const { data: outcome } = await getCachedOrFetch(serviceClient, account.id, cacheKey, async () => {
+        const result = await handleAccountMetrics({ db: serviceClient, fetch, account, accessToken }, start!, end!);
+        if (!result.ok) throw new Error(result.error);
+        return result.body;
+      }, 6, skipCacheRead);
+
+      return json(outcome);
     }
 
     // ==========================================

@@ -301,6 +301,54 @@ describe('buildTodayAgenda · posts', () => {
     expect(kinds([...mine.atrasado, ...mine.hoje])).not.toContain('post_aguardando_cliente');
   });
 
+  it('links a scheduled post avulso (workflow_id null) via the universal ?post= form', () => {
+    const b = buildTodayAgenda(
+      base({ scheduledPosts: [scheduled({ id: 1, workflow_id: null, responsavel_id: null })] }),
+    );
+    const all = [...b.atrasado, ...b.hoje, ...b.proximos];
+    expect(all.find((i) => i.key === 'post_agendado:1')?.href).toBe('/entregas?post=1');
+  });
+
+  it('links an aguardando-cliente post avulso (workflow_id null) via the universal ?post= form', () => {
+    const b = buildTodayAgenda(
+      base({
+        awaitingClientePosts: [
+          {
+            id: 2,
+            workflow_id: null,
+            titulo: 'Aguardando avulso',
+            status: 'enviado_cliente',
+            cliente_nome: 'Dr. Paulo',
+            responsavel_id: null,
+            waiting_since: null,
+          } as AgendaInput['awaitingClientePosts'][number],
+        ],
+      }),
+    );
+    const all = [...b.atrasado, ...b.hoje, ...b.proximos];
+    expect(all.find((i) => i.key === 'post_aguardando_cliente:2')?.href).toBe('/entregas?post=2');
+  });
+
+  it('links a pending post avulso (workflow_id null) via the universal ?post= form', () => {
+    const b = buildTodayAgenda(
+      base({
+        scope: 'mine',
+        membroId: 10,
+        assignedPendingPosts: [
+          {
+            id: 3,
+            workflow_id: null,
+            titulo: 'Pendente avulso',
+            status: 'rascunho',
+            workflow_titulo: null,
+            cliente_nome: 'Dr. Paulo',
+          } as AgendaInput['assignedPendingPosts'][number],
+        ],
+      }),
+    );
+    expect(b.hoje.find((i) => i.key === 'post_pendente:3')?.href).toBe('/entregas?post=3');
+  });
+
   it('post_pendente: mine only, always hoje, urgent statuses get warning', () => {
     const input = base({
       scope: 'mine',

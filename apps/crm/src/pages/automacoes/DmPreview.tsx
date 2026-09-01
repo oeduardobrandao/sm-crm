@@ -52,17 +52,26 @@ export default function DmPreview({
   clientCor,
   text,
   buttons,
+  mediaUrl,
+  subtitle,
 }: {
   clientName: string | null;
   clientSigla?: string | null;
   clientCor?: string | null;
   text: string;
   buttons: DmButton[];
+  /** Preview de leitura (blob: local ou URL assinada) da mídia do cartão.
+   * Ausente/vazio -> bolha de texto de sempre, sem cartão. */
+  mediaUrl?: string | null;
+  /** Subtítulo do cartão. Só faz sentido junto de `mediaUrl`. */
+  subtitle?: string | null;
 }) {
   const { t } = useTranslation('automations');
   const trimmedText = text.trim();
+  const trimmedSubtitle = (subtitle ?? '').trim();
   const visibleButtons = buttons.filter((b) => b.title.trim() !== '');
-  const empty = !trimmedText && visibleButtons.length === 0;
+  const hasMedia = !!mediaUrl;
+  const empty = !trimmedText && visibleButtons.length === 0 && !hasMedia;
   const bubbleBase: CSSProperties = {
     background: IG.bubble,
     borderRadius: 18,
@@ -71,6 +80,28 @@ export default function DmPreview({
     lineHeight: 1.35,
     color: IG.text,
   };
+  const buttonEls = visibleButtons.map((b, i) => (
+    <a
+      key={i}
+      href={sanitizeExternalUrl(b.url)}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        ...bubbleBase,
+        display: 'block',
+        padding: '0.55rem 0.7rem',
+        textAlign: 'center',
+        fontWeight: 600,
+        textDecoration: 'none',
+        maxWidth: '85%',
+        overflow: 'hidden',
+        whiteSpace: 'nowrap',
+        textOverflow: 'ellipsis',
+      }}
+    >
+      {b.title.trim()}
+    </a>
+  ));
 
   return (
     <div>
@@ -154,42 +185,76 @@ export default function DmPreview({
                 data-testid="dm-preview-bubble"
                 style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1 }}
               >
-                {trimmedText && (
-                  <p
+                {hasMedia ? (
+                  <div
+                    data-testid="dm-preview-card"
                     style={{
                       ...bubbleBase,
-                      margin: 0,
-                      padding: '0.5rem 0.7rem',
-                      whiteSpace: 'pre-wrap',
-                      overflowWrap: 'anywhere',
+                      padding: 0,
+                      overflow: 'hidden',
                       borderBottomLeftRadius: visibleButtons.length > 0 ? 18 : 4,
                     }}
                   >
-                    {trimmedText}
+                    <img
+                      src={mediaUrl ?? undefined}
+                      alt=""
+                      style={{ width: '100%', borderRadius: '12px 12px 0 0', display: 'block' }}
+                    />
+                    {(trimmedText || trimmedSubtitle) && (
+                      <div style={{ padding: '0.5rem 0.7rem' }}>
+                        {trimmedText && (
+                          <p
+                            style={{
+                              margin: 0,
+                              fontWeight: 600,
+                              whiteSpace: 'pre-wrap',
+                              overflowWrap: 'anywhere',
+                            }}
+                          >
+                            {trimmedText}
+                          </p>
+                        )}
+                        {trimmedSubtitle && (
+                          <p
+                            style={{
+                              margin: '0.15rem 0 0',
+                              fontSize: '0.72rem',
+                              color: IG.muted,
+                              whiteSpace: 'pre-wrap',
+                              overflowWrap: 'anywhere',
+                            }}
+                          >
+                            {trimmedSubtitle}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  trimmedText && (
+                    <p
+                      style={{
+                        ...bubbleBase,
+                        margin: 0,
+                        padding: '0.5rem 0.7rem',
+                        whiteSpace: 'pre-wrap',
+                        overflowWrap: 'anywhere',
+                        borderBottomLeftRadius: visibleButtons.length > 0 ? 18 : 4,
+                      }}
+                    >
+                      {trimmedText}
+                    </p>
+                  )
+                )}
+                {buttonEls}
+                {hasMedia && (
+                  <p
+                    className="text-xs"
+                    style={{ color: 'var(--text-muted)', margin: '0.15rem 0 0' }}
+                  >
+                    {t('form.previewCardFallbackNote')}
                   </p>
                 )}
-                {visibleButtons.map((b, i) => (
-                  <a
-                    key={i}
-                    href={sanitizeExternalUrl(b.url)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      ...bubbleBase,
-                      display: 'block',
-                      padding: '0.55rem 0.7rem',
-                      textAlign: 'center',
-                      fontWeight: 600,
-                      textDecoration: 'none',
-                      maxWidth: '85%',
-                      overflow: 'hidden',
-                      whiteSpace: 'nowrap',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {b.title.trim()}
-                  </a>
-                ))}
               </div>
             </div>
           )}

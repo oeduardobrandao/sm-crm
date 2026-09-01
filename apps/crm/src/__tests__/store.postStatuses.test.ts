@@ -92,6 +92,7 @@ describe('store post status definitions', () => {
       cor: '#7c5cff',
       behaves_as: 'revisao_interna',
       ordem: 0,
+      icone: null,
     });
 
     expect(result).toMatchObject({ id: 'def-1' });

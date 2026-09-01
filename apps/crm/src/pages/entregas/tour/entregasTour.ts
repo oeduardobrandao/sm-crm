@@ -34,7 +34,7 @@ export const TOUR_STEP_DEFS = [
   {
     selector: '[data-tour="novo-fluxo-btn"]',
     title: 'Crie seu primeiro fluxo',
-    description: 'Clique em Novo Fluxo para começar — há modelos prontos para escolher.',
+    description: 'Clique em Novo e escolha Novo fluxo para começar. Há modelos prontos.',
   },
 ];
 

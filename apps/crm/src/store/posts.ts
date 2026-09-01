@@ -2,13 +2,57 @@ import { supabase, getContaId, getUserId } from './core';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
 
+/**
+ * Ascending by scheduled_at, nulls last -- replicates the `.order('scheduled_at',
+ * {ascending: true, nullsFirst: false})` a single query used to express at the
+ * DB level. Once a result merges two separate queries (a post's wired-workflow
+ * arm and its avulso arm -- see the getClientePosts/getScheduledPosts/
+ * getActivePosts/getAwaitingClientePosts doc comments), no single ORDER BY can
+ * cover both, so the final order is re-established here, client-side, after
+ * the merge.
+ *
+ * Ties (same date, or both undated) break by id, i.e. creation order. Without
+ * it the stable sort preserves the concat order of the two arms, and every
+ * undated avulso sinks below every undated wired post -- the Publicações
+ * board would render avulsos as a segregated block at the bottom of each
+ * column instead of interleaving the two kinds.
+ */
+function compareScheduledAtAscNullsLast(
+  a: { scheduled_at: string | null; id: number },
+  b: { scheduled_at: string | null; id: number },
+): number {
+  if (a.scheduled_at == null && b.scheduled_at == null) return a.id - b.id;
+  if (a.scheduled_at == null) return 1;
+  if (b.scheduled_at == null) return -1;
+  if (a.scheduled_at < b.scheduled_at) return -1;
+  if (a.scheduled_at > b.scheduled_at) return 1;
+  return a.id - b.id;
+}
+
+/** Ascending by created_at -- the merge comparator for the two functions that
+ * order by created_at instead of scheduled_at (getAssignedPendingPosts,
+ * getAwaitingClientePosts). Both select created_at only for this sort; it is
+ * never part of the returned shape. */
+function compareCreatedAtAsc(a: { created_at: string }, b: { created_at: string }): number {
+  return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
+}
+
 // =============================================
 // WORKFLOW POSTS (Sub-tasks / Content pieces)
 // =============================================
 export interface WorkflowPost {
   id?: number;
-  workflow_id: number;
+  /** NULL = post avulso (fora de fluxo). Requires migration 20260830000001
+   * deployed before the frontend that reads/writes it -- see the comment on
+   * POST_CONTEXT_COLUMNS below for the deploy-order note. */
+  workflow_id: number | null;
   conta_id?: string; // uuid stored as string in JS
+  /** Always present at the DB level (NOT NULL since 20260830000001). When
+   * workflow_id is set, the DB trigger (sync_workflow_post_cliente) derives
+   * and enforces this from the workflow's own cliente_id -- callers never set
+   * it themselves for a flow-attached post (see addWorkflowPost's Omit,
+   * which still excludes it). Only createAvulsoPost sets it explicitly. */
+  cliente_id: number;
   titulo: string;
   conteudo: Record<string, unknown> | null;
   conteudo_plain: string;
@@ -70,42 +114,68 @@ export interface WorkflowPost {
 
 export interface ClientePost {
   id: number;
-  workflow_id: number;
+  /** NULL = post avulso (fora de fluxo). */
+  workflow_id: number | null;
   titulo: string;
   tipo: WorkflowPost['tipo'];
   status: WorkflowPost['status'];
   custom_status_id: string | null;
   scheduled_at: string | null;
   ordem: number;
-  workflow_titulo: string;
+  /** NULL for a post avulso (no workflow to name). */
+  workflow_titulo: string | null;
   /** Target platform; absent on legacy rows (treat as 'instagram', the DB default). */
   platform?: WorkflowPost['platform'];
   ig_trial_strategy?: 'manual' | 'auto' | null;
 }
 
-export async function getClientePosts(clienteId: number): Promise<ClientePost[]> {
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select(
-      'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, platform, ig_trial_strategy, workflows!inner(titulo, status)',
-    )
-    .eq('workflows.cliente_id', clienteId)
-    .eq('workflows.status', 'ativo')
-    .order('scheduled_at', { ascending: true, nullsFirst: false });
-  if (error) throw error;
-  return (data || []).map((row: any) => ({
+const CLIENTE_POST_COLUMNS =
+  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, platform, ig_trial_strategy';
+
+function mapClientePostRow(row: any): ClientePost {
+  return {
     id: row.id,
-    workflow_id: row.workflow_id,
+    workflow_id: row.workflow_id ?? null,
     titulo: row.titulo,
     tipo: row.tipo,
     status: row.status,
     custom_status_id: row.custom_status_id ?? null,
     scheduled_at: row.scheduled_at,
     ordem: row.ordem,
-    workflow_titulo: row.workflows.titulo,
+    workflow_titulo: row.workflows?.titulo ?? null,
     platform: row.platform ?? undefined,
     ig_trial_strategy: row.ig_trial_strategy ?? null,
-  }));
+  };
+}
+
+/**
+ * Every post of the client's active workflows PLUS every avulso post of that
+ * client, merged client-side (a PostgREST `.eq` on an embedded column such as
+ * `workflows.cliente_id` filters the embed, not the parent rows -- it cannot
+ * be reused to also match rows with no workflow at all, so wired and avulso
+ * posts are fetched as two separate queries and merged here). "Ativo" for an
+ * avulso post means simply "exists" -- there is no workflow status to gate on.
+ */
+export async function getClientePosts(clienteId: number): Promise<ClientePost[]> {
+  const [wired, avulso] = await Promise.all([
+    supabase
+      .from('workflow_posts')
+      .select(`${CLIENTE_POST_COLUMNS}, workflows!inner(titulo, status)`)
+      .eq('workflows.cliente_id', clienteId)
+      .eq('workflows.status', 'ativo')
+      .order('scheduled_at', { ascending: true, nullsFirst: false }),
+    supabase
+      .from('workflow_posts')
+      .select(CLIENTE_POST_COLUMNS)
+      .eq('cliente_id', clienteId)
+      .is('workflow_id', null)
+      .order('scheduled_at', { ascending: true, nullsFirst: false }),
+  ]);
+  if (wired.error) throw wired.error;
+  if (avulso.error) throw avulso.error;
+  return [...(wired.data ?? []), ...(avulso.data ?? [])]
+    .map(mapClientePostRow)
+    .sort(compareScheduledAtAscNullsLast);
 }
 
 export interface PostPreview {
@@ -139,7 +209,9 @@ export async function getPostPreview(postId: number): Promise<PostPreview> {
 export interface MentionPostResult {
   id: number;
   titulo: string;
-  workflow_id: number;
+  /** NULL for a post avulso -- mentionHref.ts already renders such a mention
+   * unlinked when parentId is absent, so no consumer change is needed here. */
+  workflow_id: number | null;
 }
 
 // Escapes the three characters that are special inside a Postgres ILIKE pattern
@@ -167,10 +239,12 @@ export async function searchPostsForMention(term: string): Promise<MentionPostRe
 
 export interface ScheduledPost {
   id: number;
-  workflow_id: number;
+  /** NULL = post avulso (fora de fluxo). */
+  workflow_id: number | null;
   cliente_id: number | null;
   cliente_nome: string;
-  workflow_titulo: string;
+  /** NULL for a post avulso (no workflow to name). */
+  workflow_titulo: string | null;
   titulo: string;
   tipo: WorkflowPost['tipo'];
   status: WorkflowPost['status'];
@@ -190,6 +264,10 @@ export interface ScheduledPost {
   tiktok_post_url: string | null;
   instagram_media_id: string | null;
   ig_trial_strategy: 'manual' | 'auto' | null;
+  /** Manual board rank for the Publicações kanban ("manual" column sort).
+   * NULL = never manually positioned; sorts after every ranked post in that
+   * column, in automatic order. */
+  board_ordem: number | null;
 }
 
 /**
@@ -201,17 +279,29 @@ export interface ScheduledPost {
  * Includes platform/tiktok_* fields so callers (e.g. PublicacoesPanel) can route
  * schedule/cancel/retry to the correct platform service instead of assuming
  * Instagram for every post (see toWorkflowPost in PublicacoesPanel.tsx).
+ *
+ * cliente_id: selecting this column requires migration 20260830000001 already
+ * deployed (workflow_posts.cliente_id) -- querying it against an undeployed
+ * database is a runtime PostgREST error, not a type error. This branch deploys
+ * migrations before the frontend, so by the time this code ships the column
+ * already exists; do not reorder that deploy sequence.
  */
 const POST_CONTEXT_COLUMNS =
-  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id, ig_trial_strategy';
+  'id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id, ig_trial_strategy, board_ordem';
 
+/**
+ * Maps a workflow_posts row that may come from either arm of a wired/avulso
+ * merge: `row.workflows` is present only for the wired arm (left- or
+ * inner-joined), and the avulso arm selects `cliente_id` and a top-level
+ * `clientes(nome)` embed directly off the post row instead.
+ */
 function mapPostContextRow(row: any): ActivePost {
   return {
     id: row.id,
-    workflow_id: row.workflow_id,
-    cliente_id: row.workflows?.cliente_id ?? null,
-    cliente_nome: row.workflows?.clientes?.nome ?? '',
-    workflow_titulo: row.workflows?.titulo ?? '',
+    workflow_id: row.workflow_id ?? null,
+    cliente_id: row.workflows?.cliente_id ?? row.cliente_id,
+    cliente_nome: row.workflows?.clientes?.nome ?? row.clientes?.nome ?? '',
+    workflow_titulo: row.workflows?.titulo ?? null,
     titulo: row.titulo,
     tipo: row.tipo,
     status: row.status,
@@ -230,45 +320,89 @@ function mapPostContextRow(row: any): ActivePost {
     tiktok_post_url: row.tiktok_post_url ?? null,
     instagram_media_id: row.instagram_media_id ?? null,
     ig_trial_strategy: row.ig_trial_strategy ?? null,
+    board_ordem: row.board_ordem ?? null,
   };
 }
 
+/**
+ * Every post (across active workflows, plus every avulso post of every
+ * client) whose scheduled_at falls in [startISO, endISO). Wired and avulso
+ * posts are fetched as two separate queries and merged here -- see the
+ * merge-pattern note on getClientePosts. "Ativo" for an avulso post means
+ * simply "exists".
+ */
 export async function getScheduledPosts(
   startISO: string,
   endISO: string,
 ): Promise<ScheduledPost[]> {
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select(
-      `${POST_CONTEXT_COLUMNS}, workflows!inner(titulo, cliente_id, status, clientes!inner(nome))`,
-    )
-    .eq('workflows.status', 'ativo')
-    .not('scheduled_at', 'is', null)
-    .gte('scheduled_at', startISO)
-    .lt('scheduled_at', endISO)
-    .order('scheduled_at', { ascending: true });
-  if (error) throw error;
-  // The scheduled_at range filter guarantees non-null, narrowing ActivePost to ScheduledPost.
-  return (data || []).map(mapPostContextRow) as ScheduledPost[];
+  const [wired, avulso] = await Promise.all([
+    supabase
+      .from('workflow_posts')
+      .select(
+        `${POST_CONTEXT_COLUMNS}, workflows!inner(titulo, cliente_id, status, clientes!inner(nome))`,
+      )
+      .eq('workflows.status', 'ativo')
+      .not('scheduled_at', 'is', null)
+      .gte('scheduled_at', startISO)
+      .lt('scheduled_at', endISO)
+      .order('scheduled_at', { ascending: true }),
+    supabase
+      .from('workflow_posts')
+      .select(`${POST_CONTEXT_COLUMNS}, clientes!inner(nome)`)
+      .is('workflow_id', null)
+      .not('scheduled_at', 'is', null)
+      .gte('scheduled_at', startISO)
+      .lt('scheduled_at', endISO)
+      .order('scheduled_at', { ascending: true }),
+  ]);
+  if (wired.error) throw wired.error;
+  if (avulso.error) throw avulso.error;
+  // The scheduled_at range filter (both arms) guarantees non-null, narrowing
+  // ActivePost to ScheduledPost.
+  return [...(wired.data ?? []), ...(avulso.data ?? [])]
+    .map(mapPostContextRow)
+    .sort(compareScheduledAtAscNullsLast) as ScheduledPost[];
 }
 
 /** Same shape as ScheduledPost, but scheduled_at may be null (no range filter). */
 export type ActivePost = Omit<ScheduledPost, 'scheduled_at'> & { scheduled_at: string | null };
 
 /**
- * Every post of every active workflow, scheduled or not — the data source for the
- * Entregas Kanban/Lista "Publicações" modes. Unlike getScheduledPosts, `clientes`
- * is a LEFT join so posts of client-less workflows still appear (cliente_nome '').
- * RLS enforces conta_id.
+ * Every post of every active workflow, scheduled or not, PLUS every avulso
+ * post of every client -- the data source for the Entregas Kanban/Lista
+ * "Publicações" modes. "Ativo" for an avulso post means simply "exists": there
+ * is no workflow status to gate on, so every avulso post is always included
+ * regardless of its own `status`.
+ *
+ * A PostgREST `.eq` on an embedded column (`workflows.status`) filters the
+ * embed's parent rows only when the embed is present -- it has no way to also
+ * match a row with no workflow at all, so wired and avulso posts are fetched
+ * as two separate queries (`Promise.all`) and merged client-side, then
+ * re-sorted with `compareScheduledAtAscNullsLast` since no single ORDER BY
+ * spans both result sets. Unlike getScheduledPosts, the wired arm's `clientes`
+ * is a LEFT join so posts of client-less workflows still appear (cliente_nome
+ * ''); RLS enforces conta_id on both queries.
  */
 export async function getActivePosts(): Promise<ActivePost[]> {
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select(`${POST_CONTEXT_COLUMNS}, workflows!inner(titulo, cliente_id, status, clientes(nome))`)
-    .eq('workflows.status', 'ativo')
-    .order('scheduled_at', { ascending: true, nullsFirst: false });
-  if (error) throw error;
-  return (data || []).map(mapPostContextRow);
+  const [wired, avulso] = await Promise.all([
+    supabase
+      .from('workflow_posts')
+      .select(
+        `${POST_CONTEXT_COLUMNS}, workflows!inner(titulo, cliente_id, status, clientes(nome))`,
+      )
+      .eq('workflows.status', 'ativo')
+      .order('scheduled_at', { ascending: true, nullsFirst: false }),
+    supabase
+      .from('workflow_posts')
+      .select(`${POST_CONTEXT_COLUMNS}, clientes(nome)`)
+      .is('workflow_id', null)
+      .order('scheduled_at', { ascending: true, nullsFirst: false }),
+  ]);
+  if (wired.error) throw wired.error;
+  if (avulso.error) throw avulso.error;
+  return [...(wired.data ?? []), ...(avulso.data ?? [])]
+    .map(mapPostContextRow)
+    .sort(compareScheduledAtAscNullsLast);
 }
 
 export interface PostMedia {
@@ -425,35 +559,62 @@ export const ASSIGNEE_PENDING_POST_STATUSES = [
 
 export interface AssignedPendingPost {
   id: number;
-  workflow_id: number;
+  /** NULL = post avulso (fora de fluxo). */
+  workflow_id: number | null;
   titulo: string;
   status: WorkflowPost['status'];
   custom_status_id: string | null;
-  workflow_titulo: string;
+  /** NULL for a post avulso (no workflow to name). */
+  workflow_titulo: string | null;
   cliente_nome: string;
 }
 
-/** Pending posts assigned to a membro across active workflows (agent dashboard). */
-export async function getAssignedPendingPosts(membroId: number): Promise<AssignedPendingPost[]> {
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select(
-      'id, workflow_id, titulo, status, custom_status_id, workflows!inner(titulo, status, clientes!inner(nome))',
-    )
-    .eq('workflows.status', 'ativo')
-    .eq('responsavel_id', membroId)
-    .in('status', ASSIGNEE_PENDING_POST_STATUSES as unknown as string[])
-    .order('created_at', { ascending: true });
-  if (error) throw error;
-  return (data || []).map((row: any) => ({
+// created_at is selected only to re-sort the wired/avulso merge below; it is
+// never part of the returned AssignedPendingPost shape.
+const ASSIGNED_PENDING_POST_COLUMNS =
+  'id, workflow_id, titulo, status, custom_status_id, created_at';
+
+function mapAssignedPendingPostRow(row: any): AssignedPendingPost {
+  return {
     id: row.id,
-    workflow_id: row.workflow_id,
+    workflow_id: row.workflow_id ?? null,
     titulo: row.titulo,
     status: row.status,
     custom_status_id: row.custom_status_id ?? null,
-    workflow_titulo: row.workflows?.titulo ?? '',
-    cliente_nome: row.workflows?.clientes?.nome ?? '',
-  }));
+    workflow_titulo: row.workflows?.titulo ?? null,
+    cliente_nome: row.workflows?.clientes?.nome ?? row.clientes?.nome ?? '',
+  };
+}
+
+/** Pending posts assigned to a membro across active workflows, PLUS their
+ * avulso posts (an avulso post has no workflow to gate "ativo" on, so every
+ * pending avulso post assigned to the membro is included). Wired and avulso
+ * posts are fetched as two separate queries and merged/re-sorted here -- see
+ * the merge-pattern note on getClientePosts. (Agent dashboard.) */
+export async function getAssignedPendingPosts(membroId: number): Promise<AssignedPendingPost[]> {
+  const [wired, avulso] = await Promise.all([
+    supabase
+      .from('workflow_posts')
+      .select(
+        `${ASSIGNED_PENDING_POST_COLUMNS}, workflows!inner(titulo, status, clientes!inner(nome))`,
+      )
+      .eq('workflows.status', 'ativo')
+      .eq('responsavel_id', membroId)
+      .in('status', ASSIGNEE_PENDING_POST_STATUSES as unknown as string[])
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('workflow_posts')
+      .select(`${ASSIGNED_PENDING_POST_COLUMNS}, clientes!inner(nome)`)
+      .is('workflow_id', null)
+      .eq('responsavel_id', membroId)
+      .in('status', ASSIGNEE_PENDING_POST_STATUSES as unknown as string[])
+      .order('created_at', { ascending: true }),
+  ]);
+  if (wired.error) throw wired.error;
+  if (avulso.error) throw avulso.error;
+  const rows = [...(wired.data ?? []), ...(avulso.data ?? [])] as Array<{ created_at: string }>;
+  rows.sort(compareCreatedAtAsc);
+  return rows.map(mapAssignedPendingPostRow);
 }
 
 export interface AwaitingClientePost extends ActivePost {
@@ -464,19 +625,38 @@ export interface AwaitingClientePost extends ActivePost {
 
 /**
  * Posts of active workflows currently waiting on the client (enviado_cliente),
- * with the moment they entered that status. `waiting_since` comes from
- * post_status_events, NOT updated_at (which moves on every edit), so it
- * reliably means "waiting since". Dashboard "Hoje" follow-up signal.
+ * PLUS avulso posts in the same status, with the moment they entered that
+ * status. `waiting_since` comes from post_status_events, NOT updated_at
+ * (which moves on every edit), so it reliably means "waiting since". Wired
+ * and avulso posts are fetched as two separate queries and merged/re-sorted
+ * here -- see the merge-pattern note on getClientePosts. Dashboard "Hoje"
+ * follow-up signal.
  */
 export async function getAwaitingClientePosts(): Promise<AwaitingClientePost[]> {
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select(`${POST_CONTEXT_COLUMNS}, workflows!inner(titulo, cliente_id, status, clientes(nome))`)
-    .eq('workflows.status', 'ativo')
-    .eq('status', 'enviado_cliente')
-    .order('created_at', { ascending: true });
-  if (error) throw error;
-  const posts = (data || []).map(mapPostContextRow);
+  // created_at is selected only to re-sort the wired/avulso merge below (the
+  // original single-query version could order by it without selecting it);
+  // it never reaches mapPostContextRow's output.
+  const [wired, avulso] = await Promise.all([
+    supabase
+      .from('workflow_posts')
+      .select(
+        `${POST_CONTEXT_COLUMNS}, created_at, workflows!inner(titulo, cliente_id, status, clientes(nome))`,
+      )
+      .eq('workflows.status', 'ativo')
+      .eq('status', 'enviado_cliente')
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('workflow_posts')
+      .select(`${POST_CONTEXT_COLUMNS}, created_at, clientes(nome)`)
+      .is('workflow_id', null)
+      .eq('status', 'enviado_cliente')
+      .order('created_at', { ascending: true }),
+  ]);
+  if (wired.error) throw wired.error;
+  if (avulso.error) throw avulso.error;
+  const rows = [...(wired.data ?? []), ...(avulso.data ?? [])] as Array<{ created_at: string }>;
+  rows.sort(compareCreatedAtAsc);
+  const posts = rows.map(mapPostContextRow);
   if (posts.length === 0) return [];
 
   const { data: events, error: evError } = await supabase
@@ -658,8 +838,16 @@ export async function getWorkflowPostResponsaveis(
   return map;
 }
 
+/**
+ * Adds a post to an existing workflow. `cliente_id` is deliberately excluded
+ * from the input: the DB trigger (sync_workflow_post_cliente) derives and
+ * enforces it from the target workflow's own cliente_id, so no caller has ever
+ * needed to set it, before or after posts avulsos. For a post with no
+ * workflow, use createAvulsoPost instead, which sets cliente_id explicitly
+ * (there is no workflow for the trigger to derive it from).
+ */
 export async function addWorkflowPost(
-  p: Omit<WorkflowPost, 'id' | 'conta_id' | 'created_at' | 'updated_at'>,
+  p: Omit<WorkflowPost, 'id' | 'conta_id' | 'cliente_id' | 'created_at' | 'updated_at'>,
 ): Promise<WorkflowPost> {
   const conta_id = await getContaId();
   const { data, error } = await supabase
@@ -677,9 +865,22 @@ export async function addWorkflowPost(
   return data;
 }
 
+/**
+ * Patches a post's own fields. `workflow_id` and `cliente_id` stay excluded
+ * from the patch shape: the DB trigger (post_a0_sync_cliente) rejects any
+ * direct UPDATE that changes either outside the dedicated RPCs
+ * (detachPostsFromWorkflow / attachPostToWorkflow below), so a plain
+ * updateWorkflowPost call was never a way to move a post between flows and
+ * still isn't -- moving is now a first-class, explicitly-named operation.
+ */
 export async function updateWorkflowPost(
   id: number,
-  p: Partial<Omit<WorkflowPost, 'id' | 'conta_id' | 'workflow_id' | 'created_at' | 'updated_at'>>,
+  p: Partial<
+    Omit<
+      WorkflowPost,
+      'id' | 'conta_id' | 'workflow_id' | 'cliente_id' | 'created_at' | 'updated_at'
+    >
+  >,
 ): Promise<WorkflowPost> {
   const { data, error } = await supabase
     .from('workflow_posts')
@@ -702,6 +903,135 @@ export async function removeWorkflowPost(id: number): Promise<void> {
   if (error) throw error;
 }
 
+// =============================================
+// POSTS AVULSOS (fora de fluxo)
+// =============================================
+
+/**
+ * Creates a post with no workflow (`workflow_id: null`). Mirrors
+ * addWorkflowPost's insert shape but sets `cliente_id` explicitly, since there
+ * is no workflow for the DB trigger to derive it from. `conteudo`/
+ * `conteudo_plain` start empty (same "blank post" defaults addWorkflowPost's
+ * callers pass today), `ordem: 0` (an avulso post has no siblings to order
+ * against), `status: 'rascunho'`.
+ */
+export async function createAvulsoPost(p: {
+  cliente_id: number;
+  titulo: string;
+  tipo: WorkflowPost['tipo'];
+  is_express?: boolean;
+}): Promise<WorkflowPost> {
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .insert({
+      cliente_id: p.cliente_id,
+      titulo: p.titulo,
+      tipo: p.tipo,
+      is_express: p.is_express ?? false,
+      workflow_id: null,
+      status: 'rascunho',
+      ordem: 0,
+      conteudo: null,
+      conteudo_plain: '',
+      conta_id,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+/** Postgres deadlock SQLSTATE. detach_posts_from_flow/attach_posts_to_flow can
+ * rarely deadlock against the (unrelated, pre-existing) workflow-client-move
+ * trigger path -- a documented, self-recovering residual case (see the
+ * migration's header comment) -- so both RPC wrappers retry exactly once. */
+const POSTGRES_DEADLOCK_ERRCODE = '40P01';
+
+async function callRpcWithDeadlockRetry<T>(
+  invoke: () => PromiseLike<{ data: T | null; error: { code?: string } | null }>,
+): Promise<T> {
+  let { data, error } = await invoke();
+  if (error?.code === POSTGRES_DEADLOCK_ERRCODE) {
+    ({ data, error } = await invoke());
+  }
+  if (error) throw error;
+  return data as T;
+}
+
+export interface DetachPostsResult {
+  ok: boolean;
+  detached: number;
+  archived_workflow_ids: number[];
+}
+
+/**
+ * Detaches posts from their workflow (workflow_id -> NULL) via the dedicated
+ * detach_posts_from_flow RPC -- the only sanctioned way to move a post out of
+ * a flow (see updateWorkflowPost's doc comment). When `archiveEmptyFlow` is
+ * true, any source workflow left with zero posts by this exact batch is
+ * archived as part of the same call.
+ */
+export async function detachPostsFromWorkflow(
+  postIds: number[],
+  archiveEmptyFlow = false,
+): Promise<DetachPostsResult> {
+  return callRpcWithDeadlockRetry<DetachPostsResult>(() =>
+    supabase.rpc('detach_posts_from_flow', {
+      p_post_ids: postIds,
+      p_archive_empty_flow: archiveEmptyFlow,
+    }),
+  );
+}
+
+export interface AttachPostResult {
+  ok: boolean;
+  attached: number;
+}
+
+/**
+ * Attaches an avulso post to an active workflow (workflow_id -> workflowId)
+ * via the dedicated attach_posts_to_flow RPC. The RPC itself takes a batch
+ * (`p_post_ids bigint[]`); this wrapper always sends a single-element array
+ * since every current caller attaches one post at a time.
+ */
+export async function attachPostToWorkflow(
+  postId: number,
+  workflowId: number,
+): Promise<AttachPostResult> {
+  return callRpcWithDeadlockRetry<AttachPostResult>(() =>
+    supabase.rpc('attach_posts_to_flow', {
+      p_post_ids: [postId],
+      p_workflow_id: workflowId,
+    }),
+  );
+}
+
+export interface StandalonePost extends WorkflowPost {
+  cliente_nome: string;
+}
+
+/**
+ * A single post plus its client's name, for the StandalonePostDrawer (Task 14)
+ * -- the avulso equivalent of opening a post inside its WorkflowDrawer.
+ * `maybeSingle` (not `single`): a deep link to a post deleted in another tab
+ * should resolve to `null`, not throw.
+ */
+export async function getStandalonePost(postId: number): Promise<StandalonePost | null> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select('*, clientes(nome)')
+    .eq('id', postId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const { clientes, ...rest } = data as WorkflowPost & { clientes: { nome: string } | null };
+  return {
+    ...rest,
+    cliente_nome: clientes?.nome ?? '',
+  };
+}
+
 export async function reorderWorkflowPosts(
   updates: { id: number; ordem: number }[],
 ): Promise<void> {
@@ -716,6 +1046,19 @@ export async function reorderWorkflowPosts(
         }),
     ),
   );
+}
+
+/** Grava a ordem manual do board de Publicacoes em lote via RPC (posse
+ *  all-or-nothing no servidor). board_ordem null limpa o rank. */
+export async function reorderBoardPosts(
+  updates: { id: number; board_ordem: number | null }[],
+): Promise<void> {
+  if (updates.length === 0) return;
+  const { error } = await supabase.rpc('reorder_board_posts', {
+    p_post_ids: updates.map((u) => u.id),
+    p_ordens: updates.map((u) => u.board_ordem),
+  });
+  if (error) throw error;
 }
 
 export async function createPropertyDefinition(
@@ -873,7 +1216,10 @@ export async function getPostStatusEvents(postIds: number[]): Promise<PostStatus
 
 export async function replyToPostApproval(
   postId: number,
-  _workflowId: number,
+  /** Unused: post_approvals keys on post_id alone, so replying to a post
+   *  avulso (workflow_id null) works the same way. Kept as a parameter for
+   *  callers that still pass the post's workflow context along. */
+  _workflowId: number | null,
   comentario: string,
 ): Promise<void> {
   const author_user_id = await getUserId();

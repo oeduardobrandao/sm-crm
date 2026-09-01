@@ -76,7 +76,7 @@ type SelectOpt = { id: string; label: string; color: string };
 function resolveOptions(
   def: PropDef,
   workflowSelectOptions: HubSelectOption[],
-  workflowId?: number,
+  workflowId?: number | null,
 ): SelectOpt[] {
   const templateOpts: SelectOpt[] = (def.config?.options ?? []).map((o) => ({
     id: o.id,
@@ -96,7 +96,7 @@ function PropertyRow({
 }: {
   prop: HubPostProperty;
   workflowSelectOptions: HubSelectOption[];
-  workflowId: number;
+  workflowId: number | null;
 }) {
   const def = prop.template_property_definitions;
   const value = prop.value;

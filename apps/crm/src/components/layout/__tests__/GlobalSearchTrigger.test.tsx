@@ -77,4 +77,31 @@ describe('GlobalSearchTrigger', () => {
 
     expect(navigateMock).toHaveBeenCalledWith('/entregas?drawer=5');
   });
+
+  // A post avulso (no workflow_id) has nowhere to derive a `?drawer=` target from --
+  // the CARRIED FINDING from Task 12's review was that the old unguarded `${p.workflow_id}`
+  // produced a literal "drawer=null" for this case. It must instead use the universal
+  // `?post=` form and label itself distinctly from a wired post.
+  it('navigates an avulso post result via the universal ?post= form, labelled Avulso', async () => {
+    getAllWorkflowPostsMock.mockResolvedValue([
+      { id: 42, workflow_id: null, titulo: 'Post fora de fluxo', tipo: 'feed' },
+    ]);
+    renderTrigger();
+    fireEvent.click(screen.getByRole('button', { name: /Buscar|Search/i }));
+
+    fireEvent.click(await screen.findByText('Post fora de fluxo'));
+
+    expect(navigateMock).toHaveBeenCalledWith('/entregas?post=42');
+    expect(navigateMock).not.toHaveBeenCalledWith(expect.stringContaining('drawer'));
+  });
+
+  it('shows Avulso next to the tipo for a post with no workflow', async () => {
+    getAllWorkflowPostsMock.mockResolvedValue([
+      { id: 42, workflow_id: null, titulo: 'Post fora de fluxo', tipo: 'feed' },
+    ]);
+    renderTrigger();
+    fireEvent.click(screen.getByRole('button', { name: /Buscar|Search/i }));
+
+    expect(await screen.findByText('feed · Avulso')).toBeInTheDocument();
+  });
 });

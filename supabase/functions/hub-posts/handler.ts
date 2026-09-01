@@ -117,41 +117,22 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       return json(data ?? { ok: true }, 200);
     }
 
-    const { data: workflows } = await db
-      .from("workflows")
-      .select("id")
-      .eq("cliente_id", hubToken.cliente_id)
-      .eq("conta_id", hubToken.conta_id);
-
-    const workflowIds = (workflows ?? []).map((workflow: { id: number }) => workflow.id);
-    if (workflowIds.length === 0) {
-      const { data: igAccount } = await db
-        .from("instagram_accounts")
-        .select("username, profile_picture_url")
-        .eq("client_id", hubToken.cliente_id)
-        .maybeSingle();
-
-      return json({
-        posts: [],
-        postApprovals: [],
-        propertyValues: [],
-        workflowSelectOptions: [],
-        instagramProfile: igAccount
-          ? { username: igAccount.username, profilePictureUrl: igAccount.profile_picture_url }
-          : null,
-      });
-    }
-
     const { data: posts } = await db
       .from("workflow_posts")
       .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, tiktok_post_url, published_at, publish_error, platform, ig_trial_strategy, media_autocleaned_at, workflow_id, workflows(titulo, created_at)")
-      .in("workflow_id", workflowIds)
+      .eq("conta_id", hubToken.conta_id)
+      .eq("cliente_id", hubToken.cliente_id)
       .order("scheduled_at", { ascending: true });
 
+    // A post with no workflow_id is avulso (never attached to a flow): the embed
+    // resolves to null and the flattened row carries null, not "", so the Hub
+    // frontend can tell "no workflow" apart from "workflow with an empty titulo".
     const flatPosts = (posts ?? []).map((post: any) => {
       const { workflows: workflow, ...rest } = post;
-      return { ...rest, workflow_titulo: workflow?.titulo ?? "", workflow_created_at: workflow?.created_at ?? "" };
+      return { ...rest, workflow_titulo: workflow?.titulo ?? null, workflow_created_at: workflow?.created_at ?? null };
     });
+
+    const workflowIds = [...new Set(flatPosts.map((post: any) => post.workflow_id).filter(Boolean))];
 
     const postIds = flatPosts.map((post: { id: number }) => post.id);
 
@@ -190,16 +171,23 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       if (!rejectedAtByPost[r.post_id]) rejectedAtByPost[r.post_id] = r.updated_at;
     }
 
-    const { data: propertyValues } = postIds.length > 0
+    // Propriedades pertencem ao modelo do fluxo: um post avulso (detach preserva
+    // os valores como dado inativo) NAO expoe propriedades no Hub, senao o
+    // cliente veria valores obsoletos do fluxo antigo. So posts com workflow.
+    const wiredPostIds = flatPosts
+      .filter((post: any) => post.workflow_id != null)
+      .map((post: { id: number }) => post.id);
+
+    const { data: propertyValues } = wiredPostIds.length > 0
       ? await db
           .from("post_property_values")
           .select("post_id, value, template_property_definitions!inner(name, type, config, portal_visible, display_order)")
-          .in("post_id", postIds)
+          .in("post_id", wiredPostIds)
           .eq("template_property_definitions.portal_visible", true)
           .order("template_property_definitions(display_order)", { ascending: true })
       : { data: [] };
 
-    const { data: workflowSelectOptions } = postIds.length > 0
+    const { data: workflowSelectOptions } = postIds.length > 0 && workflowIds.length > 0
       ? await db
           .from("workflow_select_options")
           .select("workflow_id, property_definition_id, option_id, label, color")
@@ -337,7 +325,10 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     // or more aprovacao_cliente etapas still open are reported so the portal
     // does not promise "aprovar = agendar" during an earlier approval cycle.
     let autoPublishSuspendedWorkflowIds: number[] = [];
-    if (autoPublishOnApproval) {
+    // workflowIds can be [] for an avulso-only client (no posts attached to any
+    // workflow): skip the query entirely rather than call .in() with an empty
+    // array, matching the workflowSelectOptions guard above.
+    if (autoPublishOnApproval && workflowIds.length > 0) {
       const { data: etapas, error: etapasError } = await db
         .from("workflow_etapas")
         .select("workflow_id, tipo, status")

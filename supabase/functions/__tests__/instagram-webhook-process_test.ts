@@ -140,9 +140,12 @@ function revalidatedAutomation(overrides: Record<string, unknown> = {}) {
     ativo: true,
     dm_message: "msg",
     public_reply: null,
+    public_replies: [],
     client_id: CLIENT_ID,
     ig_media_id: null,
     workflow_post_id: null,
+    dm_media: null,
+    dm_subtitle: null,
     ...overrides,
   };
 }
@@ -168,6 +171,7 @@ function baseClaimedSend(overrides: Partial<ClaimedSend> = {}): ClaimedSend {
     comment_created_at: COMMENT_ISO,
     dm_status: null,
     public_reply_status: null,
+    public_reply_text: null,
     attempts: 0,
     encrypted_access_token: ENCRYPTED_TOKEN,
     instagram_user_id: IG_USER_ID,
@@ -177,13 +181,23 @@ function baseClaimedSend(overrides: Partial<ClaimedSend> = {}): ClaimedSend {
 
 function baseSendCtx(
   db: Db,
-  overrides: Partial<{ fetchFn: typeof fetch; decryptToken: (t: string) => Promise<string>; now: () => Date }> = {},
+  overrides: Partial<
+    {
+      fetchFn: typeof fetch;
+      decryptToken: (t: string) => Promise<string>;
+      now: () => Date;
+      random: () => number;
+      signMediaUrl: (key: string) => Promise<string>;
+    }
+  > = {},
 ) {
   return {
     svc: db as never,
     fetchFn: overrides.fetchFn ?? (unreachable("fetchFn") as unknown as typeof fetch),
     decryptToken: overrides.decryptToken ?? okDecrypt,
     now: overrides.now ?? (() => FIXED_NOW),
+    random: overrides.random ?? (() => 0),
+    ...(overrides.signMediaUrl !== undefined ? { signMediaUrl: overrides.signMediaUrl } : {}),
   };
 }
 
@@ -313,7 +327,11 @@ Deno.test("processDelivery (c): match feliz -> claim, DM, mark_automation_dm_sen
 
   const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
   assertEquals(sendUpdates.length, 3);
-  assertEquals(sendUpdates[0].payload, { public_reply_status: "unknown" }, "estado em voo gravado ANTES do POST");
+  assertEquals(
+    sendUpdates[0].payload,
+    { public_reply_status: "unknown", public_reply_text: "Verifique sua DM!" },
+    "estado em voo gravado ANTES do POST, com o texto sorteado",
+  );
   assertEquals(sendUpdates[1].payload, { public_reply_id: "reply-99", public_reply_status: "sent" });
   assertEquals(sendUpdates[2].payload, { status: "sent" });
 
@@ -761,7 +779,11 @@ Deno.test("executeSend (h): retry com dm_status='sent' -> NÃO chama sendPrivate
 
   const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
   assertEquals(sendUpdates.length, 3);
-  assertEquals(sendUpdates[0].payload, { public_reply_status: "unknown" }, "estado em voo gravado ANTES do POST");
+  assertEquals(
+    sendUpdates[0].payload,
+    { public_reply_status: "unknown", public_reply_text: "Verifique sua DM!" },
+    "estado em voo gravado ANTES do POST, com o texto sorteado",
+  );
   assertEquals(sendUpdates[1].payload, { public_reply_id: "reply-1", public_reply_status: "sent" });
   assertEquals(sendUpdates[2].payload, { status: "sent" });
 });
@@ -788,7 +810,11 @@ Deno.test("executeSend (i-1): reply pública timeout + fetchReplies encontra -> 
 
   const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
   assertEquals(sendUpdates.length, 3);
-  assertEquals(sendUpdates[0].payload, { public_reply_status: "unknown" }, "estado em voo gravado ANTES do POST");
+  assertEquals(
+    sendUpdates[0].payload,
+    { public_reply_status: "unknown", public_reply_text: "Verifique sua DM!" },
+    "estado em voo gravado ANTES do POST, com o texto sorteado",
+  );
   assertEquals(sendUpdates[1].payload, { public_reply_id: "reply-found", public_reply_status: "sent" });
   assertEquals(sendUpdates[2].payload, { status: "sent" });
   assertEquals(fetchCalls.filter((c) => c.method === "POST" && c.url.includes("/replies")).length, 1, "nunca reposta");
@@ -813,7 +839,10 @@ Deno.test("executeSend (i-2): reply pública timeout + fetchReplies NÃO encontr
 
   const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
   assertEquals(sendUpdates.length, 2);
-  assertEquals(sendUpdates[0].payload, { public_reply_status: "unknown" });
+  assertEquals(sendUpdates[0].payload, {
+    public_reply_status: "unknown",
+    public_reply_text: "Verifique sua DM!",
+  });
   assertEquals(sendUpdates[1].payload, { status: "sent_partial" });
   assertEquals(fetchCalls.filter((c) => c.method === "POST" && c.url.includes("/replies")).length, 1, "nunca reposta");
 });
@@ -1189,9 +1218,192 @@ Deno.test("executeSend: erro não-timeout na resposta pública -> public_reply_s
 
   const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
   assertEquals(sendUpdates.length, 3);
-  assertEquals(sendUpdates[0].payload, { public_reply_status: "unknown" }, "estado em voo gravado ANTES do POST");
+  assertEquals(
+    sendUpdates[0].payload,
+    { public_reply_status: "unknown", public_reply_text: "Verifique sua DM!" },
+    "estado em voo gravado ANTES do POST, com o texto sorteado",
+  );
   assertEquals(sendUpdates[1].payload, { public_reply_status: "failed" });
   assertEquals(sendUpdates[2].payload, { status: "sent_partial" });
+});
+
+// ── Sorteio persistido e texto autoritativo (Task 3) ────────────────────────
+
+Deno.test("executeSend (pr-1): sorteia do pool, persiste texto+unknown ANTES do POST e posta o sorteado", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ public_reply: null, public_replies: ["opção A", "opção B"] }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // em voo
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // sent
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  const { fetchFn, calls } = routedFetch({
+    privateReply: () => ({ body: {} }),
+    publicReply: () => ({ body: { id: "reply-1" } }),
+  });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn, random: () => 0.9 }),
+    baseClaimedSend({}),
+  );
+
+  const updates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(updates[0].payload, {
+    public_reply_status: "unknown",
+    public_reply_text: "opção B",
+  });
+  const publicPost = calls.find((c) => c.method === "POST" && c.url.includes("/replies"));
+  assertEquals(JSON.parse(publicPost?.body ?? "null"), { message: "opção B" });
+  assertEquals(updates[1].payload, { public_reply_id: "reply-1", public_reply_status: "sent" });
+});
+
+Deno.test("executeSend (pr-2): reentrada com texto persistido não re-sorteia e reconcilia por ele", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ public_reply: null, public_replies: ["outra coisa"] }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // reconciled
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  const { fetchFn, calls } = routedFetch({
+    fetchReplies: () => ({
+      body: { data: [{ id: "r-77", text: "texto sorteado antes", from: { id: IG_USER_ID } }] },
+    }),
+  });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn }),
+    baseClaimedSend({
+      dm_status: "sent",
+      public_reply_status: "unknown",
+      public_reply_text: "texto sorteado antes",
+    }),
+  );
+
+  assertEquals(calls.filter((c) => c.method === "POST").length, 0);
+  const updates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(updates[0].payload, { public_reply_id: "r-77", public_reply_status: "sent" });
+});
+
+Deno.test("executeSend (pr-3): unknown com pool esvaziado ainda reconcilia pelo texto persistido e nunca fecha sent sem achar", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ public_reply: null, public_replies: [] }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  const { fetchFn, calls } = routedFetch({
+    fetchReplies: () => ({ body: { data: [] } }),
+  });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn }),
+    baseClaimedSend({
+      dm_status: "sent",
+      public_reply_status: "unknown",
+      public_reply_text: "texto sorteado antes",
+    }),
+  );
+
+  // Reconciliação RODOU (GET replies) mesmo com pool vazio...
+  assertEquals(calls.filter((c) => c.method === "GET" && c.url.includes("/replies?")).length, 1);
+  // ...não achou, então fecha sent_partial (nunca 'sent').
+  const updates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(updates[updates.length - 1].payload, { status: "sent_partial" });
+});
+
+Deno.test("executeSend (pr-4): send legado unknown sem texto persistido reconcilia contra o pool", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ public_reply: "legado", public_replies: [] }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // reconciled
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  const { fetchFn } = routedFetch({
+    fetchReplies: () => ({
+      body: { data: [{ id: "r-88", text: "legado", from: { id: IG_USER_ID } }] },
+    }),
+  });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn }),
+    baseClaimedSend({ dm_status: "sent", public_reply_status: "unknown", public_reply_text: null }),
+  );
+
+  const updates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(updates[0].payload, { public_reply_id: "r-88", public_reply_status: "sent" });
+});
+
+Deno.test("executeSend (pr-5): retry a partir de 'failed' reusa o texto persistido, nunca re-sorteia do pool atual", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ public_reply: null, public_replies: ["outra"] }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // em voo (regrava o mesmo texto)
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // sent
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  const { fetchFn, calls } = routedFetch({
+    publicReply: () => ({ body: { id: "reply-5" } }),
+  });
+
+  // random aponta para "outra" (o único item do pool atual, distinto do texto
+  // persistido) -- se `pickPublicReply` fosse chamado em vez de reusar o
+  // snapshot de `send.public_reply_text`, o texto postado seria "outra".
+  await executeSend(
+    baseSendCtx(db, { fetchFn, random: () => 0 }),
+    baseClaimedSend({
+      dm_status: "sent",
+      public_reply_status: "failed",
+      public_reply_text: "texto sorteado antes",
+    }),
+  );
+
+  const updates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(updates[0].payload, {
+    public_reply_status: "unknown",
+    public_reply_text: "texto sorteado antes",
+  });
+  const publicPost = calls.find((c) => c.method === "POST" && c.url.includes("/replies"));
+  assertEquals(JSON.parse(publicPost?.body ?? "null"), { message: "texto sorteado antes" });
+  assertEquals(updates[1].payload, { public_reply_id: "reply-5", public_reply_status: "sent" });
+});
+
+// Blindagem do review de branch (Important #1): `send.public_reply_text`
+// chega `undefined` (não `null`) na janela de deploy em que a RPC de claim
+// ainda usa o schema antigo (ou num rollback) -- sem normalizar para `null`
+// antes dos guards, `undefined !== null` degenera `hadPlanned`/`matchesPlanned`
+// e um send SEM resposta pública configurada fecharia 'sent_partial' à toa.
+Deno.test("executeSend (pr-6): public_reply_text undefined (RPC antiga) sem automação configurada -> fecha 'sent', não sent_partial", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ public_reply: null, public_replies: [] }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento (único update)
+
+  await executeSend(
+    baseSendCtx(db),
+    baseClaimedSend({ dm_status: "sent", public_reply_text: undefined as never }),
+  );
+
+  const updates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(updates.length, 1);
+  assertEquals(updates[0].payload, { status: "sent" });
 });
 
 Deno.test("executeSend: 'já existe private reply' (already_replied) -> auto-correção, mark_automation_dm_sent chamado", async () => {
@@ -1282,7 +1494,10 @@ Deno.test(
 
     const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
     assertEquals(sendUpdates.length, 2, "só o pre-write 'unknown' e a tentativa falha de 'sent'");
-    assertEquals(sendUpdates[0].payload, { public_reply_status: "unknown" });
+    assertEquals(sendUpdates[0].payload, {
+      public_reply_status: "unknown",
+      public_reply_text: "Verifique sua DM!",
+    });
     assertEquals(sendUpdates[1].payload, { public_reply_id: "reply-1", public_reply_status: "sent" });
     assertEquals(
       sendUpdates.filter((c) => (c.payload as Record<string, unknown>).public_reply_status === "failed").length,
@@ -1450,5 +1665,218 @@ Deno.test("executeSend: sem dm_buttons -> body de texto puro e p_dm_kind='text'"
 
   const marks = rpcCallsFor(db, "mark_automation_dm_sent");
   assertEquals(marks.length, 1);
+  assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "text" });
+});
+
+// ══════════════════════ executeSend: dm_media (cartão com imagem) ═════════
+
+// A key precisa cair sob o prefixo do próprio tenant (`automation-media/<conta_id>/`)
+// -- `baseClaimedSend` usa CONTA_ID como conta_id do send, então a key do
+// fixture usa o MESMO CONTA_ID, não um placeholder.
+const CARD_MEDIA = {
+  key: `automation-media/${CONTA_ID}/img.jpg`,
+  content_type: "image/jpeg",
+  size_bytes: 5000,
+};
+
+const CARD_BODY = {
+  recipient: { comment_id: COMMENT_ID },
+  message: {
+    attachment: {
+      type: "template",
+      payload: {
+        template_type: "generic",
+        elements: [{
+          title: "msg",
+          subtitle: "sub",
+          image_url: `https://signed.example.com/${CARD_MEDIA.key}`,
+          buttons: [{ type: "web_url", url: "https://a.b", title: "Abrir" }],
+        }],
+      },
+    },
+  },
+};
+
+Deno.test("executeSend (card-1): com dm_media envia generic template e grava dm_kind card", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({
+      dm_media: CARD_MEDIA,
+      dm_subtitle: "sub",
+      dm_buttons: [{ title: "Abrir", url: "https://a.b" }],
+      public_reply: null,
+    }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  const { fetchFn, calls } = routedFetch({ privateReply: () => ({ body: {} }) });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn, signMediaUrl: (k: string) => Promise.resolve(`https://signed.example.com/${k}`) }),
+    baseClaimedSend({}),
+  );
+
+  const dmCalls = calls.filter((c) => c.url.includes("/messages"));
+  assertEquals(JSON.parse(dmCalls[0].body ?? "null"), CARD_BODY);
+  const marks = rpcCallsFor(db, "mark_automation_dm_sent");
+  assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "card" });
+});
+
+Deno.test("executeSend (card-1b): permanent no cartão entrega no button template (dm_kind card_fallback_buttons)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({
+      dm_media: CARD_MEDIA,
+      dm_subtitle: "sub",
+      dm_buttons: [{ title: "Abrir", url: "https://a.b" }],
+      public_reply: null,
+    }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  let attempt = 0;
+  const { fetchFn, calls } = routedFetch({
+    privateReply: () => {
+      attempt++;
+      if (attempt <= 1) return { status: 400, ok: false, body: { error: { message: "no", code: 100 } } };
+      return { body: {} };
+    },
+  });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn, signMediaUrl: (k: string) => Promise.resolve(`https://s/${k}`) }),
+    baseClaimedSend({}),
+  );
+
+  const dmCalls = calls.filter((c) => c.url.includes("/messages"));
+  assertEquals(dmCalls.length, 2);
+  // 2ª tentativa (a que entrega): button template com o texto do cartão
+  const second = JSON.parse(dmCalls[1].body ?? "null");
+  assertEquals(second.message.attachment.payload.template_type, "button");
+  assertEquals(second.message.attachment.payload.text, "msg\n\nsub");
+  const marks = rpcCallsFor(db, "mark_automation_dm_sent");
+  assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "card_fallback_buttons" });
+});
+
+Deno.test("executeSend (card-2): permanent no cartão cai para button template; permanent de novo cai para texto", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({
+      dm_media: CARD_MEDIA,
+      dm_subtitle: "sub",
+      dm_buttons: [{ title: "Abrir", url: "https://a.b" }],
+      public_reply: null,
+    }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  let attempt = 0;
+  const { fetchFn, calls } = routedFetch({
+    privateReply: () => {
+      attempt++;
+      if (attempt <= 2) return { status: 400, ok: false, body: { error: { message: "no", code: 100 } } };
+      return { body: {} };
+    },
+  });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn, signMediaUrl: (k: string) => Promise.resolve(`https://s/${k}`) }),
+    baseClaimedSend({}),
+  );
+
+  const dmCalls = calls.filter((c) => c.url.includes("/messages"));
+  assertEquals(dmCalls.length, 3);
+  // 2ª tentativa: button template com o texto do cartão
+  const second = JSON.parse(dmCalls[1].body ?? "null");
+  assertEquals(second.message.attachment.payload.template_type, "button");
+  assertEquals(second.message.attachment.payload.text, "msg\n\nsub");
+  // 3ª tentativa: texto puro com links
+  const third = JSON.parse(dmCalls[2].body ?? "null");
+  assertEquals(typeof third.message.text, "string");
+  const marks = rpcCallsFor(db, "mark_automation_dm_sent");
+  assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "card_fallback_text" });
+});
+
+Deno.test("executeSend (card-3): sem botões a cadeia é cartão -> texto (2 POSTs) e permanent duplo falha dm_permanent", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ dm_media: CARD_MEDIA, dm_subtitle: null, public_reply: null }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // failed
+
+  const { fetchFn, calls } = routedFetch({
+    privateReply: () => ({ status: 400, ok: false, body: { error: { message: "no", code: 100 } } }),
+  });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn, signMediaUrl: (k: string) => Promise.resolve(`https://s/${k}`) }),
+    baseClaimedSend({}),
+  );
+
+  assertEquals(calls.filter((c) => c.url.includes("/messages")).length, 2);
+  const updates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(updates[0].payload, { status: "failed", error_code: "dm_permanent" });
+});
+
+Deno.test("executeSend (card-4): falha ao pré-assinar a mídia agenda retry (transient), sem POST", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ dm_media: CARD_MEDIA, dm_subtitle: null, public_reply: null }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // retry
+
+  const { fetchFn, calls } = routedFetch({ privateReply: unreachable("privateReply") });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn, signMediaUrl: () => Promise.reject(new Error("r2 down")) }),
+    baseClaimedSend({ attempts: 0 }),
+  );
+
+  assertEquals(calls.length, 0);
+  const updates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(updates[0].payload, {
+    status: "retry",
+    next_attempt_at: new Date(FIXED_NOW.getTime() + BACKOFF_SECONDS[0] * 1000).toISOString(),
+    attempts: 1,
+  });
+});
+
+Deno.test("executeSend (card-5): key fora do prefixo do tenant ignora a mídia e envia como hoje", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({
+      dm_media: { ...CARD_MEDIA, key: "automation-media/OUTRA-CONTA/img.jpg" },
+      dm_subtitle: null,
+      public_reply: null,
+    }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  const { fetchFn, calls } = routedFetch({ privateReply: () => ({ body: {} }) });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn, signMediaUrl: unreachable("signMediaUrl") as never }),
+    baseClaimedSend({}),
+  );
+
+  const dmCalls = calls.filter((c) => c.url.includes("/messages"));
+  assertEquals(JSON.parse(dmCalls[0].body ?? "null").message, { text: "msg" });
+  const marks = rpcCallsFor(db, "mark_automation_dm_sent");
   assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "text" });
 });
