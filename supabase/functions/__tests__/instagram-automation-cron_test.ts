@@ -88,6 +88,7 @@ function claimedSendFixture(overrides: Record<string, unknown> = {}) {
     comment_created_at: "2026-08-14T11:00:00.000Z",
     dm_status: null,
     public_reply_status: null,
+    public_reply_text: null,
     attempts: 0,
     encrypted_access_token: ENCRYPTED_TOKEN,
     instagram_user_id: "ig-user-1",
