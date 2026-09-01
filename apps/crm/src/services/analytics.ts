@@ -1092,3 +1092,56 @@ export async function getClientReports(clientId: number): Promise<AnalyticsRepor
     return [];
   }
 }
+
+// ---- Stories Analytics ----
+
+export interface StoriesKpis {
+  stories_count: number;
+  total_reach: number;
+  total_impressions: number;
+  total_replies: number;
+  avg_retention_rate: number;
+  avg_skip_rate: number;
+  total_exits: number;
+}
+
+export interface StoryInsight {
+  instagram_media_id: string;
+  media_type: string;
+  thumbnail_url: string | null;
+  posted_at: string;
+  reach: number;
+  impressions: number;
+  replies: number;
+  taps_forward: number;
+  taps_back: number;
+  exits: number;
+  shares: number;
+  retention_rate: number;
+  skip_rate: number;
+  back_rate: number;
+}
+
+export interface StoriesAnalyticsResponse {
+  stories: StoryInsight[];
+  kpis: {
+    current: StoriesKpis;
+    previous: StoriesKpis | null;
+  };
+}
+
+export async function getStoriesAnalytics(
+  clientId: number,
+  days?: number,
+  dateRange?: { start: string; end: string },
+): Promise<StoriesAnalyticsResponse | null> {
+  const params = new URLSearchParams();
+  if (dateRange) {
+    params.set('start', dateRange.start);
+    params.set('end', dateRange.end);
+  } else if (days) {
+    params.set('days', String(days));
+  }
+  const qs = params.toString();
+  return fetchEdge(`${EDGE_URL}/stories/${clientId}${qs ? `?${qs}` : ''}`);
+}
