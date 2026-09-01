@@ -479,26 +479,36 @@ export async function runMaintenanceStep(
   }
 
   // Fase 3: retry de stories, desacoplado da fase 2 acima (achado do review).
-  // A fase 2 só oferece closeStoriesForMonth a uma conta no ÚNICO tick em que
-  // sua linha mensal nasce -- uma falha transitória ali (rede, leitura de
-  // instagram_story_insights) deixaria as colunas de stories NULL para
-  // sempre, já que a conta nunca mais aparece em `closable` depois que sua
-  // linha existe. Esta fase busca especificamente as contas com linha
-  // existente e stories_count_month ainda NULL -- inclui tanto as que
-  // acabaram de ser fechadas na fase 2 deste mesmo tick (se a tentativa ali
-  // falhou) quanto as fechadas em qualquer tick anterior -- e tenta de novo.
-  // Uma conta cujas stories já foram preenchidas (por esta fase ou pela 2)
-  // simplesmente não aparece mais aqui, então o conjunto pendente encolhe a
-  // cada tick como no `closedIds` acima.
-  const { data: storiesPending, error: storiesPendingError } = await db
-    .from(MONTHLY_TABLE)
+  // Pre-filter: only retry accounts that actually have daily stories coverage
+  // for the month. Without this, accounts that never posted stories have
+  // stories_count_month=NULL forever (closeStoriesForMonth returns early on
+  // the coverage guard), filling the batch and starving accounts that had a
+  // genuine transient failure (Codex P1: retry starvation).
+  const currentMonthDay1 = `${currentMonth}-01`;
+  const { data: withCoverage } = await db
+    .from("instagram_account_metrics_daily")
     .select("instagram_account_id")
-    .eq("month", prevMonthDay1)
-    .is("stories_count_month", null)
-    .order("instagram_account_id", { ascending: true })
-    .limit(opts.storiesRetryBatchLimit ?? STORIES_RETRY_PAGE_LIMIT);
-  if (storiesPendingError) {
-    console.warn(`[IG-SYNC-CRON] backfill: falha ao listar contas pendentes de stories em ${prevMonthDay1}: ${storiesPendingError.message}`);
+    .gte("snapshot_date", prevMonthDay1)
+    .lt("snapshot_date", currentMonthDay1)
+    .not("stories_count_day", "is", null);
+  const coverageIds = [...new Set(
+    (withCoverage ?? []).map((r: { instagram_account_id: string }) => r.instagram_account_id),
+  )];
+
+  let storiesPending: Array<{ instagram_account_id: string }> | null = null;
+  if (coverageIds.length > 0) {
+    const { data, error: storiesPendingError } = await db
+      .from(MONTHLY_TABLE)
+      .select("instagram_account_id")
+      .eq("month", prevMonthDay1)
+      .is("stories_count_month", null)
+      .in("instagram_account_id", coverageIds)
+      .order("instagram_account_id", { ascending: true })
+      .limit(opts.storiesRetryBatchLimit ?? STORIES_RETRY_PAGE_LIMIT);
+    if (storiesPendingError) {
+      console.warn(`[IG-SYNC-CRON] backfill: falha ao listar contas pendentes de stories em ${prevMonthDay1}: ${storiesPendingError.message}`);
+    }
+    storiesPending = data as typeof storiesPending;
   }
 
   for (const row of (storiesPending ?? []) as Array<{ instagram_account_id: string }>) {

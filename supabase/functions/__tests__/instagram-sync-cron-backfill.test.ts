@@ -144,6 +144,11 @@ function monthlyTable(state: FakeState) {
       filters.push((r) => (r[col] ?? null) === val);
       return builder;
     },
+    in(col: string, vals: unknown[]) {
+      const s = new Set(vals);
+      filters.push((r) => s.has(r[col]));
+      return builder;
+    },
     order() { return builder; },
     limit(n: number) { limitN = n; return builder; },
     maybeSingle() {
