@@ -11,7 +11,7 @@ import {
   Calendar as CalendarIcon,
   CircleDollarSign,
   FinanceVisual,
-  HeroDemo,
+  HeroDevices,
   HubVisual,
   IconSquare,
   InstagramVisual,
@@ -152,7 +152,7 @@ function Hero() {
             </div>
           </div>
           <div className="hero-stage">
-            <HeroDemo />
+            <HeroDevices />
           </div>
         </div>
       </div>

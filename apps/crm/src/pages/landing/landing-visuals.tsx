@@ -152,468 +152,60 @@ function useIsMobile(breakpoint = 640) {
   return mobile;
 }
 
-export function HeroDemo() {
-  const mobile = useIsMobile();
-  const [revenue, setRevenue] = useState(0);
-  useEffect(() => {
-    let n = 0;
-    const target = 12480;
-    const id = setInterval(() => {
-      n = Math.min(target, n + 420);
-      setRevenue(n);
-      if (n >= target) clearInterval(id);
-    }, 24);
-    return () => clearInterval(id);
-  }, []);
-
+/** Hero visual: real product screenshots composited into Apple's official
+ * product bezels (MacBook Pro 14" Space Black + iPhone 16 Pro Black Titanium,
+ * from developer.apple.com Design Resources), telling the two-sided story —
+ * the agency runs the operation, the client approves from the phone.
+ * Screenshots are captured by e2e/screenshots/landing-hero.spec.ts and the
+ * composites live in public/landing/. */
+export function HeroDevices() {
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 520 }}>
-      <svg
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          opacity: 0.35,
-          zIndex: 0,
-        }}
-      >
+    <div className="hd-stage">
+      <svg className="hd-grid" aria-hidden="true">
         <defs>
-          <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+          <pattern id="hd-grid-pat" width="28" height="28" patternUnits="userSpaceOnUse">
             <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(30,36,48,.06)" strokeWidth="1" />
           </pattern>
         </defs>
-        <rect width="100%" height="100%" fill="url(#grid)" />
+        <rect width="100%" height="100%" fill="url(#hd-grid-pat)" />
       </svg>
 
-      {/* dashboard card */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 20,
-          left: '4%',
-          right: '8%',
-          background: '#fff',
-          borderRadius: 18,
-          boxShadow: '0 30px 80px -20px rgba(0,0,0,.18), 0 0 0 1px rgba(30,36,48,.06)',
-          overflow: 'hidden',
-          zIndex: 2,
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            padding: '10px 14px',
-            borderBottom: '1px solid rgba(30,36,48,.05)',
-            background: '#fafbfc',
-            gap: 8,
-          }}
-        >
-          <div style={{ display: 'flex', gap: 5 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 9999, background: '#ff6058' }} />
-            <span style={{ width: 10, height: 10, borderRadius: 9999, background: '#ffbd2e' }} />
-            <span style={{ width: 10, height: 10, borderRadius: 9999, background: '#27c941' }} />
-          </div>
-          <div
-            style={{
-              flex: 1,
-              textAlign: 'center',
-              fontSize: 11,
-              color: '#6b7280',
-              fontFamily: MONO,
-              letterSpacing: '.05em',
-            }}
-          >
-            mesaas.com.br/dashboard
-          </div>
-        </div>
-
-        <div style={{ padding: '18px 20px 16px' }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-end',
-              marginBottom: 14,
-            }}
-          >
-            <div>
-              <div className="eyebrow-micro" style={{ fontSize: '.6rem' }}>
-                Visão Geral
-              </div>
-              <div
-                style={{
-                  fontSize: 20,
-                  fontWeight: 800,
-                  letterSpacing: '-.01em',
-                  color: BRAND.dark,
-                  marginTop: 4,
-                }}
-              >
-                Olá, Débora
-              </div>
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '5px 9px',
-                borderRadius: 9999,
-                background: 'rgba(62,207,142,.12)',
-                color: '#15803d',
-                fontSize: 10,
-                fontWeight: 600,
-                fontFamily: MONO,
-                letterSpacing: '.06em',
-              }}
-            >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 9999,
-                  background: '#3ecf8e',
-                  animation: 'pulse-dot 2s ease-in-out infinite',
-                }}
-              />
-              Ao vivo
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 8 }}>
-            <div
-              style={{
-                background: BRAND.dark,
-                borderRadius: 12,
-                padding: '14px 16px',
-                color: '#fff',
-                position: 'relative',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: MONO,
-                  fontSize: 9,
-                  letterSpacing: '.14em',
-                  color: BRAND.yellow,
-                  fontWeight: 700,
-                }}
-              >
-                Receita Mensal
-              </div>
-              <div
-                style={{
-                  fontSize: 26,
-                  fontWeight: 900,
-                  letterSpacing: '-.02em',
-                  marginTop: 6,
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                R$ {revenue.toLocaleString('pt-BR')}
-              </div>
-              <div style={{ fontSize: 10, color: '#3ecf8e', marginTop: 2, fontWeight: 600 }}>
-                ↑ 8,2% vs abril
-              </div>
-              <svg
-                width="90"
-                height="32"
-                style={{ position: 'absolute', right: 10, bottom: 10, opacity: 0.9 }}
-              >
-                <polyline
-                  fill="none"
-                  stroke={BRAND.yellow}
-                  strokeWidth="1.8"
-                  points="0,24 15,20 30,22 45,14 60,16 75,8 90,4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <circle cx="90" cy="4" r="3" fill={BRAND.yellow} />
-              </svg>
-            </div>
-            <div
-              style={{
-                background: '#fff',
-                borderRadius: 12,
-                padding: '12px 14px',
-                border: '1px solid rgba(30,36,48,.08)',
-                borderLeft: `3px solid ${BRAND.green}`,
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: MONO,
-                  fontSize: 9,
-                  letterSpacing: '.12em',
-                  color: '#374151',
-                  fontWeight: 700,
-                }}
-              >
-                Clientes
-              </div>
-              <div
-                style={{
-                  fontSize: 22,
-                  fontWeight: 900,
-                  letterSpacing: '-.02em',
-                  marginTop: 4,
-                  color: BRAND.dark,
-                }}
-              >
-                7
-              </div>
-              <div style={{ fontSize: 10, color: '#15803d', marginTop: 2, fontWeight: 600 }}>
-                +1 novo
-              </div>
-            </div>
-            <div
-              style={{
-                background: '#fff',
-                borderRadius: 12,
-                padding: '12px 14px',
-                border: '1px solid rgba(30,36,48,.08)',
-                borderLeft: `3px solid ${BRAND.teal}`,
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: MONO,
-                  fontSize: 9,
-                  letterSpacing: '.12em',
-                  color: '#374151',
-                  fontWeight: 700,
-                }}
-              >
-                Posts / mês
-              </div>
-              <div
-                style={{
-                  fontSize: 22,
-                  fontWeight: 900,
-                  letterSpacing: '-.02em',
-                  marginTop: 4,
-                  color: BRAND.dark,
-                }}
-              >
-                42
-              </div>
-              <div style={{ fontSize: 10, color: '#0e7a9b', marginTop: 2, fontWeight: 600 }}>
-                12 aprovados
-              </div>
-            </div>
-          </div>
-
-          <div
-            style={{
-              marginTop: 14,
-              background: '#fafbfc',
-              borderRadius: 12,
-              padding: '12px 14px',
-              border: '1px solid rgba(30,36,48,.06)',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 10,
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: MONO,
-                  fontSize: 9,
-                  letterSpacing: '.12em',
-                  color: '#374151',
-                  fontWeight: 700,
-                }}
-              >
-                Receita · últimos 6 meses
-              </div>
-              <div style={{ display: 'flex', gap: 3 }}>
-                <span
-                  style={{
-                    padding: '2px 6px',
-                    fontSize: 9,
-                    fontWeight: 600,
-                    color: '#6b7280',
-                    background: '#fff',
-                    borderRadius: 6,
-                  }}
-                >
-                  Mês
-                </span>
-                <span
-                  style={{
-                    padding: '2px 6px',
-                    fontSize: 9,
-                    fontWeight: 600,
-                    color: BRAND.dark,
-                    background: '#fff',
-                    borderRadius: 6,
-                    boxShadow: '0 1px 2px rgba(0,0,0,.05)',
-                  }}
-                >
-                  Trim
-                </span>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 60 }}>
-              {(
-                [
-                  ['Nov', 58],
-                  ['Dez', 44],
-                  ['Jan', 72],
-                  ['Fev', 62],
-                  ['Mar', 80],
-                  ['Abr', 96],
-                ] as const
-              ).map(([m, h], i) => (
-                <div
-                  key={m}
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 4,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: '100%',
-                      height: `${h}%`,
-                      background:
-                        i === 5
-                          ? `linear-gradient(180deg,${BRAND.yellow},${BRAND.yellowHover})`
-                          : 'rgba(30,36,48,.14)',
-                      borderRadius: '4px 4px 2px 2px',
-                      transformOrigin: 'bottom',
-                      animation: `bar-grow .7s cubic-bezier(.22,1,.36,1) ${i * 0.08}s backwards`,
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: 8,
-                      color: '#6b7280',
-                      fontFamily: MONO,
-                      letterSpacing: '.08em',
-                    }}
-                  >
-                    {m}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+      <div className="hd-macbook">
+        <span className="hd-tag hd-tag-agency">Sua agência</span>
+        <img
+          src="/landing/hero-macbook.webp"
+          width={1800}
+          height={1087}
+          alt="MacBook com o quadro de entregas do Mesaas: fluxos por etapa, do briefing à aprovação do cliente"
+          loading="eager"
+          fetchPriority="high"
+          decoding="async"
+        />
       </div>
 
-      {/* floating kanban card */}
-      <div
-        style={{
-          position: 'absolute',
-          // sit lower on desktop so the card clears the "Receita Mensal" value it used to cover
-          top: mobile ? '46%' : '58%',
-          left: mobile ? 0 : '-2%',
-          width: mobile ? '65%' : 230,
-          background: '#fff',
-          borderRadius: 20,
-          padding: '14px 16px',
-          boxShadow: '0 20px 50px -12px rgba(0,0,0,.18), 0 0 0 1px rgba(30,36,48,.06)',
-          animation: 'float-up 4.5s ease-in-out infinite',
-          zIndex: 3,
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 8,
-          }}
-        >
-          <Badge tone="yellow">Reels</Badge>
-          <Badge tone="warning">Aprovação</Badge>
-        </div>
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: 600,
-            color: BRAND.dark,
-            lineHeight: 1.3,
-            marginBottom: 10,
-          }}
-        >
-          Reels — Novo cardápio de inverno
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Avatar name="Café da Manhã" size={20} />
-            <span style={{ fontSize: 10, color: '#6b7280', fontWeight: 500 }}>Café da Manhã</span>
-          </div>
-          <span style={{ fontSize: 10, color: '#6b7280', fontFamily: MONO, fontWeight: 600 }}>
-            03/05
-          </span>
-        </div>
+      <div className="hd-iphone">
+        <span className="hd-tag hd-tag-client">Seu cliente</span>
+        <img
+          src="/landing/hero-iphone.webp"
+          width={560}
+          height={1160}
+          alt="iPhone com o Hub do cliente: aprovações pendentes e próximo post"
+          loading="eager"
+          decoding="async"
+        />
       </div>
 
-      {/* floating approval toast */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 8,
-          right: mobile ? 0 : '-2%',
-          width: mobile ? '70%' : 260,
-          background: '#fff',
-          borderRadius: 16,
-          padding: '14px 16px',
-          boxShadow: '0 20px 50px -12px rgba(0,0,0,.18), 0 0 0 1px rgba(30,36,48,.06)',
-          display: 'flex',
-          gap: 12,
-          alignItems: 'flex-start',
-          animation: 'float-up 5s ease-in-out .8s infinite',
-          zIndex: 3,
-        }}
-      >
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 9999,
-            background: 'rgba(62,207,142,.14)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
+      <div className="hd-toast" aria-hidden="true">
+        <span className="hd-toast-check">
           <CheckCircle2 size={22} color={BRAND.green} fill={BRAND.green} strokeWidth={0} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.dark, marginBottom: 2 }}>
-            Post aprovado
-          </div>
-          <div style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>
-            Bella Moda aprovou{' '}
-            <strong style={{ color: BRAND.dark, fontWeight: 600 }}>Lançamento Coleção</strong>
-          </div>
-          <div
-            style={{
-              fontSize: 9,
-              color: '#6b7280',
-              fontFamily: MONO,
-              marginTop: 4,
-              letterSpacing: '.06em',
-            }}
-          >
-            Agora mesmo
-          </div>
-        </div>
+        </span>
+        <span className="hd-toast-body">
+          <span className="hd-toast-title">Post aprovado</span>
+          <span className="hd-toast-text">
+            Café da Manhã aprovou <strong>Novo cardápio</strong>
+          </span>
+          <span className="hd-toast-time">Agora mesmo</span>
+        </span>
       </div>
     </div>
   );

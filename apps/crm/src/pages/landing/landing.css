@@ -129,7 +129,7 @@ color:#374151;
     radial-gradient(800px 420px at -4% 20%,rgba(66,200,245,.07),transparent 60%),
     #fdfdfd;
 }
-.hero-grid{display:grid;grid-template-columns:1.05fr 1fr;gap:clamp(32px,5vw,72px);align-items:center}
+.hero-grid{display:grid;grid-template-columns:0.92fr 1.08fr;gap:clamp(28px,4vw,56px);align-items:center}
 @media(max-width:980px){.hero-grid{grid-template-columns:1fr}}
 
 .hero-title{
@@ -157,12 +157,58 @@ color:#374151;
 }
 .hero-trust-avatars .hta:first-child{margin-left:0}
 
-/* overflow:visible so the intentionally-overhanging floating cards
-   (Reels at left:-2%, toast at right:-2%) aren't clipped; .lp-root's
+/* overflow:visible so the intentionally-overhanging device frames and toast
+   (iPhone at right:-2%, toast at left:-2%) aren't clipped; .lp-root's
    overflow-x:hidden is the page-level horizontal-scroll guard. */
 .hero-stage{position:relative;min-height:520px;overflow:visible}
 @media(max-width:980px){.hero-stage{min-height:480px;margin-top:8px}}
-@media(max-width:640px){.hero-stage{min-height:400px}}
+@media(max-width:640px){.hero-stage{min-height:420px}}
+
+/* ---- hero devices (MacBook + iPhone) ---- */
+.hd-stage{position:relative;width:100%;height:100%;min-height:inherit}
+.hd-grid{position:absolute;inset:0;width:100%;height:100%;opacity:.35;z-index:0}
+.hd-macbook{
+  position:absolute;top:22px;left:-6%;right:-12%;z-index:2;
+  filter:drop-shadow(0 34px 56px rgba(0,0,0,.24));
+  animation:hd-enter .8s cubic-bezier(.22,1,.36,1) both;
+}
+.hd-macbook img{display:block;width:100%;height:auto}
+.hd-iphone{
+  position:absolute;right:-1%;bottom:0;width:clamp(148px,15vw,178px);z-index:3;
+  filter:drop-shadow(0 26px 46px rgba(0,0,0,.30));
+  animation:hd-enter .8s cubic-bezier(.22,1,.36,1) .15s both;
+}
+.hd-iphone img{display:block;width:100%;height:auto}
+.hd-tag{
+  position:absolute;top:-13px;z-index:4;padding:5px 13px;border-radius:9999px;
+  font-family:-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif;
+  font-size:.68rem;font-weight:700;letter-spacing:.07em;white-space:nowrap;
+  box-shadow:0 8px 20px rgba(0,0,0,.16);
+}
+.hd-tag-agency{left:18px;background:#12151a;color:#fff}
+.hd-tag-client{left:50%;transform:translateX(-50%);background:#FFBF30;color:#12151a}
+.hd-toast{
+  position:absolute;left:-2%;bottom:30px;z-index:4;width:248px;
+  display:flex;gap:12px;align-items:flex-start;
+  background:#fff;border-radius:16px;padding:13px 15px;
+  box-shadow:0 20px 50px -12px rgba(0,0,0,.18),0 0 0 1px rgba(30,36,48,.06);
+  animation:hd-enter .8s cubic-bezier(.22,1,.36,1) .3s both,float-up 5s ease-in-out 1.4s infinite;
+}
+.hd-toast-check{width:36px;height:36px;border-radius:9999px;background:rgba(62,207,142,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.hd-toast-body{display:flex;flex-direction:column;min-width:0}
+.hd-toast-title{font-size:12px;font-weight:700;color:#12151a;margin-bottom:2px}
+.hd-toast-text{font-size:11px;color:#6b7280;line-height:1.4}
+.hd-toast-text strong{color:#12151a;font-weight:600;white-space:nowrap}
+.hd-toast-time{font-size:9px;color:#6b7280;margin-top:4px;letter-spacing:.06em;font-family:-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif}
+@keyframes hd-enter{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:640px){
+  .hd-macbook{top:34px;right:4%}
+  .hd-iphone{width:clamp(120px,30vw,150px);right:0}
+  .hd-toast{left:0;bottom:14px;width:min(240px,72%)}
+}
+@media (prefers-reduced-motion:reduce){
+  .hd-macbook,.hd-iphone,.hd-toast{animation:none}
+}
 
 /* ---- section shells ---- */
 section.lp-pad{padding:clamp(72px,10vw,128px) 0;position:relative}
@@ -530,6 +576,9 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
 }
 [data-theme='dark'] .hero-title{color:#e8eaf0}
 [data-theme='dark'] .hero-sub{color:#94a3b8}
+/* subtle rim light so the Space Black frames keep a silhouette on dark */
+[data-theme='dark'] .hd-macbook{filter:drop-shadow(0 0 1px rgba(255,255,255,.28)) drop-shadow(0 30px 56px rgba(0,0,0,.55))}
+[data-theme='dark'] .hd-iphone{filter:drop-shadow(0 0 1px rgba(255,255,255,.28)) drop-shadow(0 24px 46px rgba(0,0,0,.6))}
 
 /* alt sections */
 [data-theme='dark'] .lp-pad-alt{background:#0d0f13;border-color:rgba(255,255,255,.06)}
