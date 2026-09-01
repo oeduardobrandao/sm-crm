@@ -60,6 +60,47 @@ export async function headObject(key: string): Promise<{ contentLength: number; 
   }
 }
 
+/** Cópia via presign + fetch puro, SEM apagar a origem (metade "copy" do
+ * trashObject; reusa exatamente a técnica documentada lá, incluindo o aviso
+ * de NÃO enviar x-amz-copy-source como header -- o presigner o embute na
+ * query string e duplicá-lo dá 403 SignatureDoesNotMatch, causa raiz do
+ * incidente de 2026-08). Lança em falha. */
+export async function copyObjectSigned(sourceKey: string, destKey: string): Promise<void> {
+  const copySource = `${getBucket()}/${encodeURIComponent(sourceKey).replace(/%2F/g, "/")}`;
+  const cmd = new CopyObjectCommand({
+    Bucket: getBucket(),
+    CopySource: copySource,
+    Key: destKey,
+  });
+  const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
+  const res = await fetch(url, { method: "PUT", signal: AbortSignal.timeout(30_000) });
+  if (!res.ok) {
+    const bodyText = await res.text().catch(() => "");
+    throw new Error(`r2 copy failed: ${res.status}${bodyText ? ` ${bodyText.slice(0, 300)}` : ""}`);
+  }
+  await res.body?.cancel();
+}
+
+/** HEAD via presign + fetch puro (mesmo racional de putObject/deleteObject:
+ * o transport do SDK trava no edge runtime; este helper é para handlers que
+ * gravam estado). null em 404 ou qualquer falha. */
+export async function headObjectSigned(
+  key: string,
+): Promise<{ contentLength: number; contentType: string | null } | null> {
+  try {
+    const cmd = new HeadObjectCommand({ Bucket: getBucket(), Key: key });
+    const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
+    const res = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return null;
+    return {
+      contentLength: Number(res.headers.get("content-length") ?? 0),
+      contentType: res.headers.get("content-type"),
+    };
+  } catch (_e) {
+    return null;
+  }
+}
+
 /** Two-phase delete: copy to `trash/<key>` then delete the original. Automated
  * cleanup uses this instead of deleteObject so every automated removal has a
  * 30-day undo window (see purgeTrash) — the 2026-08 incident had none. Throws

@@ -144,6 +144,8 @@ function revalidatedAutomation(overrides: Record<string, unknown> = {}) {
     client_id: CLIENT_ID,
     ig_media_id: null,
     workflow_post_id: null,
+    dm_media: null,
+    dm_subtitle: null,
     ...overrides,
   };
 }
@@ -180,7 +182,13 @@ function baseClaimedSend(overrides: Partial<ClaimedSend> = {}): ClaimedSend {
 function baseSendCtx(
   db: Db,
   overrides: Partial<
-    { fetchFn: typeof fetch; decryptToken: (t: string) => Promise<string>; now: () => Date; random: () => number }
+    {
+      fetchFn: typeof fetch;
+      decryptToken: (t: string) => Promise<string>;
+      now: () => Date;
+      random: () => number;
+      signMediaUrl: (key: string) => Promise<string>;
+    }
   > = {},
 ) {
   return {
@@ -189,6 +197,7 @@ function baseSendCtx(
     decryptToken: overrides.decryptToken ?? okDecrypt,
     now: overrides.now ?? (() => FIXED_NOW),
     random: overrides.random ?? (() => 0),
+    ...(overrides.signMediaUrl !== undefined ? { signMediaUrl: overrides.signMediaUrl } : {}),
   };
 }
 
@@ -1656,5 +1665,218 @@ Deno.test("executeSend: sem dm_buttons -> body de texto puro e p_dm_kind='text'"
 
   const marks = rpcCallsFor(db, "mark_automation_dm_sent");
   assertEquals(marks.length, 1);
+  assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "text" });
+});
+
+// ══════════════════════ executeSend: dm_media (cartão com imagem) ═════════
+
+// A key precisa cair sob o prefixo do próprio tenant (`automation-media/<conta_id>/`)
+// -- `baseClaimedSend` usa CONTA_ID como conta_id do send, então a key do
+// fixture usa o MESMO CONTA_ID, não um placeholder.
+const CARD_MEDIA = {
+  key: `automation-media/${CONTA_ID}/img.jpg`,
+  content_type: "image/jpeg",
+  size_bytes: 5000,
+};
+
+const CARD_BODY = {
+  recipient: { comment_id: COMMENT_ID },
+  message: {
+    attachment: {
+      type: "template",
+      payload: {
+        template_type: "generic",
+        elements: [{
+          title: "msg",
+          subtitle: "sub",
+          image_url: `https://signed.example.com/${CARD_MEDIA.key}`,
+          buttons: [{ type: "web_url", url: "https://a.b", title: "Abrir" }],
+        }],
+      },
+    },
+  },
+};
+
+Deno.test("executeSend (card-1): com dm_media envia generic template e grava dm_kind card", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({
+      dm_media: CARD_MEDIA,
+      dm_subtitle: "sub",
+      dm_buttons: [{ title: "Abrir", url: "https://a.b" }],
+      public_reply: null,
+    }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  const { fetchFn, calls } = routedFetch({ privateReply: () => ({ body: {} }) });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn, signMediaUrl: (k: string) => Promise.resolve(`https://signed.example.com/${k}`) }),
+    baseClaimedSend({}),
+  );
+
+  const dmCalls = calls.filter((c) => c.url.includes("/messages"));
+  assertEquals(JSON.parse(dmCalls[0].body ?? "null"), CARD_BODY);
+  const marks = rpcCallsFor(db, "mark_automation_dm_sent");
+  assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "card" });
+});
+
+Deno.test("executeSend (card-1b): permanent no cartão entrega no button template (dm_kind card_fallback_buttons)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({
+      dm_media: CARD_MEDIA,
+      dm_subtitle: "sub",
+      dm_buttons: [{ title: "Abrir", url: "https://a.b" }],
+      public_reply: null,
+    }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
+
+  let attempt = 0;
+  const { fetchFn, calls } = routedFetch({
+    privateReply: () => {
+      attempt++;
+      if (attempt <= 1) return { status: 400, ok: false, body: { error: { message: "no", code: 100 } } };
+      return { body: {} };
+    },
+  });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn, signMediaUrl: (k: string) => Promise.resolve(`https://s/${k}`) }),
+    baseClaimedSend({}),
+  );
+
+  const dmCalls = calls.filter((c) => c.url.includes("/messages"));
+  assertEquals(dmCalls.length, 2);
+  // 2ª tentativa (a que entrega): button template com o texto do cartão
+  const second = JSON.parse(dmCalls[1].body ?? "null");
+  assertEquals(second.message.attachment.payload.template_type, "button");
+  assertEquals(second.message.attachment.payload.text, "msg\n\nsub");
+  const marks = rpcCallsFor(db, "mark_automation_dm_sent");
+  assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "card_fallback_buttons" });
+});
+
+Deno.test("executeSend (card-2): permanent no cartão cai para button template; permanent de novo cai para texto", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({
+      dm_media: CARD_MEDIA,
+      dm_subtitle: "sub",
+      dm_buttons: [{ title: "Abrir", url: "https://a.b" }],
+      public_reply: null,
+    }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  let attempt = 0;
+  const { fetchFn, calls } = routedFetch({
+    privateReply: () => {
+      attempt++;
+      if (attempt <= 2) return { status: 400, ok: false, body: { error: { message: "no", code: 100 } } };
+      return { body: {} };
+    },
+  });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn, signMediaUrl: (k: string) => Promise.resolve(`https://s/${k}`) }),
+    baseClaimedSend({}),
+  );
+
+  const dmCalls = calls.filter((c) => c.url.includes("/messages"));
+  assertEquals(dmCalls.length, 3);
+  // 2ª tentativa: button template com o texto do cartão
+  const second = JSON.parse(dmCalls[1].body ?? "null");
+  assertEquals(second.message.attachment.payload.template_type, "button");
+  assertEquals(second.message.attachment.payload.text, "msg\n\nsub");
+  // 3ª tentativa: texto puro com links
+  const third = JSON.parse(dmCalls[2].body ?? "null");
+  assertEquals(typeof third.message.text, "string");
+  const marks = rpcCallsFor(db, "mark_automation_dm_sent");
+  assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "card_fallback_text" });
+});
+
+Deno.test("executeSend (card-3): sem botões a cadeia é cartão -> texto (2 POSTs) e permanent duplo falha dm_permanent", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ dm_media: CARD_MEDIA, dm_subtitle: null, public_reply: null }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // failed
+
+  const { fetchFn, calls } = routedFetch({
+    privateReply: () => ({ status: 400, ok: false, body: { error: { message: "no", code: 100 } } }),
+  });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn, signMediaUrl: (k: string) => Promise.resolve(`https://s/${k}`) }),
+    baseClaimedSend({}),
+  );
+
+  assertEquals(calls.filter((c) => c.url.includes("/messages")).length, 2);
+  const updates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(updates[0].payload, { status: "failed", error_code: "dm_permanent" });
+});
+
+Deno.test("executeSend (card-4): falha ao pré-assinar a mídia agenda retry (transient), sem POST", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ dm_media: CARD_MEDIA, dm_subtitle: null, public_reply: null }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // retry
+
+  const { fetchFn, calls } = routedFetch({ privateReply: unreachable("privateReply") });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn, signMediaUrl: () => Promise.reject(new Error("r2 down")) }),
+    baseClaimedSend({ attempts: 0 }),
+  );
+
+  assertEquals(calls.length, 0);
+  const updates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(updates[0].payload, {
+    status: "retry",
+    next_attempt_at: new Date(FIXED_NOW.getTime() + BACKOFF_SECONDS[0] * 1000).toISOString(),
+    attempts: 1,
+  });
+});
+
+Deno.test("executeSend (card-5): key fora do prefixo do tenant ignora a mídia e envia como hoje", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({
+      dm_media: { ...CARD_MEDIA, key: "automation-media/OUTRA-CONTA/img.jpg" },
+      dm_subtitle: null,
+      public_reply: null,
+    }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  const { fetchFn, calls } = routedFetch({ privateReply: () => ({ body: {} }) });
+
+  await executeSend(
+    baseSendCtx(db, { fetchFn, signMediaUrl: unreachable("signMediaUrl") as never }),
+    baseClaimedSend({}),
+  );
+
+  const dmCalls = calls.filter((c) => c.url.includes("/messages"));
+  assertEquals(JSON.parse(dmCalls[0].body ?? "null").message, { text: "msg" });
+  const marks = rpcCallsFor(db, "mark_automation_dm_sent");
   assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "text" });
 });

@@ -60,4 +60,24 @@ describe('DmPreview', () => {
     );
     expect(screen.getByRole('link', { name: 'Zap' })).toHaveAttribute('href', '#');
   });
+
+  it('com mídia renderiza o cartão: imagem, título, subtítulo e botão', () => {
+    render(
+      <DmPreview
+        clientName="Dra. Marina"
+        text="Promoção de agosto"
+        buttons={[{ title: 'Comprar', url: 'https://loja.x' }]}
+        mediaUrl="blob:x"
+        subtitle="Vagas limitadas"
+      />,
+    );
+    const card = screen.getByTestId('dm-preview-card');
+    const img = card.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img).toHaveAttribute('src', 'blob:x');
+    expect(screen.getByText('Promoção de agosto')).toBeInTheDocument();
+    expect(screen.getByText('Vagas limitadas')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Comprar' })).toBeInTheDocument();
+    expect(screen.getByText('form.previewCardFallbackNote')).toBeInTheDocument();
+  });
 });

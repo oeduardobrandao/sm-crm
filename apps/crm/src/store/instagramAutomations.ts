@@ -16,6 +16,18 @@ export interface DmButton {
   url: string;
 }
 
+// Mídia do cartão de DM (generic template). Espelha o formato validado por
+// validate_ig_dm_media (migration 20260901102000): key SEMPRE em
+// automation-media/<conta_id>/..., content_type restrito, size_bytes em
+// bytes, width/height opcionais e só presentacionais.
+export interface DmMedia {
+  key: string;
+  content_type: string;
+  size_bytes: number;
+  width?: number;
+  height?: number;
+}
+
 export interface InstagramCommentAutomation {
   id: string;
   conta_id: string;
@@ -36,6 +48,12 @@ export interface InstagramCommentAutomation {
   keywords: string[];
   dm_message: string;
   dm_buttons: DmButton[];
+  /** Mídia do cartão (opcional). Com mídia, dm_message vira o TÍTULO do
+   * cartão (limite de 80, imposto pelo CHECK ica_dm_message_len_with_media). */
+  dm_media: DmMedia | null;
+  /** Subtítulo do cartão. Só existe junto de dm_media -- ver
+   * ica_dm_subtitle_with_media. */
+  dm_subtitle: string | null;
   public_reply: string | null;
   public_replies: string[];
   ativo: boolean;
@@ -59,7 +77,14 @@ export interface InstagramAutomationSend {
   skip_reason: string | null;
   error_code: string | null;
   dm_status: 'sent' | 'failed' | null;
-  dm_kind: 'text' | 'buttons' | 'buttons_fallback_text' | null;
+  dm_kind:
+    | 'text'
+    | 'buttons'
+    | 'buttons_fallback_text'
+    | 'card'
+    | 'card_fallback_buttons'
+    | 'card_fallback_text'
+    | null;
   public_reply_status: 'sent' | 'failed' | 'unknown' | null;
   public_reply_text: string | null;
   attempts: number;
@@ -113,6 +138,8 @@ export async function createInstagramAutomation(
     | 'keywords'
     | 'dm_message'
     | 'dm_buttons'
+    | 'dm_media'
+    | 'dm_subtitle'
     | 'public_reply'
     | 'public_replies'
   >,
@@ -147,6 +174,8 @@ export async function updateInstagramAutomation(
       | 'keywords'
       | 'dm_message'
       | 'dm_buttons'
+      | 'dm_media'
+      | 'dm_subtitle'
       | 'public_reply'
       | 'public_replies'
       | 'ativo'

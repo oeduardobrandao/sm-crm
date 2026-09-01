@@ -19,14 +19,18 @@ import {
 } from "../_shared/instagram-messaging.ts";
 import type { IgMessagingDeps } from "../_shared/instagram-messaging.ts";
 import {
+  buildCardMessage,
+  buildCardText,
   buildFallbackText,
   buildPrivateReplyMessage,
   parseDmButtons,
+  parseDmMedia,
 } from "../_shared/instagram-dm-payload.ts";
 import type { PrivateReplyMessage } from "../_shared/instagram-dm-payload.ts";
 import { decryptToken as defaultDecryptToken } from "../_shared/instagram-publish-utils.ts";
 import { notifyAutomationFailure } from "../_shared/automation-notify.ts";
 import { parsePublicReplies, pickPublicReply } from "../_shared/instagram-public-replies.ts";
+import { signGetUrl } from "../_shared/r2.ts";
 
 // deno-lint-ignore no-explicit-any
 type DbClient = { from: (table: string) => any; rpc: (name: string, params: Record<string, unknown>) => any };
@@ -38,7 +42,7 @@ const AUTOMATION_SCOPES = [
   "instagram_business_manage_comments",
   "instagram_business_manage_messages",
 ];
-type DmKind = "text" | "buttons" | "buttons_fallback_text";
+type DmKind = "text" | "buttons" | "buttons_fallback_text" | "card" | "card_fallback_buttons" | "card_fallback_text";
 
 const MAX_ATTEMPTS = 5;
 const RETRY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias, janela da private reply
@@ -85,6 +89,7 @@ interface SendContext {
   decryptToken: (t: string) => Promise<string>;
   now: () => Date;
   random?: () => number;
+  signMediaUrl?: (key: string) => Promise<string>;
 }
 
 interface EligibleAccount {
@@ -105,6 +110,8 @@ interface RevalidatedAutomation {
   ativo: boolean;
   dm_message: string;
   dm_buttons: unknown;
+  dm_media: unknown;
+  dm_subtitle: string | null;
   public_reply: string | null;
   public_replies: unknown;
   client_id: number;
@@ -419,7 +426,7 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
   const { data: automationData, error: autoErr } = await ctx.svc
     .from("instagram_comment_automations")
     .select(
-      "ativo, dm_message, dm_buttons, public_reply, public_replies, client_id, ig_media_id, workflow_post_id",
+      "ativo, dm_message, dm_buttons, dm_media, dm_subtitle, public_reply, public_replies, client_id, ig_media_id, workflow_post_id",
     )
     .eq("id", send.automation_id)
     .maybeSingle();
@@ -482,17 +489,80 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
   let deliveredKind: DmKind | null = null;
   if (!dmDelivered) {
     const buttons = parseDmButtons(automation.dm_buttons);
-    const dmAttempts: Array<{ message: PrivateReplyMessage; kind: DmKind }> = [
-      {
+    const rawMedia = parseDmMedia(automation.dm_media);
+    // Defesa em profundidade: espelha o CHECK de tenant do banco. Key fora do
+    // prefixo da própria conta NUNCA é pré-assinada; segue como automação sem
+    // mídia (o CHECK impede isso de existir, mas o envio não confia só nele).
+    const media = rawMedia && rawMedia.key.startsWith(`automation-media/${send.conta_id}/`) ? rawMedia : null;
+    if (rawMedia && !media) {
+      console.warn(`[instagram-webhook] dm_media com key fora do tenant no send ${send.send_id}; ignorando mídia`);
+    }
+
+    const dmAttempts: Array<{ message: PrivateReplyMessage; kind: DmKind }> = [];
+    if (media) {
+      // Presign no envio; falha aqui é infra nossa (R2), nunca da Graph ->
+      // trata como transient (retry com backoff), sem nenhum POST.
+      let imageUrl: string;
+      try {
+        // A DM vive para sempre no inbox e a Meta pode re-buscar a imagem
+        // bem depois do envio; o default de signGetUrl (1h) expiraria antes
+        // disso, então usamos um TTL de 7 dias quando não há signMediaUrl
+        // injetado (produção).
+        imageUrl = ctx.signMediaUrl ? await ctx.signMediaUrl(media.key) : await signGetUrl(media.key, 7 * 24 * 3600);
+      } catch (e) {
+        console.error(`[instagram-webhook] presign da mídia falhou no send ${send.send_id}:`, errMessage(e));
+        const commentTooOld = new Date(send.comment_created_at).getTime() <= nowDate.getTime() - RETRY_WINDOW_MS;
+        if (send.attempts >= MAX_ATTEMPTS || commentTooOld) {
+          const { error } = await ctx.svc
+            .from("instagram_automation_sends")
+            .update({ status: "failed", error_code: "retry_exhausted" })
+            .eq("id", send.send_id);
+          if (error) throw new Error(`instagram_automation_sends (retry_exhausted): ${errMessage(error)}`);
+        } else {
+          const backoffSeconds = BACKOFF_SECONDS[send.attempts];
+          const { error } = await ctx.svc
+            .from("instagram_automation_sends")
+            .update({
+              status: "retry",
+              next_attempt_at: new Date(nowDate.getTime() + backoffSeconds * 1000).toISOString(),
+              attempts: send.attempts + 1,
+            })
+            .eq("id", send.send_id);
+          if (error) throw new Error(`instagram_automation_sends (retry): ${errMessage(error)}`);
+        }
+        return;
+      }
+      const subtitle = typeof automation.dm_subtitle === "string" && automation.dm_subtitle.trim() !== ""
+        ? automation.dm_subtitle.trim()
+        : null;
+      const cardText = buildCardText(automation.dm_message, subtitle);
+      dmAttempts.push({
+        message: buildCardMessage(automation.dm_message, subtitle, imageUrl, buttons),
+        kind: "card",
+      });
+      if (buttons.length > 0) {
+        dmAttempts.push({
+          message: buildPrivateReplyMessage(cardText, buttons),
+          kind: "card_fallback_buttons",
+        });
+        dmAttempts.push({
+          message: { text: buildFallbackText(cardText, buttons) },
+          kind: "card_fallback_text",
+        });
+      } else {
+        dmAttempts.push({ message: { text: cardText }, kind: "card_fallback_text" });
+      }
+    } else {
+      dmAttempts.push({
         message: buildPrivateReplyMessage(automation.dm_message, buttons),
         kind: buttons.length > 0 ? "buttons" : "text",
-      },
-    ];
-    if (buttons.length > 0) {
-      dmAttempts.push({
-        message: { text: buildFallbackText(automation.dm_message, buttons) },
-        kind: "buttons_fallback_text",
       });
+      if (buttons.length > 0) {
+        dmAttempts.push({
+          message: { text: buildFallbackText(automation.dm_message, buttons) },
+          kind: "buttons_fallback_text",
+        });
+      }
     }
 
     for (let i = 0; i < dmAttempts.length && !dmDelivered; i++) {
@@ -509,10 +579,14 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
         const kind = classifyIgError(err);
 
         if (kind === "permanent" && i + 1 < dmAttempts.length) {
-          // A Meta recusou o button template; tenta UMA vez como texto puro.
+          // A Meta recusou a forma atual (template de cartão ou de botão);
+          // avança para a próxima tentativa da cadeia (pode ser outro
+          // template ou, na última posição, texto puro).
           const graphCode = err instanceof IgApiError ? err.graphCode : undefined;
           console.warn(
-            `[instagram-webhook] template recusado (permanent, code ${graphCode ?? "?"}) no send ${send.send_id}; tentando fallback de texto`,
+            `[instagram-webhook] ${dmAttempts[i].kind} recusado (permanent, code ${
+              graphCode ?? "?"
+            }) no send ${send.send_id}; avançando para ${dmAttempts[i + 1].kind}`,
           );
           continue;
         }

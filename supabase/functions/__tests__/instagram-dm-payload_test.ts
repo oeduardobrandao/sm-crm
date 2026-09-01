@@ -1,8 +1,11 @@
 import { assertEquals } from "./assert.ts";
 import {
+  buildCardMessage,
+  buildCardText,
   buildFallbackText,
   buildPrivateReplyMessage,
   parseDmButtons,
+  parseDmMedia,
 } from "../_shared/instagram-dm-payload.ts";
 
 // ---------- parseDmButtons (defensivo: nunca lança) ----------
@@ -107,4 +110,50 @@ Deno.test("buildFallbackText: extremo com só URLs enormes mantém as que cabem"
   assertEquals(out.includes(btn(2).url), true);
   // a 3ª (não cabe) fica de fora, sem quebrar as anteriores
   assertEquals(out.includes(btn(3).url), false);
+});
+
+// ---------- parseDmMedia ----------
+
+Deno.test("parseDmMedia: objeto válido vira DmMedia; malformado/ausente vira null", () => {
+  assertEquals(
+    parseDmMedia({ key: "automation-media/w1/a.jpg", content_type: "image/jpeg", size_bytes: 1000 }),
+    { key: "automation-media/w1/a.jpg", contentType: "image/jpeg", sizeBytes: 1000 },
+  );
+  assertEquals(parseDmMedia(null), null);
+  assertEquals(parseDmMedia(undefined), null);
+  assertEquals(parseDmMedia({ key: 7 }), null);
+  assertEquals(parseDmMedia("x"), null);
+});
+
+// ---------- buildCardMessage ----------
+
+Deno.test("buildCardMessage: generic template com 1 elemento; subtitle e buttons só quando presentes", () => {
+  assertEquals(
+    buildCardMessage("Título", "Sub", "https://r2/x.jpg", [{ title: "Abrir", url: "https://a.b" }]),
+    {
+      attachment: {
+        type: "template",
+        payload: {
+          template_type: "generic",
+          elements: [{
+            title: "Título",
+            subtitle: "Sub",
+            image_url: "https://r2/x.jpg",
+            buttons: [{ type: "web_url", url: "https://a.b", title: "Abrir" }],
+          }],
+        },
+      },
+    },
+  );
+  const noExtras = buildCardMessage("Só título", null, "https://r2/x.jpg", []);
+  // deno-lint-ignore no-explicit-any
+  const el = (noExtras as any).attachment.payload.elements[0];
+  assertEquals(el, { title: "Só título", image_url: "https://r2/x.jpg" });
+});
+
+// ---------- buildCardText ----------
+
+Deno.test("buildCardText: junta título e subtítulo; sem subtítulo devolve só o título", () => {
+  assertEquals(buildCardText("A", "B"), "A\n\nB");
+  assertEquals(buildCardText("A", null), "A");
 });

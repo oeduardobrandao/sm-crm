@@ -14,7 +14,8 @@
     "lastTriggered": "Last triggered",
     "active": "Active",
     "buttonsCount_one": "{{count}} button",
-    "buttonsCount_other": "{{count}} buttons"
+    "buttonsCount_other": "{{count}} buttons",
+    "cardBadge": "card"
   },
   "emptyNone": "No automations yet.",
   "emptyForClient": "No automations for this client.",
@@ -51,7 +52,9 @@
     "skipped": "Skipped",
     "retry": "Retrying",
     "processing": "Processing",
-    "buttons_fallback_text": "sent as text"
+    "buttons_fallback_text": "sent as text",
+    "card_fallback_buttons": "sent without image",
+    "card_fallback_text": "sent as text"
   },
   "sendsLoadError": "Could not load the send log.",
   "sendsEmpty": "No sends recorded yet.",
@@ -98,6 +101,15 @@
     "addReply": "Add variation",
     "removeReply": "Remove variation",
     "replyPlaceholderVariation": "Replied in your DMs! ✉️",
+    "mediaLabel": "DM media (optional)",
+    "mediaHelp": "Image or GIF up to 8 MB. With media, the DM becomes a card: image, short title and buttons.",
+    "mediaRemove": "Remove media",
+    "mediaInvalidType": "Use a JPG, PNG or GIF image.",
+    "mediaTooLarge": "The image must be at most 8 MB.",
+    "mediaUploadError": "Could not upload the image. Try again.",
+    "cardTitleLabel": "Card title",
+    "subtitleLabel": "Subtitle (optional)",
+    "validationDmWithMedia": "With media, the title is limited to 80 characters. Shorten the message.",
     "cancel": "Cancel",
     "save": "Save",
     "validationClient": "Pick a client",
@@ -119,6 +131,7 @@
     "previewAccount": "Your account",
     "previewEmpty": "Your message will appear here.",
     "previewDesktopNote": "Buttons show in the Instagram app. On Instagram web they may not be displayed.",
+    "previewCardFallbackNote": "If Instagram rejects the card, we send it without the image, keeping the link.",
     "previewNow": "Now",
     "previewComposer": "Reply..."
   },

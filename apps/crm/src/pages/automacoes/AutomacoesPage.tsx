@@ -60,6 +60,7 @@ import { useEntitlements } from '../../hooks/useEntitlements';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
 import { sanitizeUrl } from '@/utils/security';
+import { deleteAutomationMedia } from '../../services/automationMedia';
 import {
   getInstagramAutomations,
   updateInstagramAutomation,
@@ -178,9 +179,16 @@ export default function AutomacoesPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteInstagramAutomation(id),
-    onSuccess: () => {
+    mutationFn: (automation: InstagramCommentAutomation) =>
+      deleteInstagramAutomation(automation.id),
+    onSuccess: (_data, automation) => {
       toast.success(t('toastDeleted'));
+      // A automação some da tabela AGORA (delete confirmado); só depois disso
+      // libera a mídia dela, fire-and-forget -- exclusão é fluxo normal, não
+      // a exceção de "sessão abandonada" do form (ver AutomationFormDialog).
+      if (automation.dm_media) {
+        deleteAutomationMedia(automation.dm_media).catch(() => {});
+      }
       invalidate();
     },
     onError: (err) => onMutationError(err, t('toastDeleteError')),
@@ -471,6 +479,11 @@ export default function AutomacoesPage() {
                               {t('table.buttonsCount', { count: (a.dm_buttons ?? []).length })}
                             </Badge>
                           )}
+                          {a.dm_media && (
+                            <Badge variant="neutral" size="sm">
+                              {t('table.cardBadge')}
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>{a.dms_sent_count}</TableCell>
@@ -598,7 +611,7 @@ export default function AutomacoesPage() {
             <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+                if (deleteTarget) deleteMutation.mutate(deleteTarget);
                 setDeleteTarget(null);
               }}
             >
@@ -657,6 +670,16 @@ function SendsLog({
             {s.dm_kind === 'buttons_fallback_text' && (
               <Badge variant="neutral" size="sm">
                 {t('sendStatus.buttons_fallback_text')}
+              </Badge>
+            )}
+            {s.dm_kind === 'card_fallback_buttons' && (
+              <Badge variant="neutral" size="sm">
+                {t('sendStatus.card_fallback_buttons')}
+              </Badge>
+            )}
+            {s.dm_kind === 'card_fallback_text' && (
+              <Badge variant="neutral" size="sm">
+                {t('sendStatus.card_fallback_text')}
               </Badge>
             )}
             <span style={{ fontWeight: 600 }}>
