@@ -9,6 +9,7 @@ import {
   Bookmark,
   ChevronRight,
   FileText,
+  Film,
   Heart,
   MessageCircle,
   Play,
@@ -24,7 +25,7 @@ import {
   Trash2,
   type LucideIcon,
 } from 'lucide-react';
-import { StatCard, type StatTone } from '@/components/StatCard';
+import { StatCard, type StatTone, type StatDelta } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -75,12 +76,14 @@ import {
   sendReportEmail,
   getReportDownloadUrl,
   getClientRateBaseline,
+  getStoriesAnalytics,
   type KpiDelta,
   type PostAnalytics,
   type PostTag,
   type AudienceDemographics,
   type BestPostingTimes,
   type AnalyticsReport,
+  type StoriesAnalyticsResponse,
 } from '../../services/analytics';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
 import { deleteReportDoc, listReportDocs } from '../../services/reportDocs';
@@ -459,6 +462,19 @@ function KpiCard({
       }
     />
   );
+}
+
+/** Builds a StatCard trend delta straight from a current/previous KPI pair --
+ *  for cards that render via StatCard directly instead of through KpiCard
+ *  (no period tab / previous-value footer needed). Mirrors the KpiDelta ->
+ *  StatDelta mapping KpiCard does internally above. */
+function toStatDelta(
+  current: number | undefined,
+  previous: number | null | undefined,
+): StatDelta | undefined {
+  if (current == null || previous == null) return undefined;
+  const { direction, deltaPercent } = makeDelta(current, previous);
+  return { direction, percent: deltaPercent, caption: 'vs período anterior' };
 }
 
 // ---- Follower Chart ----
@@ -1091,6 +1107,10 @@ function AnalyticsContent({
   const { data: onlineRes } = useQuery({
     queryKey: ['analytics-times', clientId],
     queryFn: () => getBestPostingTimes(clientId).catch(() => null),
+  });
+  const storiesQuery = useQuery({
+    queryKey: ['stories-analytics', clientId, days, periodStart, periodEnd],
+    queryFn: () => getStoriesAnalytics(clientId, days, dateRange),
   });
 
   const isLoading = loadingOv || loadingPosts;
@@ -1992,6 +2012,10 @@ function AnalyticsContent({
 
       {baselineQuery.data && <BaselineCard baseline={baselineQuery.data.baseline} />}
 
+      {storiesQuery.data && storiesQuery.data.kpis.current.stories_count > 0 && (
+        <StoriesSection data={storiesQuery.data} />
+      )}
+
       {/* Type + Topic */}
       <div className="widgets-grid animate-up">
         <div className="card">
@@ -2829,6 +2853,171 @@ function AnalyticsContent({
 
       <NewReportDialog open={newReportOpen} onOpenChange={setNewReportOpen} clientId={clientId} />
     </div>
+  );
+}
+
+// ---- Stories Section ----
+function StoriesSection({ data }: { data: StoriesAnalyticsResponse }) {
+  const { current, previous } = data.kpis;
+
+  return (
+    <section className="animate-up" style={{ animationDelay: '0.4s' }}>
+      <div className="flex items-center gap-2 mb-4">
+        <Film className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
+        <h2 className="text-lg font-semibold" style={{ color: 'var(--text-main)' }}>
+          Stories
+        </h2>
+      </div>
+
+      <StatCardGrid maxCols={4}>
+        <StatCard
+          label="Stories publicados"
+          value={current.stories_count}
+          icon={Film}
+          tone="blue"
+          delta={toStatDelta(current.stories_count, previous?.stories_count)}
+        />
+        <StatCard
+          label="Alcance de Stories"
+          value={formatNumber(current.total_reach)}
+          icon={Eye}
+          tone="violet"
+          delta={toStatDelta(current.total_reach, previous?.total_reach)}
+        />
+        <StatCard
+          label="Taxa de retenção"
+          value={`${(current.avg_retention_rate * 100).toFixed(1)}%`}
+          icon={ChevronRight}
+          tone="green"
+          delta={toStatDelta(current.avg_retention_rate, previous?.avg_retention_rate)}
+        />
+        <StatCard
+          label="Respostas"
+          value={current.total_replies}
+          icon={MessageCircle}
+          tone="pink"
+          delta={toStatDelta(current.total_replies, previous?.total_replies)}
+        />
+      </StatCardGrid>
+
+      {data.stories.length > 0 && (
+        <div className="card animate-up mt-4" style={{ animationDelay: '0.5s' }}>
+          <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-muted)' }}>
+            Detalhamento por story
+          </h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <th
+                    className="text-left py-2 px-2 font-medium"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    Data
+                  </th>
+                  <th
+                    className="text-right py-2 px-2 font-medium"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    Alcance
+                  </th>
+                  <th
+                    className="text-right py-2 px-2 font-medium"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    Impressões
+                  </th>
+                  <th
+                    className="text-right py-2 px-2 font-medium"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    Retenção
+                  </th>
+                  <th
+                    className="text-right py-2 px-2 font-medium"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    Avançaram
+                  </th>
+                  <th
+                    className="text-right py-2 px-2 font-medium"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    Voltaram
+                  </th>
+                  <th
+                    className="text-right py-2 px-2 font-medium"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    Saídas
+                  </th>
+                  <th
+                    className="text-right py-2 px-2 font-medium"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    Respostas
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.stories.map((story) => {
+                  const retPct = (story.retention_rate * 100).toFixed(1);
+                  // --danger fails AA as text on a light card (see
+                  // DESIGN_SYSTEM.md); keep it for the fill and swap in
+                  // --danger-text for the foreground on the low-retention chip.
+                  const retFill =
+                    story.retention_rate > 0.7
+                      ? 'var(--success)'
+                      : story.retention_rate > 0.5
+                        ? 'var(--warning)'
+                        : 'var(--danger)';
+                  const retText = story.retention_rate > 0.5 ? retFill : 'var(--danger-text)';
+                  return (
+                    <tr
+                      key={story.instagram_media_id}
+                      style={{ borderBottom: '1px solid var(--border-color)' }}
+                    >
+                      <td className="py-2 px-2" style={{ color: 'var(--text-main)' }}>
+                        {new Date(story.posted_at).toLocaleDateString('pt-BR', {
+                          day: '2-digit',
+                          month: 'short',
+                        })}
+                      </td>
+                      <td className="text-right py-2 px-2" style={{ color: 'var(--text-main)' }}>
+                        {formatNumber(story.reach)}
+                      </td>
+                      <td className="text-right py-2 px-2" style={{ color: 'var(--text-main)' }}>
+                        {formatNumber(story.impressions)}
+                      </td>
+                      <td className="text-right py-2 px-2">
+                        <span
+                          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                          style={{ backgroundColor: `${retFill}20`, color: retText }}
+                        >
+                          {retPct}%
+                        </span>
+                      </td>
+                      <td className="text-right py-2 px-2" style={{ color: 'var(--text-muted)' }}>
+                        {story.taps_forward}
+                      </td>
+                      <td className="text-right py-2 px-2" style={{ color: 'var(--text-muted)' }}>
+                        {story.taps_back}
+                      </td>
+                      <td className="text-right py-2 px-2" style={{ color: 'var(--text-muted)' }}>
+                        {story.exits}
+                      </td>
+                      <td className="text-right py-2 px-2" style={{ color: 'var(--text-muted)' }}>
+                        {story.replies}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

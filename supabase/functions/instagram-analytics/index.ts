@@ -1464,6 +1464,138 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
       return json({ ok: true, sent_to: cliente.email });
     }
 
+    // ==========================================
+    // GET /stories/:clientId?days=30
+    // ==========================================
+    const storiesMatch = path.match(/^\/stories\/(\d+)$/);
+    if (req.method === 'GET' && storiesMatch) {
+      const clientId = storiesMatch[1];
+      await verifyClientOwnership(serviceClient, clientId, contaId);
+      const account = await getAccount(serviceClient, clientId);
+
+      const daysParam = parseInt(url.searchParams.get('days') || '30', 10);
+      const startParam = url.searchParams.get('start');
+      const endParam = url.searchParams.get('end');
+
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+      const todayStr = today.toISOString().slice(0, 10);
+
+      let startDate: string;
+      let endDate: string;
+
+      if (startParam && endParam) {
+        startDate = startParam;
+        endDate = endParam > todayStr ? todayStr : endParam;
+      } else {
+        const days = Math.min(Math.max(1, Number.isFinite(daysParam) ? daysParam : 30), 365);
+        const start = new Date(today);
+        start.setUTCDate(start.getUTCDate() - days + 1);
+        startDate = start.toISOString().slice(0, 10);
+        endDate = todayStr;
+      }
+
+      // Validate range
+      const startMs = Date.parse(startDate + 'T00:00:00Z');
+      const endMs = Date.parse(endDate + 'T00:00:00Z');
+      if (isNaN(startMs) || isNaN(endMs) || startMs > endMs) {
+        return json({ error: 'invalid_date_range' }, 400);
+      }
+      if ((endMs - startMs) / 86_400_000 > 365) {
+        return json({ error: 'range_too_large', max_days: 365 }, 400);
+      }
+
+      // Current period: uncapped aggregate for KPIs (never let the display
+      // cap below undercount totals for busy accounts)
+      const { data: allStories } = await serviceClient
+        .from('instagram_story_insights')
+        .select('reach, impressions, replies, taps_forward, exits')
+        .eq('instagram_account_id', account.id)
+        .gte('posted_at', startDate + 'T00:00:00Z')
+        .lt('posted_at', endDate + 'T24:00:00Z');
+
+      const kpiRows = allStories ?? [];
+
+      // Compute KPIs
+      const totalImpressions = kpiRows.reduce((s, r) => s + (r.impressions ?? 0), 0);
+      const totalExits = kpiRows.reduce((s, r) => s + (r.exits ?? 0), 0);
+      const totalTapsForward = kpiRows.reduce((s, r) => s + (r.taps_forward ?? 0), 0);
+      const currentKpis = {
+        stories_count: kpiRows.length,
+        total_reach: kpiRows.reduce((s, r) => s + (r.reach ?? 0), 0),
+        total_impressions: totalImpressions,
+        total_replies: kpiRows.reduce((s, r) => s + (r.replies ?? 0), 0),
+        avg_retention_rate: totalImpressions > 0 ? 1 - (totalExits / totalImpressions) : 0,
+        avg_skip_rate: totalImpressions > 0 ? totalTapsForward / totalImpressions : 0,
+        total_exits: totalExits,
+      };
+
+      // Current period: capped, sorted list for the returned stories table
+      const { data: stories } = await serviceClient
+        .from('instagram_story_insights')
+        .select('*')
+        .eq('instagram_account_id', account.id)
+        .gte('posted_at', startDate + 'T00:00:00Z')
+        .lt('posted_at', endDate + 'T24:00:00Z')
+        .order('reach', { ascending: false, nullsFirst: false })
+        .limit(200);
+
+      const rows = stories ?? [];
+
+      // Previous period (same duration, ending day before start)
+      const rangeDays = Math.round((endMs - startMs) / 86_400_000) + 1;
+      const prevEnd = new Date(startMs - 86_400_000);
+      const prevStart = new Date(prevEnd.getTime() - (rangeDays - 1) * 86_400_000);
+      const prevStartStr = prevStart.toISOString().slice(0, 10);
+      const prevEndStr = prevEnd.toISOString().slice(0, 10);
+
+      const { data: prevStories } = await serviceClient
+        .from('instagram_story_insights')
+        .select('reach, impressions, replies, taps_forward, exits')
+        .eq('instagram_account_id', account.id)
+        .gte('posted_at', prevStartStr + 'T00:00:00Z')
+        .lt('posted_at', prevEndStr + 'T24:00:00Z');
+
+      let previousKpis = null;
+      if (prevStories && prevStories.length > 0) {
+        const pImpressions = prevStories.reduce((s, r) => s + (r.impressions ?? 0), 0);
+        const pExits = prevStories.reduce((s, r) => s + (r.exits ?? 0), 0);
+        const pTapsForward = prevStories.reduce((s, r) => s + (r.taps_forward ?? 0), 0);
+        previousKpis = {
+          stories_count: prevStories.length,
+          total_reach: prevStories.reduce((s, r) => s + (r.reach ?? 0), 0),
+          total_impressions: pImpressions,
+          total_replies: prevStories.reduce((s, r) => s + (r.replies ?? 0), 0),
+          avg_retention_rate: pImpressions > 0 ? 1 - (pExits / pImpressions) : 0,
+          avg_skip_rate: pImpressions > 0 ? pTapsForward / pImpressions : 0,
+          total_exits: pExits,
+        };
+      }
+
+      // Per-story computed rates
+      const storyInsights = rows.map(r => ({
+        instagram_media_id: r.instagram_media_id,
+        media_type: r.media_type,
+        thumbnail_url: r.thumbnail_url,
+        posted_at: r.posted_at,
+        reach: r.reach ?? 0,
+        impressions: r.impressions ?? 0,
+        replies: r.replies ?? 0,
+        taps_forward: r.taps_forward ?? 0,
+        taps_back: r.taps_back ?? 0,
+        exits: r.exits ?? 0,
+        shares: r.shares ?? 0,
+        retention_rate: (r.impressions ?? 0) > 0 ? 1 - ((r.exits ?? 0) / r.impressions) : 0,
+        skip_rate: (r.impressions ?? 0) > 0 ? (r.taps_forward ?? 0) / r.impressions : 0,
+        back_rate: (r.impressions ?? 0) > 0 ? (r.taps_back ?? 0) / r.impressions : 0,
+      }));
+
+      return json({
+        stories: storyInsights,
+        kpis: { current: currentKpis, previous: previousKpis },
+      });
+    }
+
     return new Response('Not Found', { status: 404, headers: corsHeaders });
 
   } catch (err: any) {

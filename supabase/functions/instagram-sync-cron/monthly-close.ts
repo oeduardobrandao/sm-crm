@@ -97,3 +97,101 @@ export async function closePreviousMonthIfMissing(
   const { error } = await db.from(TABLE).insert(row);
   if (error) console.warn(`[IG-SYNC-CRON] monthly close insert failed: ${error.message}`);
 }
+
+const STORY_INSIGHTS_TABLE = "instagram_story_insights";
+const DAILY_TABLE = "instagram_account_metrics_daily";
+
+/**
+ * Closes the STORIES portion of the monthly aggregate for one account/month.
+ * Independent of closePreviousMonthIfMissing above: stories totals are summed
+ * from our own instagram_story_insights table (populated by the hourly
+ * story-ingest, Task 3), not fetched from the Graph API, so none of the
+ * retention/idempotency-via-Graph-fetch guards above apply here.
+ *
+ * Coverage guard: only writes the stories_* columns when at least one daily
+ * row for the month has stories_count_day set -- i.e. the hourly sync's story
+ * ingest actually ran for this account during the month. Without this guard
+ * an account with zero Stories activity tracked would get a fabricated
+ * all-zero row instead of staying NULL (no data collected, not "zero
+ * stories").
+ *
+ * Idempotent via `.is("stories_count_month", null)` on the update: once a
+ * month's stories totals are written, a later tick never recomputes them.
+ */
+// deno-lint-ignore no-explicit-any
+export async function closeStoriesForMonth(
+  db: any, accountId: string, month: string,
+): Promise<void> {
+  const monthStart = `${month}-01`;
+  const nextMonthStart = `${nextMonth(month)}-01`;
+
+  // Coverage signal: only write stories columns if the account has at least
+  // one daily row with stories_count_day set for the month. Both bounds are
+  // full "YYYY-MM-DD" dates (not bare "YYYY-MM") -- snapshot_date is a `date`
+  // column, and Postgres's date parser requires all three fields.
+  const { data: coverage } = await db
+    .from(DAILY_TABLE)
+    .select("id")
+    .eq("instagram_account_id", accountId)
+    .gte("snapshot_date", monthStart)
+    .lt("snapshot_date", nextMonthStart)
+    .not("stories_count_day", "is", null)
+    .limit(1)
+    .maybeSingle();
+
+  if (!coverage) return; // No stories data collected this month; leave NULL
+
+  // Aggregate from the per-story insights table. A failed read here must
+  // NOT be treated as "zero stories": the coverage guard above already
+  // confirmed real stories exist for this month, so defaulting a failed
+  // read to an empty array would write a false all-zero total and lock it
+  // in via the `.is("stories_count_month", null)` idempotency guard below
+  // (review finding). Bail without writing instead -- the row stays NULL,
+  // which is exactly the signal the stories-retry pass in backfill.ts looks
+  // for on a later tick.
+  const { data: agg, error: aggError } = await db
+    .from(STORY_INSIGHTS_TABLE)
+    .select("reach, impressions, replies, taps_forward, taps_back, exits")
+    .eq("instagram_account_id", accountId)
+    .gte("posted_at", `${monthStart}T00:00:00Z`)
+    .lt("posted_at", `${nextMonthStart}T00:00:00Z`);
+
+  if (aggError) {
+    console.warn(
+      `[IG-SYNC-CRON] closeStoriesForMonth: aggregate query failed for ${accountId}/${month}: ${aggError.message}`,
+    );
+    return;
+  }
+
+  const rows = agg ?? [];
+  const totals = {
+    stories_count_month: rows.length,
+    // deno-lint-ignore no-explicit-any
+    stories_reach_month: rows.reduce((s: number, r: any) => s + (r.reach ?? 0), 0),
+    // deno-lint-ignore no-explicit-any
+    stories_impressions_month: rows.reduce((s: number, r: any) => s + (r.impressions ?? 0), 0),
+    // deno-lint-ignore no-explicit-any
+    stories_replies_month: rows.reduce((s: number, r: any) => s + (r.replies ?? 0), 0),
+    // deno-lint-ignore no-explicit-any
+    stories_taps_forward_month: rows.reduce((s: number, r: any) => s + (r.taps_forward ?? 0), 0),
+    // deno-lint-ignore no-explicit-any
+    stories_taps_back_month: rows.reduce((s: number, r: any) => s + (r.taps_back ?? 0), 0),
+    // deno-lint-ignore no-explicit-any
+    stories_exits_month: rows.reduce((s: number, r: any) => s + (r.exits ?? 0), 0),
+  };
+
+  const { error } = await db
+    .from(TABLE)
+    .update(totals)
+    .eq("instagram_account_id", accountId)
+    .eq("month", monthStart)
+    .is("stories_count_month", null);
+  if (error) {
+    console.warn(`[IG-SYNC-CRON] closeStoriesForMonth: update failed for ${accountId}/${month}: ${error.message}`);
+  }
+}
+
+function nextMonth(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+}
