@@ -49,7 +49,7 @@ CREATE OR REPLACE FUNCTION public.enforce_cliente_notify_columns()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_user_changed boolean;
@@ -84,7 +84,7 @@ BEGIN
 
   IF v_user_changed THEN
     IF NOT EXISTS (
-      SELECT 1 FROM workspace_members
+      SELECT 1 FROM public.workspace_members
       WHERE user_id = auth.uid()
         AND workspace_id = NEW.conta_id
         AND role IN ('owner', 'admin')
@@ -114,14 +114,14 @@ RETURNS TABLE (
 )
 LANGUAGE sql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
-  UPDATE clientes c
+  UPDATE public.clientes c
      SET event_claim_through = p_now,
          event_claimed_at = p_now
    WHERE c.id IN (
-     SELECT c2.id FROM clientes c2
-     JOIN workspaces w ON w.id = c2.conta_id
+     SELECT c2.id FROM public.clientes c2
+     JOIN public.workspaces w ON w.id = c2.conta_id
      WHERE w.send_client_event_emails = true
        AND c2.send_event_email = true
        AND c2.status = 'ativo'
