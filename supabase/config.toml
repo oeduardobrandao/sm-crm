@@ -209,3 +209,9 @@ verify_jwt = false
 
 [functions.automation-media]
 verify_jwt = false
+
+[functions.client-event-email-cron]
+verify_jwt = false
+
+[functions.client-email-unsub]
+verify_jwt = false
