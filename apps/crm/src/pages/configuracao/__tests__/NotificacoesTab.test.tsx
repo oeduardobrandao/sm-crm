@@ -55,14 +55,70 @@ vi.mock('@/store', () => ({
 }));
 
 const CLIENTES_FIXTURE = [
-  { id: 1, nome: 'Ana Clínica', email: 'ana@example.com', send_report_email: true },
-  { id: 2, nome: 'Beto Estética', email: 'beto@example.com', send_report_email: false },
-  { id: 3, nome: 'Clínica Sem Email', email: '', send_report_email: false },
+  {
+    id: 1,
+    nome: 'Ana Clínica',
+    email: 'ana@example.com',
+    status: 'ativo',
+    send_report_email: true,
+    send_event_email: true,
+    event_email_unsub_at: null,
+  },
+  {
+    id: 2,
+    nome: 'Beto Estética',
+    email: 'beto@example.com',
+    status: 'ativo',
+    send_report_email: false,
+    send_event_email: false,
+    event_email_unsub_at: null,
+  },
+  {
+    id: 3,
+    nome: 'Clínica Sem Email',
+    email: '',
+    status: 'ativo',
+    send_report_email: false,
+    send_event_email: false,
+    event_email_unsub_at: null,
+  },
+  // Task 8: status != 'ativo' shows a muted "(pausado)"/"(encerrado)" tag next
+  // to the name — the real gate lives server-side, this is just explanatory.
+  {
+    id: 4,
+    nome: 'Davi Pausado',
+    email: 'davi@example.com',
+    status: 'pausado',
+    send_report_email: true,
+    send_event_email: true,
+    event_email_unsub_at: null,
+  },
+  {
+    id: 5,
+    nome: 'Fernanda Encerrada',
+    email: 'fernanda@example.com',
+    status: 'encerrado',
+    send_report_email: false,
+    send_event_email: true,
+    event_email_unsub_at: null,
+  },
+  // Task 8: a client who clicked the unsubscribe link in a digest email —
+  // reactivating requires the AlertDialog confirm, not a plain toggle.
+  {
+    id: 6,
+    nome: 'Eva Desativada',
+    email: 'eva@example.com',
+    status: 'ativo',
+    send_report_email: false,
+    send_event_email: false,
+    event_email_unsub_at: '2026-08-01T00:00:00Z',
+  },
 ];
 const BRANDING_FIXTURE = {
   brand_color: '#eab308',
   report_splash_url: null,
   send_report_email: true,
+  send_client_event_emails: false,
 };
 
 // Radix Switch: mocked to a plain native checkbox (checked/onCheckedChange/
@@ -350,6 +406,109 @@ describe('NotificacoesTab', () => {
       await waitFor(() =>
         expect(updateWorkspaceBrandingMock).toHaveBeenCalledWith({ send_report_email: false }),
       );
+    });
+
+    describe('Pendências do Hub (Fase 2)', () => {
+      it('shows the header label and subtext', async () => {
+        renderTab();
+        expect(await screen.findByText('Pendências do Hub')).toBeInTheDocument();
+        expect(
+          screen.getByText('posts a aprovar e mensagens não lidas · máx. 1 e-mail a cada 4h'),
+        ).toBeInTheDocument();
+      });
+
+      it('toggling the master row calls updateWorkspaceBranding({ send_client_event_emails: true })', async () => {
+        renderTab();
+        const masterSwitch = (await screen.findByLabelText(
+          'Pendências do Hub para todos os clientes',
+        )) as HTMLInputElement;
+        expect(masterSwitch.checked).toBe(false); // BRANDING_FIXTURE.send_client_event_emails: false
+        fireEvent.click(masterSwitch);
+        await waitFor(() =>
+          expect(updateWorkspaceBrandingMock).toHaveBeenCalledWith({
+            send_client_event_emails: true,
+          }),
+        );
+      });
+
+      it('toggling a client row calls updateCliente(id, { send_event_email: false })', async () => {
+        renderTab();
+        const switchEl = (await screen.findByLabelText(
+          'Pendências do Hub para Ana Clínica (ana@example.com)',
+        )) as HTMLInputElement;
+        expect(switchEl.checked).toBe(true);
+        fireEvent.click(switchEl);
+        await waitFor(() =>
+          expect(updateClienteMock).toHaveBeenCalledWith(1, { send_event_email: false }),
+        );
+      });
+
+      it('shows "·" for a client with no email, in both columns', async () => {
+        renderTab();
+        await screen.findByText('Clínica Sem Email');
+        expect(
+          screen.queryByLabelText(/Relatório mensal para Clínica Sem Email/),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByLabelText(/Pendências do Hub para Clínica Sem Email/),
+        ).not.toBeInTheDocument();
+        // Two "·" placeholders on that row: one per column.
+        const dots = screen.getAllByText('·').filter((el) => el.title === 'Sem e-mail cadastrado');
+        expect(dots).toHaveLength(2);
+      });
+
+      it('shows a muted "(pausado)"/"(encerrado)" tag next to the name for a non-active client', async () => {
+        renderTab();
+        await screen.findByText('Davi Pausado');
+        expect(screen.getByText('(pausado)')).toBeInTheDocument();
+        await screen.findByText('Fernanda Encerrada');
+        expect(screen.getByText('(encerrado)')).toBeInTheDocument();
+        // The active clients in the fixture never get a status tag.
+        expect(screen.queryByText('(ativo)')).not.toBeInTheDocument();
+      });
+
+      it('dims the switch and explains an unsubscribed client, gating reactivation behind an AlertDialog confirm', async () => {
+        renderTab();
+        const switchEl = (await screen.findByLabelText(
+          'Pendências do Hub para Eva Desativada (eva@example.com)',
+        )) as HTMLInputElement;
+        expect(switchEl.checked).toBe(false); // send_event_email: false
+        expect(screen.getByText('desativado pelo cliente')).toBeInTheDocument();
+
+        // Clicking opens a confirm dialog instead of toggling directly.
+        fireEvent.click(switchEl);
+        expect(updateClienteMock).not.toHaveBeenCalled();
+        expect(
+          await screen.findByText(
+            'O cliente pediu para não receber estes e-mails. Reativar mesmo assim?',
+          ),
+        ).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Reativar' }));
+        await waitFor(() =>
+          expect(updateClienteMock).toHaveBeenCalledWith(6, {
+            send_event_email: true,
+            event_email_unsub_at: null,
+          }),
+        );
+      });
+
+      it('cancelling the reactivation dialog makes no call', async () => {
+        renderTab();
+        const switchEl = await screen.findByLabelText(
+          'Pendências do Hub para Eva Desativada (eva@example.com)',
+        );
+        fireEvent.click(switchEl);
+        fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
+        await waitFor(() =>
+          expect(
+            screen.queryByText(
+              'O cliente pediu para não receber estes e-mails. Reativar mesmo assim?',
+            ),
+          ).not.toBeInTheDocument(),
+        );
+        expect(updateClienteMock).not.toHaveBeenCalled();
+      });
     });
 
     it('filters the client list by name, case-insensitively', async () => {
