@@ -298,3 +298,75 @@ begin
   raise notice 'PASS 6: dm_key unica';
 end $$;
 rollback;
+
+-- ============================================================
+-- 7. Anexo staged (mensagem_id NULL) e privado ao autor: outro participante
+--    da MESMA conversa nao le a linha staged de A; A sempre le a propria;
+--    uma vez o anexo linkado a uma mensagem (enviado), B passa a ler.
+-- ============================================================
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid;
+  v_a uuid := gen_random_uuid();  -- autor do anexo
+  v_b uuid := gen_random_uuid();  -- outro participante da mesma conversa
+  v_conv bigint;
+  v_anexo bigint;
+  v_msg bigint;
+  v_rows int;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_team_chat": true}'::jsonb);
+  insert into auth.users (id) values (v_a), (v_b);
+  insert into workspace_members (user_id, workspace_id, role)
+    values (v_a, v_ws, 'owner'), (v_b, v_ws, 'admin');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id in (v_a, v_b);
+
+  insert into equipe_conversas (conta_id, tipo, nome, created_by)
+    values (v_ws, 'grupo', 'Time', v_a) returning id into v_conv;
+  insert into equipe_conversa_participantes (conversa_id, conta_id, user_id)
+    values (v_conv, v_ws, v_a), (v_conv, v_ws, v_b);
+
+  -- Staged: simula o que equipe_chat_anexo_finalize gravaria (service role).
+  insert into equipe_mensagem_anexos
+    (conta_id, conversa_id, mensagem_id, r2_key, file_name, mime_type, size_bytes, created_by)
+  values
+    (v_ws, v_conv, null, 'equipe-chat/' || v_ws::text || '/staged.png',
+     'staged.png', 'image/png', 1000, v_a)
+  returning id into v_anexo;
+
+  -- B (participante, NAO autor): zero linhas enquanto staged.
+  execute 'set local role authenticated';
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_b, 'role', 'authenticated')::text, true);
+  perform 1 from equipe_mensagem_anexos where id = v_anexo;
+  get diagnostics v_rows = row_count;
+  assert v_rows = 0, 'participante que nao e o autor nao le o anexo staged de outro';
+
+  -- A (autor): sempre le a propria linha staged.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_a, 'role', 'authenticated')::text, true);
+  perform 1 from equipe_mensagem_anexos where id = v_anexo;
+  get diagnostics v_rows = row_count;
+  assert v_rows = 1, 'autor sempre le o proprio anexo staged';
+  execute 'reset role';
+
+  -- Envia: linka o anexo a uma mensagem (como send_equipe_mensagem faria).
+  insert into equipe_mensagens (conversa_id, conta_id, author_user_id, content)
+    values (v_conv, v_ws, v_a, 'com anexo') returning id into v_msg;
+  update equipe_mensagem_anexos set mensagem_id = v_msg where id = v_anexo;
+
+  -- B agora le: mensagem_id preenchido, nao staged mais.
+  execute 'set local role authenticated';
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_b, 'role', 'authenticated')::text, true);
+  perform 1 from equipe_mensagem_anexos where id = v_anexo;
+  get diagnostics v_rows = row_count;
+  assert v_rows = 1, 'apos enviado, qualquer participante le o anexo';
+  execute 'reset role';
+
+  raise notice 'PASS 7: anexo staged e privado ao autor ate o envio';
+end $$;
+rollback;

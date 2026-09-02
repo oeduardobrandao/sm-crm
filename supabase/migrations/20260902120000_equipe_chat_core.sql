@@ -145,8 +145,15 @@ CREATE POLICY equipe_mensagens_member_insert ON equipe_mensagens
     )
   );
 
+-- Staged (mensagem_id NULL) = rascunho ainda nao enviado: so o autor le a
+-- propria linha. Uma vez enviado (mensagem_id preenchido), qualquer
+-- participante da conversa le.
 CREATE POLICY equipe_anexos_member_select ON equipe_mensagem_anexos
-  FOR SELECT USING (public.is_equipe_conversa_member(equipe_mensagem_anexos.conversa_id));
+  FOR SELECT USING (
+    public.is_equipe_conversa_member(equipe_mensagem_anexos.conversa_id)
+    AND (equipe_mensagem_anexos.mensagem_id IS NOT NULL
+         OR equipe_mensagem_anexos.created_by = auth.uid())
+  );
 
 -- Bypass service_role em todas (padrao do repo).
 CREATE POLICY equipe_conversas_service_role_bypass ON equipe_conversas

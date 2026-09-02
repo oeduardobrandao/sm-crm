@@ -185,7 +185,8 @@ export function createEquipeChatMediaHandler(deps: Deps) {
         const anexoId = Number(body.anexo_id);
         if (!Number.isInteger(anexoId)) return json({ error: "anexo_id invalido" }, 400);
         const { data: anexo } = await svc.from("equipe_mensagem_anexos")
-          .select("id, conta_id, conversa_id, r2_key").eq("id", anexoId).maybeSingle();
+          .select("id, conta_id, conversa_id, mensagem_id, r2_key, created_by")
+          .eq("id", anexoId).maybeSingle();
         if (!anexo || anexo.conta_id !== contaId) return json({ error: "Not found" }, 404);
         const { data: pt } = await svc.from("equipe_conversa_participantes")
           .select("id").eq("conversa_id", anexo.conversa_id).eq("user_id", user.id)
@@ -193,6 +194,13 @@ export function createEquipeChatMediaHandler(deps: Deps) {
         // 404, nao 403: um membro do workspace que nao participa da
         // conversa nao deve conseguir confirmar que o anexo_id existe.
         if (!pt) return json({ error: "Not found" }, 404);
+        // Staged (mensagem_id NULL) = rascunho ainda nao enviado: so o autor
+        // pode ver. Um participante que nao e o autor recebe o mesmo 404 de
+        // "nao existe" (sem oraculo de existencia) -- uma vez enviado
+        // (mensagem_id preenchido), qualquer participante pode ver.
+        if (anexo.mensagem_id === null && anexo.created_by !== user.id) {
+          return json({ error: "Not found" }, 404);
+        }
         const signed = await deps.signGetUrl(anexo.r2_key, SIGNED_GET_TTL);
         return json({ url: signed }, 200);
       }

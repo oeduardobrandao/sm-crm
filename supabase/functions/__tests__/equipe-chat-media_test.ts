@@ -188,10 +188,11 @@ Deno.test("anexo-url: participante recebe GET assinado", async () => {
   db.queue("workspaces", "select", { data: { plan_id: "plan-1" }, error: null });
   db.queue("workspace_plan_overrides", "select", { data: null, error: null });
   db.queue("plans", "select", { data: { name: "Max", feature_team_chat: true }, error: null });
-  // Anexo do tenant com a conversa; depois a participacao.
+  // Anexo do tenant com a conversa, JA ENVIADO (mensagem_id preenchido) por
+  // OUTRO usuario; depois a participacao do caller.
   db.queue("equipe_mensagem_anexos", "select", {
-    data: { id: 8, conta_id: "conta-1", conversa_id: 7,
-            r2_key: "equipe-chat/conta-1/fixed-uuid.jpg" },
+    data: { id: 8, conta_id: "conta-1", conversa_id: 7, mensagem_id: 55,
+            r2_key: "equipe-chat/conta-1/fixed-uuid.jpg", created_by: "user-2" },
     error: null,
   });
   db.queue("equipe_conversa_participantes", "select", { data: { id: 1 }, error: null });
@@ -199,6 +200,46 @@ Deno.test("anexo-url: participante recebe GET assinado", async () => {
   assertEquals(res.status, 200);
   const body = await res.json();
   assertEquals(body.url, "https://get.example.com/equipe-chat/conta-1/fixed-uuid.jpg");
+});
+
+Deno.test("anexo-url: staged (nao enviado) visivel ao autor", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", { data: { active_workspace_id: "conta-1" }, error: null });
+  db.queue("workspace_members", "select", { data: { user_id: "user-1", role: "agent" }, error: null });
+  db.queue("workspaces", "select", { data: { plan_id: "plan-1" }, error: null });
+  db.queue("workspace_plan_overrides", "select", { data: null, error: null });
+  db.queue("plans", "select", { data: { name: "Max", feature_team_chat: true }, error: null });
+  // Staged: mensagem_id NULL, criado pelo proprio caller.
+  db.queue("equipe_mensagem_anexos", "select", {
+    data: { id: 8, conta_id: "conta-1", conversa_id: 7, mensagem_id: null,
+            r2_key: "equipe-chat/conta-1/fixed-uuid.jpg", created_by: "user-1" },
+    error: null,
+  });
+  db.queue("equipe_conversa_participantes", "select", { data: { id: 1 }, error: null });
+  const res = await makeHandler(db)(req("anexo-url", { anexo_id: 8 }));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.url, "https://get.example.com/equipe-chat/conta-1/fixed-uuid.jpg");
+});
+
+Deno.test("anexo-url: staged (nao enviado) de OUTRO participante da 404", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", { data: { active_workspace_id: "conta-1" }, error: null });
+  db.queue("workspace_members", "select", { data: { user_id: "user-1", role: "agent" }, error: null });
+  db.queue("workspaces", "select", { data: { plan_id: "plan-1" }, error: null });
+  db.queue("workspace_plan_overrides", "select", { data: null, error: null });
+  db.queue("plans", "select", { data: { name: "Max", feature_team_chat: true }, error: null });
+  // Staged: mensagem_id NULL, criado por OUTRO participante da mesma conversa.
+  db.queue("equipe_mensagem_anexos", "select", {
+    data: { id: 8, conta_id: "conta-1", conversa_id: 7, mensagem_id: null,
+            r2_key: "equipe-chat/conta-1/fixed-uuid.jpg", created_by: "user-2" },
+    error: null,
+  });
+  db.queue("equipe_conversa_participantes", "select", { data: { id: 1 }, error: null });
+  const res = await makeHandler(db)(req("anexo-url", { anexo_id: 8 }));
+  assertEquals(res.status, 404);
 });
 
 Deno.test("anexo-url: anexo do tenant mas caller nao participa da 404 (nao 403 -- nao confirma existencia)", async () => {
