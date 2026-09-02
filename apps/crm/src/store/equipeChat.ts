@@ -127,6 +127,17 @@ export async function getEquipeChatMembers(): Promise<EquipeChatMember[]> {
   return (data ?? []) as EquipeChatMember[];
 }
 
+/** IDs dos participantes de uma conversa. Select direto (RLS cobre — a
+ * própria tabela só é legível pra quem participa da conversa), não RPC. */
+export async function getEquipeConversaParticipantes(conversaId: number): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('equipe_conversa_participantes')
+    .select('user_id')
+    .eq('conversa_id', conversaId);
+  if (error) throw error;
+  return (data ?? []).map((row) => (row as { user_id: string }).user_id);
+}
+
 export async function sendEquipeMensagem(
   conversaId: number,
   content: string,

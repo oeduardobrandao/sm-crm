@@ -626,3 +626,53 @@ begin
   raise notice 'PASS 7: get_equipe_conversas uma linha por conversa';
 end $$;
 rollback;
+
+-- ============================================================
+-- 8. get_equipe_chat_members: membro do workspace ve o roster completo;
+--    removido de workspace_members (mas ainda com active_workspace_id
+--    apontando pro workspace) recebe zero linhas -- regressao da guarda de
+--    membership explicita que faltava nesta RPC (era a UNICA das seis do
+--    chat de equipe sem o mesmo "IF v_conta IS NULL OR NOT EXISTS (...
+--    workspace_members ...) THEN RETURN" que as demais ja tinham).
+-- ============================================================
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid;
+  v_a uuid := gen_random_uuid();
+  v_gone uuid := gen_random_uuid();
+  v_n int;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_team_chat": true}'::jsonb);
+  insert into auth.users (id) values (v_a), (v_gone);
+  insert into workspace_members (user_id, workspace_id, role)
+    values (v_a, v_ws, 'owner'), (v_gone, v_ws, 'agent');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id in (v_a, v_gone);
+
+  -- Membro ativo: ve os 2 colegas do workspace.
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_a, 'role', 'authenticated')::text, true);
+  select count(*) into v_n from public.get_equipe_chat_members();
+  assert v_n = 2, format('membro ativo esperava 2 linhas, achou %s', v_n);
+  reset role;
+
+  -- Remove v_gone do workspace; active_workspace_id do profile continua
+  -- apontando para v_ws (get_my_conta_id() nao le workspace_members, so
+  -- profiles.active_workspace_id -- e exatamente o cenario que a guarda
+  -- explicita de membership existe para cobrir).
+  delete from workspace_members where user_id = v_gone and workspace_id = v_ws;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_gone, 'role', 'authenticated')::text, true);
+  select count(*) into v_n from public.get_equipe_chat_members();
+  assert v_n = 0, format('removido do workspace deveria ver 0 linhas, achou %s', v_n);
+  reset role;
+
+  raise notice 'PASS 8: get_equipe_chat_members barra removido do workspace';
+end $$;
+rollback;

@@ -11,6 +11,7 @@ import type { NavGroup } from './nav-data';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { useEffectiveNavFeatures } from '../../hooks/useEffectiveNavFeatures';
 import { useMensagensUnread } from '../../hooks/useMensagensUnread';
+import { useEquipeChatUnread } from '../../hooks/useEquipeChatUnread';
 import { FlagIcon } from '@mesaas/ui/FlagIcon';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { switchWorkspace } from '@/store/workspace';
@@ -30,6 +31,8 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
   const { features: rawFeatures } = useWorkspaceLimits();
   const features = useEffectiveNavFeatures(rawFeatures as Record<string, boolean> | null);
   const mensagensUnread = useMensagensUnread();
+  const equipeUnread = useEquipeChatUnread();
+  const mensagensBadge = mensagensUnread + equipeUnread;
   const [isDark, setIsDark] = useState(
     document.documentElement.getAttribute('data-theme') === 'dark',
   );
@@ -162,9 +165,9 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                 >
                   <i className={ItemIcon} />
                   <span>{t(item.labelKey, item.label)}</span>
-                  {item.id === 'mensagens' && mensagensUnread > 0 && (
+                  {item.id === 'mensagens' && mensagensBadge > 0 && (
                     <span className="nav-badge nav-badge--count" data-testid="mensagens-nav-badge">
-                      {mensagensUnread > 99 ? '99+' : mensagensUnread}
+                      {mensagensBadge > 99 ? '99+' : mensagensBadge}
                     </span>
                   )}
                 </a>

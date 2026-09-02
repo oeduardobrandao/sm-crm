@@ -453,7 +453,16 @@ BEGIN
     RAISE EXCEPTION 'authenticated only';
   END IF;
   SELECT public.get_my_conta_id() INTO v_conta;
-  IF v_conta IS NULL THEN RETURN; END IF;
+  -- Defense-in-depth: guarda explicita de membership do workspace, alem do
+  -- que get_my_conta_id() ja garante (ver comentario em get_equipe_conversas).
+  -- Antes desta funcao era a UNICA RPC do chat de equipe sem essa guarda
+  -- explicita.
+  IF v_conta IS NULL OR NOT EXISTS (
+    SELECT 1 FROM workspace_members wm
+     WHERE wm.workspace_id = v_conta AND wm.user_id = v_uid
+  ) THEN
+    RETURN;
+  END IF;
   RETURN QUERY
   SELECT wm.user_id,
          COALESCE(mb.nome, p.nome,

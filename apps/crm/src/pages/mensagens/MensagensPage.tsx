@@ -10,6 +10,8 @@ import { ConversationList } from './components/ConversationList';
 import { ConversationThread } from './components/ConversationThread';
 import { EquipeConversationList } from './components/EquipeConversationList';
 import { EquipeThread } from './components/EquipeThread';
+import { NovaConversaDialog } from './components/NovaConversaDialog';
+import { EquipeDetalhesSheet } from './components/EquipeDetalhesSheet';
 import {
   ThreadLoadError,
   ThreadLoading,
@@ -67,6 +69,11 @@ interface EquipePaneProps {
   invalidId: boolean;
   onBack?: () => void;
   onSelect: (conversaId: number) => void;
+  onNovaConversa: () => void;
+  detalhesOpen: boolean;
+  onOpenDetalhes: () => void;
+  onCloseDetalhes: () => void;
+  onLeftGrupo: () => void;
 }
 
 /** Owns the equipe-chat data + realtime hooks. The parent only mounts this
@@ -85,6 +92,11 @@ function EquipePane({
   invalidId,
   onBack,
   onSelect,
+  onNovaConversa,
+  detalhesOpen,
+  onOpenDetalhes,
+  onCloseDetalhes,
+  onLeftGrupo,
 }: EquipePaneProps) {
   const equipe = useEquipeChatData(conversaId);
   useEquipeChatRealtime(conversaId);
@@ -94,6 +106,8 @@ function EquipePane({
   // Same rationale as the clientes side: a background refetch failing on top
   // of already-cached data must not tear down the list or an open thread.
   const conversasHardError = equipe.conversas.isError && equipe.conversas.data == null;
+  const conversaAtual =
+    conversaId != null ? equipe.conversas.data?.find((c) => c.conversa_id === conversaId) : null;
 
   function renderThreadSlot() {
     if (invalidId) return <ThreadNotFound onBack={onBack} />;
@@ -102,16 +116,16 @@ function EquipePane({
     if (conversasHardError) {
       return <ThreadLoadError onRetry={() => equipe.conversas.refetch()} onBack={onBack} />;
     }
-    const conversa = equipe.conversas.data?.find((c) => c.conversa_id === conversaId);
-    if (!conversa) return <ThreadNotFound onBack={onBack} />;
+    if (!conversaAtual) return <ThreadNotFound onBack={onBack} />;
     return (
       <EquipeThread
         key={conversaId}
-        conversa={conversa}
+        conversa={conversaAtual}
         mensagens={equipe.mensagens}
         send={equipe.send}
         markSeen={equipe.markSeen}
         onBack={onBack}
+        onOpenDetalhes={onOpenDetalhes}
       />
     );
   }
@@ -133,11 +147,18 @@ function EquipePane({
             isError={conversasHardError}
             selectedConversaId={conversaId}
             onSelect={onSelect}
-            onNovaConversa={() => {}}
+            onNovaConversa={onNovaConversa}
           />
         </div>
       )}
       {showThread && renderThreadSlot()}
+      {detalhesOpen && conversaAtual && (
+        <EquipeDetalhesSheet
+          conversa={conversaAtual}
+          onClose={onCloseDetalhes}
+          onLeft={onLeftGrupo}
+        />
+      )}
     </>
   );
 }
@@ -179,6 +200,22 @@ export default function MensagensPage() {
       if (clientesOn && tab !== 'clientes') setTab('clientes');
     }
   }, [equipeMode, clienteIdParam, equipeOn, clientesOn, tab]);
+
+  // Snap-to-enabled: the `tab` initializer above runs while useWorkspaceLimits
+  // is still loading (both flags false at that point), so it always defaults
+  // to 'clientes' -- for a team-chat-only workspace on bare /mensagens, the
+  // sync effect above never corrects it either (it only reacts to an
+  // equipe/cliente URL, not the flag-only case), leaving a blank clientes
+  // pane. Once the entitlement check has actually resolved, nudge `tab` to
+  // whichever section is really enabled.
+  useEffect(() => {
+    if (limitsLoading) return;
+    if (tab === 'clientes' && !clientesOn && equipeOn) setTab('equipe');
+    else if (tab === 'equipe' && !equipeOn && clientesOn) setTab('clientes');
+  }, [limitsLoading, clientesOn, equipeOn, tab]);
+
+  const [novaConversaOpen, setNovaConversaOpen] = useState(false);
+  const [detalhesOpen, setDetalhesOpen] = useState(false);
 
   function selectTab(next: MensagensTab) {
     setTab(next);
@@ -290,6 +327,21 @@ export default function MensagensPage() {
           invalidId={invalidEquipeId}
           onBack={onBack}
           onSelect={(id) => navigate(`/mensagens/equipe/${id}`)}
+          onNovaConversa={() => setNovaConversaOpen(true)}
+          detalhesOpen={detalhesOpen}
+          onOpenDetalhes={() => setDetalhesOpen(true)}
+          onCloseDetalhes={() => setDetalhesOpen(false)}
+          onLeftGrupo={() => {
+            setDetalhesOpen(false);
+            navigate('/mensagens');
+          }}
+        />
+      )}
+      {equipeOn && (
+        <NovaConversaDialog
+          open={novaConversaOpen}
+          onOpenChange={setNovaConversaOpen}
+          onCreated={(id) => navigate(`/mensagens/equipe/${id}`)}
         />
       )}
     </div>

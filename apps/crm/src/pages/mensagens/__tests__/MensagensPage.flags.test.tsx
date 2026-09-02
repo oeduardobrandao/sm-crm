@@ -57,6 +57,15 @@ vi.mock('@/store', () => ({
   sendEquipeMensagem: mockEquipeSend,
   getMembros: mockMembros,
   getTarefas: mockTarefas,
+  // NovaConversaDialog / EquipeDetalhesSheet (Task 11) always mount once
+  // feature_team_chat is on (their own `open`/`detalhesOpen` gates keep the
+  // actual RPCs from firing in these tests), but the mocked @/store module
+  // must still expose these bindings or referencing them at render time
+  // throws "No export is defined on the mock".
+  getEquipeChatMembers: vi.fn().mockResolvedValue([]),
+  getEquipeConversaParticipantes: vi.fn().mockResolvedValue([]),
+  createEquipeConversa: vi.fn(),
+  manageEquipeConversa: vi.fn(),
 }));
 
 // Same rationale as above: useMentionSearch's post section hits this module.
@@ -297,5 +306,64 @@ describe('MensagensPage — feature-flag behavior', () => {
     // so assert on the list row's testid instead of the ambiguous text.
     expect(await screen.findByTestId('conversa-14')).toBeInTheDocument();
     expect(screen.getByTestId('current-path')).toHaveTextContent('/mensagens/14');
+  });
+
+  it('(f) limits resolve to team-chat-only after loading: bare /mensagens snaps to the equipe list instead of staying blank', async () => {
+    // Mount time: useWorkspaceLimits is still loading, so both flags read
+    // false (the real shape isLoading returns) -- the `tab` state initializer
+    // defaults to 'clientes' under that reading. Neither pane's `Boolean &&`
+    // gate is on yet, so this first render is legitimately blank.
+    mockWorkspaceFeatures = null;
+    mockLimitsLoading = true;
+    mockIsUnlimited = false;
+
+    const utils = renderPage('/mensagens');
+    expect(screen.queryByText('ACME')).not.toBeInTheDocument();
+    expect(screen.queryByText('Time de Design')).not.toBeInTheDocument();
+
+    // Limits resolve: feature_mensagens off, feature_team_chat on. Without
+    // the snap-to-enabled effect, `tab` would stay stuck at its mount-time
+    // 'clientes' default and the page would stay blank forever (clientesOn
+    // is false so the clientes pane never mounts either).
+    mockWorkspaceFeatures = { feature_mensagens: false, feature_team_chat: true };
+    mockLimitsLoading = false;
+    utils.rerender(
+      <QueryClientProvider client={utils.qc}>
+        <MemoryRouter initialEntries={['/mensagens']}>
+          <Routes>
+            <Route
+              path="/mensagens"
+              element={
+                <>
+                  <MensagensPage />
+                  <PathProbe />
+                </>
+              }
+            />
+            <Route
+              path="/mensagens/equipe/:conversaId"
+              element={
+                <>
+                  <MensagensPage />
+                  <PathProbe />
+                </>
+              }
+            />
+            <Route
+              path="/mensagens/:clienteId"
+              element={
+                <>
+                  <MensagensPage />
+                  <PathProbe />
+                </>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Time de Design')).toBeInTheDocument();
+    expect(screen.queryByText('ACME')).not.toBeInTheDocument();
   });
 });
