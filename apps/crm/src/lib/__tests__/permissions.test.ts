@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AGENT_PRESET, PERMISSION_MODULES, derivePermission } from '../permissions';
+import { AGENT_ROLE_PRESET, PERMISSION_MODULES, derivePermission } from '../permissions';
 import { deriveFinancialAccess } from '../financialAccess';
 import type { MyMembership } from '@/store/workspace';
 
@@ -88,11 +88,11 @@ it('TT-08: agent legado: leads/ver, financeiro/ver, equipe/ver, contratos/ver, c
   expect(derivePermission(m, 'configuracoes', 'ver')).toBe(false);
 });
 
-// TT-05..08 paridade extra: iterar AGENT_PRESET inteiro contra o legado.
-it('TT-05..08 paridade: agent legado segue AGENT_PRESET para TODOS os módulos', () => {
+// TT-05..08 paridade extra: iterar AGENT_ROLE_PRESET inteiro contra o legado.
+it('TT-05..08 paridade: agent legado segue AGENT_ROLE_PRESET para TODOS os módulos', () => {
   const m = legacy('agent');
   for (const mod of PERMISSION_MODULES) {
-    const level = AGENT_PRESET[mod];
+    const level = AGENT_ROLE_PRESET[mod];
     expect(derivePermission(m, mod, 'ver')).toBe(level === 'ver' || level === 'editar');
     expect(derivePermission(m, mod, 'editar')).toBe(level === 'editar');
   }
@@ -133,6 +133,33 @@ it('TT-13: papel custom {}: tudo false', () => {
   expect(derivePermission(m, 'clientes', 'editar')).toBe(false);
 });
 
+// Não é um caso TT (não tem par no pgTAP 72, que nunca produz esta forma):
+// role_id setado mas permissions null/undefined — o formato que uma falha de
+// embed no getMyMembership() (RLS bloqueando o JOIN embutido, papel deletado
+// entre o JOIN e a leitura, hiccup de rede) produziria. Regressão direta do
+// bug fail-OPEN: a versão anterior de derivePermission chaveava em
+// `permissions !== null`, então essa forma caía no fallback `agent`
+// (AGENT_ROLE_PRESET), liberando 'editar' em 7 módulos para alguém que
+// deveria estar restrito a um papel customizado. Correto é falhar FECHADO:
+// tudo 'none' quando role_id aponta para um papel mas o conteúdo dele não
+// chegou.
+it('role_id setado + permissions null (falha de embed) => tudo false, NUNCA o fallback agent', () => {
+  const m: MyMembership = {
+    role: 'agent',
+    can_see_financials: true,
+    role_id: 'r-1',
+    permissions: null,
+  };
+  for (const mod of PERMISSION_MODULES) {
+    expect(derivePermission(m, mod, 'ver')).toBe(false);
+    expect(derivePermission(m, mod, 'editar')).toBe(false);
+  }
+  // Especificamente os módulos que AGENT_ROLE_PRESET libera para o agent
+  // legado — são exatamente os que um fail-open vazaria aqui.
+  expect(derivePermission(m, 'clientes', 'editar')).toBe(false);
+  expect(derivePermission(m, 'tarefas', 'editar')).toBe(false);
+});
+
 // TT-14: sem membership => false na SQL (nenhuma linha em workspace_members).
 // No cliente essa condição nunca aparece como "linha ausente": membership só
 // é null enquanto a hidratação não resolveu (ou falhou), um estado distinto
@@ -148,12 +175,26 @@ it("TT-14 (equivalente TS): membership null => 'unknown', não false", () => {
 });
 
 // TT-15 na SQL: ação inválida ('excluir') => false mesmo para owner (a query
-// valida a ação ANTES de resolver o papel); módulo inexistente ('xyz') =>
-// false para agent.
+// valida a ação ANTES de resolver o papel, `IF p_action NOT IN ('ver','editar')
+// THEN RETURN false`); módulo inexistente ('xyz') => false — pgTAP só exercita
+// esta metade com um AGENT (`has_permission_for(v_agent, ...)`), nunca com
+// owner.
 //
-// No mirror TS a metade "módulo inválido" é idêntica: o PERMISSION_MODULES
-// check roda antes de qualquer resolução de papel (mesma posição do SQL), e
-// nem owner escapa dele — testado abaixo para os dois papéis.
+// Isso importa porque a SQL NÃO tem um catálogo de módulos de verdade: owner
+// (`IF v_role = 'owner' THEN RETURN true`) e admin fora de financeiro
+// retornam antes de qualquer checagem de `p_module` — só a branch `agent`
+// nega módulo desconhecido, via o `ELSE false` do seu CASE (e a branch de
+// papel customizado, via `COALESCE(v_perms ->> p_module, 'none')`). Um
+// `has_permission_for(owner, ws, 'xyz', 'ver')` de verdade retornaria `true`
+// na SQL.
+//
+// O mirror TS (`derivePermission`) tem um `PERMISSION_MODULES.includes()`
+// explícito logo no topo, ANTES de checar o papel — isso é uma divergência
+// TS-side DELIBERADA (defesa em profundidade: nega módulo inválido para
+// TODO papel, owner incluso), não paridade com a SQL. É por isso que o teste
+// abaixo cobre agent E owner com módulo inválido: não é reproduzir o
+// comportamento da SQL para owner (que seria `true`), é travar o
+// comportamento mais estrito que este arquivo escolheu ter.
 //
 // A metade "ação inválida" NÃO tem equivalente comportamental aqui: `action`
 // é tipado como `PermissionAction = 'ver' | 'editar'` a nível de TypeScript, e
@@ -167,9 +208,15 @@ it("TT-14 (equivalente TS): membership null => 'unknown', não false", () => {
 // `action` — por isso o teste abaixo verifica o comportamento REAL do mirror,
 // não a garantia SQL, que TypeScript já garante de outra forma (em
 // compile-time, não em runtime).
-it('TT-15: módulo inválido => false para qualquer papel (ação inválida é inatingível sob o tipo PermissionAction)', () => {
+it('TT-15: módulo inválido => false para qualquer papel (checagem TS-only, mais estrita que a SQL); ação inválida é inatingível sob o tipo PermissionAction', () => {
   const badModule = 'xyz' as unknown as (typeof PERMISSION_MODULES)[number];
+  // Este é o caso que a SQL de fato testa (TT-15, com agent) — o `ELSE
+  // false` do CASE do agent nega módulo desconhecido.
   expect(derivePermission(legacy('agent'), badModule, 'ver')).toBe(false);
+  // Este NÃO tem par na SQL: `has_permission_for(owner, ...)` retornaria
+  // `true` para qualquer módulo, incluindo um inexistente, porque a branch
+  // de owner roda antes de qualquer checagem de módulo. O mirror TS nega
+  // aqui de propósito (guard mais estrito) — ver o comentário acima.
   expect(derivePermission(legacy('owner'), badModule, 'ver')).toBe(false);
 
   const badAction = 'excluir' as unknown as 'ver' | 'editar';
@@ -209,11 +256,12 @@ describe('paridade deriveFinancialAccess <-> derivePermission(financeiro, ver)',
   }
 });
 
-// Snapshot congelando AGENT_PRESET: uma mudança acidental do preset (que
-// precisa ficar em sincronia com o preset hardcoded em SQL e em
-// supabase/functions/_shared/permissions.ts) deve falhar este teste.
-it('AGENT_PRESET snapshot (mudar aqui exige mudar SQL + edge function juntos)', () => {
-  expect(AGENT_PRESET).toMatchInlineSnapshot(`
+// Snapshot congelando AGENT_ROLE_PRESET: uma mudança acidental do preset
+// (que precisa ficar em sincronia com o preset hardcoded na SQL, em
+// public.has_permission_for — supabase/functions/_shared/permissions.ts NÃO
+// tem preset próprio, é só catálogo + wrapper de RPC) deve falhar este teste.
+it('AGENT_ROLE_PRESET snapshot (mudar aqui exige mudar public.has_permission_for junto)', () => {
+  expect(AGENT_ROLE_PRESET).toMatchInlineSnapshot(`
     {
       "analytics": "ver",
       "aprovacoes": "editar",
