@@ -41,21 +41,30 @@ vi.mock('../../../../store', async (importOriginal) => {
     ]),
     getMembros: vi.fn().mockResolvedValue([]),
     getWorkflowTemplates: vi.fn().mockResolvedValue([]),
-    getWorkflowEtapas: vi.fn().mockImplementation((wfId: number) =>
-      Promise.resolve([
-        {
-          id: wfId * 100,
-          workflow_id: wfId,
-          ordem: 0,
-          nome: 'Etapa 1',
-          tipo: 'padrao',
-          prazo_dias: 3,
-          tipo_prazo: 'corridos',
-          status: 'ativo',
-          iniciado_em: '2026-04-01T00:00:00Z',
-        },
-      ]),
-    ),
+    getAllActiveEtapas: vi.fn().mockResolvedValue([
+      {
+        id: 100,
+        workflow_id: 1,
+        ordem: 0,
+        nome: 'Etapa 1',
+        tipo: 'padrao',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: '2026-04-01T00:00:00Z',
+      },
+      {
+        id: 200,
+        workflow_id: 2,
+        ordem: 0,
+        nome: 'Etapa 1',
+        tipo: 'padrao',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: '2026-04-01T00:00:00Z',
+      },
+    ]),
     getDeadlineInfo: vi
       .fn()
       .mockReturnValue({ estourado: false, urgente: false, diasRestantes: 3, resumo: 'em dia' }),
@@ -216,21 +225,30 @@ describe('useEntregasData', () => {
     ]);
     (store.getMembros as any).mockResolvedValue([]);
     (store.getWorkflowTemplates as any).mockResolvedValue([]);
-    (store.getWorkflowEtapas as any).mockImplementation((wfId: number) =>
-      Promise.resolve([
-        {
-          id: wfId * 100,
-          workflow_id: wfId,
-          ordem: 0,
-          nome: 'Etapa 1',
-          tipo: 'padrao',
-          prazo_dias: 3,
-          tipo_prazo: 'corridos',
-          status: 'ativo',
-          iniciado_em: '2026-04-01T00:00:00Z',
-        },
-      ]),
-    );
+    (store.getAllActiveEtapas as any).mockResolvedValue([
+      {
+        id: 100,
+        workflow_id: 1,
+        ordem: 0,
+        nome: 'Etapa 1',
+        tipo: 'padrao',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: '2026-04-01T00:00:00Z',
+      },
+      {
+        id: 200,
+        workflow_id: 2,
+        ordem: 0,
+        nome: 'Etapa 1',
+        tipo: 'padrao',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: '2026-04-01T00:00:00Z',
+      },
+    ]);
     (store.getDeadlineInfo as any).mockReturnValue({
       estourado: false,
       urgente: false,

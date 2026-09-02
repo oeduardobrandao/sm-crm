@@ -4,7 +4,7 @@ import {
   getClientes,
   getMembros,
   getWorkflowTemplates,
-  getWorkflowEtapas,
+  getAllActiveEtapas,
   getDeadlineInfo,
   getWorkflowPostsCounts,
   getWorkflowApprovedPostsCounts,
@@ -205,18 +205,17 @@ export function useEntregasData() {
   const activeWorkflows = workflows.filter((w) => w.status === 'ativo');
 
   const etapasQuery = useQuery({
-    queryKey: ['all-active-etapas', activeWorkflows.map((w) => w.id).join(',')],
+    queryKey: ['all-active-etapas'],
     queryFn: async () => {
+      const rows = await getAllActiveEtapas();
       const map = new Map<number, WorkflowEtapa[]>();
-      await Promise.all(
-        activeWorkflows.map(async (w) => {
-          const etapas = await getWorkflowEtapas(w.id!);
-          map.set(w.id!, etapas);
-        }),
-      );
+      for (const row of rows) {
+        const list = map.get(row.workflow_id);
+        if (list) list.push(row);
+        else map.set(row.workflow_id, [row]);
+      }
       return map;
     },
-    enabled: !loadingWf,
   });
 
   const etapasMap: Map<number, WorkflowEtapa[]> = etapasQuery.data || new Map();
