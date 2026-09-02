@@ -823,7 +823,16 @@ export default function EntregasPage() {
             onColumnSortChange={handleBoardColumnSortChange}
           />
         ))}
-      {activeView === 'chart' && <ChartView cards={filteredCards} />}
+      {activeView === 'chart' && (
+        <ChartView
+          cards={filteredCards}
+          totalCards={cards.length}
+          filters={filters}
+          onFiltersChange={setFilters}
+          onCardClick={handleCardClick}
+          onGoToView={setActiveView}
+        />
+      )}
       {activeView === 'calendar' && (
         <CalendarView
           cards={filteredCards}
