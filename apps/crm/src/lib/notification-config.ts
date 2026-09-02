@@ -11,6 +11,7 @@ import {
   HardDrive,
   Instagram,
   Lightbulb,
+  MessageCircle,
   MessageSquare,
   Play,
   Shield,
@@ -23,6 +24,7 @@ import {
 import type { NotificationType } from '../store';
 import { STATUS_LABELS } from '../pages/entregas/postLabels';
 import { formatStorageBytes } from '../components/usage/usage-meter-state';
+import { stripMentionTokens } from '../components/mentions/mentionTokens';
 
 type Tone = 'success' | 'warning' | 'danger' | 'teal' | 'primary';
 
@@ -202,6 +204,21 @@ export function getNotificationDisplay(
         title: `${s(m.actor_name, 'Alguém')} mencionou você`,
         body: s(m.excerpt, s(m.context_title, '')),
       };
+    case 'team_message': {
+      // title = nome do grupo quando existe; para DM (sem nome) ou qualquer
+      // metadata incompleta, cai no nome do autor. body repete o autor só
+      // quando o title NAO ja o mostra (grupo) -- numa DM o title JA e o
+      // autor, entao repeti-lo no body seria redundante.
+      const conversaNome = s(m.conversa_nome, '');
+      const authorName = s(m.author_name, 'Equipe');
+      const preview = stripMentionTokens(s(m.preview, ''));
+      return {
+        icon: MessageCircle,
+        tone: 'teal',
+        title: conversaNome || authorName,
+        body: conversaNome ? `${authorName}: ${preview}` : preview,
+      };
+    }
     case 'post_publish_failed':
       return {
         icon: AlertCircle,

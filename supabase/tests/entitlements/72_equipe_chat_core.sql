@@ -370,3 +370,45 @@ begin
   raise notice 'PASS 7: anexo staged e privado ao autor ate o envio';
 end $$;
 rollback;
+
+-- ============================================================
+-- 8. Preview da notificacao sem token de mencao cru: content com
+--    @[Label](tipo:id) vira "@Label" no metadata->>'preview' de
+--    trg_notify_team_message, nunca o token bruto.
+-- ============================================================
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid;
+  v_a uuid := gen_random_uuid();
+  v_b uuid := gen_random_uuid();
+  v_conv bigint;
+  v_preview text;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_team_chat": true}'::jsonb);
+  insert into auth.users (id) values (v_a), (v_b);
+  insert into workspace_members (user_id, workspace_id, role)
+    values (v_a, v_ws, 'owner'), (v_b, v_ws, 'admin');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id in (v_a, v_b);
+
+  insert into equipe_conversas (conta_id, tipo, nome, created_by)
+    values (v_ws, 'grupo', 'Time', v_a) returning id into v_conv;
+  insert into equipe_conversa_participantes (conversa_id, conta_id, user_id)
+    values (v_conv, v_ws, v_a), (v_conv, v_ws, v_b);
+
+  insert into equipe_mensagens (conversa_id, conta_id, author_user_id, content)
+    values (v_conv, v_ws, v_a, 'oi @[Ana](membro:5) confirma isso?');
+
+  select metadata->>'preview' into v_preview from notifications
+   where type = 'team_message' and user_id = v_b
+     and metadata->>'conversa_id' = v_conv::text;
+  assert v_preview = 'oi @Ana confirma isso?',
+    format('preview inesperado: %s', v_preview);
+  assert position('@[' in v_preview) = 0,
+    'preview nao pode conter o token bruto @[Label](tipo:id)';
+  raise notice 'PASS 8: preview de team_message sem token de mencao cru';
+end $$;
+rollback;

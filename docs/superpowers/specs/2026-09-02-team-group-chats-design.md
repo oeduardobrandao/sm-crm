@@ -326,7 +326,16 @@ PR #419), não a `ideia-media-manage`:
 
 1. Migration (tabelas, RLS, RPCs, triggers, flag, publication) → staging →
    prod (`db push --linked`; conferir `supabase/.temp/project-ref` antes).
-2. Deploy `equipe-chat-media` e redeploy `workspace-limits` e
-   `post-media-cleanup-cron`.
-3. Frontend (Vercel) — tudo dark: flag `feature_team_chat` desligada.
-4. Ligar a flag por plano no admin quando o pricing for decidido.
+2. Registro de `team_message` no contrato de notificações (union
+   `NotificationType`, `notification-config.ts`, `notification-catalog.ts`,
+   constraint de `notification_inapp_prefs`) já incluído nesta branch, sem
+   passo separado -- a flag ainda está desligada, então nada disto fica
+   visível até o passo 4.
+3. Deploy `equipe-chat-media` (com `--no-verify-jwt`, convenção do repo para
+   functions que tratam a própria auth) e redeploy `workspace-limits`,
+   `post-media-cleanup-cron` e `platform-admin` -- este último porque seu
+   allowlist de plan-mutations faz snapshot de `FEATURE_COLUMNS` no deploy;
+   sem o redeploy, o editor de planos do admin descarta
+   `feature_team_chat` silenciosamente.
+4. Frontend (Vercel) — tudo dark: flag `feature_team_chat` desligada.
+5. Ligar a flag por plano no admin quando o pricing for decidido.

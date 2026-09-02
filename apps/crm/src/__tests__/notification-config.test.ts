@@ -100,6 +100,60 @@ describe('getNotificationDisplay', () => {
     expect(display.icon).toBeDefined();
   });
 
+  it('team_message in a grupo shows the conversa nome as title and "autor: preview" as body', () => {
+    const display = getNotificationDisplay('team_message', {
+      conversa_id: '7',
+      conversa_nome: 'Time de Criação',
+      author_name: 'Ana',
+      preview: 'oi, bora revisar o post de amanhã?',
+    });
+
+    expect(display.title).toBe('Time de Criação');
+    expect(display.body).toBe('Ana: oi, bora revisar o post de amanhã?');
+    expect(display.tone).toBe('teal');
+    expect(display.icon).toBeDefined();
+  });
+
+  it('team_message in a DM (no conversa_nome) shows the author as title and just the preview as body', () => {
+    const display = getNotificationDisplay('team_message', {
+      conversa_id: '9',
+      conversa_nome: null,
+      author_name: 'Bruno',
+      preview: 'te mandei o arquivo por e-mail',
+    });
+
+    expect(display.title).toBe('Bruno');
+    expect(display.body).toBe('te mandei o arquivo por e-mail');
+  });
+
+  it('team_message falls back to "Equipe" when author_name is missing', () => {
+    const display = getNotificationDisplay('team_message', {
+      conversa_id: '9',
+      conversa_nome: null,
+      preview: 'oi',
+    });
+
+    expect(display.title).toBe('Equipe');
+  });
+
+  it('team_message strips raw mention tokens from the preview in both title-less and grupo bodies', () => {
+    const dm = getNotificationDisplay('team_message', {
+      conversa_id: '9',
+      conversa_nome: null,
+      author_name: 'Bruno',
+      preview: 'oi @[Ana](membro:5), confirma isso?',
+    });
+    expect(dm.body).toBe('oi @Ana, confirma isso?');
+
+    const grupo = getNotificationDisplay('team_message', {
+      conversa_id: '7',
+      conversa_nome: 'Time de Criação',
+      author_name: 'Ana',
+      preview: 'chama o @[Bruno](membro:6) aqui',
+    });
+    expect(grupo.body).toBe('Ana: chama o @Bruno aqui');
+  });
+
   it('still falls back to default for unknown types', () => {
     const display = getNotificationDisplay('future_unknown_type' as any, {});
 

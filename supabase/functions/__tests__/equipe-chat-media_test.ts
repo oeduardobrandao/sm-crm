@@ -96,6 +96,29 @@ Deno.test("presign: feature off da 403", async () => {
     conversa_id: 7, mime_type: "image/jpeg", size_bytes: 5000,
   }));
   assertEquals(res.status, 403);
+  const body = await res.json();
+  assertEquals(body, { error: "feature_disabled", feature: "feature_team_chat" });
+});
+
+Deno.test("presign: sem plano resolvido (resolveEntitlements null) da 403 fail-closed", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", { data: { active_workspace_id: "conta-1" }, error: null });
+  db.queue("workspace_members", "select", { data: { user_id: "user-1", role: "admin" }, error: null });
+  // resolveEntitlements: workspace aponta pra um plan_id, mas a linha do
+  // plano nao existe mais (deletado/renomeado) -> resolveEntitlements
+  // retorna null. O gate ANTIGO (`ent && ent.features[...] !== true`) tratava
+  // ent nulo como "nada pra checar" e deixava passar -- fail-open. Com
+  // assertPlanFeature (`!ent || ...`), isto agora bloqueia.
+  db.queue("workspaces", "select", { data: { plan_id: "plan-deletado" }, error: null });
+  db.queue("workspace_plan_overrides", "select", { data: null, error: null });
+  db.queue("plans", "select", { data: null, error: null });
+  const res = await makeHandler(db)(req("presign", {
+    conversa_id: 7, mime_type: "image/jpeg", size_bytes: 5000,
+  }));
+  assertEquals(res.status, 403);
+  const body = await res.json();
+  assertEquals(body, { error: "feature_disabled", feature: "feature_team_chat" });
 });
 
 Deno.test("finalize: HEAD na tmp, copia p/ final, RPC, trash da tmp", async () => {

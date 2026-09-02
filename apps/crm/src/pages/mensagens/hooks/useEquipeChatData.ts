@@ -31,6 +31,11 @@ export function useEquipeChatData(conversaId: number | null) {
       return { before: oldest.created_at, beforeId: oldest.id };
     },
     enabled: conversaExists,
+    // Realtime fallback (spec): poll every 60s while the thread is open, same
+    // interval as the conversas list above. Re-fetches EVERY loaded page, not
+    // just the newest -- acceptable here since chat threads keep few pages
+    // loaded (50/page, and older ones rarely stay mounted long).
+    refetchInterval: 60_000,
   });
 
   const invalidate = () => {

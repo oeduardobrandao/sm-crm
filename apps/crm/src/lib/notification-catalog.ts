@@ -161,6 +161,13 @@ export const NOTIFICATION_CATALOG = {
     recipients: 'somente quem foi mencionado',
     emailEligible: true,
   },
+  team_message: {
+    category: 'equipe',
+    label: 'Mensagem no chat da equipe',
+    when: 'alguém envia uma mensagem em uma conversa do chat de equipe da qual você participa',
+    recipients: 'participantes da conversa, exceto quem enviou',
+    emailEligible: false,
+  },
   instagram_connected_by_client: {
     category: 'integracoes',
     label: 'Instagram conectado',

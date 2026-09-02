@@ -4,7 +4,7 @@
 // atomicamente) -> GET assinado por anexo_id.
 // Spec: docs/superpowers/specs/2026-09-02-team-group-chats-design.md
 import { createJsonResponder } from "../_shared/http.ts";
-import { resolveEntitlements } from "../_shared/entitlements.ts";
+import { assertPlanFeature, FeatureDisabledError } from "../_shared/entitlements.ts";
 
 // Allowlist de chat: imagens comuns + documentos (subset da file-upload-url).
 const MIME_EXT: Record<string, string> = {
@@ -66,9 +66,18 @@ export function createEquipeChatMediaHandler(deps: Deps) {
       .maybeSingle();
     if (!member) return json({ error: "Forbidden" }, 403);
 
-    const ent = await resolveEntitlements(svc as never, contaId);
-    if (ent && ent.features["feature_team_chat"] !== true) {
-      return json({ error: "feature_disabled:feature_team_chat" }, 403);
+    // Fail-closed: no plan resolved (e.g. workspace with no default plan
+    // seeded) must block, not bypass. assertPlanFeature throws whenever
+    // `!ent || ent.features[flag] !== true`, unlike the old inline
+    // `ent && ...` check, which skipped the gate entirely (fail-open) if
+    // resolveEntitlements ever returned null.
+    try {
+      await assertPlanFeature(svc as never, contaId, "feature_team_chat");
+    } catch (e) {
+      if (e instanceof FeatureDisabledError) {
+        return json({ error: "feature_disabled", feature: "feature_team_chat" }, 403);
+      }
+      throw e;
     }
 
     const url = new URL(req.url);

@@ -83,6 +83,16 @@ describe('equipeChatLogic', () => {
     ).toBe('Ana');
   });
 
+  it('equipeConversaPreview strips raw mention tokens, showing @Label instead of @[Label](tipo:id)', () => {
+    expect(
+      equipeConversaPreview({
+        ...conversaBase,
+        last_author_name: 'Ana',
+        last_content: 'chama o @[Bruno](membro:6) aqui',
+      }),
+    ).toBe('Ana: chama o @Bruno aqui');
+  });
+
   it('equipeConversaPreview shows the empty-conversation copy when there are no messages yet', () => {
     expect(
       equipeConversaPreview({ ...conversaBase, last_created_at: null, last_message_id: null }),
