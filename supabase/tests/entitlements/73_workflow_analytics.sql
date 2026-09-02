@@ -197,7 +197,7 @@ end $$;
 rollback;
 
 -- =====================================================================
--- 4. Deadline parity with the frontend (etapaPrazo.test.ts) -- 4
+-- 4. Deadline parity with the frontend (etapaPrazo.test.ts) -- 5
 --    representative fixtures against etapa_deadline(..., 'America/Sao_Paulo')
 -- =====================================================================
 begin;
@@ -219,20 +219,30 @@ begin
   assert v_result = timestamptz '2026-07-18 10:00:00-03',
     format('corridos must add exactly N calendar days, got %s', v_result);
 
-  -- Fixture 3 (brief's "Friday start + 2 dias uteis lands Tuesday"): Fri
-  -- 2026-07-17 10:00 BRT + 2 uteis skips Sat/Sun -> Tue 2026-07-21 10:00 BRT.
+  -- Fixture 3 ("skips the weekend for uteis", etapaPrazo.test.ts:61-69,
+  -- transcribed exactly -- NOW = Wed 2026-07-15 10:00 local, prazo_dias=3):
+  -- Wed 2026-07-15 10:00 BRT + 3 uteis skips Sat/Sun -> Mon 2026-07-20 10:00 BRT.
+  select etapa_deadline(NULL, timestamptz '2026-07-15 10:00:00-03', 3, 'uteis', 'America/Sao_Paulo')
+    into v_result;
+  assert v_result = timestamptz '2026-07-20 10:00:00-03',
+    format('uteis must skip the weekend (frontend fixture), got %s', v_result);
+
+  -- Fixture 4 (extra coverage, not from the frontend file): Fri 2026-07-17
+  -- 10:00 BRT + 2 uteis skips Sat/Sun -> Tue 2026-07-21 10:00 BRT. Mathematically
+  -- valid additional weekend-skip coverage; fixture 3 above is the one
+  -- required by etapaPrazo.test.ts.
   select etapa_deadline(NULL, timestamptz '2026-07-17 10:00:00-03', 2, 'uteis', 'America/Sao_Paulo')
     into v_result;
   assert v_result = timestamptz '2026-07-21 10:00:00-03',
-    format('uteis must skip the weekend, got %s', v_result);
+    format('uteis must skip the weekend (extra case), got %s', v_result);
 
-  -- Fixture 4 ("returns null when not started and no fixed date"): no
+  -- Fixture 5 ("returns null when not started and no fixed date"): no
   -- data_limite and no iniciado_em -> NULL, regardless of prazo_dias/tipo.
   select etapa_deadline(NULL, NULL, 2, 'corridos', 'America/Sao_Paulo') into v_result;
   assert v_result is null,
     format('NULL data_limite + NULL iniciado_em must yield NULL, got %s', v_result);
 
-  raise notice 'PASS 73.4 etapa_deadline parity with the frontend (4 fixtures)';
+  raise notice 'PASS 73.4 etapa_deadline parity with the frontend (5 fixtures)';
 end $$;
 rollback;
 
