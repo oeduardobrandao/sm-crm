@@ -106,6 +106,33 @@ describe('NotificacoesTab', () => {
     await waitFor(() => expect(setInapp).toHaveBeenCalledWith('mention', false));
   });
 
+  it('flips the switch immediately on click (optimistic) and rolls back if the save fails', async () => {
+    // A never-(yet-)resolving promise stands in for a slow round trip: the
+    // switch must flip the instant the click fires, well before this
+    // resolves, then revert once it's rejected.
+    let rejectSave: (err: Error) => void = () => {};
+    setInapp.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSave = reject;
+        }),
+    );
+
+    renderTab();
+    const label = NOTIFICATION_CATALOG.mention.label;
+    const switchEl = (await screen.findByLabelText(`${label} (no app)`)) as HTMLInputElement;
+    expect(switchEl.checked).toBe(true); // no row = default on
+
+    fireEvent.click(switchEl);
+    // Optimistic: flips synchronously (well ahead of the pending save).
+    await waitFor(() => expect(switchEl.checked).toBe(false));
+    expect(setInapp).toHaveBeenCalledWith('mention', false);
+
+    rejectSave(new Error('save failed'));
+    // Rollback: reverts to the pre-click state once the save errors out.
+    await waitFor(() => expect(switchEl.checked).toBe(true));
+  });
+
   it('toggling the email switch for "post_approved" calls setNotificationEmailPref(post_approved, false)', async () => {
     renderTab();
     const label = NOTIFICATION_CATALOG.post_approved.label;

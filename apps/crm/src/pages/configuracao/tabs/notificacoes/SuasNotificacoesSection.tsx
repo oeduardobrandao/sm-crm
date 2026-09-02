@@ -52,6 +52,22 @@ export default function SuasNotificacoesSection() {
       type: NotificationType | typeof MASTER_PAUSE_TYPE;
       enabled: boolean;
     }) => setNotificationInappPref(type, enabled),
+    onMutate: async (v) => {
+      // Optimistic flip so the switch responds instantly instead of waiting
+      // on the round trip; cancelQueries first so an in-flight refetch can't
+      // clobber this optimistic write with stale data.
+      await qc.cancelQueries({ queryKey: INAPP_PREFS_QUERY_KEY });
+      const prev = qc.getQueryData<Record<string, boolean>>(INAPP_PREFS_QUERY_KEY);
+      qc.setQueryData<Record<string, boolean>>(INAPP_PREFS_QUERY_KEY, (old) => ({
+        ...(old ?? {}),
+        [v.type]: v.enabled,
+      }));
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(INAPP_PREFS_QUERY_KEY, ctx.prev);
+      toast.error(SAVE_ERROR_MESSAGE);
+    },
     onSuccess: () => {
       // The bell (popover + unread badge) reads its own prefs query and
       // notification lists: invalidate all of them so it reacts immediately.
@@ -60,7 +76,6 @@ export default function SuasNotificacoesSection() {
       qc.invalidateQueries({ queryKey: ['notifications'] });
       qc.invalidateQueries({ queryKey: ['notifications-unread-count'] });
     },
-    onError: () => toast.error(SAVE_ERROR_MESSAGE),
   });
 
   const saveEmail = useMutation({
@@ -71,8 +86,20 @@ export default function SuasNotificacoesSection() {
       type: NotificationEmailType | typeof MASTER_PAUSE_TYPE;
       enabled: boolean;
     }) => setNotificationEmailPref(type, enabled),
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: EMAIL_PREFS_QUERY_KEY });
+      const prev = qc.getQueryData<Record<string, boolean>>(EMAIL_PREFS_QUERY_KEY);
+      qc.setQueryData<Record<string, boolean>>(EMAIL_PREFS_QUERY_KEY, (old) => ({
+        ...(old ?? {}),
+        [v.type]: v.enabled,
+      }));
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(EMAIL_PREFS_QUERY_KEY, ctx.prev);
+      toast.error(SAVE_ERROR_MESSAGE);
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: EMAIL_PREFS_QUERY_KEY }),
-    onError: () => toast.error(SAVE_ERROR_MESSAGE),
   });
 
   if (inappLoading || emailLoading) {
