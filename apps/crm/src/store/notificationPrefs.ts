@@ -1,4 +1,5 @@
 import { supabase, getUserId } from './core';
+import type { NotificationType } from './notifications';
 
 export type NotificationEmailType =
   | 'post_publish_failed'
@@ -8,7 +9,8 @@ export type NotificationEmailType =
   | 'deadline_approaching'
   | 'task_assigned'
   | 'post_assigned'
-  | 'mention';
+  | 'mention'
+  | 'post_approved';
 
 export const MASTER_PAUSE_TYPE = '__all__' as const;
 
@@ -58,6 +60,11 @@ export const EMAIL_NOTIFICATION_TYPES: {
     label: 'Menções',
     description: 'Quando alguém menciona você com @.',
   },
+  {
+    type: 'post_approved',
+    label: 'Post aprovado pelo cliente',
+    description: 'Quando um cliente aprova um post no Hub.',
+  },
 ];
 
 /** Returns a map of type → enabled. Types absent from the map default to true. */
@@ -81,4 +88,35 @@ export async function setNotificationEmailPref(
       { onConflict: 'user_id,type' },
     );
   if (error) throw error;
+}
+
+/** Returns a map of type → enabled. Types absent from the map default to true. */
+export async function getNotificationInappPrefs(): Promise<Record<string, boolean>> {
+  const { data, error } = await supabase.from('notification_inapp_prefs').select('type, enabled');
+  if (error) throw error;
+  const map: Record<string, boolean> = {};
+  for (const row of data ?? []) map[row.type as string] = row.enabled as boolean;
+  return map;
+}
+
+export async function setNotificationInappPref(
+  type: NotificationType | typeof MASTER_PAUSE_TYPE,
+  enabled: boolean,
+): Promise<void> {
+  const user_id = await getUserId();
+  const { error } = await supabase
+    .from('notification_inapp_prefs')
+    .upsert(
+      { user_id, type, enabled, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id,type' },
+    );
+  if (error) throw error;
+}
+
+/** 'all' quando o master pause está ativo; senão os types explicitamente off. */
+export function mutedInappTypes(prefs: Record<string, boolean>): string[] | 'all' {
+  if (prefs[MASTER_PAUSE_TYPE] === false) return 'all';
+  return Object.entries(prefs)
+    .filter(([t, on]) => !on && t !== MASTER_PAUSE_TYPE)
+    .map(([t]) => t);
 }
