@@ -6,6 +6,7 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { assertPlanFeature, FeatureDisabledError } from "../_shared/entitlements.ts";
 import { generateApiKey, validateScopes } from "../_shared/mcp-token.ts";
+import { hasPermissionFor } from "../_shared/permissions.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -31,12 +32,16 @@ Deno.serve(async (req) => {
     const svc = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const { data: profile } = await svc.from("profiles").select("role, conta_id").eq("id", user.id).single();
-    if (!profile) return json({ error: "Profile not found" }, 403);
-    if (profile.role !== "owner" && profile.role !== "admin") {
+    // Gate lê a workspace ATIVA da membership, não profiles.role (global e
+    // sujeito a ficar stale após troca de workspace -- mesma razão de
+    // invite-user/manage-workspace-user).
+    const { data: profile } = await svc.from("profiles").select("active_workspace_id").eq("id", user.id).single();
+    if (!profile?.active_workspace_id) return json({ error: "Profile not found" }, 403);
+    const contaId = profile.active_workspace_id as string;
+    const canManage = await hasPermissionFor(svc, user.id, contaId, "configuracoes", "editar");
+    if (!canManage) {
       return json({ error: "Insufficient permissions" }, 403);
     }
-    const contaId = profile.conta_id as string;
 
     const body = await req.json().catch(() => ({}));
     const action = body.action as string;

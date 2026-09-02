@@ -6,7 +6,7 @@
 // liberação de quota. Nada aqui grava dm_media na automação: quem grava é o
 // CRM via PostgREST, e o CHECK de tenant do banco é o enforcement final.
 import { assertPlanFeature, FeatureDisabledError } from "../_shared/entitlements.ts";
-import { isWorkspaceEditor } from "../_shared/workspace-role.ts";
+import { hasPermissionFor } from "../_shared/permissions.ts";
 
 const MAX_MEDIA_BYTES = 8 * 1024 * 1024; // limite de imagem da Meta
 const ALLOWED_MIME: Record<string, string> = {
@@ -66,12 +66,18 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
     const route = parts[parts.indexOf("automation-media") + 1];
 
     // Mesmo split de mutação vs leitura que a RLS de instagram_comment_automations
-    // (ica_insert/update/delete vs ica_select): agent lê (sign-view), só
-    // owner/admin muta. workspace_members.role, nunca profiles.role -- ver
-    // isWorkspaceEditor.
+    // (ica_insert/update/delete vs ica_select): sign-view é aberto a qualquer
+    // membro, as rotas mutantes exigem has_permission_for('automacoes','editar')
+    // -- a MESMA permissão que autoriza escrever a automação em si (ver
+    // migração 20260904000001, RLS ica_insert/update/delete). O cartão de
+    // mídia é parte de criar essas automações, então o mesmo gate se aplica;
+    // isso inclui o preset legado de agent, que ganhou automacoes:'editar'
+    // nessa migração (era só 'ver') -- decisão deliberada da Task 11, não uma
+    // regressão de isolamento de tenant.
     const mutatingRoutes = new Set(["presign", "finalize", "delete"]);
-    if (mutatingRoutes.has(route) && !isWorkspaceEditor(member.role as string | null | undefined)) {
-      return json({ error: "Forbidden" }, 403);
+    if (mutatingRoutes.has(route)) {
+      const canMutate = await hasPermissionFor(svc, user.id, contaId, "automacoes", "editar");
+      if (!canMutate) return json({ error: "Forbidden" }, 403);
     }
     // Mesmo gate INSERT-only da automação (feature_instagram_automation):
     // downgrade bloqueia alocar mídia NOVA, mas não impede ver ou apagar a que

@@ -193,9 +193,44 @@ Deno.test("delete: key ainda referenciada por automação -> 409 e nada é trash
   assertEquals(trashed, []);
 });
 
-Deno.test("presign/finalize/delete: agent (sem poder de mutar automação) -> 403", async () => {
+// Task 11: o gate mutante trocou de isWorkspaceEditor(member.role) para
+// has_permission_for(user, conta, 'automacoes', 'editar') -- a MESMA permissão
+// que a RLS de instagram_comment_automations exige para escrever (ica_insert/
+// update/delete, migração 20260904000001). Migração B também mudou o preset de
+// agent para 'automacoes':'editar' (era só 'ver'), então agent legado agora
+// PASSA aqui -- mudança de comportamento deliberada, não uma regressão de
+// isolamento (ver correções do brief da Task 11).
+Deno.test("presign/finalize/delete: agent legado (preset automacoes:'editar' da Migração B) agora passa", async () => {
   const dbPresign = createSupabaseQueryMock();
   setupAuth(dbPresign, "conta-1", "agent");
+  const resPresign = await makeHandler(dbPresign)(req("presign", { mime_type: "image/jpeg", size_bytes: 5000 }));
+  assertEquals(resPresign.status, 200);
+  const presignRpc = dbPresign.calls.find((c: { table: string }) => c.table === "rpc:has_permission_for");
+  assertEquals(presignRpc?.payload, {
+    p_user: "user-1", p_workspace: "conta-1", p_module: "automacoes", p_action: "editar",
+  });
+
+  const dbFinalize = createSupabaseQueryMock();
+  setupAuth(dbFinalize, "conta-1", "agent");
+  dbFinalize.queue("automation_media_objects", "select", { data: null, error: null });
+  dbFinalize.queueRpc("automation_media_finalize", { data: true, error: null });
+  const resFinalize = await makeHandler(dbFinalize)(req("finalize", {
+    key: "automation-media-tmp/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000,
+  }));
+  assertEquals(resFinalize.status, 200);
+
+  const dbDelete = createSupabaseQueryMock();
+  setupAuth(dbDelete, "conta-1", "agent");
+  dbDelete.queue("instagram_comment_automations", "select", { data: [], error: null });
+  dbDelete.queueRpc("automation_media_release", { data: 5000, error: null });
+  const resDelete = await makeHandler(dbDelete)(req("delete", { key: "automation-media/conta-1/x.jpg" }));
+  assertEquals(resDelete.status, 200);
+});
+
+Deno.test("presign/finalize/delete: papel custom (chassi agent) sem 'automacoes':'editar' -> 403", async () => {
+  const dbPresign = createSupabaseQueryMock();
+  setupAuth(dbPresign, "conta-1", "agent");
+  dbPresign.queueRpc("has_permission_for", { data: false, error: null });
   assertEquals(
     (await makeHandler(dbPresign)(req("presign", { mime_type: "image/jpeg", size_bytes: 5000 }))).status,
     403,
@@ -203,6 +238,7 @@ Deno.test("presign/finalize/delete: agent (sem poder de mutar automação) -> 40
 
   const dbFinalize = createSupabaseQueryMock();
   setupAuth(dbFinalize, "conta-1", "agent");
+  dbFinalize.queueRpc("has_permission_for", { data: false, error: null });
   assertEquals(
     (await makeHandler(dbFinalize)(req("finalize", {
       key: "automation-media-tmp/conta-1/x.jpg", mime_type: "image/jpeg", size_bytes: 5000,
@@ -212,10 +248,19 @@ Deno.test("presign/finalize/delete: agent (sem poder de mutar automação) -> 40
 
   const dbDelete = createSupabaseQueryMock();
   setupAuth(dbDelete, "conta-1", "agent");
+  dbDelete.queueRpc("has_permission_for", { data: false, error: null });
   assertEquals(
     (await makeHandler(dbDelete)(req("delete", { key: "automation-media/conta-1/x.jpg" }))).status,
     403,
   );
+});
+
+Deno.test("presign: papel custom (chassi agent) COM 'automacoes':'editar' -> passa", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db, "conta-1", "agent");
+  db.queueRpc("has_permission_for", { data: true, error: null });
+  const res = await makeHandler(db)(req("presign", { mime_type: "image/jpeg", size_bytes: 5000 }));
+  assertEquals(res.status, 200);
 });
 
 Deno.test("sign-view: agent (só leitura) continua permitido, como ica_select", async () => {

@@ -4,6 +4,7 @@ import { insertAuditLog } from "../_shared/audit.ts";
 import { handleSetFinancialAccess } from "./setFinancialAccess.ts";
 import { removeMember } from "./removeMember.ts";
 import { resolveRoleUpdate, UUID_RE } from "./roleUpdate.ts";
+import { hasPermissionFor } from "../_shared/permissions.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -152,8 +153,12 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "Insufficient permissions" }), { status: 403, headers });
     }
 
+    // callerRole stays loaded for the owner-protection guards below (only
+    // owner assigns owner, an owner target can't be touched by a non-owner);
+    // the ACTOR gate itself is now the permission model, not a role literal.
     const callerRole = callerMembership.role;
-    if (callerRole !== "owner" && callerRole !== "admin") {
+    const canManageTeam = await hasPermissionFor(serviceClient, user.id, workspaceId, "equipe", "editar");
+    if (!canManageTeam) {
       return new Response(JSON.stringify({ error: "Insufficient permissions" }), { status: 403, headers });
     }
 

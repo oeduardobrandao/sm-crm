@@ -4,6 +4,7 @@ import { classifyExistingUser, coerceHasPassword } from "../_shared/invite-class
 import { inviteOrResend } from "../_shared/invite-actions.ts";
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { resolveActiveCaller, validateMembroForInvite } from "../_shared/invite-membro.ts";
+import { hasPermissionFor } from "../_shared/permissions.ts";
 
 async function findAuthUserByEmail(adminClient: any, email: string) {
   let page = 1;
@@ -95,7 +96,14 @@ Deno.serve(async (req) => {
 
     // DELETE: Cancel an invite
     if (req.method === 'DELETE') {
-      if (caller.role === 'agent') throw new Error('Agentes não têm permissão para cancelar convites.');
+      // Gerenciar convites (enviar/cancelar) exige 'equipe':'editar' -- não mais
+      // um role literal. Um papel custom com essa permissão passa mesmo com o
+      // chassi role='agent'; o preset legado de agent não tem 'equipe', então
+      // segue negado, byte a byte com o comportamento anterior.
+      const canManageTeam = await hasPermissionFor(
+        adminClient, user.id, caller.workspaceId, "equipe", "editar",
+      );
+      if (!canManageTeam) throw new Error('Agentes não têm permissão para cancelar convites.');
 
       const url = new URL(req.url);
       const inviteId = url.searchParams.get('id');
@@ -129,7 +137,10 @@ Deno.serve(async (req) => {
        throw new Error('Role inválido');
     }
 
-    if (caller.role === 'agent') throw new Error('Agentes não têm permissão para convidar novos usuários.');
+    const canManageTeam = await hasPermissionFor(
+      adminClient, user.id, caller.workspaceId, "equipe", "editar",
+    );
+    if (!canManageTeam) throw new Error('Agentes não têm permissão para convidar novos usuários.');
 
     // Admin can't invite owner
     if (caller.role === 'admin' && role === 'owner') {
