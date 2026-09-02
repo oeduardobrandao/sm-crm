@@ -15,6 +15,7 @@ import { createPostMediaCleanupCronHandler } from "./handler.ts";
 import { runStreamSweeps } from "./stream-steps.ts";
 import { runOrphanScan } from "./orphan-scan.ts";
 import { runIntegrityCanary } from "./canary.ts";
+import { runEquipeChatCleanup } from "./equipe-chat-cleanup.ts";
 
 const CRON_NAME = "post-media-cleanup-cron";
 
@@ -124,6 +125,12 @@ Deno.serve(createPostMediaCleanupCronHandler({
     // (silent .in() failures -> empty known set -> mass deletion) cannot recur.
     const scan = await runOrphanScan({ db: svc, listOrphanKeys, trashObject });
 
+    // equipe-chat (team group chats): abandoned tmp uploads + staged attachments
+    // whose message was never sent. Independent of the R2 orphan scan above (own
+    // prefix, own table) — wrapped the same way so a failure here can't block
+    // purgeTrash/canary below, nor vice versa.
+    const equipeChat = await runEquipeChatCleanup({ db: svc, listOrphanKeys, trashObject });
+
     // Purge trash/ entries past their 30-day undo window (bounded per run).
     let trashPurged = 0;
     try {
@@ -164,6 +171,9 @@ Deno.serve(createPostMediaCleanupCronHandler({
     if (scan.capped > 0) alerts.push({ error: `orphan scan capped: ${scan.capped} orphans deferred (cap ${scan.trashed} trashed)` });
     if (failed > 0) alerts.push({ error: `deletion drain: ${failed} rows failed this run` });
     if (streamErrors > 0) alerts.push({ error: `stream sweeps: ${streamErrors} step errors` });
+    if (equipeChat.failed > 0) {
+      alerts.push({ error: `equipe-chat cleanup: ${equipeChat.failed} steps failed this run` });
+    }
     if (alerts.length > 0) {
       await reportCronFailure(svc, CRON_NAME, { failed: alerts.length, errors: alerts });
     }
@@ -173,6 +183,9 @@ Deno.serve(createPostMediaCleanupCronHandler({
       orphanScanAborted: scan.aborted, trashPurged, canaryChecked,
       canaryMissing: canaryMissing.length,
       streamIngested, streamSettled, streamReaped, streamErrors,
+      equipeChatTmpTrashed: equipeChat.tmpTrashed,
+      equipeChatStagedReleased: equipeChat.stagedReleased,
+      equipeChatFailed: equipeChat.failed,
     });
   },
 }));
