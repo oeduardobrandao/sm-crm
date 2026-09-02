@@ -41,21 +41,30 @@ vi.mock('../../../../store', async (importOriginal) => {
     ]),
     getMembros: vi.fn().mockResolvedValue([]),
     getWorkflowTemplates: vi.fn().mockResolvedValue([]),
-    getWorkflowEtapas: vi.fn().mockImplementation((wfId: number) =>
-      Promise.resolve([
-        {
-          id: wfId * 100,
-          workflow_id: wfId,
-          ordem: 0,
-          nome: 'Etapa 1',
-          tipo: 'padrao',
-          prazo_dias: 3,
-          tipo_prazo: 'corridos',
-          status: 'ativo',
-          iniciado_em: '2026-04-01T00:00:00Z',
-        },
-      ]),
-    ),
+    getAllActiveEtapas: vi.fn().mockResolvedValue([
+      {
+        id: 100,
+        workflow_id: 1,
+        ordem: 0,
+        nome: 'Etapa 1',
+        tipo: 'padrao',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: '2026-04-01T00:00:00Z',
+      },
+      {
+        id: 200,
+        workflow_id: 2,
+        ordem: 0,
+        nome: 'Etapa 1',
+        tipo: 'padrao',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: '2026-04-01T00:00:00Z',
+      },
+    ]),
     getDeadlineInfo: vi
       .fn()
       .mockReturnValue({ estourado: false, urgente: false, diasRestantes: 3, resumo: 'em dia' }),
@@ -216,21 +225,30 @@ describe('useEntregasData', () => {
     ]);
     (store.getMembros as any).mockResolvedValue([]);
     (store.getWorkflowTemplates as any).mockResolvedValue([]);
-    (store.getWorkflowEtapas as any).mockImplementation((wfId: number) =>
-      Promise.resolve([
-        {
-          id: wfId * 100,
-          workflow_id: wfId,
-          ordem: 0,
-          nome: 'Etapa 1',
-          tipo: 'padrao',
-          prazo_dias: 3,
-          tipo_prazo: 'corridos',
-          status: 'ativo',
-          iniciado_em: '2026-04-01T00:00:00Z',
-        },
-      ]),
-    );
+    (store.getAllActiveEtapas as any).mockResolvedValue([
+      {
+        id: 100,
+        workflow_id: 1,
+        ordem: 0,
+        nome: 'Etapa 1',
+        tipo: 'padrao',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: '2026-04-01T00:00:00Z',
+      },
+      {
+        id: 200,
+        workflow_id: 2,
+        ordem: 0,
+        nome: 'Etapa 1',
+        tipo: 'padrao',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: '2026-04-01T00:00:00Z',
+      },
+    ]);
     (store.getDeadlineInfo as any).mockReturnValue({
       estourado: false,
       urgente: false,
@@ -293,6 +311,49 @@ describe('useEntregasData', () => {
     expect(postResponsaveis).toBeInstanceOf(Map);
     expect(postResponsaveis.get(1)).toEqual([10, 20]);
     expect(postResponsaveis.get(2)).toEqual([10]);
+  });
+
+  // EntregasPage keys its filteredCards useMemo (and, through it, every chart
+  // dataset in the Visão geral) on these. A fresh array or Map per render makes
+  // that memo unreachable and re-animates the whole cockpit on any state change.
+  it('keeps cards and the lookup maps stable across a re-render with no new data', async () => {
+    const { useEntregasData } = await import('../useEntregasData');
+
+    const { result, rerender } = renderHook(() => useEntregasData(), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.cards.length).toBe(2);
+      expect(result.current.postResponsaveis.size).toBe(2);
+    });
+
+    const before = result.current;
+    rerender();
+
+    expect(result.current.cards).toBe(before.cards);
+    expect(result.current.activeWorkflows).toBe(before.activeWorkflows);
+    expect(result.current.postResponsaveis).toBe(before.postResponsaveis);
+    expect(result.current.postsCounts).toBe(before.postsCounts);
+    expect(result.current.etapasMap).toBe(before.etapasMap);
+  });
+
+  it('serves stable empty fallbacks while the queries have not resolved', async () => {
+    const { useEntregasData } = await import('../useEntregasData');
+
+    const { result, rerender } = renderHook(() => useEntregasData(), {
+      wrapper: createWrapper(),
+    });
+
+    // First commit: nothing has resolved yet, so every value is a fallback.
+    const before = result.current;
+    expect(before.cards).toEqual([]);
+    rerender();
+
+    expect(result.current.cards).toBe(before.cards);
+    expect(result.current.clientes).toBe(before.clientes);
+    expect(result.current.postResponsaveis).toBe(before.postResponsaveis);
   });
 
   it('returns an empty Map when no workflow IDs are available', async () => {

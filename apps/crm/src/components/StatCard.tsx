@@ -26,6 +26,12 @@ interface StatCardProps {
   valueColor?: string;
   /** Shrinks the value — for cards whose value is a name rather than a number. */
   compactValue?: boolean;
+  /** Renders the card as a button and fires this on click. */
+  onClick?: () => void;
+  /** Marks the card as the applied filter (ring). Only meaningful with `onClick`. */
+  active?: boolean;
+  /** Flips which delta direction reads as "good" (e.g. a falling average time). */
+  invertDelta?: boolean;
 }
 
 const DIRECTION_ICON = {
@@ -48,11 +54,18 @@ export function StatCard({
   footNote,
   valueColor,
   compactValue,
+  onClick,
+  active,
+  invertDelta,
 }: StatCardProps) {
   const DirectionIcon = delta ? DIRECTION_ICON[delta.direction] : null;
+  const good =
+    delta && delta.direction !== 'stable'
+      ? (delta.direction === 'up') !== Boolean(invertDelta)
+      : undefined;
 
-  return (
-    <div className="kpi-card">
+  const content = (
+    <>
       <div className="kpi-card-head">
         <span className="kpi-label">{label}</span>
         {Icon && (
@@ -74,7 +87,11 @@ export function StatCard({
         <div className="kpi-foot">
           {delta && DirectionIcon ? (
             <>
-              <span className="kpi-delta" data-direction={delta.direction}>
+              <span
+                className="kpi-delta"
+                data-direction={delta.direction}
+                data-good={good === undefined ? undefined : String(good)}
+              >
                 <DirectionIcon className="h-3.5 w-3.5" />
                 {Math.abs(delta.percent).toFixed(1)}%
               </span>
@@ -86,6 +103,25 @@ export function StatCard({
         </div>
       )}
       {footNote && <div className="kpi-footnote">{footNote}</div>}
-    </div>
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        className="kpi-card kpi-card--clickable"
+        data-active={active || undefined}
+        // The ring is the sighted cue for "this filter is applied"; aria-pressed
+        // is the same fact for a screen reader, and it has to be present (false)
+        // even while off or the card reads as a plain action button.
+        aria-pressed={active ?? false}
+        onClick={onClick}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <div className="kpi-card">{content}</div>;
 }

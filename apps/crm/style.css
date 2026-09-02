@@ -1301,6 +1301,35 @@ body {
   color: var(--text-muted);
 }
 
+/* Clickable KPI cards (Visão geral cockpit) */
+button.kpi-card--clickable {
+  cursor: pointer;
+  text-align: inherit;
+  font: inherit;
+  transition: background 0.15s ease;
+}
+button.kpi-card--clickable:hover {
+  background: var(--surface-hover);
+}
+button.kpi-card--clickable:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+.kpi-card[data-active='true'] {
+  box-shadow: inset 0 0 0 2px var(--primary-color);
+}
+/* Beats .kpi-grid > .kpi-card:hover (0,3,0 vs 0,2,0) so the active ring survives hover inside a grid */
+.kpi-grid > .kpi-card[data-active='true']:hover {
+  box-shadow: inset 0 0 0 2px var(--primary-color);
+}
+/* data-good overrides direction-based delta colors (invertDelta support) */
+.kpi-delta[data-good='true'] {
+  color: var(--success);
+}
+.kpi-delta[data-good='false'] {
+  color: var(--danger);
+}
+
 .kpi-footnote {
   display: flex;
   align-items: center;

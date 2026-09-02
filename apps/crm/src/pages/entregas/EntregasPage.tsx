@@ -73,7 +73,7 @@ import { captureEvent } from '@/lib/analytics';
 
 const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
   { id: 'kanban', label: 'Kanban', icon: <Columns className="h-4 w-4" /> },
-  { id: 'chart', label: 'Gráfico', icon: <BarChart2 className="h-4 w-4" /> },
+  { id: 'chart', label: 'Visão geral', icon: <BarChart2 className="h-4 w-4" /> },
   { id: 'calendar', label: 'Calendário', icon: <Calendar className="h-4 w-4" /> },
   { id: 'list', label: 'Lista', icon: <List className="h-4 w-4" /> },
   { id: 'concluded', label: 'Concluídas', icon: <Archive className="h-4 w-4" /> },
@@ -145,6 +145,13 @@ export default function EntregasPage() {
     isLoading,
     refresh,
   } = useEntregasData();
+
+  // Same inline pattern as NotFoundPage: an app route, not one of the
+  // manifest-driven public pages usePageMeta covers, so nothing else would set
+  // the tab title and it would keep whatever the previous route left behind.
+  useEffect(() => {
+    document.title = 'Entregas | Mesaas';
+  }, []);
 
   // --- Onboarding tour + example board ---------------------------------------------------------
   // The persistence key is per-conta. `tourDone` is read once at mount from the current conta's
@@ -554,45 +561,58 @@ export default function EntregasPage() {
     !!filters.filterPrazoFrom ||
     !!filters.filterPrazoTo;
 
-  // Apply filters
-  let filteredCards = cards;
-  if (filters.filterSearch) {
-    const q = filters.filterSearch.toLowerCase();
-    filteredCards = filteredCards.filter((c) => c.workflow.titulo.toLowerCase().includes(q));
-  }
-  // Every dropdown filter is multi-select: empty means "no filter", otherwise
-  // a card matches if it hits ANY of the selected values.
-  if (filters.filterClientes.length)
-    filteredCards = filteredCards.filter(
-      (c) =>
-        c.workflow.cliente_id != null && filters.filterClientes.includes(c.workflow.cliente_id),
-    );
-  if (filters.filterMembros.length)
-    filteredCards = filteredCards.filter(
-      (c) =>
-        c.etapa.responsavel_id != null && filters.filterMembros.includes(c.etapa.responsavel_id),
-    );
-  if (filters.filterPostResponsaveis.length)
-    filteredCards = filteredCards.filter((c) => {
-      const responsaveis = postResponsaveis.get(c.workflow.id!);
-      return responsaveis?.some((r) => filters.filterPostResponsaveis.includes(r)) ?? false;
-    });
-  if (filters.filterEtapas.length)
-    filteredCards = filteredCards.filter((c) => filters.filterEtapas.includes(c.etapa.nome));
-  if (filters.filterTemplates.length)
-    filteredCards = filteredCards.filter(
-      (c) =>
-        c.workflow.template_id != null && filters.filterTemplates.includes(c.workflow.template_id),
-    );
-  if (filters.filterStatus.length)
-    filteredCards = filteredCards.filter((c) => {
-      const status: StatusFilter = c.deadline.estourado
-        ? 'atrasado'
-        : c.deadline.urgente
-          ? 'urgente'
-          : 'em_dia';
-      return filters.filterStatus.includes(status);
-    });
+  // Apply filters. Memoized on purpose: the Visão geral derives every chart
+  // dataset from this array, and a fresh identity on each render re-animates
+  // all of them (and re-runs their builders) on any unrelated state change.
+  const filteredCards = useMemo(() => {
+    let out = cards;
+    if (filters.filterSearch) {
+      const q = filters.filterSearch.toLowerCase();
+      out = out.filter((c) => c.workflow.titulo.toLowerCase().includes(q));
+    }
+    // Every dropdown filter is multi-select: empty means "no filter", otherwise
+    // a card matches if it hits ANY of the selected values.
+    if (filters.filterClientes.length)
+      out = out.filter(
+        (c) =>
+          c.workflow.cliente_id != null && filters.filterClientes.includes(c.workflow.cliente_id),
+      );
+    if (filters.filterMembros.length)
+      out = out.filter(
+        (c) =>
+          c.etapa.responsavel_id != null && filters.filterMembros.includes(c.etapa.responsavel_id),
+      );
+    if (filters.filterPostResponsaveis.length)
+      out = out.filter((c) => {
+        const responsaveis = postResponsaveis.get(c.workflow.id!);
+        return responsaveis?.some((r) => filters.filterPostResponsaveis.includes(r)) ?? false;
+      });
+    if (filters.filterEtapas.length)
+      out = out.filter((c) => filters.filterEtapas.includes(c.etapa.nome));
+    if (filters.filterTemplates.length)
+      out = out.filter(
+        (c) =>
+          c.workflow.template_id != null &&
+          filters.filterTemplates.includes(c.workflow.template_id),
+      );
+    if (filters.filterStatus.length)
+      out = out.filter((c) => {
+        const status: StatusFilter = c.deadline.estourado
+          ? 'atrasado'
+          : c.deadline.urgente
+            ? 'urgente'
+            : 'em_dia';
+        return filters.filterStatus.includes(status);
+      });
+    // Prazo da etapa: the same matcher the posts pipeline uses. Without it the
+    // Visão geral's "Vencem hoje" KPI and "Idade dos atrasos" buckets would
+    // patch the filter state and leave the board untouched.
+    if (filters.filterPrazo.length || filters.filterPrazoFrom || filters.filterPrazoTo)
+      out = out.filter((c) =>
+        matchesEtapaPrazo(c, filters.filterPrazo, filters.filterPrazoFrom, filters.filterPrazoTo),
+      );
+    return out;
+  }, [cards, filters, postResponsaveis]);
 
   const overdue = cards.filter((c) => c.deadline.estourado).length;
   const urgent = cards.filter((c) => c.deadline.urgente && !c.deadline.estourado).length;
@@ -659,7 +679,10 @@ export default function EntregasPage() {
               </button>
             )}
           </div>
-          <p>
+          {/* Deliberately unfiltered: the Visão geral's KPIs are the filtered
+              read of the same numbers, and the two disagreeing looks like a bug
+              unless the header says which one it is. */}
+          <p data-tooltip="Totais gerais, sem filtros" data-tooltip-dir="right">
             fluxos ativos: {activeWorkflows.length}
             {overdue > 0 && (
               <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
@@ -729,6 +752,8 @@ export default function EntregasPage() {
         }}
       >
         <div
+          role="tablist"
+          aria-label="Modos de visualização"
           style={{
             display: 'flex',
             gap: '0.25rem',
@@ -745,6 +770,9 @@ export default function EntregasPage() {
           {VIEW_TABS.map((tab) => (
             <button
               key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeView === tab.id}
               onClick={() => setActiveView(tab.id)}
               style={{
                 display: 'flex',
@@ -823,7 +851,16 @@ export default function EntregasPage() {
             onColumnSortChange={handleBoardColumnSortChange}
           />
         ))}
-      {activeView === 'chart' && <ChartView cards={filteredCards} />}
+      {activeView === 'chart' && (
+        <ChartView
+          cards={filteredCards}
+          totalCards={cards.length}
+          filters={filters}
+          onFiltersChange={setFilters}
+          onCardClick={handleCardClick}
+          onGoToView={setActiveView}
+        />
+      )}
       {activeView === 'calendar' && (
         <CalendarView
           cards={filteredCards}
