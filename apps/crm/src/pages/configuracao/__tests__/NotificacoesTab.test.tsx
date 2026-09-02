@@ -322,15 +322,16 @@ describe('NotificacoesTab', () => {
       renderTab();
       await screen.findByText('Clínica Sem Email');
       expect(
-        screen.queryByLabelText('Relatório mensal para Clínica Sem Email'),
+        screen.queryByLabelText(/Relatório mensal para Clínica Sem Email/),
       ).not.toBeInTheDocument();
       expect(screen.getByText('sem e-mail cadastrado')).toBeInTheDocument();
     });
 
     it('toggling a client row calls updateCliente(id, { send_report_email: false })', async () => {
       renderTab();
+      // O e-mail no nome acessível desambigua clientes homônimos.
       const switchEl = (await screen.findByLabelText(
-        'Relatório mensal para Ana Clínica',
+        'Relatório mensal para Ana Clínica (ana@example.com)',
       )) as HTMLInputElement;
       expect(switchEl.checked).toBe(true);
       fireEvent.click(switchEl);

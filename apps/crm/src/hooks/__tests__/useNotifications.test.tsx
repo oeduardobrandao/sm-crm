@@ -72,6 +72,30 @@ describe('useNotifications', () => {
     await waitFor(() => expect(getNotifications).toHaveBeenCalled());
   });
 
+  it('reports loading while prefs are still pending, so the popover does not flash empty', async () => {
+    let resolvePrefs: (v: Record<string, boolean>) => void = () => {};
+    vi.mocked(getNotificationInappPrefs).mockReturnValue(
+      new Promise((resolve) => {
+        resolvePrefs = resolve;
+      }),
+    );
+    vi.mocked(getUnreadNotificationCount).mockResolvedValue(0);
+    vi.mocked(getNotifications).mockResolvedValue([]);
+
+    const { result } = renderHook(() => useNotifications({ popoverOpen: true }), {
+      wrapper: wrapper(),
+    });
+
+    // The list query is disabled until prefs settle; isLoading must still be
+    // true here, otherwise the popover would flash "sem notificações".
+    expect(result.current.isLoading).toBe(true);
+
+    await act(async () => {
+      resolvePrefs({});
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+  });
+
   it('with a muted type, filters both the list query and the unread count', async () => {
     vi.mocked(getNotificationInappPrefs).mockResolvedValue({ mention: false });
     vi.mocked(getUnreadNotificationCount).mockResolvedValue(2);

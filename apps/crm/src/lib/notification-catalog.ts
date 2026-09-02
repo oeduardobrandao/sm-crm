@@ -189,4 +189,20 @@ export const NOTIFICATION_CATALOG = {
     recipients: ADMINS,
     emailEligible: false,
   },
-} satisfies Record<NotificationType, NotificationCatalogEntry>;
+} as const satisfies Record<NotificationType, NotificationCatalogEntry>;
+
+/** Tipos que podem virar e-mail, derivados das entradas emailEligible do catálogo. */
+export type NotificationEmailType = {
+  [K in NotificationType]: (typeof NOTIFICATION_CATALOG)[K]['emailEligible'] extends true
+    ? K
+    : never;
+}[NotificationType];
+
+export function isEmailEligibleType(type: NotificationType): type is NotificationEmailType {
+  return NOTIFICATION_CATALOG[type].emailEligible;
+}
+
+/** Os tipos emailEligible, na ordem do catálogo. */
+export const EMAIL_ELIGIBLE_TYPES: NotificationEmailType[] = (
+  Object.keys(NOTIFICATION_CATALOG) as NotificationType[]
+).filter(isEmailEligibleType);

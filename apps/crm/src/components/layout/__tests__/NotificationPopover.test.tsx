@@ -20,6 +20,7 @@ describe('NotificationPopover', () => {
     render(
       <NotificationPopover
         notifications={[]}
+        isLoading={false}
         onMarkAsRead={vi.fn()}
         onMarkAllAsRead={vi.fn()}
         onDismiss={vi.fn()}
@@ -30,10 +31,27 @@ describe('NotificationPopover', () => {
     expect(screen.getByText('Nenhuma notificação')).toBeInTheDocument();
   });
 
+  it('shows a spinner instead of the empty state while loading', () => {
+    render(
+      <NotificationPopover
+        notifications={[]}
+        isLoading={true}
+        onMarkAsRead={vi.fn()}
+        onMarkAllAsRead={vi.fn()}
+        onDismiss={vi.fn()}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('status', { name: 'Carregando notificações' })).toBeInTheDocument();
+    expect(screen.queryByText('Nenhuma notificação')).not.toBeInTheDocument();
+  });
+
   it('renders notification rows when present', () => {
     render(
       <NotificationPopover
         notifications={[sampleNotif]}
+        isLoading={false}
         onMarkAsRead={vi.fn()}
         onMarkAllAsRead={vi.fn()}
         onDismiss={vi.fn()}
@@ -49,6 +67,7 @@ describe('NotificationPopover', () => {
     render(
       <NotificationPopover
         notifications={[sampleNotif, read]}
+        isLoading={false}
         onMarkAsRead={vi.fn()}
         onMarkAllAsRead={vi.fn()}
         onDismiss={vi.fn()}
@@ -66,6 +85,7 @@ describe('NotificationPopover', () => {
     render(
       <NotificationPopover
         notifications={[sampleNotif]}
+        isLoading={false}
         onMarkAsRead={vi.fn()}
         onMarkAllAsRead={onMarkAllAsRead}
         onDismiss={vi.fn()}
