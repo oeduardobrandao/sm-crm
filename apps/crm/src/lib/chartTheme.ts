@@ -35,6 +35,12 @@ export interface ChartTheme {
   grid: string;
   font: { family: string; size: number };
   semantic: { success: string; warning: string; danger: string };
+  /**
+   * Series colours with no good/bad meaning, in draw order. Use these when a
+   * dataset is just "another series" (volume, counts) instead of borrowing a
+   * semantic colour, which would read as a verdict the data does not carry.
+   */
+  categorical: string[];
   tooltip: {
     backgroundColor: string;
     titleColor: string;
@@ -55,6 +61,11 @@ export function getChartTheme(isDark: boolean): ChartTheme {
       warning: resolveCssColor('--warning', '#f5a342'),
       danger: resolveCssColor('--danger', '#f55a42'),
     },
+    categorical: [
+      resolveCssColor('--teal', '#42c8f5'),
+      resolveCssColor('--pink', '#f542c8'),
+      resolveCssColor('--primary-color', '#ffbf30'),
+    ],
     tooltip: {
       backgroundColor: resolveCssColor('--card-bg', isDark ? '#12151a' : '#ffffff'),
       titleColor: resolveCssColor('--text-main', isDark ? '#e8eaf0' : '#12151a'),

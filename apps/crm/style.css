@@ -12324,3 +12324,42 @@ body.landing-page #root {
   font-size: 0.8rem;
   cursor: pointer;
 }
+
+/*
+ * Print layout for Analytics de Fluxos ("Imprimir" no cabeçalho da página).
+ *
+ * The app chrome carries no information on paper and the toolbar's controls
+ * print as dead widgets, so both are dropped and the content reclaims the
+ * sidebar's 260px inset.
+ *
+ * The chrome lives OUTSIDE the page wrapper, so hiding it needs a selector that
+ * reaches up: `body:has(.analytics-fluxos-page)`. That keeps every rule here
+ * scoped to this one page instead of silently restyling `Ctrl+P` on all of them
+ * (the report builder has its own dedicated print route and must not be touched).
+ */
+@media print {
+  body:has(.analytics-fluxos-page) .sidebar,
+  body:has(.analytics-fluxos-page) .topbar,
+  /* The phone nav is `.mobile-nav-glass` (see MobileNav.tsx); there is no
+     `.bottom-nav` in this codebase. `.mobile-more-sheet` and its
+     `.mobile-more-overlay` are the "Mais" sheet, which can be open when the
+     user hits print. */
+  body:has(.analytics-fluxos-page) .mobile-nav-glass,
+  body:has(.analytics-fluxos-page) .mobile-more-sheet,
+  body:has(.analytics-fluxos-page) .mobile-more-overlay,
+  .analytics-fluxos-page .analytics-fluxos-actions,
+  .analytics-fluxos-page .analytics-fluxos-toolbar {
+    display: none !important;
+  }
+
+  body:has(.analytics-fluxos-page) .main-content {
+    margin-left: 0 !important;
+    padding: 0 !important;
+  }
+
+  .analytics-fluxos-page .card,
+  .analytics-fluxos-page .kpi-grid {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+}

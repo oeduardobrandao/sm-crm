@@ -93,6 +93,7 @@ export interface Workflow {
   template_id?: number | null;
   status: 'ativo' | 'concluido' | 'arquivado';
   etapa_atual: number;
+  concluido_em?: string | null;
   recorrente: boolean;
   modo_prazo?: 'padrao' | 'data_fixa' | 'data_entrega';
   link_notion?: string | null;
@@ -280,35 +281,6 @@ export async function getAllActiveEtapas(): Promise<
   return rows.map((row: any) => ({
     ...row,
     workflow_titulo: row.workflows?.titulo,
-    cliente_id: row.workflows?.cliente_id,
-    cliente_nome: row.workflows?.clientes?.nome,
-    workflows: undefined,
-  }));
-}
-
-export async function getAllEtapasWithWorkflow(): Promise<
-  (WorkflowEtapa & {
-    workflow_titulo?: string;
-    workflow_status?: string;
-    workflow_created_at?: string;
-    template_id?: number | null;
-    cliente_id?: number;
-    cliente_nome?: string;
-  })[]
-> {
-  const { data, error } = await supabase
-    .from('workflow_etapas')
-    .select(
-      '*, workflows!inner(titulo, status, created_at, template_id, cliente_id, clientes!inner(nome))',
-    )
-    .order('ordem', { ascending: true });
-  if (error) throw error;
-  return (data || []).map((row: any) => ({
-    ...row,
-    workflow_titulo: row.workflows?.titulo,
-    workflow_status: row.workflows?.status,
-    workflow_created_at: row.workflows?.created_at,
-    template_id: row.workflows?.template_id,
     cliente_id: row.workflows?.cliente_id,
     cliente_nome: row.workflows?.clientes?.nome,
     workflows: undefined,

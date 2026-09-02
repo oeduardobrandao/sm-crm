@@ -35,4 +35,13 @@ describe('getChartTheme', () => {
     expect(dark.font.family).toContain('SF Pro Text');
     expect(dark.tooltip.borderWidth).toBe(1);
   });
+
+  it('offers categorical series colours distinct from the semantic ones', () => {
+    const theme = getChartTheme(true);
+    expect(theme.categorical.length).toBeGreaterThan(0);
+    // A "just another series" colour must not read as a success/warning verdict.
+    for (const color of theme.categorical) {
+      expect(Object.values(theme.semantic)).not.toContain(color);
+    }
+  });
 });

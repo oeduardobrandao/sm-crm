@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Badge } from '@/components/ui/badge';
+import { useEffect, useMemo } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { Download, Printer } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -10,504 +11,66 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { SlidersHorizontal, CheckCircle2, Activity, Clock, Target } from 'lucide-react';
-import { StatCard } from '@/components/StatCard';
-import { StatCardGrid } from '@/components/StatCardGrid';
-import { Chart, registerables } from 'chart.js';
-import {
-  getWorkflows,
-  getClientes,
-  getWorkflowTemplates,
-  getMembros,
-  getAllEtapasWithWorkflow,
-  type Workflow,
-  type WorkflowEtapa,
-  type Membro,
-  type WorkflowTemplate,
-} from '../../store';
+import { QueryErrorCard } from '@/components/QueryErrorCard';
+import { getWorkflowAnalytics, NotEntitledError } from '@/services/workflowAnalytics';
+import { getClientes, getMembros, getWorkflowTemplates, type Membro } from '../../store';
+import { buildAnalyticsCsv, csvFilename, downloadCsv } from './csv';
+import { PERIODOS, useFluxosFilters } from './useFluxosFilters';
+import { KpiRow } from './sections/KpiRow';
+import { RitmoChart } from './sections/RitmoChart';
+import { GargalosTable } from './sections/GargalosTable';
+import { EquipeTable } from './sections/EquipeTable';
 
-Chart.register(...registerables);
+const EMPTY_WORKSPACE =
+  'Nenhum dado de fluxo encontrado. Crie fluxos de trabalho para começar a ver analytics.';
 
-// ---- Types ----
-interface Filters {
-  clienteId: number | null;
-  templateId: number | null;
-  days: number | null;
-}
-
-type EtapaRow = WorkflowEtapa & {
-  workflow_titulo?: string;
-  workflow_status?: string;
-  workflow_created_at?: string;
-  template_id?: number | null;
-  cliente_id?: number;
-  cliente_nome?: string;
-};
-
-interface Metrics {
-  completedWorkflows: number;
-  activeWorkflows: number;
-  avgCompletionDays: number | null;
-  onTimeRate: number | null;
-  stepAvgDays: { nome: string; avg: number; count: number }[];
-  completionsOverTime: { label: string; count: number }[];
-  onTimeCount: number;
-  overdueCount: number;
-  memberPerformance: {
-    membro: Membro;
-    completed: number;
-    avgDays: number;
-    onTimeRate: number;
-    overdueCount: number;
-  }[];
-  bottlenecks: { nome: string; avgDays: number; overdueRate: number; count: number }[];
-}
-
-// ---- Helpers ----
-function computeDaysTaken(etapa: WorkflowEtapa): number | null {
-  if (!etapa.iniciado_em || !etapa.concluido_em) return null;
-  const start = new Date(etapa.iniciado_em);
-  const end = new Date(etapa.concluido_em);
-  if (etapa.tipo_prazo === 'uteis') {
-    let days = 0;
-    const cursor = new Date(start);
-    while (cursor < end) {
-      cursor.setDate(cursor.getDate() + 1);
-      const dow = cursor.getDay();
-      if (dow !== 0 && dow !== 6) days++;
-    }
-    return days;
-  }
-  return (end.getTime() - start.getTime()) / 86400000;
-}
-
-function isOnTime(etapa: WorkflowEtapa): boolean | null {
-  const days = computeDaysTaken(etapa);
-  if (days === null) return null;
-  return days <= etapa.prazo_dias;
-}
-
-function formatDuration(days: number): string {
-  if (days === 0) return '0d';
-  const totalMinutes = Math.round(days * 24 * 60);
-  const d = Math.floor(totalMinutes / (24 * 60));
-  const h = Math.floor((totalMinutes % (24 * 60)) / 60);
-  const m = totalMinutes % 60;
-  const parts: string[] = [];
-  if (d > 0) parts.push(d + 'd');
-  if (h > 0) parts.push(h + 'h');
-  if (m > 0 || parts.length === 0) parts.push(m + 'm');
-  return parts.join(' ');
-}
-
-function getWeekLabel(date: Date): string {
-  const d = new Date(date);
-  d.setDate(d.getDate() - d.getDay());
-  const day = String(d.getDate()).padStart(2, '0');
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  return `${day}/${month}`;
-}
-
-function computeMetrics(
-  allEtapas: EtapaRow[],
-  allWorkflows: Workflow[],
-  membros: Membro[],
-  filters: Filters,
-): Metrics {
-  const now = new Date();
-  const cutoff = filters.days ? new Date(now.getTime() - filters.days * 86400000) : null;
-
-  const filteredWorkflows = allWorkflows.filter((w) => {
-    if (cutoff && w.created_at && new Date(w.created_at) < cutoff) return false;
-    if (filters.clienteId && w.cliente_id !== filters.clienteId) return false;
-    if (filters.templateId && w.template_id !== filters.templateId) return false;
-    return true;
-  });
-  const wfIds = new Set(filteredWorkflows.map((w) => w.id));
-
-  const etapas = allEtapas.filter((e) => wfIds.has(e.workflow_id));
-  const completedEtapas = etapas.filter((e) => e.status === 'concluido');
-
-  const completedWorkflows = filteredWorkflows.filter((w) => w.status === 'concluido').length;
-  const activeWorkflows = filteredWorkflows.filter((w) => w.status === 'ativo').length;
-
-  const wfCompletionDays: number[] = [];
-  for (const wf of filteredWorkflows.filter((w) => w.status === 'concluido')) {
-    const wfEtapas = etapas.filter((e) => e.workflow_id === wf.id);
-    const starts = wfEtapas
-      .map((e) => e.iniciado_em)
-      .filter(Boolean)
-      .map((d) => new Date(d!).getTime());
-    const ends = wfEtapas
-      .map((e) => e.concluido_em)
-      .filter(Boolean)
-      .map((d) => new Date(d!).getTime());
-    if (starts.length && ends.length) {
-      const totalDays = Math.round((Math.max(...ends) - Math.min(...starts)) / 86400000);
-      wfCompletionDays.push(totalDays);
-    }
-  }
-  const avgCompletionDays = wfCompletionDays.length
-    ? wfCompletionDays.reduce((a, b) => a + b, 0) / wfCompletionDays.length
-    : null;
-
-  let onTimeCount = 0;
-  let overdueCount = 0;
-  for (const e of completedEtapas) {
-    const ot = isOnTime(e);
-    if (ot === null) continue;
-    if (ot) onTimeCount++;
-    else overdueCount++;
-  }
-  const totalRated = onTimeCount + overdueCount;
-  const onTimeRate = totalRated > 0 ? Math.round((onTimeCount / totalRated) * 100) : null;
-
-  const stepMap = new Map<string, number[]>();
-  for (const e of completedEtapas) {
-    const d = computeDaysTaken(e);
-    if (d === null) continue;
-    if (!stepMap.has(e.nome)) stepMap.set(e.nome, []);
-    stepMap.get(e.nome)!.push(d);
-  }
-  const stepAvgDays = Array.from(stepMap.entries())
-    .map(([nome, days]) => ({
-      nome,
-      avg: days.reduce((a, b) => a + b, 0) / days.length,
-      count: days.length,
-    }))
-    .sort((a, b) => b.avg - a.avg);
-
-  const weekMap = new Map<string, number>();
-  for (const wf of filteredWorkflows.filter((w) => w.status === 'concluido')) {
-    const wfEtapas = etapas.filter((e) => e.workflow_id === wf.id);
-    const ends = wfEtapas
-      .map((e) => e.concluido_em)
-      .filter(Boolean)
-      .map((d) => new Date(d!));
-    if (ends.length) {
-      const maxEnd = new Date(Math.max(...ends.map((d) => d.getTime())));
-      const label = getWeekLabel(maxEnd);
-      weekMap.set(label, (weekMap.get(label) || 0) + 1);
-    }
-  }
-  const completionsOverTime = Array.from(weekMap.entries())
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => {
-      const [da, ma] = a.label.split('/').map(Number);
-      const [db, mb] = b.label.split('/').map(Number);
-      return ma !== mb ? ma - mb : da - db;
-    });
-
-  const memberMap = new Map<
-    number,
-    { completed: number; totalDays: number; onTime: number; overdue: number; count: number }
-  >();
-  for (const e of completedEtapas) {
-    if (!e.responsavel_id) continue;
-    if (!memberMap.has(e.responsavel_id))
-      memberMap.set(e.responsavel_id, {
-        completed: 0,
-        totalDays: 0,
-        onTime: 0,
-        overdue: 0,
-        count: 0,
-      });
-    const m = memberMap.get(e.responsavel_id)!;
-    m.completed++;
-    const d = computeDaysTaken(e);
-    if (d !== null) {
-      m.totalDays += d;
-      m.count++;
-    }
-    const ot = isOnTime(e);
-    if (ot === true) m.onTime++;
-    else if (ot === false) m.overdue++;
-  }
-  const memberPerformance = Array.from(memberMap.entries())
-    .map(([id, stats]) => {
-      const membro = membros.find((m) => m.id === id);
-      if (!membro) return null;
-      const totalR = stats.onTime + stats.overdue;
-      return {
-        membro,
-        completed: stats.completed,
-        avgDays: stats.count ? stats.totalDays / stats.count : 0,
-        onTimeRate: totalR ? Math.round((stats.onTime / totalR) * 100) : 100,
-        overdueCount: stats.overdue,
-      };
-    })
-    .filter(Boolean) as Metrics['memberPerformance'];
-  memberPerformance.sort((a, b) => b.onTimeRate - a.onTimeRate || b.completed - a.completed);
-
-  const bottleneckMap = new Map<
-    string,
-    { totalDays: number; count: number; overdue: number; total: number }
-  >();
-  for (const e of completedEtapas) {
-    if (!bottleneckMap.has(e.nome))
-      bottleneckMap.set(e.nome, { totalDays: 0, count: 0, overdue: 0, total: 0 });
-    const b = bottleneckMap.get(e.nome)!;
-    b.total++;
-    const d = computeDaysTaken(e);
-    if (d !== null) {
-      b.totalDays += d;
-      b.count++;
-    }
-    const ot = isOnTime(e);
-    if (ot === false) b.overdue++;
-  }
-  const bottlenecks = Array.from(bottleneckMap.entries())
-    .map(([nome, stats]) => ({
-      nome,
-      avgDays: stats.count ? stats.totalDays / stats.count : 0,
-      overdueRate: stats.total ? Math.round((stats.overdue / stats.total) * 100) : 0,
-      count: stats.total,
-    }))
-    .sort((a, b) => b.avgDays - a.avgDays);
-
-  return {
-    completedWorkflows,
-    activeWorkflows,
-    avgCompletionDays,
-    onTimeRate,
-    stepAvgDays,
-    completionsOverTime,
-    onTimeCount,
-    overdueCount,
-    memberPerformance,
-    bottlenecks,
-  };
-}
-
-// ---- Charts component ----
-function AnalyticsCharts({ metrics }: { metrics: Metrics }) {
-  const stepRef = useRef<HTMLCanvasElement>(null);
-  const compRef = useRef<HTMLCanvasElement>(null);
-  const doughnutRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const gridColor = 'rgba(255,255,255,0.06)';
-    const textColor = 'rgba(255,255,255,0.5)';
-    const chartFont = { family: 'DM Sans, sans-serif' };
-    const charts: Chart[] = [];
-
-    if (stepRef.current && metrics.stepAvgDays.length) {
-      charts.push(
-        new Chart(stepRef.current, {
-          type: 'bar',
-          data: {
-            labels: metrics.stepAvgDays.map((s) => s.nome),
-            datasets: [
-              {
-                label: 'Dias (média)',
-                data: metrics.stepAvgDays.map((s) => s.avg),
-                backgroundColor: 'rgba(255,212,38,0.7)',
-                borderRadius: 6,
-                maxBarThickness: 48,
-              },
-            ],
-          },
-          options: {
-            responsive: true,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: (ctx: any) =>
-                    `${formatDuration(ctx.parsed.y)} (${metrics.stepAvgDays[ctx.dataIndex].count} amostras)`,
-                },
-              },
-            },
-            scales: {
-              x: { ticks: { color: textColor, font: chartFont }, grid: { display: false } },
-              y: {
-                ticks: { color: textColor, font: chartFont },
-                grid: { color: gridColor },
-                beginAtZero: true,
-              },
-            },
-          },
-        }),
-      );
-    }
-
-    if (compRef.current && metrics.completionsOverTime.length) {
-      charts.push(
-        new Chart(compRef.current, {
-          type: 'line',
-          data: {
-            labels: metrics.completionsOverTime.map((c) => c.label),
-            datasets: [
-              {
-                label: 'Conclusões',
-                data: metrics.completionsOverTime.map((c) => c.count),
-                borderColor: 'rgba(52,199,89,1)',
-                backgroundColor: 'rgba(52,199,89,0.1)',
-                fill: true,
-                tension: 0.3,
-                pointRadius: 4,
-                pointBackgroundColor: 'rgba(52,199,89,1)',
-              },
-            ],
-          },
-          options: {
-            responsive: true,
-            plugins: { legend: { display: false } },
-            scales: {
-              x: { ticks: { color: textColor, font: chartFont }, grid: { display: false } },
-              y: {
-                ticks: { color: textColor, font: chartFont, stepSize: 1 },
-                grid: { color: gridColor },
-                beginAtZero: true,
-              },
-            },
-          },
-        }),
-      );
-    }
-
-    if (doughnutRef.current && metrics.onTimeCount + metrics.overdueCount > 0) {
-      charts.push(
-        new Chart(doughnutRef.current, {
-          type: 'doughnut',
-          data: {
-            labels: ['No prazo', 'Atrasado'],
-            datasets: [
-              {
-                data: [metrics.onTimeCount, metrics.overdueCount],
-                backgroundColor: ['rgba(52,199,89,0.8)', 'rgba(255,69,58,0.8)'],
-                borderWidth: 0,
-              },
-            ],
-          },
-          options: {
-            responsive: true,
-            cutout: '65%',
-            plugins: { legend: { display: false } },
-          },
-        }),
-      );
-    }
-
-    return () => {
-      charts.forEach((c) => {
-        try {
-          c.destroy();
-        } catch {
-          /* */
-        }
-      });
-    };
-  }, [metrics]);
-
-  const total = metrics.onTimeCount + metrics.overdueCount;
-  const onTimePct = total ? Math.round((metrics.onTimeCount / total) * 100) : 0;
-  const overduePct = total ? 100 - onTimePct : 0;
-
+/** Placeholder that keeps the page's shape while the first read is in flight. */
+function LoadingSkeleton() {
   return (
-    <>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-          gap: '1.5rem',
-        }}
-        className="animate-up"
-      >
-        <div className="card">
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
-            Tempo médio por etapa
-          </h3>
-          <canvas ref={stepRef} />
-        </div>
-        <div className="card">
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
-            Conclusões por semana
-          </h3>
-          <canvas ref={compRef} />
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'center' }} className="animate-up">
-        <div className="card" style={{ maxWidth: 400, width: '100%' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
-            Distribuição de pontualidade
-          </h3>
-          <canvas ref={doughnutRef} />
-          <div
-            style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '1rem' }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                fontSize: '0.85rem',
-                color: 'var(--text-muted)',
-              }}
-            >
-              <span
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: '50%',
-                  background: 'rgba(52,199,89,0.8)',
-                  flexShrink: 0,
-                }}
-              />
-              No prazo{' '}
-              <strong style={{ color: 'var(--text-main)' }}>
-                {metrics.onTimeCount} ({onTimePct}%)
-              </strong>
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                fontSize: '0.85rem',
-                color: 'var(--text-muted)',
-              }}
-            >
-              <span
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: '50%',
-                  background: 'rgba(255,69,58,0.8)',
-                  flexShrink: 0,
-                }}
-              />
-              Atrasado{' '}
-              <strong style={{ color: 'var(--text-main)' }}>
-                {metrics.overdueCount} ({overduePct}%)
-              </strong>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }} aria-busy="true">
+      <Skeleton style={{ height: 104 }} />
+      <Skeleton style={{ height: 320 }} />
+      <Skeleton style={{ height: 260 }} />
+      <Skeleton style={{ height: 220 }} />
+    </div>
   );
 }
 
 export default function AnalyticsFluxosPage() {
-  const [filters, setFilters] = useState<Filters>({ clienteId: null, templateId: null, days: 30 });
+  const {
+    periodo,
+    clienteId,
+    templateId,
+    from,
+    to,
+    anchorDay,
+    hasFilters,
+    setPeriodo,
+    setClienteId,
+    setTemplateId,
+  } = useFluxosFilters();
 
-  const { data: etapas = [], isLoading: loadingEtapas } = useQuery({
-    queryKey: ['all-etapas-workflow'],
-    queryFn: getAllEtapasWithWorkflow,
+  // Same inline pattern as EntregasPage: an app route, not one of the
+  // manifest-driven public pages usePageMeta covers, so nothing else would set
+  // the tab title and it would keep whatever the previous route left behind.
+  useEffect(() => {
+    document.title = 'Analytics de Fluxos | Mesaas';
+  }, []);
+
+  // Every number on this page comes from this one RPC. The three lists below are
+  // for the filter selects and for turning a membro_id into a name; they are
+  // never a metric source.
+  // `anchorDay` is in the key on purpose. The from/to window re-anchors at
+  // midnight, but React Query keys on the queryKey alone and never notices a
+  // changed queryFn closure, so without it a tab left open overnight would keep
+  // refetching yesterday's window. keepPreviousData covers the swap: the new
+  // day's key shows yesterday's numbers until the fresh read lands.
+  const { data, isPending, isError, error, refetch } = useQuery({
+    queryKey: ['workflow-analytics', periodo, clienteId, templateId, anchorDay],
+    queryFn: () => getWorkflowAnalytics({ from, to, clienteId, templateId }),
+    placeholderData: keepPreviousData,
   });
-  const { data: workflows = [], isLoading: loadingWf } = useQuery({
-    queryKey: ['workflows'],
-    queryFn: getWorkflows,
-  });
+
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
   const { data: templates = [] } = useQuery({
     queryKey: ['workflow-templates'],
@@ -515,402 +78,148 @@ export default function AnalyticsFluxosPage() {
   });
   const { data: membros = [] } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
 
-  const isLoading = loadingEtapas || loadingWf;
+  const membrosById = useMemo(() => {
+    const map = new Map<number, Membro>();
+    for (const membro of membros) {
+      if (membro.id !== undefined) map.set(membro.id, membro);
+    }
+    return map;
+  }, [membros]);
 
-  const metrics = computeMetrics(etapas as EtapaRow[], workflows, membros, filters);
-  const hasData = etapas.length > 0;
-
-  const DAY_OPTIONS = [
-    { label: '7d', value: 7 },
-    { label: '30d', value: 30 },
-    { label: '90d', value: 90 },
-    { label: 'Todos', value: 0 },
-  ];
-
-  if (isLoading) {
-    return (
-      <div
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh' }}
-      >
-        <Spinner size="lg" />
-      </div>
-    );
+  function handleExport() {
+    if (!data) return;
+    const nomes = new Map<number, string>();
+    for (const [id, membro] of membrosById) nomes.set(id, membro.nome);
+    downloadCsv(buildAnalyticsCsv(data, nomes), csvFilename(periodo));
   }
 
-  const hasActiveFilters = filters.clienteId !== null || filters.templateId !== null;
+  const semDados = data ? data.kpis.concluidos === 0 && data.kpis.ativos === 0 : false;
+  const workspaceVazio = semDados && !hasFilters;
+  const filtroSemMatch = semDados && hasFilters;
 
   return (
     <div
-      className="page-content"
+      className="page-content analytics-fluxos-page"
       style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
     >
       <header className="header header--flush animate-up">
         <div className="header-title">
           <h1>Analytics de Fluxos</h1>
-          <p style={{ color: 'var(--text-muted)' }}>{workflows.length} fluxos</p>
+          <p
+            style={{ color: 'var(--text-muted)' }}
+            data-tooltip="O período filtra pela data de conclusão. Ativos são sempre o retrato atual."
+            data-tooltip-dir="bottom"
+          >
+            Fluxos concluídos no período
+          </p>
+        </div>
+        <div
+          className="header-actions analytics-fluxos-actions"
+          style={{ display: 'flex', gap: '0.5rem' }}
+        >
+          <Button variant="outline" onClick={handleExport} disabled={!data}>
+            <Download className="h-4 w-4" />
+            Exportar CSV
+          </Button>
+          <Button variant="outline" onClick={() => window.print()}>
+            <Printer className="h-4 w-4" />
+            Imprimir
+          </Button>
         </div>
       </header>
 
       <div
-        style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
-        className="animate-up"
+        className="animate-up analytics-fluxos-toolbar"
+        style={{
+          display: 'flex',
+          gap: '0.75rem',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+        }}
       >
-        <div className="page-tabs page-tabs--inline" role="tablist">
-          {DAY_OPTIONS.map((opt) => {
-            const isActive = opt.value === 0 ? filters.days === null : filters.days === opt.value;
-            return (
-              <button
-                key={opt.label}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                className={`page-tab${isActive ? ' active' : ''}`}
-                onClick={() =>
-                  setFilters((f) => ({ ...f, days: opt.value === 0 ? null : opt.value }))
-                }
-              >
-                {opt.label}
-              </button>
-            );
-          })}
+        <div className="page-tabs page-tabs--inline" role="tablist" aria-label="Período">
+          {PERIODOS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              role="tab"
+              aria-selected={opt.value === periodo}
+              className={`page-tab${opt.value === periodo ? ' active' : ''}`}
+              onClick={() => setPeriodo(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0 mb-0"
-              style={{ position: 'relative' }}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              {hasActiveFilters && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: 4,
-                    right: 4,
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: '#eab308',
-                  }}
-                />
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" style={{ minWidth: 220, padding: '0.5rem' }}>
-            <DropdownMenuLabel>Cliente</DropdownMenuLabel>
-            <div style={{ padding: '0 0.5rem 0.5rem' }}>
-              <Select
-                value={filters.clienteId !== null ? String(filters.clienteId) : 'all'}
-                onValueChange={(val) =>
-                  setFilters((f) => ({ ...f, clienteId: val === 'all' ? null : Number(val) }))
-                }
-              >
-                <SelectTrigger style={{ width: '100%' }}>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {clientes.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Template</DropdownMenuLabel>
-            <div style={{ padding: '0 0.5rem 0.5rem' }}>
-              <Select
-                value={filters.templateId !== null ? String(filters.templateId) : 'all'}
-                onValueChange={(val) =>
-                  setFilters((f) => ({ ...f, templateId: val === 'all' ? null : Number(val) }))
-                }
-              >
-                <SelectTrigger style={{ width: '100%' }}>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {templates.map((t) => (
-                    <SelectItem key={t.id} value={String(t.id)}>
-                      {t.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <Select
+            value={clienteId !== null ? String(clienteId) : 'all'}
+            onValueChange={(v) => setClienteId(v === 'all' ? null : Number(v))}
+          >
+            <SelectTrigger aria-label="Cliente" style={{ minWidth: 160 }}>
+              <SelectValue placeholder="Cliente: todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Cliente: todos</SelectItem>
+              {clientes.map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>
+                  {c.nome}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={templateId !== null ? String(templateId) : 'all'}
+            onValueChange={(v) => setTemplateId(v === 'all' ? null : Number(v))}
+          >
+            <SelectTrigger aria-label="Template" style={{ minWidth: 160 }}>
+              <SelectValue placeholder="Template: todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Template: todos</SelectItem>
+              {templates.map((t) => (
+                <SelectItem key={t.id} value={String(t.id)}>
+                  {t.nome}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      {!hasData ? (
+      {isError ? (
+        error instanceof NotEntitledError ? (
+          // The route gate (ProtectedRoute) normally catches this first; reaching
+          // here means the plan changed under an open tab, so say what is wrong
+          // instead of offering a retry that cannot fix it.
+          <QueryErrorCard
+            title="Analytics de Fluxos não está disponível no seu plano."
+            description="Faça upgrade do plano para liberar relatórios e analytics."
+          />
+        ) : (
+          <QueryErrorCard onRetry={() => refetch()} />
+        )
+      ) : isPending || !data ? (
+        <LoadingSkeleton />
+      ) : workspaceVazio ? (
         <div
-          className="animate-up"
+          className="card animate-up"
           style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}
         >
-          <p>
-            Nenhum dado de fluxo encontrado. Crie fluxos de trabalho para começar a ver analytics.
-          </p>
+          <p style={{ margin: 0 }}>{EMPTY_WORKSPACE}</p>
         </div>
       ) : (
         <>
-          <StatCardGrid className="animate-up">
-            <StatCard
-              label="Concluídos"
-              icon={CheckCircle2}
-              tone="green"
-              value={metrics.completedWorkflows}
-              sub="fluxos finalizados"
-            />
-            <StatCard
-              label="Ativos"
-              icon={Activity}
-              tone="blue"
-              value={metrics.activeWorkflows}
-              sub="fluxos em andamento"
-            />
-            <StatCard
-              label="Tempo médio"
-              icon={Clock}
-              tone="violet"
-              value={
-                metrics.avgCompletionDays !== null ? formatDuration(metrics.avgCompletionDays) : '—'
-              }
-              sub="dias para conclusão"
-            />
-            <StatCard
-              label="Pontualidade"
-              icon={Target}
-              tone="amber"
-              value={metrics.onTimeRate !== null ? metrics.onTimeRate + '%' : '—'}
-              sub="etapas no prazo"
-            />
-          </StatCardGrid>
-
-          <AnalyticsCharts metrics={metrics} />
-
-          {/* Team Performance */}
-          <div className="animate-up">
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>
-              Desempenho da equipe
-            </h3>
-            {metrics.memberPerformance.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)' }}>Nenhuma etapa com responsável atribuído.</p>
-            ) : (
-              <>
-                <div className="fluxos-team-desktop card">
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Membro</th>
-                          <th>Concluídas</th>
-                          <th>Tempo médio</th>
-                          <th>Pontualidade</th>
-                          <th>Atrasos</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {metrics.memberPerformance.map((mp) => {
-                          const badgeVariant =
-                            mp.onTimeRate >= 80
-                              ? 'success'
-                              : mp.onTimeRate >= 50
-                                ? 'warning'
-                                : 'danger';
-                          return (
-                            <tr key={mp.membro.id}>
-                              <td data-label="Membro">
-                                {mp.membro.avatar_url && (
-                                  <img
-                                    src={mp.membro.avatar_url}
-                                    style={{
-                                      width: 28,
-                                      height: 28,
-                                      borderRadius: '50%',
-                                      objectFit: 'cover',
-                                      marginRight: '0.5rem',
-                                      verticalAlign: 'middle',
-                                    }}
-                                    alt=""
-                                  />
-                                )}
-                                {mp.membro.nome}
-                              </td>
-                              <td data-label="Concluídas">{mp.completed}</td>
-                              <td data-label="Tempo médio">{formatDuration(mp.avgDays)}</td>
-                              <td data-label="Pontualidade">
-                                <Badge variant={badgeVariant}>{mp.onTimeRate}%</Badge>
-                              </td>
-                              <td data-label="Atrasos">
-                                {mp.overdueCount > 0 ? (
-                                  <Badge variant="danger" tone="solid">
-                                    {mp.overdueCount}
-                                  </Badge>
-                                ) : (
-                                  '0'
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                <div className="fluxos-team-mobile">
-                  {metrics.memberPerformance.map((mp) => {
-                    const badgeVariant =
-                      mp.onTimeRate >= 80 ? 'success' : mp.onTimeRate >= 50 ? 'warning' : 'danger';
-                    return (
-                      <div key={mp.membro.id} className="card" style={{ padding: '0.875rem' }}>
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                            marginBottom: '0.5rem',
-                          }}
-                        >
-                          {mp.membro.avatar_url && (
-                            <img
-                              src={mp.membro.avatar_url}
-                              style={{
-                                width: 32,
-                                height: 32,
-                                borderRadius: '50%',
-                                objectFit: 'cover',
-                                flexShrink: 0,
-                              }}
-                              alt=""
-                            />
-                          )}
-                          <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
-                            {mp.membro.nome}
-                          </span>
-                          <Badge variant={badgeVariant} style={{ marginLeft: 'auto' }}>
-                            {mp.onTimeRate}%
-                          </Badge>
-                        </div>
-                        <div
-                          style={{
-                            display: 'flex',
-                            gap: '1rem',
-                            fontSize: '0.8rem',
-                            color: 'var(--text-muted)',
-                          }}
-                        >
-                          <span>
-                            <strong style={{ color: 'var(--text-main)' }}>{mp.completed}</strong>{' '}
-                            concluídas
-                          </span>
-                          <span>
-                            <strong style={{ color: 'var(--text-main)' }}>
-                              {formatDuration(mp.avgDays)}
-                            </strong>{' '}
-                            média
-                          </span>
-                          {mp.overdueCount > 0 && (
-                            <span>
-                              <Badge variant="danger" tone="solid" size="sm">
-                                {mp.overdueCount} atrasos
-                              </Badge>
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Bottlenecks */}
-          <div className="animate-up">
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>Gargalos</h3>
-            {metrics.bottlenecks.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)' }}>Nenhuma etapa concluída ainda.</p>
-            ) : (
-              <>
-                <div className="fluxos-bottleneck-desktop card">
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Etapa</th>
-                          <th>Tempo médio</th>
-                          <th>Taxa de atraso</th>
-                          <th>Amostras</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {metrics.bottlenecks.map((b, i) => {
-                          const badgeVariant2 =
-                            b.overdueRate <= 20
-                              ? 'success'
-                              : b.overdueRate <= 50
-                                ? 'warning'
-                                : 'danger';
-                          return (
-                            <tr key={i}>
-                              <td data-label="Etapa">{b.nome}</td>
-                              <td data-label="Tempo médio">{formatDuration(b.avgDays)}</td>
-                              <td data-label="Taxa de atraso">
-                                <Badge variant={badgeVariant2}>{b.overdueRate}%</Badge>
-                              </td>
-                              <td data-label="Amostras">{b.count}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                <div className="fluxos-bottleneck-mobile">
-                  {metrics.bottlenecks.map((b, i) => {
-                    const badgeVariant2 =
-                      b.overdueRate <= 20 ? 'success' : b.overdueRate <= 50 ? 'warning' : 'danger';
-                    return (
-                      <div key={i} className="card" style={{ padding: '0.875rem' }}>
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            marginBottom: '0.35rem',
-                          }}
-                        >
-                          <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{b.nome}</span>
-                          <Badge variant={badgeVariant2}>{b.overdueRate}% atraso</Badge>
-                        </div>
-                        <div
-                          style={{
-                            display: 'flex',
-                            gap: '1rem',
-                            fontSize: '0.8rem',
-                            color: 'var(--text-muted)',
-                          }}
-                        >
-                          <span>
-                            Tempo médio:{' '}
-                            <strong style={{ color: 'var(--text-main)' }}>
-                              {formatDuration(b.avgDays)}
-                            </strong>
-                          </span>
-                          <span>{b.count} amostras</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
+          <KpiRow kpis={data.kpis} emptyFiltered={filtroSemMatch} />
+          <RitmoChart
+            semanas={data.semanas}
+            criadosSemConclusao={data.semanas_criados_sem_conclusao}
+          />
+          <GargalosTable etapas={data.etapas} />
+          <EquipeTable equipe={data.equipe} membrosById={membrosById} />
         </>
       )}
     </div>
