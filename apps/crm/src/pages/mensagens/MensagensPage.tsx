@@ -9,6 +9,7 @@ import { useEquipeChatData } from './hooks/useEquipeChatData';
 import { ConversationList } from './components/ConversationList';
 import { ConversationThread } from './components/ConversationThread';
 import { EquipeConversationList } from './components/EquipeConversationList';
+import { EquipeThread } from './components/EquipeThread';
 import {
   ThreadLoadError,
   ThreadLoading,
@@ -103,9 +104,16 @@ function EquipePane({
     }
     const conversa = equipe.conversas.data?.find((c) => c.conversa_id === conversaId);
     if (!conversa) return <ThreadNotFound onBack={onBack} />;
-    // Task 10 plugs the real EquipeThread here; a placeholder keeps the page
-    // compiling and the shell's precedence testable until then.
-    return <ThreadPlaceholder />;
+    return (
+      <EquipeThread
+        key={conversaId}
+        conversa={conversa}
+        mensagens={equipe.mensagens}
+        send={equipe.send}
+        markSeen={equipe.markSeen}
+        onBack={onBack}
+      />
+    );
   }
 
   const showList = isDesktop || (conversaId == null && !invalidId);

@@ -21,6 +21,9 @@ const {
   mockEquipeMensagens,
   mockEquipeSeen,
   mockEquipeSend,
+  mockMembros,
+  mockTarefas,
+  mockSearchPosts,
 } = vi.hoisted(() => ({
   mockFeed: vi.fn(),
   mockConversas: vi.fn(),
@@ -32,6 +35,13 @@ const {
   mockEquipeMensagens: vi.fn().mockResolvedValue([]),
   mockEquipeSeen: vi.fn().mockResolvedValue(undefined),
   mockEquipeSend: vi.fn().mockResolvedValue(undefined),
+  // EquipeThread's composer renders MentionTextarea (Task 10), which always
+  // mounts useMentionSearch -> useQuery(['membros'|'clientes'|'tarefas']) even
+  // when the user never types "@" -- stub the two this file doesn't otherwise
+  // cover so that query resolves instead of hitting the real module.
+  mockMembros: vi.fn().mockResolvedValue([]),
+  mockTarefas: vi.fn().mockResolvedValue([]),
+  mockSearchPosts: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('@/store', () => ({
@@ -45,11 +55,30 @@ vi.mock('@/store', () => ({
   getEquipeMensagens: mockEquipeMensagens,
   markEquipeConversaSeen: mockEquipeSeen,
   sendEquipeMensagem: mockEquipeSend,
+  getMembros: mockMembros,
+  getTarefas: mockTarefas,
 }));
+
+// Same rationale as above: useMentionSearch's post section hits this module.
+vi.mock('@/store/posts', () => ({ searchPostsForMention: mockSearchPosts }));
 
 // PostChip's own hover-preview queries are covered by ConversationThread.test.tsx.
 // Mocked here only so the real (Supabase-touching) module never loads.
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn() }));
+
+// The equipe thread slot (b1) now mounts the real EquipeThread (Task 10), which
+// reads the current user id via useAuth() to align bubbles. This file renders
+// MensagensPage directly (no AuthProvider ancestor, unlike production's
+// App.tsx), so the hook needs the same minimal mock other page tests use.
+// Keeps the real `AuthContext` export via importOriginal -- useEquipeChatRealtime
+// reads it directly with useContext(AuthContext), not through useAuth().
+vi.mock('@/context/AuthContext', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    useAuth: () => ({ user: { id: 'user-1' }, role: 'owner', loading: false, profile: null }),
+  };
+});
 
 let mockWorkspaceFeatures: Record<string, boolean> | null = {
   feature_mensagens: true,
@@ -172,6 +201,9 @@ describe('MensagensPage — feature-flag behavior', () => {
     mockEquipeMensagens.mockResolvedValue([]);
     mockEquipeSeen.mockResolvedValue(undefined);
     mockEquipeSend.mockResolvedValue(undefined);
+    mockMembros.mockResolvedValue([]);
+    mockTarefas.mockResolvedValue([]);
+    mockSearchPosts.mockResolvedValue([]);
   });
 
   it('(a) both flags on: tab pills render and switch between the clientes and equipe lists', async () => {
@@ -196,7 +228,12 @@ describe('MensagensPage — feature-flag behavior', () => {
     mockMatchMedia(true); // desktop: list renders alongside the thread slot
     renderPage('/mensagens/equipe/42');
 
-    expect(await screen.findByText('Time de Design')).toBeInTheDocument();
+    // "Time de Design" now appears twice once the real EquipeThread (Task 10)
+    // opens alongside the list (list row + thread header), so assert on the
+    // list row's testid instead of the ambiguous text — same fix as the
+    // clientes-side (e) test below.
+    expect(await screen.findByTestId('equipe-conversa-42')).toBeInTheDocument();
+    expect(screen.getAllByText('Time de Design').length).toBeGreaterThan(0);
     expect(screen.queryByText('ACME')).not.toBeInTheDocument();
   });
 
