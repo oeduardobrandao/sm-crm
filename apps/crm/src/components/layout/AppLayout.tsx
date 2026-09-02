@@ -5,6 +5,7 @@ import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
 import TopBar from './TopBar';
 import { DunningBanner } from '../billing/DunningBanner';
+import { IncidentBanner } from './IncidentBanner';
 import { useAuth } from '../../context/AuthContext';
 import type { FinancialAccess } from '../../lib/financialAccess';
 import FinancialRestrictionScreen from './FinancialRestrictionScreen';
@@ -114,6 +115,7 @@ export default function AppLayout() {
         <Suspense fallback={null}>
           <GlobalBannerContainer>
             <DunningBanner />
+            <IncidentBanner />
           </GlobalBannerContainer>
         </Suspense>
 

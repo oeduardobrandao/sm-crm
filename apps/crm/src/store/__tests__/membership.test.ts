@@ -16,8 +16,12 @@ vi.mock('../core', () => ({
   supabase: {
     auth: { getUser: mockGetUser },
     from: () => ({
-      select: () => ({
-        eq: () => ({ eq: () => ({ maybeSingle: mockMaybeSingle }) }),
+      // The column list is forwarded to the mock so the pre-migration
+      // fallback tests below can answer the enriched select and the legacy
+      // select differently. Tests that don't care still work: a plain
+      // mockResolvedValue ignores the argument.
+      select: (columns: string) => ({
+        eq: () => ({ eq: () => ({ maybeSingle: () => mockMaybeSingle(columns) }) }),
       }),
     }),
   },
@@ -78,5 +82,59 @@ describe('getMyMembership', () => {
     const queryError = { message: 'boom' };
     mockMaybeSingle.mockResolvedValue({ data: null, error: queryError });
     await expect(getMyMembership()).rejects.toBe(queryError);
+  });
+
+  // Pre-migration fallback (2026-09-02 incident): the bundle can reach a
+  // database that doesn't have role_id/workspace_roles yet, because Vercel
+  // deploys on merge while migrations are pushed by hand. The enriched
+  // select 400s there for EVERY member — without the fallback, AuthContext
+  // resolved membership to 'error' and the whole app showed "Não foi
+  // possível confirmar seu acesso".
+  const schemaCacheError = {
+    code: 'PGRST200',
+    message:
+      "Could not find a relationship between 'workspace_members' and 'workspace_roles' in the schema cache",
+  };
+
+  it('falls back to the legacy select when the roles schema is missing (pre-migration DB)', async () => {
+    mockMaybeSingle.mockImplementation((columns: string) =>
+      columns.includes('workspace_roles')
+        ? Promise.resolve({ data: null, error: schemaCacheError })
+        : Promise.resolve({ data: { role: 'owner', can_see_financials: true }, error: null }),
+    );
+    await expect(getMyMembership()).resolves.toEqual({
+      role: 'owner',
+      can_see_financials: true,
+      role_id: null,
+      permissions: null,
+    });
+  });
+
+  it('resolves to null (not a throw) when the fallback finds no row', async () => {
+    mockMaybeSingle.mockImplementation((columns: string) =>
+      columns.includes('workspace_roles')
+        ? Promise.resolve({ data: null, error: { code: '42703', message: 'column x' } })
+        : Promise.resolve({ data: null, error: null }),
+    );
+    await expect(getMyMembership()).resolves.toBeNull();
+  });
+
+  it('does not retry on a non-schema error — a network blip must still resolve to unknown', async () => {
+    const transportError = { message: 'TypeError: Failed to fetch' };
+    mockMaybeSingle.mockResolvedValue({ data: null, error: transportError });
+    await expect(getMyMembership()).rejects.toBe(transportError);
+    // One select only: retrying the same failing transport would just double
+    // the latency of every hydration during an outage.
+    expect(mockMaybeSingle).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws the legacy error when the fallback itself fails', async () => {
+    const legacyError = { message: 'permission denied' };
+    mockMaybeSingle.mockImplementation((columns: string) =>
+      columns.includes('workspace_roles')
+        ? Promise.resolve({ data: null, error: schemaCacheError })
+        : Promise.resolve({ data: null, error: legacyError }),
+    );
+    await expect(getMyMembership()).rejects.toBe(legacyError);
   });
 });

@@ -57,6 +57,10 @@ vi.mock('../../billing/DunningBanner', () => ({
   DunningBanner: () => null,
 }));
 
+vi.mock('../IncidentBanner', () => ({
+  IncidentBanner: () => null,
+}));
+
 vi.mock('../../help/ContextHelpLinks', () => ({
   ContextHelpLinks: () => null,
 }));
