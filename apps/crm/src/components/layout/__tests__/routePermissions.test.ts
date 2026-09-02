@@ -91,6 +91,11 @@ describe('resolveRouteGate', () => {
     expect(resolveRouteGate('/rota-inventada')).toBe('unmapped');
   });
 
+  it('/Financeiro (capitalized) resolves exactly like /financeiro — case-insensitive internally, not just via the caller', () => {
+    expect(resolveRouteGate('/Financeiro')).toEqual(resolveRouteGate('/financeiro'));
+    expect(resolveRouteGate('/Financeiro')).toEqual({ module: 'financeiro', action: 'ver' });
+  });
+
   describe('segment-boundary matching', () => {
     it('/clientesx does not match /clientes — resolves unmapped', () => {
       expect(resolveRouteGate('/clientesx')).toBe('unmapped');
@@ -109,6 +114,53 @@ describe('resolveRouteGate', () => {
         module: 'analytics',
         action: 'ver',
       });
+    });
+  });
+
+  describe('full App.tsx authenticated-route coverage', () => {
+    // Hardcoded from App.tsx:154-241 (the /workspace-setup, /comecar,
+    // /oauth/consent routes plus every route inside the two ProtectedRoute-
+    // wrapped blocks). Dynamic segments (:id, :slug, etc.) are represented by
+    // one concrete example each. KEEP IN SYNC WITH App.tsx: any new
+    // authenticated route added there needs an entry in routePermissions.ts's
+    // ROUTES table AND a line here, or it silently resolves 'unmapped' and
+    // gets deny-by-default in production (ProtectedRoute redirects to
+    // /dashboard and logs a console.error in DEV).
+    const APP_TSX_PROTECTED_ROUTES = [
+      '/workspace-setup',
+      '/comecar',
+      '/oauth/consent',
+      '/dashboard',
+      '/clientes',
+      '/clientes/42',
+      '/financeiro',
+      '/contratos',
+      '/leads',
+      '/equipe',
+      '/equipe/42',
+      '/configuracao',
+      '/calendario',
+      '/entregas',
+      '/tarefas',
+      '/post-express',
+      '/arquivos',
+      '/analytics',
+      '/analytics/42',
+      '/relatorios/42',
+      '/analytics-fluxos',
+      '/ideias',
+      '/mensagens',
+      '/mensagens/42',
+      '/automacoes',
+      '/importar',
+      '/ajuda',
+      '/ajuda/secao/geral',
+      '/ajuda/secao',
+      '/ajuda/algum-artigo',
+    ];
+
+    it.each(APP_TSX_PROTECTED_ROUTES)('%s resolves to something other than unmapped', (path) => {
+      expect(resolveRouteGate(path)).not.toBe('unmapped');
     });
   });
 });

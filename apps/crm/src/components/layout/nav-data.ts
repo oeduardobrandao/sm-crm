@@ -1,4 +1,3 @@
-import type { FinancialAccess } from '@/lib/financialAccess';
 import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
 
 export interface NavItem {
@@ -241,8 +240,8 @@ const NAV_FEATURE: Record<string, string> = {
  * for every legacy role, so nothing here re-encodes role literals.
  *
  * Ids with no entry (dashboard, ajuda, configuracao, novidades,
- * politica-de-privacidade, analytics-tiktok, cobranca) are outside the
- * permission catalog and always pass through unfiltered here.
+ * politica-de-privacidade, analytics-tiktok) are outside the permission
+ * catalog and always pass through unfiltered here.
  */
 const NAV_MODULE: Partial<Record<string, [PermissionModule, PermissionAction]>> = {
   calendario: ['calendario', 'ver'],
@@ -265,28 +264,29 @@ const NAV_MODULE: Partial<Record<string, [PermissionModule, PermissionAction]>> 
 };
 
 export function getNavGroups(
-  role: string,
   features: Record<string, boolean> | null,
-  canSeeFinancials: FinancialAccess,
   workspaceRole: 'owner' | 'admin' | 'agent' | null,
   can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck,
 ): NavGroup[] {
+  // `workspaceRole` has no owner-only filter to drive today -- the nav item
+  // it used to gate ('cobranca') doesn't exist in ALL_NAV_GROUPS above (dead
+  // code, removed). Kept in the signature rather than dropped: all three call
+  // sites already resolve it from useAuth(), and a future owner-only item
+  // (e.g. billing, if it returns to the nav) would need it immediately.
+  void workspaceRole;
+
   let groups = ALL_NAV_GROUPS;
 
-  // Billing is owner-only. Sourced from `workspaceRole` (workspace_members for
-  // the ACTIVE workspace), NOT the profile-derived `role`: switchWorkspace
-  // never writes profiles.role, so an owner in workspace A who is admin/agent
-  // in B would otherwise keep seeing the billing link while working in B.
-  if (workspaceRole !== 'owner') {
-    groups = groups.map((g) =>
-      g.id === 'config' ? { ...g, items: g.items.filter((i) => i.id !== 'cobranca') } : g,
-    );
-  }
-
   // Single permission filter for every module-backed nav item. Fails CLOSED
-  // on 'unknown' (anti-flash): a nav item that appears then bounces to a
+  // on 'unknown' for EVERY gated id, not just the old financial pair
+  // (anti-flash: a nav item that appears then bounces to a
   // restriction/redirect on click is worse than a brief absence during
-  // membership hydration — same trade-off `formatFinancialBRL` makes.
+  // membership hydration — same trade-off `formatFinancialBRL` makes). This
+  // is a conscious choice, not an accident of `=== true`: the ROUTE itself
+  // (ProtectedRoute/routePermissions.ts) stays NEUTRAL on 'unknown' instead
+  // (renders children), so a user stuck in an error/unresolved state can
+  // still navigate to a page by typing its URL even while its nav link is
+  // hidden — the nav and the route are allowed to disagree here on purpose.
   groups = groups
     .map((g) => ({
       ...g,
@@ -318,13 +318,11 @@ export function getNavGroups(
 }
 
 export function getMoreSheetGroups(
-  role: string,
   features: Record<string, boolean> | null,
-  canSeeFinancials: FinancialAccess,
   workspaceRole: 'owner' | 'admin' | 'agent' | null,
   can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck,
 ): NavGroup[] {
-  return getNavGroups(role, features, canSeeFinancials, workspaceRole, can)
+  return getNavGroups(features, workspaceRole, can)
     .map((g) => ({
       ...g,
       items: g.items.filter((i) => !PRIMARY_NAV_IDS.includes(i.id)),

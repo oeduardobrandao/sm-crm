@@ -58,16 +58,21 @@ const ROUTES: RouteRule[] = [
  * itself a proper sub-path of another, since the boundary rule alone already
  * disambiguates every real case, e.g. `/analytics` vs `/analytics-fluxos`).
  *
+ * Case-insensitive: lowercases the pathname internally, same as App.tsx's
+ * lowercase-only routes (no `caseSensitive`) and `ProtectedRoute`'s own
+ * lowercasing before it calls this. Doing it here too makes this function
+ * safe to call directly (e.g. from a test, or a future caller that forgets
+ * to lowercase first) rather than relying on every caller to remember.
+ *
  * An authenticated route with no entry here resolves 'unmapped' — callers
  * (ProtectedRoute) treat that as deny-by-default, never open-by-default.
  */
-export function resolveRouteGate(
-  pathname: string,
-): { module: PermissionModule; action: PermissionAction } | 'open' | 'unmapped' {
+export function resolveRouteGate(pathname: string): RouteGate {
+  const lower = pathname.toLowerCase();
   let best: RouteRule | null = null;
   for (const rule of ROUTES) {
-    if (!pathname.startsWith(rule.prefix)) continue;
-    const boundary = pathname.charAt(rule.prefix.length);
+    if (!lower.startsWith(rule.prefix)) continue;
+    const boundary = lower.charAt(rule.prefix.length);
     if (boundary !== '' && boundary !== '/') continue;
     if (!best || rule.prefix.length > best.prefix.length) best = rule;
   }

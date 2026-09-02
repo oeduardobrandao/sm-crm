@@ -19,12 +19,17 @@ const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
 
 const mockedUseAuth = vi.mocked(useAuth);
 
-// Real derivePermission-backed `can()`, one per role literal used below —
-// ProtectedRoute now calls `can(gate.module, gate.action)` for every
+// Real derivePermission-backed `can()`, one per role/membership shape used
+// below — ProtectedRoute now calls `can(gate.module, gate.action)` for every
 // permission-mapped route, so every mocked useAuth() return value needs a
 // working `can`, not a role string alone.
 const agentCan = makeCan(fakeMembership({ role: 'agent' }));
 const ownerCan = makeCan(fakeMembership({ role: 'owner' }));
+// Restricted admin: legacy, no custom role, can_see_financials false.
+const restrictedAdminCan = makeCan(fakeMembership({ role: 'admin', can_see_financials: false }));
+// Every permission check resolves 'unknown' — the real shape of an
+// unresolved membership, mid-hydration or after a lookup error.
+const unknownCan = () => 'unknown' as const;
 
 const defaultLimits = {
   limits: null,
@@ -125,9 +130,75 @@ describe('ProtectedRoute', () => {
     expect(container.firstChild).not.toBeNull();
   });
 
-  it.each(['/financeiro', '/contratos', '/leads', '/equipe'])(
-    'redirects agent away from %s to the dashboard',
-    (blocked) => {
+  it.each(['/leads', '/equipe'])('redirects agent away from %s to the dashboard', (blocked) => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'u' } as never,
+      profile: { id: 'u', role: 'agent' } as never,
+      role: 'agent',
+      can: agentCan,
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    renderRoute(blocked);
+
+    expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
+  });
+
+  describe('/financeiro and /contratos are AppLayout territory, not this gate', () => {
+    // These two paths are deliberately EXEMPT from the permission-gate
+    // redirect above (see the comment in ProtectedRoute.tsx): AppLayout's own
+    // `financialGuardOutcome` (content/loading/denied ->
+    // FinancialRestrictionScreen) is the real, sole gate for them, for EVERY
+    // role -- not just agents. This test tree never renders AppLayout (the
+    // routes here render a plain div instead), so "renders the raw children"
+    // below stands in for "control passes to AppLayout, which is not
+    // exercised in this file" -- it is NOT a claim that these paths are open
+    // to everyone. `AppLayout.test.tsx`/`financialRouteGuard.test.ts` own the
+    // actual access-decision coverage for these two paths.
+    it.each(['/financeiro', '/contratos'])(
+      'a legacy agent at %s is NOT redirected here (falls through to AppLayout)',
+      (path) => {
+        mockedUseAuth.mockReturnValue({
+          user: { id: 'u' } as never,
+          profile: { id: 'u', role: 'agent' } as never,
+          role: 'agent',
+          can: agentCan,
+          loading: false,
+          refetchProfile: vi.fn(),
+          signOut: vi.fn(),
+        });
+
+        renderRoute(path);
+
+        expect(screen.getByText('Área protegida')).toBeInTheDocument();
+        expect(screen.queryByText('Área protegida: dashboard')).toBeNull();
+      },
+    );
+
+    it('a restricted admin at /financeiro is NOT redirected here (falls through to AppLayout, which renders FinancialRestrictionScreen in the real app)', () => {
+      // The Task-12 regression this restores: can('financeiro','ver') is
+      // false for a restricted admin, and the permission gate alone would
+      // have redirected to /dashboard, silently replacing AppLayout's
+      // dedicated restriction screen with a bare bounce.
+      mockedUseAuth.mockReturnValue({
+        user: { id: 'admin-1' } as never,
+        profile: { id: 'admin-1', role: 'admin' } as never,
+        role: 'admin',
+        can: restrictedAdminCan,
+        loading: false,
+        refetchProfile: vi.fn(),
+        signOut: vi.fn(),
+      });
+
+      renderRoute('/financeiro');
+
+      expect(screen.getByText('Área protegida')).toBeInTheDocument();
+      expect(screen.queryByText('Área protegida: dashboard')).toBeNull();
+    });
+
+    it('exemption is case-insensitive: /Financeiro (capitalized) behaves the same as /financeiro for an agent', () => {
       mockedUseAuth.mockReturnValue({
         user: { id: 'u' } as never,
         profile: { id: 'u', role: 'agent' } as never,
@@ -138,51 +209,11 @@ describe('ProtectedRoute', () => {
         signOut: vi.fn(),
       });
 
-      renderRoute(blocked);
+      renderRoute('/Financeiro');
 
-      expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
-    },
-  );
-
-  it('redirects agent away from /Financeiro (capitalized) exactly like /financeiro', () => {
-    // App.tsx declares routes lowercase with no `caseSensitive`, so React
-    // Router itself renders /Financeiro the same as /financeiro. AGENT_BLOCKED
-    // previously matched against lowercase literals only, so a capitalized
-    // path bypassed this redirect for an agent.
-    mockedUseAuth.mockReturnValue({
-      user: { id: 'u' } as never,
-      profile: { id: 'u', role: 'agent' } as never,
-      role: 'agent',
-      can: agentCan,
-      loading: false,
-      refetchProfile: vi.fn(),
-      signOut: vi.fn(),
+      expect(screen.getByText('Área protegida')).toBeInTheDocument();
+      expect(screen.queryByText('Área protegida: dashboard')).toBeNull();
     });
-
-    renderRoute('/Financeiro');
-
-    expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
-  });
-
-  it('still redirects an agent at /financeiro (lowercase, no regression)', () => {
-    // Companion to the capitalized case above: proves the lowercasing fix
-    // didn't break the original, un-capitalized redirect path. A "fix" that
-    // only handled capitalized input (e.g. matching uppercase variants
-    // instead of lowercasing before comparison) would pass the test above
-    // but fail this one.
-    mockedUseAuth.mockReturnValue({
-      user: { id: 'u' } as never,
-      profile: { id: 'u', role: 'agent' } as never,
-      role: 'agent',
-      can: agentCan,
-      loading: false,
-      refetchProfile: vi.fn(),
-      signOut: vi.fn(),
-    });
-
-    renderRoute('/financeiro');
-
-    expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
   });
 
   it('allows an agent to reach non-blocked routes', () => {
@@ -199,6 +230,120 @@ describe('ProtectedRoute', () => {
     renderRoute('/dashboard');
 
     expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
+  });
+
+  // Positive parity: every route the legacy agent preset actually grants,
+  // beyond the single /dashboard case above. Mirrors the AGENT_ROLE_PRESET
+  // truth table in lib/permissions.ts (clientes/entregas/calendario/
+  // aprovacoes/arquivos/ideias/tarefas: 'editar'; analytics: 'ver';
+  // automacoes: 'editar') for every module that has a real CRM route --
+  // 'aprovacoes' has none today (see routePermissions.ts), so it's excluded
+  // here. leads/financeiro/contratos/equipe are covered by the blocked
+  // it.each above and the financial-exemption describe block, not repeated.
+  it.each([
+    '/calendario',
+    '/clientes',
+    '/entregas',
+    '/post-express',
+    '/tarefas',
+    '/arquivos',
+    '/ideias',
+    '/mensagens',
+    '/analytics',
+    '/analytics-fluxos',
+    '/automacoes',
+  ])('renders children (no redirect) for an agent at %s', (path) => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'u' } as never,
+      profile: { id: 'u', role: 'agent' } as never,
+      role: 'agent',
+      can: agentCan,
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    renderRoute(path);
+
+    expect(screen.getByText('Área protegida')).toBeInTheDocument();
+  });
+
+  describe('fail-mode: unmapped route', () => {
+    it('redirects to /dashboard and logs a console.error in DEV', () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      mockedUseAuth.mockReturnValue({
+        user: { id: 'u' } as never,
+        profile: { id: 'u', role: 'owner', empresa: 'Mesaas' } as never,
+        role: 'owner',
+        can: ownerCan,
+        loading: false,
+        refetchProfile: vi.fn(),
+        signOut: vi.fn(),
+      });
+
+      renderRoute('/uma-rota-que-nao-existe-no-mapa');
+
+      expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
+      // import.meta.env.DEV is true under vitest, so the DEV-only branch runs.
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/uma-rota-que-nao-existe-no-mapa'),
+      );
+      errorSpy.mockRestore();
+    });
+  });
+
+  describe("fail-mode: can() === 'unknown'", () => {
+    it("renders children (neutral, does not redirect) for a gated route when can() reports 'unknown'", () => {
+      // Mirrors AppLayout's financial guard: an unresolved membership fails
+      // NEUTRAL at the route layer, not closed -- otherwise hydration or a
+      // transient lookup error would bounce a real owner to /dashboard.
+      mockedUseAuth.mockReturnValue({
+        user: { id: 'u' } as never,
+        profile: { id: 'u', role: 'owner', empresa: 'Mesaas' } as never,
+        role: 'owner',
+        can: unknownCan,
+        loading: false,
+        refetchProfile: vi.fn(),
+        signOut: vi.fn(),
+      });
+
+      renderRoute('/entregas');
+
+      expect(screen.getByText('Área protegida')).toBeInTheDocument();
+    });
+  });
+
+  describe('ordering: permission gate runs before the feature-gate loop', () => {
+    it('redirects an agent to /dashboard at a route that is BOTH permission-blocked and feature-gated, instead of showing the upgrade screen', () => {
+      // /leads is permission-blocked for the legacy agent preset
+      // (leads: 'none') AND feature-gated (feature_leads). Pre-permission-
+      // model, AGENT_BLOCKED ran before FEATURE_GATED, so an agent always
+      // got redirected here regardless of the plan's feature flags. If the
+      // feature-gate loop ran first, this agent would see the upgrade screen
+      // instead -- a route an agent should never reach in the first place.
+      mockedUseAuth.mockReturnValue({
+        user: { id: 'u' } as never,
+        profile: { id: 'u', role: 'agent' } as never,
+        role: 'agent',
+        can: agentCan,
+        loading: false,
+        refetchProfile: vi.fn(),
+        signOut: vi.fn(),
+      });
+
+      mockedUseWorkspaceLimits.mockReturnValue({
+        limits: null,
+        features: { feature_leads: false },
+        planName: 'starter',
+        isLoading: false,
+        isUnlimited: false,
+      });
+
+      renderRoute('/leads');
+
+      expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
+      expect(screen.queryByText(/Leads não está no seu plano/)).toBeNull();
+    });
   });
 
   it('redirects owner without empresa to workspace-setup', () => {

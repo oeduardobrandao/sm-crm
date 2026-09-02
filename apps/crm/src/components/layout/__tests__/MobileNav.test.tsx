@@ -45,7 +45,10 @@ function PathProbe() {
   return <div data-testid="path">{loc.pathname}</div>;
 }
 
+type Role = 'owner' | 'admin' | 'agent';
+
 function setAuth(overrides: Record<string, unknown> = {}) {
+  const role: Role = (overrides.role as Role | undefined) ?? 'owner';
   mockedUseAuth.mockReturnValue({
     user: { id: '1' } as any,
     session: {} as any,
@@ -56,10 +59,10 @@ function setAuth(overrides: Record<string, unknown> = {}) {
       conta_id: 'c1',
       ...overrides,
     } as any,
-    role: (overrides.role as string) || 'owner',
-    workspaceRole: (overrides.role as string) || 'owner',
+    role,
+    workspaceRole: role,
     canSeeFinancials: overrides.canSeeFinancials ?? true,
-    can: makeCan(fakeMembership({ role: ((overrides.role as string) || 'owner') as never })),
+    can: makeCan(fakeMembership({ role })),
     loading: false,
     signOut: (overrides.signOut as any) || vi.fn(),
     refreshProfile: vi.fn(),
