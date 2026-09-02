@@ -112,6 +112,10 @@ export function StatCard({
         type="button"
         className="kpi-card kpi-card--clickable"
         data-active={active || undefined}
+        // The ring is the sighted cue for "this filter is applied"; aria-pressed
+        // is the same fact for a screen reader, and it has to be present (false)
+        // even while off or the card reads as a plain action button.
+        aria-pressed={active ?? false}
         onClick={onClick}
       >
         {content}

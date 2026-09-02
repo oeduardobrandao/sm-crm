@@ -104,9 +104,10 @@ function countActiveFilters(filters: FilterState, mode: FiltersMode): number {
           filters.filterEtapas,
           filters.filterTemplates,
         ];
+  // Prazo applies in BOTH modes: the fluxos board reads it through
+  // matchesEtapaPrazo just like the posts one does.
   const prazoActive =
-    mode === 'posts' &&
-    (filters.filterPrazo.length > 0 || !!filters.filterPrazoFrom || !!filters.filterPrazoTo);
+    filters.filterPrazo.length > 0 || !!filters.filterPrazoFrom || !!filters.filterPrazoTo;
   return counted.filter((v) => v.length > 0).length + (prazoActive ? 1 : 0);
 }
 
@@ -538,6 +539,14 @@ export function EntregasFilters({
             summary: summarizeSelection(templateOptions, filters.filterTemplates),
             clear: () => onChange({ ...filters, filterTemplates: [] }),
           },
+          {
+            key: 'prazo',
+            icon: CalendarClock,
+            dimension: 'Prazo',
+            summary: prazoSummary(filters),
+            clear: () =>
+              onChange({ ...filters, filterPrazo: [], filterPrazoFrom: '', filterPrazoTo: '' }),
+          },
         ]
   ).filter((chip): chip is typeof chip & { summary: string } => chip.summary != null);
 
@@ -684,6 +693,7 @@ export function EntregasFilters({
                   onSelectedChange={(filterTemplates) => onChange({ ...filters, filterTemplates })}
                   isStacked
                 />
+                <PrazoEtapaFilter filters={filters} onChange={onChange} isStacked />
               </>
             )}
           </div>

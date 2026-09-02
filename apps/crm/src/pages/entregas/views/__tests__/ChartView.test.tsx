@@ -1,14 +1,26 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ChartView } from '../ChartView';
 import { EMPTY_FILTERS, type FilterState } from '../../components/EntregasFilters';
 import { matchesEtapaPrazo } from '../../etapaPrazo';
 import type { BoardCard } from '../../hooks/useEntregasData';
 
+/** Element Chart.js would report under the pointer on the next canvas click. */
+const chartMock = vi.hoisted(() => ({
+  hit: [] as { index: number; datasetIndex: number }[],
+}));
+
 vi.mock('react-chartjs-2', () => ({
-  Bar: ({ data }: any) => <div data-testid="bar-chart" data-labels={JSON.stringify(data.labels)} />,
-  getElementAtEvent: () => [],
+  // React 19 hands `ref` to function components as a plain prop; ChartView's
+  // click handlers bail out while the chart ref is still null.
+  Bar: ({ data, onClick, ref }: any) => {
+    if (ref) ref.current = { id: 'bar-mock' };
+    return (
+      <div data-testid="bar-chart" data-labels={JSON.stringify(data.labels)} onClick={onClick} />
+    );
+  },
+  getElementAtEvent: () => chartMock.hit,
 }));
 
 interface CardOverrides {
@@ -118,6 +130,10 @@ function kpiValue(container: HTMLElement, label: string): string {
 }
 
 describe('ChartView', () => {
+  beforeEach(() => {
+    chartMock.hit = [];
+  });
+
   it('renders the five KPI cards with the counts of the filtered cards', () => {
     const { container } = renderView();
 
@@ -214,5 +230,37 @@ describe('ChartView', () => {
       'Beta Labs',
       'Acme',
     ]);
+  });
+
+  // matchesEtapaPrazo ORs the presets with the custom range, so a preset left
+  // over from a previous click would WIDEN the drill-down instead of narrowing it.
+  it('drops a leftover prazo preset when drilling into an aging bucket', () => {
+    const applied: FilterState = { ...EMPTY_FILTERS, filterPrazo: ['proximos7'] };
+    const { props } = renderView({ filters: applied });
+
+    chartMock.hit = [{ index: 0, datasetIndex: 0 }];
+    const charts = screen.getAllByTestId('bar-chart');
+    // Cliente, responsável, etapa, and last the "Idade dos atrasos" chart.
+    fireEvent.click(charts[charts.length - 1]);
+
+    expect(props.onFiltersChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filterStatus: ['atrasado'],
+        filterPrazo: [],
+        filterPrazoTo: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      }),
+    );
+  });
+
+  it('renders only the empty card when the filters excluded every entrega', () => {
+    renderView({ cards: [] });
+
+    expect(screen.getByText('Nenhuma entrega encontrada. Ajuste os filtros.')).toBeInTheDocument();
+    // The per-section empty states are celebratory ("Nenhuma entrega atrasada",
+    // "Semana livre de vencimentos") and would misreport a board the filters emptied.
+    expect(screen.queryByText('Nenhuma entrega atrasada')).not.toBeInTheDocument();
+    expect(screen.queryByText('Próximos vencimentos')).not.toBeInTheDocument();
+    expect(screen.queryAllByTestId('bar-chart')).toHaveLength(0);
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });

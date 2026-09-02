@@ -181,8 +181,30 @@ vi.mock('../tour/entregasTour', async (importOriginal) => ({
 }));
 
 vi.mock('../views/ChartView', () => ({
-  ChartView: ({ cards }: { cards: Array<{ workflow: { titulo: string } }> }) => (
-    <div>Chart view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
+  ChartView: ({
+    cards,
+    totalCards,
+    filters,
+    onFiltersChange,
+    onCardClick,
+    onGoToView,
+  }: {
+    cards: Array<{ workflow: { titulo: string } }>;
+    totalCards: number;
+    filters: Record<string, unknown>;
+    onFiltersChange: (next: Record<string, unknown>) => void;
+    onCardClick: (card: unknown) => void;
+    onGoToView: (view: 'kanban' | 'list') => void;
+  }) => (
+    <div>
+      <div>Chart view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
+      <div>Chart total: {totalCards}</div>
+      <button onClick={() => onFiltersChange({ ...filters, filterPrazo: ['hoje'] })}>
+        Chart KPI vencem hoje
+      </button>
+      <button onClick={() => onCardClick(cards[0])}>Open drawer from chart</button>
+      <button onClick={() => onGoToView('list')}>Chart ver na lista</button>
+    </div>
   ),
 }));
 
@@ -473,6 +495,15 @@ function renderEntregasPage(data: { activeWorkflows: unknown[]; cards: unknown[]
 
 const wfFixture = { id: 1 };
 
+/** 'YYYY-MM-DD' n days from today, local time — the etapa `data_limite` format. */
+function isoInDays(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mes}-${dia}`;
+}
+
 describe('EntregasPage', () => {
   beforeEach(() => {
     mockedDuplicateWorkflow.mockReset();
@@ -616,7 +647,7 @@ describe('EntregasPage', () => {
 
     renderPage();
 
-    fireEvent.click(screen.getByText('Gráfico'));
+    fireEvent.click(screen.getByText('Visão geral'));
     expect(screen.getByText('Chart view: Fluxo Editorial')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Lista'));
@@ -627,6 +658,76 @@ describe('EntregasPage', () => {
     fireEvent.click(screen.getByText('Concluídas'));
     expect(screen.getByText('Concluded view')).toBeInTheDocument();
     expect(screen.queryByText(/Filters:/)).not.toBeInTheDocument();
+  });
+
+  it('exposes the view switcher as a tablist and sets the document title', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    expect(document.title).toBe('Entregas | Mesaas');
+
+    expect(screen.getByRole('tablist', { name: 'Modos de visualização' })).toBeInTheDocument();
+    const kanbanTab = screen.getByRole('tab', { name: 'Kanban' });
+    const visaoGeralTab = screen.getByRole('tab', { name: 'Visão geral' });
+    expect(kanbanTab).toHaveAttribute('aria-selected', 'true');
+    expect(visaoGeralTab).toHaveAttribute('aria-selected', 'false');
+
+    fireEvent.click(visaoGeralTab);
+
+    expect(visaoGeralTab).toHaveAttribute('aria-selected', 'true');
+    expect(kanbanTab).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByText('Chart view: Fluxo Editorial')).toBeInTheDocument();
+    // The "de N fluxos" caption counts the whole board, not the filtered slice.
+    expect(screen.getByText('Chart total: 1')).toBeInTheDocument();
+  });
+
+  // The Visão geral KPIs and buckets patch filterPrazo; without the entregas-mode
+  // pipeline reading it, every one of those clicks changed state with no effect.
+  it('applies the prazo filter to the fluxos board, not only to posts', () => {
+    renderEntregasPage({
+      activeWorkflows: [{ id: 1 }, { id: 2 }],
+      cards: [
+        makeCard({
+          workflow: { id: 1, titulo: 'Vence hoje', cliente_id: 10, status: 'ativo' },
+          etapa: { responsavel_id: 7, data_limite: isoInDays(0) },
+        }),
+        makeCard({
+          workflow: { id: 2, titulo: 'Vence semana que vem', cliente_id: 10, status: 'ativo' },
+          etapa: { responsavel_id: 7, data_limite: isoInDays(8) },
+        }),
+      ],
+    });
+
+    fireEvent.click(screen.getByText('Visão geral'));
+    expect(screen.getByText('Chart view: Vence hoje, Vence semana que vem')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Chart KPI vencem hoje'));
+
+    expect(screen.getByText('Chart view: Vence hoje')).toBeInTheDocument();
+  });
+
+  it('hydrates the prazo filter for the fluxos board straight from the URL', () => {
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [],
+      membros: [],
+      templates: [],
+      cards: [
+        makeCard({
+          workflow: { id: 1, titulo: 'Vence hoje', cliente_id: 10, status: 'ativo' },
+          etapa: { responsavel_id: 7, data_limite: isoInDays(0) },
+        }),
+        makeCard({
+          workflow: { id: 2, titulo: 'Vence semana que vem', cliente_id: 10, status: 'ativo' },
+          etapa: { responsavel_id: 7, data_limite: isoInDays(8) },
+        }),
+      ],
+      activeWorkflows: [{ id: 1 }, { id: 2 }],
+      isLoading: false,
+      refresh: vi.fn(),
+    } as never);
+
+    renderPage('/entregas?prazo=hoje');
+
+    expect(screen.getByText('Kanban view: Vence hoje')).toBeInTheDocument();
   });
 
   it('auto-opens the drawer from the query string and supports edit-to-posts flow', async () => {
@@ -1014,7 +1115,7 @@ describe('EntregasPage', () => {
   it('shows the replay control only on the kanban view', () => {
     renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
     expect(screen.getByText(/ver tour novamente/i)).toBeTruthy();
-    fireEvent.click(screen.getByText('Gráfico'));
+    fireEvent.click(screen.getByText('Visão geral'));
     expect(screen.queryByText(/ver tour novamente/i)).toBeNull();
   });
 

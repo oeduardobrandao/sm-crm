@@ -501,6 +501,21 @@ export function ChartView({
         ? 'há quanto tempo a entrega atrasada está estourada'
         : `há quanto tempo as ${stats.atrasado} atrasadas estão estouradas`;
 
+  // Every section below has an empty state written for a healthy board
+  // ("Nenhuma entrega atrasada", "Semana livre de vencimentos"). With nothing
+  // left to show they all celebrate at once, which reads as good news when the
+  // truth is that the filters excluded everything. One honest card instead.
+  if (cards.length === 0) {
+    return (
+      <div
+        className="card animate-up"
+        style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
+      >
+        <p>{EMPTY_ROWS}</p>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <StatCardGrid maxCols={5} className="animate-up">
@@ -745,6 +760,10 @@ export function ChartView({
                 onFiltersChange({
                   ...filters,
                   filterStatus: ['atrasado'],
+                  // matchesEtapaPrazo ORs the presets with the custom range, so a
+                  // preset still applied from an earlier click (the "Vencem hoje"
+                  // KPI, say) would WIDEN this drill-down instead of narrowing it.
+                  filterPrazo: [],
                   filterPrazoFrom: bucket.fromDaysAgo == null ? '' : isoDaysAgo(bucket.fromDaysAgo),
                   filterPrazoTo: isoDaysAgo(bucket.toDaysAgo),
                 })

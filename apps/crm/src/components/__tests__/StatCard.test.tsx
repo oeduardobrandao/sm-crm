@@ -8,8 +8,16 @@ describe('StatCard onClick', () => {
     render(<StatCard label="Atrasadas" value={5} onClick={onClick} active />);
     const btn = screen.getByRole('button', { name: /Atrasadas/ });
     expect(btn).toHaveAttribute('data-active', 'true');
+    // The ring is the sighted cue; aria-pressed is the same toggle state for AT.
+    expect(btn).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(btn);
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+  it('reports the untoggled state when the card is clickable but not applied', () => {
+    render(<StatCard label="Urgentes" value={1} onClick={vi.fn()} />);
+    const btn = screen.getByRole('button', { name: /Urgentes/ });
+    expect(btn).toHaveAttribute('aria-pressed', 'false');
+    expect(btn).not.toHaveAttribute('data-active');
   });
   it('renders a plain div without onClick', () => {
     render(<StatCard label="Em dia" value={2} />);
