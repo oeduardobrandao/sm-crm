@@ -279,6 +279,9 @@ export function PostEditorBody({
   // null for the statuses that just sit there waiting on a person.
   const statusAutomationHint = getStatusAutomationHint(post);
   const publishError = shouldShowPublishErrorBlock(post);
+  // Custom properties — tab shown when template has properties defined. A post avulso
+  // (StandalonePostDrawer) has no workflowId either, and always passes templateId:
+  // undefined, so this guard already keeps the two conditions together.
   const showProperties = templateId != null && templateId !== 0 && workflowId != null;
   const openThreadCount = commentThreads.filter((t) => t.status === 'active').length;
 
