@@ -19,8 +19,8 @@ const NOW = new Date("2026-08-13T12:00:00.000Z"); // NOW - 72h = 2026-08-10T12:0
 type Row = Record<string, unknown>;
 type Filter =
   | { op: "eq"; column: string; value: unknown }
-  | { op: "gt"; column: string; value: string }
-  | { op: "lte"; column: string; value: string };
+  | { op: "gt"; column: string; value: unknown }
+  | { op: "lte"; column: string; value: unknown };
 
 function getPath(row: Row, path: string): unknown {
   return path.split(".").reduce<unknown>((acc, key) => {
@@ -29,12 +29,22 @@ function getPath(row: Row, path: string): unknown {
   }, row);
 }
 
+/** -1/0/1 for two values of the same comparable type (string or number) --
+ * used by both the gt/lte filter check and the multi-key sort below, since
+ * the handler now compares timestamps (string) AND ids (number) via the
+ * same `.gt()`/`.order()` chain methods. */
+function compareValues(a: unknown, b: unknown): number {
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  if (typeof a === "string" && typeof b === "string") return a < b ? -1 : a > b ? 1 : 0;
+  return 0;
+}
+
 function matchesRow(row: Row, filters: Filter[]): boolean {
   return filters.every((f) => {
     const v = getPath(row, f.column);
     if (f.op === "eq") return v === f.value;
-    if (f.op === "gt") return typeof v === "string" && v > f.value;
-    if (f.op === "lte") return typeof v === "string" && v <= f.value;
+    if (f.op === "gt") return compareValues(v, f.value) > 0;
+    if (f.op === "lte") return compareValues(v, f.value) <= 0;
     return false;
   });
 }
@@ -51,11 +61,11 @@ function makeSelectChain(rows: Row[]) {
       filters.push({ op: "eq", column, value });
       return chain;
     },
-    gt(column: string, value: string) {
+    gt(column: string, value: unknown) {
       filters.push({ op: "gt", column, value });
       return chain;
     },
-    lte(column: string, value: string) {
+    lte(column: string, value: unknown) {
       filters.push({ op: "lte", column, value });
       return chain;
     },
@@ -72,11 +82,9 @@ function makeSelectChain(rows: Row[]) {
       if (orders.length > 0) {
         result = [...result].sort((a, b) => {
           for (const { column, ascending } of orders) {
-            const av = getPath(a, column);
-            const bv = getPath(b, column);
-            if (av === bv) continue;
-            const lt = (av as string | number) < (bv as string | number);
-            return ascending ? (lt ? -1 : 1) : (lt ? 1 : -1);
+            const cmp = compareValues(getPath(a, column), getPath(b, column));
+            if (cmp === 0) continue;
+            return ascending ? cmp : -cmp;
           }
           return 0;
         });
@@ -848,7 +856,228 @@ Deno.test("dedupe tiebreak: two transitions for the same post at the identical t
   assert(!sent[0].html.includes("Version A (lower id)"), "expected the lower-id (earlier) version to be superseded");
 });
 
-// --- 15. handler auth --------------------------------------------------------------------
+// --- 15. tie cluster straddling the cap ----------------------------------------------------
+//
+// Scoped re-review of rounds 3-4 (PR #437): the cap cuts on a COMPOSITE
+// (created_at, id), but a `created_at`-only boundary is used for the
+// gt() cursor check next tick. A transaction-stable now() makes it common
+// for several rows (e.g. bulk-approving a batch of posts at once) to share
+// the exact same created_at -- if the cap happens to cut through the MIDDLE
+// of that tied group, the excluded siblings can never satisfy
+// `gt(created_at, boundary)` on any future tick and are stranded forever.
+// The repo already names and fixes this exact trap for a different query
+// (composite keyset cursor, mensagens_consolidadas.sql:253-258).
+
+Deno.test("tie cluster straddling the cap: all siblings delivered via one supplementary fetch, cursor lands on the tied timestamp, tick 2 does not repeat them", async () => {
+  const clienteId = 19;
+  const floorMs = new Date("2026-08-10T12:00:00.000Z").getTime(); // NOW - 72h
+  const tiedTsMs = floorMs + 995 * 60_000;
+  const tiedTsIso = new Date(tiedTsMs).toISOString();
+
+  // 994 distinct-timestamp events (rows 1-994).
+  const preTie: Row[] = [];
+  for (let i = 0; i < 994; i++) {
+    preTie.push({
+      id: 10_000 + i,
+      post_id: 20_000 + i,
+      conta_id: "ws1",
+      to_status: "enviado_cliente",
+      created_at: new Date(floorMs + (i + 1) * 60_000).toISOString(),
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: `Pre ${i}` },
+    });
+  }
+  // 11 events (rows 995-1005) sharing the EXACT same created_at -- the cap
+  // (limit 1000) cuts through the middle of this group. Ids are scrambled
+  // in the array to prove the id-ascending tiebreak is a real sort, not
+  // array/insertion order.
+  const tiedIds = [90_005, 90_002, 90_009, 90_000, 90_007, 90_003, 90_008, 90_001, 90_006, 90_004, 90_010];
+  const tied: Row[] = tiedIds.map((id, j) => ({
+    id,
+    post_id: 30_000 + j,
+    conta_id: "ws1",
+    to_status: "enviado_cliente",
+    created_at: tiedTsIso,
+    workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: `Tied ${j}` },
+  }));
+  // 5 more events strictly AFTER the tied timestamp -- must NOT be part of
+  // tick 1's digest, and must be exactly what tick 2 delivers.
+  const postTie: Row[] = [];
+  for (let k = 0; k < 5; k++) {
+    postTie.push({
+      id: 40_000 + k,
+      post_id: 50_000 + k,
+      conta_id: "ws1",
+      to_status: "enviado_cliente",
+      created_at: new Date(tiedTsMs + (k + 1) * 60_000).toISOString(),
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: `Post-tie ${k}` },
+    });
+  }
+  const allEvents = [...preTie, ...tied, ...postTie];
+  const ws = [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }];
+
+  // ---- tick 1: primary fetch caps at 1000 (994 pre-tie + the 6 tied rows
+  // with the lowest ids); the supplementary tie-completion fetch pulls in
+  // the other 5 tied rows (higher ids), completing the group of 11. ----
+  const claimThrough1 = NOW.toISOString();
+  const db1 = makeFakeDb(
+    [claimedRow({ id: clienteId, conta_id: "ws1", event_cursor_at: null, event_claim_through: claimThrough1 })],
+    { postStatusEvents: allEvents, workspaces: ws },
+  );
+  const { deps: deps1, sent: sent1 } = makeDeps(db1);
+  const r1 = await runClientEventEmailCron(deps1);
+  assertEquals(r1.emailed, 1);
+  assertEquals(db1.successCalls, [
+    { ids: [clienteId], patch: { event_cursor_at: tiedTsIso, event_claim_through: null } },
+  ]);
+  // 994 pre-tie + all 11 tied = 1005 pending posts -- none of the 11 tied
+  // siblings lost to the cap, none of the 5 post-tie posts leaked in early.
+  // The overflow line's count is the sharpest signal available: it's wrong
+  // the instant a single post goes missing OR shows up early.
+  assert(
+    sent1[0].html.includes("e mais 985 posts aguardando aprovação."),
+    "expected exactly 1005 pending posts (994 pre-tie + all 11 tied)",
+  );
+  const expectedIds1 = [...preTie, ...tied].map((e) => `pse:${e.id}`);
+  const expectedKey1 = await buildClientEventIdempotencyKey(clienteId, expectedIds1);
+  assertEquals(sent1[0].idempotencyKey, expectedKey1);
+
+  // ---- tick 2: same client, cursor now at the tied timestamp, 15 min later ----
+  const claimThrough2 = new Date(NOW.getTime() + 15 * 60_000).toISOString();
+  const db2 = makeFakeDb(
+    [
+      claimedRow({
+        id: clienteId,
+        conta_id: "ws1",
+        event_cursor_at: tiedTsIso,
+        event_claim_through: claimThrough2,
+      }),
+    ],
+    { postStatusEvents: allEvents, workspaces: ws },
+  );
+  const { deps: deps2, sent: sent2 } = makeDeps(db2, { now: () => new Date(claimThrough2) });
+  const r2 = await runClientEventEmailCron(deps2);
+  assertEquals(r2.emailed, 1);
+  assertEquals(db2.successCalls, [
+    { ids: [clienteId], patch: { event_cursor_at: claimThrough2, event_claim_through: null } },
+  ]);
+  assert(
+    sent2[0].html.includes("Post-tie 0") && sent2[0].html.includes("Post-tie 4"),
+    "expected all 5 post-tie posts in tick 2",
+  );
+  assert(!sent2[0].html.includes("Pre 0"), "tick 1's pre-tie content must not repeat in tick 2");
+  assert(!sent2[0].html.includes("Tied 0"), "tick 1's tied content must not repeat in tick 2");
+  const expectedIds2 = postTie.map((e) => `pse:${e.id}`);
+  const expectedKey2 = await buildClientEventIdempotencyKey(clienteId, expectedIds2);
+  assertEquals(sent2[0].idempotencyKey, expectedKey2);
+});
+
+// --- 16. asymmetric cap: trim-to-bound prevents cross-source duplicate delivery -----------
+//
+// Scoped re-review of rounds 3-4 (PR #437): when only ONE of the two
+// queries (events vs. messages) hits the cap, the OTHER query's items newer
+// than the folded safe bound were still being sent THIS tick (nothing
+// trimmed them), while the cursor only advanced to the more conservative
+// bound -- the next tick's window still covers those items and would
+// re-mail them. Here messages caps (1000, under-dense window would exceed
+// it) and events stays comfortably under cap, but two of the three events
+// sit AFTER messages' safe bound and must be held back to tick 2.
+
+Deno.test("asymmetric cap (messages caps, events under): tick 2 does not repeat tick 1's event items", async () => {
+  const clienteId = 20;
+  const floorMs = new Date("2026-08-10T12:00:00.000Z").getTime(); // NOW - 72h
+
+  // Events: comfortably under EVENTS_QUERY_CAP, but two of the three sit
+  // well past where the messages query will cap.
+  const events: Row[] = [
+    {
+      id: 70_001,
+      post_id: 80_001,
+      conta_id: "ws1",
+      to_status: "enviado_cliente",
+      created_at: new Date(floorMs + 2 * 60_000).toISOString(), // floor + 2 min
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Event Early" },
+    },
+    {
+      id: 70_002,
+      post_id: 80_002,
+      conta_id: "ws1",
+      to_status: "enviado_cliente",
+      created_at: new Date(floorMs + 1500 * 60_000).toISOString(), // floor + 1500 min
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Event Middle" },
+    },
+    {
+      id: 70_003,
+      post_id: 80_003,
+      conta_id: "ws1",
+      to_status: "enviado_cliente",
+      created_at: new Date(floorMs + 2000 * 60_000).toISOString(), // floor + 2000 min
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Event Late" },
+    },
+  ];
+
+  // Messages: exactly EVENTS_QUERY_CAP (1000), distinct timestamps 1 min
+  // apart starting at floor+1min -- caps at floor+1000min, well before
+  // "Event Middle"/"Event Late" but after "Event Early".
+  const messages: Row[] = [];
+  for (let i = 0; i < 1000; i++) {
+    messages.push({
+      id: 95_000 + i,
+      conta_id: "ws1",
+      cliente_id: clienteId,
+      is_workspace_user: true,
+      created_at: new Date(floorMs + (i + 1) * 60_000).toISOString(),
+    });
+  }
+  const messagesSafeBoundIso = messages[999].created_at as string; // floor + 1000 min
+  const ws = [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }];
+
+  // ---- tick 1 ----
+  const claimThrough1 = NOW.toISOString();
+  const db1 = makeFakeDb(
+    [claimedRow({ id: clienteId, conta_id: "ws1", event_cursor_at: null, event_claim_through: claimThrough1 })],
+    { postStatusEvents: events, mensagens: messages, workspaces: ws },
+  );
+  const { deps: deps1, sent: sent1 } = makeDeps(db1);
+  const r1 = await runClientEventEmailCron(deps1);
+  assertEquals(r1.emailed, 1);
+  // The cursor advances to messages' (the only capped query's) bound --
+  // events never capped, so it contributes nothing to the fold.
+  assertEquals(db1.successCalls, [
+    { ids: [clienteId], patch: { event_cursor_at: messagesSafeBoundIso, event_claim_through: null } },
+  ]);
+  // "Event Early" (floor+2min) is within the bound and ships; "Event
+  // Middle"/"Event Late" (floor+1500/2000min) are past the bound -- trimmed
+  // out of THIS digest even though the (uncapped) events query fetched them.
+  assert(sent1[0].html.includes("Event Early"), "expected the in-bound event in tick 1");
+  assert(!sent1[0].html.includes("Event Middle"), "expected the past-bound event trimmed out of tick 1");
+  assert(!sent1[0].html.includes("Event Late"), "expected the past-bound event trimmed out of tick 1");
+
+  // ---- tick 2: same client, cursor now at messages' bound, 15 min later ----
+  const claimThrough2 = new Date(NOW.getTime() + 15 * 60_000).toISOString();
+  const db2 = makeFakeDb(
+    [
+      claimedRow({
+        id: clienteId,
+        conta_id: "ws1",
+        event_cursor_at: messagesSafeBoundIso,
+        event_claim_through: claimThrough2,
+      }),
+    ],
+    { postStatusEvents: events, mensagens: messages, workspaces: ws },
+  );
+  const { deps: deps2, sent: sent2 } = makeDeps(db2, { now: () => new Date(claimThrough2) });
+  const r2 = await runClientEventEmailCron(deps2);
+  assertEquals(r2.emailed, 1);
+  // Neither query caps this time (messages: none left past the old bound;
+  // events: only the 2 remaining) -- cursor reaches claim_through directly.
+  assertEquals(db2.successCalls, [
+    { ids: [clienteId], patch: { event_cursor_at: claimThrough2, event_claim_through: null } },
+  ]);
+  assert(sent2[0].html.includes("Event Middle") && sent2[0].html.includes("Event Late"), "expected the held-back events in tick 2");
+  assert(!sent2[0].html.includes("Event Early"), "tick 1's already-delivered event must not repeat in tick 2");
+});
+
+// --- 17. handler auth --------------------------------------------------------------------
 
 Deno.test("handler rejects a wrong cron secret with 401 before any db call", async () => {
   const handler = createClientEventEmailCronHandler({

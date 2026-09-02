@@ -77,8 +77,8 @@ export interface ClaimedClientEventRow {
 export interface FilterChain<T>
   extends PromiseLike<{ data: T[] | null; error: DbError | null }> {
   eq(column: string, value: unknown): FilterChain<T>;
-  gt(column: string, value: string): FilterChain<T>;
-  lte(column: string, value: string): FilterChain<T>;
+  gt(column: string, value: unknown): FilterChain<T>;
+  lte(column: string, value: unknown): FilterChain<T>;
   order(column: string, opts: { ascending: boolean }): FilterChain<T>;
   limit(count: number): FilterChain<T>;
 }
@@ -184,8 +184,53 @@ const SEND_DEADLINE_MS = 60_000;
  * the new cursor, since every future window only ever moves forward. That
  * was a design bug in the fix itself, caught in review before it shipped;
  * ascending order is the correct oldest-first drain.)
+ *
+ * Two follow-on subtleties, both caught in a later review pass:
+ *
+ *  1. The LIMIT cuts on a composite (created_at, id), but `lastReturned`
+ *     above is created_at-ONLY. A transaction-stable `now()` makes it common
+ *     for several rows (a batch of status transitions, e.g. bulk-approving
+ *     posts) to share the exact same created_at -- if the cap happens to
+ *     cut through the MIDDLE of that tied group, the excluded siblings share
+ *     created_at with `lastReturned` and can never satisfy `gt(created_at,
+ *     lastReturned)` on any future tick: stranded permanently, same failure
+ *     mode as the DESC bug above just one level down. The repo already
+ *     names and fixes this exact trap for a different query -- a composite
+ *     keyset cursor, see supabase/migrations/20260731000003_mensagens_consolidadas.sql:253-258.
+ *     Same fix here: when a query hits the cap, `appendTiedTail` issues ONE
+ *     supplementary fetch (`created_at = lastTs AND id > lastId`, ordered by
+ *     id) to complete the tied group before trusting `lastTs` as a
+ *     `gt()`-safe boundary.
+ *  2. When only ONE of the two queries hits the cap, the OTHER one's items
+ *     newer than the folded safe bound still get fetched, built into the
+ *     email, and sent THIS tick -- but the cursor only advances to the
+ *     (more conservative) folded bound, so the next tick's window still
+ *     covers them and re-mails the same items. Both item sets are trimmed
+ *     to `created_at <= bound` right after the bound is finalized (a no-op
+ *     under cap, where bound === upper) so whatever ships in a digest is
+ *     always fully covered by that digest's own cursor advance.
  */
 const EVENTS_QUERY_CAP = 1000;
+
+/**
+ * Completes a tied created_at group that the cap may have cut through (see
+ * point 1 above). `tied` is the supplementary fetch's result
+ * (`created_at = lastTs AND id > lastId`, ordered by id, capped the same
+ * way); appends it to `rows`. If the supplementary fetch ITSELF hits the
+ * cap -- meaning a single created_at is shared by more than 2x
+ * EVENTS_QUERY_CAP rows for one client, an astronomically rare volume --
+ * this can't fully resolve without real pagination; it logs and proceeds
+ * with a possibly-incomplete tied group rather than looping indefinitely.
+ */
+function appendTiedTail<T>(rows: T[], tied: T[], logLabel: string, tiedAtIso: string): T[] {
+  if (tied.length === EVENTS_QUERY_CAP) {
+    console.warn(
+      `[client-event-email-cron] ${logLabel}: tied created_at group at ${tiedAtIso} exceeds ` +
+        `${EVENTS_QUERY_CAP * 2} rows -- proceeding with a possibly-incomplete tied group (documented residual).`,
+    );
+  }
+  return rows.concat(tied);
+}
 
 /** GREATEST(iso, floor) -- iso may be null (never delivered). */
 function maxDate(iso: string | null, floor: Date): Date {
@@ -309,32 +354,41 @@ export async function runClientEventEmailCron(
         .order("id", { ascending: true })
         .limit(EVENTS_QUERY_CAP);
       if (eventsErr) throw new Error(`post_status_events query failed: ${eventsErr.message}`);
-      const eventRowsArr = (eventRows ?? []) as PostStatusEventRow[];
-
-      // supabase-js can't DISTINCT ON: dedupe by post_id over the
-      // created_at-ASC result. Iterating oldest-to-newest and simply
-      // overwriting a Map on every encounter (no "skip if seen") leaves each
-      // post's LATEST transition once the loop ends, since a later iteration
-      // always overwrites an earlier one for the same key. (titulo doesn't
-      // actually vary between a post's own transitions -- it's read fresh off
-      // workflow_posts on every row -- so what the dedupe really picks is
-      // which event `id` represents this post in the idempotency key below.)
-      const latestByPost = new Map<number, { id: number; titulo: string }>();
-      for (const e of eventRowsArr) {
-        latestByPost.set(e.post_id, { id: e.id, titulo: e.workflow_posts.titulo });
-      }
-      const pendingPosts: PendingPost[] = Array.from(latestByPost.values()).map((p) => ({ titulo: p.titulo }));
-      const approvalIds: string[] = Array.from(latestByPost.values()).map((p) => `pse:${p.id}`);
+      let eventRowsArr = (eventRows ?? []) as PostStatusEventRow[];
 
       // The cap was hit -- the window holds MORE than EVENTS_QUERY_CAP events
       // and the query (ordered created_at ASC) only returned the OLDEST
-      // slice: `(lower, lastReturned]`. Track that boundary so the cursor
-      // advances only up to it below (see safeUpperMs's use at the bottom) --
-      // the newer, un-fetched remainder `(lastReturned, upper]` is left for
-      // the next tick's window, which picks up right where this one stopped.
+      // slice: `(lower, lastReturned]`. Complete any tied created_at group
+      // the cap cut through (EVENTS_QUERY_CAP's comment, point 1 -- the
+      // mensagens_consolidadas composite-keyset-cursor precedent) before
+      // trusting the boundary, then track it so the cursor advances only up
+      // to it below -- the newer, un-fetched remainder `(lastReturned,
+      // upper]` is left for the next tick's window, which picks up right
+      // where this one stopped.
       let safeUpperMs: number | null = null;
       if (eventRowsArr.length === EVENTS_QUERY_CAP) {
-        safeUpperMs = new Date(eventRowsArr[eventRowsArr.length - 1].created_at).getTime();
+        const last = eventRowsArr[eventRowsArr.length - 1];
+        const { data: tiedEventRows, error: tiedEventsErr } = await deps.db
+          .from("post_status_events")
+          .select("id, post_id, created_at, workflow_posts!inner(titulo)")
+          .eq("conta_id", row.conta_id)
+          .eq("to_status", "enviado_cliente")
+          .eq("workflow_posts.cliente_id", row.id)
+          .eq("workflow_posts.status", "enviado_cliente")
+          .eq("created_at", last.created_at)
+          .gt("id", last.id)
+          .order("id", { ascending: true })
+          .limit(EVENTS_QUERY_CAP);
+        if (tiedEventsErr) {
+          throw new Error(`post_status_events tie-completion query failed: ${tiedEventsErr.message}`);
+        }
+        eventRowsArr = appendTiedTail(
+          eventRowsArr,
+          (tiedEventRows ?? []) as PostStatusEventRow[],
+          "post_status_events",
+          last.created_at,
+        );
+        safeUpperMs = new Date(last.created_at).getTime();
       }
 
       // ---- unread messages -----------------------------------------------------
@@ -361,18 +415,58 @@ export async function runClientEventEmailCron(
         .order("id", { ascending: true })
         .limit(EVENTS_QUERY_CAP);
       if (msgErr) throw new Error(`mensagens query failed: ${msgErr.message}`);
-      const messages = (msgRows ?? []) as MensagemRow[];
-      const messageIds = messages.map((m) => `msg:${m.id}`);
+      let messages = (msgRows ?? []) as MensagemRow[];
 
-      // Same truncation guard as the approvals query above -- fold its bound
-      // into the same safeUpperMs. Math.min, not max: the cursor can only
-      // advance as far as whichever of the two queries drained LESS of the
-      // window, otherwise the slower query's un-fetched remainder would be
-      // falsely marked delivered.
+      // Same truncation guard + tie-completion as the approvals query above
+      // -- fold its bound into the same safeUpperMs. Math.min, not max: the
+      // cursor can only advance as far as whichever of the two queries
+      // drained LESS of the window, otherwise the slower query's un-fetched
+      // remainder would be falsely marked delivered.
       if (messages.length === EVENTS_QUERY_CAP) {
-        const msgSafeUpperMs = new Date(messages[messages.length - 1].created_at).getTime();
+        const last = messages[messages.length - 1];
+        const { data: tiedMsgRows, error: tiedMsgErr } = await deps.db
+          .from("mensagens")
+          .select("id, created_at")
+          .eq("conta_id", row.conta_id)
+          .eq("cliente_id", row.id)
+          .eq("is_workspace_user", true)
+          .eq("created_at", last.created_at)
+          .gt("id", last.id)
+          .order("id", { ascending: true })
+          .limit(EVENTS_QUERY_CAP);
+        if (tiedMsgErr) throw new Error(`mensagens tie-completion query failed: ${tiedMsgErr.message}`);
+        messages = appendTiedTail(messages, (tiedMsgRows ?? []) as MensagemRow[], "mensagens", last.created_at);
+        const msgSafeUpperMs = new Date(last.created_at).getTime();
         safeUpperMs = safeUpperMs === null ? msgSafeUpperMs : Math.min(safeUpperMs, msgSafeUpperMs);
       }
+
+      // The bound is now final (folded across both queries, tie-completed).
+      // Trim BOTH item sets to it: if only ONE query capped, the OTHER
+      // query's items newer than the folded bound would otherwise still
+      // ship in THIS digest while the cursor only advances to the bound --
+      // the next tick's window still covers them and would re-mail the same
+      // items. Under cap (bound === upper) every fetched row already
+      // satisfies `created_at <= upper` by construction, so this is a no-op.
+      const boundIso = safeUpperMs !== null ? new Date(safeUpperMs).toISOString() : upperIso;
+      eventRowsArr = eventRowsArr.filter((e) => e.created_at <= boundIso);
+      messages = messages.filter((m) => m.created_at <= boundIso);
+
+      // supabase-js can't DISTINCT ON: dedupe by post_id over the
+      // created_at-ASC, bound-trimmed result. Iterating oldest-to-newest and
+      // simply overwriting a Map on every encounter (no "skip if seen")
+      // leaves each post's LATEST transition WITHIN THE BOUND once the loop
+      // ends, since a later iteration always overwrites an earlier one for
+      // the same key. (titulo doesn't actually vary between a post's own
+      // transitions -- it's read fresh off workflow_posts on every row --
+      // so what the dedupe really picks is which event `id` represents this
+      // post in the idempotency key below.)
+      const latestByPost = new Map<number, { id: number; titulo: string }>();
+      for (const e of eventRowsArr) {
+        latestByPost.set(e.post_id, { id: e.id, titulo: e.workflow_posts.titulo });
+      }
+      const pendingPosts: PendingPost[] = Array.from(latestByPost.values()).map((p) => ({ titulo: p.titulo }));
+      const approvalIds: string[] = Array.from(latestByPost.values()).map((p) => `pse:${p.id}`);
+      const messageIds = messages.map((m) => `msg:${m.id}`);
 
       if (pendingPosts.length === 0 && messages.length === 0) {
         skippedNoContent++;
@@ -429,19 +523,16 @@ export async function runClientEventEmailCron(
         },
       });
 
-      // Normally the cursor advances all the way to `upper` (claim_through):
-      // everything in the window was fetched and sent. But if either query
-      // above hit EVENTS_QUERY_CAP, `safeUpperMs` holds the NEWEST timestamp
-      // actually fetched (the boundary of the oldest-first chunk that was
-      // processed) -- advancing only that far, instead of all the way to
-      // `upper`, means the un-fetched newer remainder is simply left for the
-      // next tick's window (which starts right at this boundary), rather
-      // than being falsely marked delivered and silently lost. safeUpperMs
-      // is always > lowerIso by construction (it comes from a row that
-      // already passed the `gt` filter), so this can never move the cursor
-      // backwards.
-      const cursorAdvanceIso = safeUpperMs !== null ? new Date(safeUpperMs).toISOString() : upperIso;
-
+      // `boundIso` (computed above, right after the tie-completed/folded
+      // safeUpperMs) is exactly what was fetched, trimmed, and just sent --
+      // normally `upper` (claim_through), or the more conservative capped
+      // bound when either query was over-dense. Advancing the cursor to it
+      // (never past it) is what keeps the un-fetched/trimmed-out remainder
+      // for the next tick's window instead of falsely marking it delivered.
+      // boundIso is always > lowerIso by construction (it comes from a row
+      // that already passed the `gt` filter, or is `upper` itself), so this
+      // can never move the cursor backwards.
+      //
       // The email is already sent at this point -- a cursor-advance failure
       // below must still release the lease (so the client isn't stuck)
       // rather than silently swallow it, but a retry is harmless: the
@@ -450,7 +541,7 @@ export async function runClientEventEmailCron(
       // releaseLease's comment) -- it still marks "last attempt" for the
       // 30-minute lease gate and the rotation order on the next claim.
       const { error: successErr } = await deps.db.from("clientes")
-        .update({ event_cursor_at: cursorAdvanceIso, event_claim_through: null })
+        .update({ event_cursor_at: boundIso, event_claim_through: null })
         .in("id", [row.id]);
       if (successErr) throw new Error(`cursor advance failed: ${successErr.message}`);
 
