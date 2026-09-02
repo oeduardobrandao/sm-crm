@@ -128,13 +128,24 @@ describe('useEquipeChatRealtime', () => {
     expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
-  it('removes the channel on unmount', () => {
-    const { Wrapper } = makeWrapper('user-1', 'conta-1');
-    const { unmount } = renderHook(() => useEquipeChatRealtime(null), { wrapper: Wrapper });
+  it('removes the channel on unmount and stops reacting to inserts afterwards', () => {
+    const { Wrapper, qc } = makeWrapper('user-1', 'conta-1');
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    const { unmount } = renderHook(() => useEquipeChatRealtime(7), { wrapper: Wrapper });
     const before = m.removedChannelCalls.length;
 
     unmount();
 
     expect(m.removedChannelCalls.length).toBe(before + 1);
+
+    // Real cleanup, not just a call-count check: a hook that skipped its
+    // effect-cleanup return would still pass an assertion that only counts
+    // removeChannel() calls. Confirm the listener is actually gone by
+    // emitting after unmount and expecting no invalidation at all.
+    act(() => {
+      m.__emitEquipeMensagemInsert({ conversa_id: 7, conta_id: 'conta-1' });
+    });
+
+    expect(invalidateSpy).not.toHaveBeenCalled();
   });
 });

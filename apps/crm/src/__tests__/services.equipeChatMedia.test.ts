@@ -4,6 +4,7 @@ import { createFetchMock } from '../../../../test/shared/fetchMock';
 
 vi.mock('@/lib/supabase');
 
+import * as mockedSupabase from '@/lib/supabase';
 import {
   EQUIPE_CHAT_ANEXO_MIME,
   MAX_EQUIPE_CHAT_ANEXO_BYTES,
@@ -11,6 +12,14 @@ import {
   uploadEquipeChatAnexo,
   validateEquipeChatFile,
 } from '@/services/equipeChatMedia';
+
+type Mocked = typeof mockedSupabase & {
+  __resetSupabaseMock: () => void;
+  __setCurrentSession: (
+    session: { access_token: string; user: { id: string } | null } | null,
+  ) => void;
+};
+const m = mockedSupabase as unknown as Mocked;
 
 class MockXHR {
   static instances: MockXHR[] = [];
@@ -60,6 +69,7 @@ describe('services/equipeChatMedia', () => {
     MockXHR.instances.length = 0;
     vi.stubGlobal('fetch', fetchHarness.fetchMock);
     vi.stubGlobal('XMLHttpRequest', MockXHR);
+    m.__resetSupabaseMock();
   });
 
   describe('validateEquipeChatFile', () => {
@@ -123,9 +133,12 @@ describe('services/equipeChatMedia', () => {
         mime_type: 'application/pdf',
         size_bytes: 2048,
       });
-      const authHeader = (fetchHarness.calls[0].init?.headers as Record<string, string>)
-        .Authorization;
-      expect(authHeader).toBe('Bearer token-de-teste');
+      const presignHeaders = fetchHarness.calls[0].init?.headers as Record<string, string>;
+      expect(presignHeaders.Authorization).toBe('Bearer token-de-teste');
+      // Missing apikey on a fetch-based edge-function call is a documented
+      // production incident class (see reference_failed_to_fetch_extension_strips_apikey
+      // in project memory) -- it must be sent on every call, not just presign.
+      expect(presignHeaders.apikey).toBe('anon-key-for-tests');
 
       expect(String(fetchHarness.calls[1].input)).toContain('equipe-chat-media/finalize');
       expect(JSON.parse(String(fetchHarness.calls[1].init?.body))).toEqual({
@@ -135,11 +148,22 @@ describe('services/equipeChatMedia', () => {
         mime_type: 'application/pdf',
         size_bytes: 2048,
       });
+      const finalizeHeaders = fetchHarness.calls[1].init?.headers as Record<string, string>;
+      expect(finalizeHeaders.Authorization).toBe('Bearer token-de-teste');
+      expect(finalizeHeaders.apikey).toBe('anon-key-for-tests');
 
       expect(MockXHR.instances).toHaveLength(1);
       expect(MockXHR.instances[0].method).toBe('PUT');
       expect(MockXHR.instances[0].url).toBe('https://upload.r2.dev/equipe-chat-1');
       expect(onProgress).toHaveBeenCalledWith({ loaded: 2048, total: 2048 });
+    });
+
+    it('lança "Sessão expirada" sem sessão ativa, sem chamar fetch', async () => {
+      m.__setCurrentSession(null);
+      const file = createFile('contrato.pdf', 'application/pdf', 2048);
+
+      await expect(uploadEquipeChatAnexo(7, file)).rejects.toThrow('Sessão expirada');
+      expect(fetchHarness.calls).toHaveLength(0);
     });
 
     it('propaga o erro quando o finalize falha', async () => {

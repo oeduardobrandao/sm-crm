@@ -56,6 +56,14 @@ interface ChannelListener {
   table: string;
   filter: PostgresChangesFilter;
   callback: PostgresChangesCallback;
+  // The channel object this listener belongs to — lets removeChannel() (see
+  // below) deregister exactly this channel's entries instead of only
+  // recording that removal was requested. A hook that forgets to clean up
+  // (or unmounts without calling supabase.removeChannel) must keep routing
+  // emits to its now-orphaned listener, and a hook that DOES clean up must
+  // stop receiving them — either direction needs this reference to tell them
+  // apart.
+  channel: unknown;
 }
 // Only entries whose channel actually called .subscribe() land here — a
 // channel that registers a callback via on() but never calls subscribe()
@@ -78,7 +86,7 @@ function findListener(event: string, table: string): ChannelListener | null {
 
 function makeChannelMock(name: string) {
   channelCallNames.push(name);
-  const pendingListeners: ChannelListener[] = [];
+  const pendingListeners: Array<Omit<ChannelListener, 'channel'>> = [];
   const channel = {
     on(
       _event: 'postgres_changes',
@@ -89,7 +97,7 @@ function makeChannelMock(name: string) {
       return channel;
     },
     subscribe() {
-      activeListeners.push(...pendingListeners);
+      activeListeners.push(...pendingListeners.map((listener) => ({ ...listener, channel })));
       return channel;
     },
   };
@@ -102,6 +110,13 @@ export const supabase = {
   channel: (name: string) => makeChannelMock(name),
   removeChannel: (ch: unknown) => {
     removedChannelCalls.push(ch);
+    // Real cleanup, not just a call-count record: drop this channel's own
+    // listeners from activeListeners so a subsequent emit no longer routes
+    // to it. Without this, a hook that forgot to unsubscribe on unmount
+    // would still pass an "unmount calls removeChannel" test that only
+    // checks the call count, while still silently reacting to events after
+    // teardown.
+    activeListeners = activeListeners.filter((listener) => listener.channel !== ch);
     return Promise.resolve('ok');
   },
   functions: {

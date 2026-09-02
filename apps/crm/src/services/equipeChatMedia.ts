@@ -32,13 +32,15 @@ async function callFn<T>(route: string, body: unknown): Promise<T> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
+  if (!session) throw new Error('Sessão expirada');
   const res = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/equipe-chat-media/${route}`,
     {
       method: 'POST',
       headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${session?.access_token ?? ''}`,
       },
       body: JSON.stringify(body),
     },
