@@ -55,15 +55,68 @@ export interface StoryIngestOpts {
 const GRAPH_TIMEOUT_MS = 10_000;
 const MAX_STORIES = 50;
 const INSIGHT_CONCURRENCY = 5;
-const ALL_METRICS = "reach,impressions,replies,taps_forward,taps_back,exits,shares";
-const NO_SHARES_METRICS = "reach,impressions,replies,taps_forward,taps_back,exits";
 
-function parseInsights(data: { name: string; values?: { value: number }[] }[]): InsightValue {
+// Metric names per the CURRENT Graph API: `impressions` is gone for media
+// created after 2024-07-02 (`views` replaced it -- stored in our
+// `impressions` column, same convention as _shared/instagram-metrics.ts for
+// posts), and the old taps_forward/taps_back/exits story metrics were folded
+// into `navigation` + breakdown=story_navigation_action_type. Requesting any
+// retired name fails the WHOLE insights call, which is why these are split
+// into two requests: core values and the navigation breakdown.
+const CORE_METRICS = "reach,views,replies,shares";
+const CORE_METRICS_NO_SHARES = "reach,views,replies";
+const NAV_QUERY = "navigation&breakdown=story_navigation_action_type";
+
+// API metric name -> our column token.
+const API_TO_COL: Record<string, keyof InsightValue> = {
+  reach: "reach",
+  views: "impressions",
+  replies: "replies",
+  shares: "shares",
+};
+
+// navigation breakdown dimension -> our column token. `swipe_forward`
+// (jumping to another account's stories) has no legacy column; ignored.
+const NAV_TO_COL: Record<string, keyof InsightValue> = {
+  tap_forward: "taps_forward",
+  tap_back: "taps_back",
+  tap_exit: "exits",
+};
+
+interface InsightItem {
+  name?: string;
+  values?: { value?: number }[];
+  total_value?: {
+    value?: number;
+    breakdowns?: {
+      results?: { dimension_values?: string[]; value?: number }[];
+    }[];
+  };
+}
+
+function parseCoreInsights(data: InsightItem[]): InsightValue {
   const out: InsightValue = {};
   for (const item of data) {
-    const val = item.values?.[0]?.value;
-    if (typeof val === "number") {
-      (out as Record<string, number>)[item.name] = val;
+    const col = API_TO_COL[item.name ?? ""];
+    const val = item.values?.[0]?.value ?? item.total_value?.value;
+    if (col && typeof val === "number") {
+      out[col] = val;
+    }
+  }
+  return out;
+}
+
+function parseNavigationInsights(data: InsightItem[]): InsightValue {
+  const out: InsightValue = {};
+  for (const item of data) {
+    if (item.name !== "navigation") continue;
+    for (const breakdown of item.total_value?.breakdowns ?? []) {
+      for (const result of breakdown.results ?? []) {
+        const col = NAV_TO_COL[(result.dimension_values?.[0] ?? "").toLowerCase()];
+        if (col && typeof result.value === "number") {
+          out[col] = (out[col] ?? 0) + result.value;
+        }
+      }
     }
   }
   return out;
@@ -74,36 +127,62 @@ function hasAnyInsight(insights: InsightValue): boolean {
 }
 
 /**
- * Fetches insights for a single story. Some stories 400 on the `shares`
- * metric specifically (older stories / certain media types are outside the
- * API's shares-eligibility window) — on any error whose message mentions
- * "share", retry once with `shares` dropped so the other six metrics aren't
- * lost. Any other failure (network, timeout, unparseable body, non-share
- * error) degrades to `{}` rather than throwing: one story's failure must
- * never abort the batch.
+ * Fetches insights for a single story in two Graph API calls: the core
+ * value metrics, then `navigation` with its action-type breakdown. Some
+ * stories 400 on the `shares` metric specifically (outside the API's
+ * shares-eligibility window) — on a core-call error whose message mentions
+ * "share", retry once with `shares` dropped so the other metrics aren't
+ * lost. Every other failure (network, timeout, unparseable body, API error)
+ * degrades to whatever was gathered so far rather than throwing: one
+ * story's failure must never abort the batch. API errors are logged — a
+ * silently-ignored error body is how the retired metric names shipped
+ * without anyone noticing.
  */
 async function fetchStoryInsights(
   fetchFn: typeof fetch,
   storyId: string,
   token: string,
 ): Promise<InsightValue> {
-  const url = (metrics: string) =>
-    `https://graph.instagram.com/${storyId}/insights?metric=${metrics}&access_token=${token}`;
-  try {
-    const res = await fetchFn(url(ALL_METRICS), { signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) });
-    const body = await res.json();
-    if (Array.isArray(body?.data)) return parseInsights(body.data);
+  const url = (query: string) =>
+    `https://graph.instagram.com/${storyId}/insights?metric=${query}&access_token=${token}`;
+  const out: InsightValue = {};
 
-    const msg = String(body?.error?.message ?? "");
-    if (/share/i.test(msg)) {
-      const res2 = await fetchFn(url(NO_SHARES_METRICS), { signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) });
-      const body2 = await res2.json();
-      if (Array.isArray(body2?.data)) return parseInsights(body2.data);
+  try {
+    const res = await fetchFn(url(CORE_METRICS), { signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) });
+    const body = await res.json();
+    if (Array.isArray(body?.data)) {
+      Object.assign(out, parseCoreInsights(body.data));
+    } else {
+      const msg = String(body?.error?.message ?? "");
+      if (/share/i.test(msg)) {
+        const res2 = await fetchFn(url(CORE_METRICS_NO_SHARES), { signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) });
+        const body2 = await res2.json();
+        if (Array.isArray(body2?.data)) {
+          Object.assign(out, parseCoreInsights(body2.data));
+        } else {
+          console.warn(`[IG-SYNC-CRON] story-ingest: core insights retry failed for story ${storyId}: ${String(body2?.error?.message ?? "unparseable body")}`);
+        }
+      } else {
+        console.warn(`[IG-SYNC-CRON] story-ingest: core insights failed for story ${storyId}: ${msg || "unparseable body"}`);
+      }
     }
   } catch (e) {
-    console.warn(`[IG-SYNC-CRON] story-ingest: insight fetch failed for story ${storyId}:`, e);
+    console.warn(`[IG-SYNC-CRON] story-ingest: core insight fetch failed for story ${storyId}:`, e);
   }
-  return {};
+
+  try {
+    const res = await fetchFn(url(NAV_QUERY), { signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) });
+    const body = await res.json();
+    if (Array.isArray(body?.data)) {
+      Object.assign(out, parseNavigationInsights(body.data));
+    } else {
+      console.warn(`[IG-SYNC-CRON] story-ingest: navigation insights failed for story ${storyId}: ${String(body?.error?.message ?? "unparseable body")}`);
+    }
+  } catch (e) {
+    console.warn(`[IG-SYNC-CRON] story-ingest: navigation fetch failed for story ${storyId}:`, e);
+  }
+
+  return out;
 }
 
 // Date is always a UTC instant internally; toISOString formats in UTC
