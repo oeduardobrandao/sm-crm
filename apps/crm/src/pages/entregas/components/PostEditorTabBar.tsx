@@ -42,7 +42,12 @@ export function PostEditorTabBar({
       icon: <FileText className="h-3.5 w-3.5" />,
       dot: contentAttention ? 'warning' : undefined,
     },
-    { key: 'midia', label: 'Mídia', icon: <ImageIcon className="h-3.5 w-3.5" />, badge: mediaCount },
+    {
+      key: 'midia',
+      label: 'Mídia',
+      icon: <ImageIcon className="h-3.5 w-3.5" />,
+      badge: mediaCount,
+    },
     ...(showProperties
       ? [
           {

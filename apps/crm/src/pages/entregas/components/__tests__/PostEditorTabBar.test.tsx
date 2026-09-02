@@ -4,9 +4,7 @@ import { PostEditorTabBar } from '../PostEditorTabBar';
 
 describe('PostEditorTabBar', () => {
   it('renders the five tabs with the active one selected', () => {
-    render(
-      <PostEditorTabBar active="conteudo" onChange={vi.fn()} showProperties={true} />,
-    );
+    render(<PostEditorTabBar active="conteudo" onChange={vi.fn()} showProperties={true} />);
     const tabs = screen.getAllByRole('tab');
     expect(tabs.map((t) => t.textContent)).toEqual([
       'Conteúdo',
@@ -15,14 +13,8 @@ describe('PostEditorTabBar', () => {
       'Publicação',
       'Comentários',
     ]);
-    expect(screen.getByRole('tab', { name: 'Conteúdo' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    expect(screen.getByRole('tab', { name: 'Mídia' })).toHaveAttribute(
-      'aria-selected',
-      'false',
-    );
+    expect(screen.getByRole('tab', { name: 'Conteúdo' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Mídia' })).toHaveAttribute('aria-selected', 'false');
   });
 
   it('hides the Propriedades tab when showProperties is false', () => {
