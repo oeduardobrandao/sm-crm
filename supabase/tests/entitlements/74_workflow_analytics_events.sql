@@ -544,12 +544,22 @@ end $$;
 rollback;
 
 -- =====================================================================
--- 11. equipe[]/etapas[] array order is deterministic under ties: calling
---     the RPC repeatedly with identical arguments must return byte-identical
---     array order every time, the tie must resolve via the documented
---     canonical tiebreaker (membro_id ASC / nome ASC), and -- the part a
---     pure output comparison on a 2-row tie cannot prove -- the deployed
---     function's SOURCE must still carry both tiebreaker fragments.
+-- 11. Ordered-array determinism under ties: calling the RPC repeatedly with
+--     identical arguments must return byte-identical array order every time,
+--     the tie must resolve via the documented canonical tiebreaker
+--     (membro_id ASC / nome ASC), and -- the part a pure output comparison on
+--     a 2-row tie cannot prove -- the deployed function's SOURCE must still
+--     carry the tiebreaker fragment of ALL FOUR ordered arrays: equipe[],
+--     etapas[], aprovacao_cliente.por_cliente[] and origem[].
+--
+--     The behavioural half below exercises equipe[]/etapas[] only; the other
+--     two are covered by the source guard. That is deliberate and not a gap
+--     in disguise: por_cliente needs post_status_events cycle fixtures to
+--     tie at all, and per the note below the source check is what actually
+--     catches removal anyway -- the behavioural half cannot, on ties this
+--     small. por_cliente is also the one where the stakes are highest:
+--     pendente-only clientes all tie at NULL and the frontend slices the
+--     top 8, so losing the tiebreaker changes WHICH clientes are shown.
 --
 --     WHY THE SOURCE CHECK, NOT JUST BEHAVIOUR (fix round 1 finding): on a
 --     tiny, uncommitted (begin;/rollback;) 2-row tie like this one, Postgres
@@ -643,6 +653,16 @@ begin
   assert position('ORDER BY ea.media_dias DESC NULLS LAST, ea.nome)' in v_src) > 0,
     'etapas[]''s ORDER BY must still carry the ea.nome tiebreaker in the deployed function source';
 
-  raise notice 'PASS 74.11 equipe[]/etapas[] array order is deterministic under ties (10 identical calls + source-level tiebreaker guard)';
+  -- Final fix wave: the other two ordered arrays get the same guard.
+  -- por_cliente matters most of the three -- clientes with only pendentes
+  -- ALL tie at mediana_horas NULL, and the frontend slices the top 8, so
+  -- without the tiebreaker WHICH clientes are shown can change between
+  -- identical requests, not merely their order.
+  assert position('ORDER BY s.mediana_horas DESC NULLS LAST, s.cliente_id)' in v_src) > 0,
+    'aprovacao_cliente.por_cliente[]''s ORDER BY must still carry the s.cliente_id tiebreaker in the deployed function source';
+  assert position('ORDER BY concluidos DESC, origem)' in v_src) > 0,
+    'origem[]''s ORDER BY must still carry the origem tiebreaker in the deployed function source';
+
+  raise notice 'PASS 74.11 equipe[]/etapas[]/por_cliente[]/origem[] array order is deterministic under ties (10 identical calls + source-level tiebreaker guard on all four)';
 end $$;
 rollback;

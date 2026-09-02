@@ -425,7 +425,11 @@ SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM guard) THEN NULL ELSE jsonb_build_obj
                       'mediana_horas', s.mediana_horas,
                       'amostras', s.amostras,
                       'pendentes', s.pendentes)
-                    ORDER BY s.mediana_horas DESC NULLS LAST)
+                    -- Desempate por cliente_id: clientes só com pendentes
+                    -- empatam TODOS em mediana NULL, e o frontend corta os
+                    -- 8 primeiros -- sem desempate, QUAIS clientes aparecem
+                    -- mudaria entre requisições idênticas.
+                    ORDER BY s.mediana_horas DESC NULLS LAST, s.cliente_id)
                     FROM (SELECT c.cliente_id,
                                  round((percentile_cont(0.5) WITHIN GROUP (
                                    ORDER BY GREATEST(0, extract(epoch FROM c.fechado_em - c.enviado_em)) / 3600.0)
@@ -438,8 +442,10 @@ SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM guard) THEN NULL ELSE jsonb_build_obj
       'amostras', (SELECT count(*) FROM aprov_etapas),
       'mediana_horas', (SELECT round(percentile_cont(0.5) WITHIN GROUP (ORDER BY horas)::numeric, 1) FROM aprov_etapas))
   ),
+  -- Desempate por origem: 'human' e 'agent' empatam em concluidos com
+  -- facilidade (só existem dois valores). Mesma regra de determinismo.
   'origem', COALESCE((SELECT jsonb_agg(jsonb_build_object('origem', origem, 'concluidos', concluidos,
-                'tempo_medio_dias', tempo_medio_dias) ORDER BY concluidos DESC) FROM origem_agg), '[]'::jsonb)
+                'tempo_medio_dias', tempo_medio_dias) ORDER BY concluidos DESC, origem) FROM origem_agg), '[]'::jsonb)
 ) END;
 $$;
 
