@@ -60,25 +60,43 @@ export async function headObject(key: string): Promise<{ contentLength: number; 
   }
 }
 
-/** Cópia via presign + fetch puro, SEM apagar a origem (metade "copy" do
- * trashObject; reusa exatamente a técnica documentada lá, incluindo o aviso
- * de NÃO enviar x-amz-copy-source como header -- o presigner o embute na
- * query string e duplicá-lo dá 403 SignatureDoesNotMatch, causa raiz do
- * incidente de 2026-08). Lança em falha. */
-export async function copyObjectSigned(sourceKey: string, destKey: string): Promise<void> {
+/** CopyObject via presign + fetch puro. x-amz-copy-source PRECISA ir como
+ * header ASSINADO (unhoistableHeaders) E ser enviado no fetch. O default do
+ * presigner -- hoistar para a query string -- produz uma URL que o R2 aceita
+ * com 200 mas trata como PUT comum de corpo vazio: a query x-amz-copy-source
+ * é IGNORADA e o destino nasce com 0 bytes (comprovado contra o R2 real em
+ * 2026-09-02; era a causa do "size mismatch" do automation-media e de todo
+ * trash/ pós-2026-08-22 ficar vazio). O 403 SignatureDoesNotMatch do
+ * incidente de 2026-08 vinha de enviar o header SEM assiná-lo junto -- a
+ * correção é assinar E enviar, nunca omitir. Uma cópia real responde XML
+ * <CopyObjectResult>; corpo sem isso = PUT vazio, e falhar alto aqui é o que
+ * impede a regressão silenciosa. */
+async function copyViaSignedFetch(sourceKey: string, destKey: string): Promise<Response> {
   const copySource = `${getBucket()}/${encodeURIComponent(sourceKey).replace(/%2F/g, "/")}`;
   const cmd = new CopyObjectCommand({
     Bucket: getBucket(),
     CopySource: copySource,
     Key: destKey,
   });
-  const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
-  const res = await fetch(url, { method: "PUT", signal: AbortSignal.timeout(30_000) });
-  if (!res.ok) {
-    const bodyText = await res.text().catch(() => "");
+  const url = await getSignedUrl(getR2(), cmd, {
+    expiresIn: 300,
+    unhoistableHeaders: new Set(["x-amz-copy-source"]),
+  });
+  return await fetch(url, {
+    method: "PUT",
+    headers: { "x-amz-copy-source": copySource },
+    signal: AbortSignal.timeout(30_000),
+  });
+}
+
+/** Cópia SEM apagar a origem (metade "copy" do trashObject). Lança em falha,
+ * inclusive no 200-sem-CopyObjectResult (ver copyViaSignedFetch). */
+export async function copyObjectSigned(sourceKey: string, destKey: string): Promise<void> {
+  const res = await copyViaSignedFetch(sourceKey, destKey);
+  const bodyText = await res.text().catch(() => "");
+  if (!res.ok || !bodyText.includes("<CopyObjectResult")) {
     throw new Error(`r2 copy failed: ${res.status}${bodyText ? ` ${bodyText.slice(0, 300)}` : ""}`);
   }
-  await res.body?.cancel();
 }
 
 /** HEAD via presign + fetch puro (mesmo racional de putObject/deleteObject:
@@ -108,42 +126,27 @@ export async function headObjectSigned(
 export async function trashObject(key: string): Promise<void> {
   // Presign + plain fetch, same as deleteObject above: the SDK's own transport
   // is the documented edge-runtime hang path, and this function sits on the
-  // deletion drains — a hang here stalls every queue.
-  //
-  // Do NOT also set x-amz-copy-source as a request header: getSignedUrl hoists
-  // it into the presigned URL's query string (X-Amz-SignedHeaders ends up
-  // "host" only — copy-source is never a signed header for this presigner).
-  // Sending it again as a header duplicates a value R2 never signed, and R2
-  // rejects that mismatch with 403 SignatureDoesNotMatch — confirmed via a
-  // response-body capture against prod (this was the entire root cause of the
-  // 2026-08 deletion-drain incident: every trashObject() call failed at 100%
-  // from the day the vault feature shipped). The query string alone is what
-  // AWS's own presigning contract expects the receiver to read.
-  const copySource = `${getBucket()}/${encodeURIComponent(key).replace(/%2F/g, "/")}`;
-  const cmd = new CopyObjectCommand({
-    Bucket: getBucket(),
-    CopySource: copySource,
-    Key: `trash/${key}`,
-  });
-  const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
-  const res = await fetch(url, {
-    method: "PUT",
-    signal: AbortSignal.timeout(30_000),
-  });
+  // deletion drains — a hang here stalls every queue. The copy-source signing
+  // contract (signed header, sent on the fetch) lives in copyViaSignedFetch.
+  const res = await copyViaSignedFetch(key, `trash/${key}`);
   // 404 = the source is already gone — either a previous attempt moved it to
   // trash/ before a downstream step failed, or the object never existed. In
   // both cases there is nothing left to preserve, so the retry must proceed
   // (deleteObject below also treats 404 as done). Without this, a partially
   // successful drain row retries into a copy-404 forever, exhausts its
   // attempts, and the Stream delete behind it is never reached.
-  if (!res.ok && res.status !== 404) {
+  const bodyText = await res.text().catch(() => "");
+  if (res.status !== 404) {
     // Diagnostic: R2's XML error body names the actual rejection (e.g.
     // SignatureDoesNotMatch vs AccessDenied) that a bare status code can't
     // distinguish — surfaced via file_deletions.last_error for the next failure.
-    const bodyText = await res.text().catch(() => "");
-    throw new Error(`r2 trash copy failed: ${res.status}${bodyText ? ` ${bodyText.slice(0, 300)}` : ""}`);
+    // A 200 whose body lacks <CopyObjectResult> is a copy the R2 silently
+    // downgraded to an empty PUT (the 2026-08→09 zero-byte-trash bug): treat
+    // it as failure BEFORE deleting the original, or the undo window is a lie.
+    if (!res.ok || !bodyText.includes("<CopyObjectResult")) {
+      throw new Error(`r2 trash copy failed: ${res.status}${bodyText ? ` ${bodyText.slice(0, 300)}` : ""}`);
+    }
   }
-  await res.body?.cancel();
   await deleteObject(key);
 }
 
