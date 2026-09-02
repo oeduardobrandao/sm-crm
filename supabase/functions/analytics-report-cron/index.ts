@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { timingSafeEqual } from "../_shared/crypto.ts";
+import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { createAnalyticsReportCronHandler } from "./handler.ts";
 import { queueMonthlyReports } from "./queue.ts";
 
@@ -24,6 +25,7 @@ Deno.serve(createAnalyticsReportCronHandler({
         anonKey: SUPABASE_ANON_KEY,
         cronSecret: CRON_SECRET,
         now: new Date(),
+        isEntitled: (contaId) => effectivePlanFeature(supabase, contaId, "feature_analytics_reports"),
       });
 
       if (result.kind === "empty") {

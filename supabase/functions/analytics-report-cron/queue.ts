@@ -1,7 +1,9 @@
 // Fila mensal de relatórios: enfileira um analytics_report 'pending' por conta
-// de Instagram conectada e dá o primeiro kick no report-worker. O worker
-// processa UM relatório por invocação; quem drena o resto da fila é o job
-// pg_cron 'report-worker-tick' (a cada 5 min), não este kick.
+// de Instagram conectada de workspace com feature_analytics_reports e dá o
+// primeiro kick no report-worker. O worker processa UM relatório por
+// invocação; quem drena o resto da fila é o job pg_cron 'report-worker-tick'
+// (a cada 5 min), não este kick. O worker re-checa o entitlement ao processar
+// (cobre downgrade entre o enfileiramento e o claim).
 
 type SupabaseLike = {
   // deno-lint-ignore no-explicit-any
@@ -15,6 +17,7 @@ export interface QueueMonthlyReportsDeps {
   anonKey: string;
   cronSecret: string;
   now: Date;
+  isEntitled: (contaId: string) => Promise<boolean>;
 }
 
 export type QueueMonthlyReportsResult =
@@ -31,7 +34,8 @@ export type QueueMonthlyReportsResult =
 export async function queueMonthlyReports(
   deps: QueueMonthlyReportsDeps,
 ): Promise<QueueMonthlyReportsResult> {
-  const { supabase, fetchFn, supabaseUrl, anonKey, cronSecret, now } = deps;
+  const { supabase, fetchFn, supabaseUrl, anonKey, cronSecret, now, isEntitled } = deps;
+  const entitlementCache = new Map<string, boolean>();
 
   const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const month = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
@@ -59,6 +63,16 @@ export async function queueMonthlyReports(
         .single();
 
       if (!cliente) {
+        skipped++;
+        continue;
+      }
+
+      let entitled = entitlementCache.get(cliente.conta_id);
+      if (entitled === undefined) {
+        entitled = await isEntitled(cliente.conta_id);
+        entitlementCache.set(cliente.conta_id, entitled);
+      }
+      if (!entitled) {
         skipped++;
         continue;
       }

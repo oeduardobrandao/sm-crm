@@ -75,6 +75,7 @@ const BASE_DEPS = {
   anonKey: "anon-key",
   cronSecret: "cron-secret",
   now: new Date(2026, 8, 1), // 2026-09-01 -> relatório de 2026-08
+  isEntitled: (_contaId: string) => Promise.resolve(true),
 };
 
 Deno.test("filtra contas pela coluna real de token (encrypted_access_token, não access_token_enc)", async () => {
@@ -141,6 +142,61 @@ Deno.test("sem contas conectadas retorna 'empty' sem chamar o worker", async () 
 
   assertEquals(result.kind, "empty");
   assertEquals(requests.length, 0);
+});
+
+Deno.test("workspace sem feature_analytics_reports não entra na fila", async () => {
+  const { client, calls } = makeSupabaseStub({
+    accounts: [
+      { id: "acc-1", client_id: 7 }, // ws-pro: entitled
+      { id: "acc-2", client_id: 8 }, // ws-free: não entitled
+    ],
+    clientes: {
+      7: { conta_id: "ws-pro", include_ai_analysis: true },
+      8: { conta_id: "ws-free", include_ai_analysis: true },
+    },
+  });
+  const { fetchFn, requests } = makeFetchStub();
+
+  const result = await queueMonthlyReports({
+    ...BASE_DEPS,
+    supabase: client,
+    fetchFn,
+    isEntitled: (contaId) => Promise.resolve(contaId === "ws-pro"),
+  });
+
+  assert(result.kind === "done");
+  assertEquals(result.queued, 1);
+  assertEquals(result.skipped, 1);
+  assertEquals(calls.upserts.length, 1);
+  assertEquals(calls.upserts[0].row.instagram_account_id, "acc-1");
+  assertEquals(requests.length, 1); // ainda kicka o worker: houve 1 enfileirado
+});
+
+Deno.test("entitlement é consultado uma vez por workspace, não por conta", async () => {
+  const { client } = makeSupabaseStub({
+    accounts: [
+      { id: "acc-1", client_id: 7 },
+      { id: "acc-2", client_id: 8 },
+    ],
+    clientes: {
+      7: { conta_id: "ws-1", include_ai_analysis: true },
+      8: { conta_id: "ws-1", include_ai_analysis: true },
+    },
+  });
+  const { fetchFn } = makeFetchStub();
+  const checkedContas: string[] = [];
+
+  await queueMonthlyReports({
+    ...BASE_DEPS,
+    supabase: client,
+    fetchFn,
+    isEntitled: (contaId) => {
+      checkedContas.push(contaId);
+      return Promise.resolve(true);
+    },
+  });
+
+  assertEquals(checkedContas, ["ws-1"]);
 });
 
 Deno.test("erro no upsert conta como failed e não derruba as demais contas", async () => {
