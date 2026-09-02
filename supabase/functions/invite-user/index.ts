@@ -142,8 +142,11 @@ Deno.serve(async (req) => {
     );
     if (!canManageTeam) throw new Error('Agentes não têm permissão para convidar novos usuários.');
 
-    // Admin can't invite owner
-    if (caller.role === 'admin' && role === 'owner') {
+    // Only a real owner invites an owner. NOT `caller.role === 'admin'`: that
+    // literal only blocked the legacy admin role -- a custom role (chassis
+    // role='agent') with 'equipe':'editar' sails past the actor gate above
+    // and, before this fix, could invite themselves or anyone else as owner.
+    if (caller.role !== 'owner' && role === 'owner') {
       throw new Error('Administradores não podem convidar novos donos.');
     }
 

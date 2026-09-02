@@ -66,18 +66,24 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
     const route = parts[parts.indexOf("automation-media") + 1];
 
     // Mesmo split de mutação vs leitura que a RLS de instagram_comment_automations
-    // (ica_insert/update/delete vs ica_select): sign-view é aberto a qualquer
-    // membro, as rotas mutantes exigem has_permission_for('automacoes','editar')
-    // -- a MESMA permissão que autoriza escrever a automação em si (ver
-    // migração 20260904000001, RLS ica_insert/update/delete). O cartão de
-    // mídia é parte de criar essas automações, então o mesmo gate se aplica;
-    // isso inclui o preset legado de agent, que ganhou automacoes:'editar'
-    // nessa migração (era só 'ver') -- decisão deliberada da Task 11, não uma
-    // regressão de isolamento de tenant.
+    // (ica_insert/update/delete vs ica_select): as rotas mutantes exigem
+    // has_permission_for('automacoes','editar') -- a MESMA permissão que
+    // autoriza escrever a automação em si (ver migração 20260904000001, RLS
+    // ica_insert/update/delete). O cartão de mídia é parte de criar essas
+    // automações, então o mesmo gate se aplica; isso inclui o preset legado
+    // de agent, que ganhou automacoes:'editar' nessa migração (era só 'ver')
+    // -- decisão deliberada da Task 11, não uma regressão de isolamento de
+    // tenant. sign-view exige apenas 'ver' (paridade com ica_select): sem
+    // isso, qualquer membro do workspace -- inclusive um papel custom SEM
+    // 'automacoes' nenhum -- podia mintar URLs assinadas do R2 por key.
     const mutatingRoutes = new Set(["presign", "finalize", "delete"]);
     if (mutatingRoutes.has(route)) {
       const canMutate = await hasPermissionFor(svc, user.id, contaId, "automacoes", "editar");
       if (!canMutate) return json({ error: "Forbidden" }, 403);
+    }
+    if (route === "sign-view") {
+      const canView = await hasPermissionFor(svc, user.id, contaId, "automacoes", "ver");
+      if (!canView) return json({ error: "Forbidden" }, 403);
     }
     // Mesmo gate INSERT-only da automação (feature_instagram_automation):
     // downgrade bloqueia alocar mídia NOVA, mas não impede ver ou apagar a que

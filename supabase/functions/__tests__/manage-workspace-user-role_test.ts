@@ -52,6 +52,24 @@ Deno.test("role 'owner' com caller admin -> 403", () => {
   assertEquals(res, { error: "Only owner can assign owner role", status: 403 });
 });
 
+// External-review parity check (Task 11 fix round): invite-user's equivalent
+// owner-invite guard was `caller.role === 'admin' && role === 'owner'`, which
+// missed a custom-role actor (chassis role='agent') that passed the actor
+// gate via a delegated 'equipe':'editar' permission -- a privilege
+// escalation, fixed there to `caller.role !== 'owner'`. This guard was
+// already correct: it checks `callerRole !== "owner"`, so a custom-role
+// actor (callerRole is always the 'agent' chassis, never a role name) is
+// blocked exactly like a legacy admin.
+Deno.test("role 'owner' com caller de papel custom (chassi 'agent') -> 403, mesma trava do admin legado", () => {
+  const res = resolveRoleUpdate({
+    role: "owner",
+    roleId: undefined,
+    callerRole: "agent",
+    targetRoleRow: null,
+  });
+  assertEquals(res, { error: "Only owner can assign owner role", status: 403 });
+});
+
 Deno.test("role 'owner' com caller owner -> ok, role_id vira null", () => {
   const res = resolveRoleUpdate({
     role: "owner",

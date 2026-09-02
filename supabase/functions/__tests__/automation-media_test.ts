@@ -266,6 +266,31 @@ Deno.test("presign: papel custom (chassi agent) COM 'automacoes':'editar' -> pas
 Deno.test("sign-view: agent (só leitura) continua permitido, como ica_select", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db, "conta-1", "agent");
+  db.queueRpc("has_permission_for", { data: true, error: null });
+  const res = await makeHandler(db)(req("sign-view", { key: "automation-media/conta-1/x.jpg" }));
+  assertEquals(res.status, 200);
+  const call = db.calls.find((c: { table: string }) => c.table === "rpc:has_permission_for");
+  assertEquals(call?.payload, {
+    p_user: "user-1", p_workspace: "conta-1", p_module: "automacoes", p_action: "ver",
+  });
+});
+
+// Sem o gate de leitura, qualquer membro do workspace (inclusive um papel
+// custom SEM 'automacoes' nenhum) podia mintar URLs assinadas do R2 por key
+// -- sign-view era o único route ainda aberto a "qualquer membro". Fixed
+// alongside the invite-user owner-invite trava (external review round).
+Deno.test("sign-view: papel custom (chassi agent) sem 'automacoes' nenhum -> 403", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db, "conta-1", "agent");
+  db.queueRpc("has_permission_for", { data: false, error: null });
+  const res = await makeHandler(db)(req("sign-view", { key: "automation-media/conta-1/x.jpg" }));
+  assertEquals(res.status, 403);
+});
+
+Deno.test("sign-view: papel custom (chassi agent) COM 'automacoes':'ver' -> passa", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db, "conta-1", "agent");
+  db.queueRpc("has_permission_for", { data: true, error: null });
   const res = await makeHandler(db)(req("sign-view", { key: "automation-media/conta-1/x.jpg" }));
   assertEquals(res.status, 200);
 });
