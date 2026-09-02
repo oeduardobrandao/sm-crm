@@ -7,6 +7,7 @@ import {
   createClientEventEmailCronHandler,
   runClientEventEmailCron,
 } from "../client-event-email-cron/handler.ts";
+import { signUnsubToken } from "../_shared/client-event-email.ts";
 
 const NOW = new Date("2026-08-13T12:00:00.000Z"); // NOW - 72h = 2026-08-10T12:00:00.000Z
 
@@ -84,8 +85,12 @@ function makeFakeDb(
     workspaces?: Row[];
   } = {},
 ) {
-  const releaseCalls: number[][] = [];
-  const successCalls: Array<{ ids: number[]; event_cursor_at: string }> = [];
+  // Captures the FULL patch object (not just ids) so tests can assert that a
+  // release/success update never touches event_claimed_at -- omitting the
+  // key entirely is what proves the column is left alone (see the
+  // controller ruling on anti-starvation backoff/rotation in handler.ts).
+  const releaseCalls: Array<{ ids: number[]; patch: Record<string, unknown> }> = [];
+  const successCalls: Array<{ ids: number[]; patch: Record<string, unknown> }> = [];
   let rpcCalls = 0;
   const db = {
     releaseCalls,
@@ -102,9 +107,9 @@ function makeFakeDb(
             return {
               in(_col: string, ids: number[]) {
                 if ("event_cursor_at" in patch) {
-                  successCalls.push({ ids, event_cursor_at: patch.event_cursor_at as string });
+                  successCalls.push({ ids, patch });
                 } else {
-                  releaseCalls.push(ids);
+                  releaseCalls.push({ ids, patch });
                 }
                 return Promise.resolve({ error: null });
               },
@@ -246,19 +251,41 @@ Deno.test("claimed client with 2 pending posts + 1 unseen message: window, one e
   assertEquals(r, { claimed: 1, emailed: 1, skippedNoContent: 0, skippedNoHub: 0, failed: 0, released: 0 });
   assertEquals(sent.length, 1);
   assert(sent[0].html.includes("Post A") && sent[0].html.includes("Post B"), "expected both post titles");
-  assertEquals(db.successCalls, [{ ids: [1], event_cursor_at: claimThrough }]);
+  // event_claimed_at is NOT in the patch (anti-starvation ruling: the
+  // success path advances the cursor and clears the LEASE only -- the
+  // last-attempt marker survives as the rotation/backoff key).
+  assertEquals(db.successCalls, [{ ids: [1], patch: { event_cursor_at: claimThrough, event_claim_through: null } }]);
   assertEquals(db.releaseCalls.length, 0);
   assertEquals(auditCalls.length, 1);
   assertEquals(auditCalls[0].action, "client_event_email_sent");
+
+  // ---- end-to-end assertions on the send payload's binding fields --------
+  // `to`: the claimed client's own email.
+  assertEquals(sent[0].to, "ana@x.test");
+  // RFC 8058 one-click unsubscribe headers, built from the SAME token the
+  // handler signs (deterministic HMAC over clienteId=1 + the test's
+  // tokenSecret) -- proves Task 5's unsub route gets the exact URL shape
+  // it must match, not just "some non-empty headers".
+  const expectedToken = await signUnsubToken(1, "test-secret");
+  const expectedUnsubUrl = `https://x.supabase.co/functions/v1/client-email-unsub/${expectedToken}`;
+  assertEquals(sent[0].headers["List-Unsubscribe"], `<${expectedUnsubUrl}>`);
+  assertEquals(sent[0].headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
+  // Idempotency key: the exported builder over the EXACT deduped composite
+  // id set (2 distinct posts -> pse:10 + pse:11, 1 message -> msg:50; no
+  // dedupe collapse happens in this fixture, but pinning the builder call
+  // proves the key tracks the real ids, not a placeholder or a miscounted set).
+  const expectedIdempotencyKey = await buildClientEventIdempotencyKey(1, ["pse:10", "pse:11", "msg:50"]);
+  assertEquals(sent[0].idempotencyKey, expectedIdempotencyKey);
 });
 
-// --- 3b. From header sanitization -----------------------------------------------
+// --- 3b. From display name: RFC 5322 quoting --------------------------------
 
-Deno.test("From header strips CR/LF and angle brackets from a hostile workspace name", async () => {
-  const db = makeFakeDb(
+/** One claimed client with one pending post, on a workspace named `name`. */
+function makeFromNameDb(name: string, clienteId: number) {
+  return makeFakeDb(
     [
       claimedRow({
-        id: 12,
+        id: clienteId,
         conta_id: "ws1",
         event_cursor_at: "2026-08-13T00:00:00.000Z",
         event_claim_through: NOW.toISOString(),
@@ -267,31 +294,50 @@ Deno.test("From header strips CR/LF and angle brackets from a hostile workspace 
     {
       postStatusEvents: [
         {
-          id: 120,
-          post_id: 1200,
+          id: clienteId * 10,
+          post_id: clienteId * 100,
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-13T05:00:00.000Z",
-          workflow_posts: { cliente_id: 12, status: "enviado_cliente", titulo: "Post" },
+          workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Post" },
         },
       ],
-      workspaces: [
-        { id: "ws1", name: 'Evil\r\nBcc: attacker@evil.test\r\n<script>"', brand_color: "#ffbf30", logo_url: null },
-      ],
+      workspaces: [{ id: "ws1", name, brand_color: "#ffbf30", logo_url: null }],
     },
   );
+}
+
+Deno.test("From display name strips CR/LF (header injection) and wraps the rest in double quotes", async () => {
+  const db = makeFromNameDb("Evil\r\nBcc: attacker@evil.test", 12);
   const { deps, sent } = makeDeps(db);
   const r = await runClientEventEmailCron(deps);
   assertEquals(r.emailed, 1);
   assertEquals(sent.length, 1);
   assert(!sent[0].from.includes("\r"), "carriage return survived into the From header");
   assert(!sent[0].from.includes("\n"), "newline survived into the From header");
-  assert(!sent[0].from.includes("<script>"), "angle brackets survived into the From header");
-  assert(!sent[0].from.includes('"'), "double quote survived into the From header");
-  // Exactly one '<' / '>' pair -- the notificacoes@mesaas.com.br address itself.
-  assertEquals((sent[0].from.match(/</g) ?? []).length, 1);
-  assertEquals((sent[0].from.match(/>/g) ?? []).length, 1);
-  assert(sent[0].from.endsWith("<notificacoes@mesaas.com.br>"), "expected the real address to survive intact");
+  assertEquals(sent[0].from, '"Evil Bcc: attacker@evil.test" <notificacoes@mesaas.com.br>');
+});
+
+Deno.test("From display name backslash-escapes a literal backslash and double-quote instead of stripping them", async () => {
+  // Actual name value: Weird"Name\Co (one double-quote, one backslash).
+  const db = makeFromNameDb('Weird"Name\\Co', 13);
+  const { deps, sent } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.emailed, 1);
+  assertEquals(sent[0].from, '"Weird\\"Name\\\\Co" <notificacoes@mesaas.com.br>');
+});
+
+// Finding 1 (Codex/opus review): an unquoted display name with an RFC 5322
+// "special" (comma, semicolon, parens, ...) parses as more than one address
+// -- e.g. "Silva, Souza & Cia" reads as two mailboxes -- and Resend rejects
+// the send outright, so every client of that workspace fails every run.
+// Quoting (not stripping) is what RFC 5322 itself prescribes for this case.
+Deno.test("From display name quotes RFC 5322 specials (comma, ampersand, parens) instead of mangling or rejecting them", async () => {
+  const db = makeFromNameDb("Silva, Souza & Cia (Oficial)", 14);
+  const { deps, sent } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.emailed, 1);
+  assertEquals(sent[0].from, '"Silva, Souza & Cia (Oficial)" <notificacoes@mesaas.com.br>');
 });
 
 // --- 4. NULL cursor: floor = now-72h ------------------------------------------
@@ -316,7 +362,7 @@ Deno.test("NULL cursor: lower bound is now-72h, an event 80h old is excluded", a
   const r = await runClientEventEmailCron(deps);
   assertEquals(r.skippedNoContent, 1);
   assertEquals(r.emailed, 0);
-  assertEquals(db.releaseCalls, [[2]]);
+  assertEquals(db.releaseCalls, [{ ids: [2], patch: { event_claim_through: null } }]);
 });
 
 // --- 5. old cursor: GREATEST clamps to now-72h --------------------------------
@@ -464,7 +510,7 @@ Deno.test("no content: lease released, cursor intact, skippedNoContent++", async
   const r = await runClientEventEmailCron(deps);
   assertEquals(r.skippedNoContent, 1);
   assertEquals(sent.length, 0);
-  assertEquals(db.releaseCalls, [[6]]);
+  assertEquals(db.releaseCalls, [{ ids: [6], patch: { event_claim_through: null } }]);
   assertEquals(db.successCalls.length, 0);
 });
 
@@ -497,7 +543,7 @@ Deno.test("empty hub URL: lease released, cursor intact, skippedNoHub++, no send
   const r = await runClientEventEmailCron(deps);
   assertEquals(r.skippedNoHub, 1);
   assertEquals(sent.length, 0);
-  assertEquals(db.releaseCalls, [[7]]);
+  assertEquals(db.releaseCalls, [{ ids: [7], patch: { event_claim_through: null } }]);
   assertEquals(db.successCalls.length, 0);
 });
 
@@ -537,7 +583,7 @@ Deno.test("send failure: lease released, cursor intact, failed++, report() calle
   });
   const r = await runClientEventEmailCron(deps);
   assertEquals(r.failed, 1);
-  assertEquals(db.releaseCalls, [[8]]);
+  assertEquals(db.releaseCalls, [{ ids: [8], patch: { event_claim_through: null } }]);
   assertEquals(db.successCalls.length, 0);
   assertEquals(reportCalls.length, 1);
   assertEquals(reportCalls[0].failed, 1);
@@ -606,7 +652,8 @@ Deno.test("60s deadline: remaining clients get their lease released without a se
   assertEquals(r.released, 2);
   assertEquals(sent.length, 1);
   assertEquals(db.releaseCalls.length, 1);
-  assertEquals(db.releaseCalls[0].sort(), [10, 11]);
+  assertEquals(db.releaseCalls[0].ids.sort(), [10, 11]);
+  assertEquals(db.releaseCalls[0].patch, { event_claim_through: null });
 });
 
 // --- 13. handler auth --------------------------------------------------------------------

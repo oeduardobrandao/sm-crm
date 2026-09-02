@@ -214,20 +214,27 @@ rollback;
 -- row already holds), so a false negative there can only be caused by the
 -- one column under test. The workspace-level gate uses a second workspace
 -- that is simply never flipped to true, which is a plain instance of the
--- off state rather than a scripted flip-back-and-forth.
+-- off state rather than a scripted flip-back-and-forth. The plan-entitlement
+-- gate (effective_plan_feature(conta_id, 'feature_hub_portal')) uses the
+-- same "plain instance of the off state" approach: a workspace on the
+-- 'free' plan, which seed.sql seeds with feature_hub_portal = false (start/
+-- pro/max all seed it true -- the baseline row above, on 'pro', already
+-- proves the ON state doesn't block).
 -- =====================================================================
 begin;
 select et_grant_hosted_parity();
 do $$
 declare
-  v_ws      uuid;
-  v_ws_off  uuid;
-  v_cli     bigint;  -- baseline: fully eligible
-  v_cli_g1  bigint;  -- send_event_email = false
-  v_cli_g2  bigint;  -- status = 'encerrado'
-  v_cli_g3  bigint;  -- email = null
-  v_cli_g4  bigint;  -- event_cursor_at = now() (cooldown)
-  v_cli_off bigint;  -- lives in v_ws_off (workspace toggle off)
+  v_ws         uuid;
+  v_ws_off     uuid;
+  v_ws_nofeat  uuid;
+  v_cli        bigint;  -- baseline: fully eligible
+  v_cli_g1     bigint;  -- send_event_email = false
+  v_cli_g2     bigint;  -- status = 'encerrado'
+  v_cli_g3     bigint;  -- email = null
+  v_cli_g4     bigint;  -- event_cursor_at = now() (cooldown)
+  v_cli_off    bigint;  -- lives in v_ws_off (workspace toggle off)
+  v_cli_nofeat bigint;  -- lives in v_ws_nofeat (plano sem feature_hub_portal)
   v_claimed int;
 begin
   v_ws := et_make_workspace('pro');
@@ -235,6 +242,11 @@ begin
 
   -- send_client_event_emails defaults to false -- deliberately left alone.
   v_ws_off := et_make_workspace('pro');
+
+  -- 'free' plan: feature_hub_portal = false (seed.sql) -- workspace toggle
+  -- itself ON, so a claim block here can only come from the plan gate.
+  v_ws_nofeat := et_make_workspace('free');
+  update workspaces set send_client_event_emails = true where id = v_ws_nofeat;
 
   insert into clientes (user_id, conta_id, nome, sigla, cor, email)
     values (gen_random_uuid(), v_ws, 'Cliente Base', 'CB', '#000', 'base@example.com')
@@ -260,6 +272,16 @@ begin
     from claim_client_event_emails(now(), 50) where id = v_cli_off;
   assert v_claimed = 0,
     format('workspaces.send_client_event_emails=false deveria bloquear o claim, got %s', v_claimed);
+
+  -- ---- gate: effective_plan_feature(conta_id, 'feature_hub_portal') = false ----
+  insert into clientes (user_id, conta_id, nome, sigla, cor, email)
+    values (gen_random_uuid(), v_ws_nofeat, 'Cliente NoFeat', 'NF', '#000', 'nofeat@example.com')
+    returning id into v_cli_nofeat;
+
+  select count(*) into v_claimed
+    from claim_client_event_emails(now(), 50) where id = v_cli_nofeat;
+  assert v_claimed = 0,
+    format('plano sem feature_hub_portal deveria bloquear o claim, got %s', v_claimed);
 
   -- ---- gate: clientes.send_event_email = false ----
   insert into clientes (user_id, conta_id, nome, sigla, cor, email)

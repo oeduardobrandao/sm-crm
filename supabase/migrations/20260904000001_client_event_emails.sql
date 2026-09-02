@@ -104,9 +104,22 @@ CREATE TRIGGER trg_cliente_notify_guard
   EXECUTE FUNCTION public.enforce_cliente_notify_columns();
 
 -- ---------- claim atômico: lease separado do cursor -----------------------
--- Gates re-checados DENTRO do claim (opt-out tardio é honrado). Conteúdo é
--- verificado pelo worker DEPOIS; cliente sem conteúdo tem o lease liberado
--- sem avançar cursor.
+-- Gates re-checados DENTRO do claim (opt-out tardio e downgrade de plano são
+-- honrados). Conteúdo é verificado pelo worker DEPOIS; cliente sem conteúdo
+-- tem SÓ o lease liberado (event_claim_through), NUNCA event_claimed_at --
+-- ver comentário abaixo.
+--
+-- event_claimed_at = "última tentativa" (lease + backoff + chave de
+-- rotação). O RPC seta event_claimed_at = p_now em TODA reivindicação,
+-- sucesso ou não; o worker (client-event-email-cron/handler.ts) só limpa
+-- event_claim_through ao liberar -- NUNCA event_claimed_at. Isso dá três
+-- efeitos de um único valor: (1) lease -- a janela de 30min abaixo impede
+-- reclaim imediato; (2) backoff -- um cliente sem conteúdo/sem Hub continua
+-- gated pelos mesmos 30min em vez de ser tentado de novo a cada 15min pelo
+-- cron (fome contínua); (3) rotação justa -- ORDER BY event_claimed_at ASC
+-- NULLS FIRST prioriza quem nunca foi tentado, depois quem foi tentado há
+-- mais tempo, então uma fila de clientes elegíveis > p_limit avança e não
+-- fica presa nos primeiros da fila.
 CREATE OR REPLACE FUNCTION claim_client_event_emails(p_now timestamptz, p_limit int)
 RETURNS TABLE (
   id bigint, conta_id uuid, nome text, email text,
@@ -126,9 +139,10 @@ AS $$
        AND c2.send_event_email = true
        AND c2.status = 'ativo'
        AND coalesce(c2.email, '') <> ''
+       AND effective_plan_feature(c2.conta_id, 'feature_hub_portal')
        AND (c2.event_cursor_at IS NULL OR c2.event_cursor_at < p_now - interval '4 hours')
        AND (c2.event_claimed_at IS NULL OR c2.event_claimed_at < p_now - interval '30 minutes')
-     ORDER BY c2.event_cursor_at ASC NULLS FIRST
+     ORDER BY c2.event_claimed_at ASC NULLS FIRST
      LIMIT p_limit
      FOR UPDATE OF c2 SKIP LOCKED
    )

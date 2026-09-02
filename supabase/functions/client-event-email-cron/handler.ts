@@ -10,18 +10,26 @@
  *
  * Claim-first semantics via ONE atomic `claim_client_event_emails` RPC
  * (Task 1's migration): the SQL does the workspace-toggle / client-opt-out /
- * active-status / cursor-age / lease-age filter and the
- * `FOR UPDATE SKIP LOCKED` claim in a single statement, capped at
+ * active-status / plan-entitlement / cursor-age / lease-age filter, orders
+ * by `event_claimed_at ASC NULLS FIRST` (never-attempted clients first, then
+ * whoever was attempted longest ago -- fair rotation instead of always
+ * re-offering the same head of a NULL-cursor queue), and does the
+ * `FOR UPDATE SKIP LOCKED` claim, all in one statement capped at
  * CLAIM_BATCH_SIZE. `event_claim_through` is a LEASE, separate from
  * `event_cursor_at` (the point this client's content was actually delivered
- * up to): the RPC always sets the lease so this handler can compute a stable
- * per-run window, but the cursor only advances after a successful send. Any
- * other outcome (empty content, no Hub link, send failure, a post-send
- * bookkeeping failure) clears the lease and leaves the cursor exactly where
- * it was, so the same window -- or a superset of it, once GREATEST'd against
- * now()-72h on the next run -- gets retried. A retry after an already-sent
- * email is safe: the idempotency key is deterministic over the exact content
- * set, so Resend dedupes it (409) rather than sending twice.
+ * up to): the RPC always sets BOTH the lease and `event_claimed_at` (the
+ * "last attempt" marker) so this handler can compute a stable per-run
+ * window, but the cursor only advances after a successful send. Any other
+ * outcome (empty content, no Hub link, send failure, a post-send bookkeeping
+ * failure) clears ONLY the lease (`event_claim_through`) and leaves both the
+ * cursor AND `event_claimed_at` exactly where they were -- the cursor so the
+ * same window (or a superset, once GREATEST'd against now()-72h) gets
+ * retried, and `event_claimed_at` so the claim RPC's own 30-minute gate
+ * becomes a natural backoff for a client that keeps coming up empty, instead
+ * of that client being re-claimed and re-queried every 15 minutes forever.
+ * A retry after an already-sent email is safe regardless: the idempotency
+ * key is deterministic over the exact content set, so Resend dedupes (409)
+ * rather than sending twice.
  *
  * Window per client: `(GREATEST(event_cursor_at, now-72h), event_claim_through]`.
  * The 72h floor applies unconditionally -- a client with a NULL cursor (never
@@ -153,17 +161,26 @@ function maxDate(iso: string | null, floor: Date): Date {
 
 /**
  * `workspaceName` is tenant-editable free text, interpolated into the From
- * display name (`"${name} <notificacoes@mesaas.com.br>"`). CR/LF could break
- * out of the header into a second header (header injection); `<`, `>` and `"`
- * could close the display name early and forge a different address inside
- * the same From value. Strip both classes before composing the header. The
- * HTML body's own copy of workspaceName is untouched -- buildClientEventEmail
- * already escapes it for that context.
+ * display name (`"${name}" <notificacoes@mesaas.com.br>`). CR/LF could break
+ * out of the header into a second header (header injection) regardless of
+ * quoting, so control characters are still stripped outright. But a name
+ * containing an RFC 5322 "special" (`, ; : @ ( ) [ ] \ "` -- e.g. "Silva,
+ * Souza & Cia") is NOT dangerous by itself: it only becomes ambiguous in an
+ * UNQUOTED display name, where a comma reads as a second address. Stripping
+ * those characters (the previous approach) mangles legitimate business
+ * names for no safety benefit. The correct, always-valid fix is what RFC
+ * 5322 itself provides: wrap the whole name in a quoted-string, escaping
+ * only the two characters that are structurally special INSIDE a
+ * quoted-string (`\` and `"`) -- everything else, including `<`, `>`, `,`,
+ * `;`, `(`, `)`, is just literal text there. The HTML body's own copy of
+ * workspaceName is untouched -- buildClientEventEmail already escapes it
+ * for that (unrelated) context.
  */
 function sanitizeFromName(name: string): string {
   // deno-lint-ignore no-control-regex
-  const cleaned = name.replace(/[\x00-\x1f\x7f]+/g, " ").replace(/[<>"]/g, "").replace(/\s+/g, " ").trim();
-  return cleaned || "Mesaas";
+  const cleaned = name.replace(/[\x00-\x1f\x7f]+/g, " ").replace(/\s+/g, " ").trim() || "Mesaas";
+  const escaped = cleaned.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return `"${escaped}"`;
 }
 
 /**
@@ -178,9 +195,21 @@ export async function buildClientEventIdempotencyKey(clienteId: number, ids: str
   return `client-events:${clienteId}:${hex.slice(0, 16)}`;
 }
 
+/**
+ * Clears ONLY the claim lease (`event_claim_through`). `event_claimed_at` is
+ * deliberately left untouched -- it is the "last attempt" marker (set on
+ * EVERY claim, success or not), which the claim RPC's own 30-minute gate
+ * (`event_claimed_at < p_now - interval '30 minutes'`) turns into a natural
+ * backoff for a client that keeps coming up empty (no content, no Hub link):
+ * without this, releasing claimed_at back to NULL would let the very next
+ * run re-claim and re-query the same empty client every 15 minutes forever.
+ * The claim RPC also orders by `event_claimed_at ASC NULLS FIRST`, so
+ * leaving it set doubles as the fair-rotation key -- a client that just had
+ * an attempt sinks behind clients that haven't been tried yet.
+ */
 async function releaseLease(db: ClientEventEmailDb, ids: number[]): Promise<void> {
   const { error } = await db.from("clientes")
-    .update({ event_claim_through: null, event_claimed_at: null })
+    .update({ event_claim_through: null })
     .in("id", ids);
   if (error) {
     console.error(`[client-event-email-cron] release failed for ${ids.length} ids:`, error.message);
@@ -335,9 +364,11 @@ export async function runClientEventEmailCron(
       // below must still release the lease (so the client isn't stuck)
       // rather than silently swallow it, but a retry is harmless: the
       // idempotency key above is deterministic, so Resend dedupes (409)
-      // instead of resending.
+      // instead of resending. event_claimed_at is left as-is (see
+      // releaseLease's comment) -- it still marks "last attempt" for the
+      // 30-minute lease gate and the rotation order on the next claim.
       const { error: successErr } = await deps.db.from("clientes")
-        .update({ event_cursor_at: upperIso, event_claim_through: null, event_claimed_at: null })
+        .update({ event_cursor_at: upperIso, event_claim_through: null })
         .in("id", [row.id]);
       if (successErr) throw new Error(`cursor advance failed: ${successErr.message}`);
 
