@@ -887,3 +887,58 @@ Expected: PASS. Restore `deno.lock` if dirtied; if the deno run polluted `node_m
 git add supabase/functions/post-media-manage/handler.ts supabase/functions/__tests__/post-media-manage_test.ts supabase/migrations/20260902120000_clear_post_file_cover_flags.sql
 git commit -m "fix(entregas): fallback de capa por ordem no covers por workflow"
 ```
+
+---
+
+### Task 7: drop the auto-cover triggers in the same migration
+
+**Added mid-execution.** External review caught that clearing flags is not durable: `trg_post_file_link_auto_cover` (BEFORE INSERT on `post_file_links`, migration `20260425000002`) re-flags the next inserted link whenever a post has no flagged cover. After Task 4's cleanup, appending media to an existing post would flag the APPENDED link — every reader prefers the flag, so the newest media would become the cover and drag-reorder could never change it. Its sibling `trg_post_file_link_reassign_cover` (AFTER DELETE) keeps flags alive by promoting another link when a flagged one is deleted. Both triggers exist to maintain the manual-flag model this branch retires. Verified: no references to either trigger/function outside the defining migration (greps over `supabase/tests`, `supabase/functions`, `apps/`); the Arquivos page never sets `is_cover` (always `false` at link time); deliberate covers via the `post_file_link_set_cover` RPC (file-manage PATCH, MCP attach) remain untouched and honored by every reader's resolution rule.
+
+**Files:**
+- Modify: `supabase/migrations/20260902120000_clear_post_file_cover_flags.sql` (replace entire content with the version below)
+
+**Interfaces:**
+- Consumes: Task 6's fallback (all readers resolve `is_cover ?? first by sort_order`), which makes the triggers safe to drop.
+- Produces: after `db push`, no automatic writer of `is_cover` remains; flags appear only via the explicit `post_file_link_set_cover` RPC.
+
+- [ ] **Step 1: Replace the migration content**
+
+Replace the ENTIRE content of `supabase/migrations/20260902120000_clear_post_file_cover_flags.sql` with:
+
+```sql
+-- A capa de um post agora é derivada: a mídia com is_cover se existir (apenas
+-- via RPC post_file_link_set_cover, ex.: MCP), senão a primeira por sort_order.
+-- Todos os leitores (post-media-manage nos três branches, hub-posts, MCP e a
+-- galeria do CRM) aplicam essa resolução.
+--
+-- 1) Remove os triggers que mantinham o modelo antigo de flag manual:
+--    - auto_cover flagava o próximo insert quando o post não tinha capa; depois
+--      da limpeza abaixo, ele flagaria a mídia recém-anexada (a última da
+--      ordem), e o flag venceria a regra da primeira. Reordenar não corrigiria.
+--    - reassign_cover repassava o flag ao deletar a capa flagada, mantendo o
+--      flag vivo indefinidamente.
+drop trigger if exists trg_post_file_link_auto_cover on post_file_links;
+drop function if exists post_file_link_auto_cover();
+drop trigger if exists trg_post_file_link_reassign_cover on post_file_links;
+drop function if exists post_file_link_reassign_cover();
+
+-- 2) Limpa as flags legadas. Seguro em um único UPDATE: o índice parcial
+--    post_file_links_one_cover só indexa linhas true, e aqui só escrevemos false.
+--
+-- Ordem de deploy: publique a function post-media-manage (fallback por ordem no
+-- branch de workflow_ids) ANTES de rodar "supabase db push", senão as thumbnails
+-- dos boards ficam em branco até o deploy.
+update post_file_links set is_cover = false where is_cover = true;
+```
+
+- [ ] **Step 2: Sanity checks**
+
+Run: `ls supabase/migrations | grep '^20260902'` — still exactly two files, prefixes `20260902000010` and `20260902120000`.
+Run: `grep -rn "auto_cover\|reassign_cover" supabase/functions supabase/tests apps/ | grep -v migrations` — expected: no matches (nothing else references the dropped triggers/functions).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add supabase/migrations/20260902120000_clear_post_file_cover_flags.sql
+git commit -m "fix(entregas): derruba triggers de auto-capa junto com a limpeza de flags"
+```
