@@ -843,3 +843,47 @@ Each fix found in the browser gets its own small commit with a message naming th
 - **Spec coverage:** 5-tab model with meta row + warnings above tabs (Task 2); Mídia as its own tab (Task 2 mapping); attention dots + count badges (Tasks 1–2); smart default tab on publish error (Task 2); keep-mounted panels for TipTap state (Tasks 1–2, `[hidden]` CSS + `hidden` attr); star removal with derived cover (Task 3); legacy flag cleanup (Task 4). Plataforma stays in the meta row as approved.
 - **Placeholder scan:** the two "// bloco ... movido sem alteração" comments in Task 2 Step 3d are move instructions referencing exact existing code at named line numbers, not TBDs; test skeleton comments in Task 3 Step 1b point at the concrete existing pattern (line ~208) to copy.
 - **Type consistency:** `PostEditorTab` union and `PostEditorTabBar` props defined in Task 1 match every usage in Task 2; `isCover` prop introduced and consumed only inside `PostMediaGallery.tsx`; `PostEditorBodyProps` unchanged so drawer call sites compile untouched.
+
+---
+
+### Task 6: workflow_ids cover fallback in post-media-manage
+
+**Added mid-execution.** An external review found a real gap in the plan's premise: the `workflow_ids` branch of `post-media-manage` (GET covers for the delivery board) queries ONLY `is_cover = true` links, with no first-by-sort_order fallback — unlike every other reader. After Task 4's migration clears legacy flags, delivery-board workflow cards would lose their thumbnails. Verified against code: `supabase/functions/post-media-manage/handler.ts:116-119`. The live upload path (`file-upload-finalize`) never sets `is_cover`, so post-migration flags exist only when MCP sets one deliberately — the fallback must therefore carry the default case.
+
+**Files:**
+- Modify: `supabase/functions/post-media-manage/handler.ts` (workflow_ids branch, lines 102-147)
+- Modify: `supabase/migrations/20260902120000_clear_post_file_cover_flags.sql` (comment only: correct the "all readers" claim and add the deploy-order note)
+- Test: `supabase/functions/__tests__/post-media-manage_test.ts`
+
+**Interfaces:**
+- Consumes: nothing from other tasks (independent of Tasks 1-3; ordered after Task 4 because it corrects that migration's stated premise).
+- Produces: the `workflow_ids` branch resolves one cover per post with the SAME rule as the `post_ids` branch (handler.ts:162-173): all links for the owned posts ordered by `sort_order` asc then `id` asc, then per-post "the `is_cover` link if flagged, else the first". Response shape (`{ covers: [{ workflow_id, media: [...] }] }`) unchanged, still grouped by workflow and ordered by post `ordem`.
+
+- [ ] **Step 1: Write the failing test**
+
+In `supabase/functions/__tests__/post-media-manage_test.ts`, next to the existing workflow_ids tests (line ~98), add a test seeding TWO links for one post, neither flagged (`is_cover: false`), with distinct `sort_order` (e.g. 1 and 0): the response must contain exactly one cover for the workflow, and it must be the link with the LOWER sort_order. Follow the file's existing mock-queue pattern (`db.queue("workflow_posts", ...)`, `db.queue("post_file_links", ...)`) and legacy-shape assertions used by the test at line 98. Keep the existing flagged-cover test passing: when a flagged link exists among the queued links, it wins over a lower-sort_order unflagged one — extend or add a second case asserting that priority.
+
+- [ ] **Step 2: Run tests to verify the new ones fail**
+
+Run: `npm run test:functions -- --filter "post-media-manage"`
+(the `--filter` matches TEST NAMES). Expected: new tests FAIL — the current branch queries `.eq("is_cover", true)` so unflagged links produce no cover. If `deno.lock` gets dirtied by the run, restore it with `git checkout -- deno.lock` before committing.
+
+- [ ] **Step 3: Implement the fallback**
+
+In `supabase/functions/post-media-manage/handler.ts` workflow_ids branch, replace the flag-only query (lines 116-119) with the post_ids branch's resolution: fetch all links for `postIds` ordered by `sort_order` asc, `id` asc; build `coverByPost` exactly like lines 169-173 (`if (!existing || (l.is_cover && !existing.is_cover)) coverByPost.set(l.post_id, l)`); then feed `coverByPost.values()` into the existing per-workflow grouping (which sorts by post `ordem` — keep that sort and the response shape untouched). Do not extract a shared helper unless it drops in cleanly — small duplication of the 5-line resolution loop is acceptable and mirrors the file's existing style; if you do extract one, both branches must use it.
+
+- [ ] **Step 4: Correct the migration comment**
+
+In `supabase/migrations/20260902120000_clear_post_file_cover_flags.sql`, the comment claiming all readers already fall back is now accurate ONLY together with this task. Rewrite the comment to say: readers resolve "is_cover se existir, senão a primeira por sort_order"; the workflow_ids branch of post-media-manage gained that fallback in this same branch; and the function MUST be deployed BEFORE `db push` applies this migration, or delivery-board thumbnails blank until the deploy. Keep it pt-BR, no em-dashes.
+
+- [ ] **Step 5: Run the function suite**
+
+Run: `npm run test:functions -- --filter "post-media-manage"` then the full `npm run test:functions`.
+Expected: PASS. Restore `deno.lock` if dirtied; if the deno run polluted `node_modules` (check `ls node_modules/.deno`), run `npm ci`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add supabase/functions/post-media-manage/handler.ts supabase/functions/__tests__/post-media-manage_test.ts supabase/migrations/20260902120000_clear_post_file_cover_flags.sql
+git commit -m "fix(entregas): fallback de capa por ordem no covers por workflow"
+```
