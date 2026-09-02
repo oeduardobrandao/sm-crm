@@ -7,6 +7,10 @@ export interface PendingWorkspaceInviteInput {
   invitedBy: string;
   redirectTo: string;
   membroId?: number | null;
+  /** Custom workspace_roles.id, when the caller picked a granular role.
+   * Stamped on the created invites row; deliberately NOT threaded into
+   * sendAuthInvite's user_metadata (that stays the legacy role display). */
+  roleId?: string | null;
 }
 
 export interface PendingWorkspaceInviteDeps {

@@ -136,6 +136,28 @@ Deno.serve(async (req) => {
       throw new Error('Administradores não podem convidar novos donos.');
     }
 
+    // Optional custom role: `role` above stays the legacy display value sent
+    // to inviteOrResend/invites.role unchanged; roleId is threaded alongside
+    // it and drives the actual chassis-role membership (see invite-actions.ts
+    // add-direct route). A non-string body.role_id is treated as absent, not
+    // an error — only a STRING that fails the checks below is rejected.
+    const roleId: string | null = typeof body.role_id === 'string' ? body.role_id : null;
+    if (roleId) {
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      let validRoleId = UUID_RE.test(roleId);
+      if (validRoleId) {
+        const { data: roleRow } = await adminClient
+          .from('workspace_roles').select('id')
+          .eq('id', roleId).eq('conta_id', caller.workspaceId).maybeSingle();
+        validRoleId = !!roleRow;
+      }
+      if (!validRoleId) {
+        return new Response(JSON.stringify({ error: 'Papel inválido.' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     let membroId: number | undefined;
     if (body.membroId !== undefined && body.membroId !== null) {
       if (typeof body.membroId !== 'number' || !Number.isInteger(body.membroId)) {
@@ -172,6 +194,7 @@ Deno.serve(async (req) => {
         role,
         invitedBy: user.id,
         membroId,
+        roleId,
         redirectBase,
       }, { addOnboarded: true, confirmCrossWorkspace: true });
     } catch (err: any) {

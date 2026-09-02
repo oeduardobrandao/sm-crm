@@ -101,7 +101,7 @@ export async function handleAdminResendInvite(
   // would send an admin chasing the wrong problem. Throwing lands on the
   // dispatcher's generic 500.
   const { data: invite, error: inviteError } = await svc.from("invites")
-    .select("id, conta_id, email, role, status, invited_by")
+    .select("id, conta_id, email, role, role_id, status, invited_by")
     .eq("id", body.invite_id).eq("conta_id", body.workspace_id).maybeSingle();
   if (inviteError) throw inviteError;
   const invalid = validateResendTarget(invite);
@@ -120,6 +120,7 @@ export async function handleAdminResendInvite(
     email: invite.email,
     role: invite.role,
     invitedBy: invite.invited_by, // preserve the ORIGINAL inviter
+    roleId: invite.role_id ?? null,
     redirectBase,
   }, {
     addOnboarded: false, // admin resend never adds a member (finding 1)

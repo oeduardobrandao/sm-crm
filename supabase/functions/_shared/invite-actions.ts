@@ -225,6 +225,12 @@ export interface InviteOrResendInput {
   /** Membro da equipe this invite links to (Equipe form). Stamped on every
    * invites row; the added route links membros.crm_user_id immediately. */
   membroId?: number | null;
+  /** Custom workspace_roles.id, when the caller picked a granular role.
+   * Stamped on every invites row alongside the legacy `role` display value
+   * (role stays whatever the caller sent, unchanged). The add-direct route's
+   * ACTUAL membership additionally collapses `role` to the 'agent' chassis
+   * value whenever roleId is present — see that route below. */
+  roleId?: string | null;
 }
 export interface InviteOrResendOpts {
   /** true (CRM/invite-user): add-direct adds an onboarded non-member. false
@@ -316,14 +322,19 @@ export async function inviteOrResend(
       if (!opts.addOnboarded) return { route: "already-onboarded" }; // admin: report, don't add
       // CRM: add the member (finding-2 fix for the CRM path).
       await deletePriorInvites(adminClient, email, input.contaId);
+      // Chassis rule: a custom role ALWAYS creates the membership as the
+      // 'agent' chassis role + role_id — never the legacy role string. The
+      // legacy `role` value from the body is preserved only on invites.role
+      // below (display), never on the actual membership/profile row.
+      const memberRole: "owner" | "admin" | "agent" = input.roleId ? "agent" : input.role;
       const mIns = await adminClient.from("workspace_members")
-        .insert({ user_id: existingUser.id, workspace_id: input.contaId, role: input.role });
+        .insert({ user_id: existingUser.id, workspace_id: input.contaId, role: memberRole, role_id: input.roleId ?? null });
       ensureOk(mIns.error, "member_insert");
       const { data: existingProfile } = await adminClient
         .from("profiles").select("id, active_workspace_id").eq("id", existingUser.id).maybeSingle();
       if (!existingProfile) {
         const pIns = await adminClient.from("profiles").insert({
-          id: existingUser.id, conta_id: input.contaId, role: input.role,
+          id: existingUser.id, conta_id: input.contaId, role: memberRole,
           nome: existingUser.user_metadata?.nome || email.split("@")[0],
           active_workspace_id: input.contaId, onboarding_complete: true,
         });
@@ -343,6 +354,7 @@ export async function inviteOrResend(
       const iIns = await adminClient.from("invites").insert({
         conta_id: input.contaId, email, role: input.role, invited_by: input.invitedBy,
         status: "accepted", accepted_at: new Date().toISOString(), membro_id: membroId,
+        role_id: input.roleId ?? null,
       }).select("id").single();
       if (membroId != null) {
         const upd = await adminClient.from("membros")
@@ -367,7 +379,7 @@ export async function inviteOrResend(
       await sendInviteEmail({ to: email, actionLink: link.properties.action_link, workspaceName: conta?.nome || "seu workspace" });
       const ins = await adminClient.from("invites").insert({
         conta_id: input.contaId, email, role: input.role, invited_by: input.invitedBy,
-        status: "pending", membro_id: membroId,
+        status: "pending", membro_id: membroId, role_id: input.roleId ?? null,
       }).select("id").single();
       return { route: "resent-link", inviteId: insertedId(ins, "invite_insert_pending") };
     }
@@ -407,11 +419,14 @@ async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, e
     createPendingInvite: async (p) => {
       const { data, error } = await adminClient.from("invites").insert({
         conta_id: p.contaId, email: p.email, role: p.role, invited_by: p.invitedBy,
-        status: "pending", membro_id: p.membroId ?? null,
+        status: "pending", membro_id: p.membroId ?? null, role_id: p.roleId ?? null,
       }).select("id").single();
       if (error || !data) throw error ?? new Error("invite_insert_failed");
       return data;
     },
+    // roleId deliberately NOT included in user_metadata: metadata.role stays
+    // the legacy display value. The accept-invite RPC (Task 1) resolves the
+    // real membership role from invites.role_id, not from this metadata.
     sendAuthInvite: async (p) => {
       const { error } = await adminClient.auth.admin.inviteUserByEmail(p.email, {
         data: { conta_id: p.contaId, role: p.role, nome: p.email.split("@")[0] },
@@ -428,6 +443,6 @@ async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, e
     },
   }, {
     contaId: input.contaId, email, role: input.role, invitedBy: input.invitedBy,
-    redirectTo: input.redirectBase + "/configurar-senha", membroId,
+    redirectTo: input.redirectBase + "/configurar-senha", membroId, roleId: input.roleId ?? null,
   });
 }

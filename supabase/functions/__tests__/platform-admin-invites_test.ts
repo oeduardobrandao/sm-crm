@@ -262,7 +262,7 @@ function makeCreateSvc(opts: {
   hasPassword?: boolean | null;
   memberships?: string[];
   otherPendingWorkspaceIds?: string[];
-  invite?: { id: string; conta_id: string; email: string; role: string; status: string; invited_by: string } | null;
+  invite?: { id: string; conta_id: string; email: string; role: string; role_id?: string | null; status: string; invited_by: string } | null;
 } = {}) {
   const audits: any[] = [];
   const inserts: Array<{ table: string; row: any }> = [];
@@ -464,4 +464,28 @@ Deno.test("handleAdminResendInvite: audits the NEW invite id, not the one delete
   const audits = svc._audits();
   assertEquals(audits.length, 1);
   assertEquals(audits[0].resource_id, "created-invite"); // NOT "old-invite" — that row is gone
+});
+
+Deno.test("handleAdminResendInvite: selects and re-passes the original invite's role_id (Task 6)", async () => {
+  // authUser: null routes through the brand-new-user path (sendNewUserInvite),
+  // so the freshly inserted `invites` row is the one to inspect.
+  const svc = makeCreateSvc({
+    invite: { id: "old-invite", conta_id: "ws", email: "new@x.com", role: "agent", role_id: "role-9", status: "pending", invited_by: "owner1" },
+    authUser: null, members: 1,
+  });
+  const res = await handleAdminResendInvite(svc as any, { workspace_id: "ws", invite_id: "old-invite" }, "admin1", H);
+  assertEquals(res.status, 200);
+  const inviteRow = svc._inserts().find((i: any) => i.table === "invites");
+  assertEquals(inviteRow?.row.role_id, "role-9");
+});
+
+Deno.test("handleAdminResendInvite: a legacy invite with NO role_id re-sends with role_id: null (regression)", async () => {
+  const svc = makeCreateSvc({
+    invite: { id: "old-invite", conta_id: "ws", email: "new@x.com", role: "agent", status: "pending", invited_by: "owner1" },
+    authUser: null, members: 1,
+  });
+  const res = await handleAdminResendInvite(svc as any, { workspace_id: "ws", invite_id: "old-invite" }, "admin1", H);
+  assertEquals(res.status, 200);
+  const inviteRow = svc._inserts().find((i: any) => i.table === "invites");
+  assertEquals(inviteRow?.row.role_id, null);
 });

@@ -728,3 +728,125 @@ Deno.test("inviteOrResend: resend-link route also stamps membro_id", async () =>
     if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY"); else Deno.env.set("RESEND_API_KEY", prevKey);
   }
 });
+
+// -----------------------------------------------------------------------
+// role_id threading (Task 6). Mirrors the membroId coverage above: every
+// route that inserts an `invites` row must stamp role_id, and the add-direct
+// route's ACTUAL membership must collapse to the 'agent' chassis role
+// whenever roleId is present — invites.role itself always stays whatever the
+// caller sent (legacy display), with or without roleId.
+// -----------------------------------------------------------------------
+
+Deno.test("inviteOrResend: brand-new email WITH roleId stamps invites.role_id (keeps legacy role)", async () => {
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: null });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, { ...baseInput, roleId: "role-1" }, CRM);
+  assertEquals(out.route, "invited");
+  const inviteRow = admin._inserts().find((i) => i.table === "invites");
+  assertEquals(inviteRow?.row.role_id, "role-1");
+  assertEquals(inviteRow?.row.role, baseInput.role); // legacy display value, unchanged
+});
+
+Deno.test("inviteOrResend: brand-new email WITHOUT roleId stamps role_id: null (regression)", async () => {
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: null });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, CRM);
+  assertEquals(out.route, "invited");
+  const inviteRow = admin._inserts().find((i) => i.table === "invites");
+  assertEquals(inviteRow?.row.role_id, null);
+});
+
+Deno.test("inviteOrResend CRM mode: add-direct WITH roleId inserts membership role='agent' + role_id (chassis rule)", async () => {
+  const admin = makeInviteAdmin({
+    limit: null, members: 1,
+    authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+    hasProfile: true, onboarding: true, hasPassword: true, isMember: false,
+  });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, { ...baseInput, roleId: "role-1" }, CRM);
+  assertEquals(out.route, "added");
+  const memberRow = admin._inserts().find((i) => i.table === "workspace_members");
+  assertEquals(memberRow?.row.role, "agent"); // chassis role, NOT baseInput.role ("agent" here too, but forced regardless)
+  assertEquals(memberRow?.row.role_id, "role-1");
+  const inviteRow = admin._inserts().find((i) => i.table === "invites");
+  assertEquals(inviteRow?.row.role, baseInput.role); // invites.role keeps the legacy display value
+  assertEquals(inviteRow?.row.role_id, "role-1");
+});
+
+Deno.test("inviteOrResend CRM mode: add-direct with a non-agent legacy role + roleId STILL forces the membership to 'agent'", async () => {
+  // baseInput.role is "agent"; use "admin" here so a regression that forgot
+  // the chassis collapse (and just wrote input.role) would be caught.
+  const admin = makeInviteAdmin({
+    limit: null, members: 1,
+    authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+    hasProfile: true, onboarding: true, hasPassword: true, isMember: false,
+  });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, { ...baseInput, role: "admin", roleId: "role-1" }, CRM);
+  assertEquals(out.route, "added");
+  const memberRow = admin._inserts().find((i) => i.table === "workspace_members");
+  assertEquals(memberRow?.row.role, "agent");
+  const inviteRow = admin._inserts().find((i) => i.table === "invites");
+  assertEquals(inviteRow?.row.role, "admin"); // legacy display value preserved as sent
+});
+
+Deno.test("inviteOrResend CRM mode: add-direct WITHOUT roleId keeps the legacy role + role_id: null (regression)", async () => {
+  const admin = makeInviteAdmin({
+    limit: null, members: 1,
+    authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+    hasProfile: true, onboarding: true, hasPassword: true, isMember: false,
+  });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, CRM);
+  assertEquals(out.route, "added");
+  const memberRow = admin._inserts().find((i) => i.table === "workspace_members");
+  assertEquals(memberRow?.row.role, baseInput.role);
+  assertEquals(memberRow?.row.role_id, null);
+  const inviteRow = admin._inserts().find((i) => i.table === "invites");
+  assertEquals(inviteRow?.row.role_id, null);
+});
+
+Deno.test("inviteOrResend: resend-link route WITH roleId preserves role_id on the re-inserted invite", async () => {
+  const prevKey = Deno.env.get("RESEND_API_KEY");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (() => Promise.resolve(new Response("{}", { status: 200 }))) as typeof fetch;
+  try {
+    const admin = makeInviteAdmin({
+      limit: null, members: 0,
+      authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+      onboarding: false, hasProfile: true, hasPassword: false,
+    });
+    // deno-lint-ignore no-explicit-any
+    const out = await inviteOrResend(admin as any, { ...baseInput, roleId: "role-2" }, ADMIN);
+    assertEquals(out.route, "resent-link");
+    const inviteRow = admin._inserts().find((i) => i.table === "invites");
+    assertEquals(inviteRow?.row.role_id, "role-2");
+    assertEquals(inviteRow?.row.role, baseInput.role);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY"); else Deno.env.set("RESEND_API_KEY", prevKey);
+  }
+});
+
+Deno.test("inviteOrResend: resend-link route WITHOUT roleId stamps role_id: null (regression)", async () => {
+  const prevKey = Deno.env.get("RESEND_API_KEY");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (() => Promise.resolve(new Response("{}", { status: 200 }))) as typeof fetch;
+  try {
+    const admin = makeInviteAdmin({
+      limit: null, members: 0,
+      authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+      onboarding: false, hasProfile: true, hasPassword: false,
+    });
+    // deno-lint-ignore no-explicit-any
+    const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+    assertEquals(out.route, "resent-link");
+    const inviteRow = admin._inserts().find((i) => i.table === "invites");
+    assertEquals(inviteRow?.row.role_id, null);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY"); else Deno.env.set("RESEND_API_KEY", prevKey);
+  }
+});
