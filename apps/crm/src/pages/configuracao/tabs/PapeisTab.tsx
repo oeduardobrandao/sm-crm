@@ -134,7 +134,17 @@ interface RoleFormState {
   preset: PresetChoice;
 }
 
-function PermissionsGrid({ permissions }: { permissions: RolePermissions }) {
+/** Text override for one module's value row, e.g. the Administrador card's
+ * Financeiro row (real access varies per admin, not a fixed level). */
+type PermissionOverrides = Partial<Record<PermissionModule, string>>;
+
+function PermissionsGrid({
+  permissions,
+  overrides,
+}: {
+  permissions: RolePermissions;
+  overrides?: PermissionOverrides;
+}) {
   return (
     <div
       style={{
@@ -145,12 +155,20 @@ function PermissionsGrid({ permissions }: { permissions: RolePermissions }) {
         marginTop: '0.5rem',
       }}
     >
-      {PERMISSION_MODULES.map((mod) => (
-        <div key={mod} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
-          <span style={{ color: 'var(--text-muted)' }}>{MODULE_LABELS[mod]}</span>
-          <span style={{ fontWeight: 500 }}>{LEVEL_LABELS[permissions[mod]]}</span>
-        </div>
-      ))}
+      {PERMISSION_MODULES.map((mod) => {
+        const override = overrides?.[mod];
+        return (
+          <div
+            key={mod}
+            style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}
+          >
+            <span style={{ color: 'var(--text-muted)' }}>{MODULE_LABELS[mod]}</span>
+            <span style={override ? { color: 'var(--text-muted)' } : { fontWeight: 500 }}>
+              {override ?? LEVEL_LABELS[permissions[mod]]}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -160,6 +178,7 @@ function RoleCard({
   isSystem,
   memberCount,
   permissions,
+  permissionOverrides,
   onEdit,
   onDelete,
 }: {
@@ -167,6 +186,7 @@ function RoleCard({
   isSystem: boolean;
   memberCount: number;
   permissions: RolePermissions;
+  permissionOverrides?: PermissionOverrides;
   onEdit?: () => void;
   onDelete?: () => void;
 }) {
@@ -203,10 +223,17 @@ function RoleCard({
           </div>
         )}
       </div>
-      <PermissionsGrid permissions={permissions} />
+      <PermissionsGrid permissions={permissions} overrides={permissionOverrides} />
     </div>
   );
 }
+
+/** Financeiro access for a restricted admin depends on that member's own "Ver
+ * financeiro" switch (Equipe tab) — never a fixed level, so the read-only
+ * Administrador card must not claim one. */
+const ADMIN_PERMISSION_OVERRIDES: PermissionOverrides = {
+  financeiro: 'Conforme o acesso financeiro de cada admin',
+};
 
 /** Owner-only "Papéis" tab: system presets (read-only) + CRUD of custom papéis. */
 export default function PapeisTab() {
@@ -337,7 +364,13 @@ export default function PapeisTab() {
           </Button>
         </div>
 
-        <RoleCard nome="Administrador" isSystem memberCount={0} permissions={ADMIN_PERMISSIONS} />
+        <RoleCard
+          nome="Administrador"
+          isSystem
+          memberCount={0}
+          permissions={ADMIN_PERMISSIONS}
+          permissionOverrides={ADMIN_PERMISSION_OVERRIDES}
+        />
         <RoleCard nome="Agente" isSystem memberCount={0} permissions={AGENT_ROLE_PRESET} />
 
         {customRoles.map((role) => (

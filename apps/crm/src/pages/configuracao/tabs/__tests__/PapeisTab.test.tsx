@@ -118,6 +118,27 @@ describe('PapeisTab — presets', () => {
     expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Excluir' })).not.toBeInTheDocument();
   });
+
+  it('Administrador card shows Financeiro as "conforme o acesso" instead of a fixed level (real access is per-admin)', async () => {
+    // Real Financeiro access for a restricted admin depends on that member's
+    // own "Ver financeiro" switch on the Equipe tab, so the read-only
+    // Administrador card must not claim a fixed "Pode editar" here.
+    setAuth('owner');
+    renderTab();
+
+    const adminCard = (await screen.findByText('Administrador')).closest(
+      '.config-member-row',
+    ) as HTMLElement;
+    expect(
+      within(adminCard).getByText('Conforme o acesso financeiro de cada admin'),
+    ).toBeInTheDocument();
+
+    // The Agente card is unaffected — its Financeiro row still shows a fixed level.
+    const agenteCard = screen.getByText('Agente').closest('.config-member-row') as HTMLElement;
+    expect(
+      within(agenteCard).queryByText('Conforme o acesso financeiro de cada admin'),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe('PapeisTab — custom roles list', () => {
