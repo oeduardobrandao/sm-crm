@@ -12,6 +12,7 @@ import {
   type ClientePost,
 } from '../../../store';
 import { PostEditor } from './PostEditor';
+import { PostEditorTabBar, type PostEditorTab } from './PostEditorTabBar';
 import { PropertyPanel } from './PropertyPanel';
 import PostCommentSummary from './PostCommentSummary';
 import { PostMediaGallery } from './PostMediaGallery';
@@ -184,6 +185,12 @@ export function PostEditorBody({
     }
   }, [isExpanded]);
 
+  // Aba ativa deste post. Estado local por linha: sobrevive a collapse/expand
+  // (o componente continua montado) e cada post lembra sua própria aba.
+  const [activeTab, setActiveTab] = useState<PostEditorTab>(() =>
+    shouldShowPublishErrorBlock(post) ? 'publicacao' : 'conteudo',
+  );
+
   // Local state for title to avoid input lag / letter-replacement from the
   // round-trip through updateWorkflowPost + refresh on every keystroke.
   const [tituloLocal, setTituloLocal] = useState(post.titulo ?? '');
@@ -271,6 +278,9 @@ export function PostEditorBody({
   // One sentence on what the system will do to this post without being asked;
   // null for the statuses that just sit there waiting on a person.
   const statusAutomationHint = getStatusAutomationHint(post);
+  const publishError = shouldShowPublishErrorBlock(post);
+  const showProperties = templateId != null && templateId !== 0 && workflowId != null;
+  const openThreadCount = commentThreads.filter((t) => t.status === 'active').length;
 
   return (
     <div className="drawer-post-content">
@@ -388,10 +398,6 @@ export function PostEditorBody({
 
       {statusAutomationHint && <p className="drawer-status-hint">{statusAutomationHint}</p>}
 
-      {shouldShowPublishErrorBlock(post) && (
-        <PublishErrorBlock post={post} clienteId={clienteId} onStatusChange={onRefresh} />
-      )}
-
       {isExternallyVisible && (
         <div className="drawer-external-warning">
           {isScheduleLocked
@@ -399,209 +405,235 @@ export function PostEditorBody({
             : '⚠ Este post já está visível no portal do cliente. Alterações serão refletidas imediatamente.'}
         </div>
       )}
-      {/* Custom properties — shown when template has properties defined. A post avulso
-          (StandalonePostDrawer) has no workflowId either, and always passes
-          templateId: undefined, so this guard already keeps the two conditions together. */}
-      {templateId != null && templateId !== 0 && workflowId != null && (
-        <PropertyPanel
-          templateId={templateId}
-          postId={post.id!}
-          workflowId={workflowId}
-          propertyValues={post.property_values ?? []}
-          membros={membros}
-        />
-      )}
 
-      <PostMediaGallery
-        postId={post.id!}
-        mediaAutocleanedAt={post.media_autocleaned_at}
-        instagramPermalink={post.instagram_permalink}
-        tiktokPostUrl={post.tiktok_post_url}
+      <PostEditorTabBar
+        active={activeTab}
+        onChange={setActiveTab}
+        mediaCount={postMedia?.length}
+        commentCount={openThreadCount}
+        showProperties={showProperties}
+        contentAttention={editSuggestion != null}
+        publishAttention={publishError}
       />
 
-      {editSuggestion ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-amber-200/60 bg-amber-50">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              <span className="text-[13px] font-semibold text-amber-900">Sugestão do cliente</span>
-              <span className="text-[11px] text-amber-600">
-                {new Date(editSuggestion.updated_at).toLocaleDateString('pt-BR', {
-                  day: '2-digit',
-                  month: 'short',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => onRejectSuggestion(editSuggestion.id)}
-                className="px-3 py-1 text-[12px] font-medium rounded border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 transition-colors"
-              >
-                Rejeitar
-              </button>
-              <button
-                onClick={() => onAcceptSuggestion(editSuggestion)}
-                className="px-3 py-1 text-[12px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
-              >
-                Aceitar
-              </button>
-            </div>
-          </div>
-          <div className="px-4 py-3 space-y-3">
-            {editSuggestion.changed_fields.includes('conteudo') &&
-              resolvedContent &&
-              resolvedSuggestion && (
-                <ReadOnlyTipTap content={computeTipTapDiff(resolvedContent, resolvedSuggestion)} />
-              )}
-            {editSuggestion.changed_fields.includes('ig_caption') && (
-              <div className="border-t border-amber-200/60 pt-3">
-                <p className="text-[11px] font-medium text-stone-500 mb-1.5">
-                  Legenda do Instagram
-                </p>
-                <DiffView
-                  segments={computeWordDiff(
-                    post.ig_caption ?? '',
-                    editSuggestion.suggested_ig_caption ?? '',
-                  )}
-                />
+      <div className="drawer-post-tabpanel" hidden={activeTab !== 'conteudo'}>
+        {editSuggestion ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-amber-200/60 bg-amber-50">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                <span className="text-[13px] font-semibold text-amber-900">
+                  Sugestão do cliente
+                </span>
+                <span className="text-[11px] text-amber-600">
+                  {new Date(editSuggestion.updated_at).toLocaleDateString('pt-BR', {
+                    day: '2-digit',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
               </div>
-            )}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => onRejectSuggestion(editSuggestion.id)}
+                  className="px-3 py-1 text-[12px] font-medium rounded border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 transition-colors"
+                >
+                  Rejeitar
+                </button>
+                <button
+                  onClick={() => onAcceptSuggestion(editSuggestion)}
+                  className="px-3 py-1 text-[12px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                >
+                  Aceitar
+                </button>
+              </div>
+            </div>
+            <div className="px-4 py-3 space-y-3">
+              {editSuggestion.changed_fields.includes('conteudo') &&
+                resolvedContent &&
+                resolvedSuggestion && (
+                  <ReadOnlyTipTap
+                    content={computeTipTapDiff(resolvedContent, resolvedSuggestion)}
+                  />
+                )}
+              {editSuggestion.changed_fields.includes('ig_caption') && (
+                <div className="border-t border-amber-200/60 pt-3">
+                  <p className="text-[11px] font-medium text-stone-500 mb-1.5">
+                    Legenda do Instagram
+                  </p>
+                  <DiffView
+                    segments={computeWordDiff(
+                      post.ig_caption ?? '',
+                      editSuggestion.suggested_ig_caption ?? '',
+                    )}
+                  />
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      ) : (
-        <PostEditor
-          key={`${post.id}-v${editorVersion}`}
-          initialContent={resolvedContent}
-          onUpdate={onContentUpdate}
-          onUploadInlineImage={
-            post.id
-              ? async (file) => {
-                  try {
-                    return await uploadInlineImage(file);
-                  } catch (err) {
-                    toast.error(
-                      err instanceof Error && err.message === 'quota_exceeded'
-                        ? 'Limite de armazenamento atingido'
-                        : 'Falha ao enviar imagem',
-                    );
-                    throw err;
+        ) : (
+          <PostEditor
+            key={`${post.id}-v${editorVersion}`}
+            initialContent={resolvedContent}
+            onUpdate={onContentUpdate}
+            onUploadInlineImage={
+              post.id
+                ? async (file) => {
+                    try {
+                      return await uploadInlineImage(file);
+                    } catch (err) {
+                      toast.error(
+                        err instanceof Error && err.message === 'quota_exceeded'
+                          ? 'Limite de armazenamento atingido'
+                          : 'Falha ao enviar imagem',
+                      );
+                      throw err;
+                    }
                   }
-                }
-              : undefined
-          }
+                : undefined
+            }
+            threads={commentThreads}
+            membros={membros}
+            workspaceUsers={workspaceUsers}
+            currentUserId={currentUserId}
+            currentUserRole={currentUserRole}
+            onCreateComment={(qt, c) => onCreateComment(post.id!, qt, c)}
+            onReplyToComment={onReplyToComment}
+            onResolveThread={onResolveThread}
+            onReopenThread={onReopenThread}
+            onEditComment={onEditComment}
+            onDeleteComment={onDeleteComment}
+          />
+        )}
+
+        {isStoryPost ? (
+          <p className="mt-3 text-xs" style={{ color: 'var(--text-light)' }}>
+            Stories: uma ou mais mídias (cada uma vira um segmento), sem legenda, formato vertical
+            9:16.
+          </p>
+        ) : hasInstagramAccount ? (
+          <InstagramCaptionField
+            value={post.ig_caption ?? ''}
+            onChange={(val) => onFieldChange('ig_caption', val)}
+            disabled={isScheduleLocked}
+            lockedMessage="Cancelar agendamento para editar"
+          />
+        ) : null}
+      </div>
+
+      <div className="drawer-post-tabpanel" hidden={activeTab !== 'midia'}>
+        <PostMediaGallery
+          postId={post.id!}
+          mediaAutocleanedAt={post.media_autocleaned_at}
+          instagramPermalink={post.instagram_permalink}
+          tiktokPostUrl={post.tiktok_post_url}
+        />
+      </div>
+
+      {showProperties && (
+        <div className="drawer-post-tabpanel" hidden={activeTab !== 'propriedades'}>
+          <PropertyPanel
+            templateId={templateId!}
+            postId={post.id!}
+            workflowId={workflowId!}
+            propertyValues={post.property_values ?? []}
+            membros={membros}
+          />
+        </div>
+      )}
+
+      <div className="drawer-post-tabpanel" hidden={activeTab !== 'publicacao'}>
+        {publishError && (
+          <PublishErrorBlock post={post} clienteId={clienteId} onStatusChange={onRefresh} />
+        )}
+
+        {hasInstagramAccount && (
+          <TrialReelPanel
+            post={post}
+            media={postMedia ?? []}
+            disabled={isScheduleLocked}
+            onFieldChange={onFieldChange}
+          />
+        )}
+
+        {/* TikTok settings panel (Task C2) — audit-mandated creator_info compliance UI.
+            Mounted whenever this post targets TikTok, mirroring PlatformSelector's own
+            tipo==='stories' guard (TikTok has no Stories API, so platform can never be
+            'tiktok'/'both' on a stories post — PlatformSelector self-heals that case).
+            `onCompletenessChange`/`showTestModeBanner` wire into the sibling ScheduleButton
+            below via the local state declared above (Task C3). */}
+        {(post.platform === 'tiktok' || post.platform === 'both') && (
+          <TikTokSettingsPanel
+            clientId={clienteId}
+            post={post}
+            onFieldChange={onFieldChange}
+            onCompletenessChange={setTiktokSettingsComplete}
+            showTestModeBanner={tiktokTestModeBanner}
+          />
+        )}
+
+        <ScheduleButton
+          post={post}
+          media={postMedia}
+          hasInstagramAccount={hasInstagramAccount}
+          igAccountStatus={igAccountStatus}
+          ttAccountStatus={ttAccountStatus}
+          tiktokSettingsComplete={tiktokSettingsComplete}
+          onTikTokUnaudited={() => setTiktokTestModeBanner(true)}
+          onStatusChange={onRefresh}
+        />
+
+        {/* Self-gating: renders nothing without the plan feature, an Instagram
+            account, or on a post comments can never reach (stories, TikTok-only). */}
+        <PostAutomationSection
+          post={post}
+          clienteId={clienteId}
+          currentUserRole={currentUserRole}
+          hasInstagramAccount={hasInstagramAccount}
+        />
+      </div>
+
+      <div className="drawer-post-tabpanel" hidden={activeTab !== 'comentarios'}>
+        <PostCommentSummary
           threads={commentThreads}
           membros={membros}
           workspaceUsers={workspaceUsers}
-          currentUserId={currentUserId}
-          currentUserRole={currentUserRole}
-          onCreateComment={(qt, c) => onCreateComment(post.id!, qt, c)}
-          onReplyToComment={onReplyToComment}
-          onResolveThread={onResolveThread}
-          onReopenThread={onReopenThread}
-          onEditComment={onEditComment}
-          onDeleteComment={onDeleteComment}
+          onThreadClick={() => {}}
         />
-      )}
 
-      {isStoryPost ? (
-        <p className="mt-3 text-xs" style={{ color: 'var(--text-light)' }}>
-          Stories: uma ou mais mídias (cada uma vira um segmento), sem legenda, formato vertical
-          9:16.
-        </p>
-      ) : hasInstagramAccount ? (
-        <InstagramCaptionField
-          value={post.ig_caption ?? ''}
-          onChange={(val) => onFieldChange('ig_caption', val)}
-          disabled={isScheduleLocked}
-          lockedMessage="Cancelar agendamento para editar"
-        />
-      ) : null}
-
-      {hasInstagramAccount && (
-        <TrialReelPanel
-          post={post}
-          media={postMedia ?? []}
-          disabled={isScheduleLocked}
-          onFieldChange={onFieldChange}
-        />
-      )}
-
-      {/* TikTok settings panel (Task C2) — audit-mandated creator_info compliance UI.
-          Mounted whenever this post targets TikTok, mirroring PlatformSelector's own
-          tipo==='stories' guard (TikTok has no Stories API, so platform can never be
-          'tiktok'/'both' on a stories post — PlatformSelector self-heals that case).
-          `onCompletenessChange`/`showTestModeBanner` wire into the sibling ScheduleButton
-          below via the local state declared above (Task C3). */}
-      {(post.platform === 'tiktok' || post.platform === 'both') && (
-        <TikTokSettingsPanel
-          clientId={clienteId}
-          post={post}
-          onFieldChange={onFieldChange}
-          onCompletenessChange={setTiktokSettingsComplete}
-          showTestModeBanner={tiktokTestModeBanner}
-        />
-      )}
-
-      <ScheduleButton
-        post={post}
-        media={postMedia}
-        hasInstagramAccount={hasInstagramAccount}
-        igAccountStatus={igAccountStatus}
-        ttAccountStatus={ttAccountStatus}
-        tiktokSettingsComplete={tiktokSettingsComplete}
-        onTikTokUnaudited={() => setTiktokTestModeBanner(true)}
-        onStatusChange={onRefresh}
-      />
-
-      {/* Self-gating: renders nothing without the plan feature, an Instagram
-          account, or on a post comments can never reach (stories, TikTok-only). */}
-      <PostAutomationSection
-        post={post}
-        clienteId={clienteId}
-        currentUserRole={currentUserRole}
-        hasInstagramAccount={hasInstagramAccount}
-      />
-
-      <PostCommentSummary
-        threads={commentThreads}
-        membros={membros}
-        workspaceUsers={workspaceUsers}
-        onThreadClick={() => {}}
-      />
-
-      {approvals.length > 0 && (
-        <div className="drawer-approval-thread">
-          <div className="drawer-thread-label">
-            <MessageSquare className="h-3.5 w-3.5" /> Comentários
+        {approvals.length > 0 && (
+          <div className="drawer-approval-thread">
+            <div className="drawer-thread-label">
+              <MessageSquare className="h-3.5 w-3.5" /> Comentários
+            </div>
+            {approvals.map((a) => (
+              <PostApprovalBubble key={a.id} approval={a} />
+            ))}
           </div>
-          {approvals.map((a) => (
-            <PostApprovalBubble key={a.id} approval={a} />
-          ))}
-        </div>
-      )}
+        )}
 
-      <div className="drawer-reply-row">
-        <input
-          className="drawer-input"
-          placeholder="Responder ao cliente…"
-          value={replyText}
-          onChange={(e) => onReplyChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              onReplySend();
-            }
-          }}
-        />
-        <button
-          className="drawer-reply-btn"
-          disabled={sendingReply || !replyText.trim()}
-          onClick={onReplySend}
-        >
-          <Send className="h-3.5 w-3.5" />
-        </button>
+        <div className="drawer-reply-row">
+          <input
+            className="drawer-input"
+            placeholder="Responder ao cliente…"
+            value={replyText}
+            onChange={(e) => onReplyChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                onReplySend();
+              }
+            }}
+          />
+          <button
+            className="drawer-reply-btn"
+            disabled={sendingReply || !replyText.trim()}
+            onClick={onReplySend}
+          >
+            <Send className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   );
