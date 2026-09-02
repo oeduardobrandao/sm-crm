@@ -33,7 +33,16 @@ BEGIN
     RAISE EXCEPTION 'authenticated only';
   END IF;
   SELECT public.get_my_conta_id() INTO v_conta;
-  IF v_conta IS NULL THEN RETURN; END IF;
+  -- Defense-in-depth: get_my_conta_id() ja falha fechado para quem saiu do
+  -- workspace (EXISTS-checka workspace_members), mas a checagem explicita
+  -- aqui mantem o padrao do resto do repo (workspace_usage 20260808000001,
+  -- is_equipe_conversa_member da migration 20260902120000).
+  IF v_conta IS NULL OR NOT EXISTS (
+    SELECT 1 FROM workspace_members wm
+     WHERE wm.workspace_id = v_conta AND wm.user_id = v_uid
+  ) THEN
+    RETURN;
+  END IF;
 
   RETURN QUERY
   WITH minhas AS (
@@ -125,7 +134,12 @@ BEGIN
     RAISE EXCEPTION 'authenticated only';
   END IF;
   SELECT public.get_my_conta_id() INTO v_conta;
+  -- Defense-in-depth: guarda explicita de membership do workspace, alem do
+  -- que get_my_conta_id() ja garante (ver comentario em get_equipe_conversas).
   IF v_conta IS NULL OR NOT EXISTS (
+    SELECT 1 FROM workspace_members wm
+     WHERE wm.workspace_id = v_conta AND wm.user_id = v_uid
+  ) OR NOT EXISTS (
     SELECT 1 FROM equipe_conversa_participantes pt
       JOIN equipe_conversas ec ON ec.id = pt.conversa_id
      WHERE pt.conversa_id = p_conversa_id
@@ -351,9 +365,29 @@ BEGIN
     RAISE EXCEPTION 'authenticated only';
   END IF;
   SELECT public.get_my_conta_id() INTO v_conta;
-  -- GREATEST: nunca regride (dois marks fora de ordem nao "des-leem").
+  -- Defense-in-depth: guarda explicita de membership do workspace, alem do
+  -- que get_my_conta_id() ja garante (ver comentario em get_equipe_conversas).
+  -- Nao-membro: no-op silencioso (o UPDATE abaixo ja nao bateria em nada).
+  IF v_conta IS NULL OR NOT EXISTS (
+    SELECT 1 FROM workspace_members wm
+     WHERE wm.workspace_id = v_conta AND wm.user_id = v_uid
+  ) THEN
+    RETURN;
+  END IF;
+  -- GREATEST: nunca regride (dois marks fora de ordem nao "des-leem"). LEAST
+  -- contra o max id real da conversa: sem isso, um p_last_message_id inflado
+  -- (arbitrario, vindo do cliente) avancaria o marcador para alem de
+  -- qualquer mensagem existente e mensagens FUTURAS nunca contariam como
+  -- nao lidas (GREATEST nunca deixa o marcador regredir de volta).
   UPDATE equipe_conversa_participantes pt
-     SET last_seen_message_id = GREATEST(pt.last_seen_message_id, COALESCE(p_last_message_id, 0))
+     SET last_seen_message_id = GREATEST(
+           pt.last_seen_message_id,
+           LEAST(
+             COALESCE(p_last_message_id, 0),
+             COALESCE((SELECT max(em.id) FROM equipe_mensagens em
+                        WHERE em.conversa_id = p_conversa_id), 0)
+           )
+         )
    WHERE pt.conversa_id = p_conversa_id
      AND pt.user_id = v_uid
      AND pt.conta_id = v_conta;
@@ -377,7 +411,14 @@ BEGIN
     RAISE EXCEPTION 'authenticated only';
   END IF;
   SELECT public.get_my_conta_id() INTO v_conta;
-  IF v_conta IS NULL THEN RETURN 0; END IF;
+  -- Defense-in-depth: guarda explicita de membership do workspace, alem do
+  -- que get_my_conta_id() ja garante (ver comentario em get_equipe_conversas).
+  IF v_conta IS NULL OR NOT EXISTS (
+    SELECT 1 FROM workspace_members wm
+     WHERE wm.workspace_id = v_conta AND wm.user_id = v_uid
+  ) THEN
+    RETURN 0;
+  END IF;
   SELECT COALESCE(sum(sub.n), 0) INTO v_n FROM (
     SELECT count(*)::bigint AS n
       FROM equipe_conversa_participantes pt
@@ -450,7 +491,12 @@ BEGIN
     RAISE EXCEPTION 'authenticated only';
   END IF;
   SELECT public.get_my_conta_id() INTO v_conta;
+  -- Defense-in-depth: guarda explicita de membership do workspace, alem do
+  -- que get_my_conta_id() ja garante (ver comentario em get_equipe_conversas).
   IF v_conta IS NULL OR NOT EXISTS (
+    SELECT 1 FROM workspace_members wm
+     WHERE wm.workspace_id = v_conta AND wm.user_id = v_uid
+  ) OR NOT EXISTS (
     SELECT 1 FROM equipe_conversa_participantes pt
       JOIN equipe_conversas ec ON ec.id = pt.conversa_id
      WHERE pt.conversa_id = p_conversa_id

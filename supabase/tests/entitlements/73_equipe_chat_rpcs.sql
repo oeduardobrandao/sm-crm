@@ -327,6 +327,26 @@ begin
   select public.get_equipe_chat_unread() into v_unread;
   assert v_unread = 1, format('mensagem do proprio autor nao deveria contar, achou %s', v_unread);
 
+  -- Finding B: p_last_message_id arbitrario (maior que qualquer mensagem
+  -- real da conversa) e capado pelo max id existente, nao avanca o marcador
+  -- para alem do que ha hoje - senao a proxima mensagem, ainda no futuro,
+  -- nunca contaria como nao lida (GREATEST nunca deixa o marcador regredir).
+  perform public.mark_equipe_conversa_seen(v_conv, 999999999);
+  reset role;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_a, 'role', 'authenticated')::text, true);
+  perform public.send_equipe_mensagem(v_conv, 'quinta, depois do cap');
+  reset role;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_b, 'role', 'authenticated')::text, true);
+  select public.get_equipe_chat_unread() into v_unread;
+  assert v_unread = 1,
+    format('cap no marcador falhou: mensagem apos o mark inflado nao contou, achou %s', v_unread);
+
   reset role;
   raise notice 'PASS 4: seen + unread';
 end $$;
