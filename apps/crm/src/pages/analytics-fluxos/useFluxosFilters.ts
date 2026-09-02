@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 /**
@@ -77,13 +77,36 @@ export function useFluxosFilters(): FluxosFilters {
   const clienteId = parseId(searchParams.get('cliente'));
   const templateId = parseId(searchParams.get('template'));
 
-  // `new Date()` straight in the render body would hand `useQuery` a fresh
-  // queryFn closure (and a moving window) on every single render. Anchoring it
-  // to the calendar day keeps the identity stable while the tab is in use, and
-  // still re-anchors a dashboard someone left open overnight. The day is also
-  // returned so the caller can key the query by it: re-anchoring the window
-  // alone would not make React Query fetch the new one.
-  const anchorDay = diaLocal(new Date());
+  // The window is anchored to a calendar day held in state, not read fresh on
+  // every render: `new Date()` in the render body would hand `useQuery` a new
+  // queryFn closure (and a sliding window) every single time.
+  //
+  // State, not a plain render-time read, because nothing else would schedule the
+  // rollover. A dashboard left open on a wall display is never refocused and
+  // never re-rendered, so a render-time read would sit on yesterday's window
+  // indefinitely; refetchOnWindowFocus only helps a tab someone comes back to.
+  // The effect below is what makes midnight happen on its own.
+  const [anchorDay, setAnchorDay] = useState(() => diaLocal(new Date()));
+
+  useEffect(() => {
+    const agora = new Date();
+    const proximaMeiaNoite = new Date(
+      agora.getFullYear(),
+      agora.getMonth(),
+      agora.getDate() + 1,
+      0,
+      0,
+      0,
+      0,
+    );
+    // A second of slack: a timer that fires a hair early would read the same day
+    // back, and since the effect is keyed on anchorDay it would not re-arm.
+    const ms = proximaMeiaNoite.getTime() - agora.getTime() + 1000;
+    const timer = setTimeout(() => setAnchorDay(diaLocal(new Date())), ms);
+    return () => clearTimeout(timer);
+    // Re-arms itself: each new day schedules the next midnight.
+  }, [anchorDay]);
+
   const { from, to } = useMemo(() => {
     const now = new Date();
     if (periodo === 'tudo') return { from: INICIO_DOS_TEMPOS(), to: now };

@@ -100,23 +100,64 @@ describe('useFluxosFilters', () => {
     expect(result.current.filters.anchorDay).toBe(esperado);
   });
 
-  it('re-anchors the window when the calendar day rolls over', () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    vi.setSystemTime(new Date(2026, 8, 2, 22, 0, 0));
+  it('re-anchors at midnight on its own, with nothing else touching the page', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 2, 23, 59, 0));
     try {
-      const { result, rerender } = renderFilters('?periodo=7d');
+      const { result } = renderFilters('?periodo=7d');
 
       expect(result.current.filters.anchorDay).toBe('2026-09-02');
       const janelaOntem = result.current.filters.from;
 
-      // Past midnight: the anchor day is what the page puts in the query key, so
-      // it changing is what makes React Query go and fetch the new window.
-      vi.setSystemTime(new Date(2026, 8, 3, 1, 0, 0));
-      rerender();
+      // No rerender, no refocus, no click: just time passing. This is the case a
+      // render-time `new Date()` could never cover, because a wall-display tab
+      // that nobody touches never re-renders on its own.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(90_000);
+      });
 
       expect(result.current.filters.anchorDay).toBe('2026-09-03');
       expect(result.current.filters.from).not.toBe(janelaOntem);
       expect(result.current.filters.from.getTime()).toBeGreaterThan(janelaOntem.getTime());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaves the anchor alone while time passes within the same day', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 2, 9, 0, 0));
+    try {
+      const { result } = renderFilters('?periodo=7d');
+
+      const janela = result.current.filters.from;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(6 * 60 * 60_000);
+      });
+
+      expect(result.current.filters.anchorDay).toBe('2026-09-02');
+      // Identity too: an unchanged day must not churn the query key.
+      expect(result.current.filters.from).toBe(janela);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps re-arming, so a second midnight also rolls over', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 2, 23, 59, 0));
+    try {
+      const { result } = renderFilters();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(90_000);
+      });
+      expect(result.current.filters.anchorDay).toBe('2026-09-03');
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
+      });
+      expect(result.current.filters.anchorDay).toBe('2026-09-04');
     } finally {
       vi.useRealTimers();
     }

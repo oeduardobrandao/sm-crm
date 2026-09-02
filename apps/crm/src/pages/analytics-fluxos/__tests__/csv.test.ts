@@ -89,6 +89,35 @@ describe('buildAnalyticsCsv', () => {
     expect(csv).toContain("'@ref");
   });
 
+  it('neutralizes a formula hiding behind leading whitespace', () => {
+    const csv = buildAnalyticsCsv(
+      payload({
+        etapas: [
+          { nome: '\t=SUM(A1)', media_dias: 1, amostras: 1, atraso_pct: 0 },
+          { nome: '  @cmd', media_dias: 1, amostras: 1, atraso_pct: 0 },
+        ],
+      }),
+      membros,
+    );
+
+    // Excel and Sheets trim the prefix before parsing, so a guard anchored hard
+    // at position 0 would wave both of these straight through.
+    expect(csv).toContain("'\t=SUM(A1)");
+    expect(csv).toContain("'  @cmd");
+  });
+
+  it('leaves ordinary text with a leading space alone', () => {
+    const csv = buildAnalyticsCsv(
+      payload({
+        etapas: [{ nome: ' texto', media_dias: 1, amostras: 1, atraso_pct: 0 }],
+      }),
+      membros,
+    );
+
+    expect(csv).toContain(' texto,');
+    expect(csv).not.toContain("' texto");
+  });
+
   it('quotes fields holding a comma, a quote or a newline', () => {
     const csv = buildAnalyticsCsv(
       payload({

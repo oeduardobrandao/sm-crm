@@ -19,8 +19,19 @@ export const CSV_BOM = '﻿';
 
 const EOL = '\r\n';
 
-/** Characters a spreadsheet treats as the start of a formula. */
-const FORMULA_LEAD = /^[=+\-@]/;
+/**
+ * A field a spreadsheet would evaluate: one of `= + - @` as the first character
+ * that is not whitespace or a control character.
+ *
+ * The leading run matters. Excel and Sheets trim it before parsing, so `\t=SUM(A1)`
+ * and `  =1+1` evaluate exactly like `=SUM(A1)` would; anchoring the guard
+ * strictly at position 0 lets a payload walk straight past it behind one space.
+ *
+ * The prefix run covers control characters as well as whitespace. `\s` alone leaves
+ * the C0 range through, and `\p{Cc}` states that without putting a literal control
+ * character in the pattern (which is what `no-control-regex` objects to).
+ */
+const FORMULA_LEAD = /^[\s\p{Cc}]*[=+\-@]/u;
 
 /**
  * One CSV field: formula-neutralized first, then quoted. Order matters. A value

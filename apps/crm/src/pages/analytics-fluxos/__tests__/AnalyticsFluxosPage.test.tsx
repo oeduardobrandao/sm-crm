@@ -1,6 +1,6 @@
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -312,24 +312,31 @@ describe('AnalyticsFluxosPage', () => {
     expect(mockedAnalytics.mock.calls.length).toBe(1);
   });
 
-  it('treats a new calendar day as a new query key, so the window actually refetches', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    vi.setSystemTime(new Date(2026, 8, 2, 22, 0, 0));
+  it('rolls the query key over at midnight with no interaction at all', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 2, 23, 59, 0));
     try {
-      const { analyticsKeys, rerenderSame } = renderPage();
-      await screen.findByTestId('ritmo-chart');
+      const { analyticsKeys } = renderPage();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
 
       expect(analyticsKeys()).toEqual([['workflow-analytics', '30d', null, null, '2026-09-02']]);
+      expect(mockedAnalytics.mock.calls).toHaveLength(1);
 
-      // The regression this pins: the window used to re-anchor at midnight while
-      // the key did not, and React Query never refetches on a changed queryFn
-      // closure alone, so the tab kept serving yesterday's window.
-      vi.setSystemTime(new Date(2026, 8, 3, 1, 0, 0));
-      rerenderSame();
+      // Two regressions in one: the window used to re-anchor while the key did
+      // not (React Query never refetches on a changed queryFn closure alone),
+      // and the anchor itself only moved when something else forced a render.
+      // Here nothing touches the page. Only the clock moves.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(90_000);
+      });
 
-      await waitFor(() => expect(mockedAnalytics.mock.calls.length).toBe(2));
+      expect(mockedAnalytics.mock.calls).toHaveLength(2);
       expect(analyticsKeys().map((key) => key[4])).toContain('2026-09-03');
-      // keepPreviousData carries the old numbers across the swap: no skeleton.
+      const janela = mockedAnalytics.mock.calls.at(-1)![0];
+      expect(janela.to.getDate()).toBe(3);
+      // keepPreviousData carries yesterday's numbers across the swap: no skeleton.
       expect(screen.getByTestId('ritmo-chart')).toBeTruthy();
     } finally {
       vi.useRealTimers();
