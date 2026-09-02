@@ -71,11 +71,15 @@ disponíveis. Fonte única para a central; o popover do sino continua usando
 
 **Uma migration** que generaliza as preferências:
 
-- Renomeia `notification_email_prefs` → `notification_prefs`; adiciona
+- **Mantém o nome físico `notification_email_prefs`** (renomear quebraria o CRM já
+  deployado durante a janela de rollout — o store lê/upserta o nome direto, e o
+  problema conhecido de chunk stale do Vercel alonga essa janela). Adiciona
   `channel text NOT NULL DEFAULT 'email' CHECK (channel IN ('email','in_app'))`;
-  PK/UNIQUE passa a `(user_id, channel, type)`; o CHECK de `type` amplia para os 22
+  a UNIQUE passa a `(user_id, channel, type)`; o CHECK de `type` amplia para os 22
   tipos + `__all__` (o de e-mail continua efetivamente restrito aos elegíveis pelo
-  claim RPC). Recria as 4 policies RLS (`user_id = auth.uid()`) na tabela renomeada.
+  claim RPC). Policies RLS existentes permanecem válidas (predicado por `user_id`
+  não muda). O nome legado fica documentado no comentário da migration; um rename
+  com view de compatibilidade não vale a complexidade (YAGNI).
 - Atualiza `claim_notification_emails` no mesmo arquivo: filtro `channel = 'email'` no
   `NOT EXISTS` de opt-out e **adiciona `post_approved`** à lista de tipos elegíveis
   (8 → 9).
@@ -109,7 +113,9 @@ e monta o e-mail com o que está pendente **agora**:
 - **Aprovações:** posts que entraram em `enviado_cliente` desde o cursor
   (`post_status_events.to_status = 'enviado_cliente'`, `created_at > cursor`) **e que
   ainda estão** nesse status canônico no momento do envio (status custom mapeiam via
-  `behaves_as`; o canônico é a verdade, mantido pelo trigger z1).
+  `behaves_as`; o canônico é a verdade, mantido pelo trigger z1). **Deduplicado por
+  post** (`DISTINCT ON (post_id)`, transição mais recente) — um post pode entrar,
+  sair e reentrar no status dentro da mesma janela e deve aparecer uma vez só.
 - **Mensagens:** linhas de `mensagens` com `is_workspace_user = true`,
   `created_at > cursor` e ainda não vistas pelo cliente (marcador
   `mensagens_last_seen` com `cliente_id`).
@@ -126,16 +132,34 @@ e monta o e-mail com o que está pendente **agora**:
 - `clientes.last_event_emailed_at timestamptz` — cursor + cooldown.
 - `clientes.event_email_unsub_at timestamptz` — carimbo do descadastro do cliente.
 - Lembrete da armadilha de allowlist: os toggles/estados lidos pelo CRM entram no
-  GRANT de colunas de `clientes`, em `clientes_v` e em `CLIENTES_SAFE_COLUMNS`.
+  GRANT de colunas de `clientes`, em `clientes_v` e em `CLIENTE_SAFE_COLUMNS`
+  (singular, `store/clients.ts:59`).
+
+**Guarda de papel no banco (não só na UI).** A policy `clientes_update` atual permite
+UPDATE a qualquer membro ativo do tenant (só checa `conta_id`) — sem guarda extra, um
+`agent` ligaria e-mails de cliente ou limparia `event_email_unsub_at` via PostgREST.
+As escritas em `send_event_email` / `event_email_unsub_at` e no toggle
+`workspaces.send_client_event_emails` (inclusive a linha mestre "Todos os clientes")
+passam por RPCs `SECURITY DEFINER` que validam owner/admin em `workspace_members` +
+tenant (padrão `set_membro_crm_user`), e a escrita direta dessas colunas por
+`authenticated` é bloqueada no banco (trigger de guarda ou GRANT de UPDATE por coluna,
+a decidir no plano após inspecionar os grants atuais de `clientes`). O RPC de religar
+pós-descadastro é o único caminho que limpa `event_email_unsub_at`.
 
 **Gates (todos):** toggle do workspace + toggle do cliente + e-mail preenchido +
-cooldown de 4 h + conteúdo pendente não vazio. **Claim atômico** espelhando o padrão
+cooldown de 4 h + conteúdo pendente não vazio + **Hub acessível**: o workspace precisa
+de `feature_hub_portal` (seleção de candidatos) e `resolveHubUrl` precisa devolver URL
+não vazia no envio (token do Hub ativo e não expirado) — sem destino utilizável, o
+cliente é pulado sem claim e sem avançar o cursor (um e-mail de "pendências do Hub"
+sem Hub acessível seria inacionável). **Claim atômico** espelhando o padrão
 do digest da agência: RPC `claim_client_event_emails(ids)` com
 `UPDATE clientes SET last_event_emailed_at = now() WHERE id IN (SELECT … FOR UPDATE
 SKIP LOCKED) RETURNING id, last_event_emailed_at (anterior)`, re-checando os gates
 dentro do RPC (honra opt-out tardio). Falha no envio → reset do cursor ao valor
-anterior (at-least-once); `Idempotency-Key` do Resend = SHA-1 de
-`cliente_id + ids ordenados dos itens` dedupa o retry transitório. ACL do RPC:
+anterior (at-least-once); `Idempotency-Key` do Resend = SHA-1 de `cliente_id` + os
+itens como identidades compostas ordenadas (`pse:<post_status_event_id>`,
+`msg:<mensagem_id>` — os ids numéricos vêm de sequências independentes e colidiriam
+sem o prefixo), dedupando o retry transitório. ACL do RPC:
 somente `service_role` (com re-grant explícito).
 
 **E-mail:** builder `_shared/client-event-email.ts` reutilizando a infra do e-mail de
@@ -150,9 +174,13 @@ aguardando aprovação (título/tipo) + contagem de mensagens não lidas. Assunt
 (GET, `verify_jwt=false`): token = HMAC-SHA256 de `cliente_id` com
 `TOKEN_ENCRYPTION_KEY` (sem segredo novo, sem token armazenado), comparação em tempo
 constante; valida, seta `send_event_email = false` + `event_email_unsub_at = now()` +
-audit log, responde página simples de confirmação. Na central, a célula mostra
-"desativado pelo cliente"; religar exige diálogo de confirmação explícita e limpa
-`event_email_unsub_at`.
+audit log, responde página simples de confirmação. **Replay é idempotente por
+design**: o token determinístico não tem expiração, nonce nem estado consumido —
+reapresentá-lo apenas re-executa o descadastro (inócuo), que é o comportamento padrão
+de links de unsubscribe; token inválido responde página de erro genérica. Rotacionar
+`TOKEN_ENCRYPTION_KEY` invalida links antigos, que degradam para essa página de erro.
+Na central, a célula mostra "desativado pelo cliente"; religar exige diálogo de
+confirmação explícita e limpa `event_email_unsub_at` (via RPC owner/admin).
 
 ## Erros e casos-limite
 
@@ -171,11 +199,14 @@ audit log, responde página simples de confirmação. Na central, a célula most
   papel, toggles, master `__all__`, matriz de clientes com os 4 estados de célula);
   filtro de leitura no store (mutado some da lista e do contador; falha de prefs =
   sem filtro); prefs store por canal.
-- **Deno:** `client-event-email-cron` (gates, cursor/cooldown, horizonte de 72 h,
-  reset-on-failure, idempotency key); builder do e-mail; `client-email-unsub`
-  (token válido/ inválido/ replay); update dos testes do digest para o 9º tipo.
-- **psql (entitlements):** RLS da `notification_prefs` renomeada; ACLs dos claim RPCs
-  (somente `service_role`); gates do `claim_client_event_emails`.
+- **Deno:** `client-event-email-cron` (gates incl. Hub inacessível, cursor/cooldown,
+  horizonte de 72 h, dedupe por post na janela, reset-on-failure, idempotency key com
+  identidades compostas); builder do e-mail; `client-email-unsub` (token válido /
+  inválido / replay idempotente); update dos testes do digest para o 9º tipo.
+- **psql (entitlements):** RLS e CHECKs da `notification_email_prefs` generalizada
+  (coluna `channel`); ACLs dos claim RPCs (somente `service_role`); gates do
+  `claim_client_event_emails`; guarda de papel nas colunas novas de `clientes` e no
+  toggle do workspace (agent não escreve, owner/admin escreve via RPC).
 
 ## Rollout
 
