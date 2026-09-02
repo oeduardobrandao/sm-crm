@@ -14,7 +14,9 @@ begin
   insert into workflow_posts (workflow_id, conta_id, titulo, tipo, status)
     values (v_wf, v_ws, 'p', 'feed', 'rascunho') returning id into v_post;
 
-  -- (1) set 3 items → 3 links, sort 0..2, cover=item0, tipo carrossel
+  -- (1) set 3 items → 3 links, sort 0..2, tipo carrossel. Nenhuma flag de capa:
+  -- desde 20260902120000 a capa é derivada (primeira por sort_order) e esta RPC
+  -- não seta mais is_cover.
   v_res := post_media_set_from_uploads(v_ws, v_post, v_u, jsonb_build_array(
     jsonb_build_object('r2_key','contas/'||v_ws||'/files/a.jpg','size_bytes',10,'mime_type','image/jpeg'),
     jsonb_build_object('r2_key','contas/'||v_ws||'/files/b.jpg','size_bytes',10,'mime_type','image/jpeg'),
@@ -22,7 +24,7 @@ begin
   assert (v_res->>'item_count')::int = 3, 'item_count 3';
   assert v_res->>'tipo' = 'carrossel', 'tipo carrossel';
   assert (select count(*) from post_file_links where post_id = v_post) = 3, '3 links';
-  assert (select count(*) from post_file_links where post_id = v_post and is_cover) = 1, '1 cover';
+  assert (select count(*) from post_file_links where post_id = v_post and is_cover) = 0, 'no auto cover';
   assert (select sort_order from post_file_links l join files f on f.id=l.file_id
           where l.post_id=v_post and f.r2_key='contas/'||v_ws||'/files/a.jpg') = 0, 'a is sort 0';
 
