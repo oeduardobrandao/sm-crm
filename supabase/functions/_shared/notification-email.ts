@@ -48,6 +48,8 @@ export function resolveDigestItem(
       return { priority: 4, heading: "Post atribuído a você", body: s(m, "post_title"), context: s(m, "client_name"), link };
     case "mention":
       return { priority: 5, heading: `${s(m, "actor_name") ?? "Alguém"} mencionou você`, body: s(m, "excerpt"), context: s(m, "context_title"), link };
+    case "post_approved":
+      return { priority: 6, heading: "Post aprovado pelo cliente", body: s(m, "comentario"), context: ctx(s(m, "client_name"), s(m, "post_title")), link };
     default:
       return { priority: 9, heading: "Nova notificação no Mesaas", context: undefined, link };
   }
