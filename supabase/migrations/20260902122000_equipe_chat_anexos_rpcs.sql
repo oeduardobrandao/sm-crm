@@ -28,8 +28,11 @@ DECLARE
   v_row      equipe_mensagem_anexos;
 BEGIN
   -- Prefixo da key validado server-side contra o tenant (nunca confiar no
-  -- caller): impede finalize de key de outro workspace.
-  IF v_key NOT LIKE 'equipe-chat/' || v_conta::text || '/%' THEN
+  -- caller): impede finalize de key de outro workspace. v_key/v_conta NULL
+  -- explicito: NULL LIKE ... e NULL (nao false), o IF sozinho deixaria
+  -- passar em silencio.
+  IF v_key IS NULL OR v_conta IS NULL
+     OR v_key NOT LIKE 'equipe-chat/' || v_conta::text || '/%' THEN
     RAISE EXCEPTION 'invalid_key' USING errcode = 'P0001';
   END IF;
   IF v_size IS NULL OR v_size <= 0 THEN
@@ -64,11 +67,27 @@ BEGIN
     RAISE EXCEPTION 'quota_exceeded' USING errcode = 'P0001';
   END IF;
 
+  -- Backstop atomico (padrao automation_media_finalize,
+  -- 20260901102000_ig_dm_media_card.sql:99-101): a SELECT idempotente acima
+  -- e so o caminho rapido. Duas finalizes concorrentes DA MESMA r2_key
+  -- ambas passam por ela antes de qualquer uma commitar, e so serializam no
+  -- lock FOR UPDATE acima; sem ON CONFLICT a INSERT da perdedora bateria no
+  -- r2_key UNIQUE e devolveria um 23505 cru em vez de idempotencia.
   INSERT INTO equipe_mensagem_anexos
     (conta_id, conversa_id, mensagem_id, r2_key, file_name, mime_type, size_bytes, created_by)
   VALUES
     (v_conta, v_conversa, NULL, v_key, p->>'file_name', p->>'mime_type', v_size, v_by)
+  ON CONFLICT ON CONSTRAINT equipe_mensagem_anexos_r2_key_key DO NOTHING
   RETURNING equipe_mensagem_anexos.* INTO v_row;
+
+  IF v_row.id IS NULL THEN
+    -- Perdeu a corrida do mesmo r2_key: devolve a linha existente sem
+    -- cobrar quota de novo (idempotencia atomica).
+    SELECT ax.* INTO v_row FROM equipe_mensagem_anexos ax WHERE ax.r2_key = v_key;
+    RETURN QUERY SELECT v_row.id, v_row.r2_key, v_row.file_name,
+                        v_row.mime_type, v_row.size_bytes;
+    RETURN;
+  END IF;
 
   UPDATE workspaces w SET storage_used_bytes = COALESCE(w.storage_used_bytes, 0) + v_size
    WHERE w.id = v_conta;
