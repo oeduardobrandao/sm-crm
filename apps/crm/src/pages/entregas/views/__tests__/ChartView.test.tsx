@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ChartView } from '../ChartView';
 import { EMPTY_FILTERS, type FilterState } from '../../components/EntregasFilters';
+import { matchesEtapaPrazo } from '../../etapaPrazo';
 import type { BoardCard } from '../../hooks/useEntregasData';
 
 vi.mock('react-chartjs-2', () => ({
@@ -79,8 +80,16 @@ const aguardandoCard = card({
   etapa: { nome: 'Aprovação do cliente', tipo: 'aprovacao_cliente' },
   deadline: { urgente: true, diasRestantes: 0, horasRestantes: 6 },
 });
+/** Prazo é hoje e já estourou: entra no KPI "Vencem hoje", fora da aba Hoje. */
+const estouradaHojeCard = card({
+  id: 13,
+  titulo: 'Stories da campanha',
+  cliente: BETA,
+  etapa: { nome: 'Agendamento', data_limite: today() },
+  deadline: { estourado: true, diasRestantes: -1 },
+});
 
-const CARDS = [hojeCard, atrasadaCard, aguardandoCard];
+const CARDS = [hojeCard, atrasadaCard, aguardandoCard, estouradaHojeCard];
 
 function renderView(overrides: Partial<Parameters<typeof ChartView>[0]> = {}) {
   const props = {
@@ -112,12 +121,25 @@ describe('ChartView', () => {
   it('renders the five KPI cards with the counts of the filtered cards', () => {
     const { container } = renderView();
 
-    expect(kpiValue(container, 'Atrasadas')).toBe('1');
+    expect(kpiValue(container, 'Atrasadas')).toBe('2');
     expect(kpiValue(container, 'Urgentes (24h)')).toBe('1');
     expect(kpiValue(container, 'Em dia')).toBe('1');
-    expect(kpiValue(container, 'Vencem hoje')).toBe('1');
     expect(kpiValue(container, 'Aguardando cliente')).toBe('1');
     expect(screen.getAllByText('de 8 fluxos')).toHaveLength(5);
+  });
+
+  it('counts "Vencem hoje" with the same predicate its filter applies', () => {
+    const { container, props } = renderView();
+    // hojeCard + estouradaHojeCard: o filtro filterPrazo:['hoje'] pega os dois,
+    // então o KPI também precisa pegar, mesmo com um deles já estourado.
+    expect(kpiValue(container, 'Vencem hoje')).toBe('2');
+    expect(CARDS.filter((c) => matchesEtapaPrazo(c, ['hoje'], '', '')).length).toBe(2);
+
+    fireEvent.click(kpiButton(container, 'Vencem hoje'));
+    expect(props.onFiltersChange).toHaveBeenCalledWith({
+      ...EMPTY_FILTERS,
+      filterPrazo: ['hoje'],
+    });
   });
 
   it('applies and clears the atrasado filter from the KPI card', () => {
@@ -153,6 +175,17 @@ describe('ChartView', () => {
       ...EMPTY_FILTERS,
       filterEtapas: ['Aprovação do cliente'],
     });
+  });
+
+  it('does not offer the aguardando cliente click when nothing waits on the cliente', () => {
+    const applied: FilterState = { ...EMPTY_FILTERS, filterEtapas: ['Design'] };
+    const { container } = renderView({ cards: [hojeCard, atrasadaCard], filters: applied });
+    const kpi = Array.from(container.querySelectorAll('.kpi-card')).find(
+      (el) => el.querySelector('.kpi-label')?.textContent === 'Aguardando cliente',
+    );
+    // A plain div, not a button: clicking would only wipe filterEtapas.
+    expect(kpi?.tagName).toBe('DIV');
+    expect(kpi?.querySelector('.kpi-value')?.textContent).toBe('0');
   });
 
   it('switches the upcoming tab and opens a fluxo from its chip', () => {

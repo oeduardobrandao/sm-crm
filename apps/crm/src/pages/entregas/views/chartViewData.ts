@@ -98,7 +98,9 @@ const AGING_BUCKETS: {
   fromDaysAgo: number | null;
   toDaysAgo: number;
 }[] = [
-  { label: '1 dia', max: 1, fromDaysAgo: 1, toDaysAgo: 1 },
+  // '1 dia' reaches back to today because a card can be estourada by hours and
+  // still be due today; its drill-down range has to contain that day too.
+  { label: '1 dia', max: 1, fromDaysAgo: 1, toDaysAgo: 0 },
   { label: '2 a 3', max: 3, fromDaysAgo: 3, toDaysAgo: 2 },
   { label: '4 a 7', max: 7, fromDaysAgo: 7, toDaysAgo: 4 },
   { label: '8 a 14', max: 14, fromDaysAgo: 14, toDaysAgo: 8 },
@@ -106,10 +108,27 @@ const AGING_BUCKETS: {
 ];
 
 /**
+ * Whole local calendar days between two dates. Both ends are normalised to
+ * midnight first, so a 23h or 25h DST day still counts as one day.
+ */
+function calendarDaysBetween(later: Date, earlier: Date): number {
+  const a = new Date(later.getFullYear(), later.getMonth(), later.getDate());
+  const b = new Date(earlier.getFullYear(), earlier.getMonth(), earlier.getDate());
+  return Math.round((a.getTime() - b.getTime()) / 86400000);
+}
+
+/**
  * How long the atrasadas have been overdue. Always returns all five buckets so
  * the chart keeps a stable x axis; cards that are not estouradas are ignored.
+ *
+ * The age is measured in CALENDAR days between today and the etapa's deadline
+ * date, the same unit the drill-down uses: clicking a bucket filters by
+ * atrasado + the date range its fromDaysAgo/toDaysAgo describe, so every card
+ * counted in a bucket has to fall inside that bucket's range. Measuring the age
+ * off deadline.diasRestantes instead would drift on the boundaries, because
+ * that number is derived from hours.
  */
-export function buildAgingBuckets(cards: BoardCard[]): AgingBucket[] {
+export function buildAgingBuckets(cards: BoardCard[], now: Date = new Date()): AgingBucket[] {
   const buckets: AgingBucket[] = AGING_BUCKETS.map((b) => ({
     label: b.label,
     count: 0,
@@ -118,8 +137,11 @@ export function buildAgingBuckets(cards: BoardCard[]): AgingBucket[] {
   }));
   for (const card of cards) {
     if (!card.deadline.estourado) continue;
-    const age = Math.max(1, Math.abs(card.deadline.diasRestantes));
-    const idx = AGING_BUCKETS.findIndex((b) => age <= b.max);
+    const deadline = etapaDeadlineDate(card);
+    // An estourada card with no computable date still belongs somewhere: park
+    // it in the freshest bucket rather than dropping it from the chart.
+    const ageDays = deadline ? Math.max(0, calendarDaysBetween(now, deadline)) : 1;
+    const idx = AGING_BUCKETS.findIndex((b) => ageDays <= b.max);
     buckets[idx === -1 ? buckets.length - 1 : idx].count++;
   }
   return buckets;

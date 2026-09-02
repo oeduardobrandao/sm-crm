@@ -151,41 +151,76 @@ describe('buildEtapaRows', () => {
 });
 
 describe('buildAgingBuckets', () => {
+  const now = new Date(2026, 8, 2, 10, 0, 0);
+
+  /** Estourada há `daysAgo` dias de calendário. */
+  function overdue(daysAgo: number): BoardCard {
+    return card({
+      etapa: { nome: `Atrasada ${daysAgo}`, data_limite: isoDay(now, -daysAgo) },
+      deadline: { estourado: true, diasRestantes: -daysAgo },
+    });
+  }
+
   it('always returns the five buckets in order, with their filter ranges', () => {
-    const buckets = buildAgingBuckets([]);
+    const buckets = buildAgingBuckets([], now);
     expect(buckets.map((b) => b.label)).toEqual(['1 dia', '2 a 3', '4 a 7', '8 a 14', '15+']);
     expect(buckets.every((b) => b.count === 0)).toBe(true);
-    expect(buckets[0]).toMatchObject({ fromDaysAgo: 1, toDaysAgo: 1 });
+    expect(buckets[0]).toMatchObject({ fromDaysAgo: 1, toDaysAgo: 0 });
     expect(buckets[1]).toMatchObject({ fromDaysAgo: 3, toDaysAgo: 2 });
     expect(buckets[2]).toMatchObject({ fromDaysAgo: 7, toDaysAgo: 4 });
     expect(buckets[3]).toMatchObject({ fromDaysAgo: 14, toDaysAgo: 8 });
     expect(buckets[4]).toMatchObject({ fromDaysAgo: null, toDaysAgo: 15 });
   });
 
-  it('bins overdue cards by age and ignores cards that are not estouradas', () => {
-    const buckets = buildAgingBuckets([
-      card({ deadline: { estourado: true, diasRestantes: -1 } }),
-      card({ deadline: { estourado: true, diasRestantes: 0 } }),
-      card({ deadline: { estourado: true, diasRestantes: -3 } }),
-      card({ deadline: { estourado: true, diasRestantes: -20 } }),
-      card({ deadline: { urgente: true, diasRestantes: 0 } }),
-      card(),
-    ]);
+  it('bins overdue cards by calendar age and ignores cards that are not estouradas', () => {
+    const buckets = buildAgingBuckets(
+      [
+        overdue(0),
+        overdue(1),
+        overdue(3),
+        overdue(20),
+        card({ etapa: { data_limite: isoDay(now, 0) }, deadline: { urgente: true } }),
+        card({ etapa: { data_limite: isoDay(now, -30) } }),
+      ],
+      now,
+    );
     const byLabel = Object.fromEntries(buckets.map((b) => [b.label, b.count]));
     expect(byLabel).toEqual({ '1 dia': 2, '2 a 3': 1, '4 a 7': 0, '8 a 14': 0, '15+': 1 });
   });
 
   it('bins the boundaries of every bucket', () => {
-    const buckets = buildAgingBuckets([
-      card({ deadline: { estourado: true, diasRestantes: -2 } }),
-      card({ deadline: { estourado: true, diasRestantes: -4 } }),
-      card({ deadline: { estourado: true, diasRestantes: -7 } }),
-      card({ deadline: { estourado: true, diasRestantes: -8 } }),
-      card({ deadline: { estourado: true, diasRestantes: -14 } }),
-      card({ deadline: { estourado: true, diasRestantes: -15 } }),
-    ]);
+    const buckets = buildAgingBuckets(
+      [overdue(2), overdue(4), overdue(7), overdue(8), overdue(14), overdue(15)],
+      now,
+    );
     const byLabel = Object.fromEntries(buckets.map((b) => [b.label, b.count]));
     expect(byLabel).toEqual({ '1 dia': 0, '2 a 3': 1, '4 a 7': 2, '8 a 14': 2, '15+': 1 });
+  });
+
+  it('keeps every member inside the date range its bucket drills down to', () => {
+    for (let age = 0; age <= 20; age++) {
+      const dia = isoDay(now, -age);
+      const hits = buildAgingBuckets([overdue(age)], now).filter((b) => b.count > 0);
+      expect(hits).toHaveLength(1);
+
+      const bucket = hits[0];
+      // The drill-down applies filterPrazoFrom = today - fromDaysAgo and
+      // filterPrazoTo = today - toDaysAgo; 'YYYY-MM-DD' compares lexically.
+      const to = isoDay(now, -bucket.toDaysAgo);
+      expect(dia <= to).toBe(true);
+      if (bucket.fromDaysAgo != null) {
+        expect(dia >= isoDay(now, -bucket.fromDaysAgo)).toBe(true);
+      }
+    }
+  });
+
+  it('parks an estourada card without a deadline date in the freshest bucket', () => {
+    const buckets = buildAgingBuckets(
+      [card({ deadline: { estourado: true, diasRestantes: -9 } })],
+      now,
+    );
+    const byLabel = Object.fromEntries(buckets.map((b) => [b.label, b.count]));
+    expect(byLabel).toEqual({ '1 dia': 1, '2 a 3': 0, '4 a 7': 0, '8 a 14': 0, '15+': 0 });
   });
 });
 

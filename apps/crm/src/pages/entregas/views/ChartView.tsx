@@ -21,7 +21,7 @@ import {
   computeDeadlineStats,
   type DeadlineStatus,
 } from '../deadlineStatus';
-import { formatEtapaPrazo } from '../etapaPrazo';
+import { formatEtapaPrazo, matchesEtapaPrazo } from '../etapaPrazo';
 import type { FilterState } from '../components/EntregasFilters';
 import {
   ROW_CAP,
@@ -436,7 +436,14 @@ export function ChartView({
   const [upcomingTab, setUpcomingTab] = useState<UpcomingTab>('hoje');
 
   const stats = useMemo(() => computeDeadlineStats(cards), [cards]);
-  const vencemHoje = useMemo(() => selectUpcoming(cards, 'hoje').length, [cards]);
+  // Counted with the very predicate the card's click applies (filterPrazo
+  // 'hoje'), so the number and the board it opens can never disagree. That
+  // includes cards já estouradas cujo prazo cai hoje, which the "Próximos
+  // vencimentos" tab deliberately leaves out.
+  const vencemHoje = useMemo(
+    () => cards.filter((card) => matchesEtapaPrazo(card, ['hoje'], '', '')).length,
+    [cards],
+  );
   const aguardandoTotal = useMemo(() => aguardandoClienteCount(cards), [cards]);
   const aguardandoEtapas = useMemo(() => aguardandoClienteEtapaNames(cards), [cards]);
 
@@ -458,6 +465,10 @@ export function ChartView({
     aguardandoEtapas.length > 0 &&
     filters.filterEtapas.length > 0 &&
     sameSet(filters.filterEtapas, aguardandoEtapas);
+  // With nothing waiting on the cliente there is no etapa to filter by, and a
+  // click would only blank whatever etapa filter is already applied. The card
+  // stays a plain, non-clickable KPI in that case.
+  const aguardandoClickable = aguardandoEtapas.length > 0 || aguardandoActive;
 
   function toggleStatus(status: DeadlineStatus) {
     onFiltersChange({ ...filters, filterStatus: statusActive(status) ? [] : [status] });
@@ -535,7 +546,7 @@ export function ChartView({
           icon={UserCheck}
           tone="blue"
           sub={sub}
-          onClick={toggleAguardandoCliente}
+          onClick={aguardandoClickable ? toggleAguardandoCliente : undefined}
           active={aguardandoActive}
         />
       </StatCardGrid>
