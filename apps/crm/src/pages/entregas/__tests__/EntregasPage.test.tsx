@@ -13,6 +13,8 @@ vi.mock('../hooks/useActivePosts', () => ({
 const storeMocks = vi.hoisted(() => ({
   duplicateWorkflow: vi.fn(),
   getStandalonePost: vi.fn(),
+  // Used by the provisional card built from a "mover para outro fluxo" seed.
+  getDeadlineInfo: vi.fn(() => ({ estourado: false, urgente: false })),
 }));
 vi.mock('../../../store', () => storeMocks);
 
@@ -262,15 +264,30 @@ vi.mock('../components/WorkflowDrawer', () => ({
     card,
     onClose,
     initialPostId,
+    onOpenWorkflow,
   }: {
     card: { workflow: { titulo: string } };
     onClose: () => void;
     initialPostId?: number;
+    onOpenWorkflow?: (workflowId: number, seed?: unknown) => void;
   }) => (
     <div>
       <div>Workflow drawer: {card.workflow.titulo}</div>
       <div data-testid="drawer-initial-post">{initialPostId ?? 'none'}</div>
       <button onClick={onClose}>Close drawer</button>
+      <button onClick={() => onOpenWorkflow?.(99)}>Move posts to workflow 99</button>
+      <button
+        onClick={() =>
+          onOpenWorkflow?.(99, {
+            workflow: { id: 99, titulo: 'Fluxo Novo', cliente_id: 10, status: 'ativo' },
+            etapas: [
+              { id: 990, workflow_id: 99, ordem: 0, nome: 'Copy', status: 'ativo', prazo_dias: 2 },
+            ],
+          })
+        }
+      >
+        Move posts to workflow 99 with seed
+      </button>
     </div>
   ),
 }));
@@ -787,6 +804,70 @@ describe('EntregasPage', () => {
       });
       expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
       expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
+    });
+
+    it('onOpenWorkflow (mover posts) segura o alvo pendente até o card do fluxo novo existir após o refetch', async () => {
+      let data = {
+        clientes: [{ id: 10, nome: 'Clínica Aurora' }],
+        membros: [],
+        templates: [],
+        cards: [makeCard()],
+        activeWorkflows: [{ id: 1 }],
+        isLoading: false,
+        refresh: vi.fn(),
+      };
+      mockedUseEntregasData.mockImplementation(() => data as never);
+
+      renderPage();
+      fireEvent.click(screen.getByText('Open drawer from card'));
+      expect(await screen.findByText('Workflow drawer: Fluxo Editorial')).toBeInTheDocument();
+
+      // The drawer just moved posts into workflow 99, which is NOT on the board
+      // yet (a freshly created flow only shows up after the workflows refetch):
+      // the source drawer closes and nothing else opens -- the target is kept
+      // pending, not dropped.
+      fireEvent.click(screen.getByText('Move posts to workflow 99'));
+      await waitFor(() => expect(screen.queryByText(/Workflow drawer:/)).not.toBeInTheDocument());
+
+      // The refetch lands (new cards identity including workflow 99); any
+      // re-render lets the pending-deep-link resolver see the fresh cards.
+      data = {
+        ...data,
+        cards: [
+          ...data.cards,
+          makeCard({
+            workflow: { id: 99, titulo: 'Fluxo Novo', cliente_id: 10, status: 'ativo' },
+          }),
+        ],
+      };
+      fireEvent.click(screen.getByText('Filter overdue'));
+
+      expect(await screen.findByText('Workflow drawer: Fluxo Novo')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('none');
+    });
+
+    it('onOpenWorkflow com seed abre o drawer do fluxo novo NA HORA, sem esperar refetch', async () => {
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [{ id: 10, nome: 'Clínica Aurora' }],
+        membros: [],
+        templates: [],
+        cards: [makeCard()],
+        activeWorkflows: [{ id: 1 }],
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+
+      renderPage();
+      fireEvent.click(screen.getByText('Open drawer from card'));
+      expect(await screen.findByText('Workflow drawer: Fluxo Editorial')).toBeInTheDocument();
+
+      // Workflow 99 is NOT on the board (cards unchanged), but the seed carries
+      // its row + etapas: the provisional card opens the destination drawer
+      // immediately -- no refetch, no pending deep link.
+      fireEvent.click(screen.getByText('Move posts to workflow 99 with seed'));
+
+      expect(await screen.findByText('Workflow drawer: Fluxo Novo')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('none');
     });
 
     it('resolves to an attached post: falls back to the same card-lookup drawer as ?drawer=', async () => {

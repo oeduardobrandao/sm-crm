@@ -93,6 +93,9 @@ vi.mock('@/store', () => ({
   getDesignForPost: vi.fn(async () => null),
   syncMentions: vi.fn(),
   detachPostsFromWorkflow: vi.fn(),
+  getWorkflows: vi.fn(async () => []),
+  movePostsToNewFlow: vi.fn(),
+  movePostsToExistingFlow: vi.fn(),
 }));
 
 // Real Radix DropdownMenu needs pointer-event machinery jsdom doesn't provide well;
@@ -188,6 +191,7 @@ import {
   acceptEditSuggestion,
   syncMentions,
   detachPostsFromWorkflow,
+  movePostsToNewFlow,
 } from '@/store';
 
 const mockGetPosts = vi.mocked(getWorkflowPostsWithProperties);
@@ -196,10 +200,16 @@ const mockGetEditSuggestions = vi.mocked(getPostEditSuggestions);
 const mockAcceptEditSuggestion = vi.mocked(acceptEditSuggestion);
 const mockSyncMentions = vi.mocked(syncMentions);
 const mockDetach = vi.mocked(detachPostsFromWorkflow);
+const mockMoveToNewFlow = vi.mocked(movePostsToNewFlow);
 
 function renderDrawer(
   qc: QueryClient,
-  overrides: { onClose?: () => void; onRefresh?: () => void; initialPostId?: number } = {},
+  overrides: {
+    onClose?: () => void;
+    onRefresh?: () => void;
+    initialPostId?: number;
+    onOpenWorkflow?: (workflowId: number) => void;
+  } = {},
 ) {
   const card = {
     workflow: {
@@ -246,6 +256,7 @@ function renderDrawer(
         onClose={overrides.onClose ?? vi.fn()}
         onRefresh={overrides.onRefresh ?? vi.fn()}
         initialPostId={overrides.initialPostId ?? 1}
+        onOpenWorkflow={overrides.onOpenWorkflow}
       />
     </QueryClientProvider>,
   );
@@ -699,5 +710,120 @@ describe('WorkflowDrawer desmembrar do fluxo (Task 15)', () => {
       expect(toast.error).toHaveBeenCalledWith('Um ou mais posts não foram encontrados.'),
     );
     expect(await screen.findByText('1 selecionado')).toBeInTheDocument();
+  });
+});
+
+describe('WorkflowDrawer mover para outro fluxo', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([
+      {
+        id: 1,
+        workflow_id: 10,
+        titulo: 'Post A',
+        conteudo: null,
+        conteudo_plain: '',
+        tipo: 'feed',
+        ordem: 0,
+        status: 'rascunho',
+        responsavel_id: null,
+        scheduled_at: null,
+        ig_caption: null,
+        platform: 'instagram',
+      } as never,
+      {
+        id: 2,
+        workflow_id: 10,
+        titulo: 'Post B',
+        conteudo: null,
+        conteudo_plain: '',
+        tipo: 'feed',
+        ordem: 1,
+        status: 'aprovado_cliente',
+        responsavel_id: null,
+        scheduled_at: null,
+        ig_caption: null,
+        platform: 'instagram',
+      } as never,
+    ]);
+  });
+
+  it('o kebab de um post abre o dialog com nome pré-preenchido e sem checkbox de arquivar (seleção parcial)', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+
+    const checkboxB = await screen.findByRole('checkbox', { name: 'Selecionar Post B' });
+    const rowB = checkboxB.closest('.drawer-post-item') as HTMLElement;
+    fireEvent.click(within(rowB).getByText('Mover para outro fluxo'));
+
+    // Dialog open: the "Novo fluxo" destination section is visible, the name
+    // field is pre-seeded from the source flow's title.
+    expect(await screen.findByText('Novo fluxo')).toBeInTheDocument();
+    expect(screen.getByLabelText('Nome do novo fluxo')).toHaveValue('Campanha Julho (continuação)');
+    // 1 of 2 posts targeted: not a total selection, so no archive option.
+    expect(
+      screen.queryByText('Arquivar o fluxo de origem depois de mover'),
+    ).not.toBeInTheDocument();
+    // Source has no template: the existing-flow destination is unavailable.
+    expect(
+      screen.getByText('Este fluxo não usa um modelo. Para mover os posts, crie um novo fluxo.'),
+    ).toBeInTheDocument();
+  });
+
+  it('confirmar "novo fluxo" na barra de seleção move o lote e abre o drawer do destino', async () => {
+    const seedWorkflow = { id: 77, cliente_id: 42, titulo: 'Campanha Julho (continuação)' };
+    const seedEtapas = [{ id: 900, workflow_id: 77, ordem: 0, nome: 'Produção', status: 'ativo' }];
+    mockMoveToNewFlow.mockResolvedValue({
+      ok: true,
+      moved: 2,
+      target_workflow_id: 77,
+      archived_workflow_ids: [10],
+      workflow: seedWorkflow,
+      etapas: seedEtapas,
+    } as never);
+    const onClose = vi.fn();
+    const onRefresh = vi.fn();
+    const onOpenWorkflow = vi.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc, { initialPostId: undefined, onClose, onRefresh, onOpenWorkflow });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Selecionar Post A' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Selecionar Post B' }));
+    fireEvent.click(
+      within(screen.getByTestId('drawer-selection-bar')).getByRole('button', {
+        name: 'Mover para outro fluxo',
+      }),
+    );
+
+    // Total selection: the archive-source checkbox is offered; check it.
+    const archive = await screen.findByRole('checkbox', {
+      name: 'Arquivar o fluxo de origem depois de mover',
+    });
+    fireEvent.click(archive);
+    fireEvent.click(screen.getByRole('button', { name: 'Mover' }));
+
+    await waitFor(() =>
+      expect(mockMoveToNewFlow).toHaveBeenCalledWith([1, 2], 10, {
+        titulo: 'Campanha Julho (continuação)',
+        startOrdem: 0,
+        archiveEmptyFlow: true,
+      }),
+    );
+    // Lands the user where the posts went: close this drawer, open the
+    // target's -- carrying the new flow's row + etapas so the page can open
+    // it without waiting for the board refetch.
+    await waitFor(() =>
+      expect(onOpenWorkflow).toHaveBeenCalledWith(77, {
+        workflow: seedWorkflow,
+        etapas: seedEtapas,
+      }),
+    );
+    expect(onClose).toHaveBeenCalled();
+    expect(onRefresh).toHaveBeenCalled();
+    // The RPC can create/remap per-flow select options on the destination;
+    // with the app's 30s staleTime a recently-opened destination would
+    // otherwise render the remapped value as "Vazio" from a stale cache.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-select-options', 77] });
   });
 });

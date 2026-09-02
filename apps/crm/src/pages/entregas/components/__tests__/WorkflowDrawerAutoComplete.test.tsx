@@ -37,6 +37,10 @@ const store = vi.hoisted(() => ({
   rejectEditSuggestion: vi.fn(),
   createDesign: vi.fn(),
   getDesignForPost: vi.fn().mockResolvedValue(null),
+  // Pulled in by MovePostsToFluxoDialog (mounted by the drawer); inert here.
+  getWorkflows: vi.fn().mockResolvedValue([]),
+  movePostsToNewFlow: vi.fn(),
+  movePostsToExistingFlow: vi.fn(),
 }));
 vi.mock('../../../../store', () => store);
 
