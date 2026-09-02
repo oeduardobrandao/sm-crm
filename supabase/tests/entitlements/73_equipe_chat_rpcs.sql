@@ -517,3 +517,92 @@ begin
   raise notice 'PASS 6: send_equipe_mensagem';
 end $$;
 rollback;
+
+-- ============================================================
+-- 7. get_equipe_conversas: UMA linha por conversa. Regressao do fan-out do
+--    CTE `outro`, que sem o filtro c_tipo = 'dm' tambem casava participantes
+--    de grupo e duplicava a linha do grupo (uma por OUTRO participante).
+--    Cobre grupo (3 participantes) + dm na mesma lista, cada um com seu
+--    proprio display_nome/participantes_count/unread_count/last_message_id.
+-- ============================================================
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid;
+  v_a uuid := gen_random_uuid();
+  v_b uuid := gen_random_uuid();
+  v_c uuid := gen_random_uuid();
+  v_grupo bigint;
+  v_dm bigint;
+  v_msg_grupo bigint;
+  v_msg_dm bigint;
+  v_total int;
+  v_row record;
+  v_grupo_seen boolean := false;
+  v_dm_seen boolean := false;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_team_chat": true}'::jsonb);
+  insert into auth.users (id) values (v_a), (v_b), (v_c);
+  insert into workspace_members (user_id, workspace_id, role)
+    values (v_a, v_ws, 'owner'), (v_b, v_ws, 'agent'), (v_c, v_ws, 'agent');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws
+    where id in (v_a, v_b, v_c);
+  -- membros com nome deterministico: e o nome que a DM deve exibir para A.
+  insert into membros (conta_id, user_id, crm_user_id, nome)
+    values (v_ws, v_b, v_b, 'Beatriz');
+
+  -- A cria um grupo (A+B+C) e uma dm (A+B).
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_a, 'role', 'authenticated')::text, true);
+  select public.create_equipe_conversa('grupo', 'Squad', array[v_b, v_c]) into v_grupo;
+  select public.create_equipe_conversa('dm', null, array[v_b]) into v_dm;
+  reset role;
+
+  -- B manda uma mensagem em cada conversa.
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_b, 'role', 'authenticated')::text, true);
+  select public.send_equipe_mensagem(v_grupo, 'oi grupo') into v_msg_grupo;
+  select public.send_equipe_mensagem(v_dm, 'oi so pra voce') into v_msg_dm;
+  reset role;
+
+  -- A le a lista: exatamente 2 linhas (regressao do Finding 1: o fan-out do
+  -- CTE outro sem o filtro de tipo produzia 2 linhas so para o grupo).
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_a, 'role', 'authenticated')::text, true);
+
+  select count(*) into v_total from public.get_equipe_conversas();
+  assert v_total = 2, format('esperava 2 conversas (1 grupo + 1 dm), achou %s', v_total);
+
+  for v_row in select * from public.get_equipe_conversas() loop
+    if v_row.conversa_id = v_grupo then
+      v_grupo_seen := true;
+      assert v_row.tipo = 'grupo', format('grupo: tipo errado %s', v_row.tipo);
+      assert v_row.display_nome = 'Squad', format('grupo: display_nome errado %s', v_row.display_nome);
+      assert v_row.participantes_count = 3, format('grupo: participantes_count errado %s', v_row.participantes_count);
+      assert v_row.unread_count = 1, format('grupo: unread_count errado %s', v_row.unread_count);
+      assert v_row.last_message_id = v_msg_grupo, format('grupo: last_message_id errado %s', v_row.last_message_id);
+    elsif v_row.conversa_id = v_dm then
+      v_dm_seen := true;
+      assert v_row.tipo = 'dm', format('dm: tipo errado %s', v_row.tipo);
+      assert v_row.display_nome = 'Beatriz', format('dm: display_nome errado %s', v_row.display_nome);
+      assert v_row.participantes_count = 2, format('dm: participantes_count errado %s', v_row.participantes_count);
+      assert v_row.unread_count = 1, format('dm: unread_count errado %s', v_row.unread_count);
+      assert v_row.last_message_id = v_msg_dm, format('dm: last_message_id errado %s', v_row.last_message_id);
+    else
+      raise exception 'conversa inesperada na lista de A: %', v_row.conversa_id;
+    end if;
+  end loop;
+  reset role;
+
+  assert v_grupo_seen, 'linha do grupo nao apareceu em get_equipe_conversas';
+  assert v_dm_seen, 'linha da dm nao apareceu em get_equipe_conversas';
+
+  raise notice 'PASS 7: get_equipe_conversas uma linha por conversa';
+end $$;
+rollback;

@@ -45,14 +45,18 @@ BEGIN
   ),
   outro AS (
     -- Para DMs: identidade do OUTRO participante (nome e avatar da linha).
+    -- Escopado a c_tipo = 'dm': sem isso, um grupo de 3+ tambem bate no
+    -- WHERE pt.user_id <> v_uid e o LEFT JOIN final fanned-out em uma linha
+    -- por OUTRO participante do grupo, violando o contrato de 1 linha por
+    -- conversa.
     SELECT pt.conversa_id AS c_id,
            COALESCE(mb.nome, p.nome, 'Colega') AS o_nome,
            COALESCE(mb.avatar_url, p.avatar_url) AS o_avatar
       FROM equipe_conversa_participantes pt
+      JOIN minhas m ON m.c_id = pt.conversa_id AND m.c_tipo = 'dm'
       LEFT JOIN membros mb ON mb.crm_user_id = pt.user_id AND mb.conta_id = v_conta
       LEFT JOIN profiles p ON p.id = pt.user_id
      WHERE pt.user_id <> v_uid
-       AND pt.conversa_id IN (SELECT m.c_id FROM minhas m)
   ),
   ultima AS (
     SELECT DISTINCT ON (em.conversa_id)
