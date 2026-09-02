@@ -109,6 +109,20 @@ export function formatMentionToken(ref: MentionRef): string {
   return `@[${ref.label}](${ref.entityType}:${ref.id})`;
 }
 
+/**
+ * Replaces every mention token in `text` with '@' + its label, e.g.
+ * `@[João](membro:7)` -> `@João`. For previews (conversation list rows,
+ * notification bodies) that render as plain text and must never leak the raw
+ * `@[Label](tipo:id)` syntax to a reader who isn't looking at a rendered chip.
+ */
+export function stripMentionTokens(text: string): string {
+  // Local instance, same reasoning as parseMentionTokens: MENTION_TOKEN_RE is
+  // a shared module-level `g` regex, and reusing it directly here would leak
+  // `lastIndex` state into any other concurrent read of the exported constant.
+  const re = new RegExp(MENTION_TOKEN_RE.source, 'g');
+  return text.replace(re, (_full, label: string) => `@${label}`);
+}
+
 /** Dedupes by `entityType:id`, keeping the first occurrence. */
 function dedupeMentions(refs: MentionRef[]): MentionRef[] {
   const seen = new Set<string>();

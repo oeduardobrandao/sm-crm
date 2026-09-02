@@ -209,3 +209,6 @@ verify_jwt = false
 
 [functions.automation-media]
 verify_jwt = false
+
+[functions.equipe-chat-media]
+verify_jwt = false

@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { useEffectiveNavFeatures } from '../../hooks/useEffectiveNavFeatures';
 import { useMensagensUnread } from '../../hooks/useMensagensUnread';
+import { useEquipeChatUnread } from '../../hooks/useEquipeChatUnread';
 import { getMoreSheetGroups } from './nav-data';
 import { Search, MessageCircle, Compass } from 'lucide-react';
 import { CommandDialog, CommandInput, CommandList, CommandEmpty } from '@/components/ui/command';
@@ -37,6 +38,8 @@ export default function MobileNav() {
   const { features: rawFeatures } = useWorkspaceLimits();
   const features = useEffectiveNavFeatures(rawFeatures as Record<string, boolean> | null);
   const mensagensUnread = useMensagensUnread();
+  const equipeUnread = useEquipeChatUnread();
+  const mensagensBadge = mensagensUnread + equipeUnread;
   const guide = useGuide();
   const { t } = useTranslation();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -252,12 +255,12 @@ export default function MobileNav() {
                       <i className={`${isActive ? 'ph-fill' : 'ph'} ${item.icon}`} />
                     </div>
                     <span>{t(item.labelKey, item.label)}</span>
-                    {item.id === 'mensagens' && mensagensUnread > 0 && (
+                    {item.id === 'mensagens' && mensagensBadge > 0 && (
                       <span
                         className="nav-badge nav-badge--count"
                         data-testid="mensagens-nav-badge"
                       >
-                        {mensagensUnread > 99 ? '99+' : mensagensUnread}
+                        {mensagensBadge > 99 ? '99+' : mensagensBadge}
                       </span>
                     )}
                   </button>

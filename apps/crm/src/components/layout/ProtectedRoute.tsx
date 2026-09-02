@@ -16,7 +16,6 @@ const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
   '/contratos': { flag: 'feature_contracts', label: 'Contratos' },
   '/ideias': { flag: 'feature_ideas', label: 'Ideias' },
   '/post-express': { flag: 'feature_post_scheduling', label: 'Agendamento de Posts' },
-  '/mensagens': { flag: 'feature_mensagens', label: 'Mensagens' },
 };
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -46,6 +45,24 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (role === 'agent' && AGENT_BLOCKED.some((p) => pathname.startsWith(p))) {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  // /mensagens abriga dois recursos gateados separadamente (chat com
+  // clientes + chat de equipe): bloqueia so quando AMBAS as flags estao off.
+  // feature_team_chat usa `!== true` (fail-closed) em vez de `=== false`
+  // (fail-open, como feature_mensagens): ate o redeploy de workspace-limits
+  // que passa a devolver essa coluna nova, ela chega `undefined` para todo
+  // workspace. Com `=== false` o bloqueio nunca dispararia nessa janela e
+  // /mensagens ficaria destravada mesmo com feature_mensagens:false -- uma
+  // regressao do paywall hoje em producao.
+  if (
+    !isUnlimited &&
+    features &&
+    pathname.startsWith('/mensagens') &&
+    features.feature_mensagens === false &&
+    features.feature_team_chat !== true
+  ) {
+    return <UpgradeLockedScreen featureLabel="Mensagens" feature="feature_mensagens" />;
   }
 
   if (!isUnlimited && features) {

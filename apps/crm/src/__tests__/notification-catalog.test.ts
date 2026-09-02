@@ -3,8 +3,8 @@ import { NOTIFICATION_CATALOG, CATEGORY_ORDER, CATEGORY_LABELS } from '@/lib/not
 import { EMAIL_NOTIFICATION_TYPES } from '@/store/notificationPrefs';
 
 describe('notification-catalog', () => {
-  it('cobre exatamente os 22 tipos', () => {
-    expect(Object.keys(NOTIFICATION_CATALOG)).toHaveLength(22);
+  it('cobre exatamente os 23 tipos', () => {
+    expect(Object.keys(NOTIFICATION_CATALOG)).toHaveLength(23);
   });
   it('todo tipo elegível a e-mail está marcado emailEligible', () => {
     for (const t of EMAIL_NOTIFICATION_TYPES.map((e) => e.type)) {

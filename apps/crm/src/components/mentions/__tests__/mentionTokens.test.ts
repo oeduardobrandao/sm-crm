@@ -4,6 +4,7 @@ import {
   extractMentionsFromText,
   formatMentionToken,
   parseMentionTokens,
+  stripMentionTokens,
 } from '../mentionTokens';
 import type { MentionRef } from '../types';
 
@@ -127,6 +128,34 @@ describe('extractMentionsFromText', () => {
 
   it('returns an empty array for text with no mentions', () => {
     expect(extractMentionsFromText('sem menções aqui')).toEqual([]);
+  });
+});
+
+describe('stripMentionTokens', () => {
+  it('replaces a single mention token with @ + its label', () => {
+    expect(stripMentionTokens('oi @[Ana](membro:5), tudo bem?')).toBe('oi @Ana, tudo bem?');
+  });
+
+  it('replaces multiple tokens of different entity types', () => {
+    expect(stripMentionTokens('@[Ana](membro:1) revisou @[Post de lançamento](post:2:42)')).toBe(
+      '@Ana revisou @Post de lançamento',
+    );
+  });
+
+  it('leaves plain text untouched when there are no tokens', () => {
+    expect(stripMentionTokens('sem menções aqui')).toBe('sem menções aqui');
+  });
+
+  it('returns an empty string for empty input', () => {
+    expect(stripMentionTokens('')).toBe('');
+  });
+
+  it('can be called repeatedly without leaking regex lastIndex state', () => {
+    const withToken = '@[Ana](membro:1) oi';
+    expect(stripMentionTokens(withToken)).toBe('@Ana oi');
+    // A second call on the same (or a fresh) string must match from the
+    // start again, not resume from a stale lastIndex.
+    expect(stripMentionTokens(withToken)).toBe('@Ana oi');
   });
 });
 

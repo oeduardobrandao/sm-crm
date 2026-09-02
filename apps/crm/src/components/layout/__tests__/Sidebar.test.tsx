@@ -23,16 +23,22 @@ vi.mock('../../../hooks/useMensagensUnread', () => ({
   useMensagensUnread: vi.fn(() => 0),
 }));
 
+vi.mock('../../../hooks/useEquipeChatUnread', () => ({
+  useEquipeChatUnread: vi.fn(() => 0),
+}));
+
 vi.mock('../../../lib/supabase');
 
 import { useAuth } from '../../../context/AuthContext';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { useMensagensUnread } from '../../../hooks/useMensagensUnread';
+import { useEquipeChatUnread } from '../../../hooks/useEquipeChatUnread';
 import * as supabaseModule from '../../../lib/supabase';
 import Sidebar from '../Sidebar';
 
 const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
 const mockedUseMensagensUnread = vi.mocked(useMensagensUnread);
+const mockedUseEquipeChatUnread = vi.mocked(useEquipeChatUnread);
 
 function setLimits(overrides: Record<string, unknown> = {}) {
   mockedUseWorkspaceLimits.mockReturnValue({
@@ -109,6 +115,7 @@ describe('Sidebar', () => {
     localStorage.clear();
     setLimits();
     mockedUseMensagensUnread.mockReturnValue(0);
+    mockedUseEquipeChatUnread.mockReturnValue(0);
   });
 
   it('filters restricted navigation items for agents and marks the active route', () => {
@@ -328,6 +335,32 @@ describe('Sidebar', () => {
     renderSidebar('/dashboard');
 
     expect(screen.queryByTestId('mensagens-nav-badge')).not.toBeInTheDocument();
+  });
+
+  it('sums the clientes and equipe unread counts into the Mensagens badge', () => {
+    setAuth();
+    setLimits({ features: { feature_mensagens: true, feature_team_chat: true } });
+    mockedUseMensagensUnread.mockReturnValue(3);
+    mockedUseEquipeChatUnread.mockReturnValue(4);
+
+    renderSidebar('/dashboard');
+
+    const badge = screen.getByTestId('mensagens-nav-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('7');
+  });
+
+  it('shows the Mensagens badge from equipe unread alone (team-chat-only workspace)', () => {
+    setAuth();
+    setLimits({ features: { feature_mensagens: false, feature_team_chat: true } });
+    mockedUseMensagensUnread.mockReturnValue(0);
+    mockedUseEquipeChatUnread.mockReturnValue(4);
+
+    renderSidebar('/dashboard');
+
+    const badge = screen.getByTestId('mensagens-nav-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('4');
   });
 
   it('shows "99+" in the Mensagens badge when count > 99', () => {

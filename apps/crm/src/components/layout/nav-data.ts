@@ -217,14 +217,26 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
 
 export const PRIMARY_NAV_IDS = ['dashboard', 'clientes', 'analytics', 'entregas'];
 
-/** Maps nav item id → feature flag key. If the flag is false, the item is hidden. */
-const NAV_FEATURE: Record<string, string> = {
+/**
+ * Maps nav item id → feature flag key(s). If the flag is false, the item is
+ * hidden. An array entry is OR'd, but asymmetrically: the FIRST flag is the
+ * legacy, already-deployed one and keeps fail-open semantics (`!== false` --
+ * visible unless explicitly off); every OTHER flag is a newer addition and
+ * is fail-closed (`=== true` -- visible only once explicitly on). This
+ * matters during a rollout window: a brand-new flag like `feature_team_chat`
+ * arrives `undefined` for every workspace until `workspace-limits` is
+ * redeployed with the new column. Fail-open on it would show the item to
+ * everyone in that window; fail-closed instead preserves today's behaviour
+ * (nav item follows the legacy flag alone) until the redeploy lands, after
+ * which either flag being explicitly true also shows the item.
+ */
+const NAV_FEATURE: Record<string, string | string[]> = {
   mcp: 'feature_mcp',
   leads: 'feature_leads',
   financeiro: 'feature_financial',
   contratos: 'feature_contracts',
   ideias: 'feature_ideas',
-  mensagens: 'feature_mensagens',
+  mensagens: ['feature_mensagens', 'feature_team_chat'],
   analytics: 'feature_analytics_reports',
   'analytics-fluxos': 'feature_analytics_reports',
   'post-express': 'feature_post_scheduling',
@@ -299,7 +311,15 @@ export function getNavGroups(
         items: g.items
           .map((i) => {
             const flag = NAV_FEATURE[i.id];
-            if (!flag || features[flag] !== false) return i;
+            if (!flag) return i;
+            // Array semantics: flag[0] is the legacy flag (fail-open, `!==
+            // false`); any additional flag is new and fail-closed (`===
+            // true`) so an unredeployed/undefined new flag can't widen
+            // access -- see the NAV_FEATURE doc comment above.
+            const isEnabled = Array.isArray(flag)
+              ? features[flag[0]] !== false || flag.slice(1).some((f) => features[f] === true)
+              : features[flag] !== false;
+            if (isEnabled) return i;
             return i.showLockedWhenGated ? { ...i, locked: true } : null;
           })
           .filter((i): i is NavItem => i !== null),

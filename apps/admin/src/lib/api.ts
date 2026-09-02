@@ -97,6 +97,7 @@ export interface Plan {
   feature_tiktok: boolean;
   feature_mensagens: boolean;
   feature_instagram_automation: boolean;
+  feature_team_chat: boolean;
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
   rate_report_generations_per_month: number | null;
@@ -191,6 +192,7 @@ export const FEATURE_FLAG_KEYS = [
   'feature_tiktok',
   'feature_mensagens',
   'feature_instagram_automation',
+  'feature_team_chat',
 ] as const;
 
 export const FEATURE_FLAG_LABELS: Record<string, string> = {
@@ -216,6 +218,7 @@ export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_tiktok: 'TikTok',
   feature_mensagens: 'Mensagens',
   feature_instagram_automation: 'Instagram Automation',
+  feature_team_chat: 'Chat da equipe',
 };
 
 export const RATE_LIMIT_KEYS = [

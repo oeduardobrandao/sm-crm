@@ -35,7 +35,7 @@ const enabledOf = (prefs: Record<string, boolean> | undefined, type: string) =>
 
 const SAVE_ERROR_MESSAGE = 'Não foi possível salvar. Tente novamente.';
 
-/** "Suas notificações": in-app x e-mail matrix for all 22 catalog types,
+/** "Suas notificações": in-app x e-mail matrix for all 23 catalog types,
  * grouped by category, plus a master "Pausar tudo" row per channel. */
 export default function SuasNotificacoesSection() {
   const qc = useQueryClient();

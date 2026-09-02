@@ -20,13 +20,19 @@ vi.mock('../../../hooks/useMensagensUnread', () => ({
   useMensagensUnread: vi.fn(() => 0),
 }));
 
+vi.mock('../../../hooks/useEquipeChatUnread', () => ({
+  useEquipeChatUnread: vi.fn(() => 0),
+}));
+
 import MobileNav from '../MobileNav';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { useMensagensUnread } from '../../../hooks/useMensagensUnread';
+import { useEquipeChatUnread } from '../../../hooks/useEquipeChatUnread';
 
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
 const mockedUseMensagensUnread = vi.mocked(useMensagensUnread);
+const mockedUseEquipeChatUnread = vi.mocked(useEquipeChatUnread);
 
 function setLimits(overrides: Record<string, unknown> = {}) {
   mockedUseWorkspaceLimits.mockReturnValue({
@@ -109,6 +115,7 @@ describe('MobileNav', () => {
     localStorage.clear();
     setLimits();
     mockedUseMensagensUnread.mockReturnValue(0);
+    mockedUseEquipeChatUnread.mockReturnValue(0);
   });
 
   it('renders a stable active route without canvas chrome', () => {
@@ -329,6 +336,34 @@ describe('MobileNav', () => {
     const badge = screen.getByTestId('mensagens-nav-badge');
     expect(badge).toBeInTheDocument();
     expect(badge).toHaveTextContent('5');
+  });
+
+  it('sums the clientes and equipe unread counts into the Mensagens badge in the more sheet', () => {
+    setAuth();
+    setLimits({ features: { feature_mensagens: true, feature_team_chat: true } });
+    mockedUseMensagensUnread.mockReturnValue(3);
+    mockedUseEquipeChatUnread.mockReturnValue(4);
+
+    renderMobileNav('/dashboard');
+    fireEvent.click(document.getElementById('mobile-more-btn')!);
+
+    const badge = screen.getByTestId('mensagens-nav-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('7');
+  });
+
+  it('shows the Mensagens badge from equipe unread alone (team-chat-only workspace)', () => {
+    setAuth();
+    setLimits({ features: { feature_mensagens: false, feature_team_chat: true } });
+    mockedUseMensagensUnread.mockReturnValue(0);
+    mockedUseEquipeChatUnread.mockReturnValue(4);
+
+    renderMobileNav('/dashboard');
+    fireEvent.click(document.getElementById('mobile-more-btn')!);
+
+    const badge = screen.getByTestId('mensagens-nav-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('4');
   });
 
   it('hides the Mensagens badge in the more sheet when count is 0', () => {
