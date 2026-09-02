@@ -35,7 +35,11 @@
 export interface ClientEmailUnsubDb {
   from(table: "clientes"): {
     update(patch: Record<string, unknown>): {
-      eq(column: "id", value: number): PromiseLike<{ error: { message: string } | null }>;
+      eq(column: "id", value: number): {
+        select(columns: "conta_id"): PromiseLike<
+          { data: { conta_id: string }[] | null; error: { message: string } | null }
+        >;
+      };
     };
   };
 }
@@ -48,6 +52,7 @@ export interface ClientEmailUnsubDeps {
   tokenSecret: string;
   now: () => Date;
   auditLog: (entry: {
+    conta_id?: string;
     action: string;
     resource_type: string;
     resource_id: string;
@@ -143,31 +148,48 @@ export function createClientEmailUnsubHandler(deps: ClientEmailUnsubDeps) {
     }
 
     // POST: idempotent mutation, no CSRF token required -- see file header.
+    // .select("conta_id") rides the same round trip as the update (no
+    // second query) so the audit entry can carry conta_id -- without it the
+    // row is invisible to every workspace's own audit view (owner_admin_select
+    // filters by conta_id). Read with `data?.[0]`, NEVER `.single()`: a
+    // client deleted between token issuance and click makes the update match
+    // zero rows, which .single() would surface as an error (-> a spurious
+    // 500) instead of the harmless no-op it actually is.
+    let updatedRow: { conta_id: string } | undefined;
     try {
-      const { error } = await deps.db.from("clientes")
+      const { data, error } = await deps.db.from("clientes")
         .update({ send_event_email: false, event_email_unsub_at: deps.now().toISOString() })
-        .eq("id", clienteId);
+        .eq("id", clienteId)
+        .select("conta_id");
       if (error) {
         console.error("[client-email-unsub] update failed:", error.message);
         return html(errorPage(), 500, cors);
       }
+      updatedRow = data?.[0];
     } catch (e) {
       console.error("[client-email-unsub] update threw:", e instanceof Error ? e.message : String(e));
       return html(errorPage(), 500, cors);
     }
 
-    // insertAuditLog never throws (it catches internally) -- this wrap
-    // mirrors the defensive style at the cron's own call site
-    // (client-event-email-cron/handler.ts) rather than relying on that
-    // contract silently.
-    try {
-      await deps.auditLog({
-        action: "client_event_email_unsub",
-        resource_type: "cliente",
-        resource_id: String(clienteId),
-      });
-    } catch (e) {
-      console.error("[client-email-unsub] audit log failed:", e instanceof Error ? e.message : String(e));
+    // No row matched (client already deleted) -- nothing was updated, so
+    // there is nothing to audit either. Still the generic success page: the
+    // client's intent (no more emails) is already satisfied either way, and
+    // this endpoint must never reveal whether a given id currently exists.
+    if (updatedRow) {
+      // insertAuditLog never throws (it catches internally) -- this wrap
+      // mirrors the defensive style at the cron's own call site
+      // (client-event-email-cron/handler.ts) rather than relying on that
+      // contract silently.
+      try {
+        await deps.auditLog({
+          conta_id: updatedRow.conta_id,
+          action: "client_event_email_unsub",
+          resource_type: "cliente",
+          resource_id: String(clienteId),
+        });
+      } catch (e) {
+        console.error("[client-email-unsub] audit log failed:", e instanceof Error ? e.message : String(e));
+      }
     }
 
     return html(donePage(), 200, cors);

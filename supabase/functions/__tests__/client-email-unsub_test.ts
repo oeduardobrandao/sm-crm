@@ -9,7 +9,15 @@ const SECRET = "test-secret";
 
 // ─── minimal fakes ──────────────────────────────────────────────────────────
 
-function makeFakeDb() {
+/**
+ * `rows[id] = contaId` when the row exists (default "conta-1" for any id not
+ * listed, so existing tests need no changes); `rows[id] = null` simulates a
+ * client deleted between token issuance and click -- the update matches zero
+ * rows, so `.select("conta_id")` resolves with an empty array, never an
+ * error (mirrors real PostgREST: an UPDATE matching nothing is not a DB
+ * error).
+ */
+function makeFakeDb(rows: Record<number, string | null> = {}) {
   const updateCalls: Array<{ table: string; patch: Record<string, unknown>; id: unknown }> = [];
   const db: ClientEmailUnsubDb = {
     from(table: string) {
@@ -18,7 +26,14 @@ function makeFakeDb() {
           return {
             eq(_column: string, value: unknown) {
               updateCalls.push({ table, patch, id: value });
-              return Promise.resolve({ error: null });
+              return {
+                select(_columns: string) {
+                  const id = value as number;
+                  const contaId = Object.prototype.hasOwnProperty.call(rows, id) ? rows[id] : "conta-1";
+                  const data = contaId === null ? [] : [{ conta_id: contaId }];
+                  return Promise.resolve({ data, error: null });
+                },
+              };
             },
           };
         },
@@ -120,6 +135,22 @@ Deno.test("client-email-unsub: POST with valid token updates the 2 fields + audi
   assertEquals(audit.calls[0].action, "client_event_email_unsub");
   assertEquals(audit.calls[0].resource_type, "cliente");
   assertEquals(audit.calls[0].resource_id, "42");
+  assertEquals(audit.calls[0].conta_id, "conta-1");
+});
+
+Deno.test("client-email-unsub: POST for a client deleted since token issuance -- 200 page, no audit, no throw", async () => {
+  // update matches zero rows (client gone) -- select("conta_id") resolves []
+  const { db, updateCalls } = makeFakeDb({ 42: null });
+  const audit = makeAuditLog();
+  const handler = makeHandler({ db, tokens: { "good-token": 42 }, auditLog: audit.fn });
+
+  const res = await handler(req("POST", "good-token"));
+  const body = await res.text();
+
+  assertEquals(res.status, 200);
+  assert(body.includes("Pronto"), "expected the generic done page, not an error page");
+  assertEquals(updateCalls.length, 1); // the update was attempted
+  assertEquals(audit.calls.length, 0); // nothing was updated -- nothing to audit
 });
 
 Deno.test("client-email-unsub: POST replay is idempotent -- 200 again, update runs again harmlessly", async () => {
