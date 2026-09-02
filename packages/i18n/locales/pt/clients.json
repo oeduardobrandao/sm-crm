@@ -349,6 +349,7 @@
     "includeAiAnalysisDesc": "Adiciona resumo e recomendações geradas por inteligência artificial",
     "includeAiAnalysisOn": "Análise AI ativada",
     "includeAiAnalysisOff": "Análise AI desativada",
+    "sendReportEmailAgentNote": "Apenas donos e admins alteram e-mails de cliente.",
     "reportPrefUpdateError": "Erro ao atualizar configuração",
     "postType": {
       "feed": "Feed",

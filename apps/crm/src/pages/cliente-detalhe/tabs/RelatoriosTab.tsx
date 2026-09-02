@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { updateCliente } from '@/store';
+import { useAuth } from '../../../context/AuthContext';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 /**
@@ -19,10 +20,19 @@ import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
  * had every string hardcoded in Portuguese, which the plan's i18n constraint
  * requires fixing as part of this extraction.
  *
- * Role gating: the layout (ClienteDetalhePage.tsx / clienteTabs.model.ts)
+ * Route gating: the layout (ClienteDetalhePage.tsx / clienteTabs.model.ts)
  * already redirects anyone without STAFF access away from
- * /clientes/:id/relatorios at the route level, so this tab never re-checks
- * role itself — it only ever mounts for an authorized user.
+ * /clientes/:id/relatorios, so an agent never mounts this tab in practice.
+ *
+ * Column-level gating (independent of the route): `clientes.send_report_email`
+ * is guarded in the database by `trg_cliente_notify_guard` (migration
+ * 20260904000001, function enforce_cliente_notify_columns) — any non
+ * owner/admin write to it fails with 42501, service role excepted.
+ * `include_ai_analysis` carries no such guard. This component mirrors that
+ * split at the UI layer as defense-in-depth against a future change to the
+ * route roles: the send_report_email switch is disabled for anyone who
+ * isn't owner/admin, with an explanatory note; include_ai_analysis stays
+ * fully functional for every role that can reach the tab.
  *
  * Query isolation: this tab fires no queries of its own — `updateCliente` is
  * a plain mutation, and the only cache interaction is invalidating
@@ -33,6 +43,8 @@ export default function RelatoriosTab() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { t } = useTranslation('clients');
+  const { workspaceRole } = useAuth();
+  const isOwnerOrAdmin = workspaceRole === 'owner' || workspaceRole === 'admin';
 
   const handleToggle = async (
     field: 'send_report_email' | 'include_ai_analysis',
@@ -75,16 +87,27 @@ export default function RelatoriosTab() {
           <Switch
             aria-label={t('detail.sendReportEmailTitle')}
             checked={cliente.send_report_email ?? false}
-            onCheckedChange={(checked) =>
+            disabled={!isOwnerOrAdmin}
+            onCheckedChange={(checked) => {
+              // Belt-and-suspenders alongside the `disabled` prop above: a
+              // real Switch never fires this while disabled, but the check
+              // stays here too so the guard doesn't depend solely on the
+              // control faithfully honouring `disabled`.
+              if (!isOwnerOrAdmin) return;
               handleToggle(
                 'send_report_email',
                 checked,
                 'detail.sendReportEmailOn',
                 'detail.sendReportEmailOff',
-              )
-            }
+              );
+            }}
           />
         </div>
+        {!isOwnerOrAdmin && (
+          <p style={{ color: 'var(--text-light)', fontSize: '0.75rem', marginTop: '0.5rem' }}>
+            {t('detail.sendReportEmailAgentNote')}
+          </p>
+        )}
       </div>
 
       {/* Toggle: Include AI analysis */}

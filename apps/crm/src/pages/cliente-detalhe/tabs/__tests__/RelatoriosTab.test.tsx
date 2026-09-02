@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -10,6 +10,9 @@ vi.mock('@/store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/store')>()),
   updateCliente: (...args: unknown[]) => updateClienteMock(...args),
 }));
+
+const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
+vi.mock('../../../../context/AuthContext', () => ({ useAuth: useAuthMock }));
 
 const { toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
   toastSuccessMock: vi.fn(),
@@ -29,10 +32,12 @@ vi.mock('@/components/ui/switch', () => ({
   Switch: ({
     checked,
     onCheckedChange,
+    disabled,
     'aria-label': ariaLabel,
   }: {
     checked?: boolean;
     onCheckedChange?: (checked: boolean) => void;
+    disabled?: boolean;
     'aria-label'?: string;
   }) => (
     <input
@@ -40,6 +45,7 @@ vi.mock('@/components/ui/switch', () => ({
       role="switch"
       aria-label={ariaLabel}
       checked={checked ?? false}
+      disabled={disabled}
       onChange={(event) => onCheckedChange?.(event.target.checked)}
     />
   ),
@@ -83,6 +89,13 @@ function renderTab(cliente: Cliente = CLIENTE) {
   );
   return { ...utils, queryClient, invalidateSpy };
 }
+
+beforeEach(() => {
+  // Default to owner so the pre-existing suite below (written before the
+  // agent role gate existed) keeps exercising the "current behaviour
+  // intact" path without every test having to set this up.
+  useAuthMock.mockReturnValue({ workspaceRole: 'owner' });
+});
 
 afterEach(() => {
   cleanup();
@@ -166,5 +179,71 @@ describe('RelatoriosTab', () => {
       .getAll()
       .map((q) => q.queryKey[0]);
     expect(keys).toEqual([]);
+  });
+});
+
+// The route itself already keeps an agent off /clientes/:id/relatorios
+// (clienteTabs.model.ts gates it STAFF-only), but that route guard is a
+// separate module this component's own tests know nothing about — see the
+// role-gating comment atop RelatoriosTab.tsx. This suite covers the
+// component's own defense so a future change to the route roles can't
+// silently resurrect a send_report_email switch that always 42501s
+// (trg_cliente_notify_guard, migration 20260904000001).
+describe('RelatoriosTab — agent role gate on send_report_email', () => {
+  it('disables the send_report_email switch and shows the explanatory note for an agent', () => {
+    useAuthMock.mockReturnValue({ workspaceRole: 'agent' });
+    renderTab();
+
+    const sendEmail = screen.getByLabelText('Enviar relatório por e-mail') as HTMLInputElement;
+    expect(sendEmail.disabled).toBe(true);
+    expect(
+      screen.getByText('Apenas donos e admins alteram e-mails de cliente.'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not call updateCliente when an agent clicks the disabled send_report_email switch', () => {
+    useAuthMock.mockReturnValue({ workspaceRole: 'agent' });
+    renderTab();
+
+    fireEvent.click(screen.getByLabelText('Enviar relatório por e-mail'));
+
+    expect(updateClienteMock).not.toHaveBeenCalled();
+  });
+
+  it('leaves include_ai_analysis enabled and clickable for an agent', async () => {
+    useAuthMock.mockReturnValue({ workspaceRole: 'agent' });
+    updateClienteMock.mockResolvedValue(undefined);
+    renderTab();
+
+    const includeAi = screen.getByLabelText('Incluir análise AI') as HTMLInputElement;
+    expect(includeAi.disabled).toBe(false);
+
+    fireEvent.click(includeAi);
+
+    await waitFor(() =>
+      expect(updateClienteMock).toHaveBeenCalledWith(42, { include_ai_analysis: false }),
+    );
+  });
+
+  it('does not show the agent note or disable the switch for an owner', () => {
+    useAuthMock.mockReturnValue({ workspaceRole: 'owner' });
+    renderTab();
+
+    const sendEmail = screen.getByLabelText('Enviar relatório por e-mail') as HTMLInputElement;
+    expect(sendEmail.disabled).toBe(false);
+    expect(
+      screen.queryByText('Apenas donos e admins alteram e-mails de cliente.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not show the agent note or disable the switch for an admin', () => {
+    useAuthMock.mockReturnValue({ workspaceRole: 'admin' });
+    renderTab();
+
+    const sendEmail = screen.getByLabelText('Enviar relatório por e-mail') as HTMLInputElement;
+    expect(sendEmail.disabled).toBe(false);
+    expect(
+      screen.queryByText('Apenas donos e admins alteram e-mails de cliente.'),
+    ).not.toBeInTheDocument();
   });
 });
