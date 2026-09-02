@@ -35,7 +35,19 @@ BEGIN
      OR v_key NOT LIKE 'equipe-chat/' || v_conta::text || '/%' THEN
     RAISE EXCEPTION 'invalid_key' USING errcode = 'P0001';
   END IF;
-  IF v_size IS NULL OR v_size <= 0 THEN
+  -- Backstop de feature: equipe_mensagem_anexos nao tem enforce_plan_feature
+  -- trigger (a INSERT direta e so via esta RPC service_role, nunca
+  -- PostgREST), entao esta e a UNICA linha de defesa contra um workspace sem
+  -- o plano gravar anexo -- a edge ja checa, isto e o cinto de seguranca
+  -- transacional (mesmo padrao do check de conversa/participante abaixo).
+  IF NOT effective_plan_feature(v_conta, 'feature_team_chat') THEN
+    RAISE EXCEPTION 'feature_disabled:feature_team_chat' USING errcode = 'P0001';
+  END IF;
+  -- 26214400 = 25MB (MAX_ANEXO_BYTES na edge function equipe-chat-media).
+  -- Cinto de seguranca: a edge ja re-checa o teto no finalize (o PUT
+  -- pre-assinado nao restringe Content-Length), isto cobre qualquer outro
+  -- caller da RPC.
+  IF v_size IS NULL OR v_size <= 0 OR v_size > 26214400 THEN
     RAISE EXCEPTION 'invalid_size' USING errcode = 'P0001';
   END IF;
   -- Conversa do workspace + criador participante (a edge ja checou; aqui e o

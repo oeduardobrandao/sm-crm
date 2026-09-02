@@ -373,3 +373,107 @@ begin
   raise notice 'PASS 5: corrida send vs release';
 end $$;
 rollback;
+
+-- ============================================================
+-- 6. Backstop de feature: conversa/participante criados com a flag ON
+--    (a trigger de INSERT em equipe_conversas exige isso), depois a flag e
+--    desligada (downgrade de plano / override revogado) -- finalize levanta
+--    feature_disabled:feature_team_chat mesmo com key/conversa/participante
+--    todos validos. So a RPC pega isto: equipe_mensagem_anexos nao tem
+--    enforce_plan_feature trigger (a INSERT direta e so via esta RPC
+--    service_role), entao sem este backstop um workspace rebaixado depois
+--    de ja ter conversas continuaria podendo gravar anexo novo.
+-- ============================================================
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws      uuid;
+  v_owner   uuid := gen_random_uuid();
+  v_conv    bigint;
+  v_p       jsonb;
+  v_blocked boolean;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_team_chat": true}'::jsonb);
+  insert into auth.users (id) values (v_owner);
+  insert into workspace_members (user_id, workspace_id, role)
+    values (v_owner, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_owner;
+
+  insert into equipe_conversas (conta_id, tipo, nome, created_by)
+    values (v_ws, 'grupo', 'Time', v_owner) returning id into v_conv;
+  insert into equipe_conversa_participantes (conversa_id, conta_id, user_id)
+    values (v_conv, v_ws, v_owner);
+
+  -- Downgrade: revoga o override (efetivo volta ao default do plano, false).
+  update workspace_plan_overrides
+     set feature_overrides = '{"feature_team_chat": false}'::jsonb
+   where workspace_id = v_ws;
+
+  v_p := jsonb_build_object(
+    'conta_id', v_ws, 'conversa_id', v_conv, 'created_by', v_owner,
+    'r2_key', 'equipe-chat/' || v_ws::text || '/foto.png',
+    'file_name', 'foto.png', 'mime_type', 'image/png', 'size_bytes', 1000
+  );
+  v_blocked := false;
+  begin
+    perform equipe_chat_anexo_finalize(v_p);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'feature_disabled:feature_team_chat', format('wrong msg: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'workspace com feature_team_chat off deveria levantar feature_disabled:feature_team_chat';
+
+  raise notice 'PASS 6: backstop de feature (flag desligada apos a conversa existir)';
+end $$;
+rollback;
+
+-- ============================================================
+-- 7. Teto de tamanho: v_size acima de 25MB (26214400 bytes) levanta
+--    invalid_size, mesmo com key/conversa/participante e feature todos
+--    validos. Cinto de seguranca da RPC -- a edge ja re-checa o mesmo teto
+--    no finalize (o PUT pre-assinado nao restringe Content-Length).
+-- ============================================================
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws      uuid;
+  v_owner   uuid := gen_random_uuid();
+  v_conv    bigint;
+  v_p       jsonb;
+  v_blocked boolean;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_team_chat": true}'::jsonb);
+  insert into auth.users (id) values (v_owner);
+  insert into workspace_members (user_id, workspace_id, role)
+    values (v_owner, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_owner;
+
+  insert into equipe_conversas (conta_id, tipo, nome, created_by)
+    values (v_ws, 'grupo', 'Time', v_owner) returning id into v_conv;
+  insert into equipe_conversa_participantes (conversa_id, conta_id, user_id)
+    values (v_conv, v_ws, v_owner);
+
+  v_p := jsonb_build_object(
+    'conta_id', v_ws, 'conversa_id', v_conv, 'created_by', v_owner,
+    'r2_key', 'equipe-chat/' || v_ws::text || '/grande.png',
+    'file_name', 'grande.png', 'mime_type', 'image/png',
+    'size_bytes', 26214401 -- 25MB + 1 byte
+  );
+  v_blocked := false;
+  begin
+    perform equipe_chat_anexo_finalize(v_p);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_size', format('wrong msg: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'size_bytes acima de 25MB deveria levantar invalid_size';
+
+  raise notice 'PASS 7: teto de tamanho (26MB+1 rejeitado)';
+end $$;
+rollback;

@@ -118,6 +118,14 @@ export function createEquipeChatMediaHandler(deps: Deps) {
         const key = String(body.key ?? "");
         const mime = String(body.mime_type ?? "");
         const size = Number(body.size_bytes);
+        // O PUT pre-assinado nao restringe Content-Length: sem isto, um
+        // participante presigna com size_bytes pequeno e sobe um objeto
+        // maior, e finalize (que so confere head.contentLength === o size
+        // AUTO-DECLARADO aqui) aceitaria e cobraria quota com qualquer
+        // tamanho. Mesmo teto do presign, re-checado aqui.
+        if (!size || size <= 0 || size > MAX_ANEXO_BYTES) {
+          return json({ error: "size_bytes out of range" }, 400);
+        }
         const fileName = String(body.file_name ?? "").slice(0, 200);
         if (!Number.isInteger(conversaId)) return json({ error: "conversa_id invalido" }, 400);
         if (!key.startsWith(tmpPrefix)) return json({ error: "invalid key" }, 400);
@@ -182,7 +190,9 @@ export function createEquipeChatMediaHandler(deps: Deps) {
         const { data: pt } = await svc.from("equipe_conversa_participantes")
           .select("id").eq("conversa_id", anexo.conversa_id).eq("user_id", user.id)
           .maybeSingle();
-        if (!pt) return json({ error: "Forbidden" }, 403);
+        // 404, nao 403: um membro do workspace que nao participa da
+        // conversa nao deve conseguir confirmar que o anexo_id existe.
+        if (!pt) return json({ error: "Not found" }, 404);
         const signed = await deps.signGetUrl(anexo.r2_key, SIGNED_GET_TTL);
         return json({ url: signed }, 200);
       }
