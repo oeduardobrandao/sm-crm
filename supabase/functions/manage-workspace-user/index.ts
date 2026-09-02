@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { handleSetFinancialAccess } from "./setFinancialAccess.ts";
+import { removeMember } from "./removeMember.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -252,30 +253,7 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ message: "Permissão atualizada com sucesso." }), { status: 200, headers });
 
     } else if (action === "remove") {
-      // Remove from workspace_members
-      const { error: removeError } = await serviceClient
-        .from("workspace_members")
-        .delete()
-        .eq("user_id", targetUserId)
-        .eq("workspace_id", workspaceId);
-
-      if (removeError) throw removeError;
-
-      // If user's active_workspace_id was this workspace, switch to another or null
-      const { data: otherMembership } = await serviceClient
-        .from("workspace_members")
-        .select("workspace_id")
-        .eq("user_id", targetUserId)
-        .limit(1)
-        .maybeSingle();
-
-      await serviceClient
-        .from("profiles")
-        .update({
-          active_workspace_id: otherMembership?.workspace_id || null,
-          conta_id: otherMembership?.workspace_id || null,
-        })
-        .eq("id", targetUserId);
+      await removeMember(serviceClient, { targetUserId, workspaceId });
 
       await insertAuditLog(serviceClient, {
         conta_id: workspaceId,
