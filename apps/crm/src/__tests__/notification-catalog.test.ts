@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  NOTIFICATION_CATALOG, CATEGORY_ORDER, CATEGORY_LABELS,
-} from '@/lib/notification-catalog';
+import { NOTIFICATION_CATALOG, CATEGORY_ORDER, CATEGORY_LABELS } from '@/lib/notification-catalog';
 import { EMAIL_NOTIFICATION_TYPES } from '@/store/notificationPrefs';
 
 describe('notification-catalog', () => {
