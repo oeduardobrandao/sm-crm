@@ -51,13 +51,18 @@ vi.mock('@/store', () => ({
 // Mocked here only so the real (Supabase-touching) module never loads.
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn() }));
 
-let mockWorkspaceFeatures: Record<string, boolean> = {
+let mockWorkspaceFeatures: Record<string, boolean> | null = {
   feature_mensagens: true,
   feature_team_chat: true,
 };
 let mockLimitsLoading = false;
+let mockIsUnlimited = false;
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
-  useWorkspaceLimits: () => ({ features: mockWorkspaceFeatures, isLoading: mockLimitsLoading }),
+  useWorkspaceLimits: () => ({
+    features: mockWorkspaceFeatures,
+    isLoading: mockLimitsLoading,
+    isUnlimited: mockIsUnlimited,
+  }),
 }));
 
 import MensagensPage from '../MensagensPage';
@@ -156,6 +161,7 @@ describe('MensagensPage — feature-flag behavior', () => {
     vi.clearAllMocks();
     mockWorkspaceFeatures = { feature_mensagens: true, feature_team_chat: true };
     mockLimitsLoading = false;
+    mockIsUnlimited = false;
     mockFeed.mockResolvedValue([]);
     mockConversas.mockResolvedValue(CONVERSAS);
     mockClientes.mockResolvedValue([{ id: 14, nome: 'ACME', sigla: 'AC', cor: '#3ecf8e' }]);
@@ -227,5 +233,32 @@ describe('MensagensPage — feature-flag behavior', () => {
     expect(await screen.findByTestId('current-path')).toHaveTextContent('/mensagens');
     expect(screen.queryByText('Time de Design')).not.toBeInTheDocument();
     expect(await screen.findByText('ACME')).toBeInTheDocument();
+  });
+
+  it('(e) unlimited workspace (features: null, isUnlimited: true): bare /mensagens gets both tab pills and the clientes list', async () => {
+    // The real shape useWorkspaceLimits returns for an unlimited workspace —
+    // `features` is null, never a features object with every flag true.
+    mockWorkspaceFeatures = null;
+    mockIsUnlimited = true;
+    mockMatchMedia(true); // desktop, so both columns render at once
+
+    renderPage('/mensagens');
+
+    expect(await screen.findByText('ACME')).toBeInTheDocument();
+    expect(screen.getByTestId('mensagens-tab-clientes')).toBeInTheDocument();
+    expect(screen.getByTestId('mensagens-tab-equipe')).toBeInTheDocument();
+  });
+
+  it('(e) unlimited workspace (features: null, isUnlimited: true): /mensagens/14 does not redirect', async () => {
+    mockWorkspaceFeatures = null;
+    mockIsUnlimited = true;
+    mockMatchMedia(true); // desktop, so the list (ACME) stays visible alongside the thread
+
+    renderPage('/mensagens/14');
+
+    // "ACME" appears twice once the thread opens (list row + thread header),
+    // so assert on the list row's testid instead of the ambiguous text.
+    expect(await screen.findByTestId('conversa-14')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/mensagens/14');
   });
 });

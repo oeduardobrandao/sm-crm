@@ -139,9 +139,14 @@ export default function MensagensPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
-  const { features, isLoading: limitsLoading } = useWorkspaceLimits();
-  const clientesOn = features?.feature_mensagens === true;
-  const equipeOn = features?.feature_team_chat === true;
+  const { features, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
+  // An unlimited workspace never gets a `features` payload (see
+  // useWorkspaceLimits) -- ProtectedRoute and ExpressPostPage already carve
+  // this out for their own gates; without it here, both flags read false for
+  // an unlimited workspace and the redirect below would bounce every deep
+  // link ProtectedRoute deliberately let through.
+  const clientesOn = isUnlimited || features?.feature_mensagens === true;
+  const equipeOn = isUnlimited || features?.feature_team_chat === true;
   const showTabs = clientesOn && equipeOn;
 
   const equipeMode = location.pathname.startsWith('/mensagens/equipe');
