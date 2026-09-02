@@ -129,9 +129,15 @@ export function buildDelta(
  *
  * A relative delta on a percentage is a lie by arithmetic: 61% against 69% is
  * "8 points down", not "11.6% down", and the second number is the one people
- * quote in a meeting. It also refuses to compare when either window has no
- * rated etapas at all — `pontualidade_pct` can be non-null while the previous
- * window rated nothing, and a delta against nothing is not a comparison.
+ * quote in a meeting.
+ *
+ * The two sample counts are OPTIONAL, because the metrics differ in how they
+ * report "no sample". Pontualidade can hand back a non-null percentage while
+ * the previous window rated nothing, so it must pass its counts and a delta
+ * against nothing is refused. Retrabalho already encodes the same fact in the
+ * value: its NULLIF makes the percentage null whenever the window held no
+ * event, so the null check above IS its sample guard and passing a fabricated
+ * `1, 1` would only add a lie to satisfy the signature.
  *
  * `percent` carries the ABSOLUTE point difference because StatCard renders
  * `Math.abs(percent)` next to a direction arrow; the sign lives in `direction`.
@@ -139,12 +145,13 @@ export function buildDelta(
 export function buildDeltaPp(
   current: number | null,
   prev: number | null,
-  avaliadas: number,
-  avaliadasPrev: number,
+  avaliadas?: number,
+  avaliadasPrev?: number,
   caption = 'vs período anterior (pp)',
 ): StatDelta | null {
   if (current === null || prev === null) return null;
-  if (avaliadas <= 0 || avaliadasPrev <= 0) return null;
+  if (avaliadas !== undefined && avaliadas <= 0) return null;
+  if (avaliadasPrev !== undefined && avaliadasPrev <= 0) return null;
   const diff = current - prev;
   const direction = diff === 0 ? 'stable' : diff > 0 ? 'up' : 'down';
   return { direction, percent: Math.abs(diff), caption };

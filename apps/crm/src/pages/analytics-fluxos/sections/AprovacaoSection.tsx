@@ -95,13 +95,18 @@ export function AprovacaoSection({
   const caption = (base: string) => (horizonte ? `${base} · ${horizonte}` : base);
 
   // Colours by bucket key, resolved from the chart theme so a theme flip
-  // recolours the bars and no hex ever lands in this file. The last two carry a
-  // verdict (this wait is getting expensive); the first three are just volume.
+  // recolours the bars and no hex ever lands in this file.
+  //
+  // This is a sequential scale, not five categories: the three fast buckets
+  // share one neutral hue because they carry no verdict, and only the last two
+  // change colour, where the wait starts costing something. Giving each fast
+  // bucket its own categorical entry would read as five unrelated groups and
+  // would put `categorical[2]` (yellow) right beside the warning orange.
   const corPorFaixa = useMemo<Record<string, string>>(
     () => ({
       '<4h': theme.categorical[0],
-      '4-24h': theme.categorical[1],
-      '1-3d': theme.categorical[2],
+      '4-24h': theme.categorical[0],
+      '1-3d': theme.categorical[0],
       '3-7d': theme.semantic.warning,
       '7d+': theme.semantic.danger,
     }),

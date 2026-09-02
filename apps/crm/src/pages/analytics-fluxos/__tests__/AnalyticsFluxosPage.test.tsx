@@ -144,10 +144,13 @@ function payload(overrides: Partial<WorkflowAnalytics> = {}): WorkflowAnalytics 
       pendentes: 5,
       resolvidos_internamente: 2,
       buckets: buckets(),
+      // The RPC hands this back ordered `mediana_horas DESC NULLS LAST`, so the
+      // fixture arrives that way too. The page must not re-sort it; the test
+      // below pins the rendered order to exactly this sequence.
       por_cliente: [
         { cliente_id: 1, mediana_horas: 98, amostras: 8, pendentes: 1 },
-        { cliente_id: 2, mediana_horas: 3.333, amostras: 10, pendentes: 0 },
         { cliente_id: 99, mediana_horas: 50, amostras: 4, pendentes: 0 },
+        { cliente_id: 2, mediana_horas: 3.333, amostras: 10, pendentes: 0 },
         { cliente_id: 3, mediana_horas: null, amostras: 0, pendentes: 3 },
       ],
       etapas: { amostras: 6, mediana_horas: 12 },
@@ -287,6 +290,8 @@ describe('AnalyticsFluxosPage', () => {
     // here. Without invertDelta this card would paint an improvement red.
     expect(delta(retrabalho)?.getAttribute('data-direction')).toBe('down');
     expect(delta(retrabalho)?.getAttribute('data-good')).toBe('true');
+    // A share of flows is a percentage, so its delta is in points too: 24 - 18.
+    expect(within(retrabalho).getByText('6pts')).toBeTruthy();
   });
 
   it('says so instead of printing a zero when no event backs the retrabalho KPI', async () => {
@@ -313,8 +318,10 @@ describe('AnalyticsFluxosPage', () => {
     await screen.findByTestId('ritmo-chart');
 
     const pontualidade = kpiCard('Pontualidade');
-    // 61 vs 69 is 8 points. The relative reading would be 11.6%.
-    expect(within(pontualidade).getByText('8.0%')).toBeTruthy();
+    // 61 vs 69 is 8 points, printed as a whole number: both figures are
+    // server-rounded integers, so "8.0%" would be wrong twice over.
+    expect(within(pontualidade).getByText('8pts')).toBeTruthy();
+    expect(within(pontualidade).queryByText('8.0%')).toBeNull();
     expect(within(pontualidade).getByText('vs período anterior (pp)')).toBeTruthy();
   });
 
@@ -500,7 +507,16 @@ describe('AnalyticsFluxosPage', () => {
 
     // 98h is the slowest and keeps the top row.
     expect(within(rankingRow(1)).getByText('4d 2h')).toBeTruthy();
-    expect(rankingHrefs()[0]).toBe('/clientes/1/entregas');
+
+    // The whole order, not just the head: the RPC already sorts by
+    // `mediana_horas DESC NULLS LAST`, and the section must render that order
+    // verbatim rather than re-sorting on a field it would have to guess at.
+    expect(rankingHrefs()).toEqual([
+      '/clientes/1/entregas',
+      '/clientes/99/entregas',
+      '/clientes/2/entregas',
+      '/clientes/3/entregas',
+    ]);
   });
 
   it('names a removed cliente instead of leaking the id in the ranking', async () => {

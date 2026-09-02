@@ -162,6 +162,10 @@ export function EquipeTable({ equipe, membrosById, eventosDesde }: EquipeTablePr
                     média
                   </span>
                   <span>
+                    <strong style={{ color: 'var(--text-main)' }}>{linha.retrabalho}</strong>{' '}
+                    devoluções
+                  </span>
+                  <span>
                     <strong style={{ color: 'var(--text-main)' }}>{linha.atividade}</strong> eventos
                   </span>
                 </div>

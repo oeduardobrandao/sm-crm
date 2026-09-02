@@ -75,6 +75,21 @@ describe('buildDeltaPp', () => {
     expect(buildDeltaPp(61, 69, 0, 40)).toBeNull();
   });
 
+  it('compares without sample counts, for a metric that nulls itself instead', () => {
+    // Retrabalho's NULLIF already returns null when the window held no event,
+    // so the caller has no separate count to pass and must not invent one.
+    expect(buildDeltaPp(18, 24)).toEqual({
+      direction: 'down',
+      percent: 6,
+      caption: 'vs período anterior (pp)',
+    });
+  });
+
+  it('still refuses a null metric when no counts are given', () => {
+    expect(buildDeltaPp(null, 24)).toBeNull();
+    expect(buildDeltaPp(18, null)).toBeNull();
+  });
+
   it('refuses to compare when either percentage is missing', () => {
     expect(buildDeltaPp(null, 69, 43, 40)).toBeNull();
     expect(buildDeltaPp(61, null, 43, 40)).toBeNull();

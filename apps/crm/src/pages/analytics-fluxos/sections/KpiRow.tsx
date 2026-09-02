@@ -33,11 +33,12 @@ export function KpiRow({ kpis, emptyFiltered }: KpiRowProps) {
         kpis.etapas_avaliadas,
         kpis.etapas_avaliadas_prev,
       );
-  // Retrabalho is a relative delta like the rest: it is a share of flows, and
-  // the previous window's share is a legitimate denominator.
+  // Retrabalho is a percentage too, so its delta is in points as well. It needs
+  // no sample counts: the RPC's NULLIF already nulls the percentage whenever
+  // the window held no event, which is exactly the guard buildDeltaPp applies.
   const deltaRetrabalho = emptyFiltered
     ? null
-    : buildDelta(kpis.retrabalho_pct, kpis.retrabalho_prev);
+    : buildDeltaPp(kpis.retrabalho_pct, kpis.retrabalho_prev);
 
   const semTempo = kpis.tempo_medio_dias === null;
   const semPontualidade = kpis.pontualidade_pct === null;
@@ -80,6 +81,9 @@ export function KpiRow({ kpis, emptyFiltered }: KpiRowProps) {
         value={semPontualidade ? SEM_DADOS : formatPct(kpis.pontualidade_pct)}
         compactValue={semPontualidade}
         delta={deltaPontualidade ?? undefined}
+        // Points, not percent: both figures are server-rounded integers, so the
+        // difference is a whole number and "8.0%" would be twice wrong.
+        unit="pts"
         sub={emptyFiltered ? SEM_MATCH : semPontualidade ? 'nenhuma etapa avaliada' : SEM_BASE}
       />
       <StatCard
@@ -92,6 +96,7 @@ export function KpiRow({ kpis, emptyFiltered }: KpiRowProps) {
         // Less rework is the good direction, so the arrow's colour flips just
         // like it does for tempo médio.
         invertDelta
+        unit="pts"
         sub={
           emptyFiltered
             ? SEM_MATCH
