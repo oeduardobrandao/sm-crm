@@ -1,4 +1,5 @@
 import type { MyMembership } from '@/store/workspace';
+import { derivePermission } from './permissions';
 
 /**
  * Whether the current user may see financial values.
@@ -21,16 +22,7 @@ export const MASKED_BRL = 'R$ •••••';
  * see financials; agents never do, whatever the column says.
  */
 export function deriveFinancialAccess(membership: MyMembership | null): FinancialAccess {
-  if (!membership) return 'unknown';
-  switch (membership.role) {
-    case 'owner':
-      return true;
-    case 'admin':
-      return membership.can_see_financials;
-    default:
-      // Agents, and any role added later: deny rather than fall through.
-      return false;
-  }
+  return derivePermission(membership, 'financeiro', 'ver');
 }
 
 /**

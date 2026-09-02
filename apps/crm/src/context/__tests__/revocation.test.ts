@@ -141,6 +141,7 @@ describe('live revocation handler', () => {
         workspace_id: 'conta-7',
         role: 'admin',
         can_see_financials: false,
+        role_id: null,
       });
     });
 
@@ -206,6 +207,7 @@ describe('live revocation handler', () => {
         workspace_id: 'conta-8',
         role: 'owner',
         can_see_financials: false,
+        role_id: null,
       });
     });
 
@@ -258,6 +260,7 @@ describe('live revocation handler', () => {
         workspace_id: 'conta-OTHER',
         role: 'agent',
         can_see_financials: false,
+        role_id: null,
       });
     });
 
@@ -400,6 +403,7 @@ describe('live revocation handler', () => {
           workspace_id: 'conta-20',
           role: 'admin',
           can_see_financials: false,
+          role_id: null,
         });
       });
 
@@ -514,6 +518,7 @@ describe('live revocation handler', () => {
         workspace_id: 'conta-30',
         role: 'admin',
         can_see_financials: true,
+        role_id: null,
       });
     });
 
@@ -613,11 +618,13 @@ describe('live revocation handler', () => {
           workspace_id: 'conta-41',
           role: 'admin',
           can_see_financials: true, // grant
+          role_id: null,
         });
         mockedSupabase.__emitWorkspaceMemberUpdate({
           workspace_id: 'conta-41',
           role: 'admin',
           can_see_financials: false, // revoke, same tick, right behind the grant
+          role_id: null,
         });
       });
 
@@ -691,6 +698,7 @@ describe('live revocation handler', () => {
           workspace_id: 'conta-31',
           role: 'admin',
           can_see_financials: true,
+          role_id: null,
         });
       });
 

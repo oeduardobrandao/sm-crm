@@ -223,6 +223,9 @@ export async function setWorkspaceUserFinancialAccess(
 export interface MyMembership {
   role: 'owner' | 'admin' | 'agent';
   can_see_financials: boolean;
+  role_id: string | null;
+  /** permissions do papel custom; null quando role_id é null (fallback legado). */
+  permissions: Record<string, string> | null;
 }
 
 /**
@@ -249,11 +252,23 @@ export async function getMyMembership(): Promise<MyMembership | null> {
 
   const { data, error } = await supabase
     .from('workspace_members')
-    .select('role, can_see_financials')
+    .select('role, can_see_financials, role_id, workspace_roles(permissions)')
     .eq('user_id', user.id)
     .eq('workspace_id', conta_id)
     .maybeSingle();
 
   if (error) throw error;
-  return (data as MyMembership | null) ?? null;
+  if (!data) return null;
+  const row = data as unknown as {
+    role: MyMembership['role'];
+    can_see_financials: boolean;
+    role_id: string | null;
+    workspace_roles: { permissions: Record<string, string> } | null;
+  };
+  return {
+    role: row.role,
+    can_see_financials: row.can_see_financials,
+    role_id: row.role_id ?? null,
+    permissions: row.workspace_roles?.permissions ?? null,
+  };
 }

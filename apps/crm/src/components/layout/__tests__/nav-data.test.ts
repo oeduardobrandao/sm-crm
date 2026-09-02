@@ -38,6 +38,8 @@ describe('getNavGroups financial capability', () => {
     const access = deriveFinancialAccess({
       role: 'owner',
       can_see_financials: false,
+      role_id: null,
+      permissions: null,
     } as MyMembership);
     expect(access).toBe(true);
   });
