@@ -3,8 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../lib/supabase', () => ({
   supabase: {
     auth: {
-      getSession: () =>
-        Promise.resolve({ data: { session: { access_token: 'test-token' } } }),
+      getSession: () => Promise.resolve({ data: { session: { access_token: 'test-token' } } }),
     },
   },
   getCurrentProfile: vi.fn(),
@@ -58,12 +57,15 @@ describe('getStoriesAnalytics', () => {
   });
 
   it('returns null on fetch error', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: false,
-      status: 500,
-      statusText: 'Internal Server Error',
-      text: () => Promise.resolve(''),
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        text: () => Promise.resolve(''),
+      }),
+    );
 
     const { getStoriesAnalytics } = await import('../services/analytics');
     const result = await getStoriesAnalytics(123);
