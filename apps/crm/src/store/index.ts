@@ -21,3 +21,4 @@ export * from './banners';
 export * from './computed';
 export * from './kb';
 export * from './mentions';
+export * from './equipeChat';
