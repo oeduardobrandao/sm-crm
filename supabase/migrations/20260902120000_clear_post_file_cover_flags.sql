@@ -1,7 +1,13 @@
--- A capa de um post agora é derivada: primeira mídia por sort_order.
--- (A UI de "definir como capa" foi removida; todos os leitores — CRM covers,
--- Hub, MCP — já usam a regra "is_cover se existir, senão a primeira".)
+-- A capa de um post agora é derivada: is_cover se existir, senão a primeira
+-- por sort_order. (A UI de "definir como capa" foi removida.)
+-- O branch workflow_ids do post-media-manage (covers do board de entregas)
+-- consultava só is_cover = true, sem esse fallback. Ganhou a mesma regra dos
+-- demais leitores (CRM covers por post_id, Hub, MCP) na mesma branch de
+-- código que esta migration.
 -- Limpa as flags legadas para que nenhum post fique preso a uma capa que a UI
 -- não consegue mais alterar. Seguro em um único UPDATE: o índice parcial
 -- post_file_links_one_cover só indexa linhas true, e aqui só escrevemos false.
+-- ORDEM DE DEPLOY: publique a function post-media-manage ANTES de rodar
+-- "supabase db push". Se esta migration for aplicada primeiro, as capas do
+-- board de entregas ficam em branco até o deploy da function.
 update post_file_links set is_cover = false where is_cover = true;

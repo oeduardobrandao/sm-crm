@@ -113,13 +113,21 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
         if (!posts || posts.length === 0) return json({ covers: [] });
 
         const postIds = posts.map((p: any) => p.id);
-        const { data: coverLinks } = await svc.from("post_file_links")
+        const { data: links } = await svc.from("post_file_links")
           .select("*, files(*)")
           .in("post_id", postIds)
-          .eq("is_cover", true);
+          .order("sort_order", { ascending: true })
+          .order("id", { ascending: true });
+
+        // One cover per post: the is_cover link if flagged, else the first by sort_order.
+        const coverByPost = new Map<number, any>();
+        for (const l of (links ?? [])) {
+          const existing = coverByPost.get(l.post_id);
+          if (!existing || (l.is_cover && !existing.is_cover)) coverByPost.set(l.post_id, l);
+        }
 
         const postById = new Map<number, any>(posts.map((p: any) => [p.id, p] as [number, any]));
-        const sorted = (coverLinks ?? []).slice().sort((a: any, b: any) => {
+        const sorted = Array.from(coverByPost.values()).sort((a: any, b: any) => {
           const pa = postById.get(a.post_id);
           const pb = postById.get(b.post_id);
           return (pa?.ordem ?? 0) - (pb?.ordem ?? 0) || a.post_id - b.post_id;

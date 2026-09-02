@@ -116,6 +116,80 @@ Deno.test("post-media-manage: GET with workflow_ids returns covers grouped by wo
   assertEquals(body.covers[0].media[0].url, "https://signed.example.com/contas/conta-1/files/img.png");
 });
 
+Deno.test("post-media-manage: GET with workflow_ids falls back to lowest sort_order when no link is flagged", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", {
+    data: [{ id: 50, workflow_id: 7, ordem: 0 }],
+    error: null,
+  });
+  const lowSortLink = {
+    id: 1,
+    post_id: 50,
+    conta_id: "conta-1",
+    is_cover: false,
+    sort_order: 0,
+    files: { ...sampleFile, id: 11, r2_key: "contas/conta-1/files/low.png" },
+  };
+  const highSortLink = {
+    id: 2,
+    post_id: 50,
+    conta_id: "conta-1",
+    is_cover: false,
+    sort_order: 1,
+    files: { ...sampleFile, id: 12, r2_key: "contas/conta-1/files/high.png" },
+  };
+  // Mock returns queued rows as-is (no real ordering applied), so the fixture is
+  // pre-sorted sort_order asc, id asc — same order the real DB query would return.
+  db.queue("post_file_links", "select", {
+    data: [lowSortLink, highSortLink],
+    error: null,
+  });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "?workflow_ids=7"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.covers.length, 1);
+  assertEquals(body.covers[0].media.length, 1);
+  assertEquals(body.covers[0].media[0].url, "https://signed.example.com/contas/conta-1/files/low.png");
+});
+
+Deno.test("post-media-manage: GET with workflow_ids prefers the flagged link over a lower sort_order unflagged link", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", {
+    data: [{ id: 50, workflow_id: 7, ordem: 0 }],
+    error: null,
+  });
+  const unflaggedLowSort = {
+    id: 1,
+    post_id: 50,
+    conta_id: "conta-1",
+    is_cover: false,
+    sort_order: 0,
+    files: { ...sampleFile, id: 11, r2_key: "contas/conta-1/files/unflagged.png" },
+  };
+  const flaggedHighSort = {
+    id: 2,
+    post_id: 50,
+    conta_id: "conta-1",
+    is_cover: true,
+    sort_order: 1,
+    files: { ...sampleFile, id: 12, r2_key: "contas/conta-1/files/flagged.png" },
+  };
+  db.queue("post_file_links", "select", {
+    data: [unflaggedLowSort, flaggedHighSort],
+    error: null,
+  });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "?workflow_ids=7"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.covers.length, 1);
+  assertEquals(body.covers[0].media.length, 1);
+  assertEquals(body.covers[0].media[0].url, "https://signed.example.com/contas/conta-1/files/flagged.png");
+});
+
 Deno.test("post-media-manage: GET with empty workflow_ids returns empty covers", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
