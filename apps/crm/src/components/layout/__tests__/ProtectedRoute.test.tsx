@@ -366,6 +366,58 @@ describe('ProtectedRoute', () => {
     expect(screen.queryByText('Área protegida')).toBeNull();
   });
 
+  it('shows upgrade screen at /mensagens when feature_mensagens is false and feature_team_chat is undefined (pre-redeploy rollout window)', () => {
+    // Regression guard: workspace-limits hasn't been redeployed with the new
+    // feature_team_chat column yet, so it's simply absent from the response
+    // (not `false`). If the gate used `=== false` for the new flag, this
+    // would fall through to "not blocked" and reopen a route that today's
+    // deployed feature_mensagens:false correctly blocks -- a paywall
+    // regression during the rollout window. `!== true` keeps it blocked.
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'owner-1' } as never,
+      profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
+      role: 'owner',
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    mockedUseWorkspaceLimits.mockReturnValue({
+      limits: null,
+      features: {
+        feature_instagram: true,
+        feature_instagram_ai: false,
+        feature_analytics_reports: false,
+        feature_best_times: false,
+        feature_audience_demographics: false,
+        feature_hub_portal: false,
+        feature_leads: false,
+        feature_financial: false,
+        feature_contracts: false,
+        feature_ideas: false,
+        feature_workflow_gantt: false,
+        feature_workflow_recurrence: false,
+        feature_csv_import: false,
+        feature_custom_properties: false,
+        feature_post_scheduling: false,
+        feature_auto_sync_cron: false,
+        feature_post_tagging: false,
+        feature_brand_customization: false,
+        feature_mensagens: false,
+        // feature_team_chat intentionally omitted -- simulates the response
+        // shape before workspace-limits is redeployed with the new column.
+      },
+      planName: 'starter',
+      isLoading: false,
+      isUnlimited: false,
+    });
+
+    renderRoute('/mensagens');
+
+    expect(screen.getByText(/Mensagens não está no seu plano/)).toBeInTheDocument();
+    expect(screen.queryByText('Área protegida')).toBeNull();
+  });
+
   it('renders children (not the upgrade screen) at /mensagens when feature_mensagens is false but feature_team_chat is true', () => {
     // /mensagens hosts two separately-gated features (client chat + team
     // chat): either flag being on unlocks the route.

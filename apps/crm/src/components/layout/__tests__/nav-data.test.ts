@@ -131,3 +131,34 @@ describe('locked nav items (showLockedWhenGated)', () => {
     expect(items.find((i) => i.id === 'automacoes')?.locked).toBeUndefined();
   });
 });
+
+describe('mensagens nav item: array flag (feature_mensagens OR feature_team_chat)', () => {
+  it('stays visible when only feature_team_chat is true (feature_mensagens explicitly false)', () => {
+    const got = ids(
+      getNavGroups('owner', { feature_mensagens: false, feature_team_chat: true }, true, 'owner'),
+    );
+    expect(got).toContain('mensagens');
+  });
+
+  it('is hidden when both feature_mensagens and feature_team_chat are false', () => {
+    const got = ids(
+      getNavGroups('owner', { feature_mensagens: false, feature_team_chat: false }, true, 'owner'),
+    );
+    expect(got).not.toContain('mensagens');
+  });
+
+  it('stays visible when feature_mensagens is true and feature_team_chat is undefined (legacy flag alone still governs)', () => {
+    const got = ids(getNavGroups('owner', { feature_mensagens: true }, true, 'owner'));
+    expect(got).toContain('mensagens');
+  });
+
+  // Rollout-window regression guard: before workspace-limits is redeployed
+  // with the new feature_team_chat column, BOTH flags are simply absent from
+  // the features map (not `false`). feature_mensagens is the legacy,
+  // fail-open flag in the pair, so its own absence must not hide the item --
+  // this reproduces today's pre-this-branch behaviour exactly.
+  it('stays visible when both feature_mensagens and feature_team_chat are undefined (pre-redeploy legacy behaviour)', () => {
+    const got = ids(getNavGroups('owner', {}, true, 'owner'));
+    expect(got).toContain('mensagens');
+  });
+});
