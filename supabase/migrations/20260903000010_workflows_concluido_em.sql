@@ -28,6 +28,13 @@ CREATE TRIGGER workflows_set_concluido_em
   BEFORE UPDATE ON workflows
   FOR EACH ROW EXECUTE FUNCTION set_workflow_concluido_em();
 
+-- workflow_etapas has no index on workflow_id anywhere in the schema (verified
+-- across all migrations), so the backfill's correlated subquery below and the
+-- upcoming analytics RPC's joins on workflow_id would both otherwise seq-scan.
+-- Placed before the backfill so this migration's own UPDATE benefits too.
+CREATE INDEX IF NOT EXISTS idx_workflow_etapas_workflow_id
+  ON workflow_etapas (workflow_id);
+
 -- Backfill: durable event wins over the lossy etapa timestamp.
 --
 -- Verified against 20260826000001_workflow_events.sql: the suppression GUC
