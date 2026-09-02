@@ -58,17 +58,18 @@ export function useNotifications({ popoverOpen }: UseNotificationsOptions) {
     mutationFn: (id: string) => markNotificationAsRead(id),
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: LIST_KEY });
-      const prev = qc.getQueryData<Notification[]>(LIST_KEY);
-      qc.setQueryData<Notification[]>(LIST_KEY, (old) =>
+      const prev = qc.getQueryData<Notification[]>([...LIST_KEY, excludeTypes]);
+      qc.setQueryData<Notification[]>([...LIST_KEY, excludeTypes], (old) =>
         (old ?? []).map((n) => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)),
       );
-      const prevCount = qc.getQueryData<number>(UNREAD_KEY) ?? 0;
-      qc.setQueryData<number>(UNREAD_KEY, Math.max(0, prevCount - 1));
+      const prevCount = qc.getQueryData<number>([...UNREAD_KEY, excludeTypes]) ?? 0;
+      qc.setQueryData<number>([...UNREAD_KEY, excludeTypes], Math.max(0, prevCount - 1));
       return { prev, prevCount };
     },
     onError: (_e, _id, ctx) => {
-      if (ctx?.prev) qc.setQueryData(LIST_KEY, ctx.prev);
-      if (typeof ctx?.prevCount === 'number') qc.setQueryData(UNREAD_KEY, ctx.prevCount);
+      if (ctx?.prev) qc.setQueryData([...LIST_KEY, excludeTypes], ctx.prev);
+      if (typeof ctx?.prevCount === 'number')
+        qc.setQueryData([...UNREAD_KEY, excludeTypes], ctx.prevCount);
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: LIST_KEY });
@@ -80,16 +81,16 @@ export function useNotifications({ popoverOpen }: UseNotificationsOptions) {
     mutationFn: () => (masterPaused ? Promise.resolve() : markAllNotificationsAsRead(excludeTypes)),
     onMutate: async () => {
       await qc.cancelQueries({ queryKey: LIST_KEY });
-      const prev = qc.getQueryData<Notification[]>(LIST_KEY);
+      const prev = qc.getQueryData<Notification[]>([...LIST_KEY, excludeTypes]);
       const now = new Date().toISOString();
-      qc.setQueryData<Notification[]>(LIST_KEY, (old) =>
+      qc.setQueryData<Notification[]>([...LIST_KEY, excludeTypes], (old) =>
         (old ?? []).map((n) => (n.read_at ? n : { ...n, read_at: now })),
       );
-      qc.setQueryData<number>(UNREAD_KEY, 0);
+      qc.setQueryData<number>([...UNREAD_KEY, excludeTypes], 0);
       return { prev };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(LIST_KEY, ctx.prev);
+      if (ctx?.prev) qc.setQueryData([...LIST_KEY, excludeTypes], ctx.prev);
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: LIST_KEY });
@@ -101,18 +102,20 @@ export function useNotifications({ popoverOpen }: UseNotificationsOptions) {
     mutationFn: (id: string) => dismissNotification(id),
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: LIST_KEY });
-      const prev = qc.getQueryData<Notification[]>(LIST_KEY);
-      qc.setQueryData<Notification[]>(LIST_KEY, (old) => (old ?? []).filter((n) => n.id !== id));
+      const prev = qc.getQueryData<Notification[]>([...LIST_KEY, excludeTypes]);
+      qc.setQueryData<Notification[]>([...LIST_KEY, excludeTypes], (old) =>
+        (old ?? []).filter((n) => n.id !== id),
+      );
       // If the dismissed item was unread, decrement the badge
       const wasUnread = (prev ?? []).find((n) => n.id === id && !n.read_at);
       if (wasUnread) {
-        const prevCount = qc.getQueryData<number>(UNREAD_KEY) ?? 0;
-        qc.setQueryData<number>(UNREAD_KEY, Math.max(0, prevCount - 1));
+        const prevCount = qc.getQueryData<number>([...UNREAD_KEY, excludeTypes]) ?? 0;
+        qc.setQueryData<number>([...UNREAD_KEY, excludeTypes], Math.max(0, prevCount - 1));
       }
       return { prev };
     },
     onError: (_e, _id, ctx) => {
-      if (ctx?.prev) qc.setQueryData(LIST_KEY, ctx.prev);
+      if (ctx?.prev) qc.setQueryData([...LIST_KEY, excludeTypes], ctx.prev);
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: LIST_KEY });

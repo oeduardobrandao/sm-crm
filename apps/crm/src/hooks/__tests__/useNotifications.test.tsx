@@ -23,9 +23,25 @@ import {
   getNotifications,
   getUnreadNotificationCount,
   markAllNotificationsAsRead,
+  markNotificationAsRead,
+  type Notification,
 } from '../../store/notifications';
 import { getNotificationInappPrefs } from '../../store/notificationPrefs';
 import { useNotifications } from '../useNotifications';
+
+function makeNotification(id: string, type: Notification['type']): Notification {
+  return {
+    id,
+    workspace_id: 'w1',
+    user_id: 'u1',
+    type,
+    metadata: {},
+    link: null,
+    read_at: null,
+    dismissed_at: null,
+    created_at: new Date().toISOString(),
+  };
+}
 
 function wrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -122,5 +138,35 @@ describe('useNotifications', () => {
       result.current.markAllAsRead();
     });
     await waitFor(() => expect(markAllNotificationsAsRead).toHaveBeenCalledWith(['mention']));
+  });
+
+  it('markAsRead updates the list/count optimistically with a muted type active, before any refetch', async () => {
+    vi.mocked(getNotificationInappPrefs).mockResolvedValue({ mention: false });
+    vi.mocked(getNotifications).mockResolvedValue([
+      makeNotification('a', 'post_message'),
+      makeNotification('b', 'post_correction'),
+    ]);
+    vi.mocked(getUnreadNotificationCount).mockResolvedValue(2);
+    // Never resolves: isolates the onMutate optimistic write from onSettled's
+    // invalidate+refetch. If onMutate targets the wrong (bare) queryKey, this
+    // assertion below can only ever be satisfied by a refetch that never comes,
+    // and the test times out.
+    vi.mocked(markNotificationAsRead).mockReturnValue(new Promise(() => {}));
+
+    const { result } = renderHook(() => useNotifications({ popoverOpen: true }), {
+      wrapper: wrapper(),
+    });
+
+    await waitFor(() => expect(result.current.notifications).toHaveLength(2));
+    await waitFor(() => expect(result.current.unreadCount).toBe(2));
+
+    act(() => {
+      result.current.markAsRead('a');
+    });
+
+    await waitFor(() => {
+      expect(result.current.unreadCount).toBe(1);
+      expect(result.current.notifications.find((n) => n.id === 'a')?.read_at).not.toBeNull();
+    });
   });
 });
