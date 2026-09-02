@@ -124,6 +124,9 @@ Deno.test("presign: sem plano resolvido (resolveEntitlements null) da 403 fail-c
 Deno.test("finalize: HEAD na tmp, copia p/ final, RPC, trash da tmp", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
+  // Lookup idempotente (retry apos resposta perdida): nada ainda com esta
+  // finalKey -- segue pro caminho normal (HEAD + copy + RPC).
+  db.queue("equipe_mensagem_anexos", "select", { data: null, error: null });
   db.queueRpc("equipe_chat_anexo_finalize", {
     data: { anexo_id: 8, r2_key: "equipe-chat/conta-1/fixed-uuid.jpg",
             file_name: "foto.jpg", mime_type: "image/jpeg", size_bytes: 5000 },
@@ -158,6 +161,7 @@ Deno.test("finalize: key fora do prefixo tmp do tenant da 400", async () => {
 Deno.test("finalize: objeto tmp ausente da 400", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
+  db.queue("equipe_mensagem_anexos", "select", { data: null, error: null });
   const res = await makeHandler(db, { headObject: async () => null })(req("finalize", {
     conversa_id: 7, key: "equipe-chat-tmp/conta-1/fixed-uuid.jpg",
     file_name: "x.jpg", mime_type: "image/jpeg", size_bytes: 5000,
@@ -168,6 +172,7 @@ Deno.test("finalize: objeto tmp ausente da 400", async () => {
 Deno.test("finalize: size divergente da 400", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
+  db.queue("equipe_mensagem_anexos", "select", { data: null, error: null });
   const res = await makeHandler(db, {
     headObject: async () => ({ contentLength: 999, contentType: "image/jpeg" }),
   })(req("finalize", {
@@ -180,6 +185,7 @@ Deno.test("finalize: size divergente da 400", async () => {
 Deno.test("finalize: quota_exceeded da RPC vira 413", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
+  db.queue("equipe_mensagem_anexos", "select", { data: null, error: null });
   db.queueRpc("equipe_chat_anexo_finalize", {
     data: null, error: { message: "quota_exceeded" },
   });
@@ -188,6 +194,39 @@ Deno.test("finalize: quota_exceeded da RPC vira 413", async () => {
     file_name: "x.jpg", mime_type: "image/jpeg", size_bytes: 5000,
   }));
   assertEquals(res.status, 413);
+});
+
+Deno.test("finalize: retry apos resposta perdida (tmp ja trasheada) reusa o anexo existente sem tocar R2/RPC", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  // O primeiro finalize ja completou (RPC + trash da tmp), so a resposta se
+  // perdeu. O retry chega com a MESMA key: o lookup pela finalKey acha a
+  // linha ja gravada e devolve o mesmo anexo sem tocar R2 ou a RPC de novo.
+  db.queue("equipe_mensagem_anexos", "select", {
+    data: { id: 8, file_name: "foto.jpg", mime_type: "image/jpeg", size_bytes: 5000,
+            conversa_id: 7, conta_id: "conta-1" },
+    error: null,
+  });
+  const copies: Array<{ from: string; to: string }> = [];
+  const trashed: string[] = [];
+  const res = await makeHandler(db, {
+    copies, trashed,
+    // Se o handler ainda tentasse dar HEAD na tmp (nao deveria, pois o
+    // short-circuit roda ANTES do headObject), ela ja sumiu -- prova que o
+    // 200 abaixo nao veio desse caminho.
+    headObject: async () => null,
+  })(req("finalize", {
+    conversa_id: 7, key: "equipe-chat-tmp/conta-1/fixed-uuid.jpg",
+    file_name: "foto.jpg", mime_type: "image/jpeg", size_bytes: 5000,
+  }));
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.anexo, { id: 8, file_name: "foto.jpg", mime_type: "image/jpeg", size_bytes: 5000 });
+  assertEquals(copies, []);
+  assertEquals(trashed, []);
+  // deno-lint-ignore no-explicit-any
+  const rpcCalls = db.calls.filter((c: any) => c.table === "rpc:equipe_chat_anexo_finalize");
+  assertEquals(rpcCalls.length, 0);
 });
 
 Deno.test("finalize: size_bytes acima de 25MB da 400 (mesmo com headObject batendo)", async () => {

@@ -142,6 +142,37 @@ export function createEquipeChatMediaHandler(deps: Deps) {
         if (!fileName) return json({ error: "file_name obrigatorio" }, 400);
         if (!(await isParticipant(conversaId))) return json({ error: "Forbidden" }, 403);
 
+        // Hoisted acima do HEAD: precisa dela tanto para o lookup idempotente
+        // abaixo quanto para a copia tmp->final mais adiante.
+        const finalKey = finalPrefix + key.slice(tmpPrefix.length);
+
+        // Retry apos resposta perdida: o sucesso ja trasheia a tmp (abaixo),
+        // entao um retry com a MESMA key morreria aqui no headObject(tmp) --
+        // 400 "object not found" -- sem nunca alcancar o caminho idempotente
+        // da RPC (que so roda de novo se chegar la). Espelha o fast path da
+        // propria equipe_chat_anexo_finalize (SELECT ... WHERE r2_key =
+        // v_key), agora alcancavel mesmo com a tmp ja sumida -- sem tocar R2
+        // ou a RPC de novo.
+        const { data: existing } = await svc.from("equipe_mensagem_anexos")
+          .select("id, file_name, mime_type, size_bytes, conversa_id, conta_id")
+          .eq("r2_key", finalKey).maybeSingle();
+        if (existing) {
+          if (existing.conta_id === contaId && existing.conversa_id === conversaId) {
+            return json({
+              anexo: {
+                id: existing.id,
+                file_name: existing.file_name,
+                mime_type: existing.mime_type,
+                size_bytes: existing.size_bytes,
+              },
+            }, 200);
+          }
+          // Nao deveria acontecer (finalKey e derivada do prefixo do tenant
+          // ja validado), mas nao confirma a existencia de um anexo de outro
+          // tenant/conversa.
+          return json({ error: "Not found" }, 404);
+        }
+
         const head = await deps.headObject(key);
         if (!head) return json({ error: "object not found" }, 400);
         if (head.contentLength !== size) return json({ error: "size mismatch" }, 400);
@@ -151,7 +182,6 @@ export function createEquipeChatMediaHandler(deps: Deps) {
 
         // tmp -> final: a URL PUT ainda valida so alcanca a tmp, nunca o
         // objeto contabilizado.
-        const finalKey = finalPrefix + key.slice(tmpPrefix.length);
         await deps.copyObject(key, finalKey);
 
         const { data: row, error: rpcErr } = await svc
