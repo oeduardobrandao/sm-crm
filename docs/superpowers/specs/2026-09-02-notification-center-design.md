@@ -69,20 +69,25 @@ disponíveis. Fonte única para a central; o popover do sino continua usando
 
 ## Fase 1 — backend
 
-**Uma migration** que generaliza as preferências:
+**Uma migration**, com **duas tabelas de preferência** — canais fisicamente
+separados, porque nenhuma variação de tabela única sobrevive ao rollout: o bundle
+antigo do CRM upserta `notification_email_prefs` com `onConflict: 'user_id,type'` e a
+tabela tem PRIMARY KEY `(user_id, type)` — trocar a chave para três colunas quebra
+esse upsert, e o `SELECT type, enabled` antigo passaria a misturar linhas de e-mail e
+in-app. Então:
 
-- **Mantém o nome físico `notification_email_prefs`** (renomear quebraria o CRM já
-  deployado durante a janela de rollout — o store lê/upserta o nome direto, e o
-  problema conhecido de chunk stale do Vercel alonga essa janela). Adiciona
-  `channel text NOT NULL DEFAULT 'email' CHECK (channel IN ('email','in_app'))`;
-  a UNIQUE passa a `(user_id, channel, type)`; o CHECK de `type` amplia para os 22
-  tipos + `__all__` (o de e-mail continua efetivamente restrito aos elegíveis pelo
-  claim RPC). Policies RLS existentes permanecem válidas (predicado por `user_id`
-  não muda). O nome legado fica documentado no comentário da migration; um rename
-  com view de compatibilidade não vale a complexidade (YAGNI).
-- Atualiza `claim_notification_emails` no mesmo arquivo: filtro `channel = 'email'` no
-  `NOT EXISTS` de opt-out e **adiciona `post_approved`** à lista de tipos elegíveis
-  (8 → 9).
+- **`notification_email_prefs` fica intocada em estrutura** (PK, RLS, colunas). As
+  únicas mudanças são aditivas e compatíveis com bundle antigo: `post_approved` entra
+  no CHECK de `type` e na lista de elegíveis do `claim_notification_emails` (8 → 9).
+- **Nova `notification_inapp_prefs`** `(user_id, type, enabled, updated_at)`, PK
+  `(user_id, type)`, CHECK de `type` com os 22 tipos + `__all__`, RLS
+  `user_id = auth.uid()` no mesmo shape da irmã (override-only: sem linha = ON).
+- **[P0] Endurecer a RLS de `notifications`:** as policies de SELECT e UPDATE hoje
+  exigem apenas `user_id = auth.uid()` — um ex-membro removido do workspace continua
+  lendo notificações antigas com nomes, títulos e comentários de cliente. Ambas ganham
+  `AND EXISTS (… workspace_members vigente para notifications.workspace_id …)`, com
+  teste psql de membro removido (o claim de e-mail já re-checa vínculo; o in-app não
+  checava).
 - Atenção às armadilhas conhecidas: nenhum `REVOKE ... FROM PUBLIC` sem re-grant de
   `service_role`; prefixo de versão único re-verificado na abertura do PR.
 
@@ -100,9 +105,15 @@ vazia). Reversível — reativou, o histórico reaparece. Prefs entram no cache 
 (query própria, `staleTime` alto, invalidada ao salvar) e são pré-condição das queries
 do sino. Mute in-app não afeta e-mail; canais independentes.
 
-**Store:** `notificationPrefs.ts` generaliza para `(channel, type)`; export
-`EMAIL_NOTIFICATION_TYPES` vira parte do catálogo (9 tipos) e nasce
-`INAPP_NOTIFICATION_TYPES` (22).
+**`markAllNotificationsAsRead` recebe o mesmo filtro.** Hoje ela marca TODAS as não
+lidas — como o claim de e-mail exclui linhas lidas, "marcar todas" silenciaria o
+digest de um tipo que o usuário mutou só no app. A mutation passa a excluir os tipos
+mutados in-app (e vira no-op sob `__all__`), com teste explícito de independência
+entre canais. `dismiss` individual só alcança linhas visíveis e não muda.
+
+**Store:** `notificationPrefs.ts` ganha leitura/escrita por canal contra as duas
+tabelas (funções de e-mail existentes intocadas); export `EMAIL_NOTIFICATION_TYPES`
+vira parte do catálogo (9 tipos) e nasce `INAPP_NOTIFICATION_TYPES` (22).
 
 ## Fase 2 — Pendências do Hub
 
@@ -110,17 +121,22 @@ do sino. Mute in-app não afeta e-mail; canais independentes.
 (15 min, `x-cron-secret`, `verify_jwt=false` no config.toml) varre clientes elegíveis
 e monta o e-mail com o que está pendente **agora**:
 
-- **Aprovações:** posts que entraram em `enviado_cliente` desde o cursor
-  (`post_status_events.to_status = 'enviado_cliente'`, `created_at > cursor`) **e que
+- **Aprovações:** posts que entraram em `enviado_cliente` dentro da janela do claim
+  (`post_status_events.to_status = 'enviado_cliente'`, `created_at` na janela) **e que
   ainda estão** nesse status canônico no momento do envio (status custom mapeiam via
   `behaves_as`; o canônico é a verdade, mantido pelo trigger z1). **Deduplicado por
   post** (`DISTINCT ON (post_id)`, transição mais recente) — um post pode entrar,
   sair e reentrar no status dentro da mesma janela e deve aparecer uma vez só.
-- **Mensagens:** linhas de `mensagens` com `is_workspace_user = true`,
-  `created_at > cursor` e ainda não vistas pelo cliente (marcador
-  `mensagens_last_seen` com `cliente_id`).
-- **Primeiro envio (cursor NULL):** horizonte de 72 h — não emaila backlog antigo
-  quando o workspace liga a feature.
+- **Mensagens:** linhas de `mensagens` com `is_workspace_user = true`, `created_at`
+  na janela e ainda não vistas pelo cliente (marcador `mensagens_last_seen` com
+  `cliente_id`).
+- **Janela de conteúdo = `(limite_inferior, claim_through]`**, onde
+  `limite_inferior = GREATEST(event_cursor_at, now() - 72h)` — o horizonte de 72 h
+  vale **sempre**, não só no primeiro envio: cursor NULL, workspace recém-ligado ou
+  religado depois de meses, o digest cobre no máximo as últimas 72 h (o backlog
+  completo mora no próprio Hub). O teto `claim_through` é fixado no claim (ver
+  protocolo abaixo) — conteúdo inserido depois dele cai na próxima janela em vez de
+  se perder atrás do cursor.
 
 **Colunas novas:**
 
@@ -129,7 +145,10 @@ e monta o e-mail com o que está pendente **agora**:
   explícita do dono).
 - `clientes.send_event_email boolean NOT NULL DEFAULT true` — ligou o workspace,
   todos os clientes com e-mail entram; desliga-se pontualmente.
-- `clientes.last_event_emailed_at timestamptz` — cursor + cooldown.
+- `clientes.event_cursor_at timestamptz` — **cursor entregue**: limite superior do
+  último digest enviado com sucesso; também baseia o cooldown de 4 h.
+- `clientes.event_claim_through timestamptz` + `clientes.event_claimed_at
+  timestamptz` — **lease do claim** em voo (ver protocolo abaixo).
 - `clientes.event_email_unsub_at timestamptz` — carimbo do descadastro do cliente.
 - Lembrete da armadilha de allowlist: os toggles/estados lidos pelo CRM entram no
   GRANT de colunas de `clientes`, em `clientes_v` e em `CLIENTE_SAFE_COLUMNS`
@@ -137,30 +156,60 @@ e monta o e-mail com o que está pendente **agora**:
 
 **Guarda de papel no banco (não só na UI).** A policy `clientes_update` atual permite
 UPDATE a qualquer membro ativo do tenant (só checa `conta_id`) — sem guarda extra, um
-`agent` ligaria e-mails de cliente ou limparia `event_email_unsub_at` via PostgREST.
-As escritas em `send_event_email` / `event_email_unsub_at` e no toggle
-`workspaces.send_client_event_emails` (inclusive a linha mestre "Todos os clientes")
-passam por RPCs `SECURITY DEFINER` que validam owner/admin em `workspace_members` +
-tenant (padrão `set_membro_crm_user`), e a escrita direta dessas colunas por
-`authenticated` é bloqueada no banco (trigger de guarda ou GRANT de UPDATE por coluna,
-a decidir no plano após inspecionar os grants atuais de `clientes`). O RPC de religar
-pós-descadastro é o único caminho que limpa `event_email_unsub_at`.
+`agent` ligaria e-mails de cliente ou limparia `event_email_unsub_at` via PostgREST. E
+GRANT de UPDATE por coluna não fecha o buraco de INSERT: um `agent` poderia criar o
+cliente já com os campos preenchidos — armadilha que o próprio repo documenta e
+resolve em `guard_cliente_foto` (`20260817000001`, POST-REVIEW FIX #1) e
+`guard_financial_write`. Portanto:
 
-**Gates (todos):** toggle do workspace + toggle do cliente + e-mail preenchido +
-cooldown de 4 h + conteúdo pendente não vazio + **Hub acessível**: o workspace precisa
-de `feature_hub_portal` (seleção de candidatos) e `resolveHubUrl` precisa devolver URL
-não vazia no envio (token do Hub ativo e não expirado) — sem destino utilizável, o
-cliente é pulado sem claim e sem avançar o cursor (um e-mail de "pendências do Hub"
-sem Hub acessível seria inacionável). **Claim atômico** espelhando o padrão
-do digest da agência: RPC `claim_client_event_emails(ids)` com
-`UPDATE clientes SET last_event_emailed_at = now() WHERE id IN (SELECT … FOR UPDATE
-SKIP LOCKED) RETURNING id, last_event_emailed_at (anterior)`, re-checando os gates
-dentro do RPC (honra opt-out tardio). Falha no envio → reset do cursor ao valor
-anterior (at-least-once); `Idempotency-Key` do Resend = SHA-1 de `cliente_id` + os
-itens como identidades compostas ordenadas (`pse:<post_status_event_id>`,
-`msg:<mensagem_id>` — os ids numéricos vêm de sequências independentes e colidiriam
-sem o prefixo), dedupando o retry transitório. ACL do RPC:
-somente `service_role` (com re-grant explícito).
+- **Trigger `BEFORE INSERT OR UPDATE`** em `clientes` (shape do `guard_cliente_foto`:
+  branch em `TG_OP`, SECURITY DEFINER, checagem de papel determinística) guardando
+  `send_event_email`, `event_email_unsub_at`, **`send_report_email`** (a matriz é
+  owner/admin — o campo antigo entra na mesma guarda) e as colunas de cursor/lease
+  (`event_cursor_at`, `event_claim_through`, `event_claimed_at` — só o service role
+  escreve). O trigger isenta service role (unsub e cron escrevem por ele).
+- Escritas legítimas via RPCs `SECURITY DEFINER` owner/admin + tenant (padrão
+  `set_membro_crm_user`): toggles por cliente, o toggle
+  `workspaces.send_client_event_emails` (inclusive a linha mestre "Todos os
+  clientes") e o religar pós-descadastro — único caminho que limpa
+  `event_email_unsub_at`.
+- **As telas antigas migram para os RPCs**: o toggle de relatório por cliente
+  (`cliente-detalhe/tabs/RelatoriosTab.tsx`) e o do workspace
+  (`configuracao/tabs/RelatoriosTab.tsx`) passam a escrever pelo mesmo caminho
+  guardado que a central.
+
+**Gates (todos):** toggle do workspace + toggle do cliente + **`clientes.status =
+'ativo'`** (encerrar um cliente não desativa o token do Hub — sem esse gate, um
+cliente encerrado com token válido receberia o outbound novo; pausado também fica de
+fora) + e-mail preenchido + cooldown de 4 h sobre `event_cursor_at` + conteúdo
+pendente não vazio + **Hub acessível**: o workspace precisa de `feature_hub_portal`
+(seleção de candidatos) e `resolveHubUrl` precisa devolver URL não vazia no envio
+(token do Hub ativo e não expirado) — sem destino utilizável, o cliente é pulado sem
+claim e sem avançar o cursor (um e-mail de "pendências do Hub" sem Hub acessível
+seria inacionável).
+
+**Protocolo de claim: cursor entregue separado de lease.** O desenho ingênuo
+("avança cursor para `now()` no claim, reseta no catch") perde eventos de dois
+jeitos: conteúdo inserido entre a leitura e o claim fica atrás do cursor novo e nunca
+mais é buscado; e se o runtime morrer entre o claim e o envio, o catch não roda e o
+digest some para sempre. Em vez disso:
+
+1. **Claim (RPC `claim_client_event_emails`)**: para clientes elegíveis (gates
+   re-checados dentro do RPC, honrando opt-out tardio) **sem lease vigente**
+   (`event_claimed_at IS NULL OR < now() - 30 min`), seta
+   `event_claim_through = now()`, `event_claimed_at = now()` — `FOR UPDATE SKIP
+   LOCKED`, `RETURNING id, event_cursor_at, event_claim_through`. ACL: somente
+   `service_role` (com re-grant explícito).
+2. **Leitura**: janela fixa `(GREATEST(event_cursor_at, now()-72h),
+   event_claim_through]` — o teto veio do claim, então inserts posteriores caem na
+   próxima janela em vez de se perderem.
+3. **Sucesso**: `event_cursor_at = event_claim_through`, lease limpo.
+4. **Falha tratada**: lease limpo, cursor intacto — retry no próximo tick.
+5. **Crash**: o lease expira em 30 min e o próximo run re-claima a MESMA janela —
+   at-least-once de verdade. O `Idempotency-Key` do Resend — SHA-1 de `cliente_id` +
+   itens como identidades compostas ordenadas (`pse:<post_status_event_id>`,
+   `msg:<mensagem_id>`; ids de sequências independentes colidiriam sem prefixo) —
+   dedupa o reenvio caso o e-mail tenha saído antes do crash.
 
 **E-mail:** builder `_shared/client-event-email.ts` reutilizando a infra do e-mail de
 relatório — remetente whitelabel `${workspace.name} <notificacoes@mesaas.com.br>`, cor
@@ -171,16 +220,21 @@ aguardando aprovação (título/tipo) + contagem de mensagens não lidas. Assunt
 `reportCronFailure` no catch, como os demais crons.
 
 **Descadastro:** rodapé com link para edge function nova `client-email-unsub`
-(GET, `verify_jwt=false`): token = HMAC-SHA256 de `cliente_id` com
+(`verify_jwt=false`): token = HMAC-SHA256 de `cliente_id` com
 `TOKEN_ENCRYPTION_KEY` (sem segredo novo, sem token armazenado), comparação em tempo
-constante; valida, seta `send_event_email = false` + `event_email_unsub_at = now()` +
-audit log, responde página simples de confirmação. **Replay é idempotente por
-design**: o token determinístico não tem expiração, nonce nem estado consumido —
-reapresentá-lo apenas re-executa o descadastro (inócuo), que é o comportamento padrão
-de links de unsubscribe; token inválido responde página de erro genérica. Rotacionar
-`TOKEN_ENCRYPTION_KEY` invalida links antigos, que degradam para essa página de erro.
-Na central, a célula mostra "desativado pelo cliente"; religar exige diálogo de
-confirmação explícita e limpa `event_email_unsub_at` (via RPC owner/admin).
+constante. **GET não muta** — scanners de link, antivírus e gateways de e-mail seguem
+GETs antes do destinatário e descadastrariam involuntariamente. O GET valida o token
+e mostra uma página de confirmação com botão; o **POST** executa a mutação
+(`send_event_email = false` + `event_email_unsub_at = now()` + audit log) e mostra a
+confirmação. O e-mail também traz os headers `List-Unsubscribe` +
+`List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058), cujo one-click dos
+provedores já é POST no mesmo endpoint. **Replay é idempotente por design**: o token
+determinístico não tem expiração, nonce nem estado consumido — reapresentá-lo apenas
+re-executa o descadastro (inócuo); token inválido responde página de erro genérica.
+Rotacionar `TOKEN_ENCRYPTION_KEY` invalida links antigos, que degradam para essa
+página de erro. Na central, a célula mostra "desativado pelo cliente"; religar exige
+diálogo de confirmação explícita e limpa `event_email_unsub_at` (via RPC
+owner/admin).
 
 ## Erros e casos-limite
 
@@ -198,15 +252,21 @@ confirmação explícita e limpa `event_email_unsub_at` (via RPC owner/admin).
 - **Vitest:** exaustividade do catálogo vs `NotificationType`; central (render por
   papel, toggles, master `__all__`, matriz de clientes com os 4 estados de célula);
   filtro de leitura no store (mutado some da lista e do contador; falha de prefs =
-  sem filtro); prefs store por canal.
-- **Deno:** `client-event-email-cron` (gates incl. Hub inacessível, cursor/cooldown,
-  horizonte de 72 h, dedupe por post na janela, reset-on-failure, idempotency key com
-  identidades compostas); builder do e-mail; `client-email-unsub` (token válido /
-  inválido / replay idempotente); update dos testes do digest para o 9º tipo.
-- **psql (entitlements):** RLS e CHECKs da `notification_email_prefs` generalizada
-  (coluna `channel`); ACLs dos claim RPCs (somente `service_role`); gates do
-  `claim_client_event_emails`; guarda de papel nas colunas novas de `clientes` e no
-  toggle do workspace (agent não escreve, owner/admin escreve via RPC).
+  sem filtro); `markAllNotificationsAsRead` filtrada (não marca tipos mutados;
+  no-op sob `__all__` — teste de independência entre canais); prefs store por canal
+  contra as duas tabelas.
+- **Deno:** `client-event-email-cron` (gates incl. Hub inacessível e
+  `status = 'ativo'`, janela `(cursor, claim_through]`, `GREATEST(…, now()-72h)`
+  sempre aplicado, lease expirado re-entrega a mesma janela, dedupe por post,
+  idempotency key com identidades compostas); builder do e-mail (headers RFC 8058);
+  `client-email-unsub` (GET não muta, POST muta, token válido / inválido / replay
+  idempotente); update dos testes do digest para o 9º tipo.
+- **psql (entitlements):** **membro removido não lê nem atualiza `notifications`**
+  (P0); RLS da `notification_inapp_prefs`; ACLs dos claim RPCs (somente
+  `service_role`); gates do `claim_client_event_emails` incl. lease; guarda de papel
+  em `clientes` cobrindo **INSERT e UPDATE** e também `send_report_email` e as
+  colunas de cursor/lease (agent não escreve nem cria com valor; owner/admin escreve
+  via RPC; service role passa).
 
 ## Rollout
 
