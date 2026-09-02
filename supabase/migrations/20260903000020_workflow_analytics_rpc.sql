@@ -11,6 +11,18 @@ DECLARE
   remaining int := p_days;
   cursor_ts timestamptz := p_start;
 BEGIN
+  -- Guard: a NULL p_tz makes the isodow check below evaluate to NULL, which
+  -- plpgsql's IF treats as false -- remaining never decrements and the loop
+  -- never terminates. A NULL p_start/p_days is undefined input either way.
+  -- A very large p_days would otherwise spin the loop once per calendar day
+  -- with no bound; 3660 (~10y) is generous for any real prazo_dias.
+  IF p_days IS NULL OR p_tz IS NULL OR p_start IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF p_days > 3660 THEN
+    RETURN NULL;
+  END IF;
+
   WHILE remaining > 0 LOOP
     cursor_ts := cursor_ts + interval '1 day';
     IF extract(isodow FROM cursor_ts AT TIME ZONE p_tz) < 6 THEN
@@ -20,6 +32,17 @@ BEGIN
   RETURN cursor_ts;
 END;
 $$;
+
+-- Supabase's default ACL grants EXECUTE on every new public-schema function
+-- directly to anon/authenticated (a per-role default privilege, not a PUBLIC
+-- grant), so REVOKE ALL FROM PUBLIC alone does not remove anon's access --
+-- verified against the working recipe in
+-- supabase/migrations/20260901100000_account_metrics_parity.sql:83-88.
+-- REVOKE ALL FROM PUBLIC also strips the implicit PUBLIC-derived access that
+-- service_role would otherwise have, hence the explicit re-grant below.
+REVOKE ALL ON FUNCTION add_business_days(timestamptz, int, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION add_business_days(timestamptz, int, text) TO authenticated, service_role;
+REVOKE EXECUTE ON FUNCTION add_business_days(timestamptz, int, text) FROM anon;
 
 CREATE OR REPLACE FUNCTION etapa_deadline(
   p_data_limite date,
@@ -31,6 +54,7 @@ CREATE OR REPLACE FUNCTION etapa_deadline(
 LANGUAGE sql IMMUTABLE
 AS $$
   SELECT CASE
+    WHEN p_tz IS NULL THEN NULL
     WHEN p_data_limite IS NOT NULL
       THEN ((p_data_limite + 1)::timestamp AT TIME ZONE p_tz)
     WHEN p_iniciado_em IS NULL THEN NULL
@@ -40,10 +64,27 @@ AS $$
   END;
 $$;
 
+-- Same default-ACL gotcha as add_business_days above.
+REVOKE ALL ON FUNCTION etapa_deadline(date, timestamptz, int, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION etapa_deadline(date, timestamptz, int, text, text) TO authenticated, service_role;
+REVOKE EXECUTE ON FUNCTION etapa_deadline(date, timestamptz, int, text, text) FROM anon;
+
 -- Workspace analytics aggregate. SECURITY INVOKER + explicit conta_id filter on
 -- every relation that has one; workflow_etapas (no conta_id) only via the wf join.
 -- Returns NULL when there is no active workspace or the plan lacks
 -- feature_analytics_reports (fail-closed; the service maps NULL -> not_entitled).
+--
+-- Fluxos concluídos e depois arquivados continuam no histórico: arquivar um
+-- fluxo já concluído não deve encolher os números passados. A CTE `wf` inclui
+-- workflows arquivados quando concluido_em IS NOT NULL, confiando na garantia
+-- do trigger da Task 1 (concluido_em sobrevive a concluido->arquivado e é
+-- limpo ao reabrir concluido->ativo); um fluxo arquivado que nunca foi
+-- concluído continua excluído. O KPI `ativos` permanece restrito a
+-- status = 'ativo'.
+--
+-- p_membro_id restringe apenas as métricas derivadas de etapas (pontualidade,
+-- etapas, equipe); os KPIs de fluxo (concluidos, ativos, tempo médio, semanas)
+-- ignoram o parâmetro.
 CREATE OR REPLACE FUNCTION get_workflow_analytics(
   p_from timestamptz,
   p_to timestamptz,
@@ -65,17 +106,18 @@ wf AS (
   SELECT w.*
   FROM workflows w
   JOIN guard g ON w.conta_id = g.conta_id
-  WHERE w.status <> 'arquivado'
+  WHERE (w.status <> 'arquivado' OR w.concluido_em IS NOT NULL)
     AND (p_cliente_id IS NULL OR w.cliente_id = p_cliente_id)
     AND (p_template_id IS NULL OR w.template_id = p_template_id)
 ),
 concluidos AS (
   SELECT * FROM wf
-  WHERE status = 'concluido' AND concluido_em >= p_from AND concluido_em < p_to
+  WHERE (status = 'concluido' OR (status = 'arquivado' AND concluido_em IS NOT NULL))
+    AND concluido_em >= p_from AND concluido_em < p_to
 ),
 concluidos_prev AS (
   SELECT * FROM wf
-  WHERE status = 'concluido'
+  WHERE (status = 'concluido' OR (status = 'arquivado' AND concluido_em IS NOT NULL))
     AND concluido_em >= p_from - (p_to - p_from) AND concluido_em < p_from
 ),
 inicio AS (
@@ -186,4 +228,7 @@ SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM guard) THEN NULL ELSE jsonb_build_obj
 ) END;
 $$;
 
-GRANT EXECUTE ON FUNCTION get_workflow_analytics(timestamptz, timestamptz, text, bigint, bigint, bigint) TO authenticated;
+-- Same default-ACL gotcha as add_business_days/etapa_deadline above.
+REVOKE ALL ON FUNCTION get_workflow_analytics(timestamptz, timestamptz, text, bigint, bigint, bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION get_workflow_analytics(timestamptz, timestamptz, text, bigint, bigint, bigint) TO authenticated, service_role;
+REVOKE EXECUTE ON FUNCTION get_workflow_analytics(timestamptz, timestamptz, text, bigint, bigint, bigint) FROM anon;
