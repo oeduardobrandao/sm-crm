@@ -546,16 +546,42 @@ rollback;
 -- =====================================================================
 -- 11. equipe[]/etapas[] array order is deterministic under ties: calling
 --     the RPC repeatedly with identical arguments must return byte-identical
---     array order every time, and the tie must resolve via the documented
---     canonical tiebreaker (membro_id ASC / nome ASC), not an arbitrary one.
+--     array order every time, the tie must resolve via the documented
+--     canonical tiebreaker (membro_id ASC / nome ASC), and -- the part a
+--     pure output comparison on a 2-row tie cannot prove -- the deployed
+--     function's SOURCE must still carry both tiebreaker fragments.
+--
+--     WHY THE SOURCE CHECK, NOT JUST BEHAVIOUR (fix round 1 finding): on a
+--     tiny, uncommitted (begin;/rollback;) 2-row tie like this one, Postgres
+--     plans etapas_agg/equipe as a GroupAggregate over an explicit `Sort Key:
+--     e.nome` / `Sort Key: e.responsavel_id` (confirmed with EXPLAIN
+--     ANALYZE against this exact fixture) -- table stats for rows that were
+--     never committed are always stale, so the planner never has the row
+--     counts that would make it switch to HashAggregate. That Sort is
+--     ASCENDING by construction, so it independently reproduces nome-ASC /
+--     membro_id-ASC for the tied rows regardless of whether the outer
+--     `ORDER BY ..., ea.nome` / `ORDER BY ..., eq.membro_id` fragment is
+--     even still there. Concretely: stripping `, ea.nome` or `, eq.membro_id`
+--     from the migration still passed every assertion below when this
+--     section only compared behaviour -- confirmed by reapplying both
+--     mutations and rerunning. No choice of tied *values* fixes this for
+--     etapas (the coincidental sort key literally IS `nome`, so alphabetical
+--     is alphabetical no matter which two names are picked); the explicit,
+--     id-diverging-from-insertion-order membros fixture below is kept as
+--     real defense against a wrong-direction mutation (ASC -> DESC, which
+--     the behavioural assertions genuinely do catch), not as the guard
+--     against outright removal -- that guard is the `pg_get_functiondef`
+--     substring check.
 -- =====================================================================
 begin;
 do $$
 declare
   v_ws uuid; v_user uuid := gen_random_uuid();
   v_cli bigint; v_m1 bigint; v_m2 bigint;
+  v_id_lo bigint; v_id_hi bigint;
   v_wf bigint;
   v_result1 jsonb; v_result2 jsonb;
+  v_src text;
   i int;
 begin
   v_ws := et_make_workspace('pro');
@@ -563,15 +589,22 @@ begin
   insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
   update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
   insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
-  insert into membros (user_id, conta_id, nome) values (v_user, v_ws, 'Zeta') returning id into v_m1;
-  insert into membros (user_id, conta_id, nome) values (v_user, v_ws, 'Alfa') returning id into v_m2;
+
+  -- Explicit ids, HIGHER assigned to the row inserted FIRST: insertion order
+  -- (Zeta then Alfa) deliberately diverges from membro_id ASC (Alfa's id is
+  -- lower despite being inserted second). A regression to "whatever order
+  -- the join happens to produce" instead of the documented `eq.membro_id`
+  -- tiebreak -- e.g. a direction flip -- shows up as a real diff here.
+  v_id_lo := nextval('membros_id_seq');
+  v_id_hi := nextval('membros_id_seq');
+  insert into membros (id, user_id, conta_id, nome) values (v_id_hi, v_user, v_ws, 'Zeta') returning id into v_m1;
+  insert into membros (id, user_id, conta_id, nome) values (v_id_lo, v_user, v_ws, 'Alfa') returning id into v_m2;
+  assert v_m1 > v_m2, 'setup sanity: Zeta (inserted first) must hold the higher id, diverging from insertion order';
 
   insert into workflows (user_id, conta_id, cliente_id, titulo, status) values (v_user, v_ws, v_cli, 'WF tie', 'ativo') returning id into v_wf;
 
   -- Two etapas with equal media_dias (tie); two membros each with exactly
-  -- one concluded etapa (concluidas tie). Names deliberately reverse the id
-  -- order, so a regression to "insertion order" (instead of the documented
-  -- id/nome tiebreaker) would show up as a real diff.
+  -- one concluded etapa (concluidas tie).
   insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo, responsavel_id, status, iniciado_em, concluido_em)
     values (v_wf, 1, 'Zebra', 3, 'padrao', v_m1, 'concluido', now() - interval '2 days', now());
   insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo, responsavel_id, status, iniciado_em, concluido_em)
@@ -596,6 +629,20 @@ begin
   assert v_result1->'etapas'->0->>'nome' = 'Alpha',
     format('tied etapas[] must break ties by nome ASC (Alpha before Zebra), got %s', v_result1->'etapas');
 
-  raise notice 'PASS 74.11 equipe[]/etapas[] array order is deterministic under ties (10 identical calls compared)';
+  -- The deterministic guard against silent removal (fix round 1): the
+  -- deployed function's own source must still carry both ORDER BY
+  -- tiebreaker fragments verbatim. pg_get_functiondef returns a
+  -- LANGUAGE sql function's body essentially verbatim (confirmed: it
+  -- reproduces this migration's exact text byte-for-byte here), so this is
+  -- not a fuzzy/heuristic match.
+  select pg_get_functiondef('get_workflow_analytics(timestamptz,timestamptz,text,bigint,bigint,bigint)'::regprocedure)
+    into v_src;
+
+  assert position('ORDER BY eq.concluidas DESC, eq.membro_id)' in v_src) > 0,
+    'equipe[]''s ORDER BY must still carry the eq.membro_id tiebreaker in the deployed function source';
+  assert position('ORDER BY ea.media_dias DESC NULLS LAST, ea.nome)' in v_src) > 0,
+    'etapas[]''s ORDER BY must still carry the ea.nome tiebreaker in the deployed function source';
+
+  raise notice 'PASS 74.11 equipe[]/etapas[] array order is deterministic under ties (10 identical calls + source-level tiebreaker guard)';
 end $$;
 rollback;
