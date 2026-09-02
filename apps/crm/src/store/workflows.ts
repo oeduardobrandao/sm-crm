@@ -93,6 +93,7 @@ export interface Workflow {
   template_id?: number | null;
   status: 'ativo' | 'concluido' | 'arquivado';
   etapa_atual: number;
+  concluido_em?: string | null;
   recorrente: boolean;
   modo_prazo?: 'padrao' | 'data_fixa' | 'data_entrega';
   link_notion?: string | null;
