@@ -81,9 +81,9 @@ interface EntregasFiltersProps {
 }
 
 const STATUS_OPTIONS: { value: StatusFilter; label: string; color: string }[] = [
-  { value: 'atrasado', label: 'Atrasados', color: '#ef4444' },
-  { value: 'urgente', label: 'Urgentes', color: '#ea580c' },
-  { value: 'em_dia', label: 'Em dia', color: '#3ecf8e' },
+  { value: 'atrasado', label: 'Atrasados', color: 'var(--danger)' },
+  { value: 'urgente', label: 'Urgentes', color: 'var(--warning)' },
+  { value: 'em_dia', label: 'Em dia', color: 'var(--success)' },
 ];
 
 function countActiveFilters(filters: FilterState, mode: FiltersMode): number {
