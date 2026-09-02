@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -384,5 +384,38 @@ describe('MensagensPage — feature-flag behavior', () => {
     expect(mockClientes).not.toHaveBeenCalled();
     expect(mockSeen).not.toHaveBeenCalled();
     expect(mockFeed).not.toHaveBeenCalled();
+  });
+
+  it('(h) both flags on: a deep-linked equipe thread never marks clientes mensagens seen', async () => {
+    // Prefetching the clientes conversas/clientes queries in the background
+    // is fine here (that's `enabled`, not `seenEnabled`) -- what must not
+    // happen is the mark-seen WRITE, since the clientes pane never rendered
+    // (e.g. the user followed a team_message notification straight in).
+    mockMatchMedia(true); // desktop: list renders alongside the thread slot
+    renderPage('/mensagens/equipe/42');
+
+    expect(await screen.findByTestId('equipe-conversa-42')).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(mockSeen).not.toHaveBeenCalled();
+  });
+
+  it('(i) both flags on: bare /mensagens (clientes default tab) marks clientes mensagens seen once', async () => {
+    mockMatchMedia(true); // desktop, so both columns render at once
+    renderPage('/mensagens');
+
+    expect(await screen.findByText('ACME')).toBeInTheDocument();
+    await waitFor(() => expect(mockSeen).toHaveBeenCalledTimes(1));
+  });
+
+  it('(j) switching from Equipe to the Clientes pill marks clientes mensagens seen at that moment', async () => {
+    mockMatchMedia(true); // desktop: both the list and pills render on the equipe deep link too
+    renderPage('/mensagens/equipe/42');
+
+    expect(await screen.findByTestId('equipe-conversa-42')).toBeInTheDocument();
+    expect(mockSeen).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('mensagens-tab-clientes'));
+
+    await waitFor(() => expect(mockSeen).toHaveBeenCalledTimes(1));
   });
 });

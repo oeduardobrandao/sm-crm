@@ -12,7 +12,18 @@ import {
 
 const PAGE_SIZE = 50;
 
-export function useMensagensData(clienteId: number | null, enabled = true) {
+export function useMensagensData(
+  clienteId: number | null,
+  enabled = true,
+  // Separate from `enabled`: prefetching the clientes queries in the
+  // background (e.g. while the Equipe tab is the one showing, both flags on)
+  // is fine, but marking every client message seen is a WRITE that must only
+  // fire while the clientes pane is actually the one on screen -- otherwise
+  // a team-chat deep link would silently clear clientes unread state the
+  // user never looked at. Defaults to `enabled` so every other call site
+  // (mark-seen tied 1:1 to visibility) is unchanged.
+  seenEnabled = enabled,
+) {
   const qc = useQueryClient();
 
   const conversas = useQuery({
@@ -47,11 +58,16 @@ export function useMensagensData(clienteId: number | null, enabled = true) {
   });
 
   // Opening the page marks the whole feed seen for this user -- but only
-  // while this pane is actually the one showing (`enabled`); a workspace
-  // without feature_mensagens must never fire this write just because
-  // MensagensPage mounted the hook for a different, unrelated section.
+  // while the clientes pane is actually the one showing (`seenEnabled`), not
+  // just while its queries are prefetching (`enabled`): a team-chat deep
+  // link (both flags on) mounts this hook with `enabled: true` for
+  // background prefetch, but must not silently clear clientes unread state
+  // the user never looked at. Firing on `seenEnabled` transitioning to true
+  // (not just at mount) also means switching to the Clientes tab later marks
+  // it seen at that moment, matching pre-split behavior for the case where
+  // the pane really does show.
   useEffect(() => {
-    if (!enabled) return;
+    if (!seenEnabled) return;
     markMensagensSeen()
       .then(() => {
         qc.invalidateQueries({ queryKey: ['mensagens-unread'] });
@@ -63,7 +79,7 @@ export function useMensagensData(clienteId: number | null, enabled = true) {
       // must not surface as an unhandled rejection.
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled]);
+  }, [seenEnabled]);
 
   const invalidateFeed = () => {
     qc.invalidateQueries({ queryKey: ['mensagens-feed'] });

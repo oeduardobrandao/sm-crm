@@ -193,13 +193,22 @@ export default function MensagensPage() {
   // own flag: an URL for a section that isn't entitled is about to be
   // redirected away below and must not be allowed to poison `tab` first
   // (that raced with the redirect and left the page blank post-redirect).
+  //
+  // `tab` is deliberately NOT a dependency (read via the functional setTab
+  // form instead): a tab-pill click fires `setTab` and `navigate` together,
+  // and if this effect re-ran merely because `tab` changed -- while
+  // `equipeMode`/`location` hasn't caught up to the new URL in that same
+  // render yet -- it would see the *old* equipeMode still true and the
+  // *new* tab already flipped, and force it straight back. Keying only on
+  // the URL-derived values means the effect stays inert while just `tab`
+  // moves, and only re-asserts once the URL itself actually changes.
   useEffect(() => {
     if (equipeMode) {
-      if (equipeOn && tab !== 'equipe') setTab('equipe');
+      setTab((t) => (equipeOn && t !== 'equipe' ? 'equipe' : t));
     } else if (clienteIdParam != null) {
-      if (clientesOn && tab !== 'clientes') setTab('clientes');
+      setTab((t) => (clientesOn && t !== 'clientes' ? 'clientes' : t));
     }
-  }, [equipeMode, clienteIdParam, equipeOn, clientesOn, tab]);
+  }, [equipeMode, clienteIdParam, equipeOn, clientesOn]);
 
   // Snap-to-enabled: the `tab` initializer above runs while useWorkspaceLimits
   // is still loading (both flags false at that point), so it always defaults
@@ -234,6 +243,7 @@ export default function MensagensPage() {
   const { feed, conversas, clientes, sendGeneral, replyToPost } = useMensagensData(
     clienteId,
     clientesOn,
+    clientesOn && activeTab === 'clientes',
   );
 
   // A failed background refetch (e.g. window refocus, or the seen-marker's
