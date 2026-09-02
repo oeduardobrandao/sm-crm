@@ -66,9 +66,10 @@ export function buildClientEventEmail(p: ClientEventEmailParams): string {
        </td></tr>`
     : "";
 
+  const unreadLabel = unreadMessages === 1 ? "1 mensagem não lida" : `${unreadMessages} mensagens não lidas`;
   const unreadSection = unreadMessages > 0
     ? `<tr><td style="padding: 0 30px 20px;">
-        <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #374151;">Você também tem <strong>${unreadMessages} mensagens não lidas</strong>.</p>
+        <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #374151;">Você também tem <strong>${unreadLabel}</strong>.</p>
        </td></tr>`
     : "";
 

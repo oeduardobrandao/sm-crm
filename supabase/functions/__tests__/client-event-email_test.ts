@@ -69,6 +69,16 @@ Deno.test("shows unread message count only when greater than zero", () => {
 
   const noUnread = buildClientEventEmail({ ...BASE_PARAMS, unreadMessages: 0 });
   assert(!noUnread.includes("mensagens não lidas"), "unread copy rendered with zero messages");
+  assert(!noUnread.includes("mensagem não lida"), "singular unread copy rendered with zero messages");
+});
+
+Deno.test("unread message copy is singular for exactly 1, plural otherwise", () => {
+  const one = buildClientEventEmail({ ...BASE_PARAMS, unreadMessages: 1 });
+  assert(one.includes("1 mensagem não lida"), "expected singular copy for exactly 1 unread message");
+  assert(!one.includes("1 mensagens"), "plural copy leaked for exactly 1 unread message");
+
+  const two = buildClientEventEmail({ ...BASE_PARAMS, unreadMessages: 2 });
+  assert(two.includes("2 mensagens não lidas"), "expected plural copy for 2 unread messages");
 });
 
 Deno.test("Hub button is present with a hubUrl and absent when hubUrl is empty", () => {

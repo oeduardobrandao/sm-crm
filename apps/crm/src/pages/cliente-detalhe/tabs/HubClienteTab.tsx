@@ -15,12 +15,17 @@ import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
  * `workspace-slug` query.
  *
  * Role gating is deliberately DIFFERENT from most other tabs here. Tabs like
- * RelatoriosTab never re-check role because clienteTabs.model.ts already
- * redirects a disallowed role away at the route layer (STAFF-only). `hub`'s
- * `roles` entry is ALL on purpose: the plan wants every role to reach
- * /clientes/:id/hub, so an agent sees a RoleRestrictionNotice here instead
- * of being redirected. That means this tab — and only this tab among the
- * ones split so far — owns its own role check.
+ * RelatoriosTab rely on clienteTabs.model.ts to redirect a disallowed role
+ * away at the route layer (STAFF-only) for the whole-tab mount decision —
+ * RelatoriosTab does now ALSO do a narrower, field-level role check of its
+ * own (the send_report_email switch is disabled for non-owner/admin as
+ * defense-in-depth around its DB-level guard, migration 20260904000001),
+ * but that's a single field staying read-only, not a redirect or a
+ * RoleRestrictionNotice — it still never re-decides whether to mount at
+ * all. `hub`'s `roles` entry is ALL on purpose: the plan wants every role to
+ * reach /clientes/:id/hub, so an agent sees a RoleRestrictionNotice here
+ * instead of being redirected. That means this tab — and only this tab
+ * among the ones split so far — owns its own whole-tab role check.
  *
  * Query isolation: `getWorkspaceSlug` is scoped to only this route (it was
  * page-wide before). HubTab owns the rest of its queries internally

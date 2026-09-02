@@ -447,9 +447,23 @@ export async function runClientEventEmailCron(
       // the next tick's window still covers them and would re-mail the same
       // items. Under cap (bound === upper) every fetched row already
       // satisfies `created_at <= upper` by construction, so this is a no-op.
-      const boundIso = safeUpperMs !== null ? new Date(safeUpperMs).toISOString() : upperIso;
-      eventRowsArr = eventRowsArr.filter((e) => e.created_at <= boundIso);
-      messages = messages.filter((m) => m.created_at <= boundIso);
+      //
+      // The comparison itself MUST be numeric (epoch ms via Date.getTime()),
+      // not a raw string compare of `created_at <= boundIso`: PostgREST can
+      // render created_at in a different textual format than the ISO string
+      // this handler builds (production has returned `+00:00`-suffixed,
+      // microsecond-precision timestamps rather than `Z`-suffixed
+      // millisecond ones) -- ASCII comparison of two differently-formatted
+      // strings representing the same or nearby instants can misorder them.
+      // Date.parse() normalizes both sides before comparing. This still
+      // truncates to millisecond precision (JS Date has no microsecond
+      // field), so two distinct Postgres rows that differ only in their
+      // sub-millisecond digits would compare equal here -- an accepted,
+      // documented residual, not something this fix resolves.
+      const boundMs = safeUpperMs ?? upper.getTime();
+      const boundIso = new Date(boundMs).toISOString();
+      eventRowsArr = eventRowsArr.filter((e) => new Date(e.created_at).getTime() <= boundMs);
+      messages = messages.filter((m) => new Date(m.created_at).getTime() <= boundMs);
 
       // supabase-js can't DISTINCT ON: dedupe by post_id over the
       // created_at-ASC, bound-trimmed result. Iterating oldest-to-newest and

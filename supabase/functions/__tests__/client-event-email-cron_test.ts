@@ -29,12 +29,31 @@ function getPath(row: Row, path: string): unknown {
   }, row);
 }
 
-/** -1/0/1 for two values of the same comparable type (string or number) --
- * used by both the gt/lte filter check and the multi-key sort below, since
- * the handler now compares timestamps (string) AND ids (number) via the
- * same `.gt()`/`.order()` chain methods. */
+/** Loose ISO-8601-timestamp sniff (date + time prefix only, so it matches
+ * BOTH `...sssZ` and `...ssssss+00:00` shapes) -- used to route timestamp
+ * columns through date-aware comparison below instead of raw string
+ * comparison, the same way Postgres compares a real `timestamptz` column
+ * regardless of how a client happens to have formatted the literal. */
+function looksLikeIsoTimestamp(v: unknown): v is string {
+  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(v);
+}
+
+/** -1/0/1 for two values of the same comparable type (string, number, or an
+ * ISO-timestamp-shaped string compared as an instant) -- used by both the
+ * gt/lte filter check and the multi-key sort below, since the handler
+ * compares timestamps (string) AND ids (number) via the same
+ * `.gt()`/`.order()` chain methods. Timestamps get `Date.parse`-based
+ * comparison rather than lexical `<`/`>` so the fake stays a faithful
+ * PostgREST/Postgres simulation when a row's `created_at` is formatted
+ * differently than the handler's own ISO strings (prod has returned
+ * `+00:00`-suffixed, microsecond-precision timestamps rather than the
+ * `Z`-suffixed millisecond ones this fake used to assume everywhere --
+ * see the "prod timestamp format" test below). */
 function compareValues(a: unknown, b: unknown): number {
   if (typeof a === "number" && typeof b === "number") return a - b;
+  if (looksLikeIsoTimestamp(a) && looksLikeIsoTimestamp(b)) {
+    return new Date(a).getTime() - new Date(b).getTime();
+  }
   if (typeof a === "string" && typeof b === "string") return a < b ? -1 : a > b ? 1 : 0;
   return 0;
 }
@@ -512,7 +531,7 @@ Deno.test("message already seen by the client (last_seen_at >= created_at) is ex
   const { deps, sent } = makeDeps(db);
   const r = await runClientEventEmailCron(deps);
   assertEquals(r.emailed, 1);
-  assert(sent[0].html.includes("1 mensagens não lidas"), "expected exactly 1 unread message");
+  assert(sent[0].html.includes("1 mensagem não lida"), "expected exactly 1 unread message, singular copy");
 });
 
 // --- 8. no content ---------------------------------------------------------------
@@ -1077,7 +1096,91 @@ Deno.test("asymmetric cap (messages caps, events under): tick 2 does not repeat 
   assert(!sent2[0].html.includes("Event Early"), "tick 1's already-delivered event must not repeat in tick 2");
 });
 
-// --- 17. handler auth --------------------------------------------------------------------
+// --- 17. trim comparator: prod-shaped timestamps (+00:00 offset, microsecond precision) --
+//
+// Final whole-branch review (PR #437): the trim step compared `created_at
+// <= boundIso` as raw STRINGS. `boundIso` is always built by this handler's
+// own `new Date(...).toISOString()` (Z-suffixed, millisecond precision),
+// but PostgREST does not guarantee that shape for what it actually returns
+// -- prod has returned `+00:00`-suffixed, microsecond-precision timestamps
+// instead. Comparing two differently-formatted timestamp strings via
+// `<=`/`>` is fragile by construction; the fix compares them as instants
+// (`Date.parse`-based epoch ms) instead. This fake now also emits rows in
+// that prod-like format around the bound (see `compareValues`'s
+// `looksLikeIsoTimestamp` branch above, needed so the QUERY-level gt/lte
+// filters accept these rows too, not just the trim), so passing here is a
+// live regression guard against the ASCII-compare failure mode -- not just
+// a same-format happy path.
+
+Deno.test("trim comparator handles prod-shaped timestamps (+00:00 offset, microsecond precision) straddling the bound", async () => {
+  const clienteId = 21;
+  const floorMs = new Date("2026-08-10T12:00:00.000Z").getTime(); // NOW - 72h
+
+  // Messages: exactly EVENTS_QUERY_CAP (1000), 1 min apart, establishes the
+  // bound in the handler's own Z/ms format.
+  const messages: Row[] = [];
+  for (let i = 0; i < 1000; i++) {
+    messages.push({
+      id: 95_000 + i,
+      conta_id: "ws1",
+      cliente_id: clienteId,
+      is_workspace_user: true,
+      created_at: new Date(floorMs + (i + 1) * 60_000).toISOString(),
+    });
+  }
+  const boundIso = messages[999].created_at as string; // Z, ms precision
+  const boundMs = new Date(boundIso).getTime();
+
+  // "...sssZ" -> "...sss000+00:00" -- same instant, prod-shaped text.
+  const toProdFormat = (ms: number) => new Date(ms).toISOString().replace(/\.(\d{3})Z$/, ".$1000+00:00");
+
+  // Three events, all in the prod-like format, straddling the bound by a
+  // full second in either direction -- well clear of the ms-truncation
+  // residual the fix's comment documents as accepted (sub-ms ties).
+  const events: Row[] = [
+    {
+      id: 70_001,
+      post_id: 80_001,
+      conta_id: "ws1",
+      to_status: "enviado_cliente",
+      created_at: toProdFormat(boundMs - 1000), // 1s before the bound
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Prod Before" },
+    },
+    {
+      id: 70_002,
+      post_id: 80_002,
+      conta_id: "ws1",
+      to_status: "enviado_cliente",
+      created_at: toProdFormat(boundMs), // exactly at the bound
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Prod At Bound" },
+    },
+    {
+      id: 70_003,
+      post_id: 80_003,
+      conta_id: "ws1",
+      to_status: "enviado_cliente",
+      created_at: toProdFormat(boundMs + 1000), // 1s after the bound
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Prod After" },
+    },
+  ];
+
+  const ws = [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }];
+  const db = makeFakeDb(
+    [claimedRow({ id: clienteId, conta_id: "ws1", event_cursor_at: null, event_claim_through: NOW.toISOString() })],
+    { postStatusEvents: events, mensagens: messages, workspaces: ws },
+  );
+  const { deps, sent } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.emailed, 1);
+  assertEquals(db.successCalls, [
+    { ids: [clienteId], patch: { event_cursor_at: boundIso, event_claim_through: null } },
+  ]);
+  assert(sent[0].html.includes("Prod Before"), "expected the pre-bound prod-format event to survive the trim");
+  assert(sent[0].html.includes("Prod At Bound"), "expected the exactly-at-bound prod-format event to survive the trim (<=)");
+  assert(!sent[0].html.includes("Prod After"), "expected the post-bound prod-format event to be trimmed out");
+});
+
+// --- 18. handler auth --------------------------------------------------------------------
 
 Deno.test("handler rejects a wrong cron secret with 401 before any db call", async () => {
   const handler = createClientEventEmailCronHandler({
