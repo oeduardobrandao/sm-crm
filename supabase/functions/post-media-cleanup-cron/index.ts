@@ -118,18 +118,22 @@ Deno.serve(createPostMediaCleanupCronHandler({
       streamErrors = sweep.errors;
     }
 
+    // equipe-chat (team group chats): abandoned tmp uploads + staged attachments
+    // whose message was never sent. Independent of the R2 orphan scan below (own
+    // prefix, own table) — wrapped the same way so a failure here can't block
+    // purgeTrash/canary below, nor vice versa. Deliberately BEFORE the orphan scan,
+    // same relative position — and same reasoning — as the stream sweeps above:
+    // that full-bucket listing has hit WORKER_RESOURCE_LIMIT on prod, and dying
+    // there must not starve this small, bounded cleanup (staged attachments would
+    // otherwise keep their quota reserved indefinitely while never getting reaped).
+    const equipeChat = await runEquipeChatCleanup({ db: svc, listOrphanKeys, trashObject });
+
     // R2 orphan cleanup LAST: the most expensive, least urgent stage. A resource-limit
     // death here costs only this stage; everything above has already committed.
     // Hardened module (see orphan-scan.ts): chunked known-set queries, abort on any
     // query error, and an empty-known-set circuit breaker — the 2026-08 incident
     // (silent .in() failures -> empty known set -> mass deletion) cannot recur.
     const scan = await runOrphanScan({ db: svc, listOrphanKeys, trashObject });
-
-    // equipe-chat (team group chats): abandoned tmp uploads + staged attachments
-    // whose message was never sent. Independent of the R2 orphan scan above (own
-    // prefix, own table) — wrapped the same way so a failure here can't block
-    // purgeTrash/canary below, nor vice versa.
-    const equipeChat = await runEquipeChatCleanup({ db: svc, listOrphanKeys, trashObject });
 
     // Purge trash/ entries past their 30-day undo window (bounded per run).
     let trashPurged = 0;
