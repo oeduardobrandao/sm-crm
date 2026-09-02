@@ -1,4 +1,5 @@
 import { escapeHtml } from "./report-template/escape.ts";
+import { sanitizeSubjectValue } from "./lifecycle-emails.ts";
 
 /**
  * Client-facing "you have pending items" email (Fase 2 do Hub: pendências).
@@ -17,8 +18,13 @@ export interface ClientEventEmailParams {
   unsubUrl: string;
 }
 
+/**
+ * `workspaceName` is tenant-editable free text. sanitizeSubjectValue strips
+ * control characters (a bare newline makes Resend reject the whole send) and
+ * bounds the length, same as the founder-notice subjects in lifecycle-emails.ts.
+ */
 export function clientEventSubject(workspaceName: string): string {
-  return `Você tem pendências com ${workspaceName}`;
+  return `Você tem pendências com ${sanitizeSubjectValue(workspaceName)}`;
 }
 
 export function buildClientEventEmail(p: ClientEventEmailParams): string {

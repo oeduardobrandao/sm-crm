@@ -145,7 +145,14 @@ function claimedRow(
 
 function makeDeps(db: ReturnType<typeof makeFakeDb>, over?: Partial<ClientEventEmailCronDeps>) {
   const sent: Array<
-    { to: string; subject: string; html: string; idempotencyKey: string; headers: Record<string, string> }
+    {
+      to: string;
+      subject: string;
+      html: string;
+      idempotencyKey: string;
+      headers: Record<string, string>;
+      from: string;
+    }
   > = [];
   const auditCalls: Array<Record<string, unknown>> = [];
   const deps: ClientEventEmailCronDeps = {
@@ -156,7 +163,14 @@ function makeDeps(db: ReturnType<typeof makeFakeDb>, over?: Partial<ClientEventE
     unsubBaseUrl: "https://x.supabase.co",
     resolveHubUrl: () => Promise.resolve("https://app.mesaas.com.br/w/x/hub/tok"),
     sendEmail: (p) => {
-      sent.push({ to: p.to, subject: p.subject, html: p.html, idempotencyKey: p.idempotencyKey, headers: p.headers });
+      sent.push({
+        to: p.to,
+        subject: p.subject,
+        html: p.html,
+        idempotencyKey: p.idempotencyKey,
+        headers: p.headers,
+        from: p.from,
+      });
       return Promise.resolve();
     },
     auditLog: (entry) => {
@@ -236,6 +250,48 @@ Deno.test("claimed client with 2 pending posts + 1 unseen message: window, one e
   assertEquals(db.releaseCalls.length, 0);
   assertEquals(auditCalls.length, 1);
   assertEquals(auditCalls[0].action, "client_event_email_sent");
+});
+
+// --- 3b. From header sanitization -----------------------------------------------
+
+Deno.test("From header strips CR/LF and angle brackets from a hostile workspace name", async () => {
+  const db = makeFakeDb(
+    [
+      claimedRow({
+        id: 12,
+        conta_id: "ws1",
+        event_cursor_at: "2026-08-13T00:00:00.000Z",
+        event_claim_through: NOW.toISOString(),
+      }),
+    ],
+    {
+      postStatusEvents: [
+        {
+          id: 120,
+          post_id: 1200,
+          conta_id: "ws1",
+          to_status: "enviado_cliente",
+          created_at: "2026-08-13T05:00:00.000Z",
+          workflow_posts: { cliente_id: 12, status: "enviado_cliente", titulo: "Post" },
+        },
+      ],
+      workspaces: [
+        { id: "ws1", name: 'Evil\r\nBcc: attacker@evil.test\r\n<script>"', brand_color: "#ffbf30", logo_url: null },
+      ],
+    },
+  );
+  const { deps, sent } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.emailed, 1);
+  assertEquals(sent.length, 1);
+  assert(!sent[0].from.includes("\r"), "carriage return survived into the From header");
+  assert(!sent[0].from.includes("\n"), "newline survived into the From header");
+  assert(!sent[0].from.includes("<script>"), "angle brackets survived into the From header");
+  assert(!sent[0].from.includes('"'), "double quote survived into the From header");
+  // Exactly one '<' / '>' pair -- the notificacoes@mesaas.com.br address itself.
+  assertEquals((sent[0].from.match(/</g) ?? []).length, 1);
+  assertEquals((sent[0].from.match(/>/g) ?? []).length, 1);
+  assert(sent[0].from.endsWith("<notificacoes@mesaas.com.br>"), "expected the real address to survive intact");
 });
 
 // --- 4. NULL cursor: floor = now-72h ------------------------------------------

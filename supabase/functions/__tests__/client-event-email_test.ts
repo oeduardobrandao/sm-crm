@@ -97,6 +97,13 @@ Deno.test("clientEventSubject builds the spec'd subject line", () => {
   assertEquals(clientEventSubject("Agencia X"), "Você tem pendências com Agencia X");
 });
 
+Deno.test("clientEventSubject strips control characters from a hostile workspace name", () => {
+  const subject = clientEventSubject("Evil\nName");
+  assert(!subject.includes("\n"), "newline survived into the subject");
+  assert(!subject.includes("\r"), "carriage return survived into the subject");
+  assertEquals(subject, "Você tem pendências com Evil Name");
+});
+
 // --- token roundtrip -----------------------------------------------------------
 
 Deno.test("signUnsubToken/verifyUnsubToken round-trip returns the clienteId", async () => {

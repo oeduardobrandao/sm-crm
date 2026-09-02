@@ -152,6 +152,21 @@ function maxDate(iso: string | null, floor: Date): Date {
 }
 
 /**
+ * `workspaceName` is tenant-editable free text, interpolated into the From
+ * display name (`"${name} <notificacoes@mesaas.com.br>"`). CR/LF could break
+ * out of the header into a second header (header injection); `<`, `>` and `"`
+ * could close the display name early and forge a different address inside
+ * the same From value. Strip both classes before composing the header. The
+ * HTML body's own copy of workspaceName is untouched -- buildClientEventEmail
+ * already escapes it for that context.
+ */
+function sanitizeFromName(name: string): string {
+  // deno-lint-ignore no-control-regex
+  const cleaned = name.replace(/[\x00-\x1f\x7f]+/g, " ").replace(/[<>"]/g, "").replace(/\s+/g, " ").trim();
+  return cleaned || "Mesaas";
+}
+
+/**
  * Stable per (cliente, exact composite id set); order-insensitive. Mirrors
  * buildDigestIdempotencyKey's sha1-16 approach (_shared/notification-email.ts)
  * over sorted composite ids ("pse:<id>" / "msg:<id>").
@@ -308,7 +323,7 @@ export async function runClientEventEmailCron(
         subject: clientEventSubject(workspaceName),
         html,
         idempotencyKey,
-        from: `${workspaceName} <notificacoes@mesaas.com.br>`,
+        from: `${sanitizeFromName(workspaceName)} <notificacoes@mesaas.com.br>`,
         headers: {
           // RFC 8058 one-click unsubscribe.
           "List-Unsubscribe": `<${unsubUrl}>`,
