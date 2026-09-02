@@ -244,17 +244,19 @@ function makeInviteAdmin(opts: {
   const failErr = { message: "injected failure" };
   const inserts: Array<{ table: string; row: any }> = [];
   const updates: Array<{ table: string; row: any }> = [];
+  const authInviteCalls: Array<{ email: string; opts: any }> = [];
   return {
     _events: () => events,
     _inserts: () => inserts,
     _updates: () => updates,
+    _authInviteCalls: () => authInviteCalls,
     auth: {
       admin: {
         // deno-lint-ignore no-explicit-any
         listUsers: (_a: any) => Promise.resolve({ data: { users: opts.authUser ? [{ ...opts.authUser, email: "a@x.com" }] : [] }, error: null }),
         deleteUser: (id: string) => { events.push("delUser:" + id); return Promise.resolve({ error: opts.failTable === "auth" ? failErr : null }); },
         generateLink: (_a: any) => { events.push("genLink"); return Promise.resolve({ data: { properties: { action_link: "https://link" } }, error: null }); },
-        inviteUserByEmail: (_e: string, _o: any) => { events.push("authInvite"); return Promise.resolve({ error: opts.failAuthInvite ? failErr : null }); },
+        inviteUserByEmail: (e: string, o: any) => { events.push("authInvite"); authInviteCalls.push({ email: e, opts: o }); return Promise.resolve({ error: opts.failAuthInvite ? failErr : null }); },
       },
     },
     // deno-lint-ignore no-explicit-any
@@ -731,20 +733,34 @@ Deno.test("inviteOrResend: resend-link route also stamps membro_id", async () =>
 
 // -----------------------------------------------------------------------
 // role_id threading (Task 6). Mirrors the membroId coverage above: every
-// route that inserts an `invites` row must stamp role_id, and the add-direct
-// route's ACTUAL membership must collapse to the 'agent' chassis role
-// whenever roleId is present — invites.role itself always stays whatever the
-// caller sent (legacy display), with or without roleId.
+// route that inserts an `invites` row must stamp role_id, and — per the
+// chassis-rule fix (codex PR-A finding 1) — invites.role ALSO collapses to
+// 'agent' whenever roleId is present, exactly like the membership row. This
+// is what keeps a later role_id deletion (ON DELETE SET NULL) from
+// resurrecting the caller's original, possibly stronger, legacy role on
+// accept_workspace_invite's no-role_id path.
 // -----------------------------------------------------------------------
 
-Deno.test("inviteOrResend: brand-new email WITH roleId stamps invites.role_id (keeps legacy role)", async () => {
+Deno.test("inviteOrResend: brand-new email WITH roleId stamps invites.role='agent' + role_id (chassis rule)", async () => {
   const admin = makeInviteAdmin({ limit: null, members: 1, authUser: null });
   // deno-lint-ignore no-explicit-any
-  const out = await inviteOrResend(admin as any, { ...baseInput, roleId: "role-1" }, CRM);
+  const out = await inviteOrResend(admin as any, { ...baseInput, role: "admin", roleId: "role-1" }, CRM);
   assertEquals(out.route, "invited");
   const inviteRow = admin._inserts().find((i) => i.table === "invites");
   assertEquals(inviteRow?.row.role_id, "role-1");
-  assertEquals(inviteRow?.row.role, baseInput.role); // legacy display value, unchanged
+  assertEquals(inviteRow?.row.role, "agent"); // chassis rule, NOT the requested "admin"
+});
+
+Deno.test("inviteOrResend: brand-new email WITH roleId also stamps 'agent' into the auth-invite user_metadata", async () => {
+  // Kept consistent with invites.role for the same chassis-rule reason —
+  // metadata.role is informational (accept_workspace_invite resolves the
+  // real membership role from invites.role_id), but there is no reason to
+  // have it disagree with invites.role.
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: null });
+  // deno-lint-ignore no-explicit-any
+  await inviteOrResend(admin as any, { ...baseInput, role: "admin", roleId: "role-1" }, CRM);
+  const call = admin._authInviteCalls()[0];
+  assertEquals(call?.opts?.data?.role, "agent");
 });
 
 Deno.test("inviteOrResend: brand-new email WITHOUT roleId stamps role_id: null (regression)", async () => {
@@ -769,13 +785,14 @@ Deno.test("inviteOrResend CRM mode: add-direct WITH roleId inserts membership ro
   assertEquals(memberRow?.row.role, "agent"); // chassis role, NOT baseInput.role ("agent" here too, but forced regardless)
   assertEquals(memberRow?.row.role_id, "role-1");
   const inviteRow = admin._inserts().find((i) => i.table === "invites");
-  assertEquals(inviteRow?.row.role, baseInput.role); // invites.role keeps the legacy display value
+  assertEquals(inviteRow?.row.role, "agent"); // chassis rule applies to invites.role too (codex PR-A finding 1)
   assertEquals(inviteRow?.row.role_id, "role-1");
 });
 
-Deno.test("inviteOrResend CRM mode: add-direct with a non-agent legacy role + roleId STILL forces the membership to 'agent'", async () => {
+Deno.test("inviteOrResend CRM mode: add-direct with a non-agent legacy role + roleId forces BOTH membership AND invites.role to 'agent'", async () => {
   // baseInput.role is "agent"; use "admin" here so a regression that forgot
-  // the chassis collapse (and just wrote input.role) would be caught.
+  // the chassis collapse (and just wrote input.role) would be caught on
+  // either row.
   const admin = makeInviteAdmin({
     limit: null, members: 1,
     authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
@@ -787,7 +804,10 @@ Deno.test("inviteOrResend CRM mode: add-direct with a non-agent legacy role + ro
   const memberRow = admin._inserts().find((i) => i.table === "workspace_members");
   assertEquals(memberRow?.row.role, "agent");
   const inviteRow = admin._inserts().find((i) => i.table === "invites");
-  assertEquals(inviteRow?.row.role, "admin"); // legacy display value preserved as sent
+  // NOT "admin" — a deleted custom role (role_id -> NULL via ON DELETE SET
+  // NULL) must never leave behind a stronger legacy role for
+  // accept_workspace_invite's no-role_id path to grant (finding 1).
+  assertEquals(inviteRow?.row.role, "agent");
 });
 
 Deno.test("inviteOrResend CRM mode: add-direct WITHOUT roleId keeps the legacy role + role_id: null (regression)", async () => {
@@ -806,7 +826,7 @@ Deno.test("inviteOrResend CRM mode: add-direct WITHOUT roleId keeps the legacy r
   assertEquals(inviteRow?.row.role_id, null);
 });
 
-Deno.test("inviteOrResend: resend-link route WITH roleId preserves role_id on the re-inserted invite", async () => {
+Deno.test("inviteOrResend: resend-link route WITH roleId preserves role_id and stamps role='agent' on the re-inserted invite (chassis rule)", async () => {
   const prevKey = Deno.env.get("RESEND_API_KEY");
   Deno.env.set("RESEND_API_KEY", "test-key");
   const realFetch = globalThis.fetch;
@@ -818,11 +838,11 @@ Deno.test("inviteOrResend: resend-link route WITH roleId preserves role_id on th
       onboarding: false, hasProfile: true, hasPassword: false,
     });
     // deno-lint-ignore no-explicit-any
-    const out = await inviteOrResend(admin as any, { ...baseInput, roleId: "role-2" }, ADMIN);
+    const out = await inviteOrResend(admin as any, { ...baseInput, role: "admin", roleId: "role-2" }, ADMIN);
     assertEquals(out.route, "resent-link");
     const inviteRow = admin._inserts().find((i) => i.table === "invites");
     assertEquals(inviteRow?.row.role_id, "role-2");
-    assertEquals(inviteRow?.row.role, baseInput.role);
+    assertEquals(inviteRow?.row.role, "agent"); // NOT "admin" — finding 1
   } finally {
     globalThis.fetch = realFetch;
     if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY"); else Deno.env.set("RESEND_API_KEY", prevKey);

@@ -489,3 +489,20 @@ Deno.test("handleAdminResendInvite: a legacy invite with NO role_id re-sends wit
   const inviteRow = svc._inserts().find((i: any) => i.table === "invites");
   assertEquals(inviteRow?.row.role_id, null);
 });
+
+Deno.test("handleAdminResendInvite: a stale invite carrying role_id + a STRONGER legacy role re-sends with role='agent' (chassis rule, finding 1)", async () => {
+  // The exact shape finding 1 is about: an invite row written before the
+  // write-time fix (or otherwise inconsistent) has role='admin' alongside a
+  // still-live role_id. The platform-admin resend goes through the SAME
+  // inviteOrResend choke point as invite-user, so it must self-heal the row
+  // to role='agent' on every resend, not just propagate the stale value.
+  const svc = makeCreateSvc({
+    invite: { id: "old-invite", conta_id: "ws", email: "new@x.com", role: "admin", role_id: "role-9", status: "pending", invited_by: "owner1" },
+    authUser: null, members: 1,
+  });
+  const res = await handleAdminResendInvite(svc as any, { workspace_id: "ws", invite_id: "old-invite" }, "admin1", H);
+  assertEquals(res.status, 200);
+  const inviteRow = svc._inserts().find((i: any) => i.table === "invites");
+  assertEquals(inviteRow?.row.role_id, "role-9");
+  assertEquals(inviteRow?.row.role, "agent"); // NOT "admin"
+});

@@ -136,11 +136,13 @@ Deno.serve(async (req) => {
       throw new Error('Administradores não podem convidar novos donos.');
     }
 
-    // Optional custom role: `role` above stays the legacy display value sent
-    // to inviteOrResend/invites.role unchanged; roleId is threaded alongside
-    // it and drives the actual chassis-role membership (see invite-actions.ts
-    // add-direct route). A non-string body.role_id is treated as absent, not
-    // an error — only a STRING that fails the checks below is rejected.
+    // Optional custom role: `role` above is the legacy display value from the
+    // request body; roleId is threaded alongside it into inviteOrResend, which
+    // is the single choke point that applies the chassis rule — every invites
+    // row AND the actual membership collapse to 'agent' whenever roleId is
+    // present, never the raw `role` here (see invite-actions.ts). A non-string
+    // body.role_id is treated as absent, not an error — only a STRING that
+    // fails the checks below is rejected.
     const roleId: string | null = typeof body.role_id === 'string' ? body.role_id : null;
     if (roleId) {
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
