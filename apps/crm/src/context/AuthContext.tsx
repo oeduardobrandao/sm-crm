@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  ReactNode,
+} from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { User } from '@supabase/supabase-js';
 import {
@@ -10,6 +18,12 @@ import {
 } from '../lib/supabase';
 import { getMyMembership, type MyMembership } from '../store/workspace';
 import { deriveFinancialAccess, type FinancialAccess } from '../lib/financialAccess';
+import {
+  derivePermission,
+  type PermissionAction,
+  type PermissionCheck,
+  type PermissionModule,
+} from '../lib/permissions';
 import { identifyWorkspaceUser, resetAnalytics } from '../lib/analytics';
 
 interface Profile {
@@ -60,6 +74,13 @@ interface AuthContextValue {
    */
   membershipResolved: boolean | 'error';
   canSeeFinancials: FinancialAccess;
+  /**
+   * Permission check for the active workspace membership. `'unknown'` while
+   * membership hasn't resolved yet (same tri-state reasoning as
+   * `canSeeFinancials`) — mirrors `derivePermission` from `lib/permissions.ts`
+   * 1:1, never re-implements the role/preset semantics here.
+   */
+  can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck;
   loading: boolean;
   refetchProfile: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -74,6 +95,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [workspaceRole, setWorkspaceRole] = useState<'owner' | 'admin' | 'agent' | null>(null);
   const [membershipResolved, setMembershipResolved] = useState<boolean | 'error'>(false);
   const [canSeeFinancials, setCanSeeFinancials] = useState<FinancialAccess>('unknown');
+  /**
+   * Full membership row (role + can_see_financials + role_id + permissions)
+   * for the active workspace. `workspaceRole`/`canSeeFinancials` above are
+   * derived from this same source and reset together with it everywhere —
+   * this is purely additive state powering `can()`, not a second source of
+   * truth. `null` while unresolved, same as `workspaceRole`.
+   */
+  const [membership, setMembership] = useState<MyMembership | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionReady, setSessionReady] = useState(false);
   const authGeneration = useRef(0);
@@ -145,6 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setWorkspaceRole(null);
         setCanSeeFinancials('unknown');
+        setMembership(null);
         setMembershipResolved(false);
         // Without this, posthog-js keeps A's distinct_id: it never switches
         // identity on a second identify() call without an explicit reset()
@@ -203,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setWorkspaceRole(null);
       setMembershipResolved(false);
       setCanSeeFinancials('unknown');
+      setMembership(null);
       setLoading(false);
       return;
     }
@@ -232,10 +263,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Joins the existing guarded hydration flow so `loading` covers it too.
         // On failure resolve to 'unknown', NEVER to a boolean.
         try {
-          const membership = await getMyMembership();
+          const membershipRow = await getMyMembership();
           if (!active || profileRequestId.current !== requestId) return;
-          setWorkspaceRole(membership?.role ?? null);
-          setCanSeeFinancials(deriveFinancialAccess(membership));
+          setWorkspaceRole(membershipRow?.role ?? null);
+          setCanSeeFinancials(deriveFinancialAccess(membershipRow));
+          setMembership(membershipRow);
           // The lookup ran to completion -- `membership === null` here means
           // it genuinely found no row, not that it failed. Either way this
           // is a real, resolved answer about membership.
@@ -244,6 +276,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (!active || profileRequestId.current !== requestId) return;
           setWorkspaceRole(null);
           setCanSeeFinancials('unknown');
+          setMembership(null);
           // The lookup THREW (network/RLS blip) -- membership was never
           // actually determined. Must stay distinguishable from a genuine
           // "no row found" (`true`, above) so callers don't tell a real
@@ -382,6 +415,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     canSeeFinancialsRef.current = canSeeFinancials;
   }, [canSeeFinancials]);
 
+  // Same backstop-mirror pattern as canSeeFinancialsRef immediately above,
+  // for the same reason: applyMembership below (the realtime handler) needs
+  // to compare the INCOMING payload's role_id against the membership this
+  // context already has, and it needs that comparison to be correct even
+  // when two applyMembership calls land in the same commit (no render, and
+  // so no chance for this passive effect to run, in between them) -- see
+  // applyMembership's own comment for exactly that race. Every other
+  // setMembership call site (the userChanged reset, both branches of the
+  // hydration effect, fetchProfile's no-session reset, and signOut) sets
+  // React state directly and never goes through applyMembership, so nothing
+  // else keeps this ref current for those -- this passive effect is what
+  // catches up on the next render.
+  const membershipRef = useRef<MyMembership | null>(null);
+  useEffect(() => {
+    membershipRef.current = membership;
+  }, [membership]);
+
   // Live revocation.
   //
   // Severity, stated precisely: this is a correctness/UX concern, not a
@@ -402,10 +452,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const workspaceId = profile?.conta_id;
     if (!userId || !workspaceId) return;
 
-    const applyMembership = (
-      next: { workspace_id?: string; role?: string; can_see_financials?: boolean } | null,
-    ) => {
-      setWorkspaceRole(next ? ((next.role as 'owner' | 'admin' | 'agent') ?? null) : null);
+    // Ordering + teardown guard for every getMyMembership() round trip this
+    // effect instance starts (the channel's role_id-transition refetch below
+    // AND the 60s poll). Bumped before each such call, and the value at call
+    // time is captured by fetchAndApplyMembership()'s closure; its `.then`
+    // only calls applyMembership if the captured value still matches when
+    // the request resolves. Closes two races neither getMyMembership() nor
+    // applyMembership() can see on their own:
+    //  1. Ordering: two refetches can be in flight at once (e.g. a role_id
+    //     transition immediately followed by another one, or a channel
+    //     refetch racing the 60s poll) and resolve out of order over the
+    //     network — without this, an OLDER response landing AFTER a NEWER
+    //     one would silently overwrite the correct, more recent state with
+    //     stale data.
+    //  2. Teardown: bumped again in this effect's own cleanup below, so a
+    //     refetch still in flight when the effect tears down (workspace
+    //     switch, sign-out, unmount) can never reach applyMembership
+    //     afterwards. Without this, a late resolution to `null` (e.g. the
+    //     user was already removed from the OLD workspace right as they
+    //     switched away from it) would fake a "genuinely removed" state for
+    //     whatever identity/workspace the NEXT effect run is now tracking.
+    // A plain closure-scoped counter, not a component-level useRef: its
+    // lifetime is exactly this effect instance's, same as `channel`/`poll`
+    // below, so it needs no separate reset logic — a fresh one is created,
+    // and the old one stops mattering, every time this effect re-runs.
+    let membershipFetchSeq = 0;
+
+    const applyMembership = (next: MyMembership | null) => {
+      setWorkspaceRole(next?.role ?? null);
       // Both callers of applyMembership (the realtime UPDATE payload and the
       // poll's getMyMembership() result) only ever invoke it with a genuine,
       // resolved answer -- the poll's own `.catch(() => {})` below swallows
@@ -419,8 +493,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // exactly what a deletion resolves to via getMyMembership() — derives
       // to 'unknown' here too: it masks financial values and fails the route
       // guard neutral instead of keeping a stale role/grant alive.
-      const nowAllowed = deriveFinancialAccess(next as MyMembership | null);
+      const nowAllowed = deriveFinancialAccess(next);
       setCanSeeFinancials(nowAllowed);
+      setMembership(next);
+      // Mirrors canSeeFinancialsRef's own synchronous assignment just below —
+      // the channel handler's role_id comparison (see its comment) needs
+      // membershipRef.current to already reflect THIS call, not last render's
+      // value, the moment the next payload arrives.
+      membershipRef.current = next;
 
       // Read the ref BEFORE overwriting it, then overwrite it synchronously
       // (not via the passive mirror effect above). The ref must lead the
@@ -496,6 +576,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    // Shared by both getMyMembership() call sites below (the channel's
+    // role_id-transition refetch and the 60s poll) so the ordering/teardown
+    // guard above is implemented exactly once, not duplicated and liable to
+    // drift between the two.
+    const fetchAndApplyMembership = () => {
+      const seq = ++membershipFetchSeq;
+      void getMyMembership()
+        .then((next) => {
+          // Stale (superseded by a later fetch) or this effect instance has
+          // already torn down (see the cleanup below) — either way, dropping
+          // silently is correct: a fresher call already applied the current
+          // truth, or there is no current subscription left to apply it to.
+          if (seq !== membershipFetchSeq) return;
+          applyMembership(next);
+        })
+        .catch(() => {});
+    };
+
     // wm_select_same_workspace (migration 20260612120000) lets this user read
     // their membership row in EVERY workspace they belong to, not just the
     // active one, so a `user_id=eq.<uid>` filter alone lets Realtime deliver
@@ -528,9 +626,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             workspace_id?: string;
             role?: string;
             can_see_financials?: boolean;
+            role_id?: string | null;
           };
           if (row.workspace_id !== workspaceId) return;
-          applyMembership(row);
+          // The realtime UPDATE payload is the raw workspace_members row — it
+          // never carries the joined workspace_roles.permissions the way
+          // getMyMembership() does. Applying it directly is only correct for
+          // a member whose custom-role assignment did NOT just change
+          // (role_id null before and after, the plain legacy path). A row
+          // that now points at a custom role, or that just stopped pointing
+          // at one, needs the full embed to know its `permissions` — re-fetch
+          // through getMyMembership() rather than guess at that here.
+          if (row.role_id != null || row.role_id !== (membershipRef.current?.role_id ?? null)) {
+            fetchAndApplyMembership();
+          } else {
+            applyMembership({ ...row, role_id: null, permissions: null } as MyMembership);
+          }
         },
       )
       .subscribe();
@@ -544,12 +655,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // now lets that `null` flow through instead of early-returning — see its
     // comment for what that derives to.
     const poll = setInterval(() => {
-      void getMyMembership()
-        .then(applyMembership)
-        .catch(() => {});
+      fetchAndApplyMembership();
     }, 60_000);
 
     return () => {
+      // Bumped BEFORE clearInterval/removeChannel below, not after: it only
+      // needs to happen before this closure is torn down, and doing it first
+      // makes the invalidation unconditional on cleanup even if a future
+      // edit made either of the lines below throw. Any getMyMembership()
+      // call fetchAndApplyMembership() started that is still in flight now
+      // has a `seq` that can never match `membershipFetchSeq` again, so its
+      // `.then` drops the result instead of calling applyMembership() after
+      // this effect (and whatever workspace/identity it was tracking) is
+      // gone.
+      membershipFetchSeq += 1;
       clearInterval(poll);
       void supabase.removeChannel(channel);
     };
@@ -562,6 +681,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setWorkspaceRole(null);
       setMembershipResolved(false);
       setCanSeeFinancials('unknown');
+      // Mirrors workspaceRole/canSeeFinancials above -- this is a 5th
+      // no-session reset site beyond the four the rest of this file's
+      // comments call out (userChanged, the hydration effect's own
+      // no-userId branch, its getMyMembership() catch, and signOut).
+      // Leaving it out would let a stale membership answer survive a
+      // refetchProfile() call made with no active session, so `can()`
+      // and canSeeFinancials/workspaceRole could disagree about whether
+      // the caller has ANY membership at all.
+      setMembership(null);
       setLoading(false);
       return;
     }
@@ -613,11 +741,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setWorkspaceRole(null);
     setMembershipResolved(false);
     setCanSeeFinancials('unknown');
+    setMembership(null);
     setLoading(false);
     // Drop all cached per-user data (entitlements, notifications, …) so the next
     // account that logs in never sees the previous user's plan/limits.
     queryClient.clear();
   };
+
+  const can = useCallback(
+    (module: PermissionModule, action: PermissionAction = 'ver') =>
+      derivePermission(membership, module, action),
+    [membership],
+  );
 
   return (
     <AuthContext.Provider
@@ -628,6 +763,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         workspaceRole,
         membershipResolved,
         canSeeFinancials,
+        can,
         loading,
         refetchProfile: fetchProfile,
         signOut,

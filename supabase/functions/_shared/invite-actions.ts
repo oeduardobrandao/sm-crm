@@ -225,6 +225,14 @@ export interface InviteOrResendInput {
   /** Membro da equipe this invite links to (Equipe form). Stamped on every
    * invites row; the added route links membros.crm_user_id immediately. */
   membroId?: number | null;
+  /** Custom workspace_roles.id, when the caller picked a granular role.
+   * Stamped on every invites row. Chassis rule: whenever roleId is present,
+   * every invites row written from `role` above collapses to 'agent' too —
+   * never the caller's requested legacy display role — so a later deletion
+   * of the custom role (role_id → NULL via ON DELETE SET NULL) can never
+   * leave behind a stronger legacy role for accept_workspace_invite's
+   * no-role_id path to grant. See effectiveRole below. */
+  roleId?: string | null;
 }
 export interface InviteOrResendOpts {
   /** true (CRM/invite-user): add-direct adds an onboarded non-member. false
@@ -261,6 +269,16 @@ export async function inviteOrResend(
   opts: InviteOrResendOpts,
 ): Promise<InviteOutcome> {
   const email = input.email.toLowerCase();
+
+  // Chassis rule at write time: invites.role is stored as 'agent' whenever
+  // roleId is present, REGARDLESS of the requested display role. The FK
+  // invites_role_same_workspace is ON DELETE SET NULL — deleting the custom
+  // role later leaves role_id NULL, and accept_workspace_invite's no-role_id
+  // path then grants membership at whatever invites.role says. If that column
+  // held the original (possibly stronger) legacy role, a deleted custom role
+  // would silently upgrade the invitee on accept. Storing 'agent' here closes
+  // that hole independent of the role_id FK's cascade behavior.
+  const effectiveRole: "owner" | "admin" | "agent" = input.roleId ? "agent" : input.role;
 
   // (1) Seat pre-check. The pending count EXCLUDES a matching pending row for
   // this email (it is being replaced, not added — finding 3), so members +
@@ -316,14 +334,20 @@ export async function inviteOrResend(
       if (!opts.addOnboarded) return { route: "already-onboarded" }; // admin: report, don't add
       // CRM: add the member (finding-2 fix for the CRM path).
       await deletePriorInvites(adminClient, email, input.contaId);
+      // Chassis rule: a custom role ALWAYS creates the membership as the
+      // 'agent' chassis role + role_id — never the legacy role string. The
+      // same effectiveRole is stamped on invites.role below (see the
+      // top-of-function comment) — a custom-role invite never displays a
+      // legacy role stronger than 'agent', even after this row is later read
+      // back with role_id nulled out by the role's deletion.
       const mIns = await adminClient.from("workspace_members")
-        .insert({ user_id: existingUser.id, workspace_id: input.contaId, role: input.role });
+        .insert({ user_id: existingUser.id, workspace_id: input.contaId, role: effectiveRole, role_id: input.roleId ?? null });
       ensureOk(mIns.error, "member_insert");
       const { data: existingProfile } = await adminClient
         .from("profiles").select("id, active_workspace_id").eq("id", existingUser.id).maybeSingle();
       if (!existingProfile) {
         const pIns = await adminClient.from("profiles").insert({
-          id: existingUser.id, conta_id: input.contaId, role: input.role,
+          id: existingUser.id, conta_id: input.contaId, role: effectiveRole,
           nome: existingUser.user_metadata?.nome || email.split("@")[0],
           active_workspace_id: input.contaId, onboarding_complete: true,
         });
@@ -341,8 +365,9 @@ export async function inviteOrResend(
         ensureOk(pUpd.error, "profile_active_workspace_restore");
       }
       const iIns = await adminClient.from("invites").insert({
-        conta_id: input.contaId, email, role: input.role, invited_by: input.invitedBy,
+        conta_id: input.contaId, email, role: effectiveRole, invited_by: input.invitedBy,
         status: "accepted", accepted_at: new Date().toISOString(), membro_id: membroId,
+        role_id: input.roleId ?? null,
       }).select("id").single();
       if (membroId != null) {
         const upd = await adminClient.from("membros")
@@ -366,8 +391,8 @@ export async function inviteOrResend(
         .from("contas").select("nome").eq("id", input.contaId).maybeSingle();
       await sendInviteEmail({ to: email, actionLink: link.properties.action_link, workspaceName: conta?.nome || "seu workspace" });
       const ins = await adminClient.from("invites").insert({
-        conta_id: input.contaId, email, role: input.role, invited_by: input.invitedBy,
-        status: "pending", membro_id: membroId,
+        conta_id: input.contaId, email, role: effectiveRole, invited_by: input.invitedBy,
+        status: "pending", membro_id: membroId, role_id: input.roleId ?? null,
       }).select("id").single();
       return { route: "resent-link", inviteId: insertedId(ins, "invite_insert_pending") };
     }
@@ -403,11 +428,19 @@ async function deletePriorInvites(adminClient: any, email: string, contaId: stri
 
 /** Returns the id of the pending invites row it created. */
 async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, email: string, membroId: number | null): Promise<string> {
+  // Same chassis rule as inviteOrResend's top-of-function effectiveRole:
+  // invites.role is 'agent' whenever roleId is present. Threaded through to
+  // sendAuthInvite's user_metadata.role too (rather than keeping that at the
+  // legacy display value) so the two stay consistent — membership itself is
+  // still resolved from invites.role_id by the accept-invite RPC, so
+  // metadata.role is informational only, but there is no reason to have it
+  // disagree with invites.role.
+  const effectiveRole: "owner" | "admin" | "agent" = input.roleId ? "agent" : input.role;
   return await sendPendingWorkspaceInvite({
     createPendingInvite: async (p) => {
       const { data, error } = await adminClient.from("invites").insert({
         conta_id: p.contaId, email: p.email, role: p.role, invited_by: p.invitedBy,
-        status: "pending", membro_id: p.membroId ?? null,
+        status: "pending", membro_id: p.membroId ?? null, role_id: p.roleId ?? null,
       }).select("id").single();
       if (error || !data) throw error ?? new Error("invite_insert_failed");
       return data;
@@ -427,7 +460,7 @@ async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, e
       if (error) throw error;
     },
   }, {
-    contaId: input.contaId, email, role: input.role, invitedBy: input.invitedBy,
-    redirectTo: input.redirectBase + "/configurar-senha", membroId,
+    contaId: input.contaId, email, role: effectiveRole, invitedBy: input.invitedBy,
+    redirectTo: input.redirectBase + "/configurar-senha", membroId, roleId: input.roleId ?? null,
   });
 }

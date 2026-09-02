@@ -40,12 +40,32 @@ describe('getMyMembership', () => {
 
   it('returns the membership row for the active workspace', async () => {
     mockMaybeSingle.mockResolvedValue({
-      data: { role: 'admin', can_see_financials: false },
+      data: { role: 'admin', can_see_financials: false, role_id: null, workspace_roles: null },
       error: null,
     });
     await expect(getMyMembership()).resolves.toEqual({
       role: 'admin',
       can_see_financials: false,
+      role_id: null,
+      permissions: null,
+    });
+  });
+
+  it('flattens the workspace_roles embed into a top-level permissions map for a custom role', async () => {
+    mockMaybeSingle.mockResolvedValue({
+      data: {
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-1',
+        workspace_roles: { permissions: { leads: 'editar' } },
+      },
+      error: null,
+    });
+    await expect(getMyMembership()).resolves.toEqual({
+      role: 'agent',
+      can_see_financials: false,
+      role_id: 'role-1',
+      permissions: { leads: 'editar' },
     });
   });
 

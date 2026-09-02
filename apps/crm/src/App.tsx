@@ -54,6 +54,7 @@ const PerfilTab = lazy(() => import('./pages/configuracao/tabs/PerfilTab'));
 const NotificacoesTab = lazy(() => import('./pages/configuracao/tabs/NotificacoesTab'));
 const WorkspaceTab = lazy(() => import('./pages/configuracao/tabs/WorkspaceTab'));
 const MembrosTab = lazy(() => import('./pages/configuracao/tabs/MembrosTab'));
+const PapeisTab = lazy(() => import('./pages/configuracao/tabs/PapeisTab'));
 const RelatoriosTab = lazy(() => import('./pages/configuracao/tabs/RelatoriosTab'));
 const StatusTab = lazy(() => import('./pages/configuracao/tabs/StatusTab'));
 const HubTab = lazy(() => import('./pages/configuracao/tabs/HubTab'));
@@ -212,6 +213,7 @@ export default function App() {
                   <Route path="notificacoes" element={<NotificacoesTab />} />
                   <Route path="workspace" element={<WorkspaceTab />} />
                   <Route path="membros" element={<MembrosTab />} />
+                  <Route path="papeis" element={<PapeisTab />} />
                   <Route path="relatorios" element={<RelatoriosTab />} />
                   <Route path="status" element={<StatusTab />} />
                   <Route path="hub" element={<HubTab />} />

@@ -37,32 +37,62 @@ describe('formatFinancialBRL', () => {
 // admins ONLY — assigning it raw for any other role is the bug this guards.
 describe('deriveFinancialAccess', () => {
   it('owner sees financials even when the column is false', () => {
-    const membership: MyMembership = { role: 'owner', can_see_financials: false };
+    const membership: MyMembership = {
+      role: 'owner',
+      can_see_financials: false,
+      role_id: null,
+      permissions: null,
+    };
     expect(deriveFinancialAccess(membership)).toBe(true);
   });
 
   it('owner sees financials when the column is true', () => {
-    const membership: MyMembership = { role: 'owner', can_see_financials: true };
+    const membership: MyMembership = {
+      role: 'owner',
+      can_see_financials: true,
+      role_id: null,
+      permissions: null,
+    };
     expect(deriveFinancialAccess(membership)).toBe(true);
   });
 
   it('admin follows the column when true', () => {
-    const membership: MyMembership = { role: 'admin', can_see_financials: true };
+    const membership: MyMembership = {
+      role: 'admin',
+      can_see_financials: true,
+      role_id: null,
+      permissions: null,
+    };
     expect(deriveFinancialAccess(membership)).toBe(true);
   });
 
   it('admin follows the column when false', () => {
-    const membership: MyMembership = { role: 'admin', can_see_financials: false };
+    const membership: MyMembership = {
+      role: 'admin',
+      can_see_financials: false,
+      role_id: null,
+      permissions: null,
+    };
     expect(deriveFinancialAccess(membership)).toBe(false);
   });
 
   it('agent never sees financials even when the column is true (the shipped bug)', () => {
-    const membership: MyMembership = { role: 'agent', can_see_financials: true };
+    const membership: MyMembership = {
+      role: 'agent',
+      can_see_financials: true,
+      role_id: null,
+      permissions: null,
+    };
     expect(deriveFinancialAccess(membership)).toBe(false);
   });
 
   it('agent never sees financials when the column is false', () => {
-    const membership: MyMembership = { role: 'agent', can_see_financials: false };
+    const membership: MyMembership = {
+      role: 'agent',
+      can_see_financials: false,
+      role_id: null,
+      permissions: null,
+    };
     expect(deriveFinancialAccess(membership)).toBe(false);
   });
 
@@ -71,7 +101,22 @@ describe('deriveFinancialAccess', () => {
   });
 
   it('denies rather than falls through for a role outside the three known ones', () => {
-    const membership = { role: 'superadmin', can_see_financials: true } as unknown as MyMembership;
+    const membership = {
+      role: 'superadmin',
+      can_see_financials: true,
+      role_id: null,
+      permissions: null,
+    } as unknown as MyMembership;
+    expect(deriveFinancialAccess(membership)).toBe(false);
+  });
+
+  it('a custom role overrides the legacy can_see_financials flag (mirrors TT-16)', () => {
+    const membership: MyMembership = {
+      role: 'agent',
+      can_see_financials: true,
+      role_id: 'role-1',
+      permissions: {},
+    };
     expect(deriveFinancialAccess(membership)).toBe(false);
   });
 });

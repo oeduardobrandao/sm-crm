@@ -1,5 +1,6 @@
 export * from './core';
 export * from './workspace';
+export * from './roles';
 export * from './clients';
 export * from './finance';
 export * from './team';
