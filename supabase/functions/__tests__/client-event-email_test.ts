@@ -31,6 +31,23 @@ Deno.test("lists pending post titles, escaped", () => {
   assert(html.includes("Post normal"), "second post title missing");
 });
 
+Deno.test("caps the rendered post list at 20 and folds the rest into a summary line", () => {
+  const pendingPosts = Array.from({ length: 25 }, (_, i) => ({ titulo: `Post ${i + 1}` }));
+  const html = buildClientEventEmail({ ...BASE_PARAMS, pendingPosts });
+  assert(html.includes("Post 1</li>"), "first post missing");
+  assert(html.includes("Post 20</li>"), "20th post missing");
+  assert(!html.includes("Post 21</li>"), "21st post rendered despite the cap");
+  assert(!html.includes("Post 25</li>"), "25th post rendered despite the cap");
+  assert(html.includes("e mais 5 posts aguardando aprovação."), "expected the overflow summary line");
+});
+
+Deno.test("no overflow line when pending posts are at or under the render cap", () => {
+  const pendingPosts = Array.from({ length: 20 }, (_, i) => ({ titulo: `Post ${i + 1}` }));
+  const html = buildClientEventEmail({ ...BASE_PARAMS, pendingPosts });
+  assert(html.includes("Post 20</li>"), "20th post missing");
+  assert(!html.includes("e mais"), "overflow summary line rendered when nothing was cut");
+});
+
 Deno.test("escapes clienteNome and workspaceName", () => {
   const html = buildClientEventEmail({
     ...BASE_PARAMS,

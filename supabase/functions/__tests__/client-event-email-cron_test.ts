@@ -42,6 +42,7 @@ function matchesRow(row: Row, filters: Filter[]): boolean {
 function makeSelectChain(rows: Row[]) {
   const filters: Filter[] = [];
   let order: { column: string; ascending: boolean } | undefined;
+  let limitCount: number | undefined;
   // deno-lint-ignore no-explicit-any
   const chain: any = {
     eq(column: string, value: unknown) {
@@ -60,6 +61,10 @@ function makeSelectChain(rows: Row[]) {
       order = { column, ascending: opts.ascending };
       return chain;
     },
+    limit(count: number) {
+      limitCount = count;
+      return chain;
+    },
     then(onFulfilled: (v: { data: Row[] | null; error: { message: string } | null }) => unknown) {
       let result = rows.filter((r) => matchesRow(r, filters));
       if (order) {
@@ -70,6 +75,7 @@ function makeSelectChain(rows: Row[]) {
           return ascending ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0);
         });
       }
+      if (limitCount !== undefined) result = result.slice(0, limitCount);
       return Promise.resolve(onFulfilled({ data: result, error: null }));
     },
   };
@@ -656,7 +662,97 @@ Deno.test("60s deadline: remaining clients get their lease released without a se
   assertEquals(db.releaseCalls[0].patch, { event_claim_through: null });
 });
 
-// --- 13. handler auth --------------------------------------------------------------------
+// --- 13. events/messages query cap: safe cursor advance -----------------------------------
+//
+// Codex review (PR #437, P2): PostgREST itself caps an unbounded select
+// (commonly at 1000 rows). Without an explicit `.limit()` the handler had no
+// way to tell "the window really only had this many events" apart from
+// "truncated" -- and advancing event_cursor_at to claim_through regardless
+// silently dropped whatever the cap excluded, forever. These two tests
+// exercise the EVENTS_QUERY_CAP guard: when a query returns exactly the cap,
+// the cursor advances only to the oldest FETCHED row, never past it.
+
+Deno.test("events query hits the cap: cursor advances to the oldest FETCHED event, not claim_through", async () => {
+  const clienteId = 15;
+  const floorMs = new Date("2026-08-10T12:00:00.000Z").getTime(); // NOW - 72h
+  const capEvents: Row[] = [];
+  for (let i = 0; i < 1000; i++) {
+    capEvents.push({
+      id: 10_000 + i,
+      post_id: 20_000 + i,
+      conta_id: "ws1",
+      to_status: "enviado_cliente",
+      created_at: new Date(floorMs + (i + 1) * 60_000).toISOString(), // 1 min apart, starting at floor+1min
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: `Post ${i}` },
+    });
+  }
+  const oldestFetchedIso = capEvents[0].created_at as string; // floor + 1 min
+  const claimThrough = NOW.toISOString();
+
+  const db = makeFakeDb(
+    [claimedRow({ id: clienteId, conta_id: "ws1", event_cursor_at: null, event_claim_through: claimThrough })],
+    {
+      postStatusEvents: capEvents,
+      workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
+    },
+  );
+  const { deps } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.emailed, 1);
+  assertEquals(db.successCalls.length, 1);
+  assert(
+    db.successCalls[0].patch.event_cursor_at !== claimThrough,
+    "cursor must NOT jump to claim_through when the events query was capped",
+  );
+  assertEquals(db.successCalls[0].patch, { event_cursor_at: oldestFetchedIso, event_claim_through: null });
+});
+
+// --- 14. both queries capped: min of the two bounds ----------------------------------------
+
+Deno.test("both events and messages hit the cap: cursor advances to the more conservative (min) of the two bounds", async () => {
+  const clienteId = 16;
+  const floorMs = new Date("2026-08-10T12:00:00.000Z").getTime(); // NOW - 72h
+  const capEvents: Row[] = [];
+  for (let i = 0; i < 1000; i++) {
+    capEvents.push({
+      id: 30_000 + i,
+      post_id: 40_000 + i,
+      conta_id: "ws1",
+      to_status: "enviado_cliente",
+      created_at: new Date(floorMs + 10 * 60_000 + i * 2 * 60_000).toISOString(), // starts at floor+10min, 2 min apart
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: `Post ${i}` },
+    });
+  }
+  const eventsOldestIso = capEvents[0].created_at as string; // floor + 10 min
+
+  const capMessages: Row[] = [];
+  for (let i = 0; i < 1000; i++) {
+    capMessages.push({
+      id: 50_000 + i,
+      conta_id: "ws1",
+      cliente_id: clienteId,
+      is_workspace_user: true,
+      created_at: new Date(floorMs + 3 * 60_000 + i * 60_000).toISOString(), // starts at floor+3min (older than events), 1 min apart
+    });
+  }
+  const messagesOldestIso = capMessages[0].created_at as string; // floor + 3 min -- the more conservative bound
+
+  const db = makeFakeDb(
+    [claimedRow({ id: clienteId, conta_id: "ws1", event_cursor_at: null, event_claim_through: NOW.toISOString() })],
+    {
+      postStatusEvents: capEvents,
+      mensagens: capMessages,
+      workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
+    },
+  );
+  const { deps } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.emailed, 1);
+  assert(messagesOldestIso < eventsOldestIso, "test fixture sanity: messages bound must be the older (smaller) one");
+  assertEquals(db.successCalls, [{ ids: [clienteId], patch: { event_cursor_at: messagesOldestIso, event_claim_through: null } }]);
+});
+
+// --- 15. handler auth --------------------------------------------------------------------
 
 Deno.test("handler rejects a wrong cron secret with 401 before any db call", async () => {
   const handler = createClientEventEmailCronHandler({

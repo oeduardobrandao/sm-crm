@@ -74,6 +74,7 @@ export interface FilterChain<T>
   gt(column: string, value: string): FilterChain<T>;
   lte(column: string, value: string): FilterChain<T>;
   order(column: string, opts: { ascending: boolean }): FilterChain<T>;
+  limit(count: number): FilterChain<T>;
 }
 
 export interface MutationChain {
@@ -151,6 +152,18 @@ export interface ClientEventEmailCronResult {
 const SEVENTY_TWO_HOURS_MS = 72 * 3600_000;
 const CLAIM_BATCH_SIZE = 50;
 const SEND_DEADLINE_MS = 60_000;
+/**
+ * Explicit cap on both the approvals and messages queries. PostgREST itself
+ * enforces a response-row ceiling (commonly 1000) on an unbounded select --
+ * without an explicit `.limit()` here, an over-dense window (a client with
+ * more than that many post-status transitions or workspace messages inside
+ * one digest window) would silently come back truncated to that implicit
+ * cap, and this handler had no way to tell "truncated" apart from "that's
+ * really everything." Naming the cap explicitly makes truncation detectable
+ * (`rows.length === EVENTS_QUERY_CAP`) so the cursor-advance logic below can
+ * react to it instead of blindly trusting an empty/short-of-1000 result.
+ */
+const EVENTS_QUERY_CAP = 1000;
 
 /** GREATEST(iso, floor) -- iso may be null (never delivered). */
 function maxDate(iso: string | null, floor: Date): Date {
@@ -266,19 +279,30 @@ export async function runClientEventEmailCron(
         .eq("workflow_posts.status", "enviado_cliente")
         .gt("created_at", lowerIso)
         .lte("created_at", upperIso)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(EVENTS_QUERY_CAP);
       if (eventsErr) throw new Error(`post_status_events query failed: ${eventsErr.message}`);
+      const eventRowsArr = (eventRows ?? []) as PostStatusEventRow[];
 
       // supabase-js can't DISTINCT ON: dedupe over the created_at-DESC result,
       // keeping the first (= latest) transition seen per post.
       const seenPosts = new Set<number>();
       const pendingPosts: PendingPost[] = [];
       const approvalIds: string[] = [];
-      for (const e of (eventRows ?? []) as PostStatusEventRow[]) {
+      for (const e of eventRowsArr) {
         if (seenPosts.has(e.post_id)) continue;
         seenPosts.add(e.post_id);
         pendingPosts.push({ titulo: e.workflow_posts.titulo });
         approvalIds.push(`pse:${e.id}`);
+      }
+
+      // The cap was hit -- the window holds MORE than EVENTS_QUERY_CAP events
+      // and the query (ordered created_at DESC) only returned the newest
+      // slice. Track the oldest timestamp actually fetched so the cursor
+      // never advances past it below (see safeUpperMs's use at the bottom).
+      let safeUpperMs: number | null = null;
+      if (eventRowsArr.length === EVENTS_QUERY_CAP) {
+        safeUpperMs = new Date(eventRowsArr[eventRowsArr.length - 1].created_at).getTime();
       }
 
       // ---- unread messages -----------------------------------------------------
@@ -300,10 +324,19 @@ export async function runClientEventEmailCron(
         .eq("cliente_id", row.id)
         .eq("is_workspace_user", true)
         .gt("created_at", msgLower.toISOString())
-        .lte("created_at", upperIso);
+        .lte("created_at", upperIso)
+        .order("created_at", { ascending: false })
+        .limit(EVENTS_QUERY_CAP);
       if (msgErr) throw new Error(`mensagens query failed: ${msgErr.message}`);
       const messages = (msgRows ?? []) as MensagemRow[];
       const messageIds = messages.map((m) => `msg:${m.id}`);
+
+      // Same truncation guard as the approvals query above -- fold its bound
+      // into the same safeUpperMs (the more conservative of the two wins).
+      if (messages.length === EVENTS_QUERY_CAP) {
+        const msgSafeUpperMs = new Date(messages[messages.length - 1].created_at).getTime();
+        safeUpperMs = safeUpperMs === null ? msgSafeUpperMs : Math.min(safeUpperMs, msgSafeUpperMs);
+      }
 
       if (pendingPosts.length === 0 && messages.length === 0) {
         skippedNoContent++;
@@ -360,6 +393,16 @@ export async function runClientEventEmailCron(
         },
       });
 
+      // Normally the cursor advances all the way to `upper` (claim_through):
+      // everything in the window was fetched and sent. But if either query
+      // above hit EVENTS_QUERY_CAP, `safeUpperMs` holds the oldest timestamp
+      // actually fetched -- advancing past it would falsely mark the
+      // excluded (older, un-fetched) events as delivered, silently dropping
+      // them from every future digest. safeUpperMs is always > lowerIso by
+      // construction (it comes from a row that already passed the `gt`
+      // filter), so this can never advance the cursor backwards.
+      const cursorAdvanceIso = safeUpperMs !== null ? new Date(safeUpperMs).toISOString() : upperIso;
+
       // The email is already sent at this point -- a cursor-advance failure
       // below must still release the lease (so the client isn't stuck)
       // rather than silently swallow it, but a retry is harmless: the
@@ -368,7 +411,7 @@ export async function runClientEventEmailCron(
       // releaseLease's comment) -- it still marks "last attempt" for the
       // 30-minute lease gate and the rotation order on the next claim.
       const { error: successErr } = await deps.db.from("clientes")
-        .update({ event_cursor_at: upperIso, event_claim_through: null })
+        .update({ event_cursor_at: cursorAdvanceIso, event_claim_through: null })
         .in("id", [row.id]);
       if (successErr) throw new Error(`cursor advance failed: ${successErr.message}`);
 

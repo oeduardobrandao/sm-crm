@@ -18,6 +18,9 @@ export interface ClientEventEmailParams {
   unsubUrl: string;
 }
 
+/** Max pending-post titles rendered as a list before folding the rest into "e mais N...". */
+const RENDERED_POSTS_CAP = 20;
+
 /**
  * `workspaceName` is tenant-editable free text. sanitizeSubjectValue strips
  * control characters (a bare newline makes Resend reject the whole send) and
@@ -43,12 +46,23 @@ export function buildClientEventEmail(p: ClientEventEmailParams): string {
     }" alt="${safeWorkspace}" style="max-height: 48px; max-width: 180px;" /></td></tr>`
     : `<tr><td align="center" style="padding: 30px 0 20px; font-size: 20px; font-weight: 700; color: ${safeBrandColor};">${safeWorkspace}</td></tr>`;
 
+  // A pathologically dense digest window (see client-event-email-cron/handler.ts's
+  // EVENTS_QUERY_CAP) could hand this builder hundreds of pending posts; render at
+  // most RENDERED_POSTS_CAP as a list and fold the rest into a single summary line
+  // rather than shipping an e-mail that's actually a wall of <li> tags.
+  const visiblePosts = pendingPosts.slice(0, RENDERED_POSTS_CAP);
+  const hiddenPostsCount = Math.max(0, pendingPosts.length - RENDERED_POSTS_CAP);
+  const morePostsLine = hiddenPostsCount > 0
+    ? `<p style="margin: 8px 0 0; font-size: 13px; color: #6b7280;">e mais ${hiddenPostsCount} posts aguardando aprovação.</p>`
+    : "";
+
   const postsSection = pendingPosts.length > 0
     ? `<tr><td style="padding: 0 30px 20px;">
         <p style="margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; font-weight: 600;">Posts aguardando aprovação</p>
         <ul style="margin: 0; padding: 0 0 0 18px; font-size: 14px; line-height: 1.7; color: #374151;">
-          ${pendingPosts.map((post) => `<li>${escapeHtml(post.titulo)}</li>`).join("")}
+          ${visiblePosts.map((post) => `<li>${escapeHtml(post.titulo)}</li>`).join("")}
         </ul>
+        ${morePostsLine}
        </td></tr>`
     : "";
 
