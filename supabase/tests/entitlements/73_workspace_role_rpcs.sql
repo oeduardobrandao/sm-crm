@@ -11,7 +11,58 @@
 -- et_grant_hosted_parity() for RPC-01..08. The test runs as the table owner
 -- and calls the functions directly, exactly as a service-role client would.
 -- RPC-09 is the exception: it proves `authenticated` genuinely lacks EXECUTE
--- on all three, which DOES require SET LOCAL ROLE.
+-- on all three, which DOES require SET LOCAL ROLE. It runs FIRST, in its own
+-- transaction, independent of every block below -- same house precedent as
+-- the privilege-boundary checks in 50_can_see_financials.sql and the
+-- TT-18/TT-19 placement in 72_workspace_roles_permissions.sql: under
+-- ON_ERROR_STOP the whole file is one psql invocation, so an uncaught
+-- failure anywhere in the RPC-01..08 block would otherwise halt the file
+-- before this privilege-boundary assertion ever ran.
+
+-- =============================================================
+-- RPC-09: authenticated executes none of the three RPCs (insufficient_privilege).
+-- Own transaction, independent of the block below.
+-- =============================================================
+begin;
+do $$
+declare v_ok boolean;
+begin
+  set local role authenticated;
+
+  v_ok := false;
+  begin
+    perform public.create_workspace_role(gen_random_uuid(), gen_random_uuid(), 'x', '{}'::jsonb);
+  exception when insufficient_privilege then
+    v_ok := true;
+  end;
+  if not v_ok then
+    raise exception 'RPC-09: authenticated must not be able to execute create_workspace_role()';
+  end if;
+
+  v_ok := false;
+  begin
+    perform public.update_workspace_role(gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'x', '{}'::jsonb);
+  exception when insufficient_privilege then
+    v_ok := true;
+  end;
+  if not v_ok then
+    raise exception 'RPC-09: authenticated must not be able to execute update_workspace_role()';
+  end if;
+
+  v_ok := false;
+  begin
+    perform public.delete_workspace_role(gen_random_uuid(), gen_random_uuid(), gen_random_uuid());
+  exception when insufficient_privilege then
+    v_ok := true;
+  end;
+  if not v_ok then
+    raise exception 'RPC-09: authenticated must not be able to execute delete_workspace_role()';
+  end if;
+
+  reset role;
+  raise notice '73: RPC-09 ok';
+end $$;
+rollback;
 
 -- =============================================================
 -- RPC-01..08: exercised as postgres, actor passed explicitly.
@@ -227,50 +278,5 @@ begin
   raise notice '73: RPC-08 ok';
 
   raise notice '73_workspace_role_rpcs: RPC-01..RPC-08 all passed';
-end $$;
-rollback;
-
--- =============================================================
--- RPC-09: authenticated executes none of the three RPCs (insufficient_privilege).
--- Own transaction, independent of the block above.
--- =============================================================
-begin;
-do $$
-declare v_ok boolean;
-begin
-  set local role authenticated;
-
-  v_ok := false;
-  begin
-    perform public.create_workspace_role(gen_random_uuid(), gen_random_uuid(), 'x', '{}'::jsonb);
-  exception when insufficient_privilege then
-    v_ok := true;
-  end;
-  if not v_ok then
-    raise exception 'RPC-09: authenticated must not be able to execute create_workspace_role()';
-  end if;
-
-  v_ok := false;
-  begin
-    perform public.update_workspace_role(gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'x', '{}'::jsonb);
-  exception when insufficient_privilege then
-    v_ok := true;
-  end;
-  if not v_ok then
-    raise exception 'RPC-09: authenticated must not be able to execute update_workspace_role()';
-  end if;
-
-  v_ok := false;
-  begin
-    perform public.delete_workspace_role(gen_random_uuid(), gen_random_uuid(), gen_random_uuid());
-  exception when insufficient_privilege then
-    v_ok := true;
-  end;
-  if not v_ok then
-    raise exception 'RPC-09: authenticated must not be able to execute delete_workspace_role()';
-  end if;
-
-  reset role;
-  raise notice '73: RPC-09 ok';
 end $$;
 rollback;
