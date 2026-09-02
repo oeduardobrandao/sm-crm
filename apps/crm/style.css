@@ -6783,6 +6783,75 @@ body.role-agent input[name='valor_total'] {
   background: var(--card-bg);
 }
 
+.drawer-post-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.drawer-post-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: color 0.15s;
+}
+
+.drawer-post-tab:hover {
+  color: var(--text-main);
+}
+
+.drawer-post-tab--active {
+  color: var(--text-main);
+  border-bottom-color: var(--primary-color);
+}
+
+.drawer-post-tab-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.drawer-post-tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.drawer-post-tab-dot--warning {
+  background: var(--warning);
+}
+
+.drawer-post-tab-dot--danger {
+  background: var(--danger);
+}
+
+.drawer-post-tabpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Sem esta regra o display:flex acima venceria o atributo hidden no browser
+   real e todas as abas apareceriam empilhadas. */
+.drawer-post-tabpanel[hidden] {
+  display: none;
+}
+
 .drawer-post-meta-row {
   display: flex;
   flex-wrap: wrap;
