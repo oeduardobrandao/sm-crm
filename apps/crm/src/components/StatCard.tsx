@@ -32,6 +32,15 @@ interface StatCardProps {
   active?: boolean;
   /** Flips which delta direction reads as "good" (e.g. a falling average time). */
   invertDelta?: boolean;
+  /**
+   * Unit printed straight after the delta number.
+   *
+   * The default '%' keeps one decimal, because a relative change genuinely has
+   * a fractional part. Any other unit renders as a whole number: 'pts' carries
+   * a difference between two percentages that the server already rounded, so
+   * "8.0pts" would be inventing a decimal the data never had.
+   */
+  unit?: string;
 }
 
 const DIRECTION_ICON = {
@@ -57,6 +66,7 @@ export function StatCard({
   onClick,
   active,
   invertDelta,
+  unit = '%',
 }: StatCardProps) {
   const DirectionIcon = delta ? DIRECTION_ICON[delta.direction] : null;
   const good =
@@ -93,7 +103,10 @@ export function StatCard({
                 data-good={good === undefined ? undefined : String(good)}
               >
                 <DirectionIcon className="h-3.5 w-3.5" />
-                {Math.abs(delta.percent).toFixed(1)}%
+                {unit === '%'
+                  ? Math.abs(delta.percent).toFixed(1)
+                  : Math.round(Math.abs(delta.percent))}
+                {unit}
               </span>
               {delta.caption && <span className="kpi-delta-caption">{delta.caption}</span>}
             </>

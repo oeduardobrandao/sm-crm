@@ -4,13 +4,17 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Two charts on this page now, so the stub keys its testid off the aria-label
+// rather than handing both the same one — `findByTestId` throws on duplicates,
+// and every test below waits on the ritmo chart to know the page has settled.
 vi.mock('react-chartjs-2', () => ({
   Chart: ({ data, 'aria-label': ariaLabel }: any) => (
     <div
-      data-testid="ritmo-chart"
+      data-testid={/aprova/i.test(ariaLabel ?? '') ? 'aprovacao-chart' : 'ritmo-chart'}
       aria-label={ariaLabel}
       data-labels={JSON.stringify(data.labels)}
       data-series={JSON.stringify(data.datasets.map((d: any) => [d.label, ...d.data]))}
+      data-colors={JSON.stringify(data.datasets.map((d: any) => d.backgroundColor))}
     />
   ),
 }));
@@ -66,6 +70,27 @@ const mockedClientes = vi.mocked(getClientes);
 const mockedTemplates = vi.mocked(getWorkflowTemplates);
 const mockedMembros = vi.mocked(getMembros);
 
+/** The five buckets the RPC always returns, in its fixed order. */
+function buckets(quantidades: [number, number, number, number, number] = [9, 14, 11, 6, 3]) {
+  return ['<4h', '4-24h', '1-3d', '3-7d', '7d+'].map((faixa, i) => ({
+    faixa,
+    quantidade: quantidades[i],
+  }));
+}
+
+/** An approval block with nothing in it, for the sections that must vanish. */
+function aprovacaoVazia(): WorkflowAnalytics['aprovacao_cliente'] {
+  return {
+    mediana_horas: null,
+    amostras: 0,
+    pendentes: 0,
+    resolvidos_internamente: 0,
+    buckets: buckets([0, 0, 0, 0, 0]),
+    por_cliente: [],
+    etapas: { amostras: 0, mediana_horas: null },
+  };
+}
+
 function payload(overrides: Partial<WorkflowAnalytics> = {}): WorkflowAnalytics {
   return {
     kpis: {
@@ -77,16 +102,62 @@ function payload(overrides: Partial<WorkflowAnalytics> = {}): WorkflowAnalytics 
       pontualidade_pct: 61,
       pontualidade_prev: 69,
       etapas_avaliadas: 43,
+      etapas_avaliadas_prev: 40,
+      retrabalho_pct: 18,
+      retrabalho_prev: 24,
     },
     etapas: [
-      { nome: 'Copy', media_dias: 5, amostras: 24, atraso_pct: 62 },
-      { nome: 'Captação', media_dias: 2.2, amostras: 12, atraso_pct: 8 },
+      { nome: 'Copy', media_dias: 5, amostras: 24, atraso_pct: 62, retrabalho_pct: 21 },
+      { nome: 'Captação', media_dias: 2.2, amostras: 12, atraso_pct: 8, retrabalho_pct: null },
     ],
     semanas: [{ semana: '2026-08-04', concluidos: 2, criados: 3 }],
     semanas_criados_sem_conclusao: [{ semana: '2026-08-11', criados: 5 }],
     equipe: [
-      { membro_id: 7, concluidas: 18, media_dias: 2.1, no_prazo: 15, atrasadas: 3, avaliadas: 18 },
-      { membro_id: 8, concluidas: 2, media_dias: 1.9, no_prazo: 2, atrasadas: 0, avaliadas: 2 },
+      {
+        membro_id: 7,
+        concluidas: 18,
+        media_dias: 2.1,
+        no_prazo: 15,
+        atrasadas: 3,
+        avaliadas: 18,
+        retrabalho: 2,
+        atividade: 96,
+      },
+      {
+        membro_id: 8,
+        concluidas: 2,
+        media_dias: 1.9,
+        no_prazo: 2,
+        atrasadas: 0,
+        avaliadas: 2,
+        retrabalho: 0,
+        atividade: 12,
+      },
+    ],
+    horizonte: {
+      workflow_events_since: '2026-07-15T09:00:00+00:00',
+      post_events_since: '2026-08-01T12:00:00+00:00',
+    },
+    aprovacao_cliente: {
+      mediana_horas: 28,
+      amostras: 43,
+      pendentes: 5,
+      resolvidos_internamente: 2,
+      buckets: buckets(),
+      // The RPC hands this back ordered `mediana_horas DESC NULLS LAST`, so the
+      // fixture arrives that way too. The page must not re-sort it; the test
+      // below pins the rendered order to exactly this sequence.
+      por_cliente: [
+        { cliente_id: 1, mediana_horas: 98, amostras: 8, pendentes: 1 },
+        { cliente_id: 99, mediana_horas: 50, amostras: 4, pendentes: 0 },
+        { cliente_id: 2, mediana_horas: 3.333, amostras: 10, pendentes: 0 },
+        { cliente_id: 3, mediana_horas: null, amostras: 0, pendentes: 3 },
+      ],
+      etapas: { amostras: 6, mediana_horas: 12 },
+    },
+    origem: [
+      { origem: 'human', concluidos: 30, tempo_medio_dias: 5.2 },
+      { origem: 'agent', concluidos: 13, tempo_medio_dias: 3.1 },
     ],
     ...overrides,
   };
@@ -155,10 +226,28 @@ function delta(card: HTMLElement) {
   return card.querySelector('.kpi-delta');
 }
 
+/** One row of the approval ranking, addressed by the client it links to. */
+function rankingRow(clienteId: number): HTMLElement {
+  const el = document.querySelector(`a[href="/clientes/${clienteId}/entregas"]`);
+  if (!el) throw new Error(`Linha do cliente ${clienteId} não encontrada no ranking`);
+  return el as HTMLElement;
+}
+
+/** Every ranking row's href, in render order. */
+function rankingHrefs(): string[] {
+  return [...document.querySelectorAll('a[href^="/clientes/"]')].map(
+    (a) => a.getAttribute('href') ?? '',
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockedAnalytics.mockResolvedValue(payload());
-  mockedClientes.mockResolvedValue([{ id: 1, nome: 'Cliente A' } as never]);
+  mockedClientes.mockResolvedValue([
+    { id: 1, nome: 'Cliente A', sigla: 'CA', cor: '#f542c8', foto_url: null } as never,
+    { id: 2, nome: 'Odonto Prime', sigla: 'OP', cor: '#42c8f5', foto_url: null } as never,
+    { id: 3, nome: 'Clínica Vitalis', sigla: 'CV', cor: '#3ecf8e', foto_url: null } as never,
+  ]);
   mockedTemplates.mockResolvedValue([{ id: 10, nome: 'Template A' } as never]);
   mockedMembros.mockResolvedValue([
     { id: 7, nome: 'Ana', avatar_url: '' } as never,
@@ -189,6 +278,62 @@ describe('AnalyticsFluxosPage', () => {
     expect(within(pontualidade).getByText('61%')).toBeTruthy();
     expect(delta(pontualidade)?.getAttribute('data-direction')).toBe('down');
     expect(delta(pontualidade)?.getAttribute('data-good')).toBe('false');
+  });
+
+  it('renders the Retrabalho KPI and reads falling rework as good news', async () => {
+    renderPage();
+    await screen.findByTestId('ritmo-chart');
+
+    const retrabalho = kpiCard('Retrabalho');
+    expect(within(retrabalho).getByText('18%')).toBeTruthy();
+    // 18% against 24%: the arrow points down, and down is the GOOD direction
+    // here. Without invertDelta this card would paint an improvement red.
+    expect(delta(retrabalho)?.getAttribute('data-direction')).toBe('down');
+    expect(delta(retrabalho)?.getAttribute('data-good')).toBe('true');
+    // A share of flows is a percentage, so its delta is in points too: 24 - 18.
+    expect(within(retrabalho).getByText('6pts')).toBeTruthy();
+  });
+
+  it('says so instead of printing a zero when no event backs the retrabalho KPI', async () => {
+    mockedAnalytics.mockResolvedValue(
+      payload({
+        kpis: {
+          ...payload().kpis,
+          retrabalho_pct: null,
+          retrabalho_prev: null,
+        },
+      }),
+    );
+    renderPage();
+    await screen.findByTestId('ritmo-chart');
+
+    const retrabalho = kpiCard('Retrabalho');
+    expect(within(retrabalho).getByText('Sem dados')).toBeTruthy();
+    expect(delta(retrabalho)).toBeNull();
+    expect(within(retrabalho).getByText('nenhum evento de fluxo no período')).toBeTruthy();
+  });
+
+  it('measures the pontualidade delta in points, not as a relative change', async () => {
+    renderPage();
+    await screen.findByTestId('ritmo-chart');
+
+    const pontualidade = kpiCard('Pontualidade');
+    // 61 vs 69 is 8 points, printed as a whole number: both figures are
+    // server-rounded integers, so "8.0%" would be wrong twice over.
+    expect(within(pontualidade).getByText('8pts')).toBeTruthy();
+    expect(within(pontualidade).queryByText('8.0%')).toBeNull();
+    expect(within(pontualidade).getByText('vs período anterior')).toBeTruthy();
+  });
+
+  it('withholds the pontualidade delta when the previous window rated nothing', async () => {
+    mockedAnalytics.mockResolvedValue(
+      payload({ kpis: { ...payload().kpis, etapas_avaliadas_prev: 0 } }),
+    );
+    renderPage();
+    await screen.findByTestId('ritmo-chart');
+
+    expect(delta(kpiCard('Pontualidade'))).toBeNull();
+    expect(within(kpiCard('Pontualidade')).getByText('sem base de comparação')).toBeTruthy();
   });
 
   it('flips the verdict on tempo médio: falling is the good direction', async () => {
@@ -223,6 +368,9 @@ describe('AnalyticsFluxosPage', () => {
           pontualidade_pct: null,
           pontualidade_prev: null,
           etapas_avaliadas: 0,
+          etapas_avaliadas_prev: 0,
+          retrabalho_pct: null,
+          retrabalho_prev: null,
         },
       }),
     );
@@ -273,6 +421,7 @@ describe('AnalyticsFluxosPage', () => {
           media_dias: 12 - i,
           amostras: 3,
           atraso_pct: 10,
+          retrabalho_pct: 5,
         })),
       }),
     );
@@ -282,6 +431,217 @@ describe('AnalyticsFluxosPage', () => {
     expect(screen.queryAllByText('Etapa 11').length).toBe(0);
     fireEvent.click(screen.getByRole('button', { name: /Mostrar todas as etapas/ }));
     expect(screen.getAllByText('Etapa 11').length).toBeGreaterThan(0);
+  });
+
+  it('plots all five approval buckets, in the RPC order, with human labels', async () => {
+    renderPage();
+    const chart = await screen.findByTestId('aprovacao-chart');
+
+    expect(JSON.parse(chart.getAttribute('data-labels') ?? '[]')).toEqual([
+      '< 4h',
+      '4 a 24h',
+      '1 a 3d',
+      '3 a 7d',
+      '7d+',
+    ]);
+    expect(JSON.parse(chart.getAttribute('data-series') ?? '[]')).toEqual([
+      ['Aprovações', 9, 14, 11, 6, 3],
+    ]);
+  });
+
+  it('colours the two slow buckets with the warning and danger tokens', async () => {
+    renderPage();
+    const chart = await screen.findByTestId('aprovacao-chart');
+
+    const [cores] = JSON.parse(chart.getAttribute('data-colors') ?? '[]');
+    expect(cores).toHaveLength(5);
+    // jsdom resolves no CSS variables, so these are chartTheme's own fallbacks:
+    // the assertion is that the last two come from the SEMANTIC ramp and the
+    // first three do not, never that a literal was typed into the section.
+    expect(cores[3]).toBe('#f5a342');
+    expect(cores[4]).toBe('#f55a42');
+    expect(new Set(cores.slice(0, 3)).has('#f55a42')).toBe(false);
+  });
+
+  it('summarises the approval window under the histogram', async () => {
+    renderPage();
+    await screen.findByTestId('aprovacao-chart');
+
+    expect(screen.getByText('1d 4h')).toBeTruthy();
+    expect(screen.getByText(/43 respostas/)).toBeTruthy();
+    expect(screen.getByText(/5 aguardando · 2 resolvidos internamente/)).toBeTruthy();
+    // The etapa-only approvals are a complement, not a substitute: they are
+    // stated separately so nobody adds them into the 43.
+    expect(screen.getByText(/\+6 aprovações por etapa \(mediana 12h\)/)).toBeTruthy();
+  });
+
+  it('stamps both approval cards with the date the post event log starts', async () => {
+    renderPage();
+    await screen.findByTestId('aprovacao-chart');
+
+    expect(screen.getAllByText(/Registrado desde 01\/08\/2026/).length).toBe(2);
+  });
+
+  it('omits the horizon caption entirely when there are no post events yet', async () => {
+    mockedAnalytics.mockResolvedValue(
+      payload({
+        horizonte: { workflow_events_since: '2026-07-15T09:00:00+00:00', post_events_since: null },
+      }),
+    );
+    renderPage();
+    await screen.findByTestId('aprovacao-chart');
+
+    expect(screen.queryByText(/Registrado desde/)).toBeNull();
+  });
+
+  it("ranks the slowest clients and links each row to that client's entregas", async () => {
+    renderPage();
+    await screen.findByTestId('aprovacao-chart');
+
+    // By href, not by name: the client names also sit in the filter select, and
+    // this assertion is about the ranking row, not about the toolbar.
+    const odonto = rankingRow(2);
+    expect(within(odonto).getByText('Odonto Prime')).toBeTruthy();
+    expect(within(odonto).getByText('3h 20min')).toBeTruthy();
+    expect(within(odonto).getByText('10 respostas')).toBeTruthy();
+
+    // 98h is the slowest and keeps the top row.
+    expect(within(rankingRow(1)).getByText('4d 2h')).toBeTruthy();
+
+    // The whole order, not just the head: the RPC already sorts by
+    // `mediana_horas DESC NULLS LAST`, and the section must render that order
+    // verbatim rather than re-sorting on a field it would have to guess at.
+    expect(rankingHrefs()).toEqual([
+      '/clientes/1/entregas',
+      '/clientes/99/entregas',
+      '/clientes/2/entregas',
+      '/clientes/3/entregas',
+    ]);
+  });
+
+  it('names a removed cliente instead of leaking the id in the ranking', async () => {
+    renderPage();
+    await screen.findByTestId('aprovacao-chart');
+
+    expect(within(rankingRow(99)).getByText('Cliente removido')).toBeTruthy();
+  });
+
+  it('says a client is still sitting on the cycle instead of claiming zero answers', async () => {
+    renderPage();
+    await screen.findByTestId('aprovacao-chart');
+
+    const vitalis = rankingRow(3);
+    expect(within(vitalis).getByText('Sem dados')).toBeTruthy();
+    expect(within(vitalis).getByText('3 aguardando')).toBeTruthy();
+    expect(within(vitalis).queryByText('0 respostas')).toBeNull();
+  });
+
+  it('caps the ranking at eight rows', async () => {
+    mockedAnalytics.mockResolvedValue(
+      payload({
+        aprovacao_cliente: {
+          ...payload().aprovacao_cliente,
+          por_cliente: Array.from({ length: 12 }, (_, i) => ({
+            cliente_id: 100 + i,
+            mediana_horas: 100 - i,
+            amostras: 4,
+            pendentes: 0,
+          })),
+        },
+      }),
+    );
+    renderPage();
+    await screen.findByTestId('aprovacao-chart');
+
+    expect(screen.getAllByText('Cliente removido')).toHaveLength(8);
+  });
+
+  it('drops the whole approval section when no cycle touched the period', async () => {
+    mockedAnalytics.mockResolvedValue(payload({ aprovacao_cliente: aprovacaoVazia() }));
+    renderPage();
+    await screen.findByTestId('ritmo-chart');
+
+    expect(screen.getByText('Sem aprovações de cliente no período.')).toBeTruthy();
+    expect(screen.queryByTestId('aprovacao-chart')).toBeNull();
+    expect(screen.queryByText('Clientes mais lentos para aprovar')).toBeNull();
+  });
+
+  it('adds the retrabalho and atividade columns, sourced from the event log', async () => {
+    renderPage();
+    await screen.findByTestId('ritmo-chart');
+
+    // Etapa retrabalho: a real percentage, and a dot where the etapa recorded
+    // no conclusion at all — never a fabricated 0%.
+    expect(screen.getAllByText('21%').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('·').length).toBeGreaterThan(0);
+
+    // Membro columns are COUNTS, not percentages.
+    expect(screen.getAllByText('96 eventos').length).toBeGreaterThan(0);
+
+    const retrabalhoHeaders = screen
+      .getAllByText('Retrabalho')
+      .filter((n) => n.tagName === 'TH')
+      .map((n) => n.getAttribute('data-tooltip'));
+    expect(retrabalhoHeaders.length).toBe(2);
+    expect(retrabalhoHeaders.every((t) => t?.includes('15/07/2026'))).toBe(true);
+    expect(
+      screen
+        .getAllByText('Atividade')
+        .find((n) => n.tagName === 'TH')
+        ?.getAttribute('data-tooltip'),
+    ).toContain('15/07/2026');
+
+    // The tooltips live inside an `overflow-x: auto` wrapper that clips them,
+    // so the captions carry the same horizon outside it.
+    expect(screen.getByText(/retrabalho registrado desde 15\/07\/2026/)).toBeTruthy();
+    expect(screen.getByText(/retrabalho e atividade desde 15\/07\/2026/)).toBeTruthy();
+  });
+
+  it('drops the horizon from the table captions when no event was ever logged', async () => {
+    mockedAnalytics.mockResolvedValue(
+      payload({
+        horizonte: { workflow_events_since: null, post_events_since: '2026-08-01T12:00:00+00:00' },
+      }),
+    );
+    renderPage();
+    await screen.findByTestId('ritmo-chart');
+
+    expect(screen.queryByText(/desde 15\/07\/2026/)).toBeNull();
+    expect(screen.getByText('tempo médio real de cada etapa concluída no período')).toBeTruthy();
+    expect(
+      screen
+        .getAllByText('Retrabalho')
+        .find((n) => n.tagName === 'TH')
+        ?.getAttribute('data-tooltip'),
+    ).toBe('Nenhuma devolução registrada ainda');
+  });
+
+  it('shows the origin breakdown once an agent is in the mix', async () => {
+    renderPage();
+    await screen.findByTestId('ritmo-chart');
+
+    expect(screen.getByText('Origem dos fluxos')).toBeTruthy();
+    expect(screen.getByText('Agente')).toBeTruthy();
+    expect(screen.getByText('Humano')).toBeTruthy();
+  });
+
+  it('hides the origin card for a workspace that has only ever created flows by hand', async () => {
+    mockedAnalytics.mockResolvedValue(
+      payload({ origem: [{ origem: 'human', concluidos: 43, tempo_medio_dias: 5.2 }] }),
+    );
+    renderPage();
+    await screen.findByTestId('ritmo-chart');
+
+    // One row restating the total is not a breakdown.
+    expect(screen.queryByText('Origem dos fluxos')).toBeNull();
+  });
+
+  it('echoes the applied filters for the print sheet, which drops the toolbar', async () => {
+    renderPage('/analytics-fluxos?periodo=7d&cliente=1');
+    await screen.findByTestId('ritmo-chart');
+
+    const echo = document.querySelector('.analytics-fluxos-print-echo');
+    expect(echo?.textContent).toBe('Período: 7d · Cliente: Cliente A · Template: todos');
   });
 
   it('writes the period to the URL and refires the query with a new window', async () => {
@@ -365,7 +725,14 @@ describe('AnalyticsFluxosPage', () => {
           pontualidade_pct: null,
           pontualidade_prev: null,
           etapas_avaliadas: 0,
+          etapas_avaliadas_prev: 0,
+          retrabalho_pct: null,
+          retrabalho_prev: null,
         },
+        // Genuinely nothing matched, approvals included: without this the
+        // filtered window still has approval data and the body is right to
+        // show it rather than to caption everything "nenhum fluxo no filtro".
+        aprovacao_cliente: aprovacaoVazia(),
       }),
     );
     renderPage('/analytics-fluxos?cliente=1');
@@ -387,12 +754,78 @@ describe('AnalyticsFluxosPage', () => {
           pontualidade_pct: null,
           pontualidade_prev: null,
           etapas_avaliadas: 0,
+          etapas_avaliadas_prev: 0,
+          retrabalho_pct: null,
+          retrabalho_prev: null,
         },
+        // A brand-new workspace has no approval cycles either. That is what
+        // makes it new, and it is the only shape the onboarding copy fits.
+        aprovacao_cliente: aprovacaoVazia(),
+        origem: [],
       }),
     );
     renderPage();
 
     expect(await screen.findByText(/Crie fluxos de trabalho/)).toBeTruthy();
+  });
+
+  it('keeps the page for a workspace whose only activity is on posts avulsos', async () => {
+    // Post Express: approval cycles hang off posts, and a post needs no
+    // workflow. Zero flows here does NOT mean an empty workspace, and gating
+    // the body on the KPIs alone hid the one section that had data.
+    mockedAnalytics.mockResolvedValue(
+      payload({
+        kpis: {
+          concluidos: 0,
+          concluidos_prev: 0,
+          ativos: 0,
+          tempo_medio_dias: null,
+          tempo_medio_prev: null,
+          pontualidade_pct: null,
+          pontualidade_prev: null,
+          etapas_avaliadas: 0,
+          etapas_avaliadas_prev: 0,
+          retrabalho_pct: null,
+          retrabalho_prev: null,
+        },
+        etapas: [],
+        semanas: [],
+        semanas_criados_sem_conclusao: [],
+        equipe: [],
+        origem: [],
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByTestId('aprovacao-chart')).toBeTruthy();
+    expect(screen.queryByText(/Crie fluxos de trabalho/)).toBeNull();
+    expect(screen.getByText('Clientes mais lentos para aprovar')).toBeTruthy();
+    expect(within(rankingRow(1)).getByText('4d 2h')).toBeTruthy();
+  });
+
+  it('still shows onboarding when even the approval block is empty', async () => {
+    mockedAnalytics.mockResolvedValue(
+      payload({
+        kpis: {
+          concluidos: 0,
+          concluidos_prev: 0,
+          ativos: 0,
+          tempo_medio_dias: null,
+          tempo_medio_prev: null,
+          pontualidade_pct: null,
+          pontualidade_prev: null,
+          etapas_avaliadas: 0,
+          etapas_avaliadas_prev: 0,
+          retrabalho_pct: null,
+          retrabalho_prev: null,
+        },
+        aprovacao_cliente: aprovacaoVazia(),
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText(/Crie fluxos de trabalho/)).toBeTruthy();
+    expect(screen.queryByTestId('aprovacao-chart')).toBeNull();
   });
 
   it('shows QueryErrorCard on failure and recovers on retry', async () => {

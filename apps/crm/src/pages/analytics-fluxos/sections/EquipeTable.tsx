@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import type { EquipeAgg } from '@/services/workflowAnalytics';
 import type { Membro } from '../../../store';
 import {
+  formatDataCurta,
   formatDiasDecimal,
   formatPontualidadeMembro,
   MIN_AVALIADAS,
@@ -14,13 +15,16 @@ import { SectionCard, SectionEmpty } from './SectionCard';
 interface EquipeTableProps {
   equipe: EquipeAgg[];
   membrosById: Map<number, Membro>;
+  /** `horizonte.workflow_events_since`: both event-derived columns below only
+   *  exist from this date on, and the headers say so. */
+  eventosDesde: string | null;
 }
 
 function PontualidadeCell({ membro }: { membro: EquipeAgg }) {
   const label = formatPontualidadeMembro(membro.no_prazo, membro.avaliadas);
   if (membro.avaliadas < MIN_AVALIADAS) {
     return (
-      <Badge variant="secondary" data-tooltip={POUCOS_DADOS_TOOLTIP}>
+      <Badge variant="neutral" data-tooltip={POUCOS_DADOS_TOOLTIP}>
         {label}
       </Badge>
     );
@@ -61,14 +65,22 @@ function MembroCell({
   );
 }
 
-export function EquipeTable({ equipe, membrosById }: EquipeTableProps) {
+export function EquipeTable({ equipe, membrosById, eventosDesde }: EquipeTableProps) {
   const ordenada = useMemo(() => [...equipe].sort((a, b) => b.concluidas - a.concluidas), [equipe]);
+  const desde = formatDataCurta(eventosDesde);
+  // Short on purpose, and repeated in the caption: the table sits in an
+  // `overflow-x: auto` wrapper, which clips absolutely-positioned tooltips on
+  // BOTH axes. The caption is outside that wrapper and always readable.
+  const retrabalhoTooltip = desde
+    ? `Devoluções desde ${desde}`
+    : 'Nenhuma devolução registrada ainda';
+  const atividadeTooltip = desde ? `Eventos desde ${desde}` : 'Nenhuma atividade registrada ainda';
+  const caption = desde
+    ? `sem 100% falso: pouca amostra vira Poucos dados · retrabalho e atividade desde ${desde}`
+    : 'sem 100% falso: pouca amostra vira Poucos dados';
 
   return (
-    <SectionCard
-      title="Desempenho da equipe"
-      caption="sem 100% falso: pouca amostra vira Poucos dados"
-    >
+    <SectionCard title="Desempenho da equipe" caption={caption}>
       {ordenada.length === 0 ? (
         <SectionEmpty>Nenhuma etapa concluída com responsável no período.</SectionEmpty>
       ) : (
@@ -82,6 +94,8 @@ export function EquipeTable({ equipe, membrosById }: EquipeTableProps) {
                     <th>Concluídas</th>
                     <th>Tempo médio</th>
                     <th>Pontualidade</th>
+                    <th data-tooltip={retrabalhoTooltip}>Retrabalho</th>
+                    <th data-tooltip={atividadeTooltip}>Atividade</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -94,6 +108,15 @@ export function EquipeTable({ equipe, membrosById }: EquipeTableProps) {
                       <td data-label="Tempo médio">{formatDiasDecimal(linha.media_dias)}</td>
                       <td data-label="Pontualidade">
                         <PontualidadeCell membro={linha} />
+                      </td>
+                      {/* Both are counts, not percentages: the RPC COALESCEs
+                          them to 0, so a zero here really is "nothing recorded
+                          for this member", never a missing value. */}
+                      <td data-label="Retrabalho" style={{ color: 'var(--text-muted)' }}>
+                        {linha.retrabalho}
+                      </td>
+                      <td data-label="Atividade" style={{ color: 'var(--text-muted)' }}>
+                        {linha.atividade} eventos
                       </td>
                     </tr>
                   ))}
@@ -137,6 +160,13 @@ export function EquipeTable({ equipe, membrosById }: EquipeTableProps) {
                       {formatDiasDecimal(linha.media_dias)}
                     </strong>{' '}
                     média
+                  </span>
+                  <span>
+                    <strong style={{ color: 'var(--text-main)' }}>{linha.retrabalho}</strong>{' '}
+                    devoluções
+                  </span>
+                  <span>
+                    <strong style={{ color: 'var(--text-main)' }}>{linha.atividade}</strong> eventos
                   </span>
                 </div>
               </div>
