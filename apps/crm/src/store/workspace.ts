@@ -239,6 +239,31 @@ export interface MyMembership {
  * (null) from "could not determine" (throw), because those resolve to different
  * capability states.
  */
+/**
+ * True when the error says the ROLES SCHEMA itself is missing — `role_id` /
+ * `workspace_roles` not present in the database this client is talking to —
+ * as opposed to a network/RLS failure.
+ *
+ * Exists because the frontend and migrations deploy independently: Vercel
+ * ships a bundle on merge while `20260903000002_workspace_roles_a_additive`
+ * reaches each database by a manual push. In that window the enriched select
+ * below 400s for EVERY member, AuthContext resolves membership to 'error',
+ * and the whole app collapses to "Não foi possível confirmar seu acesso"
+ * (2026-09-02 incident). A pre-migration database must degrade to the legacy
+ * lookup, not take the workspace down.
+ *
+ * Codes: 42703 undefined column (`role_id`), 42P01 undefined table,
+ * PGRST200 embed relationship not in PostgREST's schema cache — plus a
+ * message probe for the same two identifiers, because the schema-cache
+ * phrasing has shifted across PostgREST versions. A transport error
+ * ("Failed to fetch") matches none of these and still throws.
+ */
+function isMissingRolesSchemaError(error: { code?: string; message?: string }): boolean {
+  if (error.code === '42703' || error.code === '42P01' || error.code === 'PGRST200') return true;
+  const message = error.message ?? '';
+  return message.includes('workspace_roles') || message.includes('role_id');
+}
+
 export async function getMyMembership(): Promise<MyMembership | null> {
   const {
     data: { user },
@@ -257,7 +282,31 @@ export async function getMyMembership(): Promise<MyMembership | null> {
     .eq('workspace_id', conta_id)
     .maybeSingle();
 
-  if (error) throw error;
+  if (error) {
+    if (!isMissingRolesSchemaError(error)) throw error;
+    // Database predates the roles migration — resolve membership through the
+    // legacy columns instead of failing the whole session. `role_id: null`
+    // is exactly what every row would hold pre-migration, so derivePermission
+    // takes its legacy fallback and behaviour matches the old bundle.
+    const { data: legacy, error: legacyError } = await supabase
+      .from('workspace_members')
+      .select('role, can_see_financials')
+      .eq('user_id', user.id)
+      .eq('workspace_id', conta_id)
+      .maybeSingle();
+    if (legacyError) throw legacyError;
+    if (!legacy) return null;
+    const legacyRow = legacy as unknown as {
+      role: MyMembership['role'];
+      can_see_financials: boolean;
+    };
+    return {
+      role: legacyRow.role,
+      can_see_financials: legacyRow.can_see_financials,
+      role_id: null,
+      permissions: null,
+    };
+  }
   if (!data) return null;
   const row = data as unknown as {
     role: MyMembership['role'];
