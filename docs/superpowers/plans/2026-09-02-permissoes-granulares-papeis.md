@@ -30,7 +30,7 @@
 ### Task 1: Branch + Migração A (schema, funções, RPCs)
 
 **Files:**
-- Create: `supabase/migrations/20260903000001_workspace_roles_a_additive.sql`
+- Create: `supabase/migrations/20260903000002_workspace_roles_a_additive.sql`
 
 **Interfaces:**
 - Produces (SQL, usados por TODAS as tasks seguintes):
@@ -50,7 +50,7 @@ git fetch origin main && git checkout -b ebs/permissoes-papeis-a origin/main
 
 - [ ] **Step 2: Escrever a migração**
 
-Criar `supabase/migrations/20260903000001_workspace_roles_a_additive.sql` com o conteúdo integral abaixo. O corpo de `accept_workspace_invite` deve ser copiado da versão ATUAL em `supabase/migrations/20260731000002_invite_membro_link.sql` (linhas 14–125) com APENAS as alterações marcadas — não reescrever do zero.
+Criar `supabase/migrations/20260903000002_workspace_roles_a_additive.sql` com o conteúdo integral abaixo. O corpo de `accept_workspace_invite` deve ser copiado da versão ATUAL em `supabase/migrations/20260731000002_invite_membro_link.sql` (linhas 14–125) com APENAS as alterações marcadas — não reescrever do zero.
 
 ```sql
 -- Permissões granulares, Migração A (aditiva): papéis customizados por workspace.
@@ -432,7 +432,7 @@ Expected: reset aplica todas as migrations sem erro (as post-conditions do passo
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20260903000001_workspace_roles_a_additive.sql
+git add supabase/migrations/20260903000002_workspace_roles_a_additive.sql
 git commit -m "feat(equipe): migração A de papéis customizados (workspace_roles, has_permission, RPCs)"
 ```
 

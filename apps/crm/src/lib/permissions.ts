@@ -24,7 +24,7 @@ export type PermissionCheck = boolean | 'unknown';
 
 /**
  * Espelho EXATO do preset agente hardcoded em public.has_permission_for
- * (migration 20260903000001, bloco "agent: preset hardcoded"). O único outro
+ * (migration 20260903000002, bloco "agent: preset hardcoded"). O único outro
  * mirror TS é este arquivo — supabase/functions/_shared/permissions.ts NÃO
  * tem um preset próprio: aquele módulo é só catálogo + validação de payload
  * mais um wrapper que delega para o RPC has_permission_for, que é quem

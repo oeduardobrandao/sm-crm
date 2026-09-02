@@ -2,7 +2,7 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- Truth table for the permission core added by migration
--- 20260903000001_workspace_roles_a_additive.sql:
+-- 20260903000002_workspace_roles_a_additive.sql:
 --   public.has_permission_for(p_user, p_workspace, p_module, p_action) -- the
 --     service-role-only core. Every truth-table case below calls it DIRECTLY
 --     as postgres (superuser bypasses the EXECUTE grant), exactly as the

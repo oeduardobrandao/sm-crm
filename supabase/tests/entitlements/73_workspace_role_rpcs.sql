@@ -2,7 +2,7 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- public.create_workspace_role / update_workspace_role / delete_workspace_role
--- -- migration 20260903000001_workspace_roles_a_additive.sql -- are the SOLE
+-- -- migration 20260903000002_workspace_roles_a_additive.sql -- are the SOLE
 -- enforcement point for who may manage custom papéis. Like
 -- set_financial_access (53_set_financial_access.sql), each is SECURITY
 -- DEFINER and takes the actor as an explicit parameter, so it never reads

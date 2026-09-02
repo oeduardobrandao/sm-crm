@@ -2,7 +2,7 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- public.accept_workspace_invite(p_user_id) -- migration
--- 20260903000001_workspace_roles_a_additive.sql applied exactly two changes
+-- 20260903000002_workspace_roles_a_additive.sql applied exactly two changes
 -- to the deployed body from 20260731000002_invite_membro_link.sql: the
 -- workspace_members INSERT now copies invites.role_id and coerces role to
 -- 'agent' whenever a role_id is present, and profiles.role follows the same
