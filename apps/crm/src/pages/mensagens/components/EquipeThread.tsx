@@ -40,7 +40,7 @@ function anexoSizeLabel(bytes: number): string {
  * presigned URLs live longer than that, so a re-render inside the window
  * reuses the same one instead of re-signing). */
 function AnexoImagem({ anexo }: { anexo: EquipeMensagemAnexo }) {
-  const { data: url } = useQuery({
+  const { data: url, isError } = useQuery({
     queryKey: ['equipe-anexo-url', anexo.id],
     queryFn: () => signEquipeChatAnexoView(anexo.id),
     staleTime: 8 * 60_000,
@@ -52,7 +52,16 @@ function AnexoImagem({ anexo }: { anexo: EquipeMensagemAnexo }) {
       style={{ cursor: 'pointer' }}
       src={url}
       alt={anexo.file_name}
-      onClick={() => url && window.open(url, '_blank', 'noopener,noreferrer')}
+      onClick={() => {
+        if (url) {
+          window.open(url, '_blank', 'noopener,noreferrer');
+          return;
+        }
+        // Mirrors AnexoChip's error handling: same toast when the signed URL
+        // is unavailable because signing failed. Still-loading is a silent
+        // no-op, same as before.
+        if (isError) toast.error('Não foi possível abrir o arquivo.');
+      }}
     />
   );
 }
@@ -149,6 +158,7 @@ export function EquipeThread({
       });
       setDraft('');
       setAnexosPendentes([]);
+      scrollPending.current = true;
     } catch {
       toast.error('Não foi possível enviar a mensagem.');
     }

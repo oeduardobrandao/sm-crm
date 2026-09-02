@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ComponentProps } from 'react';
 import { BrowserRouter } from 'react-router-dom';
@@ -134,24 +134,29 @@ function makeMarkSeen(overrides: Record<string, unknown> = {}) {
   } as unknown as ComponentProps<typeof EquipeThread>['markSeen'];
 }
 
+function wrapTree(qc: QueryClient, props: ComponentProps<typeof EquipeThread>) {
+  return (
+    <BrowserRouter>
+      <QueryClientProvider client={qc}>
+        <EquipeThread {...props} />
+      </QueryClientProvider>
+    </BrowserRouter>
+  );
+}
+
 function renderThread(overrides: Partial<ComponentProps<typeof EquipeThread>> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const send = makeSend();
   const markSeen = makeMarkSeen();
-  const utils = render(
-    <BrowserRouter>
-      <QueryClientProvider client={qc}>
-        <EquipeThread
-          conversa={CONVERSA}
-          mensagens={makeMensagens()}
-          send={send}
-          markSeen={markSeen}
-          {...overrides}
-        />
-      </QueryClientProvider>
-    </BrowserRouter>,
-  );
-  return { ...utils, send, markSeen };
+  const props: ComponentProps<typeof EquipeThread> = {
+    conversa: CONVERSA,
+    mensagens: makeMensagens(),
+    send,
+    markSeen,
+    ...overrides,
+  };
+  const utils = render(wrapTree(qc, props));
+  return { ...utils, send, markSeen, qc };
 }
 
 describe('EquipeThread', () => {
@@ -249,5 +254,81 @@ describe('EquipeThread', () => {
       fireEvent.keyDown(input, { key: 'Enter' });
     });
     expect(toast.error).toHaveBeenCalledWith('Não foi possível enviar a mensagem.');
+  });
+
+  it('re-arms auto-scroll after a successful send, so a later message growth snaps to the bottom', async () => {
+    const { send, markSeen, qc, rerender } = renderThread();
+    const scrollEl = screen.getByTestId('thread-scroll');
+
+    const input = screen.getByPlaceholderText('Mensagem para a equipe…');
+    fireEvent.change(input, { target: { value: 'Nova mensagem' } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
+    });
+    expect(send.mutateAsync).toHaveBeenCalled();
+
+    // Same idiom as MensagensPage.test.tsx's scroll-to-bottom assertion:
+    // override scrollHeight/scrollTop so the effect's assignment is
+    // observable (jsdom otherwise keeps both pinned at 0).
+    Object.defineProperty(scrollEl, 'scrollHeight', { value: 999, configurable: true });
+    const scrollTopSpy = vi.fn();
+    Object.defineProperty(scrollEl, 'scrollTop', {
+      get: () => 0,
+      set: scrollTopSpy,
+      configurable: true,
+    });
+
+    // Simulates the growth a real send would cause once the query client
+    // invalidates and refetches: one more item in the page.
+    const grown: EquipeMensagem[] = [
+      ...MENSAGENS,
+      {
+        id: 3,
+        conversa_id: 42,
+        author_user_id: 'user-1',
+        author_name: 'Eu',
+        author_avatar_url: null,
+        content: 'Nova mensagem',
+        created_at: '2026-07-30T12:00:00.000Z',
+        anexos: [],
+      },
+    ];
+    rerender(
+      wrapTree(qc, {
+        conversa: CONVERSA,
+        mensagens: makeMensagens({ data: { pages: [grown] } }),
+        send,
+        markSeen,
+      }),
+    );
+
+    expect(scrollTopSpy).toHaveBeenCalledWith(999);
+  });
+
+  it('shows an error toast when clicking an image attachment whose signed URL failed to load', async () => {
+    mockSign.mockRejectedValue(new Error('boom'));
+    const comAnexo: EquipeMensagem[] = [
+      {
+        id: 4,
+        conversa_id: 42,
+        author_user_id: 'user-2',
+        author_name: 'Ana',
+        author_avatar_url: null,
+        content: '',
+        created_at: '2026-07-30T13:00:00.000Z',
+        anexos: [{ id: 20, file_name: 'foto.png', mime_type: 'image/png', size_bytes: 200_000 }],
+      },
+    ];
+    renderThread({ mensagens: makeMensagens({ data: { pages: [comAnexo] } }) });
+    const img = screen.getByTestId('anexo-imagem');
+
+    // The signed-URL query settles to an error asynchronously and AnexoImagem
+    // renders the same <img> either way (no visible DOM marker for "failed")
+    // -- retry the click until the query has actually failed and the
+    // handler's error branch fires.
+    await waitFor(() => {
+      fireEvent.click(img);
+      expect(toast.error).toHaveBeenCalledWith('Não foi possível abrir o arquivo.');
+    });
   });
 });
