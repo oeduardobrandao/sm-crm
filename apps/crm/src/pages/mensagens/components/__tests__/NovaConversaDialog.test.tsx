@@ -18,9 +18,19 @@ vi.mock('sonner', () => ({
   toast: { error: toastError, success: vi.fn() },
 }));
 
-let mockAuth: { user: { id: string }; role: 'owner' | 'admin' | 'agent' } = {
+// `role` is included alongside `workspaceRole` in every fixture below purely
+// to prove the component ignores it — it comes from `profiles` and goes
+// stale on workspace switch (see AuthContext.tsx), so the group-creation
+// gate must read `workspaceRole` (workspace_members for the ACTIVE
+// workspace) instead, mirroring nav-data.ts's Financeiro/Contratos gate.
+let mockAuth: {
+  user: { id: string };
+  role: 'owner' | 'admin' | 'agent';
+  workspaceRole: 'owner' | 'admin' | 'agent' | null;
+} = {
   user: { id: 'user-1' },
   role: 'owner',
+  workspaceRole: 'owner',
 };
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => mockAuth,
@@ -45,7 +55,7 @@ function renderDialog(open = true) {
 }
 
 beforeEach(() => {
-  mockAuth = { user: { id: 'user-1' }, role: 'owner' };
+  mockAuth = { user: { id: 'user-1' }, role: 'owner', workspaceRole: 'owner' };
   mockGetMembers.mockResolvedValue(MEMBERS);
   mockCreateConversa.mockResolvedValue(99);
 });
@@ -66,21 +76,32 @@ describe('NovaConversaDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it('role agent nao ve o botao Criar grupo', async () => {
-    mockAuth = { user: { id: 'user-1' }, role: 'agent' };
+  it('workspaceRole agent nao ve o botao Criar grupo', async () => {
+    mockAuth = { user: { id: 'user-1' }, role: 'agent', workspaceRole: 'agent' };
     renderDialog();
     await screen.findByText('Ana Silva');
     expect(screen.queryByText('Criar grupo')).not.toBeInTheDocument();
   });
 
-  it('role admin ve o botao Criar grupo', async () => {
-    mockAuth = { user: { id: 'user-1' }, role: 'admin' };
+  it('workspaceRole admin ve o botao Criar grupo', async () => {
+    mockAuth = { user: { id: 'user-1' }, role: 'admin', workspaceRole: 'admin' };
     renderDialog();
     expect(await screen.findByText('Criar grupo')).toBeInTheDocument();
   });
 
+  it('role desatualizado (owner) com workspaceRole agent NAO mostra Criar grupo (regressao de stale role)', async () => {
+    // Simula um usuario que e owner em outro workspace mas agent no
+    // workspace ativo: profiles.role nunca e reescrito por switchWorkspace,
+    // entao `role` fica "owner" enquanto `workspaceRole` (workspace_members
+    // do workspace ATIVO) diz "agent" -- so o segundo deve valer.
+    mockAuth = { user: { id: 'user-1' }, role: 'owner', workspaceRole: 'agent' };
+    renderDialog();
+    await screen.findByText('Ana Silva');
+    expect(screen.queryByText('Criar grupo')).not.toBeInTheDocument();
+  });
+
   it('fluxo grupo (admin): nome + 2 colegas selecionados -> createEquipeConversa(grupo) -> onCreated', async () => {
-    mockAuth = { user: { id: 'user-1' }, role: 'admin' };
+    mockAuth = { user: { id: 'user-1' }, role: 'admin', workspaceRole: 'admin' };
     const { onCreated } = renderDialog();
 
     fireEvent.click(await screen.findByText('Criar grupo'));
@@ -112,7 +133,7 @@ describe('NovaConversaDialog', () => {
   });
 
   it('reseta modo/nome/selecionados quando o Radix Dialog dispara onOpenChange(false)', async () => {
-    mockAuth = { user: { id: 'user-1' }, role: 'admin' };
+    mockAuth = { user: { id: 'user-1' }, role: 'admin', workspaceRole: 'admin' };
     const { onOpenChange } = renderDialog();
 
     fireEvent.click(await screen.findByText('Criar grupo'));

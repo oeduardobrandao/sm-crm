@@ -26,8 +26,12 @@ const AVATAR = { width: 32, height: 32, fontSize: '0.7rem', flexShrink: 0 } as c
 /** Nova conversa (DM ou grupo). Modo 'lista': busca + colegas (clique abre
  * DM direto). Modo 'grupo' (so owner/admin): nome + multi-select + Criar. */
 export function NovaConversaDialog({ open, onOpenChange, onCreated }: NovaConversaDialogProps) {
-  const { user, role } = useAuth();
-  const podeCriarGrupo = role === 'owner' || role === 'admin';
+  const { user, workspaceRole } = useAuth();
+  // workspaceRole (workspace_members for the ACTIVE workspace), not the
+  // profile-derived `role`: `role` goes stale on workspace switch (see
+  // AuthContext.tsx) -- nav-data.ts's Financeiro/Contratos gate already
+  // documents the exact failure mode this avoids.
+  const podeCriarGrupo = workspaceRole === 'owner' || workspaceRole === 'admin';
   const [modo, setModo] = useState<'lista' | 'grupo'>('lista');
   const [nome, setNome] = useState('');
   const [selecionados, setSelecionados] = useState<string[]>([]);

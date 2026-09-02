@@ -350,6 +350,19 @@ describe('Sidebar', () => {
     expect(badge).toHaveTextContent('7');
   });
 
+  it('shows the Mensagens badge from equipe unread alone (team-chat-only workspace)', () => {
+    setAuth();
+    setLimits({ features: { feature_mensagens: false, feature_team_chat: true } });
+    mockedUseMensagensUnread.mockReturnValue(0);
+    mockedUseEquipeChatUnread.mockReturnValue(4);
+
+    renderSidebar('/dashboard');
+
+    const badge = screen.getByTestId('mensagens-nav-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('4');
+  });
+
   it('shows "99+" in the Mensagens badge when count > 99', () => {
     setAuth();
     setLimits({ features: { feature_mensagens: true } });

@@ -33,9 +33,13 @@ const PAPEL_LABELS: Record<string, string> = { owner: 'Dono', admin: 'Admin', ag
  * papel) + gestao (owner/admin: renomear/adicionar/remover; qualquer
  * participante: sair). DM: so mostra o colega, sem controles de gestao. */
 export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhesSheetProps) {
-  const { user, role } = useAuth();
+  const { user, workspaceRole } = useAuth();
   const queryClient = useQueryClient();
-  const podeGerenciar = role === 'owner' || role === 'admin';
+  // workspaceRole (workspace_members for the ACTIVE workspace), not the
+  // profile-derived `role`: `role` goes stale on workspace switch (see
+  // AuthContext.tsx) -- nav-data.ts's Financeiro/Contratos gate already
+  // documents the exact failure mode this avoids.
+  const podeGerenciar = workspaceRole === 'owner' || workspaceRole === 'admin';
   const isGrupo = conversa.tipo === 'grupo';
 
   const [renomeando, setRenomeando] = useState(false);

@@ -21,9 +21,19 @@ vi.mock('sonner', () => ({
   toast: { error: toastError, success: vi.fn() },
 }));
 
-let mockAuth: { user: { id: string }; role: 'owner' | 'admin' | 'agent' } = {
+// `role` is included alongside `workspaceRole` in every fixture below purely
+// to prove the component ignores it — it comes from `profiles` and goes
+// stale on workspace switch (see AuthContext.tsx), so the management gate
+// must read `workspaceRole` (workspace_members for the ACTIVE workspace)
+// instead, mirroring nav-data.ts's Financeiro/Contratos gate.
+let mockAuth: {
+  user: { id: string };
+  role: 'owner' | 'admin' | 'agent';
+  workspaceRole: 'owner' | 'admin' | 'agent' | null;
+} = {
   user: { id: 'user-1' },
   role: 'admin',
+  workspaceRole: 'admin',
 };
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => mockAuth,
@@ -78,7 +88,7 @@ function renderSheet(conversa: EquipeConversa) {
 }
 
 beforeEach(() => {
-  mockAuth = { user: { id: 'user-1' }, role: 'admin' };
+  mockAuth = { user: { id: 'user-1' }, role: 'admin', workspaceRole: 'admin' };
   mockGetMembers.mockResolvedValue(MEMBERS);
   mockGetParticipantes.mockResolvedValue(['user-1', 'user-2']);
   mockManage.mockResolvedValue(undefined);
@@ -134,8 +144,8 @@ describe('EquipeDetalhesSheet', () => {
     await waitFor(() => expect(mockManage).toHaveBeenCalledWith(42, 'add', { userId: 'user-3' }));
   });
 
-  it('agent: so ve o botao Sair do grupo (sem renomear/adicionar/remover)', async () => {
-    mockAuth = { user: { id: 'user-1' }, role: 'agent' };
+  it('workspaceRole agent: so ve o botao Sair do grupo (sem renomear/adicionar/remover)', async () => {
+    mockAuth = { user: { id: 'user-1' }, role: 'agent', workspaceRole: 'agent' };
     renderSheet(GRUPO);
     await screen.findByText('Ana Silva');
 
@@ -143,6 +153,20 @@ describe('EquipeDetalhesSheet', () => {
     expect(screen.queryByLabelText('Adicionar participante')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remover Ana Silva' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Sair do grupo/i })).toBeInTheDocument();
+  });
+
+  it('role desatualizado (admin) com workspaceRole agent NAO mostra gestao (regressao de stale role)', async () => {
+    // Mesmo cenario da NovaConversaDialog: profiles.role nunca e reescrito
+    // por switchWorkspace, entao `role` pode ficar "admin" enquanto
+    // `workspaceRole` (workspace_members do workspace ATIVO) diz "agent" --
+    // so o segundo deve valer para o gate de gestao.
+    mockAuth = { user: { id: 'user-1' }, role: 'admin', workspaceRole: 'agent' };
+    renderSheet(GRUPO);
+    await screen.findByText('Ana Silva');
+
+    expect(screen.queryByRole('button', { name: /Renomear/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Adicionar participante')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remover Ana Silva' })).not.toBeInTheDocument();
   });
 
   it('sair do grupo chama manageEquipeConversa(id, leave) e depois onLeft()', async () => {
