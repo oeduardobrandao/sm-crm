@@ -13,7 +13,6 @@ vi.mock('../../../../services/postMedia', async (importOriginal) => {
     listPostMedia: vi.fn(async () => []),
     uploadPostMedia: vi.fn(),
     deletePostMedia: vi.fn(),
-    setPostMediaCover: vi.fn(),
     reorderPostMedia: vi.fn(),
   };
 });
@@ -440,5 +439,56 @@ describe('PostMediaGallery permanently lost media', () => {
     renderGallery();
     expect(await screen.findByText('Mídia indisponível')).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+});
+
+// ============================================================
+
+// Cover is derived (legacy/MCP is_cover flag, else first by sort order) —
+// there's no manual "set as cover" star anymore. Mirrors the resolution rule
+// already used by the Hub backend and post-media-manage's other readers.
+describe('PostMediaGallery derived cover', () => {
+  it('marks the first media as capa when no legacy is_cover flag exists', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce(
+      makeMedia(3).map((m) => ({ ...m, is_cover: false })),
+    );
+    renderGallery();
+
+    const badges = await screen.findAllByText('capa');
+    expect(badges).toHaveLength(1);
+    const tile = badges[0].closest('.aspect-square');
+    expect(tile).toContainElement(screen.getByAltText('img0.jpg'));
+  });
+
+  it('still honors a legacy is_cover flag on a non-first media', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce(
+      makeMedia(3).map((m, i) => ({ ...m, is_cover: i === 1 })),
+    );
+    renderGallery();
+
+    const badges = await screen.findAllByText('capa');
+    expect(badges).toHaveLength(1);
+    const tile = badges[0].closest('.aspect-square');
+    expect(tile).toContainElement(screen.getByAltText('img1.jpg'));
+  });
+
+  it('does not render a set-cover button anymore', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce(makeMedia(2));
+    renderGallery();
+
+    await screen.findAllByText('capa');
+    expect(screen.queryByTitle('Definir como capa')).toBeNull();
+  });
+
+  it('invalidates workflow-covers after deleting a media item', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce(makeMedia(2));
+    const { invalidateSpy } = renderGallery();
+
+    const [deleteButton] = await screen.findAllByTitle('Remover');
+    fireEvent.click(deleteButton);
+
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-covers'] }),
+    );
   });
 });

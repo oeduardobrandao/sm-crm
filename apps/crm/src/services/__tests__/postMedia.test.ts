@@ -9,7 +9,6 @@ import {
   detectKind,
   listPostMedia,
   reorderPostMedia,
-  setPostMediaCover,
   updateVideoThumbnail,
   uploadMany,
   uploadPostMedia,
@@ -318,12 +317,10 @@ describe('post media service', () => {
     );
   });
 
-  it('updates, deletes, and batches uploads through the shared function wrapper', async () => {
-    fetchHarness.queueResponse({ json: { id: 7, is_cover: true } });
+  it('reorders, deletes, and batches uploads through the shared function wrapper', async () => {
     fetchHarness.queueResponse({ json: { id: 7, sort_order: 3 } });
     fetchHarness.queueResponse({ json: {} });
 
-    await expect(setPostMediaCover(7)).resolves.toMatchObject({ id: 7, is_cover: true });
     await expect(reorderPostMedia(7, 3)).resolves.toMatchObject({ id: 7, sort_order: 3 });
     await expect(deletePostMedia(7)).resolves.toBeUndefined();
 

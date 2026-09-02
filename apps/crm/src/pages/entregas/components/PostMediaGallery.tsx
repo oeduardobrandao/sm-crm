@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 import JSZip from 'jszip';
 import {
   Upload,
-  Star,
   Trash2,
   AlertTriangle,
   Download,
@@ -31,7 +30,6 @@ import {
   listPostMedia,
   uploadPostMedia,
   deletePostMedia,
-  setPostMediaCover,
   reorderPostMedia,
   detectKind,
   uploadMany,
@@ -117,12 +115,12 @@ export function PostMediaGallery({
     setMedia(next);
     try {
       await Promise.all(next.map((m, i) => reorderPostMedia(m.id, i)));
-      refresh();
+      refreshWithCovers();
     } catch (err) {
       toast.error((err as Error).message);
       // Re-sync from server instead of reverting to a captured snapshot,
       // which could be stale if a background refetch landed mid-drag.
-      refresh();
+      refreshWithCovers();
     }
   }
 
@@ -381,16 +379,7 @@ export function PostMediaGallery({
   async function handleDelete(id: number) {
     try {
       await deletePostMedia(id);
-      refresh();
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }
-
-  async function handleSetCover(id: number) {
-    try {
-      await setPostMediaCover(id);
-      refresh();
+      refreshWithCovers();
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -400,7 +389,7 @@ export function PostMediaGallery({
     const base = media.length;
     try {
       await Promise.all(fileIds.map((fileId, i) => linkFileToPost(fileId, postId, base + i)));
-      refresh();
+      refreshWithCovers();
       toast.success(`${fileIds.length} arquivo(s) vinculado(s)`);
     } catch (e) {
       toast.error((e as Error).message);
@@ -473,6 +462,10 @@ export function PostMediaGallery({
     setDragOver(false);
   };
 
+  // Capa derivada: flag legada/MCP se existir, senão a primeira por ordem.
+  // Mesma regra de resolução do Hub e do post-media-manage.
+  const coverId = media.find((m) => m.is_cover)?.id ?? media[0]?.id;
+
   return (
     <div className="space-y-3">
       {media.length > CAROUSEL_MAX_ITEMS && (
@@ -498,7 +491,7 @@ export function PostMediaGallery({
                 media={m}
                 disabled={effectiveDisabled}
                 onOpen={() => setLightboxIndex(i)}
-                onSetCover={() => handleSetCover(m.id)}
+                isCover={m.id === coverId}
                 onDelete={() => handleDelete(m.id)}
                 onEditThumbnail={
                   m.kind === 'video' && !m.media_lost_at ? () => setEditingMedia(m) : undefined
@@ -657,7 +650,7 @@ interface SortableMediaTileProps {
   media: PostMedia;
   disabled?: boolean;
   onOpen: () => void;
-  onSetCover: () => void;
+  isCover: boolean;
   onDelete: () => void;
   onEditThumbnail?: () => void;
 }
@@ -666,7 +659,7 @@ function SortableMediaTile({
   media: m,
   disabled,
   onOpen,
-  onSetCover,
+  isCover,
   onDelete,
   onEditThumbnail,
 }: SortableMediaTileProps) {
@@ -712,9 +705,9 @@ function SortableMediaTile({
           className="w-full h-full object-cover pointer-events-none"
         />
       )}
-      {m.is_cover && (
+      {isCover && (
         <span className="absolute top-1.5 left-1.5 inline-flex items-center gap-1 text-[10px] font-semibold bg-stone-900/85 text-white px-1.5 py-0.5 rounded-full">
-          <Star className="h-2.5 w-2.5" /> capa
+          capa
         </span>
       )}
       {!disabled && (
@@ -723,16 +716,6 @@ function SortableMediaTile({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          {!m.is_cover && (
-            <button
-              type="button"
-              onClick={onSetCover}
-              title="Definir como capa"
-              className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
-            >
-              <Star className="h-3 w-3" />
-            </button>
-          )}
           {onEditThumbnail && (
             <button
               type="button"

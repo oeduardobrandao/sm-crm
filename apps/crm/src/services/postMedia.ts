@@ -271,10 +271,6 @@ export async function deletePostMedia(id: number): Promise<void> {
   await callFn(`post-media-manage`, 'DELETE', undefined, undefined, `/${id}`);
 }
 
-export async function setPostMediaCover(id: number): Promise<PostMedia> {
-  return callFn<PostMedia>(`post-media-manage`, 'PATCH', { is_cover: true }, undefined, `/${id}`);
-}
-
 export async function reorderPostMedia(id: number, sort_order: number): Promise<PostMedia> {
   return callFn<PostMedia>(`post-media-manage`, 'PATCH', { sort_order }, undefined, `/${id}`);
 }
