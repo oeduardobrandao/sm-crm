@@ -82,6 +82,7 @@ describe('ConfiguracaoLayout', () => {
       'Notificações',
       'Workspace',
       'Membros',
+      'Papéis',
       'Relatórios',
       'Status de posts',
       'Hub',
@@ -96,6 +97,7 @@ describe('ConfiguracaoLayout', () => {
     renderAt('/configuracao/perfil');
     expect(tabLabels()).not.toContain('Plano & Cobrança');
     expect(tabLabels()).not.toContain('Armazenamento');
+    expect(tabLabels()).not.toContain('Papéis');
     expect(tabLabels()).toContain('Membros');
   });
 
