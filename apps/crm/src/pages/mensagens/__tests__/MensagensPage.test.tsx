@@ -25,6 +25,21 @@ vi.mock('@/store', () => ({
 // Mocked here only so the real (Supabase-touching) module never loads.
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn() }));
 
+// This file only exercises the pre-existing Clientes-only behavior, so the
+// workspace is mocked with feature_mensagens on / feature_team_chat off
+// (mirrors every workspace before team chat existed) and the entitlement
+// check pre-resolved, the same way ProtectedRoute already gates the route in
+// production. The Equipe-tab / dual-flag behavior has its own coverage in
+// MensagensPage.flags.test.tsx.
+let mockWorkspaceFeatures: Record<string, boolean> = {
+  feature_mensagens: true,
+  feature_team_chat: false,
+};
+let mockLimitsLoading = false;
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: mockWorkspaceFeatures, isLoading: mockLimitsLoading }),
+}));
+
 import MensagensPage from '../MensagensPage';
 
 const CONVERSAS = [
@@ -140,6 +155,8 @@ function renderPage(initialPath = '/mensagens') {
 describe('MensagensPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockWorkspaceFeatures = { feature_mensagens: true, feature_team_chat: false };
+    mockLimitsLoading = false;
     mockFeed.mockImplementation(({ clienteId }: { clienteId?: number }) =>
       Promise.resolve(clienteId === 14 ? ITEMS_14 : []),
     );

@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { Cliente } from '@/store';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
@@ -139,7 +139,7 @@ export default function MensagensPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
-  const { features } = useWorkspaceLimits();
+  const { features, isLoading: limitsLoading } = useWorkspaceLimits();
   const clientesOn = features?.feature_mensagens === true;
   const equipeOn = features?.feature_team_chat === true;
   const showTabs = clientesOn && equipeOn;
@@ -151,6 +151,21 @@ export default function MensagensPage() {
     clientesOn || !equipeOn ? 'clientes' : 'equipe',
   );
   const activeTab: MensagensTab = equipeMode ? 'equipe' : clienteIdParam != null ? 'clientes' : tab;
+
+  // Keeps the local tab in sync with whatever section the URL implies, so a
+  // deep link followed by mobile's "voltar" (which drops back to the bare
+  // /mensagens URL) lands back on the section the user was actually in
+  // instead of resetting to the mount-time default. Gated on the section's
+  // own flag: an URL for a section that isn't entitled is about to be
+  // redirected away below and must not be allowed to poison `tab` first
+  // (that raced with the redirect and left the page blank post-redirect).
+  useEffect(() => {
+    if (equipeMode) {
+      if (equipeOn && tab !== 'equipe') setTab('equipe');
+    } else if (clienteIdParam != null) {
+      if (clientesOn && tab !== 'clientes') setTab('clientes');
+    }
+  }, [equipeMode, clienteIdParam, equipeOn, clientesOn, tab]);
 
   function selectTab(next: MensagensTab) {
     setTab(next);
@@ -215,9 +230,22 @@ export default function MensagensPage() {
   const showList = isDesktop || (clienteId == null && !invalidId);
   const showThread = isDesktop || clienteId != null || invalidId;
 
+  // A workspace can have either flag on independently. Once the entitlement
+  // check has actually resolved (never redirect mid-load, or every deep link
+  // bounces on first paint), send a URL for a section the workspace doesn't
+  // have back to the tab it does have -- e.g. team_chat on / mensagens off
+  // hitting /mensagens/14 directly, which must not fall through to the
+  // clientes branch below and leak client conversation data past the flag.
+  if (!limitsLoading) {
+    if (equipeMode && !equipeOn) return <Navigate to="/mensagens" replace />;
+    if (!equipeMode && clienteIdParam != null && !clientesOn) {
+      return <Navigate to="/mensagens" replace />;
+    }
+  }
+
   return (
     <div className="page-full-bleed flex min-h-0">
-      {activeTab === 'clientes' && (
+      {clientesOn && activeTab === 'clientes' && (
         <>
           {showList && (
             <div
