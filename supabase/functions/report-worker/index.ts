@@ -99,10 +99,15 @@ Deno.serve(async (req) => {
         console.log(
           `[report-worker] Report ${data.id} skipped — workspace ${data.conta_id} not entitled to feature_analytics_reports`,
         );
-        await supabase
+        const { error: skipError } = await supabase
           .from("analytics_reports")
           .update({ status: "skipped", locked_at: null, locked_by: null })
           .eq("id", data.id);
+        if (skipError) {
+          // Sem o update a linha fica presa em 'generating' e volta à janela
+          // de candidatos a cada lock vencido — não pode falhar em silêncio.
+          console.error(`[report-worker] Failed to mark report ${data.id} as skipped:`, skipError);
+        }
         continue; // try the next candidate this tick
       }
       claimed = data;

@@ -2417,6 +2417,15 @@ function AnalyticsContent({
                     Falha
                   </span>
                 )}
+                {r.status === 'skipped' && (
+                  <span
+                    className="badge badge-neutral"
+                    title="Não gerado: o plano do workspace não incluía relatórios de analytics no momento da geração."
+                    style={{ cursor: 'help' }}
+                  >
+                    Fora do plano
+                  </span>
+                )}
                 {r.status === 'ready' && (
                   <>
                     <span className="badge badge-success">Pronto</span>
