@@ -13,7 +13,7 @@ import { useState } from 'react';
  * deleting the component + its AppLayout mount) once the incident window is
  * over.
  */
-export const INCIDENT_BANNER_ACTIVE = true;
+export const INCIDENT_BANNER_ACTIVE = false;
 
 const INCIDENT_ID = 'workspace-access-2026-09-02';
 const STORAGE_KEY = `incident-banner-dismissed:${INCIDENT_ID}`;
