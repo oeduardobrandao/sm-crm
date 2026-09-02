@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { useFluxosFilters } from '../useFluxosFilters';
 
@@ -85,6 +85,41 @@ describe('useFluxosFilters', () => {
     // Same object identity, or the query key/fn would churn on every render.
     expect(result.current.filters.from).toBe(from);
     expect(result.current.filters.to).toBe(to);
+  });
+
+  it('reports the anchor day and holds it steady across a same-day rerender', () => {
+    const { result, rerender } = renderFilters('?periodo=7d');
+
+    const hoje = new Date();
+    const esperado = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(
+      hoje.getDate(),
+    ).padStart(2, '0')}`;
+    expect(result.current.filters.anchorDay).toBe(esperado);
+
+    rerender();
+    expect(result.current.filters.anchorDay).toBe(esperado);
+  });
+
+  it('re-anchors the window when the calendar day rolls over', () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 8, 2, 22, 0, 0));
+    try {
+      const { result, rerender } = renderFilters('?periodo=7d');
+
+      expect(result.current.filters.anchorDay).toBe('2026-09-02');
+      const janelaOntem = result.current.filters.from;
+
+      // Past midnight: the anchor day is what the page puts in the query key, so
+      // it changing is what makes React Query go and fetch the new window.
+      vi.setSystemTime(new Date(2026, 8, 3, 1, 0, 0));
+      rerender();
+
+      expect(result.current.filters.anchorDay).toBe('2026-09-03');
+      expect(result.current.filters.from).not.toBe(janelaOntem);
+      expect(result.current.filters.from.getTime()).toBeGreaterThan(janelaOntem.getTime());
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('reaches back to 2020 for the "tudo" periodo', () => {

@@ -43,6 +43,7 @@ export default function AnalyticsFluxosPage() {
     templateId,
     from,
     to,
+    anchorDay,
     hasFilters,
     setPeriodo,
     setClienteId,
@@ -59,8 +60,13 @@ export default function AnalyticsFluxosPage() {
   // Every number on this page comes from this one RPC. The three lists below are
   // for the filter selects and for turning a membro_id into a name; they are
   // never a metric source.
+  // `anchorDay` is in the key on purpose. The from/to window re-anchors at
+  // midnight, but React Query keys on the queryKey alone and never notices a
+  // changed queryFn closure, so without it a tab left open overnight would keep
+  // refetching yesterday's window. keepPreviousData covers the swap: the new
+  // day's key shows yesterday's numbers until the fresh read lands.
   const { data, isPending, isError, error, refetch } = useQuery({
-    queryKey: ['workflow-analytics', periodo, clienteId, templateId],
+    queryKey: ['workflow-analytics', periodo, clienteId, templateId, anchorDay],
     queryFn: () => getWorkflowAnalytics({ from, to, clienteId, templateId }),
     placeholderData: keepPreviousData,
   });

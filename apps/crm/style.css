@@ -12340,7 +12340,13 @@ body.landing-page #root {
 @media print {
   body:has(.analytics-fluxos-page) .sidebar,
   body:has(.analytics-fluxos-page) .topbar,
-  body:has(.analytics-fluxos-page) .bottom-nav,
+  /* The phone nav is `.mobile-nav-glass` (see MobileNav.tsx); there is no
+     `.bottom-nav` in this codebase. `.mobile-more-sheet` and its
+     `.mobile-more-overlay` are the "Mais" sheet, which can be open when the
+     user hits print. */
+  body:has(.analytics-fluxos-page) .mobile-nav-glass,
+  body:has(.analytics-fluxos-page) .mobile-more-sheet,
+  body:has(.analytics-fluxos-page) .mobile-more-overlay,
   .analytics-fluxos-page .analytics-fluxos-actions,
   .analytics-fluxos-page .analytics-fluxos-toolbar {
     display: none !important;

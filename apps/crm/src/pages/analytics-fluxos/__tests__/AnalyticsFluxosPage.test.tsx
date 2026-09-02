@@ -104,15 +104,40 @@ function renderPage(initialEntry = '/analytics-fluxos') {
     return null;
   }
 
-  const utils = render(
+  // A function, not a constant element: React bails out of re-rendering when it
+  // is handed the very same element reference, which would make `rerenderSame`
+  // a no-op.
+  const tree = () => (
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <AnalyticsFluxosPage />
         <LocationProbe />
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
-  return { ...utils, seen };
+
+  const utils = render(tree());
+  return {
+    ...utils,
+    seen,
+    client,
+    /** Re-renders the same tree, without remounting it. */
+    rerenderSame: () => utils.rerender(tree()),
+    analyticsKeys: () =>
+      client
+        .getQueryCache()
+        .getAll()
+        .map((query) => query.queryKey)
+        .filter((key) => key[0] === 'workflow-analytics'),
+  };
+}
+
+/** Today as the page's anchor day format ('YYYY-MM-DD', local). */
+function anchorHoje(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`;
 }
 
 /** The KPI card carrying `label`. Scoped to `.kpi-label`: several of these
@@ -273,6 +298,42 @@ describe('AnalyticsFluxosPage', () => {
     const lastCall = mockedAnalytics.mock.calls.at(-1)![0];
     expect(Math.round((lastCall.to.getTime() - lastCall.from.getTime()) / 86400000)).toBe(7);
     expect(screen.getByRole('tab', { name: '7d' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('keys the query by the anchor day and keeps it stable within the day', async () => {
+    const { analyticsKeys, rerenderSame } = renderPage();
+    await screen.findByTestId('ritmo-chart');
+
+    expect(analyticsKeys()).toEqual([['workflow-analytics', '30d', null, null, anchorHoje()]]);
+
+    rerenderSame();
+    // Still one key, still one fetch: a plain rerender must not churn the cache.
+    expect(analyticsKeys()).toHaveLength(1);
+    expect(mockedAnalytics.mock.calls.length).toBe(1);
+  });
+
+  it('treats a new calendar day as a new query key, so the window actually refetches', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 8, 2, 22, 0, 0));
+    try {
+      const { analyticsKeys, rerenderSame } = renderPage();
+      await screen.findByTestId('ritmo-chart');
+
+      expect(analyticsKeys()).toEqual([['workflow-analytics', '30d', null, null, '2026-09-02']]);
+
+      // The regression this pins: the window used to re-anchor at midnight while
+      // the key did not, and React Query never refetches on a changed queryFn
+      // closure alone, so the tab kept serving yesterday's window.
+      vi.setSystemTime(new Date(2026, 8, 3, 1, 0, 0));
+      rerenderSame();
+
+      await waitFor(() => expect(mockedAnalytics.mock.calls.length).toBe(2));
+      expect(analyticsKeys().map((key) => key[4])).toContain('2026-09-03');
+      // keepPreviousData carries the old numbers across the swap: no skeleton.
+      expect(screen.getByTestId('ritmo-chart')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('passes the cliente filter through to the RPC', async () => {
