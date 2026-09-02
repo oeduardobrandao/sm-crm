@@ -16,7 +16,6 @@ const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
   '/contratos': { flag: 'feature_contracts', label: 'Contratos' },
   '/ideias': { flag: 'feature_ideas', label: 'Ideias' },
   '/post-express': { flag: 'feature_post_scheduling', label: 'Agendamento de Posts' },
-  '/mensagens': { flag: 'feature_mensagens', label: 'Mensagens' },
 };
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -46,6 +45,18 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (role === 'agent' && AGENT_BLOCKED.some((p) => pathname.startsWith(p))) {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  // /mensagens abriga dois recursos gateados separadamente (chat com
+  // clientes + chat de equipe): bloqueia so quando AMBAS as flags estao off.
+  if (
+    !isUnlimited &&
+    features &&
+    pathname.startsWith('/mensagens') &&
+    features.feature_mensagens === false &&
+    features.feature_team_chat === false
+  ) {
+    return <UpgradeLockedScreen featureLabel="Mensagens" feature="feature_mensagens" />;
   }
 
   if (!isUnlimited && features) {

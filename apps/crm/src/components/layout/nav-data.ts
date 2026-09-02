@@ -217,14 +217,19 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
 
 export const PRIMARY_NAV_IDS = ['dashboard', 'clientes', 'analytics', 'entregas'];
 
-/** Maps nav item id → feature flag key. If the flag is false, the item is hidden. */
-const NAV_FEATURE: Record<string, string> = {
+/**
+ * Maps nav item id → feature flag key(s). If the flag is false, the item is
+ * hidden. An array is OR'd: the item stays visible when ANY listed flag is
+ * not explicitly false (used by `mensagens`, which is unlocked by either
+ * client chat or team chat).
+ */
+const NAV_FEATURE: Record<string, string | string[]> = {
   mcp: 'feature_mcp',
   leads: 'feature_leads',
   financeiro: 'feature_financial',
   contratos: 'feature_contracts',
   ideias: 'feature_ideas',
-  mensagens: 'feature_mensagens',
+  mensagens: ['feature_mensagens', 'feature_team_chat'],
   analytics: 'feature_analytics_reports',
   'analytics-fluxos': 'feature_analytics_reports',
   'post-express': 'feature_post_scheduling',
@@ -299,7 +304,11 @@ export function getNavGroups(
         items: g.items
           .map((i) => {
             const flag = NAV_FEATURE[i.id];
-            if (!flag || features[flag] !== false) return i;
+            if (!flag) return i;
+            const isEnabled = Array.isArray(flag)
+              ? flag.some((f) => features[f] !== false)
+              : features[flag] !== false;
+            if (isEnabled) return i;
             return i.showLockedWhenGated ? { ...i, locked: true } : null;
           })
           .filter((i): i is NavItem => i !== null),
