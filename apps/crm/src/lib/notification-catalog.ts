@@ -1,7 +1,11 @@
 import type { NotificationType } from '@/store/notifications';
 
 export type NotificationCategory =
-  'aprovacoes_hub' | 'entregas_fluxo' | 'equipe' | 'integracoes' | 'sistema';
+  | 'aprovacoes_hub'
+  | 'entregas_fluxo'
+  | 'equipe'
+  | 'integracoes'
+  | 'sistema';
 
 export const CATEGORY_ORDER: NotificationCategory[] = [
   'aprovacoes_hub',

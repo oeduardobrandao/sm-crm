@@ -55,7 +55,14 @@ DECLARE
   v_user_changed boolean;
   v_cron_changed boolean;
 BEGIN
-  IF auth.role() = 'service_role' THEN
+  -- Passa: service_role (PostgREST com service key) E sessões diretas sem JWT
+  -- (psql, pg_cron, superuser — auth.role() devolve NULL sem claims). O guard
+  -- mira escalação via PostgREST, onde authenticated/anon SEMPRE carregam
+  -- claims; sessões diretas já ignoram RLS por natureza e superuser NÃO pula
+  -- triggers — sem este ramo, o claim RPC chamado como postgres na suite 74
+  -- (e qualquer write de operador no console) estoura 42501 dentro do UPDATE
+  -- de lease. Anon segue bloqueado: auth.role() = 'anon', não NULL.
+  IF auth.role() = 'service_role' OR auth.role() IS NULL THEN
     RETURN NEW;
   END IF;
 

@@ -84,7 +84,7 @@ export async function getCliente(id: number): Promise<Cliente | null> {
 
 export async function getClientes(): Promise<Cliente[]> {
   const all: Cliente[] = [];
-  for (let from = 0; ;) {
+  for (let from = 0; ; ) {
     // Reads go through the masking view; writes stay on the base table.
     //
     // Secondary sort by `id` makes the ordering fully deterministic: range-based
