@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Branch de trabalho: `claude/group-chats-team-c8f94a`, worktree `/Users/eduardosouza/Projects/sm-crm/.claude/worktrees/fervent-germain-92dc48`. Rode TUDO de dentro do worktree; confirme com `pwd` e `git branch --show-current` antes do primeiro commit.
-- Prefixos de migration: únicos e ACIMA do tail de origin/main (`20260902000010`). Este plano usa `20260902120000`, `20260902121000`, `20260902122000`. Antes de abrir PR, re-verifique com `git ls-tree --name-only origin/main:supabase/migrations | tail -5` e renumere se main andou.
+- Prefixos de migration: únicos e ACIMA do tail de origin/main (`20260902000010`). Este plano usa `20260903100000`, `20260903101000`, `20260903102000`. Antes de abrir PR, re-verifique com `git ls-tree --name-only origin/main:supabase/migrations | tail -5` e renumere se main andou.
 - Copy de UI em pt-BR. NUNCA use em-dash (—) em copy visível ao usuário; use ponto, dois-pontos ou "·".
 - RLS: sempre `conta_id IN (SELECT public.get_my_conta_id())`, nunca `=`. Em subqueries de policy, qualifique a coluna da tabela externa (`equipe_mensagens.conversa_id`), nunca deixe o nome bare.
 - Funções novas em `public`: `REVOKE ALL ... FROM PUBLIC, anon, authenticated, service_role;` seguido de `GRANT` explícito ao que precisa (revogar PUBLIC também tira service_role).
@@ -28,7 +28,7 @@
 ### Task 1: Migration A — schema core, RLS, gating, realtime, notificação
 
 **Files:**
-- Create: `supabase/migrations/20260902120000_equipe_chat_core.sql`
+- Create: `supabase/migrations/20260903100000_equipe_chat_core.sql`
 - Create: `supabase/tests/entitlements/72_equipe_chat_core.sql`
 
 **Interfaces:**
@@ -38,7 +38,7 @@
 - [ ] **Step 1: Escrever a migration**
 
 ```sql
--- supabase/migrations/20260902120000_equipe_chat_core.sql
+-- supabase/migrations/20260903100000_equipe_chat_core.sql
 -- Chat de equipe (grupos + DMs): schema core, RLS por participante, gating
 -- feature_team_chat, realtime e notificacao team_message coalescida.
 -- Spec: docs/superpowers/specs/2026-09-02-team-group-chats-design.md
@@ -635,7 +635,7 @@ Expected: todos os `PASS n:` impressos, exit 0 — ou o SKIP explícito. Se qual
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20260902120000_equipe_chat_core.sql supabase/tests/entitlements/72_equipe_chat_core.sql
+git add supabase/migrations/20260903100000_equipe_chat_core.sql supabase/tests/entitlements/72_equipe_chat_core.sql
 git commit -m "feat(equipe-chat): schema core, RLS por participante, gating e notificacao coalescida"
 ```
 
@@ -644,7 +644,7 @@ git commit -m "feat(equipe-chat): schema core, RLS por participante, gating e no
 ### Task 2: Migration B — RPCs do chat
 
 **Files:**
-- Create: `supabase/migrations/20260902121000_equipe_chat_rpcs.sql`
+- Create: `supabase/migrations/20260903101000_equipe_chat_rpcs.sql`
 - Create: `supabase/tests/entitlements/73_equipe_chat_rpcs.sql`
 
 **Interfaces:**
@@ -662,7 +662,7 @@ git commit -m "feat(equipe-chat): schema core, RLS por participante, gating e no
 - [ ] **Step 1: Escrever a migration**
 
 ```sql
--- supabase/migrations/20260902121000_equipe_chat_rpcs.sql
+-- supabase/migrations/20260903101000_equipe_chat_rpcs.sql
 -- RPCs do chat de equipe. Todas SECURITY DEFINER + SET search_path = public;
 -- tenant SEMPRE derivado de get_my_conta_id() (nunca de parametro); acesso a
 -- conversa SEMPRE re-validado por participacao. Colunas de RETURNS TABLE
@@ -1193,7 +1193,7 @@ Expected: todos os PASS, exit 0 (ou SKIP).
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20260902121000_equipe_chat_rpcs.sql supabase/tests/entitlements/73_equipe_chat_rpcs.sql
+git add supabase/migrations/20260903101000_equipe_chat_rpcs.sql supabase/tests/entitlements/73_equipe_chat_rpcs.sql
 git commit -m "feat(equipe-chat): RPCs de conversas, mensagens, gestao e unread"
 ```
 
@@ -1202,7 +1202,7 @@ git commit -m "feat(equipe-chat): RPCs de conversas, mensagens, gestao e unread"
 ### Task 3: Migration C — RPCs de anexos com quota
 
 **Files:**
-- Create: `supabase/migrations/20260902122000_equipe_chat_anexos_rpcs.sql`
+- Create: `supabase/migrations/20260903102000_equipe_chat_anexos_rpcs.sql`
 - Create: `supabase/tests/entitlements/74_equipe_chat_anexos.sql`
 
 **Interfaces:**
@@ -1214,7 +1214,7 @@ git commit -m "feat(equipe-chat): RPCs de conversas, mensagens, gestao e unread"
 - [ ] **Step 1: Escrever a migration**
 
 ```sql
--- supabase/migrations/20260902122000_equipe_chat_anexos_rpcs.sql
+-- supabase/migrations/20260903102000_equipe_chat_anexos_rpcs.sql
 -- Finalize/release de anexos do chat de equipe. Padrao
 -- ideia_file_insert_with_quota / automation_media_finalize: lock no
 -- workspace, quota checada e cobrada NA MESMA transacao do insert; release
@@ -1342,7 +1342,7 @@ Run: `npx supabase status 2>/dev/null | grep -q 'API URL' && (npx supabase db re
 Expected: todos os PASS (ou SKIP).
 
 ```bash
-git add supabase/migrations/20260902122000_equipe_chat_anexos_rpcs.sql supabase/tests/entitlements/74_equipe_chat_anexos.sql
+git add supabase/migrations/20260903102000_equipe_chat_anexos_rpcs.sql supabase/tests/entitlements/74_equipe_chat_anexos.sql
 git commit -m "feat(equipe-chat): finalize/release de anexos com quota transacional"
 ```
 
@@ -3219,7 +3219,7 @@ Expected: tudo verde. Se `npm run format` alterou arquivos, commite como `style:
 - [ ] **Step 2: Re-verificar colisão de versão de migration**
 
 Run: `git fetch origin main && git ls-tree --name-only origin/main:supabase/migrations | tail -5`
-Expected: nenhum prefixo `20260902120000/121000/122000` presente em main. Se main avançou além, renumere os três arquivos ACIMA do novo tail (e refaça o commit).
+Expected: nenhum prefixo `20260903100000/121000/122000` presente em main. Se main avançou além, renumere os três arquivos ACIMA do novo tail (e refaça o commit).
 
 - [ ] **Step 3: Smoke no browser (staging)**
 

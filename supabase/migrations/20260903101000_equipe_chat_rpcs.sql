@@ -1,4 +1,4 @@
--- supabase/migrations/20260902121000_equipe_chat_rpcs.sql
+-- supabase/migrations/20260903101000_equipe_chat_rpcs.sql
 -- RPCs do chat de equipe. Todas SECURITY DEFINER + SET search_path = public;
 -- tenant SEMPRE derivado de get_my_conta_id() (nunca de parametro); acesso a
 -- conversa SEMPRE re-validado por participacao. Colunas de RETURNS TABLE
@@ -36,7 +36,7 @@ BEGIN
   -- Defense-in-depth: get_my_conta_id() ja falha fechado para quem saiu do
   -- workspace (EXISTS-checka workspace_members), mas a checagem explicita
   -- aqui mantem o padrao do resto do repo (workspace_usage 20260808000001,
-  -- is_equipe_conversa_member da migration 20260902120000).
+  -- is_equipe_conversa_member da migration 20260903100000).
   IF v_conta IS NULL OR NOT EXISTS (
     SELECT 1 FROM workspace_members wm
      WHERE wm.workspace_id = v_conta AND wm.user_id = v_uid

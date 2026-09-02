@@ -1,4 +1,4 @@
--- supabase/migrations/20260902120000_equipe_chat_core.sql
+-- supabase/migrations/20260903100000_equipe_chat_core.sql
 -- Chat de equipe (grupos + DMs): schema core, RLS por participante, gating
 -- feature_team_chat, realtime e notificacao team_message coalescida.
 -- Spec: docs/superpowers/specs/2026-09-02-team-group-chats-design.md

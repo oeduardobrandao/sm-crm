@@ -1,4 +1,4 @@
--- supabase/migrations/20260902122000_equipe_chat_anexos_rpcs.sql
+-- supabase/migrations/20260903102000_equipe_chat_anexos_rpcs.sql
 -- Finalize/release de anexos do chat de equipe. Padrao
 -- ideia_file_insert_with_quota / automation_media_finalize: lock no
 -- workspace, quota checada e cobrada NA MESMA transacao do insert; release
