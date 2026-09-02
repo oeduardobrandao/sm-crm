@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PostEditorBody, type PostEditorBodyProps } from '../PostEditorBody';
-import type { WorkflowPost, PostEditSuggestion } from '../../../../store';
+import type { PostEditSuggestion } from '../../../../store';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
