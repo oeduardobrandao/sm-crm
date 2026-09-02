@@ -14,18 +14,28 @@ import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
  * lived as an inline `{/* Hub do Cliente *\/}` block plus a page-level
  * `workspace-slug` query.
  *
- * Role gating is deliberately DIFFERENT from most other tabs here. Tabs like
- * RelatoriosTab rely on clienteTabs.model.ts to redirect a disallowed role
- * away at the route layer (STAFF-only) for the whole-tab mount decision —
- * RelatoriosTab does now ALSO do a narrower, field-level role check of its
- * own (the send_report_email switch is disabled for non-owner/admin as
- * defense-in-depth around its DB-level guard, migration 20260904000001),
- * but that's a single field staying read-only, not a redirect or a
- * RoleRestrictionNotice — it still never re-decides whether to mount at
- * all. `hub`'s `roles` entry is ALL on purpose: the plan wants every role to
- * reach /clientes/:id/hub, so an agent sees a RoleRestrictionNotice here
- * instead of being redirected. That means this tab — and only this tab
- * among the ones split so far — owns its own whole-tab role check.
+ * Role gating is deliberately DIFFERENT from most other tabs here — or was,
+ * pre-Task-12: tabs like RelatoriosTab rely on clienteTabs.model.ts to
+ * redirect a disallowed role away at the route layer for the whole-tab mount
+ * decision. (RelatoriosTab does ALSO do a narrower, field-level role check of
+ * its own — the send_report_email switch is disabled for non-owner/admin as
+ * defense-in-depth around its DB-level guard, migration 20260904000001 — but
+ * that is a single field staying read-only, not a redirect or a
+ * RoleRestrictionNotice; it still never re-decides whether to mount at all.)
+ * `hub` used to be an ALL-roles tab on purpose, with an agent reaching the
+ * route and seeing a RoleRestrictionNotice here instead of being redirected.
+ *
+ * Task 12 (permission-model rewire) moved `hub`'s tab-level gate to
+ * `configuracoes:editar` (clienteTabs.model.ts), which a legacy agent never
+ * has — so ClienteDetalhePage's own guard now redirects a legacy agent away
+ * before this component ever mounts, and the `isAgent` branch below is
+ * unreachable for that case. It was deliberately left AS IS (out of Task 12's
+ * file list) rather than removed, because it is NOT fully dead: a CUSTOM role
+ * whose chassis `workspaceRole` reads 'agent' (see Task 11 report) but whose
+ * role_id permissions grant `configuracoes:editar` WOULD pass the route-level
+ * guard and reach here, and then get incorrectly shown this restriction
+ * notice anyway, since `isAgent` only reads the coarse `workspaceRole`, not
+ * `can()`. Flagged as a follow-up rather than fixed inline here.
  *
  * Query isolation: `getWorkspaceSlug` is scoped to only this route (it was
  * page-wide before). HubTab owns the rest of its queries internally

@@ -4,8 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { Spinner } from '@/components/ui/spinner';
 import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
-
-const AGENT_BLOCKED = ['/financeiro', '/contratos', '/leads', '/equipe'];
+import { resolveRouteGate } from './routePermissions';
 
 const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
   '/analytics': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
@@ -20,7 +19,7 @@ const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
 };
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { user, profile, role, loading } = useAuth();
+  const { user, profile, role, can, loading } = useAuth();
   const location = useLocation();
   const { features, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
 
@@ -40,13 +39,9 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
 
   // App.tsx declares routes lowercase with no `caseSensitive`, so React Router
   // matches `/Financeiro` to the same page as `/financeiro`. Lowercase the
-  // pathname before matching here too, or an agent typing a capital letter
-  // bypasses this redirect entirely.
+  // pathname before matching here too, or a capitalized URL bypasses both the
+  // feature gate and the permission gate below.
   const pathname = location.pathname.toLowerCase();
-
-  if (role === 'agent' && AGENT_BLOCKED.some((p) => pathname.startsWith(p))) {
-    return <Navigate to="/dashboard" replace />;
-  }
 
   if (!isUnlimited && features) {
     for (const [path, { flag, label }] of Object.entries(FEATURE_GATED)) {
@@ -54,6 +49,19 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
         return <UpgradeLockedScreen featureLabel={label} feature={flag} />;
       }
     }
+  }
+
+  const gate = resolveRouteGate(pathname);
+  if (gate === 'unmapped') {
+    if (import.meta.env.DEV) {
+      console.error(`[ProtectedRoute] rota sem entrada no mapa de permissões: ${pathname}`);
+    }
+    return <Navigate to="/dashboard" replace />;
+  }
+  if (gate !== 'open') {
+    const allowed = can(gate.module, gate.action);
+    // 'unknown' falha NEUTRO (render): igual ao guard financeiro do AppLayout.
+    if (allowed === false) return <Navigate to="/dashboard" replace />;
   }
 
   const needsSetup =

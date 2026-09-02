@@ -70,6 +70,10 @@ vi.mock('../../../../lib/supabase', () => ({
 
 import { toast } from 'sonner';
 import MembrosTab from '../MembrosTab';
+import { makeCan, fakeMembership } from '@/test/makeCan';
+import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
+
+type CanFn = (module: PermissionModule, action?: PermissionAction) => PermissionCheck;
 
 function renderTab() {
   const queryClient = new QueryClient({
@@ -92,15 +96,25 @@ function renderTab() {
 function setAuth({
   workspaceRole,
   staleProfileRole,
+  can,
 }: {
   workspaceRole: 'owner' | 'admin' | 'agent' | null;
   staleProfileRole: 'owner' | 'admin' | 'agent';
+  /**
+   * Override for a custom-role scenario. Defaults to a real
+   * derivePermission-backed `can` for a LEGACY membership of `workspaceRole`
+   * (never derived from the stale `staleProfileRole`, mirroring the real
+   * AuthContext) — pass this explicitly to simulate a custom role_id/permissions
+   * membership instead.
+   */
+  can?: CanFn;
 }) {
   useAuthMock.mockReturnValue({
     user: { id: 'me', email: 'me@exemplo.com' },
     profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1', role: staleProfileRole },
     role: staleProfileRole,
     workspaceRole,
+    can: can ?? makeCan(workspaceRole === null ? null : fakeMembership({ role: workspaceRole })),
     loading: false,
     signOut: vi.fn(),
     refetchProfile: vi.fn(),
@@ -269,5 +283,66 @@ describe('MembrosTab — financial access toggle', () => {
     // The switch reflects server state only, and the server call failed, so it
     // must remain exactly as it was before the click.
     expect(toggle).not.toBeChecked();
+  });
+});
+
+/**
+ * configTabs.ts gates the `membros` TAB itself on `equipe:ver` (Task 12), a
+ * strictly broader condition than the OLD staff-only role gate: a custom role
+ * granted only `equipe:ver` (not `editar`) can now reach this component,
+ * which must therefore stop rendering the mutation controls it cannot
+ * actually use — the invite-user / manage-workspace-user edge functions
+ * already enforce `equipe:editar` server-side (Task 11), so this is a UI
+ * consistency fix, not the real authorization boundary.
+ */
+describe('MembrosTab — action buttons gated on equipe:editar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storeMock.getWorkspaceUsers.mockResolvedValue([
+      { id: 'u1', nome: 'Ana Owner', role: 'owner', avatar_url: null, created_at: '2026-01-01' },
+      { id: 'u2', nome: 'Beto Admin', role: 'admin', avatar_url: null, created_at: '2026-01-02' },
+    ]);
+  });
+
+  it('loads the list but hides Convidar/Função/Remover for a custom role with equipe:ver only', async () => {
+    setAuth({
+      workspaceRole: 'agent',
+      staleProfileRole: 'agent',
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'ver' } }),
+      ),
+    });
+    renderTab();
+
+    await screen.findByText('Ana Owner');
+    expect(storeMock.getWorkspaceUsers).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /Convidar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Função' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
+  });
+
+  it('shows Convidar/Função/Remover for a custom role with equipe:editar', async () => {
+    setAuth({
+      workspaceRole: 'agent',
+      staleProfileRole: 'agent',
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'editar' } }),
+      ),
+    });
+    renderTab();
+
+    await screen.findByText('Ana Owner');
+    expect(screen.getByRole('button', { name: /Convidar/ })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Função' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Remover' }).length).toBeGreaterThan(0);
+  });
+
+  it('a legacy owner/admin (unconditional equipe:editar) still sees every action button — no regression', async () => {
+    setAuth({ workspaceRole: 'admin', staleProfileRole: 'admin' });
+    renderTab();
+
+    await screen.findByText('Ana Owner');
+    expect(screen.getByRole('button', { name: /Convidar/ })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Função' }).length).toBeGreaterThan(0);
   });
 });

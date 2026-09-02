@@ -20,19 +20,21 @@ import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
  * had every string hardcoded in Portuguese, which the plan's i18n constraint
  * requires fixing as part of this extraction.
  *
- * Route gating: the layout (ClienteDetalhePage.tsx / clienteTabs.model.ts)
- * already redirects anyone without STAFF access away from
- * /clientes/:id/relatorios, so an agent never mounts this tab in practice.
+ * Permission gating: the layout (ClienteDetalhePage.tsx / clienteTabs.model.ts)
+ * already redirects anyone without `analytics:ver` away from
+ * /clientes/:id/relatorios at the route level, so this tab never re-decides
+ * whether to mount at all — it only ever mounts for an authorized user.
  *
- * Column-level gating (independent of the route): `clientes.send_report_email`
- * is guarded in the database by `trg_cliente_notify_guard` (migration
- * 20260904000001, function enforce_cliente_notify_columns) — any non
- * owner/admin write to it fails with 42501, service role excepted.
- * `include_ai_analysis` carries no such guard. This component mirrors that
- * split at the UI layer as defense-in-depth against a future change to the
- * route roles: the send_report_email switch is disabled for anyone who
- * isn't owner/admin, with an explanatory note; include_ai_analysis stays
- * fully functional for every role that can reach the tab.
+ * Column-level gating (independent of the route, and NOT part of the
+ * permission model): `clientes.send_report_email` is guarded in the database
+ * by `trg_cliente_notify_guard` (migration 20260904000001, function
+ * enforce_cliente_notify_columns) — any non owner/admin write to it fails
+ * with 42501, service role excepted. `include_ai_analysis` carries no such
+ * guard. This component mirrors that split at the UI layer as
+ * defense-in-depth: the send_report_email switch is disabled for anyone who
+ * isn't owner/admin (the coarse `workspaceRole`, matching what the trigger
+ * itself checks), with an explanatory note; include_ai_analysis stays fully
+ * functional for every role that can reach the tab.
  *
  * Query isolation: this tab fires no queries of its own — `updateCliente` is
  * a plain mutation, and the only cache interaction is invalidating

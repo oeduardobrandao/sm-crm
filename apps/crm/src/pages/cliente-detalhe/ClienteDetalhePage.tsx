@@ -12,7 +12,7 @@ import { ClienteDetalheNav } from './ClienteDetalheNav';
 import { ClienteEditDialog } from './ClienteEditDialog';
 import {
   CLIENTE_TABS,
-  canAccessClienteTabRole,
+  canAccessClienteTab,
   financeiroTabGuardOutcome,
   type ClienteDetalheOutletContext,
 } from './clienteTabs.model';
@@ -36,7 +36,7 @@ export default function ClienteDetalhePage() {
   const { id: idParam } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { user, workspaceRole, membershipResolved, canSeeFinancials, loading } = useAuth();
+  const { user, workspaceRole, membershipResolved, canSeeFinancials, can, loading } = useAuth();
   const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
   const [editOpen, setEditOpen] = useState(false);
@@ -125,7 +125,7 @@ export default function ClienteDetalhePage() {
     if (outcome === 'denied') {
       return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
     }
-  } else if (current && !canAccessClienteTabRole(current, workspaceRole)) {
+  } else if (current && !canAccessClienteTab(current, can)) {
     return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
   }
 

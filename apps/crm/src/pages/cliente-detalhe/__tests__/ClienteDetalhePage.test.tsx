@@ -17,6 +17,10 @@ import { useAuth } from '../../../context/AuthContext';
 import { getCliente, updateCliente, type Cliente } from '../../../store';
 import ClienteDetalhePage from '../ClienteDetalhePage';
 import ClienteDetalheIndexRedirect from '../ClienteDetalheIndexRedirect';
+import { makeCan, fakeMembership } from '@/test/makeCan';
+import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
+
+type CanFn = (module: PermissionModule, action?: PermissionAction) => PermissionCheck;
 
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedGetCliente = vi.mocked(getCliente);
@@ -41,11 +45,20 @@ function setAuth(
     signedIn = true,
     canSeeFinancials = true as boolean | 'unknown',
     membershipResolved = true as boolean | 'error',
+    can,
   }: {
     loading?: boolean;
     signedIn?: boolean;
     canSeeFinancials?: boolean | 'unknown';
     membershipResolved?: boolean | 'error';
+    /**
+     * Override for a custom-role scenario. Defaults to a real
+     * derivePermission-backed `can` for a LEGACY membership of
+     * `workspaceRole` (`null` -> unresolved membership, 'unknown' for every
+     * module — matching the fact that `membership` and `workspaceRole` are
+     * always set together in the real AuthContext).
+     */
+    can?: CanFn;
   } = {},
 ) {
   mockedUseAuth.mockReturnValue({
@@ -55,6 +68,13 @@ function setAuth(
     workspaceRole,
     membershipResolved,
     canSeeFinancials,
+    can:
+      can ??
+      makeCan(
+        workspaceRole === null
+          ? null
+          : fakeMembership({ role: workspaceRole, can_see_financials: canSeeFinancials === true }),
+      ),
     loading,
     signOut: vi.fn(),
     refetchProfile: vi.fn(),
@@ -191,8 +211,23 @@ describe('ClienteDetalhePage', () => {
   });
 
   describe('per-tab permission gating', () => {
-    it('redirects an agent away from Relatórios to Visão geral', async () => {
+    // Task 12: `relatorios` maps to {analytics,ver}, which the legacy agent
+    // preset already grants (it did before this task too, for the top-level
+    // /analytics route) — an agent visiting Relatórios directly now renders
+    // it instead of bouncing. See clienteTabs.model.test.ts for the full
+    // truth table this divergence is drawn from.
+    it('renders Relatórios directly for an agent, who has analytics:ver via the legacy preset', async () => {
       setAuth('agent', { canSeeFinancials: false });
+      renderAt('/clientes/42/relatorios');
+      expect(await screen.findByText('conteudo relatorios')).toBeInTheDocument();
+      expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/relatorios');
+    });
+
+    it('redirects a custom role without analytics access away from Relatórios to Visão geral', async () => {
+      setAuth('agent', {
+        canSeeFinancials: false,
+        can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
+      });
       renderAt('/clientes/42/relatorios');
       await screen.findByText('conteudo visao-geral');
       expect(screen.queryByText('conteudo relatorios')).not.toBeInTheDocument();
@@ -203,6 +238,23 @@ describe('ClienteDetalhePage', () => {
       renderAt('/clientes/42/relatorios');
       expect(await screen.findByText('conteudo relatorios')).toBeInTheDocument();
       expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/relatorios');
+    });
+
+    // Task 12: `hub` maps to {configuracoes,editar}, which the legacy agent
+    // preset has always lacked ('none') — an agent visiting Hub directly now
+    // bounces, where it used to render an internal RoleRestrictionNotice
+    // (HubClienteTab.tsx) instead.
+    it('redirects an agent away from Hub to Visão geral', async () => {
+      setAuth('agent');
+      renderAt('/clientes/42/hub');
+      await screen.findByText('conteudo visao-geral');
+      expect(screen.queryByText('conteudo hub')).not.toBeInTheDocument();
+    });
+
+    it('renders Hub directly for an admin (configuracoes:editar, unconditional for admin outside financeiro/contratos)', async () => {
+      setAuth('admin');
+      renderAt('/clientes/42/hub');
+      expect(await screen.findByText('conteudo hub')).toBeInTheDocument();
     });
 
     it('redirects a restricted admin away from Financeiro to Visão geral', async () => {

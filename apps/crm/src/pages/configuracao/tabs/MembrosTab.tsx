@@ -51,16 +51,25 @@ import {
 
 /** Workspace members and pending invites. */
 export default function MembrosTab() {
-  const { user, profile, workspaceRole } = useAuth();
-  const isOwnerOrAdmin = workspaceRole === 'owner' || workspaceRole === 'admin';
-  // The financial-access toggle is the first owner-only member-management
-  // action here — gates rendering the switch on admin rows below.
+  const { user, profile, workspaceRole, can } = useAuth();
+  const canViewTeam = can('equipe', 'ver') === true;
+  // Mutations (invite, edit role, remove, cancel/resend invite) all require
+  // `editar` — a custom role granted only `equipe:ver` can reach this tab
+  // (configTabs.ts gates the tab itself on `ver`) and see the roster, but
+  // must not see controls it cannot actually use (the edge functions behind
+  // them already enforce `equipe:editar` server-side — see invite-user and
+  // manage-workspace-user).
+  const canManageTeam = can('equipe', 'editar') === true;
+  // The financial-access toggle is a STRICTER, owner-only lever — distinct
+  // from general team management. `set-financial-access` stays owner-only
+  // server-side regardless of `equipe:editar`, so this intentionally does not
+  // fold into `canManageTeam`.
   const isOwner = workspaceRole === 'owner';
 
   const { data: wsUsers, refetch: refetchWsUsers } = useQuery({
     queryKey: ['workspace-users'],
     queryFn: getWorkspaceUsers,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewTeam,
   });
 
   const { data: invites, refetch: refetchInvites } = useQuery({
@@ -75,7 +84,7 @@ export default function MembrosTab() {
         .order('created_at', { ascending: false });
       return computeEffectiveInviteStatus(data ?? []);
     },
-    enabled: isOwnerOrAdmin && !!profile?.conta_id,
+    enabled: canViewTeam && !!profile?.conta_id,
   });
 
   // Edit role modal
@@ -240,9 +249,11 @@ export default function MembrosTab() {
           }}
         >
           <h3 className="config-title">Membros do Workspace</h3>
-          <Button onClick={() => setInviteOpen(true)}>
-            <Plus className="h-4 w-4" /> Convidar
-          </Button>
+          {canManageTeam && (
+            <Button onClick={() => setInviteOpen(true)}>
+              <Plus className="h-4 w-4" /> Convidar
+            </Button>
+          )}
         </div>
 
         <div style={{ marginBottom: '1rem' }}>
@@ -287,7 +298,7 @@ export default function MembrosTab() {
                   />
                 </div>
               )}
-              {u.id !== user?.id && (
+              {canManageTeam && u.id !== user?.id && (
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   <Button size="sm" variant="outline" onClick={() => handleEditRole(u)}>
                     Função
@@ -350,21 +361,23 @@ export default function MembrosTab() {
                     <InviteTimeLeft expiresAt={inv.expires_at} status={inv.status} />
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {(inv.status === 'expired' || inv.status === 'pending') && (
-                    <Button size="sm" variant="outline" onClick={() => handleResendInvite(inv)}>
-                      Reenviar
+                {canManageTeam && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {(inv.status === 'expired' || inv.status === 'pending') && (
+                      <Button size="sm" variant="outline" onClick={() => handleResendInvite(inv)}>
+                        Reenviar
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() => setCancelInviteId(inv.id)}
+                    >
+                      Cancelar
                     </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive"
-                    onClick={() => setCancelInviteId(inv.id)}
-                  >
-                    Cancelar
-                  </Button>
-                </div>
+                  </div>
+                )}
               </div>
             ))}
           </>

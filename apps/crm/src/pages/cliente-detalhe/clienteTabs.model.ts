@@ -9,20 +9,13 @@ import {
   Wallet,
 } from 'lucide-react';
 import type { FinancialAccess } from '@/lib/financialAccess';
+import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
 import type { Cliente } from '../../store';
 
 export type ClienteTabKey =
-  | 'visao-geral'
-  | 'entregas'
-  | 'redes-sociais'
-  | 'relatorios'
-  | 'hub'
-  | 'arquivos'
-  | 'financeiro';
+  'visao-geral' | 'entregas' | 'redes-sociais' | 'relatorios' | 'hub' | 'arquivos' | 'financeiro';
 
 export type ClienteTabGroup = 'cliente' | 'canais' | 'gestao';
-
-export type WorkspaceRole = 'owner' | 'admin' | 'agent';
 
 /** Context handed to every tab route via `<Outlet context={...} />`. */
 export interface ClienteDetalheOutletContext {
@@ -42,24 +35,27 @@ export interface ClienteTab {
   icon: LucideIcon;
   /** i18n key inside the 'clients' namespace. */
   labelKey: string;
-  /** Roles allowed to see the tab and open its URL directly. */
-  roles: WorkspaceRole[];
+  /**
+   * Permission gate for the tab. `null` means the tab has no finer gate than
+   * the parent route's `clientes:ver` (App.tsx / routePermissions.ts) —
+   * always visible/accessible once that route itself is reachable.
+   * `financeiro` still gets its own three-state `financeiroTabGuardOutcome`
+   * for the route guard (see below); its `permission` here exists only for
+   * `visibleClienteTabs` and is semantically identical —
+   * `can('financeiro','ver')` mirrors `canSeeFinancials === true` exactly,
+   * since `deriveFinancialAccess` already delegates to the same
+   * `derivePermission` call.
+   */
+  permission: { module: PermissionModule; action: PermissionAction } | null;
 }
 
-const ALL: WorkspaceRole[] = ['owner', 'admin', 'agent'];
-const STAFF: WorkspaceRole[] = ['owner', 'admin'];
+export type CanFn = (module: PermissionModule, action?: PermissionAction) => PermissionCheck;
 
 /**
  * Single source of truth for the client-detail tab strip, in display order —
  * grouped Cliente / Canais e análise / Gestão. The layout renders the strip
  * from this list and also guards direct URL access against it, so a tab can
  * never be hidden in the nav yet reachable by typing its address.
- *
- * `financeiro`'s `roles` is deliberately ALL: the real gate for that tab is
- * `canSeeFinancials` (see `financeiroTabGuardOutcome` below), not the role
- * list — an agent is still denied because `deriveFinancialAccess` never
- * grants one `true`, but a restricted ADMIN needs the finer-grained
- * capability check, not a blanket role exclusion.
  */
 export const CLIENTE_TABS: ClienteTab[] = [
   {
@@ -67,43 +63,49 @@ export const CLIENTE_TABS: ClienteTab[] = [
     group: 'cliente',
     icon: LayoutDashboard,
     labelKey: 'detail.tabs.visaoGeral',
-    roles: ALL,
+    permission: null,
   },
   {
     key: 'entregas',
     group: 'cliente',
     icon: LayoutList,
     labelKey: 'detail.tabs.entregas',
-    roles: ALL,
+    permission: null,
   },
   {
     key: 'redes-sociais',
     group: 'canais',
     icon: Share2,
     labelKey: 'detail.tabs.redesSociais',
-    roles: ALL,
+    permission: null,
   },
   {
     key: 'relatorios',
     group: 'canais',
     icon: BarChart3,
     labelKey: 'detail.tabs.relatorios',
-    roles: STAFF,
+    permission: { module: 'analytics', action: 'ver' },
   },
-  { key: 'hub', group: 'gestao', icon: Globe, labelKey: 'detail.tabs.hub', roles: ALL },
+  {
+    key: 'hub',
+    group: 'gestao',
+    icon: Globe,
+    labelKey: 'detail.tabs.hub',
+    permission: { module: 'configuracoes', action: 'editar' },
+  },
   {
     key: 'arquivos',
     group: 'gestao',
     icon: FolderOpen,
     labelKey: 'detail.tabs.arquivos',
-    roles: ALL,
+    permission: null,
   },
   {
     key: 'financeiro',
     group: 'gestao',
     icon: Wallet,
     labelKey: 'detail.tabs.financeiro',
-    roles: ALL,
+    permission: { module: 'financeiro', action: 'ver' },
   },
 ];
 
@@ -114,50 +116,21 @@ export const CLIENTE_TAB_GROUP_LABELS: Record<ClienteTabGroup, string> = {
   gestao: 'detail.tabGroups.gestao',
 };
 
-/** Pure role check only — ignores the finer `financeiro` capability gate. */
-function hasRoleAccess(tab: ClienteTab, workspaceRole: WorkspaceRole | null | undefined): boolean {
-  return tab.roles.includes(workspaceRole as WorkspaceRole);
-}
-
 /**
- * Full access check for a single tab: role AND, for `financeiro`, the
- * resolved capability. Used by the route guard to decide whether direct URL
- * access to a tab is allowed.
- *
- * Deliberately collapses `canSeeFinancials === 'unknown'` into "no access"
- * here: this function answers "can render right now", and the layout uses
- * the separate three-state `financeiroTabGuardOutcome` when it needs to tell
- * loading apart from denial (to avoid a premature redirect).
+ * Full access check for a single tab, used both by the nav filter and the
+ * route guard for direct URL access. `permission: null` means "no finer gate
+ * than the parent route" -> always true.
  */
-export function canAccessClienteTab(
-  key: string,
-  workspaceRole: WorkspaceRole | null | undefined,
-  canSeeFinancials: FinancialAccess,
-): boolean {
+export function canAccessClienteTab(key: string, can: CanFn): boolean {
   const tab = CLIENTE_TABS.find((t) => t.key === key);
   if (!tab) return false;
-  if (!hasRoleAccess(tab, workspaceRole)) return false;
-  if (tab.key === 'financeiro') return canSeeFinancials === true;
-  return true;
+  if (tab.permission === null) return true;
+  return can(tab.permission.module, tab.permission.action) === true;
 }
 
-/** Role-only access check, for tabs other than `financeiro` (see module doc above). */
-export function canAccessClienteTabRole(
-  key: string,
-  workspaceRole: WorkspaceRole | null | undefined,
-): boolean {
-  const tab = CLIENTE_TABS.find((t) => t.key === key);
-  return tab ? hasRoleAccess(tab, workspaceRole) : false;
-}
-
-/** Tabs to show in the nav for the current role/capability, in display order. */
-export function visibleClienteTabs(
-  workspaceRole: WorkspaceRole | null | undefined,
-  canSeeFinancials: FinancialAccess,
-): ClienteTab[] {
-  return CLIENTE_TABS.filter((tab) =>
-    canAccessClienteTab(tab.key, workspaceRole, canSeeFinancials),
-  );
+/** Tabs to show in the nav for the current permission set, in display order. */
+export function visibleClienteTabs(can: CanFn): ClienteTab[] {
+  return CLIENTE_TABS.filter((tab) => canAccessClienteTab(tab.key, can));
 }
 
 /**

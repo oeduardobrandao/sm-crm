@@ -23,6 +23,7 @@ vi.mock('../../../hooks/useMensagensUnread', () => ({
 import MobileNav from '../MobileNav';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { useMensagensUnread } from '../../../hooks/useMensagensUnread';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
@@ -56,7 +57,9 @@ function setAuth(overrides: Record<string, unknown> = {}) {
       ...overrides,
     } as any,
     role: (overrides.role as string) || 'owner',
+    workspaceRole: (overrides.role as string) || 'owner',
     canSeeFinancials: overrides.canSeeFinancials ?? true,
+    can: makeCan(fakeMembership({ role: ((overrides.role as string) || 'owner') as never })),
     loading: false,
     signOut: (overrides.signOut as any) || vi.fn(),
     refreshProfile: vi.fn(),

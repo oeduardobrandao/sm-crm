@@ -13,10 +13,18 @@ vi.mock('../../../hooks/useWorkspaceLimits', () => ({
 import { useAuth } from '../../../context/AuthContext';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import ProtectedRoute from '../ProtectedRoute';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
 
 const mockedUseAuth = vi.mocked(useAuth);
+
+// Real derivePermission-backed `can()`, one per role literal used below —
+// ProtectedRoute now calls `can(gate.module, gate.action)` for every
+// permission-mapped route, so every mocked useAuth() return value needs a
+// working `can`, not a role string alone.
+const agentCan = makeCan(fakeMembership({ role: 'agent' }));
+const ownerCan = makeCan(fakeMembership({ role: 'owner' }));
 
 const defaultLimits = {
   limits: null,
@@ -70,6 +78,7 @@ describe('ProtectedRoute', () => {
       user: null,
       profile: null,
       role: 'agent',
+      can: agentCan,
       loading: false,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
@@ -85,6 +94,7 @@ describe('ProtectedRoute', () => {
       user: { id: 'user-7' } as never,
       profile: { id: 'user-7', role: 'agent' } as never,
       role: 'agent',
+      can: agentCan,
       loading: false,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
@@ -100,6 +110,7 @@ describe('ProtectedRoute', () => {
       user: null,
       profile: null,
       role: 'agent',
+      can: agentCan,
       loading: true,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
@@ -121,6 +132,7 @@ describe('ProtectedRoute', () => {
         user: { id: 'u' } as never,
         profile: { id: 'u', role: 'agent' } as never,
         role: 'agent',
+        can: agentCan,
         loading: false,
         refetchProfile: vi.fn(),
         signOut: vi.fn(),
@@ -141,6 +153,7 @@ describe('ProtectedRoute', () => {
       user: { id: 'u' } as never,
       profile: { id: 'u', role: 'agent' } as never,
       role: 'agent',
+      can: agentCan,
       loading: false,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
@@ -161,6 +174,7 @@ describe('ProtectedRoute', () => {
       user: { id: 'u' } as never,
       profile: { id: 'u', role: 'agent' } as never,
       role: 'agent',
+      can: agentCan,
       loading: false,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
@@ -176,6 +190,7 @@ describe('ProtectedRoute', () => {
       user: { id: 'u' } as never,
       profile: { id: 'u', role: 'agent' } as never,
       role: 'agent',
+      can: agentCan,
       loading: false,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
@@ -191,6 +206,7 @@ describe('ProtectedRoute', () => {
       user: { id: 'owner-1' } as never,
       profile: { id: 'owner-1', role: 'owner' } as never,
       role: 'owner',
+      can: ownerCan,
       loading: false,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
@@ -206,6 +222,7 @@ describe('ProtectedRoute', () => {
       user: { id: 'owner-1' } as never,
       profile: { id: 'owner-1', role: 'owner' } as never,
       role: 'owner',
+      can: ownerCan,
       loading: false,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
@@ -221,6 +238,7 @@ describe('ProtectedRoute', () => {
       user: { id: 'owner-1' } as never,
       profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
       role: 'owner',
+      can: ownerCan,
       loading: false,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
@@ -236,6 +254,7 @@ describe('ProtectedRoute', () => {
       user: { id: 'owner-1' } as never,
       profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
       role: 'owner',
+      can: ownerCan,
       loading: false,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
@@ -283,6 +302,7 @@ describe('ProtectedRoute', () => {
       user: { id: 'owner-1' } as never,
       profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
       role: 'owner',
+      can: ownerCan,
       loading: false,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
@@ -326,6 +346,7 @@ describe('ProtectedRoute', () => {
       user: { id: 'owner-1' } as never,
       profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
       role: 'owner',
+      can: ownerCan,
       loading: false,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
@@ -370,6 +391,7 @@ describe('ProtectedRoute', () => {
       user: { id: 'owner-1' } as never,
       profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
       role: 'owner',
+      can: ownerCan,
       loading: false,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
@@ -415,6 +437,7 @@ describe('ProtectedRoute', () => {
       user: { id: 'owner-1' } as never,
       profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
       role: 'owner',
+      can: ownerCan,
       loading: false,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
@@ -434,6 +457,7 @@ describe('ProtectedRoute', () => {
       user: { id: 'owner-1' } as never,
       profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
       role: 'owner',
+      can: ownerCan,
       loading: false,
       refetchProfile: vi.fn(),
       signOut: vi.fn(),
