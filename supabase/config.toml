@@ -31,6 +31,9 @@ verify_jwt = false
 [functions.analytics-report-cron]
 verify_jwt = false
 
+[functions.report-worker]
+verify_jwt = false
+
 [functions.invite-expire-cron]
 verify_jwt = false
 
