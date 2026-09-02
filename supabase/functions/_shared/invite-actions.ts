@@ -320,7 +320,7 @@ export async function inviteOrResend(
         .insert({ user_id: existingUser.id, workspace_id: input.contaId, role: input.role });
       ensureOk(mIns.error, "member_insert");
       const { data: existingProfile } = await adminClient
-        .from("profiles").select("id").eq("id", existingUser.id).maybeSingle();
+        .from("profiles").select("id, active_workspace_id").eq("id", existingUser.id).maybeSingle();
       if (!existingProfile) {
         const pIns = await adminClient.from("profiles").insert({
           id: existingUser.id, conta_id: input.contaId, role: input.role,
@@ -328,6 +328,17 @@ export async function inviteOrResend(
           active_workspace_id: input.contaId, onboarding_complete: true,
         });
         ensureOk(pIns.error, "profile_insert");
+      } else if (!existingProfile.active_workspace_id) {
+        // Existing profile with NO active workspace (e.g. just removed from
+        // their only membership) being silently re-added: restore it, or
+        // they get a live session that every RLS-gated query returns empty
+        // for. A profile that already points at a DIFFERENT, still-valid
+        // workspace is left alone -- this add must not switch them away from
+        // wherever they're actively working.
+        const pUpd = await adminClient.from("profiles")
+          .update({ active_workspace_id: input.contaId, conta_id: input.contaId })
+          .eq("id", existingUser.id);
+        ensureOk(pUpd.error, "profile_active_workspace_restore");
       }
       const iIns = await adminClient.from("invites").insert({
         conta_id: input.contaId, email, role: input.role, invited_by: input.invitedBy,

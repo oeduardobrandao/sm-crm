@@ -229,6 +229,7 @@ function makeInviteAdmin(opts: {
   authUser?: { id: string; email_confirmed_at: string | null } | null;
   onboarding?: boolean | null;      // profiles.onboarding_complete
   hasProfile?: boolean;
+  profileActiveWorkspaceId?: string | null; // existing profile's profiles.active_workspace_id
   hasPassword?: boolean | null;
   isMember?: boolean;
   memberships?: string[];
@@ -286,7 +287,14 @@ function makeInviteAdmin(opts: {
         },
         update: (row: any) => { events.push("upd:" + table); updates.push({ table, row }); return api; },
         maybeSingle: () => {
-          if (table === "profiles") return Promise.resolve({ data: opts.hasProfile === false ? null : { onboarding_complete: opts.onboarding ?? false, id: "u1" }, error: null });
+          if (table === "profiles") return Promise.resolve({
+            data: opts.hasProfile === false ? null : {
+              onboarding_complete: opts.onboarding ?? false,
+              id: "u1",
+              active_workspace_id: opts.profileActiveWorkspaceId ?? null,
+            },
+            error: null,
+          });
           if (table === "workspace_members") return Promise.resolve({ data: opts.isMember ? { id: "m1" } : null, error: null });
           if (table === "contas") return Promise.resolve({ data: { nome: "WS" }, error: null });
           if (table === "invites") {
@@ -661,6 +669,40 @@ Deno.test("inviteOrResend: an explicit membroId beats the inherited one", async 
   await inviteOrResend(admin as any, { ...baseInput, membroId: 9 }, CRM);
   const inviteRow = admin._inserts().find((i) => i.table === "invites");
   assertEquals(inviteRow?.row.membro_id, 9);
+});
+
+Deno.test("inviteOrResend CRM mode: add-direct restores active_workspace_id when the existing profile has none", async () => {
+  // Reproduces the Ana bug: an already-onboarded user with a live profile row
+  // but NO active workspace (e.g. just removed from their only membership)
+  // gets silently re-added. Without a restore, they end up with a session and
+  // a workspace_members row but every RLS-gated query returns nothing.
+  const admin = makeInviteAdmin({
+    limit: null, members: 1,
+    authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+    hasProfile: true, profileActiveWorkspaceId: null, onboarding: true, hasPassword: true, isMember: false,
+  });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, CRM);
+  assertEquals(out.route, "added");
+  const profileUpdate = admin._updates().find((u) => u.table === "profiles");
+  assert(profileUpdate, "expected a profiles update restoring active_workspace_id");
+  assertEquals(profileUpdate!.row.active_workspace_id, "c1");
+  assertEquals(profileUpdate!.row.conta_id, "c1");
+});
+
+Deno.test("inviteOrResend CRM mode: add-direct does NOT overwrite an active_workspace_id already pointing elsewhere", async () => {
+  // The Maria Luiza case: the existing profile's active workspace is a
+  // DIFFERENT, still-valid workspace (e.g. one they own). Being added to a
+  // second workspace must not silently switch them away from it.
+  const admin = makeInviteAdmin({
+    limit: null, members: 1,
+    authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+    hasProfile: true, profileActiveWorkspaceId: "own-workspace", onboarding: true, hasPassword: true, isMember: false,
+  });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, CRM);
+  assertEquals(out.route, "added");
+  assert(!admin._updates().some((u) => u.table === "profiles"), "must not touch an already-set active_workspace_id");
 });
 
 Deno.test("inviteOrResend: resend-link route also stamps membro_id", async () => {
