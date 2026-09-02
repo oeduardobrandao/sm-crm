@@ -24,7 +24,7 @@ import { buildAnalyticsCsv, csvFilename, downloadCsv } from './csv';
 import { PERIODOS, useFluxosFilters } from './useFluxosFilters';
 import { KpiRow } from './sections/KpiRow';
 import { RitmoChart } from './sections/RitmoChart';
-import { AprovacaoSection } from './sections/AprovacaoSection';
+import { AprovacaoSection, temAtividadeAprovacao } from './sections/AprovacaoSection';
 import { GargalosTable } from './sections/GargalosTable';
 import { EquipeTable } from './sections/EquipeTable';
 import { OrigemCard } from './sections/OrigemCard';
@@ -123,7 +123,20 @@ export default function AnalyticsFluxosPage() {
       ? (templates.find((t) => t.id === templateId)?.nome ?? NAO_IDENTIFICADO)
       : 'todos';
 
-  const semDados = data ? data.kpis.concluidos === 0 && data.kpis.ativos === 0 : false;
+  // "No data" is not "no flows". Approval cycles hang off posts, and a post
+  // needs no workflow, so a workspace running entirely on posts avulsos (Post
+  // Express) reports zero concluídos and zero ativos while the RPC computed a
+  // full aprovacao_cliente block for it. Gating on the KPIs alone would answer
+  // that workspace with the onboarding copy and hide the one section that
+  // actually had something to say.
+  const semDados = data
+    ? data.kpis.concluidos === 0 &&
+      data.kpis.ativos === 0 &&
+      !temAtividadeAprovacao(data.aprovacao_cliente)
+    : false;
+  // The split below is unchanged: with filters applied, a zero-match still
+  // renders the zeroed body (captioned "nenhum fluxo no filtro"), never the
+  // onboarding state, which would accuse an established workspace of being new.
   const workspaceVazio = semDados && !hasFilters;
   const filtroSemMatch = semDados && hasFilters;
 

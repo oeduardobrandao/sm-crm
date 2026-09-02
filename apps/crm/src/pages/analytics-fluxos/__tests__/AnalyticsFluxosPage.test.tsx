@@ -729,6 +729,10 @@ describe('AnalyticsFluxosPage', () => {
           retrabalho_pct: null,
           retrabalho_prev: null,
         },
+        // Genuinely nothing matched, approvals included: without this the
+        // filtered window still has approval data and the body is right to
+        // show it rather than to caption everything "nenhum fluxo no filtro".
+        aprovacao_cliente: aprovacaoVazia(),
       }),
     );
     renderPage('/analytics-fluxos?cliente=1');
@@ -754,11 +758,74 @@ describe('AnalyticsFluxosPage', () => {
           retrabalho_pct: null,
           retrabalho_prev: null,
         },
+        // A brand-new workspace has no approval cycles either. That is what
+        // makes it new, and it is the only shape the onboarding copy fits.
+        aprovacao_cliente: aprovacaoVazia(),
+        origem: [],
       }),
     );
     renderPage();
 
     expect(await screen.findByText(/Crie fluxos de trabalho/)).toBeTruthy();
+  });
+
+  it('keeps the page for a workspace whose only activity is on posts avulsos', async () => {
+    // Post Express: approval cycles hang off posts, and a post needs no
+    // workflow. Zero flows here does NOT mean an empty workspace, and gating
+    // the body on the KPIs alone hid the one section that had data.
+    mockedAnalytics.mockResolvedValue(
+      payload({
+        kpis: {
+          concluidos: 0,
+          concluidos_prev: 0,
+          ativos: 0,
+          tempo_medio_dias: null,
+          tempo_medio_prev: null,
+          pontualidade_pct: null,
+          pontualidade_prev: null,
+          etapas_avaliadas: 0,
+          etapas_avaliadas_prev: 0,
+          retrabalho_pct: null,
+          retrabalho_prev: null,
+        },
+        etapas: [],
+        semanas: [],
+        semanas_criados_sem_conclusao: [],
+        equipe: [],
+        origem: [],
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByTestId('aprovacao-chart')).toBeTruthy();
+    expect(screen.queryByText(/Crie fluxos de trabalho/)).toBeNull();
+    expect(screen.getByText('Clientes mais lentos para aprovar')).toBeTruthy();
+    expect(within(rankingRow(1)).getByText('4d 2h')).toBeTruthy();
+  });
+
+  it('still shows onboarding when even the approval block is empty', async () => {
+    mockedAnalytics.mockResolvedValue(
+      payload({
+        kpis: {
+          concluidos: 0,
+          concluidos_prev: 0,
+          ativos: 0,
+          tempo_medio_dias: null,
+          tempo_medio_prev: null,
+          pontualidade_pct: null,
+          pontualidade_prev: null,
+          etapas_avaliadas: 0,
+          etapas_avaliadas_prev: 0,
+          retrabalho_pct: null,
+          retrabalho_prev: null,
+        },
+        aprovacao_cliente: aprovacaoVazia(),
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText(/Crie fluxos de trabalho/)).toBeTruthy();
+    expect(screen.queryByTestId('aprovacao-chart')).toBeNull();
   });
 
   it('shows QueryErrorCard on failure and recovers on retry', async () => {

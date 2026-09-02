@@ -50,6 +50,24 @@ interface AprovacaoSectionProps {
   postEventsSince: string | null;
 }
 
+/**
+ * True when any approval cycle at all touched the window: one answered, one
+ * still waiting, one the agency closed itself, or an etapa-only approval.
+ *
+ * Exported because the page needs the same answer. Approval cycles are keyed on
+ * posts, and a post does NOT need a workflow — a workspace living entirely on
+ * posts avulsos (Post Express) has zero flows and real approval data, so
+ * "no flows" is not the same question as "nothing happened here".
+ */
+export function temAtividadeAprovacao(aprovacao: AprovacaoCliente): boolean {
+  return (
+    aprovacao.amostras > 0 ||
+    aprovacao.pendentes > 0 ||
+    aprovacao.resolvidos_internamente > 0 ||
+    aprovacao.etapas.amostras > 0
+  );
+}
+
 /** Client identity for a ranking row: photo when there is one, coloured
  *  initials otherwise, exactly like the clients list. */
 function ClienteAvatar({ cliente }: { cliente: Cliente | undefined }) {
@@ -159,16 +177,7 @@ export function AprovacaoSection({
 
   const ranking = useMemo(() => aprovacao.por_cliente.slice(0, TOP_N), [aprovacao.por_cliente]);
 
-  // "Nothing here" means no cycle of any kind touched the window: not one
-  // answered, not one waiting, not one closed by the agency, and no etapa-only
-  // approval either. Anything less than that has a number worth showing.
-  const vazio =
-    aprovacao.amostras === 0 &&
-    aprovacao.pendentes === 0 &&
-    aprovacao.resolvidos_internamente === 0 &&
-    aprovacao.etapas.amostras === 0;
-
-  if (vazio) {
+  if (!temAtividadeAprovacao(aprovacao)) {
     return (
       <SectionCard
         title="Tempo de resposta do cliente"
