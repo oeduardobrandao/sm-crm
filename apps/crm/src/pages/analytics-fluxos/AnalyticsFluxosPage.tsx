@@ -13,13 +13,21 @@ import {
 } from '@/components/ui/select';
 import { QueryErrorCard } from '@/components/QueryErrorCard';
 import { getWorkflowAnalytics, NotEntitledError } from '@/services/workflowAnalytics';
-import { getClientes, getMembros, getWorkflowTemplates, type Membro } from '../../store';
+import {
+  getClientes,
+  getMembros,
+  getWorkflowTemplates,
+  type Cliente,
+  type Membro,
+} from '../../store';
 import { buildAnalyticsCsv, csvFilename, downloadCsv } from './csv';
 import { PERIODOS, useFluxosFilters } from './useFluxosFilters';
 import { KpiRow } from './sections/KpiRow';
 import { RitmoChart } from './sections/RitmoChart';
+import { AprovacaoSection } from './sections/AprovacaoSection';
 import { GargalosTable } from './sections/GargalosTable';
 import { EquipeTable } from './sections/EquipeTable';
+import { OrigemCard } from './sections/OrigemCard';
 
 const EMPTY_WORKSPACE =
   'Nenhum dado de fluxo encontrado. Crie fluxos de trabalho para começar a ver analytics.';
@@ -86,12 +94,34 @@ export default function AnalyticsFluxosPage() {
     return map;
   }, [membros]);
 
+  const clientesById = useMemo(() => {
+    const map = new Map<number, Cliente>();
+    for (const cliente of clientes) {
+      if (cliente.id !== undefined) map.set(cliente.id, cliente);
+    }
+    return map;
+  }, [clientes]);
+
   function handleExport() {
     if (!data) return;
     const nomes = new Map<number, string>();
     for (const [id, membro] of membrosById) nomes.set(id, membro.nome);
-    downloadCsv(buildAnalyticsCsv(data, nomes), csvFilename(periodo));
+    const clienteNomes = new Map<number, string>();
+    for (const [id, cliente] of clientesById) clienteNomes.set(id, cliente.nome);
+    downloadCsv(buildAnalyticsCsv(data, nomes, clienteNomes), csvFilename(periodo));
   }
+
+  // The print sheet drops the toolbar, so the filters that produced these
+  // numbers would vanish with it and the paper would state a period it cannot
+  // name. This line is the echo, hidden on screen by `.print-only`.
+  const periodoLabel = PERIODOS.find((p) => p.value === periodo)?.label ?? periodo;
+  const NAO_IDENTIFICADO = 'não identificado';
+  const clienteLabel =
+    clienteId !== null ? (clientesById.get(clienteId)?.nome ?? NAO_IDENTIFICADO) : 'todos';
+  const templateLabel =
+    templateId !== null
+      ? (templates.find((t) => t.id === templateId)?.nome ?? NAO_IDENTIFICADO)
+      : 'todos';
 
   const semDados = data ? data.kpis.concluidos === 0 && data.kpis.ativos === 0 : false;
   const workspaceVazio = semDados && !hasFilters;
@@ -127,6 +157,10 @@ export default function AnalyticsFluxosPage() {
           </Button>
         </div>
       </header>
+
+      <p className="print-only analytics-fluxos-print-echo">
+        Período: {periodoLabel} · Cliente: {clienteLabel} · Template: {templateLabel}
+      </p>
 
       <div
         className="animate-up analytics-fluxos-toolbar"
@@ -218,8 +252,18 @@ export default function AnalyticsFluxosPage() {
             semanas={data.semanas}
             criadosSemConclusao={data.semanas_criados_sem_conclusao}
           />
-          <GargalosTable etapas={data.etapas} />
-          <EquipeTable equipe={data.equipe} membrosById={membrosById} />
+          <AprovacaoSection
+            aprovacao={data.aprovacao_cliente}
+            clientesById={clientesById}
+            postEventsSince={data.horizonte.post_events_since}
+          />
+          <GargalosTable etapas={data.etapas} eventosDesde={data.horizonte.workflow_events_since} />
+          <EquipeTable
+            equipe={data.equipe}
+            membrosById={membrosById}
+            eventosDesde={data.horizonte.workflow_events_since}
+          />
+          <OrigemCard origem={data.origem} />
         </>
       )}
     </div>

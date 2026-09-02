@@ -48,6 +48,33 @@ export function formatDiasHoras(dias: number): string {
   return `${d}d ${h}h`;
 }
 
+/**
+ * Fractional HOURS as a compact duration: `0.75` -> "45min", `3` -> "3h",
+ * `3.33` -> "3h 20min", `28` -> "1d 4h".
+ *
+ * Separate from formatDiasHoras because the approval-latency metrics arrive in
+ * hours and are routinely sub-day: rounding those to the nearest hour would
+ * print "0h" for a client who answers in twenty minutes, which reads as broken
+ * rather than as fast. Minutes therefore survive below a day and are dropped
+ * above it, where they are noise.
+ */
+export function formatHoras(horas: number): string {
+  const totalMin = Math.round(Math.max(0, horas) * 60);
+  if (totalMin < 60) return `${totalMin}min`;
+  const totalHoras = Math.floor(totalMin / 60);
+  const min = totalMin % 60;
+  if (totalHoras < 24) return min === 0 ? `${totalHoras}h` : `${totalHoras}h ${min}min`;
+  const d = Math.floor(totalHoras / 24);
+  const h = totalHoras % 24;
+  return h === 0 ? `${d}d` : `${d}d ${h}h`;
+}
+
+/** Same, but nullable metrics get SEM_DADOS instead of a fabricated "0min". */
+export function formatHorasOuSemDados(horas: number | null): string {
+  if (horas === null) return SEM_DADOS;
+  return formatHoras(horas);
+}
+
 /** Fractional days as a bare pt-BR decimal (`5.0` -> "5,0"), for columns whose
  *  header already carries the unit (the CSV export). */
 export function formatDiasNumero(dias: number | null): string {
@@ -59,6 +86,16 @@ export function formatDiasNumero(dias: number | null): string {
 export function formatDiasDecimal(dias: number | null): string {
   if (dias === null) return SEM_DADOS;
   return `${formatDiasNumero(dias)}d`;
+}
+
+/**
+ * `workflows.created_via` for humans. The column is `text NOT NULL CHECK IN
+ * ('human','agent')`, but the check is the database's, not this function's:
+ * anything unrecognised reads as a human, so a future value can never surface
+ * as a raw column value on screen or in an export.
+ */
+export function origemLabel(origem: string): string {
+  return origem === 'agent' ? 'Agente' : 'Humano';
 }
 
 /** Rounded percentage with the sign, or SEM_DADOS when the metric is null. */
@@ -84,6 +121,56 @@ export function buildDelta(
   const percent = ((current - prev) / prev) * 100;
   const direction = percent === 0 ? 'stable' : percent > 0 ? 'up' : 'down';
   return { direction, percent, caption };
+}
+
+/**
+ * Change in PERCENTAGE POINTS between the two windows, for a metric that is
+ * already a percentage.
+ *
+ * A relative delta on a percentage is a lie by arithmetic: 61% against 69% is
+ * "8 points down", not "11.6% down", and the second number is the one people
+ * quote in a meeting. It also refuses to compare when either window has no
+ * rated etapas at all — `pontualidade_pct` can be non-null while the previous
+ * window rated nothing, and a delta against nothing is not a comparison.
+ *
+ * `percent` carries the ABSOLUTE point difference because StatCard renders
+ * `Math.abs(percent)` next to a direction arrow; the sign lives in `direction`.
+ */
+export function buildDeltaPp(
+  current: number | null,
+  prev: number | null,
+  avaliadas: number,
+  avaliadasPrev: number,
+  caption = 'vs período anterior (pp)',
+): StatDelta | null {
+  if (current === null || prev === null) return null;
+  if (avaliadas <= 0 || avaliadasPrev <= 0) return null;
+  const diff = current - prev;
+  const direction = diff === 0 ? 'stable' : diff > 0 ? 'up' : 'down';
+  return { direction, percent: Math.abs(diff), caption };
+}
+
+/**
+ * An ISO timestamp as pt-BR 'dd/MM/yyyy', or null when there is nothing to
+ * show. Unlike the week keys below this really is a full timestamptz, so it is
+ * parsed by Date and rendered in the viewer's local time on purpose: the
+ * horizon is "since when do we have data", and an off-by-one-day in the user's
+ * own timezone would be the confusing rendering, not the honest one.
+ */
+export function formatDataCurta(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const dia = String(d.getDate()).padStart(2, '0');
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dia}/${mes}/${d.getFullYear()}`;
+}
+
+/** 'Registrado desde dd/MM/yyyy', or null when that event source has no rows
+ *  yet — in which case the caption is omitted rather than shown empty. */
+export function horizonteCaption(iso: string | null): string | null {
+  const data = formatDataCurta(iso);
+  return data ? `Registrado desde ${data}` : null;
 }
 
 /** 'YYYY-MM-DD' (the RPC's week key) as pt-BR 'dd/MM'. Parsed by hand: `new

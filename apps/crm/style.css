@@ -12326,11 +12326,22 @@ body.landing-page #root {
 }
 
 /*
+ * The filter echo is the toolbar's replacement on paper. It lives in the DOM at
+ * all times (the print rule below only flips its display), so this default
+ * hide has to sit OUTSIDE the media query or the line would show on screen too.
+ */
+.analytics-fluxos-page .print-only {
+  display: none;
+}
+
+/*
  * Print layout for Analytics de Fluxos ("Imprimir" no cabeçalho da página).
  *
  * The app chrome carries no information on paper and the toolbar's controls
  * print as dead widgets, so both are dropped and the content reclaims the
- * sidebar's 260px inset.
+ * sidebar's 260px inset. The toolbar is where the applied filters live, so
+ * `.print-only` brings them back as a plain line: a sheet that cannot name its
+ * own period is a sheet nobody can check.
  *
  * The chrome lives OUTSIDE the page wrapper, so hiding it needs a selector that
  * reaches up: `body:has(.analytics-fluxos-page)`. That keeps every rule here
@@ -12355,6 +12366,16 @@ body.landing-page #root {
   body:has(.analytics-fluxos-page) .main-content {
     margin-left: 0 !important;
     padding: 0 !important;
+  }
+
+  .analytics-fluxos-page .print-only {
+    display: block !important;
+  }
+
+  .analytics-fluxos-page .analytics-fluxos-print-echo {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
   }
 
   .analytics-fluxos-page .card,

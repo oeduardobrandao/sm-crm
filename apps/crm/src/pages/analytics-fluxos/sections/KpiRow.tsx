@@ -1,9 +1,9 @@
-import { Activity, CheckCircle2, Clock, Target } from 'lucide-react';
+import { Activity, CheckCircle2, Clock, RotateCcw, Target } from 'lucide-react';
 
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import type { WorkflowAnalyticsKpis } from '@/services/workflowAnalytics';
-import { buildDelta, formatDiasHoras, formatPct, SEM_DADOS } from '../format';
+import { buildDelta, buildDeltaPp, formatDiasHoras, formatPct, SEM_DADOS } from '../format';
 
 interface KpiRowProps {
   kpis: WorkflowAnalyticsKpis;
@@ -23,15 +23,28 @@ export function KpiRow({ kpis, emptyFiltered }: KpiRowProps) {
   const deltaTempo = emptyFiltered
     ? null
     : buildDelta(kpis.tempo_medio_dias, kpis.tempo_medio_prev);
+  // Pontualidade is already a percentage, so its delta is in POINTS, and it
+  // only exists when both windows actually rated etapas.
   const deltaPontualidade = emptyFiltered
     ? null
-    : buildDelta(kpis.pontualidade_pct, kpis.pontualidade_prev);
+    : buildDeltaPp(
+        kpis.pontualidade_pct,
+        kpis.pontualidade_prev,
+        kpis.etapas_avaliadas,
+        kpis.etapas_avaliadas_prev,
+      );
+  // Retrabalho is a relative delta like the rest: it is a share of flows, and
+  // the previous window's share is a legitimate denominator.
+  const deltaRetrabalho = emptyFiltered
+    ? null
+    : buildDelta(kpis.retrabalho_pct, kpis.retrabalho_prev);
 
   const semTempo = kpis.tempo_medio_dias === null;
   const semPontualidade = kpis.pontualidade_pct === null;
+  const semRetrabalho = kpis.retrabalho_pct === null;
 
   return (
-    <StatCardGrid maxCols={4} className="animate-up">
+    <StatCardGrid maxCols={5} className="animate-up">
       <StatCard
         label="Concluídos"
         icon={CheckCircle2}
@@ -68,6 +81,24 @@ export function KpiRow({ kpis, emptyFiltered }: KpiRowProps) {
         compactValue={semPontualidade}
         delta={deltaPontualidade ?? undefined}
         sub={emptyFiltered ? SEM_MATCH : semPontualidade ? 'nenhuma etapa avaliada' : SEM_BASE}
+      />
+      <StatCard
+        label="Retrabalho"
+        icon={RotateCcw}
+        tone="pink"
+        value={semRetrabalho ? SEM_DADOS : formatPct(kpis.retrabalho_pct)}
+        compactValue={semRetrabalho}
+        delta={deltaRetrabalho ?? undefined}
+        // Less rework is the good direction, so the arrow's colour flips just
+        // like it does for tempo médio.
+        invertDelta
+        sub={
+          emptyFiltered
+            ? SEM_MATCH
+            : semRetrabalho
+              ? 'nenhum evento de fluxo no período'
+              : 'fluxos com etapa devolvida'
+        }
       />
     </StatCardGrid>
   );

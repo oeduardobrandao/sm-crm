@@ -2,11 +2,18 @@ import { useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import type { EtapaAgg } from '@/services/workflowAnalytics';
-import { formatDiasDecimal, SEM_DADOS } from '../format';
+import { formatDiasDecimal, formatDataCurta, SEM_DADOS } from '../format';
 import { SectionCard, SectionEmpty } from './SectionCard';
 
 /** Rows shown before the "Mostrar todas as etapas" toggle. */
 const TOP_N = 10;
+
+/**
+ * What a null retrabalho prints. Not "0%": null means the etapa recorded no
+ * conclusion in the window at all, so there is no denominator — a printed zero
+ * would read as "never sent back", which is a claim the data cannot make.
+ */
+const SEM_BASE_RETRABALHO = '·';
 
 type AtrasoVariant = 'success' | 'warning' | 'danger';
 
@@ -45,8 +52,27 @@ function TempoBar({ dias, max }: { dias: number | null; max: number }) {
   );
 }
 
-export function GargalosTable({ etapas }: { etapas: EtapaAgg[] }) {
+interface GargalosTableProps {
+  etapas: EtapaAgg[];
+  /** `horizonte.workflow_events_since`: the retrabalho column is blind to
+   *  anything that happened before the event log existed, and the header says
+   *  so instead of letting an old etapa look conflict-free. */
+  eventosDesde: string | null;
+}
+
+export function GargalosTable({ etapas, eventosDesde }: GargalosTableProps) {
   const [showAll, setShowAll] = useState(false);
+  const desde = formatDataCurta(eventosDesde);
+  // Kept short on purpose: the table lives in an `overflow-x: auto` wrapper,
+  // and a wrapper that scrolls on one axis clips the other too, so a long
+  // nowrap tooltip escaping a `th` would be cut off. The caption below carries
+  // the same fact outside the scroll container, where it always shows.
+  const retrabalhoTooltip = desde
+    ? `Devoluções desde ${desde}`
+    : 'Nenhuma devolução registrada ainda';
+  const caption = desde
+    ? `tempo médio real de cada etapa concluída no período · retrabalho registrado desde ${desde}`
+    : 'tempo médio real de cada etapa concluída no período';
 
   const ordenadas = useMemo(
     () => [...etapas].sort((a, b) => (b.media_dias ?? -1) - (a.media_dias ?? -1)),
@@ -59,7 +85,7 @@ export function GargalosTable({ etapas }: { etapas: EtapaAgg[] }) {
   return (
     <SectionCard
       title="Gargalos por etapa"
-      caption="tempo médio real de cada etapa concluída no período"
+      caption={caption}
       footer={
         ordenadas.length > TOP_N ? (
           <button
@@ -92,6 +118,7 @@ export function GargalosTable({ etapas }: { etapas: EtapaAgg[] }) {
                     <th>Etapa</th>
                     <th style={{ width: '38%' }}>Tempo médio</th>
                     <th>Atraso</th>
+                    <th data-tooltip={retrabalhoTooltip}>Retrabalho</th>
                     <th>Amostras</th>
                   </tr>
                 </thead>
@@ -104,6 +131,11 @@ export function GargalosTable({ etapas }: { etapas: EtapaAgg[] }) {
                       </td>
                       <td data-label="Atraso">
                         <AtrasoBadge pct={etapa.atraso_pct} />
+                      </td>
+                      <td data-label="Retrabalho" style={{ color: 'var(--text-muted)' }}>
+                        {etapa.retrabalho_pct === null
+                          ? SEM_BASE_RETRABALHO
+                          : `${Math.round(etapa.retrabalho_pct)}%`}
                       </td>
                       <td data-label="Amostras">{etapa.amostras}</td>
                     </tr>
@@ -142,6 +174,9 @@ export function GargalosTable({ etapas }: { etapas: EtapaAgg[] }) {
                       {formatDiasDecimal(etapa.media_dias)}
                     </strong>
                   </span>
+                  {etapa.retrabalho_pct !== null && (
+                    <span>{Math.round(etapa.retrabalho_pct)}% retrabalho</span>
+                  )}
                   <span>{etapa.amostras} amostras</span>
                 </div>
               </div>
