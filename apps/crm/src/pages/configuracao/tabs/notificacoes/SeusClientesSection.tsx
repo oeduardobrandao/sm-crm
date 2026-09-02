@@ -127,6 +127,12 @@ export default function SeusClientesSection() {
         />
       </div>
 
+      {filtered.length === 0 && (
+        <p className="mt-4 text-center text-sm text-[color:var(--text-muted)]">
+          Nenhum cliente encontrado.
+        </p>
+      )}
+
       <div className="mt-2 divide-y divide-[color:var(--border-color)]">
         {filtered.map((cliente) => {
           const hasEmail = !!cliente.email;

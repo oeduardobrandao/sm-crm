@@ -359,5 +359,14 @@ describe('NotificacoesTab', () => {
       expect(screen.queryByText('Ana Clínica')).not.toBeInTheDocument();
       expect(screen.getByText('Beto Estética')).toBeInTheDocument();
     });
+
+    it('shows "Nenhum cliente encontrado." when the search matches no client', async () => {
+      renderTab();
+      await screen.findByText('Ana Clínica');
+      const search = screen.getByPlaceholderText('Buscar cliente…');
+      fireEvent.change(search, { target: { value: 'zzz-nao-existe' } });
+      expect(await screen.findByText('Nenhum cliente encontrado.')).toBeInTheDocument();
+      expect(screen.queryByText('Ana Clínica')).not.toBeInTheDocument();
+    });
   });
 });
