@@ -20,10 +20,20 @@ export function InstagramCaptionField({
 }: InstagramCaptionFieldProps) {
   const [local, setLocal] = useState(value);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     setLocal(value);
   }, [value]);
+
+  // Auto-grow: a altura acompanha o conteúdo em vez de rolar internamente.
+  // Zerar antes de medir permite também encolher quando texto é apagado.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [local]);
 
   const handleChange = (newVal: string) => {
     if (newVal.length > MAX_CHARS) return;
@@ -60,11 +70,12 @@ export function InstagramCaptionField({
         </span>
       </div>
       <Textarea
+        ref={textareaRef}
         value={local}
         onChange={(e) => handleChange(e.target.value)}
         disabled={disabled}
         placeholder="Texto exato que será publicado no Instagram. Suporta emojis e hashtags."
-        className="min-h-[80px] resize-y"
+        className="min-h-[80px] resize-none overflow-hidden"
         style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}
       />
       <p className="text-xs mt-1" style={{ color: 'var(--text-light)' }}>
