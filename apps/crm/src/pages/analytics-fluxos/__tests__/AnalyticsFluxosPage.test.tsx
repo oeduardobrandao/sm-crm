@@ -322,7 +322,7 @@ describe('AnalyticsFluxosPage', () => {
     // server-rounded integers, so "8.0%" would be wrong twice over.
     expect(within(pontualidade).getByText('8pts')).toBeTruthy();
     expect(within(pontualidade).queryByText('8.0%')).toBeNull();
-    expect(within(pontualidade).getByText('vs período anterior (pp)')).toBeTruthy();
+    expect(within(pontualidade).getByText('vs período anterior')).toBeTruthy();
   });
 
   it('withholds the pontualidade delta when the previous window rated nothing', async () => {

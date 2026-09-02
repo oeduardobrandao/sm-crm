@@ -58,7 +58,7 @@ describe('StatCard unit', () => {
       <StatCard
         label="Pontualidade"
         value="61%"
-        delta={{ direction: 'down', percent: 8, caption: 'vs período anterior (pp)' }}
+        delta={{ direction: 'down', percent: 8, caption: 'vs período anterior' }}
         unit="pts"
       />,
     );

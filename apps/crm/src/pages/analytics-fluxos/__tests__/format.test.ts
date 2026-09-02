@@ -54,7 +54,7 @@ describe('buildDeltaPp', () => {
     expect(buildDeltaPp(61, 69, 43, 40)).toEqual({
       direction: 'down',
       percent: 8,
-      caption: 'vs período anterior (pp)',
+      caption: 'vs período anterior',
     });
   });
 
@@ -81,7 +81,7 @@ describe('buildDeltaPp', () => {
     expect(buildDeltaPp(18, 24)).toEqual({
       direction: 'down',
       percent: 6,
-      caption: 'vs período anterior (pp)',
+      caption: 'vs período anterior',
     });
   });
 

@@ -141,13 +141,16 @@ export function buildDelta(
  *
  * `percent` carries the ABSOLUTE point difference because StatCard renders
  * `Math.abs(percent)` next to a direction arrow; the sign lives in `direction`.
+ * The caption matches the relative deltas' word for word: the callers pass
+ * `unit="pts"`, so the value already says which kind of delta this is and a
+ * "(pp)" suffix would only state it a second time.
  */
 export function buildDeltaPp(
   current: number | null,
   prev: number | null,
   avaliadas?: number,
   avaliadasPrev?: number,
-  caption = 'vs período anterior (pp)',
+  caption = 'vs período anterior',
 ): StatDelta | null {
   if (current === null || prev === null) return null;
   if (avaliadas !== undefined && avaliadas <= 0) return null;
