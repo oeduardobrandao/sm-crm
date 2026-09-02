@@ -313,6 +313,49 @@ describe('useEntregasData', () => {
     expect(postResponsaveis.get(2)).toEqual([10]);
   });
 
+  // EntregasPage keys its filteredCards useMemo (and, through it, every chart
+  // dataset in the Visão geral) on these. A fresh array or Map per render makes
+  // that memo unreachable and re-animates the whole cockpit on any state change.
+  it('keeps cards and the lookup maps stable across a re-render with no new data', async () => {
+    const { useEntregasData } = await import('../useEntregasData');
+
+    const { result, rerender } = renderHook(() => useEntregasData(), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.cards.length).toBe(2);
+      expect(result.current.postResponsaveis.size).toBe(2);
+    });
+
+    const before = result.current;
+    rerender();
+
+    expect(result.current.cards).toBe(before.cards);
+    expect(result.current.activeWorkflows).toBe(before.activeWorkflows);
+    expect(result.current.postResponsaveis).toBe(before.postResponsaveis);
+    expect(result.current.postsCounts).toBe(before.postsCounts);
+    expect(result.current.etapasMap).toBe(before.etapasMap);
+  });
+
+  it('serves stable empty fallbacks while the queries have not resolved', async () => {
+    const { useEntregasData } = await import('../useEntregasData');
+
+    const { result, rerender } = renderHook(() => useEntregasData(), {
+      wrapper: createWrapper(),
+    });
+
+    // First commit: nothing has resolved yet, so every value is a fallback.
+    const before = result.current;
+    expect(before.cards).toEqual([]);
+    rerender();
+
+    expect(result.current.cards).toBe(before.cards);
+    expect(result.current.clientes).toBe(before.clientes);
+    expect(result.current.postResponsaveis).toBe(before.postResponsaveis);
+  });
+
   it('returns an empty Map when no workflow IDs are available', async () => {
     // Override getWorkflows to return no active workflows
     const store = await import('../../../../store');

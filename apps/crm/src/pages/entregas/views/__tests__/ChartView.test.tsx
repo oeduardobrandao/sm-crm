@@ -252,6 +252,51 @@ describe('ChartView', () => {
     );
   });
 
+  // The other half of the same trap: the bucket writes a range, and "Vencem hoje"
+  // used to write only the preset, so the board showed today OR the leftover
+  // window while the KPI counted today alone.
+  it('clears the leftover bucket range when Vencem hoje is clicked after a drill-down', () => {
+    const afterBucket: FilterState = {
+      ...EMPTY_FILTERS,
+      filterStatus: ['atrasado'],
+      filterPrazoFrom: '2026-08-20',
+      filterPrazoTo: '2026-08-27',
+    };
+    const { container, props } = renderView({ filters: afterBucket });
+
+    fireEvent.click(kpiButton(container, 'Vencem hoje'));
+
+    expect(props.onFiltersChange).toHaveBeenCalledWith({
+      ...afterBucket,
+      filterPrazo: ['hoje'],
+      filterPrazoFrom: '',
+      filterPrazoTo: '',
+    });
+  });
+
+  it('does not read as applied while a custom range still narrows prazo', () => {
+    const hojePlusRange: FilterState = {
+      ...EMPTY_FILTERS,
+      filterPrazo: ['hoje'],
+      filterPrazoFrom: '2026-08-20',
+      filterPrazoTo: '2026-08-27',
+    };
+    const { container, props } = renderView({ filters: hojePlusRange });
+
+    const kpi = kpiButton(container, 'Vencem hoje');
+    expect(kpi.dataset.active).toBeUndefined();
+    expect(kpi).toHaveAttribute('aria-pressed', 'false');
+
+    // So the click re-applies a clean "hoje" instead of toggling the card off.
+    fireEvent.click(kpi);
+    expect(props.onFiltersChange).toHaveBeenCalledWith({
+      ...hojePlusRange,
+      filterPrazo: ['hoje'],
+      filterPrazoFrom: '',
+      filterPrazoTo: '',
+    });
+  });
+
   it('renders only the empty card when the filters excluded every entrega', () => {
     renderView({ cards: [] });
 

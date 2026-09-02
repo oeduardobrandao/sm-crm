@@ -460,7 +460,14 @@ export function ChartView({
   const sub = `de ${totalCards} fluxos`;
   const statusActive = (status: DeadlineStatus) =>
     filters.filterStatus.length === 1 && filters.filterStatus[0] === status;
-  const hojeActive = filters.filterPrazo.length === 1 && filters.filterPrazo[0] === 'hoje';
+  // "Hoje" only counts as applied when nothing else narrows prazo: a leftover
+  // custom range ORs with the preset inside matchesEtapaPrazo, so board and KPI
+  // would disagree while the card still showed its ring.
+  const hojeActive =
+    filters.filterPrazo.length === 1 &&
+    filters.filterPrazo[0] === 'hoje' &&
+    !filters.filterPrazoFrom &&
+    !filters.filterPrazoTo;
   const aguardandoActive =
     aguardandoEtapas.length > 0 &&
     filters.filterEtapas.length > 0 &&
@@ -474,8 +481,16 @@ export function ChartView({
     onFiltersChange({ ...filters, filterStatus: statusActive(status) ? [] : [status] });
   }
 
+  // Every prazo patch below writes all THREE prazo fields. matchesEtapaPrazo ORs
+  // the presets with the custom range, so a field left untouched by one control
+  // keeps widening what the next one asked for.
   function toggleVencemHoje() {
-    onFiltersChange({ ...filters, filterPrazo: hojeActive ? [] : ['hoje'] });
+    onFiltersChange({
+      ...filters,
+      filterPrazo: hojeActive ? [] : ['hoje'],
+      filterPrazoFrom: '',
+      filterPrazoTo: '',
+    });
   }
 
   function toggleAguardandoCliente() {
@@ -484,11 +499,19 @@ export function ChartView({
 
   function verNaLista() {
     if (upcomingTab === 'atrasadas') {
-      onFiltersChange({ ...filters, filterStatus: ['atrasado'] });
+      onFiltersChange({
+        ...filters,
+        filterStatus: ['atrasado'],
+        filterPrazo: [],
+        filterPrazoFrom: '',
+        filterPrazoTo: '',
+      });
     } else {
       onFiltersChange({
         ...filters,
         filterPrazo: [upcomingTab === 'hoje' ? 'hoje' : 'proximos7'],
+        filterPrazoFrom: '',
+        filterPrazoTo: '',
       });
     }
     onGoToView('list');

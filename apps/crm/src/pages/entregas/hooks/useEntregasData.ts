@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getWorkflows,
@@ -44,6 +45,25 @@ export interface BoardRow {
   stepNames: string[];
   columns: Map<string, BoardCard[]>;
 }
+
+/**
+ * Stable stand-ins for a query that has not resolved yet. A `= []` destructuring
+ * default (or a `?? new Map()`) mints a fresh object on every render, which
+ * silently defeats every downstream useMemo keyed on these values — the board's
+ * `filteredCards` and the Visão geral's chart datasets among them.
+ *
+ * They are shared and must stay EMPTY: nothing may write into them. Nothing does
+ * today (every consumer copies before sorting), and a write would be a bug
+ * against a query result regardless.
+ */
+const EMPTY_WORKFLOWS: Workflow[] = [];
+const EMPTY_CLIENTES: Cliente[] = [];
+const EMPTY_MEMBROS: Membro[] = [];
+const EMPTY_TEMPLATES: WorkflowTemplate[] = [];
+const EMPTY_ETAPAS_MAP: Map<number, WorkflowEtapa[]> = new Map();
+/** Shared by all five count maps — they are interchangeable while empty. */
+const EMPTY_COUNT_MAP: Map<number, number> = new Map();
+const EMPTY_RESPONSAVEIS_MAP: Map<number, number[]> = new Map();
 
 /**
  * Computes the absolute deadline date from an etapa's start time and duration.
@@ -191,18 +211,24 @@ export function computeDeliveryDeadlines(
 export function useEntregasData() {
   const qc = useQueryClient();
 
-  const { data: workflows = [], isLoading: loadingWf } = useQuery({
+  const { data: workflows = EMPTY_WORKFLOWS, isLoading: loadingWf } = useQuery({
     queryKey: ['workflows'],
     queryFn: getWorkflows,
   });
-  const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
-  const { data: membros = [] } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
-  const { data: templates = [] } = useQuery({
+  const { data: clientes = EMPTY_CLIENTES } = useQuery({
+    queryKey: ['clientes'],
+    queryFn: getClientes,
+  });
+  const { data: membros = EMPTY_MEMBROS } = useQuery({
+    queryKey: ['membros'],
+    queryFn: getMembros,
+  });
+  const { data: templates = EMPTY_TEMPLATES } = useQuery({
     queryKey: ['workflow-templates'],
     queryFn: getWorkflowTemplates,
   });
 
-  const activeWorkflows = workflows.filter((w) => w.status === 'ativo');
+  const activeWorkflows = useMemo(() => workflows.filter((w) => w.status === 'ativo'), [workflows]);
 
   const etapasQuery = useQuery({
     queryKey: ['all-active-etapas'],
@@ -218,9 +244,12 @@ export function useEntregasData() {
     },
   });
 
-  const etapasMap: Map<number, WorkflowEtapa[]> = etapasQuery.data || new Map();
+  const etapasMap: Map<number, WorkflowEtapa[]> = etapasQuery.data ?? EMPTY_ETAPAS_MAP;
 
-  const activeWorkflowIds = activeWorkflows.map((w) => w.id!).filter(Boolean);
+  const activeWorkflowIds = useMemo(
+    () => activeWorkflows.map((w) => w.id!).filter(Boolean),
+    [activeWorkflows],
+  );
   const { data: covers } = useQuery({
     queryKey: ['workflow-covers', activeWorkflowIds.join(',')],
     queryFn: () => getWorkflowCovers(activeWorkflowIds),
@@ -231,39 +260,39 @@ export function useEntregasData() {
     queryFn: () => getWorkflowPostsCounts(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
-  const postsCounts: Map<number, number> = postsCountsData ?? new Map();
+  const postsCounts: Map<number, number> = postsCountsData ?? EMPTY_COUNT_MAP;
   const { data: approvedCountsData } = useQuery({
     queryKey: ['workflow-approved-posts-counts', activeWorkflowIds.join(',')],
     queryFn: () => getWorkflowApprovedPostsCounts(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
-  const approvedPostsCounts: Map<number, number> = approvedCountsData ?? new Map();
+  const approvedPostsCounts: Map<number, number> = approvedCountsData ?? EMPTY_COUNT_MAP;
   const { data: clearedClienteCountsData } = useQuery({
     queryKey: ['workflow-cleared-cliente-counts', activeWorkflowIds.join(',')],
     queryFn: () => getWorkflowClearedClientePostsCounts(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
-  const clearedClienteCounts: Map<number, number> = clearedClienteCountsData ?? new Map();
+  const clearedClienteCounts: Map<number, number> = clearedClienteCountsData ?? EMPTY_COUNT_MAP;
   const { data: revisaoInternaCountsData } = useQuery({
     queryKey: ['workflow-revisao-interna-counts', activeWorkflowIds.join(',')],
     queryFn: () => getWorkflowRevisaoInternaCounts(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
-  const revisaoInternaCounts: Map<number, number> = revisaoInternaCountsData ?? new Map();
+  const revisaoInternaCounts: Map<number, number> = revisaoInternaCountsData ?? EMPTY_COUNT_MAP;
   const { data: awaitingClienteCountsData } = useQuery({
     queryKey: ['workflow-awaiting-cliente-counts', activeWorkflowIds.join(',')],
     queryFn: () => getWorkflowAwaitingClientePostsCounts(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
-  const awaitingClienteCounts: Map<number, number> = awaitingClienteCountsData ?? new Map();
+  const awaitingClienteCounts: Map<number, number> = awaitingClienteCountsData ?? EMPTY_COUNT_MAP;
   const { data: postResponsaveisData } = useQuery({
     queryKey: ['workflow-post-responsaveis', activeWorkflowIds.join(',')],
     queryFn: () => getWorkflowPostResponsaveis(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
-  const postResponsaveis: Map<number, number[]> = postResponsaveisData ?? new Map();
+  const postResponsaveis: Map<number, number[]> = postResponsaveisData ?? EMPTY_RESPONSAVEIS_MAP;
 
-  const clienteIds = clientes.map((c) => c.id!).filter(Boolean);
+  const clienteIds = useMemo(() => clientes.map((c) => c.id!).filter(Boolean), [clientes]);
   const { data: clienteAvatars } = useQuery({
     queryKey: ['instagram-avatars', clienteIds.join(',')],
     queryFn: async () => {
@@ -300,39 +329,61 @@ export function useEntregasData() {
     enabled: clienteIds.length > 0,
   });
 
-  // Build BoardCards from active workflows
-  const cards: BoardCard[] = [];
-  for (const w of activeWorkflows) {
-    const etapas = etapasMap.get(w.id!) || [];
-    let activeEtapa = etapas.find((e) => e.status === 'ativo');
-    if (!activeEtapa && etapas.length > 0) {
-      activeEtapa = etapas[w.etapa_atual] || etapas[0];
-    }
-    if (!activeEtapa) continue;
-    const cliente = clientes.find((c) => c.id === w.cliente_id);
-    const membro = activeEtapa.responsavel_id
-      ? membros.find((m) => m.id === activeEtapa!.responsavel_id)
-      : undefined;
-    const deadline = getDeadlineInfo(activeEtapa);
-    const hubToken = w.cliente_id ? hubTokens?.get(w.cliente_id) : undefined;
-    const hubUrl =
-      hubToken && workspaceSlug
-        ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
+  // Build BoardCards from active workflows.
+  //
+  // Memoized because `cards` is the root of the whole page's derived state: the
+  // board's filtered slice, and from there every chart dataset in the Visão
+  // geral. Rebuilding the array on each render gave all of them a new identity
+  // and re-ran (and re-animated) the lot on any unrelated state change.
+  //
+  // Deps are everything the loop reads. `getDeadlineInfo` reads the clock, so a
+  // card's "3h restantes" is now only as fresh as the last data change instead
+  // of the last render. Nothing re-renders this page on a timer anyway, so that
+  // was never a real refresh — the numbers move when a query refetches.
+  const cards: BoardCard[] = useMemo(() => {
+    const out: BoardCard[] = [];
+    for (const w of activeWorkflows) {
+      const etapas = etapasMap.get(w.id!) || [];
+      let activeEtapa = etapas.find((e) => e.status === 'ativo');
+      if (!activeEtapa && etapas.length > 0) {
+        activeEtapa = etapas[w.etapa_atual] || etapas[0];
+      }
+      if (!activeEtapa) continue;
+      const cliente = clientes.find((c) => c.id === w.cliente_id);
+      const membro = activeEtapa.responsavel_id
+        ? membros.find((m) => m.id === activeEtapa!.responsavel_id)
         : undefined;
-    cards.push({
-      workflow: w,
-      etapa: activeEtapa,
-      cliente,
-      membro,
-      deadline,
-      totalEtapas: etapas.length,
-      etapaIdx: activeEtapa.ordem,
-      allEtapas: etapas,
-      postCovers: covers?.get(w.id!),
-      clienteAvatarUrl: w.cliente_id ? clienteAvatars?.get(w.cliente_id) : undefined,
-      hubUrl,
-    });
-  }
+      const deadline = getDeadlineInfo(activeEtapa);
+      const hubToken = w.cliente_id ? hubTokens?.get(w.cliente_id) : undefined;
+      const hubUrl =
+        hubToken && workspaceSlug
+          ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
+          : undefined;
+      out.push({
+        workflow: w,
+        etapa: activeEtapa,
+        cliente,
+        membro,
+        deadline,
+        totalEtapas: etapas.length,
+        etapaIdx: activeEtapa.ordem,
+        allEtapas: etapas,
+        postCovers: covers?.get(w.id!),
+        clienteAvatarUrl: w.cliente_id ? clienteAvatars?.get(w.cliente_id) : undefined,
+        hubUrl,
+      });
+    }
+    return out;
+  }, [
+    activeWorkflows,
+    etapasMap,
+    clientes,
+    membros,
+    covers,
+    clienteAvatars,
+    hubTokens,
+    workspaceSlug,
+  ]);
 
   function refresh() {
     qc.invalidateQueries({ queryKey: ['workflows'] });
