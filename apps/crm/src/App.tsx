@@ -230,6 +230,7 @@ export default function App() {
                 <Route path="/analytics-fluxos" element={<AnalyticsFluxosPage />} />
                 <Route path="/ideias" element={<IdeiasPage />} />
                 <Route path="/mensagens" element={<MensagensPage />} />
+                <Route path="/mensagens/equipe/:conversaId" element={<MensagensPage />} />
                 <Route path="/mensagens/:clienteId" element={<MensagensPage />} />
                 <Route path="/automacoes" element={<AutomacoesPage />} />
                 <Route path="/importar" element={<ImportarPage />} />

@@ -1,10 +1,14 @@
-import { useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { Cliente } from '@/store';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { useEquipeChatRealtime } from '@/hooks/useEquipeChatRealtime';
 import { useMensagensData } from './hooks/useMensagensData';
+import { useEquipeChatData } from './hooks/useEquipeChatData';
 import { ConversationList } from './components/ConversationList';
 import { ConversationThread } from './components/ConversationThread';
+import { EquipeConversationList } from './components/EquipeConversationList';
 import {
   ThreadLoadError,
   ThreadLoading,
@@ -12,15 +16,155 @@ import {
   ThreadPlaceholder,
 } from './components/ThreadStatus';
 
+type MensagensTab = 'clientes' | 'equipe';
+
+const LIST_COL_CLASS_DESKTOP = 'w-[340px] shrink-0 border-r border-[var(--border-color)]';
+const LIST_COL_CLASS_MOBILE = 'flex-1';
+
+function TabPills({
+  activeTab,
+  onSelect,
+}: {
+  activeTab: MensagensTab;
+  onSelect: (tab: MensagensTab) => void;
+}) {
+  return (
+    <div className="flex gap-1 border-b border-[var(--border-color)] px-4 py-2">
+      {(
+        [
+          { id: 'clientes', label: 'Clientes' },
+          { id: 'equipe', label: 'Equipe' },
+        ] as const
+      ).map((t) => (
+        <button
+          key={t.id}
+          onClick={() => onSelect(t.id)}
+          data-testid={`mensagens-tab-${t.id}`}
+          className="rounded-full px-3 py-1.5 text-xs whitespace-nowrap"
+          style={{
+            border: 'none',
+            cursor: 'pointer',
+            background: activeTab === t.id ? 'var(--text-main)' : 'transparent',
+            color: activeTab === t.id ? 'var(--card-bg)' : 'var(--text-muted)',
+            fontWeight: activeTab === t.id ? 600 : 400,
+          }}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+interface EquipePaneProps {
+  active: boolean;
+  showTabs: boolean;
+  activeTab: MensagensTab;
+  onTabSelect: (tab: MensagensTab) => void;
+  isDesktop: boolean;
+  conversaId: number | null;
+  invalidId: boolean;
+  onBack?: () => void;
+  onSelect: (conversaId: number) => void;
+}
+
+/** Owns the equipe-chat data + realtime hooks. The parent only mounts this
+ * component while `feature_team_chat` is on, so a workspace without the flag
+ * never issues the extra `get_equipe_conversas` fetch. `active` then gates
+ * whether it actually renders into the list/thread slots -- it keeps its
+ * query alive in the background even while the Clientes tab is the one
+ * showing, the same way the clientes side never pauses on the Equipe tab. */
+function EquipePane({
+  active,
+  showTabs,
+  activeTab,
+  onTabSelect,
+  isDesktop,
+  conversaId,
+  invalidId,
+  onBack,
+  onSelect,
+}: EquipePaneProps) {
+  const equipe = useEquipeChatData(conversaId);
+  useEquipeChatRealtime(conversaId);
+
+  if (!active) return null;
+
+  // Same rationale as the clientes side: a background refetch failing on top
+  // of already-cached data must not tear down the list or an open thread.
+  const conversasHardError = equipe.conversas.isError && equipe.conversas.data == null;
+
+  function renderThreadSlot() {
+    if (invalidId) return <ThreadNotFound onBack={onBack} />;
+    if (conversaId == null) return <ThreadPlaceholder />;
+    if (equipe.conversas.isLoading) return <ThreadLoading onBack={onBack} />;
+    if (conversasHardError) {
+      return <ThreadLoadError onRetry={() => equipe.conversas.refetch()} onBack={onBack} />;
+    }
+    const conversa = equipe.conversas.data?.find((c) => c.conversa_id === conversaId);
+    if (!conversa) return <ThreadNotFound onBack={onBack} />;
+    // Task 10 plugs the real EquipeThread here; a placeholder keeps the page
+    // compiling and the shell's precedence testable until then.
+    return <ThreadPlaceholder />;
+  }
+
+  const showList = isDesktop || (conversaId == null && !invalidId);
+  const showThread = isDesktop || conversaId != null || invalidId;
+
+  return (
+    <>
+      {showList && (
+        <div
+          className={`flex flex-col ${isDesktop ? LIST_COL_CLASS_DESKTOP : LIST_COL_CLASS_MOBILE}`}
+        >
+          {showTabs && <TabPills activeTab={activeTab} onSelect={onTabSelect} />}
+          <EquipeConversationList
+            className="min-h-0 flex-1"
+            conversas={equipe.conversas.data ?? []}
+            isLoading={equipe.conversas.isLoading}
+            isError={conversasHardError}
+            selectedConversaId={conversaId}
+            onSelect={onSelect}
+            onNovaConversa={() => {}}
+          />
+        </div>
+      )}
+      {showThread && renderThreadSlot()}
+    </>
+  );
+}
+
 export default function MensagensPage() {
-  const { clienteId: clienteIdParam } = useParams();
+  const { clienteId: clienteIdParam, conversaId: conversaIdParam } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
+  const { features } = useWorkspaceLimits();
+  const clientesOn = features?.feature_mensagens === true;
+  const equipeOn = features?.feature_team_chat === true;
+  const showTabs = clientesOn && equipeOn;
+
+  const equipeMode = location.pathname.startsWith('/mensagens/equipe');
+  // Aba ativa: URL de conversa manda; senao estado local, default = primeira
+  // aba habilitada.
+  const [tab, setTab] = useState<MensagensTab>(() =>
+    clientesOn || !equipeOn ? 'clientes' : 'equipe',
+  );
+  const activeTab: MensagensTab = equipeMode ? 'equipe' : clienteIdParam != null ? 'clientes' : tab;
+
+  function selectTab(next: MensagensTab) {
+    setTab(next);
+    navigate('/mensagens');
+  }
 
   const hasParam = clienteIdParam != null;
   const parsedId = hasParam ? parseInt(clienteIdParam, 10) : NaN;
   const invalidId = hasParam && isNaN(parsedId);
   const clienteId = hasParam && !invalidId ? parsedId : null;
+
+  const parsedConversaId = conversaIdParam != null ? parseInt(conversaIdParam, 10) : NaN;
+  const equipeConversaId = equipeMode && !isNaN(parsedConversaId) ? parsedConversaId : null;
+  const invalidEquipeId = equipeMode && conversaIdParam != null && isNaN(parsedConversaId);
 
   const { feed, conversas, clientes, sendGeneral, replyToPost } = useMensagensData(clienteId);
 
@@ -73,20 +217,40 @@ export default function MensagensPage() {
 
   return (
     <div className="page-full-bleed flex min-h-0">
-      {showList && (
-        <ConversationList
-          className={
-            isDesktop ? 'w-[340px] shrink-0 border-r border-[var(--border-color)]' : 'flex-1'
-          }
-          conversas={conversas.data ?? []}
-          isLoading={conversas.isLoading}
-          isError={conversasHardError}
-          selectedClienteId={clienteId}
-          clientesById={clientesById}
-          onSelect={goToConversa}
+      {activeTab === 'clientes' && (
+        <>
+          {showList && (
+            <div
+              className={`flex flex-col ${isDesktop ? LIST_COL_CLASS_DESKTOP : LIST_COL_CLASS_MOBILE}`}
+            >
+              {showTabs && <TabPills activeTab={activeTab} onSelect={selectTab} />}
+              <ConversationList
+                className="min-h-0 flex-1"
+                conversas={conversas.data ?? []}
+                isLoading={conversas.isLoading}
+                isError={conversasHardError}
+                selectedClienteId={clienteId}
+                clientesById={clientesById}
+                onSelect={goToConversa}
+              />
+            </div>
+          )}
+          {showThread && renderThreadSlot()}
+        </>
+      )}
+      {equipeOn && (
+        <EquipePane
+          active={activeTab === 'equipe'}
+          showTabs={showTabs}
+          activeTab={activeTab}
+          onTabSelect={selectTab}
+          isDesktop={isDesktop}
+          conversaId={equipeConversaId}
+          invalidId={invalidEquipeId}
+          onBack={onBack}
+          onSelect={(id) => navigate(`/mensagens/equipe/${id}`)}
         />
       )}
-      {showThread && renderThreadSlot()}
     </div>
   );
 }
