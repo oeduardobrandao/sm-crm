@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NOTIFICATION_CATALOG, CATEGORY_ORDER, CATEGORY_LABELS } from '@/lib/notification-catalog';
 
@@ -26,6 +26,19 @@ vi.mock('@/hooks/useNotifications', () => ({
 }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+// EmailsAutomaticosSection (Task 8): reads/writes profiles.marketing_opt_in
+// via useAuth() + a direct supabase update, same shape as PerfilTab.tsx.
+const { mockUseAuth, mockSupabaseUpdate, mockSupabaseEq } = vi.hoisted(() => ({
+  mockUseAuth: vi.fn(),
+  mockSupabaseUpdate: vi.fn(),
+  mockSupabaseEq: vi.fn(),
+}));
+
+vi.mock('@/context/AuthContext', () => ({ useAuth: mockUseAuth }));
+vi.mock('@/lib/supabase', () => ({
+  supabase: { from: vi.fn(() => ({ update: mockSupabaseUpdate })) },
+}));
 
 // Radix Switch: mocked to a plain native checkbox (checked/onCheckedChange/
 // disabled/aria-label), same convention as MembrosTab.test.tsx and the
@@ -66,6 +79,8 @@ function renderTab() {
 }
 
 describe('NotificacoesTab', () => {
+  let refetchProfile: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
     // The suite-wide afterEach (test/vitest.setup.ts) calls vi.restoreAllMocks(),
     // which wipes vi.fn() implementations down to a no-op returning undefined
@@ -75,6 +90,15 @@ describe('NotificacoesTab', () => {
     setInapp.mockReset().mockResolvedValue(undefined);
     getEmail.mockReset().mockResolvedValue({});
     setEmail.mockReset().mockResolvedValue(undefined);
+
+    refetchProfile = vi.fn().mockResolvedValue(undefined);
+    mockUseAuth.mockReset().mockReturnValue({
+      user: { id: 'user-1' },
+      profile: { id: 'user-1', marketing_opt_in: true },
+      refetchProfile,
+    });
+    mockSupabaseEq.mockReset().mockResolvedValue({ error: null });
+    mockSupabaseUpdate.mockReset().mockReturnValue({ eq: mockSupabaseEq });
   });
 
   it('renders the 5 CATEGORY_LABELS groups and all 22 catalog type rows', async () => {
@@ -85,7 +109,12 @@ describe('NotificacoesTab', () => {
     expect(CATEGORY_ORDER.length).toBe(5);
     expect(Object.keys(NOTIFICATION_CATALOG).length).toBe(22);
     for (const entry of Object.values(NOTIFICATION_CATALOG)) {
-      expect(screen.getByText(entry.label)).toBeInTheDocument();
+      // getAllByText, not getByText: NOTIFICATION_CATALOG.instagram_connected_by_client
+      // shares its label ("Instagram conectado") with a fixed row in
+      // EmailsAutomaticosSection below on this same page (Task 8) — the same
+      // event, but that row is the always-on transactional email, which is
+      // exactly why this catalog entry is emailEligible: false.
+      expect(screen.getAllByText(entry.label).length).toBeGreaterThan(0);
     }
   });
 
@@ -163,5 +192,75 @@ describe('NotificacoesTab', () => {
     const email = screen.getByLabelText(`${label} (e-mail)`);
     expect((inapp as HTMLInputElement).checked).toBe(true);
     expect((email as HTMLInputElement).checked).toBe(true);
+  });
+
+  describe('EmailsAutomaticosSection', () => {
+    it('lists the 4 fixed items, with the 3 transactional rows marked "sempre" and no switch', async () => {
+      renderTab();
+      const heading = await screen.findByRole('heading', { name: 'E-mails automáticos' });
+      // Scoped to this section's card: "Instagram conectado" is also a
+      // catalog row label in SuasNotificacoesSection above (same underlying
+      // event, different — always-on — email path), so an unscoped query
+      // would be ambiguous.
+      const section = within(heading.closest('.card') as HTMLElement);
+
+      expect(section.getByText('Convite para a equipe')).toBeInTheDocument();
+      expect(section.getByText('Cobrança e pagamento')).toBeInTheDocument();
+      expect(section.getByText('Instagram conectado')).toBeInTheDocument();
+      expect(section.getByText('Novidades e dicas do Mesaas')).toBeInTheDocument();
+
+      expect(
+        section.queryByRole('switch', { name: 'Convite para a equipe' }),
+      ).not.toBeInTheDocument();
+      expect(
+        section.queryByRole('switch', { name: 'Cobrança e pagamento' }),
+      ).not.toBeInTheDocument();
+      expect(
+        section.queryByRole('switch', { name: 'Instagram conectado' }),
+      ).not.toBeInTheDocument();
+      expect(section.getAllByText('sempre')).toHaveLength(3);
+
+      expect(
+        section.getByRole('switch', { name: 'Novidades e dicas do Mesaas' }),
+      ).toBeInTheDocument();
+      expect(section.getByText('Mesmo controle que está no seu Perfil.')).toBeInTheDocument();
+    });
+
+    it('toggling the marketing switch updates profiles.marketing_opt_in and refetches the profile', async () => {
+      renderTab();
+      const marketingSwitch = (await screen.findByRole('switch', {
+        name: 'Novidades e dicas do Mesaas',
+      })) as HTMLInputElement;
+      expect(marketingSwitch.checked).toBe(true); // profile.marketing_opt_in: true
+
+      fireEvent.click(marketingSwitch);
+
+      await waitFor(() =>
+        expect(mockSupabaseUpdate).toHaveBeenCalledWith({ marketing_opt_in: false }),
+      );
+      expect(mockSupabaseEq).toHaveBeenCalledWith('id', 'user-1');
+      await waitFor(() => expect(refetchProfile).toHaveBeenCalled());
+    });
+
+    it('flips the marketing switch optimistically and rolls back if the save fails', async () => {
+      let rejectSave: (err: Error) => void = () => {};
+      mockSupabaseEq.mockReturnValue(
+        new Promise((_resolve, reject) => {
+          rejectSave = reject;
+        }),
+      );
+
+      renderTab();
+      const marketingSwitch = (await screen.findByRole('switch', {
+        name: 'Novidades e dicas do Mesaas',
+      })) as HTMLInputElement;
+      expect(marketingSwitch.checked).toBe(true);
+
+      fireEvent.click(marketingSwitch);
+      await waitFor(() => expect(marketingSwitch.checked).toBe(false));
+
+      rejectSave(new Error('save failed'));
+      await waitFor(() => expect(marketingSwitch.checked).toBe(true));
+    });
   });
 });
