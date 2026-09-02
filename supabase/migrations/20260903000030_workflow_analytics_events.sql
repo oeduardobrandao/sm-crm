@@ -52,9 +52,30 @@
 --
 -- p_membro_id continua restringindo apenas as métricas derivadas de
 -- etapas (pontualidade, etapas, equipe), como na 20260903000020. Os
--- blocos novos `aprovacao_cliente`, `origem` e `horizonte` e o KPI de
--- retrabalho o ignoram de propósito: medem o cliente, a origem do fluxo
--- e a cobertura do log, não a carga de um responsável.
+-- blocos novos `aprovacao_cliente`, `origem` e `horizonte` o ignoram de
+-- propósito: medem o cliente, a origem do fluxo e a cobertura do log,
+-- não a carga de um responsável.
+--
+-- EXCEÇÃO EXPLÍCITA, tudo que vem de retrabalho é SEMPRE do workspace
+-- inteiro e ignora p_membro_id:
+--   * kpis.retrabalho_pct / kpis.retrabalho_prev
+--   * etapas[].retrabalho_pct
+-- Esses três saem de ev_win/ev_prev (workflow_events), que filtram por
+-- conta, janela e fluxo, mas NUNCA por membro. Logo, com p_membro_id
+-- setado, um item de `etapas` mistura escopos de propósito: `media_dias`,
+-- `amostras` e `atraso_pct` são daquele membro, enquanto `retrabalho_pct`
+-- é do workspace inteiro para aquela etapa.
+--
+-- É decisão de contrato, não descuido. Uma reversão registra QUEM
+-- reverteu e de qual etapa VOLTOU, não "de quem é a culpa": atribuir a
+-- devolução ao responsável atual da etapa de destino seria inventar uma
+-- semântica que o log não tem. Some-se que p_membro_id não tem UI hoje:
+-- getWorkflowAnalytics (apps/crm/src/services/workflowAnalytics.ts) aceita
+-- membroId, mas o único caller de página
+-- (pages/analytics-fluxos/AnalyticsFluxosPage.tsx:70) passa apenas
+-- from/to/clienteId/templateId, então na prática chega sempre NULL e a
+-- mistura não é observável. Se algum dia ganhar UI, o rótulo do número
+-- precisa dizer "retrabalho da etapa no workspace", nunca "do membro".
 --
 -- Pareamento de ciclos de aprovação (post_status_events):
 --   ABRE  em to_status='enviado_cliente' com from_status DISTINCT FROM
@@ -192,6 +213,12 @@ pse AS (  -- eventos com transição real, no escopo do tenant e dos filtros
     AND (p_template_id IS NULL OR (p.workflow_id IS NOT NULL AND p.workflow_id IN (SELECT id FROM wf)))
 ),
 ciclos AS (  -- um ciclo por envio ao cliente aberto na janela; fechamento SEM limite de p_to
+  -- Desempate por id, não só por created_at: eventos da MESMA transação
+  -- compartilham now(), então um abre+fecha atômico tem timestamps iguais e
+  -- um `>` puro nunca acharia o fechamento -- o ciclo ficaria pendente para
+  -- sempre. É a mesma classe de empate documentada em 20260826000001:43,
+  -- que por isso indexa (workflow_id, created_at, id) e não só os dois
+  -- primeiros. A comparação de tupla (created_at, id) resolve ambos os casos.
   SELECT env.post_id, env.cliente_id, env.created_at AS enviado_em,
          fech.created_at AS fechado_em,
          (fech.source = 'client' OR fech.post_approval_id IS NOT NULL) AS pelo_cliente
@@ -201,10 +228,10 @@ ciclos AS (  -- um ciclo por envio ao cliente aberto na janela; fechamento SEM l
     FROM post_status_events f
     WHERE f.conta_id = env.conta_id
       AND f.post_id = env.post_id
-      AND f.created_at > env.created_at
+      AND (f.created_at, f.id) > (env.created_at, env.id)
       AND f.from_status = 'enviado_cliente'
       AND f.from_status IS DISTINCT FROM f.to_status
-    ORDER BY f.created_at ASC
+    ORDER BY f.created_at, f.id
     LIMIT 1
   ) fech ON true
   WHERE env.to_status = 'enviado_cliente'
@@ -249,14 +276,19 @@ conclu_etapa AS (
   GROUP BY 1
 ),
 retrab_membro AS (
-  -- O cast do id é TOTAL (CASE + jsonb_typeof) em vez de `metadata ? key`
-  -- com cast cru: o planner pode avaliar uma expressão do ON antes do
-  -- filtro do WHERE, e um valor não numérico aí derrubaria o RPC inteiro.
+  -- O cast do id é TOTAL em vez de `metadata ? key` com cast cru: o planner
+  -- pode avaliar uma expressão do ON antes do filtro do WHERE, e um valor
+  -- não inteiro aí derrubaria o RPC inteiro.
+  -- jsonb_typeof = 'number' NÃO basta: 1.5 também é 'number' em jsonb e
+  -- ::bigint estoura nele. Daí o regex, que exige inteiro sem parte
+  -- fracionária nem notação científica, com no máximo 18 dígitos (bigint
+  -- vai até 19, então 18 nunca transborda).
   -- O join a `wf` mantém a invariante da 20260903000020: workflow_etapas
   -- não tem conta_id e só pode ser alcançada através de wf.
   SELECT et.responsavel_id AS membro_id, count(*) AS retrabalho
   FROM (
     SELECT CASE WHEN jsonb_typeof(r.metadata->'voltou_de_etapa_id') = 'number'
+                 AND (r.metadata->>'voltou_de_etapa_id') ~ '^-?[0-9]{1,18}$'
                 THEN (r.metadata->>'voltou_de_etapa_id')::bigint END AS etapa_id
     FROM ev_win r
     WHERE r.event_type = 'etapa_revertida'
@@ -301,6 +333,8 @@ SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM guard) THEN NULL ELSE jsonb_build_obj
     'etapas_avaliadas_prev', (SELECT count(*) FILTER (WHERE deadline IS NOT NULL) FROM et_done_prev),
     -- % de fluxos com atividade na janela que sofreram >= 1 reversão.
     -- Denominador = fluxos com QUALQUER evento na janela.
+    -- Sempre do workspace inteiro: ev_win/ev_prev ignoram p_membro_id
+    -- (ver a nota de p_membro_id no cabeçalho).
     'retrabalho_pct',    (SELECT round(100.0 * count(DISTINCT workflow_id) FILTER (WHERE event_type = 'etapa_revertida')
                                  / NULLIF(count(DISTINCT workflow_id), 0))
                             FROM ev_win),
@@ -316,8 +350,18 @@ SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM guard) THEN NULL ELSE jsonb_build_obj
                 -- null quando não houve conclusão registrada da etapa na
                 -- janela (log best-effort ou etapa anterior ao log); 0
                 -- quando houve conclusão e nenhuma devolução.
+                --
+                -- ESCOPO DIFERENTE DOS IRMÃOS: vem de ev_win, que NÃO
+                -- filtra por p_membro_id, enquanto media_dias/amostras/
+                -- atraso_pct vêm de etapas_agg, que filtra. Com
+                -- p_membro_id setado este número é do workspace inteiro
+                -- para a etapa, não do membro. Ver a nota de p_membro_id
+                -- no cabeçalho: é contrato, não descuido.
                 'retrabalho_pct', round(100.0 * COALESCE(re.reverts, 0) / NULLIF(ce.conclusoes, 0)))
-              ORDER BY ea.media_dias DESC NULLS LAST)
+              -- Desempate por nome: sem ele, etapas com a mesma media_dias
+              -- saem em ordem arbitrária e a tabela se reembaralha entre
+              -- requisições idênticas. Tasks 3-4 dependem desta ordem.
+              ORDER BY ea.media_dias DESC NULLS LAST, ea.nome)
               FROM etapas_agg ea
               LEFT JOIN retrab_etapa re ON re.nome = ea.nome
               LEFT JOIN conclu_etapa ce ON ce.nome = ea.nome), '[]'::jsonb),
@@ -340,15 +384,27 @@ SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM guard) THEN NULL ELSE jsonb_build_obj
                 'avaliadas', eq.avaliadas,
                 'retrabalho', COALESCE(rm.retrabalho, 0),
                 'atividade', COALESCE(at.atividade, 0))
-              ORDER BY eq.concluidas DESC)
+              -- Desempate por membro_id: idem etapas acima. Empate em
+              -- concluidas é comum (dois membros com 1 etapa cada).
+              ORDER BY eq.concluidas DESC, eq.membro_id)
               FROM equipe eq
               LEFT JOIN retrab_membro rm ON rm.membro_id = eq.membro_id
               LEFT JOIN atividade at ON at.membro_id = eq.membro_id), '[]'::jsonb),
   -- Cobertura do log, por fonte, sem janela e sem filtros: a UI rotula
   -- "registrado desde {data}" em cada card derivado de eventos.
+  --
+  -- conta_id = (SELECT ...) em vez de JOIN guard de propósito: o join
+  -- materializa a CTE e mata o atalho de MIN por índice, virando um heap
+  -- scan que cresce para sempre -- justo na única métrica NÃO janelada, a
+  -- que mais varre. Com o subselect escalar o planner volta a
+  -- `Limit -> Index Only Scan` em idx_workflow_events_conta_created /
+  -- idx_post_status_events_conta_created. Sem guard o subselect é NULL,
+  -- o predicado não casa nada e o CASE externo já devolve NULL antes disso.
   'horizonte', jsonb_build_object(
-    'workflow_events_since', (SELECT min(ev.created_at) FROM workflow_events ev JOIN guard g ON ev.conta_id = g.conta_id),
-    'post_events_since',     (SELECT min(pe.created_at) FROM post_status_events pe JOIN guard g ON pe.conta_id = g.conta_id)
+    'workflow_events_since', (SELECT min(ev.created_at) FROM workflow_events ev
+                               WHERE ev.conta_id = (SELECT conta_id FROM guard)),
+    'post_events_since',     (SELECT min(pe.created_at) FROM post_status_events pe
+                               WHERE pe.conta_id = (SELECT conta_id FROM guard))
   ),
   'aprovacao_cliente', jsonb_build_object(
     'mediana_horas', (SELECT round(percentile_cont(0.5) WITHIN GROUP (ORDER BY horas)::numeric, 1) FROM latencias),
