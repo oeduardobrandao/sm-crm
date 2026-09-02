@@ -119,16 +119,31 @@ begin
   raise notice '72: TT-01 ok';
 
   -- TT-02: admin legado, can_see_financials=true (default): financeiro/ver e
-  -- financeiro/editar => true
+  -- financeiro/editar => true. Migração B
+  -- (20260904000001_workspace_roles_b_enforcement.sql, item 2) acopla
+  -- contratos à mesma exceção do ramo 'admin' -- fato de produção (admin
+  -- restrito já não via contratos antes desta migração: nav-data.ts escondia
+  -- os dois juntos, e a RLS legada de contratos_select lia
+  -- can_see_financials() diretamente, igual a transacoes), não uma mudança
+  -- de comportamento.
   if public.has_permission_for(v_admin, v_ws, 'financeiro', 'ver') is not true then
     raise exception 'TT-02: admin (can_see=true) financeiro/ver should be true';
   end if;
   if public.has_permission_for(v_admin, v_ws, 'financeiro', 'editar') is not true then
     raise exception 'TT-02: admin (can_see=true) financeiro/editar should be true';
   end if;
+  if public.has_permission_for(v_admin, v_ws, 'contratos', 'ver') is not true then
+    raise exception 'TT-02: admin (can_see=true) contratos/ver should be true';
+  end if;
+  if public.has_permission_for(v_admin, v_ws, 'contratos', 'editar') is not true then
+    raise exception 'TT-02: admin (can_see=true) contratos/editar should be true';
+  end if;
   raise notice '72: TT-02 ok';
 
-  -- TT-04: admin legado, módulos fora de financeiro => true independente do flag
+  -- TT-04: admin legado, módulos fora de financeiro/contratos => true
+  -- independente do flag (contratos passou a ser exceção junto com
+  -- financeiro em Migração B, então NÃO entra neste "sempre true" -- ver
+  -- TT-02/TT-03 acima para a cobertura de contratos).
   if public.has_permission_for(v_admin, v_ws, 'leads', 'editar') is not true then
     raise exception 'TT-04: admin leads/editar should be true';
   end if;
@@ -139,7 +154,8 @@ begin
 
   -- TT-03: admin legado, can_see_financials=false: financeiro/ver e
   -- financeiro/editar => false (toggled AFTER TT-02/TT-04 read the true state,
-  -- same same-user-sequential-update style as 50_can_see_financials.sql)
+  -- same same-user-sequential-update style as 50_can_see_financials.sql).
+  -- Migração B: contratos/ver e contratos/editar seguem o mesmo flag.
   update workspace_members set can_see_financials = false
    where user_id = v_admin and workspace_id = v_ws;
   if public.has_permission_for(v_admin, v_ws, 'financeiro', 'ver') is not false then
@@ -147,6 +163,12 @@ begin
   end if;
   if public.has_permission_for(v_admin, v_ws, 'financeiro', 'editar') is not false then
     raise exception 'TT-03: admin (can_see=false) financeiro/editar should be false';
+  end if;
+  if public.has_permission_for(v_admin, v_ws, 'contratos', 'ver') is not false then
+    raise exception 'TT-03: admin (can_see=false) contratos/ver should be false';
+  end if;
+  if public.has_permission_for(v_admin, v_ws, 'contratos', 'editar') is not false then
+    raise exception 'TT-03: admin (can_see=false) contratos/editar should be false';
   end if;
   raise notice '72: TT-03 ok';
 
@@ -168,12 +190,20 @@ begin
   end if;
   raise notice '72: TT-06 ok';
 
-  -- TT-07: agent legado: automacoes/ver=true, automacoes/editar=false
+  -- TT-07: agent legado: automacoes/ver=true, automacoes/editar=true.
+  -- Migração B (20260904000001_workspace_roles_b_enforcement.sql, item 6)
+  -- remaps 'automacoes' to govern only instagram_comment_automations, which
+  -- already gave every workspace member (agent included) unrestricted write
+  -- since 20260829000002 -- 'editar' is what preserves that byte-for-byte
+  -- ('ver', used by an earlier round of this migration, would have revoked
+  -- write the agent already had). post_status_automations moved to the
+  -- 'configuracoes' module instead (already 'none' for the agent, so its
+  -- owner/admin-only access is unchanged).
   if public.has_permission_for(v_agent, v_ws, 'automacoes', 'ver') is not true then
     raise exception 'TT-07: agent automacoes/ver should be true';
   end if;
-  if public.has_permission_for(v_agent, v_ws, 'automacoes', 'editar') is not false then
-    raise exception 'TT-07: agent automacoes/editar should be false';
+  if public.has_permission_for(v_agent, v_ws, 'automacoes', 'editar') is not true then
+    raise exception 'TT-07: agent automacoes/editar should be true';
   end if;
   raise notice '72: TT-07 ok';
 

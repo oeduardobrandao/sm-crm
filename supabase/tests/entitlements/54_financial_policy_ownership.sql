@@ -42,6 +42,16 @@
 --            transacoes.emergency_lockdown (RESTRICTIVE)
 --
 -- Re-run that by hand if the sweep's WHERE clause is ever touched.
+--
+-- UPDATE (Migração B, 20260904000001_workspace_roles_b_enforcement.sql):
+-- contratos moved off can_see_financials()/financeiro entirely, onto its own
+-- has_permission('contratos', ...) module (item 4b of that migration).
+-- transacoes is untouched -- still financeiro/can_see_financials(), with
+-- has_permission('financeiro','editar') as an ADDITIONAL write conjunct
+-- (item 4). Section 1's capability-conjunct check below is split per-table
+-- to match; section 2 (the production-reproduction re-run) is unaffected --
+-- it re-applies 20260728000002 verbatim inside its own begin/rollback, which
+-- this migration does not touch.
 
 -- =============================================================
 -- 1. Invariant on the built schema: exactly the eight owned policies, and
@@ -88,14 +98,48 @@ begin
     raise exception 'policy lost its get_my_conta_id tenant conjunct: %', v_stray;
   end if;
 
+  -- transacoes stays entirely on financeiro/can_see_financials() (Migração B
+  -- item (4) -- "conjunto ADICIONAL", not a replacement -- see that
+  -- migration's own comment). contratos moved to its own permission module
+  -- in item (4b) of the SAME migration and no longer references
+  -- can_see_financials() in its policy text at all -- checked separately
+  -- below, against 'has_permission' instead. Splitting this check per-table
+  -- is what keeps it meaningful post-Migração-B: a single check spanning
+  -- both tables would either miss a regression on transacoes (too loose) or
+  -- permanently fail on contratos (too strict, for a change made on purpose).
   select string_agg(format('%s.%s', tablename, policyname), ', ' order by policyname)
     into v_stray
     from pg_policies
-   where schemaname = 'public' and tablename in ('transacoes', 'contratos')
+   where schemaname = 'public' and tablename = 'transacoes'
      and (   (qual       is not null and qual       not like '%can_see_financials%')
           or (with_check is not null and with_check not like '%can_see_financials%'));
   if v_stray is not null then
-    raise exception 'policy lost its can_see_financials capability conjunct: %', v_stray;
+    raise exception 'transacoes policy lost its can_see_financials capability conjunct: %', v_stray;
+  end if;
+
+  -- contratos: has_permission('contratos', ...) replaced can_see_financials()
+  -- entirely (Migração B item (4b) -- contratos is now its own permission
+  -- module, decoupled from the financeiro RLS text; the legacy-admin
+  -- coupling to the financial flag moved INSIDE has_permission_for's admin
+  -- branch instead, see that migration's item (2)).
+  select string_agg(format('%s.%s', tablename, policyname), ', ' order by policyname)
+    into v_stray
+    from pg_policies
+   where schemaname = 'public' and tablename = 'contratos'
+     and (   (qual       is not null and qual       not like '%has_permission%')
+          or (with_check is not null and with_check not like '%has_permission%'));
+  if v_stray is not null then
+    raise exception 'contratos policy lost its has_permission capability conjunct: %', v_stray;
+  end if;
+
+  select string_agg(format('%s.%s', tablename, policyname), ', ' order by policyname)
+    into v_stray
+    from pg_policies
+   where schemaname = 'public' and tablename = 'contratos'
+     and (   (qual       is not null and qual       like '%can_see_financials%')
+          or (with_check is not null and with_check like '%can_see_financials%'));
+  if v_stray is not null then
+    raise exception 'contratos policy still references can_see_financials() -- should be fully on has_permission(''contratos'', ...) now: %', v_stray;
   end if;
 end $$;
 

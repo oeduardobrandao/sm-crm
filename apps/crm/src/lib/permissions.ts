@@ -31,6 +31,13 @@ export type PermissionCheck = boolean | 'unknown';
  * decide a resolução de fato. Mudou o preset na SQL, muda aqui, e o teste de
  * paridade (TT-05..08) + o pgTAP 72 precisam mudar juntos.
  */
+// automacoes: 'editar' (não 'ver'). Migração B (20260904000001) remapeou o
+// módulo: post_status_automations agora segue 'configuracoes' (já 'none'
+// aqui, owner/admin-only preservado sem tocar em nada), e 'automacoes'
+// passou a governar só instagram_comment_automations -- que já dava escrita
+// livre a QUALQUER membro, agente incluso, desde 20260829000002. 'editar' é
+// o nível que preserva essa escrita byte a byte; 'ver' teria revogado o que
+// o agente já tinha.
 export const AGENT_ROLE_PRESET: Record<PermissionModule, PermissionLevel> = {
   clientes: 'editar',
   entregas: 'editar',
@@ -40,7 +47,7 @@ export const AGENT_ROLE_PRESET: Record<PermissionModule, PermissionLevel> = {
   ideias: 'editar',
   tarefas: 'editar',
   analytics: 'ver',
-  automacoes: 'ver',
+  automacoes: 'editar',
   leads: 'none',
   financeiro: 'none',
   contratos: 'none',
@@ -86,7 +93,14 @@ export function derivePermission(
     return levelAllows(membership.permissions?.[module] ?? 'none', action);
   }
   if (membership.role === 'admin') {
-    if (module === 'financeiro') return membership.can_see_financials;
+    // Migração B (20260904000001_workspace_roles_b_enforcement.sql, item 2):
+    // contratos entra na mesma exceção de financeiro. Fato de produção: um
+    // admin restrito (can_see_financials=false) já não vê contratos hoje —
+    // nav-data.ts esconde os dois itens juntos para admin restrito, e a RLS
+    // legada de contratos_select usava can_see_financials() diretamente,
+    // igual a transacoes. Espelho SQL: public.has_permission_for, ramo
+    // 'admin' (`p_module IN ('financeiro', 'contratos')`).
+    if (module === 'financeiro' || module === 'contratos') return membership.can_see_financials;
     return true;
   }
   return levelAllows(AGENT_ROLE_PRESET[module], action);

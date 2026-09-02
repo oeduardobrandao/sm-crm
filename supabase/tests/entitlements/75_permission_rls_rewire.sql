@@ -22,6 +22,121 @@
 -- actually under test.
 
 -- =============================================================
+-- WR-00: workspace_roles grant boundary (migration item 0) -- runs FIRST, own
+-- transaction, BEFORE any et_grant_hosted_parity() call anywhere in this
+-- file. et_grant_hosted_parity() grants ALL (including write) on every
+-- public table to `authenticated`, workspace_roles included -- calling it
+-- before this check would silently mask a regression in the migration's own
+-- SELECT-only grant. House discipline for privilege-boundary checks: run
+-- first and independently of the rest of the file -- same precedent as
+-- RPC-09 in 73_workspace_role_rpcs.sql:12-20, TT-18/TT-19 in
+-- 72_workspace_roles_permissions.sql, and the anon check in
+-- 50_can_see_financials.sql.
+--
+-- Checks the relacl text directly (independent re-derivation of what the
+-- migration's own post-condition asserts -- a regression that touched the
+-- GRANT statement without touching the post-condition would otherwise go
+-- uncaught), plus the behavioural counterpart (authenticated really can
+-- SELECT, really cannot INSERT).
+-- =============================================================
+begin;
+do $$
+declare
+  v_ws       uuid;
+  v_owner    uuid := gen_random_uuid();
+  v_seen     bigint;
+  v_ok       boolean;
+  v_acl      text;
+  v_auth_priv text;
+begin
+  select array_to_string(c.relacl, ',') into v_acl
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relname = 'workspace_roles';
+
+  v_auth_priv := substring(v_acl from 'authenticated=([^/]*)/');
+  if v_auth_priv is distinct from 'r' then
+    raise exception 'WR-00: authenticated must hold EXACTLY SELECT (r) on workspace_roles -- got %, full acl=%',
+      coalesce(v_auth_priv, '<none>'), v_acl;
+  end if;
+  if v_acl like '%anon=%' then
+    raise exception 'WR-00: anon retains privilege on workspace_roles -- acl=%', v_acl;
+  end if;
+  if v_acl like '=%' or v_acl like '%,=%' then
+    raise exception 'WR-00: PUBLIC retains privilege on workspace_roles -- acl=%', v_acl;
+  end if;
+
+  v_ws := et_make_workspace('max');
+  insert into auth.users (id) values (v_owner);
+  insert into workspace_members (user_id, workspace_id, role) values (v_owner, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_owner;
+  insert into workspace_roles (conta_id, nome, permissions) values (v_ws, 'WR-00 probe', '{}'::jsonb);
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+
+  -- Positive: authenticated CAN select (the grant this migration adds).
+  set local role authenticated;
+  select count(*) into v_seen from workspace_roles where conta_id = v_ws;
+  reset role;
+  if v_seen <> 1 then
+    raise exception 'WR-00: authenticated should SELECT the workspace_roles row, saw %', v_seen;
+  end if;
+
+  -- Negative: authenticated CANNOT insert -- either the table grant lacks
+  -- INSERT (this migration's REVOKE) or RLS denies it (wr_no_client_insert,
+  -- Migration A) -- both raise 42501/insufficient_privilege, and this suite
+  -- does not need to distinguish which layer fired.
+  v_ok := false;
+  set local role authenticated;
+  begin
+    insert into workspace_roles (conta_id, nome, permissions) values (v_ws, 'WR-00 hack', '{}'::jsonb);
+  exception when insufficient_privilege then
+    v_ok := true;
+  end;
+  reset role;
+  if not v_ok then
+    raise exception 'WR-00: authenticated must not be able to INSERT into workspace_roles';
+  end if;
+
+  raise notice 'WR-00 workspace_roles grant boundary: ok';
+end $$;
+rollback;
+
+-- =============================================================
+-- RW-08: leads -- pg_policies contains EXACTLY leads_select/insert/update/
+-- delete. Moved up to run SECOND (right after the WR-00 privilege-boundary
+-- block and before any data-fixture block): under ON_ERROR_STOP the whole
+-- file is one psql invocation, so a cheap structural check like this one
+-- should get a chance to run and give a fast, unambiguous signal before the
+-- more elaborate RW-01..07 blocks execute. The migration's sweep (item (5))
+-- removed any legacy policy at apply time; nothing in RW-01..07 below could
+-- have added one back, since those blocks only insert/update/delete DATA,
+-- never DDL, and every block runs inside its own rolled-back transaction.
+-- =============================================================
+do $$
+declare
+  v_stray text;
+  v_n     int;
+begin
+  select count(*) into v_n from pg_policies
+   where schemaname = 'public' and tablename = 'leads';
+  if v_n <> 4 then
+    raise exception 'RW-08: expected 4 policies on leads, found %', v_n;
+  end if;
+
+  select string_agg(format('%s.%s', tablename, policyname), ', ' order by policyname)
+    into v_stray
+    from pg_policies
+   where schemaname = 'public' and tablename = 'leads'
+     and policyname not in ('leads_select', 'leads_insert', 'leads_update', 'leads_delete');
+  if v_stray is not null then
+    raise exception 'RW-08: unowned policy survives on leads: %', v_stray;
+  end if;
+
+  raise notice 'RW-08 leads policy set: ok';
+end $$;
+
+-- =============================================================
 -- RW-01: leads. SELECT was `get_my_role() IS DISTINCT FROM 'agent'`
 -- (20260404); write policies did not exist at all before this migration
 -- (20260315's leads_insert/update/delete were tenant-only). Now: SELECT ->
@@ -168,9 +283,13 @@ end $$;
 rollback;
 
 -- =============================================================
--- RW-02: post_status_automations. SELECT tightened from owner/admin-only
--- (20260805000002) to has_permission('automacoes','ver') -- legacy agent
--- GAINS select, the documented harmonization delta; write requires 'editar'.
+-- RW-02: post_status_automations. Module is 'configuracoes' (product
+-- decision, migration item (6) final round -- NOT 'automacoes', which an
+-- earlier round of this migration used and which would have given the
+-- legacy agent SELECT it never had). configuracoes was already 'none' in
+-- the agent preset, so this is byte-exact parity with 20260805000002's
+-- owner/admin-only shape, not a delta: legacy agent is denied BOTH SELECT
+-- and INSERT, same as before this migration existed.
 -- =============================================================
 begin;
 select et_grant_hosted_parity();
@@ -191,9 +310,9 @@ begin
   insert into auth.users (id) values (v_agent), (v_c_ver), (v_c_editar);
 
   insert into workspace_roles (conta_id, nome, permissions) values
-    (v_ws, 'RW-02 automacoes ver',    '{"automacoes":"ver"}'::jsonb)    returning id into v_role_ver;
+    (v_ws, 'RW-02 config ver',    '{"configuracoes":"ver"}'::jsonb)    returning id into v_role_ver;
   insert into workspace_roles (conta_id, nome, permissions) values
-    (v_ws, 'RW-02 automacoes editar', '{"automacoes":"editar"}'::jsonb) returning id into v_role_editar;
+    (v_ws, 'RW-02 config editar', '{"configuracoes":"editar"}'::jsonb) returning id into v_role_editar;
 
   insert into workspace_members (user_id, workspace_id, role) values (v_agent, v_ws, 'agent');
   insert into workspace_members (user_id, workspace_id, role, role_id) values
@@ -205,14 +324,14 @@ begin
   insert into post_status_automations (conta_id, trigger_status, action_type, config)
     values (v_ws, 'rascunho', 'notify', '{"target":"roles","roles":["owner"]}');
 
-  -- {"automacoes":"ver"}: SELECT ok (o delta documentado), INSERT negado.
+  -- {"configuracoes":"ver"}: SELECT ok, INSERT negado.
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_c_ver, 'role', 'authenticated')::text, true);
   set local role authenticated;
   select count(*) into v_seen from post_status_automations where conta_id = v_ws;
   reset role;
   if v_seen <> 1 then
-    raise exception 'RW-02: automacoes:ver should see 1 row, saw %', v_seen;
+    raise exception 'RW-02: configuracoes:ver should see 1 row, saw %', v_seen;
   end if;
 
   v_ok := false;
@@ -225,10 +344,10 @@ begin
   end;
   reset role;
   if not v_ok then
-    raise exception 'RW-02: automacoes:ver INSERT must be denied';
+    raise exception 'RW-02: configuracoes:ver INSERT must be denied';
   end if;
 
-  -- {"automacoes":"editar"}: INSERT ok.
+  -- {"configuracoes":"editar"}: INSERT ok.
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_c_editar, 'role', 'authenticated')::text, true);
   set local role authenticated;
@@ -238,17 +357,18 @@ begin
   select count(*) into v_rows from post_status_automations
    where conta_id = v_ws and trigger_status = 'aprovado_interno';
   if v_rows <> 1 then
-    raise exception 'RW-02: automacoes:editar INSERT should have succeeded';
+    raise exception 'RW-02: configuracoes:editar INSERT should have succeeded';
   end if;
 
-  -- agent legado: SELECT ok (novo), INSERT negado.
+  -- agent legado: SELECT vazio, INSERT negado -- byte-exato com o
+  -- owner/admin-only de sempre, sem delta.
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_agent, 'role', 'authenticated')::text, true);
   set local role authenticated;
   select count(*) into v_seen from post_status_automations where conta_id = v_ws;
   reset role;
-  if v_seen < 1 then
-    raise exception 'RW-02: legacy agent should now see post_status_automations rows (new), saw %', v_seen;
+  if v_seen <> 0 then
+    raise exception 'RW-02: legacy agent should see 0 post_status_automations rows (no delta), saw %', v_seen;
   end if;
 
   v_ok := false;
@@ -269,10 +389,14 @@ end $$;
 rollback;
 
 -- =============================================================
--- RW-03: instagram_comment_automations. Same four assertions as RW-02,
--- mirrored onto ica_*. Pre-migration state (20260829000002): SELECT free for
--- any member, write free for any member too -- both now gated on the same
--- automacoes permission as post_status_automations (harmonization).
+-- RW-03: instagram_comment_automations. Module is 'automacoes' (unlike RW-02
+-- above): SELECT and write both gated on has_permission('automacoes', ...).
+-- For a CUSTOM role this is a real, module-scoped gate. For the LEGACY agent
+-- it is byte-exact parity with 20260829000002's "any workspace member
+-- writes" shape -- the agent preset's 'automacoes' is 'editar' (product
+-- decision, migration item (6) final round), which is what preserves the
+-- write access the agent already had. There is no delta here, unlike an
+-- earlier round of this migration believed.
 -- =============================================================
 begin;
 select et_grant_hosted_parity();
@@ -351,8 +475,9 @@ begin
     raise exception 'RW-03: automacoes:editar INSERT should have succeeded';
   end if;
 
-  -- agent legado: SELECT ok, INSERT negado (delta -- 20260829000002 dava CRUD
-  -- completo a qualquer membro; a harmonização revoga a escrita irrestrita).
+  -- agent legado: SELECT ok, INSERT ok -- byte-exato com 20260829000002
+  -- ("agent ganha escrita completa"), preservado via automacoes:editar no
+  -- preset do agente (product decision, migration item (6) final round).
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_agent, 'role', 'authenticated')::text, true);
   set local role authenticated;
@@ -362,17 +487,14 @@ begin
     raise exception 'RW-03: legacy agent should see instagram_comment_automations rows, saw %', v_seen;
   end if;
 
-  v_ok := false;
   set local role authenticated;
-  begin
-    insert into instagram_comment_automations (conta_id, client_id, name, keywords, dm_message)
-      values (v_ws, v_cli, 'AgentBlocked', array['x'], 'y');
-  exception when sqlstate '42501' then
-    v_ok := true;
-  end;
+  insert into instagram_comment_automations (conta_id, client_id, name, keywords, dm_message)
+    values (v_ws, v_cli, 'AgentMade', array['x'], 'y');
   reset role;
-  if not v_ok then
-    raise exception 'RW-03: legacy agent INSERT must be denied (harmonization delta)';
+  select count(*) into v_rows from instagram_comment_automations
+   where conta_id = v_ws and name = 'AgentMade';
+  if v_rows <> 1 then
+    raise exception 'RW-03: legacy agent INSERT should have succeeded (no delta -- byte-exact with 20260829000002)';
   end if;
 
   raise notice 'RW-03 instagram_comment_automations: ok';
@@ -529,13 +651,14 @@ end $$;
 rollback;
 
 -- =============================================================
--- RW-06: transacoes/contratos write policies. {"financeiro":"ver"} reads via
--- can_see_financials() (now 'ver') but is blocked from writing by the NEW
--- has_permission('financeiro','editar') conjunct; {"financeiro":"editar"}
--- writes; restricted legacy admin (can_see_financials=false) still gets 0
--- rows on SELECT (regression of 52 -- can_see_financials() stays in the
--- policy alongside the new conjunct, so nothing here narrows further for the
--- legacy path).
+-- RW-06: transacoes write policies (financeiro module -- contratos moved to
+-- its own module, RW-06b below). {"financeiro":"ver"} reads via
+-- can_see_financials() (now 'ver') but is blocked from writing (INSERT,
+-- UPDATE, AND DELETE) by the NEW has_permission('financeiro','editar')
+-- conjunct; {"financeiro":"editar"} writes; restricted legacy admin
+-- (can_see_financials=false) still gets 0 rows on SELECT (regression of 52
+-- -- can_see_financials() stays in the policy alongside the new conjunct, so
+-- nothing here narrows further for the legacy path).
 -- =============================================================
 begin;
 select et_grant_hosted_parity();
@@ -549,10 +672,12 @@ declare
   v_role_ver    uuid;
   v_role_editar uuid;
   v_tx          bigint;
-  v_ct          bigint;
+  v_tx_upd      bigint;
+  v_tx_del      bigint;
   v_seen        bigint;
   v_rows        bigint;
   v_ok          boolean;
+  v_val         numeric;
 begin
   v_ws := et_make_workspace('max');
 
@@ -575,10 +700,12 @@ begin
 
   insert into transacoes (user_id, conta_id, data, tipo, valor)
     values (v_owner, v_ws, '2026-01-01', 'entrada', 500) returning id into v_tx;
-  insert into contratos (user_id, conta_id, titulo, data_inicio, data_fim, valor_total)
-    values (v_owner, v_ws, 'Contrato', '2026-01-01', '2026-12-31', 500) returning id into v_ct;
+  insert into transacoes (user_id, conta_id, data, tipo, valor)
+    values (v_owner, v_ws, '2026-01-01', 'entrada', 600) returning id into v_tx_upd;
+  insert into transacoes (user_id, conta_id, data, tipo, valor)
+    values (v_owner, v_ws, '2026-01-01', 'entrada', 700) returning id into v_tx_del;
 
-  -- {"financeiro":"ver"}: SELECT ok, INSERT negado (transacoes E contratos).
+  -- {"financeiro":"ver"}: SELECT ok, INSERT/UPDATE/DELETE negado.
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_c_ver, 'role', 'authenticated')::text, true);
   set local role authenticated;
@@ -601,20 +728,32 @@ begin
     raise exception 'RW-06: financeiro:ver INSERT on transacoes must be denied';
   end if;
 
-  v_ok := false;
+  -- UPDATE: silently filtered by USING (0 rows), value unchanged.
   set local role authenticated;
-  begin
-    insert into contratos (user_id, conta_id, titulo, data_inicio, data_fim, valor_total)
-      values (v_c_ver, v_ws, 'Blocked', '2026-01-01', '2026-12-31', 1);
-  exception when sqlstate '42501' then
-    v_ok := true;
-  end;
+  update transacoes set valor = 1 where id = v_tx_upd;
+  get diagnostics v_rows = row_count;
   reset role;
-  if not v_ok then
-    raise exception 'RW-06: financeiro:ver INSERT on contratos must be denied';
+  if v_rows <> 0 then
+    raise exception 'RW-06: financeiro:ver UPDATE on transacoes must affect 0 rows, affected %', v_rows;
+  end if;
+  select valor into v_val from transacoes where id = v_tx_upd;
+  if v_val is distinct from 600 then
+    raise exception 'RW-06: financeiro:ver UPDATE mutated transacoes despite 0 reported rows, valor=%', v_val;
   end if;
 
-  -- {"financeiro":"editar"}: INSERT ok (transacoes E contratos).
+  -- DELETE: silently filtered by USING (0 rows), row survives.
+  set local role authenticated;
+  delete from transacoes where id = v_tx_del;
+  get diagnostics v_rows = row_count;
+  reset role;
+  if v_rows <> 0 then
+    raise exception 'RW-06: financeiro:ver DELETE on transacoes must affect 0 rows, affected %', v_rows;
+  end if;
+  if not exists (select 1 from transacoes where id = v_tx_del) then
+    raise exception 'RW-06: financeiro:ver DELETE removed the transacoes row despite 0 reported rows';
+  end if;
+
+  -- {"financeiro":"editar"}: INSERT ok.
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_c_editar, 'role', 'authenticated')::text, true);
   set local role authenticated;
@@ -624,15 +763,6 @@ begin
   select count(*) into v_rows from transacoes where conta_id = v_ws and valor = 42;
   if v_rows <> 1 then
     raise exception 'RW-06: financeiro:editar INSERT on transacoes should have succeeded';
-  end if;
-
-  set local role authenticated;
-  insert into contratos (user_id, conta_id, titulo, data_inicio, data_fim, valor_total)
-    values (v_c_editar, v_ws, 'Allowed', '2026-01-01', '2026-12-31', 42);
-  reset role;
-  select count(*) into v_rows from contratos where conta_id = v_ws and valor_total = 42;
-  if v_rows <> 1 then
-    raise exception 'RW-06: financeiro:editar INSERT on contratos should have succeeded';
   end if;
 
   -- admin legado can_see_financials=false: SELECT vazio (regressão do 52).
@@ -645,16 +775,116 @@ begin
     raise exception 'RW-06: restricted legacy admin should see 0 transacoes rows (regression), saw %', v_seen;
   end if;
 
+  raise notice 'RW-06 transacoes: ok';
+end $$;
+rollback;
+
+-- =============================================================
+-- RW-06b: contratos write policies (own permission module, DECOUPLED from
+-- financeiro's RLS text -- migration item (4b)). {"contratos":"ver"} reads
+-- but is denied on every write verb; {"contratos":"none"} is denied on
+-- everything; restricted legacy admin (can_see_financials=false) still gets
+-- 0 rows on SELECT -- regression PARITY with today: has_permission_for's
+-- admin branch (item (2)) explicitly couples contratos to the same flag,
+-- which is a confirmed production fact (nav-data.ts already hides
+-- 'financeiro' and 'contratos' together for a restricted admin), not a new
+-- restriction introduced by moving contratos off the financeiro RLS text.
+-- =============================================================
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws          uuid;
+  v_owner       uuid := gen_random_uuid();
+  v_admin_no    uuid := gen_random_uuid();
+  v_c_ver       uuid := gen_random_uuid();
+  v_c_none      uuid := gen_random_uuid();
+  v_role_ver    uuid;
+  v_role_none   uuid;
+  v_ct          bigint;
+  v_seen        bigint;
+  v_ok          boolean;
+begin
+  v_ws := et_make_workspace('max');
+
+  insert into auth.users (id) values (v_owner), (v_admin_no), (v_c_ver), (v_c_none);
+
+  insert into workspace_roles (conta_id, nome, permissions) values
+    (v_ws, 'RW-06b contratos ver',  '{"contratos":"ver"}'::jsonb)  returning id into v_role_ver;
+  insert into workspace_roles (conta_id, nome, permissions) values
+    (v_ws, 'RW-06b contratos none', '{"contratos":"none"}'::jsonb) returning id into v_role_none;
+
+  insert into workspace_members (user_id, workspace_id, role) values
+    (v_owner, v_ws, 'owner'), (v_admin_no, v_ws, 'admin');
+  update workspace_members set can_see_financials = false
+   where user_id = v_admin_no and workspace_id = v_ws;
+  insert into workspace_members (user_id, workspace_id, role, role_id) values
+    (v_c_ver,  v_ws, 'agent', v_role_ver),
+    (v_c_none, v_ws, 'agent', v_role_none);
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws
+   where id in (v_owner, v_admin_no, v_c_ver, v_c_none);
+
+  insert into contratos (user_id, conta_id, titulo, data_inicio, data_fim, valor_total)
+    values (v_owner, v_ws, 'Contrato', '2026-01-01', '2026-12-31', 500) returning id into v_ct;
+
+  -- {"contratos":"ver"}: SELECT ok, INSERT negado.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_c_ver, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  select count(*) into v_seen from contratos where id = v_ct;
+  reset role;
+  if v_seen <> 1 then
+    raise exception 'RW-06b: contratos:ver should see the contratos row, saw %', v_seen;
+  end if;
+
+  v_ok := false;
+  set local role authenticated;
+  begin
+    insert into contratos (user_id, conta_id, titulo, data_inicio, data_fim, valor_total)
+      values (v_c_ver, v_ws, 'Blocked', '2026-01-01', '2026-12-31', 1);
+  exception when sqlstate '42501' then
+    v_ok := true;
+  end;
+  reset role;
+  if not v_ok then
+    raise exception 'RW-06b: contratos:ver INSERT must be denied';
+  end if;
+
+  -- {"contratos":"none"}: SELECT vazio, INSERT negado.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_c_none, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  select count(*) into v_seen from contratos where conta_id = v_ws;
+  reset role;
+  if v_seen <> 0 then
+    raise exception 'RW-06b: contratos:none should see 0 rows, saw %', v_seen;
+  end if;
+
+  v_ok := false;
+  set local role authenticated;
+  begin
+    insert into contratos (user_id, conta_id, titulo, data_inicio, data_fim, valor_total)
+      values (v_c_none, v_ws, 'Blocked2', '2026-01-01', '2026-12-31', 1);
+  exception when sqlstate '42501' then
+    v_ok := true;
+  end;
+  reset role;
+  if not v_ok then
+    raise exception 'RW-06b: contratos:none INSERT must be denied';
+  end if;
+
+  -- admin legado can_see_financials=false: SELECT vazio -- regressão
+  -- PARIDADE com hoje (não uma restrição nova; ver o comentário do bloco).
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_admin_no, 'role', 'authenticated')::text, true);
   set local role authenticated;
   select count(*) into v_seen from contratos where id = v_ct;
   reset role;
   if v_seen <> 0 then
-    raise exception 'RW-06: restricted legacy admin should see 0 contratos rows (regression), saw %', v_seen;
+    raise exception 'RW-06b: restricted legacy admin should see 0 contratos rows (parity with today), saw %', v_seen;
   end if;
 
-  raise notice 'RW-06 transacoes/contratos: ok';
+  raise notice 'RW-06b contratos: ok';
 end $$;
 rollback;
 
@@ -750,33 +980,3 @@ begin
   raise notice 'RW-07 can_see_financials(): ok';
 end $$;
 rollback;
-
--- =============================================================
--- RW-08: leads -- pg_policies contains EXACTLY leads_select/insert/update/
--- delete. The migration's sweep (item (4)) removed any legacy policy at
--- apply time; nothing in RW-01..07 above could have added one back, since
--- those blocks only insert/update/delete DATA, never DDL, and every block
--- runs inside its own rolled-back transaction.
--- =============================================================
-do $$
-declare
-  v_stray text;
-  v_n     int;
-begin
-  select count(*) into v_n from pg_policies
-   where schemaname = 'public' and tablename = 'leads';
-  if v_n <> 4 then
-    raise exception 'RW-08: expected 4 policies on leads, found %', v_n;
-  end if;
-
-  select string_agg(format('%s.%s', tablename, policyname), ', ' order by policyname)
-    into v_stray
-    from pg_policies
-   where schemaname = 'public' and tablename = 'leads'
-     and policyname not in ('leads_select', 'leads_insert', 'leads_update', 'leads_delete');
-  if v_stray is not null then
-    raise exception 'RW-08: unowned policy survives on leads: %', v_stray;
-  end if;
-
-  raise notice 'RW-08 leads policy set: ok';
-end $$;

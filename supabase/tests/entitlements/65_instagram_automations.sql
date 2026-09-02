@@ -7,16 +7,20 @@
 -- row, never a plan pick.
 --
 -- 1-3. instagram_comment_automations: flag-off blocks INSERT; flag-on lets
---      owner/admin write (has_permission('automacoes','editar')) while
---      agent reads (has_permission('automacoes','ver')) but is denied on
---      every write verb. Migration 20260829000002 had widened writes to any
---      workspace member; migration 20260904000001 (Migração B, permissões
---      granulares) harmonizes instagram_comment_automations back onto the
---      same automações gate as post_status_automations (62) -- a deliberate
---      preset delta documented in the design spec's "Delta deliberado do
---      preset Agente". Downgrade (flag back off) keeps the existing row
---      editable/deletable by owner but blocks new INSERTs (block-new/keep-
---      existing, same policy as 06).
+--      any workspace member (owner/admin/agent) write, same conta_id-only
+--      RLS SHAPE as workflow_posts_all (20260402) always had. Migration
+--      20260829000002 dropped the owner/admin-only INSERT/UPDATE/DELETE
+--      restriction from 20260815000002 for good — migration 20260904000001
+--      (Migração B, permissões granulares) rewires ica_* onto
+--      has_permission('automacoes', ...) instead of a plain tenant check,
+--      but the agent PRESET for 'automacoes' is 'editar' specifically so
+--      this suite's behaviour stays byte-for-byte identical: legacy agent
+--      full CRUD is preserved via the preset, not via an unconditional
+--      policy. A CUSTOM role, unlike the legacy agent, IS genuinely gated by
+--      the 'automacoes' module now (covered in
+--      75_permission_rls_rewire.sql's RW-03, not here). Downgrade (flag back
+--      off) keeps the existing row editable/deletable but blocks new
+--      INSERTs (block-new/keep-existing, same policy as 06).
 -- 4. Structural tenant-safety: the composite FKs ica_client_same_tenant and
 --    ias_automation_same_tenant reject cross-workspace pointers even for a
 --    caller that bypasses RLS entirely (table owner, standing in for the
@@ -58,6 +62,7 @@ declare
   v_agent uuid := gen_random_uuid();
   v_cli bigint;
   v_auto uuid;
+  v_auto_by_agent uuid;
   v_seen bigint;
   v_rows bigint;
   v_rejected boolean;
@@ -110,40 +115,28 @@ begin
   select count(*) into v_seen from instagram_comment_automations where conta_id = v_ws;
   assert v_seen = 1, format('agent should read the automation, saw %s', v_seen);
 
-  -- agent INSERT denied: migration 20260904000001 harmonizes ica_insert onto
-  -- has_permission('automacoes','editar') -- same gate as post_status_
-  -- automations (62). Legacy agent's preset only grants automacoes 'ver', so
-  -- the write access this suite used to prove ("full CRUD, same as
-  -- owner/admin", shipped by 20260829000002) is deliberately revoked by the
-  -- harmonization -- see the design spec's "Delta deliberado do preset
-  -- Agente".
-  v_rejected := false;
-  set local role authenticated;
-  begin
-    insert into instagram_comment_automations
-      (conta_id, client_id, name, keywords, dm_message)
-      values (v_ws, v_cli, 'Agent-made', array['x'], 'y');
-  exception when sqlstate '42501' then
-    v_rejected := true;
-  end;
-  reset role;
-  assert v_rejected, 'agent INSERT must be denied post-harmonization (automacoes:editar required)';
+  -- agent INSERT allowed (full CRUD, same as owner/admin) -- product
+  -- decision (migration item (6) final round): the agent preset for
+  -- 'automacoes' is 'editar', which preserves 20260829000002's "any
+  -- workspace member writes" byte-for-byte. Enforced via
+  -- has_permission('automacoes','editar') now, not an unconditional policy,
+  -- but the OBSERVED result for a legacy agent is identical.
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message)
+    values (v_ws, v_cli, 'Agent-made', array['x'], 'y')
+    returning id into v_auto_by_agent;
 
-  -- agent UPDATE silently filtered by RLS USING (0 rows), row unchanged
-  set local role authenticated;
+  -- agent UPDATE allowed on any automation in the workspace
   update instagram_comment_automations set ativo = false where id = v_auto;
   get diagnostics v_rows = row_count;
-  reset role;
-  assert v_rows = 0, format('agent UPDATE must affect 0 rows, affected %s', v_rows);
+  assert v_rows = 1, format('agent UPDATE must affect 1 row, affected %s', v_rows);
 
-  -- agent DELETE silently filtered by RLS USING (0 rows), row survives
-  set local role authenticated;
-  delete from instagram_comment_automations where id = v_auto;
+  -- agent DELETE allowed on any automation in the workspace
+  delete from instagram_comment_automations where id = v_auto_by_agent;
   get diagnostics v_rows = row_count;
+  assert v_rows = 1, format('agent DELETE must affect 1 row, affected %s', v_rows);
+
   reset role;
-  assert v_rows = 0, format('agent DELETE must affect 0 rows, affected %s', v_rows);
-  assert exists (select 1 from instagram_comment_automations where id = v_auto),
-    'agent delete must not have removed the row despite 0 reported rows';
 
   -- 3. Downgrade: flag back off. Existing row stays editable/deletable by
   --    owner/admin; a NEW insert is blocked again (block-new/keep-existing).
