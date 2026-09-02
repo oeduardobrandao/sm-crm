@@ -1,5 +1,5 @@
 -- supabase/migrations/20260903103000_team_message_inapp_pref.sql
--- Fecha duas lacunas do fix-wave de revisao do chat de equipe (branch
+-- Fecha tres lacunas do fix-wave de revisao do chat de equipe (branch
 -- claude/group-chats-team-c8f94a):
 -- (a) notification_inapp_prefs_type_check (20260903000001) foi criada ANTES
 --     de 'team_message' existir (20260903100000 e posterior). Sem esta
@@ -9,6 +9,23 @@
 --     tokens de mencao "@[Label](tipo:id)" vazavam pro card de notificacao
 --     em vez de renderizar como "@Label". CREATE OR REPLACE troca o preview
 --     por uma versao com os tokens ja substituidos, antes do left(...,280).
+-- (c) trg_notify_team_message selecionava destinatarios so por
+--     equipe_conversa_participantes, cuja linha SOBREVIVE deliberadamente a
+--     remocao do workspace (historico -- ver comentario da migration
+--     20260903100000). notifications_select so filtra por user_id =
+--     auth.uid(), sem cruzar workspace_members: um ex-membro removido
+--     continuava recebendo team_message (author_name, conversa_nome,
+--     preview de 280 chars) pra cada mensagem nova em conversas de que
+--     participava, mesmo sem RLS pra ler a conversa em si. Toda outra
+--     trigger de notificacao do repo usa resolve_notification_targets (que
+--     parte de workspace_members) e por isso ja e naturalmente escopada;
+--     esta era a excecao. Fix: EXISTS contra workspace_members no WHERE do
+--     INSERT..SELECT, mesmo padrao de vinculo vigente que
+--     is_equipe_conversa_member() ja aplica pra leitura (20260903100000) e
+--     que a policy notifications_select (20260903000001) aplica pros outros
+--     tipos via join com workspace_members.
+-- Este arquivo ainda nao foi aplicado em nenhum banco real -- editado in
+-- place em vez de uma migration nova.
 -- Spec: docs/superpowers/specs/2026-09-02-team-group-chats-design.md
 
 -- ============ (a) notification_inapp_prefs_type_check +team_message =======
@@ -81,6 +98,14 @@ BEGIN
       FROM equipe_conversa_participantes pt
      WHERE pt.conversa_id = NEW.conversa_id
        AND pt.user_id <> NEW.author_user_id
+       -- Vinculo vigente (item (c) acima): participante SOBREVIVE a remocao
+       -- do workspace de proposito (historico), mas ele nao pode continuar
+       -- recebendo notificacao dai em diante.
+       AND EXISTS (
+         SELECT 1 FROM workspace_members wm
+          WHERE wm.workspace_id = NEW.conta_id
+            AND wm.user_id = pt.user_id
+       )
     ON CONFLICT (user_id, ((metadata->>'conversa_id')))
       WHERE type = 'team_message' AND read_at IS NULL AND dismissed_at IS NULL
       DO NOTHING;

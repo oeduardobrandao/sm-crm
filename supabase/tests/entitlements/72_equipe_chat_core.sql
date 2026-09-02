@@ -412,3 +412,76 @@ begin
   raise notice 'PASS 8: preview de team_message sem token de mencao cru';
 end $$;
 rollback;
+
+-- ============================================================
+-- 9. team_message so notifica membros vivos do workspace: participante
+--    removido (linha de equipe_conversa_participantes sobrevive, mesmo
+--    padrao do cenario 3) para de receber notificacao de mensagens novas;
+--    um participante que continua no workspace segue recebendo normalmente.
+-- ============================================================
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid;
+  v_a uuid := gen_random_uuid();  -- sera removido do workspace
+  v_b uuid := gen_random_uuid();  -- autor das mensagens
+  v_c uuid := gen_random_uuid();  -- continua no workspace (controle positivo)
+  v_conv bigint;
+  v_n int;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_team_chat": true}'::jsonb);
+  insert into auth.users (id) values (v_a), (v_b), (v_c);
+  insert into workspace_members (user_id, workspace_id, role)
+    values (v_a, v_ws, 'owner'), (v_b, v_ws, 'admin'), (v_c, v_ws, 'agent');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws
+    where id in (v_a, v_b, v_c);
+
+  insert into equipe_conversas (conta_id, tipo, nome, created_by)
+    values (v_ws, 'grupo', 'Time', v_b) returning id into v_conv;
+  insert into equipe_conversa_participantes (conversa_id, conta_id, user_id)
+    values (v_conv, v_ws, v_a), (v_conv, v_ws, v_b), (v_conv, v_ws, v_c);
+
+  -- Primeira mensagem: A e C (nao-autores) recebem 1 notificacao cada.
+  insert into equipe_mensagens (conversa_id, conta_id, author_user_id, content)
+    values (v_conv, v_ws, v_b, 'primeira');
+  select count(*) into v_n from notifications
+   where type = 'team_message' and user_id = v_a
+     and metadata->>'conversa_id' = v_conv::text;
+  assert v_n = 1, format('A deveria ter 1 notificacao antes da remocao, achou %s', v_n);
+  select count(*) into v_n from notifications
+   where type = 'team_message' and user_id = v_c
+     and metadata->>'conversa_id' = v_conv::text;
+  assert v_n = 1, format('C deveria ter 1 notificacao, achou %s', v_n);
+
+  -- Remove A do workspace; a linha de participante da conversa fica
+  -- (historico dos demais preservado -- mesmo padrao do cenario 3).
+  delete from workspace_members where user_id = v_a and workspace_id = v_ws;
+
+  -- Marca a notificacao de A como lida ANTES da segunda mensagem: sem isto
+  -- o ON CONFLICT DO NOTHING do coalescing por si so ja bloquearia uma
+  -- segunda linha nao lida pra A, mascarando o assert -- o teste ficaria
+  -- verde mesmo sem o EXISTS contra workspace_members no trigger.
+  update notifications set read_at = now()
+   where type = 'team_message' and user_id = v_a
+     and metadata->>'conversa_id' = v_conv::text;
+
+  -- Segunda mensagem: A (removido) nao recebe nada novo; C (continua no
+  -- workspace) segue recebendo normalmente.
+  insert into equipe_mensagens (conversa_id, conta_id, author_user_id, content)
+    values (v_conv, v_ws, v_b, 'segunda');
+  select count(*) into v_n from notifications
+   where type = 'team_message' and user_id = v_a
+     and metadata->>'conversa_id' = v_conv::text and read_at is null;
+  assert v_n = 0,
+    format('A removido do workspace NAO deveria receber notificacao nova, achou %s', v_n);
+  select count(*) into v_n from notifications
+   where type = 'team_message' and user_id = v_c
+     and metadata->>'conversa_id' = v_conv::text and read_at is null;
+  assert v_n = 1,
+    format('C (ainda no workspace) deveria continuar recebendo, achou %s', v_n);
+  raise notice 'PASS 9: team_message so notifica membros vivos do workspace';
+end $$;
+rollback;
