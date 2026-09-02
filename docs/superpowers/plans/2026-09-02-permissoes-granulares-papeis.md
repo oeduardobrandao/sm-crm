@@ -1158,6 +1158,17 @@ Aguardar o review externo do Codex (regra da casa), verificar cada apontamento c
 
 ### Task 10: Migração B (religação SQL) + suítes psql
 
+> **Errata (pós-implementação):** o brief abaixo (e a spec original) descrevia
+> `post_status_automations` e `instagram_comment_automations` harmonizadas sob o mesmo
+> módulo `automacoes`. A decisão de produto final foi remapear em vez de harmonizar —
+> `post_status_automations` segue `configuracoes`; `automacoes` cobre só
+> `instagram_comment_automations`, com o preset do Agente em `editar`. Também mudou o
+> tratamento de `contratos` (módulo próprio, não mais can_see_financials() direto) e
+> ganhou o grant explícito de `workspace_roles`. **A spec
+> (`docs/superpowers/specs/2026-09-02-permissoes-granulares-papeis-design.md`) é quem
+> governa** onde ela e este plano divergirem — este documento não foi atualizado
+> retroativamente linha a linha.
+
 **Files:**
 - Create: `supabase/migrations/20260910000001_workspace_roles_b_enforcement.sql` (renumerar acima do tail de main na abertura do PR)
 - Create: `supabase/tests/entitlements/75_permission_rls_rewire.sql`
