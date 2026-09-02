@@ -126,7 +126,9 @@ export function useNotifications({ popoverOpen }: UseNotificationsOptions) {
   return {
     notifications: masterPaused ? [] : (listQuery.data ?? []),
     unreadCount: masterPaused ? 0 : (unreadQuery.data ?? 0),
-    isLoading: listQuery.isLoading,
+    // While prefs load, the list query is still disabled (isLoading false):
+    // report loading anyway so the popover doesn't flash "sem notificações".
+    isLoading: listQuery.isLoading || !prefsReady,
     markAsRead: markAsRead.mutate,
     markAllAsRead: markAllAsRead.mutate,
     dismiss: dismiss.mutate,

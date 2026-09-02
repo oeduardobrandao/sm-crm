@@ -53,7 +53,12 @@ export default function SeusClientesSection() {
       if (ctx?.prev) qc.setQueryData(BRANDING_QUERY_KEY, ctx.prev);
       toast.error(SAVE_ERROR_MESSAGE);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: BRANDING_QUERY_KEY }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: BRANDING_QUERY_KEY });
+      // Configuração > Relatórios lê o mesmo workspaces.send_report_email por
+      // outra chave: invalida para não ficar até 30s defasada entre telas.
+      qc.invalidateQueries({ queryKey: ['workspace-branding'] });
+    },
   });
 
   const saveCliente = useMutation({
@@ -71,7 +76,12 @@ export default function SeusClientesSection() {
       if (ctx?.prev) qc.setQueryData(CLIENTES_QUERY_KEY, ctx.prev);
       toast.error(SAVE_ERROR_MESSAGE);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: CLIENTES_QUERY_KEY }),
+    onSettled: (_data, _error, v) => {
+      qc.invalidateQueries({ queryKey: CLIENTES_QUERY_KEY });
+      // A aba Relatórios do cliente lê o mesmo clientes.send_report_email por
+      // outra chave: invalida para não ficar até 30s defasada entre telas.
+      qc.invalidateQueries({ queryKey: ['cliente', v.id] });
+    },
   });
 
   if (clientesLoading || brandingLoading) {
@@ -136,6 +146,10 @@ export default function SeusClientesSection() {
       <div className="mt-2 divide-y divide-[color:var(--border-color)]">
         {filtered.map((cliente) => {
           const hasEmail = !!cliente.email;
+          // Clientes homônimos: o e-mail (ou, sem ele, o id) desambigua o
+          // nome acessível de cada linha.
+          const identifiedName =
+            cliente.id != null ? `${cliente.nome} (cliente ${cliente.id})` : cliente.nome;
           return (
             <div key={cliente.id} className="grid grid-cols-[1fr_170px] items-center gap-2 py-3">
               <div>
@@ -147,7 +161,7 @@ export default function SeusClientesSection() {
               <span className="flex justify-center">
                 {hasEmail ? (
                   <Switch
-                    aria-label={`Relatório mensal para ${cliente.nome}`}
+                    aria-label={`Relatório mensal para ${cliente.nome} (${cliente.email})`}
                     checked={cliente.send_report_email ?? false}
                     onCheckedChange={(v) => {
                       if (cliente.id == null) return;
@@ -158,7 +172,7 @@ export default function SeusClientesSection() {
                   <span
                     className="text-center text-[color:var(--text-muted)]"
                     title="Sem e-mail cadastrado"
-                    aria-label={`${cliente.nome}: sem e-mail cadastrado`}
+                    aria-label={`${identifiedName}: sem e-mail cadastrado`}
                   >
                     ·
                   </span>

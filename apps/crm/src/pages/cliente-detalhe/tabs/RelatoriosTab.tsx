@@ -43,6 +43,11 @@ export default function RelatoriosTab() {
     try {
       await updateCliente(clienteId, { [field]: checked });
       queryClient.invalidateQueries({ queryKey: ['cliente', clienteId] });
+      if (field === 'send_report_email') {
+        // A matriz de Configuração > Notificações > Seus clientes lê o mesmo
+        // campo por outra chave: invalida para não ficar defasada entre telas.
+        queryClient.invalidateQueries({ queryKey: ['seus-clientes-report'] });
+      }
       toast.success(t(checked ? onI18nKey : offI18nKey));
     } catch {
       toast.error(t('detail.reportPrefUpdateError'));

@@ -151,6 +151,9 @@ export default function RelatoriosTab() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace-branding'] });
+      // A matriz de Configuração > Notificações > Seus clientes lê o mesmo
+      // campo por outra chave: invalida para não ficar defasada entre telas.
+      queryClient.invalidateQueries({ queryKey: ['seus-clientes-branding'] });
       toast.success('Configurações de relatório salvas!');
     },
     onError: (err: unknown) => {

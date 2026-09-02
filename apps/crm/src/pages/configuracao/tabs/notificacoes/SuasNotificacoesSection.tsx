@@ -2,7 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { Spinner } from '@/components/ui/spinner';
-import { NOTIFICATION_CATALOG, CATEGORY_ORDER, CATEGORY_LABELS } from '@/lib/notification-catalog';
+import {
+  NOTIFICATION_CATALOG,
+  CATEGORY_ORDER,
+  CATEGORY_LABELS,
+  isEmailEligibleType,
+} from '@/lib/notification-catalog';
 import {
   getNotificationEmailPrefs,
   setNotificationEmailPref,
@@ -68,9 +73,12 @@ export default function SuasNotificacoesSection() {
       if (ctx?.prev) qc.setQueryData(INAPP_PREFS_QUERY_KEY, ctx.prev);
       toast.error(SAVE_ERROR_MESSAGE);
     },
-    onSuccess: () => {
+    onSettled: () => {
       // The bell (popover + unread badge) reads its own prefs query and
       // notification lists: invalidate all of them so it reacts immediately.
+      // onSettled (not onSuccess): if the prefs query had failed before this
+      // save, onMutate captured no snapshot to roll back to, so a failed save
+      // must also refetch to re-sync the cache with the server.
       qc.invalidateQueries({ queryKey: INAPP_PREFS_QUERY_KEY });
       qc.invalidateQueries({ queryKey: INAPP_PREFS_KEY });
       qc.invalidateQueries({ queryKey: ['notifications'] });
@@ -99,7 +107,7 @@ export default function SuasNotificacoesSection() {
       if (ctx?.prev) qc.setQueryData(EMAIL_PREFS_QUERY_KEY, ctx.prev);
       toast.error(SAVE_ERROR_MESSAGE);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: EMAIL_PREFS_QUERY_KEY }),
+    onSettled: () => qc.invalidateQueries({ queryKey: EMAIL_PREFS_QUERY_KEY }),
   });
 
   if (inappLoading || emailLoading) {
@@ -157,50 +165,51 @@ export default function SuasNotificacoesSection() {
             {CATEGORY_LABELS[category]}
           </h3>
           <div className="divide-y divide-[color:var(--border-color)]">
-            {CATALOG_ROWS.filter((row) => row.category === category).map((row) => (
-              <div
-                key={row.type}
-                className="grid grid-cols-[1fr_72px_72px] items-center gap-2 py-3"
-              >
-                <div>
-                  <div className="font-medium">{row.label}</div>
-                  <div className="text-sm text-[color:var(--text-muted)]">Quando: {row.when}</div>
-                  <div className="text-sm text-[color:var(--text-muted)]">
-                    Quem recebe: {row.recipients}
+            {CATALOG_ROWS.filter((row) => row.category === category).map((row) => {
+              // Narrowed via the catalog-derived type guard, so the mutate call
+              // below needs no cast to NotificationEmailType.
+              const emailType = isEmailEligibleType(row.type) ? row.type : null;
+              return (
+                <div
+                  key={row.type}
+                  className="grid grid-cols-[1fr_72px_72px] items-center gap-2 py-3"
+                >
+                  <div>
+                    <div className="font-medium">{row.label}</div>
+                    <div className="text-sm text-[color:var(--text-muted)]">Quando: {row.when}</div>
+                    <div className="text-sm text-[color:var(--text-muted)]">
+                      Quem recebe: {row.recipients}
+                    </div>
                   </div>
-                </div>
-                <span className="flex justify-center">
-                  <Switch
-                    aria-label={`${row.label} (no app)`}
-                    disabled={inappPaused}
-                    checked={enabledOf(inappPrefs, row.type)}
-                    onCheckedChange={(v) => saveInapp.mutate({ type: row.type, enabled: v })}
-                  />
-                </span>
-                <span className="flex justify-center">
-                  {row.emailEligible ? (
+                  <span className="flex justify-center">
                     <Switch
-                      aria-label={`${row.label} (e-mail)`}
-                      disabled={emailPaused}
-                      checked={enabledOf(emailPrefs, row.type)}
-                      onCheckedChange={(v) =>
-                        // emailEligible rows are exactly the NotificationEmailType members
-                        // (Task 4's catalog/store pairing keeps the two lists in sync).
-                        saveEmail.mutate({ type: row.type as NotificationEmailType, enabled: v })
-                      }
+                      aria-label={`${row.label} (no app)`}
+                      disabled={inappPaused}
+                      checked={enabledOf(inappPrefs, row.type)}
+                      onCheckedChange={(v) => saveInapp.mutate({ type: row.type, enabled: v })}
                     />
-                  ) : (
-                    <span
-                      className="text-center text-[color:var(--text-muted)]"
-                      title="Este tipo não vira e-mail"
-                      aria-label={`${row.label}: este tipo não vira e-mail`}
-                    >
-                      ·
-                    </span>
-                  )}
-                </span>
-              </div>
-            ))}
+                  </span>
+                  <span className="flex justify-center">
+                    {emailType ? (
+                      <Switch
+                        aria-label={`${row.label} (e-mail)`}
+                        disabled={emailPaused}
+                        checked={enabledOf(emailPrefs, row.type)}
+                        onCheckedChange={(v) => saveEmail.mutate({ type: emailType, enabled: v })}
+                      />
+                    ) : (
+                      <span
+                        className="text-center text-[color:var(--text-muted)]"
+                        title="Este tipo não vira e-mail"
+                        aria-label={`${row.label}: este tipo não vira e-mail`}
+                      >
+                        ·
+                      </span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       ))}
